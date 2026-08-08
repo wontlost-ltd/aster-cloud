@@ -11,25 +11,13 @@ import { ConditionFunnelPanel } from './condition-funnel-panel';
  * `page.tsx` 的预渲染 translations 对象里，那个对象会迅速失控。这里改用
  * `useTranslations` 在客户端取——面板本就是 `'use client'`，没有额外代价。
  *
- * <p><b>What-if 面板（ADR 0034）</b>：组件已按异步 ReplayBatch 模型重做
- * （{@code whatif-batch-panel.tsx}），但**尚未挂载**——还差两个真实输入：
- * <ul>
- *   <li><b>目标版本</b>：What-If 是「当前版本 vs 另一个版本」的比较，
- *       需要一个版本选择器。详情页现在只有 currentVersion。</li>
- *   <li><b>entitled</b>：租户是否有 What-If 权益，需从 plan 读出后传下来。</li>
- * </ul>
- * 在这两者到位前挂载只能靠编造默认值——那正是上一版
- * {@code ?? 0} 兜底的同类错误：用一个看似正常的值掩盖「输入其实不存在」。
- * 上一版（Phase 4）因**选择偏差**撤下——它允许「200 条发起、30 条成功」
- * 就对那 30 条出完整业务数字，而重跑失败与输入/词汇/策略路径相关，
- * 成功子集不是随机样本。新模型：窗口内**全量**跑、**全部成功**才出数字，
- * 任一条失败即整批拒答。
+ * <p><b>What-if 面板不在这里</b>（ADR 0034）：它挂在**版本比较**面板里
+ * （{@code version-compare-panel.tsx}），因为输入天然在那儿——
+ * 要比较的两个版本就是 compare 的 left/right。
+ * 上面的 diff 回答「源码改了什么」，What-If 回答「决策会怎么变」，
+ * 是同一个问题的两面；放在一起用户不必跨区拼凑上下文。
  *
- * <p>★呈现层的三条硬约束（见面板注释）：窗口口径与数字同屏、
- * 拒答零业务数字、进度只给已处理数不给成功数。
- *
- * <p>★面板文案当前为英文硬编码：Phase 4 的四语文案只存在于已关闭的分支，
- * 补文案要走跨仓发版链（ui-messages → 发版 → cloud bump），作为独立工作项推进。
+ * <p>本区保留「策略决策分析」语义（条件漏斗），与「版本比较」是两件事。
  */
 export function PolicyAnalyticsSection({
   policyId,

@@ -72,12 +72,15 @@ interface Translations {
 }
 
 interface PolicyDetailContentProps {
+  /** 租户是否拥有 What-If 权益（ADR 0034 §7.2）。server 侧读 plan 得出。 */
+  whatIfEntitled?: boolean;
   policy: Policy;
   translations: Translations;
   locale: string;
 }
 
 export function PolicyDetailContent({
+  whatIfEntitled = false,
   policy,
   translations: t,
   locale,
@@ -287,7 +290,7 @@ export function PolicyDetailContent({
       </div>
 
       {/* Version Management with Approval Workflow */}
-      <PolicyVersionsTab policyId={policy.id} />
+      <PolicyVersionsTab policyId={policy.id} whatIfEntitled={whatIfEntitled} />
 
       {/* 决策分析（Phase 1 条件漏斗 + Phase 4 What-if）。
           自带 i18n，故不走 translations prop——避免详情页把每个新面板的

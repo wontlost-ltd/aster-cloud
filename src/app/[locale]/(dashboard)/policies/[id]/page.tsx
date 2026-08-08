@@ -1,9 +1,10 @@
 import { getSession } from '@/lib/auth';
 import { redirect, notFound } from 'next/navigation';
-import { db, policies, executions } from '@/lib/prisma';
+import { db, policies, executions, users } from '@/lib/prisma';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { getTranslations } from 'next-intl/server';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
+import { getEffectiveLimits, type PlanType } from '@/lib/plans';
 import { PolicyDetailContent } from './policy-detail-content';
 
 // 服务端数据获取
@@ -71,6 +72,22 @@ export default async function PolicyDetailPage({
   // 详情页据此禁用按钮并展示冻结横幅，与列表页一致。
   const freeze = await isPolicyFrozen(session.user.id, id);
 
+  // What-If 权益（ADR 0034 §7.2）：free 档 concurrentReplayBatches=0 表示
+  // **没有这个功能**，不是「限流为 0」。
+  // ★在 server component 读，不新增客户端 fetch、不新增端点——
+  //   同 approve/route.ts 的既有模式。
+  const planUser = await db.query.users.findFirst({
+    where: eq(users.id, session.user.id),
+    columns: { plan: true, priceLockedAt: true, legacyTier: true },
+  });
+  const whatIfEntitled = planUser
+    ? getEffectiveLimits({
+        plan: planUser.plan as PlanType,
+        priceLockedAt: planUser.priceLockedAt,
+        legacyTier: planUser.legacyTier,
+      }).concurrentReplayBatches !== 0
+    : false;   // 查不到用户按无权益处理（fail-closed）
+
   const t = await getTranslations('policies');
 
   // 预渲染翻译字符串
@@ -116,6 +133,7 @@ export default async function PolicyDetailPage({
 
   return (
     <PolicyDetailContent
+      whatIfEntitled={whatIfEntitled}
       policy={{ ...policy, isFrozen: freeze.isFrozen }}
       translations={translations}
       locale={locale}

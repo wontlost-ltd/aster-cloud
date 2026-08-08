@@ -10,11 +10,13 @@ import { usePolicyVersions } from '@/hooks/use-policy-versions';
 
 interface PolicyVersionsTabProps {
   policyId: string;
+  /** 租户是否拥有 What-If 权益（ADR 0034 §7.2）；透传给比较面板。 */
+  whatIfEntitled?: boolean;
 }
 
 type ViewMode = 'list' | 'detail' | 'compare';
 
-export function PolicyVersionsTab({ policyId }: PolicyVersionsTabProps) {
+export function PolicyVersionsTab({ policyId, whatIfEntitled = false }: PolicyVersionsTabProps) {
   const { data: session } = useSession();
   const t = useTranslations('policies.versions');
   const tCommon = useTranslations('common');
@@ -183,12 +185,15 @@ export function PolicyVersionsTab({ policyId }: PolicyVersionsTabProps) {
           <VersionComparePanel
             policyId={policyId}
             versions={(versions as PolicyVersionInfo[]).map((v) => ({
+              // ★行 id 必须透传：What-If 批次按行 id 定位版本（ADR 0034 §3.1）
+              id: v.id,
               version: v.version,
               status: v.status,
               isDefault: v.isDefault,
               releaseNote: v.releaseNote,
               createdAt: v.createdAt,
             }))}
+            whatIfEntitled={whatIfEntitled}
             onClose={handleCloseCompare}
           />
         )}

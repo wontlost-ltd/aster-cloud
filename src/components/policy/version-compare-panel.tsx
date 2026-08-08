@@ -1,9 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { WhatIfBatchPanel } from './whatif-batch-panel';
 import type { PolicyVersionStatus } from '@/lib/prisma';
 
 interface VersionSummary {
+  /** 版本行 id（不可变主键）。★What-If 批次按行 id 定位版本，不用 version 号——
+   *  version 号可能重复或变动，行 id 唯一且不可变。 */
+  id: string;
   version: number;
   status: PolicyVersionStatus;
   isDefault: boolean;
@@ -17,6 +21,12 @@ interface VersionComparePanelProps {
   initialLeftVersion?: number;
   initialRightVersion?: number;
   onClose?: () => void;
+  /**
+   * 租户是否拥有 What-If 权益（ADR 0034 §7.2）。
+   * false → 面板入口可见但禁用 + 升级引导（§7.5）。
+   * ★由 server component 读 plan 后传下来，不在客户端猜。
+   */
+  whatIfEntitled?: boolean;
 }
 
 interface DiffLine {
@@ -139,6 +149,7 @@ export function VersionComparePanel({
   initialLeftVersion,
   initialRightVersion,
   onClose,
+  whatIfEntitled = false,
 }: VersionComparePanelProps) {
   const sortedVersions = useMemo(
     () => [...versions].sort((a, b) => b.version - a.version),
@@ -150,6 +161,17 @@ export function VersionComparePanel({
   );
   const [rightVersion, setRightVersion] = useState<number>(
     initialRightVersion ?? sortedVersions[0]?.version
+  );
+
+  // ★版本号 → 行 id：批次 API 按**行 id**定位版本（version 号可能重复/可变）。
+  //   找不到时为 undefined → 面板不挂载，而不是传一个编造的 id。
+  const leftRowId = useMemo(
+    () => versions.find((v) => v.version === leftVersion)?.id,
+    [versions, leftVersion],
+  );
+  const rightRowId = useMemo(
+    () => versions.find((v) => v.version === rightVersion)?.id,
+    [versions, rightVersion],
   );
 
   const [leftSource, setLeftSource] = useState<string | null>(null);
@@ -341,6 +363,23 @@ export function VersionComparePanel({
           </div>
         )}
       </div>
+
+      {/*
+        What-If 影响估算（ADR 0034）。挂在版本比较里而不是 analytics 区，
+        理由是**输入天然在这里**：leftVersion/rightVersion 就是要比较的两个版本。
+        上面的 diff 回答「源码改了什么」，这里回答「决策会怎么变」——
+        同一个问题的两面，放在一起用户不必跨区拼凑上下文。
+      */}
+      {leftRowId && rightRowId && leftVersion !== rightVersion && (
+        <div className="mt-4">
+          <WhatIfBatchPanel
+            policyId={policyId}
+            baseVersionId={leftRowId}
+            targetVersionId={rightRowId}
+            entitled={whatIfEntitled}
+          />
+        </div>
+      )}
     </div>
   );
 }
