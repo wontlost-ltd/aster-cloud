@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { render as rtlRender, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { IntlClientProvider } from '@/i18n/intl-client-provider';
+import { DEMO_SUPPLEMENT } from '@/i18n/demo-supplement';
 import { WhatIfBatchPanel } from '@/components/policy/whatif-batch-panel';
 
 /**
@@ -12,6 +15,18 @@ import { WhatIfBatchPanel } from '@/components/policy/whatif-batch-panel';
  *
  * 这三条正是上一版 Phase 4 的死因在呈现层的投影。
  */
+
+/**
+ * ★用**真实**的 demo-supplement 文案，不自造 mock——
+ * 否则断言的是自己编的字符串，测不到「文案里那句解释是否还在」。
+ */
+function render(ui: ReactElement) {
+  return rtlRender(
+    <IntlClientProvider locale="en" messages={DEMO_SUPPLEMENT.en as never}>
+      {ui}
+    </IntlClientProvider>,
+  );
+}
 
 const fetchMock = vi.fn();
 
@@ -190,10 +205,10 @@ describe('What-If 面板：呈现约束（ADR 0034 §1.1）', () => {
       });
 
       await waitFor(() =>
-        expect(screen.getByText(/not available \(no monetary baseline\)/i)).toBeTruthy(),
+        expect(screen.getByText(/cannot be estimated/i)).toBeTruthy(),
       );
       // 渲染成 0 会被读成「换版本没有金额影响」——一个没有依据的结论
-      expect(document.body.textContent).not.toMatch(/Estimated value impact:\s*0\b/);
+      expect(document.body.textContent).not.toMatch(/Estimated value change:?\s*0\b/);
     });
   });
 
@@ -202,7 +217,7 @@ describe('What-If 面板：呈现约束（ADR 0034 §1.1）', () => {
       render(<WhatIfBatchPanel {...props} entitled={false} />);
 
       // 入口可见——完全隐藏会失去转化机会
-      expect(screen.getByText(/What-if impact analysis/i)).toBeTruthy();
+      expect(screen.getByText(/What-if impact estimate/i)).toBeTruthy();
       expect(screen.getByRole('button', { name: /run analysis/i })).toHaveProperty('disabled', true);
       expect(screen.getByText(/requires a/i)).toBeTruthy();
 

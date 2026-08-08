@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Alert, AlertDescription, Button, Card, CardBody, Stack } from '@/components/ui';
 
 /**
@@ -16,10 +17,12 @@ import { Alert, AlertDescription, Button, Card, CardBody, Stack } from '@/compon
  *       自行推断结论。</li>
  * </ol>
  *
- * <p>★文案当前为英文硬编码：Phase 4 时期的四语文案只存在于已关闭的分支，
- * `@aster-cloud/ui-messages` 包里零命中。补文案要走跨仓发版链
- * （改 ui-messages → 发版 → cloud bump），作为独立工作项推进。
- * 先英文上线是为了让交互与拒答呈现能被真实点击验证。
+ * <p>文案走 `demo-supplement.ts` 的**本地补充层**（`whatIf.*`），四语齐备。
+ * ★不需要跨仓发版：这些是 cloud 前端特有的 UI 文本，不与 aster-api 共享——
+ * 放进共享 npm 包会胖化它并引入发版耦合（见 demo-supplement 头注释）。
+ * Phase 4 时期的旧键（title/subtitle/changed/…）被复用；
+ * 而 positiveRate / confidence* 属于**已废弃的置信度分档**——
+ * 新模型 fail-closed，不存在「部分可信」这种中间态。
  */
 
 type BatchStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'EXPIRED';
@@ -48,22 +51,23 @@ interface BatchState {
 }
 
 const WINDOW_PRESETS = [
-  { kind: 'LAST_MONTH', label: 'Last month' },
-  { kind: 'LAST_QUARTER', label: 'Last quarter' },
-  { kind: 'LAST_HALF_YEAR', label: 'Last 6 months' },
-  { kind: 'LAST_YEAR', label: 'Last year' },
-  { kind: 'CUSTOM', label: 'Custom range' },
+  { kind: 'LAST_MONTH', key: 'lastMonth' },
+  { kind: 'LAST_QUARTER', key: 'lastQuarter' },
+  { kind: 'LAST_HALF_YEAR', key: 'lastHalfYear' },
+  { kind: 'LAST_YEAR', key: 'lastYear' },
+  { kind: 'CUSTOM', key: 'customRange' },
 ] as const;
 
-/** 失败分类的人类可读说明——★区分「你的数据」与「服务端繁忙」。 */
-const FAILURE_HINTS: Record<string, string> = {
-  TARGET_COMPILE_ERROR: 'The target version failed to compile. Retrying will not help.',
-  INPUT_INCOMPATIBLE: 'Historical inputs are incompatible with the target version.',
-  VOCABULARY_UNAVAILABLE: 'A vocabulary or alias snapshot is missing.',
-  TIMEOUT: 'Evaluation timed out. You can retry.',
-  THROTTLED: 'The server was busy. This is not a problem with your data — you can retry.',
-  UNKNOWN: 'Unclassified failure.',
+/** 失败分类 → 文案 key。★区分「你的数据」与「服务端繁忙」的语义在文案里。 */
+const FAILURE_KEYS: Record<string, string> = {
+  TARGET_COMPILE_ERROR: 'failureTargetCompile',
+  INPUT_INCOMPATIBLE: 'failureInputIncompatible',
+  VOCABULARY_UNAVAILABLE: 'failureVocabulary',
+  TIMEOUT: 'failureTimeout',
+  THROTTLED: 'failureThrottled',
+  UNKNOWN: 'failureUnknown',
 };
+
 
 /** 今天（用户本地时区）的 YYYY-MM-DD，用作自定义窗口的上限。 */
 function todayISO(): string {
@@ -83,6 +87,7 @@ export function WhatIfBatchPanel({
   targetVersionId: string;
   entitled: boolean;
 }) {
+  const t = useTranslations('whatIf');
   const [windowKind, setWindowKind] = useState<string>('LAST_MONTH');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
@@ -104,7 +109,7 @@ export function WhatIfBatchPanel({
     async (id: string) => {
       const res = await fetch(`/api/v1/policies/${policyId}/whatif-batches/${id}`);
       if (!res.ok) {
-        setError('Failed to load batch status.');
+        setError(t('loadFailed'));
         return null;
       }
       const data = (await res.json()) as BatchState;
@@ -144,20 +149,20 @@ export function WhatIfBatchPanel({
 
       if (res.status === 403) {
         // 无权益——引导升级，不是「稍后再试」
-        setError('What-If impact analysis requires a Pro plan or above.');
+        setError(t('needsPro'));
         return;
       }
       if (res.status === 409) {
         // 已有批次在跑——给出当前批次，让用户能看进度而不是干等
         const body = await res.json();
         setBusyBatchId(body.currentBatchId ?? null);
-        setError('A batch is already running. You can start a new one once it finishes.');
+        setError(t('alreadyRunning'));
         if (body.currentBatchId) void fetchBatch(body.currentBatchId);
         return;
       }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        setError(body.message ?? 'Failed to start the batch.');
+        setError(body.message ?? t('startFailed'));
         return;
       }
       setBatch((await res.json()) as BatchState);
@@ -172,17 +177,17 @@ export function WhatIfBatchPanel({
       <Card>
         <CardBody>
           <Stack gap={3}>
-            <h3 className="text-base font-semibold">What-if impact analysis</h3>
+            <h3 className="text-base font-semibold">{t('title')}</h3>
             <p className="text-sm text-muted-foreground">
-              See how switching to another policy version would have changed past decisions.
+              {t('entitlementHint')}
             </p>
             <Alert>
               <AlertDescription>
                 {/* ★不给试用额度、不给样例数字——否则 §1.1 会在营销路径上被绕过 */}
-                This feature requires a <strong>Pro</strong> plan or above.
+                {t('needsPro')}
               </AlertDescription>
             </Alert>
-            <Button disabled>Run analysis</Button>
+            <Button disabled>{t('run')}</Button>
           </Stack>
         </CardBody>
       </Card>
@@ -194,17 +199,16 @@ export function WhatIfBatchPanel({
       <CardBody>
         <Stack gap={4}>
           <div>
-            <h3 className="text-base font-semibold">What-if impact analysis</h3>
+            <h3 className="text-base font-semibold">{t('title')}</h3>
             <p className="text-sm text-muted-foreground">
-              Replays every re-runnable execution in the selected window against the target
-              version. Results are shown only if <strong>all</strong> replays succeed.
+              {t('subtitle')}
             </p>
           </div>
 
           {/* ── 窗口选择 ─────────────────────────────────────────────── */}
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Time window</span>
+              <span className="font-medium">{t('window')}</span>
               <select
                 className="rounded border px-2 py-1"
                 value={windowKind}
@@ -213,7 +217,7 @@ export function WhatIfBatchPanel({
               >
                 {WINDOW_PRESETS.map((p) => (
                   <option key={p.kind} value={p.kind}>
-                    {p.label}
+                    {t(p.key)}
                   </option>
                 ))}
               </select>
@@ -222,7 +226,7 @@ export function WhatIfBatchPanel({
             {windowKind === 'CUSTOM' && (
               <>
                 <label className="flex flex-col gap-1 text-sm">
-                  <span className="font-medium">From</span>
+                  <span className="font-medium">{t('from')}</span>
                   <input
                     type="date"
                     className="rounded border px-2 py-1"
@@ -233,7 +237,7 @@ export function WhatIfBatchPanel({
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-sm">
-                  <span className="font-medium">To</span>
+                  <span className="font-medium">{t('to')}</span>
                   <input
                     type="date"
                     className="rounded border px-2 py-1"
@@ -248,7 +252,7 @@ export function WhatIfBatchPanel({
             )}
 
             <Button onClick={() => void start()} disabled={isRunning || starting}>
-              {starting ? 'Starting…' : 'Run analysis'}
+              {starting ? t('starting') : t('run')}
             </Button>
           </div>
 
@@ -270,7 +274,7 @@ export function WhatIfBatchPanel({
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span>
-                  Replaying <strong>{batch.windowLabel}</strong>
+                  {t('replaying', { window: batch.windowLabel })}
                 </span>
                 <span className="tabular-nums text-muted-foreground">
                   {batch.processedCount ?? 0} / {batch.plannedCount}
@@ -289,7 +293,7 @@ export function WhatIfBatchPanel({
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                Results appear only after every execution has been replayed successfully.
+                {t('progressHint')}
               </p>
             </div>
           )}
@@ -298,20 +302,22 @@ export function WhatIfBatchPanel({
           {batch?.status === 'COMPLETED' && batch.result && (
             <div className="space-y-3">
               <p className="text-sm">
-                Based on <strong>all {batch.result.totalSampled}</strong> re-runnable executions in{' '}
-                <strong>{batch.windowLabel}</strong>.
+                {t('basedOn', {
+                  count: batch.result.totalSampled,
+                  window: batch.windowLabel,
+                })}
               </p>
               <div className="grid grid-cols-3 gap-3 text-sm">
-                <Metric label="Decisions changed" value={batch.result.changed} />
-                <Metric label="Newly approved" value={batch.result.newlyApproved} />
-                <Metric label="Newly rejected" value={batch.result.newlyRejected} />
+                <Metric label={t('changed')} value={batch.result.changed} />
+                <Metric label={t('newlyApproved')} value={batch.result.newlyApproved} />
+                <Metric label={t('newlyRejected')} value={batch.result.newlyRejected} />
               </div>
               <p className="text-sm">
-                Estimated value impact:{' '}
+                {t('valueImpact')}:{' '}
                 {batch.result.estimatedValueDelta === null ? (
                   // ★「无法估算」≠「估算为零」——不得渲染成 0
                   <span className="text-muted-foreground">
-                    not available (no monetary baseline)
+                    {t('valueUnavailable')}
                   </span>
                 ) : (
                   <strong className="tabular-nums">{batch.result.estimatedValueDelta}</strong>
@@ -326,15 +332,14 @@ export function WhatIfBatchPanel({
               <AlertDescription>
                 <Stack gap={2}>
                   <span>
-                    No results for <strong>{batch.windowLabel}</strong>. Some executions could not
-                    be replayed, so any numbers derived from the rest would not represent the full
-                    population.
+                    {t('rejectedTitle', { window: batch.windowLabel })}{' '}
+                    {t('rejectedNote')}
                   </span>
                   {batch.failureReasons && (
                     <ul className="list-disc pl-5 text-sm">
                       {Object.entries(batch.failureReasons).map(([kind, count]) => (
                         <li key={kind}>
-                          <strong>{count}</strong> — {FAILURE_HINTS[kind] ?? kind}
+                          <strong>{count}</strong> — {FAILURE_KEYS[kind] ? t(FAILURE_KEYS[kind]) : kind}
                         </li>
                       ))}
                     </ul>
@@ -347,8 +352,7 @@ export function WhatIfBatchPanel({
           {batch?.status === 'EXPIRED' && (
             <Alert>
               <AlertDescription>
-                This batch has expired. Results are kept for 30 days; run a new analysis to get
-                current numbers.
+                {t('expired')}
               </AlertDescription>
             </Alert>
           )}

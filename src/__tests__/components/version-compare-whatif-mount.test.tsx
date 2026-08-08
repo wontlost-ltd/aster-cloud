@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render as rtlRender, screen, waitFor } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { IntlClientProvider } from '@/i18n/intl-client-provider';
+import { DEMO_SUPPLEMENT } from '@/i18n/demo-supplement';
 import { VersionComparePanel } from '@/components/policy/version-compare-panel';
 
 /**
@@ -14,6 +17,18 @@ import { VersionComparePanel } from '@/components/policy/version-compare-panel';
  *   · 同版本比较也挂载 → 「v3 换成 v3 会怎样」是个无意义的批次，
  *     白白吃掉租户唯一的并发额度（§7.2 pro 档只有 1 个）
  */
+
+/**
+ * ★用**真实**的 demo-supplement 文案，不自造 mock——
+ * 否则断言的是自己编的字符串，测不到「文案里那句解释是否还在」。
+ */
+function render(ui: ReactElement) {
+  return rtlRender(
+    <IntlClientProvider locale="en" messages={DEMO_SUPPLEMENT.en as never}>
+      {ui}
+    </IntlClientProvider>,
+  );
+}
 
 const fetchMock = vi.fn();
 
@@ -40,8 +55,11 @@ const versions = [
 describe('What-If 在版本比较里的挂载条件', () => {
   it('★两个不同版本且行 id 齐备 → 挂载', async () => {
     render(<VersionComparePanel policyId="p1" versions={versions} whatIfEntitled />);
-    await waitFor(() =>
-      expect(screen.getByText(/What-if impact analysis/i)).toBeTruthy(),
+    // 先等比较面板自身完成加载（它要拉两个版本的源码），面板才会渲染出来
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await waitFor(
+      () => expect(document.body.textContent).toMatch(/What-if impact estimate/i),
+      { timeout: 3000 },
     );
   });
 
@@ -56,7 +74,7 @@ describe('What-If 在版本比较里的挂载条件', () => {
       />,
     );
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(screen.queryByText(/What-if impact analysis/i)).toBeNull();
+    expect(screen.queryByText(/What-if impact estimate/i)).toBeNull();
   });
 
   it('★缺行 id → 不挂载，而不是传 undefined 给批次 API', async () => {
@@ -71,14 +89,14 @@ describe('What-If 在版本比较里的挂载条件', () => {
     }));
     render(<VersionComparePanel policyId="p1" versions={noId} whatIfEntitled />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(screen.queryByText(/What-if impact analysis/i)).toBeNull();
+    expect(screen.queryByText(/What-if impact estimate/i)).toBeNull();
   });
 
   it('无权益时仍挂载，但呈现为禁用 + 升级引导（§7.5）', async () => {
     // 入口可见才有转化机会；服务端仍会硬拒 403
     render(<VersionComparePanel policyId="p1" versions={versions} whatIfEntitled={false} />);
     await waitFor(() =>
-      expect(screen.getByText(/What-if impact analysis/i)).toBeTruthy(),
+      expect(screen.getByText(/What-if impact estimate/i)).toBeTruthy(),
     );
     expect(screen.getByRole('button', { name: /run analysis/i })).toHaveProperty(
       'disabled',
