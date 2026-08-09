@@ -113,6 +113,52 @@ describe('What-If 面板：呈现约束（ADR 0034 §1.1）', () => {
     });
   });
 
+  describe('空窗口', () => {
+    // ★服务端用 FAILED + 空 failureReasons 表达「窗口内没有任何执行」。
+    //   它**不是**拒答：拒答是「有样本但部分跑不了」，空窗口是「压根没样本」。
+    //   混为一谈会让用户去排查并不存在的数据故障。
+    const empty = {
+      batchId: 'b0',
+      status: 'FAILED' as const,
+      windowLabel: 'Last month',
+      windowFrom: '2026-07-08T00:00:00Z',
+      windowTo: '2026-08-08T00:00:00Z',
+      failureReasons: {},
+      rejected: true,
+    };
+
+    it('★空窗口必须说「没有执行记录」，不得说「有部分执行无法重跑」', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(empty, 202));
+      render(<WhatIfBatchPanel {...props} />);
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /run analysis/i }));
+      });
+
+      await waitFor(() =>
+        expect(screen.getByText(/No executions were recorded/i)).toBeTruthy(),
+      );
+      // 这句是给「有样本但跑不了」用的，空窗口时说它就是不实陈述
+      expect(document.body.textContent).not.toMatch(
+        /would not represent the full population/i,
+      );
+    });
+
+    it('空窗口同样不给任何业务数字', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(empty, 202));
+      render(<WhatIfBatchPanel {...props} />);
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /run analysis/i }));
+      });
+
+      await waitFor(() =>
+        expect(screen.getByText(/No executions were recorded/i)).toBeTruthy(),
+      );
+      const body = document.body.textContent ?? '';
+      expect(body).not.toMatch(/decisions changed/i);
+      expect(body).not.toMatch(/estimated value/i);
+    });
+  });
+
   describe('进行中', () => {
     it('★只显示已处理数，不显示成功数', async () => {
       fetchMock.mockResolvedValue(

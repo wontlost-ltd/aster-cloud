@@ -33,7 +33,14 @@ interface BatchState {
   windowLabel: string;
   windowFrom: string;
   windowTo: string;
-  plannedCount: number;
+  /**
+   * 仅 PENDING/RUNNING/COMPLETED 才有。
+   *
+   * ★拒答态**刻意不下发**（ADR 0034 §1.1）：它与 failureReasons 同屏
+   * 即可相减得出成功数——那正是 Phase 4 的死因。所以这里必须是可选的，
+   * 声明成必填等于假设一个服务端不会给的字段。
+   */
+  plannedCount?: number;
   /** 仅 PENDING/RUNNING：已处理条数（成功+失败），★不含成功数 */
   processedCount?: number;
   /** 仅 COMPLETED */
@@ -48,6 +55,21 @@ interface BatchState {
   failureReasons?: Record<string, number>;
   rejected?: boolean;
   expired?: boolean;
+}
+
+/**
+ * 空窗口：窗口内没有任何可重放的执行。
+ *
+ * ★服务端用 `FAILED + failureReasons={}` 表达——它**不是**拒答：
+ * 拒答是「有样本但部分跑不了，剩下的不代表总体」，
+ * 空窗口是「压根没有样本」。两者对用户的含义完全不同：
+ * 前者要去查数据，后者只需换个时间窗。
+ */
+function isEmptyWindow(batch: BatchState): boolean {
+  return (
+    batch.status === 'FAILED' &&
+    (!batch.failureReasons || Object.keys(batch.failureReasons).length === 0)
+  );
 }
 
 const WINDOW_PRESETS = [
@@ -124,7 +146,9 @@ export function WhatIfBatchPanel({
     if (!batch || !isRunning) return;
     pollRef.current = setTimeout(() => {
       void fetchBatch(batch.batchId);
-    }, pollInterval(batch.plannedCount));
+      // 进行中一定有 plannedCount（服务端在 PENDING/RUNNING 下发它）；
+      // 真缺失时按最小规模轮询，宁可多拉几次也不要卡住不刷新。
+    }, pollInterval(batch.plannedCount ?? 0));
     return () => {
       if (pollRef.current) clearTimeout(pollRef.current);
     };
@@ -285,7 +309,7 @@ export function WhatIfBatchPanel({
                   className="h-full bg-primary transition-[width]"
                   style={{
                     width: `${
-                      batch.plannedCount > 0
+                      batch.plannedCount && batch.plannedCount > 0
                         ? Math.min(100, ((batch.processedCount ?? 0) / batch.plannedCount) * 100)
                         : 0
                     }%`,
@@ -326,8 +350,20 @@ export function WhatIfBatchPanel({
             </div>
           )}
 
+          {/* ★空窗口 ≠ 拒答：这段时间内该策略就是没有执行，不是「数据有问题」。
+              说成「有部分执行无法重跑」会把用户支去排查并不存在的故障——
+              这与 §1.1 要防的「用不实的说法解释数字」是同一类不诚实。
+              服务端以 FAILED + 空 failureReasons 表达这种情况。 */}
+          {batch?.status === 'FAILED' && isEmptyWindow(batch) && (
+            <Alert>
+              <AlertDescription>
+                {t('emptyWindow', { window: batch.windowLabel })}
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* ── 拒答：★零业务数字，只给失败原因（§1.1）──────────────── */}
-          {batch?.status === 'FAILED' && (
+          {batch?.status === 'FAILED' && !isEmptyWindow(batch) && (
             <Alert>
               <AlertDescription>
                 <Stack gap={2}>
