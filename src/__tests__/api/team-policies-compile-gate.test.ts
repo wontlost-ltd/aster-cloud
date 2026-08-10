@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  * 「行 15 第 25 列」的语法错误，而保存时一路绿灯。
  */
 const {
-  mockInsert, mockValuesInsert, mockReturningInsert,
+  mockInsert, mockValuesInsert,
   mockAssertCompilable, mockPolicyCompileError, mockCheckTeamPermission,
 } = vi.hoisted(() => {
   const mockReturningInsert = vi.fn().mockResolvedValue([
