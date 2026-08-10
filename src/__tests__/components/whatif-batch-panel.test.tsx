@@ -59,7 +59,7 @@ describe('What-If 面板：呈现约束（ADR 0034 §1.1）', () => {
       windowFrom: '2026-07-08T00:00:00Z',
       windowTo: '2026-08-08T00:00:00Z',
       plannedCount: 200,
-      failureReasons: { INPUT_INCOMPATIBLE: 170, TIMEOUT: 30 },
+      failureKinds: ['INPUT_INCOMPATIBLE', 'TIMEOUT'],
       rejected: true,
     };
 
@@ -96,7 +96,7 @@ describe('What-If 面板：呈现约束（ADR 0034 §1.1）', () => {
     it('★服务端繁忙与数据不兼容必须给出不同解释', async () => {
       // ★fixture 必须同时含两类失败——本用例验的正是「两者文案不同」
       fetchMock.mockResolvedValue(
-        jsonResponse({ ...rejected, failureReasons: { INPUT_INCOMPATIBLE: 170, THROTTLED: 30 } }, 202),
+        jsonResponse({ ...rejected, failureKinds: ['INPUT_INCOMPATIBLE', 'THROTTLED'] }, 202),
       );
       render(<WhatIfBatchPanel {...props} />);
       await act(async () => {
@@ -105,7 +105,7 @@ describe('What-If 面板：呈现约束（ADR 0034 §1.1）', () => {
 
       await waitFor(() => {
         // THROTTLED 必须明说「不是你的数据的问题」，否则用户去改自己没错的数据
-        // ★用 body.textContent：列表项里的文本被 <strong>{count}</strong> 拆成多元素
+        // ★用 body.textContent：文案分散在多个列表项元素里
         const body = document.body.textContent ?? '';
         expect(body).toMatch(/not a problem with your data/i);
         expect(body).toMatch(/incompatible with the target version/i);
@@ -114,7 +114,7 @@ describe('What-If 面板：呈现约束（ADR 0034 §1.1）', () => {
   });
 
   describe('空窗口', () => {
-    // ★服务端用 FAILED + 空 failureReasons 表达「窗口内没有任何执行」。
+    // ★服务端用 FAILED + 空 failureKinds 数组表达「窗口内没有任何执行」。
     //   它**不是**拒答：拒答是「有样本但部分跑不了」，空窗口是「压根没样本」。
     //   混为一谈会让用户去排查并不存在的数据故障。
     const empty = {
@@ -123,7 +123,7 @@ describe('What-If 面板：呈现约束（ADR 0034 §1.1）', () => {
       windowLabel: 'Last month',
       windowFrom: '2026-07-08T00:00:00Z',
       windowTo: '2026-08-08T00:00:00Z',
-      failureReasons: {},
+      failureKinds: [],
       rejected: true,
     };
 

@@ -36,7 +36,7 @@ interface BatchState {
   /**
    * 仅 PENDING/RUNNING/COMPLETED 才有。
    *
-   * ★拒答态**刻意不下发**（ADR 0034 §1.1）：它与 failureReasons 同屏
+   * ★拒答态**刻意不下发**（ADR 0034 §1.1）：它与失败条数同屏
    * 即可相减得出成功数——那正是 Phase 4 的死因。所以这里必须是可选的，
    * 声明成必填等于假设一个服务端不会给的字段。
    */
@@ -51,8 +51,18 @@ interface BatchState {
     totalSampled: number;
     estimatedValueDelta: number | null;
   };
-  /** 仅 FAILED：失败原因分布 */
-  failureReasons?: Record<string, number>;
+  /**
+   * 仅 FAILED：失败**类别**列表。
+   *
+   * ★形状是 `[KIND]` 而不是 `{KIND: count}`（ADR 0034 §10.1，方案 B）。
+   * §1.1 是**信息流**约束而非「同屏」约束：给了每类条数，用户可以缓存上一次
+   * RUNNING 响应的 plannedCount，再与这里的失败条数**跨请求相减**得出成功数——
+   * 那正是 Phase 4 的死因，只是分成了两次请求。
+   *
+   * ★字段名也从 failureReasons 一并改掉：换名让旧客户端**显式失效**，
+   * 而不是把数组当对象 Object.entries 遍历、静默渲染出乱码。
+   */
+  failureKinds?: string[];
   rejected?: boolean;
   expired?: boolean;
 }
@@ -60,7 +70,7 @@ interface BatchState {
 /**
  * 空窗口：窗口内没有任何可重放的执行。
  *
- * ★服务端用 `FAILED + failureReasons={}` 表达——它**不是**拒答：
+ * ★服务端用 `FAILED + failureKinds=[]`（空数组）表达——它**不是**拒答：
  * 拒答是「有样本但部分跑不了，剩下的不代表总体」，
  * 空窗口是「压根没有样本」。两者对用户的含义完全不同：
  * 前者要去查数据，后者只需换个时间窗。
@@ -68,7 +78,7 @@ interface BatchState {
 function isEmptyWindow(batch: BatchState): boolean {
   return (
     batch.status === 'FAILED' &&
-    (!batch.failureReasons || Object.keys(batch.failureReasons).length === 0)
+    (!batch.failureKinds || batch.failureKinds.length === 0)
   );
 }
 
@@ -353,7 +363,7 @@ export function WhatIfBatchPanel({
           {/* ★空窗口 ≠ 拒答：这段时间内该策略就是没有执行，不是「数据有问题」。
               说成「有部分执行无法重跑」会把用户支去排查并不存在的故障——
               这与 §1.1 要防的「用不实的说法解释数字」是同一类不诚实。
-              服务端以 FAILED + 空 failureReasons 表达这种情况。 */}
+              服务端以 FAILED + 空 failureKinds 数组表达这种情况。 */}
           {batch?.status === 'FAILED' && isEmptyWindow(batch) && (
             <Alert>
               <AlertDescription>
@@ -371,11 +381,14 @@ export function WhatIfBatchPanel({
                     {t('rejectedTitle', { window: batch.windowLabel })}{' '}
                     {t('rejectedNote')}
                   </span>
-                  {batch.failureReasons && (
+                  {/* ★只列**类别**，不列每类条数（ADR 0034 §10.1）。
+                      条数与用户缓存的上一次 plannedCount 相减即得成功数——
+                      §1.1 是信息流约束，跨请求相减同样算泄漏。 */}
+                  {batch.failureKinds && batch.failureKinds.length > 0 && (
                     <ul className="list-disc pl-5 text-sm">
-                      {Object.entries(batch.failureReasons).map(([kind, count]) => (
+                      {batch.failureKinds.map((kind) => (
                         <li key={kind}>
-                          <strong>{count}</strong> — {FAILURE_KEYS[kind] ? t(FAILURE_KEYS[kind]) : kind}
+                          {FAILURE_KEYS[kind] ? t(FAILURE_KEYS[kind]) : kind}
                         </li>
                       ))}
                     </ul>
