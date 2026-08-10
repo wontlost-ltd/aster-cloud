@@ -32,7 +32,15 @@ export interface PolicyExample {
   groupId: string; // 使用 ID 而非本地化文本
   sources: Record<SupportedLocale, string>;
   metadata: Record<SupportedLocale, LocalizedMetadata>;
-  defaultInput: PolicyExampleInput;
+  /**
+   * 各语种的示例输入。
+   *
+   * ★必须按语种分开：规则参数名与 Define 字段名都是**本地化**的
+   * （en `driver.age` / zh `驾驶员.年龄` / de `fahrer.alter`），
+   * 而参数映射按键名匹配、字段访问按成员名匹配。共用一份英文键的输入
+   * 会让所有非英文示例在执行期失败——实测 5 示例 × zh/de 共 10 例全挂。
+   */
+  defaultInputs: Record<SupportedLocale, PolicyExampleInput>;
 }
 
 // ============================================
@@ -682,12 +690,30 @@ const loanExample: PolicyExample = {
       description: 'Kreditantraege basierend auf Bonitaet und Alter bewerten',
     },
   },
-  defaultInput: {
-    applicant: {
-      id: 'APP-001',
-      creditScore: 720,
-      income: 75000,
-      age: 35,
+  defaultInputs: {
+    'en-US': {
+      applicant: {
+        id: 'APP-001',
+        creditScore: 720,
+        income: 75000,
+        age: 35
+      }
+    },
+    'zh-CN': {
+      申请人: {
+        编号: 'APP-001',
+        信用评分: 720,
+        收入: 75000,
+        年龄: 35
+      }
+    },
+    'de-DE': {
+      antragsteller: {
+        kennung: 'APP-001',
+        bonitaet: 720,
+        einkommen: 75000,
+        alter: 35
+      }
     },
   },
 };
@@ -715,17 +741,45 @@ const healthcareExample: PolicyExample = {
       description: 'Patientenberechtigung fuer medizinische Leistungen pruefen',
     },
   },
-  defaultInput: {
-    patient: {
-      id: 'PAT-001',
-      age: 45,
-      hasInsurance: true,
-      insuranceType: 'Standard',
+  defaultInputs: {
+    'en-US': {
+      patient: {
+        id: 'PAT-001',
+        age: 45,
+        hasInsurance: true,
+        insuranceType: 'Standard'
+      },
+      service: {
+        code: 'SVC-001',
+        name: 'Annual Checkup',
+        price: 500
+      }
     },
-    service: {
-      code: 'SVC-001',
-      name: 'Annual Checkup',
-      price: 500,
+    'zh-CN': {
+      患者: {
+        编号: 'PAT-001',
+        年龄: 45,
+        有保险: true,
+        保险类型: 'Standard'
+      },
+      服务: {
+        代码: 'SVC-001',
+        名称: 'Annual Checkup',
+        价格: 500
+      }
+    },
+    'de-DE': {
+      patient: {
+        kennung: 'PAT-001',
+        alter: 45,
+        hatVersicherung: true,
+        versicherungstyp: 'Standard'
+      },
+      leistung: {
+        code: 'SVC-001',
+        name: 'Annual Checkup',
+        preis: 500
+      }
     },
   },
 };
@@ -753,19 +807,51 @@ const autoInsuranceExample: PolicyExample = {
       description: 'Kfz-Versicherungsangebote basierend auf Fahrer- und Fahrzeuginformationen erstellen',
     },
   },
-  defaultInput: {
-    driver: {
-      id: 'DRV-001',
-      age: 35,
-      yearsLicensed: 15,
-      accidents: 0,
-      violations: 1,
+  defaultInputs: {
+    'en-US': {
+      driver: {
+        id: 'DRV-001',
+        age: 35,
+        yearsLicensed: 15,
+        accidents: 0,
+        violations: 1
+      },
+      vehicle: {
+        vin: '1HGBH41JXMN109186',
+        year: 2022,
+        value: 28000,
+        safetyRating: 9
+      }
     },
-    vehicle: {
-      vin: '1HGBH41JXMN109186',
-      year: 2022,
-      value: 28000,
-      safetyRating: 9,
+    'zh-CN': {
+      驾驶员: {
+        编号: 'DRV-001',
+        年龄: 35,
+        驾龄: 15,
+        事故数: 0,
+        违章数: 1
+      },
+      车辆: {
+        车架号: '1HGBH41JXMN109186',
+        年份: 2022,
+        价值: 28000,
+        安全评级: 9
+      }
+    },
+    'de-DE': {
+      fahrer: {
+        kennung: 'DRV-001',
+        alter: 35,
+        fuehrerscheinJahre: 15,
+        unfaelle: 0,
+        verstoesse: 1
+      },
+      fahrzeug: {
+        fahrgestellnummer: '1HGBH41JXMN109186',
+        baujahr: 2022,
+        wert: 28000,
+        sicherheitsbewertung: 9
+      }
     },
   },
 };
@@ -793,18 +879,48 @@ const fraudExample: PolicyExample = {
       description: 'Potenziell betruegerische Transaktionen erkennen',
     },
   },
-  defaultInput: {
-    transaction: {
-      id: 'TXN-001',
-      accountId: 'ACC-001',
-      amount: 500,
-      timestamp: 1704067200,
+  defaultInputs: {
+    'en-US': {
+      transaction: {
+        id: 'TXN-001',
+        accountId: 'ACC-001',
+        amount: 500,
+        timestamp: 1704067200
+      },
+      history: {
+        accountId: 'ACC-001',
+        averageAmount: 450,
+        suspiciousCount: 0,
+        accountAge: 365
+      }
     },
-    history: {
-      accountId: 'ACC-001',
-      averageAmount: 450,
-      suspiciousCount: 0,
-      accountAge: 365,
+    'zh-CN': {
+      交易: {
+        编号: 'TXN-001',
+        账户号: 'ACC-001',
+        金额: 500,
+        时间戳: 1704067200
+      },
+      历史: {
+        账户号: 'ACC-001',
+        平均金额: 450,
+        可疑次数: 0,
+        账龄: 365
+      }
+    },
+    'de-DE': {
+      transaktion: {
+        kennung: 'TXN-001',
+        kontoId: 'ACC-001',
+        betrag: 500,
+        zeitstempel: 1704067200
+      },
+      historie: {
+        kontoId: 'ACC-001',
+        durchschnittsbetrag: 450,
+        verdaechtigeAnzahl: 0,
+        kontoalter: 365
+      }
     },
   },
 };
@@ -832,17 +948,45 @@ const creditcardExample: PolicyExample = {
       description: 'Kreditkartenantraege auswerten und Kreditlimits festlegen',
     },
   },
-  defaultInput: {
-    applicant: {
-      id: 'CCA-001',
-      age: 32,
-      income: 85000,
-      creditScore: 740,
-      existingCards: 2,
+  defaultInputs: {
+    'en-US': {
+      applicant: {
+        id: 'CCA-001',
+        age: 32,
+        income: 85000,
+        creditScore: 740,
+        existingCards: 2
+      },
+      application: {
+        requestedLimit: 10000,
+        cardType: 'Standard'
+      }
     },
-    application: {
-      requestedLimit: 10000,
-      cardType: 'Standard',
+    'zh-CN': {
+      申请人: {
+        编号: 'CCA-001',
+        年龄: 32,
+        收入: 85000,
+        信用评分: 740,
+        现有卡数: 2
+      },
+      申请: {
+        申请额度: 10000,
+        卡类型: 'Standard'
+      }
+    },
+    'de-DE': {
+      antragsteller: {
+        kennung: 'CCA-001',
+        alter: 32,
+        einkommen: 85000,
+        bonitaet: 740,
+        vorhandeneKarten: 2
+      },
+      antrag: {
+        gewuenschtesLimit: 10000,
+        kartentyp: 'Standard'
+      }
     },
   },
 };
