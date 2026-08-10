@@ -311,7 +311,11 @@ export class PolicyApiClient {
       // /evaluate-source 受 InternalCallerFilter 保护：必须带 X-Internal-Caller + HMAC 签名
       // 防止外部客户绕过审核流提交未批准源码（详见 AKA-9）
       // 红队 P0-C：签名绑定 body + tenant + role，参数须与 headers 里实际发送的一致。
-      if (pathname === API_ENDPOINTS.evaluateSource && process.env.ASTER_PLAN_GATE_HMAC_KEY) {
+      // What-If 批次同样受 InternalCallerFilter 保护：它按窗口重跑历史执行，
+      // 属于「内部编排」而非终端用户可直呼的能力（ADR 0034 §7.2 的权益判定在 api 侧）。
+      const needsInternalCaller =
+        pathname === API_ENDPOINTS.evaluateSource || /\/whatif-batches(\/|$)/.test(pathname);
+      if (needsInternalCaller && process.env.ASTER_PLAN_GATE_HMAC_KEY) {
         const internalHeaders = await signInternalCallerHeaders(
           method, pathname, bodyStr, this.tenantId, this.userRole,
         );
@@ -388,6 +392,30 @@ export class PolicyApiClient {
   /**
    * 获取策略参数模式
    */
+  /**
+   * 创建 What-If 批次（ADR 0034）。
+   *
+   * <p>★透传 aster-api 的状态码语义，不在 cloud 侧改写：
+   * 403=无权益（引导升级）、409=并发超限（提示等待）——两者前端要能区分。
+   */
+  async createWhatIfBatch(
+    policyId: string,
+    body: {
+      baseVersionId: string;
+      targetVersionId: string;
+      windowKind: string;
+      customFrom?: string;
+      customTo?: string;
+    },
+  ): Promise<unknown> {
+    return this.request('POST', API_ENDPOINTS.whatIfBatches(policyId), body);
+  }
+
+  /** 查询 What-If 批次进度/结果。 */
+  async getWhatIfBatch(policyId: string, batchId: string): Promise<unknown> {
+    return this.request('GET', API_ENDPOINTS.whatIfBatch(policyId, batchId));
+  }
+
   async getSchema(
     source: string,
     options?: { functionName?: string; locale?: string }

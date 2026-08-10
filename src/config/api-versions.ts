@@ -16,6 +16,14 @@ export const API_ENDPOINTS = {
   evaluateSource: `${prefix}/policies/evaluate-source`,
   compile: `${prefix}/policies/compile`,
   schema: `${prefix}/policies/schema`,
+  /**
+   * What-If 批次（ADR 0034）。★路径含 policyId，故用函数而非常量——
+   * 签名时只取 pathname（不含 query），与 InternalCallerFilter 的
+   * ctx.getUriInfo().getPath() 对齐。
+   */
+  whatIfBatches: (policyId: string) => `${prefix}/policies/${policyId}/whatif-batches`,
+  whatIfBatch: (policyId: string, batchId: string) =>
+    `${prefix}/policies/${policyId}/whatif-batches/${batchId}`,
   moduleCatalog: `${prefix}/modules/catalog`,
 
   // 健康检查

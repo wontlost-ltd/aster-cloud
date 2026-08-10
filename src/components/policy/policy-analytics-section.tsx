@@ -11,15 +11,13 @@ import { ConditionFunnelPanel } from './condition-funnel-panel';
  * `page.tsx` 的预渲染 translations 对象里，那个对象会迅速失控。这里改用
  * `useTranslations` 在客户端取——面板本就是 `'use client'`，没有额外代价。
  *
- * <p><b>★What-if 面板当前不挂载。</b>后端 `/whatif` 一律返回 409
- * REPLAY_REQUIRED —— 当前数据模型下跨版本逐条对齐在合法数据上不可能成立
- * （`Execution.id` 是主键，一行只属于一个版本，两版本的 id 交集恒为空）。
- * 详见该 route 的头注释。
+ * <p><b>What-if 面板不在这里</b>（ADR 0034）：它挂在**版本比较**面板里
+ * （{@code version-compare-panel.tsx}），因为输入天然在那儿——
+ * 要比较的两个版本就是 compare 的 left/right。
+ * 上面的 diff 回答「源码改了什么」，What-If 回答「决策会怎么变」，
+ * 是同一个问题的两面；放在一起用户不必跨区拼凑上下文。
  *
- * <p>挂一个必然报错的面板不是"功能待完善"，是给用户一个坏掉的入口。
- * 面板组件已一并删除——它的 `?? 0` 兜底会把「字段缺失」渲染成看似正常的 0，
- * 与"拒绝给数字"的初衷相反，留着等于给未来埋雷。纯函数
- * `estimateWhatIf` 保留（逻辑正确且有测试），届时按新的数据模型重写呈现层。
+ * <p>本区保留「策略决策分析」语义（条件漏斗），与「版本比较」是两件事。
  */
 export function PolicyAnalyticsSection({
   policyId,
