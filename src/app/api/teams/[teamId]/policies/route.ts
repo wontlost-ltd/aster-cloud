@@ -3,6 +3,8 @@ import { getSession } from '@/lib/auth';
 import { db, policies, executions } from '@/lib/prisma';
 import { eq, desc, sql } from 'drizzle-orm';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
+import { assertCompilable, PolicyCompileError } from '@/services/policy/version-manager';
+import { makeCompileValidator } from '@/lib/policy-compile-validator';
 
 
 type RouteParams = { params: Promise<{ teamId: string }> };
@@ -145,6 +147,17 @@ export async function POST(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: '策略内容不能为空' }, { status: 400 });
     }
 
+    // ★编译门禁：与 /api/policies 和 /api/v1/.../versions 保持一致。
+    //   此入口此前无门禁——不可解析的源码能落库，直到**执行时**才报语法错。
+    //   实测事故：AI 生成的 `is < 18`（is 后接符号）由此入口存入，
+    //   用户在执行页才看到「行 15 第 25 列」的报错。
+    //   放在插入**之前**（事务外）：避免事务内网络调用持锁。
+    await assertCompilable(makeCompileValidator(session.user.id), {
+      source: content,
+      locale: 'en-US',
+      aliasSet: null,
+    });
+
     const newPolicyId = globalThis.crypto.randomUUID();
     const [newPolicy] = await db
       .insert(policies)
@@ -172,7 +185,14 @@ export async function POST(req: Request, { params }: RouteParams) {
       },
       { status: 201 }
     );
-  } catch (error) {
+  } catch (error: unknown) {
+    // 有解析错误的源码——用户可修正的 4xx，不是 500。
+    if (error instanceof PolicyCompileError) {
+      return NextResponse.json(
+        { error: 'compile_error', message: error.message },
+        { status: 400 }
+      );
+    }
     console.error('Error creating team policy:', error);
     return NextResponse.json({ error: '服务器内部错误' }, { status: 500 });
   }
