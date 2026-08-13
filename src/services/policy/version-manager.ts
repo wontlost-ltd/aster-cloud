@@ -16,6 +16,7 @@ import type { InferSelectModel } from 'drizzle-orm';
 import { computeChainedHash, computeSourceHash } from '../security/policy-security';
 import { logSecurityEvent } from '../security/security-event-service';
 import { recordAhaMomentIfFirst } from '@/lib/metrics/aha-detection';
+import { invalidatePolicyCache } from '@/lib/cache';
 import { snapshotOnPolicyApprove } from '@/lib/domain-vocabulary-snapshot';
 import {
   canonicalAliasJson,
@@ -175,6 +176,30 @@ export interface CreateVersionResult {
  *
  * 自动计算链式哈希，确保版本历史完整性。
  */
+/**
+ * 版本状态变更后失效执行缓存。
+ *
+ * <h2>为什么每个改版本的函数都要调</h2>
+ *
+ * <p>执行入口 {@code /api/policies/[id]/execute} 命中 KV 缓存时**完全不查库**——
+ * 那条 SQL 分支把 {@code policy_content} 直接选成 {@code NULL::text}，
+ * 源码取自 {@code getCachedPolicyMeta()}，而缓存里存着 content 与活跃版本的 aliasSet。
+ *
+ * <p>此前只有 {@code PUT /api/policies/[id]} 失效缓存，版本相关的写函数一个都不失效。
+ * 后果是**用户改了策略、执行的仍是旧源码**：真实事故里用户反复重建策略、
+ * 甚至直接改库都无效，因为执行根本没读库——表现为源码里明明写着
+ * {@code is greater than 750}，报错却说 `is` 后面跟了符号。
+ *
+ * <p>失败只记日志不抛：缓存失效不该阻断业务写入（写已提交，缓存另有 TTL 兜底）。
+ */
+async function invalidateAfterVersionChange(policyId: string): Promise<void> {
+  try {
+    await invalidatePolicyCache(policyId);
+  } catch (err) {
+    console.warn('[version-manager] 失效策略缓存失败:', policyId, err);
+  }
+}
+
 export async function createVersion(
   params: CreateVersionParams
 ): Promise<CreateVersionResult> {
@@ -267,12 +292,15 @@ export async function createVersion(
     },
   });
 
+  // ★写完必须失效执行缓存：命中缓存的执行路径不查库（见 invalidateAfterVersionChange）
+  await invalidateAfterVersionChange(policyId);
   return {
     id: created.id,
     version: newVersionNumber,
     sourceHash,
     sourceEnvelopeSha256,
   };
+
 }
 
 /**
@@ -310,7 +338,10 @@ export async function updateVersionSource(params: {
     })
     .where(eq(policyVersions.id, targetVersion.id));
 
+  // ★写完必须失效执行缓存：命中缓存的执行路径不查库（见 invalidateAfterVersionChange）
+  await invalidateAfterVersionChange(policyId);
   return { sourceHash };
+
 }
 
 /**
@@ -348,10 +379,13 @@ export async function submitForApproval(params: {
     userId,
     details: { version, action: 'SUBMIT_FOR_APPROVAL' },
   });
+
 }
 
 /**
  * 审批版本
+  // ★写完必须失效执行缓存：命中缓存的执行路径不查库（见 invalidateAfterVersionChange）
+  await invalidateAfterVersionChange(policyId);
  */
 export async function approveVersion(params: {
   policyId: string;
@@ -446,10 +480,13 @@ export async function approveVersion(params: {
       console.error('[vocabulary-snapshot] failed (non-blocking):', err);
     });
   }
+
 }
 
 /**
  * 设置默认执行版本（原子操作）
+  // ★写完必须失效执行缓存：命中缓存的执行路径不查库（见 invalidateAfterVersionChange）
+  await invalidateAfterVersionChange(policyId);
  */
 export async function setDefaultVersion(params: {
   policyId: string;
@@ -494,10 +531,13 @@ export async function setDefaultVersion(params: {
     userId,
     details: { version },
   });
+
 }
 
 /**
  * 废弃版本（仍可执行，但有警告）
+  // ★写完必须失效执行缓存：命中缓存的执行路径不查库（见 invalidateAfterVersionChange）
+  await invalidateAfterVersionChange(policyId);
  */
 export async function deprecateVersion(params: {
   policyId: string;
@@ -541,10 +581,13 @@ export async function deprecateVersion(params: {
     userId,
     details: { version, reason },
   });
+
 }
 
 /**
  * 归档版本（不可执行）
+  // ★写完必须失效执行缓存：命中缓存的执行路径不查库（见 invalidateAfterVersionChange）
+  await invalidateAfterVersionChange(policyId);
  */
 export async function archiveVersion(params: {
   policyId: string;
@@ -588,10 +631,13 @@ export async function archiveVersion(params: {
     userId,
     details: { version, reason },
   });
+
 }
 
 /**
  * 获取策略的所有版本
+  // ★写完必须失效执行缓存：命中缓存的执行路径不查库（见 invalidateAfterVersionChange）
+  await invalidateAfterVersionChange(policyId);
  */
 export async function listVersions(policyId: string) {
   const versions = await db.query.policyVersions.findMany({
