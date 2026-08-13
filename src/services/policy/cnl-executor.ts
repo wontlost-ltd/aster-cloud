@@ -34,7 +34,28 @@ const CNL_REQUIRED_PATTERNS = [
 const CHINESE_KEYWORDS = ['模块', '类型', '函数', '当', '则', '如果', '那么', '并且', '或者', '定义', '包含', '产出', '返回', '令', '为', '若'];
 
 // 德语 CNL 关键字
+//
+// ★必须按**词**匹配，不能用 includes 做子串包含：
+//   'Modul' 是英文 'Module' 的前缀，于是每一份以 `Module ...` 开头的
+//   英文策略都会被判成德语，改用德语词典解析 —— 而德语词典里没有
+//   `less than`，最终报「无法识别此处的运算符或关键词」。
+//   实测：英文 loan 模板走 de-DE 时在「行 15 第 23 列」失败，
+//   与用户报的位置逐字一致；走 en-US 则 PARSE_OK。
 const GERMAN_KEYWORDS = ['Modul', 'Definiere', 'Falls', 'Sonst', 'Gib zurück', 'erzeuge', 'größer als', 'kleiner als', 'Ganzzahl', 'Dezimal'];
+
+/**
+ * 关键词是否作为**独立词**出现在源码里。
+ *
+ * <p>用 Unicode 词边界近似：关键词两侧不得紧邻字母/数字/下划线。
+ * 这样 `Modul` 不会命中 `Module`，但 `Modul Finanz.Kredit.` 仍能命中。
+ * 含空格的多词关键词（`Gib zurück`）同样适用。
+ */
+function containsWord(content: string, keyword: string): boolean {
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // \p{L}/\p{N} 覆盖中德文字符；两侧用「非字母数字」断言代替 \b（\b 对非 ASCII 不可靠）
+  const re = new RegExp(`(^|[^\\p{L}\\p{N}_])${escaped}($|[^\\p{L}\\p{N}_])`, 'iu');
+  return re.test(content);
+}
 
 /**
  * 检测策略内容是否为 Aster CNL 格式
@@ -65,7 +86,7 @@ export function detectCNLLocale(content: string): string {
   if (hasChineseKeywords) {
     return 'zh-CN';
   }
-  const hasGermanKeywords = GERMAN_KEYWORDS.some((keyword) => content.toLowerCase().includes(keyword.toLowerCase()));
+  const hasGermanKeywords = GERMAN_KEYWORDS.some((keyword) => containsWord(content, keyword));
   if (hasGermanKeywords) {
     return 'de-DE';
   }
