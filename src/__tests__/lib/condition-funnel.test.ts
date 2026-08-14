@@ -200,3 +200,48 @@ describe('★采样口径必须诚实', () => {
     expect(f.neverMatchedInSample.map((s) => s.expression)).toEqual(['if condition']);
   });
 });
+
+describe('步骤顺序按源码行号（issue #385）', () => {
+  // A 走 L15 命中 → L16 返回；B 走 L15 不中 → L17 命中 → L18 返回
+  const A = sk([
+    ['0.1', 'if condition @L15', true, 0],
+    ['0.2', 'return value @L16', true, 0],
+  ]);
+  const B = sk([
+    ['0.1', 'if condition @L15', false, 0],
+    ['0.2', 'if condition @L17', true, 0],
+    ['0.3', 'return value @L18', true, 0],
+  ]);
+  const order = (arr: TraceSkeletonLike[]) =>
+    aggregateConditionFunnel(arr).steps.map((s) => s.expression);
+
+  it('★同一批数据换样本顺序，漏斗顺序必须不变', () => {
+    // 这是本 issue 的核心：改之前 [A,B] 与 [B,A] 得到两个不同的「决策路径」，
+    // 因为顺序取自「首次出现」——那是**样本的属性，不是策略的属性**。
+    expect(order([A, B])).toEqual(order([B, A]));
+  });
+
+  it('顺序等于源码行号升序（即人阅读策略的顺序）', () => {
+    expect(order([B, A])).toEqual([
+      'if condition @L15',
+      'return value @L16',
+      'if condition @L17',
+      'return value @L18',
+    ]);
+  });
+
+  it('缺行号的步骤排末尾并保持原有相对顺序，不去猜它属于第几行', () => {
+    // 老引擎（truffle#64 之前）产的 skeleton 不带 @L。把它们当成第 0 行会
+    // 排到最前面，等于编造一个决策路径——宁可放末尾，也不假装知道。
+    const legacy = sk([
+      ['0.1', 'if condition', true, 0],
+      ['0.2', 'return value', true, 0],
+    ]);
+    const withLine = sk([['0.1', 'if condition @L15', true, 0]]);
+    expect(order([legacy, withLine])).toEqual([
+      'if condition @L15',
+      'if condition',
+      'return value',
+    ]);
+  });
+});

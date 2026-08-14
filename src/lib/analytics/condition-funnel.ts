@@ -103,9 +103,23 @@ export const SAMPLE_NOTE_KEY = 'analytics.funnel.sampleNote';
  * 故同类型的不同条件仍会被合并。这是**引擎侧的信息缺失**，不是本函数能修的——
  * 但至少不会再把 if 和 return 混为一谈。
  *
- * <p>顺序按首次出现顺序（即执行时的实际判定顺序），不排序——漏斗的价值
- * 就在于反映真实的决策路径。
+ * <p><b>顺序按源码行号</b>（issue #385）。此前按「首次出现顺序」，注释称其为
+ * 「执行时的实际判定顺序」——但那是**样本的属性，不是策略的属性**：同一批数据
+ * 换个到达顺序，读出的「决策路径」就不同（实测见 sort 处注释）。
+ * 行号稳定，且等于人阅读策略的顺序，才真的兑现「反映决策路径」这个承诺。
  */
+/**
+ * 从 expression 里解出源码行号（引擎产的形如 `if condition @L15`）。
+ *
+ * <p>老引擎（truffle#64 之前）产的 skeleton 不带 `@L`，此时返回 null——
+ * 调用方据此把它排到末尾并保持原有相对顺序，而不是当成第 0 行。
+ */
+function sourceLineOf(expression: string | undefined | null): number | null {
+  if (typeof expression !== 'string') return null;
+  const m = /@L(\d+)\s*$/.exec(expression);
+  return m ? Number(m[1]) : null;
+}
+
 export function aggregateConditionFunnel(
   skeletons: ReadonlyArray<TraceSkeletonLike | null | undefined>,
   opts: { sampleNote?: string; total?: number | null } = {},
@@ -139,10 +153,37 @@ export function aggregateConditionFunnel(
     }
   }
 
-  const steps = order.map((id) => {
-    const s = acc.get(id)!;
-    return { ...s, matchRate: s.evaluated > 0 ? s.matched / s.evaluated : null };
-  });
+  const steps = order
+    .map((id, firstSeen) => {
+      const s = acc.get(id)!;
+      return {
+        ...s,
+        matchRate: s.evaluated > 0 ? s.matched / s.evaluated : null,
+        // 排序用，不进对外结构（下方 map 剥掉）
+        __line: sourceLineOf(s.expression),
+        __firstSeen: firstSeen,
+      };
+    })
+    // ★按源码行号排序，而不是「首次出现顺序」。
+    //
+    // 首次出现顺序**不是策略的属性，而是样本的属性**：同一批数据换个到达顺序，
+    // 漏斗顺序就变。实测（两条走不同分支的执行 A/B）：
+    //   [A,B] → @L15 → @L16 → @L17 → @L18
+    //   [B,A] → @L15 → @L17 → @L18 → @L16
+    // 同样的数据、同样的策略，只因样本顺序不同就读出两条不同的「决策路径」。
+    //
+    // 行号是源码的属性，稳定且等于人阅读策略的顺序，正是注释承诺的语义。
+    // 缺行号的步骤（老引擎产的 skeleton 没有 @L）排在末尾并保持原有相对顺序，
+    // 不去猜它该在哪——猜错了就是把编造的顺序当成决策路径展示。
+    .sort((a, b) => {
+      if (a.__line !== b.__line) {
+        if (a.__line === null) return 1;
+        if (b.__line === null) return -1;
+        return a.__line - b.__line;
+      }
+      return a.__firstSeen - b.__firstSeen;
+    })
+    .map(({ __line: _line, __firstSeen: _firstSeen, ...s }) => s);
 
   const scanned = skeletons.length;
   const total = opts.total ?? null;
