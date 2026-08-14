@@ -56,7 +56,8 @@
 @import "@aster-cloud/tokens/tokens.css";
 
 /*
- * Brand fonts are now self-hosted via next/font/google (see
+ * Brand fonts are now self-hosted via next/font/local（字体文件在 public/fonts/，
+ * 见 layout.tsx 顶部注释：改 local 是为了让**构建期**不再依赖 fonts.gstatic.com）(see
  * src/app/[locale]/layout.tsx). next/font emits CSS variables
  * --aster-font-{display,sans,mono}-loaded which the :root overrides
  * below splice into the Aster token names. Benefits:
