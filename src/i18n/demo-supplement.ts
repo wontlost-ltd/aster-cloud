@@ -165,6 +165,21 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 侧栏/导航「Reports」改标「Evidence」（URL 仍 /reports；deepMerge 覆盖包内字符串）。
     dashboardNav: { reports: 'Evidence' },
+    // ★仪表盘 Quick Action 的文案（issue: 入口承诺了产品做不到的事）。
+    //   包内原文是 “Generate Report” / “GDPR, HIPAA, SOC2”——而：
+    //     · HIPAA / SOC2 在全仓**零实现**；
+    //     · GDPR 只存在于 /settings/data（DSAR Art 15/17），与本入口指向的
+    //       /reports 是两个不同页面。
+    //   /reports 实际产出的是**决策证据包**（见下方 evidenceExport.whatNoScore：
+    //   “No fabricated compliance score…”）。#253 把页面从假合规分改成真证据导出时，
+    //   漏改了这个入口，于是仪表盘仍在向外部用户承诺三套合规框架。
+    //   在信贷风控领域「我们支持 SOC2」是有法律分量的说法，故按实际能力改写。
+    dashboard: {
+      quickActions: {
+        generateReport: 'Export evidence',
+        generateReportDesc: 'Decision records with audit hashes',
+      },
+    },
     // 证据导出页（替换假合规分报告；本地补充，ui-messages 包尚无这些 key）。
     evidenceExport: {
       title: 'Evidence export',
@@ -578,6 +593,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       saveFailed: '更新失败——请重试',
     },
     dashboardNav: { reports: '证据' },
+    // 见 en 段注释：入口原文承诺 GDPR/HIPAA/SOC2，而实际产出是决策证据包。
+    dashboard: {
+      quickActions: {
+        generateReport: '导出证据',
+        generateReportDesc: '决策记录与审计哈希',
+      },
+    },
     evidenceExport: {
       title: '证据导出',
       subtitle: '导出真实策略执行的防篡改证据——裁决、canonical 哈希、双引擎溯源——交给你的合规与审计团队。',
@@ -990,6 +1012,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       saveFailed: 'Aktualisierung fehlgeschlagen — bitte erneut versuchen',
     },
     dashboardNav: { reports: 'Nachweise' },
+    // 见 en 段注释：入口原文承诺 DSGVO/HIPAA/SOC2，而实际产出是决策证据包。
+    dashboard: {
+      quickActions: {
+        generateReport: 'Nachweise exportieren',
+        generateReportDesc: 'Entscheidungsdaten mit Audit-Hashes',
+      },
+    },
     evidenceExport: {
       title: 'Nachweis-Export',
       subtitle: 'Exportieren Sie manipulationssichere Nachweise echter Richtlinienausführungen — Entscheidungen, kanonische Hashes und Dual-Engine-Provenienz — für Ihr Compliance- und Audit-Team.',
@@ -1402,6 +1431,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       saveFailed: 'अपडेट नहीं हो सका — कृपया पुनः प्रयास करें',
     },
     dashboardNav: { reports: 'साक्ष्य' },
+    // 见 en 段注释：入口原文承诺 GDPR/HIPAA/SOC2，而实际产出是决策证据包。
+    dashboard: {
+      quickActions: {
+        generateReport: 'साक्ष्य निर्यात करें',
+        generateReportDesc: 'ऑडिट हैश सहित निर्णय रिकॉर्ड',
+      },
+    },
     evidenceExport: {
       title: 'साक्ष्य निर्यात',
       subtitle: 'अपनी अनुपालन और ऑडिट टीम के लिए वास्तविक नीति निष्पादनों का छेड़छाड़-प्रमाण साक्ष्य निर्यात करें — निर्णय, कैनोनिकल हैश और दोहरे-इंजन प्रोवेनेंस।',
