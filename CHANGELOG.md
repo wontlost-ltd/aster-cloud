@@ -6,6 +6,16 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- S4 面板 + 挂载 + 批次 API 接线（ADR 0034） (#377) *(whatif)*
+- 新增 /api/internal/executions/window（ADR 0034 §3.0） (#376) *(whatif)*
+- 下发 concurrentReplayBatches 权益（ADR 0034 §7.2） (#374) *(plan-gate)*
+- Strategy Replay Phase 1/2/3 — 条件漏斗、结果回传、采样口径诚实化 (#371) *(analytics)*
+- Phase 0 cloud 侧落库决策骨架 traceSkeletonJson (#369) *(replay)*
+- 助手可引用 aster-lang.dev 的文档 (#368) *(assistant)*
+- 管理员可在 UI 配置助手开关与附加指引 (#367) *(assistant)*
+- 接入 RAG 问答（登录用户） (#365) *(assistant)*
+- 站内助手（全站驻留检索面板）+ 联网应答器预留 (#364) *(assistant)*
+- 用户菜单新增「帮助」→ 版本信息弹框 (#361) *(nav)*
 - 内部验签收敛为共享实现 + v2 绑定 body/nonce（双接受） (#328) *(security)*
 - 孤勇集成自托管录音 MP3 + CF 边缘缓存，删合成旋律引擎 (#318) *(demos)*
 - 孤勇加原创旋律（纯 Web Audio 合成，零外部资源） (#308) *(demos)*
@@ -307,6 +317,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Documentation
 
+- Refresh unreleased [skip ci] (#352) *(changelog)*
 - Refresh unreleased [skip ci] (#344) *(changelog)*
 - Refresh unreleased [skip ci] (#338) *(changelog)*
 - Refresh unreleased [skip ci] (#326) *(changelog)*
@@ -605,6 +616,17 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- 修复 pnpm-lock.yaml 不一致——连续合 Dependabot PR 导致 Workers 构建失败 (#389) *(deps)*
+- 连接泄漏（#383）+ 条件漏斗顺序不稳（#385） (#387)
+- What-If 时间窗口 select/日期输入改用设计系统组件 (#386) *(ui)*
+- 语种检测按词匹配——`Module` 含 `Modul` 致英文策略全被当成德语 (#382) *(cnl)*
+- 版本写操作必须失效执行缓存 (#381) *(policy)*
+- 加存量策略修复脚本——`is <` 改写成 `is less than` (#380) *(policy)*
+- 内置样例改为按语种提供 defaultInput——非英文样例此前执行必挂 (#379) *(examples)*
+- 团队建策略入口补编译门禁 (#378) *(policy)*
+- 修复迁移链无法从空库重放（灾备/新环境重建会失败） (#370) *(db)*
+- 中文整句检索零命中 + 点击结果丢失会话 (#366) *(assistant)*
+- 修四语关键词高亮 + 版本详情显示姓名/i18n/日期本地化 (#363) *(editor,policy)*
 - Changelog tag 路径直推失败时退化为 PR（分支保护 + 发版前置） (#351) *(ci)*
 - Stale gate 改用 gh api（转私后匿名 ls-remote 失败） (#350) *(ci)*
 - Pin cosign-release=v2.5.2（installer 升级打断了 migrate 镜像签名） (#349) *(ci)*
