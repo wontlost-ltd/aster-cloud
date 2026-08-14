@@ -66,7 +66,7 @@
     "clsx": "^2.1.1",
     "disposable-email-domains": "^1.0.62",
     "drizzle-orm": "^0.45.1",
-    "ioredis": "^5.10.1",
+    "ioredis": "^6.0.0",
     "mixpanel-browser": "^2.81.0",
     "monaco-editor": "^0.56.0",
     "next": "16.2.12",
