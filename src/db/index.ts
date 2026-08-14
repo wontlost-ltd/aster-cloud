@@ -28,8 +28,16 @@ interface CloudflareEnv {
 // 请求级别的数据库连接存储
 const requestDbStorage = new AsyncLocalStorage<ReturnType<typeof createDb>>();
 
-// 本地开发环境的单例连接（避免热重载时连接泄漏）
-let localDevDb: ReturnType<typeof createDb> | null = null;
+// 本地开发环境的单例连接（避免热重载时连接泄漏）。
+//
+// ★必须挂在 globalThis 上，不能用模块级 `let`：Next.js 的 HMR 会**丢弃并重新求值
+// 整个模块**，模块级变量随之复位成 null，于是每次热重载都新建一个 pool，而旧 pool
+// 没有任何人调用 .end() —— 连接只增不减，直到打满 max_connections。
+// 实测：12 次热重载 = +12 条常驻连接，线性且无上限。
+// globalThis 跨模块重新求值存活，才真的是单例。
+const globalForDb = globalThis as unknown as {
+  __asterLocalDevDb?: ReturnType<typeof createDb> | null;
+};
 
 /**
  * 尝试从 OpenNext 获取 Cloudflare 上下文（同步版本）
@@ -117,6 +125,12 @@ export function createDb(env?: CloudflareEnv) {
     max,
     // 禁用 prepared statements（Hyperdrive 不支持）
     prepare: false,
+    // ★空闲连接自动归还：这是**兜底**，不是主修法。
+    // 主修法是 getDb() 的 globalThis 单例（见上方注释）。但单例只覆盖本地 dev 路径，
+    // Workers 路径每次调用都新建 client，且 runWithDb/getDbAsync 也各自建。
+    // 任何一条路径漏掉 .end()，没有 idle_timeout 就是永久占用。
+    // 20s 后归还空闲连接，让「漏掉 end()」从**永久泄漏**降级为**短暂占用**。
+    idle_timeout: 20,
   });
 
   return drizzle(client, { schema });
@@ -156,11 +170,11 @@ export function getDb() {
     return createDb(env);
   }
 
-  // 本地开发环境：使用单例避免连接泄漏
-  if (!localDevDb) {
-    localDevDb = createDb();
+  // 本地开发环境：使用单例避免连接泄漏（挂 globalThis 才能跨 HMR 存活）
+  if (!globalForDb.__asterLocalDevDb) {
+    globalForDb.__asterLocalDevDb = createDb();
   }
-  return localDevDb;
+  return globalForDb.__asterLocalDevDb;
 }
 
 /**
