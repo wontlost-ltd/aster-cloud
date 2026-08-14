@@ -128,7 +128,7 @@
     "typescript": "^6.0.3",
     "vite": "^8.1.5",
     "vitest": "^4.1.10",
-    "wrangler": "^4.120.1",
+    "wrangler": "^4.115.0",
     "yaml": "^2.9.0"
   },
   "pnpm": {
