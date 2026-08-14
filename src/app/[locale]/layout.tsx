@@ -4,7 +4,7 @@ import { getMessages, setRequestLocale } from 'next-intl/server';
 import { IntlClientProvider } from '@/i18n/intl-client-provider';
 import { notFound } from 'next/navigation';
 import { Toaster } from '@aster-cloud/ui';
-import { Fraunces, Inter, JetBrains_Mono } from 'next/font/google';
+import localFont from 'next/font/local';
 import { AuthProvider } from "@/components/providers/session-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { AssistantProvider } from '@/components/assistant/assistant-context';
@@ -14,13 +14,28 @@ import { DocsCommandPalette } from "@/components/docs/DocsCommandPalette";
 import { locales, type Locale } from '@/i18n/config';
 import "../globals.css";
 
-// Self-host the brand fonts via next/font/google. Previously globals.css
-// did `@import url('https://fonts.googleapis.com/...')` which (a) failed
-// in mainland China, (b) introduced FOUT/CLS at first paint, and (c)
-// leaked traffic to Google. next/font handles subsetting + preload +
-// CSS-variable wiring automatically. The `variable` value is consumed
-// inside tokens.css via the --aster-font-{display,sans,mono} tokens
-// (see globals.css :root override block).
+// Self-host the brand fonts via **next/font/local**（字体文件在 public/fonts/）。
+//
+// ★为什么从 next/font/google 换成 local：`next/font/google` 只是把字体在**构建期**
+// 下载下来自托管——运行时不请求 Google，但**构建时必须能连上 fonts.gstatic.com**。
+// 2026-08-14 Cloudflare Workers 远端构建就因此失败：
+//
+//   Failed to fetch font file from `https://fonts.gstatic.com/s/inter/v20/...woff2`
+//   `next/font` error: Failed to fetch `Inter` from Google Fonts.
+//   > Build failed because of webpack errors
+//
+// 同一天 GitHub Actions 的 on-prem-build 也撞过同样的错（重跑才过）。
+// 即：**构建可用性被一个外部网络依赖绑架**，且失败是随机的——这类红最难判，
+// 因为它与本次改动毫无关系（当时我误判成 wrangler 升级导致，还回退了一版）。
+//
+// 改成 local 后字体随仓库走，构建不再有任何网络依赖。
+//
+// 三款都是**可变字体**（单文件覆盖整个字重区间），故 weight 用区间声明：
+// Inter/Fraunces 100–900、JetBrains Mono 100–800。相比原先按离散字重各下一份，
+// 文件数从 10 降到 3、总计约 125 KB。
+//
+// The `variable` value is consumed inside tokens.css via the
+// --aster-font-{display,sans,mono} tokens (see globals.css :root override block).
 //
 // preload: false —— 三款字体都只含 latin subset，但本站是**多语**（zh/en/de）：
 // 在中文优先的页面（如 /zh/demos/*）首屏可见文本是 CJK，浏览器却会预加载这三个
@@ -31,26 +46,32 @@ import "../globals.css";
 // 交换造成的 CLS——非消除），只是不再发那条在 CJK 页上适得其反的预加载链接。
 // 取舍：英文优先页（landing）冷缓存/慢网下字体请求略晚、可能出现一次可见字体交换，
 // 换取全站 CJK 页不再有无效高优先级预加载与该告警。
-const fraunces = Fraunces({
-  subsets: ['latin'],
+// ★adjustFontFallback：next/font/google 会自动按字体度量生成校准过的回退字体
+// （降低字体交换时的 CLS）。local 版需要显式指定用哪个系统字体做度量基准，
+// 否则回退到未校准的默认值。sans/mono 用 Arial/Courier New 这两个 Next 支持的基准。
+const fraunces = localFont({
+  src: '../../../public/fonts/fraunces-latin.woff2',
   variable: '--aster-font-display-loaded',
   display: 'swap',
   preload: false,
-  weight: ['400', '500', '600', '700'],
+  weight: '100 900',
+  adjustFontFallback: 'Times New Roman',
 });
-const inter = Inter({
-  subsets: ['latin'],
+const inter = localFont({
+  src: '../../../public/fonts/inter-latin.woff2',
   variable: '--aster-font-sans-loaded',
   display: 'swap',
   preload: false,
-  weight: ['400', '500', '600', '700'],
+  weight: '100 900',
+  adjustFontFallback: 'Arial',
 });
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
+const jetbrainsMono = localFont({
+  src: '../../../public/fonts/jetbrains-mono-latin.woff2',
   variable: '--aster-font-mono-loaded',
   display: 'swap',
   preload: false,
-  weight: ['400', '500'],
+  weight: '100 800',
+  adjustFontFallback: 'Arial',
 });
 
 export const metadata: Metadata = {
