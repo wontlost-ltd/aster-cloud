@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, AlertDescription, Button, Card, CardBody, Stack } from '@/components/ui';
+import { Alert, AlertDescription, Button, Card, CardBody, Input, Select, Stack } from '@/components/ui';
 
 /**
  * What-If 影响估算面板（ADR 0034 S4）。
@@ -243,8 +243,12 @@ export function WhatIfBatchPanel({
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1 text-sm">
               <span className="font-medium">{t('window')}</span>
-              <select
-                className="rounded border px-2 py-1"
+              {/* ★用设计系统 Select 而非裸 <select>：原先的
+                  `rounded border px-2 py-1` 不带任何颜色 token，
+                  在同一面板里与版本对比的两个 select 明显不一致
+                  （实测：透明背景 / 近黑边框 / 圆角 4px / 矮 8px）。 */}
+              <Select
+                size="md"
                 value={windowKind}
                 onChange={(e) => setWindowKind(e.target.value)}
                 disabled={isRunning || starting}
@@ -254,16 +258,16 @@ export function WhatIfBatchPanel({
                     {t(p.key)}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
 
             {windowKind === 'CUSTOM' && (
               <>
                 <label className="flex flex-col gap-1 text-sm">
                   <span className="font-medium">{t('from')}</span>
-                  <input
+                  <Input
                     type="date"
-                    className="rounded border px-2 py-1"
+                    size="md"
                     value={customFrom}
                     max={todayISO()}
                     onChange={(e) => setCustomFrom(e.target.value)}
@@ -272,9 +276,9 @@ export function WhatIfBatchPanel({
                 </label>
                 <label className="flex flex-col gap-1 text-sm">
                   <span className="font-medium">{t('to')}</span>
-                  <input
+                  <Input
                     type="date"
-                    className="rounded border px-2 py-1"
+                    size="md"
                     value={customTo}
                     /* ★前端 max 只是体验；服务端独立拒绝未来日期（§7.1） */
                     max={todayISO()}
