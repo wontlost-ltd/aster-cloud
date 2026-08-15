@@ -14,8 +14,22 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
+// ★mock 掉 next-auth：真包会把整个 Next server runtime 拉进 vitest
+//   （next-auth/lib/env.js 依赖 'next/server'），本模块正是为了可测才抽出来的，
+//   不该因为一个 error 基类又把重依赖引回来。
+//   这里复刻 CredentialsSignin 的**关键契约**：它有一个 `code` 字段，
+//   Auth.js 会把该字段透传到重定向 URL 的 code 参数。
+vi.mock('next-auth', () => ({
+  CredentialsSignin: class extends Error {
+    code = 'credentials';
+  },
+}));
+
+import { CredentialsSignin } from 'next-auth';
+
 import {
   authorizeCredentials,
+  TwoFactorSignin,
   type AuthorizeDeps,
 } from '@/lib/auth/authorize-credentials';
 
@@ -162,4 +176,60 @@ describe('authorize 编排行为（issue #400）', () => {
     expect(await authorizeCredentials({ email: 'a@b.c' }, d)).toBeNull();
     expect(d.checkRateLimit).not.toHaveBeenCalled();
   });
+  // ── 传给前端的契约：必须是 code，不是 message（线上事故）─────────────
+  //
+  // ★这一组是本文件此前**最大的盲区**：原有断言全用 `.toThrow('TWO_FACTOR_REQUIRED')`
+  //   —— message 确实是那个值，测试全绿；但 Auth.js v5 把 authorize() 的抛错
+  //   归一化成 error='CredentialsSignin'，**message 根本传不到前端**。
+  //   前端比较 result.error === 'TWO_FACTOR_REQUIRED' 恒为 false，
+  //   于是密码正确的用户看到「邮箱或密码错误」，第二屏永远出不来。
+  //   服务端与前端各自都"对"，坏在中间那条缝——所以必须显式断言 code。
+  describe('★错误必须带 Auth.js 可透传的 code（否则前端收不到）', () => {
+    async function catchErr(run: () => Promise<unknown>): Promise<unknown> {
+      try {
+        await run();
+        throw new Error('预期抛错但没有');
+      } catch (e) {
+        return e;
+      }
+    }
+
+    it('★TWO_FACTOR_REQUIRED 必须以 code 形式传出', async () => {
+      const d = deps();
+      const err = (await catchErr(() => authorizeCredentials(creds(), d))) as {
+        code?: string;
+      };
+      expect(err.code, 'code 缺失 → 前端拿不到，第二屏出不来').toBe(
+        'TWO_FACTOR_REQUIRED',
+      );
+    });
+
+    it('★必须是 CredentialsSignin 子类——只有它的 code 会被透传', async () => {
+      const d = deps();
+      const err = await catchErr(() => authorizeCredentials(creds(), d));
+      // 裸 Error 的 code 不会进重定向 URL，等于没传。
+      expect(err).toBeInstanceOf(TwoFactorSignin);
+      expect(err).toBeInstanceOf(CredentialsSignin);
+    });
+
+    it('★验证码错误同样带 code', async () => {
+      const d = deps({
+        hasActiveCode: async () => true,
+        verifyCode: async () => ({ ok: false, reason: 'MISMATCH' }) as const,
+      });
+      const err = (await catchErr(() =>
+        authorizeCredentials(creds({ twoFactorCode: '000000' }), d),
+      )) as { code?: string };
+      expect(err.code).toBe('TWO_FACTOR_MISMATCH');
+    });
+
+    it('★code 里不得出现验证码或密码', async () => {
+      const d = deps();
+      const err = (await catchErr(() =>
+        authorizeCredentials(creds({ password: 'sup3r-secret' }), d),
+      )) as { code?: string };
+      expect(err.code ?? '').not.toContain('sup3r-secret');
+    });
+  });
+
 });

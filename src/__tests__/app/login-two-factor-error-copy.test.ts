@@ -58,5 +58,29 @@ describe('登录页二次验证错误文案映射（issue #400）', () => {
     // 源码里必须真的存在这个分支——否则本文件的复刻就是自说自话。
     expect(src).toContain("key === 'WINDOW_EXCEEDED'");
     expect(src).toContain('t.errors.twoFactorWindowExceeded');
+
+    // ★★必须从 `result.code` 取判定依据，不能回退到 `result.error`。
+    //   线上事故：Auth.js v5 把 authorize() 的抛错归一化成
+    //   error='CredentialsSignin'，只有 code 会透传；比较 error 恒不成立，
+    //   密码正确的用户看到「邮箱或密码错误」，第二屏永远出不来。
+    // ★必须断言 code 是**判定依据本身**，不能只断言字符串出现过：
+    //   实测变异——把 `const code = result.code ?? ''` 改成 `result.error ?? ''`
+    //   （即复现线上事故）时，仅靠 toContain('result.code') 仍然全绿，
+    //   因为注释里也出现了这个词。这里锁死赋值语句本身。
+    const codeLines2 = src
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('//') && !l.trim().startsWith('*'));
+    expect(
+      codeLines2.some((l) => /const\s+code\s*=\s*result\.code/.test(l)),
+      '判定依据必须取自 result.code（取 result.error 会让第二屏永远出不来）',
+    ).toBe(true);
+    // 只看**代码行**：注释里为了讲清事故原委会引用旧写法，不算违规。
+    const codeLines = src
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('//') && !l.trim().startsWith('*'));
+    expect(
+      codeLines.some((l) => /result\.error\s*===\s*'TWO_FACTOR_/.test(l)),
+      '不得再用 result.error 比较 TWO_FACTOR_*（该分支恒为 false）',
+    ).toBe(false);
   });
 });
