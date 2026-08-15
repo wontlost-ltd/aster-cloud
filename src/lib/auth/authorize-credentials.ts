@@ -19,7 +19,45 @@
  * 函数体逐行来自原 `authorize()`，只把直接调用替换为 `deps.*`。
  */
 
+import { CredentialsSignin } from 'next-auth';
+
 import type { VerifyResult } from '@/lib/two-factor';
+
+/**
+ * 带 `code` 的登录错误——**这是把信息传给前端的唯一可靠通道**。
+ *
+ * <h2>踩过的坑（生产事故，必须留档）</h2>
+ *
+ * 初版直接 `throw new Error('TWO_FACTOR_REQUIRED')`，前端比较
+ * `result.error === 'TWO_FACTOR_REQUIRED'`。**这个分支永远不成立**：
+ * Auth.js v5 把 `authorize()` 抛出的任何错误都归一化成 `CredentialsSignin`，
+ * 只把它的**类型名**写进重定向 URL 的 `error` 查询参数；原始 message
+ * 只留在服务端日志里（`next-auth/react.js:174` 读的就是那个 query param）。
+ *
+ * 后果：密码正确的用户拿到 `error='CredentialsSignin'`，前端匹配不上，
+ * 落到「邮箱或密码错误」的兜底文案，**第二屏永远出不来**——
+ * 即密码登录整体不可用。线上实测：服务端日志明确显示
+ * `Error: TWO_FACTOR_REQUIRED`，而用户看到的是「Invalid email or password」。
+ *
+ * <h2>为什么用 code</h2>
+ *
+ * `CredentialsSignin.code` 是 Auth.js **官方支持**的透传字段，会被写进重定向
+ * URL 的 `code` 查询参数；`signIn()` 同时读取 `error` 与 `code` 并一起返回
+ * （见 `next-auth/react.js`）。故前端必须比较 `result.code`，不是 `result.error`。
+ *
+ * ⚠ 该值会出现在 URL 里，**不得包含敏感信息**。这里的取值都是流程状态
+ * （REQUIRED / MISMATCH / EXPIRED …），不泄露账号是否存在——因为它们只在
+ * **密码已验证通过之后**才可能被抛出。
+ */
+export class TwoFactorSignin extends CredentialsSignin {
+  constructor(public readonly reason: string) {
+    // ★message 与 code 保持同一个带前缀的值：message 是给**服务端日志**看的
+    //   （线上排查全靠它），code 是给**前端**看的。两者一致，排查时
+    //   日志里看到什么，前端收到的就是什么，不用心算换算。
+    super(`TWO_FACTOR_${reason}`);
+    this.code = `TWO_FACTOR_${reason}`;
+  }
+}
 
 /** authorize 返回的用户形状（NextAuth User 的子集）。 */
 export interface AuthorizedUser {
@@ -102,13 +140,15 @@ export async function authorizeCredentials(
     const rl = await deps.checkRateLimit(`authorize:${email}`);
     if (!rl.allowed) {
       console.warn(`[auth] 限流拒绝: email=${email}`);
-      throw new Error('RATE_LIMITED');
+      throw new TwoFactorSignin('RATE_LIMITED');
     }
   } catch (err) {
     // ★限流器自身故障时**放行**而非拒绝：限流是防滥用而非鉴权，
     //   让它成为登录的单点故障会把一次 KV 抖动变成全站登录中断。
     //   但 RATE_LIMITED 必须原样抛出，不能被这个 catch 吞掉。
-    if (err instanceof Error && err.message === 'RATE_LIMITED') throw err;
+    // ★按**类型**而非 message 判定：message 是给日志看的，将来改文案
+    //   就会悄悄让限流被这个 catch 吞掉（fail-open 到无限次尝试）。
+    if (err instanceof TwoFactorSignin) throw err;
     console.error('[auth] 限流检查失败，放行:', err);
   }
 
@@ -116,7 +156,7 @@ export async function authorizeCredentials(
   const lockoutStatus = await deps.checkAccountLockout(email);
   if (lockoutStatus.locked) {
     console.warn(`[Auth] 账户被锁定: ${email}, 解锁时间: ${lockoutStatus.lockedUntil}`);
-    throw new Error('ACCOUNT_LOCKED');
+    throw new TwoFactorSignin('ACCOUNT_LOCKED');
   }
 
   // Find user with password hash
@@ -149,7 +189,7 @@ export async function authorizeCredentials(
     const failedResult = await deps.recordFailedAttempt(email);
     if (failedResult.nowLocked) {
       console.warn(`[Auth] 账户因多次失败被锁定: ${email}`);
-      throw new Error('ACCOUNT_LOCKED');
+      throw new TwoFactorSignin('ACCOUNT_LOCKED');
     }
     return null;
   }
@@ -206,7 +246,7 @@ export async function authorizeCredentials(
       const issued = await deps.issueCode(email);
       if (!issued.ok) {
         console.warn(`[auth] 2FA window exceeded: email=${email}`);
-        throw new Error('TWO_FACTOR_WINDOW_EXCEEDED');
+        throw new TwoFactorSignin('WINDOW_EXCEEDED');
       }
       pendingCode = issued.code;
     }
@@ -217,10 +257,10 @@ export async function authorizeCredentials(
       } catch (err) {
         // 发信失败必须让用户看见：静默失败会让他卡在验证码界面永远等不到信。
         console.error('[auth] 2FA code dispatch failed:', err);
-        throw new Error('TWO_FACTOR_SEND_FAILED');
+        throw new TwoFactorSignin('SEND_FAILED');
       }
     }
-    throw new Error('TWO_FACTOR_REQUIRED');
+    throw new TwoFactorSignin('REQUIRED');
   }
 
   const verdict = await deps.verifyCode(email, submittedCode);
@@ -230,7 +270,7 @@ export async function authorizeCredentials(
     //   他只需要知道邮箱，而邮箱不是秘密。
     //   验证码自己的限次在 verifyCode 内部（MAX_ATTEMPTS）。
     console.warn(`[auth] 2FA reject: email=${email} reason=${verdict.reason}`);
-    throw new Error(`TWO_FACTOR_${verdict.reason}`);
+    throw new TwoFactorSignin(verdict.reason);
   }
 
   // 登录成功，重置失败计数

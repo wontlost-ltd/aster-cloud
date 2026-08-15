@@ -196,22 +196,31 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
       // ★这些不是「登录失败」，是流程的正常中间态，故不能落到
       //   invalidCredentials 那条文案上——那会让用户以为密码错了、
       //   反复重输密码而永远走不到第二屏。
-      if (result.error === 'TWO_FACTOR_REQUIRED') {
+      //
+      // ★★必须读 `result.code` 而不是 `result.error`（线上事故，勿改回）：
+      //   Auth.js v5 把 authorize() 抛出的**任何**错误都归一化成
+      //   `error='CredentialsSignin'`，原始 message 只进服务端日志。
+      //   只有 `CredentialsSignin.code` 会被透传到重定向 URL 的 code 参数，
+      //   再由 signIn() 一并返回（见 next-auth/react.js:174-175）。
+      //   初版比较 result.error === 'TWO_FACTOR_REQUIRED' 恒为 false →
+      //   密码正确的用户看到「邮箱或密码错误」，第二屏永远出不来。
+      const code = result.code ?? '';
+      if (code === 'TWO_FACTOR_REQUIRED') {
         setTwoFactorStage(true);
         setError('');
         setIsLoading(false);
         setTurnstileToken(null);
         return;
       }
-      if (result.error === 'TWO_FACTOR_SEND_FAILED') {
+      if (code === 'TWO_FACTOR_SEND_FAILED') {
         setError(t.errors.twoFactorSendFailed);
         setIsLoading(false);
         setTurnstileToken(null);
         return;
       }
-      if (result.error.startsWith('TWO_FACTOR_')) {
+      if (code.startsWith('TWO_FACTOR_')) {
         // MISMATCH / EXPIRED / NO_CODE / TOO_MANY_ATTEMPTS / WINDOW_EXCEEDED
-        const key = result.error.replace('TWO_FACTOR_', '');
+        const key = code.replace('TWO_FACTOR_', '');
         setTwoFactorStage(true);
         setTwoFactorCode('');
         setError(
@@ -233,7 +242,7 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
         return;
       }
 
-      if (result.error === 'ACCOUNT_LOCKED') {
+      if (code === 'TWO_FACTOR_ACCOUNT_LOCKED') {
         setError(t.errors.accountLockedGeneric);
       } else {
         setError(t.errors.invalidCredentials);
