@@ -34,15 +34,45 @@ describe('留存期解析（issue #396）', () => {
     expect(r.skipReason).toBeNull();
   });
 
-  it('★enterprise 无 audit key → 不删且给出原因', () => {
-    // 删除不可逆。enterprise 在 plans.ts 里一个 audit featureKey 都没有，
-    // 本仓的 unlimited* 约定也没有 auditUnlimited——「该留多久」代码无从判断。
-    // 给默认值有两种错法：默认 90 天会真的删掉企业客户数据；默认无限则是
-    // 靠「查不到 key」推断语义，将来有人加 key 就静默改行为。
+  it('★enterprise = 显式不限期，不是「无法判定」', () => {
+    // 此前 enterprise 一个 audit key 都没有，留存期代码**无从判断**，
+    // GC 只能保守跳过并留痕。加上 auditUnlimited 后语义变成**显式声明**：
+    // 不是「查不到所以不敢删」，而是「产品明确承诺不限期」。
+    //
+    // ★两者行为相同（都不删）但必须分开表达：混成一个，真正缺配置的新档位
+    //   会被当成「又一个企业客户」淹没在告警里。
     const r = resolveRetention('enterprise');
     expect(r.executionDays).toBeNull();
+    expect(r.unlimited).toBe(true);
+    expect(r.skipReason).toBeNull(); // 不是「跳过」，是按承诺执行
+  });
+
+  it('★真正无法判定的档位仍要给出原因（与不限期区分开）', () => {
+    const r = resolveRetention('definitely-not-a-plan');
+    expect(r.executionDays).toBeNull();
+    expect(r.unlimited).toBe(false); // ★不得被误判成「不限期」
     expect(r.skipReason).toBeTruthy();
-    expect(r.skipReason).toContain('enterprise');
+  });
+
+  it('★已知 plan 但没配 audit key → 必须是「无法判定」，不得伪装成不限期', () => {
+    // 这条守的是本次改动最容易出错的地方：`unlimited` 与「读不出来」
+    // 行为相同（都不删）但语义相反——前者是产品承诺，后者是配置缺失。
+    // 若把后者也标成 unlimited，新增档位漏配 audit key 就会被静默当成
+    // 「又一个企业客户」，永远不会有人去修。
+    //
+    // ★必须构造一个**已知但无 audit key** 的 plan：直接传不存在的名字会在
+    //   更早的「未知 plan」分支就返回，根本走不到这段逻辑——
+    //   我第一版正是这么写的，变异验证时那条分支被改了却没红。
+    const mutable = PLANS as unknown as Record<string, unknown>;
+    mutable.__probe__ = { featureKeys: ['someUnrelatedFeature'] };
+    try {
+      const r = resolveRetention('__probe__');
+      expect(r.executionDays).toBeNull();
+      expect(r.unlimited).toBe(false);
+      expect(r.skipReason).toContain('__probe__');
+    } finally {
+      delete mutable.__probe__;
+    }
   });
 
   it.each([null, undefined, '', 'nonexistent-plan'])(
@@ -71,10 +101,12 @@ describe('留存期解析（issue #396）', () => {
     for (const name of Object.keys(PLANS)) {
       expect(decisions[name], `plan「${name}」未被留存表覆盖`).toBeDefined();
       const d = decisions[name];
-      // 要么有明确天数，要么有明确的跳过原因——不允许两者皆空
+      // 每个档位必须落在**三种明确状态**之一：
+      //   有天数 / 显式不限期 / 有跳过原因
+      // 三者皆无 = 新增档位没配 audit key 且没被察觉——正是本条要挡的。
       expect(
-        d.executionDays !== null || Boolean(d.skipReason),
-        `plan「${name}」既无天数也无跳过原因`,
+        d.executionDays !== null || d.unlimited || Boolean(d.skipReason),
+        `plan「${name}」三种状态都不是：既无天数、非显式不限期、也无跳过原因`,
       ).toBe(true);
     }
   });

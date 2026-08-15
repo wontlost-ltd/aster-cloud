@@ -98,6 +98,18 @@ export const PLAN_FEATURE_KEYS = {
   customDomainVocabulary: 'customDomainVocabulary',
   // Enterprise 计划
   multiTeamCustomApprovals: 'multiTeamCustomApprovals',
+  /**
+   * 审计日志不限期保留（issue #396）。
+   *
+   * ★与 audit7days / audit90days 同属一条"审计留存"轴，三者**互斥**：
+   * 一个 plan 只应命中其一。`AUDIT_KEY_TO_DAYS` 把前两者映射成天数，
+   * 本 key 映射成"不清理"。
+   *
+   * 此前 enterprise 一个 audit key 都没有，于是留存期在代码里**无从判断**——
+   * 留存 GC 只能保守地跳过不删（并留痕）。加上本 key 后语义变成**显式声明**：
+   * 不是"查不到所以不敢删"，而是"产品明确承诺不限期"。
+   */
+  auditUnlimited: 'auditUnlimited',
   unlimitedRulesEvaluations: 'unlimitedRulesEvaluations',
   unlimitedAiDraftsByok: 'unlimitedAiDraftsByok',
   customIndustryLexicons: 'customIndustryLexicons',
@@ -246,6 +258,9 @@ export const PLANS = {
     },
     featureKeys: [
       'multiTeamCustomApprovals',
+      // 审计留存：不限期（issue #396）。free=audit7days / pro,team=audit90days，
+      // 三者同轴互斥，留存 GC 据此决定清理阈值。
+      'auditUnlimited',
       'unlimitedRulesEvaluations',
       'unlimitedAiDraftsByok',
       'customIndustryLexicons',

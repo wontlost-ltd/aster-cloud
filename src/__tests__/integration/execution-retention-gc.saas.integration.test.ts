@@ -135,8 +135,11 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')(
       // ★enterprise 无 audit featureKey → 不删，且原因必须出现在返回值里。
       //   静默跳过会让「企业数据没被清」看起来像 cron 没跑。
       expect(await survivingIds(U_ENT)).toHaveLength(3);
-      expect(result.skipped.map((s) => s.plan)).toContain('enterprise');
-      expect(result.skipped.find((s) => s.plan === 'enterprise')?.reason).toBeTruthy();
+      // ★enterprise 现在是**显式不限期**（auditUnlimited），不是「无法判定」。
+      //   两者都不删，但必须分开表达：混在 skipped 里，真正缺配置的新档位
+      //   会被当成「又一个企业客户」淹没掉。
+      expect(result.unlimitedPlans).toContain('enterprise');
+      expect(result.skipped.map((s) => s.plan)).not.toContain('enterprise');
 
       expect(result.deletedByPlan.free).toBe(2);
       expect(result.deletedByPlan.pro).toBe(2);

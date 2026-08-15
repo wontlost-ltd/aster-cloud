@@ -54,10 +54,27 @@ const AUDIT_KEY_TO_DAYS: Readonly<Record<string, number>> = Object.freeze({
   audit90days: 90,
 });
 
+/**
+ * 不限期保留（enterprise，issue #396）。与上表同属"审计留存"轴，互斥。
+ *
+ * ★它与"无法判定"**行为相同（都不删）但语义不同**，故必须分开表达：
+ *   - 不限期  = 产品**显式承诺**永久保留 → 这是正常状态，不该出现在告警里
+ *   - 无法判定 = 代码**读不出**该留多久 → 这是配置缺失，应当被人看见并修掉
+ * 混成一个，前者会淹没后者：真正缺配置的新档位会被当成"又一个企业客户"忽略掉。
+ */
+const AUDIT_UNLIMITED_KEY = 'auditUnlimited';
+
 export interface RetentionDecision {
-  /** 执行日志留存天数；null = 无法判定，**不得清理** */
+  /** 执行日志留存天数；null = 不清理（原因见 skipReason / unlimited） */
   readonly executionDays: number | null;
-  /** 为什么是 null（供 cron 日志与审计留痕）；非 null 时为空 */
+  /**
+   * 是否为**显式声明**的不限期保留。
+   *
+   * ★与 `skipReason` 互斥：unlimited=true 时 skipReason 为 null——
+   * 它不是"跳过"，是按承诺执行。
+   */
+  readonly unlimited: boolean;
+  /** 为什么无法判定（供 cron 日志与审计留痕）；能判定时为空 */
   readonly skipReason: string | null;
   /** 决策骨架留存天数——恒为 SKELETON_RETENTION_DAYS，与 plan 无关 */
   readonly skeletonDays: number;
@@ -72,25 +89,34 @@ export function resolveRetention(plan: string | null | undefined): RetentionDeci
   const base = { skeletonDays: SKELETON_RETENTION_DAYS } as const;
 
   if (!plan) {
-    return { ...base, executionDays: null, skipReason: 'plan 缺失' };
+    return { ...base, executionDays: null, unlimited: false, skipReason: 'plan 缺失' };
   }
 
   const def = (PLANS as Record<string, { featureKeys?: readonly string[] } | undefined>)[plan];
   if (!def) {
-    return { ...base, executionDays: null, skipReason: `未知 plan「${plan}」` };
+    return { ...base, executionDays: null, unlimited: false, skipReason: `未知 plan「${plan}」` };
   }
 
-  const hit = (def.featureKeys ?? []).find((k) => k in AUDIT_KEY_TO_DAYS);
+  const keys = def.featureKeys ?? [];
+
+  // 显式不限期（enterprise）。放在天数查表**之前**：万一将来某个 plan
+  // 同时挂了两条轴上的 key，宁可保守地不删，也不要按天数真删掉数据。
+  if (keys.includes(AUDIT_UNLIMITED_KEY)) {
+    return { ...base, executionDays: null, unlimited: true, skipReason: null };
+  }
+
+  const hit = keys.find((k) => k in AUDIT_KEY_TO_DAYS);
   if (!hit) {
-    // enterprise 走这条路径。见文件头注释：这不是遗漏，是刻意不猜。
+    // 走到这里说明该 plan 两条轴上的 key 都没有——配置缺失，应当被人看见。
     return {
       ...base,
       executionDays: null,
+      unlimited: false,
       skipReason: `plan「${plan}」无 audit 留存 featureKey——需产品显式定义（issue #396）`,
     };
   }
 
-  return { ...base, executionDays: AUDIT_KEY_TO_DAYS[hit], skipReason: null };
+  return { ...base, executionDays: AUDIT_KEY_TO_DAYS[hit], unlimited: false, skipReason: null };
 }
 
 /** 所有已知 plan 的留存决策，供 cron 一次性取全量、避免逐租户查 PLANS。 */
