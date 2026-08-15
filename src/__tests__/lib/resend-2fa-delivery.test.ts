@@ -81,4 +81,28 @@ describe('2FA 验证码发信的失败可见性（issue #400）', () => {
     ).resolves.toBeUndefined();
     expect(sendMock).toHaveBeenCalledTimes(1);
   });
+  it('★发信人必须在**调用时**读 env，不能在模块顶层固化（线上故障根因）', async () => {
+    // OpenNext 的 populateProcessEnv() 是逐请求把绑定拷进 process.env 的，
+    // 而模块顶层代码在冷启动、第一个请求进来之前就执行了。
+    // 若写成 `const FROM_EMAIL = safeEnv(...) || fallback`，冷启动时 env 为空 →
+    // 常量被永久固定成兜底域名 → Resend 因域名未验证而拒收。
+    //
+    // 本用例模拟这个时序：**先加载模块，之后**才设置 env。
+    // 顶层常量写法下，后设的值读不到；函数写法才读得到。
+    delete process.env.RESEND_FROM_EMAIL;
+    const { sendTwoFactorCodeEmail } = await import('@/lib/resend');
+
+    // 模块已加载完毕，此刻才注入 env（等价于第一个请求到来）
+    process.env.RESEND_FROM_EMAIL = 'noreply@verified-domain.test';
+    sendMock.mockResolvedValue({ data: { id: 'x' }, error: null });
+
+    await sendTwoFactorCodeEmail('user@example.com', '123456', 10);
+
+    const arg = sendMock.mock.calls[0][0] as { from: string };
+    expect(arg.from, '发信人在模块顶层被固化 → 永远用兜底域名').toContain(
+      'noreply@verified-domain.test',
+    );
+    delete process.env.RESEND_FROM_EMAIL;
+  });
+
 });
