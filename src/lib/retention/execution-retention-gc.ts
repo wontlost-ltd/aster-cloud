@@ -28,8 +28,15 @@ import {
 export interface RetentionGcResult {
   /** 每个 plan 删了多少执行行 */
   readonly deletedByPlan: Readonly<Record<string, number>>;
-  /** 被跳过的 plan 及原因——**必须出现在返回值里**，否则"没删"看起来像"没数据" */
+  /**
+   * **无法判定**留存期而被跳过的 plan 及原因——配置缺失，应当被人看见并修掉。
+   *
+   * ★不含"显式不限期"的档位：那些走 {@link unlimitedPlans}。
+   * 混在一起会让真正缺配置的新档位被当成"又一个企业客户"忽略掉。
+   */
   readonly skipped: ReadonlyArray<{ plan: string; reason: string }>;
+  /** 显式声明不限期保留的 plan（enterprise）——正常状态，不是异常 */
+  readonly unlimitedPlans: ReadonlyArray<string>;
   /** 清空了多少条骨架（只置 null，不删行） */
   readonly skeletonsCleared: number;
   readonly skeletonRetentionDays: number;
@@ -54,12 +61,18 @@ export async function runExecutionRetentionGc(
 
   const deletedByPlan: Record<string, number> = {};
   const skipped: Array<{ plan: string; reason: string }> = [];
+  const unlimitedPlans: string[] = [];
 
   for (const [plan, decision] of Object.entries(byPlan) as Array<
     [string, RetentionDecision]
   >) {
+    if (decision.unlimited) {
+      // 显式不限期（enterprise）：按产品承诺执行，不是异常。
+      unlimitedPlans.push(plan);
+      continue;
+    }
     if (decision.executionDays === null) {
-      // ★不删 + 留痕。静默跳过会让"企业客户数据没被清"看起来像 cron 没跑。
+      // ★无法判定 → 不删 + 留痕。静默跳过会让"配置缺失"看起来像 cron 没跑。
       skipped.push({ plan, reason: decision.skipReason ?? '未知原因' });
       continue;
     }
@@ -100,6 +113,7 @@ export async function runExecutionRetentionGc(
   return {
     deletedByPlan,
     skipped,
+    unlimitedPlans,
     skeletonsCleared: cleared.length,
     skeletonRetentionDays: SKELETON_RETENTION_DAYS,
   };
