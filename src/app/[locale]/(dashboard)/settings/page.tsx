@@ -37,6 +37,7 @@ import {
   SignOutButton,
   DeleteAccountFlow,
 } from './settings-client';
+import { TrustedDevicesPanel } from '@/components/settings/trusted-devices-panel';
 
 const LOCALE_DETECTION_COOKIE = 'aster-locale-detection';
 
@@ -194,6 +195,23 @@ export default async function SettingsPage({ params }: PageProps) {
               callbackUrl={logoutCallbackUrl}
             />
           }
+        />
+
+        {/* 已信任设备（issue #400）——用户勾过「记住该设备」的那些。 */}
+        <TrustedDevicesPanel
+          labels={{
+            title: t('trustedDevices.title'),
+            description: t('trustedDevices.description'),
+            empty: t('trustedDevices.empty'),
+            unknownDevice: t('trustedDevices.unknownDevice'),
+            lastUsed: t('trustedDevices.lastUsed'),
+            never: t('trustedDevices.never'),
+            expires: t('trustedDevices.expires'),
+            remove: t('trustedDevices.remove'),
+            removing: t('trustedDevices.removing'),
+            loadFailed: t('trustedDevices.loadFailed'),
+            removeFailed: t('trustedDevices.removeFailed'),
+          }}
         />
 
         {/* Danger zone — destructive flow lives in the client island. */}

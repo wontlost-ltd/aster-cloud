@@ -30,6 +30,11 @@ interface Translations {
   password: string;
   forgotPassword: string;
   signIn: string;
+  /** 二次验证（issue #400） */
+  twoFactorLabel: string;
+  twoFactorHint: string;
+  rememberDevice: string;
+  rememberDeviceHint: string;
   errors: {
     generic: string;
     rateLimited: string;
@@ -39,6 +44,11 @@ interface Translations {
     verificationFailed: string;
     invalidCredentials: string;
     invalidCredentialsWithAttempts: string;
+    twoFactorMismatch: string;
+    twoFactorExpired: string;
+    twoFactorTooManyAttempts: string;
+    twoFactorWindowExceeded: string;
+    twoFactorSendFailed: string;
   };
 }
 
@@ -70,6 +80,17 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
   const [error, setError] = useState('');
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
+  /**
+   * 二次验证（issue #400）。
+   *
+   * ★`twoFactorStage` 为 true 时进入第二屏——但 email/password 仍保留在 state 里，
+   * 因为 Auth.js 的 authorize() 是一次性的：第二屏必须**连同三个字段一起**提交。
+   * 不引入半登录 token（那是新的凭据类型，泄露即绕过第一因子）。
+   */
+  const [twoFactorStage, setTwoFactorStage] = useState(false);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  /** 「记住该设备」——★必须用户主动勾选，默认 false，不预勾。 */
+  const [rememberDevice, setRememberDevice] = useState(false);
   const { data: session } = useSession();
   const searchParams = useSearchParams();
 
@@ -137,19 +158,81 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
         setRemainingAttempts(verifyData.remainingAttempts);
       }
     } catch (verifyError) {
+      // ★此处**不再**降级继续登录（审查发现的 Critical 的一半）。
+      //   原本的「验证失败时仍然尝试登录」让被限流的诚实浏览器也 fail-open，
+      //   等于把预检变成纯装饰。现在预检异常即中止本次提交。
+      //   真正的兜底在服务端：authorize() 自身已有按邮箱的限流，
+      //   攻击者绕过本预检也拿不到无限次尝试。
       console.error('Verification error:', verifyError);
-      // 验证失败时仍然尝试登录（降级处理）
+      setError(t.errors.verificationFailed);
+      setIsLoading(false);
+      return;
     }
 
-    // 2. 执行登录
+    // 2. 读出既有可信设备 token（httpOnly cookie，前端读不到，需走 API）。
+    //    有效则 authorize 会跳过第二因子。
+    let trustedDeviceToken = '';
+    try {
+      const tdRes = await fetch('/api/auth/trusted-device');
+      if (tdRes.ok) trustedDeviceToken = (await tdRes.json()).token ?? '';
+    } catch {
+      // 读不到就当没有——退化为要验证码，不影响可用性。
+    }
+
+    // 3. 执行登录
     const result = await signIn('credentials', {
       email,
       password,
+      // 第一屏为空串 → 服务端签发并发信、抛 TWO_FACTOR_REQUIRED；
+      // 第二屏带上用户输入的码 → 服务端校验通过才发 session。
+      twoFactorCode,
+      trustedDeviceToken,
       redirect: false,
       callbackUrl,
     });
 
     if (result?.error) {
+      // ── 二次验证分支（issue #400）──────────────────────────────────
+      // ★这些不是「登录失败」，是流程的正常中间态，故不能落到
+      //   invalidCredentials 那条文案上——那会让用户以为密码错了、
+      //   反复重输密码而永远走不到第二屏。
+      if (result.error === 'TWO_FACTOR_REQUIRED') {
+        setTwoFactorStage(true);
+        setError('');
+        setIsLoading(false);
+        setTurnstileToken(null);
+        return;
+      }
+      if (result.error === 'TWO_FACTOR_SEND_FAILED') {
+        setError(t.errors.twoFactorSendFailed);
+        setIsLoading(false);
+        setTurnstileToken(null);
+        return;
+      }
+      if (result.error.startsWith('TWO_FACTOR_')) {
+        // MISMATCH / EXPIRED / NO_CODE / TOO_MANY_ATTEMPTS / WINDOW_EXCEEDED
+        const key = result.error.replace('TWO_FACTOR_', '');
+        setTwoFactorStage(true);
+        setTwoFactorCode('');
+        setError(
+          key === 'MISMATCH'
+            ? t.errors.twoFactorMismatch
+            : key === 'TOO_MANY_ATTEMPTS'
+              ? t.errors.twoFactorTooManyAttempts
+              : // ★WINDOW_EXCEEDED 必须有独立文案（安全审查发现）：
+                //   它此前落到 twoFactorExpired（"验证码已过期"）上，而用户
+                //   实际是被限流了。看到"已过期"的人会立刻点重发再试一次——
+                //   正是限流想阻止的行为，也正是本分支上方注释所警惕的那种
+                //   "文案把用户推向错误动作"。这里明确告知需要等待。
+                key === 'WINDOW_EXCEEDED'
+                ? t.errors.twoFactorWindowExceeded
+                : t.errors.twoFactorExpired,
+        );
+        setIsLoading(false);
+        setTurnstileToken(null);
+        return;
+      }
+
       if (result.error === 'ACCOUNT_LOCKED') {
         setError(t.errors.accountLockedGeneric);
       } else {
@@ -168,6 +251,17 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
       // capabilities); the docs tab listens for the auth-tick and
       // calls /api/docs/session-state to pick up the truth. Lazy
       // import keeps the login page off the docs hook's module graph.
+      // 登录成功且用户勾选了「记住该设备」→ 签发可信设备 token。
+      // ★放在这里而非 authorize()：Auth.js 的 authorize 拿不到 Next 的
+      //   request/response，写不了 cookie。
+      if (rememberDevice) {
+        try {
+          await fetch('/api/auth/trusted-device', { method: 'POST' });
+        } catch {
+          // 签发失败不阻断登录——下次照常要验证码而已。
+        }
+      }
+
       try {
         const { signalDocsSessionRefresh } = await import('@/lib/docs/use-docs-session');
         signalDocsSessionRefresh();
@@ -325,6 +419,53 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
                       onChange={(e) => setPassword(e.target.value)}
                     />
                   </Stack>
+
+                  {/*
+                    二次验证码（issue #400）——只在第二屏出现。
+
+                    ★email/password 两个输入框**保留可见且可改**：Auth.js 的
+                    authorize() 是一次性的，第二屏必须连同三个字段一起提交。
+                    藏掉它们会让用户以为已经"过了密码关"，而实际上每次提交
+                    都在重验密码。
+
+                    inputMode/autoComplete 给移动端与密码管理器提示，
+                    让邮箱里的码能被系统自动填充。
+                  */}
+                  {twoFactorStage && (
+                    <Stack gap={2}>
+                      <Label htmlFor="twoFactorCode">{t.twoFactorLabel}</Label>
+                      <Input
+                        id="twoFactorCode"
+                        name="twoFactorCode"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        pattern="[0-9]{6}"
+                        maxLength={6}
+                        required
+                        autoFocus
+                        value={twoFactorCode}
+                        onChange={(e) =>
+                          setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))
+                        }
+                      />
+                      <p className="text-xs text-fg-muted">{t.twoFactorHint}</p>
+                      {/*
+                        ★必须用户主动勾选，默认不勾。预勾会让"记住设备"变成
+                        被动采集——那正是本实现刻意避开设备指纹的理由。
+                      */}
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={rememberDevice}
+                          onChange={(e) => setRememberDevice(e.target.checked)}
+                          className="h-4 w-4 rounded border-border"
+                        />
+                        <span>{t.rememberDevice}</span>
+                      </label>
+                      <p className="text-xs text-fg-muted">{t.rememberDeviceHint}</p>
+                    </Stack>
+                  )}
 
                   {/* Turnstile */}
                   {turnstileSiteKey ? (

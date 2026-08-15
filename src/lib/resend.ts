@@ -182,6 +182,63 @@ export async function sendPasswordResetEmail(email: string, token: string) {
   });
 }
 
+/**
+ * 登录二次验证码（issue #400）。
+ *
+ * <p>★与本文件其它模板不同：Resend 未配置时**不把码打进日志**。
+ * 其它模板打的是重置链接（本来就要发给用户、且一次性），而 2FA 码打进日志
+ * 等于把第二因子写进任何能读日志的地方——运维、日志聚合、错误上报都能看到，
+ * 二次验证就白做了。
+ *
+ * <p>开发环境确实需要拿到码，故只在 `NODE_ENV !== 'production'` 时输出，
+ * 并显式标注这是开发便利而非正常路径。生产未配置 Resend 时**抛错**：
+ * 静默失败会让用户卡在验证码界面且收不到信，而运维看不出原因。
+ */
+export async function sendTwoFactorCodeEmail(
+  email: string,
+  code: string,
+  ttlMinutes: number,
+) {
+  const resend = await ensureResend();
+  if (!resend) {
+    if (process.env.NODE_ENV !== 'production') {
+      // 开发便利：生产分支永不走到这里。
+      console.log(`[dev-only] 2FA code for ${email}: ${code}`);
+      return;
+    }
+    throw new Error(
+      'RESEND_NOT_CONFIGURED: 无法发送二次验证码，登录将无法完成',
+    );
+  }
+
+  // ★必须检查返回值里的 error：Resend SDK 对**被拒绝的投递**不抛异常，
+  //   而是返回 { data: null, error }。裸 await 会把「域名未验证 / 超额 /
+  //   收件人被封」全部吞掉，函数正常返回——上游 authorize-credentials 的
+  //   catch 因此永远不触发，用户被告知"验证码已发送"却永远收不到，
+  //   日志里也没有任何痕迹。这正是本 PR 在别处修的那类「静默失败」。
+  //
+  //   实测背景：线上曾出现 RESEND_API_KEY 未随部署生效的情况，
+  //   当时唯一的线索是一条 warn；若换成投递被拒，连那条 warn 都不会有。
+  const { error } = await resend.emails.send({
+    from: `Aster Cloud <${FROM_EMAIL}>`,
+    to: email,
+    subject: `${code} is your Aster Cloud sign-in code`,
+    html: `
+      <h1>Your sign-in code</h1>
+      <p style="font-size:28px;letter-spacing:4px;font-weight:700">${code}</p>
+      <p>This code expires in ${ttlMinutes} minutes and can only be used once.</p>
+      <p>If you didn't try to sign in, someone may have your password —
+         change it immediately.</p>
+    `,
+  });
+
+  if (error) {
+    // ★不把 code 写进日志（见本函数头部注释）；只记录 Resend 的错误分类。
+    console.error('[resend] 2FA code delivery rejected:', error.name, error.message);
+    throw new Error(`RESEND_SEND_REJECTED: ${error.name}`);
+  }
+}
+
 export async function sendPaymentFailedEmail(email: string, name: string) {
   const resend = await ensureResend();
   if (!resend) return;

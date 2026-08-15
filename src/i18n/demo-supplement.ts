@@ -169,6 +169,23 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 侧栏/导航「Reports」改标「Evidence」（URL 仍 /reports；deepMerge 覆盖包内字符串）。
     dashboardNav: { reports: 'Evidence' },
+    // 二次验证（issue #400）——走本地补充层，不需要 ui-messages 跨仓发版。
+    auth: {
+      login: {
+        twoFactorLabel: 'Verification code',
+        twoFactorHint: 'We emailed a 6-digit code. It expires in 10 minutes.',
+        rememberDevice: 'Remember this device',
+        rememberDeviceHint: 'Skip the code on this device for 30 days. Only tick this on a device you control.',
+        errors: {
+          twoFactorMismatch: 'That code is not correct. Check the latest email and try again.',
+          twoFactorExpired: 'That code expired. Sign in again to get a new one.',
+          twoFactorTooManyAttempts: 'Too many incorrect codes. Sign in again to get a new one.',
+          twoFactorWindowExceeded:
+            'Too many attempts. Please wait about an hour before requesting a new code.',
+          twoFactorSendFailed: 'We could not send your verification code. Please try again shortly.',
+        },
+      },
+    },
     // ★仪表盘 Quick Action 的文案（issue: 入口承诺了产品做不到的事）。
     //   包内原文是 “Generate Report” / “GDPR, HIPAA, SOC2”——而：
     //     · HIPAA / SOC2 在全仓**零实现**；
@@ -230,6 +247,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       download: 'Download',
     },
     settings: {
+      trustedDevices: {
+        title: 'Trusted devices',
+        description: 'Devices where you ticked “Remember this device”. They skip the email code for 30 days — remove any you no longer control.',
+        empty: 'No trusted devices. You will be asked for a code each time you sign in.',
+        unknownDevice: 'Unknown device',
+        lastUsed: 'Last used',
+        never: 'Never',
+        expires: 'Expires',
+        remove: 'Remove',
+        removing: 'Removing…',
+        loadFailed: 'Could not load your trusted devices.',
+        removeFailed: 'Could not remove that device. Please try again.',
+      },
       aiKeysPage: {
         // AI Key 行内编辑 + 重置额度（本地补充，ui-messages 包尚无这些 key）。
         edit: 'Edit',
@@ -599,6 +629,21 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       saveFailed: '更新失败——请重试',
     },
     dashboardNav: { reports: '证据' },
+    auth: {
+      login: {
+        twoFactorLabel: '验证码',
+        twoFactorHint: '我们已向您的邮箱发送 6 位验证码，10 分钟内有效。',
+        rememberDevice: '记住该设备',
+        rememberDeviceHint: '在该设备上 30 天内免验证码。请仅在您本人控制的设备上勾选。',
+        errors: {
+          twoFactorMismatch: '验证码不正确，请查收最新邮件后重试。',
+          twoFactorExpired: '验证码已过期，请重新登录以获取新验证码。',
+          twoFactorTooManyAttempts: '错误次数过多，请重新登录以获取新验证码。',
+          twoFactorWindowExceeded: '尝试次数过多，请等待约一小时后再获取新验证码。',
+          twoFactorSendFailed: '验证码发送失败，请稍后重试。',
+        },
+      },
+    },
     // 见 en 段注释：入口原文承诺 GDPR/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
       quickActions: {
@@ -651,6 +696,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       download: '下载',
     },
     settings: {
+      trustedDevices: {
+        title: '已信任的设备',
+        description: '您勾选过「记住该设备」的设备。它们在 30 天内免验证码——请移除您已不再掌控的设备。',
+        empty: '暂无已信任设备。每次登录都会要求输入验证码。',
+        unknownDevice: '未知设备',
+        lastUsed: '最近使用',
+        never: '从未',
+        expires: '到期',
+        remove: '移除',
+        removing: '移除中…',
+        loadFailed: '无法加载已信任设备。',
+        removeFailed: '移除失败，请重试。',
+      },
       aiKeysPage: {
         edit: '编辑',
         editSave: '保存',
@@ -1020,6 +1078,22 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       saveFailed: 'Aktualisierung fehlgeschlagen — bitte erneut versuchen',
     },
     dashboardNav: { reports: 'Nachweise' },
+    auth: {
+      login: {
+        twoFactorLabel: 'Bestätigungscode',
+        twoFactorHint: 'Wir haben Ihnen einen 6-stelligen Code per E-Mail gesendet. Er läuft in 10 Minuten ab.',
+        rememberDevice: 'Diesem Gerät vertrauen',
+        rememberDeviceHint: 'Auf diesem Gerät 30 Tage lang keinen Code abfragen. Nur auf Geräten aktivieren, die Sie selbst kontrollieren.',
+        errors: {
+          twoFactorMismatch: 'Dieser Code ist nicht korrekt. Prüfen Sie die neueste E-Mail und versuchen Sie es erneut.',
+          twoFactorExpired: 'Dieser Code ist abgelaufen. Melden Sie sich erneut an, um einen neuen zu erhalten.',
+          twoFactorTooManyAttempts: 'Zu viele falsche Codes. Melden Sie sich erneut an, um einen neuen zu erhalten.',
+          twoFactorWindowExceeded:
+            'Zu viele Versuche. Bitte warten Sie etwa eine Stunde, bevor Sie einen neuen Code anfordern.',
+          twoFactorSendFailed: 'Der Bestätigungscode konnte nicht gesendet werden. Bitte versuchen Sie es in Kürze erneut.',
+        },
+      },
+    },
     // 见 en 段注释：入口原文承诺 DSGVO/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
       quickActions: {
@@ -1072,6 +1146,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       download: 'Herunterladen',
     },
     settings: {
+      trustedDevices: {
+        title: 'Vertrauenswürdige Geräte',
+        description: 'Geräte, für die Sie „Diesem Gerät vertrauen“ aktiviert haben. Sie überspringen den E-Mail-Code 30 Tage lang — entfernen Sie Geräte, die Sie nicht mehr kontrollieren.',
+        empty: 'Keine vertrauenswürdigen Geräte. Bei jeder Anmeldung wird ein Code abgefragt.',
+        unknownDevice: 'Unbekanntes Gerät',
+        lastUsed: 'Zuletzt verwendet',
+        never: 'Nie',
+        expires: 'Läuft ab',
+        remove: 'Entfernen',
+        removing: 'Wird entfernt…',
+        loadFailed: 'Vertrauenswürdige Geräte konnten nicht geladen werden.',
+        removeFailed: 'Gerät konnte nicht entfernt werden. Bitte erneut versuchen.',
+      },
       aiKeysPage: {
         edit: 'Bearbeiten',
         editSave: 'Speichern',
@@ -1441,6 +1528,22 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       saveFailed: 'अपडेट नहीं हो सका — कृपया पुनः प्रयास करें',
     },
     dashboardNav: { reports: 'साक्ष्य' },
+    auth: {
+      login: {
+        twoFactorLabel: 'सत्यापन कोड',
+        twoFactorHint: 'हमने आपके ईमेल पर 6 अंकों का कोड भेजा है। यह 10 मिनट में समाप्त हो जाएगा।',
+        rememberDevice: 'इस डिवाइस को याद रखें',
+        rememberDeviceHint: 'इस डिवाइस पर 30 दिनों तक कोड न पूछें। केवल अपने नियंत्रण वाले डिवाइस पर चुनें।',
+        errors: {
+          twoFactorMismatch: 'यह कोड सही नहीं है। नवीनतम ईमेल देखें और पुनः प्रयास करें।',
+          twoFactorExpired: 'यह कोड समाप्त हो गया। नया कोड पाने के लिए फिर से साइन इन करें।',
+          twoFactorTooManyAttempts: 'बहुत अधिक गलत कोड। नया कोड पाने के लिए फिर से साइन इन करें।',
+          twoFactorWindowExceeded:
+            'बहुत अधिक प्रयास। नया कोड मांगने से पहले लगभग एक घंटा प्रतीक्षा करें।',
+          twoFactorSendFailed: 'हम आपका सत्यापन कोड नहीं भेज सके। कृपया शीघ्र ही पुनः प्रयास करें।',
+        },
+      },
+    },
     // 见 en 段注释：入口原文承诺 GDPR/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
       quickActions: {
@@ -1493,6 +1596,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       download: 'डाउनलोड',
     },
     settings: {
+      trustedDevices: {
+        title: 'विश्वसनीय डिवाइस',
+        description: 'वे डिवाइस जिन पर आपने “इस डिवाइस को याद रखें” चुना था। वे 30 दिनों तक ईमेल कोड छोड़ देते हैं — जिन पर अब आपका नियंत्रण नहीं, उन्हें हटाएँ।',
+        empty: 'कोई विश्वसनीय डिवाइस नहीं। हर साइन-इन पर कोड माँगा जाएगा।',
+        unknownDevice: 'अज्ञात डिवाइस',
+        lastUsed: 'अंतिम उपयोग',
+        never: 'कभी नहीं',
+        expires: 'समाप्ति',
+        remove: 'हटाएँ',
+        removing: 'हटाया जा रहा है…',
+        loadFailed: 'विश्वसनीय डिवाइस लोड नहीं हो सके।',
+        removeFailed: 'डिवाइस हटाया नहीं जा सका। कृपया पुनः प्रयास करें।',
+      },
       aiKeysPage: {
         edit: 'संपादित करें',
         editSave: 'सहेजें',

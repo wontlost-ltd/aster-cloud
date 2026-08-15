@@ -56,6 +56,11 @@ export async function cleanupTestDb(): Promise<void> {
         "LicenseTelemetry",
         "TelemetryAccessAudit",
         "CronJobLease",
+        -- 登录二次验证（issue #400）。★必须列在这里：两个套件都写这两张表，
+        -- 不清理会跨文件泄漏行——实测表现为「单跑 14/14 绿、与可信设备套件
+        -- 同跑就有 1 条红」这种看起来像 flaky、实为污染的现象。
+        "TwoFactorCode",
+        "TrustedDevice",
         -- Strategy Replay（Phase 1/3/4）。CASCADE 已处理外键依赖，
         -- 这里按 ExecutionOutcome → Execution → Policy 顺序列出便于阅读。
         "ExecutionOutcome",

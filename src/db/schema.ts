@@ -171,6 +171,104 @@ export const verificationTokens = pgTable(
   ]
 );
 
+/**
+ * 登录二次验证的一次性邮件验证码（issue #400）。
+ *
+ * <h3>为什么不复用 VerificationToken / PasswordResetToken</h3>
+ *
+ * - `VerificationToken` 没有尝试次数字段。6 位码只有 100 万种可能，
+ *   **必须限次**，否则在有效期内可被暴力枚举。
+ * - `PasswordResetToken` 语义是"重置密码"，混用会让两条链路的失效逻辑纠缠
+ *   （改密码要不要连带作废 2FA 码？）。分表让各自的生命周期独立。
+ *
+ * <h3>存的是 sha256(code)，不是明文</h3>
+ *
+ * 与 `password-reset-tokens.ts` 同一纪律：只读的 DB 泄露不应直接产出可用的
+ * 登录凭据。校验时对传入的码做同样的 hash 再比对。
+ */
+/**
+ * 「记住该设备」——跳过二次验证的可信设备（issue #400）。
+ *
+ * <h3>★存的是随机 token 的 hash，不是设备指纹</h3>
+ *
+ * 设备指纹（UA + 屏幕 + 字体 + Canvas…）是**被动采集的跨站可追踪标识**，
+ * 用户无从察觉也无从清除，属于隐私敏感数据。本表刻意不走那条路：
+ * 勾选「记住该设备」时**签发一个随机 token** 存进 httpOnly cookie，
+ * 库里只留 sha256(token)。
+ *
+ * 这带来三个性质：
+ *   - **用户主动授权**——不勾选就没有任何记录
+ *   - **可自行清除**——清 cookie 即失效，不像指纹会跟着浏览器一辈子
+ *   - **可服务端吊销**——删行即刻失效（与 JWT session 不同）
+ *
+ * label 只存**粗粒度**描述（如 "Chrome on macOS"）供用户在设备列表里辨认，
+ * 不存完整 UA——完整 UA 本身就接近指纹。
+ */
+export const trustedDevices = pgTable(
+  'TrustedDevice',
+  {
+    id: text('id').primaryKey().notNull(),
+    userId: text('userId').notNull(),
+    /** sha256(随机 token) 的小写 hex —— ★不存明文，也不存指纹 */
+    tokenHash: text('tokenHash').notNull().unique(),
+    /** 粗粒度可读标签，仅供用户辨认；★不是完整 UA */
+    label: text('label'),
+    expires: timestamp('expires', { mode: 'date' }).notNull(),
+    lastUsedAt: timestamp('lastUsedAt', { mode: 'date' }),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('TrustedDevice_userId_idx').on(table.userId),
+    index('TrustedDevice_expires_idx').on(table.expires),
+  ]
+);
+
+export const twoFactorCodes = pgTable(
+  'TwoFactorCode',
+  {
+    id: text('id').primaryKey().notNull(),
+    /** 归属邮箱（小写规范化后），与登录时用的口径一致 */
+    email: text('email').notNull(),
+    /** sha256(6 位码) 的小写 hex —— ★不存明文 */
+    codeHash: text('codeHash').notNull(),
+    expires: timestamp('expires', { mode: 'date' }).notNull(),
+    /**
+     * 本码上的已尝试次数。
+     *
+     * ★与账户锁定（`account-lockout.ts`）是**两条独立的轴**：
+     * 那条锁的是"密码错太多次"，这条锁的是"验证码错太多次"。
+     * 合并会让攻击者用错误验证码把受害者的账户锁死（拒绝服务）。
+     */
+    attempts: integer('attempts').default(0).notNull(),
+    /**
+     * ★**跨码累计**的尝试次数与窗口起点（审查发现的 Critical）。
+     *
+     * 只有 `attempts` 时，限次是**每码 5 次**而攻击者控制签发多少个码：
+     * 猜满 5 次 → 旧实现删行 → 下次提交空码即签发新码、计数归零 → 无限重开。
+     * 实测约 20 万轮即有 63% 命中 6 位码。
+     *
+     * 故把限次的锚点从「码」搬到「邮箱 + 时间窗」：这两个字段随
+     * 重新签发**继承**而非重置，窗口内累计超限就拒绝再签发。
+     */
+    windowAttempts: integer('windowAttempts').default(0).notNull(),
+    windowStartedAt: timestamp('windowStartedAt', { mode: 'date' }),
+    /**
+     * 本窗口内已签发过多少个码——发信节流的锚点。
+     *
+     * ★不能只靠"是否存在有效码"来节流：那个判据会被"删行"击穿，
+     * 每 5 次猜测就能再发一封信，登录接口变成邮件轰炸放大器。
+     */
+    windowIssued: integer('windowIssued').default(0).notNull(),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    // ★email 唯一：应用层的 delete-then-insert 无事务，并发下会留下两条有效码
+    //   （审查实测 concurrent_valid_codes=2）。DB 级约束才是真保证。
+    uniqueIndex('TwoFactorCode_email_unique').on(table.email),
+    index('TwoFactorCode_expires_idx').on(table.expires),
+  ]
+);
+
 export const passwordResetTokens = pgTable(
   'PasswordResetToken',
   {
