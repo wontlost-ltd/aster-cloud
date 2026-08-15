@@ -2,7 +2,7 @@
 // 策略执行日志服务：查询、分页、统计
 
 import { db, executions } from '@/lib/prisma';
-import { eq, and, gte, lte, desc, lt, sql } from 'drizzle-orm';
+import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
 import type { InferSelectModel } from 'drizzle-orm';
 import type { PolicyReplayMetadata, PolicyTraceSkeleton } from '@/services/policy/policy-api';
 
@@ -628,18 +628,18 @@ export async function createExecutionLog(data: {
 }
 
 /**
- * 删除旧的执行日志（保留最近 N 天）
- * 应由定时任务调用
+ * ★已删除 `cleanupOldExecutionLogs`（cloud#396）。
+ *
+ * <p>它自诞生起就**零调用方**——`audit7days`/`audit90days` 只是定价页标签，
+ * 没有任何代码执行它，所有档位实际留存都是永久。
+ *
+ * <p>更要紧的是：它**没有租户过滤、也不看 plan**，
+ * 用一个写死的 90 天 cutoff 删**所有租户**的执行日志。
+ * 谁要是"顺手"把它接进定时任务，free 档会被按 90 天放宽、
+ * enterprise 档会被按 90 天删掉——两头都错。
+ *
+ * <p>替代者：`lib/retention/execution-retention-gc.ts` 的
+ * {@link runExecutionRetentionGc}，按租户 plan 取留存天数、
+ * 带 userId 限定、enterprise 显式不限期，
+ * 并由 `/api/cron/execution-retention-gc` 每日调用。
  */
-export async function cleanupOldExecutionLogs(
-  retentionDays: number = 90
-): Promise<{ deletedCount: number }> {
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
-
-  const result = await db.delete(executions)
-    .where(lt(executions.createdAt, cutoffDate))
-    .returning();
-
-  return { deletedCount: result.length };
-}
