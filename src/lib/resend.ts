@@ -211,7 +211,15 @@ export async function sendTwoFactorCodeEmail(
     );
   }
 
-  await resend.emails.send({
+  // ★必须检查返回值里的 error：Resend SDK 对**被拒绝的投递**不抛异常，
+  //   而是返回 { data: null, error }。裸 await 会把「域名未验证 / 超额 /
+  //   收件人被封」全部吞掉，函数正常返回——上游 authorize-credentials 的
+  //   catch 因此永远不触发，用户被告知"验证码已发送"却永远收不到，
+  //   日志里也没有任何痕迹。这正是本 PR 在别处修的那类「静默失败」。
+  //
+  //   实测背景：线上曾出现 RESEND_API_KEY 未随部署生效的情况，
+  //   当时唯一的线索是一条 warn；若换成投递被拒，连那条 warn 都不会有。
+  const { error } = await resend.emails.send({
     from: `Aster Cloud <${FROM_EMAIL}>`,
     to: email,
     subject: `${code} is your Aster Cloud sign-in code`,
@@ -223,6 +231,12 @@ export async function sendTwoFactorCodeEmail(
          change it immediately.</p>
     `,
   });
+
+  if (error) {
+    // ★不把 code 写进日志（见本函数头部注释）；只记录 Resend 的错误分类。
+    console.error('[resend] 2FA code delivery rejected:', error.name, error.message);
+    throw new Error(`RESEND_SEND_REJECTED: ${error.name}`);
+  }
 }
 
 export async function sendPaymentFailedEmail(email: string, name: string) {
