@@ -93,5 +93,17 @@ export async function POST(req: Request) {
     .set({ passwordHash: newHash, mustChangePassword: false })
     .where(eq(users.id, userId));
 
+  // ★吊销该用户全部「可信设备」（issue #400）：改密后旧密码不应再能
+  //   配合已记住的设备登录。失败不阻断——密码已改，记日志供排查。
+  try {
+    const { revokeAllTrustedDevices } = await import('@/lib/trusted-device');
+    const revoked = await revokeAllTrustedDevices(userId);
+    if (revoked > 0) {
+      console.warn(`[auth] 改密后吊销 ${revoked} 台可信设备: user=${userId}`);
+    }
+  } catch (err) {
+    console.error('[auth] 改密后吊销可信设备失败:', err);
+  }
+
   return NextResponse.json({ ok: true });
 }

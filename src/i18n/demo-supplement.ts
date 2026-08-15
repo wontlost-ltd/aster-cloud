@@ -245,6 +245,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       download: 'Download',
     },
     settings: {
+      trustedDevices: {
+        title: 'Trusted devices',
+        description: 'Devices where you ticked “Remember this device”. They skip the email code for 30 days — remove any you no longer control.',
+        empty: 'No trusted devices. You will be asked for a code each time you sign in.',
+        unknownDevice: 'Unknown device',
+        lastUsed: 'Last used',
+        never: 'Never',
+        expires: 'Expires',
+        remove: 'Remove',
+        removing: 'Removing…',
+        loadFailed: 'Could not load your trusted devices.',
+        removeFailed: 'Could not remove that device. Please try again.',
+      },
       aiKeysPage: {
         // AI Key 行内编辑 + 重置额度（本地补充，ui-messages 包尚无这些 key）。
         edit: 'Edit',
@@ -680,6 +693,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       download: '下载',
     },
     settings: {
+      trustedDevices: {
+        title: '已信任的设备',
+        description: '您勾选过「记住该设备」的设备。它们在 30 天内免验证码——请移除您已不再掌控的设备。',
+        empty: '暂无已信任设备。每次登录都会要求输入验证码。',
+        unknownDevice: '未知设备',
+        lastUsed: '最近使用',
+        never: '从未',
+        expires: '到期',
+        remove: '移除',
+        removing: '移除中…',
+        loadFailed: '无法加载已信任设备。',
+        removeFailed: '移除失败，请重试。',
+      },
       aiKeysPage: {
         edit: '编辑',
         editSave: '保存',
@@ -1115,6 +1141,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       download: 'Herunterladen',
     },
     settings: {
+      trustedDevices: {
+        title: 'Vertrauenswürdige Geräte',
+        description: 'Geräte, für die Sie „Diesem Gerät vertrauen“ aktiviert haben. Sie überspringen den E-Mail-Code 30 Tage lang — entfernen Sie Geräte, die Sie nicht mehr kontrollieren.',
+        empty: 'Keine vertrauenswürdigen Geräte. Bei jeder Anmeldung wird ein Code abgefragt.',
+        unknownDevice: 'Unbekanntes Gerät',
+        lastUsed: 'Zuletzt verwendet',
+        never: 'Nie',
+        expires: 'Läuft ab',
+        remove: 'Entfernen',
+        removing: 'Wird entfernt…',
+        loadFailed: 'Vertrauenswürdige Geräte konnten nicht geladen werden.',
+        removeFailed: 'Gerät konnte nicht entfernt werden. Bitte erneut versuchen.',
+      },
       aiKeysPage: {
         edit: 'Bearbeiten',
         editSave: 'Speichern',
@@ -1550,6 +1589,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       download: 'डाउनलोड',
     },
     settings: {
+      trustedDevices: {
+        title: 'विश्वसनीय डिवाइस',
+        description: 'वे डिवाइस जिन पर आपने “इस डिवाइस को याद रखें” चुना था। वे 30 दिनों तक ईमेल कोड छोड़ देते हैं — जिन पर अब आपका नियंत्रण नहीं, उन्हें हटाएँ।',
+        empty: 'कोई विश्वसनीय डिवाइस नहीं। हर साइन-इन पर कोड माँगा जाएगा।',
+        unknownDevice: 'अज्ञात डिवाइस',
+        lastUsed: 'अंतिम उपयोग',
+        never: 'कभी नहीं',
+        expires: 'समाप्ति',
+        remove: 'हटाएँ',
+        removing: 'हटाया जा रहा है…',
+        loadFailed: 'विश्वसनीय डिवाइस लोड नहीं हो सके।',
+        removeFailed: 'डिवाइस हटाया नहीं जा सका। कृपया पुनः प्रयास करें।',
+      },
       aiKeysPage: {
         edit: 'संपादित करें',
         editSave: 'सहेजें',

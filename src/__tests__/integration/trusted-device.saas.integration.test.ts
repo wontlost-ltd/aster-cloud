@@ -143,3 +143,45 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('可信设备安全属性（iss
     expect(await purgeExpiredTrustedDevices(later(TRUST_TTL_DAYS + 1))).toBe(1);
   });
 });
+
+// ── 改密码必须吊销全部可信设备（issue #400）────────────────────────────
+//
+// ★这条不是"锦上添花"：走到改密/重置密码通常意味着密码已泄露或疑似泄露。
+//   此时留着"跳过第二因子"的设备，等于给攻击者留了一条**只需旧密码**的通道
+//   ——而旧密码正是可能已经落在他手里的那个。
+//
+// 用源码断言两条路径都接上了：真实调用需要起 Next route handler + session，
+// 那是 e2e 范畴；这里守的是"接线还在"，不冒充验证 HTTP 行为。
+describe('改密码吊销可信设备的接线（issue #400）', () => {
+  const read = (p: string) =>
+    require('node:fs').readFileSync(require('node:path').join(process.cwd(), p), 'utf8') as string;
+
+  it('★重置密码（忘记密码流程）必须吊销', () => {
+    const src = read('src/app/api/auth/reset-password/route.ts');
+    expect(src).toContain('revokeAllTrustedDevices');
+    // 必须在密码真的写库之后——写库前吊销，若写库失败就白吊销了
+    expect(src.indexOf('set({ passwordHash })')).toBeLessThan(
+      src.indexOf('revokeAllTrustedDevices'),
+    );
+  });
+
+  it('★已登录改密必须吊销', () => {
+    const src = read('src/app/api/user/change-password/route.ts');
+    expect(src).toContain('revokeAllTrustedDevices');
+    expect(src.indexOf('passwordHash: newHash')).toBeLessThan(
+      src.indexOf('revokeAllTrustedDevices'),
+    );
+  });
+
+  it('★吊销失败不得阻断改密——密码已改，回滚更糟', () => {
+    for (const p of [
+      'src/app/api/auth/reset-password/route.ts',
+      'src/app/api/user/change-password/route.ts',
+    ]) {
+      const src = read(p);
+      const idx = src.indexOf('revokeAllTrustedDevices');
+      // 该调用必须落在 try 块里
+      expect(src.slice(Math.max(0, idx - 400), idx), p).toContain('try {');
+    }
+  });
+});

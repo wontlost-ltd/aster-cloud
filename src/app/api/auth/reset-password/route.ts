@@ -78,6 +78,20 @@ export async function POST(request: NextRequest) {
     // Update user password
     await db.update(users).set({ passwordHash }).where(eq(users.id, user.id));
 
+    // ★吊销该用户全部「可信设备」（issue #400）。
+    //   走到这条路径通常意味着密码已丢失或疑似泄露——此时留着"跳过第二因子"
+    //   的设备，等于给攻击者留了一条只需旧密码的通道。
+    //   失败不阻断改密：密码已经改掉了，回滚反而更糟；记日志供排查。
+    try {
+      const { revokeAllTrustedDevices } = await import('@/lib/trusted-device');
+      const revoked = await revokeAllTrustedDevices(user.id);
+      if (revoked > 0) {
+        console.warn(`[auth] 重置密码后吊销 ${revoked} 台可信设备: user=${user.id}`);
+      }
+    } catch (err) {
+      console.error('[auth] 重置密码后吊销可信设备失败:', err);
+    }
+
     // Delete the used token
     await db.delete(passwordResetTokens).where(eq(passwordResetTokens.id, resetToken.id));
 
