@@ -145,6 +145,17 @@ export const CRON_REGISTRY: ReadonlyArray<CronJob> = [
     healthcheckEnv: 'HEALTHCHECKS_TELEMETRY_GC_URL',
   },
   {
+    jobName: 'execution-retention-gc',
+    cron: '0 4 * * *',
+    routePath: '/api/cron/execution-retention-gc',
+    // 04:00 UTC daily —— 与 03:15 telemetry / 03:45 domain-vocabulary 两条留存
+    // cron 错开，沿用本表「分散负载」的既有约定。
+    // 让 plans.ts 的 audit7days/audit90days 真正自执行（issue #396）——
+    // 此前那两个 featureKey 只是定价页标签，无任何清理代码。
+    windowStartFor: (now) => floorToUtcDayAtHour(now, 4, 0),
+    healthcheckEnv: 'HEALTHCHECKS_EXECUTION_RETENTION_GC_URL',
+  },
+  {
     jobName: 'domain-vocabulary-retention',
     cron: '45 3 * * *',
     routePath: '/api/cron/domain-vocabulary-retention',
