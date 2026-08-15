@@ -20,6 +20,12 @@ import { describe, it, expect } from 'vitest';
 
 const SOURCE = readFileSync(join(process.cwd(), 'src/auth.ts'), 'utf8');
 
+// ★两条原本在这里的源码文本断言（"第二因子在密码之后"、"验证码失败不计入
+//   账户锁定"）已被删除——不是放弃，而是**升级**：编排逻辑抽到
+//   lib/auth/authorize-credentials.ts 之后，这两条已由
+//   __tests__/lib/authorize-credentials.test.ts 用**行为断言**覆盖
+//   （注入 spy，断言 recordFailedAttempt 未被调用、密码错时不发信）。
+//   源码文本断言对"标记全在、行为全没了"的变异无能——审查已实证。
 describe('二次验证的覆盖范围与 session 有效期（issue #400）', () => {
   it('★session 必须显式设 maxAge——不能退回 Auth.js 默认的 30 天', () => {
     // 未设置时 Auth.js 默认 30 天。JWT 策略下 session 无法服务端吊销：
@@ -44,22 +50,4 @@ describe('二次验证的覆盖范围与 session 有效期（issue #400）', () 
     expect(SOURCE).toMatch(/密码登录已启用二次验证/);
   });
 
-  it('★第二因子必须挂在 Credentials 的密码校验**之后**', () => {
-    // 放在密码校验之前 = 未提供正确密码的人也能触发发信（邮件轰炸放大器）。
-    const pwdCheck = SOURCE.indexOf('const isValidPassword');
-    const twoFactor = SOURCE.indexOf('TWO_FACTOR_REQUIRED');
-    expect(pwdCheck).toBeGreaterThan(0);
-    expect(twoFactor).toBeGreaterThan(0);
-    expect(pwdCheck, '第二因子早于密码校验——会变成发信放大器').toBeLessThan(twoFactor);
-  });
-
-  it('★验证码失败不得调用 recordFailedAttempt（那是密码错误的轴）', () => {
-    // 合并两条轴会让攻击者用错误验证码把受害者账户锁死（DoS）——
-    // 他只需要知道邮箱，而邮箱不是秘密。
-    const idx = SOURCE.indexOf('const verdict = await verifyCode');
-    expect(idx).toBeGreaterThan(0);
-    // 取验证码校验之后到 return 之间的片段
-    const after = SOURCE.slice(idx, SOURCE.indexOf('resetFailedAttempts', idx));
-    expect(after).not.toContain('recordFailedAttempt');
-  });
 });

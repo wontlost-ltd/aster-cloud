@@ -47,6 +47,7 @@ interface Translations {
     twoFactorMismatch: string;
     twoFactorExpired: string;
     twoFactorTooManyAttempts: string;
+    twoFactorWindowExceeded: string;
     twoFactorSendFailed: string;
   };
 }
@@ -209,7 +210,7 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
         return;
       }
       if (result.error.startsWith('TWO_FACTOR_')) {
-        // MISMATCH / EXPIRED / NO_CODE / TOO_MANY_ATTEMPTS
+        // MISMATCH / EXPIRED / NO_CODE / TOO_MANY_ATTEMPTS / WINDOW_EXCEEDED
         const key = result.error.replace('TWO_FACTOR_', '');
         setTwoFactorStage(true);
         setTwoFactorCode('');
@@ -218,7 +219,14 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
             ? t.errors.twoFactorMismatch
             : key === 'TOO_MANY_ATTEMPTS'
               ? t.errors.twoFactorTooManyAttempts
-              : t.errors.twoFactorExpired,
+              : // ★WINDOW_EXCEEDED 必须有独立文案（安全审查发现）：
+                //   它此前落到 twoFactorExpired（"验证码已过期"）上，而用户
+                //   实际是被限流了。看到"已过期"的人会立刻点重发再试一次——
+                //   正是限流想阻止的行为，也正是本分支上方注释所警惕的那种
+                //   "文案把用户推向错误动作"。这里明确告知需要等待。
+                key === 'WINDOW_EXCEEDED'
+                ? t.errors.twoFactorWindowExceeded
+                : t.errors.twoFactorExpired,
         );
         setIsLoading(false);
         setTurnstileToken(null);

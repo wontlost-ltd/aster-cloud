@@ -180,6 +180,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           twoFactorMismatch: 'That code is not correct. Check the latest email and try again.',
           twoFactorExpired: 'That code expired. Sign in again to get a new one.',
           twoFactorTooManyAttempts: 'Too many incorrect codes. Sign in again to get a new one.',
+          twoFactorWindowExceeded:
+            'Too many attempts. Please wait about an hour before requesting a new code.',
           twoFactorSendFailed: 'We could not send your verification code. Please try again shortly.',
         },
       },
@@ -637,6 +639,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           twoFactorMismatch: '验证码不正确，请查收最新邮件后重试。',
           twoFactorExpired: '验证码已过期，请重新登录以获取新验证码。',
           twoFactorTooManyAttempts: '错误次数过多，请重新登录以获取新验证码。',
+          twoFactorWindowExceeded: '尝试次数过多，请等待约一小时后再获取新验证码。',
           twoFactorSendFailed: '验证码发送失败，请稍后重试。',
         },
       },
@@ -1085,6 +1088,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           twoFactorMismatch: 'Dieser Code ist nicht korrekt. Prüfen Sie die neueste E-Mail und versuchen Sie es erneut.',
           twoFactorExpired: 'Dieser Code ist abgelaufen. Melden Sie sich erneut an, um einen neuen zu erhalten.',
           twoFactorTooManyAttempts: 'Zu viele falsche Codes. Melden Sie sich erneut an, um einen neuen zu erhalten.',
+          twoFactorWindowExceeded:
+            'Zu viele Versuche. Bitte warten Sie etwa eine Stunde, bevor Sie einen neuen Code anfordern.',
           twoFactorSendFailed: 'Der Bestätigungscode konnte nicht gesendet werden. Bitte versuchen Sie es in Kürze erneut.',
         },
       },
@@ -1533,6 +1538,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           twoFactorMismatch: 'यह कोड सही नहीं है। नवीनतम ईमेल देखें और पुनः प्रयास करें।',
           twoFactorExpired: 'यह कोड समाप्त हो गया। नया कोड पाने के लिए फिर से साइन इन करें।',
           twoFactorTooManyAttempts: 'बहुत अधिक गलत कोड। नया कोड पाने के लिए फिर से साइन इन करें।',
+          twoFactorWindowExceeded:
+            'बहुत अधिक प्रयास। नया कोड मांगने से पहले लगभग एक घंटा प्रतीक्षा करें।',
           twoFactorSendFailed: 'हम आपका सत्यापन कोड नहीं भेज सके। कृपया शीघ्र ही पुनः प्रयास करें।',
         },
       },

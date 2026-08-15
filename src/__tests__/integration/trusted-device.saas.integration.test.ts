@@ -140,6 +140,50 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('可信设备安全属性（iss
     expect(row.label).not.toContain('537.36'); // 版本号未落库
   });
 
+  it('★TTL 上界必须是字面量断言（M10：常量自证是重言式）', () => {
+    // 审查实测：TRUST_TTL_DAYS 30→3650 时 13 条全绿——因为测试用
+    // later(TRUST_TTL_DAYS ± 1) 做锚点，常量一动断言跟着动。
+    // 安全参数的边界必须硬编码，不能引用被测常量。
+    expect(TRUST_TTL_DAYS).toBeLessThanOrEqual(30);
+  });
+
+  it('★过期判定用硬编码天数（不引用被测常量）', async () => {
+    const token = await issueTrustedDevice(ALICE, null, NOW);
+    expect(await isTrustedDevice(ALICE, token, later(29))).toBe(true);
+    expect(await isTrustedDevice(ALICE, token, later(31))).toBe(false);
+  });
+
+  it('★token 必须有足够熵（M12：只验 hash 长度抓不到熵变小）', async () => {
+    // 审查实测：randomBytes(32)→randomBytes(2)（仅 65536 种）时 13 条全绿，
+    // 因为只断言了 tokenHash 长 64——而 sha256 输出恒为 64，与输入熵无关。
+    const t1 = await issueTrustedDevice(ALICE, null, NOW);
+    expect(t1, '32 字节 hex = 64 字符').toHaveLength(64);
+
+    const seen = new Set<string>();
+    for (let i = 0; i < 20; i++) {
+      seen.add(await issueTrustedDevice(ALICE, null, NOW));
+    }
+    expect(seen.size, 'token 重复=熵不足').toBe(20);
+  });
+
+  it('★lastUsedAt 必须在校验成功时刷新（M11：设备列表的唯一活跃信号）', async () => {
+    const token = await issueTrustedDevice(ALICE, null, NOW);
+    const before = await db
+      .select({ v: trustedDevices.lastUsedAt })
+      .from(trustedDevices)
+      .where(eq(trustedDevices.userId, ALICE));
+    expect(before[0].v).toBeNull();
+
+    const used = later(1);
+    expect(await isTrustedDevice(ALICE, token, used)).toBe(true);
+
+    const after = await db
+      .select({ v: trustedDevices.lastUsedAt })
+      .from(trustedDevices)
+      .where(eq(trustedDevices.userId, ALICE));
+    expect(after[0].v, 'lastUsedAt 从未更新').not.toBeNull();
+  });
+
   it('purge 只清过期的', async () => {
     await issueTrustedDevice(ALICE, null, NOW);
     expect(await purgeExpiredTrustedDevices(NOW)).toBe(0);

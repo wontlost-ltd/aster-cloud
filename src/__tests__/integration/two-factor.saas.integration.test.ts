@@ -15,9 +15,11 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/lib/prisma';
 import { twoFactorCodes } from '@/db/schema';
 import {
+  CODE_TTL_MINUTES,
   MAX_ATTEMPTS,
   MAX_WINDOW_ATTEMPTS,
   MAX_WINDOW_ISSUED,
+  WINDOW_MINUTES,
   hasActiveCode,
   hashCode,
   issueCode,
@@ -176,7 +178,13 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('二次验证码安全属性（
     expect(await purgeExpiredCodes(NOW)).toBe(0);
     expect(await hasActiveCode(EMAIL, NOW)).toBe(true);
 
-    expect(await purgeExpiredCodes(later(11))).toBe(1);
+    // ★回收条件从「码过期」收紧为「码过期 **且** 窗口过期」（复审 High）：
+    //   窗口计数就存在这一行上，只按码过期回收等于给攻击者一条
+    //   "等 cron 跑一次就重置限次"的通路。
+    //   故 +11 分钟（码过期、窗口未过期）时**不该**回收——
+    //   这不是放宽，是把删除时机推迟到窗口自然失效之后。
+    expect(await purgeExpiredCodes(later(11))).toBe(0);
+    expect(await purgeExpiredCodes(later(WINDOW_MINUTES + 5))).toBe(1);
   });
 
   // ── 以下五条针对独立审查发现的漏洞（每条都对应一个曾经存活的变异）──
@@ -292,4 +300,202 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('二次验证码安全属性（
     const code = await issue('  TwoFactor-Probe@Example.COM  ', NOW);
     expect(await verifyCode(EMAIL, code, NOW)).toEqual({ ok: true });
   });
+
+  // 复审发现的两个 High：窗口计数寄生在「会被删掉的码行」上，且上限判定
+  // 用应用层快照而非数据库原子语句。两者都能让限次退化成摆设。
+  // 这两条测试直接复刻审计者实测出的攻击序列，而不是测"函数返回了对的枚举"。
+  describe('★窗口限次不可被重置或绕过（复审 High）', () => {
+    it('★码过期不重置窗口——猜满→等过期→再猜，累计仍受 15 次上限约束', async () => {
+      const email = 'window-expiry-probe@example.com';
+      const t0 = new Date('2026-08-15T10:00:00Z');
+
+      // 第 1 轮：签发并猜错 5 次，打满单码上限。
+      const r1 = await issueCode(email, t0);
+      expect(r1.ok).toBe(true);
+      for (let i = 0; i < MAX_ATTEMPTS; i++) {
+        await verifyCode(email, '000000', t0);
+      }
+
+      // 等到码过期（TTL 10 分钟）但**窗口仍在**（60 分钟）。
+      // 攻击者在此提交任意码触发 EXPIRED 分支——旧实现会在这里删行。
+      const tExpired = new Date(t0.getTime() + 11 * 60_000);
+      expect(await verifyCode(email, '000000', tExpired)).toEqual({
+        ok: false,
+        reason: 'EXPIRED',
+      });
+
+      // ★关键断言：窗口计数必须幸存。若 EXPIRED 分支删了行，
+      //   这里会读到 undefined，攻击者即可拿到全新计数器。
+      const row = await db.query.twoFactorCodes.findFirst({
+        where: eq(twoFactorCodes.email, email),
+      });
+      expect(row, 'EXPIRED 分支删了行 → 窗口计数被清零').toBeTruthy();
+      expect(row!.windowAttempts).toBe(MAX_ATTEMPTS);
+
+      // 第 2 轮：重新签发后继续猜，累计到 15 次即应被窗口上限拒绝。
+      const r2 = await issueCode(email, tExpired);
+      expect(r2.ok).toBe(true);
+      let windowRejections = 0;
+      for (let i = 0; i < 20; i++) {
+        const res = await verifyCode(email, '000000', tExpired);
+        if (!res.ok && res.reason === 'TOO_MANY_ATTEMPTS') windowRejections++;
+      }
+      // 若窗口被重置，这 20 次里会有大量 MISMATCH（即"猜测预算"被续杯）。
+      expect(windowRejections, '窗口上限未生效——猜测预算被无限续杯').toBeGreaterThan(0);
+
+      const after = await db.query.twoFactorCodes.findFirst({
+        where: eq(twoFactorCodes.email, email),
+      });
+      expect(after!.windowAttempts).toBeLessThanOrEqual(MAX_WINDOW_ATTEMPTS);
+    });
+
+    it('★purgeExpiredCodes 不得清理窗口仍活跃的行', async () => {
+      const email = 'window-purge-probe@example.com';
+      const t0 = new Date('2026-08-15T12:00:00Z');
+      await issueCode(email, t0);
+      await verifyCode(email, '000000', t0); // 留下 windowAttempts=1
+
+      // 码已过期但窗口未过期 → cron 不应删它，否则等于定时重置限次。
+      const tAfterTtl = new Date(t0.getTime() + 11 * 60_000);
+      await purgeExpiredCodes(tAfterTtl);
+      const survived = await db.query.twoFactorCodes.findFirst({
+        where: eq(twoFactorCodes.email, email),
+      });
+      expect(survived, 'cron 删掉了窗口仍活跃的行 → 限次被定时清零').toBeTruthy();
+
+      // 窗口也过期后才允许回收，避免表无限增长。
+      const tAfterWindow = new Date(t0.getTime() + (WINDOW_MINUTES + 5) * 60_000);
+      await purgeExpiredCodes(tAfterWindow);
+      const gone = await db.query.twoFactorCodes.findFirst({
+        where: eq(twoFactorCodes.email, email),
+      });
+      expect(gone, '窗口过期后仍未回收 → 表会无限增长').toBeFalsy();
+    });
+
+    it('★并发签发不得突破 MAX_WINDOW_ISSUED（发信放大器）', async () => {
+      const email = 'window-race-probe@example.com';
+      const t0 = new Date('2026-08-15T14:00:00Z');
+
+      // 48 个并发请求同时打进来。读改写实现下它们会各自读到旧值、
+      // 全部通过应用层预检，实测发出 48 封邮件（约 10 倍放大）。
+      const results = await Promise.all(
+        Array.from({ length: 48 }, () => issueCode(email, t0)),
+      );
+      const issued = results.filter((r) => r.ok).length;
+
+      // ★断言"成功签发数"而不是"计数器的值"：邮件是按前者发的。
+      expect(
+        issued,
+        `并发签发放大：成功 ${issued} 次，上限应为 ${MAX_WINDOW_ISSUED}`,
+      ).toBeLessThanOrEqual(MAX_WINDOW_ISSUED);
+
+      const row = await db.query.twoFactorCodes.findFirst({
+        where: eq(twoFactorCodes.email, email),
+      });
+      expect(row!.windowIssued).toBeLessThanOrEqual(MAX_WINDOW_ISSUED);
+    });
+  });
+
+  it('★猜错满窗口上限后，不得再签发新码（此前无任何测试锁住）', async () => {
+    // 两位独立审查都指出：setWhere 只约束 windowIssued，**不含
+    // windowAttempts**，故"窗口内猜错 15 次后拒绝再签发"这条防线
+    // 完全由 issueCode 顶部那个应用层 if 承担。
+    // 实测把该 if 改成 `if (false && ...)` → 17/17 仍全绿，
+    // 说明它当时是**裸奔**的：谁把它当冗余删掉都不会有红灯。本用例就是那道红灯。
+    const email = 'window-attempts-gate@example.com';
+    const t0 = new Date('2026-08-15T16:00:00Z');
+
+    // 攻击者用尽窗口猜错预算：每码 5 次，签发 3 次 → 15 次。
+    let guesses = 0;
+    for (let round = 0; round < 3; round++) {
+      const r = await issueCode(email, t0);
+      expect(r.ok, `第 ${round + 1} 次签发不该被拒`).toBe(true);
+      for (let i = 0; i < MAX_ATTEMPTS; i++) {
+        const v = await verifyCode(email, '000000', t0);
+        if (!v.ok && v.reason === 'MISMATCH') guesses++;
+      }
+    }
+    expect(guesses).toBe(MAX_WINDOW_ATTEMPTS);
+
+    // ★断言攻击者**实际拿不到新码**（可观测后果），而不是断言计数器读数——
+    //   计数器可能因并发虚高，但"能不能再拿到一次猜测机会"才是安全属性。
+    const blocked = await issueCode(email, t0);
+    expect(blocked.ok, '猜满窗口上限后仍能签发新码 → 猜测预算可无限续杯').toBe(false);
+  });
+
+  it('★安全常量不得被静默放宽（自指陷阱）', () => {
+    // 假绿猎手实测：把 MAX_WINDOW_ISSUED 从 5 改成 500（邮件轰炸放大 100 倍），
+    // 18/18 依然全绿——因为其它用例都 `import` 这个常量再拿它当断言上界，
+    // 改常量时**靶子跟着一起移动**。这类变异改一个数字即可，且无声。
+    // 故本用例用**字面量**钉死，不引用被测模块的值。
+    // 注释已声明「这不是用户体验参数，是安全参数」，这里是那句话的执行点。
+    expect(MAX_ATTEMPTS, '单码猜错上限').toBe(5);
+    expect(MAX_WINDOW_ATTEMPTS, '窗口内累计猜错上限').toBe(15);
+    expect(MAX_WINDOW_ISSUED, '窗口内发信上限').toBe(5);
+    expect(WINDOW_MINUTES, '限次窗口长度(分钟)').toBe(60);
+    expect(CODE_TTL_MINUTES, '验证码有效期(分钟)').toBe(10);
+  });
+
+  it('★窗口起点不得随签发推移（否则窗口永不结束=限次永不生效）', async () => {
+    // 假绿猎手 M3：把 windowStartedAt 的 CASE 改成恒等于 now（滑动窗口），
+    // 17/17 全绿。原因是此前所有用例的时间点都塌缩在同一个窗口内
+    // （t0 或 +11min），看不出「窗口起点是否被推移」。
+    // 窗口起点每次签发都推到 now → windowFloor 判定永远为真 → 窗口永不结束。
+    const email = 'window-anchor-probe@example.com';
+    const t0 = new Date('2026-08-15T18:00:00Z');
+    await issueCode(email, t0);
+    const first = await db.query.twoFactorCodes.findFirst({
+      where: eq(twoFactorCodes.email, email),
+    });
+
+    // 窗口内的第二次签发（+30min，仍在 60min 窗口内）。
+    await issueCode(email, new Date(t0.getTime() + 30 * 60_000));
+    const second = await db.query.twoFactorCodes.findFirst({
+      where: eq(twoFactorCodes.email, email),
+    });
+
+    expect(
+      second!.windowStartedAt!.getTime(),
+      '窗口起点被推移 → 窗口永不自然结束 → 限次形同虚设',
+    ).toBe(first!.windowStartedAt!.getTime());
+  });
+
+  it('★并发校验不得突破单码 attempts 上限（原子守卫的唯一覆盖）', async () => {
+    // 假绿猎手 M10：删掉自增 WHERE 里的 lt(attempts, MAX_ATTEMPTS) 后仍 17/17 全绿——
+    // 此前**没有任何用例并发调用 verifyCode**，:238 的 bumped.length===0
+    // 分支从未被执行到。注释声称它挡住「并发全读到 0、全写 1」，但无证据。
+    const email = 'verify-race-probe@example.com';
+    const t0 = new Date('2026-08-15T19:00:00Z');
+    const r = await issueCode(email, t0);
+    expect(r.ok).toBe(true);
+
+    const results = await Promise.all(
+      Array.from({ length: 48 }, () => verifyCode(email, '000000', t0)),
+    );
+    const mismatches = results.filter((x) => !x.ok && x.reason === 'MISMATCH').length;
+
+    // ★断言"攻击者实际拿到的有效猜测次数"，而不是计数器读数。
+    expect(mismatches, `并发猜测突破单码上限：${mismatches} 次 > ${MAX_ATTEMPTS}`)
+      .toBeLessThanOrEqual(MAX_ATTEMPTS);
+  });
+
+  it('★purge 的窗口保留期必须是整个窗口（边界两侧各探一次）', async () => {
+    // 假绿猎手 M14：把 windowCutoff 从 60min 缩到 11min，17/17 全绿——
+    // 因为此前只探 +11min 与 +65min 两点，任何落在 (11, 60] 的 cutoff 都通过。
+    // 单点采样冒充区间：必须在 cap-1 / cap+1 两侧各钉一次。
+    const email = 'purge-boundary-probe@example.com';
+    const t0 = new Date('2026-08-15T20:00:00Z');
+    await issueCode(email, t0);
+    await verifyCode(email, '000000', t0);
+
+    expect(
+      await purgeExpiredCodes(new Date(t0.getTime() + (WINDOW_MINUTES - 1) * 60_000)),
+      '窗口尚未结束(59min)就回收 → 限次被提前清零',
+    ).toBe(0);
+    expect(
+      await purgeExpiredCodes(new Date(t0.getTime() + (WINDOW_MINUTES + 1) * 60_000)),
+      '窗口已结束(61min)仍不回收 → 表无限增长',
+    ).toBe(1);
+  });
+
 });

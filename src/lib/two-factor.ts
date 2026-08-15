@@ -24,7 +24,7 @@
 
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 
-import { and, eq, gt, lt, sql } from 'drizzle-orm';
+import { and, eq, gt, isNull, lt, or, sql } from 'drizzle-orm';
 
 import { getDb } from '@/db';
 import { twoFactorCodes } from '@/db/schema';
@@ -118,10 +118,17 @@ export async function issueCode(
     return { ok: false, reason: 'WINDOW_EXCEEDED' };
   }
 
+  // 窗口下界：windowStartedAt 早于它即视为窗口已过期，可重开。
+  // ★必须传 ISO 字符串 + 显式 ::timestamptz 转型：把 Date 实例直接插进
+  //   sql`` 模板时 postgres.js 不做序列化，报
+  //   "The string argument must be of type string ... Received an instance of Date"。
+  const windowFloor = new Date(now.getTime() - WINDOW_MINUTES * 60_000).toISOString();
+  const nowIso = now.toISOString();
+
   const code = generateCode();
   // ★单条原子 upsert 取代 delete+insert：email 上有 UNIQUE 索引，
   //   并发时后到者走 onConflictDoUpdate 而不是插出第二行。
-  await db
+  const upserted = await db
     .insert(twoFactorCodes)
     .values({
       id: crypto.randomUUID(),
@@ -140,11 +147,41 @@ export async function issueCode(
         codeHash: hashCode(code),
         expires: new Date(now.getTime() + CODE_TTL_MINUTES * 60_000),
         attempts: 0,
-        windowAttempts,
-        windowStartedAt,
-        windowIssued,
+        // ★窗口的「续用还是重开」必须由**数据库里的当前值**判定，不能用
+        //   应用层读到的 windowAlive 快照（复审发现的 High）。
+        //   48 个并发请求在表为空时全部读到 prev=undefined → 全部认为
+        //   "这是新窗口第一次签发" → 全部把 windowIssued 写成 1 并跳过上限，
+        //   实测 48 次全部成功（约 10 倍放大）。
+        //   下面用 CASE 让每条 UPDATE 各自比较**行内**的 windowStartedAt：
+        //   窗口仍活跃就 +1，已过期才重置为 1。
+        //   ★第三种情形：windowStartedAt IS NULL（0046 迁移只 ADD COLUMN、
+        //   不带 DEFAULT，故迁移前的存量行都是 NULL）。SQL 三值逻辑下
+        //   `NULL > floor` 求值为 UNKNOWN，CASE 落 ELSE → 窗口按"重开"处理。
+        //   这类行 windowIssued 恒为 0（列默认值），首次签发即写上时间戳自愈，
+        //   故不构成放大；但 setWhere 两臂在 NULL 下也都是 UNKNOWN，
+        //   若某行同时是 NULL 且 windowIssued>=5 就会写不进去而永久锁死——
+        //   现有代码路径构造不出该组合，这里记下以免将来改动踩中。
+        windowAttempts: sql`CASE WHEN ${twoFactorCodes.windowStartedAt} > ${windowFloor}::timestamptz
+          THEN ${twoFactorCodes.windowAttempts} ELSE 0 END`,
+        windowStartedAt: sql`CASE WHEN ${twoFactorCodes.windowStartedAt} > ${windowFloor}::timestamptz
+          THEN ${twoFactorCodes.windowStartedAt} ELSE ${nowIso}::timestamptz END`,
+        windowIssued: sql`CASE WHEN ${twoFactorCodes.windowStartedAt} > ${windowFloor}::timestamptz
+          THEN ${twoFactorCodes.windowIssued} + 1 ELSE 1 END`,
       },
-    });
+      // ★**只有 windowIssued 上限下沉到了这里**——别把这句读成"所有上限都在 DB"。
+      //   windowAttempts 上限**不在** setWhere 里，由上面第一个 if（应用层）承担；
+      //   两位独立审查都确认了这一分工，删掉那个 if 会静默失去防护。
+      //   窗口已过期的行无条件放行（重开窗口）；窗口内的行只有未达发信上限才写得进。
+      //   写不进 → returning 为空 → 判定超限，调用方据此不发信。
+      setWhere: sql`${twoFactorCodes.windowStartedAt} <= ${windowFloor}::timestamptz
+        OR ${twoFactorCodes.windowIssued} < ${MAX_WINDOW_ISSUED}`,
+    })
+    .returning({ id: twoFactorCodes.id });
+
+  // 0 行 = setWhere 拒绝了本次写入（并发下已有人把 windowIssued 推到上限）。
+  if (upserted.length === 0) {
+    return { ok: false, reason: 'WINDOW_EXCEEDED' };
+  }
 
   return { ok: true, code };
 }
@@ -177,7 +214,11 @@ export async function verifyCode(
   if (!row) return { ok: false, reason: 'NO_CODE' };
 
   if (row.expires.getTime() <= now.getTime()) {
-    await db.delete(twoFactorCodes).where(eq(twoFactorCodes.id, row.id));
+    // ★**不删行**（复审发现的 High）：窗口计数就寄生在这一行上，删掉等于
+    //   把限次清零。攻击者只需猜满 5 次 → 什么都不做等 10 分钟 → 提交任意码
+    //   触发本分支 → 窗口归零 → 重新签发。实测 30 次/小时且无上限，
+    //   而设计意图是 15 次/窗口后拒绝服务。
+    //   码本身已过期、codeHash 也在消费时被置空，留着行只承载窗口计数。
     return { ok: false, reason: 'EXPIRED' };
   }
 
@@ -228,9 +269,22 @@ export async function verifyCode(
  */
 export async function purgeExpiredCodes(now: Date = new Date()): Promise<number> {
   const db = getDb();
+  // ★必须同时要求**窗口也已过期**（复审发现的 High）：
+  //   只按 expires 清理会把仍在计数窗口内的行删掉，等于给攻击者一条
+  //   「等 cron 跑一次就重置限次」的免费通路——与 EXPIRED 分支同一个坑。
+  const windowCutoff = new Date(now.getTime() - WINDOW_MINUTES * 60_000);
   const rows = await db
     .delete(twoFactorCodes)
-    .where(lt(twoFactorCodes.expires, now))
+    .where(
+      and(
+        lt(twoFactorCodes.expires, now),
+        // windowStartedAt 为 null 的老行没有窗口语义，按旧规则清理即可
+        or(
+          isNull(twoFactorCodes.windowStartedAt),
+          lt(twoFactorCodes.windowStartedAt, windowCutoff),
+        ),
+      ),
+    )
     .returning({ id: twoFactorCodes.id });
   return rows.length;
 }

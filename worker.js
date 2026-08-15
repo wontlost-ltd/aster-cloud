@@ -50,6 +50,7 @@ const CRON_DISPATCH = {
   "15 3 * * *": "/api/cron/telemetry-retention-gc",
   "45 3 * * *": "/api/cron/domain-vocabulary-retention",
   "0 4 * * *": "/api/cron/execution-retention-gc",
+  "15 4 * * *": "/api/cron/two-factor-code-gc",
 };
 
 async function dispatchCron(event, env, ctx) {

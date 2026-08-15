@@ -156,6 +156,18 @@ export const CRON_REGISTRY: ReadonlyArray<CronJob> = [
     healthcheckEnv: 'HEALTHCHECKS_EXECUTION_RETENTION_GC_URL',
   },
   {
+    jobName: 'two-factor-code-gc',
+    cron: '15 4 * * *',
+    routePath: '/api/cron/two-factor-code-gc',
+    // 04:15 UTC daily —— 04:30 已被 user-purge 占用，故取 04:15；与
+    // 03:15/03:45/04:00 三条留存 cron 错开，沿用本表
+    // 「分散负载」的既有约定。让 purgeExpiredCodes 真正有调用方（issue #400）：
+    // 此前它零调用方，「过期即清理」只是注释里的承诺，与 #396 里
+    // cleanupOldExecutionLogs 的情形完全同构。
+    windowStartFor: (now) => floorToUtcDayAtHour(now, 4, 15),
+    healthcheckEnv: 'HEALTHCHECKS_TWO_FACTOR_CODE_GC_URL',
+  },
+  {
     jobName: 'domain-vocabulary-retention',
     cron: '45 3 * * *',
     routePath: '/api/cron/domain-vocabulary-retention',

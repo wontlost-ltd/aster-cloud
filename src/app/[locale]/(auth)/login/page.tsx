@@ -54,6 +54,7 @@ export default async function LoginPage() {
       twoFactorMismatch: t('errors.twoFactorMismatch'),
       twoFactorExpired: t('errors.twoFactorExpired'),
       twoFactorTooManyAttempts: t('errors.twoFactorTooManyAttempts'),
+      twoFactorWindowExceeded: t('errors.twoFactorWindowExceeded'),
       twoFactorSendFailed: t('errors.twoFactorSendFailed'),
     },
   };
