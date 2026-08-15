@@ -28,8 +28,18 @@
 
 import { PLANS } from '@/lib/plans';
 
-/** 决策骨架的留存天数——与 plan **解耦**，见下方说明。 */
-export const SKELETON_RETENTION_DAYS = 180;
+/**
+ * 决策骨架的留存天数——与 plan **解耦**，见文件尾部说明。
+ *
+ * ★取值下界由**条件漏斗能选到的最长窗口**决定，不是拍脑袋定的：
+ * What-If / 漏斗的 `WINDOW_PRESETS` 含 `LAST_YEAR`（365 天），
+ * 骨架若短于它，用户选"最近一年"就会在留存线上被静默截断——
+ * 看到的漏斗少了一截，却不知道为什么。
+ *
+ * 故 365 是**下界**而非偏好值；调小必须同时裁剪 WINDOW_PRESETS。
+ * `whatif-window-retention.test.ts` 会在两者失配时转红。
+ */
+export const SKELETON_RETENTION_DAYS = 365;
 
 /**
  * featureKey → 天数。只列**真实存在**的 key，不做模式匹配。
