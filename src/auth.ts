@@ -77,6 +77,10 @@ const config: NextAuthConfig = {
          * 第二屏连同 email/password 一起回传——见 authorize 内的说明。
          */
         twoFactorCode: { label: 'Verification code', type: 'text' },
+        /** 已有的可信设备 token（来自 httpOnly cookie，由 /api/auth/trusted-device 读出并回传） */
+        trustedDeviceToken: { label: 'Trusted device token', type: 'text' },
+        /** 用户是否勾选了「记住该设备」——★必须主动勾选，不默认开启 */
+        rememberDevice: { label: 'Remember this device', type: 'text' },
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
@@ -166,6 +170,32 @@ const config: NextAuthConfig = {
         //   故采用**一次提交收齐三个字段**：前端分两屏，第二屏连同 email+password
         //   一起提交 twoFactorCode。不引入半登录 token——那是新的凭据类型、
         //   泄露即绕过第一因子，需要单独一轮安全审计（见 lib/two-factor.ts 头注释）。
+        // 「记住该设备」：用户**主动勾选**过的设备可跳过第二因子。
+        //
+        // ★存的是随机 token 的 hash，不是设备指纹——指纹是被动采集的跨站
+        //   可追踪标识，用户无从察觉也无从清除，且并不更安全（可伪造）。
+        //   详见 lib/trusted-device.ts 头注释。
+        //
+        // ★校验必须带 userId：只按 token 查会让 A 的可信设备 cookie 在 B
+        //   登录时也生效——那是跨账户的二次验证绕过。
+        const trustToken =
+          typeof credentials.trustedDeviceToken === 'string'
+            ? credentials.trustedDeviceToken
+            : null;
+        if (trustToken) {
+          const { isTrustedDevice } = await import('@/lib/trusted-device');
+          if (await isTrustedDevice(user.id, trustToken)) {
+            await resetFailedAttempts(email);
+            return {
+              id: user.id,
+              email: user.email,
+              name: user.name,
+              image: user.image,
+            };
+          }
+          // token 无效/过期/属于别的账户 → 不放行，照常走验证码流程。
+        }
+
         const submittedCode =
           typeof credentials.twoFactorCode === 'string'
             ? credentials.twoFactorCode.trim()

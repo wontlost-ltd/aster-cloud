@@ -33,6 +33,8 @@ interface Translations {
   /** 二次验证（issue #400） */
   twoFactorLabel: string;
   twoFactorHint: string;
+  rememberDevice: string;
+  rememberDeviceHint: string;
   errors: {
     generic: string;
     rateLimited: string;
@@ -86,6 +88,8 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
    */
   const [twoFactorStage, setTwoFactorStage] = useState(false);
   const [twoFactorCode, setTwoFactorCode] = useState('');
+  /** 「记住该设备」——★必须用户主动勾选，默认 false，不预勾。 */
+  const [rememberDevice, setRememberDevice] = useState(false);
   const { data: session } = useSession();
   const searchParams = useSearchParams();
 
@@ -157,13 +161,24 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
       // 验证失败时仍然尝试登录（降级处理）
     }
 
-    // 2. 执行登录
+    // 2. 读出既有可信设备 token（httpOnly cookie，前端读不到，需走 API）。
+    //    有效则 authorize 会跳过第二因子。
+    let trustedDeviceToken = '';
+    try {
+      const tdRes = await fetch('/api/auth/trusted-device');
+      if (tdRes.ok) trustedDeviceToken = (await tdRes.json()).token ?? '';
+    } catch {
+      // 读不到就当没有——退化为要验证码，不影响可用性。
+    }
+
+    // 3. 执行登录
     const result = await signIn('credentials', {
       email,
       password,
       // 第一屏为空串 → 服务端签发并发信、抛 TWO_FACTOR_REQUIRED；
       // 第二屏带上用户输入的码 → 服务端校验通过才发 session。
       twoFactorCode,
+      trustedDeviceToken,
       redirect: false,
       callbackUrl,
     });
@@ -221,6 +236,17 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
       // capabilities); the docs tab listens for the auth-tick and
       // calls /api/docs/session-state to pick up the truth. Lazy
       // import keeps the login page off the docs hook's module graph.
+      // 登录成功且用户勾选了「记住该设备」→ 签发可信设备 token。
+      // ★放在这里而非 authorize()：Auth.js 的 authorize 拿不到 Next 的
+      //   request/response，写不了 cookie。
+      if (rememberDevice) {
+        try {
+          await fetch('/api/auth/trusted-device', { method: 'POST' });
+        } catch {
+          // 签发失败不阻断登录——下次照常要验证码而已。
+        }
+      }
+
       try {
         const { signalDocsSessionRefresh } = await import('@/lib/docs/use-docs-session');
         signalDocsSessionRefresh();
@@ -409,6 +435,20 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
                         }
                       />
                       <p className="text-xs text-fg-muted">{t.twoFactorHint}</p>
+                      {/*
+                        ★必须用户主动勾选，默认不勾。预勾会让"记住设备"变成
+                        被动采集——那正是本实现刻意避开设备指纹的理由。
+                      */}
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={rememberDevice}
+                          onChange={(e) => setRememberDevice(e.target.checked)}
+                          className="h-4 w-4 rounded border-border"
+                        />
+                        <span>{t.rememberDevice}</span>
+                      </label>
+                      <p className="text-xs text-fg-muted">{t.rememberDeviceHint}</p>
                     </Stack>
                   )}
 

@@ -174,6 +174,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       login: {
         twoFactorLabel: 'Verification code',
         twoFactorHint: 'We emailed a 6-digit code. It expires in 10 minutes.',
+        rememberDevice: 'Remember this device',
+        rememberDeviceHint: 'Skip the code on this device for 30 days. Only tick this on a device you control.',
         errors: {
           twoFactorMismatch: 'That code is not correct. Check the latest email and try again.',
           twoFactorExpired: 'That code expired. Sign in again to get a new one.',
@@ -616,6 +618,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       login: {
         twoFactorLabel: '验证码',
         twoFactorHint: '我们已向您的邮箱发送 6 位验证码，10 分钟内有效。',
+        rememberDevice: '记住该设备',
+        rememberDeviceHint: '在该设备上 30 天内免验证码。请仅在您本人控制的设备上勾选。',
         errors: {
           twoFactorMismatch: '验证码不正确，请查收最新邮件后重试。',
           twoFactorExpired: '验证码已过期，请重新登录以获取新验证码。',
@@ -1049,6 +1053,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       login: {
         twoFactorLabel: 'Bestätigungscode',
         twoFactorHint: 'Wir haben Ihnen einen 6-stelligen Code per E-Mail gesendet. Er läuft in 10 Minuten ab.',
+        rememberDevice: 'Diesem Gerät vertrauen',
+        rememberDeviceHint: 'Auf diesem Gerät 30 Tage lang keinen Code abfragen. Nur auf Geräten aktivieren, die Sie selbst kontrollieren.',
         errors: {
           twoFactorMismatch: 'Dieser Code ist nicht korrekt. Prüfen Sie die neueste E-Mail und versuchen Sie es erneut.',
           twoFactorExpired: 'Dieser Code ist abgelaufen. Melden Sie sich erneut an, um einen neuen zu erhalten.',
@@ -1482,6 +1488,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       login: {
         twoFactorLabel: 'सत्यापन कोड',
         twoFactorHint: 'हमने आपके ईमेल पर 6 अंकों का कोड भेजा है। यह 10 मिनट में समाप्त हो जाएगा।',
+        rememberDevice: 'इस डिवाइस को याद रखें',
+        rememberDeviceHint: 'इस डिवाइस पर 30 दिनों तक कोड न पूछें। केवल अपने नियंत्रण वाले डिवाइस पर चुनें।',
         errors: {
           twoFactorMismatch: 'यह कोड सही नहीं है। नवीनतम ईमेल देखें और पुनः प्रयास करें।',
           twoFactorExpired: 'यह कोड समाप्त हो गया। नया कोड पाने के लिए फिर से साइन इन करें।',

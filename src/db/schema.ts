@@ -186,6 +186,43 @@ export const verificationTokens = pgTable(
  * 与 `password-reset-tokens.ts` 同一纪律：只读的 DB 泄露不应直接产出可用的
  * 登录凭据。校验时对传入的码做同样的 hash 再比对。
  */
+/**
+ * 「记住该设备」——跳过二次验证的可信设备（issue #400）。
+ *
+ * <h3>★存的是随机 token 的 hash，不是设备指纹</h3>
+ *
+ * 设备指纹（UA + 屏幕 + 字体 + Canvas…）是**被动采集的跨站可追踪标识**，
+ * 用户无从察觉也无从清除，属于隐私敏感数据。本表刻意不走那条路：
+ * 勾选「记住该设备」时**签发一个随机 token** 存进 httpOnly cookie，
+ * 库里只留 sha256(token)。
+ *
+ * 这带来三个性质：
+ *   - **用户主动授权**——不勾选就没有任何记录
+ *   - **可自行清除**——清 cookie 即失效，不像指纹会跟着浏览器一辈子
+ *   - **可服务端吊销**——删行即刻失效（与 JWT session 不同）
+ *
+ * label 只存**粗粒度**描述（如 "Chrome on macOS"）供用户在设备列表里辨认，
+ * 不存完整 UA——完整 UA 本身就接近指纹。
+ */
+export const trustedDevices = pgTable(
+  'TrustedDevice',
+  {
+    id: text('id').primaryKey().notNull(),
+    userId: text('userId').notNull(),
+    /** sha256(随机 token) 的小写 hex —— ★不存明文，也不存指纹 */
+    tokenHash: text('tokenHash').notNull().unique(),
+    /** 粗粒度可读标签，仅供用户辨认；★不是完整 UA */
+    label: text('label'),
+    expires: timestamp('expires', { mode: 'date' }).notNull(),
+    lastUsedAt: timestamp('lastUsedAt', { mode: 'date' }),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('TrustedDevice_userId_idx').on(table.userId),
+    index('TrustedDevice_expires_idx').on(table.expires),
+  ]
+);
+
 export const twoFactorCodes = pgTable(
   'TwoFactorCode',
   {
