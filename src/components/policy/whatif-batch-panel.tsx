@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Alert, AlertDescription, Button, Card, CardBody, Input, Select, Stack } from '@/components/ui';
-import { allowedWindowPresets } from '@/lib/retention/window-coverage';
+import { allowedWindowPresets, assessWindowCoverage } from '@/lib/retention/window-coverage';
 
 /**
  * What-If 影响估算面板（ADR 0034 S4）。
@@ -147,6 +147,17 @@ export function WhatIfBatchPanel({
   const [customTo, setCustomTo] = useState('');
   const [batch, setBatch] = useState<BatchState | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // 自定义区间的实际覆盖情况（issue #396）。预设档位已被静态裁剪，
+  // 只有用户自填的区间才可能**部分**超出留存期，故只对 CUSTOM 计算。
+  const customCoverage = useMemo(() => {
+    if (windowKind !== 'CUSTOM' || !customFrom || !customTo) return null;
+    const from = new Date(customFrom);
+    const to = new Date(customTo);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return null;
+    if (from >= to) return null;
+    return assessWindowCoverage(null, from, to, undefined, retentionDays);
+  }, [windowKind, customFrom, customTo, retentionDays]);
   const [busyBatchId, setBusyBatchId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -314,6 +325,26 @@ export function WhatIfBatchPanel({
             <Button onClick={() => void start()} disabled={isRunning || starting}>
               {starting ? t('starting') : t('run')}
             </Button>
+
+            {/*
+              自定义区间超出留存期时的诚实标注（issue #396）。
+
+              ★为什么只对 CUSTOM 显示：预设档位已被 allowedWindowPresets 静态裁掉，
+              整档超出的选项根本不出现；只有用户自填的区间才可能部分超出。
+              对已经裁过的预设再提示一遍是噪音，会让真正的提示被忽略。
+
+              与 coverageNote（漏斗）/ previewAllLegacy（证据导出）同一原则：
+              样本不足不可怕，让用户误以为是全量才可怕。
+            */}
+            {customCoverage?.truncated && (
+              <p className="text-sm text-fg-muted">
+                {t('windowTruncated', {
+                  requested: customCoverage.requestedDays,
+                  covered: customCoverage.coveredDays ?? 0,
+                  retention: customCoverage.retentionDays ?? 0,
+                })}
+              </p>
+            )}
           </div>
 
           {error && (

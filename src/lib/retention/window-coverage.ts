@@ -125,9 +125,20 @@ export function assessWindowCoverage(
   from: Date,
   to: Date,
   now: Date = new Date(),
+  /**
+   * 直接给定留存天数，跳过 plan 解析。
+   *
+   * ★给客户端组件用：浏览器侧只拿到服务端算好的 `retentionDays`，**没有 plan**
+   * （plan 是敏感的计费信息，不该为了显示一句提示就下发到前端）。
+   * 传 `undefined` 则按 plan 解析，服务端路径不受影响。
+   */
+  retentionDaysOverride?: number | null,
 ): WindowCoverage {
   const requestedDays = wholeDaysBetween(from, to);
-  const { executionDays } = resolveRetention(plan);
+  const executionDays =
+    retentionDaysOverride !== undefined
+      ? retentionDaysOverride
+      : resolveRetention(plan).executionDays;
 
   if (executionDays === null) {
     // 无法判定留存期（enterprise / 未知 plan）→ 不做任何截断声明。

@@ -18,6 +18,7 @@
 
 import { describe, it, expect } from 'vitest';
 
+import { DEMO_SUPPLEMENT } from '@/i18n/demo-supplement';
 import { SKELETON_RETENTION_DAYS, resolveRetention } from '@/lib/retention/execution-retention';
 import {
   allowedWindowPresets,
@@ -134,6 +135,34 @@ describe('窗口 × 留存期一致性（issue #396）', () => {
     // whatif-batch-panel 的 useState 默认值是 LAST_MONTH。
     for (const plan of ['free', 'pro', 'team', 'enterprise']) {
       expect(presetsFor(plan), `${plan} 默认档位不可见`).toContain('LAST_MONTH');
+    }
+  });
+
+  it('★retentionDays 覆盖参数：客户端不需要拿到 plan 也能判定', () => {
+    // plan 是计费信息，不该为了显示一句提示就下发到浏览器。
+    // 客户端只拿服务端算好的 retentionDays，故 assessWindowCoverage 支持直接给天数。
+    const c = assessWindowCoverage(null, ago(365), NOW, NOW, 90);
+    expect(c.retentionDays).toBe(90);
+    expect(c.truncated).toBe(true);
+    expect(c.coveredDays).toBe(90);
+
+    // override 传 null（enterprise）→ 与按 plan 解析同样保持沉默
+    const ent = assessWindowCoverage(null, ago(365), NOW, NOW, null);
+    expect(ent.truncated).toBe(false);
+    expect(ent.retentionDays).toBeNull();
+  });
+
+  it('★四语都必须有 windowTruncated 文案且占位符齐全', () => {
+    // 缺 locale 会让该语言用户看到裸键名；缺占位符会让提示说不出具体天数，
+    // 变成「你的范围超了」这种无法据以行动的废话。
+    for (const locale of ['en', 'zh', 'de', 'hi'] as const) {
+      const tpl = (DEMO_SUPPLEMENT as Record<string, Record<string, Record<string, string>>>)[
+        locale
+      ]?.whatIf?.windowTruncated;
+      expect(tpl, `${locale} 缺 windowTruncated`).toBeTruthy();
+      for (const ph of ['{requested}', '{retention}', '{covered}']) {
+        expect(tpl, `${locale} 缺占位符 ${ph}`).toContain(ph);
+      }
     }
   });
 
