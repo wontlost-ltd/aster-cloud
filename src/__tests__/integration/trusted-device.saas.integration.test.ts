@@ -11,6 +11,9 @@
 // "一因子 + 一个长期持有物"。这是"记住设备"类功能的固有取舍，
 // 故有 30 天上限 + 可吊销，而不是无限期。
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 
@@ -200,8 +203,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('可信设备安全属性（iss
 // 用源码断言两条路径都接上了：真实调用需要起 Next route handler + session，
 // 那是 e2e 范畴；这里守的是"接线还在"，不冒充验证 HTTP 行为。
 describe('改密码吊销可信设备的接线（issue #400）', () => {
-  const read = (p: string) =>
-    require('node:fs').readFileSync(require('node:path').join(process.cwd(), p), 'utf8') as string;
+  const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8');
 
   it('★重置密码（忘记密码流程）必须吊销', () => {
     const src = read('src/app/api/auth/reset-password/route.ts');
