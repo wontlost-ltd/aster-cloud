@@ -157,8 +157,15 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
         setRemainingAttempts(verifyData.remainingAttempts);
       }
     } catch (verifyError) {
+      // ★此处**不再**降级继续登录（审查发现的 Critical 的一半）。
+      //   原本的「验证失败时仍然尝试登录」让被限流的诚实浏览器也 fail-open，
+      //   等于把预检变成纯装饰。现在预检异常即中止本次提交。
+      //   真正的兜底在服务端：authorize() 自身已有按邮箱的限流，
+      //   攻击者绕过本预检也拿不到无限次尝试。
       console.error('Verification error:', verifyError);
-      // 验证失败时仍然尝试登录（降级处理）
+      setError(t.errors.verificationFailed);
+      setIsLoading(false);
+      return;
     }
 
     // 2. 读出既有可信设备 token（httpOnly cookie，前端读不到，需走 API）。

@@ -24,7 +24,7 @@
 
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 
-import { and, eq, gt, lt } from 'drizzle-orm';
+import { and, eq, gt, lt, sql } from 'drizzle-orm';
 
 import { getDb } from '@/db';
 import { twoFactorCodes } from '@/db/schema';
@@ -39,6 +39,20 @@ export const CODE_TTL_MINUTES = 10;
  * 这不是"用户体验参数"，是安全参数。
  */
 export const MAX_ATTEMPTS = 5;
+
+/**
+ * 限次窗口长度（分钟）。窗口内的猜错与发信次数**跨码累计**。
+ *
+ * ★这是修复审查发现的 Critical 的核心：只按「码」限次，攻击者
+ * 猜满即重新签发就能拿到干净计数器；按「邮箱 + 窗口」限次才有意义。
+ */
+export const WINDOW_MINUTES = 60;
+
+/** 窗口内允许的累计猜错次数（跨码）。 */
+export const MAX_WINDOW_ATTEMPTS = 15;
+
+/** 窗口内允许签发的验证码数量——发信节流的真正锚点。 */
+export const MAX_WINDOW_ISSUED = 5;
 
 /** sha256(code) 的小写 hex —— 持久化的形态。 */
 export function hashCode(raw: string): string {
@@ -65,26 +79,74 @@ function safeEqualHex(a: string, b: string): boolean {
 /**
  * 为某邮箱签发一个新验证码，返回**明文码**（仅用于发信，不得落库/记日志）。
  *
- * <p>签发前作废该邮箱既有的未过期码：否则同时存在多个有效码会让
- * 攻击面按码数量线性放大，也会让用户困惑于"哪个码是对的"。
+ * <p>同一邮箱**至多一条**码行（email 上有 UNIQUE 索引 + upsert）：
+ * 多码并存会让攻击面按码数量线性放大，也会让 verifyCode 的 findFirst
+ * 任选一行、导致用户手里最新的码验不过。
+ *
+ * <p>★窗口计数（windowAttempts / windowIssued）**随签发继承而非重置**——
+ * 这是限次真正生效的前提，详见常量 WINDOW_MINUTES 的注释。
+ *
+ * <p>返回 WINDOW_EXCEEDED 时调用方**不应发信**，并应向用户提示稍后再试。
  */
-export async function issueCode(email: string, now: Date = new Date()): Promise<string> {
+export async function issueCode(
+  email: string,
+  now: Date = new Date(),
+): Promise<{ ok: true; code: string } | { ok: false; reason: 'WINDOW_EXCEEDED' }> {
   const db = getDb();
   const normalized = email.toLowerCase().trim();
 
-  await db.delete(twoFactorCodes).where(eq(twoFactorCodes.email, normalized));
-
-  const code = generateCode();
-  await db.insert(twoFactorCodes).values({
-    id: crypto.randomUUID(),
-    email: normalized,
-    codeHash: hashCode(code),
-    expires: new Date(now.getTime() + CODE_TTL_MINUTES * 60_000),
-    attempts: 0,
-    createdAt: now,
+  // 读既有行以继承窗口计数。★窗口不随签发重置，正是这一点堵住了
+  //   "猜满 5 次 → 重新签发 → 计数归零"的无限循环。
+  const prev = await db.query.twoFactorCodes.findFirst({
+    where: eq(twoFactorCodes.email, normalized),
   });
 
-  return code;
+  const windowAlive =
+    prev?.windowStartedAt != null &&
+    now.getTime() - prev.windowStartedAt.getTime() < WINDOW_MINUTES * 60_000;
+
+  const windowStartedAt = windowAlive ? prev!.windowStartedAt! : now;
+  const windowAttempts = windowAlive ? prev!.windowAttempts : 0;
+  const windowIssued = (windowAlive ? prev!.windowIssued : 0) + 1;
+
+  // 窗口内累计猜错已超限 → 拒绝再签发（否则限次形同虚设）。
+  if (windowAlive && windowAttempts >= MAX_WINDOW_ATTEMPTS) {
+    return { ok: false, reason: 'WINDOW_EXCEEDED' };
+  }
+  // 窗口内发信次数上限 → 防止登录接口成为邮件轰炸放大器。
+  if (windowAlive && windowIssued > MAX_WINDOW_ISSUED) {
+    return { ok: false, reason: 'WINDOW_EXCEEDED' };
+  }
+
+  const code = generateCode();
+  // ★单条原子 upsert 取代 delete+insert：email 上有 UNIQUE 索引，
+  //   并发时后到者走 onConflictDoUpdate 而不是插出第二行。
+  await db
+    .insert(twoFactorCodes)
+    .values({
+      id: crypto.randomUUID(),
+      email: normalized,
+      codeHash: hashCode(code),
+      expires: new Date(now.getTime() + CODE_TTL_MINUTES * 60_000),
+      attempts: 0,
+      windowAttempts,
+      windowStartedAt,
+      windowIssued,
+      createdAt: now,
+    })
+    .onConflictDoUpdate({
+      target: twoFactorCodes.email,
+      set: {
+        codeHash: hashCode(code),
+        expires: new Date(now.getTime() + CODE_TTL_MINUTES * 60_000),
+        attempts: 0,
+        windowAttempts,
+        windowStartedAt,
+        windowIssued,
+      },
+    });
+
+  return { ok: true, code };
 }
 
 export type VerifyResult =
@@ -94,8 +156,11 @@ export type VerifyResult =
 /**
  * 校验验证码。成功即消费掉（一次性）。
  *
- * <p>★失败时**不删除**记录，而是累加 attempts——删掉等于让攻击者
- * 每次猜错都能重新拿一个"干净"的计数器，限次形同虚设。
+ * <p>★失败时**不删除**记录，而是原子自增 attempts + windowAttempts。
+ * 删行等于让攻击者重新拿一个"干净"的计数器——这一点在初版实现里
+ * 只做到了一半（猜错时不删，但**达上限时删**），被安全审查抓出为 Critical：
+ * 删行后 hasActiveCode 失效 → 下次提交空码即签发新码、计数归零 → 无限重开。
+ * 现在达上限也保留行，由窗口计时自然失效。
  */
 export async function verifyCode(
   email: string,
@@ -116,22 +181,44 @@ export async function verifyCode(
     return { ok: false, reason: 'EXPIRED' };
   }
 
-  if (row.attempts >= MAX_ATTEMPTS) {
-    // 已达上限：直接作废，逼迫重新签发（重新签发会经过发信节流）。
-    await db.delete(twoFactorCodes).where(eq(twoFactorCodes.id, row.id));
+  // ★达上限**不删行**（审查发现的 Critical）：删掉会让 hasActiveCode 失效，
+  //   攻击者下次提交空码即可拿到全新计数器。留着行，并让窗口计数持续生效。
+  if (row.attempts >= MAX_ATTEMPTS || row.windowAttempts >= MAX_WINDOW_ATTEMPTS) {
     return { ok: false, reason: 'TOO_MANY_ATTEMPTS' };
   }
 
   if (!safeEqualHex(row.codeHash, hashCode(code))) {
-    await db
+    // ★单条原子 SQL 自增，并带 attempts 上限条件（审查发现的 High）：
+    //   原本的 SELECT→比较→UPDATE SET attempts = row.attempts + 1 是
+    //   读改写竞态——并发 N 个请求全读到 0、全写 1，单码可吸收数百次猜测。
+    const bumped = await db
       .update(twoFactorCodes)
-      .set({ attempts: row.attempts + 1 })
-      .where(eq(twoFactorCodes.id, row.id));
+      .set({
+        attempts: sql`${twoFactorCodes.attempts} + 1`,
+        windowAttempts: sql`${twoFactorCodes.windowAttempts} + 1`,
+      })
+      .where(
+        and(eq(twoFactorCodes.id, row.id), lt(twoFactorCodes.attempts, MAX_ATTEMPTS)),
+      )
+      .returning({ attempts: twoFactorCodes.attempts });
+
+    // 0 行返回 = 并发下别的请求已把计数推到上限 → 按超限处理，不当作普通错码。
+    if (bumped.length === 0) return { ok: false, reason: 'TOO_MANY_ATTEMPTS' };
     return { ok: false, reason: 'MISMATCH' };
   }
 
-  // 一次性：验过即销毁，防重放。
-  await db.delete(twoFactorCodes).where(eq(twoFactorCodes.id, row.id));
+  // 一次性：验过即作废，防重放。
+  //
+  // ★用「把 codeHash 置为不可能匹配的值 + 立刻过期」而不是删行：
+  //   删行会连窗口计数一起抹掉，等于给了攻击者一条"猜对一次即重置限次"的
+  //   通路（登录成功后窗口清零，下一轮又是满额）。行留着，让 windowAttempts
+  //   继续按时间窗自然失效。
+  //   codeHash 置空串：safeEqualHex 的长度检查会让它对任何 64 位 hash 都不等，
+  //   且 expires 设为已过期，双保险。
+  await db
+    .update(twoFactorCodes)
+    .set({ codeHash: '', expires: new Date(now.getTime() - 1) })
+    .where(eq(twoFactorCodes.id, row.id));
   return { ok: true };
 }
 

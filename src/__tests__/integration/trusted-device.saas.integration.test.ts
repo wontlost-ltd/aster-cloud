@@ -32,7 +32,7 @@ const BOB = 'u-bob-400';
 const NOW = new Date('2026-08-15T12:00:00.000Z');
 const later = (days: number) => new Date(NOW.getTime() + days * 24 * 60 * 60_000);
 
-import { setupTestDb, teardownTestDb } from './setup-postgres';
+import { cleanupTestDb, setupTestDb, teardownTestDb } from './setup-postgres';
 
 describe.skipIf(process.env.LICENSE_E2E !== '1')('可信设备安全属性（issue #400）', () => {
   beforeAll(async () => {
@@ -46,6 +46,9 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('可信设备安全属性（iss
   });
 
   beforeEach(async () => {
+    // ★统一清库：两个套件共用 TwoFactorCode/TrustedDevice，
+    //   只删自己的邮箱会让另一个套件的残留行造成跨文件污染。
+    await cleanupTestDb();
     for (const u of [ALICE, BOB]) {
       await db.delete(trustedDevices).where(eq(trustedDevices.userId, u));
     }

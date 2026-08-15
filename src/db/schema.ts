@@ -233,17 +233,38 @@ export const twoFactorCodes = pgTable(
     codeHash: text('codeHash').notNull(),
     expires: timestamp('expires', { mode: 'date' }).notNull(),
     /**
-     * 已尝试次数。达到上限即作废，防止 6 位码被暴力枚举。
+     * 本码上的已尝试次数。
      *
      * ★与账户锁定（`account-lockout.ts`）是**两条独立的轴**：
      * 那条锁的是"密码错太多次"，这条锁的是"验证码错太多次"。
      * 合并会让攻击者用错误验证码把受害者的账户锁死（拒绝服务）。
      */
     attempts: integer('attempts').default(0).notNull(),
+    /**
+     * ★**跨码累计**的尝试次数与窗口起点（审查发现的 Critical）。
+     *
+     * 只有 `attempts` 时，限次是**每码 5 次**而攻击者控制签发多少个码：
+     * 猜满 5 次 → 旧实现删行 → 下次提交空码即签发新码、计数归零 → 无限重开。
+     * 实测约 20 万轮即有 63% 命中 6 位码。
+     *
+     * 故把限次的锚点从「码」搬到「邮箱 + 时间窗」：这两个字段随
+     * 重新签发**继承**而非重置，窗口内累计超限就拒绝再签发。
+     */
+    windowAttempts: integer('windowAttempts').default(0).notNull(),
+    windowStartedAt: timestamp('windowStartedAt', { mode: 'date' }),
+    /**
+     * 本窗口内已签发过多少个码——发信节流的锚点。
+     *
+     * ★不能只靠"是否存在有效码"来节流：那个判据会被"删行"击穿，
+     * 每 5 次猜测就能再发一封信，登录接口变成邮件轰炸放大器。
+     */
+    windowIssued: integer('windowIssued').default(0).notNull(),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
   },
   (table) => [
-    index('TwoFactorCode_email_idx').on(table.email),
+    // ★email 唯一：应用层的 delete-then-insert 无事务，并发下会留下两条有效码
+    //   （审查实测 concurrent_valid_codes=2）。DB 级约束才是真保证。
+    uniqueIndex('TwoFactorCode_email_unique').on(table.email),
     index('TwoFactorCode_expires_idx').on(table.expires),
   ]
 );

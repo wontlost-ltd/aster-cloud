@@ -109,6 +109,35 @@ const config: NextAuthConfig = {
 
         const email = (credentials.email as string).toLowerCase().trim();
 
+        // ★服务端限流（审查发现的 Critical）。
+        //
+        //   此前 Turnstile / 限流 / 锁定预检**全在 `/api/auth/verify-login`**，
+        //   而那条路由是前端**自愿调用**的：攻击者用 curl 直接打
+        //   `/api/auth/callback/credentials` 就完全跳过。更糟的是前端在预检
+        //   失败时还会「降级处理」继续登录（fail-open）。
+        //
+        //   限流必须落在**攻击者无法绕过的那一层**，即 authorize() 本身。
+        //   这里按邮箱限流（authorize 拿不到 request/IP）；IP 维度的限流
+        //   仍由 verify-login 承担，两者互补而非互替。
+        try {
+          const { checkRateLimitDistributed } = await import('@/lib/rate-limit-distributed');
+          const { RateLimitPresets } = await import('@/lib/rate-limit');
+          const rl = await checkRateLimitDistributed(
+            `authorize:${email}`,
+            RateLimitPresets.LOGIN,
+          );
+          if (!rl.allowed) {
+            console.warn(`[auth] 限流拒绝: email=${email}`);
+            throw new Error('RATE_LIMITED');
+          }
+        } catch (err) {
+          // ★限流器自身故障时**放行**而非拒绝：限流是防滥用而非鉴权，
+          //   让它成为登录的单点故障会把一次 KV 抖动变成全站登录中断。
+          //   但 RATE_LIMITED 必须原样抛出，不能被这个 catch 吞掉。
+          if (err instanceof Error && err.message === 'RATE_LIMITED') throw err;
+          console.error('[auth] 限流检查失败，放行:', err);
+        }
+
         // 检查账户锁定状态
         const lockoutStatus = await checkAccountLockout(email);
         if (lockoutStatus.locked) {
@@ -204,19 +233,32 @@ const config: NextAuthConfig = {
         if (!submittedCode) {
           // 第一屏：密码已通过，签发并发信，然后要求前端进入第二屏。
           // 已有未过期码时不重复发信（节流，避免被当成轰炸放大器）。
-          try {
-            const { issueCode, hasActiveCode, CODE_TTL_MINUTES } = await import(
-              '@/lib/two-factor'
-            );
-            if (!(await hasActiveCode(email))) {
-              const code = await issueCode(email);
-              const { sendTwoFactorCodeEmail } = await import('@/lib/resend');
-              await sendTwoFactorCodeEmail(email, code, CODE_TTL_MINUTES);
+          // ★签发与发信分成两段 try：限次超限**不能**被 catch 改写成
+          //   TWO_FACTOR_SEND_FAILED——那会让用户看到"发送失败"并不断重试，
+          //   而真实原因是"你已经试太多次了"。两者的用户动作完全不同。
+          //   （我第一版正是把 throw 写在同一个 try 里，自查时发现。）
+          const { issueCode, hasActiveCode, CODE_TTL_MINUTES } = await import(
+            '@/lib/two-factor'
+          );
+          let pendingCode: string | null = null;
+          if (!(await hasActiveCode(email))) {
+            const issued = await issueCode(email);
+            if (!issued.ok) {
+              console.warn(`[auth] 2FA window exceeded: email=${email}`);
+              throw new Error('TWO_FACTOR_WINDOW_EXCEEDED');
             }
-          } catch (err) {
-            // 发信失败必须让用户看见：静默失败会让他卡在验证码界面永远等不到信。
-            console.error('[auth] 2FA code dispatch failed:', err);
-            throw new Error('TWO_FACTOR_SEND_FAILED');
+            pendingCode = issued.code;
+          }
+
+          if (pendingCode) {
+            try {
+              const { sendTwoFactorCodeEmail } = await import('@/lib/resend');
+              await sendTwoFactorCodeEmail(email, pendingCode, CODE_TTL_MINUTES);
+            } catch (err) {
+              // 发信失败必须让用户看见：静默失败会让他卡在验证码界面永远等不到信。
+              console.error('[auth] 2FA code dispatch failed:', err);
+              throw new Error('TWO_FACTOR_SEND_FAILED');
+            }
           }
           throw new Error('TWO_FACTOR_REQUIRED');
         }

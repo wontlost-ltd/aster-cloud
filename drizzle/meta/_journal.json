@@ -316,6 +316,27 @@
       "when": 1785904283466,
       "tag": "0043_execution_outcome",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1785904284466,
+      "tag": "0044_two_factor_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1785904285466,
+      "tag": "0045_trusted_devices",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1785904286466,
+      "tag": "0046_two_factor_window",
+      "breakpoints": true
     }
   ]
 }
