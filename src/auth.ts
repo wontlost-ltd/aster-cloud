@@ -36,6 +36,21 @@ const config: NextAuthConfig = {
   adapter: DrizzleAdapter(getDb),
 
   // OAuth 和 Credentials providers
+  // ★★ 二次验证的覆盖范围（issue #400）——**OAuth 路径不经过第二因子** ★★
+  //
+  // 邮件 6 位码挂在下面的 Credentials.authorize() 里，而 GitHub/Google
+  // **不走 authorize()**：OAuth 回调直接进 jwt/session callback。
+  // 所以走 OAuth 登录的用户，本站不施加第二因子，安全性完全取决于
+  // 他在 GitHub/Google 上**自己有没有开 2FA**——而多数人没开。
+  //
+  // 这是**有意的取舍**而非遗漏：给 OAuth 也加一道码会把「一键登录」变成两步，
+  // 且 OAuth 提供方本就承担了身份验证职责。但它意味着一句话必须说准：
+  //   ✅「密码登录已启用二次验证」
+  //   ❌「本站已启用二次验证」——后者对 OAuth 用户不成立
+  // 对外材料、合规问卷、安全页面引用时，请勿把它说成全站覆盖。
+  //
+  // 若将来要求全站强制，需在 signIn callback 里对 OAuth 也插入一次验证，
+  // 那是独立改动（涉及 OAuth 回调的中断与恢复），不在 #400 第一步范围内。
   providers: [
     GitHub({
       clientId: process.env.GITHUB_CLIENT_ID,
@@ -203,6 +218,17 @@ const config: NextAuthConfig = {
   // 使用 JWT session 策略
   session: {
     strategy: 'jwt',
+    /**
+     * 7 天（issue #400）。此前未设置，用的是 Auth.js 默认的 **30 天**。
+     *
+     * ★为什么要显式设短：JWT 策略下 session **无法服务端吊销**——
+     * 改密码、发现异常登录、甚至删掉用户，已签发的 token 在过期前都仍然有效。
+     * 有效期是这条链路上**唯一**的补偿手段，30 天对信贷风控场景偏长。
+     *
+     * ★它同时决定了二次验证的实际频率：一次 6 位码换来的免验证窗口就是这个数。
+     * 调长会同时削弱两件事（吊销延迟 + 验证频率），不是单纯的体验参数。
+     */
+    maxAge: 7 * 24 * 60 * 60,
   },
 
   // 自定义页面
