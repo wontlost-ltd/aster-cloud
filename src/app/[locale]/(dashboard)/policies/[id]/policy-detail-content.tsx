@@ -74,6 +74,8 @@ interface Translations {
 interface PolicyDetailContentProps {
   /** 租户是否拥有 What-If 权益（ADR 0034 §7.2）。server 侧读 plan 得出。 */
   whatIfEntitled?: boolean;
+  /** 执行日志留存天数（#396），透传给 What-If 面板裁剪窗口 */
+  retentionDays?: number | null;
   policy: Policy;
   translations: Translations;
   locale: string;
@@ -81,6 +83,7 @@ interface PolicyDetailContentProps {
 
 export function PolicyDetailContent({
   whatIfEntitled = false,
+  retentionDays = null,
   policy,
   translations: t,
   locale,
@@ -290,7 +293,7 @@ export function PolicyDetailContent({
       </div>
 
       {/* Version Management with Approval Workflow */}
-      <PolicyVersionsTab policyId={policy.id} whatIfEntitled={whatIfEntitled} />
+      <PolicyVersionsTab policyId={policy.id} whatIfEntitled={whatIfEntitled} retentionDays={retentionDays} />
 
       {/* 决策分析（Phase 1 条件漏斗 + Phase 4 What-if）。
           自带 i18n，故不走 translations prop——避免详情页把每个新面板的

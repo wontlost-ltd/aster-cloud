@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Alert, AlertDescription, Button, Card, CardBody, Input, Select, Stack } from '@/components/ui';
+import { allowedWindowPresets, assessWindowCoverage } from '@/lib/retention/window-coverage';
 
 /**
  * What-If 影响估算面板（ADR 0034 S4）。
@@ -113,18 +114,50 @@ export function WhatIfBatchPanel({
   targetVersionId,
   /** 租户是否拥有 What-If 权益。false → 入口可见但禁用 + 升级引导（§7.5）。 */
   entitled,
+  /**
+   * 该租户的执行日志留存天数（issue #396）。null = 无法判定（enterprise）→ 不裁剪。
+   *
+   * ★用来裁掉「必然拿不到数据」的窗口档位：What-If 要真回放就得读 `input`，
+   * 而 `input` 随执行日志按 plan 被留存 GC 删除。此前四个档位对所有档位一视同仁，
+   * 于是 free（7 天留存）点「最近一年」必然空窗，而选项还在那里——
+   * **那套窗口实际只适用于留存期最长的企业级用户。**
+   */
+  retentionDays = null,
 }: {
   policyId: string;
   baseVersionId: string;
   targetVersionId: string;
   entitled: boolean;
+  retentionDays?: number | null;
 }) {
   const t = useTranslations('whatIf');
+  // 按留存期裁剪可选窗口。整档超出才隐藏；边缘擦边（日历月导致的 1-2 天）
+  // 保留并由服务端返回的实际条数说话——见 allowedWindowPresets 的注释。
+  const visiblePresets = useMemo(() => {
+    const allowed = new Set(
+      allowedWindowPresets(
+        WINDOW_PRESETS.map((p) => p.kind),
+        retentionDays,
+      ),
+    );
+    return WINDOW_PRESETS.filter((p) => allowed.has(p.kind));
+  }, [retentionDays]);
   const [windowKind, setWindowKind] = useState<string>('LAST_MONTH');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [batch, setBatch] = useState<BatchState | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // 自定义区间的实际覆盖情况（issue #396）。预设档位已被静态裁剪，
+  // 只有用户自填的区间才可能**部分**超出留存期，故只对 CUSTOM 计算。
+  const customCoverage = useMemo(() => {
+    if (windowKind !== 'CUSTOM' || !customFrom || !customTo) return null;
+    const from = new Date(customFrom);
+    const to = new Date(customTo);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return null;
+    if (from >= to) return null;
+    return assessWindowCoverage(null, from, to, undefined, retentionDays);
+  }, [windowKind, customFrom, customTo, retentionDays]);
   const [busyBatchId, setBusyBatchId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -253,7 +286,7 @@ export function WhatIfBatchPanel({
                 onChange={(e) => setWindowKind(e.target.value)}
                 disabled={isRunning || starting}
               >
-                {WINDOW_PRESETS.map((p) => (
+                {visiblePresets.map((p) => (
                   <option key={p.kind} value={p.kind}>
                     {t(p.key)}
                   </option>
@@ -292,6 +325,26 @@ export function WhatIfBatchPanel({
             <Button onClick={() => void start()} disabled={isRunning || starting}>
               {starting ? t('starting') : t('run')}
             </Button>
+
+            {/*
+              自定义区间超出留存期时的诚实标注（issue #396）。
+
+              ★为什么只对 CUSTOM 显示：预设档位已被 allowedWindowPresets 静态裁掉，
+              整档超出的选项根本不出现；只有用户自填的区间才可能部分超出。
+              对已经裁过的预设再提示一遍是噪音，会让真正的提示被忽略。
+
+              与 coverageNote（漏斗）/ previewAllLegacy（证据导出）同一原则：
+              样本不足不可怕，让用户误以为是全量才可怕。
+            */}
+            {customCoverage?.truncated && (
+              <p className="text-sm text-fg-muted">
+                {t('windowTruncated', {
+                  requested: customCoverage.requestedDays,
+                  covered: customCoverage.coveredDays ?? 0,
+                  retention: customCoverage.retentionDays ?? 0,
+                })}
+              </p>
+            )}
           </div>
 
           {error && (

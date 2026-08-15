@@ -27,6 +27,8 @@ interface VersionComparePanelProps {
    * ★由 server component 读 plan 后传下来，不在客户端猜。
    */
   whatIfEntitled?: boolean;
+  /** 执行日志留存天数（#396）：用于裁剪 What-If 可选窗口。null=不裁剪 */
+  retentionDays?: number | null;
 }
 
 interface DiffLine {
@@ -150,6 +152,7 @@ export function VersionComparePanel({
   initialRightVersion,
   onClose,
   whatIfEntitled = false,
+  retentionDays = null,
 }: VersionComparePanelProps) {
   const sortedVersions = useMemo(
     () => [...versions].sort((a, b) => b.version - a.version),
@@ -377,6 +380,7 @@ export function VersionComparePanel({
             baseVersionId={leftRowId}
             targetVersionId={rightRowId}
             entitled={whatIfEntitled}
+              retentionDays={retentionDays}
           />
         </div>
       )}

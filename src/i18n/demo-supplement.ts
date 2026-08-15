@@ -106,6 +106,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       needsPro: 'This feature requires a Pro plan or above.',
       entitlementHint: 'See how switching to another policy version would have changed past decisions.',
       alreadyRunning: 'A batch is already running. You can start a new one once it finishes.',
+      // ★超出留存期时的诚实标注（issue #396）：预设档位已被静态裁掉，
+      //   这条只对用户自填的区间出现——它可能**部分**超出。
+      windowTruncated:
+        'Your {requested}-day range extends past the {retention}-day execution log retention on your plan — only the most recent {covered} days have data to replay.',
       startFailed: 'Failed to start the batch.',
       failureTargetCompile: 'The target version failed to compile. Retrying will not help.',
       failureInputIncompatible: 'Historical inputs are incompatible with the target version.',
@@ -535,6 +539,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       needsPro: '此功能需要 Pro 及以上套餐。',
       entitlementHint: '看看把策略换成另一个版本，过去的决策会有什么不同。',
       alreadyRunning: '已有批次在运行，完成后可再发起。',
+      windowTruncated:
+        '您选择的 {requested} 天区间超出了当前套餐 {retention} 天的执行日志留存期——只有最近 {covered} 天有可回放的数据。',
       startFailed: '批次启动失败。',
       failureTargetCompile: '目标版本编译失败，重跑也没用。',
       failureInputIncompatible: '历史输入与目标版本不兼容。',
@@ -954,6 +960,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       needsPro: 'Diese Funktion erfordert mindestens den Pro-Tarif.',
       entitlementHint: 'Sehen Sie, wie sich vergangene Entscheidungen mit einer anderen Richtlinienversion geändert hätten.',
       alreadyRunning: 'Es läuft bereits ein Lauf. Nach dessen Abschluss können Sie einen neuen starten.',
+      windowTruncated:
+        'Ihr {requested}-Tage-Zeitraum überschreitet die {retention}-tägige Aufbewahrung der Ausführungsprotokolle Ihres Tarifs — nur die letzten {covered} Tage enthalten wiederholbare Daten.',
       startFailed: 'Lauf konnte nicht gestartet werden.',
       failureTargetCompile: 'Die Zielversion konnte nicht kompiliert werden. Ein erneuter Versuch hilft nicht.',
       failureInputIncompatible: 'Historische Eingaben sind mit der Zielversion nicht kompatibel.',
@@ -1373,6 +1381,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       needsPro: 'इस सुविधा के लिए Pro या उससे ऊपर की योजना आवश्यक है।',
       entitlementHint: 'देखें कि किसी दूसरे नीति संस्करण पर स्विच करने से पिछले निर्णय कैसे बदलते।',
       alreadyRunning: 'एक बैच पहले से चल रहा है। पूरा होने पर नया शुरू कर सकते हैं।',
+      windowTruncated:
+        'आपकी {requested} दिन की अवधि आपके प्लान की {retention} दिन की निष्पादन लॉग अवधारण सीमा से आगे जाती है — केवल पिछले {covered} दिनों का डेटा पुनः चलाया जा सकता है।',
       startFailed: 'बैच शुरू नहीं हो सका।',
       failureTargetCompile: 'लक्ष्य संस्करण संकलित नहीं हो सका। दोबारा चलाने से मदद नहीं मिलेगी।',
       failureInputIncompatible: 'ऐतिहासिक इनपुट लक्ष्य संस्करण के साथ असंगत हैं।',

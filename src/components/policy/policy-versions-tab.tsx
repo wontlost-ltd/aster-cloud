@@ -12,11 +12,13 @@ interface PolicyVersionsTabProps {
   policyId: string;
   /** 租户是否拥有 What-If 权益（ADR 0034 §7.2）；透传给比较面板。 */
   whatIfEntitled?: boolean;
+  /** 执行日志留存天数（#396），透传给 What-If 面板裁剪窗口 */
+  retentionDays?: number | null;
 }
 
 type ViewMode = 'list' | 'detail' | 'compare';
 
-export function PolicyVersionsTab({ policyId, whatIfEntitled = false }: PolicyVersionsTabProps) {
+export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionDays = null }: PolicyVersionsTabProps) {
   const { data: session } = useSession();
   const t = useTranslations('policies.versions');
   const tCommon = useTranslations('common');
@@ -194,6 +196,7 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false }: PolicyVe
               createdAt: v.createdAt,
             }))}
             whatIfEntitled={whatIfEntitled}
+            retentionDays={retentionDays}
             onClose={handleCloseCompare}
           />
         )}
