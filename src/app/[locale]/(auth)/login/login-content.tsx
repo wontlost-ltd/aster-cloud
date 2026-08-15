@@ -30,6 +30,9 @@ interface Translations {
   password: string;
   forgotPassword: string;
   signIn: string;
+  /** 二次验证（issue #400） */
+  twoFactorLabel: string;
+  twoFactorHint: string;
   errors: {
     generic: string;
     rateLimited: string;
@@ -39,6 +42,10 @@ interface Translations {
     verificationFailed: string;
     invalidCredentials: string;
     invalidCredentialsWithAttempts: string;
+    twoFactorMismatch: string;
+    twoFactorExpired: string;
+    twoFactorTooManyAttempts: string;
+    twoFactorSendFailed: string;
   };
 }
 
@@ -70,6 +77,15 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
   const [error, setError] = useState('');
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
+  /**
+   * 二次验证（issue #400）。
+   *
+   * ★`twoFactorStage` 为 true 时进入第二屏——但 email/password 仍保留在 state 里，
+   * 因为 Auth.js 的 authorize() 是一次性的：第二屏必须**连同三个字段一起**提交。
+   * 不引入半登录 token（那是新的凭据类型，泄露即绕过第一因子）。
+   */
+  const [twoFactorStage, setTwoFactorStage] = useState(false);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
   const { data: session } = useSession();
   const searchParams = useSearchParams();
 
@@ -145,11 +161,48 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
     const result = await signIn('credentials', {
       email,
       password,
+      // 第一屏为空串 → 服务端签发并发信、抛 TWO_FACTOR_REQUIRED；
+      // 第二屏带上用户输入的码 → 服务端校验通过才发 session。
+      twoFactorCode,
       redirect: false,
       callbackUrl,
     });
 
     if (result?.error) {
+      // ── 二次验证分支（issue #400）──────────────────────────────────
+      // ★这些不是「登录失败」，是流程的正常中间态，故不能落到
+      //   invalidCredentials 那条文案上——那会让用户以为密码错了、
+      //   反复重输密码而永远走不到第二屏。
+      if (result.error === 'TWO_FACTOR_REQUIRED') {
+        setTwoFactorStage(true);
+        setError('');
+        setIsLoading(false);
+        setTurnstileToken(null);
+        return;
+      }
+      if (result.error === 'TWO_FACTOR_SEND_FAILED') {
+        setError(t.errors.twoFactorSendFailed);
+        setIsLoading(false);
+        setTurnstileToken(null);
+        return;
+      }
+      if (result.error.startsWith('TWO_FACTOR_')) {
+        // MISMATCH / EXPIRED / NO_CODE / TOO_MANY_ATTEMPTS
+        const key = result.error.replace('TWO_FACTOR_', '');
+        setTwoFactorStage(true);
+        setTwoFactorCode('');
+        setError(
+          key === 'MISMATCH'
+            ? t.errors.twoFactorMismatch
+            : key === 'TOO_MANY_ATTEMPTS'
+              ? t.errors.twoFactorTooManyAttempts
+              : t.errors.twoFactorExpired,
+        );
+        setIsLoading(false);
+        setTurnstileToken(null);
+        return;
+      }
+
       if (result.error === 'ACCOUNT_LOCKED') {
         setError(t.errors.accountLockedGeneric);
       } else {
@@ -325,6 +378,39 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
                       onChange={(e) => setPassword(e.target.value)}
                     />
                   </Stack>
+
+                  {/*
+                    二次验证码（issue #400）——只在第二屏出现。
+
+                    ★email/password 两个输入框**保留可见且可改**：Auth.js 的
+                    authorize() 是一次性的，第二屏必须连同三个字段一起提交。
+                    藏掉它们会让用户以为已经"过了密码关"，而实际上每次提交
+                    都在重验密码。
+
+                    inputMode/autoComplete 给移动端与密码管理器提示，
+                    让邮箱里的码能被系统自动填充。
+                  */}
+                  {twoFactorStage && (
+                    <Stack gap={2}>
+                      <Label htmlFor="twoFactorCode">{t.twoFactorLabel}</Label>
+                      <Input
+                        id="twoFactorCode"
+                        name="twoFactorCode"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        pattern="[0-9]{6}"
+                        maxLength={6}
+                        required
+                        autoFocus
+                        value={twoFactorCode}
+                        onChange={(e) =>
+                          setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))
+                        }
+                      />
+                      <p className="text-xs text-fg-muted">{t.twoFactorHint}</p>
+                    </Stack>
+                  )}
 
                   {/* Turnstile */}
                   {turnstileSiteKey ? (

@@ -171,6 +171,46 @@ export const verificationTokens = pgTable(
   ]
 );
 
+/**
+ * 登录二次验证的一次性邮件验证码（issue #400）。
+ *
+ * <h3>为什么不复用 VerificationToken / PasswordResetToken</h3>
+ *
+ * - `VerificationToken` 没有尝试次数字段。6 位码只有 100 万种可能，
+ *   **必须限次**，否则在有效期内可被暴力枚举。
+ * - `PasswordResetToken` 语义是"重置密码"，混用会让两条链路的失效逻辑纠缠
+ *   （改密码要不要连带作废 2FA 码？）。分表让各自的生命周期独立。
+ *
+ * <h3>存的是 sha256(code)，不是明文</h3>
+ *
+ * 与 `password-reset-tokens.ts` 同一纪律：只读的 DB 泄露不应直接产出可用的
+ * 登录凭据。校验时对传入的码做同样的 hash 再比对。
+ */
+export const twoFactorCodes = pgTable(
+  'TwoFactorCode',
+  {
+    id: text('id').primaryKey().notNull(),
+    /** 归属邮箱（小写规范化后），与登录时用的口径一致 */
+    email: text('email').notNull(),
+    /** sha256(6 位码) 的小写 hex —— ★不存明文 */
+    codeHash: text('codeHash').notNull(),
+    expires: timestamp('expires', { mode: 'date' }).notNull(),
+    /**
+     * 已尝试次数。达到上限即作废，防止 6 位码被暴力枚举。
+     *
+     * ★与账户锁定（`account-lockout.ts`）是**两条独立的轴**：
+     * 那条锁的是"密码错太多次"，这条锁的是"验证码错太多次"。
+     * 合并会让攻击者用错误验证码把受害者的账户锁死（拒绝服务）。
+     */
+    attempts: integer('attempts').default(0).notNull(),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('TwoFactorCode_email_idx').on(table.email),
+    index('TwoFactorCode_expires_idx').on(table.expires),
+  ]
+);
+
 export const passwordResetTokens = pgTable(
   'PasswordResetToken',
   {

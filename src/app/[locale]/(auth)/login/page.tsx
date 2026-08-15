@@ -37,6 +37,9 @@ export default async function LoginPage() {
     password: t('password'),
     forgotPassword: t('forgotPassword'),
     signIn: t('signIn'),
+    // 二次验证（issue #400）
+    twoFactorLabel: t('twoFactorLabel'),
+    twoFactorHint: t('twoFactorHint'),
     errors: {
       generic: t('errors.generic'),
       rateLimited: t.raw('errors.rateLimited'),
@@ -46,6 +49,10 @@ export default async function LoginPage() {
       verificationFailed: t('errors.verificationFailed'),
       invalidCredentials: t('errors.invalidCredentials'),
       invalidCredentialsWithAttempts: t.raw('errors.invalidCredentialsWithAttempts'),
+      twoFactorMismatch: t('errors.twoFactorMismatch'),
+      twoFactorExpired: t('errors.twoFactorExpired'),
+      twoFactorTooManyAttempts: t('errors.twoFactorTooManyAttempts'),
+      twoFactorSendFailed: t('errors.twoFactorSendFailed'),
     },
   };
 

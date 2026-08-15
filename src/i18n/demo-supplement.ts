@@ -169,6 +169,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 侧栏/导航「Reports」改标「Evidence」（URL 仍 /reports；deepMerge 覆盖包内字符串）。
     dashboardNav: { reports: 'Evidence' },
+    // 二次验证（issue #400）——走本地补充层，不需要 ui-messages 跨仓发版。
+    auth: {
+      login: {
+        twoFactorLabel: 'Verification code',
+        twoFactorHint: 'We emailed a 6-digit code. It expires in 10 minutes.',
+        errors: {
+          twoFactorMismatch: 'That code is not correct. Check the latest email and try again.',
+          twoFactorExpired: 'That code expired. Sign in again to get a new one.',
+          twoFactorTooManyAttempts: 'Too many incorrect codes. Sign in again to get a new one.',
+          twoFactorSendFailed: 'We could not send your verification code. Please try again shortly.',
+        },
+      },
+    },
     // ★仪表盘 Quick Action 的文案（issue: 入口承诺了产品做不到的事）。
     //   包内原文是 “Generate Report” / “GDPR, HIPAA, SOC2”——而：
     //     · HIPAA / SOC2 在全仓**零实现**；
@@ -599,6 +612,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       saveFailed: '更新失败——请重试',
     },
     dashboardNav: { reports: '证据' },
+    auth: {
+      login: {
+        twoFactorLabel: '验证码',
+        twoFactorHint: '我们已向您的邮箱发送 6 位验证码，10 分钟内有效。',
+        errors: {
+          twoFactorMismatch: '验证码不正确，请查收最新邮件后重试。',
+          twoFactorExpired: '验证码已过期，请重新登录以获取新验证码。',
+          twoFactorTooManyAttempts: '错误次数过多，请重新登录以获取新验证码。',
+          twoFactorSendFailed: '验证码发送失败，请稍后重试。',
+        },
+      },
+    },
     // 见 en 段注释：入口原文承诺 GDPR/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
       quickActions: {
@@ -1020,6 +1045,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       saveFailed: 'Aktualisierung fehlgeschlagen — bitte erneut versuchen',
     },
     dashboardNav: { reports: 'Nachweise' },
+    auth: {
+      login: {
+        twoFactorLabel: 'Bestätigungscode',
+        twoFactorHint: 'Wir haben Ihnen einen 6-stelligen Code per E-Mail gesendet. Er läuft in 10 Minuten ab.',
+        errors: {
+          twoFactorMismatch: 'Dieser Code ist nicht korrekt. Prüfen Sie die neueste E-Mail und versuchen Sie es erneut.',
+          twoFactorExpired: 'Dieser Code ist abgelaufen. Melden Sie sich erneut an, um einen neuen zu erhalten.',
+          twoFactorTooManyAttempts: 'Zu viele falsche Codes. Melden Sie sich erneut an, um einen neuen zu erhalten.',
+          twoFactorSendFailed: 'Der Bestätigungscode konnte nicht gesendet werden. Bitte versuchen Sie es in Kürze erneut.',
+        },
+      },
+    },
     // 见 en 段注释：入口原文承诺 DSGVO/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
       quickActions: {
@@ -1441,6 +1478,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       saveFailed: 'अपडेट नहीं हो सका — कृपया पुनः प्रयास करें',
     },
     dashboardNav: { reports: 'साक्ष्य' },
+    auth: {
+      login: {
+        twoFactorLabel: 'सत्यापन कोड',
+        twoFactorHint: 'हमने आपके ईमेल पर 6 अंकों का कोड भेजा है। यह 10 मिनट में समाप्त हो जाएगा।',
+        errors: {
+          twoFactorMismatch: 'यह कोड सही नहीं है। नवीनतम ईमेल देखें और पुनः प्रयास करें।',
+          twoFactorExpired: 'यह कोड समाप्त हो गया। नया कोड पाने के लिए फिर से साइन इन करें।',
+          twoFactorTooManyAttempts: 'बहुत अधिक गलत कोड। नया कोड पाने के लिए फिर से साइन इन करें।',
+          twoFactorSendFailed: 'हम आपका सत्यापन कोड नहीं भेज सके। कृपया शीघ्र ही पुनः प्रयास करें।',
+        },
+      },
+    },
     // 见 en 段注释：入口原文承诺 GDPR/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
       quickActions: {

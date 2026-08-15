@@ -57,6 +57,11 @@ const config: NextAuthConfig = {
       credentials: {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
+        /**
+         * 邮件二次验证码（issue #400）。第一屏不传（触发签发+发信），
+         * 第二屏连同 email/password 一起回传——见 authorize 内的说明。
+         */
+        twoFactorCode: { label: 'Verification code', type: 'text' },
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
@@ -135,6 +140,51 @@ const config: NextAuthConfig = {
             throw new Error('ACCOUNT_LOCKED');
           }
           return null;
+        }
+
+        // ── 第二因子：邮件验证码（issue #400）────────────────────────────
+        //
+        // ★这一段必须在"密码已验过"之后、"发 session"之前。放前面等于让
+        //   未提供密码的人也能触发发信（邮件轰炸放大器）；放后面就没有意义了。
+        //
+        // ★Auth.js v5 的 authorize() 没有"密码对了但还要第二步"的中间态，
+        //   故采用**一次提交收齐三个字段**：前端分两屏，第二屏连同 email+password
+        //   一起提交 twoFactorCode。不引入半登录 token——那是新的凭据类型、
+        //   泄露即绕过第一因子，需要单独一轮安全审计（见 lib/two-factor.ts 头注释）。
+        const submittedCode =
+          typeof credentials.twoFactorCode === 'string'
+            ? credentials.twoFactorCode.trim()
+            : '';
+
+        if (!submittedCode) {
+          // 第一屏：密码已通过，签发并发信，然后要求前端进入第二屏。
+          // 已有未过期码时不重复发信（节流，避免被当成轰炸放大器）。
+          try {
+            const { issueCode, hasActiveCode, CODE_TTL_MINUTES } = await import(
+              '@/lib/two-factor'
+            );
+            if (!(await hasActiveCode(email))) {
+              const code = await issueCode(email);
+              const { sendTwoFactorCodeEmail } = await import('@/lib/resend');
+              await sendTwoFactorCodeEmail(email, code, CODE_TTL_MINUTES);
+            }
+          } catch (err) {
+            // 发信失败必须让用户看见：静默失败会让他卡在验证码界面永远等不到信。
+            console.error('[auth] 2FA code dispatch failed:', err);
+            throw new Error('TWO_FACTOR_SEND_FAILED');
+          }
+          throw new Error('TWO_FACTOR_REQUIRED');
+        }
+
+        const { verifyCode } = await import('@/lib/two-factor');
+        const verdict = await verifyCode(email, submittedCode);
+        if (!verdict.ok) {
+          // ★验证码错**不**计入账户锁定：那条轴锁的是"密码错太多次"。
+          //   合并会让攻击者用错误验证码把受害者账户锁死（拒绝服务）——
+          //   他只需要知道邮箱，而邮箱不是秘密。
+          //   验证码自己的限次在 verifyCode 内部（MAX_ATTEMPTS）。
+          console.warn(`[auth] 2FA reject: email=${email} reason=${verdict.reason}`);
+          throw new Error(`TWO_FACTOR_${verdict.reason}`);
         }
 
         // 登录成功，重置失败计数

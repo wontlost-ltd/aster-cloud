@@ -182,6 +182,49 @@ export async function sendPasswordResetEmail(email: string, token: string) {
   });
 }
 
+/**
+ * 登录二次验证码（issue #400）。
+ *
+ * <p>★与本文件其它模板不同：Resend 未配置时**不把码打进日志**。
+ * 其它模板打的是重置链接（本来就要发给用户、且一次性），而 2FA 码打进日志
+ * 等于把第二因子写进任何能读日志的地方——运维、日志聚合、错误上报都能看到，
+ * 二次验证就白做了。
+ *
+ * <p>开发环境确实需要拿到码，故只在 `NODE_ENV !== 'production'` 时输出，
+ * 并显式标注这是开发便利而非正常路径。生产未配置 Resend 时**抛错**：
+ * 静默失败会让用户卡在验证码界面且收不到信，而运维看不出原因。
+ */
+export async function sendTwoFactorCodeEmail(
+  email: string,
+  code: string,
+  ttlMinutes: number,
+) {
+  const resend = await ensureResend();
+  if (!resend) {
+    if (process.env.NODE_ENV !== 'production') {
+      // 开发便利：生产分支永不走到这里。
+      console.log(`[dev-only] 2FA code for ${email}: ${code}`);
+      return;
+    }
+    throw new Error(
+      'RESEND_NOT_CONFIGURED: 无法发送二次验证码，登录将无法完成',
+    );
+  }
+
+  await resend.emails.send({
+    from: `Aster Cloud <${FROM_EMAIL}>`,
+    to: email,
+    subject: `${code} is your Aster Cloud sign-in code`,
+    html: `
+      <h1>Your sign-in code</h1>
+      <p style="font-size:28px;letter-spacing:4px;font-weight:700">${code}</p>
+      <p>This code expires in ${ttlMinutes} minutes and can only be used once.</p>
+      <p>If you didn't try to sign in, someone may have your password —
+         change it immediately.</p>
+    `,
+  });
+}
+
 export async function sendPaymentFailedEmail(email: string, name: string) {
   const resend = await ensureResend();
   if (!resend) return;
