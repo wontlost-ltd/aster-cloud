@@ -71,8 +71,28 @@ async function ensureResend(): Promise<Resend | null> {
   return _instance;
 }
 
-const FROM_EMAIL = safeEnv('RESEND_FROM_EMAIL') || 'noreply@aster-lang.cloud';
-const APP_URL = safeEnv('NEXT_PUBLIC_APP_URL') || 'https://aster-lang.cloud';
+/**
+ * ★必须**每次调用时**读，不能在模块顶层求值（本次线上故障的根因）。
+ *
+ * OpenNext 的 `populateProcessEnv()` 是**逐请求**把 Cloudflare 绑定拷进
+ * `process.env` 的；而模块顶层代码在 worker 冷启动、第一个请求进来**之前**
+ * 就执行了。此时 `process.env.RESEND_FROM_EMAIL` 还是空的，
+ * `const FROM_EMAIL = ... || fallback` 于是被**永久**固定成兜底值，
+ * 后续请求即便 env 已就绪也永远读不到——常量已经算完了。
+ *
+ * 实测后果：发信人恒为 noreply@aster-lang.cloud（未在 Resend 验证的域），
+ * Resend 拒收，用户看到「无法发送验证码」。
+ *
+ * 这与 `ensureResend()` 把 `safeEnv('RESEND_API_KEY')` 放在函数体内是同一个
+ * 道理——那处当初就写对了，这两个常量漏了。
+ */
+function fromEmail(): string {
+  return safeEnv('RESEND_FROM_EMAIL') || 'noreply@aster-lang.cloud';
+}
+
+function appUrl(): string {
+  return safeEnv('NEXT_PUBLIC_APP_URL') || 'https://aster-lang.cloud';
+}
 
 // Escape HTML to prevent XSS attacks
 function escapeHtml(text: string): string {
@@ -94,7 +114,7 @@ export async function sendWelcomeEmail(email: string, name: string) {
   const safeName = escapeHtml(name);
 
   await resend.emails.send({
-    from: `Aster Cloud <${FROM_EMAIL}>`,
+    from: `Aster Cloud <${fromEmail()}>`,
     to: email,
     subject: 'Welcome to Aster Cloud!',
     html: `
@@ -106,7 +126,7 @@ export async function sendWelcomeEmail(email: string, name: string) {
         <li>Advanced PII detection</li>
         <li>Compliance reports</li>
       </ul>
-      <p><a href="${APP_URL}/dashboard">Go to Dashboard</a></p>
+      <p><a href="${appUrl()}/dashboard">Go to Dashboard</a></p>
     `,
   });
 }
@@ -122,7 +142,7 @@ export async function sendTrialExpiringEmail(
   const safeName = escapeHtml(name);
 
   await resend.emails.send({
-    from: `Aster Cloud <${FROM_EMAIL}>`,
+    from: `Aster Cloud <${fromEmail()}>`,
     to: email,
     subject: `Your Pro trial ends in ${daysLeft} day${daysLeft > 1 ? 's' : ''}`,
     html: `
@@ -135,7 +155,7 @@ export async function sendTrialExpiringEmail(
         <li>Compliance reports</li>
         <li>API access</li>
       </ul>
-      <p><a href="${APP_URL}/billing">Upgrade Now</a></p>
+      <p><a href="${appUrl()}/billing">Upgrade Now</a></p>
     `,
   });
 }
@@ -147,14 +167,14 @@ export async function sendTrialEndedEmail(email: string, name: string) {
   const safeName = escapeHtml(name);
 
   await resend.emails.send({
-    from: `Aster Cloud <${FROM_EMAIL}>`,
+    from: `Aster Cloud <${fromEmail()}>`,
     to: email,
     subject: 'Your Pro trial has ended',
     html: `
       <h1>Hi ${safeName},</h1>
       <p>Your Pro trial has ended and your account has been downgraded to Free.</p>
       <p>You can still use Aster Cloud with limited features, or upgrade anytime.</p>
-      <p><a href="${APP_URL}/billing">View Plans</a></p>
+      <p><a href="${appUrl()}/billing">View Plans</a></p>
     `,
   });
 }
@@ -162,14 +182,14 @@ export async function sendTrialEndedEmail(email: string, name: string) {
 export async function sendPasswordResetEmail(email: string, token: string) {
   const resend = await ensureResend();
   if (!resend) {
-    console.log(`Password reset link: ${APP_URL}/reset-password?token=${token}`);
+    console.log(`Password reset link: ${appUrl()}/reset-password?token=${token}`);
     return;
   }
 
-  const resetLink = `${APP_URL}/reset-password?token=${token}`;
+  const resetLink = `${appUrl()}/reset-password?token=${token}`;
 
   await resend.emails.send({
-    from: `Aster Cloud <${FROM_EMAIL}>`,
+    from: `Aster Cloud <${fromEmail()}>`,
     to: email,
     subject: 'Reset your password',
     html: `
@@ -220,7 +240,7 @@ export async function sendTwoFactorCodeEmail(
   //   实测背景：线上曾出现 RESEND_API_KEY 未随部署生效的情况，
   //   当时唯一的线索是一条 warn；若换成投递被拒，连那条 warn 都不会有。
   const { error } = await resend.emails.send({
-    from: `Aster Cloud <${FROM_EMAIL}>`,
+    from: `Aster Cloud <${fromEmail()}>`,
     to: email,
     subject: `${code} is your Aster Cloud sign-in code`,
     html: `
@@ -246,14 +266,14 @@ export async function sendPaymentFailedEmail(email: string, name: string) {
   const safeName = escapeHtml(name);
 
   await resend.emails.send({
-    from: `Aster Cloud <${FROM_EMAIL}>`,
+    from: `Aster Cloud <${fromEmail()}>`,
     to: email,
     subject: 'Payment failed - action required',
     html: `
       <h1>Hi ${safeName},</h1>
       <p>We were unable to process your latest payment for Aster Cloud.</p>
       <p>Please update your payment method to avoid service interruption.</p>
-      <p><a href="${APP_URL}/billing" style="display: inline-block; padding: 12px 24px; background-color: #DC2626; color: white; text-decoration: none; border-radius: 6px;">Update Payment Method</a></p>
+      <p><a href="${appUrl()}/billing" style="display: inline-block; padding: 12px 24px; background-color: #DC2626; color: white; text-decoration: none; border-radius: 6px;">Update Payment Method</a></p>
       <p>If you believe this is an error, please contact our support team.</p>
     `,
   });
@@ -265,7 +285,7 @@ export async function sendTeamInvitationEmail(
   inviterName: string,
   token: string
 ): Promise<{ success: boolean; inviteUrl: string }> {
-  const inviteUrl = `${APP_URL}/teams/invite?token=${token}`;
+  const inviteUrl = `${appUrl()}/teams/invite?token=${token}`;
   const safeTeamName = escapeHtml(teamName);
   const safeInviterName = escapeHtml(inviterName);
 
@@ -280,7 +300,7 @@ export async function sendTeamInvitationEmail(
 
   try {
     await resend.emails.send({
-      from: `Aster Cloud <${FROM_EMAIL}>`,
+      from: `Aster Cloud <${fromEmail()}>`,
       to: email,
       subject: `You've been invited to join ${safeTeamName}`,
       html: `

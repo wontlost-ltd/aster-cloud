@@ -83,6 +83,17 @@ crons = ["30 4 * * *", "0 5 * * *", "0 */6 * * *", "0 8 * * 1", "15 3 * * *", "4
 NODE_ENV = "production"
 NEXT_PUBLIC_APP_URL = "https://aster-lang.cloud"
 AUTH_TRUST_HOST = "true"
+# ★发信域名必须是 Resend 里**已验证**的域（当前已验证：wontlost.com）。
+#   代码里的兜底值是 noreply@aster-lang.cloud，而该域**未在 Resend 验证**，
+#   一旦落到兜底就会被 Resend 拒收 → 用户看到「无法发送验证码」。
+#
+# ★必须写在这里（vars），不能只在 dashboard 上加：
+#   wrangler.toml 是 vars 的单一真相源，每次部署都会用它**整体覆盖**。
+#   实测：dashboard 上加的 RESEND_FROM_EMAIL 在随后两次部署后消失，
+#   于是发信静默退回未验证域——这正是本次故障的根因之一。
+# 取你在 dashboard 上设过、且**已实测投递成功**的那个地址；
+# 不擅自改成 noreply@ —— 该地址未经投递验证，换了可能再次被拒。
+RESEND_FROM_EMAIL = "ryan.pang@wontlost.com"
 
 # 敏感环境变量需要通过 wrangler secret 设置：
 #
