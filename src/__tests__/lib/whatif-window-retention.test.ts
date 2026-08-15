@@ -19,7 +19,22 @@
 import { describe, it, expect } from 'vitest';
 
 import { SKELETON_RETENTION_DAYS, resolveRetention } from '@/lib/retention/execution-retention';
-import { assessWindowCoverage } from '@/lib/retention/window-coverage';
+import {
+  allowedWindowPresets,
+  assessWindowCoverage,
+} from '@/lib/retention/window-coverage';
+
+/** 与 whatif-batch-panel.tsx 的 WINDOW_PRESETS 顺序一致。 */
+const ALL_PRESETS = [
+  'LAST_MONTH',
+  'LAST_QUARTER',
+  'LAST_HALF_YEAR',
+  'LAST_YEAR',
+  'CUSTOM',
+] as const;
+
+const presetsFor = (plan: string) =>
+  allowedWindowPresets([...ALL_PRESETS], resolveRetention(plan).executionDays);
 
 /** 与 whatif-batch-panel.tsx 的 WINDOW_PRESETS 对应的天数上界。 */
 const LONGEST_PRESET_DAYS = 365; // LAST_YEAR
@@ -76,6 +91,50 @@ describe('窗口 × 留存期一致性（issue #396）', () => {
     const c = assessWindowCoverage('pro', ago(1000), NOW, NOW);
     expect(c.truncated).toBe(true);
     expect(c.coveredDays).toBe(90);
+  });
+
+  it('★free 看不到「最近一年」——那个档位对它必然空窗', () => {
+    // 本 issue 的直接后果：此前四个档位对所有 plan 一视同仁，
+    // free（7 天留存）点「最近一年」拿不到任何数据，而选项还在那里。
+    const p = presetsFor('free');
+    expect(p).not.toContain('LAST_YEAR');
+    expect(p).not.toContain('LAST_HALF_YEAR');
+    expect(p).not.toContain('LAST_QUARTER');
+  });
+
+  it('★free 仍保留至少一个档位——不能把「数据少」变成「功能没了」', () => {
+    // 7 天留存连 LAST_MONTH(31) 都超出。若严格过滤会得到空列表，
+    // 用户连按钮都点不了。故保底给最短档位 + 动态标注实际覆盖。
+    const p = presetsFor('free');
+    expect(p).toContain('LAST_MONTH');
+    expect(p.length).toBeGreaterThan(0);
+  });
+
+  it('pro（90 天）拿到季度档——日历月的 1-2 天擦边不该藏掉整个档位', () => {
+    // LAST_QUARTER 实际跨度 89-92 天（服务端用 minusMonths(3)）。
+    // 若按最大值 92 严格裁剪，90 天留存的 pro 就看不到「最近一个季度」——
+    // 为几天差额藏掉一整个档位，比显示「覆盖 90 天」更糟。
+    const p = presetsFor('pro');
+    expect(p).toContain('LAST_QUARTER');
+    expect(p).not.toContain('LAST_YEAR');
+  });
+
+  it('★enterprise（留存无法判定）不裁剪，保留全部档位', () => {
+    const p = presetsFor('enterprise');
+    for (const k of ALL_PRESETS) expect(p).toContain(k);
+  });
+
+  it('CUSTOM 永远保留——它的区间由用户自填，走动态判定', () => {
+    for (const plan of ['free', 'pro', 'enterprise']) {
+      expect(presetsFor(plan), `${plan} 缺 CUSTOM`).toContain('CUSTOM');
+    }
+  });
+
+  it('默认选中的档位必须在可见列表里（否则提交一个看不见的选择）', () => {
+    // whatif-batch-panel 的 useState 默认值是 LAST_MONTH。
+    for (const plan of ['free', 'pro', 'team', 'enterprise']) {
+      expect(presetsFor(plan), `${plan} 默认档位不可见`).toContain('LAST_MONTH');
+    }
   });
 
   it('骨架留存与执行日志留存是两条独立的轴', () => {

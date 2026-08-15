@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Alert, AlertDescription, Button, Card, CardBody, Input, Select, Stack } from '@/components/ui';
+import { allowedWindowPresets } from '@/lib/retention/window-coverage';
 
 /**
  * What-If 影响估算面板（ADR 0034 S4）。
@@ -113,13 +114,34 @@ export function WhatIfBatchPanel({
   targetVersionId,
   /** 租户是否拥有 What-If 权益。false → 入口可见但禁用 + 升级引导（§7.5）。 */
   entitled,
+  /**
+   * 该租户的执行日志留存天数（issue #396）。null = 无法判定（enterprise）→ 不裁剪。
+   *
+   * ★用来裁掉「必然拿不到数据」的窗口档位：What-If 要真回放就得读 `input`，
+   * 而 `input` 随执行日志按 plan 被留存 GC 删除。此前四个档位对所有档位一视同仁，
+   * 于是 free（7 天留存）点「最近一年」必然空窗，而选项还在那里——
+   * **那套窗口实际只适用于留存期最长的企业级用户。**
+   */
+  retentionDays = null,
 }: {
   policyId: string;
   baseVersionId: string;
   targetVersionId: string;
   entitled: boolean;
+  retentionDays?: number | null;
 }) {
   const t = useTranslations('whatIf');
+  // 按留存期裁剪可选窗口。整档超出才隐藏；边缘擦边（日历月导致的 1-2 天）
+  // 保留并由服务端返回的实际条数说话——见 allowedWindowPresets 的注释。
+  const visiblePresets = useMemo(() => {
+    const allowed = new Set(
+      allowedWindowPresets(
+        WINDOW_PRESETS.map((p) => p.kind),
+        retentionDays,
+      ),
+    );
+    return WINDOW_PRESETS.filter((p) => allowed.has(p.kind));
+  }, [retentionDays]);
   const [windowKind, setWindowKind] = useState<string>('LAST_MONTH');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
@@ -253,7 +275,7 @@ export function WhatIfBatchPanel({
                 onChange={(e) => setWindowKind(e.target.value)}
                 disabled={isRunning || starting}
               >
-                {WINDOW_PRESETS.map((p) => (
+                {visiblePresets.map((p) => (
                   <option key={p.kind} value={p.kind}>
                     {t(p.key)}
                   </option>

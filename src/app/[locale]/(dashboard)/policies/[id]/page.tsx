@@ -5,6 +5,7 @@ import { eq, and, desc, sql } from 'drizzle-orm';
 import { getTranslations } from 'next-intl/server';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
+import { resolveRetention } from '@/lib/retention/execution-retention';
 import { PolicyDetailContent } from './policy-detail-content';
 
 // 服务端数据获取
@@ -88,6 +89,13 @@ export default async function PolicyDetailPage({
       }).concurrentReplayBatches !== 0
     : false;   // 查不到用户按无权益处理（fail-closed）
 
+  // 执行日志留存天数（issue #396）：用于裁掉「必然拿不到数据」的 What-If 窗口档位。
+  // ★复用上面同一次 users 查询，不新增查询、不新增端点。
+  //   What-If 要真回放就得读 Execution.input，而 input 随执行日志按 plan 被留存 GC
+  //   删除。此前四个窗口档位对所有档位一视同仁，于是 free（7 天留存）点「最近一年」
+  //   必然空窗、而选项还在那里——那套窗口实际只适用于留存期最长的企业级用户。
+  const retentionDays = resolveRetention(planUser?.plan).executionDays;
+
   const t = await getTranslations('policies');
 
   // 预渲染翻译字符串
@@ -134,6 +142,7 @@ export default async function PolicyDetailPage({
   return (
     <PolicyDetailContent
       whatIfEntitled={whatIfEntitled}
+      retentionDays={retentionDays}
       policy={{ ...policy, isFrozen: freeze.isFrozen }}
       translations={translations}
       locale={locale}

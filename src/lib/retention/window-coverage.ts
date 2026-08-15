@@ -37,6 +37,77 @@ export interface WindowCoverage {
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+/**
+ * 各窗口档位对应的天数。与 `whatif-batch-panel.tsx` 的 `WINDOW_PRESETS`
+ * 及 aster-api `ReplayBatchResource.resolveWindow` 三处对齐。
+ *
+ * <p>★`CUSTOM` 不在此表：它由用户自填区间，天数在运行时才知道，
+ * 故走 {@link assessWindowCoverage} 逐次判定，不做静态裁剪。
+ */
+export const WINDOW_PRESET_DAYS: Readonly<Record<string, number>> = Object.freeze({
+  LAST_MONTH: 31,
+  LAST_QUARTER: 92,
+  LAST_HALF_YEAR: 183,
+  LAST_YEAR: 366,
+});
+
+/**
+ * 裁剪时允许的越界容差（天）。
+ *
+ * <p>服务端用**日历月**算窗口（`today.minusMonths(3)`），故实际跨度随日期浮动：
+ * LAST_QUARTER 是 89–92 天。若按最大值 92 严格裁剪，90 天留存的 pro 用户
+ * 就看不到「最近一个季度」——而实际只在部分月份差 1–2 天。
+ *
+ * <p>取舍：**整档超出才隐藏，边缘擦边则保留 + 动态标注**。
+ * 为几天差额藏掉一整个档位，比让用户看到「365 天里覆盖 90 天」更糟——
+ * 后者至少是可理解的事实，前者是无法解释的功能缺失。
+ */
+const PRESET_TOLERANCE_DAYS = 3;
+
+/**
+ * 按留存期裁掉「必然拿不到数据」的窗口档位。
+ *
+ * <h3>为什么裁而不是只标注</h3>
+ *
+ * 起初只做了 {@link assessWindowCoverage}（选完再告诉你截断了）。但那对
+ * free（7 天留存）等于：四个档位里三个点了都是空窗，用户要试错才知道。
+ * **当前那套窗口选项实际只适用于留存期最长的企业级用户。**
+ *
+ * 故改为两层：
+ *   - 静态裁剪（本函数）——档位整个超出留存期就不给选，从源头避免空窗
+ *   - 动态标注（assessWindowCoverage）——选中的档位/自定义区间**部分**
+ *     超出时，如实说明实际覆盖多少天
+ *
+ * <h3>永远至少保留一个档位</h3>
+ *
+ * free 只有 7 天留存，连 LAST_MONTH(31) 都超出。若严格过滤会得到空列表，
+ * 用户连按钮都点不了——那是把「数据少」变成「功能没了」。
+ * 故保底返回最短的那个档位，配合动态标注告诉用户实际覆盖范围。
+ *
+ * @param retentionDays 执行日志留存天数；null（无法判定，如 enterprise）= 不裁剪
+ */
+export function allowedWindowPresets(
+  presetKinds: readonly string[],
+  retentionDays: number | null,
+): string[] {
+  if (retentionDays === null) return [...presetKinds];
+
+  const fits = presetKinds.filter((k) => {
+    const days = WINDOW_PRESET_DAYS[k];
+    // 表里没有的（CUSTOM）一律保留：它的区间由用户自填，动态判定。
+    return days === undefined || days - PRESET_TOLERANCE_DAYS <= retentionDays;
+  });
+
+  // 保底：至少给一个最短档位（见上方说明）。
+  if (fits.some((k) => WINDOW_PRESET_DAYS[k] !== undefined)) return fits;
+
+  const shortest = presetKinds
+    .filter((k) => WINDOW_PRESET_DAYS[k] !== undefined)
+    .sort((a, b) => WINDOW_PRESET_DAYS[a] - WINDOW_PRESET_DAYS[b])[0];
+
+  return shortest ? [shortest, ...fits] : fits;
+}
+
 function wholeDaysBetween(from: Date, to: Date): number {
   return Math.max(0, Math.ceil((to.getTime() - from.getTime()) / MS_PER_DAY));
 }
