@@ -67,7 +67,7 @@
     "disposable-email-domains": "^1.0.62",
     "drizzle-orm": "^0.45.1",
     "ioredis": "^6.0.0",
-    "mixpanel-browser": "^2.81.0",
+    "mixpanel-browser": "^2.82.0",
     "monaco-editor": "^0.56.0",
     "next": "16.2.12",
     "next-auth": "5.0.0-beta.32",

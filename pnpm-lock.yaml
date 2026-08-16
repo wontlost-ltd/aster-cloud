@@ -78,8 +78,8 @@ importers:
         specifier: ^6.0.0
         version: 6.0.0
       mixpanel-browser:
-        specifier: ^2.81.0
-        version: 2.81.0
+        specifier: ^2.82.0
+        version: 2.82.0
       monaco-editor:
         specifier: ^0.56.0
         version: 0.56.0
@@ -1267,8 +1267,8 @@ packages:
       '@types/react': '>=16'
       react: '>=16'
 
-  '@mixpanel/rrdom@2.0.0-alpha.18.5':
-    resolution: {integrity: sha512-RSWgCJmPpAsAs7xwt0+gMeaWytGtsCLEaTTjTCim6CpVUWM+zZSEnGzspz6FDQD69BjIduAah1LVCT/7dI5T+Q==}
+  '@mixpanel/rrdom@2.0.0-alpha.18.6':
+    resolution: {integrity: sha512-JY1Kr8c5pPmFBdPMLIEm1e0/hw2xvsS515Qqf+5Lpm0AW+2e/ZvA6P6M+z4fXeuachfZZv06UhTvixiUJv355Q==}
 
   '@mixpanel/rrweb-plugin-console-record@2.0.0-alpha.18.4':
     resolution: {integrity: sha512-gGxEnNpfWurQht+fpSJbwPV60ug0LAENlk4Ux3XRmYooNJGPBO1TiQHcM7g0yhrKf4tfbTiKKZ4EXzFlOZs/pw==}
@@ -1276,11 +1276,11 @@ packages:
       '@mixpanel/rrweb': ^2.0.0-alpha.18
       '@mixpanel/rrweb-utils': ^2.0.0-alpha.18
 
-  '@mixpanel/rrweb-snapshot@2.0.0-alpha.18.5':
-    resolution: {integrity: sha512-Ys5VRrHAG4cWMc5QSZRcmhtX5ySPgid3dofVVL1L6h0tL74vcOXO4y+HebHWV2p/iEQg80fmWKaB6HZ5p7+kbA==}
+  '@mixpanel/rrweb-snapshot@2.0.0-alpha.18.6':
+    resolution: {integrity: sha512-8c8TArw8l0mmYPvKc3asq3hIzQ7uVrNVQ4xsVt+ESxHohW8r47ua/YLDpd2jV30FZj4Y3KvGTQl5sXLDI+02Zw==}
 
-  '@mixpanel/rrweb-types@2.0.0-alpha.18.5':
-    resolution: {integrity: sha512-upLJEkRB40FGAVJpnfepQXMj/RuBjuC4UGGEKAiZSi17FG4Aqt0F+vXuB+9WicizhQf3vUW89K26Ay0VtbCSiQ==}
+  '@mixpanel/rrweb-types@2.0.0-alpha.18.6':
+    resolution: {integrity: sha512-KvaTcbZR4mJ3w1b1fEq4AeSg9rUqvQ1gKko9r56ANUw4fqWam23xoXrLJ8Og+hPYTwIDQ99TkZBVXFTGJqYwpQ==}
 
   '@mixpanel/rrweb-utils@2.0.0-alpha.18.4':
     resolution: {integrity: sha512-c3nUbQl19kxHjf8nowFMeXlJw0ZqLesIVBb9t4g1nC4WtaNEPkFotWRdGt5V2cJNQ+aY38/v2uYb8Ren4IcdSQ==}
@@ -4473,8 +4473,8 @@ packages:
   mitt@3.0.1:
     resolution: {integrity: sha512-vKivATfr97l2/QBCYAkXYDbrIWPM2IIKEl7YPhjCvKlG3kE2gm+uBo6nEXK3M5/Ffh/FLpKExzOQ3JJoJGFKBw==}
 
-  mixpanel-browser@2.81.0:
-    resolution: {integrity: sha512-FVPaapbpDdZVbU8X6A3N1Ur3PWcr1Kol9sGuHNwExpFYFQVFeeSlaeEyFELvpTp6Q5JgBoLatkDbb/w/81TDJQ==}
+  mixpanel-browser@2.82.0:
+    resolution: {integrity: sha512-J6JXLp77Ak2OqzqdgQDM/wvKCBxh1VfVpe8EbibXd3jeZb+R60ZaJ2Py7xeIxXK0jqbYWHOGDWyHQ2KqBTJ5hQ==}
 
   mkdirp-classic@0.5.3:
     resolution: {integrity: sha512-gKLcREMhtuZRwRAfqP3RFW+TK4JqApVBtOIftVgjuABpAtpxhPGaDcfvbhNvD0B8iD1oUr/txX35NjcaY6Ns/A==}
@@ -7152,28 +7152,28 @@ snapshots:
       '@types/react': 19.2.17
       react: 19.2.8
 
-  '@mixpanel/rrdom@2.0.0-alpha.18.5':
+  '@mixpanel/rrdom@2.0.0-alpha.18.6':
     dependencies:
-      '@mixpanel/rrweb-snapshot': 2.0.0-alpha.18.5
+      '@mixpanel/rrweb-snapshot': 2.0.0-alpha.18.6
 
   '@mixpanel/rrweb-plugin-console-record@2.0.0-alpha.18.4(@mixpanel/rrweb-utils@2.0.0-alpha.18.4)(@mixpanel/rrweb@2.0.0-alpha.18.4)':
     dependencies:
       '@mixpanel/rrweb': 2.0.0-alpha.18.4
       '@mixpanel/rrweb-utils': 2.0.0-alpha.18.4
 
-  '@mixpanel/rrweb-snapshot@2.0.0-alpha.18.5':
+  '@mixpanel/rrweb-snapshot@2.0.0-alpha.18.6':
     dependencies:
       postcss: 8.5.26
 
-  '@mixpanel/rrweb-types@2.0.0-alpha.18.5': {}
+  '@mixpanel/rrweb-types@2.0.0-alpha.18.6': {}
 
   '@mixpanel/rrweb-utils@2.0.0-alpha.18.4': {}
 
   '@mixpanel/rrweb@2.0.0-alpha.18.4':
     dependencies:
-      '@mixpanel/rrdom': 2.0.0-alpha.18.5
-      '@mixpanel/rrweb-snapshot': 2.0.0-alpha.18.5
-      '@mixpanel/rrweb-types': 2.0.0-alpha.18.5
+      '@mixpanel/rrdom': 2.0.0-alpha.18.6
+      '@mixpanel/rrweb-snapshot': 2.0.0-alpha.18.6
+      '@mixpanel/rrweb-types': 2.0.0-alpha.18.6
       '@mixpanel/rrweb-utils': 2.0.0-alpha.18.4
       '@types/css-font-loading-module': 0.0.7
       '@xstate/fsm': 1.6.5
@@ -10764,7 +10764,7 @@ snapshots:
 
   mitt@3.0.1: {}
 
-  mixpanel-browser@2.81.0:
+  mixpanel-browser@2.82.0:
     dependencies:
       '@mixpanel/rrweb': 2.0.0-alpha.18.4
       '@mixpanel/rrweb-plugin-console-record': 2.0.0-alpha.18.4(@mixpanel/rrweb-utils@2.0.0-alpha.18.4)(@mixpanel/rrweb@2.0.0-alpha.18.4)
