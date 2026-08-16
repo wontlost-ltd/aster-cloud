@@ -31,6 +31,14 @@ type BatchStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'EXPIRED';
 interface BatchState {
   batchId: string;
   status: BatchStatus;
+  /**
+   * 窗口档位（LAST_MONTH / CUSTOM …）——★用它本地化，不要用 windowLabel。
+   *
+   * windowLabel 是**服务端硬编码的中文**（"最近一个月"），下发给所有语言；
+   * 生产英文界面实测会原样显示中文。展示语言必须由客户端决定。
+   * 老版本 API 可能不下发该字段，故为可选，缺失时回退到 windowLabel。
+   */
+  windowKind?: string;
   windowLabel: string;
   windowFrom: string;
   windowTo: string;
@@ -81,6 +89,22 @@ function isEmptyWindow(batch: BatchState): boolean {
     batch.status === 'FAILED' &&
     (!batch.failureKinds || batch.failureKinds.length === 0)
   );
+}
+
+/**
+ * 把窗口档位本地化成当前语言的名称。
+ *
+ * ★服务端下发的 windowLabel 是硬编码中文，不能直接展示（生产实测：
+ * 英文界面显示"最近一个月"）。这里用 windowKind 查 WINDOW_PRESETS 的
+ * i18n key——那张表本来就是窗口下拉框在用的，语言天然一致。
+ * 拿不到 kind（老版本 API）时才回退到 label，保证不至于空白。
+ */
+function localizedWindow(
+  batch: { windowKind?: string; windowLabel: string },
+  t: (k: string) => string,
+): string {
+  const preset = WINDOW_PRESETS.find((p) => p.kind === batch.windowKind);
+  return preset ? t(preset.key) : batch.windowLabel;
 }
 
 const WINDOW_PRESETS = [
@@ -365,7 +389,7 @@ export function WhatIfBatchPanel({
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span>
-                  {t('replaying', { window: batch.windowLabel })}
+                  {t('replaying', { window: localizedWindow(batch, t) })}
                 </span>
                 <span className="tabular-nums text-muted-foreground">
                   {batch.processedCount ?? 0} / {batch.plannedCount}
@@ -395,7 +419,7 @@ export function WhatIfBatchPanel({
               <p className="text-sm">
                 {t('basedOn', {
                   count: batch.result.totalSampled,
-                  window: batch.windowLabel,
+                  window: localizedWindow(batch, t),
                 })}
               </p>
               <div className="grid grid-cols-3 gap-3 text-sm">
@@ -424,7 +448,7 @@ export function WhatIfBatchPanel({
           {batch?.status === 'FAILED' && isEmptyWindow(batch) && (
             <Alert>
               <AlertDescription>
-                {t('emptyWindow', { window: batch.windowLabel })}
+                {t('emptyWindow', { window: localizedWindow(batch, t) })}
               </AlertDescription>
             </Alert>
           )}
@@ -435,7 +459,7 @@ export function WhatIfBatchPanel({
               <AlertDescription>
                 <Stack gap={2}>
                   <span>
-                    {t('rejectedTitle', { window: batch.windowLabel })}{' '}
+                    {t('rejectedTitle', { window: localizedWindow(batch, t) })}{' '}
                     {t('rejectedNote')}
                   </span>
                   {/* ★只列**类别**，不列每类条数（ADR 0034 §10.1）。

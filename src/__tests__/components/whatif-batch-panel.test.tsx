@@ -340,4 +340,56 @@ describe('What-If 面板：呈现约束（ADR 0034 §1.1）', () => {
       );
     });
   });
+  // ── 窗口名称必须本地化（生产实测 bug）─────────────────────────────
+  //
+  // ★服务端下发的 windowLabel 是**硬编码中文**（"最近一个月"），
+  //   不分语言。生产英文界面实测显示成中文。
+  //   既有用例的 fixture 全用 'Last month' 这类英文字符串——那不是
+  //   服务端真实返回的形态，所以这个 bug 一直测不出来。
+  //   这里用**真实的服务端 payload**（中文 label + windowKind）。
+  describe('窗口名称本地化', () => {
+    const zhLabelPayload = {
+      batchId: 'b-i18n',
+      status: 'FAILED' as const,
+      windowKind: 'LAST_MONTH',
+      windowLabel: '最近一个月', // ← 服务端真实下发值
+      windowFrom: '2026-07-16T00:00:00Z',
+      windowTo: '2026-08-16T00:00:00Z',
+      failureKinds: [],
+      rejected: true,
+    };
+
+    it('★英文界面不得出现服务端下发的中文窗口名', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(zhLabelPayload, 202));
+      render(<WhatIfBatchPanel {...props} />);
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /run analysis/i }));
+      });
+      expect(
+        document.body.textContent,
+        '英文界面直接展示了服务端的中文 label',
+      ).not.toContain('最近一个月');
+    });
+
+    it('★应显示本地化后的窗口名（与下拉框同一套文案）', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(zhLabelPayload, 202));
+      render(<WhatIfBatchPanel {...props} />);
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /run analysis/i }));
+      });
+      expect(document.body.textContent?.toLowerCase()).toContain('last month');
+    });
+
+    it('老版本 API 不下发 windowKind 时回退到 label（不至于空白）', async () => {
+      const legacy = { ...zhLabelPayload, windowKind: undefined };
+      fetchMock.mockResolvedValue(jsonResponse(legacy, 202));
+      render(<WhatIfBatchPanel {...props} />);
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /run analysis/i }));
+      });
+      // 回退是有意的：宁可显示中文，也不显示空白。
+      expect(document.body.textContent).toContain('最近一个月');
+    });
+  });
+
 });
