@@ -37,6 +37,7 @@ import {
   SignOutButton,
   DeleteAccountFlow,
 } from './settings-client';
+import { TotpPanel } from '@/components/settings/totp-panel';
 import { TrustedDevicesPanel } from '@/components/settings/trusted-devices-panel';
 
 const LOCALE_DETECTION_COOKIE = 'aster-locale-detection';
@@ -195,6 +196,37 @@ export default async function SettingsPage({ params }: PageProps) {
               callbackUrl={logoutCallbackUrl}
             />
           }
+        />
+
+        {/* 验证器 App（issue #400 第二步）——启用后不再发邮件验证码。
+            放在可信设备之前：它是更强的那道控制。 */}
+        <TotpPanel
+          labels={{
+            title: t('totp.title'),
+            description: t('totp.description'),
+            statusEnabled: t('totp.statusEnabled'),
+            statusDisabled: t('totp.statusDisabled'),
+            remainingCodes: t('totp.remainingCodes'),
+            start: t('totp.start'),
+            starting: t('totp.starting'),
+            scanHint: t('totp.scanHint'),
+            manualKeyLabel: t('totp.manualKeyLabel'),
+            confirmLabel: t('totp.confirmLabel'),
+            confirmHint: t('totp.confirmHint'),
+            confirm: t('totp.confirm'),
+            confirming: t('totp.confirming'),
+            cancel: t('totp.cancel'),
+            recoveryTitle: t('totp.recoveryTitle'),
+            recoveryWarning: t('totp.recoveryWarning'),
+            recoveryDone: t('totp.recoveryDone'),
+            disable: t('totp.disable'),
+            disabling: t('totp.disabling'),
+            disableHint: t('totp.disableHint'),
+            loadFailed: t('totp.loadFailed'),
+            confirmFailed: t('totp.confirmFailed'),
+            disableFailed: t('totp.disableFailed'),
+            alreadyEnabled: t('totp.alreadyEnabled'),
+          }}
         />
 
         {/* 已信任设备（issue #400）——用户勾过「记住该设备」的那些。 */}

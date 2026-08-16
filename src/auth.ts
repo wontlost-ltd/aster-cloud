@@ -97,6 +97,7 @@ const config: NextAuthConfig = {
           twoFactor,
           trustedDevice,
           resendMod,
+          totpMod,
         ] = await Promise.all([
           import('@/lib/auth/authorize-credentials'),
           import('@/lib/rate-limit-distributed'),
@@ -104,6 +105,7 @@ const config: NextAuthConfig = {
           import('@/lib/two-factor'),
           import('@/lib/trusted-device'),
           import('@/lib/resend'),
+          import('@/lib/totp'),
         ]);
 
         return authorizeCredentials(credentials, {
@@ -134,6 +136,8 @@ const config: NextAuthConfig = {
               },
             }),
           isTrustedDevice: trustedDevice.isTrustedDevice,
+          hasTotpEnabled: (userId) => totpMod.hasTotpEnabled(userId),
+          verifyTotp: (userId, token) => totpMod.verifyTotpForLogin(userId, token),
           hasActiveCode: (email) => twoFactor.hasActiveCode(email),
           issueCode: (email) => twoFactor.issueCode(email),
           sendCodeEmail: (email, code) =>

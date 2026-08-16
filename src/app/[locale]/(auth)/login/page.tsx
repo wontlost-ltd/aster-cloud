@@ -40,6 +40,7 @@ export default async function LoginPage() {
     // 二次验证（issue #400）
     twoFactorLabel: t('twoFactorLabel'),
     twoFactorHint: t('twoFactorHint'),
+    twoFactorTotpHint: t('twoFactorTotpHint'),
     rememberDevice: t('rememberDevice'),
     rememberDeviceHint: t('rememberDeviceHint'),
     errors: {

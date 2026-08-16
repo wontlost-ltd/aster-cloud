@@ -51,6 +51,9 @@ function deps(over: Partial<AuthorizeDeps> = {}): AuthorizeDeps {
     verifyPassword: vi.fn(async () => true),
     findUserByEmail: vi.fn(async () => USER),
     isTrustedDevice: vi.fn(async () => false),
+    // 默认未绑定 TOTP → 走邮件码分支（既有用例的前提不变）。
+    hasTotpEnabled: vi.fn(async () => false),
+    verifyTotp: vi.fn(async () => ({ ok: true }) as const),
     hasActiveCode: vi.fn(async () => false),
     issueCode: vi.fn(async () => ({ ok: true as const, code: '123456' })),
     sendCodeEmail: vi.fn(async () => {}),
@@ -229,6 +232,67 @@ describe('authorize 编排行为（issue #400）', () => {
         authorizeCredentials(creds({ password: 'sup3r-secret' }), d),
       )) as { code?: string };
       expect(err.code ?? '').not.toContain('sup3r-secret');
+    });
+  });
+
+  // ── TOTP 分支（issue #400 第二步）────────────────────────────────
+  //
+  // ★用户选定的策略：已绑定验证器的用户**完全不走邮件**——不发信、
+  //   也不接受邮件码。留邮件作后备等于把强度降回"控制邮箱即可登录"。
+  describe('★TOTP 已绑定时的分支', () => {
+    it('★已绑 TOTP 且未提交码 → 抛 TOTP_REQUIRED，且**不得发任何邮件**', async () => {
+      const d = deps({ hasTotpEnabled: vi.fn(async () => true) });
+      await expect(authorizeCredentials(creds(), d)).rejects.toThrow('TWO_FACTOR_TOTP_REQUIRED');
+      // 这条是本分支的核心承诺：绑了 App 就不该再收到邮件。
+      expect(d.sendCodeEmail, '已绑 TOTP 却仍发信').not.toHaveBeenCalled();
+      expect(d.issueCode, '已绑 TOTP 却仍签发邮件码').not.toHaveBeenCalled();
+    });
+
+    it('★TOTP 码正确 → 放行，且不碰邮件码路径', async () => {
+      const d = deps({
+        hasTotpEnabled: vi.fn(async () => true),
+        verifyTotp: vi.fn(async () => ({ ok: true }) as const),
+      });
+      const user = await authorizeCredentials(creds({ twoFactorCode: '123456' }), d);
+      expect(user?.id).toBe('u1');
+      expect(d.verifyCode, '不该走邮件码校验').not.toHaveBeenCalled();
+      expect(d.sendCodeEmail).not.toHaveBeenCalled();
+    });
+
+    it('★TOTP 码错误 → 抛 TOTP_MISMATCH，且**不计入账户锁定**', async () => {
+      // 与邮件码同理：计入锁定会让知道邮箱的人用错码把受害者锁死。
+      const d = deps({
+        hasTotpEnabled: vi.fn(async () => true),
+        verifyTotp: vi.fn(async () => ({ ok: false, reason: 'MISMATCH' }) as const),
+      });
+      await expect(
+        authorizeCredentials(creds({ twoFactorCode: '000000' }), d),
+      ).rejects.toThrow('TWO_FACTOR_TOTP_MISMATCH');
+      expect(d.recordFailedAttempt, 'TOTP 错误被计入了账户锁定').not.toHaveBeenCalled();
+    });
+
+    it('★重放被拒时也要如实传出 REPLAY，不能混成 MISMATCH', async () => {
+      const d = deps({
+        hasTotpEnabled: vi.fn(async () => true),
+        verifyTotp: vi.fn(async () => ({ ok: false, reason: 'REPLAY' }) as const),
+      });
+      await expect(
+        authorizeCredentials(creds({ twoFactorCode: '123456' }), d),
+      ).rejects.toThrow('TWO_FACTOR_TOTP_REPLAY');
+    });
+
+    it('★未绑 TOTP 的用户完全不受影响——仍走邮件码', async () => {
+      // 回归保护：TOTP 分支不得改变既有用户的登录方式。
+      const d = deps({ hasTotpEnabled: vi.fn(async () => false) });
+      await expect(authorizeCredentials(creds(), d)).rejects.toThrow('TWO_FACTOR_REQUIRED');
+      expect(d.sendCodeEmail, '未绑 TOTP 却没发邮件').toHaveBeenCalled();
+    });
+
+    it('★TOTP 分支必须在发信**之前**判断（否则先发一封没人要的信）', async () => {
+      const d = deps({ hasTotpEnabled: vi.fn(async () => true) });
+      await expect(authorizeCredentials(creds(), d)).rejects.toThrow();
+      // hasActiveCode 是邮件分支的第一步；被调用即说明顺序错了。
+      expect(d.hasActiveCode, 'TOTP 判断晚于邮件分支').not.toHaveBeenCalled();
     });
   });
 

@@ -33,6 +33,8 @@ interface Translations {
   /** 二次验证（issue #400） */
   twoFactorLabel: string;
   twoFactorHint: string;
+  /** TOTP 用户看到的提示（不发邮件，故不能沿用"已发送邮件"那句）。 */
+  twoFactorTotpHint: string;
   rememberDevice: string;
   rememberDeviceHint: string;
   errors: {
@@ -89,6 +91,13 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
    */
   const [twoFactorStage, setTwoFactorStage] = useState(false);
   const [twoFactorCode, setTwoFactorCode] = useState('');
+  /**
+   * 本次第二因子是验证器还是邮件码。
+   *
+   * ★必须区分：邮件用户的提示是「已发送验证码到邮箱」，而 TOTP 用户
+   * 根本不会收到邮件——给他看那句话会让他去邮箱里空等。
+   */
+  const [totpMode, setTotpMode] = useState(false);
   /** 「记住该设备」——★必须用户主动勾选，默认 false，不预勾。 */
   const [rememberDevice, setRememberDevice] = useState(false);
   const { data: session } = useSession();
@@ -205,6 +214,25 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
       //   初版比较 result.error === 'TWO_FACTOR_REQUIRED' 恒为 false →
       //   密码正确的用户看到「邮箱或密码错误」，第二屏永远出不来。
       const code = result.code ?? '';
+      // 已绑定验证器的用户：进第二屏，但走 TOTP 口径（不发邮件）。
+      if (code === 'TWO_FACTOR_TOTP_REQUIRED') {
+        setTotpMode(true);
+        setTwoFactorStage(true);
+        setError('');
+        setIsLoading(false);
+        setTurnstileToken(null);
+        return;
+      }
+      if (code.startsWith('TWO_FACTOR_TOTP_')) {
+        // TOTP_MISMATCH / TOTP_REPLAY / TOTP_NOT_ENABLED
+        setTotpMode(true);
+        setTwoFactorStage(true);
+        setTwoFactorCode('');
+        setError(t.errors.twoFactorMismatch);
+        setIsLoading(false);
+        setTurnstileToken(null);
+        return;
+      }
       if (code === 'TWO_FACTOR_REQUIRED') {
         setTwoFactorStage(true);
         setError('');
@@ -449,16 +477,23 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
                         type="text"
                         inputMode="numeric"
                         autoComplete="one-time-code"
-                        pattern="[0-9]{6}"
-                        maxLength={6}
+                        pattern={totpMode ? undefined : '[0-9]{6}'}
+                        maxLength={totpMode ? 9 : 6}
                         required
                         autoFocus
                         value={twoFactorCode}
                         onChange={(e) =>
-                          setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))
+                          setTwoFactorCode(
+                            totpMode
+                              // TOTP 屏还要能输恢复码（XXXX-XXXX），故保留字母与连字符。
+                              ? e.target.value.toUpperCase().slice(0, 9)
+                              : e.target.value.replace(/\D/g, '').slice(0, 6),
+                          )
                         }
                       />
-                      <p className="text-xs text-fg-muted">{t.twoFactorHint}</p>
+                      <p className="text-xs text-fg-muted">
+                        {totpMode ? t.twoFactorTotpHint : t.twoFactorHint}
+                      </p>
                       {/*
                         ★必须用户主动勾选，默认不勾。预勾会让"记住设备"变成
                         被动采集——那正是本实现刻意避开设备指纹的理由。
