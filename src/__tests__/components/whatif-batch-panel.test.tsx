@@ -392,4 +392,50 @@ describe('What-If 面板：呈现约束（ADR 0034 §1.1）', () => {
     });
   });
 
+  // ── 「含今天」开关（用户实测痛点）───────────────────────────────
+  //
+  // ★背景：默认右边界是当天 00:00，今天刚跑的执行要等到明天才进窗口。
+  //   生产实测：改完策略立刻跑 What-If，永远是 "nothing to compare"。
+  //   故提供显式开关；默认关闭，保住"同一档位重算得同一区间"的性质。
+  describe('含今天开关', () => {
+    it('★默认不勾选，且请求里 includeToday 为 false', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ batchId: 'b', status: 'PENDING',
+        windowKind: 'LAST_MONTH', windowLabel: '最近一个月',
+        windowFrom: '2026-07-16T00:00:00Z', windowTo: '2026-08-16T00:00:00Z',
+        plannedCount: 1 }, 202));
+      render(<WhatIfBatchPanel {...props} />);
+
+      const cb = screen.getByRole('checkbox') as HTMLInputElement;
+      expect(cb.checked, '默认必须关闭——默认语义不可改变').toBe(false);
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /run analysis/i }));
+      });
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.includeToday).toBe(false);
+    });
+
+    it('★勾选后请求里 includeToday 为 true', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ batchId: 'b', status: 'PENDING',
+        windowKind: 'LAST_MONTH', windowLabel: '最近一个月',
+        windowFrom: '2026-07-16T00:00:00Z', windowTo: '2026-08-16T12:00:00Z',
+        plannedCount: 1 }, 202));
+      render(<WhatIfBatchPanel {...props} />);
+
+      fireEvent.click(screen.getByRole('checkbox'));
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /run analysis/i }));
+      });
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.includeToday, '勾选后未下发 → 后端仍按当天 00:00 截断').toBe(true);
+    });
+
+    it('CUSTOM 档位隐藏该开关（边界已由用户日期决定，无歧义）', async () => {
+      render(<WhatIfBatchPanel {...props} />);
+      expect(screen.queryByRole('checkbox')).not.toBeNull();
+      fireEvent.change(screen.getByRole('combobox'), { target: { value: 'CUSTOM' } });
+      expect(screen.queryByRole('checkbox')).toBeNull();
+    });
+  });
+
 });

@@ -87,6 +87,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
 
       // ── ADR 0034 异步 ReplayBatch 模型新增 ──────────────────────
       window: 'Time window',
+      includeToday: 'Include today (not yet complete)',
       lastMonth: 'Last month',
       lastQuarter: 'Last quarter',
       lastHalfYear: 'Last 6 months',
@@ -580,6 +581,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
 
       // ── ADR 0034 异步 ReplayBatch 模型新增 ──────────────────────
       window: '时间窗口',
+      includeToday: '包含今天（尚未结束）',
       lastMonth: '最近一个月',
       lastQuarter: '最近一个季度',
       lastHalfYear: '最近半年',
@@ -1059,6 +1061,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
 
       // ── ADR 0034 异步 ReplayBatch 模型新增 ──────────────────────
       window: 'Zeitraum',
+      includeToday: 'Heute einschließen (noch nicht abgeschlossen)',
       lastMonth: 'Letzter Monat',
       lastQuarter: 'Letztes Quartal',
       lastHalfYear: 'Letzte 6 Monate',
@@ -1539,6 +1542,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
 
       // ── ADR 0034 异步 ReplayBatch 模型新增 ──────────────────────
       window: 'समय अवधि',
+      includeToday: 'आज शामिल करें (अभी पूरा नहीं)',
       lastMonth: 'पिछला महीना',
       lastQuarter: 'पिछली तिमाही',
       lastHalfYear: 'पिछले 6 महीने',

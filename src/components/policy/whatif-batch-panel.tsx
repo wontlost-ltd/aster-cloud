@@ -167,6 +167,15 @@ export function WhatIfBatchPanel({
     return WINDOW_PRESETS.filter((p) => allowed.has(p.kind));
   }, [retentionDays]);
   const [windowKind, setWindowKind] = useState<string>('LAST_MONTH');
+  /**
+   * 是否把窗口右边界延伸到**此刻**（默认 false）。
+   *
+   * ★默认关闭是有意的：默认右边界取当天 00:00，指向**已封闭的过去**，
+   * 因此同一档位在任何时刻重算都覆盖同一批执行。
+   * 勾选后覆盖仍在写入的当天——解决"刚跑完策略却看不到 What-If"这个
+   * 真实痛点（今天的执行本来要等到明天才进窗口），代价是该区间尚未封闭。
+   */
+  const [includeToday, setIncludeToday] = useState(false);
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [batch, setBatch] = useState<BatchState | null>(null);
@@ -233,6 +242,9 @@ export function WhatIfBatchPanel({
           baseVersionId,
           targetVersionId,
           windowKind,
+          // ★CUSTOM 档位不下发：那时边界完全由用户选的日期决定，
+          //   没有"要不要含当天"的歧义（服务端同样忽略）。
+          includeToday: windowKind === 'CUSTOM' ? undefined : includeToday,
           customFrom: windowKind === 'CUSTOM' ? customFrom : undefined,
           customTo: windowKind === 'CUSTOM' ? customTo : undefined,
         }),
@@ -317,6 +329,24 @@ export function WhatIfBatchPanel({
                 ))}
               </Select>
             </label>
+
+            {/* ★「含今天」开关——只对预设档位有意义。
+                默认关闭：默认右边界取当天 00:00，指向已封闭的过去，
+                同一档位任何时刻重算都覆盖同一批执行。
+                勾选后覆盖仍在写入的当天，解决"刚跑完却看不到"的痛点。
+                CUSTOM 档位不显示：边界已由用户选的日期决定，无歧义。 */}
+            {windowKind !== 'CUSTOM' && (
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={includeToday}
+                  onChange={(e) => setIncludeToday(e.target.checked)}
+                  disabled={isRunning || starting}
+                  className="h-4 w-4"
+                />
+                <span>{t('includeToday')}</span>
+              </label>
+            )}
 
             {windowKind === 'CUSTOM' && (
               <>
