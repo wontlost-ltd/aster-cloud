@@ -145,4 +145,42 @@ describe('GET /api/v1/policies/:id/whatif-batches/:batchId', () => {
     const res = await GET(new Request('https://x.test'), { params: batchParams });
     expect(res.status).toBe(404);
   });
+  // ── BFF 必须转发 includeToday（生产实测漏传）─────────────────────
+  //
+  // ★这一层是**逐字段重建**请求体，不是透传。新增入参若忘了加，
+  //   会被静默丢弃：前端发了、后端收不到、**两边都不报错**，
+  //   表现为"功能上线后毫无效果"。实测就是这么丢的。
+  //   故对每个入参都要有一条"确实转发了"的断言。
+  describe('includeToday 转发', () => {
+    it('★includeToday: true 必须原样转发给 api', async () => {
+      getSession.mockResolvedValue({ user: { id: 'u1' } });
+      createWhatIfBatch.mockResolvedValue({ batchId: 'b1' });
+
+      await POST(
+        postReq({ baseVersionId: 'a', targetVersionId: 'b', includeToday: true }),
+        { params },
+      );
+
+      expect(createWhatIfBatch).toHaveBeenCalledWith(
+        'p1',
+        expect.objectContaining({ includeToday: true }),
+      );
+    });
+
+    it('★includeToday: false 同样要转发（不能被当成"没传"而丢掉）', async () => {
+      getSession.mockResolvedValue({ user: { id: 'u1' } });
+      createWhatIfBatch.mockResolvedValue({ batchId: 'b1' });
+
+      await POST(
+        postReq({ baseVersionId: 'a', targetVersionId: 'b', includeToday: false }),
+        { params },
+      );
+
+      expect(createWhatIfBatch).toHaveBeenCalledWith(
+        'p1',
+        expect.objectContaining({ includeToday: false }),
+      );
+    });
+  });
+
 });
