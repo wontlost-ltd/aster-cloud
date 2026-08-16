@@ -406,6 +406,8 @@ export class PolicyApiClient {
       windowKind: string;
       customFrom?: string;
       customTo?: string;
+      /** 右边界是否延伸到此刻（默认 false = 当天 00:00）。 */
+      includeToday?: boolean;
     },
   ): Promise<unknown> {
     return this.request('POST', API_ENDPOINTS.whatIfBatches(policyId), body);

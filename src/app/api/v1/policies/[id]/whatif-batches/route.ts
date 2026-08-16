@@ -37,6 +37,7 @@ export async function POST(
     windowKind?: string;
     customFrom?: string;
     customTo?: string;
+    includeToday?: boolean;
   };
   try {
     body = await req.json();
@@ -63,6 +64,10 @@ export async function POST(
       windowKind: body.windowKind ?? 'LAST_MONTH',
       customFrom: body.customFrom,
       customTo: body.customTo,
+        // ★这层是**逐字段重建**请求体，不是透传：新增入参必须同步加在这里，
+        //   否则会被静默丢弃——前端发了、后端收不到、两边都不报错。
+        //   实测教训：includeToday 上线后毫无效果，根因就是漏了这一行。
+        includeToday: body.includeToday,
     });
     return NextResponse.json(result, { status: 202 });
   } catch (e) {
