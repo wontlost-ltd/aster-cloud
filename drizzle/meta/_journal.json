@@ -337,6 +337,13 @@
       "when": 1785904286466,
       "tag": "0046_two_factor_window",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1785990686466,
+      "tag": "0047_totp_credentials",
+      "breakpoints": true
     }
   ]
 }

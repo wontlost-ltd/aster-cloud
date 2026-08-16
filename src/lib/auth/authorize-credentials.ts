@@ -85,6 +85,13 @@ export interface AuthorizeDeps {
   verifyPassword: (plain: string, hash: string) => Promise<boolean>;
   findUserByEmail: (email: string) => Promise<UserRow | undefined>;
   isTrustedDevice: (userId: string, token: string) => Promise<boolean>;
+  /** 该用户是否已启用 TOTP —— 决定走 App 码还是邮件码。 */
+  hasTotpEnabled: (userId: string) => Promise<boolean>;
+  /** 校验 TOTP 码或恢复码。 */
+  verifyTotp: (
+    userId: string,
+    token: string,
+  ) => Promise<{ ok: true } | { ok: false; reason: string }>;
   hasActiveCode: (email: string) => Promise<boolean>;
   issueCode: (email: string) => Promise<{ ok: true; code: string } | { ok: false; reason: string }>;
   sendCodeEmail: (email: string, code: string) => Promise<void>;
@@ -232,6 +239,35 @@ export async function authorizeCredentials(
     typeof credentials.twoFactorCode === 'string'
       ? credentials.twoFactorCode.trim()
       : '';
+
+  // ── TOTP（验证器 App）分支 ─────────────────────────────────────────
+  //
+  // ★已绑定验证器的用户**完全不走邮件**：不发信、也不接受邮件码。
+  //   理由是安全边界——留着邮件作后备，等于把整体强度降回"控制邮箱即可登录"，
+  //   而 TOTP 的全部价值就在于不依赖邮箱。代价是手机丢失且没抄恢复码的人
+  //   只能联系人工，这是刻意选择的取舍（恢复码就是为此存在）。
+  //
+  // ★必须在邮件分支**之前**判断：否则第一屏会先发一封没人需要的信。
+  if (await deps.hasTotpEnabled(user.id)) {
+    if (!submittedCode) {
+      // 第二屏：要 App 上的码（或恢复码）。不发任何邮件。
+      throw new TwoFactorSignin('TOTP_REQUIRED');
+    }
+    const totpVerdict = await deps.verifyTotp(user.id, submittedCode);
+    if (!totpVerdict.ok) {
+      console.warn(`[auth] TOTP reject: userId=${user.id} reason=${totpVerdict.reason}`);
+      // ★与邮件码同理：TOTP 错**不**计入账户锁定，否则知道邮箱的人
+      //   就能用错误的 TOTP 码把受害者锁死。
+      throw new TwoFactorSignin(`TOTP_${totpVerdict.reason}`);
+    }
+    await deps.resetFailedAttempts(email);
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      image: user.image,
+    };
+  }
 
   if (!submittedCode) {
     // 第一屏：密码已通过，签发并发信，然后要求前端进入第二屏。

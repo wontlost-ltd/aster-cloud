@@ -55,23 +55,41 @@ function safeEqualHex(a: string, b: string): boolean {
  */
 export function coarseLabel(userAgent: string | null | undefined): string | null {
   if (!userAgent) return null;
-  const browser = /Edg\//.test(userAgent)
+  // ★iOS 上**所有**浏览器都必须用自己的专属标记来认（用户报告的真实 bug）：
+  //   Apple 规定 iOS 浏览器一律使用 WebKit，故 Chrome/Firefox/Edge 的 iOS 版
+  //   UA 里**没有** `Chrome/`、`Firefox/`，只有 `CriOS/`、`FxiOS/`、`EdgiOS/`，
+  //   同时都带着 `Safari/`。只测 `Chrome\//Safari\/` 会把 iOS Chrome 认成 Safari。
+  //   顺序也重要：这些专属标记必须排在通用的 Safari 判定**之前**。
+  const browser = /EdgiOS\//.test(userAgent)
     ? 'Edge'
-    : /Chrome\//.test(userAgent)
+    : /CriOS\//.test(userAgent)
       ? 'Chrome'
-      : /Safari\//.test(userAgent)
-        ? 'Safari'
-        : /Firefox\//.test(userAgent)
-          ? 'Firefox'
-          : 'Browser';
-  const os = /Mac OS X/.test(userAgent)
-    ? 'macOS'
-    : /Windows/.test(userAgent)
-      ? 'Windows'
-      : /Android/.test(userAgent)
-        ? 'Android'
-        : /iPhone|iPad/.test(userAgent)
-          ? 'iOS'
+      : /FxiOS\//.test(userAgent)
+        ? 'Firefox'
+        : /Edg\//.test(userAgent)
+          ? 'Edge'
+          : /OPR\//.test(userAgent)
+            ? 'Opera'
+            : /Firefox\//.test(userAgent)
+              ? 'Firefox'
+              : /Chrome\//.test(userAgent)
+                ? 'Chrome'
+                : /Safari\//.test(userAgent)
+                  ? 'Safari'
+                  : 'Browser';
+
+  // ★iOS 必须排在 macOS **之前**（同一个 bug 的另一半）：
+  //   iPhone/iPad 的 UA 里含有字面量 `like Mac OS X`，
+  //   先测 `/Mac OS X/` 会让**每一台 iOS 设备**都被记成 macOS。
+  //   Android 同理要排在 Linux 之前——Android UA 里含 `Linux`。
+  const os = /iPhone|iPad|iPod/.test(userAgent)
+    ? 'iOS'
+    : /Android/.test(userAgent)
+      ? 'Android'
+      : /Mac OS X/.test(userAgent)
+        ? 'macOS'
+        : /Windows/.test(userAgent)
+          ? 'Windows'
           : /Linux/.test(userAgent)
             ? 'Linux'
             : 'Unknown OS';

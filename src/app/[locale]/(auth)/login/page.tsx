@@ -35,11 +35,15 @@ export default async function LoginPage() {
     orContinueWith: t('orContinueWith'),
     email: t('email'),
     password: t('password'),
+    showPassword: t('showPassword'),
+    hidePassword: t('hidePassword'),
+    capsLockOn: t('capsLockOn'),
     forgotPassword: t('forgotPassword'),
     signIn: t('signIn'),
     // 二次验证（issue #400）
     twoFactorLabel: t('twoFactorLabel'),
     twoFactorHint: t('twoFactorHint'),
+    twoFactorTotpHint: t('twoFactorTotpHint'),
     rememberDevice: t('rememberDevice'),
     rememberDeviceHint: t('rememberDeviceHint'),
     errors: {

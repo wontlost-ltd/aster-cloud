@@ -223,6 +223,62 @@ export const trustedDevices = pgTable(
   ]
 );
 
+/**
+ * TOTP（验证器 App）绑定 —— issue #400 第二步。
+ *
+ * <p>★与 TwoFactorCode 的关键差别：邮件码存 sha256（单向即可，因为要比对的是
+ * 我们自己刚发出去的值）；TOTP **必须可逆解密**——验证时要用原始 secret
+ * 现场算出当前时间窗的码。故用 pgcrypto `pgp_sym_encrypt`，
+ * 沿用 BYOK（`ai-key-vault.ts`）已有的密钥与写法，不另起一套。
+ *
+ * <p>★`confirmedAt` 是"是否真正启用"的唯一判据：生成 secret 只是候选，
+ * 用户必须先用 App 输入一次正确的码来**证明扫码成功**，才置为已确认。
+ * 少了这一步，二维码没扫上/扫错的人会被永久锁在门外。
+ */
+export const totpCredentials = pgTable(
+  'TotpCredential',
+  {
+    id: text('id').primaryKey().notNull(),
+    /** 一个用户至多一个 TOTP 绑定 */
+    userId: text('userId').notNull().unique(),
+    /** pgp_sym_encrypt 后的 base32 secret —— ★必须可逆，不能存 hash */
+    encryptedSecret: text('encryptedSecret').notNull(),
+    /** null = 尚未确认（候选状态），非 null = 已启用 */
+    confirmedAt: timestamp('confirmedAt', { mode: 'date' }),
+    /**
+     * 已用过的时间窗计数器，防止同一个码在有效期内被重放。
+     *
+     * ★TOTP 码在 30 秒窗口内是**恒定**的：不记录已用窗口，攻击者
+     * 肩窥/中间人拿到一次码后可在剩余时间里重复使用。
+     */
+    lastUsedCounter: integer('lastUsedCounter'),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [index('TotpCredential_userId_idx').on(table.userId)]
+);
+
+/**
+ * TOTP 恢复码 —— ★不是可选项。
+ *
+ * <p>手机丢失/重装且没有恢复码 = 账户永久失联，只能走人工客服。
+ * 每行存 sha256(恢复码)，用一次即标记 usedAt（不删行，保留审计痕迹）。
+ */
+export const totpRecoveryCodes = pgTable(
+  'TotpRecoveryCode',
+  {
+    id: text('id').primaryKey().notNull(),
+    userId: text('userId').notNull(),
+    /** sha256(恢复码) 的小写 hex —— 这个只需单向 */
+    codeHash: text('codeHash').notNull(),
+    usedAt: timestamp('usedAt', { mode: 'date' }),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('TotpRecoveryCode_userId_idx').on(table.userId),
+    index('TotpRecoveryCode_codeHash_idx').on(table.codeHash),
+  ]
+);
+
 export const twoFactorCodes = pgTable(
   'TwoFactorCode',
   {
