@@ -189,12 +189,18 @@ export async function startEnrollment(
   //   这比它要修的那个 bug 更糟：用户仍被要求出示第二因子，却失去了
   //   全部后备手段，手机一丢就是永久失联。
   //   故用 returning 判断 upsert 是否真的落地，只有落地才清旧码。
-  const applied = (await db.execute(sql`
-    SELECT 1 FROM "TotpCredential"
-    WHERE "userId" = ${userId} AND "confirmedAt" IS NULL
-  `)) as unknown as unknown[];
+  // ★用 Drizzle 的查询构建器，不用 db.execute 读结果集。
+  //   `db.execute` 的返回形态**因驱动而异**（postgres-js 返回类数组，
+  //   Hyperdrive/其它驱动可能返回 `{ rows }` 包装），对它直接取 `.length`
+  //   在本地能跑、到生产就可能是 undefined 或抛错。
+  //   仓内既有的 BYOK 代码也从不对 execute 结果取 length，只用 `rows[0]?.x`。
+  //   findFirst 有类型保证，跨驱动行为一致。
+  const pendingRow = await db.query.totpCredentials.findFirst({
+    where: and(eq(totpCredentials.userId, userId), isNull(totpCredentials.confirmedAt)),
+    columns: { id: true },
+  });
 
-  if (applied.length > 0) {
+  if (pendingRow) {
     // 重新绑定后旧恢复码必须失效，否则它们会在新 secret 下继续可用。
     await db.delete(totpRecoveryCodes).where(eq(totpRecoveryCodes.userId, userId));
   }
