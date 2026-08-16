@@ -180,12 +180,24 @@ export async function startEnrollment(
   // ★WHERE 把「不得顶掉已确认绑定」焊进 SQL（独立审查发现的 Medium）。
   //   原来无条件 DO UPDATE 会把已启用账户的 confirmedAt 置 NULL——
   //   等于**静默关闭第二因子**，与本函数注释声称的不变量矛盾。
-  //   路由层虽有 hasTotpEnabled 的 409 门禁（审查者 30 轮并发未能绕过），
-  //   但保护不该只依赖调用方：多一个调用方就多一次踩雷机会。
+  //   路由层虽有 hasTotpEnabled 的 409 门禁，但保护不该只依赖调用方。
   //
-  // ★同时清掉旧恢复码：重新绑定后旧码必须失效，否则它们会在新 secret 下
-  //   继续可用（纵深防御，同为审查发现）。
-  await db.delete(totpRecoveryCodes).where(eq(totpRecoveryCodes.userId, userId));
+  // ★★删恢复码必须与上面那条 upsert **同进同退**（Codex 交叉审查发现）：
+  //   我上一版把 delete 写成无条件执行，于是对**已启用**账户调用本函数时，
+  //   WHERE 正确地拒绝了重置（TOTP 仍启用），delete 却照删不误——
+  //   实测：启用状态保持 true，恢复码从 10 掉到 0。
+  //   这比它要修的那个 bug 更糟：用户仍被要求出示第二因子，却失去了
+  //   全部后备手段，手机一丢就是永久失联。
+  //   故用 returning 判断 upsert 是否真的落地，只有落地才清旧码。
+  const applied = (await db.execute(sql`
+    SELECT 1 FROM "TotpCredential"
+    WHERE "userId" = ${userId} AND "confirmedAt" IS NULL
+  `)) as unknown as unknown[];
+
+  if (applied.length > 0) {
+    // 重新绑定后旧恢复码必须失效，否则它们会在新 secret 下继续可用。
+    await db.delete(totpRecoveryCodes).where(eq(totpRecoveryCodes.userId, userId));
+  }
 
   return { secret, otpauthUri: buildOtpAuthUri(email, secret) };
 }
@@ -361,8 +373,14 @@ export async function verifyTotpForLogin(
 
 /** 解绑 TOTP（含恢复码）。调用方必须先验证身份。 */
 export async function disableTotp(userId: string): Promise<void> {
-  await db.delete(totpRecoveryCodes).where(eq(totpRecoveryCodes.userId, userId));
-  await db.delete(totpCredentials).where(eq(totpCredentials.userId, userId));
+  // ★两条 delete 必须同进同退（Codex 交叉审查发现）：
+  //   若第二条失败，账户会停在「TOTP 仍启用、恢复码已清零」——
+  //   与 confirmEnrollment 用事务规避的是同一种不可恢复中间态，
+  //   那里做对了，这里漏了。
+  await db.transaction(async (tx) => {
+    await tx.delete(totpRecoveryCodes).where(eq(totpRecoveryCodes.userId, userId));
+    await tx.delete(totpCredentials).where(eq(totpCredentials.userId, userId));
+  });
 }
 
 /** 剩余未使用的恢复码数量 —— 设置页展示用。 */

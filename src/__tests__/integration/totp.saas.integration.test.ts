@@ -148,6 +148,16 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('TOTP 安全属性（issue #400
     await enrolled(uid);
     await startEnrollment(uid, 'x@example.com');
     expect(await hasTotpEnabled(uid), '已启用的 TOTP 被静默关闭').toBe(true);
+
+    // ★★同时**不得清空恢复码**（Codex 交叉审查发现）：
+    //   上一版把 delete 写成无条件执行——WHERE 正确拒绝了重置（TOTP 仍启用），
+    //   delete 却照删不误。实测启用=true 而恢复码 10→0。
+    //   这比它要修的 bug 更糟：用户仍被要求出示第二因子，却失去全部后备，
+    //   手机一丢即永久失联。两个动作必须同进同退。
+    expect(
+      await countUnusedRecoveryCodes(uid),
+      '拒绝重置却清空了恢复码 → 用户仍需 2FA 但已无后备手段',
+    ).toBe(10);
   });
 
   it('★恢复码只能用一次，且并发下也只有一次通过', async () => {
