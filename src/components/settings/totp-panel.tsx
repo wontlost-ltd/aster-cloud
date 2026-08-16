@@ -159,14 +159,21 @@ export function TotpPanel({ labels: t }: { labels: TotpLabels }) {
 
   return (
     <Card>
-      <CardBody>
+      {/* ★卡片外壳必须与本页其它卡片逐字一致（用户报告：这张卡布局跟别的不一样）。
+          同页既有卡片一律是 `CardBody pt-6` + `font-display text-xl ... text-fg`
+          + 描述 `mt-1`。我原来写的是裸 CardBody + text-lg + 无 mt-1，
+          于是内边距、标题字号、标题与描述的间距三处都对不齐。
+          错误文案的颜色也统一为 text-rose-600（同 trusted-devices-panel）。 */}
+      <CardBody className="pt-6">
         <Stack gap={4}>
           <div>
-            <h2 className="text-lg font-semibold">{t.title}</h2>
-            <p className="text-sm text-fg-muted">{t.description}</p>
+            <h2 className="font-display text-xl font-semibold tracking-tight text-fg">
+              {t.title}
+            </h2>
+            <p className="mt-1 text-sm text-fg-muted">{t.description}</p>
           </div>
 
-          {error && <p className="text-sm text-danger">{error}</p>}
+          {error && <p className="text-sm text-rose-600">{error}</p>}
 
           {/* 恢复码：确认成功后一次性展示 */}
           {recoveryCodes && (
