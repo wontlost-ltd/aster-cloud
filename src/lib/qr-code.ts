@@ -30,10 +30,25 @@ import { renderSVG } from 'uqr';
  * uqr 默认带 border，此处显式写出以免将来被人"优化"掉。
  */
 export function renderQrSvg(text: string): string {
-  return renderSVG(text, {
+  const svg = renderSVG(text, {
     border: 4,
     pixelSize: 6,
     whiteColor: '#ffffff',
     blackColor: '#000000',
   });
+
+  // ★必须补上 width/height（用户报告：二维码"元素在页面上但看不见"）。
+  //   uqr 只输出 `viewBox`，**不输出 width/height**——这样的 SVG 没有固有尺寸，
+  //   放进 `w-fit` / flex 之类"由内容决定宽度"的容器里会塌缩成 0×0：
+  //   元素在 DOM 里、检查器里也能选中，但一个像素都画不出来。
+  //
+  //   ★这也是我上一轮验证的盲区：当时是把**模块矩阵**取出来重绘成像素再解码，
+  //   证明了"编码正确"，却完全没有走到"这段 SVG 在浏览器里长什么样"。
+  //   编码正确 ≠ 能看见。
+  const size = /viewBox="0 0 (\d+)/.exec(svg)?.[1];
+  if (!size) return svg;
+  return svg.replace(
+    '<svg ',
+    `<svg width="${size}" height="${size}" `,
+  );
 }
