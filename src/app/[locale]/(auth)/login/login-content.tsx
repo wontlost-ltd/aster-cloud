@@ -2,6 +2,7 @@
 
 import { useState, Suspense, useCallback } from 'react';
 import { signIn, signOut, useSession, getSession } from 'next-auth/react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { Link } from '@/i18n/navigation';
 import { useLocale } from 'next-intl';
@@ -28,6 +29,11 @@ interface Translations {
   orContinueWith: string;
   email: string;
   password: string;
+  /** 密码可见性切换按钮的无障碍标签（图标按钮必须有可读名称）。 */
+  showPassword: string;
+  hidePassword: string;
+  /** Caps Lock 开启时的提示——要说清后果，不能只说"已开启"。 */
+  capsLockOn: string;
   forgotPassword: string;
   signIn: string;
   /** 二次验证（issue #400） */
@@ -98,6 +104,38 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
    * 根本不会收到邮件——给他看那句话会让他去邮箱里空等。
    */
   const [totpMode, setTotpMode] = useState(false);
+  /** 密码是否明文显示。★默认 false——不能让密码在无人预期时可见。 */
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  /**
+   * Caps Lock 是否开启。
+   *
+   * ★为什么值得单独提示：密码框永远是圆点，用户看不出自己在输大写。
+   * 密码大小写敏感，Caps Lock 开着时会反复登录失败却查不出原因——
+   * 这是"账户被锁定"类工单里最常见的一种，而它完全可以被一句提示避免。
+   */
+  const [capsLock, setCapsLock] = useState(false);
+
+  /**
+   * 从键盘事件读取 Caps Lock 状态。
+   *
+   * ★用 `getModifierState` 而不是猜按键：它反映的是**当前真实状态**，
+   * 而不是"刚才按了哪个键"。焦点进入时也要探测一次——用户可能在聚焦
+   * **之前**就已经开着 Caps Lock，只监听 keydown 会漏掉这种情况
+   * （也是最常见的情况）。
+   */
+  const probeCapsLock = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement> | React.MouseEvent<HTMLInputElement>) => {
+      const native = e.nativeEvent as unknown as {
+        getModifierState?: (key: string) => boolean;
+      };
+      // 只有 KeyboardEvent / MouseEvent 实现了 getModifierState；
+      // 这里的类型守卫同时兜住"某些 runtime 没实现"的情况。
+      if (typeof native.getModifierState === 'function') {
+        setCapsLock(native.getModifierState('CapsLock'));
+      }
+    },
+    [],
+  );
   /** 「记住该设备」——★必须用户主动勾选，默认 false，不预勾。 */
   const [rememberDevice, setRememberDevice] = useState(false);
   const { data: session } = useSession();
@@ -446,15 +484,62 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
                         {t.forgotPassword}
                       </Link>
                     </div>
-                    <Input
-                      id="password"
-                      name="password"
-                      type="password"
-                      autoComplete="current-password"
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                    />
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        name="password"
+                        type={passwordVisible ? 'text' : 'password'}
+                        autoComplete="current-password"
+                        required
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        // ★事件选择是被浏览器 API 逼出来的，不是随意挑的：
+                        //   **FocusEvent 没有 getModifierState**（实测
+                        //   `typeof new FocusEvent('focus').getModifierState === 'undefined'`），
+                        //   只有 KeyboardEvent 与 MouseEvent 有。所以"聚焦即检测"
+                        //   在浏览器上根本做不到——我第一版挂了 onFocus，
+                        //   守卫静默返回，提示永不出现。
+                        //   退而求其次：onMouseDown 覆盖"点击进入输入框"这条最常见路径
+                        //   （此时能拿到真实状态），键盘事件覆盖输入过程中的切换。
+                        //   若用户用 Tab 键进入且未按任何键，则要等他敲第一个字符才提示。
+                        onMouseDown={probeCapsLock}
+                        onKeyDown={probeCapsLock}
+                        onKeyUp={probeCapsLock}
+                        onBlur={() => setCapsLock(false)}
+                        // 给右侧图标按钮让出空间，避免长密码被按钮盖住。
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        // ★必须是 type="button"：默认的 submit 会让点击"看一眼密码"
+                        //   直接提交表单。
+                        onClick={() => setPasswordVisible((v) => !v)}
+                        // ★图标按钮没有可读文本，必须给 aria-label，
+                        //   否则读屏用户只听到"按钮"。
+                        aria-label={passwordVisible ? t.hidePassword : t.showPassword}
+                        aria-pressed={passwordVisible}
+                        // 不进 Tab 序列：键盘用户从密码框应直达"登录"，
+                        // 而不是先经过一个装饰性控件。
+                        tabIndex={-1}
+                        className="absolute inset-y-0 right-0 flex items-center px-3 text-fg-muted transition-colors hover:text-fg"
+                      >
+                        {/* ★用 lucide 图标而非 emoji：emoji 在不同系统上字形/配色
+                            各异，与设计系统不统一；且它是文本，会被读屏念成
+                            "捂眼睛的猴子"。仓内既有做法就是 lucide（见 signup 页）。
+                            aria-hidden：可读名称由按钮的 aria-label 承担。 */}
+                        {passwordVisible ? (
+                          <EyeOff className="h-4 w-4" aria-hidden="true" />
+                        ) : (
+                          <Eye className="h-4 w-4" aria-hidden="true" />
+                        )}
+                      </button>
+                    </div>
+                    {capsLock && (
+                      // role=status：变化时读屏会播报，但不打断用户当前操作。
+                      <p role="status" className="text-xs text-warning">
+                        {t.capsLockOn}
+                      </p>
+                    )}
                   </Stack>
 
                   {/*

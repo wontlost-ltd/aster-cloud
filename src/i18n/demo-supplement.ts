@@ -172,6 +172,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 二次验证（issue #400）——走本地补充层，不需要 ui-messages 跨仓发版。
     auth: {
       login: {
+        showPassword: 'Show password',
+        hidePassword: 'Hide password',
+        capsLockOn: 'Caps Lock is on. Passwords are case-sensitive, so this is a common cause of failed sign-ins.',
         twoFactorLabel: 'Verification code',
         twoFactorHint: 'We emailed a 6-digit code. It expires in 10 minutes.',
         twoFactorTotpHint: 'Enter the 6-digit code from your authenticator app, or one of your recovery codes.',
@@ -658,6 +661,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     dashboardNav: { reports: '证据' },
     auth: {
       login: {
+        showPassword: '显示密码',
+        hidePassword: '隐藏密码',
+        capsLockOn: 'Caps Lock 已开启。密码区分大小写，这是登录失败最常见的原因之一。',
         twoFactorLabel: '验证码',
         twoFactorHint: '我们已向您的邮箱发送 6 位验证码，10 分钟内有效。',
         twoFactorTotpHint: '请输入验证器 App 上的 6 位动态码，或使用一个恢复码。',
@@ -1134,6 +1140,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     dashboardNav: { reports: 'Nachweise' },
     auth: {
       login: {
+        showPassword: 'Passwort anzeigen',
+        hidePassword: 'Passwort verbergen',
+        capsLockOn: 'Feststelltaste ist aktiv. Passwörter unterscheiden Groß- und Kleinschreibung — eine häufige Ursache für fehlgeschlagene Anmeldungen.',
         twoFactorLabel: 'Bestätigungscode',
         twoFactorHint: 'Wir haben Ihnen einen 6-stelligen Code per E-Mail gesendet. Er läuft in 10 Minuten ab.',
         twoFactorTotpHint: 'Geben Sie den 6-stelligen Code aus Ihrer Authenticator-App oder einen Wiederherstellungscode ein.',
@@ -1611,6 +1620,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     dashboardNav: { reports: 'साक्ष्य' },
     auth: {
       login: {
+        showPassword: 'पासवर्ड दिखाएँ',
+        hidePassword: 'पासवर्ड छिपाएँ',
+        capsLockOn: 'Caps Lock चालू है। पासवर्ड में बड़े-छोटे अक्षरों का अंतर होता है — यह साइन-इन विफल होने का एक सामान्य कारण है।',
         twoFactorLabel: 'सत्यापन कोड',
         twoFactorHint: 'हमने आपके ईमेल पर 6 अंकों का कोड भेजा है। यह 10 मिनट में समाप्त हो जाएगा।',
         twoFactorTotpHint: 'अपने प्रमाणक ऐप का 6-अंकीय कोड या अपना कोई पुनर्प्राप्ति कोड दर्ज करें।',
