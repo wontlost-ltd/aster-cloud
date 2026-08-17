@@ -438,4 +438,34 @@ describe('What-If 面板：呈现约束（ADR 0034 §1.1）', () => {
     });
   });
 
+  // ── i18n key 必须都有定义（生产实测漏了一个）────────────────────────
+  //
+  // ★线上曾直接显示原始 key `whatIf.valueImpact:`——`t('valueImpact')` 被调用，
+  //   但四个语种里都没定义该 key，next-intl 于是回显 key 本身。
+  //
+  // ★不用「渲染后断言页面不含 whatIf.」来测：实测把 key 删掉后该断言**仍然全绿**
+  //   （测试里的 IntlProvider 回退行为与生产不同），那是个假绿。
+  //   改为直接扫源码里所有 t('...') 调用，逐个核对四个语种的语言包——
+  //   这才与真实失败模式对齐。
+  it('★面板用到的 i18n key 必须在四个语种里都有定义', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const src = readFileSync(
+      join(process.cwd(), 'src/components/policy/whatif-batch-panel.tsx'),
+      'utf8',
+    );
+    const keys = [...src.matchAll(/\bt\('([a-zA-Z][\w.]*)'/g)].map((m) => m[1]);
+    expect(keys.length, '没扫到任何 t() 调用，正则可能失效了').toBeGreaterThan(5);
+
+    const supplement = DEMO_SUPPLEMENT as unknown as Record<
+      string,
+      { whatIf?: Record<string, unknown> }
+    >;
+    for (const locale of ['en', 'zh', 'de', 'hi']) {
+      const pack = supplement[locale]?.whatIf ?? {};
+      const missing = keys.filter((k) => !(k in pack));
+      expect(missing, `${locale} 缺少 i18n key（会在界面上回显原始 key）`).toEqual([]);
+    }
+  });
+
 });
