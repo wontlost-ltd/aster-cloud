@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db, policyGroups, policies, teamMembers } from '@/lib/prisma';
-import { eq, and, isNull, sql, asc, inArray } from 'drizzle-orm';
+import { eq, and, or, isNull, sql, asc, inArray } from 'drizzle-orm';
 import { errorEnvelope } from '@/lib/api/error-envelope';
 
 
@@ -66,6 +66,19 @@ export async function GET() {
           .where(
             and(
               inArray(policies.groupId, groupIds),
+              // ★安全审计修复（2026-08-17）：计数必须限定归属。
+              //   systemGroups 按 isSystem=true 全局查出（无 userId 过滤），
+              //   若计数不限归属，任意登录用户都能从系统分组的 _count
+              //   读到**全平台**策略总数。
+              //   口径同 src/lib/policies.ts:216「a system group's count is the
+              //   number of *this user's* policies in it, not the global one」，
+              //   并放宽到「我拥有的 OR 我所在团队的」以覆盖团队分组。
+              teamIds.length > 0
+                ? or(
+                    eq(policies.userId, session.user.id),
+                    inArray(policies.teamId, teamIds),
+                  )
+                : eq(policies.userId, session.user.id),
               isNull(policies.deletedAt),
             ),
           )

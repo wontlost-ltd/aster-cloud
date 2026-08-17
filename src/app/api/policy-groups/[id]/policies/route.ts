@@ -65,6 +65,19 @@ export async function POST(req: Request, { params }: RouteParams) {
     }
 
     // 批量更新策略的分组
+    //
+    // ★2026-08-17 审计留档：这里**刻意不改写 policies.teamId**。
+    //
+    //   「个人策略（teamId=null）躺在团队分组里」这一混合状态，是 DELETE 级联
+    //   跨租户写的成因（分组归属与策略归属两套口径分叉）。一个看似自然的收敛做法
+    //   是在此处把 teamId 对齐成 group.teamId——但那会造成**更严重的隐私回归**：
+    //   policies.teamId 是团队可见性的授权键（见 /api/v1/policies/route.ts:57
+    //   的 inArray(policies.teamId, teamIds)、/api/teams/[teamId]/policies），
+    //   自动写入等于把用户的私有策略静默共享给整个团队。
+    //
+    //   因此保持数据语义不变，改在**消费侧**用「我拥有的 OR 我所在团队的」
+    //   并集谓词处理这一合法状态（见 policy-groups/[id]/route.ts），
+    //   并在删除级联中用「重定位受限 + 解引用不受限」的两段式消除安全后果。
     await db
       .update(policies)
       .set({ groupId })

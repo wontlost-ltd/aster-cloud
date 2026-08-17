@@ -62,6 +62,99 @@ describe('pushUserSnapshot', () => {
     expect(body.aiBannedUntilEpochMs).toBeNull();
   });
 
+  // ============================================================
+  // ★跨仓签名契约（2026-08-17 安全审计）
+  //
+  // 对端：aster-api 的 SnapshotPushResource.canonicalV2
+  //   canonical = method \n path \n ts \n nonce \n sha256hex(body)
+  //
+  // 此前 v1 只签 method\npath\nts —— 不绑 body、无 nonce，
+  // 截获一条合法签名后可在 5 分钟窗口内替换请求体（如把 role 提成 ADMIN）或重放。
+  //
+  // 本用例**不复刻 canonical 再自我比对**（那只能证明 HMAC 原语对输入敏感，
+  // 数学上恒真）。做法是：拿生产代码**实际发出**的 header 与 body，
+  // 按 aster-api 的规格重算签名并要求匹配。
+  // 删掉生产代码里的 bodySha、调换字段顺序、或漏发 nonce，本用例都会红。
+  // ============================================================
+  it('签名必须按 v2 canonical 绑定 nonce 与 body（与 aster-api 逐字段一致）', async () => {
+    const { createHash, createHmac } = await import('node:crypto');
+    mockFindFirst.mockResolvedValue({
+      plan: 'pro',
+      priceLockedAt: null,
+      legacyTier: null,
+      subscriptionStatus: 'active',
+      aiBannedUntil: null,
+      gracePeriodEndsAt: null,
+    });
+    const { pushUserSnapshot } = await import('@/lib/snapshot-pusher');
+    await pushUserSnapshot('user-123');
+
+    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const headers = (init as RequestInit).headers as Record<string, string>;
+    const body = (init as RequestInit).body as string;
+
+    // nonce 必须存在且为 UUID —— 缺它服务端只能回落到可重放的 v1
+    expect(headers['X-Aster-Nonce'], 'v2 必须发送 X-Aster-Nonce').toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+    );
+
+    // 按 aster-api SnapshotPushResource.canonicalV2 的规格重算
+    const bodySha = createHash('sha256').update(body).digest('hex');
+    const canonical = [
+      'POST',
+      '/api/internal/snapshot/user/user-123',
+      headers['X-Aster-Timestamp'],
+      headers['X-Aster-Nonce'],
+      bodySha,
+    ].join('\n');
+    const expected = createHmac('sha256', process.env.ASTER_PLAN_GATE_HMAC_KEY!)
+      .update(canonical)
+      .digest('hex');
+
+    expect(
+      headers['X-Aster-Signature'],
+      '签名必须覆盖 method/path/ts/nonce/sha256(body)——与 aster-api 的 canonicalV2 逐字段一致'
+    ).toBe(expected);
+  });
+
+  it('签名绑定 body：改一个字节即签名失配（防截获后替换请求体）', async () => {
+    const { createHash, createHmac } = await import('node:crypto');
+    mockFindFirst.mockResolvedValue({
+      plan: 'pro',
+      priceLockedAt: null,
+      legacyTier: null,
+      subscriptionStatus: 'active',
+      aiBannedUntil: null,
+      gracePeriodEndsAt: null,
+    });
+    const { pushUserSnapshot } = await import('@/lib/snapshot-pusher');
+    await pushUserSnapshot('user-123');
+
+    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const headers = (init as RequestInit).headers as Record<string, string>;
+    const body = (init as RequestInit).body as string;
+
+    // 攻击形态：截获签名后把 plan 换成 enterprise（提额）
+    const tampered = body.replace('"pro"', '"enterprise"');
+    expect(tampered).not.toBe(body);
+
+    const sign = (b: string) =>
+      createHmac('sha256', process.env.ASTER_PLAN_GATE_HMAC_KEY!)
+        .update(
+          [
+            'POST',
+            '/api/internal/snapshot/user/user-123',
+            headers['X-Aster-Timestamp'],
+            headers['X-Aster-Nonce'],
+            createHash('sha256').update(b).digest('hex'),
+          ].join('\n')
+        )
+        .digest('hex');
+
+    expect(sign(tampered)).not.toBe(headers['X-Aster-Signature']);
+    expect(sign(body)).toBe(headers['X-Aster-Signature']);
+  });
+
   it('user 不存在 → 不 fetch（让 aster-api 缓存自然过期）', async () => {
     mockFindFirst.mockResolvedValue(undefined);
     const { pushUserSnapshot } = await import('@/lib/snapshot-pusher');
