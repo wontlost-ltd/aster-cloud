@@ -6,6 +6,12 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- 新增策略版本源码端点，供 What-If 重放取目标版本 (#419) *(internal)*
+- 新增「含今天」勾选框，可把窗口右边界延伸到此刻 (#409) *(whatif)*
+- 验证器 App（TOTP）第二因子（#400 第二步） (#405) *(auth)*
+- 登录二次验证——邮件 6 位一次性验证码（#400 第一步） (#402) *(auth)*
+- 加 auditUnlimited——enterprise 留存期从「无法判定」变成显式承诺（#396） (#399) *(plans)*
+- 审计留存承诺自执行——按 plan 清执行日志 + 180d 清决策骨架（#396） (#397) *(retention)*
 - S4 面板 + 挂载 + 批次 API 接线（ADR 0034） (#377) *(whatif)*
 - 新增 /api/internal/executions/window（ADR 0034 §3.0） (#376) *(whatif)*
 - 下发 concurrentReplayBatches 权益（ADR 0034 §7.2） (#374) *(plan-gate)*
@@ -317,6 +323,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Documentation
 
+- Refresh unreleased [skip ci] (#362) *(changelog)*
 - Refresh unreleased [skip ci] (#352) *(changelog)*
 - Refresh unreleased [skip ci] (#344) *(changelog)*
 - Refresh unreleased [skip ci] (#338) *(changelog)*
@@ -616,6 +623,16 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- 修复 policy-groups 跨租户读写 + snapshot 签名绑 body/nonce (#421) *(security)*
+- 补 valueImpact 文案，并加语言包完整性守卫 (#420) *(whatif)*
+- BFF 漏传 includeToday，导致勾选框毫无效果 (#418) *(whatif)*
+- 窗口名称改由客户端本地化，不再直显服务端中文 (#408) *(whatif)*
+- 二维码不可见（SVG 无固有尺寸）+ 卡片布局与同页不一致 (#407) *(auth)*
+- TOTP 绑定读结果集不得用 db.execute 的 .length（生产 500） (#406) *(auth)*
+- 发信人域名固化 + 未进 wrangler.toml（修复「无法发送验证码」） (#404) *(email)*
+- 2FA 错误必须走 CredentialsSignin.code（修复密码登录全面不可用） (#403) *(auth)*
+- 仪表盘 Quick Action 不再承诺未实现的合规框架 (#394) *(i18n)*
+- 字体本地化——构建期不再依赖 fonts.gstatic.com (#391) *(fonts)*
 - 修复 pnpm-lock.yaml 不一致——连续合 Dependabot PR 导致 Workers 构建失败 (#389) *(deps)*
 - 连接泄漏（#383）+ 条件漏斗顺序不稳（#385） (#387)
 - What-If 时间窗口 select/日期输入改用设计系统组件 (#386) *(ui)*
