@@ -109,4 +109,20 @@ describe('requireCronAuth', () => {
     expect(res).not.toBeNull();
     expect(res!.status).toBe(401);
   });
+
+  // 定长时间比较用 timingSafeEqual，而它对**不等长**输入会直接抛错。
+  // 实现里先各自 SHA-256 把长度对齐到 32 字节，所以任意长度的错误头都应
+  // 稳稳返回 401 而非 500。这几条锁住的正是「哈希这一步不能被去掉」。
+  it.each([
+    ['远短于 secret', 'B'],
+    ['正确前缀但被截断', 'Bearer my-secre'],
+    ['空字符串', ''],
+    ['超长输入', 'x'.repeat(10_000)],
+  ])('CRON_SECRET set + 长度不等的 auth（%s）→ 401 而非抛错', (_name, header) => {
+    (process.env as Record<string, string>).NODE_ENV = 'production';
+    process.env.CRON_SECRET = 'my-secret';
+    const res = requireCronAuth(makeRequest(header));
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(401);
+  });
 });
