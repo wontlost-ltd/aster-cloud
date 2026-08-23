@@ -13,7 +13,11 @@ import { requireCronAuth } from '@/lib/cron-auth';
 
 function makeRequest(authHeader?: string): NextRequest {
   const headers = new Headers();
-  if (authHeader) headers.set('authorization', authHeader);
+  // 用 !== undefined 而非 truthy 判定：空字符串是**合法且有意义**的取值
+  // （`Authorization: ` 与「根本没有该头」走的是不同分支——后者命中 null 短路，
+  // 前者才真正进入 safeEqual）。写成 `if (authHeader)` 会让空串用例静默退化成
+  // 「无头」用例，与既有的 no-auth-header 用例重复且失去鉴别力。
+  if (authHeader !== undefined) headers.set('authorization', authHeader);
   // NextRequest 接受 RequestInit + url；body 不用，所以 URL 任意
   return new NextRequest('http://localhost/api/cron/test', { headers });
 }
@@ -106,6 +110,22 @@ describe('requireCronAuth', () => {
     (process.env as Record<string, string>).NODE_ENV = 'production';
     process.env.CRON_SECRET = 'my-secret';
     const res = requireCronAuth(makeRequest());
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(401);
+  });
+
+  // 定长时间比较用 timingSafeEqual，而它对**不等长**输入会直接抛错。
+  // 实现里先各自 SHA-256 把长度对齐到 32 字节，所以任意长度的错误头都应
+  // 稳稳返回 401 而非 500。这几条锁住的正是「哈希这一步不能被去掉」。
+  it.each([
+    ['远短于 secret', 'B'],
+    ['正确前缀但被截断', 'Bearer my-secre'],
+    ['空字符串', ''],
+    ['超长输入', 'x'.repeat(10_000)],
+  ])('CRON_SECRET set + 长度不等的 auth（%s）→ 401 而非抛错', (_name, header) => {
+    (process.env as Record<string, string>).NODE_ENV = 'production';
+    process.env.CRON_SECRET = 'my-secret';
+    const res = requireCronAuth(makeRequest(header));
     expect(res).not.toBeNull();
     expect(res!.status).toBe(401);
   });
