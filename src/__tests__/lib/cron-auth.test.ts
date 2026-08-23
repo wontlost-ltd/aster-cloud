@@ -13,7 +13,11 @@ import { requireCronAuth } from '@/lib/cron-auth';
 
 function makeRequest(authHeader?: string): NextRequest {
   const headers = new Headers();
-  if (authHeader) headers.set('authorization', authHeader);
+  // 用 !== undefined 而非 truthy 判定：空字符串是**合法且有意义**的取值
+  // （`Authorization: ` 与「根本没有该头」走的是不同分支——后者命中 null 短路，
+  // 前者才真正进入 safeEqual）。写成 `if (authHeader)` 会让空串用例静默退化成
+  // 「无头」用例，与既有的 no-auth-header 用例重复且失去鉴别力。
+  if (authHeader !== undefined) headers.set('authorization', authHeader);
   // NextRequest 接受 RequestInit + url；body 不用，所以 URL 任意
   return new NextRequest('http://localhost/api/cron/test', { headers });
 }

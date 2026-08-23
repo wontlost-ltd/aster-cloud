@@ -22,7 +22,12 @@
  * <p>比较使用**定长时间**算法：先各自 SHA-256 再 timingSafeEqual。直接用 `!==`
  *   会在字符逐位比较时提前返回，理论上可被计时侧信道逐字节还原 secret；
  *   先哈希还能保证两侧长度恒为 32 字节（timingSafeEqual 对不等长输入会抛错）。
- *   与 `two-factor.ts`、`trusted-device.ts` 的既有做法保持一致。
+ *
+ * <p>★与 `two-factor.ts` / `trusted-device.ts` 的做法**不同**，不要照搬：
+ *   那两处比较的是**已持久化为 hash 的 hex 串**（长度天然相等），故先用
+ *   `a.length !== b.length` 短路再比较即可。此处比较的是**原始请求头**，
+ *   长度由攻击者控制，用长度短路等于把「长度对不对」这一位免费送出去，
+ *   所以改为两侧现场哈希、不做任何长度短路。
  */
 
 import { createHash, timingSafeEqual } from 'node:crypto';
