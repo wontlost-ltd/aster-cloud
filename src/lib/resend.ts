@@ -203,6 +203,71 @@ export async function sendPasswordResetEmail(email: string, token: string) {
 }
 
 /**
+ * 邮箱验证链接。
+ *
+ * 与 sendPasswordResetEmail 同构：原始 token 只出现在邮件链接里，
+ * 库里存 sha256(token)。
+ *
+ * Resend 未配置时分两种处理（详见函数体内注释）：
+ * - **SaaS 生产**：抛 `RESEND_NOT_CONFIGURED`。静默成功会让用户看到
+ *   「已发送」却永远收不到信，正是本函数要消灭的失败模式。
+ * - **on-prem / 非生产**：把链接打进日志——它本来就要发给用户、且一次性，
+ *   与 2FA 码的性质不同（见下方 sendTwoFactorCodeEmail 注释）。
+ */
+export async function sendVerificationEmail(email: string, token: string) {
+  const resend = await ensureResend();
+  const verifyLink = `${appUrl()}/verify-email?token=${token}`;
+  if (!resend) {
+    // ★与 sendTwoFactorCodeEmail 同口径：**生产未配置 Resend 时抛错**，
+    //   而不是打条日志然后静默"成功"。
+    //
+    //   理由与 2FA 那条一致：静默成功会让调用方返回 {ok:true}、用户看到
+    //   「已发送」，但信永不到达——这正是本次改动要消灭的失败模式，只是
+    //   把「投递被拒」换成了「根本没配」。该文件注释已记录这在线上真实
+    //   发生过（RESEND_API_KEY 未随部署生效）。
+    //
+    //   ★on-prem 例外：那里本就不接 SaaS 邮件服务，把链接打出来让 admin
+    //   手动转交是**既定约定**（同 sendTeamInvitationEmail）。故只对 SaaS
+    //   生产抛错，不误伤 on-prem 部署。
+    //
+    //   ★用编译期常量 `__DEPLOYMENT_MODE__` 而非 import `@/lib/deployment-mode`：
+    //   本文件是 hot gate（文件头注明），靠该常量让 DefinePlugin 在 on-prem
+    //   构建时整体裁掉 resend SDK。引入运行时模块会破坏这个 tree-shake。
+    if (__DEPLOYMENT_MODE__ === 'saas' && process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'RESEND_NOT_CONFIGURED: 无法发送邮箱验证信，用户将无法解锁 AI 功能',
+      );
+    }
+    console.log(`Email verification link: ${verifyLink}`);
+    return;
+  }
+
+  // ★必须检查返回值里的 error（同 sendTwoFactorCodeEmail 的教训）：Resend SDK
+  //   对**被拒绝的投递**不抛异常，而是返回 { data: null, error }。裸 await 会把
+  //   「域名未验证 / 超额 / 收件人被封」全部吞掉，调用方返回 {ok:true}、用户看到
+  //   「已发送」，但信永远不来——而此时旧 token 已被作废、新 token 已入库，
+  //   用户被永久锁在 AI 闸门外且日志零痕迹。正是本次要修的那类静默失败。
+  const { error } = await resend.emails.send({
+    from: `Aster Cloud <${fromEmail()}>`,
+    to: email,
+    subject: 'Verify your email',
+    html: `
+      <h1>Verify your email</h1>
+      <p>Confirm this address to unlock AI features on your Aster Cloud account.</p>
+      <p>Click the link below. This link expires in 24 hours.</p>
+      <p><a href="${verifyLink}">Verify Email</a></p>
+      <p>If you didn't request this, you can safely ignore this email.</p>
+    `,
+  });
+
+  if (error) {
+    // 不打 verifyLink——它等价于一次性凭据，不该进日志。
+    console.error('[resend] verification delivery rejected:', error.name, error.message);
+    throw new Error(`RESEND_SEND_REJECTED: ${error.name}`);
+  }
+}
+
+/**
  * 登录二次验证码（issue #400）。
  *
  * <p>★与本文件其它模板不同：Resend 未配置时**不把码打进日志**。
