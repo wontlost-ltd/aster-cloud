@@ -466,6 +466,12 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       result: {
         title: 'Reciting with {n, plural, one {# star} other {# stars}}',
         note: 'This ran in your browser on the same TypeScript engine that powers the credit and poker demos — a real recursive compile + evaluate, not a template.',
+        canonicalizeLabel: 'Canonicalized source',
+        evaluateLabel: 'What the rule returned',
+        derivedLabel: 'Values the engine derived',
+        verdictLabel: 'Verdict',
+        true: 'true',
+        false: 'false',
       },
       cta: {
         title: 'Aster is a real compiler, not a template.',
@@ -945,6 +951,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         canonicalizeLabel: '① canonicalize 的真实输出（引擎产物，非写死）——末句「思故乡」已被字面量宏就地展开成 「静夜思」',
         evaluateLabel: '② evaluate 入口规则「地上霜」的真实返回',
         note: '这段在你浏览器里真编译真求值：字面量宏在表层把「思故乡」展开成字符串字面量「静夜思」（见上方 低头 「静夜思」；关键词别名 床前/疑是/举头/低头 则在下一步词法层解析成 模块/规则/产出/返回）。结果由规则当场求值得出，不是页面预置的固定文案。',
+        derivedLabel: '引擎推导出的中间值',
+        verdictLabel: '裁决',
+        true: '真',
+        false: '假',
       },
       cta: {
         title: 'Aster 是真编译器，不是模板。',
@@ -1428,6 +1438,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         true: 'wahr',
         false: 'falsch',
         note: 'Dies läuft in deinem Browser auf derselben TypeScript-Engine wie die Kredit- und Poker-Demos: das Urteil wird aus den Voraussetzungen des Gedichts berechnet — kein vorgefertigter Text. (Umlaute ü/ö/ä/ß sind als ue/oe/ae/ss geschrieben, Zeilenkommata sind entfernt, damit der Vers als Quelltext kompiliert.)',
+        canonicalizeLabel: 'Kanonisierter Quelltext',
+        evaluateLabel: 'Rückgabe der Regel',
       },
       cta: {
         title: 'Aster ist ein echter Compiler, keine Vorlage.',

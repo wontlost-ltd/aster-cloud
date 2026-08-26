@@ -16,23 +16,6 @@
     "auth.verifyEmail.successMessage",
     "auth.verifyEmail.successTitle",
     "auth.verifyEmail.verifying",
-    "conditionFunnel.emptyHint",
-    "conditionFunnel.neverMatchedHint",
-    "conditionFunnel.truncatedNote",
-    "poemDemoPage.result.canonicalizeLabel",
-    "poemDemoPage.result.derivedLabel",
-    "poemDemoPage.result.evaluateLabel",
-    "poemDemoPage.result.false",
-    "poemDemoPage.result.true",
-    "poemDemoPage.result.verdictLabel",
-    "policies.detail.untitled",
-    "ruleRegression.comparisonNote",
-    "ruleRegression.replayLimitedNote",
-    "ruleRegression.signabilityDeclaredHint",
-    "ruleRegression.signabilityProvenanceHint",
-    "ruleRegression.signabilityUnsignableHint",
-    "ruleRegression.transitionApprovedHint",
-    "settings.aiKeysPage.resetDialogBody",
-    "whatIf.windowTruncated"
+    "policies.detail.untitled"
   ]
 }
