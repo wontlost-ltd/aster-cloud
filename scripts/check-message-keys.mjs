@@ -51,6 +51,11 @@ const SOURCE = join(
   PROJECT_ROOT, '..', 'aster-lang-locales', 'locales', 'en',
   'src', 'main', 'resources', 'ui-messages', 'en-US.json',
 );
+// ★第三个来源：cloud 本地补充层（src/i18n/demo-supplement.ts）。
+// request.ts 用 deepMergeMessages 把它**叠在 npm 包之上**，所以这里的 key
+// 在运行时同样有效。不读它会把 demo 页 / 团队语言卡等一大批键误报成缺失——
+// 而它们本就**有意**不进共享包（见该文件头注释：避免胖化共享包与跨仓发版耦合）。
+const SUPPLEMENT = join(PROJECT_ROOT, 'src', 'i18n', 'demo-supplement.ts');
 
 const UPDATE = process.argv.includes('--update');
 const LIST = process.argv.includes('--list');
@@ -149,6 +154,46 @@ const pkg = JSON.parse(readFileSync(PACKAGE, 'utf-8'));
 // 缺失时退化为「只比 npm 包」，并显式说明——不静默少查。
 const source = existsSync(SOURCE) ? JSON.parse(readFileSync(SOURCE, 'utf-8')) : null;
 
+/**
+ * 从 demo-supplement.ts 里取 `en` 子树的**键路径集合**。
+ *
+ * 不求值 TS、也不解析成对象——只需要「这个路径存在吗」。用括号配平找到
+ * `en: {` 的范围，再按 `key:` 的缩进层级还原路径。值是什么无关紧要。
+ */
+function supplementKeys() {
+  if (!existsSync(SUPPLEMENT)) return new Set();
+  const src = readFileSync(SUPPLEMENT, 'utf-8');
+  const start = src.indexOf('\n  en: {');
+  if (start < 0) return new Set();
+  let depth = 0;
+  let end = start;
+  for (let i = src.indexOf('{', start); i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}') {
+      depth--;
+      if (depth === 0) { end = i; break; }
+    }
+  }
+  const body = src.slice(start, end);
+  const out = new Set();
+  const stack = [];
+  for (const raw of body.split('\n')) {
+    const line = raw.replace(/\/\/.*$/, '');
+    const indent = line.search(/\S/);
+    if (indent < 0) continue;
+    while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
+    const open = line.match(/^\s*([A-Za-z_]\w*)\s*:\s*\{\s*$/);
+    if (open) { stack.push({ indent, name: open[1] }); continue; }
+    const leaf = line.match(/^\s*([A-Za-z_]\w*)\s*:\s*['"`]/);
+    if (leaf) {
+      const path = [...stack.slice(1).map((f) => f.name), leaf[1]].join('.');
+      if (path) out.add(path);
+    }
+  }
+  return out;
+}
+const supplement = supplementKeys();
+
 const missing = new Map(); // key -> Set<file>
 let unboundFiles = 0;
 let scanned = 0;
@@ -159,7 +204,7 @@ for (const file of sourceFiles(join(PROJECT_ROOT, 'src'))) {
   if (!hasT) continue;
   scanned++;
   for (const key of keys) {
-    if (!hasLeaf(pkg, key)) {
+    if (!hasLeaf(pkg, key) && !supplement.has(key)) {
       if (!missing.has(key)) missing.set(key, new Set());
       missing.get(key).add(relative(PROJECT_ROOT, file));
     }
