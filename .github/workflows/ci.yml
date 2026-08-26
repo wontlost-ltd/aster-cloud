@@ -97,6 +97,13 @@ jobs:
         run: pnpm run check:env-production
       - name: Verify message catalog parity (en backbone)
         run: pnpm run check:locales:strict
+      # ★上一步比的是**语言之间**（zh/de/hi 跟不跟得上 en），对「一个键所有语言
+      # 都没有」完全隐形——那种键在 en 骨架里也不存在，不会被当成缺口。
+      # 本步比的是**代码 vs 文案**：每个 t('key') 在真相源里是否真有对应叶子。
+      # 缺 key 不崩页（intl-client-provider 兜底成显示 key 路径），故只能主动查。
+      # 存量缺失入基线不阻塞；新增缺键 exit 1。
+      - name: Verify t() keys exist in message source
+        run: pnpm run check:message-keys
       # #98: report partial-locale coverage (hi shipped ~7%). Non-blocking —
       # the threshold is a product decision; deep-merge fallback prevents crashes.
       - name: Locale coverage report (non-blocking)

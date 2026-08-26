@@ -31,6 +31,7 @@
     "check:locales": "tsx scripts/check-locales.ts",
     "check:locales:strict": "tsx scripts/check-locales.ts --strict",
     "check:locale-coverage": "node scripts/check-locale-coverage.mjs",
+    "check:message-keys": "node scripts/check-message-keys.mjs",
     "check:lsp-pin": "node scripts/check-lsp-pin.mjs",
     "check:env-production": "node scripts/check-env-production.mjs",
     "check:glossary": "tsx scripts/check-glossary.ts",
