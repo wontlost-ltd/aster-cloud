@@ -90,13 +90,24 @@ function extract(file) {
   //   行首/代码位出现的注释起始处截断，且键名本身不含 `//`。
   const src = stripComments(readFileSync(file, 'utf-8'));
 
-  // 变量名 → 命名空间
+  // 变量名 → 命名空间。
+  // ★同一文件里**同名变量绑不同命名空间**是真实存在的（实测 4 个文件）：
+  //     export function A() { const t = useTranslations('admin.riskTier'); … }
+  //     function B()        { const t = useTranslations('admin.riskTier.override'); … }
+  //   两个组件各自作用域里都叫 t。正则无作用域概念，后者会覆盖前者，
+  //   于是 A 的 20 个键被误判成缺 `admin.riskTier.override.*`——**假缺失**。
+  //   实测这正是初版报出 20 个 admin.riskTier 缺键的全部原因。
+  //   处置：同名绑不同 ns 时把该名**标为歧义并弃用**，宁可少查也不误报。
   const binding = new Map();
+  const ambiguous = new Set();
   for (const m of src.matchAll(
     /(?:const|let|var)\s+(\w+)\s*=\s*useTranslations\(\s*['"]([^'"]+)['"]\s*\)/g,
   )) {
-    binding.set(m[1], m[2]);
+    const [, name, ns] = m;
+    if (binding.has(name) && binding.get(name) !== ns) ambiguous.add(name);
+    binding.set(name, ns);
   }
+  for (const name of ambiguous) binding.delete(name);
 
   const keys = [];
   let unbound = 0;
@@ -105,8 +116,9 @@ function extract(file) {
     const [, fn, key] = m;
     if (binding.has(fn)) keys.push(`${binding.get(fn)}.${key}`);
   }
-  // 有 useTranslations 但一个绑定都没解析出来 → 形态不认识，如实计数
+  // 有 useTranslations 但没有可信绑定（未解析出，或全被歧义剔除）→ 如实计数
   if (/useTranslations\(/.test(src) && binding.size === 0) unbound = 1;
+  else if (ambiguous.size > 0) unbound = 1; // 部分歧义：该文件未被完整覆盖
 
   return { unbound, keys, hasT: binding.size > 0 };
 }
