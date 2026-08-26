@@ -37,9 +37,20 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..');
 const BASELINE = join(__dirname, 'message-keys-baseline.json');
 
-// 真相源以 en 为准：本脚本查的是「键存不存在」，不是「译得全不全」。
-// 某键只要在 en 里有，缺 zh/de 由 check-locales.ts 负责。
-const BACKBONE = join(PROJECT_ROOT, 'node_modules', '@aster-cloud/ui-messages', 'en-US.json');
+// 两个比对面，缺一不可：
+//  · PACKAGE = 已安装的 npm 包 —— **生产实际能拿到的**。这里没有 = 用户看到 key 路径。
+//  · SOURCE  = aster-lang-locales 的真相源（并列 checkout 时才有）。
+// 二者的差集意义完全不同：
+//  · 真相源有、包里没有 → **只是没发版**，不需要写文案，等发版列车即可
+//  · 真相源也没有       → **真缺文案**，要去 aster-lang-locales 补
+// 只比 npm 包会把「等发版」误报成「缺文案」，让人去重复写已经存在的键
+//（实测 254 个缺失里有 97 个属于这类，其中 evidenceExport 34 键早在
+//  2026-08-20 就进了真相源）。
+const PACKAGE = join(PROJECT_ROOT, 'node_modules', '@aster-cloud/ui-messages', 'en-US.json');
+const SOURCE = join(
+  PROJECT_ROOT, '..', 'aster-lang-locales', 'locales', 'en',
+  'src', 'main', 'resources', 'ui-messages', 'en-US.json',
+);
 
 const UPDATE = process.argv.includes('--update');
 const LIST = process.argv.includes('--list');
@@ -117,11 +128,14 @@ function hasLeaf(tree, path) {
   return typeof cur === 'string';
 }
 
-if (!existsSync(BACKBONE)) {
-  console.error(`✗ 找不到文案真相源: ${BACKBONE}\n  先跑 pnpm install。`);
+if (!existsSync(PACKAGE)) {
+  console.error(`✗ 找不到已安装的文案包: ${PACKAGE}\n  先跑 pnpm install。`);
   process.exit(1);
 }
-const backbone = JSON.parse(readFileSync(BACKBONE, 'utf-8'));
+const pkg = JSON.parse(readFileSync(PACKAGE, 'utf-8'));
+// 真相源仅在并列 checkout 兄弟仓时可得（CI 的 aster-cloud job 不 checkout 它）。
+// 缺失时退化为「只比 npm 包」，并显式说明——不静默少查。
+const source = existsSync(SOURCE) ? JSON.parse(readFileSync(SOURCE, 'utf-8')) : null;
 
 const missing = new Map(); // key -> Set<file>
 let unboundFiles = 0;
@@ -133,7 +147,7 @@ for (const file of sourceFiles(join(PROJECT_ROOT, 'src'))) {
   if (!hasT) continue;
   scanned++;
   for (const key of keys) {
-    if (!hasLeaf(backbone, key)) {
+    if (!hasLeaf(pkg, key)) {
       if (!missing.has(key)) missing.set(key, new Set());
       missing.get(key).add(relative(PROJECT_ROOT, file));
     }
@@ -164,7 +178,20 @@ console.log(
   `扫描 ${scanned} 个含 useTranslations 的文件` +
     (unboundFiles > 0 ? `（${unboundFiles} 个无法解析绑定，未查）` : '（全部可解析绑定）'),
 );
-console.log(`缺失键: ${found.length}（基线 ${baseline.size}）`);
+// 把缺失分成「等发版」与「真缺文案」——两者的处置完全不同。
+const pendingRelease = source ? found.filter((k) => hasLeaf(source, k)) : [];
+const trulyMissing = source ? found.filter((k) => !hasLeaf(source, k)) : found;
+if (source) {
+  console.log(
+    `缺失键: ${found.length}（基线 ${baseline.size}）` +
+      ` = 等发版 ${pendingRelease.length} + 真缺文案 ${trulyMissing.length}`,
+  );
+} else {
+  console.log(
+    `缺失键: ${found.length}（基线 ${baseline.size}）` +
+      `\n  注：未并列 checkout aster-lang-locales，无法区分「等发版」与「真缺文案」。`,
+  );
+}
 
 if (fixed.length > 0) {
   console.log(`\n✓ 已修复 ${fixed.length} 个（可跑 --update 收窄基线）:`);
@@ -177,6 +204,13 @@ if (added.length > 0) {
   for (const k of added) {
     console.error(`    ${k}`);
     for (const f of missing.get(k)) console.error(`        ${f}`);
+  }
+  const addedPending = source ? added.filter((k) => hasLeaf(source, k)) : [];
+  if (addedPending.length > 0) {
+    console.error(
+      `\n  其中 ${addedPending.length} 个**真相源已有**，只是 npm 包未发版——` +
+        `不要重复写文案，等发版列车即可。`,
+    );
   }
   console.error(
     `\n  修法：在 aster-lang-locales 的三语 ui-messages 里补上这些键（真相源），\n` +
