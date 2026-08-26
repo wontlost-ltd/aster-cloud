@@ -184,7 +184,12 @@ function supplementKeys() {
     while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
     const open = line.match(/^\s*([A-Za-z_]\w*)\s*:\s*\{\s*$/);
     if (open) { stack.push({ indent, name: open[1] }); continue; }
-    const leaf = line.match(/^\s*([A-Za-z_]\w*)\s*:\s*['"`]/);
+    // ★值可能被 prettier 折到下一行：
+    //     emptyHint:
+    //       'Skeletons are captured when…',
+    //   故 `key:` 后面允许行尾没有引号——只要它不是开一个新对象（上面已处理）
+    //   或数组，就当作叶子。漏掉这种形态会让 5 个**实际存在**的键被误报成缺失。
+    const leaf = line.match(/^\s*([A-Za-z_]\w*)\s*:\s*(['"`]|$)/);
     if (leaf) {
       const path = [...stack.slice(1).map((f) => f.name), leaf[1]].join('.');
       if (path) out.add(path);
