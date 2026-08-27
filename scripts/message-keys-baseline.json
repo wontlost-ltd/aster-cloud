@@ -1,21 +1,3 @@
 {
-  "missing": [
-    "auth.signup.checkEmailBody",
-    "auth.signup.checkEmailTitle",
-    "auth.signup.createAccount",
-    "auth.signup.creating",
-    "auth.signup.emailLabel",
-    "auth.signup.or",
-    "auth.signup.passwordHint",
-    "auth.signup.passwordLabel",
-    "auth.signup.passwordTooShort",
-    "auth.signup.signupFailed",
-    "auth.verifyEmail.backToSettings",
-    "auth.verifyEmail.goToDashboard",
-    "auth.verifyEmail.invalidToken",
-    "auth.verifyEmail.successMessage",
-    "auth.verifyEmail.successTitle",
-    "auth.verifyEmail.verifying",
-    "policies.detail.untitled"
-  ]
+  "missing": []
 }
