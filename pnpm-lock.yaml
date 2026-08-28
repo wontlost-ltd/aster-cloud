@@ -39,11 +39,11 @@ importers:
         specifier: ^0.3.0
         version: 0.3.0(react@19.2.8)(sonner@2.0.8(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))
       '@aster-cloud/ui-messages':
-        specifier: 1.0.23
-        version: 1.0.23
+        specifier: 1.0.24
+        version: 1.0.24
       '@aster-cloud/ui-messages-hi':
-        specifier: 1.0.23
-        version: 1.0.23
+        specifier: 1.0.24
+        version: 1.0.24
       '@auth/drizzle-adapter':
         specifier: ^1.11.3
         version: 1.11.3
@@ -390,11 +390,11 @@ packages:
   '@aster-cloud/tokens@0.2.0':
     resolution: {integrity: sha512-+KwfnRtHckpxWQkInlA/V7EcJ93mXBlH9ZrBlheg3n9Vu5ZzjxheVQO+0ydZ3Th16uH+op3UEq1ofTnoHOz3EQ==}
 
-  '@aster-cloud/ui-messages-hi@1.0.23':
-    resolution: {integrity: sha512-v/DvbSa6++alokhmTJ7W+bc3zKgriYSiw//St0Pluu9IXn4c96qZ5ESeFcV3NHgYdTpBox8fleX58wikk3sUGg==}
+  '@aster-cloud/ui-messages-hi@1.0.24':
+    resolution: {integrity: sha512-o/Fl3z6jbATryTTh3Vx3kleLetpiFSN/1Dzpxt63RjNWp/uDL1sXAkKn/c5lNhPPQMHfNRyfDudiSRMPrgPf9A==}
 
-  '@aster-cloud/ui-messages@1.0.23':
-    resolution: {integrity: sha512-ODuTsUz3pb3c9MTUaGPA4jHr+fA2QJUlBFfRb5Frmx1jFxKRksyNcx17gcxcbfYKIv3vAFK2+KRwrmAsGmkcTA==}
+  '@aster-cloud/ui-messages@1.0.24':
+    resolution: {integrity: sha512-zFrXPHPtvgayqGafJQMWu2oNQ+ljn9FFZ88uRgcbg4CBP5DcMSD8YlA05Fe0DLIolgLEp/QmJEzcFkeVkkxcuQ==}
 
   '@aster-cloud/ui@0.3.0':
     resolution: {integrity: sha512-GMuI5JmX7u3rBJT7/80c7NBN7O509zVmwhnccwSs57EZ+vBdiTi++yer3WubzqASclgjqkYqidVQW2sMeh4AFg==}
@@ -6005,9 +6005,9 @@ snapshots:
 
   '@aster-cloud/tokens@0.2.0': {}
 
-  '@aster-cloud/ui-messages-hi@1.0.23': {}
+  '@aster-cloud/ui-messages-hi@1.0.24': {}
 
-  '@aster-cloud/ui-messages@1.0.23': {}
+  '@aster-cloud/ui-messages@1.0.24': {}
 
   '@aster-cloud/ui@0.3.0(react@19.2.8)(sonner@2.0.8(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))':
     dependencies:
