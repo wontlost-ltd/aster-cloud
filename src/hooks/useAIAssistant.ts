@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
+import type { LlmError } from '@/lib/llm-error';
 import { useSSEStream } from './useSSEStream';
 
 /**
@@ -37,6 +38,8 @@ export interface UseAIAssistantResult {
   streaming: boolean;
   content: string;
   error: string | null;
+  /** 结构化拒绝原因（见 useSSEStream.denial）。UI 据此选本地化文案与行动入口。 */
+  denial: LlmError | null;
   validationError: string | null;
   completed: boolean;
   /** 编译是否通过（final 事件携带） */
@@ -83,6 +86,7 @@ export function useAIAssistant(): UseAIAssistantResult {
     streaming: sse.streaming,
     content: sse.content,
     error: sse.error,
+    denial: sse.denial,
     validationError: sse.validationError,
     completed: sse.completed,
     validated: sse.validated,
