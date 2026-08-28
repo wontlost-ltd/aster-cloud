@@ -53,6 +53,19 @@ describe('parseLlmError', () => {
     expect(parseLlmError(403, '42').reason).toBe('unknown');
   });
 
+  it('★CSRF 网关的**嵌套** error 对象不得误判（线上实测的第四种 403）', () => {
+    // 实测 POST /api/llm/generate 无 Origin/Referer 时，CSRF 网关先于业务逻辑
+    // 返回 403，且 body 形状不同：{error: {code, message, reason}} —— error 是
+    // **对象**不是字符串。此时 obj.error 不是 string → 落 unknown → 回落通用文案。
+    // 若这里误判成某个具体原因，就会给出错误的行动指引。
+    const body = JSON.stringify({
+      error: { code: 'csrf_forbidden', message: 'CSRF check failed', reason: 'Missing Origin and Referer headers' },
+    });
+    const r = parseLlmError(403, body);
+    expect(r.reason).toBe('unknown');
+    expect(r.serverMessage).toBeUndefined(); // message 在嵌套层，不应被当成顶层 message
+  });
+
   it('★未知的 error 码不被当成已知原因（防新增码静默错配）', () => {
     const r = parseLlmError(403, JSON.stringify({ error: 'some_future_reason' }));
     expect(r.reason).toBe('unknown');
