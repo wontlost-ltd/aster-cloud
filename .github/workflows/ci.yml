@@ -552,6 +552,121 @@ jobs:
       # 「Wait for migration applied」步骤继承（PR 合并后 POST sync + 轮询至 synced revision 的
       # migrate digest == 本次 digest + Healthy + operation Succeeded）。
 
+
+  # ── aster-lsp 镜像：构建 + cosign keyless 签名（issue aster-deploy#9 前置）─────
+  #
+  # ★为什么新建：lsp 镜像此前**完全没有 CI**——只靠本地 `task deploy:lsp` 用 podman 推
+  #   可变 tag 0.0.9，且**从未签过名**。而 k3s 的 digest-pin 体系是 fail-closed 的：
+  #   verify-image-pin 必须 `cosign verify` 并绑定源仓 workflow 身份 + sourceSha。
+  #   所以「把 lsp 纳入 digest-pin」的第一前置就是本 job——先有可验签的不可变 digest。
+  #
+  # ★与 build-migrate-image 逐条同构（刻意不另起一套）：同样只推不可变 SHA tag、
+  #   同样 pin cosign v2.5.2（见该 job 注释里记录的 v3 new-bundle 事故）、
+  #   同样先签后 fail-closed verify。Dockerfile.lsp 本就在本仓，构建上下文一致。
+  #
+  # ⚠️ 边界（如实标注）：本 job 只产出**已签名的不可变 digest**。lsp 目前
+  #   **不在 ArgoCD 管理下**（apps/aster-lang/lsp 无 kustomization.yaml，而 appset 按
+  #   `apps/aster-lang/*/kustomization.yaml` glob 发现应用），故这里**不开 image-pin PR**——
+  #   开了也没有部署载体可 pin。让 ArgoCD 接管 lsp 是独立的生产 cutover，单独立项。
+  build-lsp-image:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # cosign keyless 签名需要 OIDC token（Fulcio 证书 + Rekor 透明日志）。
+      id-token: write
+    outputs:
+      digest: ${{ steps.lsp-build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # ★只推不可变 SHA tag，不推可变 tag（如既有的 0.0.9）。可变 tag + 生产
+      #   imagePullPolicy: IfNotPresent 正是 aster-deploy#9 的成因：节点有缓存时
+      #   rollout restart 会静默继续跑旧镜像。
+      - name: Build & push lsp image
+        id: lsp-build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.lsp
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            docker.io/wontlost/aster-lsp:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          # ★与 build-migrate-image 同一版本，理由见该 job 注释：installer v4 的默认
+          #   cosign-release 是 v3，而 v3 默认 --new-bundle-format 会让旧路径
+          #   `no signatures found`。必须显式 pin。
+          cosign-release: 'v2.5.2'
+
+      - name: Sign lsp image digest (keyless)
+        env:
+          COSIGN_YES: "true"
+          DIGEST: ${{ steps.lsp-build.outputs.digest }}
+        run: |
+          test -n "${DIGEST}" || { echo "build 未输出 digest，中止"; exit 1; }
+          REF="docker.io/wontlost/aster-lsp@${DIGEST}"
+          # 身份判据与下方 fail-closed verify 步骤逐字一致（单一真相，勿分叉）。
+          ID_REGEXP="^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/ci\.yml@refs/heads/main$"
+          OIDC_ISSUER="https://token.actions.githubusercontent.com"
+
+          # 幂等守卫：与 migrate job 同一写法——用 --insecure-ignore-tlog 只探证书身份、
+          # 不触 Rekor，避开「签名已存在→取旧 inclusion proof→404」的抖动路径。
+          # 不放松 fail-closed：trust 由下方带 tlog 的独立 full verify 兜底。
+          if cosign verify "${REF}" \
+               --insecure-ignore-tlog \
+               --certificate-identity-regexp "${ID_REGEXP}" \
+               --certificate-oidc-issuer "${OIDC_ISSUER}" >/dev/null 2>&1; then
+            echo "digest 已被本仓身份签过，跳过重签（幂等）：${DIGEST}"
+            exit 0
+          fi
+
+          for attempt in 1 2 3; do
+            if cosign sign "${REF}"; then
+              echo "signed digest=${DIGEST} (attempt ${attempt})"
+              exit 0
+            fi
+            echo "cosign sign 第 ${attempt} 次失败（Rekor 抖动?），退避重试…"
+            sleep $((attempt * 5))
+          done
+          echo "cosign sign 连续 3 次失败，中止"; exit 1
+
+      # fail-closed：签名/身份不符 → verify 失败 → job 失败。
+      - name: Verify freshly-built lsp digest signature
+        env:
+          DIGEST: ${{ steps.lsp-build.outputs.digest }}
+        run: |
+          cosign verify "docker.io/wontlost/aster-lsp@${DIGEST}" \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/ci\.yml@refs/heads/main$" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+
+      - name: Summary
+        env:
+          DIGEST: ${{ steps.lsp-build.outputs.digest }}
+        run: |
+          {
+            echo "### aster-lsp 镜像已签名"
+            echo ""
+            echo "- digest: \`${DIGEST}\`"
+            echo "- tag: \`docker.io/wontlost/aster-lsp:${GITHUB_SHA}\`（不可变）"
+            echo ""
+            echo "⚠️ lsp 尚未在 ArgoCD 管理下（apps/aster-lang/lsp 无 kustomization.yaml），"
+            echo "故本次**不开 image-pin PR**。接管 + pin 见 aster-deploy#9。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # ── 统一 digest pin 设计 A′ Phase 2：CI 开 PR 到 k3s 改 migrate image-lock ──────
   # 见 wontlost-ltd/k3s#4、k3s .github/image-pin/。独立 job：fail-loud 但**不阻塞**上面的
   # migrate 发布路径（Phase 2 期间 :latest promote + trigger sync 与 digest PR 并存）。
