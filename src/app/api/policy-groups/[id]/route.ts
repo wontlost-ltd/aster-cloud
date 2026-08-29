@@ -206,6 +206,45 @@ export async function PUT(req: Request, { params }: RouteParams) {
         return NextResponse.json({ error: 'Group cannot be its own parent' }, { status: 400 });
       }
 
+      // ★ parentId 必须校验归属，与 POST / reorder 口径一致：它是一个分组 ID 且会被
+      //   直接写入（见下方 updateData.parentId）。只查循环引用不够——攻击者可用自己
+      //   的分组作为 id（能过上面的 owner 谓词），把受害者的分组 ID 塞进 parentId，
+      //   把自己的分组挂到对方的分组树下。policyGroups.parentId 是裸 text 列、
+      //   无 FK 无约束，DB 不会兜底。
+      if (parentId) {
+        // 先查用户自己的分组
+        let parentGroup = await db.query.policyGroups.findFirst({
+          where: and(
+            eq(policyGroups.id, parentId),
+            eq(policyGroups.userId, session.user.id)
+          ),
+        });
+
+        // 不是自己的分组时，检查是否为其所在团队的分组
+        if (!parentGroup) {
+          const userTeams = await db.query.teamMembers.findMany({
+            where: eq(teamMembers.userId, session.user.id),
+            columns: { teamId: true },
+          });
+
+          if (userTeams.length > 0) {
+            const memberTeamIds = userTeams.map(m => m.teamId);
+            parentGroup = await db.query.policyGroups.findFirst({
+              where: and(
+                eq(policyGroups.id, parentId),
+                inArray(policyGroups.teamId, memberTeamIds)
+              ),
+            });
+          }
+        }
+
+        // 与 POST 一致返回 404（而非 403）：不区分「不存在」与「不属于你」，
+        // 避免被用来探测他人分组 ID 是否存在。
+        if (!parentGroup) {
+          return NextResponse.json({ error: 'Parent group not found' }, { status: 404 });
+        }
+      }
+
       // 检查新父分组是否是当前分组的子孙
       if (parentId) {
         const isDescendant = await checkIsDescendant(id, parentId);

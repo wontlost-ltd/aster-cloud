@@ -1,5 +1,12 @@
 /**
- * Signup page client component — OAuth-only entry point (no email/password yet).
+ * Signup page client component — 邮箱+密码 与 OAuth 两条并列入口。
+ *
+ * 邮箱注册此前完全缺失：登录页早已支持 credentials（邮箱+密码+2FA）、
+ * `authorize()` 也按 passwordHash 校验，但**没有任何自助路径能创建带密码的
+ * 账号**（本文件原先注明 "OAuth-only … no email/password yet"；
+ * 运维预置路径 db-bootstrap 一直存在）。
+ * 现由 `/api/auth/signup` 补齐，注册后不自动登录——让 2FA / 可信设备等
+ * 既有登录路径保持唯一入口。
  *
  * W2.2 rewrite: same flow (NextAuth signIn → /onboarding callback),
  * design-system visuals. Trial benefits panel uses the accent-tinted
@@ -21,14 +28,21 @@ import {
   Button,
   Card,
   CardBody,
+  Input,
+  Label,
   Stack,
   Wordmark,
 } from '@/components/ui';
+import { extractErrorMessage } from '@/lib/api/error-envelope';
 
 export function SignupContent() {
   const t = useTranslations('auth.signup');
   const locale = useLocale();
   const [isLoading, setIsLoading] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [emailDone, setEmailDone] = useState(false);
 
   // Locale-aware callback URL: defaultLocale = no prefix; others get /<locale>.
   const localePrefix = locale === defaultLocale ? '' : `/${locale}`;
@@ -37,6 +51,34 @@ export function SignupContent() {
   const handleOAuthSignIn = (provider: string) => {
     setIsLoading(true);
     signIn(provider, { callbackUrl });
+  };
+
+  const handleEmailSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (password.length < 8) {
+      setError(t('passwordTooShort'));
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(extractErrorMessage(data) || t('signupFailed'));
+      }
+      // ★成功与「邮箱已被占用」返回同形的 200（后端防枚举），故这里
+      //   一律显示「去查收邮件 / 去登录」，不区分两者。
+      setEmailDone(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('signupFailed'));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const trialFeatures = [
@@ -85,6 +127,69 @@ export function SignupContent() {
               </Stack>
             </CardBody>
           </Card>
+
+          {/* 邮箱 + 密码注册。登录页早已支持 credentials，但此前没有自助路径
+              能创建带密码的账号——这里补上。成功后引导去登录（不自动登录：
+              让 2FA / 可信设备等既有登录路径保持唯一入口）。 */}
+          {emailDone ? (
+            <Card>
+              <CardBody className="pt-6">
+                <Stack gap={3}>
+                  <p className="text-sm text-fg">{t('checkEmailTitle')}</p>
+                  <p className="text-xs text-fg-muted">{t('checkEmailBody')}</p>
+                  <Link
+                    href="/login"
+                    className="text-sm font-medium text-primary hover:text-primary-hover"
+                  >
+                    {t('signIn')}
+                  </Link>
+                </Stack>
+              </CardBody>
+            </Card>
+          ) : (
+            <form onSubmit={handleEmailSignup}>
+              <Stack gap={3}>
+                <Stack gap={1}>
+                  <Label htmlFor="signup-email">{t('emailLabel')}</Label>
+                  <Input
+                    id="signup-email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </Stack>
+                <Stack gap={1}>
+                  <Label htmlFor="signup-password">{t('passwordLabel')}</Label>
+                  <Input
+                    id="signup-password"
+                    name="password"
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  <p className="text-xs text-fg-subtle">{t('passwordHint')}</p>
+                </Stack>
+                {error && <p className="text-xs text-red-600">{error}</p>}
+                <Button type="submit" disabled={isLoading} className="w-full">
+                  {isLoading ? t('creating') : t('createAccount')}
+                </Button>
+              </Stack>
+            </form>
+          )}
+
+          {/* 分隔：邮箱注册 与 OAuth 是两条并列入口 */}
+          {!emailDone && (
+            <div className="flex items-center gap-3">
+              <span className="h-px flex-1 bg-border" />
+              <span className="text-xs text-fg-subtle">{t('or')}</span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
+          )}
 
           {/* OAuth providers (signup-style — full-width buttons, label on the right) */}
           <Stack gap={3}>
