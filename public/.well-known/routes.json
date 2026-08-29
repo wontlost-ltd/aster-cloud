@@ -141,6 +141,13 @@
       "locales": "all"
     },
     {
+      "path": "/verify-email",
+      "status": "canonical-here",
+      "owner": "auth",
+      "source": "src/app/[locale]/(auth)/verify-email/page.tsx",
+      "locales": "all"
+    },
+    {
       "path": "/onboarding",
       "status": "canonical-here",
       "owner": "auth",

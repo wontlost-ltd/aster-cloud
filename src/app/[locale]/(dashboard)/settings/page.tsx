@@ -39,6 +39,8 @@ import {
 } from './settings-client';
 import { TotpPanel } from '@/components/settings/totp-panel';
 import { TrustedDevicesPanel } from '@/components/settings/trusted-devices-panel';
+import { EmailVerificationPanel } from '@/components/settings/email-verification-panel';
+import { ChangePasswordPanel } from '@/components/settings/change-password-panel';
 
 const LOCALE_DETECTION_COOKIE = 'aster-locale-detection';
 
@@ -196,6 +198,41 @@ export default async function SettingsPage({ params }: PageProps) {
               callbackUrl={logoutCallbackUrl}
             />
           }
+        />
+
+        {/* 邮箱验证。放在安全区块最前：Free 档 AI 配额闸门依赖它
+            （ai-quota.ts L0.5），且 AI 卡片的「Verify now →」正指向这里。 */}
+        <EmailVerificationPanel
+          labels={{
+            title: t('emailVerification.title'),
+            description: t('emailVerification.description'),
+            statusVerified: t('emailVerification.statusVerified'),
+            statusUnverified: t('emailVerification.statusUnverified'),
+            send: t('emailVerification.send'),
+            sending: t('emailVerification.sending'),
+            sent: t('emailVerification.sent'),
+            resend: t('emailVerification.resend'),
+          }}
+        />
+
+        {/* 修改密码。后端 /api/user/change-password 早已存在，
+            此前只有 onboarding 强制改密流程用它，登录用户没有自愿入口。 */}
+        <ChangePasswordPanel
+          forgotPasswordHref={`/${locale}/forgot-password`}
+          labels={{
+            title: t('changePassword.title'),
+            description: t('changePassword.description'),
+            currentPassword: t('changePassword.currentPassword'),
+            newPassword: t('changePassword.newPassword'),
+            confirmPassword: t('changePassword.confirmPassword'),
+            submit: t('changePassword.submit'),
+            submitting: t('changePassword.submitting'),
+            success: t('changePassword.success'),
+            mismatch: t('changePassword.mismatch'),
+            tooShort: t('changePassword.tooShort'),
+            noPassword: t('changePassword.noPassword'),
+            forgotPasswordLink: t('changePassword.forgotPasswordLink'),
+          }}
         />
 
         {/* 验证器 App（issue #400 第二步）——启用后不再发邮件验证码。
