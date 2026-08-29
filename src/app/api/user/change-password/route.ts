@@ -73,8 +73,12 @@ export async function POST(req: Request) {
   if (!row || !row.passwordHash) {
     // OAuth-only accounts have no password to change here. They
     // should hit /forgot-password to *set* a credential password.
+    //
+    // ★同时给出稳定的 `code`：设置页要据此把「此账号无密码」渲染成引导
+    // 而非红色报错。只靠 message 字符串匹配会在改文案时静默失效
+    // （fail-safe 方向，但用户会看到无意义的报错）。
     return NextResponse.json(
-      { error: 'No password set on this account' },
+      { error: 'No password set on this account', code: 'NO_PASSWORD' },
       { status: 400 },
     );
   }
