@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
+import { parseLlmError, type LlmError } from '@/lib/llm-error';
 
 export type SSEEventType = 'delta' | 'validation_error' | 'repair_start' | 'final' | 'error';
 
@@ -15,6 +16,15 @@ export interface UseSSEStreamResult {
   streaming: boolean;
   content: string;
   error: string | null;
+  /**
+   * 结构化的拒绝原因（仅 HTTP 非 2xx 时有值）。
+   *
+   * ★与 `error` 并存而非替换：`error` 是既有消费方依赖的展示串，
+   * 换类型会波及所有调用点。本字段让 UI 能按**原因码**选本地化文案
+   * 与行动入口（如邮箱未验证 → 给「去验证」链接），而不是把
+   * `HTTP 403: {"error":"ai_email_unverified",...}` 这行原始 JSON 摔给用户。
+   */
+  denial: LlmError | null;
   validationError: string | null;
   completed: boolean;
   /** 编译是否通过（final 事件携带） */
@@ -112,6 +122,7 @@ export function useSSEStream(): UseSSEStreamResult {
   const [streaming, setStreaming] = useState(false);
   const [content, setContent] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [denial, setDenial] = useState<LlmError | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [completed, setCompleted] = useState(false);
   const [validated, setValidated] = useState(false);
@@ -121,6 +132,7 @@ export function useSSEStream(): UseSSEStreamResult {
   const reset = useCallback(() => {
     setContent('');
     setError(null);
+    setDenial(null);
     setValidationError(null);
     setCompleted(false);
     setValidated(false);
@@ -137,6 +149,7 @@ export function useSSEStream(): UseSSEStreamResult {
     // 重置状态
     setContent('');
     setError(null);
+    setDenial(null);
     setValidationError(null);
     setCompleted(false);
     setValidated(false);
@@ -160,7 +173,17 @@ export function useSSEStream(): UseSSEStreamResult {
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => response.statusText);
-        setError(`HTTP ${response.status}: ${errorText}`);
+        // ★解析出**结构化原因**再交给 UI。此前这里直接把响应体拼进字符串，
+        //   用户看到的是一行原始 JSON（HTTP 403: {"error":"ai_email_unverified",…}），
+        //   精确原因就在里面却没人解析——只能去开浏览器控制台看。
+        const parsed = parseLlmError(
+          response.status,
+          errorText,
+          response.headers.get('Retry-After'),
+        );
+        setDenial(parsed);
+        // `error` 保留服务端 message 作兜底（UI 优先用 denial.reason 选本地化文案）。
+        setError(parsed.serverMessage || `HTTP ${response.status}`);
         setStreaming(false);
         return;
       }
@@ -234,5 +257,5 @@ export function useSSEStream(): UseSSEStreamResult {
     }
   }, [completed]);
 
-  return { streaming, content, error, validationError, completed, validated, repairProgress, startStream, cancel, reset };
+  return { streaming, content, error, denial, validationError, completed, validated, repairProgress, startStream, cancel, reset };
 }
