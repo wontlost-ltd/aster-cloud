@@ -148,6 +148,14 @@ routes:
     source: src/app/[locale]/(auth)/reset-password/page.tsx
     locales: all
 
+  # 邮件验证链接落地页。不要求登录：用户常在另一台设备点开邮件，
+  # 一次性 token 本身即凭据（24h 过期、用后即焚）。
+  - path: /verify-email
+    status: canonical-here
+    owner: auth
+    source: src/app/[locale]/(auth)/verify-email/page.tsx
+    locales: all
+
   - path: /onboarding
     status: canonical-here
     owner: auth
