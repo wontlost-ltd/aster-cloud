@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 import { useAIAssistant } from '@/hooks/useAIAssistant';
+import { denialMessage } from '@/lib/llm-error';
 import { AIDiffPreview } from './ai-diff-preview';
 import { track, Events } from '@/lib/mixpanel';
 import {
@@ -46,6 +47,10 @@ export function AIAssistantPanel({
   onClose,
 }: AIAssistantPanelProps) {
   const t = useTranslations('ai');
+  // ★注意：props.locale 是 **cnlLocale**（生成策略用的 CNL 语言），
+  //   不是界面语言。设置页链接必须用 UI locale，
+  //   否则会把中文界面的用户送到英文设置页。
+  const uiLocale = useLocale();
   const [prompt, setPrompt] = useState('');
   const [showDiffPreview, setShowDiffPreview] = useState(false);
   const [originalSource, setOriginalSource] = useState('');
@@ -61,6 +66,7 @@ export function AIAssistantPanel({
     streaming,
     content,
     error,
+    denial,
     validationError,
     completed,
     validated,
@@ -451,7 +457,24 @@ export function AIAssistantPanel({
               <svg className="h-4 w-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
               </svg>
-              <span>{error}</span>
+              {/* ★按**结构化原因码**选本地化文案；denial 为空（如流内 error 事件）
+                  才回落到 error 串。此前这里直接渲染 `HTTP 403: {"error":…}`
+                  这行原始 JSON，用户只能去开控制台看真实原因。
+                  服务端 message 是硬编码中文，故**不能**直接透传给 en/de/hi。 */}
+              <span>
+                {denialMessage(denial, t) ?? error}
+                {denial?.reason === 'ai_email_unverified' && (
+                  <>
+                    {' '}
+                    <a
+                      href={`/${uiLocale}/settings`}
+                      className="underline font-medium hover:no-underline"
+                    >
+                      {t('goVerifyEmail')}
+                    </a>
+                  </>
+                )}
+              </span>
             </div>
           )}
 

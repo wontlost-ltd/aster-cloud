@@ -125,7 +125,10 @@ export async function checkAiQuota(
     return {
       allowed: false,
       reason: 'ai_email_unverified',
-      message: '请先完成邮箱验证以解锁 AI 功能。验证邮件已发送至您注册邮箱。',
+      // ★不要写「验证邮件已发送」——本函数不发信，发信由用户在设置页
+      //   主动触发（/api/user/send-verification）。此前这句是不实的：
+      //   当时全仓根本没有发信路径，用户等一封永远不会来的邮件。
+      message: '请先完成邮箱验证以解锁 AI 功能：在「设置 → 邮箱验证」中发送验证邮件。',
     };
   }
 
