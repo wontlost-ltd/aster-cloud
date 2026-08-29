@@ -32,6 +32,25 @@ export interface SseProxyOptions {
   upstreamPath: string;
 }
 
+/**
+ * 把一个副作用包成「至多执行一次」。
+ *
+ * <p>★必需，因为 TransformStream 的 transform 对**每个 chunk** 都会调用——
+ * 而一次 SSE 回答有成百上千个 chunk，不去重会把一次调用记成上千笔用量，
+ * 比原来的「乐观多记一笔」严重得多。
+ *
+ * <p>用同步置位的布尔而非 Promise 判空：transform 之间可能没有 await 间隙，
+ * 若等异步结果回来再置位，前几个 chunk 会同时通过检查。
+ */
+function createOnceRecorder(fn: () => Promise<void>): () => Promise<void> {
+  let started = false;
+  return async () => {
+    if (started) return;
+    started = true;   // 同步置位，杜绝并发 chunk 重复触发
+    await fn();
+  };
+}
+
 export async function proxyLlmSse(
   req: NextRequest,
   { upstreamPath }: SseProxyOptions
@@ -122,29 +141,52 @@ export async function proxyLlmSse(
     );
   }
 
-  // 成功记账（止血闭环）：SSE 流被直接转发、无法在此 await 到完成，故在上游 2xx 派发成功后
-  // 乐观记一笔 success，驱动 checkAiQuota 的月配额与速率计数（否则计数永不递增、配额门虚设）。
-  // token 精确计量与"按真实完成计费"在 Phase 3（aster-api 成功路径上报）补全。callKind 从
-  // upstreamPath 末段派生（/api/v1/ai/generate → generate）。
+  // 成功记账：驱动 checkAiQuota 的月配额与速率计数（否则计数永不递增、配额门虚设）。
+  // callKind 从 upstreamPath 末段派生（/api/v1/ai/generate → generate）。
+  //
+  // ★记账时机改为「流真正产出第一个字节之后」，而不是上游 2xx 响应头一到就记（issue #441）。
+  //   此前是后者——但 2xx 只说明**上游接受了请求**，流尚未转发也未产出任何内容。
+  //   用户秒取消、或流建立后中途网络错误，都会让一次**零产出**的调用计入成功配额。
+  //
+  //   为什么不是「记完再按结果撤销」：recordAiUsage 的 upsert 刻意保留首次 status
+  //   （见 ai-quota.ts 的 onConflictDoUpdate——createdAt/status 不被占位/回填改写），
+  //   那是 #185 回填契约的一部分。所以无法事后把 success 改成 error，
+  //   只能把「记」这个动作推迟到确实有产出之后。
+  //
+  //   仍然是**乐观**的（首字节 ≠ 完整回答），但把「零产出也计费」这一类整体消除了。
+  //   token 精确计量与按真实完成计费仍在 Phase 3（aster-api 成功路径回填同一 requestId）。
   const callKind = upstreamPath.endsWith('/suggest') ? 'suggest' : 'generate';
-  try {
-    await recordAiUsage({
-      userId: session.user.id,
-      callKind,
-      model: 'unknown',
-      promptTokens: 0,
-      completionTokens: 0,
-      usedByok,
-      // Phase 3：usedByok 时带 bindingId → stamp AiKeyBinding.lastUsedAt（dashboard 真实用量）。
-      aiKeyBindingId: byok?.bindingId ?? null,
-      requestId, // #185：占位一笔，aster-api SSE usage 回填真实 token 到同一 requestId
-      status: 'success',
-    });
-  } catch (e) {
-    console.warn(`[llm-sse-proxy] recordAiUsage failed for user=${session.user.id}:`, e);
-  }
+  const recordUsageOnce = createOnceRecorder(async () => {
+    try {
+      await recordAiUsage({
+        userId: session.user.id,
+        callKind,
+        model: 'unknown',
+        promptTokens: 0,
+        completionTokens: 0,
+        usedByok,
+        // Phase 3：usedByok 时带 bindingId → stamp AiKeyBinding.lastUsedAt（dashboard 真实用量）。
+        aiKeyBindingId: byok?.bindingId ?? null,
+        requestId, // #185：占位一笔，aster-api SSE usage 回填真实 token 到同一 requestId
+        status: 'success',
+      });
+    } catch (e) {
+      console.warn(`[llm-sse-proxy] recordAiUsage failed for user=${session.user.id}:`, e);
+    }
+  });
 
-  return new NextResponse(upstreamResp.body, {
+  // 透传流并在**第一个 chunk** 到达时记账。不缓冲、不改内容——只在中间插一个观察点。
+  const metered = upstreamResp.body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        // 记账是 fire-and-forget：绝不能让计费 IO 阻塞或中断用户的流。
+        void recordUsageOnce();
+        controller.enqueue(chunk);
+      },
+    })
+  );
+
+  return new NextResponse(metered, {
     status: upstreamResp.status,
     headers: {
       'Content-Type':
