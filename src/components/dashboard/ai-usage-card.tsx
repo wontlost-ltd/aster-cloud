@@ -49,8 +49,11 @@ export function AiUsageCard({ locale }: { locale: string }) {
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
         <h3 className="text-sm font-medium text-amber-800">{t('emailUnverifiedTitle')}</h3>
         <p className="mt-1 text-xs text-amber-700">{t('emailUnverifiedHint')}</p>
+        {/* 锚到设置页的邮箱验证区块，而非页面顶部——该页有十几个区块，
+            落在顶部等于让用户自己找。#email-verification 由该区块的
+            容器 id 提供。 */}
         <Link
-          href={`/${locale}/settings`}
+          href={`/${locale}/settings#email-verification`}
           className="mt-2 inline-block text-xs font-medium text-primary hover:underline"
         >
           {t('verifyNow')} →
