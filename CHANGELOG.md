@@ -326,6 +326,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Documentation
 
+- Refresh unreleased (#446) *(changelog)*
 - Refresh unreleased (#392) *(changelog)*
 - Refresh unreleased [skip ci] (#362) *(changelog)*
 - Refresh unreleased [skip ci] (#352) *(changelog)*
@@ -627,6 +628,8 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- 默认 origin 清单移除 localhost（k3s#489 同源问题） (#448) *(lsp)*
+- Changelog PR 不再带跳过标记，消除结构性合并死锁 (#447) *(ci)*
 - SSE 记账推迟到首字节，消除「零产出也计费」（issue #441） (#444) *(billing)*
 - PUT policy-groups 补 parentId 归属校验（越权写） (#442) *(security)*
 - 把 403 的真实原因显示给用户，而不是只留在控制台 (#438) *(ai)*
