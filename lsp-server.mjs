@@ -23,7 +23,14 @@ const port = parseInt(process.env.PORT || '3001', 10);
 const isProduction = process.env.NODE_ENV === 'production';
 
 // CORS configuration
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'https://aster-lang.cloud,https://www.aster-lang.cloud,http://localhost:3000')
+// ★默认值不含 localhost（k3s#489 同源问题）。
+//   Origin 是本网关的**主鉴权控制**（fail-closed，见 evaluateUpgrade），
+//   把 http://localhost:3000 放进**默认**清单意味着：一旦部署时忘记设
+//   ALLOWED_ORIGINS，访客机器上任一监听 3000 端口的本地页面都会成为
+//   被允许的 origin —— 而那正是主控制本身被削弱。
+//   本地开发请显式设 ALLOWED_ORIGINS（.env.example 已给出示例），
+//   让"放宽"成为一次有意识的动作，而不是默认继承。
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'https://aster-lang.cloud,https://www.aster-lang.cloud')
   .split(',')
   .map((o) => o.trim())
   .filter(Boolean);
