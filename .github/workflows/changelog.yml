@@ -73,6 +73,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add CHANGELOG.md
+          # ★跳过标记只在**直推 main** 时有意义（避免把 main tip 推成无构建产物的
+          #   commit、打断 digest-pin freshness 不变式）。一旦退化成开 PR，它就会
+          #   让分支保护要求的三项检查永不运行 → PR 永远 BLOCKED。
+          #   故先按直推形态提交；若直推失败，改写 message 去掉标记再开 PR。
           git commit -m "docs(changelog): release ${GITHUB_REF_NAME} [skip ci]"
           if git push origin HEAD:main 2>/tmp/push-err; then
             echo "✓ changelog 已直推 main"
@@ -80,6 +84,8 @@ jobs:
           fi
           echo "::warning::直推 main 失败（分支保护），退化为开 PR："
           cat /tmp/push-err
+          # 去掉跳过标记——PR 路径需要 CI 真实运行才能满足分支保护。
+          git commit --amend -m "docs(changelog): release ${GITHUB_REF_NAME}"
           BRANCH="chore/changelog-${GITHUB_REF_NAME}"
           git push --force-with-lease origin "HEAD:${BRANCH}"
           if [ -z "$(gh pr list --head "$BRANCH" --base main --state open --json number --jq '.[0].number // empty')" ]; then
@@ -100,7 +106,17 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B "$BRANCH"
           git add CHANGELOG.md
-          git commit -m "docs(changelog): refresh unreleased [skip ci]"
+          # ★不带跳过标记：这条 commit 落在 **PR 分支**上，而 main 的分支保护要求
+          #   build / on-prem-build / e2e 三项必过。带上跳过标记 → 这三项永远不运行
+          #   → PR 永远 BLOCKED、永远合不掉（#392 曾因此卡了两周，#446 又原样复现）。
+          #
+          #   当初加它是为了「不污染 main tip 的 digest-pin freshness 基线」，
+          #   那个理由只对**直推 main** 成立；改开 PR 后 tip 不再被污染，
+          #   标记失去了原有作用，只剩下副作用。
+          #
+          #   代价：每次 changelog 刷新会跑一次完整 CI（约 8 分钟）。用 PR 换
+          #   「能合并」是划算的——一个永远合不掉的 PR 等于这条流水线白跑。
+          git commit -m "docs(changelog): refresh unreleased"
           git push --force-with-lease origin "$BRANCH"
           if [ -z "$(gh pr list --head "$BRANCH" --base main --state open --json number --jq '.[0].number // empty')" ]; then
             gh pr create --base main --head "$BRANCH" \
