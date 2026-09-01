@@ -97,6 +97,16 @@ vi.mock('@monaco-editor/react', () => ({
   },
 }));
 
+// ── useAsterLSP 探针：捕获组件传下去的入参 ────────────────────────────
+const lspCalls: Array<Record<string, unknown>> = [];
+vi.mock('@/hooks/useAsterLSP', () => ({
+  useAsterLSP: (opts: Record<string, unknown>) => {
+    lspCalls.push(opts);
+    return { connected: false, connecting: false, error: null,
+      connect: vi.fn(), disconnect: vi.fn(), reconnect: vi.fn() };
+  },
+}));
+
 // 编译器不参与本文件的断言，桩掉以免拉起真实 wasm/worker
 vi.mock('@/hooks/useAsterCompiler', () => ({
   useAsterCompiler: () => ({ diagnostics: [], compileResult: null }),
@@ -144,6 +154,7 @@ async function completionsAt(line = 'Mod') {
 
 beforeEach(() => {
   registeredProviders.length = 0;
+  lspCalls.length = 0;
 });
 
 describe('编辑器接线：关键词补全', () => {
@@ -175,5 +186,43 @@ describe('编辑器接线：关键词补全', () => {
     );
     await waitFor(() => expect(registeredProviders.length).toBeGreaterThan(0));
     expect((await completionsAt('模')).map((x) => x.label)).toContain('模組');
+  });
+});
+
+describe('编辑器接线：LSP 参数下发', () => {
+  it('★tenantId 与领域词汇成对下发（回到 #162 缺陷时变红）', async () => {
+    process.env.NEXT_PUBLIC_LSP_HOST = 'lsp.example.test';
+    render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" domain="insurance.auto" />);
+    await waitFor(() => expect(lspCalls.length).toBeGreaterThan(0));
+    expect(lspCalls.at(-1)!.tenantId).toBe(TENANT);
+    delete process.env.NEXT_PUBLIC_LSP_HOST;
+  });
+
+  /* ★诊断必须丢弃：Monaco marker 按 owner 分桶，本 hook 写 'aster-lsp'、
+   *   useAsterCompiler 写 'aster-compiler'——owner 不同**保证两套同时渲染**，
+   *   用户会看到每个错误两条红波浪线。这条防止有人"顺手"去掉该开关。 */
+  it('★必须丢弃 LSP 诊断（否则红波浪线双份）', async () => {
+    process.env.NEXT_PUBLIC_LSP_HOST = 'lsp.example.test';
+    render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" />);
+    await waitFor(() => expect(lspCalls.length).toBeGreaterThan(0));
+    expect(lspCalls.at(-1)!.suppressDiagnostics).toBe(true);
+    delete process.env.NEXT_PUBLIC_LSP_HOST;
+  });
+
+  /* ★lspEnabled 恒 true 会让生产站（Cloudflare Workers，无 /api/lsp 路由）
+   *   陷入 reconnect 风暴；readOnly 视图也不该连。 */
+  it('★未配 LSP_HOST 时不自动连接', async () => {
+    delete process.env.NEXT_PUBLIC_LSP_HOST;
+    render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" />);
+    await waitFor(() => expect(lspCalls.length).toBeGreaterThan(0));
+    expect(lspCalls.at(-1)!.autoConnect).toBe(false);
+  });
+
+  it('★readOnly 视图不连接 LSP', async () => {
+    process.env.NEXT_PUBLIC_LSP_HOST = 'lsp.example.test';
+    render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" readOnly />);
+    await waitFor(() => expect(lspCalls.length).toBeGreaterThan(0));
+    expect(lspCalls.at(-1)!.autoConnect).toBe(false);
+    delete process.env.NEXT_PUBLIC_LSP_HOST;
   });
 });
