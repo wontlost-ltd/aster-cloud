@@ -26,6 +26,7 @@ import { violet, sky, emerald, amber, rose, zinc } from '@aster-cloud/tokens';
 import { useEntryRuleDecorations } from './use-entry-rule-decorations';
 import { extractUseRefs, type UseRef } from '@/lib/aster/modules';
 import type { AsterModuleCatalogEntry } from '@/services/policy/policy-api';
+import { useAsterLSP } from '@/hooks/useAsterLSP';
 
 // Monaco 语言 ID
 const ASTER_LANG_ID = 'aster-cnl';
@@ -551,6 +552,49 @@ export function MonacoPolicyEditor({
     externalInvalidationKey: `${userVocabEpoch}:${JSON.stringify(aliasSet ?? {})}`,
     debounceDelay,
     enableValidation: true,
+  });
+  /* eslint-enable react-hooks/refs */
+
+  /* LSP 接线（issue #500）。此前 useAsterLSP 是**死代码**——集群里没有服务端，
+   * 也没有任何组件调用它，两头都没接上。
+   *
+   * ★职责边界：诊断**不归 LSP 管**。上面的 useAsterCompiler 已在浏览器内做
+   *   完整 parse+typecheck（且别名感知、离线可用）。LSP 只补三件浏览器侧做不到的：
+   *   跳转定义、签名帮助、跨文件引用。两者不重叠，故不会出现双份红波浪线。
+   *
+   * ★仅在配置了 NEXT_PUBLIC_LSP_HOST 时启用：未配置时 hook 会回落到同源
+   *   `/api/lsp`，而生产站跑在 Cloudflare Workers 上、根本没有该路由，
+   *   结果是连不上还要按 reconnectDelay 反复重试。宁可整块不启用。
+   */
+  const lspEnabled = Boolean(process.env.NEXT_PUBLIC_LSP_HOST) && !readOnly;
+  const lspDocumentUri = useMemo(
+    () => `inmemory://policy/${domain ?? 'default'}.aster`,
+    [domain],
+  );
+  /* 服务端要 tenantId 与 domainVocabularies **成对**才注册（server.ts:209），
+   * 且 currentDomain 取数组第 0 项——当前 domain 必须在首位。
+   * 这里至多一个词汇，天然满足顺序要求。 */
+  const lspVocabularies = useMemo(
+    () => (userVocabulary ? [userVocabulary] : undefined),
+    [userVocabulary],
+  );
+  /* eslint-disable react-hooks/refs */
+  useAsterLSP({
+    editor: lspEnabled && isEditorReady ? editorRef.current : null,
+    documentUri: lspDocumentUri,
+    locale: compilerLocale,
+    tenantId,
+    domainVocabularies: lspVocabularies,
+    autoConnect: lspEnabled,
+    /* ★必须丢弃 LSP 推送的诊断：Monaco 的 marker 按 owner 分桶，
+     *   本 hook 写 'aster-lsp'、useAsterCompiler 写 'aster-compiler' ——
+     *   owner 不同**恰恰保证两套同时渲染**，用户会看到每个错误两条红波浪线、
+     *   Problems 面板双份条目（且两边行列基准还不同）。
+     *   诊断归浏览器侧编译器，LSP 只提供跳转/签名/引用。 */
+    suppressDiagnostics: true,
+    // 连不上时静默降级：编辑器仍有完整的浏览器侧诊断，
+    // 不该因为一个增强能力不可用就往控制台刷错误。
+    suppressErrors: true,
   });
   /* eslint-enable react-hooks/refs */
 
