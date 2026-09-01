@@ -466,7 +466,6 @@ export function MonacoPolicyEditor({
    *   locale/别名切换后若不经 ref 读取，补全会一直给旧语言的词——
    *   这类"注册时快照"是 Monaco provider 最常见的陈旧源。 */
   const lexiconRef = useRef<Lexicon>(lexicon);
-  lexiconRef.current = lexicon;
   const moduleMessagesRef = useRef({
     moduleNotFound: (moduleName: string) => tModules('moduleNotFound', { moduleName }),
     versionNotFound: (moduleName: string, version: number, versions: string) =>
@@ -486,6 +485,12 @@ export function MonacoPolicyEditor({
   useEffect(() => {
     moduleCatalogRef.current = moduleCatalog.modules;
   }, [moduleCatalog.modules]);
+
+  // 与上面同一约定：ref 在 effect 里同步，不在 render 期间赋值
+  // （render 期间赋值会被 react-hooks/refs 拦下，且在并发渲染下不安全）。
+  useEffect(() => {
+    lexiconRef.current = lexicon;
+  }, [lexicon]);
 
   useEffect(() => {
     moduleMessagesRef.current = {
