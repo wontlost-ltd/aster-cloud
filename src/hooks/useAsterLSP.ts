@@ -21,7 +21,7 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import type { editor, languages, IDisposable, Position } from 'monaco-editor';
-import { buildLspInitOptions } from '@/lib/lsp-init-options';
+import { buildLspInitOptions, shouldApplyDiagnostics } from '@/lib/lsp-init-options';
 
 export type CNLLocale = 'en-US' | 'zh-CN' | 'de-DE';
 
@@ -54,6 +54,19 @@ export interface UseAsterLSPOptions {
   maxReconnectAttempts?: number;
   /** Suppress console errors for connection failures */
   suppressErrors?: boolean;
+  /**
+   * 丢弃服务端推送的诊断，不往 Monaco 写 marker。
+   *
+   * ★调用方若已有另一条诊断管线，**必须**打开这个开关：Monaco 的 marker
+   *   按 owner 分桶，`setModelMarkers` 只替换同名 owner 那一桶。本 hook 用
+   *   `'aster-lsp'`、useAsterCompiler 用 `'aster-compiler'` —— owner 不同
+   *   恰恰保证**两套同时渲染**，用户会看到每个错误两条红波浪线、
+   *   Problems 面板双份条目（且两边行列基准还不同：这里 +1、那边直接透传）。
+   *
+   *   而这条路径必然触发：本 hook 在 initialize 时声明了
+   *   `publishDiagnostics` 能力，并会发 didOpen / didChange。
+   */
+  suppressDiagnostics?: boolean;
 }
 
 export interface UseAsterLSPResult {
@@ -183,6 +196,7 @@ export function useAsterLSP({
   locale = 'en-US',
   tenantId,
   domainVocabularies,
+  suppressDiagnostics = false,
   autoConnect = true,
   autoReconnect = true,
   reconnectDelay = 3000,
@@ -303,6 +317,10 @@ export function useAsterLSP({
     (method: string, params: unknown) => {
       switch (method) {
         case 'textDocument/publishDiagnostics': {
+          /* ★调用方自带诊断管线时丢弃这批 —— 否则 Monaco 会同时渲染
+           *   'aster-lsp' 与 'aster-compiler' 两套 marker（owner 不同 =
+           *   互不覆盖），用户看到的是每个错误两条红波浪线。 */
+          if (!shouldApplyDiagnostics(suppressDiagnostics)) break;
           const diagnosticParams = params as {
             uri: string;
             diagnostics: Array<{
@@ -347,7 +365,9 @@ export function useAsterLSP({
           console.log('[LSP] Notification:', method);
       }
     },
-    []
+    // suppressDiagnostics 必须进 deps：空数组会让它被首次渲染的值永久捕获，
+    // 调用方后来打开开关也不生效（诊断照样双份）。
+    [suppressDiagnostics]
   );
 
   /**

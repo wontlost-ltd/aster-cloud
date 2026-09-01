@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildLspInitOptions } from '@/lib/lsp-init-options';
+import { buildLspInitOptions, shouldApplyDiagnostics } from '@/lib/lsp-init-options';
 
 /**
  * LSP initialize 下发的 initializationOptions。
@@ -55,5 +55,25 @@ describe('LSP initializationOptions 构造', () => {
     const opts = buildLspInitOptions('en-US', 't', many);
     expect(opts.domainVocabularies).toEqual(many);
     expect((opts.domainVocabularies as { domain: string }[])[0].domain).toBe('a');
+  });
+});
+
+/**
+ * ★诊断归属：Monaco 的 marker 按 owner 分桶，`setModelMarkers` 只替换同名
+ *   owner 那一桶。useAsterLSP 写 'aster-lsp'、useAsterCompiler 写
+ *   'aster-compiler' —— owner 不同**恰恰保证两套同时渲染**（不是互相覆盖）。
+ *
+ *   我此前在 PR 里断言「两者不重叠，不会有双份红波浪线」，**那是错的**：
+ *   hook 声明了 publishDiagnostics 能力、也发 didOpen/didChange，
+ *   这条路径必然触发。调用方不关掉就是每个错误两条红波浪线。
+ */
+describe('LSP 诊断是否写入 Monaco', () => {
+  it('★suppressDiagnostics=true 时不写（编辑器已有浏览器侧诊断）', () => {
+    expect(shouldApplyDiagnostics(true)).toBe(false);
+  });
+
+  it('未指定时默认写入（独立使用 hook 的调用方不受影响）', () => {
+    expect(shouldApplyDiagnostics(undefined)).toBe(true);
+    expect(shouldApplyDiagnostics(false)).toBe(true);
   });
 });

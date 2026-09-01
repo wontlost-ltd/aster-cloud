@@ -37,3 +37,21 @@ export function buildLspInitOptions(
   }
   return { locale };
 }
+
+/**
+ * 是否应把服务端推送的诊断写进 Monaco。
+ *
+ * ★为什么这也要抽出来：判断原本内联在 handleServerNotification 的 switch 里，
+ *   而那个回调只能通过建立真实 WebSocket 才走得到。实测把 `if (suppressDiagnostics)`
+ *   改成 `if (false)`，组件级测试**全绿**——因为组件测试 mock 掉了整个 hook，
+ *   够不着 hook 内部。抽出来才能直接断言。
+ *
+ * ★为什么必须能关掉：Monaco 的 marker **按 owner 分桶**，
+ *   `setModelMarkers(model, owner, markers)` 只替换同名 owner 那一桶。
+ *   本 hook 用 `'aster-lsp'`、useAsterCompiler 用 `'aster-compiler'` ——
+ *   owner 不同**恰恰保证两套同时渲染**，而不是互相覆盖。
+ *   调用方若已有诊断管线，不关掉就是每个错误两条红波浪线。
+ */
+export function shouldApplyDiagnostics(suppressDiagnostics: boolean | undefined): boolean {
+  return !suppressDiagnostics;
+}

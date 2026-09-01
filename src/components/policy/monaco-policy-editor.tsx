@@ -493,12 +493,6 @@ export function MonacoPolicyEditor({
     lexiconRef.current = lexicon;
   }, [lexicon]);
 
-  // 与上面同一约定：ref 在 effect 里同步，不在 render 期间赋值
-  // （render 期间赋值会被 react-hooks/refs 拦下，且在并发渲染下不安全）。
-  useEffect(() => {
-    lexiconRef.current = lexicon;
-  }, [lexicon]);
-
   useEffect(() => {
     moduleMessagesRef.current = {
       moduleNotFound: (moduleName: string) => tModules('moduleNotFound', { moduleName }),
@@ -592,6 +586,12 @@ export function MonacoPolicyEditor({
     tenantId,
     domainVocabularies: lspVocabularies,
     autoConnect: lspEnabled,
+    /* ★必须丢弃 LSP 推送的诊断：Monaco 的 marker 按 owner 分桶，
+     *   本 hook 写 'aster-lsp'、useAsterCompiler 写 'aster-compiler' ——
+     *   owner 不同**恰恰保证两套同时渲染**，用户会看到每个错误两条红波浪线、
+     *   Problems 面板双份条目（且两边行列基准还不同）。
+     *   诊断归浏览器侧编译器，LSP 只提供跳转/签名/引用。 */
+    suppressDiagnostics: true,
     // 连不上时静默降级：编辑器仍有完整的浏览器侧诊断，
     // 不该因为一个增强能力不可用就往控制台刷错误。
     suppressErrors: true,
