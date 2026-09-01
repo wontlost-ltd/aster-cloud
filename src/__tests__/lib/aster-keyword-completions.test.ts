@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { collectKeywordLabels } from '@/lib/aster-keyword-completions';
+import { collectKeywordLabels, buildKeywordSuggestions } from '@/lib/aster-keyword-completions';
 import { EN_US, ZH_CN, DE_DE, HI_IN, type Lexicon } from '@/lib/aster-lexicon';
 
 /**
@@ -65,5 +65,79 @@ describe('CNL 关键词补全取词', () => {
 
   it('无 lexicon 时返回空数组（不得抛错拖垮补全子系统）', () => {
     expect(collectKeywordLabels(undefined)).toEqual([]);
+  });
+});
+
+/**
+ * ★这一组守的是 **provider 真的返回了补全项**，而非只守取词逻辑。
+ *
+ * 背景（同一天犯的第二次同类错）：上一版只测 collectKeywordLabels。
+ * 实测变异——把组件里 `collectKeywordLabels(lexiconRef.current)` 换成 `[]`——
+ * **12 条用例全部照绿**。纯函数测得再好，也证明不了调用方用了它。
+ *
+ * 这与 aster-lang-ts#162（第16种假绿）是同一个坑：
+ * 「抽了纯函数、测了纯函数，却没测调用点」。
+ *
+ * 把 provider 分支的**全部逻辑**收进 buildKeywordSuggestions 之后，
+ * 组件里只剩一次转发，调用点才真正被锁住。
+ */
+describe('补全 provider 返回结果', () => {
+  const KEYWORD_KIND = 17; // monaco CompletionItemKind.Keyword
+  const RANGE = { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 5 };
+
+  it('★返回非空 suggestions（恒空即为缺陷）', () => {
+    const { suggestions } = buildKeywordSuggestions(ZH_CN, KEYWORD_KIND, RANGE);
+    expect(suggestions.length).toBeGreaterThan(50);
+  });
+
+  it('★每一项的 label / insertText 都是本 locale 的关键词', () => {
+    const { suggestions } = buildKeywordSuggestions(ZH_CN, KEYWORD_KIND, RANGE);
+    const labels = suggestions.map((s) => s.label);
+    expect(labels).toContain('模块');
+    // insertText 必须与 label 一致——补全选中后插入的就是这个词
+    for (const s of suggestions) expect(s.insertText).toBe(s.label);
+    // 不得混入英文（给写 zh 的用户英文词，选中即解析失败）
+    expect(labels.filter((w) => /^[A-Za-z][A-Za-z ]*$/.test(w))).toEqual([]);
+  });
+
+  it('★kind 与 range 原样透传（错了补全会插错位置/图标）', () => {
+    const { suggestions } = buildKeywordSuggestions(EN_US, KEYWORD_KIND, RANGE);
+    expect(suggestions.every((s) => s.kind === KEYWORD_KIND)).toBe(true);
+    expect(suggestions.every((s) => s.range === RANGE)).toBe(true);
+  });
+
+  it('别名进入 suggestions（不只进 labels）', () => {
+    const withAlias = { ...ZH_CN, aliases: { MODULE_IS: ['模組'] } } as unknown as Lexicon;
+    const { suggestions } = buildKeywordSuggestions(withAlias, KEYWORD_KIND, RANGE);
+    expect(suggestions.map((s) => s.label)).toContain('模組');
+  });
+
+  it('无 lexicon 时返回空 suggestions（不抛错）', () => {
+    expect(buildKeywordSuggestions(undefined, KEYWORD_KIND, RANGE)).toEqual({ suggestions: [] });
+  });
+});
+
+/**
+ * ★aliasSet 有一条**无形态校验**的入口：
+ *   policies/[id]/edit/page.tsx 直接 `JSON.parse(...) as Record<string, string[]>`，
+ *   而 execute-policy-content.tsx 那条路径做了完整的 Array.isArray 校验。
+ *   两条路径口径不一致，edit 路径是敞开的 —— 脏数据能一路走到这里。
+ */
+describe('非法 aliases 的健壮性', () => {
+  it('★alias 值为 undefined 时不得混入补全（否则 Monaco 收到 label:undefined）', () => {
+    const dirty = { ...ZH_CN, aliases: { MODULE_IS: undefined } } as unknown as Lexicon;
+    const labels = collectKeywordLabels(dirty);
+    expect(labels.every((l) => typeof l === 'string')).toBe(true);
+    expect(labels).not.toContain(undefined as unknown as string);
+  });
+
+  it('alias 数组里混入非字符串时被剔除', () => {
+    const dirty = {
+      ...ZH_CN,
+      aliases: { MODULE_IS: ['模組', null, 42, undefined] },
+    } as unknown as Lexicon;
+    const labels = collectKeywordLabels(dirty);
+    expect(labels).toContain('模組');
+    expect(labels.every((l) => typeof l === 'string')).toBe(true);
   });
 });

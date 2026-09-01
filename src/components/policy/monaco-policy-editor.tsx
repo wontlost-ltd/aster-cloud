@@ -17,7 +17,7 @@ import {
 } from '@/lib/aster-lexicon';
 import { useSession } from 'next-auth/react';
 import { useAsterCompiler, type CNLLocale } from '@/hooks/useAsterCompiler';
-import { collectKeywordLabels } from '@/lib/aster-keyword-completions';
+import { buildKeywordSuggestions } from '@/lib/aster-keyword-completions';
 import { useAsterModuleCatalog } from '@/hooks/useAsterModuleCatalog';
 import { useDomainVocabularyInvalidate } from '@/hooks/useDomainVocabularyInvalidate';
 import { useUserVocabularyRegistration } from '@/hooks/useUserVocabularyRegistration';
@@ -870,16 +870,11 @@ export function MonacoPolicyEditor({
              *   别名一并纳入：识别侧本就多对一接受别名（ADR 0022），
              *   补全只给规范拼写的话，用户发现不了可以写更自然的别名。
              */
-            const keywordLabels = collectKeywordLabels(lexiconRef.current);
-            if (keywordLabels.length === 0) return { suggestions: [] };
-            return {
-              suggestions: keywordLabels.map((keyword) => ({
-                label: keyword,
-                kind: monaco.languages.CompletionItemKind.Keyword,
-                insertText: keyword,
-                range: wordRange,
-              })),
-            };
+            return buildKeywordSuggestions(
+              lexiconRef.current,
+              monaco.languages.CompletionItemKind.Keyword,
+              wordRange,
+            );
           }
 
           const moduleEntry = modules.find((item) => item.moduleName === versionMatch[1]);
