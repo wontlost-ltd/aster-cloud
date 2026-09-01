@@ -21,6 +21,7 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import type { editor, languages, IDisposable, Position } from 'monaco-editor';
+import { buildLspInitOptions } from '@/lib/lsp-init-options';
 
 export type CNLLocale = 'en-US' | 'zh-CN' | 'de-DE';
 
@@ -31,6 +32,18 @@ export interface UseAsterLSPOptions {
   documentUri: string;
   /** CNL language locale */
   locale?: CNLLocale;
+  /**
+   * 租户标识符。与 `domainVocabularies` **必须成对提供**才生效：
+   * 服务端（aster-lang-ts server.ts:209）要求 tenantId 存在且
+   * domainVocabularies 是数组，缺一则整块忽略。
+   */
+  tenantId?: string;
+  /**
+   * 用户自定义领域词汇。服务端按 (tenantId, domain, locale) 三元组查询，
+   * 且 `currentDomain` 取自本数组**第 0 项**——故顺序有意义，
+   * 当前生效的 domain 必须排在首位。
+   */
+  domainVocabularies?: readonly unknown[];
   /** Auto-connect on mount */
   autoConnect?: boolean;
   /** Reconnect on disconnect */
@@ -168,6 +181,8 @@ export function useAsterLSP({
   editor,
   documentUri,
   locale = 'en-US',
+  tenantId,
+  domainVocabularies,
   autoConnect = true,
   autoReconnect = true,
   reconnectDelay = 3000,
@@ -785,9 +800,9 @@ export function useAsterLSP({
             },
           },
         },
-        initializationOptions: {
-          locale,
-        },
+        // 构造逻辑见 buildLspInitOptions —— 抽成纯函数是为了可被直接断言，
+        // 否则要测「调用方传了什么」就得先拉起一条 WebSocket。
+        initializationOptions: buildLspInitOptions(locale, tenantId, domainVocabularies),
       });
 
       console.log('[LSP] Initialized:', initResult);
@@ -816,7 +831,18 @@ export function useAsterLSP({
       setError(e instanceof Error ? e.message : 'LSP initialization failed');
       setConnected(false);
     }
-  }, [editor, documentUri, locale, sendRequest, sendNotification, registerProviders]);
+    // ★tenantId / domainVocabularies 必须进 deps：它们只在 initialize 时下发一次，
+    //   若被闭包捕获成旧值，用户在别处增删领域术语后 LSP 会一直用过期词汇。
+  }, [
+    editor,
+    documentUri,
+    locale,
+    tenantId,
+    domainVocabularies,
+    sendRequest,
+    sendNotification,
+    registerProviders,
+  ]);
 
   /**
    * Connect to the LSP server
