@@ -17,6 +17,7 @@ import {
 } from '@/lib/aster-lexicon';
 import { useSession } from 'next-auth/react';
 import { useAsterCompiler, type CNLLocale } from '@/hooks/useAsterCompiler';
+import { collectKeywordLabels } from '@/lib/aster-keyword-completions';
 import { useAsterModuleCatalog } from '@/hooks/useAsterModuleCatalog';
 import { useDomainVocabularyInvalidate } from '@/hooks/useDomainVocabularyInvalidate';
 import { useUserVocabularyRegistration } from '@/hooks/useUserVocabularyRegistration';
@@ -461,6 +462,11 @@ export function MonacoPolicyEditor({
   const tenantId = session?.user?.id;
   const moduleCatalog = useAsterModuleCatalog(Boolean(tenantId));
   const moduleCatalogRef = useRef<AsterModuleCatalogEntry[]>([]);
+  /* ★补全 provider 注册一次即长期存活，闭包会捕获注册当时的 lexicon。
+   *   locale/别名切换后若不经 ref 读取，补全会一直给旧语言的词——
+   *   这类"注册时快照"是 Monaco provider 最常见的陈旧源。 */
+  const lexiconRef = useRef<Lexicon>(lexicon);
+  lexiconRef.current = lexicon;
   const moduleMessagesRef = useRef({
     moduleNotFound: (moduleName: string) => tModules('moduleNotFound', { moduleName }),
     versionNotFound: (moduleName: string, version: number, versions: string) =>
@@ -846,7 +852,29 @@ export function MonacoPolicyEditor({
 
           const versionMatch = /^\s*(?:Use|\u5f15\u7528|verwende)\s+([A-Za-z_\u4e00-\u9fff][\w\u4e00-\u9fff]*(?:\.[A-Za-z_\u4e00-\u9fff][\w\u4e00-\u9fff]*)*)\s+(?:(?:version|\u7248\u672c)\s+\d*)?$/i.exec(lineUntilPosition);
           if (!versionMatch) {
-            return { suggestions: [] };
+            /* ★关键词补全（浏览器内，不依赖 LSP）。
+             *
+             *   此前这里直接 `return { suggestions: [] }` —— 即只有 `Use` 行才有补全，
+             *   其余位置**完全没有**关键词提示。而写 CNL 时绝大多数时间都不在 Use 行上。
+             *
+             *   ★关键词必须取自**当前 locale 的 lexicon**，不能硬编码英文：
+             *   写 zh 的用户要敲的是「模块/规则/返回」，给他 `module/rule/return`
+             *   等于每一条都是错的（选中即解析失败）。这与 aster-lang-ts#160 修的
+             *   LSP 侧是同一类缺陷 —— 那边是 `Object.values(KW)` 硬编码英文。
+             *
+             *   别名一并纳入：识别侧本就多对一接受别名（ADR 0022），
+             *   补全只给规范拼写的话，用户发现不了可以写更自然的别名。
+             */
+            const keywordLabels = collectKeywordLabels(lexiconRef.current);
+            if (keywordLabels.length === 0) return { suggestions: [] };
+            return {
+              suggestions: keywordLabels.map((keyword) => ({
+                label: keyword,
+                kind: monaco.languages.CompletionItemKind.Keyword,
+                insertText: keyword,
+                range: wordRange,
+              })),
+            };
           }
 
           const moduleEntry = modules.find((item) => item.moduleName === versionMatch[1]);
