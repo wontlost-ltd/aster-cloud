@@ -6,6 +6,8 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- 把 useAsterLSP 接进编辑器，并下发租户领域词汇 (#454) *(playground)*
+- 编辑器补全按 locale 提供 CNL 关键词 (#452) *(playground)*
 - 补齐 poemDemoPage.result 三语 + gate 支持折行值，真缺归零 (#436) *(i18n)*
 - 新增「代码 t() 键 ↔ 文案真相源」校验，堵住 204 键的隐形缺口 (#432) *(ci)*
 - 补齐邮箱验证流程、设置页改密入口、邮箱密码注册 (#431) *(auth)*
@@ -326,6 +328,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Documentation
 
+- Refresh unreleased (#449) *(changelog)*
 - Refresh unreleased (#446) *(changelog)*
 - Refresh unreleased (#392) *(changelog)*
 - Refresh unreleased [skip ci] (#362) *(changelog)*
