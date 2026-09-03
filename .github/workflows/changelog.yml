@@ -64,6 +64,30 @@ jobs:
       #
       #   处理：直推失败**不让发版流水线变红**，自动退化为开 PR。CHANGELOG 是派生物，
       #   晚几分钟合入不影响发版本身；但绝不静默丢弃——退化路径会留下可见的 PR。
+      #
+      # ★★但退化路径本身也有一个死锁（aster-cloud#455，2026-09-03 查清）：
+      #   本仓是 **public**，GitHub 对公开仓库的 workflow 审批策略会把
+      #   **bot 触发**的 run 挡在 `action_required`，即便分支在同仓（非 fork）。
+      #   于是 required checks（build / on-prem-build / e2e）**永不报告**，
+      #   PR 卡在 BLOCKED —— 「留下可见的 PR」变成「留下一个合不进去的 PR」。
+      #
+      #   ★判据（这条最容易看漏）：只看 `conclusion` 会误判成「有时能自动跑通」。
+      #     必须连 `run_attempt` 一起看——那些 success 的都是 attempt=2，
+      #     即**有人手工批准/重跑过**。bot 触发的 attempt=1 无一例外是 action_required。
+      #
+      #   ★另有一种**表现相似但根因不同**的情况，别混淆：push 后**一个 run 都没有**
+      #     （连 action_required 都没有）。那不是审批策略，是 GitHub 偶发漏发
+      #     pull_request 事件；补一个空提交即可触发。
+      #     判别：`gh run list --branch X` 有 action_required 记录 → 审批门；
+      #     完全空 → 事件没送达。两者都表现为 PR 长期 BLOCKED。
+      #
+      #   临时解法：
+      #     gh run list --branch chore/changelog-unreleased --limit 1 --json databaseId
+      #     gh api -X POST repos/wontlost-ltd/aster-cloud/actions/runs/{id}/approve
+      #
+      #   根治二选一（见 #455）：(a) Web UI 调整审批档位——但会同时放宽真正的外部
+      #   贡献者 PR，对 public 仓库是实打实的安全权衡；(b) 改用 GitHub App 令牌开 PR
+      #   ——App 令牌触发的 run 不受该策略约束，且不影响外部贡献者审批。推荐 (b)。
       - name: Commit changelog on tag (direct, fallback to PR)
         if: ${{ steps.diff.outputs.changed == 'true' && startsWith(github.ref, 'refs/tags/') }}
         env:
