@@ -328,6 +328,8 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Documentation
 
+- 写明 changelog PR 的审批死锁与解法（#455） (#456) *(ci)*
+- Refresh unreleased (#451) *(changelog)*
 - Refresh unreleased (#449) *(changelog)*
 - Refresh unreleased (#446) *(changelog)*
 - Refresh unreleased (#392) *(changelog)*
@@ -631,6 +633,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- Changelog 改用 App 令牌，根治 bot PR 的审批死锁（#455 方案 b） (#457) *(ci)*
 - 默认 origin 清单移除 localhost（k3s#489 同源问题） (#448) *(lsp)*
 - Changelog PR 不再带跳过标记，消除结构性合并死锁 (#447) *(ci)*
 - SSE 记账推迟到首字节，消除「零产出也计费」（issue #441） (#444) *(billing)*
