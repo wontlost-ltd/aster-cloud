@@ -33,9 +33,58 @@ jobs:
   generate:
     runs-on: ubuntu-latest
     steps:
+      # ★用 App 令牌而非 github.token 推分支/开 PR（#455 的根治，方案 b）。
+      #
+      #   问题：public 仓库对 **bot 触发**的 workflow run 施加审批策略，run 停在
+      #   `action_required` → required checks（build/on-prem-build/e2e）永不报告
+      #   → changelog PR 永远 BLOCKED。
+      #
+      #   ★为何选 App 令牌而非「调 Web UI 的审批档位」：后者会**同时放宽真正的
+      #     外部贡献者 PR**——对 public 仓库那是实打实的安全权衡，不是便利性调整。
+      #     App 令牌触发的 run 不受该策略约束，且完全不影响外部贡献者审批。
+      #
+      #   ★也不选「给 changelog 开 required checks 豁免」：那削弱的是分支保护本身，
+      #     而问题根本不在 checks。
+      #
+      #   复用已有的 aster-image-pin App（id 4253193，本仓 ci.yml 同款用法，
+      #   实测已成功铸过 3 次）。未配凭据时**回落 github.token**——回落后 PR 仍会
+      #   卡 action_required，但不让整条流水线红掉，且 warning 说明退化原因（不静默）。
+      - name: Mint App token (avoids bot-triggered approval gate)
+        id: apptoken
+        if: ${{ vars.IMAGE_PIN_APP_CLIENT_ID != '' }}
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          client-id: ${{ vars.IMAGE_PIN_APP_CLIENT_ID }}
+          private-key: ${{ secrets.IMAGE_PIN_APP_PRIVATE_KEY }}
+          owner: wontlost-ltd
+          repositories: aster-cloud
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Resolve token (App token, fallback to github.token)
+        id: tok
+        env:
+          APP_TOKEN: ${{ steps.apptoken.outputs.token }}
+          FALLBACK: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -n "${APP_TOKEN:-}" ]; then
+            echo "::add-mask::${APP_TOKEN}"
+            echo "token=${APP_TOKEN}" >> "$GITHUB_OUTPUT"
+            echo "::notice::使用 App 令牌 —— run 不受 public 仓库的 bot 审批策略约束"
+          else
+            echo "::add-mask::${FALLBACK}"
+            echo "token=${FALLBACK}" >> "$GITHUB_OUTPUT"
+            echo "::warning::未配 IMAGE_PIN_APP_CLIENT_ID，回落 github.token —— 开出的 PR 会卡在 action_required（见 #455），需人工 approve run"
+          fi
+
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0    # git-cliff needs full history
+          # ★checkout 必须带同一个令牌：git push 用的是 checkout 时写入的 extraheader
+          #   凭据。只在 gh pr create 上换令牌是不够的——**push 才是决定 run 触发者
+          #   的那一步**（触发者是 bot 就会进审批门）。
+          token: ${{ steps.tok.outputs.token }}
 
       - name: Run git-cliff
         uses: orhun/git-cliff-action@v4
@@ -85,17 +134,18 @@ jobs:
       #     gh run list --branch chore/changelog-unreleased --limit 1 --json databaseId
       #     gh api -X POST repos/wontlost-ltd/aster-cloud/actions/runs/{id}/approve
       #
-      #   根治二选一（见 #455）：(a) Web UI 调整审批档位——但会同时放宽真正的外部
-      #   贡献者 PR，对 public 仓库是实打实的安全权衡；(b) 改用 GitHub App 令牌开 PR
-      #   ——App 令牌触发的 run 不受该策略约束，且不影响外部贡献者审批。推荐 (b)。
+      #   ★已按方案 (b) 根治（见本 job 顶部 "Mint App token" 步）。上面的
+      #     approve 临时解法仅在**回落到 github.token**（未配 App 凭据）时才需要。
       - name: Commit changelog on tag (direct, fallback to PR)
         if: ${{ steps.diff.outputs.changed == 'true' && startsWith(github.ref, 'refs/tags/') }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.tok.outputs.token }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # ★提交身份跟随所用令牌：App 令牌推的 commit 归属 App 的 bot 账号。
+          #   身份与令牌不一致不会报错，但日后排查「谁推的」会对不上。
+          git config user.name "aster-image-pin[bot]"
+          git config user.email "aster-image-pin[bot]@users.noreply.github.com"
           git add CHANGELOG.md
           # ★跳过标记只在**直推 main** 时有意义（避免把 main tip 推成无构建产物的
           #   commit、打断 digest-pin freshness 不变式）。一旦退化成开 PR，它就会
@@ -122,12 +172,14 @@ jobs:
       - name: Open/update changelog PR (push to main)
         if: ${{ steps.diff.outputs.changed == 'true' && github.event_name != 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/') }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.tok.outputs.token }}
           BRANCH: chore/changelog-unreleased
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # ★提交身份跟随所用令牌：App 令牌推的 commit 归属 App 的 bot 账号。
+          #   身份与令牌不一致不会报错，但日后排查「谁推的」会对不上。
+          git config user.name "aster-image-pin[bot]"
+          git config user.email "aster-image-pin[bot]@users.noreply.github.com"
           git checkout -B "$BRANCH"
           git add CHANGELOG.md
           # ★不带跳过标记：这条 commit 落在 **PR 分支**上，而 main 的分支保护要求
