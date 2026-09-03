@@ -75,6 +75,12 @@ jobs:
       #     必须连 `run_attempt` 一起看——那些 success 的都是 attempt=2，
       #     即**有人手工批准/重跑过**。bot 触发的 attempt=1 无一例外是 action_required。
       #
+      #   ★另有一种**表现相似但根因不同**的情况，别混淆：push 后**一个 run 都没有**
+      #     （连 action_required 都没有）。那不是审批策略，是 GitHub 偶发漏发
+      #     pull_request 事件；补一个空提交即可触发。
+      #     判别：`gh run list --branch X` 有 action_required 记录 → 审批门；
+      #     完全空 → 事件没送达。两者都表现为 PR 长期 BLOCKED。
+      #
       #   临时解法：
       #     gh run list --branch chore/changelog-unreleased --limit 1 --json databaseId
       #     gh api -X POST repos/wontlost-ltd/aster-cloud/actions/runs/{id}/approve
