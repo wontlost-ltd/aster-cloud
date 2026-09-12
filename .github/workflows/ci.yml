@@ -37,8 +37,17 @@ jobs:
   #   真遇到中途崩溃时**重跑一次**即可（届时探测会判本地不可用 → 自动走 hosted）。
   #   若这类中断变得频繁，再考虑按 aster-api 的方式拆 job 并同步更新分支保护的
   #   required check 名（那是个需要一并改 branch protection 的动作，不能只改 workflow）。
+  # ⚠️ 2026-09-12 起 pick-runner 的输出**暂不被使用**：所有 job 已改回
+  #    `runs-on: ubuntu-latest`（原因见各 job 上的说明）。本 job 予以保留是因为
+  #    待本地 runner 被**实证**能执行 job 后可直接切回，无需重建探测逻辑。
+  #    （本仓 main 目前无分支保护，故保留它不是 required-check 的需要，
+  #      纯粹是避免来回删改；它只占约 1 分钟托管额度。）
+  #    其余 job 的 `needs: pick-runner` 同理保留——只表达顺序，不再消费其 outputs。
   pick-runner:
     runs-on: ubuntu-latest
+    # ★所有 job 必须有 timeout：无 timeout 的 job 在 runner 不接活时会
+    #   排队到默认 24h，CI 卡死且不报错（2026-09-12 实测踩过）。
+    timeout-minutes: 30
     outputs:
       target: ${{ steps.pick.outputs.target }}
       labels: ${{ steps.pick.outputs.target == 'local' && '["self-hosted","linux","ARM64","local-node"]' || '["ubuntu-latest"]' }}
@@ -64,7 +73,17 @@ jobs:
 
   build:
     needs: pick-runner
-    runs-on: ${{ fromJSON(needs.pick-runner.outputs.labels) }}
+    # ★改回 GitHub 托管：两个 Linux self-hosted runner 虽然 API 报 online/idle
+    #   且标签齐全，但**从未真正执行过任何 job**——查 aster-cloud 与 aster-api
+    #   两个仓的历史，build/on-prem-build/e2e 全部是 GitHub 托管 runner 跑的。
+    #   把主干 CI 切到一个未经验证的 runner 上，结果是 job 无限排队（runner 不
+    #   接活不算 failure，只会排到默认 24h 超时），CI 形同卡死。
+    #   pick-runner 的探测只看 API 报的 online/busy，看不出「在线但不接活」。
+    #   待本地 runner 被**实证**能执行 job 后再切回，届时必须同时保留 timeout。
+    runs-on: ubuntu-latest
+    # ★所有 job 必须有 timeout：无 timeout 的 job 在 runner 不接活时会
+    #   排队到默认 24h，CI 卡死且不报错（2026-09-12 实测踩过）。
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -278,7 +297,14 @@ jobs:
   # ★必须有 timeout-minutes：本地 runner 若在探测后离线，job 会排队而非报错，
   #   没有超时就会挂到 GitHub 默认 24h。15 分钟足够（当前 e2e 约 3-5 分钟）。
   e2e:
-    runs-on: ${{ fromJSON(needs.pick-runner.outputs.labels) }}
+    # ★改回 GitHub 托管：两个 Linux self-hosted runner 虽然 API 报 online/idle
+    #   且标签齐全，但**从未真正执行过任何 job**——查 aster-cloud 与 aster-api
+    #   两个仓的历史，build/on-prem-build/e2e 全部是 GitHub 托管 runner 跑的。
+    #   把主干 CI 切到一个未经验证的 runner 上，结果是 job 无限排队（runner 不
+    #   接活不算 failure，只会排到默认 24h 超时），CI 形同卡死。
+    #   pick-runner 的探测只看 API 报的 online/busy，看不出「在线但不接活」。
+    #   待本地 runner 被**实证**能执行 job 后再切回，届时必须同时保留 timeout。
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [pick-runner, build]
     steps:
@@ -400,7 +426,17 @@ jobs:
   # 详见 .claude/plan/saas-only-inventory.md §17 PR-4 checklist。
   on-prem-build:
     needs: pick-runner
-    runs-on: ${{ fromJSON(needs.pick-runner.outputs.labels) }}
+    # ★改回 GitHub 托管：两个 Linux self-hosted runner 虽然 API 报 online/idle
+    #   且标签齐全，但**从未真正执行过任何 job**——查 aster-cloud 与 aster-api
+    #   两个仓的历史，build/on-prem-build/e2e 全部是 GitHub 托管 runner 跑的。
+    #   把主干 CI 切到一个未经验证的 runner 上，结果是 job 无限排队（runner 不
+    #   接活不算 failure，只会排到默认 24h 超时），CI 形同卡死。
+    #   pick-runner 的探测只看 API 报的 online/busy，看不出「在线但不接活」。
+    #   待本地 runner 被**实证**能执行 job 后再切回，届时必须同时保留 timeout。
+    runs-on: ubuntu-latest
+    # ★所有 job 必须有 timeout：无 timeout 的 job 在 runner 不接活时会
+    #   排队到默认 24h，CI 卡死且不报错（2026-09-12 实测踩过）。
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -447,6 +483,9 @@ jobs:
     # 防止 on-prem 回归被推到 production
     needs: [build, on-prem-build]
     runs-on: ubuntu-latest
+    # ★所有 job 必须有 timeout：无 timeout 的 job 在 runner 不接活时会
+    #   排队到默认 24h，CI 卡死且不报错（2026-09-12 实测踩过）。
+    timeout-minutes: 30
     permissions:
       contents: read
       # cosign keyless 签名需要 OIDC token（Fulcio 证书 + Rekor 透明日志）。
@@ -578,6 +617,9 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [build]
     runs-on: ubuntu-latest
+    # ★所有 job 必须有 timeout：无 timeout 的 job 在 runner 不接活时会
+    #   排队到默认 24h，CI 卡死且不报错（2026-09-12 实测踩过）。
+    timeout-minutes: 30
     permissions:
       contents: read
       # cosign keyless 签名需要 OIDC token（Fulcio 证书 + Rekor 透明日志）。
@@ -685,6 +727,9 @@ jobs:
     needs: build-migrate-image
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.IMAGE_PIN_APP_ID != '' }}
     runs-on: ubuntu-latest
+    # ★所有 job 必须有 timeout：无 timeout 的 job 在 runner 不接活时会
+    #   排队到默认 24h，CI 卡死且不报错（2026-09-12 实测踩过）。
+    timeout-minutes: 30
     # Production environment：Wait-for-migration 步骤需 ARGOCD_AUTH_TOKEN（Production env secret）。
     environment: production
     concurrency:
