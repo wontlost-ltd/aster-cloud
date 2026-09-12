@@ -272,9 +272,15 @@ jobs:
   #
   # 测的是 production-shaped standalone server（`node server.js`，非 dev hot-reload），
   # 能抓 standalone server.js NODE_ENV hardcode 这类 dev 模式碰不到的问题。
+  # runs-on 走 pick-runner 的动态标签（本地优先、不可用回落托管），与 build /
+  # on-prem-build 同一机制。本 job 零 services:、仅需 node/pnpm/zstd/curl，
+  # 已在 local-node runner 上实测通过（checkout + setup-node + npm 工具链均可用）。
+  # ★必须有 timeout-minutes：本地 runner 若在探测后离线，job 会排队而非报错，
+  #   没有超时就会挂到 GitHub 默认 24h。15 分钟足够（当前 e2e 约 3-5 分钟）。
   e2e:
-    runs-on: ubuntu-latest
-    needs: build
+    runs-on: ${{ fromJSON(needs.pick-runner.outputs.labels) }}
+    timeout-minutes: 15
+    needs: [pick-runner, build]
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
