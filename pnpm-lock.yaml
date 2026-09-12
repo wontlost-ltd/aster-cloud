@@ -226,8 +226,8 @@ importers:
         specifier: ^1.4.0
         version: 1.4.0
       lucide-react:
-        specifier: ^1.33.0
-        version: 1.33.0(react@19.2.8)
+        specifier: ^1.39.0
+        version: 1.39.0(react@19.2.8)
       rehype-autolink-headings:
         specifier: 7.1.0
         version: 7.1.0
@@ -4256,8 +4256,8 @@ packages:
     peerDependencies:
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0-rc
 
-  lucide-react@1.33.0:
-    resolution: {integrity: sha512-MTRwMy0ZlL8Ur/vOAiJ9XGHE+kFPC7brq6MxAm0GiGXEBj0qy0jA/pG4N675oSzciO/UCdX8T+5yUQdmDeTLxg==}
+  lucide-react@1.39.0:
+    resolution: {integrity: sha512-y8nXoEwvqqIsF927NBWXODa4bfMrcUeEb/9sgpwFqg0gUjgn3j5Hznk+v7STmPgZ2iQ11JKlbQGdFRuTOwvYkA==}
     peerDependencies:
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
@@ -10258,7 +10258,7 @@ snapshots:
     dependencies:
       react: 19.2.8
 
-  lucide-react@1.33.0(react@19.2.8):
+  lucide-react@1.39.0(react@19.2.8):
     dependencies:
       react: 19.2.8
 
