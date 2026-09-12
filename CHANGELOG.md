@@ -328,6 +328,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Documentation
 
+- Refresh unreleased (#460) *(changelog)*
 - Refresh unreleased (#458) *(changelog)*
 - 写明 changelog PR 的审批死锁与解法（#455） (#456) *(ci)*
 - Refresh unreleased (#451) *(changelog)*
@@ -634,6 +635,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- Build/on-prem-build/e2e 改回托管 runner + 全部补 timeout (#471) *(ci)*
 - Changelog 改用 App 令牌，根治 bot PR 的审批死锁（#455 方案 b） (#457) *(ci)*
 - 默认 origin 清单移除 localhost（k3s#489 同源问题） (#448) *(lsp)*
 - Changelog PR 不再带跳过标记，消除结构性合并死锁 (#447) *(ci)*
