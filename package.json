@@ -96,7 +96,7 @@
     "@mdx-js/react": "3.1.1",
     "@next/eslint-plugin-next": "16.3.1",
     "@next/mdx": "16.3.1",
-    "@opennextjs/cloudflare": "^1.20.2",
+    "@opennextjs/cloudflare": "^1.20.6",
     "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@tailwindcss/typography": "^0.5.20",
@@ -132,7 +132,7 @@
     "typescript": "^6.0.3",
     "vite": "^8.2.1",
     "vitest": "^4.1.11",
-    "wrangler": "^4.125.0",
+    "wrangler": "^4.130.0",
     "yaml": "^2.9.0"
   },
   "pnpm": {
