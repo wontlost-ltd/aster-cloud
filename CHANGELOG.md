@@ -328,6 +328,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Documentation
 
+- Refresh unreleased (#458) *(changelog)*
 - 写明 changelog PR 的审批死锁与解法（#455） (#456) *(ci)*
 - Refresh unreleased (#451) *(changelog)*
 - Refresh unreleased (#449) *(changelog)*
