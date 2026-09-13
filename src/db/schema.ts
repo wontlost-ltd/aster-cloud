@@ -2583,3 +2583,123 @@ export const lexiconBulkJobs = pgTable(
 
 export type LexiconBulkJob = InferSelectModel<typeof lexiconBulkJobs>;
 export type NewLexiconBulkJob = InferInsertModel<typeof lexiconBulkJobs>;
+
+// ============================================
+// Policy review (ADR 0037 §15)
+// ============================================
+//
+// 可验证语义桥的**第③段**：机器判 REVIEW_REQUIRED 的候选，由**人**给出
+// Proof。两张表分工明确：
+//
+//   PolicyReviewer — 谁有资格复核**这一条**策略（按策略授予，非全团队角色）
+//   PolicyProof    — 复核结论本身（**append-only**，撤销＝追加覆盖）
+
+/**
+ * 策略复核人授权（ADR 0037 §15 决议②）。
+ *
+ * ★**按策略授予**，不是给团队成员加一个全局 `domain_expert` 角色位。
+ * 理由：复核资格通常针对**具体策略**——懂信贷风控的未必懂 HIPAA。
+ * 全团队一刀切会让"有资格"这件事失去意义。
+ *
+ * ★授权者是**策略拥有者**（或团队 owner/admin），被授权者可以是
+ * 组织内已有成员，也可以通过邀请流程加入后再授予。
+ *
+ * 复用 `PolicyShare` 的表形状约定（text id / 复合唯一索引 / 审计列）。
+ */
+export const policyReviewers = pgTable(
+  'PolicyReviewer',
+  {
+    id: text('id').primaryKey().notNull(),
+    policyId: text('policyId').notNull(),
+    /** 被授予复核资格的用户。 */
+    userId: text('userId').notNull(),
+    /**
+     * 复核人身份类别，写进 Proof 的 `subject.kind`。
+     *   'domain_expert' — 领域专家（业务语义确认）
+     *   'engineer'      — 程序员（技术语义确认）
+     * ★与 ADR 0037 的 `ProofSubject` 枚举一一对应，不得各自演进。
+     */
+    subjectKind: text('subjectKind').notNull().default('domain_expert'),
+    /** 授权人（审计）——通常是策略拥有者。 */
+    grantedByUserId: text('grantedByUserId').notNull(),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('PolicyReviewer_policy_user_key').on(table.policyId, table.userId),
+    index('PolicyReviewer_policyId_idx').on(table.policyId),
+    index('PolicyReviewer_userId_idx').on(table.userId),
+  ]
+);
+
+export type ReviewerSubjectKind = 'domain_expert' | 'engineer';
+export const REVIEWER_SUBJECT_KINDS: readonly ReviewerSubjectKind[] =
+  ['domain_expert', 'engineer'];
+
+/**
+ * 复核结论（ADR 0037 的 `Proof` 落库形态）。
+ *
+ * <h2>★append-only：不得 UPDATE，不得 DELETE</h2>
+ *
+ * ADR 0037 §15 决议③：**结论不可撤销，只能追加新 Proof 覆盖**。
+ * 「当前有效结论」由 `ProofIr.resolveEffective` **算出来**（取最新适用的
+ * 那条），而不是改出来的——历史因此完整保留，审计可回溯。
+ *
+ * ★写入方**只允许 INSERT**。任何 UPDATE/DELETE 都意味着有人在改写
+ * 已发生的判断，那正是本设计要防的事。
+ *
+ * <h2>contentHash 是时效性的判据</h2>
+ *
+ * proof 锚定到**做出判定时**那一版节点的 `contentHash`。内容一变，
+ * `isApplicableTo` 算出 `CONTENT_CHANGED`——而不是悄悄沿用旧结论。
+ */
+export const policyProofs = pgTable(
+  'PolicyProof',
+  {
+    id: text('id').primaryKey().notNull(),
+    policyId: text('policyId').notNull(),
+    /** 策略版本——proof 是对**某一版**做出的。 */
+    policyVersionId: text('policyVersionId'),
+
+    /** 复核目标节点（ADR 0037 的 nodeId，形如 `$.decls{r}.body…`）。 */
+    nodeId: text('nodeId').notNull(),
+    /** 判定时该节点子树的内容指纹（SHA-256 十六进制，64 字符）。 */
+    contentHash: text('contentHash').notNull(),
+
+    /** 'VERIFIED' | 'REJECTED'——与 ADR 的 VerificationVerdict 对齐。 */
+    verdict: text('verdict').notNull(),
+    /**
+     * 复核理由。★**必填且非空**——没有理由的批准等于没有复核，
+     * 空壳 proof 没有任何审计价值（写入层已拒绝空串）。
+     */
+    reason: text('reason').notNull(),
+
+    /** 'domain_expert' | 'engineer'——★不允许 'verifier'：机器不得代签。 */
+    subjectKind: text('subjectKind').notNull(),
+    /** 复核人（可追溯身份）。 */
+    subjectUserId: text('subjectUserId').notNull(),
+
+    /** 规则标识与版本——规则会演进，旧 proof 须能说清"当时用的哪一版"。 */
+    ruleId: text('ruleId').notNull().default('human-review'),
+    ruleVersion: text('ruleVersion').notNull().default('1'),
+
+    /** 原文片段与位置（便于 UI 回放当时看到的内容）。 */
+    text: text('text').notNull(),
+    spanStart: integer('spanStart').notNull(),
+    spanEnd: integer('spanEnd').notNull(),
+
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    // ★按 (policyId, nodeId, createdAt) 取"最新一条"——resolveEffective 的主查询。
+    index('PolicyProof_policy_node_idx').on(table.policyId, table.nodeId, table.createdAt),
+    index('PolicyProof_policyId_idx').on(table.policyId),
+    index('PolicyProof_subjectUserId_idx').on(table.subjectUserId),
+    // ★刻意**不建**唯一索引：同一 (policy, node) 允许多条——
+    //   那正是"追加覆盖"的实现方式。
+  ]
+);
+
+export type PolicyReviewer = InferSelectModel<typeof policyReviewers>;
+export type NewPolicyReviewer = InferInsertModel<typeof policyReviewers>;
+export type PolicyProof = InferSelectModel<typeof policyProofs>;
+export type NewPolicyProof = InferInsertModel<typeof policyProofs>;
