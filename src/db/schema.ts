@@ -2583,3 +2583,168 @@ export const lexiconBulkJobs = pgTable(
 
 export type LexiconBulkJob = InferSelectModel<typeof lexiconBulkJobs>;
 export type NewLexiconBulkJob = InferInsertModel<typeof lexiconBulkJobs>;
+
+// ============================================
+// Policy review (ADR 0037 §15)
+// ============================================
+//
+// 可验证语义桥的**第③段**：机器判 REVIEW_REQUIRED 的候选，由**人**给出
+// Proof。两张表分工明确：
+//
+//   PolicyReviewer — 谁有资格复核**这一条**策略（按策略授予，非全团队角色）
+//   PolicyProof    — 复核结论本身（**append-only**，撤销＝追加覆盖）
+
+/**
+ * 策略复核人授权（ADR 0037 §15 决议②）。
+ *
+ * ★**按策略授予**，不是给团队成员加一个全局 `domain_expert` 角色位。
+ * 理由：复核资格通常针对**具体策略**——懂信贷风控的未必懂 HIPAA。
+ * 全团队一刀切会让"有资格"这件事失去意义。
+ *
+ * ★授权者是**策略拥有者**（或团队 owner/admin），被授权者可以是
+ * 组织内已有成员，也可以通过邀请流程加入后再授予。
+ *
+ * 复用 `PolicyShare` 的表形状约定（text id / 复合唯一索引 / 审计列）。
+ */
+export const policyReviewers = pgTable(
+  'PolicyReviewer',
+  {
+    id: text('id').primaryKey().notNull(),
+    policyId: text('policyId').notNull(),
+    /** 被授予复核资格的用户。 */
+    userId: text('userId').notNull(),
+    /**
+     * 复核人身份类别，写进 Proof 的 `subject.kind`。
+     *   'domain_expert' — 领域专家（业务语义确认）
+     *   'engineer'      — 程序员（技术语义确认）
+     * ★与 ADR 0037 的 `ProofSubject` 枚举一一对应，不得各自演进。
+     */
+    subjectKind: text('subjectKind').notNull().default('domain_expert'),
+    /** 授权人（审计）——通常是策略拥有者。 */
+    grantedByUserId: text('grantedByUserId').notNull(),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('PolicyReviewer_policy_user_key').on(table.policyId, table.userId),
+    index('PolicyReviewer_policyId_idx').on(table.policyId),
+    index('PolicyReviewer_userId_idx').on(table.userId),
+  ]
+);
+
+export type ReviewerSubjectKind = 'domain_expert' | 'engineer';
+export const REVIEWER_SUBJECT_KINDS: readonly ReviewerSubjectKind[] =
+  ['domain_expert', 'engineer'];
+
+/**
+ * 复核结论（ADR 0037 的 `Proof` 落库形态）。
+ *
+ * <h2>★append-only：不得 UPDATE，不得 DELETE</h2>
+ *
+ * ADR 0037 §15 决议③：**结论不可撤销，只能追加新 Proof 覆盖**。
+ * 「当前有效结论」由 `ProofIr.resolveEffective` **算出来**（取最新适用的
+ * 那条），而不是改出来的——历史因此完整保留，审计可回溯。
+ *
+ * ★写入方**只允许 INSERT**。任何 UPDATE/DELETE 都意味着有人在改写
+ * 已发生的判断，那正是本设计要防的事。
+ *
+ * <h2>contentHash 是时效性的判据</h2>
+ *
+ * proof 锚定到**做出判定时**那一版节点的 `contentHash`。内容一变，
+ * `isApplicableTo` 算出 `CONTENT_CHANGED`——而不是悄悄沿用旧结论。
+ */
+export const policyProofs = pgTable(
+  'PolicyProof',
+  {
+    id: text('id').primaryKey().notNull(),
+    policyId: text('policyId').notNull(),
+    /** 策略版本——proof 是对**某一版**做出的。 */
+    policyVersionId: text('policyVersionId'),
+
+    /** 复核目标节点（ADR 0037 的 nodeId，形如 `$.decls{r}.body…`）。 */
+    nodeId: text('nodeId').notNull(),
+    /** 判定时该节点子树的内容指纹（SHA-256 十六进制，64 字符）。 */
+    contentHash: text('contentHash').notNull(),
+
+    /** 'VERIFIED' | 'REJECTED'——与 ADR 的 VerificationVerdict 对齐。 */
+    verdict: text('verdict').notNull(),
+    /**
+     * 复核理由。★**必填且非空**——没有理由的批准等于没有复核，
+     * 空壳 proof 没有任何审计价值（写入层已拒绝空串）。
+     */
+    reason: text('reason').notNull(),
+
+    /** 'domain_expert' | 'engineer'——★不允许 'verifier'：机器不得代签。 */
+    subjectKind: text('subjectKind').notNull(),
+    /** 复核人（可追溯身份）。 */
+    subjectUserId: text('subjectUserId').notNull(),
+
+    /** 规则标识与版本——规则会演进，旧 proof 须能说清"当时用的哪一版"。 */
+    ruleId: text('ruleId').notNull().default('human-review'),
+    ruleVersion: text('ruleVersion').notNull().default('1'),
+
+    /** 原文片段与位置（便于 UI 回放当时看到的内容）。 */
+    text: text('text').notNull(),
+    spanStart: integer('spanStart').notNull(),
+    spanEnd: integer('spanEnd').notNull(),
+
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    // ★按 (policyId, nodeId, createdAt) 取"最新一条"——resolveEffective 的主查询。
+    index('PolicyProof_policy_node_idx').on(table.policyId, table.nodeId, table.createdAt),
+    index('PolicyProof_policyId_idx').on(table.policyId),
+    index('PolicyProof_subjectUserId_idx').on(table.subjectUserId),
+    // ★刻意**不建**唯一索引：同一 (policy, node) 允许多条——
+    //   那正是"追加覆盖"的实现方式。
+  ]
+);
+
+/**
+ * 复核邀请（ADR 0037 §15 决议②的独立邀请路径）。
+ *
+ * <h2>★为什么不复用 `TeamInvitation`</h2>
+ *
+ * 团队邀请的语义是「加入团队」，复核邀请的语义是「复核**这一条**策略」。
+ * 复用会把两件事绑死：受邀人为了复核一条策略必须先加入整个团队，
+ * 从而获得远超所需的权限（最小权限原则）。
+ *
+ * <p>★受邀人**不必**是团队成员——这正是独立路径的意义：
+ * 可以请外部领域专家（如外聘合规顾问）只复核指定策略。
+ *
+ * <h2>安全模型：token + 邮箱匹配（与 `TeamInvitation` 同款）</h2>
+ *
+ * ★**token 单独不足以接受邀请**：接受时还要求调用者 session 的邮箱
+ * 与 `email` 列一致。否则邮件链接一旦泄露，任何人都能冒领复核资格
+ * ——而复核资格直接决定 Proof 的可信度。
+ */
+export const policyReviewInvitations = pgTable(
+  'PolicyReviewInvitation',
+  {
+    id: text('id').primaryKey().notNull(),
+    policyId: text('policyId').notNull(),
+    /** 受邀人邮箱——接受时必须与 session 邮箱一致。 */
+    email: text('email').notNull(),
+    /** 接受后授予的身份：'domain_expert' | 'engineer'。 */
+    subjectKind: text('subjectKind').notNull().default('domain_expert'),
+    /** 邀请人（审计）——策略拥有者或团队 owner/admin。 */
+    invitedByUserId: text('invitedByUserId').notNull(),
+    /** randomBytes(32).toString('hex')，与 TeamInvitation 同口径。 */
+    token: text('token').notNull().unique(),
+    expiresAt: timestamp('expiresAt', { mode: 'date' }).notNull(),
+    /** 接受时间；`null` 表示待处理。★接受后不删行——保留邀请历史供审计。 */
+    acceptedAt: timestamp('acceptedAt', { mode: 'date' }),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('PolicyReviewInvitation_policyId_idx').on(table.policyId),
+    index('PolicyReviewInvitation_email_idx').on(table.email),
+    index('PolicyReviewInvitation_token_idx').on(table.token),
+  ]
+);
+
+export type PolicyReviewer = InferSelectModel<typeof policyReviewers>;
+export type NewPolicyReviewer = InferInsertModel<typeof policyReviewers>;
+export type PolicyProof = InferSelectModel<typeof policyProofs>;
+export type NewPolicyProof = InferInsertModel<typeof policyProofs>;
+export type PolicyReviewInvitation = InferSelectModel<typeof policyReviewInvitations>;
+export type NewPolicyReviewInvitation = InferInsertModel<typeof policyReviewInvitations>;

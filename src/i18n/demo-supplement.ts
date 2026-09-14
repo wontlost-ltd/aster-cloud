@@ -27,6 +27,30 @@ type MessageTree = Record<string, unknown>;
  */
 export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
   en: {
+    // 复核面板（ADR 0037 §14/§15，本地补充）。
+    policyReview: {
+      title: 'Human review',
+      subtitle: 'Machines verify what they can prove; the rest is yours to confirm.',
+      verified: 'Machine-verified',
+      reviewRequired: 'Needs your review',
+      rejected: 'Rejected',
+      empty: 'Nothing is waiting for your review right now.',
+      notReviewer: 'You are not a reviewer for this policy. You can see the queue but cannot record conclusions.',
+      reasonLabel: 'Why do you accept or reject this?',
+      reasonPlaceholder: 'State the business reason. An approval without a reason is not a review.',
+      accept: 'Confirm',
+      reject: 'Reject',
+      submitting: 'Recording…',
+      submitFailed: 'Could not record the conclusion.',
+      queueUnavailable:
+        'Could not compute the review queue — the engine is unavailable or out of date. Conclusions already recorded are shown below; the queue is not empty, it is unknown.',
+      recordedTitle: 'Conclusions already recorded',
+      reasonRequired: 'A reason is required.',
+      recordedBy: 'Recorded by',
+      supersededNote: 'Superseded by a later conclusion — kept for audit.',
+      staleNote: 'The underlying content changed after this conclusion; it no longer applies.',
+      loadFailed: 'Could not load the review queue.',
+    },
     // 条件漏斗面板（Phase 1，本地补充）。★sampleNote 必须常驻，见 condition-funnel-panel.tsx。
     conditionFunnel: {
       title: 'Condition funnel',
@@ -535,6 +559,30 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
   },
   zh: {
+    // 复核面板（ADR 0037 §14/§15，本地补充）。
+    policyReview: {
+      title: '人工复核',
+      subtitle: '机器只确认它能证明的部分，其余交由你判断。',
+      verified: '机器已证明',
+      reviewRequired: '待你复核',
+      rejected: '已拒绝',
+      empty: '当前没有需要你复核的项。',
+      notReviewer: '你不是本策略的复核人。可以查看队列，但不能记录结论。',
+      reasonLabel: '你为什么接受或拒绝？',
+      reasonPlaceholder: '写明业务理由。没有理由的批准等于没有复核。',
+      accept: '确认',
+      reject: '拒绝',
+      submitting: '记录中…',
+      submitFailed: '结论记录失败。',
+      queueUnavailable:
+        '无法计算复核队列——引擎不可用或版本过旧。下方仅显示已记录的结论；队列不是"空"，而是"未知"。',
+      recordedTitle: '已记录的复核结论',
+      reasonRequired: '必须填写理由。',
+      recordedBy: '记录人',
+      supersededNote: '已被更晚的结论覆盖——保留供审计。',
+      staleNote: '该结论作出后内容已变更，不再适用。',
+      loadFailed: '复核队列加载失败。',
+    },
     // 条件漏斗面板（Phase 1，本地补充）。
     conditionFunnel: {
       title: '条件漏斗',
@@ -1018,6 +1066,30 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
   },
   de: {
+    // 复核面板（ADR 0037 §14/§15，本地补充）。
+    policyReview: {
+      title: 'Manuelle Prüfung',
+      subtitle: 'Maschinen bestätigen, was beweisbar ist; den Rest bestätigen Sie.',
+      verified: 'Maschinell bestätigt',
+      reviewRequired: 'Ihre Prüfung nötig',
+      rejected: 'Abgelehnt',
+      empty: 'Nichts zu prüfen — alle Kandidaten wurden maschinell bestätigt.',
+      notReviewer: 'Sie sind kein Prüfer dieser Richtlinie. Ansehen ja, Erfassen nein.',
+      reasonLabel: 'Warum akzeptieren oder ablehnen Sie?',
+      reasonPlaceholder: 'Fachliche Begründung angeben. Eine Freigabe ohne Begründung ist keine Prüfung.',
+      accept: 'Bestätigen',
+      reject: 'Ablehnen',
+      submitting: 'Wird erfasst…',
+      submitFailed: 'Ergebnis konnte nicht erfasst werden.',
+      queueUnavailable:
+        'Die Prüfliste konnte nicht berechnet werden – die Engine ist nicht verfügbar oder veraltet. Unten stehen nur bereits erfasste Ergebnisse; die Liste ist nicht „leer“, sondern unbekannt.',
+      recordedTitle: 'Bereits erfasste Ergebnisse',
+      reasonRequired: 'Eine Begründung ist erforderlich.',
+      recordedBy: 'Erfasst von',
+      supersededNote: 'Durch ein späteres Ergebnis ersetzt — zur Prüfung aufbewahrt.',
+      staleNote: 'Der Inhalt hat sich seither geändert; das Ergebnis gilt nicht mehr.',
+      loadFailed: 'Prüfliste konnte nicht geladen werden.',
+    },
     // Bedingungs-Funnel (Phase 1, lokale Ergänzung).
     conditionFunnel: {
       title: 'Bedingungs-Funnel',
@@ -1503,6 +1575,30 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
   },
   hi: {
+    // 复核面板（ADR 0037 §14/§15，本地补充）。
+    policyReview: {
+      title: 'मानव समीक्षा',
+      subtitle: 'मशीन वही प्रमाणित करती है जो सिद्ध हो सके; शेष आपकी पुष्टि पर है।',
+      verified: 'मशीन-प्रमाणित',
+      reviewRequired: 'आपकी समीक्षा आवश्यक',
+      rejected: 'अस्वीकृत',
+      empty: 'समीक्षा के लिए कुछ नहीं — सभी उम्मीदवार मशीन-प्रमाणित हैं।',
+      notReviewer: 'आप इस नीति के समीक्षक नहीं हैं। कतार देख सकते हैं, निष्कर्ष दर्ज नहीं कर सकते।',
+      reasonLabel: 'आप इसे क्यों स्वीकार या अस्वीकार कर रहे हैं?',
+      reasonPlaceholder: 'व्यावसायिक कारण लिखें। बिना कारण की स्वीकृति समीक्षा नहीं है।',
+      accept: 'पुष्टि करें',
+      reject: 'अस्वीकार करें',
+      submitting: 'दर्ज किया जा रहा है…',
+      submitFailed: 'निष्कर्ष दर्ज नहीं हो सका।',
+      queueUnavailable:
+        'समीक्षा सूची की गणना नहीं हो सकी — इंजन उपलब्ध नहीं है या पुराना है। नीचे केवल पहले से दर्ज निष्कर्ष दिखाए गए हैं; सूची "खाली" नहीं, अज्ञात है।',
+      recordedTitle: 'पहले से दर्ज निष्कर्ष',
+      reasonRequired: 'कारण आवश्यक है।',
+      recordedBy: 'दर्ज करने वाला',
+      supersededNote: 'बाद के निष्कर्ष से प्रतिस्थापित — ऑडिट हेतु सुरक्षित।',
+      staleNote: 'इस निष्कर्ष के बाद सामग्री बदल गई; अब लागू नहीं।',
+      loadFailed: 'समीक्षा कतार लोड नहीं हो सकी।',
+    },
     // शर्त फ़नल (Phase 1, स्थानीय पूरक)।
     conditionFunnel: {
       title: 'शर्त फ़नल',
