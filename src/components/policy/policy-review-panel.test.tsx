@@ -470,6 +470,35 @@ describe('复核面板 — 队列外结论的可见性', () => {
     expect(screen.getByText('supersededNote')).toBeDefined();
   });
 
+  it('★两个**不同节点**各一条结论时，都不得标注"已被覆盖"', async () => {
+    // ★此前两条 supersededNote 用例的 proofs **全挂在同一个 nodeId** 上，
+    //   于是"按节点分组计数"与"全局计数"不可区分：把 supersededCount
+    //   改成取 `proofs.length`（忽略分组）照样全绿。
+    //   后果：页面上只要存在任意两条队列外结论（哪怕分属不同条款），
+    //   **每一条**都会挂上"已被覆盖"——唯一的审计提示退化成永远显示，
+    //   等于没说。分组键（nodeId/policyId 这类 Map key）容易被当成
+    //   "环境常量"而非变量，是夹具塌缩最容易漏的一类维度。
+    const mk = (id: string, nodeId: string, text: string, user: string) => ({
+      id, nodeId, contentHash: 'b'.repeat(64), verdict: 'VERIFIED',
+      reason: `理由-${id}`, subjectKind: 'engineer', subjectUserId: user,
+      text, span: { start: 0, end: 7 }, recordedAt: '2026-09-11T00:00:00Z',
+    });
+    stubFetch({
+      body: reviewBody({
+        items: [item()],
+        proofs: [mk('a1', '$.alpha', '90 days', 'carol'),
+                 mk('b1', '$.beta', '60 days', 'dave')],
+      }),
+    });
+    render(<PolicyReviewPanel policyId="p1" />);
+
+    await waitFor(() => expect(screen.getByText('recordedTitle')).toBeDefined());
+    expect(screen.getByText('90 days')).toBeDefined();
+    expect(screen.getByText('60 days')).toBeDefined();
+    // 两条各自唯一 ⇒ 一个都不得标注
+    expect(screen.queryAllByText('supersededNote'), '各自唯一，不得标注').toHaveLength(0);
+  });
+
   it('★只有一条结论时**不得**标注"已被覆盖"', async () => {
     // 反向守卫：否则每条结论都挂这句提示，等于没说。
     stubFetch({

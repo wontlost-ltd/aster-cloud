@@ -580,6 +580,57 @@ describe('复核队列读取 — GET 授权与契约', () => {
     expect(filterOn(arg?.where, 'p.id'), 'where 必须含 eq(policies.id, :id)').toBe('pol1');
   });
 
+  it('★四处 policyId 查询都必须用**URL 里的** id（换一条策略即变）', async () => {
+    // ★全文件此前只有一个 `PARAMS`（32 处 'pol1'），断言写的是
+    //   `expect(filterOn(...,'p.id')).toBe('pol1')`——**期望值与写死的
+    //   字面量是同一个串**，于是把查询条件硬编码成 'pol1' 也恒真。
+    //   后果：`eq(policyProofs.policyId,'pol1')` 意味着任何策略的复核页
+    //   都返回同一条策略的完整证据链（记录人、理由原文、节点内容）——
+    //   跨策略泄露；`loadReviewer` 写死则是跨策略的签字资格误判。
+    //   这正是本文件注释里列为头号危害的那条，而那道防线自己是假绿的。
+    //
+    //   ★夹具必须是**非拥有者复核人**：否则 owner 分支提前 return，
+    //     canViewReview 里那处 reviewer 查询根本不执行。
+    const OTHER = 'pol-OTHER-77';
+    const OTHER_PARAMS = { params: Promise.resolve({ id: OTHER }) };
+    mockPolicyFindFirst.mockResolvedValue({ id: OTHER, userId: 'someone-else',
+                                            teamId: null, content: 'Module m.' });
+    mockReviewerFindFirst.mockImplementation(({ where }: { where: unknown }) =>
+      Promise.resolve(filterOn(where, 'pr.policyId') === OTHER
+                      && filterOn(where, 'pr.userId') === 'u1'
+        ? { policyId: OTHER, userId: 'stale-row-user', subjectKind: 'domain_expert' }
+        : undefined));
+    const { GET } = await import('@/app/api/policies/[id]/review/route');
+
+    await GET(new Request(`http://cloud.test/api/policies/${OTHER}/review`), OTHER_PARAMS);
+
+    // ① 策略查询 ② proofs 查询 ③/④ 两处 reviewer 查询
+    expect(filterOn((mockPolicyFindFirst.mock.calls[0][0] as { where: unknown }).where, 'p.id'))
+      .toBe(OTHER);
+    expect(filterOn((mockProofFindMany.mock.calls[0][0] as { where: unknown }).where,
+                    'pp.policyId')).toBe(OTHER);
+    const reviewerCalls = mockReviewerFindFirst.mock.calls as [{ where: unknown }][];
+    expect(reviewerCalls.length, 'canViewReview 与 loadReviewer 各查一次')
+      .toBeGreaterThanOrEqual(1);
+    for (const [arg] of reviewerCalls) {
+      expect(filterOn(arg.where, 'pr.policyId'), 'reviewer 查询必须用 URL 的 id').toBe(OTHER);
+    }
+  });
+
+  it('★落库 policyId 必须用 URL 里的 id，不得写死', async () => {
+    const OTHER = 'pol-OTHER-77';
+    const OTHER_PARAMS = { params: Promise.resolve({ id: OTHER }) };
+    mockPolicyFindFirst.mockResolvedValue({ id: OTHER, userId: 'someone-else',
+                                            teamId: null, content: 'Module m.' });
+    mockReviewerFindFirst.mockResolvedValue({
+      policyId: OTHER, userId: 'stale-row-user', subjectKind: 'domain_expert' });
+    const { POST } = await import('@/app/api/policies/[id]/review/route');
+
+    await POST(post(VALID), OTHER_PARAMS);
+
+    expect((mockInsertValues.mock.calls[0]![0] as { policyId: string }).policyId).toBe(OTHER);
+  });
+
   it('★复核人资格查询必须同时按 policyId 与 userId 过滤', async () => {
     // 只按 policyId 查 ⇒ 只要该策略存在**任意一个**复核人，
     // **任何登录用户**都能通过 403 门去签字。
