@@ -31,6 +31,25 @@ import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
 
 type RouteParams = { params: Promise<{ id: string }> };
 
+/** 引擎 `runSemanticBridge` 的返回形状（本地声明——见下方动态 import 的说明）。 */
+interface BridgeShape {
+  readonly summary: { verified: number; reviewRequired: number; rejected: number };
+  readonly verified: readonly {
+    readonly mapping: { text: string; nodeId: string;
+                        span: { start: number; end: number } };
+    readonly result: { verdict: string; reason: string };
+    readonly contentHash?: string;
+  }[];
+}
+
+/**
+ * 合法的内容指纹：64 位**小写十六进制** SHA-256。
+ *
+ * <p>★只查长度不够：`'z'.repeat(64)` 长度合格但不是十六进制，能混进队列，
+ * 用户点下去才被写入侧的同名校验以 400 拒绝。队列侧与写入侧必须同一条规则。
+ */
+const CONTENT_HASH_RE = /^[0-9a-f]{64}$/;
+
 /** 复核结论只有两种——与 ADR 的 VerificationVerdict 对齐（机器那档不在此列）。 */
 const HUMAN_VERDICTS = ['VERIFIED', 'REJECTED'] as const;
 type HumanVerdict = (typeof HUMAN_VERDICTS)[number];
@@ -91,15 +110,87 @@ export async function GET(_req: Request, { params }: RouteParams) {
     // 即"当前有效结论"（ADR 的 resolveEffective 语义）。
     const proofs = await db.query.policyProofs.findMany({
       where: eq(policyProofs.policyId, id),
-      orderBy: [desc(policyProofs.createdAt)],
+      // ★必须有**确定性 tiebreaker**。
+      //
+      //   `desc(createdAt)` 单独用时，同一毫秒写入的两条 proof 之间没有
+      //   定义好的顺序——Postgres 返回谁在前都合法，甚至两次查询可以不同。
+      //   而前端 effectiveByNode 取的正是"首条即最新"，于是同一节点的
+      //   **当前有效结论会在两次刷新之间来回翻**。
+      //   这条路径很常见：撤销就是"追加一条新 proof"，更正往往紧跟原判之后。
+      //
+      //   加 `desc(id)` 并**不能**让并列的两条按真实先后排序（UUID 是随机的，
+      //   不含时间信息）——它只保证**顺序稳定**：同样的数据每次返回同样的次序。
+      //   要真正区分同毫秒的先后，需要一个单调列（如 bigserial），那是独立改动。
+      orderBy: [desc(policyProofs.createdAt), desc(policyProofs.id)],
     });
 
     const reviewer = await loadReviewer(session.user.id, id);
 
+    // ★队列必须在**服务端**算。
+    //
+    //   引擎的 NodeIdMap 依赖 `node:crypto` 求 contentHash，webpack 不会把
+    //   `node:` 方案打进客户端包——放在前端跑会让页面 500。
+    //   服务端没有这个约束：Worker 开了 `nodejs_compat`（wrangler.toml）。
+    //   且 contentHash 是 Proof 的时效性判据，由服务端算比由客户端自报可信。
+    let queue: {
+      items: { text: string; span: { start: number; end: number };
+               reason: string; nodeId: string; contentHash: string }[];
+      counts: { verified: number; reviewRequired: number; rejected: number };
+      // ★三态而非二态：`ok` 表示队列**真的算出来了**。
+      //   没有它，"引擎挂了" 与 "没有待复核项" 在 UI 上完全一样——
+      //   对审计工具来说这是最坏的 fail-open：用户以为"机器都证明完了"，
+      //   实际机器根本没跑。
+      //   `engine_outdated` 与 `engine_error` 分开是因为**运维含义不同**：
+      //     前者是已知的发版时序（引擎随发版列车跟上即自愈），属预期状态；
+      //     后者是真实故障，需要有人去看。合并成一个值，线上事故在日志里
+      //     会长得和"还没发版"一模一样。
+      queueStatus: 'ok' | 'engine_outdated' | 'engine_error';
+    } = { items: [], counts: { verified: 0, reviewRequired: 0, rejected: 0 },
+          queueStatus: 'engine_error' };
+    try {
+      // ★动态 import + 能力探测，而不是顶层静态导入。
+      //
+      //   原因是**版本时序**：`runSemanticBridge` 目前只存在于 aster-lang-ts 的
+      //   未发布分支上，本仓 pin 的是 1.0.28（package.json），尚不含该导出。
+      //   顶层静态导入会让整个仓库 typecheck 失败 —— 即「功能代码等发版」。
+      //   探测式加载让本 PR 可独立合入：引擎旧版时队列为空（面板降级为
+      //   "只看已落库结论"），引擎跟上后无需改代码自动生效。
+      //
+      //   等 pin bump 到含该导出的版本后，这里可以换回静态导入。
+      const mod = (await import('@aster-cloud/aster-lang-ts')) as unknown as {
+        runSemanticBridge?: (src: string) => BridgeShape;
+      };
+      if (!mod.runSemanticBridge) {
+        // 预期状态，不是故障——不打 warn，也不与真实异常混为一谈。
+        queue = { ...queue, queueStatus: 'engine_outdated' };
+      } else {
+      const bridge = mod.runSemanticBridge(policy.content);
+      queue = {
+        queueStatus: 'ok',
+        counts: bridge.summary,
+        items: bridge.verified
+          .filter((v) => v.result.verdict === 'REVIEW_REQUIRED')
+          // 缺 contentHash 的候选无法落库（POST 要求 64 位十六进制），
+          // 不该出现在队列里——否则用户点了才发现签不了。
+          .filter((v) => typeof v.contentHash === 'string'
+                         && CONTENT_HASH_RE.test(v.contentHash))
+          .map((v) => ({
+            text: v.mapping.text,
+            span: v.mapping.span,
+            reason: v.result.reason,
+            nodeId: v.mapping.nodeId,
+            contentHash: v.contentHash!,
+          })),
+      };
+      }
+    } catch (e) {
+      // 引擎跑不起来不该让整个面板消失——已落库的结论仍有价值。
+      // queueStatus 保持 'engine_error'，UI 据此说"不可用"而非"空"。
+      console.warn('[review] 队列计算失败，降级为只读结论', e);
+    }
+
     return NextResponse.json({
-      // ★队列本身由**前端调用引擎**计算（runSemanticBridge），不在此处跑：
-      //   引擎是纯函数，放在边缘运行时跑既快又省一次往返；
-      //   本路由只负责"谁能看/谁能签"与已落库的结论。
+      ...queue,
       canReview: reviewer !== undefined && reviewer !== null,
       subjectKind: reviewer?.subjectKind ?? null,
       proofs: proofs.map((p) => ({
@@ -164,7 +255,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         { status: 400 },
       );
     }
-    if (!/^[0-9a-f]{64}$/.test(contentHash)) {
+    if (!CONTENT_HASH_RE.test(contentHash)) {
       // ★contentHash 是时效性判据：内容一变，旧 proof 即算作
       //   CONTENT_CHANGED。格式不对说明调用方没拿到真实指纹。
       return NextResponse.json(
@@ -203,7 +294,12 @@ export async function POST(req: Request, { params }: RouteParams) {
     // ★约束 2：subjectKind 只能是人。**机器不得代签**（ADR §3）。
     //   即使调用方传了 'verifier' 也一律拒绝——那是 verifier 的身份，
     //   而 verifier 的结论由引擎产出，不经过这条路径。
-    const subjectKind = (body?.subjectKind ?? reviewer.subjectKind) as ReviewerSubjectKind;
+    //   ★身份取自**授权记录**，不接受请求体覆盖。
+    //     原先是 `body?.subjectKind ?? reviewer.subjectKind`：一个被授予
+    //     engineer 资格的人只要传 `subjectKind: 'domain_expert'`，落库的
+    //     Proof 就成了"领域专家已确认"——一个他从未持有的身份。
+    //     授权记录才是身份的来源；请求体只是请求，不是凭据。
+    const subjectKind = reviewer.subjectKind as ReviewerSubjectKind;
     if (!REVIEWER_SUBJECT_KINDS.includes(subjectKind)) {
       return NextResponse.json(
         { error: `subjectKind 必须是 ${REVIEWER_SUBJECT_KINDS.join(' 或 ')}——机器不得代签` },
