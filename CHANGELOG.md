@@ -6,6 +6,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- 人工复核面板 —— ADR 0037 §14/§15 证据链落地 (#474) *(review)*
 - 把 useAsterLSP 接进编辑器，并下发租户领域词汇 (#454) *(playground)*
 - 编辑器补全按 locale 提供 CNL 关键词 (#452) *(playground)*
 - 补齐 poemDemoPage.result 三语 + gate 支持折行值，真缺归零 (#436) *(i18n)*
@@ -328,6 +329,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Documentation
 
+- Refresh unreleased (#473) *(changelog)*
 - Refresh unreleased (#472) *(changelog)*
 - Refresh unreleased (#460) *(changelog)*
 - Refresh unreleased (#458) *(changelog)*
