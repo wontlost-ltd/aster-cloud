@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ConfirmDialog, Container, PageHeader, Breadcrumbs } from '@/components/ui';
 import { PolicyVersionsTab } from '@/components/policy/policy-versions-tab';
+import { PolicyReviewPanel } from '@/components/policy/policy-review-panel';
 import { ShareWithTeamsCard } from '@/components/policy/share-with-teams-card';
 import { PolicyAnalyticsSection } from '@/components/policy/policy-analytics-section';
 
@@ -291,6 +292,12 @@ export function PolicyDetailContent({
       <div className="mt-6">
         <ShareWithTeamsCard policyId={policy.id} />
       </div>
+
+      {/* 人工复核（ADR 0037 §14/§15）。自带 i18n 与自隐藏：
+          无权查看时 return null，不渲染"你没有权限"的空壳。
+          ★队列在**前端**算（runSemanticBridge 是纯函数），
+          服务端只管"谁能看/谁能签"与已落库的结论。 */}
+      <PolicyReviewPanel policyId={policy.id} source={policy.content} />
 
       {/* Version Management with Approval Workflow */}
       <PolicyVersionsTab policyId={policy.id} whatIfEntitled={whatIfEntitled} retentionDays={retentionDays} />
