@@ -2699,7 +2699,52 @@ export const policyProofs = pgTable(
   ]
 );
 
+/**
+ * 复核邀请（ADR 0037 §15 决议②的独立邀请路径）。
+ *
+ * <h2>★为什么不复用 `TeamInvitation`</h2>
+ *
+ * 团队邀请的语义是「加入团队」，复核邀请的语义是「复核**这一条**策略」。
+ * 复用会把两件事绑死：受邀人为了复核一条策略必须先加入整个团队，
+ * 从而获得远超所需的权限（最小权限原则）。
+ *
+ * <p>★受邀人**不必**是团队成员——这正是独立路径的意义：
+ * 可以请外部领域专家（如外聘合规顾问）只复核指定策略。
+ *
+ * <h2>安全模型：token + 邮箱匹配（与 `TeamInvitation` 同款）</h2>
+ *
+ * ★**token 单独不足以接受邀请**：接受时还要求调用者 session 的邮箱
+ * 与 `email` 列一致。否则邮件链接一旦泄露，任何人都能冒领复核资格
+ * ——而复核资格直接决定 Proof 的可信度。
+ */
+export const policyReviewInvitations = pgTable(
+  'PolicyReviewInvitation',
+  {
+    id: text('id').primaryKey().notNull(),
+    policyId: text('policyId').notNull(),
+    /** 受邀人邮箱——接受时必须与 session 邮箱一致。 */
+    email: text('email').notNull(),
+    /** 接受后授予的身份：'domain_expert' | 'engineer'。 */
+    subjectKind: text('subjectKind').notNull().default('domain_expert'),
+    /** 邀请人（审计）——策略拥有者或团队 owner/admin。 */
+    invitedByUserId: text('invitedByUserId').notNull(),
+    /** randomBytes(32).toString('hex')，与 TeamInvitation 同口径。 */
+    token: text('token').notNull().unique(),
+    expiresAt: timestamp('expiresAt', { mode: 'date' }).notNull(),
+    /** 接受时间；`null` 表示待处理。★接受后不删行——保留邀请历史供审计。 */
+    acceptedAt: timestamp('acceptedAt', { mode: 'date' }),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('PolicyReviewInvitation_policyId_idx').on(table.policyId),
+    index('PolicyReviewInvitation_email_idx').on(table.email),
+    index('PolicyReviewInvitation_token_idx').on(table.token),
+  ]
+);
+
 export type PolicyReviewer = InferSelectModel<typeof policyReviewers>;
 export type NewPolicyReviewer = InferInsertModel<typeof policyReviewers>;
 export type PolicyProof = InferSelectModel<typeof policyProofs>;
 export type NewPolicyProof = InferInsertModel<typeof policyProofs>;
+export type PolicyReviewInvitation = InferSelectModel<typeof policyReviewInvitations>;
+export type NewPolicyReviewInvitation = InferInsertModel<typeof policyReviewInvitations>;

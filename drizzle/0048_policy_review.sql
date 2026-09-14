@@ -74,3 +74,39 @@ CREATE INDEX IF NOT EXISTS "PolicyProof_policyId_idx"
 	ON "PolicyProof" USING btree ("policyId");
 CREATE INDEX IF NOT EXISTS "PolicyProof_subjectUserId_idx"
 	ON "PolicyProof" USING btree ("subjectUserId");
+
+-- 复核邀请（ADR 0037 §15 决议②的**独立邀请路径**）
+--
+-- ★为什么不复用 TeamInvitation：
+--   团队邀请的语义是「加入团队」，复核邀请的语义是「复核**这一条**策略」。
+--   复用会把两件事绑死——受邀人为了复核一条策略必须先加入整个团队，
+--   从而获得远超所需的权限（违反最小权限原则）。
+--   独立路径还允许请**外部**领域专家（如外聘合规顾问）只复核指定策略。
+--
+-- ★安全模型与 TeamInvitation 同款：token + **邮箱匹配**。
+--   token 单独**不足以**接受邀请——接受时还要求调用者 session 邮箱与
+--   email 列一致。否则邮件链接一旦泄露，任何人都能冒领复核资格，
+--   而复核资格直接决定 Proof 的可信度。
+CREATE TABLE IF NOT EXISTS "PolicyReviewInvitation" (
+	"id" text PRIMARY KEY NOT NULL,
+	"policyId" text NOT NULL,
+	-- 受邀人邮箱——接受时必须与 session 邮箱一致
+	"email" text NOT NULL,
+	"subjectKind" text DEFAULT 'domain_expert' NOT NULL,
+	-- 邀请人（审计）：策略拥有者或团队 owner/admin
+	"invitedByUserId" text NOT NULL,
+	-- randomBytes(32).toString('hex')，与 TeamInvitation 同口径
+	"token" text NOT NULL,
+	"expiresAt" timestamp NOT NULL,
+	-- 接受时间；NULL = 待处理。★接受后**不删行**，保留邀请历史供审计
+	"acceptedAt" timestamp,
+	"createdAt" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "PolicyReviewInvitation_token_unique" UNIQUE("token")
+);
+
+CREATE INDEX IF NOT EXISTS "PolicyReviewInvitation_policyId_idx"
+	ON "PolicyReviewInvitation" USING btree ("policyId");
+CREATE INDEX IF NOT EXISTS "PolicyReviewInvitation_email_idx"
+	ON "PolicyReviewInvitation" USING btree ("email");
+CREATE INDEX IF NOT EXISTS "PolicyReviewInvitation_token_idx"
+	ON "PolicyReviewInvitation" USING btree ("token");
