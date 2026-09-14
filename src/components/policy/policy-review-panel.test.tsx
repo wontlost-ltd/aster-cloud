@@ -567,7 +567,7 @@ describe('复核面板 — 队列外结论的可见性', () => {
     //   而那意味着第二条起都显示第一条的已有结论。
     stubFetch({
       body: reviewBody({
-        items: [item(), item({ nodeId: '$.b', text: '30 days',
+        items: [item(), item({ nodeId: '$.b', text: '30 days', reason: '$.b 的机器理由',
                                span: { start: 80, end: 87 }, contentHash: 'b'.repeat(64) })],
         proofs: [{
           id: 'z', nodeId: '$.b', contentHash: 'b'.repeat(64), verdict: 'REJECTED',
@@ -580,34 +580,72 @@ describe('复核面板 — 队列外结论的可见性', () => {
     render(<PolicyReviewPanel policyId="p1" />);
 
     await waitFor(() => expect(screen.getByText('10000')).toBeDefined());
-    const li = screen.getByText('10000').closest('li')!;
-    expect(li.textContent, '$.a 的条目内不得出现 $.b 的记录人').not.toContain('erin');
-    expect(li.textContent).not.toContain('recordedBy');
+    const liA = screen.getByText('10000').closest('li')!;
+    expect(liA.textContent, '$.a 的条目内不得出现 $.b 的记录人').not.toContain('erin');
+    expect(liA.textContent).not.toContain('recordedBy');
     // 反向：$.b 自己那条**必须**显示它的结论，否则上面的断言可能只是"全都不显示"。
     const liB = screen.getByText('30 days').closest('li')!;
     expect(liB.textContent, '$.b 必须显示自己的结论').toContain('erin');
+
+    // ★机器理由（"为什么证不了"）也必须逐条归属。
+    //   它在路由层被锁住（进了 JSON），但此前**没有任何用例断言它进了 DOM**——
+    //   全文件 '机器证不了' 只作为夹具出现，从未作为期望值。
+    //   改成常量或串线到 items[0] 都全绿，而后果是复核人看到的
+    //   "机器为什么证不了" 全部是第一条的理由，他基于错误前提签字。
+    expect(liA.textContent).toContain('机器证不了');
+    expect(liA.textContent).not.toContain('$.b 的机器理由');
+    expect(liB.textContent).toContain('$.b 的机器理由');
+    expect(liB.textContent).not.toContain('机器证不了');
   });
 
-  it('提交进行中按钮必须禁用并显示 submitting（锁住另一道守卫）', async () => {
-    // 与上一条配对：上一条用原生派发锁 `inFlight`，这一条锁 `disabled`。
-    // 两道守卫各有各的用例，删任意一道都会有测试变红。
+  it('★提交进行中：只锁**被点的那一条**，其余条目仍可提交', async () => {
+    // ★此前用默认单条队列，于是三道 per-node 守卫同时塌缩：
+    //   `disabled={busyNode === item.nodeId}` 与 `busyNode !== null` 恒等；
+    //   `submitting` 文案同理；`inFlight` 的 per-node key 与全局锁不可区分。
+    //   一处夹具藏起三个缺陷——与 span 那次同型。
+    //
+    //   其中 inFlight 变全局锁最重：复核人在第 1 条提交期间点第 2 条的
+    //   「确认」，请求被**静默吞掉**——按钮没禁用、无错误、理由框不清空，
+    //   看起来像没反应，而那条复核永远没发出去。多条队列是常态。
+    const body = reviewBody({
+      items: [item(), item({ nodeId: '$.b', text: '30 days', reason: '$.b 的机器理由',
+                             span: { start: 80, end: 87 }, contentHash: 'b'.repeat(64) })],
+    });
     let release!: (v: unknown) => void;
     const pending = new Promise((r) => { release = r; });
-    const fn = vi.fn().mockImplementation((_u: string, init?: { method?: string }) => {
-      if (init?.method === 'POST') return pending;
-      return Promise.resolve({ ok: true, status: 200, json: async () => reviewBody() });
+    const posts: string[] = [];
+    const fn = vi.fn().mockImplementation((_u: string, init?: { method?: string; body?: string }) => {
+      if (init?.method === 'POST') {
+        posts.push(JSON.parse(init.body!).nodeId as string);
+        return posts.length === 1
+          ? pending                                        // 第一条挂起
+          : Promise.resolve({ ok: true, status: 200, json: async () => ({ recorded: true }) });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => body });
     });
     vi.stubGlobal('fetch', fn);
 
     render(<PolicyReviewPanel policyId="p1" />);
-    await waitFor(() => expect(screen.getByText('accept')).toBeDefined());
-    fireEvent.change(screen.getByLabelText('reasonLabel'), { target: { value: '核对无误。' } });
-    fireEvent.click(screen.getByText('accept'));
+    await waitFor(() => expect(screen.getByText('30 days')).toBeDefined());
+    const boxes = screen.getAllByLabelText('reasonLabel') as HTMLTextAreaElement[];
+    fireEvent.change(boxes[0], { target: { value: '第一条理由。' } });
+    fireEvent.change(boxes[1], { target: { value: '第二条理由。' } });
+    fireEvent.click(screen.getAllByText('accept')[0]);
 
-    // POST 尚未返回：按钮应处于禁用 + submitting 文案
+    // ① submitting 只出现一次，且在被点的那条里
     const btn = await screen.findByText('submitting');
+    expect(screen.queryAllByText('submitting'), '只锁被点的那条').toHaveLength(1);
     expect((btn as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText('reject').closest('button')!.disabled).toBe(true);
+    expect(screen.getByText('10000').closest('li')!.contains(btn)).toBe(true);
+
+    // ② 另一条的按钮**不得**被连带禁用
+    const otherAccept = screen.getAllByText('accept')[0].closest('button')!;
+    expect(otherAccept.disabled, '其他条目不得被连带锁死').toBe(false);
+
+    // ③ 第一条未返回时点第二条，必须真的发出去（inFlight 不能是全局锁）
+    fireEvent.click(otherAccept);
+    await waitFor(() => expect(posts).toHaveLength(2));
+    expect(posts[1], '第二条必须发出自己的 nodeId').toBe('$.b');
 
     release({ ok: true, status: 200, json: async () => ({ recorded: true }) });
   });
