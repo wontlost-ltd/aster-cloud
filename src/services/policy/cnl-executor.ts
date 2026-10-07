@@ -371,6 +371,20 @@ export function parseApprovalFromResult(
   if (result && typeof result === 'object') {
     const obj = result as Record<string, unknown>;
 
+    // Verdict 内置值（ADR 0039）：结构化决策，不走任何字段名启发式。
+    if (obj.__type === 'Verdict' && typeof obj.outcome === 'string') {
+      const reason = typeof obj.reason === 'string' ? obj.reason : '';
+      switch (obj.outcome) {
+        case 'ALLOW': return { approved: true, message: 'Approved' };
+        case 'DENY': return { approved: false, message: reason || 'Denied' };
+        // 需人工批准 / 升级：当前 ExecutionDecision 枚举无对应态，先按 indeterminate 记录，
+        // 子项目 3 扩展枚举后改为专属态。绝不能落入 approved 或 denied。
+        case 'REQUIRE_APPROVAL':
+        case 'ESCALATE': return { approved: false, indeterminate: true, message: reason };
+        default: return { approved: false, indeterminate: true, message: `Unknown verdict outcome: ${obj.outcome}` };
+      }
+    }
+
     // 支持的批准字段名（英/中/德）及通用成功标志
     // Bug-4 修复：补 isEligible（loan eligibility / KYC 类 policy 常用），并保留语义对齐
     const approvalFields = [

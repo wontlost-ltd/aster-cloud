@@ -276,3 +276,23 @@ describe('parseApprovalFromResult — 决策字段识别', () => {
     });
   });
 });
+
+describe('Verdict 内置值（ADR 0039）', () => {
+  it('ALLOW → approved', () => {
+    expect(parseApprovalFromResult({ __type: 'Verdict', outcome: 'ALLOW' })).toEqual({ approved: true, message: 'Approved' });
+  });
+  it('DENY → denied，带 reason', () => {
+    expect(parseApprovalFromResult({ __type: 'Verdict', outcome: 'DENY', reason: 'no consent' })).toEqual({ approved: false, message: 'no consent' });
+  });
+  it('REQUIRE_APPROVAL → 不批准且 indeterminate', () => {
+    const r = parseApprovalFromResult({ __type: 'Verdict', outcome: 'REQUIRE_APPROVAL', role: 'Senior Underwriter', reason: 'over cap' });
+    expect(r.approved).toBe(false); expect(r.indeterminate).toBe(true); expect(r.message).toBe('over cap');
+  });
+  it('ESCALATE → 不批准且 indeterminate', () => {
+    const r = parseApprovalFromResult({ __type: 'Verdict', outcome: 'ESCALATE', reason: 'low confidence' });
+    expect(r.approved).toBe(false); expect(r.indeterminate).toBe(true);
+  });
+  it('value 模式下同样按 outcome 解读', () => {
+    expect(parseApprovalFromResult({ __type: 'Verdict', outcome: 'DENY', reason: 'x' }, 'value')).toEqual({ approved: false, message: 'x' });
+  });
+});
