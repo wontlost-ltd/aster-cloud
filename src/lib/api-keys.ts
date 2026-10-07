@@ -148,10 +148,11 @@ export async function revokeApiKey(userId: string, keyId: string): Promise<boole
   return true;
 }
 
-// 团队范围内活跃 key 的过滤条件；给出 userId 时只取该成员的 key
+// 团队范围内活跃 key 的过滤条件；给出 userId 时只取该成员的 key。
+// 只有省略 userId 才表示整队：空串也按成员过滤，防止调用方的空 id 吊销全队 key
 function activeTeamKeysWhere(teamId: string, userId?: string) {
   const conds = [eq(apiKeys.teamId, teamId), isNull(apiKeys.revokedAt)];
-  if (userId) conds.push(eq(apiKeys.userId, userId));
+  if (userId !== undefined) conds.push(eq(apiKeys.userId, userId));
   return and(...conds);
 }
 
@@ -177,13 +178,20 @@ export async function refreshTeamKeySnapshots(teamId: string, userId?: string): 
   return rows.length;
 }
 
+// 单批并发推送的 key 数：aster-api 挂起时耗时按批数（而非 key 数）累加 2 s 超时，又不一次打出过多请求
+const NOTIFY_CHUNK_SIZE = 10;
+
 /**
- * key 身份变化后通知 aster-api：逐 key 推最新快照（吊销后即为无效快照），
- * 再按持有者去重失效 verify 缓存。两者都 fail-open，失败只记日志、不影响 DB 结果。
+ * key 身份变化后通知 aster-api：分批并发推最新快照（吊销后即为无效快照），
+ * 再按持有者去重、并发失效 verify 缓存。两个 helper 都 fail-open（从不抛错），
+ * 所以 Promise.all 不会因单个失败而中断，失败只记日志、不影响 DB 结果。
  */
 async function notifyKeysChanged(rows: Array<{ key: string; userId: string }>): Promise<void> {
-  for (const row of rows) await pushApiKeySnapshot(row.key);
-  for (const holderId of new Set(rows.map((row) => row.userId))) await invalidateApiKeyCache(holderId);
+  for (let i = 0; i < rows.length; i += NOTIFY_CHUNK_SIZE) {
+    await Promise.all(rows.slice(i, i + NOTIFY_CHUNK_SIZE).map((row) => pushApiKeySnapshot(row.key)));
+  }
+  const holderIds = [...new Set(rows.map((row) => row.userId))];
+  await Promise.all(holderIds.map((holderId) => invalidateApiKeyCache(holderId)));
 }
 
 // API 认证结果类型

@@ -151,6 +151,9 @@ function firstArg(mock: { mock: { calls: unknown[][] } }, call = 0): unknown {
 describe('API Keys', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // 通知类 mock 可能被用例换成手动挂起的实现，每个用例前恢复为默认，避免泄漏
+    mockPushApiKeySnapshot.mockReset();
+    mockInvalidateApiKeyCache.mockReset();
   });
 
   // ──────────────────────────────────────────────────────────────────────
@@ -436,6 +439,48 @@ describe('API Keys', () => {
       });
       expect(mockPushApiKeySnapshot.mock.calls).toEqual([['a'.repeat(64)], ['b'.repeat(64)], ['c'.repeat(64)]]);
       expect(mockInvalidateApiKeyCache.mock.calls).toEqual([['u2'], ['u3']]);
+    });
+
+    it('treats an empty userId as a member filter, never as "whole team"', async () => {
+      mockUpdateReturning.mockResolvedValueOnce([]);
+      expect(await revokeTeamKeys('t1', '')).toBe(0);
+      expect(firstArg(mockUpdateWhere)).toEqual({
+        and: [{ eq: ['apiKeys.teamId', 't1'] }, { isNull: 'apiKeys.revokedAt' }, { eq: ['apiKeys.userId', ''] }],
+      });
+    });
+
+    it('pushes snapshots concurrently in chunks of 10, then invalidates each holder once, concurrently', async () => {
+      const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+      const rows = Array.from({ length: 12 }, (_, i) => ({
+        key: i.toString(16).padStart(64, '0'),
+        userId: i % 2 === 0 ? 'u2' : 'u3',
+      }));
+      mockUpdateReturning.mockResolvedValueOnce(rows);
+      // 推送 / 失效都返回手动放行的 promise，用来观察“发出”与“完成”的先后
+      const pushReleases: Array<() => void> = [];
+      const invalidateReleases: Array<() => void> = [];
+      mockPushApiKeySnapshot.mockImplementation(() => new Promise<void>((resolve) => { pushReleases.push(resolve); }));
+      mockInvalidateApiKeyCache.mockImplementation(() => new Promise<void>((resolve) => { invalidateReleases.push(resolve); }));
+
+      const pending = revokeTeamKeys('t1');
+      await flush();
+      // 第一批 10 个全部已发出而无一完成：批内并发；第二批要等第一批完成
+      expect(mockPushApiKeySnapshot.mock.calls).toEqual(rows.slice(0, 10).map((r) => [r.key]));
+      expect(mockInvalidateApiKeyCache).not.toHaveBeenCalled();
+
+      pushReleases.splice(0).forEach((release) => release());
+      await flush();
+      expect(mockPushApiKeySnapshot.mock.calls).toEqual(rows.map((r) => [r.key]));
+      expect(mockInvalidateApiKeyCache).not.toHaveBeenCalled();
+
+      pushReleases.splice(0).forEach((release) => release());
+      await flush();
+      // 两个持有者的失效都已发出而无一完成：失效同样并发，且每人只一次
+      expect(mockInvalidateApiKeyCache.mock.calls).toEqual([['u2'], ['u3']]);
+
+      invalidateReleases.splice(0).forEach((release) => release());
+      expect(await pending).toBe(12);
+      expect(mockInvalidateApiKeyCache).toHaveBeenCalledTimes(2);
     });
 
     it('returns 0 and notifies nobody when the team has no active keys', async () => {

@@ -106,6 +106,17 @@ describe('API Keys API', () => {
       expect(body.error).toBe('Unauthorized');
     });
 
+    it('should return 401 for a team key request when not authenticated', async () => {
+      mockGetSession.mockResolvedValue(null);
+
+      const response = await POST(createPostRequest({ name: 'k', teamId: 't1' }));
+
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: 'Unauthorized' });
+      expect(mockCheckTeamAccess).not.toHaveBeenCalled();
+      expect(mockCreateApiKey).not.toHaveBeenCalled();
+    });
+
     it('should return 403 when user lacks API access', async () => {
       mockHasFeatureAccess.mockResolvedValue(false);
 
