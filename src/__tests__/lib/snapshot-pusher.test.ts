@@ -3,7 +3,16 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const originalKey = process.env.ASTER_PLAN_GATE_HMAC_KEY;
 const originalUrl = process.env.ASTER_API_INTERNAL_URL;
 
-const { mockFindFirst } = vi.hoisted(() => ({ mockFindFirst: vi.fn() }));
+const { mockFindFirst, mockResolveMany } = vi.hoisted(() => ({
+  mockFindFirst: vi.fn(),
+  mockResolveMany: vi.fn(),
+}));
+
+// 身份口径由解析器决定（ADR 0015 §2），这里只替换解析函数；列常量取真实值以钉住查询列
+vi.mock('@/lib/api-key-identity', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api-key-identity')>()),
+  resolveApiKeyIdentities: mockResolveMany,
+}));
 
 vi.mock('@/lib/prisma', () => ({
   db: {
@@ -201,13 +210,25 @@ describe('pushUserSnapshot', () => {
 });
 
 describe('pushApiKeySnapshot', () => {
+  const PERSONAL_ROW = { id: 'k1', userId: 'u1', teamId: null, revokedAt: null, expiresAt: null };
+  const TEAM_ROW = { id: 'k2', userId: 'u2', teamId: 't1', revokedAt: null, expiresAt: null };
+
   beforeEach(() => {
     vi.resetModules();
     mockFindFirst.mockReset();
+    mockResolveMany.mockReset();
     process.env.ASTER_PLAN_GATE_HMAC_KEY = 'test-secret-32chars-min-len-please';
     process.env.ASTER_API_INTERNAL_URL = 'http://aster-api.test';
     global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 }) as never;
   });
+
+  async function pushedBody(hash: string): Promise<Record<string, unknown>> {
+    const { pushApiKeySnapshot } = await import('@/lib/snapshot-pusher');
+    await pushApiKeySnapshot(hash);
+    const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe(`http://aster-api.test/api/internal/snapshot/apikey/${hash}`);
+    return JSON.parse((init as RequestInit).body as string);
+  }
 
   it('keyHash 长度不是 64 → no-op', async () => {
     const { pushApiKeySnapshot } = await import('@/lib/snapshot-pusher');
@@ -219,78 +240,89 @@ describe('pushApiKeySnapshot', () => {
     const { pushApiKeySnapshot } = await import('@/lib/snapshot-pusher');
     await pushApiKeySnapshot('g'.repeat(64));
     expect(mockFindFirst).not.toHaveBeenCalled();
+    expect(mockResolveMany).not.toHaveBeenCalled();
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it('未找到 key → 推送 valid:false reason:not_found', async () => {
+  it('未找到 key → 推送 valid:false reason:not_found，不调解析器', async () => {
     mockFindFirst.mockResolvedValue(undefined);
-    const hash = 'a'.repeat(64);
-    const { pushApiKeySnapshot } = await import('@/lib/snapshot-pusher');
-    await pushApiKeySnapshot(hash);
-    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    const body = JSON.parse((init as RequestInit).body as string);
-    expect(body.valid).toBe(false);
-    expect(body.reason).toBe('not_found');
+    const body = await pushedBody('a'.repeat(64));
+    expect(body).toEqual({ valid: false, reason: 'not_found' });
+    expect(mockResolveMany).not.toHaveBeenCalled();
+  });
+
+  it('查询带上解析器所需列（含 teamId），并把整行交给解析器', async () => {
+    mockFindFirst.mockResolvedValue(TEAM_ROW);
+    mockResolveMany.mockResolvedValue(new Map([['k2', { valid: false, reason: 'team_not_found' }]]));
+    const body = await pushedBody('e'.repeat(64));
+    expect(mockFindFirst.mock.calls[0][0].columns).toEqual({
+      id: true, userId: true, teamId: true, revokedAt: true, expiresAt: true,
+    });
+    expect(mockResolveMany).toHaveBeenCalledWith([TEAM_ROW]);
+    expect(body).toEqual({ valid: false, reason: 'team_not_found' });
   });
 
   it('已撤销 key → valid:false reason:revoked', async () => {
     const revokedAt = new Date('2026-04-01');
-    mockFindFirst.mockResolvedValue({
-      id: 'k1',
-      userId: 'u1',
-      revokedAt,
-      expiresAt: null,
-    });
-    const hash = 'b'.repeat(64);
-    const { pushApiKeySnapshot } = await import('@/lib/snapshot-pusher');
-    await pushApiKeySnapshot(hash);
-    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    const body = JSON.parse((init as RequestInit).body as string);
+    mockFindFirst.mockResolvedValue({ ...PERSONAL_ROW, revokedAt });
+    mockResolveMany.mockResolvedValue(new Map([['k1', { valid: false, reason: 'revoked', revokedAt }]]));
+    const body = await pushedBody('b'.repeat(64));
     expect(body.valid).toBe(false);
     expect(body.reason).toBe('revoked');
     expect(body.revokedAtEpochMs).toBe(revokedAt.getTime());
   });
 
   it('过期 key → reason:expired', async () => {
-    mockFindFirst.mockResolvedValue({
-      id: 'k1',
-      userId: 'u1',
-      revokedAt: null,
-      expiresAt: new Date('2020-01-01'), // 已过期
-    });
-    const hash = 'c'.repeat(64);
-    const { pushApiKeySnapshot } = await import('@/lib/snapshot-pusher');
-    await pushApiKeySnapshot(hash);
-    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    const body = JSON.parse((init as RequestInit).body as string);
-    expect(body.valid).toBe(false);
-    expect(body.reason).toBe('expired');
+    const expiresAt = new Date('2020-01-01'); // 已过期
+    mockFindFirst.mockResolvedValue({ ...PERSONAL_ROW, expiresAt });
+    mockResolveMany.mockResolvedValue(new Map([['k1', { valid: false, reason: 'expired', expiredAt: expiresAt }]]));
+    const body = await pushedBody('c'.repeat(64));
+    expect(body).toEqual({ valid: false, reason: 'expired' });
   });
 
-  it('有效 key → 下发 tenantId（租户隔离回归）', async () => {
-    // 第一次 findFirst = apiKeys 查询；第二次 = users plan 查询
-    mockFindFirst
-      .mockResolvedValueOnce({
-        id: 'k1',
-        userId: 'u1',
-        revokedAt: null,
-        expiresAt: null, // 永不过期
-      })
-      .mockResolvedValueOnce({ plan: 'pro' });
-    const hash = 'd'.repeat(64);
-    const { pushApiKeySnapshot } = await import('@/lib/snapshot-pusher');
-    await pushApiKeySnapshot(hash);
-    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    const body = JSON.parse((init as RequestInit).body as string);
+  it('成员已被移出的团队 key → valid:false reason:membership_revoked', async () => {
+    mockFindFirst.mockResolvedValue(TEAM_ROW);
+    mockResolveMany.mockResolvedValue(new Map([['k2', { valid: false, reason: 'membership_revoked' }]]));
+    const body = await pushedBody('f'.repeat(64));
+    expect(body).toEqual({ valid: false, reason: 'membership_revoked' });
+  });
+
+  it('个人 key → 下发 tenantId=userId、role=owner（租户隔离回归）', async () => {
+    mockFindFirst.mockResolvedValue(PERSONAL_ROW);
+    mockResolveMany.mockResolvedValue(new Map([['k1', {
+      valid: true, apiKeyId: 'k1', userId: 'u1', tenantId: 'u1', teamId: null, quotaOwnerId: 'u1',
+      role: 'owner', plan: 'pro', subscriptionStatus: 'active',
+    }]]));
+    const body = await pushedBody('d'.repeat(64));
     expect(body.valid).toBe(true);
     expect(body.apiKeyId).toBe('k1');
     expect(body.userId).toBe('u1');
-    // 核心断言：snapshot 必须带权威 tenantId（当前与 userId 同源）。
+    // 核心断言：snapshot 必须带权威 tenantId（个人 key 与 userId 同源）。
     // 缺失会让 aster-api snapshot 命中路径丢失租户、退化为跨租户隔离风险。
     expect(body.tenantId).toBe('u1');
-    // 权威 RBAC 角色：aster-api 用它无条件覆盖 X-User-Role（防提权）。
-    // tenantId===userId → owner。
+    // 权威 RBAC 角色：aster-api 用它无条件覆盖 X-User-Role（防提权）。个人 key → owner。
     expect(body.role).toBe('owner');
+    expect(body.quotaOwnerId).toBe('u1');
     expect(body.plan).toBe('pro');
+    expect(body.revokedAtEpochMs).toBeNull();
+  });
+
+  it('团队 key → tenantId=teamId、role=成员角色、quotaOwnerId=owner、套餐取 owner', async () => {
+    mockFindFirst.mockResolvedValue(TEAM_ROW);
+    mockResolveMany.mockResolvedValue(new Map([['k2', {
+      valid: true, apiKeyId: 'k2', userId: 'u2', tenantId: 't1', teamId: 't1', quotaOwnerId: 'owner',
+      role: 'member', plan: 'team', subscriptionStatus: 'active',
+    }]]));
+    const body = await pushedBody('9'.repeat(64));
+    expect(body).toEqual({
+      valid: true,
+      apiKeyId: 'k2',
+      userId: 'u2',
+      tenantId: 't1',
+      quotaOwnerId: 'owner',
+      role: 'member',
+      plan: 'team',
+      revokedAtEpochMs: null,
+    });
   });
 });

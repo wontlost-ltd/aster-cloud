@@ -2,17 +2,17 @@
  * 内部接口：API key 验证（HMAC 签名）
  *
  * POST { keyHash: "<sha256-hex>" } → {
- *   valid, userId?, tenantId?, apiKeyId?, plan?, revokedAt?, expiredAt?
+ *   valid, apiKeyId?, userId?, tenantId?, quotaOwnerId?, plan?, subscriptionStatus?, role?,
+ *   reason?, revokedAt?, expiredAt?
  * }
  *
  * 由 aster-api ApiKeyVerifierService 调用（5min Caffeine 缓存）。
- * 单条 SQL JOIN，期望响应 < 10ms。
+ * 身份（tenantId / role / quotaOwnerId / plan）一律取自 resolveApiKeyIdentity；
+ * 个人 key 与团队 key 的映射见 ADR 0015 §2。
  */
 import { NextResponse } from 'next/server';
-import { db, apiKeys, users } from '@/lib/prisma';
 import { verifyInternalSignature } from '@/lib/api-signing';
-import { eq } from 'drizzle-orm';
-import { SOLO_TENANT_ROLE } from '@/lib/team-permissions';
+import { resolveApiKeyIdentity } from '@/lib/api-key-identity';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -44,62 +44,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing or invalid keyHash (expect 64 hex chars)' }, { status: 400 });
   }
 
-  // 单 SQL JOIN：apiKeys + users
-  const apiKey = await db.query.apiKeys.findFirst({
-    where: eq(apiKeys.key, body.keyHash),
-    columns: {
-      id: true,
-      userId: true,
-      revokedAt: true,
-      expiresAt: true,
-    },
-    with: {
-      user: {
-        columns: { id: true, plan: true, subscriptionStatus: true },
-      },
-    },
-  });
-
-  if (!apiKey) {
-    return NextResponse.json({ valid: false, reason: 'not_found' });
-  }
-  if (apiKey.revokedAt) {
+  const identity = await resolveApiKeyIdentity(body.keyHash);
+  if (!identity.valid) {
     return NextResponse.json({
       valid: false,
-      reason: 'revoked',
-      revokedAt: apiKey.revokedAt.toISOString(),
+      reason: identity.reason,
+      ...(identity.revokedAt ? { revokedAt: identity.revokedAt.toISOString() } : {}),
+      ...(identity.expiredAt ? { expiredAt: identity.expiredAt.toISOString() } : {}),
     });
   }
-  if (apiKey.expiresAt && apiKey.expiresAt.getTime() < Date.now()) {
-    return NextResponse.json({
-      valid: false,
-      reason: 'expired',
-      expiredAt: apiKey.expiresAt.toISOString(),
-    });
-  }
-  // user 关系可能因为 schema 不带 relations 配置而拿不到；用 fallback 查一次
-  const user = apiKey.user
-    ?? (await db.query.users.findFirst({
-      where: eq(users.id, apiKey.userId),
-      columns: { id: true, plan: true, subscriptionStatus: true },
-    }));
-  if (!user) {
-    return NextResponse.json({ valid: false, reason: 'orphan_key' });
-  }
-
+  // 字段顺序与旧响应一致，仅追加 quotaOwnerId；aster-api 按键读取，顺序无关
   return NextResponse.json({
     valid: true,
-    apiKeyId: apiKey.id,
-    userId: user.id,
-    tenantId: user.id, // 当前 tenantId 与 userId 同源（与 plan-gate 一致）
-    plan: user.plan,
-    subscriptionStatus: user.subscriptionStatus ?? null,
-    // RBAC 角色（与 aster-api Role / 本仓 teamRoleEnum 对齐：owner/admin/member/viewer）。
-    // 当前数据模型 tenantId === userId：API key 持有者就是其单用户租户的所有者，
-    // 因此对**自己的**资源（含审计/分析）拥有 owner 权限。aster-api 用该角色
-    // 无条件覆盖 X-User-Role，杜绝持普通 key 自带 ADMIN 头提权（owner ≥ admin，
-    // 满足审计端点文档约定的 ADMIN 要求）。引入真正的多租户 team 后，这里改为
-    // 查 teamMembers.role(teamId=租户, userId) 即可，aster-api 侧无需改动。
-    role: SOLO_TENANT_ROLE,
+    apiKeyId: identity.apiKeyId,
+    userId: identity.userId,
+    tenantId: identity.tenantId,
+    quotaOwnerId: identity.quotaOwnerId,
+    plan: identity.plan,
+    subscriptionStatus: identity.subscriptionStatus,
+    role: identity.role,
   });
 }

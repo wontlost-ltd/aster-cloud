@@ -11,7 +11,7 @@ import { verifyInternalSignature } from '@/lib/api-signing';
 import { db, users, apiKeys } from '@/lib/prisma';
 import { gt, asc, and, inArray, isNull } from 'drizzle-orm';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
-import { SOLO_TENANT_ROLE } from '@/lib/team-permissions';
+import { API_KEY_IDENTITY_COLUMNS, resolveApiKeyIdentities } from '@/lib/api-key-identity';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -82,33 +82,36 @@ export async function GET(req: Request) {
 
   // 同窗口内的所有 active apiKeys（仅 valid + 未撤销）
   const userIds = userRows.map((u) => u.id);
-  let keyRows: Array<{ id: string; userId: string; key: string; revokedAt: Date | null; expiresAt: Date | null }> = [];
+  let keyRows: Array<{ id: string; userId: string; teamId: string | null; key: string; revokedAt: Date | null; expiresAt: Date | null }> = [];
   if (userIds.length > 0) {
     // 把 userId 过滤下推到 SQL（inArray + ApiKey_userId_idx），而不是全表
     // 拉 active keys 再在内存里 filter——后者随 key 总量线性膨胀、与 limit
     // 无关，warmup 内存/延迟会随规模失控。
     keyRows = await db.query.apiKeys.findMany({
       where: and(isNull(apiKeys.revokedAt), inArray(apiKeys.userId, userIds)),
-      columns: { id: true, userId: true, key: true, revokedAt: true, expiresAt: true },
+      columns: { ...API_KEY_IDENTITY_COLUMNS, key: true },
     });
   }
 
-  // 按 userId 关联 plan，回填到 apikey snapshot
-  const userPlanMap = new Map(userRows.map((u) => [u.id, u.plan]));
-  const apiKeySnapshots = keyRows.map((k) => ({
-    keyHash: k.key,
-    valid: !k.expiresAt || k.expiresAt.getTime() >= Date.now(),
-    apiKeyId: k.id,
-    userId: k.userId,
-    // tenantId 与 /api/internal/apikey/verify 同源（当前 tenantId === userId）。
-    // 显式下发让 aster-api 的 snapshot 命中路径拿到权威租户而非回退猜测；
-    // 未来引入多租户 team 时改为 k.tenantId 即可。
-    tenantId: k.userId,
-    // RBAC 角色，与 verify route 同源（tenantId===userId → owner）。
-    role: SOLO_TENANT_ROLE,
-    plan: userPlanMap.get(k.userId) ?? 'free',
-    revokedAtEpochMs: k.revokedAt?.getTime() ?? null,
-  }));
+  // 身份口径与 verify 路由同源（ADR 0015 §2）；成员已被移出的团队 key 以 valid:false 下发，让 warmup 顺手失效它
+  const identities = await resolveApiKeyIdentities(keyRows);
+  const apiKeySnapshots = keyRows.map((k) => {
+    const id = identities.get(k.id);
+    if (!id || !id.valid) {
+      return { keyHash: k.key, valid: false, reason: id?.reason ?? 'not_found', revokedAtEpochMs: k.revokedAt?.getTime() ?? null };
+    }
+    return {
+      keyHash: k.key,
+      valid: true,
+      apiKeyId: id.apiKeyId,
+      userId: id.userId,
+      tenantId: id.tenantId,
+      quotaOwnerId: id.quotaOwnerId,
+      role: id.role,
+      plan: id.plan,
+      revokedAtEpochMs: null,
+    };
+  });
 
   const nextCursor = userRows.length === limit ? userRows[userRows.length - 1].id : null;
 

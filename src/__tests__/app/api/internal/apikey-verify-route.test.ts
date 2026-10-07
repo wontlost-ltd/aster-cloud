@@ -3,28 +3,15 @@ import { createHmac, createHash } from 'node:crypto';
 
 /**
  * /api/internal/apikey/verify 路由级回归：
- *  - keyHash 必须是 64 位 hex（非 hex/错长度 → 400，且不查 DB）
+ *  - keyHash 必须是 64 位 hex（非 hex/错长度 → 400，且不解析身份）
  *  - fail-closed：HMAC 密钥未配置 → 503（audit #168）；坏签名 → 401
+ *  - 身份一律取自解析器（ADR 0015 §2），响应透传 tenantId/role/quotaOwnerId
  *
- * 输入校验用例携带合法签名以隔离校验逻辑。
+ * 输入校验用例携带合法签名以隔离校验逻辑。路由不再直接查库，只 mock 解析器。
  */
 
-const { mockFindFirst } = vi.hoisted(() => ({ mockFindFirst: vi.fn() }));
-
-vi.mock('@/lib/prisma', () => ({
-  db: {
-    query: {
-      apiKeys: { findFirst: mockFindFirst },
-      users: { findFirst: mockFindFirst },
-    },
-  },
-  apiKeys: { key: 'apiKeys.key' },
-  users: { id: 'users.id' },
-}));
-
-vi.mock('drizzle-orm', () => ({
-  eq: (col: unknown, val: unknown) => ({ op: 'eq', col, val }),
-}));
+const { mockResolve } = vi.hoisted(() => ({ mockResolve: vi.fn() }));
+vi.mock('@/lib/api-key-identity', () => ({ resolveApiKeyIdentity: mockResolve }));
 
 const originalKey = process.env.ASTER_PLAN_GATE_HMAC_KEY;
 const TEST_KEY = 'test-shared-hmac-key';
@@ -61,7 +48,7 @@ function postKeyHash(body: unknown, headers?: Record<string, string>): Request {
 describe('POST /api/internal/apikey/verify — keyHash hex 校验', () => {
   beforeEach(() => {
     vi.resetModules();
-    mockFindFirst.mockReset();
+    mockResolve.mockReset();
     process.env.ASTER_PLAN_GATE_HMAC_KEY = TEST_KEY;
   });
 
@@ -71,43 +58,89 @@ describe('POST /api/internal/apikey/verify — keyHash hex 校验', () => {
     vi.restoreAllMocks();
   });
 
-  it('长度 64 但非 hex → 400，不查 DB', async () => {
+  it('长度 64 但非 hex → 400，不解析身份', async () => {
     const { POST } = await import('@/app/api/internal/apikey/verify/route');
     const res = await POST(postKeyHash({ keyHash: 'z'.repeat(64) }));
     expect(res.status).toBe(400);
-    expect(mockFindFirst).not.toHaveBeenCalled();
+    expect(mockResolve).not.toHaveBeenCalled();
   });
 
-  it('长度不是 64 → 400，不查 DB', async () => {
+  it('长度不是 64 → 400，不解析身份', async () => {
     const { POST } = await import('@/app/api/internal/apikey/verify/route');
     const res = await POST(postKeyHash({ keyHash: 'abc' }));
     expect(res.status).toBe(400);
-    expect(mockFindFirst).not.toHaveBeenCalled();
+    expect(mockResolve).not.toHaveBeenCalled();
   });
 
   it('keyHash 缺失 → 400', async () => {
     const { POST } = await import('@/app/api/internal/apikey/verify/route');
     const res = await POST(postKeyHash({}));
     expect(res.status).toBe(400);
-    expect(mockFindFirst).not.toHaveBeenCalled();
+    expect(mockResolve).not.toHaveBeenCalled();
   });
 
-  it('合法 64 hex → 查 DB（命中 not_found 分支）', async () => {
-    mockFindFirst.mockResolvedValue(undefined);
+  it('合法 64 hex → 交给解析器（命中 not_found 分支）', async () => {
+    mockResolve.mockResolvedValue({ valid: false, reason: 'not_found' });
     const { POST } = await import('@/app/api/internal/apikey/verify/route');
     const res = await POST(postKeyHash({ keyHash: 'a'.repeat(64) }));
     expect(res.status).toBe(200);
-    expect(mockFindFirst).toHaveBeenCalledTimes(1);
+    expect(mockResolve).toHaveBeenCalledTimes(1);
+    expect(mockResolve).toHaveBeenCalledWith('a'.repeat(64));
     const body = await res.json();
-    expect(body.valid).toBe(false);
-    expect(body.reason).toBe('not_found');
+    expect(body).toEqual({ valid: false, reason: 'not_found' });
+  });
+});
+
+describe('成功路径（ADR 0015）', () => {
+  const HASH = 'a'.repeat(64);
+
+  beforeEach(() => {
+    vi.resetModules();
+    mockResolve.mockReset();
+    process.env.ASTER_PLAN_GATE_HMAC_KEY = TEST_KEY;
+  });
+
+  afterEach(() => {
+    if (originalKey === undefined) delete process.env.ASTER_PLAN_GATE_HMAC_KEY;
+    else process.env.ASTER_PLAN_GATE_HMAC_KEY = originalKey;
+    vi.restoreAllMocks();
+  });
+
+  it('个人 key：tenantId=userId、role=owner、quotaOwnerId=userId', async () => {
+    mockResolve.mockResolvedValue({ valid: true, apiKeyId: 'k1', userId: 'u1', tenantId: 'u1', quotaOwnerId: 'u1', role: 'owner', plan: 'pro', subscriptionStatus: 'active' });
+    const { POST } = await import('@/app/api/internal/apikey/verify/route');
+    const res = await POST(postKeyHash({ keyHash: HASH }));
+    expect(await res.json()).toEqual({ valid: true, apiKeyId: 'k1', userId: 'u1', tenantId: 'u1', quotaOwnerId: 'u1', plan: 'pro', subscriptionStatus: 'active', role: 'owner' });
+  });
+
+  it('团队 key：tenantId=teamId、role=成员角色、quotaOwnerId=owner', async () => {
+    mockResolve.mockResolvedValue({ valid: true, apiKeyId: 'k2', userId: 'u2', tenantId: 't1', quotaOwnerId: 'owner', role: 'member', plan: 'team', subscriptionStatus: 'active' });
+    const { POST } = await import('@/app/api/internal/apikey/verify/route');
+    const body = await (await POST(postKeyHash({ keyHash: HASH }))).json();
+    expect(body).toMatchObject({ tenantId: 't1', userId: 'u2', role: 'member', quotaOwnerId: 'owner', plan: 'team' });
+  });
+
+  it('membership_revoked / revoked 带 ISO 时间', async () => {
+    mockResolve.mockResolvedValue({ valid: false, reason: 'membership_revoked' });
+    const { POST } = await import('@/app/api/internal/apikey/verify/route');
+    expect(await (await POST(postKeyHash({ keyHash: HASH }))).json()).toEqual({ valid: false, reason: 'membership_revoked' });
+    const at = new Date('2026-01-01T00:00:00Z');
+    mockResolve.mockResolvedValue({ valid: false, reason: 'revoked', revokedAt: at });
+    expect(await (await POST(postKeyHash({ keyHash: HASH }))).json()).toEqual({ valid: false, reason: 'revoked', revokedAt: at.toISOString() });
+  });
+
+  it('expired 带 ISO expiredAt', async () => {
+    const at = new Date('2020-01-01T00:00:00Z');
+    mockResolve.mockResolvedValue({ valid: false, reason: 'expired', expiredAt: at });
+    const { POST } = await import('@/app/api/internal/apikey/verify/route');
+    expect(await (await POST(postKeyHash({ keyHash: HASH }))).json()).toEqual({ valid: false, reason: 'expired', expiredAt: at.toISOString() });
   });
 });
 
 describe('POST /api/internal/apikey/verify — fail-closed HMAC (audit #168)', () => {
   beforeEach(() => {
     vi.resetModules();
-    mockFindFirst.mockReset();
+    mockResolve.mockReset();
   });
 
   afterEach(() => {
@@ -121,7 +154,7 @@ describe('POST /api/internal/apikey/verify — fail-closed HMAC (audit #168)', (
     const { POST } = await import('@/app/api/internal/apikey/verify/route');
     const res = await POST(postKeyHash({ keyHash: 'a'.repeat(64) }, { 'Content-Type': 'application/json' }));
     expect(res.status).toBe(503);
-    expect(mockFindFirst).not.toHaveBeenCalled();
+    expect(mockResolve).not.toHaveBeenCalled();
   });
 
   it('缺少签名头 → 401', async () => {
@@ -129,7 +162,7 @@ describe('POST /api/internal/apikey/verify — fail-closed HMAC (audit #168)', (
     const { POST } = await import('@/app/api/internal/apikey/verify/route');
     const res = await POST(postKeyHash({ keyHash: 'a'.repeat(64) }, { 'Content-Type': 'application/json' }));
     expect(res.status).toBe(401);
-    expect(mockFindFirst).not.toHaveBeenCalled();
+    expect(mockResolve).not.toHaveBeenCalled();
   });
 
   it('坏签名 → 401，不查 DB', async () => {
@@ -138,6 +171,6 @@ describe('POST /api/internal/apikey/verify — fail-closed HMAC (audit #168)', (
     const { POST } = await import('@/app/api/internal/apikey/verify/route');
     const res = await POST(postKeyHash({ keyHash: 'a'.repeat(64) }, bad));
     expect(res.status).toBe(401);
-    expect(mockFindFirst).not.toHaveBeenCalled();
+    expect(mockResolve).not.toHaveBeenCalled();
   });
 });

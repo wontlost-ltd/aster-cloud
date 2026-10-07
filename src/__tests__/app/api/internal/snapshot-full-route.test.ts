@@ -5,14 +5,23 @@ import { createHmac, createHash } from 'node:crypto';
  * /api/internal/snapshot/full 路由级回归：
  *  - limit 参数边界校验（NaN/0/负数/超界 → 400，且不查 DB）
  *  - active key 过滤下推到 SQL（where 同时含 isNull(revokedAt) + inArray(userId)）
+ *  - key 身份取自解析器（ADR 0015 §2）：团队 key 下发 tenantId=teamId 与 quotaOwnerId，
+ *    成员已被移出的团队 key 以 valid:false 下发
  *  - fail-closed：HMAC 密钥未配置 → 503（audit #168）；坏签名 → 401
  *
  * 输入校验用例携带合法签名以隔离校验逻辑。
  */
 
-const { mockUsersFindMany, mockApiKeysFindMany } = vi.hoisted(() => ({
+const { mockUsersFindMany, mockApiKeysFindMany, mockResolveMany } = vi.hoisted(() => ({
   mockUsersFindMany: vi.fn(),
   mockApiKeysFindMany: vi.fn(),
+  mockResolveMany: vi.fn(),
+}));
+
+// 只替换解析函数；列常量取真实值，以钉住 apiKeys 查询带上 teamId
+vi.mock('@/lib/api-key-identity', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api-key-identity')>()),
+  resolveApiKeyIdentities: mockResolveMany,
 }));
 
 // drizzle 操作符替换成可断言的标记对象，避免依赖其不透明内部结构。
@@ -66,6 +75,7 @@ describe('GET /api/internal/snapshot/full — limit 校验', () => {
     vi.resetModules();
     mockUsersFindMany.mockReset().mockResolvedValue([]);
     mockApiKeysFindMany.mockReset().mockResolvedValue([]);
+    mockResolveMany.mockReset().mockResolvedValue(new Map());
     process.env.ASTER_PLAN_GATE_HMAC_KEY = TEST_KEY;
   });
 
@@ -135,6 +145,48 @@ describe('GET /api/internal/snapshot/full — limit 校验', () => {
     await GET(makeReq('?limit=1000'));
     expect(mockApiKeysFindMany).not.toHaveBeenCalled();
   });
+
+  it('apiKeys 身份经解析器：团队 key 带 tenantId=teamId 与 quotaOwnerId，被移出成员的 key 下发 valid:false', async () => {
+    mockUsersFindMany.mockResolvedValue([
+      { id: 'owner', plan: 'team', priceLockedAt: null, legacyTier: null,
+        subscriptionStatus: 'active', aiBannedUntil: null, gracePeriodEndsAt: null },
+      { id: 'u2', plan: 'free', priceLockedAt: null, legacyTier: null,
+        subscriptionStatus: null, aiBannedUntil: null, gracePeriodEndsAt: null },
+    ]);
+    const liveTeamKey = { id: 'k1', userId: 'u2', teamId: 't1', key: 'h1', revokedAt: null, expiresAt: null };
+    const kickedTeamKey = { id: 'k2', userId: 'owner', teamId: 't9', key: 'h2', revokedAt: null, expiresAt: null };
+    mockApiKeysFindMany.mockResolvedValue([liveTeamKey, kickedTeamKey]);
+    mockResolveMany.mockResolvedValue(new Map([
+      ['k1', { valid: true, apiKeyId: 'k1', userId: 'u2', tenantId: 't1', teamId: 't1', quotaOwnerId: 'owner',
+        role: 'member', plan: 'team', subscriptionStatus: 'active' }],
+      ['k2', { valid: false, reason: 'membership_revoked' }],
+    ]));
+
+    const { GET } = await import('@/app/api/internal/snapshot/full/route');
+    const res = await GET(makeReq('?limit=1000'));
+    expect(res.status).toBe(200);
+
+    expect(mockApiKeysFindMany.mock.calls[0][0].columns).toEqual({
+      id: true, userId: true, teamId: true, revokedAt: true, expiresAt: true, key: true,
+    });
+    expect(mockResolveMany).toHaveBeenCalledWith([liveTeamKey, kickedTeamKey]);
+
+    const body = await res.json();
+    expect(body.apiKeys).toEqual([
+      {
+        keyHash: 'h1',
+        valid: true,
+        apiKeyId: 'k1',
+        userId: 'u2',
+        tenantId: 't1',
+        quotaOwnerId: 'owner',
+        role: 'member',
+        plan: 'team',
+        revokedAtEpochMs: null,
+      },
+      { keyHash: 'h2', valid: false, reason: 'membership_revoked', revokedAtEpochMs: null },
+    ]);
+  });
 });
 
 describe('GET /api/internal/snapshot/full — fail-closed HMAC (audit #168)', () => {
@@ -142,6 +194,7 @@ describe('GET /api/internal/snapshot/full — fail-closed HMAC (audit #168)', ()
     vi.resetModules();
     mockUsersFindMany.mockReset().mockResolvedValue([]);
     mockApiKeysFindMany.mockReset().mockResolvedValue([]);
+    mockResolveMany.mockReset().mockResolvedValue(new Map());
   });
 
   afterEach(() => {

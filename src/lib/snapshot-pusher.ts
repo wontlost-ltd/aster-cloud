@@ -12,7 +12,7 @@ import { db, users, apiKeys } from '@/lib/prisma';
 import { eq } from 'drizzle-orm';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
 import { safeEnv } from '@/lib/runtime/safe-env';
-import { SOLO_TENANT_ROLE } from '@/lib/team-permissions';
+import { API_KEY_IDENTITY_COLUMNS, resolveApiKeyIdentities } from '@/lib/api-key-identity';
 
 const ASTER_API_INTERNAL_URL =
   safeEnv('ASTER_API_INTERNAL_URL') ?? 'http://aster-api:8080';
@@ -67,7 +67,8 @@ export async function pushUserSnapshot(userId: string): Promise<void> {
 /**
  * 推送指定 keyHash 的最新 snapshot 到 aster-api
  *
- * 在 apiKey 创建 / 撤销时立即调用。
+ * 在 apiKey 创建 / 撤销时立即调用。身份口径与 verify 路由同源（resolveApiKeyIdentities，ADR 0015 §2）：
+ * 团队 key 下发 tenantId=teamId、成员角色与 quotaOwnerId=团队 owner。
  * 撤销场景下 valid=false + reason='revoked'，aster-api 端立即对应拒绝。
  */
 export async function pushApiKeySnapshot(keyHash: string): Promise<void> {
@@ -76,47 +77,27 @@ export async function pushApiKeySnapshot(keyHash: string): Promise<void> {
   try {
     const key = await db.query.apiKeys.findFirst({
       where: eq(apiKeys.key, keyHash),
-      columns: {
-        id: true,
-        userId: true,
-        revokedAt: true,
-        expiresAt: true,
-      },
+      columns: API_KEY_IDENTITY_COLUMNS,
     });
-
-    let bodyObj: Record<string, unknown>;
-    if (!key) {
-      bodyObj = { valid: false, reason: 'not_found' };
-    } else if (key.revokedAt) {
-      bodyObj = {
-        valid: false,
-        reason: 'revoked',
-        revokedAtEpochMs: key.revokedAt.getTime(),
-      };
-    } else if (key.expiresAt && key.expiresAt.getTime() < Date.now()) {
-      bodyObj = { valid: false, reason: 'expired' };
-    } else {
-      // 拿 user.plan 一并塞进 snapshot
-      const user = await db.query.users.findFirst({
-        where: eq(users.id, key.userId),
-        columns: { plan: true },
-      });
-      bodyObj = {
-        valid: true,
-        apiKeyId: key.id,
-        userId: key.userId,
-        // tenantId 与 /api/internal/apikey/verify 保持同源（当前 tenantId === userId）。
-        // 显式下发，让 aster-api 的 snapshot 命中路径拿到权威租户，而不是回退猜测。
-        // 未来引入真正的多租户 team 时，这里改为 key.tenantId 即可，无需改 aster-api。
-        tenantId: key.userId,
-        // RBAC 角色，与 verify route 同源：tenantId===userId → key 持有者是其
-        // 单用户租户的 owner。aster-api 用它无条件覆盖 X-User-Role（防提权）。
-        role: SOLO_TENANT_ROLE,
-        plan: user?.plan ?? 'free',
-        revokedAtEpochMs: null,
-      };
-    }
-
+    const identity = key
+      ? (await resolveApiKeyIdentities([key])).get(key.id) ?? { valid: false as const, reason: 'not_found' as const }
+      : { valid: false as const, reason: 'not_found' as const };
+    const bodyObj: Record<string, unknown> = identity.valid
+      ? {
+          valid: true,
+          apiKeyId: identity.apiKeyId,
+          userId: identity.userId,
+          tenantId: identity.tenantId,
+          quotaOwnerId: identity.quotaOwnerId,
+          role: identity.role,
+          plan: identity.plan,
+          revokedAtEpochMs: null,
+        }
+      : {
+          valid: false,
+          reason: identity.reason,
+          ...(identity.revokedAt ? { revokedAtEpochMs: identity.revokedAt.getTime() } : {}),
+        };
     const path = `/api/internal/snapshot/apikey/${keyHash}`;
     await callAsterApi('POST', path, JSON.stringify(bodyObj), `push-apikey ${keyHash.slice(0, 8)}`);
   } catch (err) {
