@@ -51,9 +51,9 @@ ALTER TABLE "ApiKey" ADD COLUMN IF NOT EXISTS "teamId" text;
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "ApiKey_teamId_idx" ON "ApiKey" USING btree ("teamId");
 --> statement-breakpoint
-ALTER TABLE "ApiCall" ADD COLUMN IF NOT EXISTS "quotaOwnerId" text;
+ALTER TABLE "ApiCallRecord" ADD COLUMN IF NOT EXISTS "quotaOwnerId" text;
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "ApiCall_quotaOwnerId_period_idx" ON "ApiCall" USING btree ("quotaOwnerId", "periodMonth", "status");
+CREATE INDEX IF NOT EXISTS "ApiCall_quotaOwnerId_period_idx" ON "ApiCallRecord" USING btree ("quotaOwnerId", "periodMonth", "status");
 ```
 
 ### 2. 单一身份解析器
@@ -132,8 +132,8 @@ owner 付一份套餐就是一个月度池：owner 个人 key 的调用 + owner 
 - 不重复计费：成员 M 的团队调用行为 `(userId = M, quotaOwnerId = O)`，M 的个人池条件
   `quotaOwnerId IS NULL AND userId = M` 不命中它。
 - owner 套餐变化（Stripe 回调 `checkout-completed`、`subscription-updated`、`subscription-deleted`、
-  `invoice-payment-*`；`cron/auto-downgrade`）：现有 `pushUserSnapshot(owner)` 已覆盖共享池上限；
-  新增对 owner 名下每个团队调用 `invalidatePlanCache(teamId)`（新助手 `invalidatePlanCacheForOwner(ownerId)`），
+  `invoice-payment-*`；`cron/auto-downgrade`）全部经由 `pushUserSnapshot(owner)`，它已覆盖共享池上限；
+  在其内部新增对 owner 名下每个团队调用 `invalidatePlanCache(teamId)`（助手 `invalidatePlanCacheForOwner(ownerId)`），
   否则 aster-api 的 `lookupPlan(teamId)` 缓存最长 5 分钟内仍按旧套餐限速。
 
 ### 5. key 生命周期
@@ -152,8 +152,9 @@ owner 付一份套餐就是一个月度池：owner 个人 key 的调用 + owner 
 
 | 事件 | 路由 | 动作 |
 |---|---|---|
-| 成员移出 / 退出 | `DELETE teams/[teamId]/members/[memberId]` | 吊销该成员在该团队的全部 key；逐 key 推送无效快照；`invalidateApiKeyCache(memberId)` |
-| 角色变更 | `PUT teams/[teamId]/members/[memberId]` | 重推该成员在该团队的 key 快照；`invalidateApiKeyCache(memberId)` |
+| 成员移出 / 退出 | `DELETE teams/[teamId]/members/[memberId]` | 吊销该成员在该团队的全部 key；逐 key 推送无效快照；`invalidateApiKeyCache(成员 userId)`（路由参数 `memberId` 是 `TeamMember.id`，须取 `targetMember.userId`） |
+| 角色变更 | `PUT teams/[teamId]/members/[memberId]` | 重推该成员在该团队的 key 快照；`invalidateApiKeyCache(成员 userId)` |
+| owner 套餐变化 | `pushUserSnapshot(owner)` 内部 | 对 owner 名下每个团队 `invalidatePlanCache(teamId)`（放在 `pushUserSnapshot` 里，七个调用方零改动） |
 | 所有权转移 | `POST teams/[teamId]/transfer` | 重推该团队全部 key 快照（`quotaOwnerId` 变了）；对每个受影响用户 `invalidateApiKeyCache`；`invalidatePlanCache(teamId)` |
 | 团队删除 | `DELETE teams/[teamId]` | 吊销全部团队 key；推送无效快照；逐用户 `invalidateApiKeyCache` |
 
