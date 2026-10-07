@@ -521,6 +521,8 @@ export const apiKeys = pgTable(
   {
     id: text('id').primaryKey().notNull(),
     userId: text('userId').notNull(),
+    // 团队作用域：非空即「成员以该团队身份使用」，角色在解析时从 TeamMember 现查（ADR 0015 §1）
+    teamId: text('teamId'),
     name: text('name').notNull(),
     key: text('key').notNull().unique(),
     prefix: text('prefix').notNull(),
@@ -532,6 +534,7 @@ export const apiKeys = pgTable(
   (table) => [
     index('ApiKey_userId_idx').on(table.userId),
     index('ApiKey_prefix_idx').on(table.prefix),
+    index('ApiKey_teamId_idx').on(table.teamId),
   ]
 );
 
@@ -729,6 +732,8 @@ export const apiCallRecords = pgTable(
     userId: text('userId').notNull(),
     tenantId: text('tenantId'),
     apiKeyId: text('apiKeyId'),
+    // 配额归属：owner 共享池的键；旧行为 NULL，统计时 COALESCE(quotaOwnerId, userId)（ADR 0015 §4）
+    quotaOwnerId: text('quotaOwnerId'),
     /** 'YYYY-MM' 用于按月聚合查询 */
     periodMonth: text('periodMonth').notNull(),
     /** /api/policies/evaluate / evaluate-json / evaluate-source / evaluate/batch */
@@ -743,6 +748,7 @@ export const apiCallRecords = pgTable(
     index('ApiCall_userId_period_idx').on(table.userId, table.periodMonth),
     index('ApiCall_tenantId_createdAt_idx').on(table.tenantId, table.createdAt),
     index('ApiCall_apiKeyId_createdAt_idx').on(table.apiKeyId, table.createdAt),
+    index('ApiCall_quotaOwnerId_period_idx').on(table.quotaOwnerId, table.periodMonth, table.status),
     index('ApiCall_createdAt_retention_idx').on(table.createdAt),
   ]
 );
@@ -1949,10 +1955,8 @@ export const sessionsRelations = relations(sessions, ({ one }) => ({
 }));
 
 export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
-  user: one(users, {
-    fields: [apiKeys.userId],
-    references: [users.id],
-  }),
+  user: one(users, { fields: [apiKeys.userId], references: [users.id] }),
+  team: one(teams, { fields: [apiKeys.teamId], references: [teams.id] }),
 }));
 
 export const policyGroupsRelations = relations(policyGroups, ({ one, many }) => ({
