@@ -166,7 +166,7 @@ function mockExecutionResult(overrides: Partial<{
   };
 }
 
-const VALID_AUTH = { success: true as const, userId: 'user-1', apiKeyId: 'key-1' };
+const VALID_AUTH = { success: true as const, userId: 'user-1', apiKeyId: 'key-1', teamId: null };
 
 function makeRequest(url: string, method = 'GET', body?: unknown): Request {
   return new Request(url, {

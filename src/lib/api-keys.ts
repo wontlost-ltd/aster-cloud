@@ -1,6 +1,10 @@
 import { randomBytes, createHash } from 'crypto';
 import { db, apiKeys } from '@/lib/prisma';
 import { eq, desc, isNull, and } from 'drizzle-orm';
+import { resolveApiKeyIdentity, type ApiKeyIdentity } from '@/lib/api-key-identity';
+import { pushApiKeySnapshot } from '@/lib/snapshot-pusher';
+import { invalidateApiKeyCache } from '@/lib/plan-gate-client';
+import { hasFeatureAccess } from '@/lib/usage';
 
 // Generate a new API key
 export function generateApiKey(): { key: string; hash: string; prefix: string } {
@@ -22,12 +26,13 @@ export function hashApiKey(key: string): string {
   return createHash('sha256').update(key).digest('hex');
 }
 
-// Create a new API key for a user
-export async function createApiKey(userId: string, name: string): Promise<{
+// 创建 API key；teamId 非空即团队 key（调用方须先校验成员资格与 owner 套餐）
+export async function createApiKey(userId: string, name: string, teamId: string | null = null): Promise<{
   id: string;
   key: string;
   prefix: string;
   name: string;
+  teamId: string | null;
   createdAt: Date;
 }> {
   const { key, hash, prefix } = generateApiKey();
@@ -35,87 +40,73 @@ export async function createApiKey(userId: string, name: string): Promise<{
   const [apiKey] = await db.insert(apiKeys).values({
     id: crypto.randomUUID(),
     userId,
+    teamId,
     name,
     key: hash,
     prefix,
   }).returning();
 
-  // Return the raw key only once - it cannot be retrieved later
+  // 让 aster-api 立刻拿到身份快照，而不是等 1 h TTL 或下一次 verify（ADR 0015 §5）
+  await pushApiKeySnapshot(hash);
+
+  // 明文 key 只在此返回一次，之后无法再取回
   return {
     id: apiKey.id,
     key,
     prefix: apiKey.prefix,
     name: apiKey.name,
+    teamId: apiKey.teamId ?? null,
     createdAt: apiKey.createdAt,
   };
 }
 
-// Validate an API key and return the associated user
+type InvalidReason = Extract<ApiKeyIdentity, { valid: false }>['reason'];
+
+const INVALID_KEY_MESSAGES: Record<InvalidReason, string> = {
+  not_found: 'Invalid API key',
+  revoked: 'API key has been revoked',
+  expired: 'API key has expired',
+  orphan_key: 'Invalid API key',
+  team_not_found: 'API key team no longer exists',
+  membership_revoked: 'API key holder is no longer a member of the team',
+};
+
+// 校验 API key：身份只经由解析器获得，与 verify 路由 / snapshot 推送同口径（ADR 0015 §2）
 export async function validateApiKey(key: string): Promise<{
   valid: boolean;
   userId?: string;
   apiKeyId?: string;
+  teamId?: string | null;
   error?: string;
 }> {
   if (!key || !key.startsWith('ak_')) {
     return { valid: false, error: 'Invalid API key format' };
   }
 
-  const hash = hashApiKey(key);
-
-  const apiKey = await db.query.apiKeys.findFirst({
-    where: eq(apiKeys.key, hash),
-    with: {
-      user: {
-        columns: {
-          id: true,
-          plan: true,
-          trialEndsAt: true,
-        },
-      },
-    },
-  });
-
-  if (!apiKey) {
-    return { valid: false, error: 'Invalid API key' };
+  const identity = await resolveApiKeyIdentity(hashApiKey(key));
+  if (!identity.valid) {
+    return { valid: false, error: INVALID_KEY_MESSAGES[identity.reason] };
   }
 
-  // Check if key is revoked
-  if (apiKey.revokedAt) {
-    return { valid: false, error: 'API key has been revoked' };
-  }
-
-  // Check if key is expired
-  if (apiKey.expiresAt && apiKey.expiresAt < new Date()) {
-    return { valid: false, error: 'API key has expired' };
-  }
-
-  // Check if user has API access
-  const plan = apiKey.user.plan;
-  const hasApiAccess = plan !== 'free';
-
-  // Check trial expiry
-  if (plan === 'trial' && apiKey.user.trialEndsAt && apiKey.user.trialEndsAt < new Date()) {
-    return { valid: false, error: 'Trial has expired. Please upgrade to continue using the API.' };
-  }
-
-  if (!hasApiAccess) {
+  // 套餐门槛看配额 owner（团队 key 即 team owner），与 POST /api/api-keys 同口径；
+  // 试用过期的自动降级也在 hasFeatureAccess 内完成
+  if (!(await hasFeatureAccess(identity.quotaOwnerId, 'apiAccess'))) {
     return { valid: false, error: 'API access requires a Pro or Team subscription' };
   }
 
-  // Update last used timestamp
   await db.update(apiKeys)
     .set({ lastUsedAt: new Date() })
-    .where(eq(apiKeys.id, apiKey.id));
+    .where(eq(apiKeys.id, identity.apiKeyId));
 
   return {
     valid: true,
-    userId: apiKey.userId,
-    apiKeyId: apiKey.id,
+    userId: identity.userId,
+    apiKeyId: identity.apiKeyId,
+    teamId: identity.teamId,
   };
 }
 
-// List API keys for a user (without the actual key)
+// 列出用户本人持有的活跃 key（不含 hash），团队 key 附带团队名
 export async function listApiKeys(userId: string) {
   const keys = await db.query.apiKeys.findMany({
     where: and(eq(apiKeys.userId, userId), isNull(apiKeys.revokedAt)),
@@ -123,22 +114,26 @@ export async function listApiKeys(userId: string) {
       id: true,
       name: true,
       prefix: true,
+      teamId: true,
       lastUsedAt: true,
       expiresAt: true,
       createdAt: true,
     },
+    with: { team: { columns: { name: true } } },
     orderBy: [desc(apiKeys.createdAt)],
   });
 
-  return keys;
+  return keys.map(({ team, ...k }) => ({
+    ...k,
+    teamId: k.teamId ?? null,
+    teamName: team?.name ?? null,
+  }));
 }
 
-// Revoke an API key
+// 吊销本人的一把 key；成功后通知 aster-api，让它立即拒绝该 key
 export async function revokeApiKey(userId: string, keyId: string): Promise<boolean> {
   const result = await db.update(apiKeys)
-    .set({
-      revokedAt: new Date(),
-    })
+    .set({ revokedAt: new Date() })
     .where(
       and(
         eq(apiKeys.id, keyId),
@@ -146,9 +141,49 @@ export async function revokeApiKey(userId: string, keyId: string): Promise<boole
         isNull(apiKeys.revokedAt)
       )
     )
-    .returning();
+    .returning({ key: apiKeys.key, userId: apiKeys.userId });
 
-  return result.length > 0;
+  if (result.length === 0) return false;
+  await notifyKeysChanged(result);
+  return true;
+}
+
+// 团队范围内活跃 key 的过滤条件；给出 userId 时只取该成员的 key
+function activeTeamKeysWhere(teamId: string, userId?: string) {
+  const conds = [eq(apiKeys.teamId, teamId), isNull(apiKeys.revokedAt)];
+  if (userId) conds.push(eq(apiKeys.userId, userId));
+  return and(...conds);
+}
+
+// 吊销团队（或团队内某成员）的全部活跃 key，返回吊销条数。用于团队删除 / 成员移出
+export async function revokeTeamKeys(teamId: string, userId?: string): Promise<number> {
+  const result = await db.update(apiKeys)
+    .set({ revokedAt: new Date() })
+    .where(activeTeamKeysWhere(teamId, userId))
+    .returning({ key: apiKeys.key, userId: apiKeys.userId });
+
+  await notifyKeysChanged(result);
+  return result.length;
+}
+
+// 重推团队（或团队内某成员）全部活跃 key 的快照，返回条数。用于角色变更 / 转让 owner 等不吊销的身份变化
+export async function refreshTeamKeySnapshots(teamId: string, userId?: string): Promise<number> {
+  const rows = await db.query.apiKeys.findMany({
+    where: activeTeamKeysWhere(teamId, userId),
+    columns: { key: true, userId: true },
+  });
+
+  await notifyKeysChanged(rows);
+  return rows.length;
+}
+
+/**
+ * key 身份变化后通知 aster-api：逐 key 推最新快照（吊销后即为无效快照），
+ * 再按持有者去重失效 verify 缓存。两者都 fail-open，失败只记日志、不影响 DB 结果。
+ */
+async function notifyKeysChanged(rows: Array<{ key: string; userId: string }>): Promise<void> {
+  for (const row of rows) await pushApiKeySnapshot(row.key);
+  for (const holderId of new Set(rows.map((row) => row.userId))) await invalidateApiKeyCache(holderId);
 }
 
 // API 认证结果类型
@@ -157,6 +192,7 @@ export type ApiAuthResult =
       success: true;
       userId: string;
       apiKeyId: string;
+      teamId: string | null;
     }
   | {
       success: false;
@@ -191,5 +227,6 @@ export async function authenticateApiRequest(req: Request): Promise<ApiAuthResul
     success: true,
     userId: validation.userId,
     apiKeyId: validation.apiKeyId!,
+    teamId: validation.teamId ?? null,
   };
 }
