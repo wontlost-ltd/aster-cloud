@@ -8,7 +8,7 @@
  * verify 路由、snapshot 推送、snapshot/full、validateApiKey 都只能经由这里拿身份。
  */
 import { db, apiKeys, users, teams, teamMembers } from '@/lib/prisma';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { SOLO_TENANT_ROLE, type TeamRole } from '@/lib/team-permissions';
 import type { Plan } from '@/db/schema';
 
@@ -72,25 +72,25 @@ export async function resolveApiKeyIdentities(keys: ApiKeyRow[], now: Date = new
   if (live.length === 0) return out;
 
   const teamIds = [...new Set(live.map((k) => k.teamId).filter((t): t is string => !!t))];
-  const teamRows = teamIds.length
-    ? await db.query.teams.findMany({ where: inArray(teams.id, teamIds), columns: { id: true, ownerId: true } })
-    : [];
-  const teamById = new Map(teamRows.map((t) => [t.id, t]));
-
   const holderIds = live.map((k) => k.userId);
-  const memberRows = teamIds.length
-    ? await db.query.teamMembers.findMany({
-        where: inArray(teamMembers.teamId, teamIds),
-        columns: { teamId: true, userId: true, role: true },
-      })
-    : [];
-  const roleByMembership = new Map(memberRows.map((r) => [`${r.teamId}\u0000${r.userId}`, r.role as TeamRole]));
+  // teams 与 teamMembers 互不依赖并行查；成员只取本批持有者的行，避免随团队规模放大
+  const [teamRows, memberRows] = teamIds.length
+    ? await Promise.all([
+        db.query.teams.findMany({ where: inArray(teams.id, teamIds), columns: { id: true, ownerId: true } }),
+        db.query.teamMembers.findMany({
+          where: and(inArray(teamMembers.teamId, teamIds), inArray(teamMembers.userId, holderIds)),
+          columns: { teamId: true, userId: true, role: true },
+        }),
+      ])
+    : [[], []];
+  const teamById = new Map(teamRows.map((t) => [t.id, t]));
+  const roleByMembership = new Map(memberRows.map((r) => [`${r.teamId}\u0000${r.userId}`, r.role]));
 
   const userIds = [...new Set([...holderIds, ...teamRows.map((t) => t.ownerId)])];
-  const userRows = (await db.query.users.findMany({
+  const userRows: UserInfo[] = await db.query.users.findMany({
     where: inArray(users.id, userIds),
     columns: { id: true, plan: true, subscriptionStatus: true },
-  })) as UserInfo[];
+  });
   const userById = new Map(userRows.map((u) => [u.id, u]));
 
   for (const k of live) {
