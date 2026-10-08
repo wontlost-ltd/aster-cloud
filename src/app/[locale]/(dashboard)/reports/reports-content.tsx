@@ -42,6 +42,8 @@ interface Preview {
     denied: number;
     indeterminate: number;
     error: number;
+    require_approval: number;
+    escalate: number;
     unknown: number;
   };
   coverage: { verifiable: number; legacy: number };
@@ -55,7 +57,15 @@ interface Props {
   initialExports: EvidenceExportRow[];
 }
 
-const DECISION_KEYS = ['approved', 'denied', 'indeterminate', 'error', 'unknown'] as const;
+const DECISION_KEYS = [
+  'approved',
+  'denied',
+  'indeterminate',
+  'error',
+  'require_approval',
+  'escalate',
+  'unknown',
+] as const;
 
 export function ReportsContent({ locale, policies, initialExports }: Props) {
   const t = useTranslations('evidenceExport');
@@ -337,6 +347,8 @@ function decisionVariant(k: (typeof DECISION_KEYS)[number]): 'success' | 'danger
     case 'error':
       return 'danger';
     case 'indeterminate':
+    case 'require_approval':
+    case 'escalate':
       return 'warning';
     default:
       return 'neutral';

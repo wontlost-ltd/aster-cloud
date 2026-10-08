@@ -18,6 +18,7 @@ vi.mock('@/lib/api-signing', () => ({
 import {
   fetchReceipts,
   fetchDecisionReceipts,
+  mergeLookups,
   RECEIPT_BATCH,
   RECEIPT_TIMEOUT_MS,
 } from '@/services/evidence/receipts-client';
@@ -259,5 +260,28 @@ describe('receipts-client', () => {
     expect(String(vi.mocked(fetchImpl).mock.calls[0][0])).toContain('decisionIds=d-1');
     expect(out.receipts.get('d-1')?.auditId).toBe(7);
     expect(out.approvals.get('d-1')?.map((a) => a.auditId)).toEqual([8, 9]);
+  });
+});
+
+describe('mergeLookups', () => {
+  it('并集合并各租户的 receipts/missing/unavailable，同 decisionId 的审批拼接', () => {
+    const approval = (auditId: number) => ({
+      auditId, decisionId: 'd-1', outcome: 'APPROVED', decidedBy: 'u', requiredRole: null, comment: null,
+      decidedAt: '2026-10-01T00:00:00Z', currentHash: `h${auditId}`, decisionReceiptHash: null,
+    });
+    const receipt = { auditId: 1, currentHash: 'h1', prevHash: null, hashVersion: 2, eventType: 'E', timestamp: 't', metadata: {} };
+    const merged = mergeLookups([
+      { receipts: new Map([['c-1', receipt]]), approvals: new Map([['d-1', [approval(1)]]]), missing: new Set(['c-2']), unavailable: new Set() },
+      { receipts: new Map(), approvals: new Map([['d-1', [approval(2)]]]), missing: new Set(), unavailable: new Set(['c-3']) },
+    ]);
+    expect(merged.receipts.get('c-1')).toBe(receipt);
+    expect(merged.approvals.get('d-1')!.map((a) => a.auditId)).toEqual([1, 2]);
+    expect([...merged.missing]).toEqual(['c-2']);
+    expect([...merged.unavailable]).toEqual(['c-3']);
+  });
+
+  it('空输入 → 空查找结果', () => {
+    const merged = mergeLookups([]);
+    expect(merged.receipts.size + merged.approvals.size + merged.missing.size + merged.unavailable.size).toBe(0);
   });
 });

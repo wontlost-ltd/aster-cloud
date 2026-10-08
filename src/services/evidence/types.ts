@@ -5,9 +5,16 @@
 // 与被替换的旧 compliance-score 报告根本不同：这里只呈现执行链**已经产生**的权威事实。
 
 import type { ExecutionSource } from '@/lib/prisma';
+import type { Reviewer } from './reviewers';
 
-/** 执行决策四态（与 executionDecisionEnum 一致）；legacy 行可能为 null → 归入 'unknown' 统计桶。 */
-export type EvidenceDecision = 'approved' | 'denied' | 'indeterminate' | 'error';
+/** 执行决策六态（与 executionDecisionEnum 一致）；legacy 行可能为 null → 归入 'unknown' 统计桶。 */
+export type EvidenceDecision =
+  | 'approved'
+  | 'denied'
+  | 'indeterminate'
+  | 'error'
+  | 'require_approval'
+  | 'escalate';
 
 /** decision 分布统计（含 unknown 桶容纳 legacy decision=null 行）。 */
 export interface DecisionTally {
@@ -15,7 +22,27 @@ export interface DecisionTally {
   denied: number;
   indeterminate: number;
   error: number;
+  require_approval: number;
+  escalate: number;
   unknown: number;
+}
+
+/**
+ * 链收据引用（ADR 0041 §2.4）：命中时只搬运可校验的哈希链坐标，供审计方经
+ * GET /api/v1/audit/receipts 独立复核；否则如实标状态——legacy=无关联 id 的旧行，
+ * missing=aster-api 未找到，unavailable=取收据失败（超时/网络/非 2xx）。绝不伪造。
+ */
+export type ReceiptRef =
+  | { auditId: number; currentHash: string; prevHash: string | null; hashVersion: number }
+  | { status: 'missing' | 'legacy' | 'unavailable' };
+
+/** 调用方自报的 agent 身份（非认证事实，source 恒为 declared）。 */
+export interface EvidenceAgent {
+  provider: string;
+  model: string;
+  version?: string;
+  session?: string;
+  source: 'declared';
 }
 
 /**
@@ -42,6 +69,15 @@ export interface EvidenceEntry {
   durationMs: number;
   /** ISO-8601 UTC。 */
   createdAt: string;
+  /** 服务端派生的结果大写码（ALLOW/DENY/REQUIRE_APPROVAL/…）；旧行为 null。 */
+  outcome: string | null;
+  ruleId: string | null;
+  controls: string[] | null;
+  agent: EvidenceAgent | null;
+  evidenceCorrelationId: string | null;
+  receipt: ReceiptRef;
+  /** 三来源统一复核者，按 (decidedAt, ref) 排序以保证 bundleHash 确定。 */
+  reviewers: Reviewer[];
 }
 
 /** 导出格式。 */
@@ -53,7 +89,8 @@ export type EvidenceFormat = 'json' | 'jsonl';
  */
 export interface EvidenceManifest {
   kind: 'evidence-export';
-  schemaVersion: '1';
+  /** v2 起 entries 含 outcome/ruleId/controls/agent/receipt/reviewers；已存的 v1 包按原样下载。 */
+  schemaVersion: '2';
   generatedAt: string;
   /** 单策略快照，或全部策略范围。 */
   policy:
@@ -65,9 +102,20 @@ export interface EvidenceManifest {
   canonicalizationVersion: string;
   /** hex sha256（复用 canonicalHash，带 CANONICALIZATION_VERSION 前缀）。 */
   bundleHash: string;
+  /** 收据来源与独立校验入口。 */
+  receiptSource: { kind: 'aster-api-hash-chain'; verifier: 'GET /api/v1/audit/receipts' };
+  /** 按 `${provider}/${model}` 计数；无 agent 计入 'unknown'。 */
+  agentTally: Record<string, number>;
+  reviewerTally: Record<Reviewer['source'], number>;
+  /** 无证据关联 id（receipt=legacy）的条目数。 */
+  legacyEntries: number;
   notes: {
     /** 缺 canonical 哈希的 legacy 行数（导出覆盖缺口，供审计方知情——绝不伪造哈希）。 */
     legacyRowsWithoutHashes: number;
+    /** 收据取不到（超时/网络/非 2xx）的条目数——导出仍完成，如实标注。 */
+    receiptsUnavailable: number;
+    /** aster-api 未找到收据的条目数。 */
+    receiptsMissing: number;
     /** 校验 recipe：告诉审计方如何重算 bundleHash。 */
     verification: string;
   };

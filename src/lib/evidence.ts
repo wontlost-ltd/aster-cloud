@@ -7,16 +7,34 @@ import { db, complianceReports, policies } from '@/lib/prisma';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import {
   buildBundle,
+  buildEvidenceEntry,
+  receiptFor,
   serializeBundle,
+  type EvidenceRow,
 } from '@/services/evidence/bundle';
 import { queryEvidenceExecutions } from '@/lib/evidence-export';
+import {
+  fetchDecisionReceipts,
+  fetchReceipts,
+  mergeLookups,
+  type ReceiptLookup,
+} from '@/services/evidence/receipts-client';
+import {
+  guardApprovalReviewers,
+  loadProofReviewers,
+  loadVersionApprovalReviewers,
+  type Reviewer,
+} from '@/services/evidence/reviewers';
 import type {
   EvidenceBundle,
   EvidenceExportRequest,
   EvidenceManifest,
 } from '@/services/evidence/types';
 
-/** ComplianceReport.data 里证据导出的存储形态（discriminated by kind）。 */
+/**
+ * ComplianceReport.data 里证据导出的存储形态（discriminated by kind）。
+ * 历史行可能是 schemaVersion '1' 的 manifest/entries：读取侧只按原样返回，不做重算或升级。
+ */
 interface EvidenceExportData {
   kind: 'evidence-export';
   manifest: EvidenceManifest;
@@ -24,8 +42,51 @@ interface EvidenceExportData {
   format: EvidenceExportRequest['format'];
 }
 
+/** 按租户把行上的某个 id 分组（空 id 跳过），供收据客户端按租户批量查询。 */
+function idsByTenant(rows: readonly EvidenceRow[], idOf: (r: EvidenceRow) => string | null): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const r of rows) {
+    const id = idOf(r);
+    if (id) out.set(r.policyTenantId, [...(out.get(r.policyTenantId) ?? []), id]);
+  }
+  return out;
+}
+
+/** 逐租户并发查询后合并为一份查找结果。收据客户端自身不抛错（失败记 unavailable）。 */
+async function lookupByTenant(
+  groups: Map<string, string[]>,
+  fetcher: (tenantId: string, ids: string[]) => Promise<ReceiptLookup>,
+): Promise<ReceiptLookup> {
+  return mergeLookups(await Promise.all([...groups].map(([tenant, ids]) => fetcher(tenant, ids))));
+}
+
 /**
- * 创建证据导出：查真实执行 → 组装 bundle → 持久化（generating→completed/failed）。
+ * 为每行拼装链收据与三来源复核者，生成 v2 条目。
+ * ★租户前置：版本 id 只取自已按 userId 过滤的 rows，满足 loadProofReviewers/loadVersionApprovalReviewers 的约定。
+ */
+async function enrichEntries(rows: readonly EvidenceRow[]) {
+  const versionIds = [...new Set(rows.map((r) => r.policyVersionRowId).filter((v): v is string => !!v))];
+  const [lookup, guardLookup, proofs, approvals] = await Promise.all([
+    lookupByTenant(idsByTenant(rows, (r) => r.evidenceCorrelationId), fetchReceipts),
+    lookupByTenant(idsByTenant(rows, (r) => r.guardDecisionId), fetchDecisionReceipts),
+    loadProofReviewers(versionIds),
+    loadVersionApprovalReviewers(versionIds),
+  ]);
+  const versionReviewers = (vid: string | null): Reviewer[] =>
+    vid ? [...(proofs.get(vid) ?? []), ...(approvals.get(vid) ?? [])] : [];
+  const guardReviewers = (did: string | null): Reviewer[] =>
+    did ? guardApprovalReviewers(guardLookup.approvals.get(did) ?? []) : [];
+  return rows.map((r) =>
+    buildEvidenceEntry(r, receiptFor(r, lookup), [
+      ...versionReviewers(r.policyVersionRowId),
+      ...guardReviewers(r.guardDecisionId),
+    ]),
+  );
+}
+
+/**
+ * 创建证据导出：查真实执行 → 取链收据/复核者 → 组装 v2 bundle → 持久化（generating→completed/failed）。
+ * 收据取不到不使导出失败：条目如实标 unavailable，manifest.notes 计数。
  * 返回 { id, manifest }（不回整个 bundle，下载走 getEvidenceExportBundle）。
  */
 export async function createEvidenceExport(
@@ -76,24 +137,7 @@ export async function createEvidenceExport(
     const bundle = buildBundle({
       policy: policySnapshot,
       range: { start: request.startDate ?? null, end: request.endDate ?? null },
-      entries: rows.map((r) => ({
-        executionId: r.id,
-        policyId: r.policyId,
-        policyVersion: r.policyVersion,
-        policyVersionRowId: r.policyVersionRowId,
-        decision: r.decision,
-        canonicalInputHash: r.canonicalInputHash,
-        canonicalOutputHash: r.canonicalOutputHash,
-        traceHash: r.traceHash,
-        canonicalizationVersion: r.canonicalizationVersion,
-        toolchain: { source: r.sourceToolchainId, runtime: r.runtimeToolchainId },
-        replayabilityStatus: r.replayabilityStatus,
-        replayabilityReasons: r.replayabilityReasons ?? null,
-        reasonCodes: r.reasonCodes ?? null,
-        source: r.source,
-        durationMs: r.durationMs,
-        createdAt: r.createdAt.toISOString(),
-      })),
+      entries: await enrichEntries(rows),
       generatedAt: now,
     });
 

@@ -7,7 +7,10 @@
 // Run: LICENSE_E2E=1 pnpm test:integration
 // 本地绕过损坏的 migrate 链：起临时 pg + 手建 Policy/Execution/ComplianceReport 表 + 设 DATABASE_URL。
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// server-only 由 Next 构建期别名提供（未作为依赖安装），测试中以空模块替代（收据客户端引入）。
+vi.mock('server-only', () => ({}));
 import { db, executions, policies, complianceReports } from '@/lib/prisma';
 import {
   queryEvidenceExecutions,
@@ -212,5 +215,53 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('evidence-export 数据层（�
       id: 'old-fake2', userId: U, type: 'gdpr', title: 'x', status: 'completed', data: { summary: {} },
     } as typeof complianceReports.$inferInsert);
     expect(await getEvidenceExportMetadata(U, 'old-fake2')).toBeNull();
+  });
+
+  it('★v2 投影：outcome/ruleId/controls/agent/evidenceCorrelationId + 租户（teamId ?? userId）+ guardDecisionId', async () => {
+    await db.insert(policies).values({
+      id: 'pol-team', userId: U, teamId: 'team-ev', name: 'Team policy', content: 'Module M. Rule R.',
+    } as typeof policies.$inferInsert);
+    await seedExecution({
+      id: 'v2-a', createdAt: new Date('2026-07-01T00:00:00Z'), outcome: 'REQUIRE_APPROVAL', ruleId: 'R-1',
+      controls: ['GDPR:ART17'], agent: { provider: 'anthropic', model: 'claude', source: 'declared' },
+      evidenceCorrelationId: 'corr-a', metadata: { guardDecisionId: 'gd-a' },
+    });
+    await seedExecution({ id: 'v2-b', policyId: 'pol-team', createdAt: new Date('2026-07-02T00:00:00Z') });
+    const [a, b] = await queryEvidenceExecutions({ userId: U });
+    expect(a).toMatchObject({
+      id: 'v2-a', outcome: 'REQUIRE_APPROVAL', ruleId: 'R-1', controls: ['GDPR:ART17'],
+      agent: { provider: 'anthropic', model: 'claude', source: 'declared' },
+      evidenceCorrelationId: 'corr-a', policyTenantId: U, guardDecisionId: 'gd-a',
+    });
+    expect(b).toMatchObject({
+      id: 'v2-b', outcome: null, agent: null, evidenceCorrelationId: null, policyTenantId: 'team-ev', guardDecisionId: null,
+    });
+  });
+
+  it('★无关联 id 的行导出为 schemaVersion 2 + receipt=legacy（不发起收据请求）', async () => {
+    await seedExecution({ id: 'e1', createdAt: new Date('2026-07-01T00:00:00Z') });
+    const { id, manifest } = await createEvidenceExport(U, { policyId: POL, format: 'json' });
+    expect(manifest.schemaVersion).toBe('2');
+    expect(manifest.legacyEntries).toBe(1);
+    const body = JSON.parse((await getEvidenceExportBundle(U, id))!.body);
+    expect(body.entries[0].receipt).toEqual({ status: 'legacy' });
+    expect(body.entries[0].reviewers).toEqual([]);
+  });
+
+  it('★已存的 v1 证据包按原样下载（不重算、不升级）', async () => {
+    const v1Manifest = {
+      kind: 'evidence-export', schemaVersion: '1', generatedAt: '2026-07-01T00:00:00.000Z', policy: { scope: 'all' },
+      range: { start: null, end: null }, totals: { count: 0 },
+      decisionTally: { approved: 0, denied: 0, indeterminate: 0, error: 0, unknown: 0 },
+      canonicalizationVersion: 'v1', bundleHash: 'a'.repeat(64),
+      notes: { legacyRowsWithoutHashes: 0, verification: 'v1 recipe' },
+    };
+    await db.insert(complianceReports).values({
+      id: 'v1-bundle', userId: U, type: 'custom', title: 'v1', status: 'completed',
+      data: { kind: 'evidence-export', manifest: v1Manifest, bundle: { manifest: v1Manifest, entries: [] }, format: 'json' },
+    } as typeof complianceReports.$inferInsert);
+    const got = await getEvidenceExportBundle(U, 'v1-bundle');
+    expect(JSON.parse(got!.body)).toEqual({ manifest: v1Manifest, entries: [] });
+    expect(got!.manifest).toEqual(v1Manifest);
   });
 });

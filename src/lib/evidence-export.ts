@@ -5,8 +5,8 @@
 
 import { db, executions, policies } from '@/lib/prisma';
 import { and, eq, gte, lte, asc, isNull, isNotNull, inArray, sql } from 'drizzle-orm';
-import type { EvidenceRow } from '@/services/evidence/bundle';
-import type { DecisionTally, EvidenceDecision, EvidencePreview } from '@/services/evidence/types';
+import { EMPTY_TALLY, type EvidenceRow } from '@/services/evidence/bundle';
+import type { DecisionTally, EvidenceAgent, EvidenceDecision, EvidencePreview } from '@/services/evidence/types';
 
 /** 单次导出的执行行数上限（安全阀，防无界 data json / 大响应）。超出即拒，提示用户缩小范围。 */
 export const EVIDENCE_EXPORT_ROW_LIMIT = 50_000;
@@ -92,9 +92,18 @@ export async function queryEvidenceExecutions(q: EvidenceQuery): Promise<Evidenc
       source: true,
       durationMs: true,
       createdAt: true,
+      outcome: true,
+      ruleId: true,
+      controls: true,
+      agent: true,
+      evidenceCorrelationId: true,
+      // metadata 只为取 guardDecisionId，不进 entry。
+      metadata: true,
       // ⚠️ 故意不选 input/output/traceJson——证据包=哈希/溯源清单，非明文数据 dump（PII）。
     },
     // 已删策略的执行由 buildConditions 的 EXISTS 子查询在 SQL 层排除，无需应用层再过滤。
+    // 收据按策略所属租户查询（与 aster-api 的 X-Tenant-Id 口径一致：teamId ?? userId）。
+    with: { policy: { columns: { teamId: true, userId: true } } },
   });
 
   return rows
@@ -116,7 +125,22 @@ export async function queryEvidenceExecutions(q: EvidenceQuery): Promise<Evidenc
       source: r.source,
       durationMs: r.durationMs,
       createdAt: r.createdAt,
+      outcome: r.outcome,
+      ruleId: r.ruleId,
+      controls: r.controls ?? null,
+      // agent 由写入侧（ADR 0041 §4）校验后落库，这里只做类型收窄。
+      agent: (r.agent as EvidenceAgent | null) ?? null,
+      evidenceCorrelationId: r.evidenceCorrelationId,
+      policyTenantId: r.policy.teamId ?? r.policy.userId,
+      guardDecisionId: guardDecisionIdOf(r.metadata),
     }));
+}
+
+/** 取 metadata.guardDecisionId；非字符串或缺省一律 null。 */
+function guardDecisionIdOf(metadata: unknown): string | null {
+  if (typeof metadata !== 'object' || metadata === null) return null;
+  const v = (metadata as Record<string, unknown>).guardDecisionId;
+  return typeof v === 'string' && v !== '' ? v : null;
 }
 
 /** 统计范围内执行数（已排除已删策略；与 query 层同一 WHERE，作 count 上限守卫）。 */
@@ -145,13 +169,7 @@ export async function getEvidencePreview(q: EvidenceQuery): Promise<EvidencePrev
     .where(buildConditions(q))
     .groupBy(executions.decision);
 
-  const tally: DecisionTally = {
-    approved: 0,
-    denied: 0,
-    indeterminate: 0,
-    error: 0,
-    unknown: 0,
-  };
+  const tally: DecisionTally = { ...EMPTY_TALLY };
   let count = 0;
   let withHash = 0;
   for (const r of rows) {

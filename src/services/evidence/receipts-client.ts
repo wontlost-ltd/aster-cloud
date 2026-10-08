@@ -1,7 +1,7 @@
 /**
  * 向 aster-api 批量取链收据（ADR 0041 §2.4）。
  *
- * 分批 200、并发 4、每批 2 s 超时；非 2xx / 超时 / 网络错 ⇒ 该批 id 整体记入 unavailable。
+ * 分批 50、并发 4、每批 2 s 超时；非 2xx / 超时 / 网络错 ⇒ 该批 id 整体记入 unavailable。
  * 不重试、不伪造：取不到就如实标「不可用」，由证据包上层决定如何呈现。
  */
 import 'server-only';
@@ -31,7 +31,10 @@ export type ChainApproval = {
   decisionReceiptHash: string | null;
 };
 
-/** receipts 以请求 id（correlationId 或 decisionId）为键；approvals 以 decisionId 聚合。 */
+/**
+ * receipts 以请求 id（correlationId 或 decisionId）为键；approvals 以 decisionId 聚合，
+ * 且只有 fetchDecisionReceipts 会填充——fetchReceipts（按 correlationId 查）的 approvals 恒为空。
+ */
 export type ReceiptLookup = {
   receipts: Map<string, ChainReceipt>;
   approvals: Map<string, ChainApproval[]>;
@@ -58,6 +61,7 @@ const KEY_OF: Record<LookupParam, 'correlationId' | 'decisionId'> = {
   decisionIds: 'decisionId',
 };
 
+/** 按 correlationId 取收据；返回的 approvals 恒为空（审批只经 fetchDecisionReceipts 取得）。 */
 export async function fetchReceipts(
   tenantId: string,
   correlationIds: string[],
@@ -72,6 +76,21 @@ export async function fetchDecisionReceipts(
   fetchImpl: typeof fetch = fetch,
 ): Promise<ReceiptLookup> {
   return lookup(tenantId, 'decisionIds', decisionIds, fetchImpl);
+}
+
+/**
+ * 合并多个租户各自的查找结果（导出按租户分组查询后拼回一份）。
+ * 各租户的 id 互不相交，故直接并集；同一 decisionId 的审批列表按出现顺序拼接。
+ */
+export function mergeLookups(lookups: readonly ReceiptLookup[]): ReceiptLookup {
+  const out: ReceiptLookup = { receipts: new Map(), approvals: new Map(), missing: new Set(), unavailable: new Set() };
+  for (const l of lookups) {
+    for (const [id, r] of l.receipts) out.receipts.set(id, r);
+    for (const [id, list] of l.approvals) out.approvals.set(id, [...(out.approvals.get(id) ?? []), ...list]);
+    for (const id of l.missing) out.missing.add(id);
+    for (const id of l.unavailable) out.unavailable.add(id);
+  }
+  return out;
 }
 
 async function lookup(

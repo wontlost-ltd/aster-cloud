@@ -5,13 +5,17 @@
 // 让审计方能用同一规则跨实现重算校验。
 
 import { canonicalHash, CANONICALIZATION_VERSION } from '@/lib/canonical-json';
+import type { ReceiptLookup } from './receipts-client';
+import type { Reviewer } from './reviewers';
 import type {
   DecisionTally,
+  EvidenceAgent,
   EvidenceBundle,
   EvidenceDecision,
   EvidenceEntry,
   EvidenceFormat,
   EvidenceManifest,
+  ReceiptRef,
 } from './types';
 
 /** 从执行行装配证据条目所需的最小投影（由查询层提供，见 lib/evidence-export.ts）。 */
@@ -33,9 +37,32 @@ export interface EvidenceRow {
   source: EvidenceEntry['source'];
   durationMs: number;
   createdAt: Date;
+  outcome: string | null;
+  ruleId: string | null;
+  controls: string[] | null;
+  agent: EvidenceAgent | null;
+  evidenceCorrelationId: string | null;
+  /** 收据查询的租户（策略 teamId ?? userId）。只用于查询，不进 entry。 */
+  policyTenantId: string;
+  /** metadata.guardDecisionId；无则 null。只用于取 guard 审批，不进 entry。 */
+  guardDecisionId: string | null;
 }
 
-export function buildEvidenceEntry(row: EvidenceRow): EvidenceEntry {
+/** 按行的证据关联 id 在收据查找结果中定位：无 id → legacy；取失败 → unavailable；未命中 → missing。 */
+export function receiptFor(row: Pick<EvidenceRow, 'evidenceCorrelationId'>, lookup: ReceiptLookup): ReceiptRef {
+  const cid = row.evidenceCorrelationId;
+  if (cid == null) return { status: 'legacy' };
+  if (lookup.unavailable.has(cid)) return { status: 'unavailable' };
+  const r = lookup.receipts.get(cid);
+  if (!r) return { status: 'missing' };
+  return { auditId: r.auditId, currentHash: r.currentHash, prevHash: r.prevHash, hashVersion: r.hashVersion };
+}
+
+function compareReviewers(a: Reviewer, b: Reviewer): number {
+  return a.decidedAt.localeCompare(b.decidedAt) || a.ref.localeCompare(b.ref);
+}
+
+export function buildEvidenceEntry(row: EvidenceRow, receipt: ReceiptRef, reviewers: Reviewer[]): EvidenceEntry {
   return {
     executionId: row.id,
     policyId: row.policyId,
@@ -53,16 +80,53 @@ export function buildEvidenceEntry(row: EvidenceRow): EvidenceEntry {
     source: row.source,
     durationMs: row.durationMs,
     createdAt: row.createdAt.toISOString(),
+    outcome: row.outcome,
+    ruleId: row.ruleId,
+    controls: row.controls ?? null,
+    agent: row.agent ?? null,
+    evidenceCorrelationId: row.evidenceCorrelationId,
+    receipt,
+    reviewers: [...reviewers].sort(compareReviewers),
   };
 }
 
-const EMPTY_TALLY: DecisionTally = {
+export const EMPTY_TALLY: DecisionTally = {
   approved: 0,
   denied: 0,
   indeterminate: 0,
   error: 0,
+  require_approval: 0,
+  escalate: 0,
   unknown: 0,
 };
+
+/** 按 `${provider}/${model}` 统计 agent；无 agent 计入 'unknown'。 */
+export function tallyAgents(entries: readonly EvidenceEntry[]): Record<string, number> {
+  const tally: Record<string, number> = {};
+  for (const e of entries) {
+    const key = e.agent ? `${e.agent.provider}/${e.agent.model}` : 'unknown';
+    tally[key] = (tally[key] ?? 0) + 1;
+  }
+  return tally;
+}
+
+/** 按来源统计复核者条数（三来源恒出现，缺省为 0）。 */
+export function tallyReviewers(entries: readonly EvidenceEntry[]): Record<Reviewer['source'], number> {
+  const tally: Record<Reviewer['source'], number> = { 'guard-approval': 0, 'policy-proof': 0, 'version-approval': 0 };
+  for (const e of entries) {
+    for (const r of e.reviewers) tally[r.source] += 1;
+  }
+  return tally;
+}
+
+function countReceiptStatus(entries: readonly EvidenceEntry[], status: 'missing' | 'legacy' | 'unavailable'): number {
+  return entries.filter((e) => 'status' in e.receipt && e.receipt.status === status).length;
+}
+
+const VERIFICATION_RECIPE =
+  'bundleHash = canonicalHash(entries sorted by [createdAt, executionId]) over schemaVersion 2 entries ' +
+  '(includes outcome/ruleId/controls/agent/receipt/reviewers); receipts verifiable via GET /api/v1/audit/receipts; ' +
+  'v1 bundles use their own recipe.';
 
 /** 统计 decision 分布；decision=null（legacy）计入 unknown 桶。 */
 export function tallyDecisions(entries: readonly { decision: EvidenceDecision | null }[]): DecisionTally {
@@ -107,7 +171,7 @@ export function buildManifest(input: BuildManifestInput): EvidenceManifest {
   ).length;
   return {
     kind: 'evidence-export',
-    schemaVersion: '1',
+    schemaVersion: '2',
     generatedAt: input.generatedAt.toISOString(),
     policy: input.policy,
     range: {
@@ -118,11 +182,15 @@ export function buildManifest(input: BuildManifestInput): EvidenceManifest {
     decisionTally: tallyDecisions(sorted),
     canonicalizationVersion: CANONICALIZATION_VERSION,
     bundleHash: computeBundleHash(sorted),
+    receiptSource: { kind: 'aster-api-hash-chain', verifier: 'GET /api/v1/audit/receipts' },
+    agentTally: tallyAgents(sorted),
+    reviewerTally: tallyReviewers(sorted),
+    legacyEntries: countReceiptStatus(sorted, 'legacy'),
     notes: {
       legacyRowsWithoutHashes,
-      verification:
-        'bundleHash = canonicalHash(entries sorted by [createdAt, executionId]); ' +
-        'recompute with the same canonical-json rules to verify tamper-evidence.',
+      receiptsUnavailable: countReceiptStatus(sorted, 'unavailable'),
+      receiptsMissing: countReceiptStatus(sorted, 'missing'),
+      verification: VERIFICATION_RECIPE,
     },
   };
 }
