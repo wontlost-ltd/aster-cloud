@@ -67,8 +67,8 @@ export async function POST(req: Request) {
     userId: string;
     tenantId?: string;
     apiKeyId?: string;
-    /** 配额 owner（ADR 0015 §4）：团队 key 为团队 owner；旧版 aster-api 不传时按调用者本人归池。 */
-    quotaOwnerId?: string;
+    /** 配额 owner（ADR 0015 §4）：团队 key 为团队 owner；旧版 aster-api 不传（或传 null）时按调用者本人归池。 */
+    quotaOwnerId?: string | null;
     endpointPath: string;
     status: 'success' | 'quota_exhausted' | 'rate_limited' | 'api_error';
     latencyMs?: number;
@@ -76,6 +76,13 @@ export async function POST(req: Request) {
 
   if (!body.userId || !body.endpointPath || !body.status) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+  }
+
+  // quotaOwnerId 决定这次调用计入哪个 owner 池。TS 类型只是断言，JSON 里可能是空串、数字或对象：
+  // 原样落库会形成不属于任何真实 owner 的池（非 NULL、无外键），调用就此逃逸配额，故必须拒绝。
+  const quotaOwnerId: unknown = body.quotaOwnerId;
+  if (quotaOwnerId != null && (typeof quotaOwnerId !== 'string' || quotaOwnerId === '')) {
+    return NextResponse.json({ error: 'Invalid quotaOwnerId' }, { status: 400 });
   }
 
   // insert 与 lastUsedAt 更新共用同一时刻，保证事实记录与派生展示字段一致。

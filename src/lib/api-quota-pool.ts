@@ -2,8 +2,10 @@
  * owner 共享配额池（ADR 0015 §4）：owner 个人 key 的调用 + owner 名下团队 key 的调用共用一个月度池。
  * 旧行 quotaOwnerId 为 NULL，按持有者归池（COALESCE 语义），不做回填。
  *
- * 所有"按月统计 API 调用量"的入口（precheck、usage GET、dashboard 用量卡片）都必须经由本模块，
- * 保证限流判定与展示口径一致。
+ * 池的定义只在本模块出现：所有"按月统计 API 调用量"的入口都必须经由本模块，保证限流判定、
+ * 展示与告警口径一致——
+ *   - 按单个 owner 计数（precheck、usage GET、dashboard 用量卡片）：countOwnerPoolUsage；
+ *   - 按 owner 分组扫描（api-quota-alerts 告警 cron）：quotaOwnerKey。
  */
 import { db, apiCallRecords } from '@/lib/prisma';
 import { and, eq, isNull, or, sql, type SQL } from 'drizzle-orm';
@@ -14,7 +16,14 @@ export function currentPeriodMonth(now: Date = new Date()): string {
 }
 
 /**
- * 属于 owner 池的调用：quotaOwnerId = owner，或旧行（quotaOwnerId 为 NULL）且持有者就是 owner。
+ * 一行调用记录所属池的键：COALESCE(quotaOwnerId, userId)。供按 owner 分组的场景在 select 与
+ * groupBy 中复用同一个表达式对象，保证二者渲染一致、分组合法。
+ */
+export const quotaOwnerKey: SQL<string> = sql<string>`coalesce(${apiCallRecords.quotaOwnerId}, ${apiCallRecords.userId})`;
+
+/**
+ * 属于 owner 池的调用（与 quotaOwnerKey = owner 等价）：quotaOwnerId = owner，
+ * 或旧行（quotaOwnerId 为 NULL）且持有者就是 owner。
  * 拆成 OR 而非 COALESCE(...) = owner，以便分别命中 quotaOwnerId 与 userId 两条索引。
  */
 export function ownerPoolCondition(ownerId: string): SQL {

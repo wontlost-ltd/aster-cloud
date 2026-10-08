@@ -11,7 +11,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // before any of them run.
 const boom = () => { throw new Error('handler reached business logic while HMAC key unset'); };
 
-vi.mock('drizzle-orm', () => new Proxy({}, { get: () => () => ({}) }));
+// drizzle 只导出惰性的 sql：api-quota-pool 在模块加载时就用它构造池键 quotaOwnerKey（早于 503 短路）。
+// 其余算子不导出——业务逻辑一旦被触达即抛错，与上面 boom 的语义一致。不能用 `new Proxy({}, { get })`：
+// vitest 会把它的 `then` 当 thenable 调用，最终拿到的模块其实是空对象 {}。
+vi.mock('drizzle-orm', () => ({ sql: () => ({}) }));
 vi.mock('@/lib/prisma', () => ({
   db: {
     query: new Proxy({}, { get: () => ({ findFirst: boom, findMany: boom }) }),

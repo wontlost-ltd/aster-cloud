@@ -16,7 +16,7 @@ import { db, users, apiCallRecords } from '@/lib/prisma';
 import { and, eq, sql } from 'drizzle-orm';
 import { getResend } from '@/lib/resend';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
-import { currentPeriodMonth } from '@/lib/api-quota-pool';
+import { currentPeriodMonth, quotaOwnerKey } from '@/lib/api-quota-pool';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -49,10 +49,9 @@ export async function GET(request: NextRequest) {
 
   // 按配额 owner 分组找出有 API 用量的池：旧行 quotaOwnerId 为 NULL 时归持有者本人。
   // 别名仍叫 userId——它就是 owner 的 users.id，下面按它查套餐、发告警。
-  const quotaOwner = sql<string>`coalesce(${apiCallRecords.quotaOwnerId}, ${apiCallRecords.userId})`;
   const candidates = await db
     .select({
-      userId: quotaOwner,
+      userId: quotaOwnerKey,
       used: sql<number>`count(*)::int`,
     })
     .from(apiCallRecords)
@@ -62,7 +61,7 @@ export async function GET(request: NextRequest) {
         eq(apiCallRecords.status, 'success')
       )
     )
-    .groupBy(quotaOwner);
+    .groupBy(quotaOwnerKey);
 
   for (const c of candidates) {
     const user = await db.query.users.findFirst({

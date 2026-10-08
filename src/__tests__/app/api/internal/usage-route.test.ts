@@ -237,6 +237,28 @@ describe('/api/internal/api/usage — owner 共享配额池（ADR 0015 §4）', 
     expect(inserted.userId).toBe('member-1');
   });
 
+  it('POST quotaOwnerId 为 null → 同缺省，落库为 userId', async () => {
+    const { POST } = await import('@/app/api/internal/api/usage/route');
+    const res = await POST(post(validBody({ quotaOwnerId: null })));
+
+    expect(res.status).toBe(200);
+    expect(mockInsertValues.mock.calls[0][0].quotaOwnerId).toBe('user-1');
+  });
+
+  it.each([
+    ['空串', ''],
+    ['数字', 123],
+    ['对象', { id: 'owner' }],
+  ])('POST quotaOwnerId 为%s → 400 Invalid quotaOwnerId，不写库（防止调用逃逸配额）', async (_label, quotaOwnerId) => {
+    const { POST } = await import('@/app/api/internal/api/usage/route');
+    const res = await POST(post(validBody({ quotaOwnerId })));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'Invalid quotaOwnerId' });
+    expect(mockInsert).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
   it('GET → 用量走 countOwnerPoolUsage(userId, periodMonth)', async () => {
     const { GET } = await import('@/app/api/internal/api/usage/route');
     const res = await GET(get('userId=owner-1&periodMonth=2026-09'));
