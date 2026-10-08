@@ -295,7 +295,8 @@ export function ApiKeysContent({
                     <option value="personal">{t.scopePersonal}</option>
                     {teams.map((team) => (
                       <option key={team.id} value={team.id}>
-                        {t.scopeTeam.replace('{team}', team.name)}
+                        {/* 函数替换器按字面插入团队名，避免名称中的 $& 等被当作替换模式 */}
+                        {t.scopeTeam.replace('{team}', () => team.name)}
                       </option>
                     ))}
                   </Select>

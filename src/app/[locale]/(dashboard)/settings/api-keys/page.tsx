@@ -1,6 +1,6 @@
 import { getTranslations, getLocale } from 'next-intl/server';
 import { redirect } from 'next/navigation';
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { getSession } from '@/lib/auth';
 import { listApiKeys } from '@/lib/api-keys';
 import { db, teamMembers } from '@/lib/prisma';
@@ -24,6 +24,7 @@ export default async function ApiKeysPage() {
   const memberships = await db.query.teamMembers.findMany({
     where: eq(teamMembers.userId, session.user.id),
     with: { team: { columns: { id: true, name: true } } },
+    orderBy: desc(teamMembers.createdAt),
   });
   const teams = memberships.map((m) => ({ id: m.team.id, name: m.team.name }));
 
