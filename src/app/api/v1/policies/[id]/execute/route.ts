@@ -7,6 +7,7 @@ import { upgradeResponse } from '@/lib/plan-quota';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
 import { executePolicyUnified, getPrimaryError, deriveExecutionDecision, deriveExecutionOutcome, detectCNLLocale } from '@/services/policy/cnl-executor';
 import { buildReplayColumns, buildEvidenceColumns } from '@/lib/policy-execution-log';
+import { policyTenantId } from '@/lib/policy-tenant';
 import { parseAgentIdentity } from '@/services/policy/policy-api';
 import { maybeRunParityForExecution, RUNNER_LAUNCHER_HMAC_ROLE } from '@/services/policy/runner-parity-from-execution';
 
@@ -250,7 +251,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       policy: policy as unknown as Parameters<typeof executePolicyUnified>[0]['policy'],
       input: validatedInput,
       userId,
-      tenantId: policy.teamId || policy.userId,
+      tenantId: policyTenantId(policy),
       aliasSet: parsedAliasSet,
       // 回放地基（ADR 0030）：已认证 execute 走 HMAC 内部调用 → 开 replayCapture 取权威 hash。
       replayCapture: true,
@@ -319,7 +320,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     const parityTask = executionInsertPromise.then(
       () => maybeRunParityForExecution({
         executionId,
-        tenantId: policy.teamId || policy.userId,
+        tenantId: policyTenantId(policy),
         actorUserId: userId,
         source: policy.content,
         input: validatedInput as Record<string, unknown> | unknown[],

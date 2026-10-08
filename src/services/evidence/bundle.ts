@@ -42,7 +42,7 @@ export interface EvidenceRow {
   controls: string[] | null;
   agent: EvidenceAgent | null;
   evidenceCorrelationId: string | null;
-  /** 收据查询的租户（策略 teamId ?? userId）。只用于查询，不进 entry。 */
+  /** 收据查询的租户（policyTenantId：策略 teamId || userId）。只用于查询，不进 entry。 */
   policyTenantId: string;
   /** metadata.guardDecisionId；无则 null。只用于取 guard 审批，不进 entry。 */
   guardDecisionId: string | null;

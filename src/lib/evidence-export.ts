@@ -5,6 +5,7 @@
 
 import { db, executions, policies } from '@/lib/prisma';
 import { and, eq, gte, lte, asc, isNull, isNotNull, inArray, sql } from 'drizzle-orm';
+import { policyTenantId } from '@/lib/policy-tenant';
 import { EMPTY_TALLY, type EvidenceRow } from '@/services/evidence/bundle';
 import type { DecisionTally, EvidenceAgent, EvidenceDecision, EvidencePreview } from '@/services/evidence/types';
 
@@ -102,7 +103,7 @@ export async function queryEvidenceExecutions(q: EvidenceQuery): Promise<Evidenc
       // ⚠️ 故意不选 input/output/traceJson——证据包=哈希/溯源清单，非明文数据 dump（PII）。
     },
     // 已删策略的执行由 buildConditions 的 EXISTS 子查询在 SQL 层排除，无需应用层再过滤。
-    // 收据按策略所属租户查询（与 aster-api 的 X-Tenant-Id 口径一致：teamId ?? userId）。
+    // 收据按策略所属租户查询（与执行路由写入同一口径，见 policyTenantId）。
     with: { policy: { columns: { teamId: true, userId: true } } },
   });
 
@@ -130,7 +131,7 @@ export async function queryEvidenceExecutions(q: EvidenceQuery): Promise<Evidenc
       controls: r.controls ?? null,
       agent: agentOf(r.agent),
       evidenceCorrelationId: r.evidenceCorrelationId,
-      policyTenantId: r.policy.teamId ?? r.policy.userId,
+      policyTenantId: policyTenantId(r.policy),
       guardDecisionId: guardDecisionIdOf(r.metadata),
     }));
 }

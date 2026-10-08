@@ -53,6 +53,15 @@ describe('queryEvidenceExecutions agent 校验', () => {
     ).not.toThrow();
   });
 
+  it('★策略 teamId 为空串 ⇒ 收据租户取 userId（与执行路由写入口径一致）', async () => {
+    findMany.mockResolvedValue([
+      { ...dbRow(null), policy: { teamId: '', userId: 'u-1' } },
+      { ...dbRow(null), id: 'e2', policy: { teamId: 'team-1', userId: 'u-1' } },
+    ]);
+    const rows = await queryEvidenceExecutions({ userId: 'u-1' });
+    expect(rows.map((r) => r.policyTenantId)).toEqual(['u-1', 'team-1']);
+  });
+
   it('agentOf：合法值只保留已知字段；可选字段类型错或非对象 → null', () => {
     expect(agentOf({ provider: 'p', model: 'm', version: '1', session: 's', source: 'declared', extra: 0.7 }))
       .toEqual({ provider: 'p', model: 'm', version: '1', session: 's', source: 'declared' });

@@ -12,6 +12,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db, policies, executions, policyVersions } from '@/lib/prisma';
 import { and, eq, isNull } from 'drizzle-orm';
+import { policyTenantId } from '@/lib/policy-tenant';
 import {
   runParityForExecutionNow,
   RUNNER_LAUNCHER_HMAC_ROLE,
@@ -107,7 +108,7 @@ export async function POST(_req: Request, { params }: RouteParams) {
     //   parity 失败不污染 HTTP 响应（返 500 结构化错误，不 5xx 裸抛）。source 用**当次冻结版本**。
     const { result, persisted } = await runParityForExecutionNow({
       executionId: exec.id,
-      tenantId: policy.teamId || policy.userId,
+      tenantId: policyTenantId(policy),
       actorUserId: session.user.id,
       source: version.content,
       input: exec.input as Record<string, unknown> | unknown[],
