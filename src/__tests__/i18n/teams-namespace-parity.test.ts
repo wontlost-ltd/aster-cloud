@@ -9,6 +9,8 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { DEMO_SUPPLEMENT } from '@/i18n/demo-supplement';
+import { deepMergeMessages } from '@/i18n/request';
 
 const ROOT = path.resolve(__dirname, '../../..');
 const SCAN_DIRS = [
@@ -63,7 +65,8 @@ for (const dir of SCAN_DIRS) {
 const messages = Object.fromEntries(
   MESSAGE_LOCALES.map((loc) => {
     const text = fs.readFileSync(path.join(UI_MESSAGES_DIR, `${LOCALE_IDS[loc]}.json`), 'utf8');
-    return [loc, JSON.parse(text)];
+    // 与运行时一致：包内文案之上深合并本地补充层（如 teams.members.businessRoles*，ADR 0042 §2.1）
+    return [loc, deepMergeMessages(JSON.parse(text), DEMO_SUPPLEMENT[loc])];
   })
 ) as Record<(typeof MESSAGE_LOCALES)[number], Record<string, unknown>>;
 

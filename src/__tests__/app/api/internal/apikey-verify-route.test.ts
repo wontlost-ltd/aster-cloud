@@ -107,18 +107,26 @@ describe('成功路径（ADR 0015）', () => {
   });
 
   // 解析器 mock 取真实 ApiKeyIdentity 形状（含 teamId），同时钉住 teamId 不外泄到响应体
-  it('个人 key：tenantId=userId、role=owner、quotaOwnerId=userId', async () => {
-    mockResolve.mockResolvedValue({ valid: true, apiKeyId: 'k1', userId: 'u1', tenantId: 'u1', teamId: null, quotaOwnerId: 'u1', role: 'owner', plan: 'pro', subscriptionStatus: 'active' });
+  // 业务角色（ADR 0042 §2.2）：个人 key 取 User.businessRoles（解析器给出），verify 响应始终带数组
+  it('个人 key：tenantId=userId、role=owner、quotaOwnerId=userId、businessRoles 取自 User', async () => {
+    mockResolve.mockResolvedValue({ valid: true, apiKeyId: 'k1', userId: 'u1', tenantId: 'u1', teamId: null, quotaOwnerId: 'u1', role: 'owner', businessRoles: ['DPO'], plan: 'pro', subscriptionStatus: 'active' });
     const { POST } = await import('@/app/api/internal/apikey/verify/route');
     const res = await POST(postKeyHash({ keyHash: HASH }));
-    expect(await res.json()).toEqual({ valid: true, apiKeyId: 'k1', userId: 'u1', tenantId: 'u1', quotaOwnerId: 'u1', plan: 'pro', subscriptionStatus: 'active', role: 'owner' });
+    expect(await res.json()).toEqual({ valid: true, apiKeyId: 'k1', userId: 'u1', tenantId: 'u1', quotaOwnerId: 'u1', plan: 'pro', subscriptionStatus: 'active', role: 'owner', businessRoles: ['DPO'] });
   });
 
-  it('团队 key：tenantId=teamId、role=成员角色、quotaOwnerId=owner', async () => {
-    mockResolve.mockResolvedValue({ valid: true, apiKeyId: 'k2', userId: 'u2', tenantId: 't1', teamId: 't1', quotaOwnerId: 'owner', role: 'member', plan: 'team', subscriptionStatus: 'active' });
+  it('团队 key：tenantId=teamId、role=成员角色、quotaOwnerId=owner、businessRoles 取自 TeamMember', async () => {
+    mockResolve.mockResolvedValue({ valid: true, apiKeyId: 'k2', userId: 'u2', tenantId: 't1', teamId: 't1', quotaOwnerId: 'owner', role: 'member', businessRoles: ['CISO'], plan: 'team', subscriptionStatus: 'active' });
     const { POST } = await import('@/app/api/internal/apikey/verify/route');
     const body = await (await POST(postKeyHash({ keyHash: HASH }))).json();
-    expect(body).toEqual({ valid: true, apiKeyId: 'k2', userId: 'u2', tenantId: 't1', quotaOwnerId: 'owner', plan: 'team', subscriptionStatus: 'active', role: 'member' });
+    expect(body).toEqual({ valid: true, apiKeyId: 'k2', userId: 'u2', tenantId: 't1', quotaOwnerId: 'owner', plan: 'team', subscriptionStatus: 'active', role: 'member', businessRoles: ['CISO'] });
+  });
+
+  it('无业务角色 → businessRoles 为空数组（键始终存在）', async () => {
+    mockResolve.mockResolvedValue({ valid: true, apiKeyId: 'k1', userId: 'u1', tenantId: 'u1', teamId: null, quotaOwnerId: 'u1', role: 'owner', businessRoles: [], plan: 'free', subscriptionStatus: null });
+    const { POST } = await import('@/app/api/internal/apikey/verify/route');
+    const body = await (await POST(postKeyHash({ keyHash: HASH }))).json();
+    expect(body.businessRoles).toEqual([]);
   });
 
   it('membership_revoked / revoked 带 ISO 时间', async () => {

@@ -22,6 +22,7 @@ import { getTranslations } from 'next-intl/server';
 import { Link } from '@/i18n/navigation';
 import { defaultLocale } from '@/i18n/config';
 import { getSession } from '@/lib/auth';
+import { loadBusinessRoles } from '@/lib/business-roles';
 import {
   buttonVariants,
   Card,
@@ -41,6 +42,7 @@ import { TotpPanel } from '@/components/settings/totp-panel';
 import { TrustedDevicesPanel } from '@/components/settings/trusted-devices-panel';
 import { EmailVerificationPanel } from '@/components/settings/email-verification-panel';
 import { ChangePasswordPanel } from '@/components/settings/change-password-panel';
+import { BusinessRolesPanel } from '@/components/settings/business-roles-panel';
 
 const LOCALE_DETECTION_COOKIE = 'aster-locale-detection';
 
@@ -75,6 +77,8 @@ export default async function SettingsPage({ params }: PageProps) {
   // callback; fall back to "Free" when the trial/seed user hasn't been
   // assigned a plan yet.
   const profilePlan = (session.user as { plan?: string }).plan || 'Free';
+  // 个人租户的业务角色（ADR 0042 §2.1）：服务端预取，避免面板首屏闪「无」
+  const businessRoles = await loadBusinessRoles(session.user.id, session.user.id);
 
   return (
     <Container size="xl" className="py-6 sm:py-10">
@@ -185,6 +189,24 @@ export default async function SettingsPage({ params }: PageProps) {
             </Stack>
           </CardBody>
         </Card>
+
+        {/* 个人业务角色（ADR 0042 §2.1）：审批规则 required role 的精确匹配对象；团队角色在团队成员页授予。 */}
+        <BusinessRolesPanel
+          initialRoles={businessRoles}
+          labels={{
+            title: t('businessRoles.title'),
+            description: t('businessRoles.description'),
+            none: t('businessRoles.none'),
+            edit: t('businessRoles.edit'),
+            placeholder: t('businessRoles.placeholder'),
+            hint: t('businessRoles.hint'),
+            save: t('businessRoles.save'),
+            saving: t('businessRoles.saving'),
+            cancel: t('businessRoles.cancel'),
+            invalid: t('businessRoles.invalid'),
+            saveFailed: t('businessRoles.saveFailed'),
+          }}
+        />
 
         {/* Account actions (sign out — client island) */}
         <SettingCard

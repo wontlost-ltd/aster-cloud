@@ -308,8 +308,9 @@ describe('pushApiKeySnapshot', () => {
   it('个人 key → 完整体：tenantId=userId、role=owner、quotaOwnerId=userId（租户隔离回归）', async () => {
     mockResolve.mockResolvedValue({
       valid: true, apiKeyId: 'k1', userId: 'u1', tenantId: 'u1', teamId: null, quotaOwnerId: 'u1',
-      role: 'owner', plan: 'pro', subscriptionStatus: 'active',
+      role: 'owner', businessRoles: [], plan: 'pro', subscriptionStatus: 'active',
     });
+    // 无业务角色时快照体不含 businessRoles 键（与 aster-api 快照 NON_EMPTY 对称，ADR 0042 §2.2）
     expect(await pushedBody('d'.repeat(64))).toEqual({
       valid: true,
       apiKeyId: 'k1',
@@ -325,7 +326,7 @@ describe('pushApiKeySnapshot', () => {
   it('团队 key → tenantId=teamId、role=成员角色、quotaOwnerId=owner、套餐取 owner', async () => {
     mockResolve.mockResolvedValue({
       valid: true, apiKeyId: 'k2', userId: 'u2', tenantId: 't1', teamId: 't1', quotaOwnerId: 'owner',
-      role: 'member', plan: 'team', subscriptionStatus: 'active',
+      role: 'member', businessRoles: ['DPO'], plan: 'team', subscriptionStatus: 'active',
     });
     expect(await pushedBody('9'.repeat(64))).toEqual({
       valid: true,
@@ -334,6 +335,7 @@ describe('pushApiKeySnapshot', () => {
       tenantId: 't1',
       quotaOwnerId: 'owner',
       role: 'member',
+      businessRoles: ['DPO'],
       plan: 'team',
       revokedAtEpochMs: null,
     });

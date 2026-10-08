@@ -7,11 +7,17 @@ import { useTranslations } from 'next-intl';
 import { formatDate } from '@/lib/format';
 import { ConfirmDialog, Container, PageHeader, Breadcrumbs, Input, Label, Select } from '@/components/ui';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
+import {
+  BusinessRolesEditor,
+  businessRolesSaveError,
+  type BusinessRolesEditorLabels,
+} from '@/components/settings/business-roles-panel';
 
 interface Member {
   id: string;
   userId: string;
   role: string;
+  businessRoles: string[];
   user: {
     id: string;
     name: string | null;
@@ -210,6 +216,33 @@ export default function TeamMembersPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : t('members.updateFailed'));
     }
+  };
+
+  const businessRoleLabels: BusinessRolesEditorLabels = {
+    none: t('members.businessRolesNone'),
+    edit: t('members.businessRolesEdit'),
+    placeholder: t('members.businessRolesPlaceholder'),
+    hint: t('members.businessRolesHint'),
+    save: t('members.businessRolesSave'),
+    saving: t('members.businessRolesSaving'),
+    cancel: t('cancel'),
+    invalid: t('members.businessRolesInvalid'),
+    saveFailed: t('members.businessRolesSaveFailed'),
+  };
+
+  // 业务角色（ADR 0042 §2.1）：经成员路由保存，返回服务端归一后的结果并同步到列表
+  const saveBusinessRoles = async (memberId: string, roles: string[]): Promise<string[]> => {
+    const res = await fetch(`/api/teams/${teamId}/members/${memberId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ businessRoles: roles }),
+    });
+    if (!res.ok) throw await businessRolesSaveError(res, businessRoleLabels);
+    const data = (await res.json()) as { businessRoles: string[] };
+    setMembers((prev) =>
+      prev.map((m) => (m.id === memberId ? { ...m, businessRoles: data.businessRoles } : m))
+    );
+    return data.businessRoles;
   };
 
   const handleLeaveTeam = (memberId: string) => {
@@ -512,6 +545,15 @@ export default function TeamMembersPage() {
                           date: formatDate(member.joinedAt, locale),
                         })}
                       </p>
+                      <div className="mt-1.5 flex items-start gap-2">
+                        <span className="pt-0.5 text-xs text-fg-muted">{t('members.businessRolesLabel')}</span>
+                        <BusinessRolesEditor
+                          roles={member.businessRoles ?? []}
+                          canEdit={canChangeRole}
+                          onSave={(roles) => saveBusinessRoles(member.id, roles)}
+                          labels={businessRoleLabels}
+                        />
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center space-x-3">

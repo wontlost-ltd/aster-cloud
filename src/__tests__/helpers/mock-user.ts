@@ -54,6 +54,7 @@ export function mockUser(overrides: Partial<MockUser> = {}): MockUser {
     riskTier: 0,
     riskTierReason: null,
     isAdmin: false,
+    businessRoles: [],
     replayRetentionEnabled: false,
     mustChangePassword: false,
     byokQuotaResetAt: null,

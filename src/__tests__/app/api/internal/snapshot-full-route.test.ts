@@ -158,7 +158,7 @@ describe('GET /api/internal/snapshot/full — limit 校验', () => {
     mockApiKeysFindMany.mockResolvedValue([liveTeamKey, kickedTeamKey]);
     mockResolveMany.mockResolvedValue(new Map([
       ['k1', { valid: true, apiKeyId: 'k1', userId: 'u2', tenantId: 't1', teamId: 't1', quotaOwnerId: 'owner',
-        role: 'member', plan: 'team', subscriptionStatus: 'active' }],
+        role: 'member', businessRoles: [], plan: 'team', subscriptionStatus: 'active' }],
       ['k2', { valid: false, reason: 'membership_revoked' }],
     ]));
 
@@ -200,7 +200,7 @@ describe('GET /api/internal/snapshot/full — limit 校验', () => {
     mockApiKeysFindMany.mockResolvedValue([livePersonal, expiredPersonal]);
     mockResolveMany.mockResolvedValue(new Map([
       ['k3', { valid: true, apiKeyId: 'k3', userId: 'u1', tenantId: 'u1', teamId: null, quotaOwnerId: 'u1',
-        role: 'owner', plan: 'pro', subscriptionStatus: 'active' }],
+        role: 'owner', businessRoles: [], plan: 'pro', subscriptionStatus: 'active' }],
       ['k4', { valid: false, reason: 'expired', expiredAt: expiredPersonal.expiresAt }],
     ]));
 

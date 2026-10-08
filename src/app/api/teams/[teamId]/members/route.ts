@@ -70,6 +70,7 @@ export async function GET(req: Request, { params }: RouteParams) {
           image: member.user.image,
         },
         role: member.role,
+        businessRoles: member.businessRoles,
         joinedAt: member.createdAt.toISOString(),
       })),
       currentUserId: session.user.id,

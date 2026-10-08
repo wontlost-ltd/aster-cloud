@@ -446,6 +446,9 @@ export const users = pgTable(
      */
     isAdmin: boolean('isAdmin').default(false).notNull(),
 
+    /** 个人租户的业务角色（ADR 0042 §2.1）；团队租户读 TeamMember.businessRoles。 */
+    businessRoles: text('businessRoles').array().notNull().default([]),
+
     /**
      * 回放留存准入开关（ADR 0030 pii-admission/v1）。tenant（=userId）级 opt-in：
      * true 时该租户执行的 RegressionCase 可长期留存明文 inputJson（供 semantic replay）；
@@ -1252,6 +1255,8 @@ export const teamMembers = pgTable(
     teamId: text('teamId').notNull(),
     userId: text('userId').notNull(),
     role: teamRoleEnum('role').default('member').notNull(),
+    /** 业务角色（ADR 0042 §2.1）：审批规则 required role 精确匹配的对象，经 verify/快照下发 aster-api。 */
+    businessRoles: text('businessRoles').array().notNull().default([]),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
   },
   (table) => [

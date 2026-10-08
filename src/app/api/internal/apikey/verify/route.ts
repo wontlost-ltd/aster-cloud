@@ -2,7 +2,7 @@
  * 内部接口：API key 验证（HMAC 签名）
  *
  * POST { keyHash: "<sha256-hex>" } → {
- *   valid, apiKeyId?, userId?, tenantId?, quotaOwnerId?, plan?, subscriptionStatus?, role?,
+ *   valid, apiKeyId?, userId?, tenantId?, quotaOwnerId?, plan?, subscriptionStatus?, role?, businessRoles?,
  *   reason?, revokedAt?, expiredAt?
  * }
  *
@@ -63,5 +63,7 @@ export async function POST(req: Request) {
     plan: identity.plan,
     subscriptionStatus: identity.subscriptionStatus,
     role: identity.role,
+    // 业务角色（ADR 0042 §2.2）：始终下发数组，空即无角色；aster-api 缺键同样按空处理
+    businessRoles: identity.businessRoles,
   });
 }

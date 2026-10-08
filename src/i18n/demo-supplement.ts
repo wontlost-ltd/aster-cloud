@@ -278,7 +278,35 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       status: { generating: 'Generating', completed: 'Completed', failed: 'Failed' },
       download: 'Download',
     },
+    // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
+    teams: {
+      members: {
+        businessRolesLabel: 'Business roles:',
+        businessRolesNone: 'None',
+        businessRolesEdit: 'Edit',
+        businessRolesPlaceholder: 'e.g. Data Protection Officer, CISO',
+        businessRolesHint: 'Comma-separated. Printable ASCII without commas, up to 64 characters each, at most 16. Matched exactly against the role an approval rule requires.',
+        businessRolesSave: 'Save',
+        businessRolesSaving: 'Saving…',
+        businessRolesInvalid: 'Each role must be 1–64 printable ASCII characters (no commas), and at most 16 roles are allowed.',
+        businessRolesSaveFailed: 'Could not save business roles.',
+      },
+    },
     settings: {
+      // 个人业务角色面板（ADR 0042 §2.1）。
+      businessRoles: {
+        title: 'Business roles',
+        description: 'Roles used for approvals in your personal workspace. An approval that requires a role can only be decided by someone holding exactly that role. Team roles are granted on the team members page.',
+        none: 'None',
+        edit: 'Edit',
+        placeholder: 'e.g. Data Protection Officer, CISO',
+        hint: 'Comma-separated. Printable ASCII without commas, up to 64 characters each, at most 16. Matched exactly, case-sensitive.',
+        save: 'Save',
+        saving: 'Saving…',
+        cancel: 'Cancel',
+        invalid: 'Each role must be 1–64 printable ASCII characters (no commas), and at most 16 roles are allowed.',
+        saveFailed: 'Could not save business roles.',
+      },
       totp: {
         title: 'Authenticator app',
         description: 'Use a code from an authenticator app instead of email. Once enabled, sign-in codes are no longer emailed to you.',
@@ -806,7 +834,35 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       status: { generating: '生成中', completed: '已完成', failed: '失败' },
       download: '下载',
     },
+    // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
+    teams: {
+      members: {
+        businessRolesLabel: '业务角色：',
+        businessRolesNone: '无',
+        businessRolesEdit: '编辑',
+        businessRolesPlaceholder: '例如 Data Protection Officer, CISO',
+        businessRolesHint: '用逗号分隔。仅限可打印 ASCII（角色名本身不能含逗号），每项最多 64 个字符，最多 16 项。与审批规则要求的角色逐字精确匹配。',
+        businessRolesSave: '保存',
+        businessRolesSaving: '保存中…',
+        businessRolesInvalid: '每个角色须为 1–64 个可打印 ASCII 字符（不含逗号），且最多 16 个。',
+        businessRolesSaveFailed: '业务角色保存失败。',
+      },
+    },
     settings: {
+      // 个人业务角色面板（ADR 0042 §2.1）。
+      businessRoles: {
+        title: '业务角色',
+        description: '个人工作区中用于审批的角色。要求某角色的审批，只有恰好持有该角色的人才能处理。团队角色请在团队成员页授予。',
+        none: '无',
+        edit: '编辑',
+        placeholder: '例如 Data Protection Officer, CISO',
+        hint: '用逗号分隔。仅限可打印 ASCII（角色名本身不能含逗号），每项最多 64 个字符，最多 16 项。逐字精确匹配，区分大小写。',
+        save: '保存',
+        saving: '保存中…',
+        cancel: '取消',
+        invalid: '每个角色须为 1–64 个可打印 ASCII 字符（不含逗号），且最多 16 个。',
+        saveFailed: '业务角色保存失败。',
+      },
       totp: {
         title: '验证器 App',
         description: '用验证器 App 上的动态码代替邮件验证码。启用后将不再向你发送登录验证码邮件。',
@@ -1330,7 +1386,35 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       status: { generating: 'Wird erstellt', completed: 'Abgeschlossen', failed: 'Fehlgeschlagen' },
       download: 'Herunterladen',
     },
+    // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
+    teams: {
+      members: {
+        businessRolesLabel: 'Geschäftsrollen:',
+        businessRolesNone: 'Keine',
+        businessRolesEdit: 'Bearbeiten',
+        businessRolesPlaceholder: 'z. B. Data Protection Officer, CISO',
+        businessRolesHint: 'Kommagetrennt. Nur druckbare ASCII-Zeichen ohne Komma, je höchstens 64 Zeichen, maximal 16. Wird exakt mit der Rolle verglichen, die eine Freigaberegel verlangt.',
+        businessRolesSave: 'Speichern',
+        businessRolesSaving: 'Wird gespeichert…',
+        businessRolesInvalid: 'Jede Rolle muss aus 1–64 druckbaren ASCII-Zeichen (ohne Komma) bestehen; höchstens 16 Rollen sind erlaubt.',
+        businessRolesSaveFailed: 'Geschäftsrollen konnten nicht gespeichert werden.',
+      },
+    },
     settings: {
+      // 个人业务角色面板（ADR 0042 §2.1）。
+      businessRoles: {
+        title: 'Geschäftsrollen',
+        description: 'Rollen für Freigaben in Ihrem persönlichen Arbeitsbereich. Eine Freigabe, die eine Rolle verlangt, kann nur von jemandem entschieden werden, der genau diese Rolle hat. Teamrollen werden auf der Seite der Teammitglieder vergeben.',
+        none: 'Keine',
+        edit: 'Bearbeiten',
+        placeholder: 'z. B. Data Protection Officer, CISO',
+        hint: 'Kommagetrennt. Nur druckbare ASCII-Zeichen ohne Komma, je höchstens 64 Zeichen, maximal 16. Exakter Vergleich, Groß-/Kleinschreibung beachtet.',
+        save: 'Speichern',
+        saving: 'Wird gespeichert…',
+        cancel: 'Abbrechen',
+        invalid: 'Jede Rolle muss aus 1–64 druckbaren ASCII-Zeichen (ohne Komma) bestehen; höchstens 16 Rollen sind erlaubt.',
+        saveFailed: 'Geschäftsrollen konnten nicht gespeichert werden.',
+      },
       totp: {
         title: 'Authenticator-App',
         description: 'Verwenden Sie einen Code aus einer Authenticator-App statt E-Mail. Nach der Aktivierung werden keine Anmeldecodes mehr per E-Mail gesendet.',
@@ -1852,7 +1936,35 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       status: { generating: 'बन रहा', completed: 'पूर्ण', failed: 'विफल' },
       download: 'डाउनलोड',
     },
+    // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
+    teams: {
+      members: {
+        businessRolesLabel: 'व्यावसायिक भूमिकाएँ:',
+        businessRolesNone: 'कोई नहीं',
+        businessRolesEdit: 'संपादित करें',
+        businessRolesPlaceholder: 'उदा. Data Protection Officer, CISO',
+        businessRolesHint: 'अल्पविराम से अलग करें। केवल प्रिंट योग्य ASCII (भूमिका के नाम में अल्पविराम नहीं), प्रत्येक अधिकतम 64 वर्ण, अधिकतम 16। अनुमोदन नियम द्वारा माँगी गई भूमिका से हूबहू मिलान होता है।',
+        businessRolesSave: 'सहेजें',
+        businessRolesSaving: 'सहेजा जा रहा है…',
+        businessRolesInvalid: 'प्रत्येक भूमिका 1–64 प्रिंट योग्य ASCII वर्णों (अल्पविराम रहित) की होनी चाहिए, और अधिकतम 16 भूमिकाएँ अनुमत हैं।',
+        businessRolesSaveFailed: 'व्यावसायिक भूमिकाएँ सहेजी नहीं जा सकीं।',
+      },
+    },
     settings: {
+      // 个人业务角色面板（ADR 0042 §2.1）。
+      businessRoles: {
+        title: 'व्यावसायिक भूमिकाएँ',
+        description: 'आपके व्यक्तिगत कार्यक्षेत्र में अनुमोदन के लिए भूमिकाएँ। किसी भूमिका की माँग करने वाले अनुमोदन पर केवल वही व्यक्ति निर्णय ले सकता है जिसके पास ठीक वही भूमिका हो। टीम भूमिकाएँ टीम सदस्य पृष्ठ पर दी जाती हैं।',
+        none: 'कोई नहीं',
+        edit: 'संपादित करें',
+        placeholder: 'उदा. Data Protection Officer, CISO',
+        hint: 'अल्पविराम से अलग करें। केवल प्रिंट योग्य ASCII (भूमिका के नाम में अल्पविराम नहीं), प्रत्येक अधिकतम 64 वर्ण, अधिकतम 16। हूबहू मिलान, अक्षर-आकार संवेदनशील।',
+        save: 'सहेजें',
+        saving: 'सहेजा जा रहा है…',
+        cancel: 'रद्द करें',
+        invalid: 'प्रत्येक भूमिका 1–64 प्रिंट योग्य ASCII वर्णों (अल्पविराम रहित) की होनी चाहिए, और अधिकतम 16 भूमिकाएँ अनुमत हैं।',
+        saveFailed: 'व्यावसायिक भूमिकाएँ सहेजी नहीं जा सकीं।',
+      },
       totp: {
         title: 'प्रमाणक ऐप',
         description: 'ईमेल के बजाय प्रमाणक ऐप से कोड का उपयोग करें। सक्षम करने के बाद साइन-इन कोड ईमेल नहीं किए जाएंगे।',

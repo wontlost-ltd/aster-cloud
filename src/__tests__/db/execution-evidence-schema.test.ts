@@ -14,9 +14,11 @@ describe('ADR 0041 execution evidence schema', () => {
       expect(cols[c as keyof typeof cols].notNull).toBe(false);
     }
     const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as { entries: Array<{ tag: string; when: number; idx: number }> };
-    const last = journal.entries.at(-1)!;
-    const prev = journal.entries.at(-2)!;
-    expect(last.tag).toBe('0050_execution_evidence');
+    // 按 tag 定位而非取末项：后续迁移（如 0051）追加后本断言仍只钉 0050 自身的顺序
+    const at = journal.entries.findIndex((e) => e.tag === '0050_execution_evidence');
+    expect(at).toBeGreaterThan(0);
+    const last = journal.entries[at];
+    const prev = journal.entries[at - 1];
     expect(last.idx).toBe(prev.idx + 1);
     expect(last.when).toBeGreaterThan(prev.when);
     const sql = readFileSync('drizzle/0050_execution_evidence.sql', 'utf8');

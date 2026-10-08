@@ -36,23 +36,24 @@ describe('resolveApiKeyIdentities', () => {
     vi.resetModules();
     Object.values(m).forEach((f) => f.mockReset());
     m.usersFindMany.mockResolvedValue([
-      { id: 'u1', plan: 'pro', subscriptionStatus: 'active' },
-      { id: 'u2', plan: 'free', subscriptionStatus: null },
-      { id: 'owner', plan: 'team', subscriptionStatus: 'active' },
+      { id: 'u1', plan: 'pro', subscriptionStatus: 'active', businessRoles: ['DPO'] },
+      { id: 'u2', plan: 'free', subscriptionStatus: null, businessRoles: ['personal-only'] },
+      { id: 'owner', plan: 'team', subscriptionStatus: 'active', businessRoles: [] },
     ]);
     m.teamsFindMany.mockResolvedValue([{ id: 't1', ownerId: 'owner' }]);
-    m.teamMembersFindMany.mockResolvedValue([{ teamId: 't1', userId: 'u2', role: 'member' }]);
+    m.teamMembersFindMany.mockResolvedValue([{ teamId: 't1', userId: 'u2', role: 'member', businessRoles: ['CISO'] }]);
   });
 
-  it('个人 key：tenantId=userId、role=owner、quotaOwnerId=userId、plan 取本人', async () => {
+  it('个人 key：tenantId=userId、role=owner、quotaOwnerId=userId、plan 与业务角色取本人 User', async () => {
     const { resolveApiKeyIdentities } = await import('@/lib/api-key-identity');
     const r = (await resolveApiKeyIdentities([personal], NOW)).get('k1');
-    expect(r).toEqual({ valid: true, apiKeyId: 'k1', userId: 'u1', tenantId: 'u1', teamId: null, quotaOwnerId: 'u1', role: 'owner', plan: 'pro', subscriptionStatus: 'active' });
+    expect(r).toEqual({ valid: true, apiKeyId: 'k1', userId: 'u1', tenantId: 'u1', teamId: null, quotaOwnerId: 'u1', role: 'owner', businessRoles: ['DPO'], plan: 'pro', subscriptionStatus: 'active' });
   });
-  it('团队 key：tenantId=teamId、role=成员角色、quotaOwnerId=owner、plan 取 owner', async () => {
+  // 业务角色取持有者在该团队的 TeamMember 行（ADR 0042 §2.2），不取其个人 User.businessRoles，也不取 owner 的
+  it('团队 key：tenantId=teamId、role 与业务角色取成员行、quotaOwnerId=owner、plan 取 owner', async () => {
     const { resolveApiKeyIdentities } = await import('@/lib/api-key-identity');
     const r = (await resolveApiKeyIdentities([teamKey], NOW)).get('k2');
-    expect(r).toEqual({ valid: true, apiKeyId: 'k2', userId: 'u2', tenantId: 't1', teamId: 't1', quotaOwnerId: 'owner', role: 'member', plan: 'team', subscriptionStatus: 'active' });
+    expect(r).toEqual({ valid: true, apiKeyId: 'k2', userId: 'u2', tenantId: 't1', teamId: 't1', quotaOwnerId: 'owner', role: 'member', businessRoles: ['CISO'], plan: 'team', subscriptionStatus: 'active' });
   });
   it('已吊销 / 已过期 优先于一切查询；同时吊销且过期按 revoked', async () => {
     const { resolveApiKeyIdentities } = await import('@/lib/api-key-identity');
@@ -83,11 +84,11 @@ describe('resolveApiKeyIdentities', () => {
   it('成员关系按 (teamId, userId) 匹配：持有者与 owner 同在团队时取持有者自己的角色', async () => {
     const { resolveApiKeyIdentities } = await import('@/lib/api-key-identity');
     m.teamMembersFindMany.mockResolvedValue([
-      { teamId: 't1', userId: 'owner', role: 'owner' },
-      { teamId: 't1', userId: 'u2', role: 'viewer' },
+      { teamId: 't1', userId: 'owner', role: 'owner', businessRoles: ['Owner Role'] },
+      { teamId: 't1', userId: 'u2', role: 'viewer', businessRoles: ['DPO'] },
     ]);
     const r = (await resolveApiKeyIdentities([teamKey], NOW)).get('k2');
-    expect(r).toMatchObject({ valid: true, role: 'viewer', quotaOwnerId: 'owner', plan: 'team' });
+    expect(r).toMatchObject({ valid: true, role: 'viewer', businessRoles: ['DPO'], quotaOwnerId: 'owner', plan: 'team' });
   });
   it('失败优先级：orphan_key(持有者) > team_not_found > membership_revoked > orphan_key(owner)', async () => {
     const { resolveApiKeyIdentities } = await import('@/lib/api-key-identity');
@@ -161,9 +162,9 @@ describe('resolveApiKeyIdentity', () => {
   it('找到 key 则按解析所需列查询并委托批量解析', async () => {
     const { resolveApiKeyIdentity, API_KEY_IDENTITY_COLUMNS } = await import('@/lib/api-key-identity');
     m.apiKeysFindFirst.mockResolvedValue(personal);
-    m.usersFindMany.mockResolvedValue([{ id: 'u1', plan: 'pro', subscriptionStatus: 'active' }]);
+    m.usersFindMany.mockResolvedValue([{ id: 'u1', plan: 'pro', subscriptionStatus: 'active', businessRoles: [] }]);
     const r = await resolveApiKeyIdentity('a'.repeat(64), NOW);
-    expect(r).toEqual({ valid: true, apiKeyId: 'k1', userId: 'u1', tenantId: 'u1', teamId: null, quotaOwnerId: 'u1', role: 'owner', plan: 'pro', subscriptionStatus: 'active' });
+    expect(r).toEqual({ valid: true, apiKeyId: 'k1', userId: 'u1', tenantId: 'u1', teamId: null, quotaOwnerId: 'u1', role: 'owner', businessRoles: [], plan: 'pro', subscriptionStatus: 'active' });
     expect(m.apiKeysFindFirst).toHaveBeenCalledWith(expect.objectContaining({ columns: API_KEY_IDENTITY_COLUMNS }));
   });
 });
@@ -171,22 +172,25 @@ describe('resolveApiKeyIdentity', () => {
 // 快照体（pusher 与 snapshot/full 共用）：valid 只下发 aster-api ApiKeySnapshot 认的字段，
 // 不带 teamId / subscriptionStatus；invalid 只带 reason，吊销时附 revokedAtEpochMs
 describe('toApiKeySnapshotBody', () => {
-  it('个人 key：改前字段 + quotaOwnerId=userId，revokedAtEpochMs:null', async () => {
+  it('个人 key：改前字段 + quotaOwnerId=userId，revokedAtEpochMs:null；无业务角色时不含 businessRoles 键', async () => {
     const { toApiKeySnapshotBody } = await import('@/lib/api-key-identity');
-    expect(toApiKeySnapshotBody({
+    const body = toApiKeySnapshotBody({
       valid: true, apiKeyId: 'k1', userId: 'u1', tenantId: 'u1', teamId: null, quotaOwnerId: 'u1',
-      role: 'owner', plan: 'pro', subscriptionStatus: 'active',
-    })).toEqual({
+      role: 'owner', businessRoles: [], plan: 'pro', subscriptionStatus: 'active',
+    });
+    expect(body).not.toHaveProperty('businessRoles');
+    expect(body).toEqual({
       valid: true, apiKeyId: 'k1', userId: 'u1', tenantId: 'u1', quotaOwnerId: 'u1', role: 'owner', plan: 'pro', revokedAtEpochMs: null,
     });
   });
-  it('团队 key：tenantId=teamId、成员角色、quotaOwnerId=owner、套餐取 owner', async () => {
+  it('团队 key：tenantId=teamId、成员角色、quotaOwnerId=owner、套餐取 owner；非空业务角色原样下发', async () => {
     const { toApiKeySnapshotBody } = await import('@/lib/api-key-identity');
     expect(toApiKeySnapshotBody({
       valid: true, apiKeyId: 'k2', userId: 'u2', tenantId: 't1', teamId: 't1', quotaOwnerId: 'owner',
-      role: 'member', plan: 'team', subscriptionStatus: null,
+      role: 'member', businessRoles: ['DPO', 'CISO'], plan: 'team', subscriptionStatus: null,
     })).toEqual({
-      valid: true, apiKeyId: 'k2', userId: 'u2', tenantId: 't1', quotaOwnerId: 'owner', role: 'member', plan: 'team', revokedAtEpochMs: null,
+      valid: true, apiKeyId: 'k2', userId: 'u2', tenantId: 't1', quotaOwnerId: 'owner', role: 'member',
+      businessRoles: ['DPO', 'CISO'], plan: 'team', revokedAtEpochMs: null,
     });
   });
   it('无效：revoked 附 revokedAtEpochMs；expired / not_found / membership_revoked 只带 reason', async () => {

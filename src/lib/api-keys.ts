@@ -178,6 +178,17 @@ export async function refreshTeamKeySnapshots(teamId: string, userId?: string): 
   return rows.length;
 }
 
+// 重推某用户全部活跃个人 key（teamId 为空）的快照，返回条数。用于个人身份变化（如个人业务角色，ADR 0042 §2.1）
+export async function refreshPersonalKeySnapshots(userId: string): Promise<number> {
+  const rows = await db.query.apiKeys.findMany({
+    where: and(eq(apiKeys.userId, userId), isNull(apiKeys.teamId), isNull(apiKeys.revokedAt)),
+    columns: { key: true, userId: true },
+  });
+
+  await notifyKeysChanged(rows);
+  return rows.length;
+}
+
 // 单批并发推送的 key 数：aster-api 挂起时耗时按批数（而非 key 数）累加 2 s 超时，又不一次打出过多请求
 const NOTIFY_CHUNK_SIZE = 10;
 

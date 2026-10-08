@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth';
 import { db, teamMembers } from '@/lib/prisma';
 import { eq, and } from 'drizzle-orm';
 import { refreshTeamKeySnapshots, revokeTeamKeys } from '@/lib/api-keys';
+import { BusinessRoleError, normalizeBusinessRoles } from '@/lib/business-roles';
 import {
   checkTeamAccess,
   checkTeamPermission,
@@ -14,7 +15,34 @@ import {
 
 type RouteParams = { params: Promise<{ teamId: string; memberId: string }> };
 
-// PUT /api/teams/[teamId]/members/[memberId] - 更新成员角色
+const VALID_ROLES = ['admin', 'member', 'viewer'];
+type MemberUpdate = { role?: TeamRole; businessRoles?: string[] };
+type ParsedUpdate = { ok: true; set: MemberUpdate } | { ok: false; error: string };
+
+/**
+ * 解析成员更新体：`role` 与 `businessRoles`（ADR 0042 §2.1）至少给一个；只校验形状，
+ * 角色变更的层级约束（canChangeRole）由调用方结合操作者角色判断。
+ */
+function parseMemberUpdate(body: unknown): ParsedUpdate {
+  const { role, businessRoles } = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
+  if (role === undefined && businessRoles === undefined) return { ok: false, error: '无效的角色' };
+  const set: MemberUpdate = {};
+  if (role !== undefined) {
+    if (typeof role !== 'string' || !VALID_ROLES.includes(role)) return { ok: false, error: '无效的角色' };
+    set.role = role as TeamRole;
+  }
+  if (businessRoles !== undefined) {
+    try {
+      set.businessRoles = normalizeBusinessRoles(businessRoles);
+    } catch (err) {
+      if (err instanceof BusinessRoleError) return { ok: false, error: err.message };
+      throw err;
+    }
+  }
+  return { ok: true, set };
+}
+
+// PUT /api/teams/[teamId]/members/[memberId] - 更新成员角色和/或业务角色
 export async function PUT(req: Request, { params }: RouteParams) {
   try {
     const session = await getSession();
@@ -24,7 +52,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
 
     const { teamId, memberId } = await params;
 
-    // 检查角色更新权限
+    // 检查角色更新权限（业务角色沿用同一权限，不新增常量，ADR 0042 §2.1）
     const permission = await checkTeamPermission(
       session.user.id,
       teamId,
@@ -49,33 +77,27 @@ export async function PUT(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: '成员不存在' }, { status: 404 });
     }
 
-    const { role: newRole } = await req.json();
-
-    // 验证新角色
-    const validRoles = ['admin', 'member', 'viewer'];
-    if (!newRole || !validRoles.includes(newRole)) {
-      return NextResponse.json({ error: '无效的角色' }, { status: 400 });
+    const parsed = parseMemberUpdate(await req.json().catch(() => null));
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
     }
 
-    // 检查角色变更权限
-    const changeCheck = canChangeRole(
-      access.role,
-      targetMember.role as TeamRole,
-      newRole as TeamRole
-    );
-    if (!changeCheck.allowed) {
-      return NextResponse.json({ error: changeCheck.error }, { status: changeCheck.status });
+    // 检查角色变更权限；只改业务角色时不涉及成员层级，owner 行也可被授予业务角色
+    if (parsed.set.role) {
+      const changeCheck = canChangeRole(access.role, targetMember.role as TeamRole, parsed.set.role);
+      if (!changeCheck.allowed) {
+        return NextResponse.json({ error: changeCheck.error }, { status: changeCheck.status });
+      }
     }
 
-    // 更新角色
     await db
       .update(teamMembers)
-      .set({ role: newRole })
+      .set(parsed.set)
       .where(eq(teamMembers.id, memberId));
 
-    // 团队 key 的角色随成员角色走：重推该成员的 key 快照，aster-api 立即按新角色鉴权；失败不影响已提交的变更（ADR 0015 §5）
+    // 团队 key 的角色与业务角色随成员行走：重推该成员的 key 快照，aster-api 立即按新身份鉴权；失败不影响已提交的变更（ADR 0015 §5）
     await refreshTeamKeySnapshots(teamId, targetMember.userId).catch((err) =>
-      console.warn('[teams] refreshTeamKeySnapshots after role change failed:', err)
+      console.warn('[teams] refreshTeamKeySnapshots after member update failed:', err)
     );
 
     // 重新查询获取完整信息
@@ -100,6 +122,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
       id: updatedMember.id,
       userId: updatedMember.userId,
       role: updatedMember.role,
+      businessRoles: updatedMember.businessRoles,
       user: updatedMember.user,
     });
   } catch (error) {
