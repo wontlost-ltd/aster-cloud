@@ -402,6 +402,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         // Verdict 待处置态（ADR 0041 §4）：需人工批准 / 已升级，非失败。
         require_approval: 'Needs approval',
         escalate: 'Escalated',
+        // guard 审批入口（ADR 0042 §5.4）。
+        viewApproval: 'Pending approval · View',
+        registerGuard: 'Register again',
+        guardError: 'Approval registration failed',
       },
       form: {
         aliases: {
@@ -951,6 +955,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         computed: '已计算',
         require_approval: '需人工批准',
         escalate: '已升级',
+        viewApproval: '待审批 · 查看',
+        registerGuard: '重新登记',
+        guardError: '审批登记失败',
       },
       form: {
         aliases: {
@@ -1503,6 +1510,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         computed: 'Berechnet',
         require_approval: 'Freigabe nötig',
         escalate: 'Eskaliert',
+        viewApproval: 'Freigabe ausstehend · Ansehen',
+        registerGuard: 'Erneut registrieren',
+        guardError: 'Freigabe-Registrierung fehlgeschlagen',
       },
       form: {
         aliases: {
@@ -2053,6 +2063,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         computed: 'परिकलित',
         require_approval: 'अनुमोदन आवश्यक',
         escalate: 'एस्केलेट किया गया',
+        viewApproval: 'अनुमोदन लंबित · देखें',
+        registerGuard: 'फिर से पंजीकृत करें',
+        guardError: 'अनुमोदन पंजीकरण विफल',
       },
       form: {
         aliases: {

@@ -21,7 +21,21 @@ import { db, notifications } from '@/lib/prisma';
 export type NotificationKind =
   | 'team.invitation_received'
   | 'team.invitation_accepted'
-  | 'policy.shared';
+  | 'policy.shared'
+  | 'guard.approval_requested'
+  | 'guard.approval_decided';
+
+/** guard 审批通知的共同载荷（ADR 0042 §5.3）：requiredRole 为 null 表示 ESCALATE（任意成员可审）。 */
+export interface GuardApprovalNotification {
+  tenantId: string;
+  decisionId: string;
+  approvalId: string;
+  policyId: string;
+  policyName: string;
+  requiredRole: string | null;
+  /** 仅 approval_decided 携带：审批结论。 */
+  outcome?: 'APPROVED' | 'REJECTED';
+}
 
 export interface NotificationPayloads {
   'team.invitation_received': {
@@ -44,6 +58,8 @@ export interface NotificationPayloads {
     /** Permission tier the share was granted at — view or execute. */
     permission?: 'view' | 'execute';
   };
+  'guard.approval_requested': GuardApprovalNotification;
+  'guard.approval_decided': GuardApprovalNotification;
 }
 
 /**

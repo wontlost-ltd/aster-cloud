@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { formatDate } from '@/lib/format';
+import { Link } from '@/i18n/navigation';
 import { Breadcrumbs, Container, PageHeader } from '@/components/ui';
 
 type ExecutionSource = 'WEB' | 'API' | 'CLI' | 'dashboard' | 'api' | 'playground';
@@ -21,6 +22,8 @@ interface ExecutionLog {
   createdAt: string;
   /** runner-parity 影子校验状态（null=未跑）。match|divergent|runner-unavailable|runner-error|authority-failure。 */
   runnerParityStatus: string | null;
+  /** guard 登记结果（ADR 0042 §5.1）：成功带决策 id，失败带错误码；旧行/无需审批为 null。 */
+  metadata?: { guardDecisionId?: string; guardApprovalId?: string; guardError?: string } | null;
 }
 
 interface Stats {
@@ -131,6 +134,12 @@ interface Translations {
     avgDuration: string;
     recentActivity: string;
     loadError: string;
+    /** 待审批行「查看审批」链接文案。 */
+    viewApproval: string;
+    /** guard 登记失败行「重新登记」按钮文案。 */
+    registerGuard: string;
+    /** guard 登记失败提示（按钮 title）。 */
+    guardError: string;
     /** runner-parity 影子校验徽章文案（可选——旧翻译包无此键时降级默认英文）。 */
     parity?: {
       tooltip: string;
@@ -248,6 +257,58 @@ function parityLabel(status: string, t: Translations): string {
   }
 }
 
+const GUARD_PILL = 'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset';
+
+/** 状态徽章旁的 guard 入口：有决策 id → 收件箱链接；有 guardError → 重新登记按钮；其余不渲染。 */
+function GuardAction({
+  log,
+  policyId,
+  t,
+  onUpdated,
+}: {
+  log: ExecutionLog;
+  policyId: string;
+  t: Translations;
+  onUpdated: (logId: string, metadata: ExecutionLog['metadata']) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const meta = log.metadata;
+
+  const register = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/policies/${policyId}/executions/${log.id}/guard-register`, { method: 'POST' });
+      const body = (await res.json().catch(() => null)) as { metadata?: ExecutionLog['metadata'] } | null;
+      if (body?.metadata) onUpdated(log.id, body.metadata);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (meta?.guardDecisionId) {
+    return (
+      <Link
+        href={`/approvals?decisionId=${encodeURIComponent(meta.guardDecisionId)}`}
+        className={`${GUARD_PILL} bg-amber-50 text-amber-700 ring-amber-600/20 hover:bg-amber-100`}
+      >
+        {t.logs.viewApproval}
+      </Link>
+    );
+  }
+  if (!meta?.guardError) return null;
+  return (
+    <button
+      type="button"
+      onClick={register}
+      disabled={busy}
+      title={`${t.logs.guardError}: ${meta.guardError}`}
+      className={`${GUARD_PILL} bg-red-50 text-red-700 ring-red-600/20 hover:bg-red-100 disabled:opacity-50`}
+    >
+      {t.logs.registerGuard}
+    </button>
+  );
+}
+
 export function LogsContent({
   policyId,
   policyName,
@@ -268,6 +329,11 @@ export function LogsContent({
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(initialTotalPages);
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
+
+  // 重新登记后只就地更新该行 metadata，不整页重拉
+  const updateLogMetadata = useCallback((logId: string, metadata: ExecutionLog['metadata']) => {
+    setLogs((prev) => prev.map((l) => (l.id === logId ? { ...l, metadata } : l)));
+  }, []);
 
   // Filters
   const [successFilter, setSuccessFilter] = useState<string>('');
@@ -617,6 +683,9 @@ export function LogsContent({
                       >
                         {logStatusLabel(log, t)}
                       </span>
+
+                      {/* guard 审批入口（ADR 0042 §5.4）：已登记链到收件箱定位，登记失败可重新登记 */}
+                      <GuardAction log={log} policyId={policyId} t={t} onUpdated={updateLogMetadata} />
 
                       {/* Source Badge */}
                       <span

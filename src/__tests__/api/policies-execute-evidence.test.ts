@@ -43,6 +43,14 @@ vi.mock('@/services/policy/cnl-executor', () => ({
   deriveExecutionOutcome: vi.fn((r: { metadata?: { outcome?: string } }) => r?.metadata?.outcome ?? 'ALLOW'),
 }));
 
+// guard 登记（ADR 0042 §5.1）不在本文件断言范围：装配客户端与通知均替身，开决策走成功路径。
+vi.mock('@/lib/policy-api-identity', () => ({
+  createPolicyApiClientForUser: vi.fn().mockResolvedValue({
+    guardFromEvidence: vi.fn().mockResolvedValue({ decisionId: 'd1', approval: { id: 'a1', status: 'PENDING' } }),
+  }),
+}));
+vi.mock('@/lib/guard-notifications', () => ({ notifyApprovalRequested: vi.fn().mockResolvedValue(undefined) }));
+
 vi.mock('@opennextjs/cloudflare', () => ({
   getCloudflareContext: vi.fn().mockRejectedValue(new Error('Not cloudflare')),
 }));

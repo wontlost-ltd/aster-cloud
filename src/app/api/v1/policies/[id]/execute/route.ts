@@ -8,6 +8,8 @@ import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
 import { executePolicyUnified, getPrimaryError, deriveExecutionDecision, deriveExecutionOutcome, detectCNLLocale } from '@/services/policy/cnl-executor';
 import { buildReplayColumns, buildEvidenceColumns } from '@/lib/policy-execution-log';
 import { policyTenantId } from '@/lib/policy-tenant';
+import { needsGuardDecision, registerGuardDecisionWith } from '@/lib/guard-register';
+import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
 import { parseAgentIdentity } from '@/services/policy/policy-api';
 import { maybeRunParityForExecution, RUNNER_LAUNCHER_HMAC_ROLE } from '@/services/policy/runner-parity-from-execution';
 
@@ -260,6 +262,20 @@ export async function POST(req: Request, { params }: RouteParams) {
     const primaryError = getPrimaryError(executionResult);
     const durationMs = Date.now() - startTime;
 
+    // 需审批/升级的执行以证据锚定开 guard 决策（ADR 0042 §5.1），以 API key 持有者及其在策略租户的业务角色调用；
+    // 失败只记 guardError，执行行照常写入，日志页可重新登记。
+    const decision = deriveExecutionDecision(executionResult);
+    const guardMeta = needsGuardDecision(decision)
+      ? await registerGuardDecisionWith(() => createPolicyApiClientForUser(policyTenantId(policy), userId), {
+          policy: { id: policy.id, name: policy.name, teamId: policy.teamId, userId: policy.userId },
+          functionName: executionResult.executedFunction ?? policy.name,
+          input: validatedInput,
+          agent: agent,
+          result: executionResult,
+          requesterUserId: userId,
+        })
+      : {};
+
     // 回放地基（ADR 0030）：aster-api 权威 replayMetadata + 不可变版本引用 → Execution 回放列。
     // aliasSetJson：有别名写解析后的 set，无别名写 {}（captured-no-alias≠null uncaptured）；
     // 别名解析失败（parsedAliasSet=null 但 policy.aliasSet 非空）视为未捕获 → null。
@@ -290,7 +306,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       durationMs,
       // success 保持 = allowed（旧语义不变）；准入决策态由 decision 列表达（服务端派生）。
       success: executionResult.allowed ?? false,
-      decision: deriveExecutionDecision(executionResult),
+      decision,
       source: 'api',
       apiKeyId: apiKeyId || null,
       // 证据列（ADR 0041 §4）：结果码 + 规则/控制点/证据关联 id + 声明式 agent。
@@ -298,6 +314,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       ...buildEvidenceColumns(executionResult.metadata, agent),
       // 回放列（ADR 0030 附录 A）。
       ...replayColumns,
+      metadata: Object.keys(guardMeta).length ? guardMeta : null,
     }));
     const writePromise = Promise.all([
       executionInsertPromise,

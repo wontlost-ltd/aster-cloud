@@ -9,6 +9,8 @@ import { executePolicyUnified, getPrimaryError, deriveExecutionDecision, deriveE
 import { getCachedPolicyMeta, cachePolicyMeta, type CachedPolicyMeta } from '@/lib/cache';
 import { buildReplayColumns, buildEvidenceColumns } from '@/lib/policy-execution-log';
 import { policyTenantId } from '@/lib/policy-tenant';
+import { needsGuardDecision, registerGuardDecisionWith } from '@/lib/guard-register';
+import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
 import type { AgentIdentity } from '@/services/policy/policy-api';
 import { maybeRunParityForExecution, RUNNER_LAUNCHER_HMAC_ROLE } from '@/services/policy/runner-parity-from-execution';
 
@@ -345,6 +347,20 @@ export async function POST(req: Request, { params }: RouteParams) {
     const durationMs = Date.now() - startTime;
     const executionId = globalThis.crypto.randomUUID();
 
+    // 需审批/升级的执行以证据锚定开 guard 决策（ADR 0042 §5.1），以会话用户及其在策略租户的业务角色调用；
+    // 失败只记 guardError，执行行照常写入，日志页可重新登记。
+    const decision = deriveExecutionDecision(executionResult);
+    const guardMeta = needsGuardDecision(decision)
+      ? await registerGuardDecisionWith(() => createPolicyApiClientForUser(policyTenantId(policy), userId), {
+          policy: { id: policy.id, name: policy.name, teamId: policy.teamId, userId: policy.userId },
+          functionName: executionResult.executedFunction ?? (functionName || undefined) ?? policy.name,
+          input: validatedInput,
+          agent: DASHBOARD_AGENT,
+          result: executionResult,
+          requesterUserId: userId,
+        })
+      : {};
+
     // 回放地基（ADR 0030）：aster-api 权威 replayMetadata + 不可变版本引用 → Execution 回放列。
     // aliasSetJson：有别名写解析后的 set，无别名写 {}；别名解析失败视为未捕获 → null。
     const replayAliasSetJson = policy.aliasSet ? (parsedAliasSet ?? null) : {};
@@ -378,13 +394,14 @@ export async function POST(req: Request, { params }: RouteParams) {
       // 策略的 indeterminate 靠它区分，而非把 success 语义翻转。decision 服务端从执行
       // 结果派生，绝不信客户端。
       success: executionResult.allowed ?? false,
-      decision: deriveExecutionDecision(executionResult),
+      decision,
       source: 'dashboard',
       // 证据列（ADR 0041 §4）：结果码 + 规则/控制点/证据关联 id + 声明式 agent。
       outcome: deriveExecutionOutcome(executionResult),
       ...buildEvidenceColumns(executionResult.metadata, DASHBOARD_AGENT),
       // 回放列（ADR 0030 附录 A）。
       ...replayColumns,
+      metadata: Object.keys(guardMeta).length ? guardMeta : null,
     }));
     const usageWritePromise = db.insert(usageRecords)
       .values({ id: crypto.randomUUID(), userId, type: 'execution', period, count: 1, createdAt: now, updatedAt: now })

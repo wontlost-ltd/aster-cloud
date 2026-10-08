@@ -74,6 +74,14 @@ vi.mock('@/services/policy/cnl-executor', () => ({
     r?.metadata?.outcome ?? (r?.allowed ? 'ALLOW' : 'DENY')),
 }));
 
+// guard 登记（ADR 0042 §5.1）由 policies-execute-guard.test.ts 覆盖；此处只替身其依赖。
+vi.mock('@/lib/policy-api-identity', () => ({
+  createPolicyApiClientForUser: vi.fn().mockResolvedValue({
+    guardFromEvidence: vi.fn().mockResolvedValue({ decisionId: 'd1', approval: { id: 'a1', status: 'PENDING' } }),
+  }),
+}));
+vi.mock('@/lib/guard-notifications', () => ({ notifyApprovalRequested: vi.fn().mockResolvedValue(undefined) }));
+
 // Mock opennextjs cloudflare to avoid dynamic import issues
 vi.mock('@opennextjs/cloudflare', () => ({
   getCloudflareContext: vi.fn().mockRejectedValue(new Error('Not cloudflare')),

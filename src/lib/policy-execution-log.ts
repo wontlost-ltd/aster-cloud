@@ -4,6 +4,7 @@
 import { db, executions } from '@/lib/prisma';
 import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
 import type { InferSelectModel } from 'drizzle-orm';
+import type { ExecutionMetadata } from '@/lib/guard-register';
 import type { AgentIdentity, PolicyReplayMetadata, PolicyTraceSkeleton } from '@/services/policy/policy-api';
 
 /** 回放捕获里程碑（M1）——只落漂移检测地基 hash，trace 明文 payload 待 M2 PII envelope。 */
@@ -302,7 +303,8 @@ export interface ExecutionLogItem {
   decision: ExecutionDecision;
   durationMs: number;
   source: ExecutionSource;
-  metadata: unknown;
+  /** guard 登记结果（ADR 0042 §5.1）；未登记的行为 null。 */
+  metadata: ExecutionMetadata | null;
   createdAt: Date;
   /** runner-parity 影子校验状态（null=未跑；match|divergent|runner-unavailable|runner-error|authority-failure）。 */
   runnerParityStatus: string | null;
@@ -407,7 +409,7 @@ export async function queryExecutionLogs(query: ExecutionLogQuery): Promise<Exec
       decision: item.decision,
       durationMs: item.durationMs,
       source: item.source,
-      metadata: item.metadata,
+      metadata: item.metadata as ExecutionMetadata | null,
       createdAt: item.createdAt,
       runnerParityStatus: item.runnerParityStatus ?? null,
     })),
@@ -453,7 +455,7 @@ export async function getExecutionLogDetail(
     decision: item.decision,
     durationMs: item.durationMs,
     source: item.source,
-    metadata: item.metadata,
+    metadata: item.metadata as ExecutionMetadata | null,
     createdAt: item.createdAt,
     runnerParityStatus: item.runnerParityStatus ?? null,
   };
@@ -629,7 +631,7 @@ export async function getRecentExecutions(
     decision: item.decision,
     durationMs: item.durationMs,
     source: item.source,
-    metadata: item.metadata,
+    metadata: item.metadata as ExecutionMetadata | null,
     createdAt: item.createdAt,
     runnerParityStatus: item.runnerParityStatus ?? null,
   }));
