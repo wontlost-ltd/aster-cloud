@@ -5,7 +5,9 @@
 // legacy 缺哈希不崩、超限 413（EvidenceTooLargeError）。
 //
 // Run: LICENSE_E2E=1 pnpm test:integration
-// 本地绕过损坏的 migrate 链：起临时 pg + 手建 Policy/Execution/ComplianceReport 表 + 设 DATABASE_URL。
+// 未设 DATABASE_URL 时 setupTestDb 起临时 pg 容器并执行 drizzle migrate()（含 0050 迁移）；
+// 设了外部 DATABASE_URL 则假定其 schema 已迁移到最新。
+// ★修改 executions / policies 表结构（含 policy 关联与 agent/metadata 投影）前必须跑本套件：默认单测把查询层整体 mock 掉。
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -34,6 +36,8 @@ async function seedPolicy(id: string, userId: string, name: string, deleted = fa
     userId,
     name,
     content: 'Module M. Rule R.',
+    // 基线迁移里 Policy.updatedAt 是 NOT NULL 且无库级默认值（schema 的 defaultNow 未落进迁移），须显式赋值。
+    updatedAt: new Date(),
     ...(deleted ? { deletedAt: new Date() } : {}),
   } as typeof policies.$inferInsert);
 }
@@ -217,9 +221,10 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('evidence-export 数据层（�
     expect(await getEvidenceExportMetadata(U, 'old-fake2')).toBeNull();
   });
 
-  it('★v2 投影：outcome/ruleId/controls/agent/evidenceCorrelationId + 租户（teamId ?? userId）+ guardDecisionId', async () => {
+  it('★v2 投影：outcome/ruleId/controls/agent/evidenceCorrelationId + 租户（teamId || userId）+ guardDecisionId', async () => {
     await db.insert(policies).values({
       id: 'pol-team', userId: U, teamId: 'team-ev', name: 'Team policy', content: 'Module M. Rule R.',
+      updatedAt: new Date(),
     } as typeof policies.$inferInsert);
     await seedExecution({
       id: 'v2-a', createdAt: new Date('2026-07-01T00:00:00Z'), outcome: 'REQUIRE_APPROVAL', ruleId: 'R-1',
