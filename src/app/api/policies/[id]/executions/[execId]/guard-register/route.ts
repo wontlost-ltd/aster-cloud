@@ -54,7 +54,11 @@ export async function POST(_req: Request, { params }: RouteParams) {
     // 证据关联 id 以落库列为准（output 内的副本可能缺失于旧行）
     const output = (exec.output ?? {}) as PolicyExecutionResult;
     const correlationId = exec.evidenceCorrelationId ?? output.metadata?.evidenceCorrelationId;
-    const result = { ...output, metadata: { ...output.metadata, evidenceCorrelationId: correlationId ?? undefined } };
+    // 无证据锚的行重试永远不会成功：直接 409，不改写行
+    if (!correlationId) {
+      return NextResponse.json({ error: 'Execution has no evidence anchor', code: 'no_evidence' }, { status: 409 });
+    }
+    const result = { ...output, metadata: { ...output.metadata, evidenceCorrelationId: correlationId } };
 
     const guardMeta = await registerGuardDecisionWith(
       () => createPolicyApiClientForUser(policyTenantId(policy), userId),

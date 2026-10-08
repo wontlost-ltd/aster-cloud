@@ -5,8 +5,12 @@
  * 开 guard 决策；cloud 只给出 correlationId 与动作映射，不解析模块名、不重新评估。
  * 本模块永不抛错：失败以 `{ guardError }` 记入执行行 metadata，执行本身照常落库。
  */
+import { eq } from 'drizzle-orm';
+import { runAfterResponse } from '@/lib/after-response';
+import { isPolicyTenantMember } from '@/lib/business-roles';
 import { notifyApprovalRequested } from '@/lib/guard-notifications';
 import { policyTenantId } from '@/lib/policy-tenant';
+import { db, executions } from '@/lib/prisma';
 import type { PolicyExecutionResult } from '@/services/policy/cnl-executor';
 import type { GuardAction } from '@/services/policy/guard-types';
 import { PolicyApiError, type AgentIdentity, type PolicyApiClient } from '@/services/policy/policy-api';
@@ -37,7 +41,11 @@ function stringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
 }
 
-/** 执行输入 → guard 动作：约定键优先，缺省回退到发起人与策略函数名。 */
+/**
+ * 执行输入 → guard 动作：约定键优先，缺省回退到策略函数名。
+ * principal.id 恒为发起人：api 四眼同时拦 decidedBy == principalId，若允许输入指定 principal_id，
+ * 执行人可借此让某位审批人永远无法批准；业务侧主体 id 仍随整个输入留在 context 中。
+ */
 export function toGuardAction(
   input: Record<string, unknown>,
   functionName: string,
@@ -46,7 +54,7 @@ export function toGuardAction(
 ): GuardAction {
   return {
     principal: {
-      id: str(input.principal_id) ?? requesterUserId,
+      id: requesterUserId,
       type: str(input.principal_type) ?? 'user',
       roles: stringList(input.principal_roles),
     },
@@ -78,14 +86,15 @@ export async function registerGuardDecision(args: RegisterGuardArgs): Promise<Ex
     const approvalId = decision.approval?.id;
     if (!approvalId) return { guardDecisionId: decision.decisionId };
 
-    void notifyApprovalRequested(policyTenantId(args.policy), {
+    const payload = {
       tenantId: policyTenantId(args.policy),
       decisionId: decision.decisionId,
       approvalId,
       policyId: args.policy.id,
       policyName: args.policy.name,
       requiredRole: decision.approval?.requiredRole ?? null,
-    });
+    };
+    runAfterResponse(() => notifyApprovalRequested(args.policy.userId, payload));
     return { guardDecisionId: decision.decisionId, guardApprovalId: approvalId };
   } catch (err) {
     console.error('[guard-register] from-evidence failed', { policyId: args.policy.id, correlationId, err });
@@ -94,7 +103,8 @@ export async function registerGuardDecision(args: RegisterGuardArgs): Promise<Ex
 }
 
 /**
- * 先装配客户端再登记：客户端装配（现查业务角色）失败同样降级为 guardError，保证调用方永不因此抛错。
+ * 先校验租户成员、再装配客户端、最后登记：任一步失败都降级为 guardError，保证调用方永不因此抛错。
+ * 执行人不属于策略租户（公开/共享策略的外部执行人）→ not_tenant_member，不开决策、不发通知。
  */
 export async function registerGuardDecisionWith(
   createClient: () => Promise<PolicyApiClient>,
@@ -103,12 +113,39 @@ export async function registerGuardDecisionWith(
   if (!args.result.metadata.evidenceCorrelationId) return { guardError: 'no_evidence' };
   let client: PolicyApiClient;
   try {
+    if (!(await isPolicyTenantMember(args.requesterUserId, args.policy))) {
+      return { guardError: 'not_tenant_member' };
+    }
     client = await createClient();
   } catch (err) {
     console.error('[guard-register] client setup failed', { policyId: args.policy.id, err });
     return { guardError: 'client_error' };
   }
   return registerGuardDecision({ ...args, client });
+}
+
+/**
+ * 执行行先落库、再登记、再回写 metadata（ADR 0042 §5.1）：api 挂起或实例被回收都不会丢执行行及其链锚，
+ * 最坏结果只是 metadata 仍为 null。插入失败（无行可更）则不登记。永不抛错。
+ */
+export async function registerGuardAfterInsert(
+  executionInsert: Promise<unknown>,
+  executionId: string,
+  register: () => Promise<ExecutionMetadata>
+): Promise<ExecutionMetadata | null> {
+  try {
+    await executionInsert;
+  } catch {
+    // 插入失败由调用方的写入聚合记日志；此处只放弃登记
+    return null;
+  }
+  const metadata = await register();
+  try {
+    await db.update(executions).set({ metadata }).where(eq(executions.id, executionId));
+  } catch (err) {
+    console.error('[guard-register] metadata update failed', { executionId, err });
+  }
+  return metadata;
 }
 
 /** 执行决策是否需要开 guard 决策。 */

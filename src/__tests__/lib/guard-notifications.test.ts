@@ -41,10 +41,9 @@ describe('notifyApprovalRequested', () => {
   });
 
   it('团队租户：只查持有 requiredRole 的成员并逐个通知', async () => {
-    h.teamFind.mockResolvedValue({ id: 'team-1' });
     h.membersFind.mockResolvedValue([{ userId: 'u-dpo' }, { userId: 'u-dpo2' }]);
 
-    await notifyApprovalRequested('team-1', payload);
+    await notifyApprovalRequested('owner-1', payload);
 
     expect(h.membersFind).toHaveBeenCalledWith(expect.objectContaining({
       where: { and: [{ eq: ['teamId', 'team-1'] }, { arrayContains: ['businessRoles', ['DPO']] }] },
@@ -56,27 +55,25 @@ describe('notifyApprovalRequested', () => {
   });
 
   it('ESCALATE（requiredRole=null）：团队全员', async () => {
-    h.teamFind.mockResolvedValue({ id: 'team-1' });
     h.membersFind.mockResolvedValue([{ userId: 'u1' }]);
 
-    await notifyApprovalRequested('team-1', { ...payload, requiredRole: null });
+    await notifyApprovalRequested('owner-1', { ...payload, requiredRole: null });
 
     expect(h.membersFind).toHaveBeenCalledWith(expect.objectContaining({ where: { eq: ['teamId', 'team-1'] } }));
     expect(h.createNotification).toHaveBeenCalledTimes(1);
   });
 
-  it('个人租户：只通知本人，不查成员', async () => {
-    h.teamFind.mockResolvedValue(undefined);
-
+  it('个人租户（tenantId = 所有者 id，与业务角色同一判定）：只通知所有者，不查团队与成员', async () => {
     await notifyApprovalRequested('user-1', { ...payload, tenantId: 'user-1' });
 
+    expect(h.teamFind).not.toHaveBeenCalled();
     expect(h.membersFind).not.toHaveBeenCalled();
     expect(h.createNotification).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-1' }));
   });
 
   it('查询失败不抛', async () => {
-    h.teamFind.mockRejectedValue(new Error('db down'));
-    await expect(notifyApprovalRequested('team-1', payload)).resolves.toBeUndefined();
+    h.membersFind.mockRejectedValue(new Error('db down'));
+    await expect(notifyApprovalRequested('owner-1', payload)).resolves.toBeUndefined();
   });
 });
 
@@ -90,7 +87,7 @@ describe('notifyApprovalDecided', () => {
 
   it('按 metadata.guardDecisionId 反查发起执行，通知其 userId 并带策略名', async () => {
     h.execFind.mockResolvedValue({ userId: 'u-req', policyId: 'p1' });
-    h.policyFind.mockResolvedValue({ name: 'Refunds' });
+    h.policyFind.mockResolvedValue({ name: 'Refunds', teamId: 'team-1', userId: 'owner-1' });
 
     await notifyApprovalDecided(decided);
 
@@ -102,6 +99,25 @@ describe('notifyApprovalDecided', () => {
       kind: 'guard.approval_decided',
       data: { ...decided, policyId: 'p1', policyName: 'Refunds' },
     });
+  });
+
+  it('策略不属于审批所在租户 → 视为查不到，不通知', async () => {
+    h.execFind.mockResolvedValue({ userId: 'u-req', policyId: 'p1' });
+    h.policyFind.mockResolvedValue({ name: 'Refunds', teamId: 'team-other', userId: 'owner-1' });
+    await notifyApprovalDecided(decided);
+    expect(h.createNotification).not.toHaveBeenCalled();
+
+    // 个人策略：租户 = 所有者 id，与 team-1 不符
+    h.policyFind.mockResolvedValue({ name: 'Refunds', teamId: null, userId: 'owner-1' });
+    await notifyApprovalDecided(decided);
+    expect(h.createNotification).not.toHaveBeenCalled();
+  });
+
+  it('个人策略且审批租户 = 所有者 id → 通知', async () => {
+    h.execFind.mockResolvedValue({ userId: 'owner-1', policyId: 'p1' });
+    h.policyFind.mockResolvedValue({ name: 'Mine', teamId: null, userId: 'owner-1' });
+    await notifyApprovalDecided({ ...decided, tenantId: 'owner-1' });
+    expect(h.createNotification).toHaveBeenCalledWith(expect.objectContaining({ userId: 'owner-1' }));
   });
 
   it('查不到发起执行 → 不通知', async () => {

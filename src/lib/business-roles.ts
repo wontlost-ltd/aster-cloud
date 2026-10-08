@@ -6,6 +6,7 @@
  */
 import { and, eq } from 'drizzle-orm';
 import { db, users, teamMembers } from '@/lib/prisma';
+import { isPersonalTenant, policyTenantId } from '@/lib/policy-tenant';
 
 // 可打印 ASCII（0x20–0x7E）去掉逗号（0x2C），1–64 字符：角色会作为 HTTP 头下发（只能是 Latin-1 子集），
 // 且 aster-api 在 X-User-Business-Roles 头与 HMAC canonical 中以逗号拼接多个角色，含逗号会被拆错
@@ -38,7 +39,7 @@ export function normalizeBusinessRoles(input: unknown): string[] {
 
 /** 当前用户在某租户的已验证角色：个人租户（tenantId === userId）读 User，团队读 TeamMember；无行 → []。 */
 export async function loadBusinessRoles(userId: string, tenantId: string): Promise<string[]> {
-  if (tenantId === userId) {
+  if (isPersonalTenant(tenantId, userId)) {
     const u = await db.query.users.findFirst({ where: eq(users.id, userId), columns: { businessRoles: true } });
     return u?.businessRoles ?? [];
   }
@@ -47,4 +48,21 @@ export async function loadBusinessRoles(userId: string, tenantId: string): Promi
     columns: { businessRoles: true },
   });
   return m?.businessRoles ?? [];
+}
+
+/**
+ * 执行人是否属于策略租户（ADR 0042 §5.1）：个人策略只有所有者本人，团队策略须有该团队的成员行。
+ * 公开/共享策略的租户外执行人不得在他人租户开审批（否则可无限制地向对方租户写入待审批与通知）。
+ */
+export async function isPolicyTenantMember(
+  userId: string,
+  policy: { teamId: string | null; userId: string }
+): Promise<boolean> {
+  const tenantId = policyTenantId(policy);
+  if (!policy.teamId) return isPersonalTenant(tenantId, userId);
+  const m = await db.query.teamMembers.findFirst({
+    where: and(eq(teamMembers.teamId, tenantId), eq(teamMembers.userId, userId)),
+    columns: { id: true },
+  });
+  return Boolean(m);
 }

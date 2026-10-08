@@ -84,6 +84,12 @@ describe('日志页 guard 入口', () => {
     await waitFor(() => expect(screen.getByText('Pending approval · View').getAttribute('href')).toContain('decisionId=d9'));
   });
 
+  it('guardError=no_evidence（重试永不成功）→ 不渲染重新登记按钮', () => {
+    renderWith([mkLog('e4', { guardError: 'no_evidence' })]);
+    expect(screen.queryByText('Register again')).toBeNull();
+    expect(screen.queryByText('Pending approval · View')).toBeNull();
+  });
+
   it('无 metadata → 不渲染链接或按钮', () => {
     renderWith([mkLog('e3', null)]);
     expect(screen.queryByText('Pending approval · View')).toBeNull();

@@ -21,7 +21,13 @@ vi.mock('drizzle-orm', () => ({
   and: (...c: unknown[]) => ({ op: 'and', c }),
 }));
 
-import { normalizeBusinessRoles, loadBusinessRoles, BusinessRoleError, MAX_BUSINESS_ROLES } from '@/lib/business-roles';
+import {
+  normalizeBusinessRoles,
+  loadBusinessRoles,
+  isPolicyTenantMember,
+  BusinessRoleError,
+  MAX_BUSINESS_ROLES,
+} from '@/lib/business-roles';
 
 describe('normalizeBusinessRoles', () => {
   it('trim、去重保序、上限 16', () => {
@@ -81,5 +87,36 @@ describe('loadBusinessRoles', () => {
     m.teamMembersFindFirst.mockResolvedValue(undefined);
     expect(await loadBusinessRoles('u1', 'u1')).toEqual([]);
     expect(await loadBusinessRoles('u1', 't1')).toEqual([]);
+  });
+});
+
+describe('isPolicyTenantMember', () => {
+  beforeEach(() => {
+    m.usersFindFirst.mockReset();
+    m.teamMembersFindFirst.mockReset();
+  });
+
+  it('个人策略：只有所有者本人是租户成员，不查库', async () => {
+    const policy = { teamId: null, userId: 'owner-1' };
+    expect(await isPolicyTenantMember('owner-1', policy)).toBe(true);
+    expect(await isPolicyTenantMember('outsider-1', policy)).toBe(false);
+    // teamId 空串与 policyTenantId 同口径，视同个人策略
+    expect(await isPolicyTenantMember('owner-1', { teamId: '', userId: 'owner-1' })).toBe(true);
+    expect(m.teamMembersFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('团队策略：按 (teamId, userId) 查成员行；所有者不再是成员同样不算', async () => {
+    const policy = { teamId: 'team-1', userId: 'owner-1' };
+    m.teamMembersFindFirst.mockResolvedValueOnce({ id: 'tm-1' });
+    expect(await isPolicyTenantMember('u-1', policy)).toBe(true);
+    expect(m.teamMembersFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { op: 'and', c: [
+        { op: 'eq', col: 'teamMembers.teamId', val: 'team-1' },
+        { op: 'eq', col: 'teamMembers.userId', val: 'u-1' },
+      ] },
+    }));
+
+    m.teamMembersFindFirst.mockResolvedValueOnce(undefined);
+    expect(await isPolicyTenantMember('owner-1', policy)).toBe(false);
   });
 });

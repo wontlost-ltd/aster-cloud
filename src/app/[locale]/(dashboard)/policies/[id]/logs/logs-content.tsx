@@ -259,7 +259,10 @@ function parityLabel(status: string, t: Translations): string {
 
 const GUARD_PILL = 'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset';
 
-/** 状态徽章旁的 guard 入口：有决策 id → 收件箱链接；有 guardError → 重新登记按钮；其余不渲染。 */
+/** 重试永远不会成功的登记错误：无证据锚（no_evidence）的行不给重新登记按钮。 */
+const NON_RETRYABLE_GUARD_ERRORS = new Set(['no_evidence']);
+
+/** 状态徽章旁的 guard 入口：有决策 id → 收件箱链接；有可重试的 guardError → 重新登记按钮；其余不渲染。 */
 function GuardAction({
   log,
   policyId,
@@ -295,7 +298,7 @@ function GuardAction({
       </Link>
     );
   }
-  if (!meta?.guardError) return null;
+  if (!meta?.guardError || NON_RETRYABLE_GUARD_ERRORS.has(meta.guardError)) return null;
   return (
     <button
       type="button"

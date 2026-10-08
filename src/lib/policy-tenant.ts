@@ -5,3 +5,11 @@
 export function policyTenantId(policy: { teamId: string | null; userId: string }): string {
   return policy.teamId || policy.userId;
 }
+
+/**
+ * 是否个人租户：个人租户 id 即其所有者 userId（与 policyTenantId 的口径一致）。
+ * 业务角色读取与待审批收件人判定共用此规则，避免两处判定漂移。
+ */
+export function isPersonalTenant(tenantId: string, userId: string): boolean {
+  return tenantId === userId;
+}

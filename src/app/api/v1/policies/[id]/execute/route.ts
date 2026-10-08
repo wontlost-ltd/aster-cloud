@@ -8,7 +8,7 @@ import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
 import { executePolicyUnified, getPrimaryError, deriveExecutionDecision, deriveExecutionOutcome, detectCNLLocale } from '@/services/policy/cnl-executor';
 import { buildReplayColumns, buildEvidenceColumns } from '@/lib/policy-execution-log';
 import { policyTenantId } from '@/lib/policy-tenant';
-import { needsGuardDecision, registerGuardDecisionWith } from '@/lib/guard-register';
+import { needsGuardDecision, registerGuardAfterInsert, registerGuardDecisionWith } from '@/lib/guard-register';
 import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
 import { parseAgentIdentity } from '@/services/policy/policy-api';
 import { maybeRunParityForExecution, RUNNER_LAUNCHER_HMAC_ROLE } from '@/services/policy/runner-parity-from-execution';
@@ -262,19 +262,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     const primaryError = getPrimaryError(executionResult);
     const durationMs = Date.now() - startTime;
 
-    // 需审批/升级的执行以证据锚定开 guard 决策（ADR 0042 §5.1），以 API key 持有者及其在策略租户的业务角色调用；
-    // 失败只记 guardError，执行行照常写入，日志页可重新登记。
     const decision = deriveExecutionDecision(executionResult);
-    const guardMeta = needsGuardDecision(decision)
-      ? await registerGuardDecisionWith(() => createPolicyApiClientForUser(policyTenantId(policy), userId), {
-          policy: { id: policy.id, name: policy.name, teamId: policy.teamId, userId: policy.userId },
-          functionName: executionResult.executedFunction ?? policy.name,
-          input: validatedInput,
-          agent: agent,
-          result: executionResult,
-          requesterUserId: userId,
-        })
-      : {};
 
     // 回放地基（ADR 0030）：aster-api 权威 replayMetadata + 不可变版本引用 → Execution 回放列。
     // aliasSetJson：有别名写解析后的 set，无别名写 {}（captured-no-alias≠null uncaptured）；
@@ -314,7 +302,8 @@ export async function POST(req: Request, { params }: RouteParams) {
       ...buildEvidenceColumns(executionResult.metadata, agent),
       // 回放列（ADR 0030 附录 A）。
       ...replayColumns,
-      metadata: Object.keys(guardMeta).length ? guardMeta : null,
+      // guard 登记在本行落库之后进行，metadata 由登记结果回写（见下方 registerGuardAfterInsert）
+      metadata: null,
     }));
     const writePromise = Promise.all([
       executionInsertPromise,
@@ -331,6 +320,22 @@ export async function POST(req: Request, { params }: RouteParams) {
           set: { count: sql`${usageRecords.count} + 1`, updatedAt: now },
         }),
     ]).catch(err => console.error('Failed to record execution:', err));
+
+    // 需审批/升级的执行以证据锚定开 guard 决策（ADR 0042 §5.1），以 API key 持有者及其在策略租户的业务角色调用。
+    // 先等执行行落库再登记、再回写 metadata：api 挂起（guard 专用 8 s 超时）也不会丢执行行；
+    // 失败只记 guardError，日志页可重新登记。
+    if (needsGuardDecision(decision)) {
+      await registerGuardAfterInsert(executionInsertPromise, executionId, () =>
+        registerGuardDecisionWith(() => createPolicyApiClientForUser(policyTenantId(policy), userId), {
+          policy: { id: policy.id, name: policy.name, teamId: policy.teamId, userId: policy.userId },
+          functionName: executionResult.executedFunction ?? policy.name,
+          input: validatedInput,
+          agent: agent,
+          result: executionResult,
+          requesterUserId: userId,
+        })
+      );
+    }
 
     // runner-parity 影子校验（PR-3）：flag 三模式 → waitUntil 后台跑，绝不阻塞响应/不影响决策。
     //   复用已在手的权威侧 A，只真跑 side-B launcher，回写 parity 列。★链在 execution INSERT 成功之后。

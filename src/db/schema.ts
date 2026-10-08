@@ -926,6 +926,10 @@ export const executions = pgTable(
     index('Execution_runnerParityStatus_idx')
       .on(table.runnerParityStatus)
       .where(sql`${table.runnerParityStatus} IS NOT NULL`),
+    // guard 决策反查发起执行（ADR 0042 §5.3，迁移 0052）：表达式部分索引，只收录已登记决策的行。
+    index('Execution_guardDecisionId_idx')
+      .on(sql`(${table.metadata}->>'guardDecisionId')`)
+      .where(sql`${table.metadata}->>'guardDecisionId' IS NOT NULL`),
   ]
 );
 
