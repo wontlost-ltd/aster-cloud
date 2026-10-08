@@ -45,7 +45,7 @@ export async function invalidatePlanCacheForOwner(ownerId: string): Promise<void
  *   - 用户主动撤销 key（API key DELETE）
  *   - subscription 被 Stripe 删除
  *
- * 与 plan-cache 同样的 fail-open 策略：失败由 5 min TTL 兜底。
+ * 与 plan-cache 同样的 fail-open 策略：失败由 aster-api verify 本地缓存的 60 s TTL 兜底。
  */
 export async function invalidateApiKeyCache(userId: string): Promise<void> {
   await callInvalidate(`/api/internal/apikey-cache/${userId}`, 'apikey-cache', userId);

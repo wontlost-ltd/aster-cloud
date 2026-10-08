@@ -85,12 +85,12 @@ export function buildDunningEmail(
     case 7:
       return {
         subject: '[Aster] URGENT: ' + graceDaysLeft + ' days until service interruption',
-        body: `${greeting}\n\nOur 3rd attempt to charge ${amountDue} failed. Your account will be downgraded to Free in ${graceDaysLeft} days unless payment is resolved.\n\nWhen downgraded:\n• API access will be disabled\n• AI features will be limited to Free quota\n• Your policies and data will be preserved (read-only) for 30 days\n\nResolve now: ${portalUrl}\n\n— Aster Team`,
+        body: `${greeting}\n\nOur 3rd attempt to charge ${amountDue} failed. Your account will be downgraded to Free in ${graceDaysLeft} days unless payment is resolved.\n\nWhen downgraded:\n• Personal API access will be disabled\n• AI features will be limited to Free quota\n• Your policies and data will be preserved (read-only) for 30 days\n\nResolve now: ${portalUrl}\n\n— Aster Team`,
       };
     case 14:
       return {
         subject: '[Aster] FINAL NOTICE: Service downgrade in 7 days',
-        body: `${greeting}\n\nThis is the final reminder. Despite multiple retry attempts, ${amountDue} remains unpaid. Your account will be downgraded to Free on the day after tomorrow if payment is not resolved.\n\nWhat happens at downgrade:\n• Pro/Team features disabled immediately\n• API keys deactivated\n• Data preserved read-only for 30 days\n• Unpaid amounts remain due (Stripe collections may apply)\n\nResolve immediately: ${portalUrl}\n\nIf you've decided to cancel, no action needed — downgrade happens automatically.\n\n— Aster Team`,
+        body: `${greeting}\n\nThis is the final reminder. Despite multiple retry attempts, ${amountDue} remains unpaid. Your account will be downgraded to Free on the day after tomorrow if payment is not resolved.\n\nWhat happens at downgrade:\n• Pro/Team features disabled immediately\n• Personal API keys deactivated\n• Data preserved read-only for 30 days\n• Unpaid amounts remain due (Stripe collections may apply)\n\nResolve immediately: ${portalUrl}\n\nIf you've decided to cancel, no action needed — downgrade happens automatically.\n\n— Aster Team`,
       };
   }
 }

@@ -6,7 +6,7 @@
  *   - grace 已到期 + 仍 past_due → 降级到 free
  *   - 重复运行 cron（已是 free 用户）→ 不重复操作（幂等）
  *   - downgradedAt 写入时间戳（30 天恢复窗口起点）
- *   - apiKeys 全部 active=false
+ *   - 只吊销个人 apiKeys，团队 key 不动（路由级断言见 api/cron/auto-downgrade.test.ts）
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 

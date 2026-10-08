@@ -124,6 +124,12 @@ describe('buildDunningEmail', () => {
     expect(e.body).toContain('Stripe collections');
   });
 
+  // 降级只吊销个人 key，团队 key 随团队 owner 套餐（ADR 0015 §5），预告文案不能说成全部 API 访问
+  it('Day 7 / Day 14 预告的是个人 API 访问 / 个人 key', () => {
+    expect(buildDunningEmail(7, 'Erin', 14, '$20', portal).body).toContain('• Personal API access will be disabled');
+    expect(buildDunningEmail(14, 'Erin', 7, '$20', portal).body).toContain('• Personal API keys deactivated');
+  });
+
   it('文案不暴露内部规则 id 或工程术语', () => {
     const e = buildDunningEmail(7, 'X', 10, '$20', portal);
     expect(e.body).not.toContain('shouldSendStage');

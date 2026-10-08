@@ -5,7 +5,8 @@
  *   - plan = 'free'
  *   - subscriptionStatus = 'canceled'
  *   - downgradedAt = now（30 天恢复窗口起点）
- *   - 禁用所有 apiKeys（active=false）
+ *   - 吊销其个人 apiKeys（revokedAt = now）；团队 key 不动——其门槛随团队 owner 的套餐，
+ *     由身份解析器 / precheck 判定，成员本人降级不能把它永久吊销（ADR 0015 §5）
  *   - 写 audit log + 发降级邮件
  *
  * 数据保留：已发布 policy 不删，30 天内重新付款可恢复（GDPR cleanup cron 60 天后才动手）
@@ -26,6 +27,7 @@ interface DowngradeResult {
   userId: string;
   email: string;
   plan: string;
+  /** 本次吊销的个人 key 数（teamId IS NULL）；团队 key 不在其内 */
   apiKeysDisabled: number;
   notified: boolean;
 }
@@ -71,11 +73,12 @@ export async function GET(request: NextRequest) {
       })
       .where(eq(users.id, u.id));
 
-    // 2. 撤销所有未撤销的 apiKeys（revokedAt = now）
+    // 2. 撤销该用户未撤销的个人 apiKeys（revokedAt = now）。团队 key 计入团队 owner 的池、
+    //    门槛随 owner 套餐，成员个人套餐到期不影响它（ADR 0015 §5）
     const disabledKeys = await db
       .update(apiKeys)
       .set({ revokedAt: now })
-      .where(and(eq(apiKeys.userId, u.id), isNull(apiKeys.revokedAt)))
+      .where(and(eq(apiKeys.userId, u.id), isNull(apiKeys.revokedAt), isNull(apiKeys.teamId)))
       .returning({ id: apiKeys.id });
 
     // 3. audit log
@@ -87,6 +90,7 @@ export async function GET(request: NextRequest) {
       resourceId: u.id,
       metadata: {
         previous_plan: u.plan,
+        // 被吊销的个人 key 数（团队 key 不吊销，不计入）
         api_keys_disabled: disabledKeys.length,
         grace_period_ends_at: u.gracePeriodEndsAt?.toISOString(),
       },
@@ -100,7 +104,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 5. 邀失效 aster-api 端的 apikey 缓存
-    // DB 已把 revokedAt 写入；让 aster-api 的 5min Caffeine 立即放弃旧值
+    // DB 已把 revokedAt 写入；让 aster-api 的 60 s verify 本地缓存立即放弃旧值
     try {
       await invalidateApiKeyCache(u.id);
     } catch {
@@ -128,7 +132,7 @@ export async function GET(request: NextRequest) {
             `Despite multiple retry attempts, payment for your ${u.plan} plan was not resolved. ` +
             `Your account has been automatically downgraded to Free.\n\n` +
             `What this means:\n` +
-            `• API access has been disabled\n` +
+            `• Personal API access has been disabled\n` +
             `• AI features now run on Free quota\n` +
             `• Your policies and data are preserved (read-only) for 30 days\n` +
             `• Outstanding invoices remain due (Stripe may continue collection)\n\n` +
