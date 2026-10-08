@@ -29,6 +29,12 @@ function push(out: Map<string, Reviewer[]>, key: string, reviewer: Reviewer): vo
   out.set(key, list);
 }
 
+/**
+ * 按版本取 PolicyProof 复核者（每版本内每节点取最新结论）。
+ *
+ * ★租户前置条件：PolicyProof 表没有租户列，本函数不做租户过滤；
+ * 调用方必须只传入取自「已按租户过滤的 executions」的 policyVersionRowId。
+ */
 export async function loadProofReviewers(policyVersionRowIds: string[]): Promise<Map<string, Reviewer[]>> {
   const out = new Map<string, Reviewer[]>();
   if (policyVersionRowIds.length === 0) return out;
@@ -57,6 +63,12 @@ export async function loadProofReviewers(policyVersionRowIds: string[]): Promise
   return out;
 }
 
+/**
+ * 按版本取 PolicyApproval 版本审批人。
+ *
+ * ★租户前置条件：PolicyApproval 表没有租户列，本函数不做租户过滤；
+ * 调用方必须只传入取自「已按租户过滤的 executions」的 policyVersionRowId。
+ */
 export async function loadVersionApprovalReviewers(policyVersionRowIds: string[]): Promise<Map<string, Reviewer[]>> {
   const out = new Map<string, Reviewer[]>();
   if (policyVersionRowIds.length === 0) return out;

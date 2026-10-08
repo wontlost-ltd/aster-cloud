@@ -4,6 +4,8 @@
  * 分批 200、并发 4、每批 2 s 超时；非 2xx / 超时 / 网络错 ⇒ 该批 id 整体记入 unavailable。
  * 不重试、不伪造：取不到就如实标「不可用」，由证据包上层决定如何呈现。
  */
+import 'server-only';
+
 import { signInternalCallerHeaders } from '@/lib/api-signing';
 import { getApiConfig } from '@/services/policy/policy-api';
 
@@ -37,7 +39,8 @@ export type ReceiptLookup = {
   unavailable: Set<string>;
 };
 
-export const RECEIPT_BATCH = 200;
+// 50：200 个 UUID 级 id 的查询串会超出 Quarkus 默认 4096 字节请求行上限。
+export const RECEIPT_BATCH = 50;
 export const RECEIPT_TIMEOUT_MS = 2000;
 export const RECEIPT_CONCURRENCY = 4;
 
@@ -49,7 +52,6 @@ const CALLER_ROLE = 'member';
 type LookupParam = 'correlationIds' | 'decisionIds';
 // 线上响应里的收据带回请求键（correlationId / decisionId），对外类型不暴露它。
 type WireReceipt = ChainReceipt & { correlationId?: string; decisionId?: string };
-type WireBody = { receipts?: WireReceipt[]; approvals?: ChainApproval[]; missing?: string[] };
 
 const KEY_OF: Record<LookupParam, 'correlationId' | 'decisionId'> = {
   correlationIds: 'correlationId',
@@ -102,18 +104,20 @@ async function fetchBatch(
   fetchImpl: typeof fetch,
   out: ReceiptLookup,
 ): Promise<void> {
+  // 用 AbortController + setTimeout 而非 AbortSignal.timeout：后者不受 vitest 假定时器控制。
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), RECEIPT_TIMEOUT_MS);
   try {
     const url = `${getApiConfig().baseUrl}${PATH}?${param}=${encodeURIComponent(batch.join(','))}`;
     const headers = await buildHeaders(tenantId);
-    const res = await fetchImpl(url, { headers, signal: AbortSignal.timeout(RECEIPT_TIMEOUT_MS) });
-    if (!res.ok) {
-      markUnavailable(out, batch);
-      return;
-    }
-    mergeBody(out, KEY_OF[param], (await res.json()) as WireBody);
+    const res = await fetchImpl(url, { headers, signal: ac.signal });
+    if (!res.ok) throw new Error(`receipts HTTP ${res.status}`);
+    commitBatch(out, parseBatch(KEY_OF[param], batch, await res.json()));
   } catch {
-    // 超时（AbortSignal.timeout ⇒ TimeoutError）、网络错、响应非 JSON：整批记不可用，不重试。
+    // 超时、网络错、非 2xx、响应畸形：整批记不可用，不重试；parseBatch 先于提交，故不会有部分写入。
     markUnavailable(out, batch);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -121,19 +125,53 @@ function markUnavailable(out: ReceiptLookup, batch: string[]): void {
   for (const id of batch) out.unavailable.add(id);
 }
 
-function mergeBody(out: ReceiptLookup, key: 'correlationId' | 'decisionId', body: WireBody): void {
-  for (const wire of body.receipts ?? []) {
-    const id = wire[key];
-    if (!id) continue;
-    const { correlationId: _c, decisionId: _d, ...receipt } = wire;
-    out.receipts.set(id, receipt);
+type BatchResult = { receipts: Map<string, ChainReceipt>; approvals: ChainApproval[]; missing: string[] };
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function arrayField(body: Record<string, unknown>, field: string): unknown[] {
+  const v = body[field] ?? [];
+  if (!Array.isArray(v)) throw new Error(`receipts body: ${field} is not an array`);
+  return v;
+}
+
+/**
+ * 把一批响应解析为本地结果；畸形即抛错（尚未触碰 out）。
+ * 只认本批请求过的 id：missing = 本批 id − 收到收据的 id（不采信服务端 missing 列表），
+ * 故 receipts / missing / unavailable 三集合按构造互斥。
+ */
+function parseBatch(key: 'correlationId' | 'decisionId', batch: string[], body: unknown): BatchResult {
+  if (!isRecord(body)) throw new Error('receipts body is not an object');
+  const wanted = new Set(batch);
+  const receipts = new Map<string, ChainReceipt>();
+  for (const item of arrayField(body, 'receipts')) {
+    if (!isRecord(item)) throw new Error('receipt is not an object');
+    const { correlationId, decisionId, ...receipt } = item as WireReceipt;
+    const id = key === 'correlationId' ? correlationId : decisionId;
+    if (typeof id === 'string' && wanted.has(id)) receipts.set(id, receipt);
   }
-  for (const a of body.approvals ?? []) {
+  // 审批按 decisionId 归属：只保留本批请求过的 decisionId（即仅 decisionIds 查询有意义）。
+  const approvals: ChainApproval[] = [];
+  for (const item of arrayField(body, 'approvals')) {
+    if (!isRecord(item)) throw new Error('approval is not an object');
+    const a = item as ChainApproval;
+    if (typeof a.decisionId === 'string' && wanted.has(a.decisionId)) approvals.push(a);
+  }
+  arrayField(body, 'missing');
+  const missing = batch.filter((id) => !receipts.has(id));
+  return { receipts, approvals, missing };
+}
+
+function commitBatch(out: ReceiptLookup, result: BatchResult): void {
+  for (const [id, r] of result.receipts) out.receipts.set(id, r);
+  for (const a of result.approvals) {
     const list = out.approvals.get(a.decisionId) ?? [];
     list.push(a);
     out.approvals.set(a.decisionId, list);
   }
-  for (const m of body.missing ?? []) out.missing.add(m);
+  for (const id of result.missing) out.missing.add(id);
 }
 
 /** 有界并发：同一时刻最多 limit 个任务在跑；任务自身吞掉错误、永不抛出。 */

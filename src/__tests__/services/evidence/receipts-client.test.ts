@@ -4,6 +4,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+// server-only 由 Next 构建期别名提供（未作为依赖安装），测试中以空模块替代。
+vi.mock('server-only', () => ({}));
+
 vi.mock('@/lib/api-signing', () => ({
   signInternalCallerHeaders: vi.fn(async () => ({
     'X-Aster-Caller': 'aster-cloud',
@@ -55,7 +58,7 @@ describe('receipts-client', () => {
     delete process.env.ASTER_POLICY_API_INTERNAL_URL;
   });
 
-  it('450 个 id 分 3 批、每批 ≤ 200、在途并发 ≤ 4', async () => {
+  it('450 个 id 分 9 批、每批 ≤ 50、在途并发 ≤ 4', async () => {
     let inFlight = 0;
     let peak = 0;
     const sizes: number[] = [];
@@ -71,7 +74,8 @@ describe('receipts-client', () => {
 
     const out = await fetchReceipts('t-1', ids(450), fetchImpl);
 
-    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(RECEIPT_BATCH).toBe(50);
+    expect(fetchImpl).toHaveBeenCalledTimes(9);
     expect(sizes.every((s) => s <= RECEIPT_BATCH)).toBe(true);
     expect(sizes.reduce((a, b) => a + b, 0)).toBe(450);
     expect(peak).toBeLessThanOrEqual(4);
@@ -80,7 +84,7 @@ describe('receipts-client', () => {
     expect(out.unavailable.size).toBe(0);
   });
 
-  it('超过 4 批时在途并发仍 ≤ 4', async () => {
+  it('1500 个 id（30 批）在途并发峰值恰为 4', async () => {
     let inFlight = 0;
     let peak = 0;
     const fetchImpl = (async (url: string | URL | Request) => {
@@ -91,7 +95,10 @@ describe('receipts-client', () => {
       return okFor(batchOf(String(url)));
     }) as unknown as typeof fetch;
 
-    const out = await fetchReceipts('t-1', ids(1500), fetchImpl);
+    let calls = 0;
+    const counted = ((u: string | URL | Request) => (calls++, fetchImpl(u))) as unknown as typeof fetch;
+    const out = await fetchReceipts('t-1', ids(1500), counted);
+    expect(calls).toBe(30);
     expect(peak).toBe(4);
     expect(out.receipts.size).toBe(1500);
   });
@@ -104,8 +111,8 @@ describe('receipts-client', () => {
     }) as unknown as typeof fetch;
 
     const out = await fetchReceipts('t-1', ids(450), fetchImpl);
-    expect(out.unavailable.size).toBe(200);
-    expect(out.receipts.size).toBe(250);
+    expect(out.unavailable.size).toBe(50);
+    expect(out.receipts.size).toBe(400);
     for (const id of out.unavailable) expect(out.receipts.has(id)).toBe(false);
   });
 
@@ -119,6 +126,8 @@ describe('receipts-client', () => {
   });
 
   it('超时（fetch 永不 resolve）⇒ unavailable', async () => {
+    // 假定时器也会接管 performance.now，故先绑定真实时钟再开启假定时器。
+    const realNow = performance.now.bind(performance);
     vi.useFakeTimers();
     // 永不自行 resolve；仅在 abort 信号触发时以 AbortError 拒绝（模拟真实 fetch 行为）。
     const fetchImpl = ((_url: string | URL | Request, init?: RequestInit) =>
@@ -126,9 +135,14 @@ describe('receipts-client', () => {
         init?.signal?.addEventListener('abort', () => reject(init.signal!.reason));
       })) as unknown as typeof fetch;
 
+    const t0 = realNow();
     const pending = fetchReceipts('t-1', ids(2), fetchImpl);
     await vi.advanceTimersByTimeAsync(RECEIPT_TIMEOUT_MS + 10);
     const out = await pending;
+    const elapsed = realNow() - t0;
+    // 证明超时由假定时器驱动，而非真实等待 2 s。
+    console.info(`[timeout-test] real elapsed ${elapsed.toFixed(1)} ms`);
+    expect(elapsed).toBeLessThan(100);
     expect([...out.unavailable].sort()).toEqual(['c-0', 'c-1']);
     expect(out.receipts.size).toBe(0);
   });
@@ -148,6 +162,57 @@ describe('receipts-client', () => {
     expect(out.receipts.has('c-0')).toBe(true);
     expect([...out.missing]).toEqual(['c-1']);
     expect(out.unavailable.size).toBe(0);
+  });
+
+  it('服务端把同一 id 同时列入 receipts 与 missing ⇒ 收据优先', async () => {
+    const fetchImpl = (async () =>
+      jsonResponse({
+        receipts: [{
+          auditId: 1, correlationId: 'c-0', currentHash: 'h', prevHash: null, hashVersion: 2,
+          eventType: 'POLICY_EVALUATION', timestamp: '2026-10-01T00:00:00Z', metadata: {},
+        }],
+        approvals: [],
+        missing: ['c-0'],
+      })) as unknown as typeof fetch;
+    const out = await fetchReceipts('t-1', ['c-0'], fetchImpl);
+    expect(out.receipts.has('c-0')).toBe(true);
+    expect(out.missing.has('c-0')).toBe(false);
+  });
+
+  it('服务端两边都未列出的 id ⇒ missing；批外 id 被忽略', async () => {
+    const fetchImpl = (async () =>
+      jsonResponse({
+        receipts: [{
+          auditId: 1, correlationId: 'stranger', currentHash: 'h', prevHash: null, hashVersion: 2,
+          eventType: 'POLICY_EVALUATION', timestamp: '2026-10-01T00:00:00Z', metadata: {},
+        }],
+        approvals: [],
+        missing: ['other'],
+      })) as unknown as typeof fetch;
+    const out = await fetchReceipts('t-1', ['c-0'], fetchImpl);
+    expect([...out.missing]).toEqual(['c-0']);
+    expect(out.receipts.size).toBe(0);
+    expect(out.unavailable.size).toBe(0);
+  });
+
+  it('响应畸形 ⇒ 整批 unavailable，不泄漏部分收据', async () => {
+    const fetchImpl = (async () =>
+      jsonResponse({
+        receipts: [{
+          auditId: 1, correlationId: 'c-0', currentHash: 'h', prevHash: null, hashVersion: 2,
+          eventType: 'POLICY_EVALUATION', timestamp: '2026-10-01T00:00:00Z', metadata: {},
+        }],
+        approvals: 'not-an-array',
+        missing: [],
+      })) as unknown as typeof fetch;
+    const out = await fetchReceipts('t-1', ['c-0', 'c-1'], fetchImpl);
+    expect([...out.unavailable].sort()).toEqual(['c-0', 'c-1']);
+    expect(out.receipts.size).toBe(0);
+    expect(out.missing.size).toBe(0);
+
+    const notArray = (async () => jsonResponse({ receipts: {}, missing: [] })) as unknown as typeof fetch;
+    const out2 = await fetchReceipts('t-1', ['c-0'], notArray);
+    expect([...out2.unavailable]).toEqual(['c-0']);
   });
 
   it('请求头含租户/身份头与内部签名；URL 指向 receipts 端点', async () => {
