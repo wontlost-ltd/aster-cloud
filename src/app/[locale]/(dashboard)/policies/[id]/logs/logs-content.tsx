@@ -69,10 +69,18 @@ const LOG_STATUS_STYLES: Record<LogStatus, { icon: string; badge: string; path: 
   },
 };
 
-function logStatus(log: ExecutionLog): LogStatus {
+function logStatus(log: Pick<ExecutionLog, 'decision' | 'success'>): LogStatus {
   if (log.decision === 'indeterminate') return 'computed';
   if (log.decision === 'require_approval' || log.decision === 'escalate') return 'pending';
   return log.success ? 'success' : 'failed';
+}
+
+/**
+ * 展开详情显示输出还是错误面板：按决策分类而非 success 判断。
+ * require_approval/escalate 行 success=false（fail-closed），但不是失败，应展示输出而非错误面板。
+ */
+export function logDetailPanel(log: Pick<ExecutionLog, 'decision' | 'success'>): 'output' | 'error' {
+  return logStatus(log) === 'failed' ? 'error' : 'output';
 }
 
 function logStatusLabel(log: ExecutionLog, t: Translations): string {
@@ -702,8 +710,8 @@ export function LogsContent({
                         </pre>
                       </div>
 
-                      {/* Output or Error */}
-                      {log.success ? (
+                      {/* Output or Error：由 logDetailPanel 按决策分类，待处置行展示输出 */}
+                      {logDetailPanel(log) === 'output' ? (
                         <div className="rounded-lg border border-emerald-200 overflow-hidden">
                           <div className="bg-emerald-50 px-4 py-2 border-b border-emerald-200">
                             <h4 className="text-xs font-semibold text-emerald-700 uppercase tracking-wide flex items-center">

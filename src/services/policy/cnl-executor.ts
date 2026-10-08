@@ -156,7 +156,11 @@ export interface PolicyExecutionResult {
      * ★与 replay 独立：不受 replayCapture 门控。
      */
     traceSkeleton?: PolicyTraceSkeleton;
-    /** Verdict 结果码（ADR 0041 §4）：优先取 aster-api 响应 decision.outcome，回退解析 result。 */
+    /**
+     * Verdict 结果码（ADR 0041 §4）：优先取 aster-api 响应 decision.outcome，回退解析 result。
+     * ★v2 行以 outcome 为权威：REQUIRE_APPROVAL/ESCALATE 时 allowed/approved 为 false（fail-closed），
+     * 不表示拒绝；落库的 Execution.outcome 由 deriveExecutionOutcome 据此派生。
+     */
     outcome?: VerdictOutcome;
     /** 命中规则的业务标识（aster-api 响应 ruleId）。 */
     ruleId?: string;
