@@ -13,6 +13,7 @@ import { eq } from 'drizzle-orm';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
 import { safeEnv } from '@/lib/runtime/safe-env';
 import { API_KEY_IDENTITY_COLUMNS, resolveApiKeyIdentities } from '@/lib/api-key-identity';
+import { invalidatePlanCacheForOwner } from '@/lib/plan-gate-client';
 
 const ASTER_API_INTERNAL_URL =
   safeEnv('ASTER_API_INTERNAL_URL') ?? 'http://aster-api:8080';
@@ -59,6 +60,8 @@ export async function pushUserSnapshot(userId: string): Promise<void> {
 
     const path = `/api/internal/snapshot/user/${userId}`;
     await callAsterApi('POST', path, body, `push-user ${userId}`);
+    // 团队 key 的限速按 owner 套餐：owner 快照变化后，其名下团队的 plan 缓存一并失效（ADR 0015 §5）
+    await invalidatePlanCacheForOwner(userId);
   } catch (err) {
     console.warn(`[snapshot-pusher] pushUserSnapshot ${userId} error:`, err);
   }

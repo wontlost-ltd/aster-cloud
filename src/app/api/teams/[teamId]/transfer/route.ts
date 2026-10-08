@@ -3,6 +3,8 @@ import { getSession } from '@/lib/auth';
 import { db, teams, teamMembers } from '@/lib/prisma';
 import { eq, and } from 'drizzle-orm';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
+import { refreshTeamKeySnapshots } from '@/lib/api-keys';
+import { invalidatePlanCache } from '@/lib/plan-gate-client';
 
 type RouteParams = { params: Promise<{ teamId: string }> };
 
@@ -63,6 +65,12 @@ export async function POST(req: Request, { params }: RouteParams) {
         .set({ role: 'admin' })
         .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, session.user.id)));
     });
+
+    // 转让改变了全队 key 的 quotaOwnerId 与新旧 owner 的角色：重推全队 key 快照，并失效团队按 owner 套餐计的 plan 缓存（ADR 0015 §5）
+    await refreshTeamKeySnapshots(teamId).catch((err) =>
+      console.warn('[teams] refreshTeamKeySnapshots after ownership transfer failed:', err)
+    );
+    await invalidatePlanCache(teamId);
 
     return NextResponse.json({
       success: true,

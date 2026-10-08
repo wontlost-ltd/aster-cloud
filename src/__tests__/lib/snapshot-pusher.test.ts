@@ -3,9 +3,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const originalKey = process.env.ASTER_PLAN_GATE_HMAC_KEY;
 const originalUrl = process.env.ASTER_API_INTERNAL_URL;
 
-const { mockFindFirst, mockResolveMany } = vi.hoisted(() => ({
+const { mockFindFirst, mockResolveMany, mockTeamsFindMany } = vi.hoisted(() => ({
   mockFindFirst: vi.fn(),
   mockResolveMany: vi.fn(),
+  mockTeamsFindMany: vi.fn(),
 }));
 
 // 身份口径由解析器决定（ADR 0015 §2），这里只替换解析函数；列常量取真实值以钉住查询列
@@ -19,16 +20,21 @@ vi.mock('@/lib/prisma', () => ({
     query: {
       users: { findFirst: mockFindFirst },
       apiKeys: { findFirst: mockFindFirst },
+      // owner 套餐 fan-out（plan-gate-client.invalidatePlanCacheForOwner）查名下团队
+      teams: { findMany: mockTeamsFindMany },
     },
   },
   users: { id: {} },
   apiKeys: { id: {}, key: {} },
+  teams: { id: {}, ownerId: {} },
 }));
 
 describe('pushUserSnapshot', () => {
   beforeEach(() => {
     vi.resetModules();
     mockFindFirst.mockReset();
+    mockTeamsFindMany.mockReset();
+    mockTeamsFindMany.mockResolvedValue([]);
     process.env.ASTER_PLAN_GATE_HMAC_KEY = 'test-secret-32chars-min-len-please';
     process.env.ASTER_API_INTERNAL_URL = 'http://aster-api.test';
     global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 }) as never;
@@ -164,11 +170,37 @@ describe('pushUserSnapshot', () => {
     expect(sign(body)).toBe(headers['X-Aster-Signature']);
   });
 
+  // 团队 key 的限速按 owner 套餐（ADR 0015 §5）：owner 快照推完后，其名下每个团队的 plan 缓存都要失效。
+  // 不 mock plan-gate-client：fan-out 在其模块内部调用 invalidatePlanCache，只能在出站请求上观察。
+  it('推送用户快照后，失效其名下每个团队的 plan 缓存（t1、t2）', async () => {
+    mockFindFirst.mockResolvedValue({
+      plan: 'team',
+      priceLockedAt: null,
+      legacyTier: null,
+      subscriptionStatus: 'active',
+      aiBannedUntil: null,
+      gracePeriodEndsAt: null,
+    });
+    mockTeamsFindMany.mockResolvedValue([{ id: 't1' }, { id: 't2' }]);
+    const { pushUserSnapshot } = await import('@/lib/snapshot-pusher');
+    await pushUserSnapshot('owner-1');
+
+    const urls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.map(([url]) => url as string);
+    expect(urls).toHaveLength(3);
+    expect(urls[0]).toBe('http://aster-api.test/api/internal/snapshot/user/owner-1');
+    expect(urls.slice(1).sort()).toEqual([
+      'http://aster-api.test/api/internal/plan-cache/t1',
+      'http://aster-api.test/api/internal/plan-cache/t2',
+    ]);
+    expect(mockTeamsFindMany).toHaveBeenCalledTimes(1);
+  });
+
   it('user 不存在 → 不 fetch（让 aster-api 缓存自然过期）', async () => {
     mockFindFirst.mockResolvedValue(undefined);
     const { pushUserSnapshot } = await import('@/lib/snapshot-pusher');
     await pushUserSnapshot('ghost');
     expect(global.fetch).not.toHaveBeenCalled();
+    expect(mockTeamsFindMany).not.toHaveBeenCalled();
   });
 
   it('空 userId → no-op', async () => {

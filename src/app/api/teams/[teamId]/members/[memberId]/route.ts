@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db, teamMembers } from '@/lib/prisma';
 import { eq, and } from 'drizzle-orm';
+import { refreshTeamKeySnapshots, revokeTeamKeys } from '@/lib/api-keys';
 import {
   checkTeamAccess,
   checkTeamPermission,
@@ -71,6 +72,11 @@ export async function PUT(req: Request, { params }: RouteParams) {
       .update(teamMembers)
       .set({ role: newRole })
       .where(eq(teamMembers.id, memberId));
+
+    // 团队 key 的角色随成员角色走：重推该成员的 key 快照，aster-api 立即按新角色鉴权；失败不影响已提交的变更（ADR 0015 §5）
+    await refreshTeamKeySnapshots(teamId, targetMember.userId).catch((err) =>
+      console.warn('[teams] refreshTeamKeySnapshots after role change failed:', err)
+    );
 
     // 重新查询获取完整信息
     const updatedMember = await db.query.teamMembers.findFirst({
@@ -150,6 +156,11 @@ export async function DELETE(req: Request, { params }: RouteParams) {
 
     // 移除成员
     await db.delete(teamMembers).where(eq(teamMembers.id, memberId));
+
+    // 被移出的成员不得再以团队身份调用：吊销其在该团队的 key（按 userId，不是 TeamMember.id）；失败不影响已提交的移除（ADR 0015 §5）
+    await revokeTeamKeys(teamId, targetMember.userId).catch((err) =>
+      console.warn('[teams] revokeTeamKeys after member removal failed:', err)
+    );
 
     return NextResponse.json({ success: true });
   } catch (error) {

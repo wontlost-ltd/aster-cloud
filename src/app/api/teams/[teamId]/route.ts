@@ -4,6 +4,7 @@ import { db, teams, teamMembers, teamInvitations, policies, policyGroups } from 
 import { eq, and, isNull, not, sql } from 'drizzle-orm';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
 import { validateTeamName, validateSlug } from '@/lib/validation';
+import { revokeTeamKeys } from '@/lib/api-keys';
 
 type RouteParams = { params: Promise<{ teamId: string }> };
 
@@ -166,6 +167,11 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     if (!permission.allowed) {
       return NextResponse.json({ error: permission.error }, { status: permission.status });
     }
+
+    // 吊销要按 teamId 查到 key，必须在删团队之前；吊销幂等，事务失败只多一次无害吊销，失败也不阻断删除（ADR 0015 §5）
+    await revokeTeamKeys(teamId).catch((err) =>
+      console.warn('[teams] revokeTeamKeys before team deletion failed:', err)
+    );
 
     // 删除团队（手动级联删除关联记录）
     await db.transaction(async (tx) => {

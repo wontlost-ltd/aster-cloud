@@ -5,6 +5,8 @@
 // 让 aster-api 端 5 min Caffeine 缓存立即失效，缩短生效延迟。
 
 import { createHmac } from 'node:crypto';
+import { eq } from 'drizzle-orm';
+import { db, teams } from '@/lib/prisma';
 import { safeEnv } from '@/lib/runtime/safe-env';
 
 const ASTER_API_INTERNAL_URL = safeEnv('ASTER_API_INTERNAL_URL') ?? 'http://aster-api:8080';
@@ -17,6 +19,22 @@ const PLAN_GATE_HMAC_KEY = safeEnv('ASTER_PLAN_GATE_HMAC_KEY');
  */
 export async function invalidatePlanCache(tenantId: string): Promise<void> {
   await callInvalidate(`/api/internal/plan-cache/${tenantId}`, 'plan-cache', tenantId);
+}
+
+/**
+ * owner 套餐变化时，其名下每个团队在 aster-api 的 plan 缓存都要失效
+ * （团队 key 的限速按 owner 套餐，ADR 0015 §5）。
+ *
+ * 与单租户失效同样 fail-open：查库失败也只记日志，5 min TTL 兜底。
+ */
+export async function invalidatePlanCacheForOwner(ownerId: string): Promise<void> {
+  if (!ownerId) return;
+  try {
+    const owned = await db.query.teams.findMany({ where: eq(teams.ownerId, ownerId), columns: { id: true } });
+    await Promise.all(owned.map((team) => invalidatePlanCache(team.id)));
+  } catch (err) {
+    console.warn(`[plan-gate-client] invalidate owner teams ${ownerId} error:`, err);
+  }
 }
 
 /**
