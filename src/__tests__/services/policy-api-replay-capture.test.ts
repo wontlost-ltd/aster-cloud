@@ -3,9 +3,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // ★HMAC path 分歧守门（Codex 设计审 go/no-go）：aster-api InternalCallerFilter 签
 // ctx.getUriInfo().getPath()=纯 path 不含 query；且 request() 内部签名只在 pathname 精确匹配
 // evaluateSource 时才发。因此 replayCapture=true 的 ?replayCapture=true 必须**只进 fetch URL，
-// 不进签名 path**。此测试锁定：fetch URL 含 query，signInternalCallerHeaders 收到的是纯 path。
+// 不进签名 path**。此测试锁定：fetch URL 含 query，signInternalCallerHeaders 收到的是纯 path，
+// query 以 v3 的 identity.query 单独签入（ADR 0042 §4.1）。
 
-// signInternalCallerHeaders(method, path, body, tenant, role) → 内部签名头。
+// signInternalCallerHeaders(method, path, body, tenant, role, identity) → 内部签名头。
 const signSpy = vi.fn(
   async (
     _method: string,
@@ -13,6 +14,7 @@ const signSpy = vi.fn(
     _body: string | undefined,
     _tenant: string,
     _role: string,
+    _identity?: { query?: string; userId?: string; businessRoles?: string[] },
   ) => ({
     'X-Internal-Caller': 'cloud-bff',
     'X-Aster-Timestamp': '1',
@@ -29,7 +31,8 @@ vi.mock('@/lib/api-signing', () => ({
     body: string | undefined,
     tenant: string,
     role: string,
-  ) => signSpy(method, path, body, tenant, role),
+    identity?: { query?: string; userId?: string; businessRoles?: string[] },
+  ) => signSpy(method, path, body, tenant, role, identity),
 }));
 
 // trace-context 动态 import 需可用。
@@ -85,6 +88,8 @@ describe('evaluateSource replayCapture — HMAC 纯路径签名不被 query 破�
     expect(signedPath).toBe(EVAL_PATH);
     expect(signedPath).not.toContain('?');
     expect(signedPath).not.toContain('replayCapture');
+    // v3：query 与 userId 单独签入
+    expect(signSpy.mock.calls[0][5]).toEqual({ query: 'replayCapture=true', userId: 'user-1', businessRoles: [] });
   });
 
   it('无 replayCapture：URL 无 query，签名 path 仍纯路径（回归）', async () => {
@@ -95,6 +100,7 @@ describe('evaluateSource replayCapture — HMAC 纯路径签名不被 query 破�
     expect(fetchedUrl).not.toContain('?replayCapture');
     expect(signSpy).toHaveBeenCalledTimes(1);
     expect(signSpy.mock.calls[0][1]).toBe(EVAL_PATH);
+    expect(signSpy.mock.calls[0][5]?.query).toBe('');
   });
 
   it('replayMetadata 透传：后端返回则 evaluateSource 结果携带', async () => {

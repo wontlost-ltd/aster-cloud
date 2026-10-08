@@ -230,7 +230,11 @@ describe('receipts-client', () => {
     expect(headers['X-Tenant-Id']).toBe('t-9');
     expect(headers['X-User-Role']).toBe('member');
     expect(headers['X-User-Id']).toBeTruthy();
-    expect(signInternalCallerHeaders).toHaveBeenCalledWith('GET', '/api/v1/audit/receipts', '', 't-9', 'member');
+    // v3：签入实际发送的原始查询串与 X-User-Id
+    expect(signInternalCallerHeaders).toHaveBeenCalledWith('GET', '/api/v1/audit/receipts', '', 't-9', 'member', {
+      query: 'correlationIds=c-0',
+      userId: headers['X-User-Id'],
+    });
   });
 
   it('空 id / 重复 id：空不发请求，重复去重', async () => {

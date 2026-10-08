@@ -36,7 +36,10 @@ export async function fetchBackendVersion(tenantId: string): Promise<string | nu
   try {
     const role = 'VIEWER';
     // ★签名参数必须与实际发送的 header 逐字一致（body/tenant/role 都进签名）。
-    const signed = await signInternalCallerHeaders('GET', VERSION_PATH, '', tenantId, role);
+    const signed = await signInternalCallerHeaders('GET', VERSION_PATH, '', tenantId, role, {
+      query: '',
+      userId: '',
+    });
 
     const res = await fetch(`${ASTER_API_BASE}${VERSION_PATH}`, {
       method: 'GET',

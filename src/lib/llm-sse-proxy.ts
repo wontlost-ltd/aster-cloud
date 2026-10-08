@@ -97,7 +97,11 @@ export async function proxyLlmSse(
   let signedHeaders: Awaited<ReturnType<typeof signInternalCallerHeaders>>;
   try {
     // 红队 P0-C：绑定 body + tenant 进签名。
-    signedHeaders = await signInternalCallerHeaders('POST', upstreamPath, body, tenantId, '');
+    // v3：本请求无 query、不发 X-User-Id / 业务角色，按空串签。
+    signedHeaders = await signInternalCallerHeaders('POST', upstreamPath, body, tenantId, '', {
+      query: '',
+      userId: '',
+    });
   } catch {
     return NextResponse.json(
       {

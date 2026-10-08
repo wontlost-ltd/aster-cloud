@@ -200,6 +200,8 @@ export async function POST(req: NextRequest) {
   try {
     signedHeaders = await signInternalCallerHeaders(
       'POST', UPSTREAM_PATH, body, trialTenant, trialRole,
+      // v3：匿名试用无 query、不发 X-User-Id / 业务角色，按空串签。
+      { query: '', userId: '' },
     );
   } catch {
     recordTrialOutcome('upstream_misconfigured');

@@ -1,9 +1,9 @@
 // ★这是 stub/契约参考实现：真验独立 HMAC key，返回固定 ReplayMetadata（Slice-2a 验接线）。
 //   Slice-2b 真 launcher 复用同一 HMAC 验证契约，但用真 runner Job 产 ReplayMetadata。
-// sha256Hex/hmacVerify 已在 api-signing.ts 导出（DRY），保证 stub 验的 hash/canonical
+// buildInternalCanonicalV3/hmacVerify 已在 api-signing.ts 导出（DRY），保证 stub 验的 canonical
 // 与 client（signRunnerLauncherHeaders）签的逐字节一致；hmacVerify 用 crypto.subtle.verify
 // 常数时间原语（非手写 hex 比对）。
-import { sha256Hex, hmacVerify } from '../../lib/api-signing';
+import { buildInternalCanonicalV3, hmacVerify } from '../../lib/api-signing';
 
 let stubReplayMetadata: Record<string, unknown> = {
   canonicalInputHash: 'stub-i', canonicalOutputHash: 'stub-o',
@@ -13,7 +13,7 @@ let stubReplayMetadata: Record<string, unknown> = {
 export function __setStubReplayMetadata(rm: Record<string, unknown>) { stubReplayMetadata = rm; }
 
 /**
- * 处理 runner launch 请求。★真验 HMAC（重算 7 行 canonical 比 X-Internal-Signature，用独立 key）。
+ * 处理 runner launch 请求。★真验 HMAC（重算 canonical v3 比 X-Internal-Signature，用独立 key）。
  * 验签失败 → 401/403；通过 → 返回 SUCCESS envelope（stub 固定 metadata）。
  */
 export async function handleRunnerLaunch(request: Request): Promise<Response> {
@@ -39,11 +39,11 @@ export async function handleRunnerLaunch(request: Request): Promise<Response> {
   const body = await request.text();
   const url = new URL(request.url);
 
-  // ★重建与 client 逐字一致的 7 行 canonical（同 signRunnerLauncherHeaders）：
-  //   method\npath\nts\nnonce\nbodyHash\ntenant\nrole。tenant/role 从 header 取（现已放 header）。
-  const encoder = new TextEncoder();
-  const bodyHash = await sha256Hex(encoder.encode(body).buffer as ArrayBuffer);   // ★同 client 的 body 处理
-  const canonical = `${request.method}\n${url.pathname}\n${timestamp}\n${nonce}\n${bodyHash}\n${tenant}\n${role}`;
+  // ★重建与 client 逐字一致的 canonical v3（同 signRunnerLauncherHeaders，query/userId/businessRoles 为空）。
+  //   tenant/role 从 header 取（client 放 header）。
+  const canonical = await buildInternalCanonicalV3({
+    method: request.method, path: url.pathname, timestamp, nonce, body, tenant, role,
+  });
 
   // ★用 crypto.subtle.verify 常数时间原语验证（非手写 hex 比对——后者长度早退+逐字符泄时序）。
   //   验签失败 → 403（密钥隔离验证：错 key 签的 sig 对不上真 key 的 verify）。

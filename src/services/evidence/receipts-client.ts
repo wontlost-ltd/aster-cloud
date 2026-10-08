@@ -144,11 +144,17 @@ async function lookup(
   return out;
 }
 
-/** 签名头仅在配置了 HMAC 密钥时附加（本地开发无密钥时仍可调用未开启校验的后端）。 */
-async function buildHeaders(tenantId: string): Promise<Record<string, string>> {
+/**
+ * 签名头仅在配置了 HMAC 密钥时附加（本地开发无密钥时仍可调用未开启校验的后端）。
+ * canonical v3 签入实际发送的原始查询串与 X-User-Id，防止改写 correlationIds/decisionIds（ADR 0042 §4.1）。
+ */
+async function buildHeaders(tenantId: string, query: string): Promise<Record<string, string>> {
   const base = { 'X-Tenant-Id': tenantId, 'X-User-Id': CALLER_USER_ID, 'X-User-Role': CALLER_ROLE };
   if (!process.env.ASTER_PLAN_GATE_HMAC_KEY) return base;
-  const signed = await signInternalCallerHeaders('GET', PATH, '', tenantId, CALLER_ROLE);
+  const signed = await signInternalCallerHeaders('GET', PATH, '', tenantId, CALLER_ROLE, {
+    query,
+    userId: CALLER_USER_ID,
+  });
   return { ...base, ...signed };
 }
 
@@ -175,8 +181,9 @@ async function fetchBatch(
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), RECEIPT_TIMEOUT_MS);
   try {
-    const url = `${getApiConfig().baseUrl}${PATH}?${param}=${encodeURIComponent(batch.join(','))}`;
-    const headers = await buildHeaders(tenantId);
+    const query = `${param}=${encodeURIComponent(batch.join(','))}`;
+    const url = `${getApiConfig().baseUrl}${PATH}?${query}`;
+    const headers = await buildHeaders(tenantId, query);
     const res = await fetchImpl(url, { headers, signal: ac.signal });
     if (!res.ok) throw new BatchFailure(`HTTP ${res.status}`);
     commitBatch(out, parseBatch(KEY_OF[param], batch, await res.json()));

@@ -26,6 +26,17 @@ export const API_ENDPOINTS = {
     `${prefix}/policies/${policyId}/whatif-batches/${batchId}`,
   moduleCatalog: `${prefix}/modules/catalog`,
 
+  /**
+   * Action Guard（ADR 0042 §4.2）。整个 /guard/ 前缀走内部 HMAC v3 签名；
+   * id 只出现在 path 段，签名取 pathname，与 InternalCallerFilter 一致。
+   */
+  guardPrefix: `${prefix}/guard/`,
+  guardFromEvidence: `${prefix}/guard/decisions/from-evidence`,
+  guardDecision: (id: string) => `${prefix}/guard/decisions/${encodeURIComponent(id)}`,
+  guardApprovals: `${prefix}/guard/approvals`,
+  guardApprovalAction: (id: string, action: 'approve' | 'reject') =>
+    `${prefix}/guard/approvals/${encodeURIComponent(id)}/${action}`,
+
   // 健康检查
   healthLive: '/q/health/live',
   healthReady: '/q/health/ready',

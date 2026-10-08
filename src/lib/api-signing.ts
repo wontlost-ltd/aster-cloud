@@ -104,32 +104,84 @@ export interface InternalCallerHeaders {
   'X-Aster-Timestamp': string;
   'X-Aster-Nonce': string;
   'X-Internal-Signature': string;
+  /** 已签入 canonical 的业务角色（排序后逗号拼接）；无角色时不发此头。 */
+  'X-User-Business-Roles'?: string;
 }
 
 /**
- * 为调用 aster-api 的"内部专用"路径生成签名头（如 /evaluate-source、/api/v1/ai/*）
- *
- * 红队 P0-C 加固：canonical 从原来的 `method\npath\nts`（只签方法+路径+时间戳，
- * 5min 窗口内可改 body/tenant/role + 可重放）扩展为 **7 行**：
+ * 签入 canonical v3 的请求身份（ADR 0042 §4.1）。
+ * query 与 userId 必须与实际请求逐字一致：query 为 fetch URL 的原始查询串（不含 '?'），
+ * userId 为实际发送的 X-User-Id（不发则省略，两端都按空串签）。
+ */
+export interface InternalCallerIdentity {
+  query?: string;
+  userId?: string;
+  businessRoles?: string[];
+}
+
+/** 业务角色归一：trim、去空、去重、排序后逗号拼接，与 aster-api InternalCallerFilter.parseRoles 一致。 */
+export function joinBusinessRoles(roles: readonly string[] | undefined): string {
+  const set = new Set((roles ?? []).map((r) => r.trim()).filter(Boolean));
+  return [...set].sort().join(',');
+}
+
+/**
+ * 内部签名 canonical v3 的唯一构造点（cloud-bff 与 runner-launcher 共用）：
  * <pre>
- *   method \n path \n ts(秒) \n nonce \n bodySha256(hex) \n tenant \n role
+ *   method \n path \n query \n ts(秒) \n nonce \n bodySha256(hex) \n tenant \n role \n userId \n businessRoles
  * </pre>
- * 与 aster-api {@code InternalCallerFilter} 的 canonical 逐字节一致。密钥同 plan-gate
- * （ASTER_PLAN_GATE_HMAC_KEY = 后端 aster.plan-gate.hmac-key）。timestamp 用 unix **秒**。
+ * 与 aster-api {@code InternalCallerFilter} 逐字节一致；query/userId/businessRoles 缺省为空串。
+ */
+export async function buildInternalCanonicalV3(parts: {
+  method: string;
+  path: string;
+  timestamp: string;
+  nonce: string;
+  body?: string;
+  tenant?: string;
+  role?: string;
+  identity?: InternalCallerIdentity;
+}): Promise<string> {
+  const encoder = new TextEncoder();
+  const bodyBytes = parts.body ? encoder.encode(parts.body) : new Uint8Array(0);
+  const bodyHash = await sha256Hex(bodyBytes.buffer as ArrayBuffer);
+  return [
+    parts.method,
+    parts.path,
+    parts.identity?.query ?? '',
+    parts.timestamp,
+    parts.nonce,
+    bodyHash,
+    parts.tenant ?? '',
+    parts.role ?? '',
+    parts.identity?.userId ?? '',
+    joinBusinessRoles(parts.identity?.businessRoles),
+  ].join('\n');
+}
+
+/**
+ * 为调用 aster-api 的"内部专用"路径生成签名头（如 /evaluate-source、/api/v1/ai/*、/api/v1/guard/*）
+ *
+ * canonical v3（ADR 0042 §4.1，见 {@link buildInternalCanonicalV3}）在 v2 的
+ * method/path/ts/nonce/body/tenant/role 之上签入 query、userId 与业务角色：
+ * 防止改写 GET 查询串，及替换 X-User-Id / X-User-Business-Roles 冒充审批人。
+ * 密钥同 plan-gate（ASTER_PLAN_GATE_HMAC_KEY = 后端 aster.plan-gate.hmac-key）。timestamp 用 unix **秒**。
  * nonce 每次唯一（后端 UsedNonce 原子去重，重放即拒）。
  *
  * @param method   HTTP 方法（须与实际请求一致）
- * @param path     归一化路径（须与后端 PathNormalizer 结果一致）
+ * @param path     归一化路径（须与后端 PathNormalizer 结果一致，不含 query）
  * @param body     请求体字符串（GET/无 body 传 undefined/''，两端都按空字节 sha256）
  * @param tenantId 随请求发送的 X-Tenant-Id（不发则传 ''，两端一致）
  * @param role     随请求发送的 X-User-Role（内部调用通常不发，传 ''）
+ * @param identity 随请求发送的 query / X-User-Id / 业务角色；角色非空时返回头带 X-User-Business-Roles
  */
 export async function signInternalCallerHeaders(
   method: string,
   path: string,
   body?: string,
   tenantId?: string,
-  role?: string
+  role?: string,
+  identity?: InternalCallerIdentity
 ): Promise<InternalCallerHeaders> {
   const secret = process.env.ASTER_PLAN_GATE_HMAC_KEY;
   if (!secret) {
@@ -137,21 +189,19 @@ export async function signInternalCallerHeaders(
   }
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const nonce = generateNonce();
-
-  const encoder = new TextEncoder();
-  const bodyBytes = body ? encoder.encode(body) : new Uint8Array(0);
-  const bodyHash = await sha256Hex(bodyBytes.buffer as ArrayBuffer);
-  const tenant = tenantId ?? '';
-  const roleStr = role ?? '';
-
-  const canonical = `${method}\n${path}\n${timestamp}\n${nonce}\n${bodyHash}\n${tenant}\n${roleStr}`;
+  const canonical = await buildInternalCanonicalV3({
+    method, path, timestamp, nonce, body, tenant: tenantId, role, identity,
+  });
   const signature = await hmacSha256(secret, canonical);
-  return {
+  const headers: InternalCallerHeaders = {
     'X-Internal-Caller': 'cloud-bff',
     'X-Aster-Timestamp': timestamp,
     'X-Aster-Nonce': nonce,
     'X-Internal-Signature': signature,
   };
+  const roles = joinBusinessRoles(identity?.businessRoles);
+  if (roles) headers['X-User-Business-Roles'] = roles;
+  return headers;
 }
 
 export interface LexiconAdminHeaders {
@@ -165,7 +215,7 @@ export interface LexiconAdminHeaders {
  * 生成签名头。
  *
  * 后端 verifyHmac 的 canonical 是 **8 行换行拼接**（与 signRequest 的管道格式、
- * signInternalCallerHeaders 的 3 行格式都不同）：
+ * signInternalCallerHeaders 的 v3 格式都不同）：
  * <pre>
  *   method + "\n"
  *   path + "\n"
@@ -243,8 +293,8 @@ export async function signByokAllowlistHeaders(
 
 /**
  * runner-launcher 内部调用签名（独立 HMAC key，密钥隔离——launcher 是新 TCB 成员，
- * 攻破不牵连 aster-api plan-gate key）。逐字节复用 signInternalCallerHeaders 的 7 行
- * canonical（method\npath\nts\nnonce\nbodyHash\ntenant\nrole），仅两处不同：key 与 caller 标识。
+ * 攻破不牵连 aster-api plan-gate key）。复用 {@link buildInternalCanonicalV3}（query/userId/
+ * businessRoles 恒为空串），仅两处不同：key 与 caller 标识。
  */
 export async function signRunnerLauncherHeaders(
   method: string, path: string, body: string, tenantId: string, role: string,
@@ -253,12 +303,9 @@ export async function signRunnerLauncherHeaders(
   if (!key) throw new Error('ASTER_RUNNER_LAUNCHER_HMAC_KEY 未配置');
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const nonce = generateNonce();
-  // ★sha256Hex 签名是 (data: ArrayBuffer)——须先 TextEncoder 编码 body 再取 .buffer
-  //   （逐字对齐 signInternalCallerHeaders 的 body 处理，api-signing.ts:113-115）。
-  const encoder = new TextEncoder();
-  const bodyBytes = body ? encoder.encode(body) : new Uint8Array(0);
-  const bodyHash = await sha256Hex(bodyBytes.buffer as ArrayBuffer);
-  const canonical = `${method}\n${path}\n${timestamp}\n${nonce}\n${bodyHash}\n${tenantId}\n${role}`;
+  const canonical = await buildInternalCanonicalV3({
+    method, path, timestamp, nonce, body, tenant: tenantId, role,
+  });
   const signature = await hmacSha256(key, canonical);
   return {
     'X-Internal-Caller': 'cloud-runner-launcher',
@@ -295,8 +342,8 @@ const INTERNAL_TS_WINDOW_SEC = 300;
  * **换掉 body 无限重放**。打 `/api/internal/api/usage` 即可为任意 userId 伪造
  * 用量记录、篡改计费；打 `/api/internal/apikey/verify` 可枚举 key。
  *
- * 与之对照，**出站**签名器（signInternalCallerHeaders）早已加固为 7 字段
- * canonical（含 nonce + bodyHash + tenant + role）——加固只做了发送侧，
+ * 与之对照，**出站**签名器（signInternalCallerHeaders）早已加固为 v3
+ * canonical（含 query + nonce + bodyHash + tenant + role + userId + businessRoles）——加固只做了发送侧，
  * 接收侧从未同步。本函数补齐接收侧。
  *
  * <h3>为什么支持双接受（migration window）</h3>
@@ -361,7 +408,7 @@ export async function verifyInternalSignature(
   //   wrangler.toml [vars]、K8s Secret、任何部署配置中**都未设置** —— 也就是说
   //   兼容窗口从未真正关闭，可重放路径一直活在生产。
   //   已实证零调用方：aster-api 侧唯一签名实现 InternalCallSigner 只产 v2
-  //   （nonce + bodySha256），cloud 侧 signInternalCallerHeaders 同样只产 v2，
+  //   （nonce + bodySha256），cloud 侧 signInternalCallerHeaders 出站另用 v3（ADR 0042），
   //   aster-deploy 的 42 处 /api/internal 引用全是文档、无运行时调用。
   //   如需临时回退（仅限紧急排障）：设 ASTER_INTERNAL_ALLOW_LEGACY_SIG=true。
   const allowLegacy = opts?.allowLegacy ?? (process.env.ASTER_INTERNAL_ALLOW_LEGACY_SIG === 'true');

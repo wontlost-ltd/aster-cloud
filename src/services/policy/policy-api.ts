@@ -7,6 +7,12 @@
 
 import { signRequest, signInternalCallerHeaders } from '@/lib/api-signing';
 import { API_ENDPOINTS } from '@/config/api-versions';
+import type {
+  GuardApprovalPage,
+  GuardApprovalStatus,
+  GuardDecision,
+  GuardFromEvidenceRequest,
+} from './guard-types';
 
 // 环境变量配置
 export const getApiConfig = () => {
@@ -304,7 +310,9 @@ export class PolicyApiClient {
     private readonly userId: string,
     private readonly userRole: string = 'member',
     /** v1.2：业务角色用于 WAADR 北极星指标 — business_expert / compliance_officer / risk_analyst / engineer / admin */
-    private readonly businessRole: string = 'unknown'
+    private readonly businessRole: string = 'unknown',
+    /** 已验证的业务角色（ADR 0042 §2）：随内部 HMAC v3 签名下发，guard 审批按此集合判定 */
+    private readonly businessRoles: string[] = []
   ) {
     const config = getApiConfig();
     this.baseUrl = config.baseUrl;
@@ -360,11 +368,16 @@ export class PolicyApiClient {
       // 红队 P0-C：签名绑定 body + tenant + role，参数须与 headers 里实际发送的一致。
       // What-If 批次同样受 InternalCallerFilter 保护：它按窗口重跑历史执行，
       // 属于「内部编排」而非终端用户可直呼的能力（ADR 0034 §7.2 的权益判定在 api 侧）。
+      // Action Guard（ADR 0042 §4.2）同样走内部通道：审批人身份与业务角色须经签名才被 api 信任。
       const needsInternalCaller =
-        pathname === API_ENDPOINTS.evaluateSource || /\/whatif-batches(\/|$)/.test(pathname);
+        pathname === API_ENDPOINTS.evaluateSource ||
+        /\/whatif-batches(\/|$)/.test(pathname) ||
+        pathname.startsWith(API_ENDPOINTS.guardPrefix);
       if (needsInternalCaller && process.env.ASTER_PLAN_GATE_HMAC_KEY) {
+        // v3：query 取实际 fetch URL 的原始查询串，userId 与 X-User-Id 头一致（ADR 0042 §4.1）。
         const internalHeaders = await signInternalCallerHeaders(
           method, pathname, bodyStr, this.tenantId, this.userRole,
+          { query: new URL(url).search.slice(1), userId: this.userId, businessRoles: this.businessRoles },
         );
         Object.assign(headers, internalHeaders);
       }
@@ -382,11 +395,13 @@ export class PolicyApiClient {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        // api 错误体两种形态：{ code, message } 与 guard 的 { error, message, verifiedRoles?, outcome? }
         throw new PolicyApiError(
           errorData.message || `HTTP ${response.status}: ${response.statusText}`,
           response.status,
-          errorData.code,
-          Array.isArray(errorData.diagnostics) ? errorData.diagnostics : undefined
+          errorData.code ?? (typeof errorData.error === 'string' ? errorData.error : undefined),
+          Array.isArray(errorData.diagnostics) ? errorData.diagnostics : undefined,
+          isPlainObject(errorData) ? errorData : undefined
         );
       }
 
@@ -406,6 +421,37 @@ export class PolicyApiClient {
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+
+  /**
+   * 以链上评估事件为锚开 guard 决策（ADR 0042 §3）：409=该事件已登记，404=事件不存在。
+   */
+  async guardFromEvidence(req: GuardFromEvidenceRequest): Promise<GuardDecision> {
+    return this.request<GuardDecision>('POST', API_ENDPOINTS.guardFromEvidence, req);
+  }
+
+  async getGuardDecision(id: string): Promise<GuardDecision> {
+    return this.request<GuardDecision>('GET', API_ENDPOINTS.guardDecision(id));
+  }
+
+  /** 本租户审批列表（page 从 0 开始）。 */
+  async listGuardApprovals(
+    status: GuardApprovalStatus,
+    page = 0,
+    size = 50
+  ): Promise<GuardApprovalPage> {
+    const query = new URLSearchParams({ status, page: String(page), size: String(size) });
+    return this.request<GuardApprovalPage>('GET', `${API_ENDPOINTS.guardApprovals}?${query}`);
+  }
+
+  /** 批准：api 以签名过的 userId 与业务角色判定四眼与角色匹配（403 role_mismatch 时 details 带 verifiedRoles）。 */
+  async approveGuard(id: string, comment?: string): Promise<GuardDecision> {
+    return this.request<GuardDecision>('POST', API_ENDPOINTS.guardApprovalAction(id, 'approve'), { comment });
+  }
+
+  /** 驳回：comment 必填（api 侧 400）。 */
+  async rejectGuard(id: string, comment: string): Promise<GuardDecision> {
+    return this.request<GuardDecision>('POST', API_ENDPOINTS.guardApprovalAction(id, 'reject'), { comment });
   }
 
   /**
@@ -640,11 +686,17 @@ export class PolicyApiError extends Error {
     message: string,
     public readonly statusCode: number,
     public readonly code?: string,
-    public readonly diagnostics?: PolicyEvaluateDiagnostic[]
+    public readonly diagnostics?: PolicyEvaluateDiagnostic[],
+    /** 原始错误体（如 guard 的 verifiedRoles / outcome），供调用方按 code 细分处理 */
+    public readonly details?: Record<string, unknown>
   ) {
     super(message);
     this.name = 'PolicyApiError';
   }
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v) && Object.keys(v).length > 0;
 }
 
 /**
@@ -654,9 +706,10 @@ export function createPolicyApiClient(
   tenantId: string,
   userId: string,
   userRole?: string,
-  businessRole?: string
+  businessRole?: string,
+  businessRoles: string[] = []
 ): PolicyApiClient {
-  return new PolicyApiClient(tenantId, userId, userRole, businessRole);
+  return new PolicyApiClient(tenantId, userId, userRole, businessRole, businessRoles);
 }
 
 /**
