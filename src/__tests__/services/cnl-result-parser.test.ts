@@ -292,6 +292,19 @@ describe('Verdict 内置值（ADR 0039）', () => {
     const r = parseApprovalFromResult({ __type: 'Verdict', outcome: 'ESCALATE', reason: 'low confidence' });
     expect(r).toEqual({ approved: false, outcome: 'ESCALATE', message: 'low confidence' });
   });
+  it.each([
+    ['空对象', {}],
+    ['无判定字段对象', { tier: '转人工审核' }],
+    ['空数组', []],
+    ['数组', [1, 2]],
+  ])('%s → 两种 mode 均 indeterminate（不伪造拒绝）', (_label, value) => {
+    for (const mode of ['decision', 'value'] as const) {
+      const r = parseApprovalFromResult(value, mode);
+      expect(r.approved).toBe(false);
+      expect(r.indeterminate).toBe(true);
+      expect(r.outcome).toBeUndefined();
+    }
+  });
   it('未知 outcome → indeterminate 且不带 outcome', () => {
     const r = parseApprovalFromResult({ __type: 'Verdict', outcome: 'MAYBE' });
     expect(r.approved).toBe(false); expect(r.indeterminate).toBe(true); expect(r.outcome).toBeUndefined();

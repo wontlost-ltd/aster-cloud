@@ -72,9 +72,10 @@ export async function POST(req: Request, { params }: RouteParams) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) {
       return NextResponse.json({ error: 'Input must be a valid object' }, { status: 400 });
     }
-    // 调用方自报 agent（ADR 0041 §4）：可省略；一旦给出（含 null）就必须形状合法，否则 400。
-    const agent = rawAgent === undefined ? null : parseAgentIdentity(rawAgent);
-    if (rawAgent !== undefined && !agent) {
+    // 调用方自报 agent（ADR 0041 §4）：缺省或 null 均视为未声明（与 aster-api 语义一致）；
+    // 一旦给出非 null 值就必须形状合法，否则 400。
+    const agent = rawAgent == null ? null : parseAgentIdentity(rawAgent);
+    if (rawAgent != null && !agent) {
       return NextResponse.json({ error: 'Invalid agent' }, { status: 400 });
     }
 

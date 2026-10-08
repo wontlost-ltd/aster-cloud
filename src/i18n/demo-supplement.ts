@@ -362,10 +362,16 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         // 值/计算输出策略（如 greet 返回文本）：执行成功但无 allow/deny 语义。
         computed: 'Computed',
         noDecision: 'No decision (value output)',
+        // Verdict 待处置态（ADR 0041 §4）。
+        require_approval: 'Needs approval',
+        escalate: 'Escalated',
       },
       logs: {
         // 执行日志里 indeterminate（值输出）行的中性状态标签。
         computed: 'Computed',
+        // Verdict 待处置态（ADR 0041 §4）：需人工批准 / 已升级，非失败。
+        require_approval: 'Needs approval',
+        escalate: 'Escalated',
       },
       form: {
         aliases: {
@@ -878,9 +884,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       execute: {
         computed: '已计算',
         noDecision: '无决策（值输出）',
+        require_approval: '需人工批准',
+        escalate: '已升级',
       },
       logs: {
         computed: '已计算',
+        require_approval: '需人工批准',
+        escalate: '已升级',
       },
       form: {
         aliases: {
@@ -1396,9 +1406,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       execute: {
         computed: 'Berechnet',
         noDecision: 'Keine Entscheidung (Wertausgabe)',
+        require_approval: 'Freigabe nötig',
+        escalate: 'Eskaliert',
       },
       logs: {
         computed: 'Berechnet',
+        require_approval: 'Freigabe nötig',
+        escalate: 'Eskaliert',
       },
       form: {
         aliases: {
@@ -1912,9 +1926,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       execute: {
         computed: 'परिकलित',
         noDecision: 'कोई निर्णय नहीं (मान आउटपुट)',
+        require_approval: 'अनुमोदन आवश्यक',
+        escalate: 'एस्केलेट किया गया',
       },
       logs: {
         computed: 'परिकलित',
+        require_approval: 'अनुमोदन आवश्यक',
+        escalate: 'एस्केलेट किया गया',
       },
       form: {
         aliases: {

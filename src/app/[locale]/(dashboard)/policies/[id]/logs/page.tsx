@@ -86,6 +86,8 @@ export default async function PolicyLogsPage({
       success: t('logs.success'),
       failed: t('logs.failed'),
       computed: t('logs.computed'),
+      require_approval: t('logs.require_approval'),
+      escalate: t('logs.escalate'),
       source: t('logs.source'),
       web: t('logs.web'),
       api: t('logs.api'),

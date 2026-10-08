@@ -496,6 +496,17 @@ describe('V1 Policies API - Drizzle Migration', () => {
       }));
     });
 
+    it('ADR 0041：agent:null 视为未声明 → 200，agent 列写 null，执行端不收 agent', async () => {
+      const response = await POST(
+        makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', { ...validBody, agent: null }),
+        mockParams,
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockExecutePolicyUnified.mock.calls[0][0].agent).toBeUndefined();
+      expect(mockValuesInsert).toHaveBeenCalledWith(expect.objectContaining({ agent: null }));
+    });
+
     it.each([
       ['非对象', 'x'],
       ['缺 model', { provider: 'anthropic' }],
@@ -503,7 +514,6 @@ describe('V1 Policies API - Drizzle Migration', () => {
       ['version 非字符串', { provider: 'anthropic', model: 'claude', version: 1 }],
       ['超长 session', { provider: 'anthropic', model: 'claude', session: 's'.repeat(256) }],
       ['数组', [{ provider: 'anthropic', model: 'claude' }]],
-      ['null', null],
     ])('ADR 0041：非法 agent（%s）→ 400 Invalid agent，且零执行', async (_label, agent) => {
       const response = await POST(
         makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', { ...validBody, agent }),

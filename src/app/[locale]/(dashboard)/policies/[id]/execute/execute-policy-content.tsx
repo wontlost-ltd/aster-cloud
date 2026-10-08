@@ -58,6 +58,8 @@ interface ExecutionResult {
     metadata?: {
       /** 'indeterminate'：执行成功但无 allow/deny 语义（如返回纯文本值），既非批准亦非真实拒绝。 */
       decision?: 'indeterminate';
+      /** Verdict 结果码（ADR 0041 §4）：REQUIRE_APPROVAL/ESCALATE 为待人工处置态。 */
+      outcome?: string;
     };
   };
   decisionTrace?: DecisionTrace;
@@ -66,6 +68,15 @@ interface ExecutionResult {
   executedFunction?: string;
   diagnostics?: ExecutionDiagnostic[];
 }
+
+/** 待人工处置的 Verdict 结果码 → 文案 key；非待处置返回 null。 */
+function pendingOutcomeKey(outcome: string | undefined): 'require_approval' | 'escalate' | null {
+  if (outcome === 'REQUIRE_APPROVAL') return 'require_approval';
+  if (outcome === 'ESCALATE') return 'escalate';
+  return null;
+}
+
+const PENDING_BADGE_CLASS = 'inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-sm font-medium text-amber-800';
 
 interface ExecutionDiagnostic {
   code: string;
@@ -779,6 +790,11 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
                     <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-sm font-medium text-green-800">
                       {t('success')}
                     </span>
+                  ) : pendingOutcomeKey(result.output?.metadata?.outcome) ? (
+                    // 需人工批准 / 升级：待处置，琥珀色而非红色「失败」。
+                    <span className={PENDING_BADGE_CLASS}>
+                      {t(pendingOutcomeKey(result.output?.metadata?.outcome)!)}
+                    </span>
                   ) : result.output?.metadata?.decision === 'indeterminate' ? (
                     <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-sm font-medium text-blue-800">
                       {t('computed')}
@@ -808,7 +824,11 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
                 {result.output && (
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-fg-muted">{t('decision')}</span>
-                    {result.output.metadata?.decision === 'indeterminate' ? (
+                    {pendingOutcomeKey(result.output.metadata?.outcome) ? (
+                      <span className={PENDING_BADGE_CLASS}>
+                        {t(pendingOutcomeKey(result.output.metadata?.outcome)!)}
+                      </span>
+                    ) : result.output.metadata?.decision === 'indeterminate' ? (
                       <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-sm font-medium text-blue-800">
                         {t('noDecision')}
                       </span>

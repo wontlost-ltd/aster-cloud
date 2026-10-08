@@ -42,6 +42,45 @@ interface Stats {
   }>;
 }
 
+/** 日志行的展示分类：值输出 / 待人工处置（需批准、升级）/ 通过 / 失败。 */
+type LogStatus = 'computed' | 'pending' | 'success' | 'failed';
+
+/** 各展示分类的图标底色、徽章配色与图标路径。 */
+const LOG_STATUS_STYLES: Record<LogStatus, { icon: string; badge: string; path: string }> = {
+  computed: {
+    icon: 'bg-blue-100 text-blue-600',
+    badge: 'bg-blue-50 text-blue-700 ring-blue-600/20',
+    path: 'M9 7h6m-6 4h6m-6 4h4M5 5a2 2 0 012-2h10a2 2 0 012 2v14l-4-2-3 2-3-2-3 2V5z',
+  },
+  pending: {
+    icon: 'bg-amber-100 text-amber-600',
+    badge: 'bg-amber-50 text-amber-700 ring-amber-600/20',
+    path: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z',
+  },
+  success: {
+    icon: 'bg-emerald-100 text-emerald-600',
+    badge: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+    path: 'M5 13l4 4L19 7',
+  },
+  failed: {
+    icon: 'bg-red-100 text-red-600',
+    badge: 'bg-red-50 text-red-700 ring-red-600/20',
+    path: 'M6 18L18 6M6 6l12 12',
+  },
+};
+
+function logStatus(log: ExecutionLog): LogStatus {
+  if (log.decision === 'indeterminate') return 'computed';
+  if (log.decision === 'require_approval' || log.decision === 'escalate') return 'pending';
+  return log.success ? 'success' : 'failed';
+}
+
+function logStatusLabel(log: ExecutionLog, t: Translations): string {
+  if (log.decision === 'require_approval' || log.decision === 'escalate') return t.logs[log.decision];
+  if (log.decision === 'indeterminate') return t.logs.computed;
+  return log.success ? t.logs.success : t.logs.failed;
+}
+
 interface Translations {
   logs: {
     title: string;
@@ -53,6 +92,10 @@ interface Translations {
     failed: string;
     /** 值/计算输出（indeterminate）中性状态标签。 */
     computed: string;
+    /** Verdict 需人工批准（require_approval）待处置标签。 */
+    require_approval: string;
+    /** Verdict 升级（escalate）待处置标签。 */
+    escalate: string;
     source: string;
     web: string;
     api: string;
@@ -550,47 +593,21 @@ export function LogsContent({
                 <div className="p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      {/* Status Icon —— indeterminate（值/计算输出，如 greet 返回文本）显示中性蓝色
-                          「已计算」而非红色「失败」；success(=allowed) 绿、真实拒绝/错误红。 */}
+                      {/* Status Icon + Badge —— 由 logStatus 统一分类：indeterminate 中性蓝「已计算」、
+                          require_approval/escalate 琥珀色待处置、success(=allowed) 绿、真实拒绝/错误红。 */}
                       <div
-                        className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                          log.decision === 'indeterminate'
-                            ? 'bg-blue-100 text-blue-600'
-                            : log.success
-                              ? 'bg-emerald-100 text-emerald-600'
-                              : 'bg-red-100 text-red-600'
-                        }`}
+                        className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${LOG_STATUS_STYLES[logStatus(log)].icon}`}
                       >
-                        {log.decision === 'indeterminate' ? (
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m-6 4h6m-6 4h4M5 5a2 2 0 012-2h10a2 2 0 012 2v14l-4-2-3 2-3-2-3 2V5z" />
-                          </svg>
-                        ) : log.success ? (
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                        ) : (
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        )}
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={LOG_STATUS_STYLES[logStatus(log)].path} />
+                        </svg>
                       </div>
 
                       {/* Status Badge */}
                       <span
-                        className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${
-                          log.decision === 'indeterminate'
-                            ? 'bg-blue-50 text-blue-700 ring-blue-600/20'
-                            : log.success
-                              ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20'
-                              : 'bg-red-50 text-red-700 ring-red-600/20'
-                        }`}
+                        className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${LOG_STATUS_STYLES[logStatus(log)].badge}`}
                       >
-                        {log.decision === 'indeterminate'
-                          ? t.logs.computed
-                          : log.success
-                            ? t.logs.success
-                            : t.logs.failed}
+                        {logStatusLabel(log, t)}
                       </span>
 
                       {/* Source Badge */}

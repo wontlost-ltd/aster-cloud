@@ -367,8 +367,11 @@ export function isCnlTruthy(val: unknown): boolean {
  *   直接视为成功的计算结果（approved=true），与 number / value 对象 / _type 对象一致
  *   ——这类路径本就不是 allow/deny 决策。
  *
- * 结构化形态（boolean / 含批准字段对象 / value 对象 / _type 对象）在两种 mode 下
+ * 结构化形态（boolean / Verdict / 含批准字段对象 / value 对象 / _type 对象）在两种 mode 下
  * 行为一致——它们语义明确，不受 mode 影响。
+ *
+ * 不含任何判定字段的对象（如 `{}`、`{ tier: '转人工审核' }`，含数组）在两种 mode 下
+ * 均为 indeterminate（approved=false，不计入拒绝）——无 allow/deny 语义可读。
  */
 export type ApprovalParseMode = 'decision' | 'value';
 
