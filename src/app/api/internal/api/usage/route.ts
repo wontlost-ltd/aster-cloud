@@ -1,8 +1,8 @@
 /**
  * Policy Execution API 配额查询 + 记录
  *
- * GET ?userId=xxx&periodMonth=YYYY-MM   → 当月已用次数
- * POST { userId, tenantId, endpointPath, status, latencyMs }  → 记录一次调用
+ * GET ?userId=xxx&periodMonth=YYYY-MM   → 当月已用次数（userId 为配额 owner，按 owner 共享池统计）
+ * POST { userId, tenantId, quotaOwnerId?, endpointPath, status, latencyMs }  → 记录一次调用
  *
  * 由 aster-api PolicyEvaluationResource 调用（HMAC 验签）。
  */
@@ -10,7 +10,8 @@ import { NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { verifyInternalSignature } from '@/lib/api-signing';
 import { db, apiCallRecords, apiKeys } from '@/lib/prisma';
-import { and, eq, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, eq, isNull, lt, or } from 'drizzle-orm';
+import { countOwnerPoolUsage, currentPeriodMonth } from '@/lib/api-quota-pool';
 
 /**
  * 入站验签，收敛到 verifyInternalSignature（2026-07-29 审计修复）。
@@ -42,26 +43,17 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const userId = url.searchParams.get('userId');
-  const periodMonth = url.searchParams.get('periodMonth') ?? currentPeriod();
+  const periodMonth = url.searchParams.get('periodMonth') ?? currentPeriodMonth();
   if (!userId) {
     return NextResponse.json({ error: 'Missing userId' }, { status: 400 });
   }
 
-  const r = await db
-    .select({ c: sql<number>`count(*)::int` })
-    .from(apiCallRecords)
-    .where(
-      and(
-        eq(apiCallRecords.userId, userId),
-        eq(apiCallRecords.periodMonth, periodMonth),
-        eq(apiCallRecords.status, 'success')
-      )
-    );
+  const used = await countOwnerPoolUsage(userId, periodMonth);
 
   return NextResponse.json({
     userId,
     periodMonth,
-    used: r[0]?.c ?? 0,
+    used,
   });
 }
 
@@ -75,6 +67,8 @@ export async function POST(req: Request) {
     userId: string;
     tenantId?: string;
     apiKeyId?: string;
+    /** 配额 owner（ADR 0015 §4）：团队 key 为团队 owner；旧版 aster-api 不传时按调用者本人归池。 */
+    quotaOwnerId?: string;
     endpointPath: string;
     status: 'success' | 'quota_exhausted' | 'rate_limited' | 'api_error';
     latencyMs?: number;
@@ -92,7 +86,8 @@ export async function POST(req: Request) {
     userId: body.userId,
     tenantId: body.tenantId ?? null,
     apiKeyId: body.apiKeyId ?? null,
-    periodMonth: currentPeriod(),
+    quotaOwnerId: body.quotaOwnerId ?? body.userId,
+    periodMonth: currentPeriodMonth(),
     endpointPath: body.endpointPath,
     status: body.status,
     latencyMs: body.latencyMs ?? 0,
@@ -134,9 +129,4 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({ ok: true });
-}
-
-function currentPeriod(): string {
-  const d = new Date();
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }

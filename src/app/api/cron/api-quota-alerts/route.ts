@@ -1,7 +1,8 @@
 /**
  * Policy Execution API 配额预警 cron（每天 06:00 UTC）
  *
- * 扫描所有 plan ∈ {trial, pro, team} 用户的当月 API 用量百分比：
+ * 扫描所有 plan ∈ {trial, pro, team} 配额 owner 的当月 API 用量百分比
+ * （owner 共享池：本人 key + 名下团队 key 的调用合计，ADR 0015 §4）：
  *   ≥ 80% 发预警邮件（每月一次幂等：apiQuotaWarn80SentAt）
  *   ≥ 100% 发软警告 + 升级 CTA（apiQuotaWarn100SentAt）
  *   ≥ 200% 发停服通知（apiQuotaWarn200SentAt）
@@ -15,6 +16,7 @@ import { db, users, apiCallRecords } from '@/lib/prisma';
 import { and, eq, sql } from 'drizzle-orm';
 import { getResend } from '@/lib/resend';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
+import { currentPeriodMonth } from '@/lib/api-quota-pool';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -42,13 +44,15 @@ export async function GET(request: NextRequest) {
   const guard = requireCronAuth(request);
   if (guard) return guard;
 
-  const period = currentPeriod();
+  const period = currentPeriodMonth();
   const results: AlertResult[] = [];
 
-  // 找出有 API 用量的用户（trial/pro/team）
+  // 按配额 owner 分组找出有 API 用量的池：旧行 quotaOwnerId 为 NULL 时归持有者本人。
+  // 别名仍叫 userId——它就是 owner 的 users.id，下面按它查套餐、发告警。
+  const quotaOwner = sql<string>`coalesce(${apiCallRecords.quotaOwnerId}, ${apiCallRecords.userId})`;
   const candidates = await db
     .select({
-      userId: apiCallRecords.userId,
+      userId: quotaOwner,
       used: sql<number>`count(*)::int`,
     })
     .from(apiCallRecords)
@@ -58,7 +62,7 @@ export async function GET(request: NextRequest) {
         eq(apiCallRecords.status, 'success')
       )
     )
-    .groupBy(apiCallRecords.userId);
+    .groupBy(quotaOwner);
 
   for (const c of candidates) {
     const user = await db.query.users.findFirst({
@@ -130,14 +134,8 @@ function pickThreshold(percent: number): 80 | 100 | 200 | null {
   return null;
 }
 
-function currentPeriod(): string {
-  const d = new Date();
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-}
-
 function sameMonth(d: Date, period: string): boolean {
-  const dStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-  return dStr === period;
+  return currentPeriodMonth(d) === period;
 }
 
 async function sendAlertEmail(

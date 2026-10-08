@@ -6,12 +6,16 @@
  *   2. /api/internal/api/usage?userId=...
  *
  * 返回 aster-api ApiQuotaGuard.check() 需要的所有字段。
+ *
+ * `userId` 参数语义是配额 owner（ADR 0015 §4）：团队 key 由 aster-api 传团队 owner，
+ * 个人 key 传本人；套餐、封禁与月度用量都按该 owner 取，用量走 owner 共享池。
  */
 import { NextResponse } from 'next/server';
 import { verifyInternalSignature } from '@/lib/api-signing';
-import { db, users, apiCallRecords } from '@/lib/prisma';
-import { eq, and, sql } from 'drizzle-orm';
+import { db, users } from '@/lib/prisma';
+import { eq } from 'drizzle-orm';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
+import { countOwnerPoolUsage, currentPeriodMonth } from '@/lib/api-quota-pool';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -65,31 +69,17 @@ export async function GET(req: Request) {
     legacyTier: user.legacyTier,
   });
 
-  const period = currentPeriod();
-  const used = await db
-    .select({ c: sql<number>`count(*)::int` })
-    .from(apiCallRecords)
-    .where(
-      and(
-        eq(apiCallRecords.userId, userId),
-        eq(apiCallRecords.periodMonth, period),
-        eq(apiCallRecords.status, 'success')
-      )
-    );
+  const period = currentPeriodMonth();
+  const monthlyUsed = await countOwnerPoolUsage(userId, period);
 
   return NextResponse.json({
     plan: user.plan,
     legacyTier: user.legacyTier ?? null,
     subscriptionStatus: user.subscriptionStatus ?? null,
     apiCallsLimit: limits.apiCalls,
-    monthlyUsed: used[0]?.c ?? 0,
+    monthlyUsed,
     period,
     banned: !!user.aiBannedUntil && user.aiBannedUntil > new Date(),
     gracePeriodEndsAt: user.gracePeriodEndsAt?.toISOString() ?? null,
   });
-}
-
-function currentPeriod(): string {
-  const d = new Date();
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }

@@ -1,9 +1,10 @@
 // 用户 Policy Execution API 用量查询（dashboard 卡片用）
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { db, users, apiCallRecords } from '@/lib/prisma';
-import { and, eq, gte, sql } from 'drizzle-orm';
+import { db, users } from '@/lib/prisma';
+import { eq, gte, sql } from 'drizzle-orm';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
+import { countOwnerPoolUsage, currentPeriodMonth } from '@/lib/api-quota-pool';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -46,7 +47,7 @@ export async function GET() {
     legacyTier: user.legacyTier,
   });
   const limit = limits.apiCalls;
-  const period = currentPeriod();
+  const period = currentPeriodMonth();
 
   let usedCount = 0;
   let latRow: { p50: number | null; p95: number | null; sample_count: number } = {
@@ -58,17 +59,8 @@ export async function GET() {
   let degraded = false;
 
   try {
-    const used = await db
-      .select({ c: sql<number>`count(*)::int` })
-      .from(apiCallRecords)
-      .where(
-        and(
-          eq(apiCallRecords.userId, userId),
-          eq(apiCallRecords.periodMonth, period),
-          eq(apiCallRecords.status, 'success')
-        )
-      );
-    usedCount = used[0]?.c ?? 0;
+    // 月度用量口径与 precheck 一致：本人即配额 owner，计入其名下团队 key 的调用（ADR 0015 §4）。
+    usedCount = await countOwnerPoolUsage(userId, period);
 
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const latencyResult = await db.execute(sql`
@@ -124,9 +116,4 @@ export async function GET() {
     trend,
     degraded,
   });
-}
-
-function currentPeriod(): string {
-  const d = new Date();
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
