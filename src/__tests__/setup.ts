@@ -81,6 +81,7 @@ vi.mock('lucide-react', () => ({
   Search: () => null,
   X: () => null,
   Check: () => null,
+  CheckCircle2: () => null,
   AlertCircle: () => null,
   Info: () => null,
   Settings: () => null,

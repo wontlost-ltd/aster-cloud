@@ -14,6 +14,7 @@ import {
   Container,
   Input,
   PageHeader,
+  Select,
   Stack,
   cn,
 } from '@/components/ui';
@@ -23,6 +24,9 @@ interface ApiKey {
   id: string;
   name: string;
   prefix: string;
+  // 团队作用域 key 的归属团队；个人 key 两者均为 null
+  teamId: string | null;
+  teamName: string | null;
   lastUsedAt: string | null;
   createdAt: string;
   expiresAt: string | null;
@@ -53,6 +57,13 @@ interface Translations {
   revoke: string;
   usageExample: string;
   usageDescription: string;
+  scope: string;
+  scopePersonal: string;
+  // 含 {team} 占位符，渲染时替换为团队名
+  scopeTeam: string;
+  scopeColumn: string;
+  errorNotMember: string;
+  errorPlanNoApiAccess: string;
   examples: {
     getPolicyId: string;
     getPolicyIdDesc: string;
@@ -75,20 +86,30 @@ interface Translations {
   cancel: string;
 }
 
+interface Team {
+  id: string;
+  name: string;
+}
+
 interface ApiKeysContentProps {
   initialApiKeys: ApiKey[];
+  // 当前用户所在团队，供创建表单选择 key 作用域
+  teams: Team[];
   translations: Translations;
   locale: string;
 }
 
 export function ApiKeysContent({
   initialApiKeys,
+  teams,
   translations: t,
   locale,
 }: ApiKeysContentProps) {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>(initialApiKeys);
   const [isCreating, setIsCreating] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
+  // 'personal' 表示个人 key，其余取值为团队 id
+  const [scope, setScope] = useState<string>('personal');
   const [newKeyValue, setNewKeyValue] = useState<string | null>(null);
   const [error, setError] = useState('');
   // Branded revoke confirmation — replaces window.confirm() which
@@ -118,6 +139,13 @@ export function ApiKeysContent({
     }
   };
 
+  // 把创建接口的业务错误码映射为本地化文案；未知错误沿用服务端原文
+  const createErrorMessage = (code: string | undefined) => {
+    if (code === 'not_a_member') return t.errorNotMember;
+    if (code === 'plan_no_api_access') return t.errorPlanNoApiAccess;
+    return code || 'Failed to create API key';
+  };
+
   const handleCreateKey = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newKeyName.trim()) {
@@ -132,12 +160,14 @@ export function ApiKeysContent({
       const response = await fetch('/api/api-keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newKeyName }),
+        body: JSON.stringify(
+          scope === 'personal' ? { name: newKeyName } : { name: newKeyName, teamId: scope },
+        ),
       });
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error((data as { error?: string }).error || 'Failed to create API key');
+        throw new Error(createErrorMessage((data as { error?: string }).error));
       }
 
       const data = await response.json();
@@ -257,6 +287,19 @@ export function ApiKeysContent({
                 {t.createNew}
               </label>
               <form onSubmit={handleCreateKey} className="flex gap-3">
+                <label htmlFor="apiKeyScope" className="sr-only">
+                  {t.scope}
+                </label>
+                <div className="w-48 shrink-0">
+                  <Select id="apiKeyScope" value={scope} onChange={(e) => setScope(e.target.value)}>
+                    <option value="personal">{t.scopePersonal}</option>
+                    {teams.map((team) => (
+                      <option key={team.id} value={team.id}>
+                        {t.scopeTeam.replace('{team}', team.name)}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
                 <Input
                   type="text"
                   id="apiKeyName"
@@ -294,6 +337,7 @@ export function ApiKeysContent({
                       <tr>
                         <Th>{t.name}</Th>
                         <Th>{t.key}</Th>
+                        <Th>{t.scopeColumn}</Th>
                         <Th>{t.lastUsed}</Th>
                         <Th>{t.created}</Th>
                         <Th align="right">{t.actions}</Th>
@@ -307,6 +351,9 @@ export function ApiKeysContent({
                           </td>
                           <td className="whitespace-nowrap px-3 py-4 font-mono text-sm text-fg-muted">
                             {key.prefix}...
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-4 text-sm text-fg-muted">
+                            {key.teamName ?? t.scopePersonal}
                           </td>
                           <td className="whitespace-nowrap px-3 py-4 text-sm text-fg-muted">
                             {key.lastUsedAt ? formatDate(key.lastUsedAt, locale) : t.never}

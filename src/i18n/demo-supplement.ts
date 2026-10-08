@@ -316,6 +316,15 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         loadFailed: 'Could not load your trusted devices.',
         removeFailed: 'Could not remove that device. Please try again.',
       },
+      apiKeys: {
+        // API key 作用域（ADR 0015 §6，本地补充）；scopeTeam 的 {team} 由客户端替换为团队名
+        scope: 'Scope',
+        scopePersonal: 'Personal',
+        scopeTeam: 'Team · {team}',
+        scopeColumn: 'Scope',
+        errorNotMember: 'You are not a member of this team.',
+        errorPlanNoApiAccess: 'The team owner’s plan does not include API access.',
+      },
       aiKeysPage: {
         // AI Key 行内编辑 + 重置额度（本地补充，ui-messages 包尚无这些 key）。
         edit: 'Edit',
@@ -827,6 +836,14 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         loadFailed: '无法加载已信任设备。',
         removeFailed: '移除失败，请重试。',
       },
+      apiKeys: {
+        scope: '作用域',
+        scopePersonal: '个人',
+        scopeTeam: '团队 · {team}',
+        scopeColumn: '作用域',
+        errorNotMember: '你不是该团队成员。',
+        errorPlanNoApiAccess: '团队 owner 的套餐不含 API 访问。',
+      },
       aiKeysPage: {
         edit: '编辑',
         editSave: '保存',
@@ -1337,6 +1354,14 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         loadFailed: 'Vertrauenswürdige Geräte konnten nicht geladen werden.',
         removeFailed: 'Gerät konnte nicht entfernt werden. Bitte erneut versuchen.',
       },
+      apiKeys: {
+        scope: 'Geltungsbereich',
+        scopePersonal: 'Persönlich',
+        scopeTeam: 'Team · {team}',
+        scopeColumn: 'Geltungsbereich',
+        errorNotMember: 'Du bist kein Mitglied dieses Teams.',
+        errorPlanNoApiAccess: 'Der Tarif des Team-Owners enthält keinen API-Zugang.',
+      },
       aiKeysPage: {
         edit: 'Bearbeiten',
         editSave: 'Speichern',
@@ -1844,6 +1869,14 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         removing: 'हटाया जा रहा है…',
         loadFailed: 'विश्वसनीय डिवाइस लोड नहीं हो सके।',
         removeFailed: 'डिवाइस हटाया नहीं जा सका। कृपया पुनः प्रयास करें।',
+      },
+      apiKeys: {
+        scope: 'दायरा',
+        scopePersonal: 'व्यक्तिगत',
+        scopeTeam: 'टीम · {team}',
+        scopeColumn: 'दायरा',
+        errorNotMember: 'आप इस टीम के सदस्य नहीं हैं।',
+        errorPlanNoApiAccess: 'टीम owner के प्लान में API एक्सेस शामिल नहीं है।',
       },
       aiKeysPage: {
         edit: 'संपादित करें',
