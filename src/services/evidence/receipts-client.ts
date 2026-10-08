@@ -1,8 +1,9 @@
 /**
  * 向 aster-api 批量取链收据（ADR 0041 §2.4）。
  *
- * 分批 50、并发 4、每批 2 s 超时；非 2xx / 超时 / 网络错 ⇒ 该批 id 整体记入 unavailable。
+ * 分批 50、并发 4、每批 2 s 超时；非 2xx / 超时 / 网络错 / 响应畸形 ⇒ 该批 id 整体记入 unavailable。
  * 不重试、不伪造：取不到就如实标「不可用」，由证据包上层决定如何呈现。
+ * 每次查找的首个失败原因只写服务端日志（console.warn），绝不进入证据包。
  */
 import 'server-only';
 
@@ -23,7 +24,7 @@ export type ChainApproval = {
   auditId: number;
   decisionId: string;
   outcome: string;
-  decidedBy: string;
+  decidedBy: string | null;
   requiredRole: string | null;
   comment: string | null;
   decidedAt: string;
@@ -53,8 +54,6 @@ const CALLER_USER_ID = 'evidence-export';
 const CALLER_ROLE = 'member';
 
 type LookupParam = 'correlationIds' | 'decisionIds';
-// 线上响应里的收据带回请求键（correlationId / decisionId），对外类型不暴露它。
-type WireReceipt = ChainReceipt & { correlationId?: string; decisionId?: string };
 
 const KEY_OF: Record<LookupParam, 'correlationId' | 'decisionId'> = {
   correlationIds: 'correlationId',
@@ -66,16 +65,18 @@ export async function fetchReceipts(
   tenantId: string,
   correlationIds: string[],
   fetchImpl: typeof fetch = fetch,
+  limiter: Limiter = createLimiter(RECEIPT_CONCURRENCY),
 ): Promise<ReceiptLookup> {
-  return lookup(tenantId, 'correlationIds', correlationIds, fetchImpl);
+  return lookup(tenantId, 'correlationIds', correlationIds, fetchImpl, limiter);
 }
 
 export async function fetchDecisionReceipts(
   tenantId: string,
   decisionIds: string[],
   fetchImpl: typeof fetch = fetch,
+  limiter: Limiter = createLimiter(RECEIPT_CONCURRENCY),
 ): Promise<ReceiptLookup> {
-  return lookup(tenantId, 'decisionIds', decisionIds, fetchImpl);
+  return lookup(tenantId, 'decisionIds', decisionIds, fetchImpl, limiter);
 }
 
 /**
@@ -93,18 +94,53 @@ export function mergeLookups(lookups: readonly ReceiptLookup[]): ReceiptLookup {
   return out;
 }
 
+/**
+ * 有界并发限流器：同一时刻最多 limit 个任务在跑。
+ * 导出层用同一个实例串起所有租户、两类查找，使对 aster-api 的在途批次全局不超过 limit。
+ */
+export type Limiter = <T>(task: () => Promise<T>) => Promise<T>;
+
+export function createLimiter(limit: number): Limiter {
+  let active = 0;
+  const queue: Array<() => void> = [];
+  // 有人排队则把名额直接移交给队首（active 不变），否则归还名额。
+  const release = () => {
+    const next = queue.shift();
+    if (next) next();
+    else active--;
+  };
+  return async (task) => {
+    if (active >= limit) await new Promise<void>((resolve) => queue.push(resolve));
+    else active++;
+    try {
+      return await task();
+    } finally {
+      release();
+    }
+  };
+}
+
 async function lookup(
   tenantId: string,
   param: LookupParam,
   ids: string[],
   fetchImpl: typeof fetch,
+  limiter: Limiter,
 ): Promise<ReceiptLookup> {
   const out: ReceiptLookup = { receipts: new Map(), approvals: new Map(), missing: new Set(), unavailable: new Set() };
   const unique = [...new Set(ids.filter(Boolean))];
   const batches: string[][] = [];
   for (let i = 0; i < unique.length; i += RECEIPT_BATCH) batches.push(unique.slice(i, i + RECEIPT_BATCH));
-  const tasks = batches.map((batch) => () => fetchBatch(tenantId, param, batch, fetchImpl, out));
-  await runLimited(tasks, RECEIPT_CONCURRENCY);
+  const failures: string[] = [];
+  await Promise.all(
+    batches.map((batch) => limiter(() => fetchBatch(tenantId, param, batch, fetchImpl, out, failures))),
+  );
+  if (failures.length > 0) {
+    console.warn(
+      `[evidence] receipts lookup degraded: tenant=${tenantId} param=${param} ` +
+        `failedBatches=${failures.length}/${batches.length} firstFailure=${failures[0]}`,
+    );
+  }
   return out;
 }
 
@@ -116,12 +152,24 @@ async function buildHeaders(tenantId: string): Promise<Record<string, string>> {
   return { ...base, ...signed };
 }
 
+/** 可归类的批失败（HTTP 状态 / 响应畸形），message 即诊断原因。 */
+class BatchFailure extends Error {}
+
+/** 把批失败归为 timeout / HTTP xxx / malformed:… / network:…，仅用于日志诊断。 */
+function failureReason(err: unknown, timedOut: boolean): string {
+  if (timedOut) return 'timeout';
+  if (err instanceof BatchFailure) return err.message;
+  if (err instanceof SyntaxError) return 'malformed: invalid JSON';
+  return `network: ${err instanceof Error ? err.name : String(err)}`;
+}
+
 async function fetchBatch(
   tenantId: string,
   param: LookupParam,
   batch: string[],
   fetchImpl: typeof fetch,
   out: ReceiptLookup,
+  failures: string[],
 ): Promise<void> {
   // 用 AbortController + setTimeout 而非 AbortSignal.timeout：后者不受 vitest 假定时器控制。
   const ac = new AbortController();
@@ -130,10 +178,11 @@ async function fetchBatch(
     const url = `${getApiConfig().baseUrl}${PATH}?${param}=${encodeURIComponent(batch.join(','))}`;
     const headers = await buildHeaders(tenantId);
     const res = await fetchImpl(url, { headers, signal: ac.signal });
-    if (!res.ok) throw new Error(`receipts HTTP ${res.status}`);
+    if (!res.ok) throw new BatchFailure(`HTTP ${res.status}`);
     commitBatch(out, parseBatch(KEY_OF[param], batch, await res.json()));
-  } catch {
+  } catch (err) {
     // 超时、网络错、非 2xx、响应畸形：整批记不可用，不重试；parseBatch 先于提交，故不会有部分写入。
+    failures.push(failureReason(err, ac.signal.aborted));
     markUnavailable(out, batch);
   } finally {
     clearTimeout(timer);
@@ -150,33 +199,91 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
+function malformed(what: string): never {
+  throw new BatchFailure(`malformed: ${what}`);
+}
+
 function arrayField(body: Record<string, unknown>, field: string): unknown[] {
   const v = body[field] ?? [];
-  if (!Array.isArray(v)) throw new Error(`receipts body: ${field} is not an array`);
+  if (!Array.isArray(v)) malformed(`${field} is not an array`);
+  return v;
+}
+
+/** 必填字符串字段；缺失或类型不符即畸形。 */
+function str(item: Record<string, unknown>, field: string): string {
+  const v = item[field];
+  if (typeof v !== 'string') malformed(`${field} is not a string`);
+  return v;
+}
+
+/** 必填有限数字字段；缺失或类型不符即畸形。 */
+function num(item: Record<string, unknown>, field: string): number {
+  const v = item[field];
+  if (typeof v !== 'number' || !Number.isFinite(v)) malformed(`${field} is not a number`);
+  return v;
+}
+
+/** 可空字符串字段：aster-api 以 NON_NULL 序列化，null 值整键缺省，故缺省归一为 null。 */
+function optStr(item: Record<string, unknown>, field: string): string | null {
+  const v = item[field] ?? null;
+  if (v !== null && typeof v !== 'string') malformed(`${field} is not a string`);
   return v;
 }
 
 /**
- * 把一批响应解析为本地结果；畸形即抛错（尚未触碰 out）。
+ * 线上收据 → 精确的 ChainReceipt（不透传多余键，不留 undefined，保证 canonicalHash 可算）。
+ * prevHash 缺省 = 链首行，归一为 null；hashVersion 缺省 = 链前旧行，无法校验 ⇒ 畸形。
+ */
+function toReceipt(item: Record<string, unknown>): ChainReceipt {
+  const metadata = item.metadata ?? {};
+  if (!isRecord(metadata)) malformed('metadata is not an object');
+  return {
+    auditId: num(item, 'auditId'),
+    currentHash: str(item, 'currentHash'),
+    prevHash: optStr(item, 'prevHash'),
+    hashVersion: num(item, 'hashVersion'),
+    eventType: str(item, 'eventType'),
+    timestamp: str(item, 'timestamp'),
+    metadata,
+  };
+}
+
+/** 线上审批 → 精确的 ChainApproval；decidedBy / comment / requiredRole / decisionReceiptHash 缺省归一为 null。 */
+function toApproval(item: Record<string, unknown>): ChainApproval {
+  return {
+    auditId: num(item, 'auditId'),
+    decisionId: str(item, 'decisionId'),
+    outcome: str(item, 'outcome'),
+    decidedBy: optStr(item, 'decidedBy'),
+    requiredRole: optStr(item, 'requiredRole'),
+    comment: optStr(item, 'comment'),
+    decidedAt: str(item, 'decidedAt'),
+    currentHash: str(item, 'currentHash'),
+    decisionReceiptHash: optStr(item, 'decisionReceiptHash'),
+  };
+}
+
+/**
+ * 把一批响应解析为本地结果；任一条畸形即抛错（尚未触碰 out），整批记 unavailable。
  * 只认本批请求过的 id：missing = 本批 id − 收到收据的 id（不采信服务端 missing 列表），
  * 故 receipts / missing / unavailable 三集合按构造互斥。
  */
 function parseBatch(key: 'correlationId' | 'decisionId', batch: string[], body: unknown): BatchResult {
-  if (!isRecord(body)) throw new Error('receipts body is not an object');
+  if (!isRecord(body)) malformed('body is not an object');
   const wanted = new Set(batch);
   const receipts = new Map<string, ChainReceipt>();
   for (const item of arrayField(body, 'receipts')) {
-    if (!isRecord(item)) throw new Error('receipt is not an object');
-    const { correlationId, decisionId, ...receipt } = item as WireReceipt;
-    const id = key === 'correlationId' ? correlationId : decisionId;
-    if (typeof id === 'string' && wanted.has(id)) receipts.set(id, receipt);
+    if (!isRecord(item)) malformed('receipt is not an object');
+    const receipt = toReceipt(item);
+    const id = optStr(item, key);
+    if (id !== null && wanted.has(id)) receipts.set(id, receipt);
   }
   // 审批按 decisionId 归属：只保留本批请求过的 decisionId（即仅 decisionIds 查询有意义）。
   const approvals: ChainApproval[] = [];
   for (const item of arrayField(body, 'approvals')) {
-    if (!isRecord(item)) throw new Error('approval is not an object');
-    const a = item as ChainApproval;
-    if (typeof a.decisionId === 'string' && wanted.has(a.decisionId)) approvals.push(a);
+    if (!isRecord(item)) malformed('approval is not an object');
+    const a = toApproval(item);
+    if (wanted.has(a.decisionId)) approvals.push(a);
   }
   arrayField(body, 'missing');
   const missing = batch.filter((id) => !receipts.has(id));
@@ -191,13 +298,4 @@ function commitBatch(out: ReceiptLookup, result: BatchResult): void {
     out.approvals.set(a.decisionId, list);
   }
   for (const id of result.missing) out.missing.add(id);
-}
-
-/** 有界并发：同一时刻最多 limit 个任务在跑；任务自身吞掉错误、永不抛出。 */
-async function runLimited(tasks: Array<() => Promise<void>>, limit: number): Promise<void> {
-  let next = 0;
-  const worker = async () => {
-    while (next < tasks.length) await tasks[next++]();
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
 }

@@ -125,12 +125,37 @@ describe('createEvidenceExport v2', () => {
   it('★按租户分组取收据，按 guardDecisionId 取审批，版本 id 批量取复核者', async () => {
     await createEvidenceExport('user-1', { format: 'json' });
     expect(fetchReceipts).toHaveBeenCalledTimes(2);
-    expect(fetchReceipts).toHaveBeenCalledWith('team-1', ['c-1']);
-    expect(fetchReceipts).toHaveBeenCalledWith('user-9', ['c-3']);
+    expect(fetchReceipts).toHaveBeenCalledWith('team-1', ['c-1'], fetch, expect.any(Function));
+    expect(fetchReceipts).toHaveBeenCalledWith('user-9', ['c-3'], fetch, expect.any(Function));
     expect(fetchDecisionReceipts).toHaveBeenCalledTimes(1);
-    expect(fetchDecisionReceipts).toHaveBeenCalledWith('user-9', ['gd-3']);
+    expect(fetchDecisionReceipts).toHaveBeenCalledWith('user-9', ['gd-3'], fetch, expect.any(Function));
     expect(loadProofReviewers).toHaveBeenCalledWith(['pv-1']);
     expect(loadVersionApprovalReviewers).toHaveBeenCalledWith(['pv-1']);
+  });
+
+  it('★所有租户、两类查找共用同一个限流器（全局在途批次有界）', async () => {
+    await createEvidenceExport('user-1', { format: 'json' });
+    const limiters = [...fetchReceipts.mock.calls, ...fetchDecisionReceipts.mock.calls].map((c) => c[3]);
+    expect(limiters).toHaveLength(3);
+    expect(new Set(limiters).size).toBe(1);
+  });
+
+  it('★线上形状（链首行省略 prevHash）经真实客户端解析 → 导出 completed，收据 prevHash=null', async () => {
+    const real = await vi.importActual<typeof import('@/services/evidence/receipts-client')>(
+      '@/services/evidence/receipts-client',
+    );
+    const wire = (async () => new Response(JSON.stringify({
+      receipts: [{ auditId: 11, correlationId: 'c-1', currentHash: 'h11', eventType: 'POLICY_EVALUATION',
+        hashVersion: 2, metadata: {}, timestamp: '2026-10-01T00:00:00Z' }],
+    }), { status: 200 })) as unknown as typeof fetch;
+    fetchReceipts.mockImplementation((t: string, ids: string[], _f: typeof fetch, limiter) =>
+      real.fetchReceipts(t, ids, wire, limiter));
+    queryEvidenceExecutions.mockResolvedValue([ROWS[0]]);
+
+    await createEvidenceExport('user-1', { format: 'json' });
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }));
+    const [e1] = storedBundle().entries;
+    expect(e1.receipt).toEqual({ auditId: 11, currentHash: 'h11', prevHash: null, hashVersion: 2 });
   });
 
   it('★三条目的收据状态/引用与复核者来源组合', async () => {

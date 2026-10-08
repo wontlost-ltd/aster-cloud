@@ -85,10 +85,13 @@ export async function loadVersionApprovalReviewers(policyVersionRowIds: string[]
   return out;
 }
 
-/** guard 审批角色取自自报请求头，尚未经服务端核验（3b 改为 true）。 */
+/**
+ * guard 审批角色取自自报请求头，尚未经服务端核验（3b 改为 true）。
+ * 审批行未记 decidedBy / requiredRole 时与角色同口径标 'unknown'，不留空值。
+ */
 export function guardApprovalReviewers(approvals: ChainApproval[]): Reviewer[] {
   return approvals.map((a) => ({
-    userId: a.decidedBy, role: a.requiredRole ?? 'unknown', source: 'guard-approval', outcome: a.outcome,
+    userId: a.decidedBy ?? 'unknown', role: a.requiredRole ?? 'unknown', source: 'guard-approval', outcome: a.outcome,
     decidedAt: a.decidedAt, ref: String(a.auditId), roleVerified: false,
   }));
 }

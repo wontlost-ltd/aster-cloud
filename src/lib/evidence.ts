@@ -14,9 +14,12 @@ import {
 } from '@/services/evidence/bundle';
 import { queryEvidenceExecutions } from '@/lib/evidence-export';
 import {
+  createLimiter,
   fetchDecisionReceipts,
   fetchReceipts,
   mergeLookups,
+  RECEIPT_CONCURRENCY,
+  type Limiter,
   type ReceiptLookup,
 } from '@/services/evidence/receipts-client';
 import {
@@ -55,12 +58,23 @@ function idsByTenant(rows: readonly EvidenceRow[], idOf: (r: EvidenceRow) => str
   return out;
 }
 
-/** 逐租户并发查询后合并为一份查找结果。收据客户端自身不抛错（失败记 unavailable）。 */
+type ReceiptFetcher = (
+  tenantId: string,
+  ids: string[],
+  fetchImpl: typeof fetch,
+  limiter: Limiter,
+) => Promise<ReceiptLookup>;
+
+/**
+ * 逐租户查询后合并为一份查找结果。收据客户端自身不抛错（失败记 unavailable）。
+ * 所有租户共用调用方传入的限流器，故在途批次总数不随租户数增长。
+ */
 async function lookupByTenant(
   groups: Map<string, string[]>,
-  fetcher: (tenantId: string, ids: string[]) => Promise<ReceiptLookup>,
+  fetcher: ReceiptFetcher,
+  limiter: Limiter,
 ): Promise<ReceiptLookup> {
-  return mergeLookups(await Promise.all([...groups].map(([tenant, ids]) => fetcher(tenant, ids))));
+  return mergeLookups(await Promise.all([...groups].map(([tenant, ids]) => fetcher(tenant, ids, fetch, limiter))));
 }
 
 /**
@@ -69,9 +83,11 @@ async function lookupByTenant(
  */
 async function enrichEntries(rows: readonly EvidenceRow[]) {
   const versionIds = [...new Set(rows.map((r) => r.policyVersionRowId).filter((v): v is string => !!v))];
+  // 一个导出一个限流器：两类查找 × 所有租户合计在途批次 ≤ RECEIPT_CONCURRENCY。
+  const limiter = createLimiter(RECEIPT_CONCURRENCY);
   const [lookup, guardLookup, proofs, approvals] = await Promise.all([
-    lookupByTenant(idsByTenant(rows, (r) => r.evidenceCorrelationId), fetchReceipts),
-    lookupByTenant(idsByTenant(rows, (r) => r.guardDecisionId), fetchDecisionReceipts),
+    lookupByTenant(idsByTenant(rows, (r) => r.evidenceCorrelationId), fetchReceipts, limiter),
+    lookupByTenant(idsByTenant(rows, (r) => r.guardDecisionId), fetchDecisionReceipts, limiter),
     loadProofReviewers(versionIds),
     loadVersionApprovalReviewers(versionIds),
   ]);
