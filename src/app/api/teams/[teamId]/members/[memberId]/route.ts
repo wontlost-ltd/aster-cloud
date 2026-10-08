@@ -68,10 +68,10 @@ export async function PUT(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: access.error }, { status: access.status });
     }
 
-    // 获取目标成员
-    const targetMember = await db.query.teamMembers.findFirst({
-      where: and(eq(teamMembers.id, memberId), eq(teamMembers.teamId, teamId)),
-    });
+    // 目标成员的查询、写入与回读都同时绑定 memberId 与 teamId：跨团队猜 memberId 一律 404，
+    // 写入与回读也不只按全局主键定位（纵深防御）
+    const inTeam = and(eq(teamMembers.id, memberId), eq(teamMembers.teamId, teamId));
+    const targetMember = await db.query.teamMembers.findFirst({ where: inTeam });
 
     if (!targetMember) {
       return NextResponse.json({ error: '成员不存在' }, { status: 404 });
@@ -93,7 +93,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
     await db
       .update(teamMembers)
       .set(parsed.set)
-      .where(eq(teamMembers.id, memberId));
+      .where(inTeam);
 
     // 团队 key 的角色与业务角色随成员行走：重推该成员的 key 快照，aster-api 立即按新身份鉴权；失败不影响已提交的变更（ADR 0015 §5）
     await refreshTeamKeySnapshots(teamId, targetMember.userId).catch((err) =>
@@ -102,7 +102,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
 
     // 重新查询获取完整信息
     const updatedMember = await db.query.teamMembers.findFirst({
-      where: eq(teamMembers.id, memberId),
+      where: inTeam,
       with: {
         user: {
           columns: {

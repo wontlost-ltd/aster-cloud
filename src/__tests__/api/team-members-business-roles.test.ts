@@ -22,6 +22,11 @@ vi.mock('@/lib/prisma', () => ({
   teamMembers: { id: 'tm.id', teamId: 'tm.teamId', userId: 'tm.userId' },
 }));
 vi.mock('@/lib/api-keys', () => ({ refreshTeamKeySnapshots: m.refresh, revokeTeamKeys: vi.fn() }));
+// where 条件以可检查的结构表达，供租户隔离断言（team-permissions 只把条件原样交给 findFirst）
+vi.mock('drizzle-orm', () => ({
+  eq: (col: unknown, val: unknown) => ({ eq: [col, val] }),
+  and: (...c: unknown[]) => ({ and: c }),
+}));
 
 import { PUT } from '@/app/api/teams/[teamId]/members/[memberId]/route';
 
@@ -98,5 +103,35 @@ describe('PUT 成员业务角色（ADR 0042 §2.1）', () => {
     const res = await PUT(put({ role: 'member' }), params);
     expect(res.status).toBe(403);
     expect(m.update).not.toHaveBeenCalled();
+  });
+
+  it('写入与回读的 where 同时绑定 memberId 与 teamId', async () => {
+    seed('admin', { id: 'm2', teamId: 't1', userId: 'u2', role: 'member', businessRoles: [] });
+    const res = await PUT(put({ businessRoles: ['DPO'] }), params);
+    expect(res.status).toBe(200);
+    const inTeam = { and: [{ eq: ['tm.id', 'm2'] }, { eq: ['tm.teamId', 't1'] }] };
+    expect(m.where).toHaveBeenCalledWith(inTeam);
+    const readBack = m.findFirst.mock.calls.find(([args]) => (args as { with?: unknown }).with)?.[0];
+    expect(readBack).toEqual(expect.objectContaining({ where: inTeam }));
+  });
+
+  it('memberId 属于其他团队 → 404，不写库、不推快照', async () => {
+    seed('admin', { id: 'm2', teamId: 't-other', userId: 'u2', role: 'member', businessRoles: [] });
+    // 模拟数据库：目标查询按 (id, teamId) 过滤，m2 不在 t1 → 查不到
+    const base = m.findFirst.getMockImplementation()!;
+    m.findFirst.mockImplementation(async (args: { columns?: { role?: boolean }; with?: unknown; where?: unknown }) => {
+      if (args.columns?.role || args.with) return base(args);
+      const where = JSON.stringify(args.where);
+      return where.includes(JSON.stringify({ eq: ['tm.teamId', 't1'] })) ? undefined : base(args);
+    });
+
+    const res = await PUT(put({ businessRoles: ['DPO'] }), params);
+
+    expect(res.status).toBe(404);
+    const targetQuery = m.findFirst.mock.calls.map(([a]) => a as { where?: unknown; columns?: unknown; with?: unknown })
+      .find((a) => !a.columns && !a.with);
+    expect(targetQuery?.where).toEqual({ and: [{ eq: ['tm.id', 'm2'] }, { eq: ['tm.teamId', 't1'] }] });
+    expect(m.update).not.toHaveBeenCalled();
+    expect(m.refresh).not.toHaveBeenCalled();
   });
 });

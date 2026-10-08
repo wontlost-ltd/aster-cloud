@@ -53,6 +53,14 @@ export function BusinessRolesEditor({
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // 父组件重新拉取（如他处并发改了角色）时，非编辑态跟随新的 props；编辑中不打断用户输入。
+  // 以内容为键比较，避免父组件每次渲染新建数组导致反复同步。
+  const rolesKey = roles.join('\n');
+  const [syncedKey, setSyncedKey] = useState(rolesKey);
+  if (draft === null && rolesKey !== syncedKey) {
+    setSyncedKey(rolesKey);
+    setCurrent(roles);
+  }
 
   const save = async () => {
     if (draft === null) return;
