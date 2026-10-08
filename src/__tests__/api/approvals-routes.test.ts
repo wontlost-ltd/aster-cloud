@@ -127,6 +127,39 @@ describe('POST /api/approvals/:tenantId/:approvalId/:verb', () => {
     expect(h.notifyApprovalDecided).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'APPROVED', requiredRole: 'DPO' }));
   });
 
+  it('团队租户：以 (团队, 会话用户) 装配客户端', async () => {
+    const res = await post('team1', 'approve', { comment: 'ok' });
+    expect(res.status).toBe(200);
+    expect(h.checkTeamAccess).toHaveBeenCalledWith('u1', 'team1');
+    expect(h.createClient).toHaveBeenCalledWith('team1', 'u1');
+  });
+
+  it('上游不可用（408 超时 / 5xx / 客户端网络错误）→ 502 upstream_unavailable，不通知', async () => {
+    for (const err of [
+      new FakePolicyApiError('Request timeout', 408, 'TIMEOUT'),
+      new FakePolicyApiError('fetch failed', 500, 'UNKNOWN'),
+      new FakePolicyApiError('bad gateway', 503),
+    ]) {
+      h.approveGuard.mockRejectedValueOnce(err);
+      const res = await post('team1', 'approve');
+      expect(res.status).toBe(502);
+      expect((await res.json()).error).toBe('upstream_unavailable');
+    }
+    expect(h.notifyApprovalDecided).not.toHaveBeenCalled();
+  });
+
+  it('其余 4xx 原样透传（409 approval_not_pending / 本地 400 invalid_id）', async () => {
+    h.approveGuard.mockRejectedValueOnce(new FakePolicyApiError('not pending', 409, 'approval_not_pending'));
+    const conflict = await post('team1', 'approve');
+    expect(conflict.status).toBe(409);
+    expect((await conflict.json()).error).toBe('approval_not_pending');
+
+    h.approveGuard.mockRejectedValueOnce(new FakePolicyApiError('Invalid guard id', 400, 'invalid_id'));
+    const bad = await post('team1', 'approve');
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).error).toBe('invalid_id');
+  });
+
   it('未知动词 → 404', async () => {
     const res = await post('team1', 'delete');
     expect(res.status).toBe(404);

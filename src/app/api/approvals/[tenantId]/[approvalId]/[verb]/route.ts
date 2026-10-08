@@ -3,9 +3,11 @@
  *
  * cloud 只校验「用户属于该租户」与「驳回须填 comment」；角色匹配与四眼由 aster-api 依签名身份判定，
  * 其错误（403 role_mismatch / segregation_of_duties、409 approval_not_pending 等）按原状态码透传，
- * role_mismatch 附 verifiedRoles 供 UI 提示。成功后 fire-and-forget 通知发起人。
+ * role_mismatch 附 verifiedRoles 供 UI 提示；上游不可用（408/5xx、客户端超时/网络错误）统一 502 upstream_unavailable。
+ * 成功后在响应之后（after）通知发起人。
  */
 import { NextResponse } from 'next/server';
+import { runAfterResponse } from '@/lib/after-response';
 import { getSession } from '@/lib/auth';
 import { notifyApprovalDecided } from '@/lib/guard-notifications';
 import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
@@ -32,7 +34,15 @@ async function belongsToTenant(userId: string, tenantId: string): Promise<boolea
   return (await checkTeamAccess(userId, tenantId)).allowed;
 }
 
+/** 上游不可用：api 超时/5xx，或客户端侧超时（408 TIMEOUT）与网络错误（500 UNKNOWN）。 */
+function isUpstreamUnavailable(e: PolicyApiError): boolean {
+  return e.statusCode === 408 || e.statusCode >= 500 || !e.statusCode;
+}
+
 function apiErrorResponse(e: PolicyApiError): NextResponse {
+  if (isUpstreamUnavailable(e)) {
+    return NextResponse.json({ error: 'upstream_unavailable', message: e.message }, { status: 502 });
+  }
   const verifiedRoles = e.details?.verifiedRoles;
   return NextResponse.json(
     {
@@ -40,7 +50,7 @@ function apiErrorResponse(e: PolicyApiError): NextResponse {
       message: e.message,
       ...(Array.isArray(verifiedRoles) ? { verifiedRoles } : {}),
     },
-    { status: e.statusCode || 502 }
+    { status: e.statusCode }
   );
 }
 
@@ -75,13 +85,14 @@ export async function POST(req: Request, { params }: RouteParams) {
     return NextResponse.json({ error: 'approval_failed' }, { status: 502 });
   }
 
-  void notifyApprovalDecided({
+  const decided = {
     tenantId,
     decisionId: decision.decisionId,
     approvalId,
     requiredRole: decision.approval?.requiredRole ?? null,
-    outcome: verb === 'approve' ? 'APPROVED' : 'REJECTED',
-  });
+    outcome: verb === 'approve' ? ('APPROVED' as const) : ('REJECTED' as const),
+  };
+  runAfterResponse(() => notifyApprovalDecided(decided));
   return NextResponse.json(decision);
 }
 

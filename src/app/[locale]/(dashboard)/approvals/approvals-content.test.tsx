@@ -113,4 +113,56 @@ describe('ApprovalsContent', () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ comment: 'too risky' });
     expect(fetchMock.mock.calls[1][0]).toBe('/api/approvals?status=PENDING');
   });
+
+  it('提交时网络异常：显示通用错误，按钮恢复可用', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+    renderWith([item('a1')]);
+    fireEvent.click(screen.getByRole('button', { name: 'approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'confirmApprove' }));
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('errors.generic'));
+    expect((screen.getByRole('button', { name: 'confirmApprove' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('本地 403 forbidden（非租户成员）：显示本地化文案而非 api 原文', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({ error: 'forbidden', message: 'Not a member of this tenant.' }),
+    });
+    renderWith([item('a1')]);
+    fireEvent.click(screen.getByRole('button', { name: 'approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'confirmApprove' }));
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('errors.forbidden'));
+  });
+
+  it('切换 tab 时网络异常：提示 loadFailed', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+    renderWith([item('a1')]);
+    fireEvent.click(screen.getByRole('tab', { name: 'status.APPROVED' }));
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('loadFailed'));
+  });
+
+  it('快速切换 tab：旧请求被中止，晚到的旧响应不覆盖新 tab 的列表', async () => {
+    let resolveOld!: (v: unknown) => void;
+    fetchMock
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ items: [], unavailableTenants: [] }) });
+    renderWith([item('a1')]);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'status.APPROVED' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'status.REJECTED' }));
+    await waitFor(() => expect(screen.getByText('empty')).toBeTruthy());
+
+    const oldSignal = fetchMock.mock.calls[0][1].signal as AbortSignal;
+    expect(oldSignal.aborted).toBe(true);
+    resolveOld({ ok: true, json: async () => ({ items: [item('stale', { status: 'APPROVED', canAct: false })], unavailableTenants: [] }) });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(screen.getByText('empty')).toBeTruthy();
+    expect(screen.queryByText('status.APPROVED', { selector: 'span' })).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
 });

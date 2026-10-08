@@ -65,18 +65,25 @@ function useLabels() {
   };
 }
 
+/**
+ * 模板占位符替换：用函数作替换值，策略名/团队名等用户数据里的 `$&`、`$'` 等不会被当作替换模式解释。
+ */
+export function fillTemplate(template: string, vars: Record<string, string>): string {
+  return Object.entries(vars).reduce((out, [key, value]) => out.replace(`{${key}}`, () => value), template);
+}
+
 function formatRelative(iso: string, labels: Labels): string {
   const diff = Date.now() - new Date(iso).getTime();
   const min = Math.floor(diff / 60_000);
   if (min < 1) return labels.timeAgoNow;
-  if (min < 60) return labels.timeAgoMin.replace('{n}', String(min));
+  if (min < 60) return fillTemplate(labels.timeAgoMin, { n: String(min) });
   const hour = Math.floor(min / 60);
-  if (hour < 24) return labels.timeAgoHour.replace('{n}', String(hour));
+  if (hour < 24) return fillTemplate(labels.timeAgoHour, { n: String(hour) });
   const day = Math.floor(hour / 24);
-  return labels.timeAgoDay.replace('{n}', String(day));
+  return fillTemplate(labels.timeAgoDay, { n: String(day) });
 }
 
-function renderText(
+export function renderText(
   row: NotificationRow,
   labels: Labels,
 ): { text: string; href?: string } {
@@ -87,18 +94,17 @@ function renderText(
     case 'team.invitation_received': {
       const d = row.data as { teamName?: string; role?: string };
       return {
-        text: labels.invitationReceived
-          .replace('{teamName}', d.teamName ?? 'a team')
-          .replace('{role}', d.role ?? 'member'),
+        text: fillTemplate(labels.invitationReceived, { teamName: d.teamName ?? 'a team', role: d.role ?? 'member' }),
         href: '/teams',
       };
     }
     case 'team.invitation_accepted': {
       const d = row.data as { teamName?: string; memberName?: string };
       return {
-        text: labels.invitationAccepted
-          .replace('{memberName}', d.memberName ?? 'A teammate')
-          .replace('{teamName}', d.teamName ?? 'a team'),
+        text: fillTemplate(labels.invitationAccepted, {
+          memberName: d.memberName ?? 'A teammate',
+          teamName: d.teamName ?? 'a team',
+        }),
         href: `/teams/${(row.data as { teamId?: string }).teamId ?? ''}`,
       };
     }
@@ -114,17 +120,18 @@ function renderText(
           ? labels.permissionView
           : labels.permissionExecute;
       return {
-        text: labels.policyShared
-          .replace('{policyName}', d.policyName ?? 'a policy')
-          .replace('{teamName}', d.teamName ?? 'your team')
-          .replace('{permission}', tier),
+        text: fillTemplate(labels.policyShared, {
+          policyName: d.policyName ?? 'a policy',
+          teamName: d.teamName ?? 'your team',
+          permission: tier,
+        }),
         href: d.policyId ? `/policies/${d.policyId}` : '/policies',
       };
     }
     case 'guard.approval_requested': {
       const d = row.data as { policyName?: string; decisionId?: string };
       return {
-        text: labels.guardApprovalRequested.replace('{policyName}', d.policyName ?? 'a policy'),
+        text: fillTemplate(labels.guardApprovalRequested, { policyName: d.policyName ?? 'a policy' }),
         href: d.decisionId ? `/approvals?decisionId=${encodeURIComponent(d.decisionId)}` : '/approvals',
       };
     }
@@ -132,9 +139,7 @@ function renderText(
       const d = row.data as { policyName?: string; policyId?: string; outcome?: 'APPROVED' | 'REJECTED' };
       const outcome = d.outcome === 'REJECTED' ? labels.guardOutcomeRejected : labels.guardOutcomeApproved;
       return {
-        text: labels.guardApprovalDecided
-          .replace('{policyName}', d.policyName ?? 'a policy')
-          .replace('{outcome}', outcome),
+        text: fillTemplate(labels.guardApprovalDecided, { policyName: d.policyName ?? 'a policy', outcome }),
         href: d.policyId ? `/policies/${d.policyId}/logs` : '/approvals',
       };
     }

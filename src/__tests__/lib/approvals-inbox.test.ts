@@ -19,14 +19,21 @@ vi.mock('drizzle-orm', () => ({ eq: (col: { name: string }, v: unknown) => ({ eq
 vi.mock('@/lib/business-roles', () => ({
   loadBusinessRoles: (userId: string, tenantId: string) => h.loadBusinessRoles(userId, tenantId),
 }));
-vi.mock('@/lib/policy-api-identity', () => ({
-  createPolicyApiClientForUser: (tenantId: string, userId: string) => h.createClient(tenantId, userId),
-}));
-vi.mock('@/services/evidence/receipts-client', () => ({
-  createLimiter: () => <T,>(task: () => Promise<T>) => task(),
+// 客户端以 (租户, 用户, 角色) 构造：记录构造参数，列表调用转发到 h.listGuardApprovals(tenantId, ...)
+vi.mock('@/services/policy/policy-api', () => ({
+  PolicyApiClient: class {
+    private readonly tenantId: string;
+    constructor(...args: unknown[]) {
+      h.createClient(...args);
+      this.tenantId = args[0] as string;
+    }
+    listGuardApprovals(...args: unknown[]) {
+      return h.listGuardApprovals(this.tenantId, ...args);
+    }
+  },
 }));
 
-import { listUserApprovals } from '@/lib/approvals-inbox';
+import { INBOX_CONCURRENCY, listUserApprovals } from '@/lib/approvals-inbox';
 
 function approval(id: string, over: Record<string, unknown> = {}) {
   return { id, decisionId: `d-${id}`, status: 'PENDING', requiredRole: 'DPO', createdAt: '2026-10-01T00:00:00Z', ...over };
@@ -36,9 +43,6 @@ describe('listUserApprovals', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     h.membersFind.mockResolvedValue([{ teamId: 'team1', team: { name: 'Team One' } }]);
-    h.createClient.mockImplementation(async (tenantId: string) => ({
-      listGuardApprovals: (...args: unknown[]) => h.listGuardApprovals(tenantId, ...args),
-    }));
   });
 
   it('team1 拉取失败 → unavailableTenants=[team1]，个人租户项仍返回', async () => {
@@ -82,5 +86,39 @@ describe('listUserApprovals', () => {
     const res = await listUserApprovals('u1', 'PENDING');
 
     expect(res.items.map((i) => i.id)).toEqual(['newest', 'mid', 'old']);
+  });
+
+  it('每租户角色只查一次，并以同一份角色构造签名客户端（canAct 与签名同一快照）', async () => {
+    h.loadBusinessRoles.mockImplementation(async (_u: string, tenantId: string) => (tenantId === 'u1' ? ['DPO'] : ['CISO']));
+    h.listGuardApprovals.mockResolvedValue({ items: [] });
+
+    await listUserApprovals('u1', 'PENDING');
+
+    expect(h.loadBusinessRoles).toHaveBeenCalledTimes(2);
+    expect(h.createClient).toHaveBeenCalledWith('u1', 'u1', 'member', 'unknown', ['DPO']);
+    expect(h.createClient).toHaveBeenCalledWith('team1', 'u1', 'member', 'unknown', ['CISO']);
+  });
+
+  it('真实限流器：9 个租户时 api 在途峰值恰为 4', async () => {
+    h.membersFind.mockResolvedValue(
+      Array.from({ length: 8 }, (_, i) => ({ teamId: `team${i}`, team: { name: `T${i}` } }))
+    );
+    h.loadBusinessRoles.mockResolvedValue([]);
+    let inFlight = 0;
+    let peak = 0;
+    h.listGuardApprovals.mockImplementation(async () => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight -= 1;
+      return { items: [] };
+    });
+
+    const res = await listUserApprovals('u1', 'PENDING');
+
+    expect(h.listGuardApprovals).toHaveBeenCalledTimes(9);
+    expect(peak).toBe(INBOX_CONCURRENCY);
+    expect(peak).toBe(4);
+    expect(res.unavailableTenants).toEqual([]);
   });
 });

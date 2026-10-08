@@ -2,7 +2,8 @@
  * 审批收件箱聚合（ADR 0042 §5.2）。
  *
  * 租户集合 = 个人租户（tenantId = userId）∪ 用户所在全部团队；逐租户以该用户身份（含该租户的已验证业务角色）
- * 拉 guard 审批列表，并发上限 4，单租户失败只记入 unavailableTenants，不影响其他租户。
+ * 拉 guard 审批列表，并发上限 4、单租户 8 s 超时（guard 客户端专用超时），单租户失败只记入 unavailableTenants，
+ * 不影响其他租户。每租户角色只查一次，canAct 与签名下发的角色出自同一快照。
  * canAct 只是 UI 提示：真正的角色匹配与四眼判定在 aster-api，cloud 不重复判定。
  */
 import 'server-only';
@@ -10,14 +11,14 @@ import 'server-only';
 import { eq } from 'drizzle-orm';
 import { loadBusinessRoles } from '@/lib/business-roles';
 import { db, teamMembers } from '@/lib/prisma';
-import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
 import { createLimiter } from '@/services/evidence/receipts-client';
 import type { GuardApprovalItem, GuardApprovalStatus } from '@/services/policy/guard-types';
+import { PolicyApiClient } from '@/services/policy/policy-api';
 
 export const GUARD_APPROVAL_STATUSES: readonly GuardApprovalStatus[] = ['PENDING', 'APPROVED', 'REJECTED', 'EXPIRED'];
 
 /** 与证据导出共用的 aster-api 在途上限。 */
-const INBOX_CONCURRENCY = 4;
+export const INBOX_CONCURRENCY = 4;
 /** api 单页上限（服务端夹取到 1–200）；收件箱只取首页，超出部分属于运维问题而非 UI 分页问题。 */
 const INBOX_PAGE_SIZE = 200;
 
@@ -54,10 +55,8 @@ async function listUserTenants(userId: string): Promise<Tenant[]> {
 }
 
 async function listTenantApprovals(tenant: Tenant, userId: string, status: GuardApprovalStatus): Promise<InboxItem[]> {
-  const [client, roles] = await Promise.all([
-    createPolicyApiClientForUser(tenant.id, userId),
-    loadBusinessRoles(userId, tenant.id),
-  ]);
+  const roles = await loadBusinessRoles(userId, tenant.id);
+  const client = new PolicyApiClient(tenant.id, userId, 'member', 'unknown', roles);
   const page = await client.listGuardApprovals(status, 0, INBOX_PAGE_SIZE);
   return page.items.map((item) => ({
     ...item,

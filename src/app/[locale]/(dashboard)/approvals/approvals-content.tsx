@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
@@ -58,6 +58,8 @@ function errorText(t: T, body: ApiErrorBody, item: InboxItem): string {
       return t('errors.approval_not_pending');
     case 'comment_required':
       return t('commentRequired');
+    case 'forbidden':
+      return t('errors.forbidden');
     default:
       return body.message || t('errors.generic');
   }
@@ -135,6 +137,9 @@ function DecisionDialog({
       });
       if (r.ok) return onDone();
       setError(errorText(t, (await r.json().catch(() => ({}))) as ApiErrorBody, item));
+    } catch {
+      // 网络异常（离线、连接被重置）：不暴露底层报错，给通用提示
+      setError(t('errors.generic'));
     } finally {
       setSubmitting(false);
     }
@@ -171,6 +176,8 @@ export function ApprovalsContent({ locale, initialStatus, initialItems, initialU
   const [unavailable, setUnavailable] = useState<string[]>(initialUnavailable);
   const [loadError, setLoadError] = useState(false);
   const [picked, setPicked] = useState<{ item: InboxItem; verb: Verb } | null>(null);
+  // 当前在途的列表请求：快速切换 tab 时中止旧请求，并丢弃晚到的旧响应
+  const inflight = useRef<AbortController | null>(null);
 
   // 从通知/日志页跳入时滚动到被定位的那一行
   useEffect(() => {
@@ -182,15 +189,21 @@ export function ApprovalsContent({ locale, initialStatus, initialItems, initialU
   const load = async (next: GuardApprovalStatus) => {
     setStatus(next);
     setPicked(null);
-    const r = await fetch(`/api/approvals?status=${next}`);
-    if (!r.ok) {
-      setLoadError(true);
-      return;
+    inflight.current?.abort();
+    const controller = new AbortController();
+    inflight.current = controller;
+    try {
+      const r = await fetch(`/api/approvals?status=${next}`, { signal: controller.signal });
+      const body = r.ok ? ((await r.json()) as { items: InboxItem[]; unavailableTenants: string[] }) : null;
+      if (controller.signal.aborted) return;
+      setLoadError(!body);
+      if (!body) return;
+      setItems(body.items);
+      setUnavailable(body.unavailableTenants);
+    } catch {
+      // 被新请求中止属预期；其余为网络异常，提示加载失败
+      if (!controller.signal.aborted) setLoadError(true);
     }
-    const body = (await r.json()) as { items: InboxItem[]; unavailableTenants: string[] };
-    setLoadError(false);
-    setItems(body.items);
-    setUnavailable(body.unavailableTenants);
   };
 
   return (
