@@ -28,21 +28,20 @@ import {
   loadVersionApprovalReviewers,
   type Reviewer,
 } from '@/services/evidence/reviewers';
+import { readStoredEvidenceExport, type StoredEvidenceExport } from '@/services/evidence/stored';
 import type {
   EvidenceBundle,
   EvidenceExportRequest,
   EvidenceManifest,
+  StoredEvidenceManifest,
 } from '@/services/evidence/types';
 
 /**
- * ComplianceReport.data 里证据导出的存储形态（discriminated by kind）。
- * 历史行可能是 schemaVersion '1' 的 manifest/entries：读取侧只按原样返回，不做重算或升级。
+ * 本次写入的存储形态：只产 v2；历史 v1 行由 readStoredEvidenceExport 按 schemaVersion 收窄读取，不做重算或升级。
  */
-interface EvidenceExportData {
-  kind: 'evidence-export';
+interface EvidenceExportData extends StoredEvidenceExport {
   manifest: EvidenceManifest;
   bundle: EvidenceBundle;
-  format: EvidenceExportRequest['format'];
 }
 
 /** 按租户把行上的某个 id 分组（空 id 跳过），供收据客户端按租户批量查询。 */
@@ -211,15 +210,14 @@ export async function getEvidenceExport(userId: string, id: string) {
 export async function getEvidenceExportMetadata(userId: string, id: string) {
   const record = await getEvidenceExport(userId, id);
   if (!record) return null;
-  const data = record.data as unknown as EvidenceExportData | null;
-  const manifest = data?.kind === 'evidence-export' ? data.manifest : null;
+  const stored = readStoredEvidenceExport(record.data);
   return {
     id: record.id,
     title: record.title,
     status: record.status,
     period: record.period,
-    format: data?.format ?? null,
-    manifest,
+    format: stored?.format ?? null,
+    manifest: stored?.manifest ?? null,
     createdAt: record.createdAt,
     completedAt: record.completedAt,
   };
@@ -231,15 +229,15 @@ export async function getEvidenceExportMetadata(userId: string, id: string) {
 export async function getEvidenceExportBundle(
   userId: string,
   id: string,
-): Promise<{ body: string; format: EvidenceExportRequest['format']; manifest: EvidenceManifest } | null> {
+): Promise<{ body: string; format: EvidenceExportRequest['format']; manifest: StoredEvidenceManifest } | null> {
   const record = await getEvidenceExport(userId, id);
-  if (!record || record.status !== 'completed' || !record.data) return null;
-  const data = record.data as unknown as EvidenceExportData;
-  if (data.kind !== 'evidence-export') return null;
+  if (!record || record.status !== 'completed') return null;
+  const stored = readStoredEvidenceExport(record.data);
+  if (!stored) return null;
   return {
-    body: serializeBundle(data.bundle, data.format),
-    format: data.format,
-    manifest: data.manifest,
+    body: serializeBundle(stored.bundle, stored.format),
+    format: stored.format,
+    manifest: stored.manifest,
   };
 }
 

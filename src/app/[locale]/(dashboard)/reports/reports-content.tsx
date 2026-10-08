@@ -18,6 +18,7 @@ import {
   Stack,
 } from '@/components/ui';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
+import { summarizeStoredExport } from '@/services/evidence/stored';
 
 interface PolicyOption {
   id: string;
@@ -116,21 +117,25 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
         title: string;
         status: EvidenceExportRow['status'];
         period: string | null;
-        data: { manifest?: { totals?: { count?: number }; bundleHash?: string } } | null;
+        data: unknown;
         createdAt: string;
         completedAt: string | null;
       }>;
       setExports(
-        rows.map((e) => ({
-          id: e.id,
-          title: e.title,
-          status: e.status,
-          period: e.period ?? null,
-          count: e.data?.manifest?.totals?.count ?? null,
-          bundleHash: e.data?.manifest?.bundleHash ?? null,
-          createdAt: e.createdAt,
-          completedAt: e.completedAt,
-        })),
+        rows.map((e) => {
+          // 历史行可能是 v1 或 v2 manifest：经 summarizeStoredExport 按 schemaVersion 收窄，未知版本显示占位。
+          const summary = summarizeStoredExport(e.data);
+          return {
+            id: e.id,
+            title: e.title,
+            status: e.status,
+            period: e.period ?? null,
+            count: summary?.count ?? null,
+            bundleHash: summary?.bundleHash ?? null,
+            createdAt: e.createdAt,
+            completedAt: e.completedAt,
+          };
+        }),
       );
     }
   };

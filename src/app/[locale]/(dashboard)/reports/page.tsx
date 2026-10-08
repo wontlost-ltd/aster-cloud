@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth';
 import { db, policies } from '@/lib/prisma';
 import { and, eq, isNull, asc } from 'drizzle-orm';
 import { listEvidenceExports } from '@/lib/evidence';
+import { summarizeStoredExport } from '@/services/evidence/stored';
 import { ReportsContent } from './reports-content';
 
 interface PageProps {
@@ -28,14 +29,15 @@ export default async function ReportsPage({ params }: PageProps) {
   ]);
 
   const initialExports = exports.map((e) => {
-    const data = e.data as { manifest?: { totals?: { count?: number }; bundleHash?: string } } | null;
+    // 历史行可能是 v1 或 v2 manifest：经 summarizeStoredExport 按 schemaVersion 收窄，未知版本显示占位。
+    const summary = summarizeStoredExport(e.data);
     return {
       id: e.id,
       title: e.title,
       status: e.status as 'generating' | 'completed' | 'failed',
       period: e.period ?? null,
-      count: data?.manifest?.totals?.count ?? null,
-      bundleHash: data?.manifest?.bundleHash ?? null,
+      count: summary?.count ?? null,
+      bundleHash: summary?.bundleHash ?? null,
       createdAt: e.createdAt.toISOString(),
       completedAt: e.completedAt?.toISOString() ?? null,
     };

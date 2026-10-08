@@ -127,6 +127,68 @@ export interface EvidenceBundle {
   entries: EvidenceEntry[];
 }
 
+// ---- schemaVersion '1' 冻结类型：只用于读取已持久化的历史导出，绝不再生成；字段与 v1 发布时一致，不得修改。
+
+/** v1 决策四态。 */
+export type EvidenceDecisionV1 = 'approved' | 'denied' | 'indeterminate' | 'error';
+
+/** v1 决策分布（无 require_approval/escalate 桶）。 */
+export interface DecisionTallyV1 {
+  approved: number;
+  denied: number;
+  indeterminate: number;
+  error: number;
+  unknown: number;
+}
+
+/** v1 条目：无 outcome/ruleId/controls/agent/receipt/reviewers。 */
+export interface EvidenceEntryV1 {
+  executionId: string;
+  policyId: string;
+  policyVersion: number | null;
+  policyVersionRowId: string | null;
+  decision: EvidenceDecisionV1 | null;
+  canonicalInputHash: string | null;
+  canonicalOutputHash: string | null;
+  traceHash: string | null;
+  canonicalizationVersion: string | null;
+  toolchain: { source: string | null; runtime: string | null };
+  replayabilityStatus: string | null;
+  replayabilityReasons: unknown;
+  reasonCodes: unknown;
+  source: ExecutionSource;
+  durationMs: number;
+  createdAt: string;
+}
+
+/** v1 manifest：无收据/复核者/agent 统计。 */
+export interface EvidenceManifestV1 {
+  kind: 'evidence-export';
+  schemaVersion: '1';
+  generatedAt: string;
+  policy:
+    | { id: string; name: string; version: number | null; policyVersionRowId: string | null }
+    | { scope: 'all' };
+  range: { start: string | null; end: string | null };
+  totals: { count: number };
+  decisionTally: DecisionTallyV1;
+  canonicalizationVersion: string;
+  bundleHash: string;
+  notes: {
+    legacyRowsWithoutHashes: number;
+    verification: string;
+  };
+}
+
+export interface EvidenceBundleV1 {
+  manifest: EvidenceManifestV1;
+  entries: EvidenceEntryV1[];
+}
+
+/** 已持久化的 manifest / bundle：读取侧须按 schemaVersion 收窄后再访问版本专有字段。 */
+export type StoredEvidenceManifest = EvidenceManifestV1 | EvidenceManifest;
+export type StoredEvidenceBundle = EvidenceBundleV1 | EvidenceBundle;
+
 /** 预览（导出前给 UI 看规模，不含行体）。 */
 export interface EvidencePreview {
   count: number;

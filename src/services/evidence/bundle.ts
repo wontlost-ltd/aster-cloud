@@ -16,6 +16,7 @@ import type {
   EvidenceFormat,
   EvidenceManifest,
   ReceiptRef,
+  StoredEvidenceBundle,
 } from './types';
 
 /** 从执行行装配证据条目所需的最小投影（由查询层提供，见 lib/evidence-export.ts）。 */
@@ -211,7 +212,7 @@ export function buildBundle(input: BuildManifestInput): EvidenceBundle {
  *   - json：pretty JSON（{ manifest, entries }）。
  *   - jsonl：每行一个 JSON 对象——首行 { _manifest }，其后每行一个 entry（流式友好）。
  */
-export function serializeBundle(bundle: EvidenceBundle, format: EvidenceFormat): string {
+export function serializeBundle(bundle: StoredEvidenceBundle, format: EvidenceFormat): string {
   if (format === 'jsonl') {
     const lines = [JSON.stringify({ _manifest: bundle.manifest })];
     for (const e of bundle.entries) lines.push(JSON.stringify(e));
