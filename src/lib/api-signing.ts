@@ -119,7 +119,10 @@ export interface InternalCallerIdentity {
   businessRoles?: string[];
 }
 
-/** 业务角色归一：trim、去空、去重、排序后逗号拼接，与 aster-api InternalCallerFilter.parseRoles 一致。 */
+/**
+ * 业务角色归一：trim、去空、去重、排序后逗号拼接，与 aster-api InternalCallerFilter.parseRoles 一致。
+ * 排序必须是无比较器的 sort()（UTF-16 码元序，等同 Java String.compareTo），不可用 localeCompare。
+ */
 export function joinBusinessRoles(roles: readonly string[] | undefined): string {
   const set = new Set((roles ?? []).map((r) => r.trim()).filter(Boolean));
   return [...set].sort().join(',');

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createHmac, createHash } from 'node:crypto';
 import {
   hmacSha256,
+  joinBusinessRoles,
   sha256Hex,
   signInternalCallerHeaders,
   signRunnerLauncherHeaders,
@@ -144,6 +145,15 @@ describe('signInternalCallerHeaders (红队 P0-C 加固)', () => {
       expect(h['X-Aster-Nonce']).toBe(NONCE);
       expect(h['X-Internal-Signature']).toBe(await hmacSha256(KEY, canonical));
       expect(h['X-User-Business-Roles']).toBe('CISO,DPO');
+    });
+
+    it('角色按 UTF-16 码元排序（同 Java String.compareTo，非 localeCompare）', async () => {
+      expect(joinBusinessRoles(['b', 'B', 'a'])).toBe('B,a,b');
+      const h = await signInternalCallerHeaders('GET', '/x', '', 't', 'r', { businessRoles: ['b', 'B', 'a'] });
+      const emptyHash = await sha256Hex(new Uint8Array(0).buffer as ArrayBuffer);
+      const canonical = `GET\n/x\n\n1760000000\n${NONCE}\n${emptyHash}\nt\nr\n\nB,a,b`;
+      expect(h['X-Internal-Signature']).toBe(await hmacSha256(KEY, canonical));
+      expect(h['X-User-Business-Roles']).toBe('B,a,b');
     });
 
     it('无业务角色：不发 X-User-Business-Roles，canonical 末行为空串', async () => {
