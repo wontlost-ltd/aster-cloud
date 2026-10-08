@@ -21,7 +21,6 @@ function expectedSig(
   tenant: string,
   role: string,
   identity: { query?: string; userId?: string; roles?: string } = {},
-  key: string = KEY,
 ): string {
   const bodyHash = createHash('sha256')
     .update(body ? Buffer.from(body, 'utf8') : Buffer.alloc(0))
@@ -30,7 +29,7 @@ function expectedSig(
     method, path, identity.query ?? '', ts, nonce, bodyHash, tenant, role,
     identity.userId ?? '', identity.roles ?? '',
   ].join('\n');
-  return createHmac('sha256', key).update(canonical).digest('hex');
+  return createHmac('sha256', KEY).update(canonical).digest('hex');
 }
 
 describe('signInternalCallerHeaders (红队 P0-C 加固)', () => {
@@ -202,7 +201,7 @@ describe('signInternalCallerHeaders (红队 P0-C 加固)', () => {
 describe('signRunnerLauncherHeaders', () => {
   beforeEach(() => { process.env.ASTER_RUNNER_LAUNCHER_HMAC_KEY = 'test-launcher-key'; });
 
-  it('独立 key 签名 + cloud-runner-launcher caller', async () => {
+  it('构造 7 行 canonical 独立签名 + cloud-runner-launcher caller', async () => {
     const headers = await signRunnerLauncherHeaders(
       'POST', '/api/v1/runner/launch', '{"tenantId":"t1"}', 't1', 'ADMIN');
     expect(headers['X-Internal-Caller']).toBe('cloud-runner-launcher');
@@ -211,13 +210,12 @@ describe('signRunnerLauncherHeaders', () => {
     expect(headers['X-Aster-Nonce']).toBeTruthy();
   });
 
-  it('签名使用 canonical v3（query/userId/businessRoles 为空串）', async () => {
+  it('签名使用 launcher 独立协议的 7 行 canonical（刻意不是 v3）', async () => {
     const body = '{"tenantId":"t1"}';
     const h = await signRunnerLauncherHeaders('POST', '/api/v1/runner/launch', body, 't1', 'ADMIN');
-    expect(h['X-Internal-Signature']).toBe(
-      expectedSig('POST', '/api/v1/runner/launch', h['X-Aster-Timestamp'], h['X-Aster-Nonce'], body, 't1', 'ADMIN', {},
-        'test-launcher-key'),
-    );
+    const bodyHash = createHash('sha256').update(body).digest('hex');
+    const canonical = `POST\n/api/v1/runner/launch\n${h['X-Aster-Timestamp']}\n${h['X-Aster-Nonce']}\n${bodyHash}\nt1\nADMIN`;
+    expect(h['X-Internal-Signature']).toBe(createHmac('sha256', 'test-launcher-key').update(canonical).digest('hex'));
   });
 
   it('缺 key → 抛（不静默）', async () => {

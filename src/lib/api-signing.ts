@@ -129,7 +129,7 @@ export function joinBusinessRoles(roles: readonly string[] | undefined): string 
 }
 
 /**
- * 内部签名 canonical v3 的唯一构造点（cloud-bff 与 runner-launcher 共用）：
+ * 内部签名 canonical v3 的唯一构造点（cloud-bff → aster-api InternalCallerFilter）：
  * <pre>
  *   method \n path \n query \n ts(秒) \n nonce \n bodySha256(hex) \n tenant \n role \n userId \n businessRoles
  * </pre>
@@ -296,8 +296,9 @@ export async function signByokAllowlistHeaders(
 
 /**
  * runner-launcher 内部调用签名（独立 HMAC key，密钥隔离——launcher 是新 TCB 成员，
- * 攻破不牵连 aster-api plan-gate key）。复用 {@link buildInternalCanonicalV3}（query/userId/
- * businessRoles 恒为空串），仅两处不同：key 与 caller 标识。
+ * 攻破不牵连 aster-api plan-gate key）。canonical 为 7 行（method\npath\nts\nnonce\nbodyHash\ntenant\nrole）。
+ * ★这是 cloud→runner-launcher 的独立协议（由 aster-api/launcher 的 Go 实现验签），刻意不采用
+ *   InternalCallerFilter 的 canonical v3（ADR 0042 §4.1 只覆盖 cloud→aster-api 内部通道）。
  */
 export async function signRunnerLauncherHeaders(
   method: string, path: string, body: string, tenantId: string, role: string,
@@ -306,9 +307,12 @@ export async function signRunnerLauncherHeaders(
   if (!key) throw new Error('ASTER_RUNNER_LAUNCHER_HMAC_KEY 未配置');
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const nonce = generateNonce();
-  const canonical = await buildInternalCanonicalV3({
-    method, path, timestamp, nonce, body, tenant: tenantId, role,
-  });
+  // ★sha256Hex 签名是 (data: ArrayBuffer)——须先 TextEncoder 编码 body 再取 .buffer
+  //   （逐字对齐 signInternalCallerHeaders 的 body 处理，api-signing.ts:113-115）。
+  const encoder = new TextEncoder();
+  const bodyBytes = body ? encoder.encode(body) : new Uint8Array(0);
+  const bodyHash = await sha256Hex(bodyBytes.buffer as ArrayBuffer);
+  const canonical = `${method}\n${path}\n${timestamp}\n${nonce}\n${bodyHash}\n${tenantId}\n${role}`;
   const signature = await hmacSha256(key, canonical);
   return {
     'X-Internal-Caller': 'cloud-runner-launcher',

@@ -685,6 +685,7 @@ export class PolicyApiError extends Error {
   constructor(
     message: string,
     public readonly statusCode: number,
+    /** 错误码：取错误体 code，缺省时回退到 error 字段（guard 错误体形如 { error, message }） */
     public readonly code?: string,
     public readonly diagnostics?: PolicyEvaluateDiagnostic[],
     /** 原始错误体（如 guard 的 verifiedRoles / outcome），供调用方按 code 细分处理 */
