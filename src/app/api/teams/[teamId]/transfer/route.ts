@@ -70,7 +70,9 @@ export async function POST(req: Request, { params }: RouteParams) {
     await refreshTeamKeySnapshots(teamId).catch((err) =>
       console.warn('[teams] refreshTeamKeySnapshots after ownership transfer failed:', err)
     );
-    await invalidatePlanCache(teamId);
+    await invalidatePlanCache(teamId).catch((err) =>
+      console.warn('[teams] invalidatePlanCache after ownership transfer failed:', err)
+    );
 
     return NextResponse.json({
       success: true,

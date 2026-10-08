@@ -11,7 +11,7 @@ import { verifyInternalSignature } from '@/lib/api-signing';
 import { db, users, apiKeys } from '@/lib/prisma';
 import { gt, asc, and, inArray, isNull } from 'drizzle-orm';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
-import { API_KEY_IDENTITY_COLUMNS, resolveApiKeyIdentities } from '@/lib/api-key-identity';
+import { API_KEY_IDENTITY_COLUMNS, resolveApiKeyIdentities, toApiKeySnapshotBody } from '@/lib/api-key-identity';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -93,24 +93,12 @@ export async function GET(req: Request) {
     });
   }
 
-  // 身份口径与 verify 路由同源（ADR 0015 §2）；成员已被移出的团队 key 以 valid:false 下发，让 warmup 顺手失效它
+  // 身份与快照体都与 verify 路由 / pusher 同源（ADR 0015 §2）；成员已被移出的团队 key 以 valid:false 下发，
+  // 让 warmup 顺手失效它。全量项形状固定含 revokedAtEpochMs：被吊销的 key 已在 SQL 排除，缺省为 null
   const identities = await resolveApiKeyIdentities(keyRows);
   const apiKeySnapshots = keyRows.map((k) => {
-    const id = identities.get(k.id);
-    if (!id || !id.valid) {
-      return { keyHash: k.key, valid: false, reason: id?.reason ?? 'not_found', revokedAtEpochMs: k.revokedAt?.getTime() ?? null };
-    }
-    return {
-      keyHash: k.key,
-      valid: true,
-      apiKeyId: id.apiKeyId,
-      userId: id.userId,
-      tenantId: id.tenantId,
-      quotaOwnerId: id.quotaOwnerId,
-      role: id.role,
-      plan: id.plan,
-      revokedAtEpochMs: null,
-    };
+    const identity = identities.get(k.id) ?? { valid: false as const, reason: 'not_found' as const };
+    return { keyHash: k.key, revokedAtEpochMs: null, ...toApiKeySnapshotBody(identity) };
   });
 
   const nextCursor = userRows.length === limit ? userRows[userRows.length - 1].id : null;

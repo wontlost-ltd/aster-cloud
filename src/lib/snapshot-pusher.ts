@@ -8,11 +8,11 @@
 // fail-open：失败仅日志，aster-api 端 1h TTL + warm-up cron 兜底。
 
 import { createHash, createHmac, randomUUID } from 'node:crypto';
-import { db, users, apiKeys } from '@/lib/prisma';
+import { db, users } from '@/lib/prisma';
 import { eq } from 'drizzle-orm';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
 import { safeEnv } from '@/lib/runtime/safe-env';
-import { API_KEY_IDENTITY_COLUMNS, resolveApiKeyIdentities } from '@/lib/api-key-identity';
+import { resolveApiKeyIdentity, toApiKeySnapshotBody } from '@/lib/api-key-identity';
 import { invalidatePlanCacheForOwner } from '@/lib/plan-gate-client';
 
 const ASTER_API_INTERNAL_URL =
@@ -70,7 +70,8 @@ export async function pushUserSnapshot(userId: string): Promise<void> {
 /**
  * 推送指定 keyHash 的最新 snapshot 到 aster-api
  *
- * 在 apiKey 创建 / 撤销时立即调用。身份口径与 verify 路由同源（resolveApiKeyIdentities，ADR 0015 §2）：
+ * 在 apiKey 创建 / 撤销时立即调用。身份与快照体都取自解析器模块（resolveApiKeyIdentity +
+ * toApiKeySnapshotBody，ADR 0015 §2），与 verify 路由、snapshot/full 同源：
  * 团队 key 下发 tenantId=teamId、成员角色与 quotaOwnerId=团队 owner。
  * 撤销场景下 valid=false + reason='revoked'，aster-api 端立即对应拒绝。
  */
@@ -78,31 +79,9 @@ export async function pushApiKeySnapshot(keyHash: string): Promise<void> {
   // keyHash 是 SHA-256 hex；校验 hex 而非仅长度，收紧输入卫生。
   if (!/^[0-9a-f]{64}$/i.test(keyHash)) return;
   try {
-    const key = await db.query.apiKeys.findFirst({
-      where: eq(apiKeys.key, keyHash),
-      columns: API_KEY_IDENTITY_COLUMNS,
-    });
-    const identity = key
-      ? (await resolveApiKeyIdentities([key])).get(key.id) ?? { valid: false as const, reason: 'not_found' as const }
-      : { valid: false as const, reason: 'not_found' as const };
-    const bodyObj: Record<string, unknown> = identity.valid
-      ? {
-          valid: true,
-          apiKeyId: identity.apiKeyId,
-          userId: identity.userId,
-          tenantId: identity.tenantId,
-          quotaOwnerId: identity.quotaOwnerId,
-          role: identity.role,
-          plan: identity.plan,
-          revokedAtEpochMs: null,
-        }
-      : {
-          valid: false,
-          reason: identity.reason,
-          ...(identity.revokedAt ? { revokedAtEpochMs: identity.revokedAt.getTime() } : {}),
-        };
+    const body = toApiKeySnapshotBody(await resolveApiKeyIdentity(keyHash));
     const path = `/api/internal/snapshot/apikey/${keyHash}`;
-    await callAsterApi('POST', path, JSON.stringify(bodyObj), `push-apikey ${keyHash.slice(0, 8)}`);
+    await callAsterApi('POST', path, JSON.stringify(body), `push-apikey ${keyHash.slice(0, 8)}`);
   } catch (err) {
     console.warn(`[snapshot-pusher] pushApiKeySnapshot error:`, err);
   }

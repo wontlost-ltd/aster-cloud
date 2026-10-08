@@ -5,6 +5,7 @@ import { getSession } from '@/lib/auth';
 import { listApiKeys } from '@/lib/api-keys';
 import { db, teamMembers } from '@/lib/prisma';
 import { ApiKeysContent } from './api-keys-content';
+import { toTeamOptions } from './team-options';
 
 export default async function ApiKeysPage() {
   const session = await getSession();
@@ -26,7 +27,7 @@ export default async function ApiKeysPage() {
     with: { team: { columns: { id: true, name: true } } },
     orderBy: desc(teamMembers.createdAt),
   });
-  const teams = memberships.map((m) => ({ id: m.team.id, name: m.team.name }));
+  const teams = toTeamOptions(memberships);
 
   // 序列化数据以便传递给客户端组件
   const apiKeys = keys.map((key) => ({

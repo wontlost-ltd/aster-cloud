@@ -106,18 +106,19 @@ describe('成功路径（ADR 0015）', () => {
     vi.restoreAllMocks();
   });
 
+  // 解析器 mock 取真实 ApiKeyIdentity 形状（含 teamId），同时钉住 teamId 不外泄到响应体
   it('个人 key：tenantId=userId、role=owner、quotaOwnerId=userId', async () => {
-    mockResolve.mockResolvedValue({ valid: true, apiKeyId: 'k1', userId: 'u1', tenantId: 'u1', quotaOwnerId: 'u1', role: 'owner', plan: 'pro', subscriptionStatus: 'active' });
+    mockResolve.mockResolvedValue({ valid: true, apiKeyId: 'k1', userId: 'u1', tenantId: 'u1', teamId: null, quotaOwnerId: 'u1', role: 'owner', plan: 'pro', subscriptionStatus: 'active' });
     const { POST } = await import('@/app/api/internal/apikey/verify/route');
     const res = await POST(postKeyHash({ keyHash: HASH }));
     expect(await res.json()).toEqual({ valid: true, apiKeyId: 'k1', userId: 'u1', tenantId: 'u1', quotaOwnerId: 'u1', plan: 'pro', subscriptionStatus: 'active', role: 'owner' });
   });
 
   it('团队 key：tenantId=teamId、role=成员角色、quotaOwnerId=owner', async () => {
-    mockResolve.mockResolvedValue({ valid: true, apiKeyId: 'k2', userId: 'u2', tenantId: 't1', quotaOwnerId: 'owner', role: 'member', plan: 'team', subscriptionStatus: 'active' });
+    mockResolve.mockResolvedValue({ valid: true, apiKeyId: 'k2', userId: 'u2', tenantId: 't1', teamId: 't1', quotaOwnerId: 'owner', role: 'member', plan: 'team', subscriptionStatus: 'active' });
     const { POST } = await import('@/app/api/internal/apikey/verify/route');
     const body = await (await POST(postKeyHash({ keyHash: HASH }))).json();
-    expect(body).toMatchObject({ tenantId: 't1', userId: 'u2', role: 'member', quotaOwnerId: 'owner', plan: 'team' });
+    expect(body).toEqual({ valid: true, apiKeyId: 'k2', userId: 'u2', tenantId: 't1', quotaOwnerId: 'owner', plan: 'team', subscriptionStatus: 'active', role: 'member' });
   });
 
   it('membership_revoked / revoked 带 ISO 时间', async () => {

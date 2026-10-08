@@ -113,15 +113,31 @@ describe('团队生命周期 → 团队 key 钩子（ADR 0015 §5）', () => {
     expect(mockInvalidatePlanCache).toHaveBeenCalledWith('t1');
   });
 
-  it('DELETE 团队 → revokeTeamKeys("t1") 在事务之前被调用', async () => {
+  // ApiKey.teamId 无外键、删团队事务不碰 ApiKey，删后仍可按 teamId 吊销；放在事务之后，事务失败就不会留下
+  // “团队还在、成员 key 全被吊销”的残局。revoke mock 先让出一个宏任务再记录：单个微任务会在路由返回前跑完、
+  // 钉不住 await；宏任务下路由若不 await 它，响应返回时 order 里还没有 revoke
+  it('DELETE 团队 → 事务提交之后再 await revokeTeamKeys("t1")', async () => {
     const order: string[] = [];
-    mockRevokeTeamKeys.mockImplementation(async () => { order.push('revoke'); return 0; });
-    mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<void>) => { order.push('tx'); await fn(txStub); });
+    mockRevokeTeamKeys.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+      order.push('revoke');
+      return 0;
+    });
+    mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<void>) => { await fn(txStub); order.push('tx'); });
     const { DELETE } = await import('@/app/api/teams/[teamId]/route');
     const res = await DELETE(new Request('http://cloud.test/x', { method: 'DELETE' }), params({ teamId: 't1' }));
     expect(res.status).toBe(200);
     expect(mockRevokeTeamKeys).toHaveBeenCalledWith('t1');
-    expect(order).toEqual(['revoke', 'tx']);
+    expect(order).toEqual(['tx', 'revoke']);
+  });
+
+  it('DELETE 团队事务失败 → 不吊销任何 key（团队仍在，成员 key 照常可用），500', async () => {
+    mockTransaction.mockRejectedValue(new Error('tx failed'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { DELETE } = await import('@/app/api/teams/[teamId]/route');
+    const res = await DELETE(new Request('http://cloud.test/x', { method: 'DELETE' }), params({ teamId: 't1' }));
+    expect(res.status).toBe(500);
+    expect(mockRevokeTeamKeys).not.toHaveBeenCalled();
   });
 
   // 钩子的数据库步骤可能抛错；业务写入已经（或将要）成功，不能被钩子失败改写成 500
@@ -142,6 +158,15 @@ describe('团队生命周期 → 团队 key 钩子（ADR 0015 §5）', () => {
     expect(putRes.status).toBe(200);
     expect(postRes.status).toBe(200);
     expect(mockInvalidatePlanCache).toHaveBeenCalledWith('t1');
+  });
+
+  it('transfer 的 invalidatePlanCache 抛错不影响业务结果：仍 200，且已重推全队快照', async () => {
+    mockInvalidatePlanCache.mockRejectedValue(new Error('aster-api down'));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { POST } = await import('@/app/api/teams/[teamId]/transfer/route');
+    const res = await POST(json('POST', { newOwnerId: 'u2' }), params({ teamId: 't1' }));
+    expect(res.status).toBe(200);
+    expect(mockRefreshTeamKeySnapshots).toHaveBeenCalledWith('t1');
   });
 
   it('钩子抛错不影响业务结果：团队删除事务照常执行', async () => {

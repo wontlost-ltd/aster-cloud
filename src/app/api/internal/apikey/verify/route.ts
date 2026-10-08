@@ -6,7 +6,7 @@
  *   reason?, revokedAt?, expiredAt?
  * }
  *
- * 由 aster-api ApiKeyVerifierService 调用（5min Caffeine 缓存）。
+ * 由 aster-api ApiKeyVerifierService 调用（结果在 aster-api 本地缓存 60 s，ADR 0015 §7）。
  * 身份（tenantId / role / quotaOwnerId / plan）一律取自 resolveApiKeyIdentity；
  * 个人 key 与团队 key 的映射见 ADR 0015 §2。
  */

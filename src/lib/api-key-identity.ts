@@ -5,7 +5,8 @@
  * 个人 key（teamId 为空）：tenantId = userId，role = owner，quotaOwnerId = userId，套餐取本人。
  * 团队 key：tenantId = teamId，role = TeamMember.role（现查，成员被移出即失效），
  *          quotaOwnerId = Team.ownerId，套餐取 owner。
- * verify 路由、snapshot 推送、snapshot/full、validateApiKey 都只能经由这里拿身份。
+ * verify 路由、snapshot 推送、snapshot/full、validateApiKey 都只能经由这里拿身份；
+ * 快照体（推送与 snapshot/full 共用）也只在这里由身份映射，见 toApiKeySnapshotBody。
  */
 import { db, apiKeys, users, teams, teamMembers } from '@/lib/prisma';
 import { and, eq, inArray } from 'drizzle-orm';
@@ -37,6 +38,27 @@ export type ApiKeyIdentity =
       reason: 'not_found' | 'revoked' | 'expired' | 'orphan_key' | 'team_not_found' | 'membership_revoked';
       revokedAt?: Date;
       expiredAt?: Date;
+    };
+
+/**
+ * aster-api `ApiKeySnapshot` 的请求体（`POST /api/internal/snapshot/apikey/{hash}` 与 snapshot/full 的每一项）。
+ * valid 只下发快照认的字段（不含 teamId / subscriptionStatus）；invalid 只带 reason，被吊销时附 revokedAtEpochMs。
+ */
+export type ApiKeySnapshotBody =
+  | {
+      valid: true;
+      apiKeyId: string;
+      userId: string;
+      tenantId: string;
+      quotaOwnerId: string;
+      role: TeamRole;
+      plan: Plan;
+      revokedAtEpochMs: null;
+    }
+  | {
+      valid: false;
+      reason: Extract<ApiKeyIdentity, { valid: false }>['reason'];
+      revokedAtEpochMs?: number;
     };
 
 /** 解析所需的 ApiKey 列，供各调用方的查询复用，避免漏列。 */
@@ -119,4 +141,25 @@ function identityOf(
   if (!owner) return { valid: false, reason: 'orphan_key' };
   return { valid: true, apiKeyId: k.id, userId: k.userId, tenantId: k.teamId, teamId: k.teamId, quotaOwnerId: team.ownerId,
     role, plan: owner.plan, subscriptionStatus: owner.subscriptionStatus ?? null };
+}
+
+/** 身份 → 快照体的唯一映射；个人 key 与改前逐字段相同，仅多 quotaOwnerId（= userId）。 */
+export function toApiKeySnapshotBody(identity: ApiKeyIdentity): ApiKeySnapshotBody {
+  if (!identity.valid) {
+    return {
+      valid: false,
+      reason: identity.reason,
+      ...(identity.revokedAt ? { revokedAtEpochMs: identity.revokedAt.getTime() } : {}),
+    };
+  }
+  return {
+    valid: true,
+    apiKeyId: identity.apiKeyId,
+    userId: identity.userId,
+    tenantId: identity.tenantId,
+    quotaOwnerId: identity.quotaOwnerId,
+    role: identity.role,
+    plan: identity.plan,
+    revokedAtEpochMs: null,
+  };
 }

@@ -167,3 +167,36 @@ describe('resolveApiKeyIdentity', () => {
     expect(m.apiKeysFindFirst).toHaveBeenCalledWith(expect.objectContaining({ columns: API_KEY_IDENTITY_COLUMNS }));
   });
 });
+
+// 快照体（pusher 与 snapshot/full 共用）：valid 只下发 aster-api ApiKeySnapshot 认的字段，
+// 不带 teamId / subscriptionStatus；invalid 只带 reason，吊销时附 revokedAtEpochMs
+describe('toApiKeySnapshotBody', () => {
+  it('个人 key：改前字段 + quotaOwnerId=userId，revokedAtEpochMs:null', async () => {
+    const { toApiKeySnapshotBody } = await import('@/lib/api-key-identity');
+    expect(toApiKeySnapshotBody({
+      valid: true, apiKeyId: 'k1', userId: 'u1', tenantId: 'u1', teamId: null, quotaOwnerId: 'u1',
+      role: 'owner', plan: 'pro', subscriptionStatus: 'active',
+    })).toEqual({
+      valid: true, apiKeyId: 'k1', userId: 'u1', tenantId: 'u1', quotaOwnerId: 'u1', role: 'owner', plan: 'pro', revokedAtEpochMs: null,
+    });
+  });
+  it('团队 key：tenantId=teamId、成员角色、quotaOwnerId=owner、套餐取 owner', async () => {
+    const { toApiKeySnapshotBody } = await import('@/lib/api-key-identity');
+    expect(toApiKeySnapshotBody({
+      valid: true, apiKeyId: 'k2', userId: 'u2', tenantId: 't1', teamId: 't1', quotaOwnerId: 'owner',
+      role: 'member', plan: 'team', subscriptionStatus: null,
+    })).toEqual({
+      valid: true, apiKeyId: 'k2', userId: 'u2', tenantId: 't1', quotaOwnerId: 'owner', role: 'member', plan: 'team', revokedAtEpochMs: null,
+    });
+  });
+  it('无效：revoked 附 revokedAtEpochMs；expired / not_found / membership_revoked 只带 reason', async () => {
+    const { toApiKeySnapshotBody } = await import('@/lib/api-key-identity');
+    const revokedAt = new Date('2026-04-01T00:00:00Z');
+    expect(toApiKeySnapshotBody({ valid: false, reason: 'revoked', revokedAt }))
+      .toEqual({ valid: false, reason: 'revoked', revokedAtEpochMs: revokedAt.getTime() });
+    expect(toApiKeySnapshotBody({ valid: false, reason: 'expired', expiredAt: new Date('2020-01-01T00:00:00Z') }))
+      .toEqual({ valid: false, reason: 'expired' });
+    expect(toApiKeySnapshotBody({ valid: false, reason: 'not_found' })).toEqual({ valid: false, reason: 'not_found' });
+    expect(toApiKeySnapshotBody({ valid: false, reason: 'membership_revoked' })).toEqual({ valid: false, reason: 'membership_revoked' });
+  });
+});

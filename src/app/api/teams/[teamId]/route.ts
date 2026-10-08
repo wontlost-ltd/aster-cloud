@@ -168,11 +168,6 @@ export async function DELETE(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: permission.error }, { status: permission.status });
     }
 
-    // 吊销要按 teamId 查到 key，必须在删团队之前；吊销幂等，事务失败只多一次无害吊销，失败也不阻断删除（ADR 0015 §5）
-    await revokeTeamKeys(teamId).catch((err) =>
-      console.warn('[teams] revokeTeamKeys before team deletion failed:', err)
-    );
-
     // 删除团队（手动级联删除关联记录）
     await db.transaction(async (tx) => {
       // 删除团队成员
@@ -193,6 +188,12 @@ export async function DELETE(req: Request, { params }: RouteParams) {
       // 最后删除团队本身
       await tx.delete(teams).where(eq(teams.id, teamId));
     });
+
+    // ApiKey.teamId 无外键、上面的事务不碰 ApiKey，删后仍可按 teamId 吊销全部团队 key；放在事务之后，
+    // 事务失败就不会误吊销仍存在团队的 key。吊销失败不改写删除结果：解析器以 team_not_found 兜底拒绝（ADR 0015 §5）
+    await revokeTeamKeys(teamId).catch((err) =>
+      console.warn('[teams] revokeTeamKeys after team deletion failed:', err)
+    );
 
     return NextResponse.json({ success: true });
   } catch (error) {

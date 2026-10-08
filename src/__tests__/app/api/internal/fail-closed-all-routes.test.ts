@@ -29,6 +29,7 @@ vi.mock('@/lib/team-permissions', () => ({ SOLO_TENANT_ROLE: 'owner' }));
 vi.mock('@/lib/api-key-identity', () => ({
   resolveApiKeyIdentity: boom,
   resolveApiKeyIdentities: boom,
+  toApiKeySnapshotBody: boom,
   API_KEY_IDENTITY_COLUMNS: {},
 }));
 

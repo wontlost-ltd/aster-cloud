@@ -78,10 +78,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
-  // quotaOwnerId 决定这次调用计入哪个 owner 池。TS 类型只是断言，JSON 里可能是空串、数字或对象：
+  // quotaOwnerId 决定这次调用计入哪个 owner 池。TS 类型只是断言，JSON 里可能是空串、纯空白、数字或对象：
   // 原样落库会形成不属于任何真实 owner 的池（非 NULL、无外键），调用就此逃逸配额，故必须拒绝。
   const quotaOwnerId: unknown = body.quotaOwnerId;
-  if (quotaOwnerId != null && (typeof quotaOwnerId !== 'string' || quotaOwnerId === '')) {
+  if (quotaOwnerId != null && (typeof quotaOwnerId !== 'string' || quotaOwnerId.trim() === '')) {
     return NextResponse.json({ error: 'Invalid quotaOwnerId' }, { status: 400 });
   }
 

@@ -187,6 +187,44 @@ describe('GET /api/internal/snapshot/full — limit 校验', () => {
       { keyHash: 'h2', valid: false, reason: 'membership_revoked', revokedAtEpochMs: null },
     ]);
   });
+
+  // 铁律：个人 key 的全量项 = 改前字段 + quotaOwnerId(=userId)；过期项按 Task 3 裁定只带
+  // { keyHash, valid:false, reason, revokedAtEpochMs }，不再携带 apiKeyId/userId/tenantId/role/plan
+  it('个人 key：valid 项 tenantId=userId、role=owner、quotaOwnerId=userId；过期项为 invalid 形状', async () => {
+    mockUsersFindMany.mockResolvedValue([
+      { id: 'u1', plan: 'pro', priceLockedAt: null, legacyTier: null,
+        subscriptionStatus: 'active', aiBannedUntil: null, gracePeriodEndsAt: null },
+    ]);
+    const livePersonal = { id: 'k3', userId: 'u1', teamId: null, key: 'h3', revokedAt: null, expiresAt: null };
+    const expiredPersonal = { id: 'k4', userId: 'u1', teamId: null, key: 'h4', revokedAt: null, expiresAt: new Date('2020-01-01T00:00:00Z') };
+    mockApiKeysFindMany.mockResolvedValue([livePersonal, expiredPersonal]);
+    mockResolveMany.mockResolvedValue(new Map([
+      ['k3', { valid: true, apiKeyId: 'k3', userId: 'u1', tenantId: 'u1', teamId: null, quotaOwnerId: 'u1',
+        role: 'owner', plan: 'pro', subscriptionStatus: 'active' }],
+      ['k4', { valid: false, reason: 'expired', expiredAt: expiredPersonal.expiresAt }],
+    ]));
+
+    const { GET } = await import('@/app/api/internal/snapshot/full/route');
+    const res = await GET(makeReq('?limit=1000'));
+    expect(res.status).toBe(200);
+    expect(mockResolveMany).toHaveBeenCalledWith([livePersonal, expiredPersonal]);
+
+    const body = await res.json();
+    expect(body.apiKeys).toEqual([
+      {
+        keyHash: 'h3',
+        valid: true,
+        apiKeyId: 'k3',
+        userId: 'u1',
+        tenantId: 'u1',
+        quotaOwnerId: 'u1',
+        role: 'owner',
+        plan: 'pro',
+        revokedAtEpochMs: null,
+      },
+      { keyHash: 'h4', valid: false, reason: 'expired', revokedAtEpochMs: null },
+    ]);
+  });
 });
 
 describe('GET /api/internal/snapshot/full — fail-closed HMAC (audit #168)', () => {

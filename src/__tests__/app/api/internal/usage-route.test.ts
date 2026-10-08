@@ -247,6 +247,7 @@ describe('/api/internal/api/usage — owner 共享配额池（ADR 0015 §4）', 
 
   it.each([
     ['空串', ''],
+    ['仅空白', ' \t\n'],
     ['数字', 123],
     ['对象', { id: 'owner' }],
   ])('POST quotaOwnerId 为%s → 400 Invalid quotaOwnerId，不写库（防止调用逃逸配额）', async (_label, quotaOwnerId) => {
