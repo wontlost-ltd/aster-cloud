@@ -9,7 +9,7 @@ import { signRequest, signInternalCallerHeaders } from '@/lib/api-signing';
 import { API_ENDPOINTS } from '@/config/api-versions';
 
 // 环境变量配置
-const getApiConfig = () => {
+export const getApiConfig = () => {
   const isServer = typeof window === 'undefined';
   return {
     // 服务端优先使用内部网络地址（容器间通信），回退到公开地址
