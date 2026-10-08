@@ -1,6 +1,6 @@
 # 0015 — 团队作用域 API key 与 owner 共享配额池
 
-Status: Proposed（设计已确认，待实施）
+Status: Accepted（2026-10-08 本地全栈验收通过）
 Date: 2026-10-08
 Companions: `aster-api/docs/adr/0040-action-guard.md` §4.2（四眼）、§10（经过验证的角色来源）；`aster-guard/README.md`「本地端到端」
 
@@ -201,6 +201,71 @@ aster-api（JUnit）：`ApiKeyVerifyResultTest`（`quotaOwnerId` 回退）、`Ap
 2. free 套餐成员持 Pro owner 团队的 key：不被 403 `plan_no_api_access` / 配额拦截；其调用计入 owner 池。
 3. 成员被移出后再用团队 key：401。
 4. 现有个人 key 的 verify 响应、配额键、租户与改前逐字段相同。
+
+#### 验收结果（2026-10-08，本地 podman 全栈）
+
+环境：aster-cloud `feat/adr-0015-team-scoped-api-keys`@`808e0913`，容器重启时 `pnpm db:migrate` 执行 0049，
+`ApiKey.teamId`、`ApiCallRecord.quotaOwnerId` 两列就位；aster-api `feat/adr-0015-quota-owner`@`6b71da4` 重建镜像，
+以 `ASTER_PLAN_GATE_ENABLED=true` 启动（该开关默认 false，此时 `ApiQuotaGuard.check/recordAsync` 整体短路、
+不写 `ApiCallRecord`，第 2 项无从观测）。测试团队 `team1`：owner `owner1`（pro），成员 `m-free`（free，member）、
+`m-dpo`（free，admin）；两把团队 key `tk-free`、`tk-dpo` 以 `teamId='team1'` 写入 `"ApiKey"`，
+aster-api 侧为租户 `team1` 部署 `guard.customer.decide` 示例策略。
+
+1. ✅ 两名成员用团队 key 完成四眼。`ASTER_GUARD_API_KEY=<tk-free> ASTER_GUARD_APPROVER_API_KEY=<tk-dpo>
+   node scripts/e2e-local.mjs`：`[1]`–`[4]` 全部 ✓，退出码 0。aster_policy 实测行：
+
+   ```
+   guard_decisions: tenant_id|requested_by|requested_api_key_id|action_name|outcome
+   team1|m-free|tk-free|read_customer_record|ALLOW
+   team1|m-free|tk-free|delete_customer_record|REQUIRE_APPROVAL
+   guard_approvals: tenant_id|required_role|status|decided_by
+   team1|Data Protection Officer|APPROVED|m-dpo
+   ```
+
+2. ✅ free 成员不被拦，调用计入 owner 池。快照预热后 `aq:user:m-free` 为 `"plan":"free","apiCallsLimit":0`，
+   `aq:user:owner1` 为 `"plan":"pro","apiCallsLimit":5000`，团队 key 快照携带 `"quotaOwnerId":"owner1"`；
+   free 成员的 `read_customer_record` 得到 ALLOW 而非 403。e2e 流程中只有 `POST /api/v1/guard/decisions` 计量
+   （审批与读取决策不计量），因此另以 `tk-dpo` 发起一次 decisions 调用后：
+
+   ```
+   select "userId","quotaOwnerId",count(*) from "ApiCallRecord" where "quotaOwnerId"='owner1' group by 1,2
+   m-dpo|owner1|1
+   m-free|owner1|2
+   GET /api/internal/api/precheck?userId=owner1（v2 HMAC 签名）
+   200 {"plan":"pro","legacyTier":null,"subscriptionStatus":null,"apiCallsLimit":5000,"monthlyUsed":3,"period":"2026-10","banned":false,"gracePeriodEndsAt":null}
+   GET /api/internal/api/precheck?userId=m-free → "plan":"free","apiCallsLimit":0,"monthlyUsed":0
+   aq:counter:user:owner1:m:2026-10 = 3
+   ```
+
+   `monthlyUsed` = 1 + 2；成员个人池为 0，没有重复计数。
+
+3. ✅ 成员移出后团队 key 失效。SQL 直删 `TeamMember` `tm3`（`m-dpo`），并删除该 key 的 Redis 快照
+   `aq:apikey:<hash>`，模拟「无快照、未推送」的兜底场景；`sleep 61` 后用 `tk-dpo` 调
+   `POST /api/v1/guard/decisions`：
+
+   ```
+   401
+   {"reason":"membership_revoked","error":"unauthorized","message":"Invalid or revoked API key. See https://aster-lang.cloud/billing/api-keys"}
+   aster-api 日志：apikey verify rejected: path=/api/v1/guard/decisions reason=membership_revoked
+   ```
+
+   对照观测：删除 Redis 快照之前（快照 TTL 剩约 56 min，SQL 直删不触发推送），`sleep 61` 后同一请求仍通过鉴权
+   （HTTP 200），而 cloud verify 直查已返回 `{"valid":false,"reason":"membership_revoked"}`。这正是 §7 所列
+   「恰有一份 Redis 快照且推送失败时最长 1 h 内仍被接受」的已知上限，实测与文档一致。
+
+4. ✅ 个人 key 行为不变。`ASTER_GUARD_API_KEY=<KEY1> ASTER_GUARD_APPROVER_API_KEY=<KEY3>`：`[1]`–`[4]` 全部 ✓，
+   退出码 0。
+
+   ```
+   select tenant_id, requested_by from guard_decisions order by created_at desc limit 1
+   t1|t1
+   guard_approvals 最新行：t1|APPROVED|u3|Data Protection Officer
+   cloud verify(KEY1): {"valid":true,"apiKeyId":"k1","userId":"t1","tenantId":"t1","quotaOwnerId":"t1","plan":"pro","subscriptionStatus":null,"role":"owner"}
+   ApiCallRecord: t1|t1|t1|k1（userId|quotaOwnerId|tenantId|apiKeyId）；配额计数键 aq:counter:user:t1:m:2026-10
+   ```
+
+   租户、`requested_by`、`apiKeyId`、配额计数键与 ADR 0015 之前的运行相同；verify 响应仅新增
+   `quotaOwnerId`（等于 `userId`）。不带 `quotaOwnerId` 的旧格式快照（`KEY3`）照常被接受。
 
 ### 9. 发布顺序与兼容性
 

@@ -56,4 +56,4 @@
 | [0001](./0001-single-source-two-distributions.md) | Single source, two distributions via build-time DEPLOYMENT_MODE | Accepted |
 | [0002](./0002-deployment-mode-two-tier-capability-surface.md) | Two-tier capability surface — compile-time constants + runtime CAPABILITIES | Accepted |
 | [0003](./0003-deployment-mode-dce-backstop.md) | DCE backstop: DefinePlugin + webpack alias=false + ESLint guard | Accepted |
-| [0015](./0015-team-scoped-api-keys.md) | 团队作用域 API key 与 owner 共享配额池 | Proposed |
+| [0015](./0015-team-scoped-api-keys.md) | 团队作用域 API key 与 owner 共享配额池 | Accepted |
