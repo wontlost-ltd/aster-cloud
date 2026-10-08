@@ -51,6 +51,23 @@ describe('loadProofReviewers', () => {
     }]);
   });
 
+  it('★同 (policyId,nodeId) 同一时间戳 ⇒ 按 id 决胜，输入顺序反转结果不变', async () => {
+    const at = new Date('2026-10-02T00:00:00Z');
+    const rows = [
+      { id: 'p-a', policyId: 'pol', policyVersionId: 'pv-1', nodeId: 'n1', verdict: 'REJECTED',
+        subjectKind: 'engineer', subjectUserId: 'u-1', createdAt: at },
+      { id: 'p-b', policyId: 'pol', policyVersionId: 'pv-1', nodeId: 'n1', verdict: 'VERIFIED',
+        subjectKind: 'domain_expert', subjectUserId: 'u-2', createdAt: new Date(at.getTime()) },
+    ];
+    proofsFindMany.mockResolvedValueOnce(rows);
+    const first = await loadProofReviewers(['pv-1']);
+    proofsFindMany.mockResolvedValueOnce([...rows].reverse());
+    const second = await loadProofReviewers(['pv-1']);
+
+    expect(first.get('pv-1')?.map((r) => r.ref)).toEqual(['p-b']);
+    expect(second.get('pv-1')).toEqual(first.get('pv-1'));
+  });
+
   it('不同节点各留一条，按版本分组', async () => {
     proofsFindMany.mockResolvedValue([
       { id: 'a', policyId: 'pol', policyVersionId: 'pv-1', nodeId: 'n1', verdict: 'VERIFIED',

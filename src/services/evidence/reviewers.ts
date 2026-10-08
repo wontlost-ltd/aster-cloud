@@ -29,6 +29,12 @@ function push(out: Map<string, Reviewer[]>, key: string, reviewer: Reviewer): vo
   out.set(key, list);
 }
 
+/** (createdAt, id) 字典序比较：时间相同则 id 码点序大者为新。 */
+function isNewerProof(a: { createdAt: Date; id: string }, b: { createdAt: Date; id: string }): boolean {
+  const dt = a.createdAt.getTime() - b.createdAt.getTime();
+  return dt !== 0 ? dt > 0 : a.id > b.id;
+}
+
 /**
  * 按版本取 PolicyProof 复核者（每版本内每节点取最新结论）。
  *
@@ -45,13 +51,14 @@ export async function loadProofReviewers(policyVersionRowIds: string[]): Promise
       verdict: true, subjectKind: true, subjectUserId: true, createdAt: true,
     },
   });
-  // append-only：撤销即追加，故每个版本内每 (policyId, nodeId) 只认 createdAt 最新的一条。
+  // append-only：撤销即追加，故每个版本内每 (policyId, nodeId) 只认按 (createdAt, id) 最新的一条。
+  // 同毫秒写入时以 id 码点序决胜，与查库返回顺序无关，保证两次导出 bundleHash 一致。
   // 键含 policyVersionId：proof 是对「某一版」做出的，新版本的结论不得覆盖旧版本执行的复核者（ADR 0041 §5.2）。
   const latest = new Map<string, (typeof rows)[number]>();
   for (const r of rows) {
     const k = `${r.policyVersionId}\u0000${r.policyId}\u0000${r.nodeId}`;
     const cur = latest.get(k);
-    if (!cur || r.createdAt > cur.createdAt) latest.set(k, r);
+    if (!cur || isNewerProof(r, cur)) latest.set(k, r);
   }
   for (const r of latest.values()) {
     if (!r.policyVersionId) continue;
