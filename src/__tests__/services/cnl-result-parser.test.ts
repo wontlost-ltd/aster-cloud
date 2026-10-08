@@ -279,20 +279,24 @@ describe('parseApprovalFromResult — 决策字段识别', () => {
 
 describe('Verdict 内置值（ADR 0039）', () => {
   it('ALLOW → approved', () => {
-    expect(parseApprovalFromResult({ __type: 'Verdict', outcome: 'ALLOW' })).toEqual({ approved: true, message: 'Approved' });
+    expect(parseApprovalFromResult({ __type: 'Verdict', outcome: 'ALLOW' })).toEqual({ approved: true, outcome: 'ALLOW', message: 'Approved' });
   });
   it('DENY → denied，带 reason', () => {
-    expect(parseApprovalFromResult({ __type: 'Verdict', outcome: 'DENY', reason: 'no consent' })).toEqual({ approved: false, message: 'no consent' });
+    expect(parseApprovalFromResult({ __type: 'Verdict', outcome: 'DENY', reason: 'no consent' })).toEqual({ approved: false, outcome: 'DENY', message: 'no consent' });
   });
-  it('REQUIRE_APPROVAL → 不批准且 indeterminate', () => {
+  it('REQUIRE_APPROVAL → 不批准、专属 outcome、非 indeterminate（ADR 0041 §4）', () => {
     const r = parseApprovalFromResult({ __type: 'Verdict', outcome: 'REQUIRE_APPROVAL', role: 'Senior Underwriter', reason: 'over cap' });
-    expect(r.approved).toBe(false); expect(r.indeterminate).toBe(true); expect(r.message).toBe('over cap');
+    expect(r).toEqual({ approved: false, outcome: 'REQUIRE_APPROVAL', message: 'over cap' });
   });
-  it('ESCALATE → 不批准且 indeterminate', () => {
+  it('ESCALATE → 不批准、专属 outcome、非 indeterminate（ADR 0041 §4）', () => {
     const r = parseApprovalFromResult({ __type: 'Verdict', outcome: 'ESCALATE', reason: 'low confidence' });
-    expect(r.approved).toBe(false); expect(r.indeterminate).toBe(true);
+    expect(r).toEqual({ approved: false, outcome: 'ESCALATE', message: 'low confidence' });
+  });
+  it('未知 outcome → indeterminate 且不带 outcome', () => {
+    const r = parseApprovalFromResult({ __type: 'Verdict', outcome: 'MAYBE' });
+    expect(r.approved).toBe(false); expect(r.indeterminate).toBe(true); expect(r.outcome).toBeUndefined();
   });
   it('value 模式下同样按 outcome 解读', () => {
-    expect(parseApprovalFromResult({ __type: 'Verdict', outcome: 'DENY', reason: 'x' }, 'value')).toEqual({ approved: false, message: 'x' });
+    expect(parseApprovalFromResult({ __type: 'Verdict', outcome: 'DENY', reason: 'x' }, 'value')).toEqual({ approved: false, outcome: 'DENY', message: 'x' });
   });
 });

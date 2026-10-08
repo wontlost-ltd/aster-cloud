@@ -105,6 +105,53 @@ export interface PolicyEvaluateResponse {
    * 零 PII 成本支撑条件漏斗 / 死分支分析。
    */
   traceSkeleton?: PolicyTraceSkeleton;
+  /** 结构化决策（ADR 0041 §4）：Verdict 的 outcome/role/reason 投影；非 Verdict 结果可缺省。 */
+  decision?: { outcome: string; role?: string; reason?: string };
+  /** 命中规则的业务标识（如 CUST-DEL-001）。 */
+  ruleId?: string;
+  /** 规则关联的合规控制点（如 ["GDPR:ART17"]）。 */
+  controls?: string[];
+  /** 证据关联信息：correlationId 用于跨系统对齐同一次决策。 */
+  evidence?: { correlationId: string };
+}
+
+/**
+ * 调用方 agent 身份（ADR 0041 §4）：随 evaluate 请求体 `agent` 传给 aster-api。
+ * 自报字段，仅作证据记录，不参与任何决策。
+ */
+export interface AgentIdentity {
+  provider: string;
+  model: string;
+  version?: string;
+  session?: string;
+}
+
+/** agent 各字段长度上限（与 aster-api 侧约束对齐，防止超长自报值灌入证据列）。 */
+const AGENT_FIELD_MAX = 255;
+
+function isBoundedString(value: unknown, required: boolean): boolean {
+  if (value === undefined) return !required;
+  return typeof value === 'string' && value.length <= AGENT_FIELD_MAX && (!required || value.length > 0);
+}
+
+/**
+ * 解析外部输入为 AgentIdentity：provider/model 必为非空字符串，version/session 可选但须为
+ * 字符串，每项 ≤ 255。合法则只挑出已知字段返回（多余键丢弃，不让任意 JSON 进证据列），否则 null。
+ */
+export function parseAgentIdentity(value: unknown): AgentIdentity | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const { provider, model, version, session } = value as Record<string, unknown>;
+  const valid = isBoundedString(provider, true)
+    && isBoundedString(model, true)
+    && isBoundedString(version, false)
+    && isBoundedString(session, false);
+  if (!valid) return null;
+  return {
+    provider: provider as string,
+    model: model as string,
+    ...(version !== undefined ? { version: version as string } : {}),
+    ...(session !== undefined ? { session: session as string } : {}),
+  };
 }
 
 /** 决策骨架（对应 aster-api io.aster.policy.replay.TraceSkeleton）。 */
@@ -463,6 +510,8 @@ export class PolicyApiClient {
        * query param 只进 fetch URL，**不进 HMAC 签名 path**（见 request()）。
        */
       replayCapture?: boolean;
+      /** 调用方 agent 身份（ADR 0041 §4）：有则放入请求体 `agent`，供 aster-api 写入证据。 */
+      agent?: AgentIdentity;
     }
   ): Promise<PolicyEvaluateResponse> {
     const hasAliases = options?.aliasSet != null && Object.keys(options.aliasSet).length > 0;
@@ -480,6 +529,8 @@ export class PolicyApiClient {
       ...(options?.vocabulary ? { vocabulary: options.vocabulary } : {}),
       // 仅在有别名时携带；已发布版本冻结的别名快照。
       ...(hasAliases ? { aliasSet: options!.aliasSet } : {}),
+      // 仅在调用方声明 agent 时携带；无 agent 时不出现该键。
+      ...(options?.agent ? { agent: options.agent } : {}),
     });
   }
 

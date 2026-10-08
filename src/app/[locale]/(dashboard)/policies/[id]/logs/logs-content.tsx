@@ -10,8 +10,8 @@ type ExecutionSource = 'WEB' | 'API' | 'CLI' | 'dashboard' | 'api' | 'playground
 interface ExecutionLog {
   id: string;
   success: boolean;
-  /** 准入决策语义（approved/denied/indeterminate/error）。历史行可能为 null。 */
-  decision: 'approved' | 'denied' | 'indeterminate' | 'error' | null;
+  /** 准入决策语义（approved/denied/indeterminate/error/require_approval/escalate）。历史行可能为 null。 */
+  decision: 'approved' | 'denied' | 'indeterminate' | 'error' | 'require_approval' | 'escalate' | null;
   input: unknown;
   output: unknown;
   error: string | null;

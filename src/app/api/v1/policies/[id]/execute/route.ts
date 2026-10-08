@@ -5,8 +5,9 @@ import { eq, sql, desc, asc } from 'drizzle-orm';
 import { PLANS, PlanType } from '@/lib/plans';
 import { upgradeResponse } from '@/lib/plan-quota';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
-import { executePolicyUnified, getPrimaryError, deriveExecutionDecision, detectCNLLocale } from '@/services/policy/cnl-executor';
-import { buildReplayColumns } from '@/lib/policy-execution-log';
+import { executePolicyUnified, getPrimaryError, deriveExecutionDecision, deriveExecutionOutcome, detectCNLLocale } from '@/services/policy/cnl-executor';
+import { buildReplayColumns, buildEvidenceColumns } from '@/lib/policy-execution-log';
+import { parseAgentIdentity } from '@/services/policy/policy-api';
 import { maybeRunParityForExecution, RUNNER_LAUNCHER_HMAC_ROLE } from '@/services/policy/runner-parity-from-execution';
 
 interface RouteParams {
@@ -67,9 +68,14 @@ export async function POST(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'Request body must be a valid object' }, { status: 400 });
     }
 
-    const { input } = bodyResult as { input?: unknown };
+    const { input, agent: rawAgent } = bodyResult as { input?: unknown; agent?: unknown };
     if (!input || typeof input !== 'object' || Array.isArray(input)) {
       return NextResponse.json({ error: 'Input must be a valid object' }, { status: 400 });
+    }
+    // 调用方自报 agent（ADR 0041 §4）：可省略；一旦给出（含 null）就必须形状合法，否则 400。
+    const agent = rawAgent === undefined ? null : parseAgentIdentity(rawAgent);
+    if (rawAgent !== undefined && !agent) {
+      return NextResponse.json({ error: 'Invalid agent' }, { status: 400 });
     }
 
     const validatedInput = input as Record<string, unknown>;
@@ -247,6 +253,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       aliasSet: parsedAliasSet,
       // 回放地基（ADR 0030）：已认证 execute 走 HMAC 内部调用 → 开 replayCapture 取权威 hash。
       replayCapture: true,
+      ...(agent ? { agent } : {}),
     });
     const primaryError = getPrimaryError(executionResult);
     const durationMs = Date.now() - startTime;
@@ -279,11 +286,14 @@ export async function POST(req: Request, { params }: RouteParams) {
       output: executionResult as object,
       error: primaryError,
       durationMs,
-      // success 保持 = allowed（旧语义不变）；准入四态由新增 decision 列表达（服务端派生）。
+      // success 保持 = allowed（旧语义不变）；准入决策态由 decision 列表达（服务端派生）。
       success: executionResult.allowed ?? false,
       decision: deriveExecutionDecision(executionResult),
       source: 'api',
       apiKeyId: apiKeyId || null,
+      // 证据列（ADR 0041 §4）：结果码 + 规则/控制点/证据关联 id + 声明式 agent。
+      outcome: deriveExecutionOutcome(executionResult),
+      ...buildEvidenceColumns(executionResult.metadata, agent),
       // 回放列（ADR 0030 附录 A）。
       ...replayColumns,
     }));

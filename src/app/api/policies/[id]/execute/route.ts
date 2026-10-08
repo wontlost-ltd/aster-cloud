@@ -5,10 +5,14 @@ import { eq, sql, desc, asc } from 'drizzle-orm';
 import { PLANS, PlanType } from '@/lib/plans';
 import { upgradeResponse } from '@/lib/plan-quota';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
-import { executePolicyUnified, getPrimaryError, deriveExecutionDecision, detectCNLLocale } from '@/services/policy/cnl-executor';
+import { executePolicyUnified, getPrimaryError, deriveExecutionDecision, deriveExecutionOutcome, detectCNLLocale } from '@/services/policy/cnl-executor';
 import { getCachedPolicyMeta, cachePolicyMeta, type CachedPolicyMeta } from '@/lib/cache';
-import { buildReplayColumns } from '@/lib/policy-execution-log';
+import { buildReplayColumns, buildEvidenceColumns } from '@/lib/policy-execution-log';
+import type { AgentIdentity } from '@/services/policy/policy-api';
 import { maybeRunParityForExecution, RUNNER_LAUNCHER_HMAC_ROLE } from '@/services/policy/runner-parity-from-execution';
+
+/** dashboard 执行的固定 agent 身份（ADR 0041 §4）：控制台人工触发，无外部 agent。 */
+const DASHBOARD_AGENT: AgentIdentity = { provider: 'aster-cloud', model: 'dashboard' };
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -331,6 +335,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       aliasSet: parsedAliasSet,
       // 回放地基（ADR 0030）：dashboard execute 走 HMAC 内部调用 → 开 replayCapture 取权威 hash。
       replayCapture: true,
+      agent: DASHBOARD_AGENT,
     });
     timings.executionWait = Date.now() - t3;
     timings.executionTotal = Date.now() - t3;
@@ -368,12 +373,15 @@ export async function POST(req: Request, { params }: RouteParams) {
       error: primaryError,
       durationMs,
       // success 保持 = allowed（旧语义不变，避免与历史行/响应体/日志 UI 割裂）。
-      // 准入四态（approved/denied/indeterminate/error）由新增 decision 列表达——值输出
+      // 准入决策态（approved/denied/indeterminate/error/require_approval/escalate）由 decision 列表达——值输出
       // 策略的 indeterminate 靠它区分，而非把 success 语义翻转。decision 服务端从执行
       // 结果派生，绝不信客户端。
       success: executionResult.allowed ?? false,
       decision: deriveExecutionDecision(executionResult),
       source: 'dashboard',
+      // 证据列（ADR 0041 §4）：结果码 + 规则/控制点/证据关联 id + 声明式 agent。
+      outcome: deriveExecutionOutcome(executionResult),
+      ...buildEvidenceColumns(executionResult.metadata, DASHBOARD_AGENT),
       // 回放列（ADR 0030 附录 A）。
       ...replayColumns,
     }));

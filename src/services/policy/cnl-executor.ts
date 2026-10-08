@@ -5,9 +5,24 @@
  * 供 Dashboard 和 API v1 两个执行端点复用。
  */
 
-import { createPolicyApiClient, PolicyApiError, type PolicyEvaluateDiagnostic, type PolicyEvaluateResponse, type PolicyReplayMetadata, type PolicyTraceSkeleton } from './policy-api';
+import { createPolicyApiClient, PolicyApiError, type AgentIdentity, type PolicyEvaluateDiagnostic, type PolicyEvaluateResponse, type PolicyReplayMetadata, type PolicyTraceSkeleton } from './policy-api';
 import { executePolicy as executeSimplePolicy } from './executor';
 import type { Policy } from '@/lib/prisma';
+import type { executionDecisionEnum } from '@/db/schema';
+
+/** Verdict 四态结果码（ADR 0039 / 0041）。 */
+export type VerdictOutcome = 'ALLOW' | 'DENY' | 'REQUIRE_APPROVAL' | 'ESCALATE';
+
+const VERDICT_OUTCOMES: readonly string[] = ['ALLOW', 'DENY', 'REQUIRE_APPROVAL', 'ESCALATE'];
+
+function asVerdictOutcome(value: unknown): VerdictOutcome | undefined {
+  return typeof value === 'string' && VERDICT_OUTCOMES.includes(value) ? (value as VerdictOutcome) : undefined;
+}
+
+/** 待人工处置的结果（需批准/升级）：既非放行也非拒绝，不计入 deniedReasons。 */
+function isPendingOutcome(outcome: VerdictOutcome | undefined): boolean {
+  return outcome === 'REQUIRE_APPROVAL' || outcome === 'ESCALATE';
+}
 
 // CNL locale type (simplified, no longer depends on local-compiler)
 export type CNLLocale = 'en-US' | 'zh-CN' | 'de-DE';
@@ -141,6 +156,14 @@ export interface PolicyExecutionResult {
      * ★与 replay 独立：不受 replayCapture 门控。
      */
     traceSkeleton?: PolicyTraceSkeleton;
+    /** Verdict 结果码（ADR 0041 §4）：优先取 aster-api 响应 decision.outcome，回退解析 result。 */
+    outcome?: VerdictOutcome;
+    /** 命中规则的业务标识（aster-api 响应 ruleId）。 */
+    ruleId?: string;
+    /** 规则关联的合规控制点（aster-api 响应 controls）。 */
+    controls?: string[];
+    /** aster-api 证据关联 id（响应 evidence.correlationId）。 */
+    evidenceCorrelationId?: string;
   };
   /** CNL 引擎返回的原始结果 */
   result?: unknown;
@@ -175,6 +198,8 @@ export interface ExecutePolicyOptions {
    * 仅**已认证 execute 路径**应开（走 HMAC 内部调用）；aster-api 侧 gate 到 HMAC 已验证才生效。
    */
   replayCapture?: boolean;
+  /** 调用方 agent 身份（ADR 0041 §4）：透传给 aster-api evaluate-source 请求体 `agent`。 */
+  agent?: AgentIdentity;
 }
 
 /**
@@ -187,12 +212,12 @@ export interface ExecutePolicyOptions {
 export async function executePolicyUnified(
   options: ExecutePolicyOptions
 ): Promise<PolicyExecutionResult> {
-  const { policy, input, userId, tenantId, functionName, aliasSet, replayCapture } = options;
+  const { policy, input, userId, tenantId, functionName, aliasSet, replayCapture, agent } = options;
   const policyContent = policy.content || '';
   const useAsterEngine = isAsterCNL(policyContent);
 
   if (useAsterEngine) {
-    return executeWithAsterEngine(policy, policyContent, input, userId, tenantId, functionName, aliasSet, replayCapture);
+    return executeWithAsterEngine(policy, policyContent, input, userId, tenantId, functionName, aliasSet, replayCapture, agent);
   } else {
     return executeWithSimpleEngine(policy, policyContent, input, userId);
   }
@@ -212,7 +237,8 @@ async function executeWithAsterEngine(
   tenantId?: string,
   functionName?: string,
   aliasSet?: Record<string, string[]> | null,
-  replayCapture?: boolean
+  replayCapture?: boolean,
+  agent?: AgentIdentity
 ): Promise<PolicyExecutionResult> {
   const locale = detectCNLLocale(policyContent) as CNLLocale;
   const effectiveTenantId = tenantId || policy.teamId || policy.userId;
@@ -221,7 +247,8 @@ async function executeWithAsterEngine(
   try {
     // aliasSet：已发布版本冻结的别名快照，透传给执行端使别名源码能编译（C1）。
     // replayCapture：回放地基（ADR 0030）——已认证 execute 路径开，透传 aster-api 权威 hash。
-    const response = await apiClient.evaluateSource(policyContent, input, { locale, functionName, aliasSet, replayCapture });
+    // agent：调用方自报身份（ADR 0041 §4），由 aster-api 写入证据。
+    const response = await apiClient.evaluateSource(policyContent, input, { locale, functionName, aliasSet, replayCapture, agent });
     return buildCNLResult(policy, response);
   } catch (error) {
     return buildCNLErrorResult(policy, error);
@@ -350,6 +377,8 @@ export interface ApprovalParseResult {
   message: string;
   /** 仅 decision 模式：结果无 allow/deny 语义，无法判定（非批准亦非真实拒绝）。 */
   indeterminate?: boolean;
+  /** 结果为 Verdict 内置值时的结果码（ADR 0041 §4）。 */
+  outcome?: VerdictOutcome;
 }
 
 // Bug-4 修复：导出供单测验证 isEligible 等字段被正确识别
@@ -375,12 +404,11 @@ export function parseApprovalFromResult(
     if (obj.__type === 'Verdict' && typeof obj.outcome === 'string') {
       const reason = typeof obj.reason === 'string' ? obj.reason : '';
       switch (obj.outcome) {
-        case 'ALLOW': return { approved: true, message: 'Approved' };
-        case 'DENY': return { approved: false, message: reason || 'Denied' };
-        // 需人工批准 / 升级：当前 ExecutionDecision 枚举无对应态，先按 indeterminate 记录，
-        // 子项目 3 扩展枚举后改为专属态。绝不能落入 approved 或 denied。
+        case 'ALLOW': return { approved: true, outcome: 'ALLOW', message: 'Approved' };
+        case 'DENY': return { approved: false, outcome: 'DENY', message: reason || 'Denied' };
+        // 需人工批准 / 升级（ADR 0041 §4）：专属态，由 outcome 携带；绝不能落入 approved 或 denied。
         case 'REQUIRE_APPROVAL':
-        case 'ESCALATE': return { approved: false, indeterminate: true, message: reason };
+        case 'ESCALATE': return { approved: false, outcome: obj.outcome, message: reason };
         default: return { approved: false, indeterminate: true, message: `Unknown verdict outcome: ${obj.outcome}` };
       }
     }
@@ -423,6 +451,10 @@ export function parseApprovalFromResult(
     if ('_type' in obj) {
       return { approved: true, message: JSON.stringify(result) };
     }
+
+    // 对象里既无 Verdict、批准字段、值字段也无 _type（如 { tier: '转人工审核' }）：没有可判定的
+    // allow/deny 语义（ADR 0041 §4）。fail-closed 不批准，但记 indeterminate 而非伪造拒绝。
+    return { approved: false, indeterminate: true, message: 'No decision fields in result object' };
   }
 
   // 字符串格式（见函数头部 mode 说明）。
@@ -471,22 +503,30 @@ export function parseApprovalFromResult(
  * 2. 如果没有 result 且 success=false，返回错误
  * 3. 安全原则：fail-closed，无法解析时拒绝
  */
-function buildCNLResult(policy: Policy, apiResponse: PolicyEvaluateResponse): PolicyExecutionResult {
+export function buildCNLResult(policy: Policy, apiResponse: PolicyEvaluateResponse): PolicyExecutionResult {
+  // 证据字段（ADR 0041 §4）：两条分支（有/无 result）都透传，缺省则不出现对应键。
+  const evidenceMetadata = {
+    ...(apiResponse.ruleId ? { ruleId: apiResponse.ruleId } : {}),
+    ...(apiResponse.controls ? { controls: apiResponse.controls } : {}),
+    ...(apiResponse.evidence?.correlationId ? { evidenceCorrelationId: apiResponse.evidence.correlationId } : {}),
+  };
+
   // 如果有 result，尝试解析（即使 success=false）
   // 某些情况下 API 可能返回 success=false 但仍有有效结果
   if (apiResponse.result !== undefined && apiResponse.result !== null) {
     // execute 是准入决策路径 → decision 模式（裸文本无决策语义 → indeterminate，
     // 既不伪造拒绝也不 fail-open；见 parseApprovalFromResult mode 说明）。
-    const { approved, message, indeterminate } = parseApprovalFromResult(apiResponse.result, 'decision');
+    const parsed = parseApprovalFromResult(apiResponse.result, 'decision');
+    const { approved, message, indeterminate } = parsed;
+    // aster-api 的结构化 decision 是权威来源；旧版后端无此字段时回退解析 result。
+    const outcome = asVerdictOutcome(apiResponse.decision?.outcome) ?? parsed.outcome;
 
-    // indeterminate（成功执行但无 allow/deny 语义，如 greet 返回纯文本）：
-    // fail-closed 不批准，但**不计入 deniedReasons**——没有真正的拒绝理由，
-    // 避免把计算输出伪造成拒绝（顶层 error 取 deniedReasons[0]，故此处不进则
-    // error 为空，success=allowed=false 但 result 原样回传，诚实表达「无决策」）。
-    const deniedReasons: string[] = [];
-    if (!approved && !indeterminate) {
-      deniedReasons.push(message);
-    }
+    // indeterminate（成功执行但无 allow/deny 语义，如 greet 返回纯文本）与待人工处置
+    // （REQUIRE_APPROVAL/ESCALATE）：fail-closed 不批准，但**不计入 deniedReasons**——
+    // 没有真正的拒绝理由，避免伪造拒绝（顶层 error 取 deniedReasons[0]，故此处不进则
+    // error 为空，success=allowed=false 但 result 原样回传）。
+    const isDenial = !approved && !indeterminate && !isPendingOutcome(outcome);
+    const deniedReasons: string[] = isDenial ? [message] : [];
 
     return {
       allowed: approved,
@@ -499,10 +539,12 @@ function buildCNLResult(policy: Policy, apiResponse: PolicyEvaluateResponse): Po
         policyName: policy.name,
         ruleCount: 1,
         matchedRuleCount: approved ? 1 : 0,
-        denyCount: approved || indeterminate ? 0 : 1,
+        denyCount: isDenial ? 1 : 0,
         engine: 'aster-cnl',
         executionTime: apiResponse.executionTimeMs,
         ...(indeterminate ? { decision: 'indeterminate' as const } : {}),
+        ...(outcome ? { outcome } : {}),
+        ...evidenceMetadata,
         // 回放地基（ADR 0030）：aster-api replayCapture 返回的权威 hash，透传给 execute route 落 Execution。
         ...(apiResponse.replayMetadata ? { replay: apiResponse.replayMetadata } : {}),
         // 决策骨架（Phase 0）：脱敏 trace 投影，同样透传给 execute route 落库。
@@ -532,6 +574,7 @@ function buildCNLResult(policy: Policy, apiResponse: PolicyEvaluateResponse): Po
       executionTime: apiResponse.executionTimeMs,
       ...(apiResponse.replayMetadata ? { replay: apiResponse.replayMetadata } : {}),
       ...(apiResponse.traceSkeleton ? { traceSkeleton: apiResponse.traceSkeleton } : {}),
+      ...evidenceMetadata,
     },
     result: apiResponse.result,
     executedFunction: apiResponse.executedFunction,
@@ -576,18 +619,40 @@ export function getPrimaryError(result: PolicyExecutionResult): string | undefin
   return result.deniedReasons[0];
 }
 
-/** executions.decision 列的取值（与 executionDecisionEnum 对齐）。 */
-export type ExecutionDecision = 'approved' | 'denied' | 'indeterminate' | 'error';
+/** executions.decision 列的取值——直接从 schema 枚举推导，避免两处联合漂移。 */
+export type ExecutionDecision = (typeof executionDecisionEnum.enumValues)[number];
 
 /**
- * 从执行结果**服务端派生**审计决策（绝不信客户端输入）。四态互斥、按优先级判定：
+ * 从执行结果**服务端派生**审计决策（绝不信客户端输入）。六态互斥、按优先级判定：
  *   - engineError → 'error'（执行报错，如编译/运行失败）
+ *   - outcome==='REQUIRE_APPROVAL' → 'require_approval'（需人工批准）
+ *   - outcome==='ESCALATE' → 'escalate'（升级处理）
  *   - decision==='indeterminate' → 'indeterminate'（执行成功但无 allow/deny 语义，如值输出）
  *   - allowed → 'approved'
  *   - 其余 → 'denied'（真实拒绝）
  */
 export function deriveExecutionDecision(result: PolicyExecutionResult): ExecutionDecision {
   if (result.metadata.engineError) return 'error';
+  if (result.metadata.outcome === 'REQUIRE_APPROVAL') return 'require_approval';
+  if (result.metadata.outcome === 'ESCALATE') return 'escalate';
   if (result.metadata.decision === 'indeterminate') return 'indeterminate';
   return result.allowed ? 'approved' : 'denied';
+}
+
+/** decision → Execution.outcome 大写码（证据包与 aster-api 用同一套结果码）。 */
+const OUTCOME_BY_DECISION: Record<ExecutionDecision, string> = {
+  approved: 'ALLOW',
+  denied: 'DENY',
+  require_approval: 'REQUIRE_APPROVAL',
+  escalate: 'ESCALATE',
+  indeterminate: 'INDETERMINATE',
+  error: 'ERROR',
+};
+
+/**
+ * 派生 Execution.outcome（ADR 0041 §4）：ALLOW/DENY/REQUIRE_APPROVAL/ESCALATE/INDETERMINATE/ERROR。
+ * 与 deriveExecutionDecision 一一对应，新行恒非 null（null 只出现在迁移前的 legacy 行）。
+ */
+export function deriveExecutionOutcome(result: PolicyExecutionResult): string {
+  return OUTCOME_BY_DECISION[deriveExecutionDecision(result)];
 }

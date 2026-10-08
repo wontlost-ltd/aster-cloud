@@ -58,15 +58,20 @@ vi.mock('@/services/policy/cnl-executor', () => ({
   // 审计决策派生（execute route 写 executions.decision 用）。测试里从执行结果派生。
   deriveExecutionDecision: vi.fn((r: {
     allowed?: boolean;
-    metadata?: { engineError?: boolean; decision?: string };
+    metadata?: { engineError?: boolean; decision?: string; outcome?: string };
   }) =>
     r?.metadata?.engineError
       ? 'error'
       : r?.metadata?.decision === 'indeterminate'
         ? 'indeterminate'
-        : r?.allowed
-          ? 'approved'
-          : 'denied'),
+        : r?.metadata?.outcome === 'REQUIRE_APPROVAL'
+          ? 'require_approval'
+          : r?.allowed
+            ? 'approved'
+            : 'denied'),
+  // 证据 outcome 派生（ADR 0041 §4）：测试里直接取 metadata.outcome，缺省按 allowed。
+  deriveExecutionOutcome: vi.fn((r: { allowed?: boolean; metadata?: { outcome?: string } }) =>
+    r?.metadata?.outcome ?? (r?.allowed ? 'ALLOW' : 'DENY')),
 }));
 
 // Mock opennextjs cloudflare to avoid dynamic import issues
@@ -444,6 +449,71 @@ describe('V1 Policies API - Drizzle Migration', () => {
       expect(body.meta.policyId).toBe('p1');
       expect(body.meta.policyName).toBe('Test Policy');
       expect(body.meta.durationMs).toBeTypeOf('number');
+    });
+
+    it('ADR 0041：落库 outcome/decision/ruleId/controls/evidenceCorrelationId，agent 透传并标 declared', async () => {
+      mockExecutePolicyUnified.mockResolvedValue(mockExecutionResult({
+        allowed: false,
+        metadata: { outcome: 'REQUIRE_APPROVAL', ruleId: 'CUST-DEL-001', controls: ['GDPR:ART17'], evidenceCorrelationId: 'c-1' },
+      }));
+
+      const response = await POST(
+        makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', {
+          ...validBody,
+          agent: { provider: 'anthropic', model: 'claude' },
+        }),
+        mockParams,
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockExecutePolicyUnified).toHaveBeenCalledWith(
+        expect.objectContaining({ agent: { provider: 'anthropic', model: 'claude' } }),
+      );
+      expect(mockValuesInsert).toHaveBeenCalledWith(expect.objectContaining({
+        outcome: 'REQUIRE_APPROVAL',
+        decision: 'require_approval',
+        ruleId: 'CUST-DEL-001',
+        controls: ['GDPR:ART17'],
+        agent: { provider: 'anthropic', model: 'claude', source: 'declared' },
+        evidenceCorrelationId: 'c-1',
+      }));
+    });
+
+    it('ADR 0041：未带 agent 时 agent 列写 null，执行端不收 agent', async () => {
+      const response = await POST(
+        makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody),
+        mockParams,
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockExecutePolicyUnified.mock.calls[0][0].agent).toBeUndefined();
+      expect(mockValuesInsert).toHaveBeenCalledWith(expect.objectContaining({
+        outcome: 'ALLOW',
+        agent: null,
+        ruleId: null,
+        controls: null,
+        evidenceCorrelationId: null,
+      }));
+    });
+
+    it.each([
+      ['非对象', 'x'],
+      ['缺 model', { provider: 'anthropic' }],
+      ['空 provider', { provider: '', model: 'claude' }],
+      ['version 非字符串', { provider: 'anthropic', model: 'claude', version: 1 }],
+      ['超长 session', { provider: 'anthropic', model: 'claude', session: 's'.repeat(256) }],
+      ['数组', [{ provider: 'anthropic', model: 'claude' }]],
+      ['null', null],
+    ])('ADR 0041：非法 agent（%s）→ 400 Invalid agent，且零执行', async (_label, agent) => {
+      const response = await POST(
+        makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', { ...validBody, agent }),
+        mockParams,
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body).toEqual({ error: 'Invalid agent' });
+      expect(mockExecutePolicyUnified).not.toHaveBeenCalled();
     });
 
     it('C1(v1)：把活跃版本冻结的 aliasSet 透传给执行端', async () => {

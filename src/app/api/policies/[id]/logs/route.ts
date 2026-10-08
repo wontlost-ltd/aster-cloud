@@ -4,6 +4,7 @@ import { db, policies } from '@/lib/prisma';
 import { eq, and, isNull } from 'drizzle-orm';
 import { queryExecutionLogs, getExecutionStats, getRecentExecutions } from '@/lib/policy-execution-log';
 import type { ExecutionSource } from '@/lib/prisma';
+import { executionDecisionEnum } from '@/db/schema';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -38,13 +39,11 @@ export async function GET(req: Request, { params }: RouteParams) {
     const page = parseInt(searchParams.get('page') || '1', 10);
     const pageSize = Math.min(parseInt(searchParams.get('pageSize') || '20', 10), 100);
     const success = searchParams.get('success');
-    // 按准入决策过滤（可选）：approved/denied/indeterminate/error。非法值忽略。
+    // 按准入决策过滤（可选）：取值以 executionDecisionEnum 为准（含 require_approval/escalate）。非法值忽略。
     const decisionParam = searchParams.get('decision');
-    const decision =
-      decisionParam === 'approved' || decisionParam === 'denied' ||
-      decisionParam === 'indeterminate' || decisionParam === 'error'
-        ? decisionParam
-        : undefined;
+    const decision = (executionDecisionEnum.enumValues as readonly string[]).includes(decisionParam ?? '')
+      ? (decisionParam as (typeof executionDecisionEnum.enumValues)[number])
+      : undefined;
     const source = searchParams.get('source') as ExecutionSource | null;
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');

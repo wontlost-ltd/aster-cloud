@@ -17,9 +17,10 @@ describe('ADR 0015 schema', () => {
   });
   it('迁移 0049 已登记且 when 单调', () => {
     const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as { entries: Array<{ tag: string; when: number }> };
-    const last = journal.entries[journal.entries.length - 1];
-    expect(last.tag).toBe('0049_api_key_team_scope');
-    expect(last.when).toBeGreaterThan(1789342699256);
+    // 0049 之后可有更新迁移（如 0050），故按 tag 定位而非取末项。
+    const entry = journal.entries.find((e) => e.tag === '0049_api_key_team_scope');
+    expect(entry).toBeDefined();
+    expect(entry!.when).toBeGreaterThan(1789342699256);
     const sql = readFileSync('drizzle/0049_api_key_team_scope.sql', 'utf8');
     expect(sql).toContain('ALTER TABLE "ApiKey" ADD COLUMN IF NOT EXISTS "teamId" text');
     expect(sql).toContain('ALTER TABLE "ApiCallRecord" ADD COLUMN IF NOT EXISTS "quotaOwnerId" text');

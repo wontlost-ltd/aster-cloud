@@ -63,3 +63,17 @@ describe('deriveExecutionDecision — 四态互斥（服务端派生）', () => 
     expect(deriveExecutionDecision(r)).toBe('indeterminate');
   });
 });
+
+describe('deriveExecutionDecision — Verdict 待批准/升级专属态（ADR 0041 §4）', () => {
+  it('outcome=REQUIRE_APPROVAL → require_approval', () => {
+    expect(deriveExecutionDecision(result({ metadata: { outcome: 'REQUIRE_APPROVAL' } }))).toBe('require_approval');
+  });
+
+  it('outcome=ESCALATE → escalate', () => {
+    expect(deriveExecutionDecision(result({ metadata: { outcome: 'ESCALATE' } }))).toBe('escalate');
+  });
+
+  it('engineError 优先于 outcome', () => {
+    expect(deriveExecutionDecision(result({ metadata: { engineError: true, outcome: 'ESCALATE' } }))).toBe('error');
+  });
+});

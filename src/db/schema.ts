@@ -85,11 +85,15 @@ export const executionSourceEnum = pgEnum('ExecutionSource', [
 // approved(放行)/denied(真实拒绝)/indeterminate(执行成功但无 allow/deny 语义，如 greet
 // 返回文本值)/error(执行报错)。审计/统计据此正确分类，避免把值输出策略误计入失败。
 // **由服务端从执行结果派生，绝不信客户端输入**。
+// ADR 0041 §4：增 require_approval（Verdict REQUIRE_APPROVAL，需人工批准）/ escalate
+// （Verdict ESCALATE，升级处理）——二者既非放行亦非拒绝，追加在末尾以保持 pg enum 序。
 export const executionDecisionEnum = pgEnum('ExecutionDecision', [
   'approved',
   'denied',
   'indeterminate',
   'error',
+  'require_approval',
+  'escalate',
 ]);
 
 export const usageTypeEnum = pgEnum('UsageType', [
@@ -817,7 +821,7 @@ export const executions = pgTable(
     // success：沿用旧语义 = 准入通过（allowed）。真实拒绝/无决策/错误均 success=false。
     // 保持不变以兼容历史行、响应体、日志 UI、统计口径。
     success: boolean('success').notNull(),
-    // decision：准入四态语义（approved/denied/indeterminate/error，见 executionDecisionEnum），
+    // decision：准入决策语义（approved/denied/indeterminate/error/require_approval/escalate，见 executionDecisionEnum），
     // 与 success 正交、更细。indeterminate（值/计算输出，如 greet 返回文本）靠它与真实 deny 区分，
     // 避免审计/统计把值输出误当失败。可空以兼容历史行（迁移前无此列）。服务端从执行结果派生。
     decision: executionDecisionEnum('decision'),
@@ -886,6 +890,19 @@ export const executions = pgTable(
     runnerParityDivergentFields: json('runnerParityDivergentFields'),
     // parity 校验完成时刻（异步 waitUntil 回写；NULL=未跑）。
     runnerParityCheckedAt: timestamp('runnerParityCheckedAt', { mode: 'date' }),
+
+    // ═══ 证据链补齐（ADR 0041 §4）——可查证据列 ═══
+    // 全 nullable：旧行不回填（outcome 为 null 的行在证据包标 legacy）。
+    // outcome：服务端派生的结果大写码（ALLOW/DENY/REQUIRE_APPROVAL/ESCALATE/INDETERMINATE/ERROR）。
+    outcome: text('outcome'),
+    // 命中规则的业务标识（aster-api 响应 ruleId，如 CUST-DEL-001）。
+    ruleId: text('ruleId'),
+    // 规则关联的合规控制点（string[]，如 ["GDPR:ART17"]）。
+    controls: jsonb('controls').$type<string[]>(),
+    // 调用方 agent 身份（{provider, model, version?, session?, source:'declared'}）——自报，非认证事实。
+    agent: jsonb('agent'),
+    // aster-api 证据关联 id（响应 evidence.correlationId），用于跨系统对齐同一次决策。
+    evidenceCorrelationId: text('evidenceCorrelationId'),
   },
   (table) => [
     index('Execution_userId_idx').on(table.userId),
@@ -900,6 +917,8 @@ export const executions = pgTable(
     index('Execution_canonicalOutputHash_idx').on(table.canonicalOutputHash),
     index('Execution_traceHash_idx').on(table.traceHash),
     index('Execution_piiRetentionUntil_idx').on(table.piiRetentionUntil),
+    // 证据关联 id 反查（ADR 0041 §4）。
+    index('Execution_evidenceCorrelationId_idx').on(table.evidenceCorrelationId),
     // runner-parity 状态查询（查 divergent/error 快；大量 NULL 未跑行不占索引=部分索引）。
     index('Execution_runnerParityStatus_idx')
       .on(table.runnerParityStatus)

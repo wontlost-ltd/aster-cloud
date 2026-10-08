@@ -4,7 +4,7 @@
 import { db, executions } from '@/lib/prisma';
 import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
 import type { InferSelectModel } from 'drizzle-orm';
-import type { PolicyReplayMetadata, PolicyTraceSkeleton } from '@/services/policy/policy-api';
+import type { AgentIdentity, PolicyReplayMetadata, PolicyTraceSkeleton } from '@/services/policy/policy-api';
 
 /** 回放捕获里程碑（M1）——只落漂移检测地基 hash，trace 明文 payload 待 M2 PII envelope。 */
 export const REPLAY_CAPTURE_MILESTONE_M1 = 'p0a.m1';
@@ -254,8 +254,40 @@ export function buildReplayColumns(
   };
 }
 
+/** Execution 证据列（ADR 0041 §4），outcome/decision 由执行路由另行派生。 */
+export interface ExecutionEvidenceColumns {
+  ruleId: string | null;
+  controls: string[] | null;
+  /** 落库的 agent 带 source:'declared'——标明是调用方自报、非平台认证。 */
+  agent: (AgentIdentity & { source: 'declared' }) | null;
+  evidenceCorrelationId: string | null;
+}
+
+/**
+ * 构建 Execution 证据列：从执行结果 metadata 取 ruleId/controls/evidenceCorrelationId，
+ * agent 附加 source:'declared'。缺失一律写 null（不写 undefined，保证列值显式）。
+ */
+export function buildEvidenceColumns(
+  metadata: { ruleId?: string; controls?: string[]; evidenceCorrelationId?: string },
+  agent: AgentIdentity | null,
+): ExecutionEvidenceColumns {
+  return {
+    ruleId: metadata.ruleId ?? null,
+    controls: metadata.controls ?? null,
+    agent: agent ? { ...agent, source: 'declared' } : null,
+    evidenceCorrelationId: metadata.evidenceCorrelationId ?? null,
+  };
+}
+
 type ExecutionSource = InferSelectModel<typeof executions>['source'];
 type ExecutionDecision = InferSelectModel<typeof executions>['decision'];
+
+/** 非放行但也不算失败的决策态（统计口径用）。 */
+const NON_FAILURE_DECISIONS: ReadonlySet<ExecutionDecision> = new Set<ExecutionDecision>([
+  'indeterminate',
+  'require_approval',
+  'escalate',
+]);
 
 export interface ExecutionLogItem {
   id: string;
@@ -266,7 +298,7 @@ export interface ExecutionLogItem {
   output: unknown;
   error: string | null;
   success: boolean;
-  /** 准入决策语义（approved/denied/indeterminate/error）。历史行为 null。 */
+  /** 准入决策语义（approved/denied/indeterminate/error/require_approval/escalate）。历史行为 null。 */
   decision: ExecutionDecision;
   durationMs: number;
   source: ExecutionSource;
@@ -303,6 +335,10 @@ export interface ExecutionStats {
   failureCount: number;
   /** 无决策（值/计算输出，如 greet 返回文本）的执行数——不计入失败。 */
   indeterminateCount: number;
+  /** 需人工批准（Verdict REQUIRE_APPROVAL）的执行数——待处置，不计入失败。 */
+  requireApprovalCount: number;
+  /** 已升级（Verdict ESCALATE）的执行数——待处置，不计入失败。 */
+  escalateCount: number;
   successRate: number;
   avgDurationMs: number;
   bySource: {
@@ -443,20 +479,26 @@ export async function getExecutionStats(
 
   const whereClause = and(...conditions);
   const whereWithSuccess = and(...conditions, eq(executions.success, true));
-  // indeterminate（值/计算输出）：执行成功但无 allow/deny 语义，**不应计入失败**。
-  const whereIndeterminate = and(...conditions, eq(executions.decision, 'indeterminate'));
+  // 非失败的非放行态：indeterminate（值/计算输出，无 allow/deny 语义）与待人工处置
+  // （require_approval/escalate）。三者一次查询分桶计数，**均不计入失败**。
+  const nonFailureCounts = db
+    .select({
+      indeterminate: sql<number>`count(*) filter (where ${executions.decision} = 'indeterminate')::int`,
+      requireApproval: sql<number>`count(*) filter (where ${executions.decision} = 'require_approval')::int`,
+      escalate: sql<number>`count(*) filter (where ${executions.decision} = 'escalate')::int`,
+    })
+    .from(executions)
+    .where(whereClause);
 
   // 基础统计
-  const [totalResult, successResult, indeterminateResult, executionsList] = await Promise.all([
+  const [totalResult, successResult, nonFailureResult, executionsList] = await Promise.all([
     db.select({ count: sql<number>`count(*)::int` })
       .from(executions)
       .where(whereClause),
     db.select({ count: sql<number>`count(*)::int` })
       .from(executions)
       .where(whereWithSuccess),
-    db.select({ count: sql<number>`count(*)::int` })
-      .from(executions)
-      .where(whereIndeterminate),
+    nonFailureCounts,
     db.query.executions.findMany({
       where: whereClause,
       columns: {
@@ -478,14 +520,17 @@ export async function getExecutionStats(
 
   const totalExecutions = totalResult[0]?.count || 0;
   const successCount = successResult[0]?.count || 0;
-  const indeterminateCount = indeterminateResult[0]?.count || 0;
+  const indeterminateCount = nonFailureResult[0]?.indeterminate || 0;
+  const requireApprovalCount = nonFailureResult[0]?.requireApproval || 0;
+  const escalateCount = nonFailureResult[0]?.escalate || 0;
   // Filter out executions with deleted policies
   const executionData = executionsList.filter(e => !e.policy.deletedAt);
 
   // 失败 = 总数 - 通过(approved) - 无决策(indeterminate 值输出)。修复：此前 total-approved
   // 把值输出策略误计入失败。真实拒绝/错误才算失败。successRate 分母排除 indeterminate
   // （值输出不参与"准入通过率"，否则会稀释真实决策的通过率）。
-  const failureCount = Math.max(0, totalExecutions - successCount - indeterminateCount);
+  // 待人工处置（require_approval/escalate）同样不是失败，但仍是真实决策，保留在通过率分母中。
+  const failureCount = Math.max(0, totalExecutions - successCount - indeterminateCount - requireApprovalCount - escalateCount);
   const decisionTotal = totalExecutions - indeterminateCount;
   const successRate = decisionTotal > 0 ? (successCount / decisionTotal) * 100 : 0;
   const avgDurationMs =
@@ -520,8 +565,8 @@ export async function getExecutionStats(
       const trend = trendMap.get(dateStr)!;
       if (exec.success) {
         trend.successCount++;
-      } else if (exec.decision !== 'indeterminate') {
-        // 无决策（值输出）不计入失败趋势；真实拒绝/错误才算失败。
+      } else if (!NON_FAILURE_DECISIONS.has(exec.decision)) {
+        // 无决策（值输出）与待人工处置不计入失败趋势；真实拒绝/错误才算失败。
         trend.failureCount++;
       }
     }
@@ -539,6 +584,8 @@ export async function getExecutionStats(
     successCount,
     failureCount,
     indeterminateCount,
+    requireApprovalCount,
+    escalateCount,
     successRate: Math.round(successRate * 100) / 100,
     avgDurationMs: Math.round(avgDurationMs),
     bySource,
