@@ -26,6 +26,7 @@ import { track, Events } from '@/lib/mixpanel';
 import {
   ArrowRight,
   BookText,
+  ClipboardCheck,
   FileText,
   Home,
   KeyRound,
@@ -52,6 +53,7 @@ const ICONS: Record<CommandIcon, React.ComponentType<{ className?: string }>> = 
   'settings':     Settings,
   'key-round':    KeyRound,
   'book-text':    BookText,
+  'clipboard-check': ClipboardCheck,
 };
 
 // Note: buildCommands + types live in command-palette-commands.ts (no

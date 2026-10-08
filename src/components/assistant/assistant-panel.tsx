@@ -50,6 +50,7 @@ export function AssistantPanel() {
           dashboard: tNav('dashboard'),
           policies: tNav('policies'),
           reports: tNav('reports'),
+          approvals: tNav('approvals'),
           teams: tNav('teams'),
           security: tNav('security'),
           billing: tNav('billing'),

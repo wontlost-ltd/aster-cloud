@@ -52,6 +52,10 @@ function useLabels() {
     invitationReceived: t.raw('invitationReceived') as string,
     invitationAccepted: t.raw('invitationAccepted') as string,
     policyShared: t.raw('policyShared') as string,
+    guardApprovalRequested: t.raw('guardApprovalRequested') as string,
+    guardApprovalDecided: t.raw('guardApprovalDecided') as string,
+    guardOutcomeApproved: t('guardOutcomeApproved'),
+    guardOutcomeRejected: t('guardOutcomeRejected'),
     permissionView: t('permissionView'),
     permissionExecute: t('permissionExecute'),
     timeAgoNow: t('timeAgoNow'),
@@ -115,6 +119,23 @@ function renderText(
           .replace('{teamName}', d.teamName ?? 'your team')
           .replace('{permission}', tier),
         href: d.policyId ? `/policies/${d.policyId}` : '/policies',
+      };
+    }
+    case 'guard.approval_requested': {
+      const d = row.data as { policyName?: string; decisionId?: string };
+      return {
+        text: labels.guardApprovalRequested.replace('{policyName}', d.policyName ?? 'a policy'),
+        href: d.decisionId ? `/approvals?decisionId=${encodeURIComponent(d.decisionId)}` : '/approvals',
+      };
+    }
+    case 'guard.approval_decided': {
+      const d = row.data as { policyName?: string; policyId?: string; outcome?: 'APPROVED' | 'REJECTED' };
+      const outcome = d.outcome === 'REJECTED' ? labels.guardOutcomeRejected : labels.guardOutcomeApproved;
+      return {
+        text: labels.guardApprovalDecided
+          .replace('{policyName}', d.policyName ?? 'a policy')
+          .replace('{outcome}', outcome),
+        href: d.policyId ? `/policies/${d.policyId}/logs` : '/approvals',
       };
     }
     default:

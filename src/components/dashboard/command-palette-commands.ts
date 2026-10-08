@@ -27,7 +27,8 @@ export type CommandIcon =
   | 'wallet'
   | 'settings'
   | 'key-round'
-  | 'book-text';
+  | 'book-text'
+  | 'clipboard-check';
 
 export interface Command {
   /** Stable id for keying React lists and analytics events. */
@@ -78,6 +79,7 @@ export interface BuildCommandsArgs {
     policies: string;
     newPolicy: string;
     reports: string;
+    approvals: string;
     teams: string;
     security: string;
     billing: string;
@@ -108,6 +110,7 @@ export function buildCommands({
     { id: 'dashboard',  group: 'navigate', icon: 'home',         label: labels.dashboard, href: `${p}/dashboard`,         keywords: ['仪表盘', 'übersicht'] },
     { id: 'policies',   group: 'navigate', icon: 'file-text',    label: labels.policies,  href: `${p}/policies`,          keywords: ['policy', '策略', 'richtlinien'] },
     { id: 'reports',    group: 'navigate', icon: 'file-text',    label: labels.reports,   href: `${p}/reports`,           keywords: ['report', '报告', 'berichte'] },
+    { id: 'approvals',  group: 'navigate', icon: 'clipboard-check', label: labels.approvals, href: `${p}/approvals`,       keywords: ['approval', 'approve', '审批', 'genehmigung', 'अनुमोदन'] },
     { id: 'teams',      group: 'navigate', icon: 'users',        label: labels.teams,     href: `${p}/teams`,             keywords: ['team', '团队'] },
     { id: 'security',   group: 'navigate', icon: 'shield-check', label: labels.security,  href: `${p}/security`,          keywords: ['security', '安全'] },
 
