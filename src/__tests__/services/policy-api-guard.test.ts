@@ -7,7 +7,23 @@ vi.mock('@/lib/trace-context', () => ({
   newTraceContext: () => ({ traceparent: '00-abc-def-01' }),
 }));
 
-import { PolicyApiClient, PolicyApiError, createPolicyApiClient } from '@/services/policy/policy-api';
+import { createHash, createHmac } from 'node:crypto';
+import { PolicyApiClient, PolicyApiError, GUARD_TIMEOUT_MS, createPolicyApiClient } from '@/services/policy/policy-api';
+
+const INTERNAL_KEY = 'test-internal-key';
+const FIXED_MS = 1_760_000_000_123;
+const FIXED_NONCE = 'cd'.repeat(16);
+
+/** 以 node:crypto 独立重算 v3 签名：path/query 取自实际 fetch URL，身份取自实际发出的头。 */
+function recomputeV3(method: string, url: string, body: string | undefined, headers: Record<string, string>): string {
+  const u = new URL(url);
+  const bodyHash = createHash('sha256').update(body ?? '').digest('hex');
+  const canonical = [
+    method, u.pathname, u.search.slice(1), headers['X-Aster-Timestamp'], headers['X-Aster-Nonce'], bodyHash,
+    headers['X-Tenant-Id'], headers['X-User-Role'], headers['X-User-Id'], headers['X-User-Business-Roles'] ?? '',
+  ].join('\n');
+  return createHmac('sha256', INTERNAL_KEY).update(canonical).digest('hex');
+}
 
 type FetchCall = [string, RequestInit];
 
@@ -26,13 +42,14 @@ describe('PolicyApiClient guard 方法', () => {
   const prevHmac = process.env.ASTER_HMAC_SECRET;
 
   beforeEach(() => {
-    process.env.ASTER_PLAN_GATE_HMAC_KEY = 'test-internal-key';
+    process.env.ASTER_PLAN_GATE_HMAC_KEY = INTERNAL_KEY;
     delete process.env.ASTER_HMAC_SECRET;
     fetchMock = vi.fn(async () => jsonResponse(200, { items: [], page: 0, size: 50 }));
     vi.stubGlobal('fetch', fetchMock);
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     if (prevKey === undefined) delete process.env.ASTER_PLAN_GATE_HMAC_KEY;
     else process.env.ASTER_PLAN_GATE_HMAC_KEY = prevKey;
@@ -101,5 +118,64 @@ describe('PolicyApiClient guard 方法', () => {
     expect(pe.code).toBe('role_mismatch');
     expect(pe.message).toBe('role required');
     expect(pe.details?.verifiedRoles).toEqual([]);
+  });
+
+  it('签名按实际 fetch URL 的 path/query 与发出的 userId/角色重算一致（固定时间与 nonce）', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(FIXED_MS);
+    vi.spyOn(crypto, 'getRandomValues').mockImplementation(<T extends ArrayBufferView | null>(arr: T): T => {
+      (arr as unknown as Uint8Array).fill(0xcd);
+      return arr;
+    });
+    const client = new PolicyApiClient('team1', 'u-1', 'member', 'unknown', ['DPO', 'CISO']);
+    await client.listGuardApprovals('APPROVED', 2, 10);
+
+    const { url, init, headers } = lastCall();
+    expect(init.method).toBe('GET');
+    expect(url).toMatch(/\?status=APPROVED&page=2&size=10$/);
+    expect(headers['X-Aster-Timestamp']).toBe('1760000000');
+    expect(headers['X-Aster-Nonce']).toBe(FIXED_NONCE);
+    expect(headers['X-Internal-Signature']).toBe(recomputeV3('GET', url, undefined, headers));
+
+    fetchMock.mockImplementation(async () => jsonResponse(200, { decisionId: 'd-1' }));
+    await client.approveGuard('a-1', 'ok');
+    const post = lastCall();
+    expect(post.headers['X-Internal-Signature']).toBe(
+      recomputeV3('POST', post.url, post.init.body as string, post.headers)
+    );
+    // 篡改 userId 后重算必然不同：证明 userId 确实签入
+    expect(post.headers['X-Internal-Signature']).not.toBe(
+      recomputeV3('POST', post.url, post.init.body as string, { ...post.headers, 'X-User-Id': 'u-2' })
+    );
+  });
+
+  it('非法 guard 路径 id → 本地 400 invalid_id，不发请求', async () => {
+    const client = new PolicyApiClient('t', 'u', 'member', 'unknown', []);
+    for (const bad of ['a/b', 'a b', '', 'é', 'x'.repeat(65)]) {
+      const err = await client.approveGuard(bad).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(PolicyApiError);
+      expect((err as PolicyApiError).statusCode).toBe(400);
+      expect((err as PolicyApiError).code).toBe('invalid_id');
+    }
+    await expect(client.getGuardDecision('../x')).rejects.toMatchObject({ statusCode: 400 });
+    await expect(client.rejectGuard('a?b', 'no')).rejects.toMatchObject({ statusCode: 400 });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await client.getGuardDecision('0b9f2c1e-7d4a-4f5b-9c3e-1a2b3c4d5e6f');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('guard 调用使用专用 8 s 超时，超时中止映射为 408 TIMEOUT', async () => {
+    const timerSpy = vi.spyOn(globalThis, 'setTimeout');
+    fetchMock.mockImplementation(async () => {
+      throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+    });
+    const client = new PolicyApiClient('t', 'u', 'member', 'unknown', []);
+    const err = await client.listGuardApprovals('PENDING').catch((e: unknown) => e);
+
+    expect(GUARD_TIMEOUT_MS).toBe(8000);
+    expect(timerSpy).toHaveBeenCalledWith(expect.any(Function), GUARD_TIMEOUT_MS);
+    expect(err).toBeInstanceOf(PolicyApiError);
+    expect((err as PolicyApiError).statusCode).toBe(408);
+    expect((err as PolicyApiError).code).toBe('TIMEOUT');
   });
 });

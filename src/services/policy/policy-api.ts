@@ -297,6 +297,22 @@ export interface PreviewMessage {
 }
 
 /**
+ * guard 调用的专用超时：登记发生在执行请求内、收件箱按租户逐个拉取，
+ * api 挂起时不能拖满通用的 30 s 超时（ADR 0042 §5.1/§5.2）。
+ */
+export const GUARD_TIMEOUT_MS = 8000;
+
+// guard 路径 id 只允许 UUID 或 [A-Za-z0-9_-]{1,64}（UUID 是其子集）：签名取编码后的 path，而 api 验签用
+// 解码后的 path，含需编码字符的 id 必然 invalid_signature，故在本地以 400 拒绝
+const GUARD_PATH_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+function assertGuardPathId(id: string): void {
+  if (!GUARD_PATH_ID_RE.test(id)) {
+    throw new PolicyApiError('Invalid guard id', 400, 'invalid_id');
+  }
+}
+
+/**
  * Policy API 客户端类
  */
 export class PolicyApiClient {
@@ -340,10 +356,11 @@ export class PolicyApiClient {
   private async request<T>(
     method: string,
     path: string,
-    body?: unknown
+    body?: unknown,
+    timeoutMs: number = this.timeout
   ): Promise<T> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const url = `${this.baseUrl}${path}`;
@@ -427,11 +444,12 @@ export class PolicyApiClient {
    * 以链上评估事件为锚开 guard 决策（ADR 0042 §3）：409=该事件已登记，404=事件不存在。
    */
   async guardFromEvidence(req: GuardFromEvidenceRequest): Promise<GuardDecision> {
-    return this.request<GuardDecision>('POST', API_ENDPOINTS.guardFromEvidence, req);
+    return this.request<GuardDecision>('POST', API_ENDPOINTS.guardFromEvidence, req, GUARD_TIMEOUT_MS);
   }
 
   async getGuardDecision(id: string): Promise<GuardDecision> {
-    return this.request<GuardDecision>('GET', API_ENDPOINTS.guardDecision(id));
+    assertGuardPathId(id);
+    return this.request<GuardDecision>('GET', API_ENDPOINTS.guardDecision(id), undefined, GUARD_TIMEOUT_MS);
   }
 
   /** 本租户审批列表（page 从 0 开始）。 */
@@ -441,17 +459,23 @@ export class PolicyApiClient {
     size = 50
   ): Promise<GuardApprovalPage> {
     const query = new URLSearchParams({ status, page: String(page), size: String(size) });
-    return this.request<GuardApprovalPage>('GET', `${API_ENDPOINTS.guardApprovals}?${query}`);
+    return this.request<GuardApprovalPage>('GET', `${API_ENDPOINTS.guardApprovals}?${query}`, undefined, GUARD_TIMEOUT_MS);
   }
 
   /** 批准：api 以签名过的 userId 与业务角色判定四眼与角色匹配（403 role_mismatch 时 details 带 verifiedRoles）。 */
   async approveGuard(id: string, comment?: string): Promise<GuardDecision> {
-    return this.request<GuardDecision>('POST', API_ENDPOINTS.guardApprovalAction(id, 'approve'), { comment });
+    assertGuardPathId(id);
+    return this.request<GuardDecision>(
+      'POST', API_ENDPOINTS.guardApprovalAction(id, 'approve'), { comment }, GUARD_TIMEOUT_MS
+    );
   }
 
   /** 驳回：comment 必填（api 侧 400）。 */
   async rejectGuard(id: string, comment: string): Promise<GuardDecision> {
-    return this.request<GuardDecision>('POST', API_ENDPOINTS.guardApprovalAction(id, 'reject'), { comment });
+    assertGuardPathId(id);
+    return this.request<GuardDecision>(
+      'POST', API_ENDPOINTS.guardApprovalAction(id, 'reject'), { comment }, GUARD_TIMEOUT_MS
+    );
   }
 
   /**

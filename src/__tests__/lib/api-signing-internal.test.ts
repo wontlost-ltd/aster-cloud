@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createHmac, createHash } from 'node:crypto';
 import {
+  buildInternalCanonicalV3,
   hmacSha256,
   joinBusinessRoles,
   sha256Hex,
@@ -162,6 +163,24 @@ describe('signInternalCallerHeaders (红队 P0-C 加固)', () => {
       expect(h['X-Internal-Signature']).toBe(await hmacSha256(KEY, canonical));
       expect(h).not.toHaveProperty('X-User-Business-Roles');
     });
+  });
+
+  // 跨仓固定向量：aster-api InternalCallerFilterTest 钉同一组输入与期望 hex，两端 canonical 字节不一致即失败。
+  // 期望值以 api 侧为准，不得为迁就本端实现而修改。
+  it('跨仓固定向量（与 aster-api InternalCallerFilterTest 共用）', async () => {
+    const canonical = await buildInternalCanonicalV3({
+      method: 'GET',
+      path: '/api/v1/guard/approvals',
+      timestamp: '1760000000',
+      nonce: 'n-fixed-1',
+      body: undefined,
+      tenant: 'team1',
+      role: 'member',
+      identity: { query: 'status=PENDING&page=0&size=50', userId: 'u-1', businessRoles: ['DPO', 'CISO'] },
+    });
+    expect(await hmacSha256('s2-1a-0-characterization-key-32b!', canonical)).toBe(
+      '1cc07890ca7a3034865add962bb84dd1a993a33f1cd6593669e0f7b4928937ba',
+    );
   });
 
   it('改 query / userId / 角色 → 签名变（防改写查询与冒充审批人）', async () => {
