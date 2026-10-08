@@ -47,7 +47,10 @@ function idsByTenant(rows: readonly EvidenceRow[], idOf: (r: EvidenceRow) => str
   const out = new Map<string, string[]>();
   for (const r of rows) {
     const id = idOf(r);
-    if (id) out.set(r.policyTenantId, [...(out.get(r.policyTenantId) ?? []), id]);
+    if (!id) continue;
+    const list = out.get(r.policyTenantId) ?? [];
+    list.push(id);
+    out.set(r.policyTenantId, list);
   }
   return out;
 }

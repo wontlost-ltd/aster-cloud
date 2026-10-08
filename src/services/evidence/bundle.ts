@@ -58,8 +58,13 @@ export function receiptFor(row: Pick<EvidenceRow, 'evidenceCorrelationId'>, look
   return { auditId: r.auditId, currentHash: r.currentHash, prevHash: r.prevHash, hashVersion: r.hashVersion };
 }
 
+/** 按码点比较（与 sortEntries 一致，不依赖 ICU/区域设置，非 JS 校验方可复现）。 */
+function compareCodePoints(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 function compareReviewers(a: Reviewer, b: Reviewer): number {
-  return a.decidedAt.localeCompare(b.decidedAt) || a.ref.localeCompare(b.ref);
+  return compareCodePoints(a.decidedAt, b.decidedAt) || compareCodePoints(a.ref, b.ref);
 }
 
 export function buildEvidenceEntry(row: EvidenceRow, receipt: ReceiptRef, reviewers: Reviewer[]): EvidenceEntry {

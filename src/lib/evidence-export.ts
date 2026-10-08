@@ -128,12 +128,30 @@ export async function queryEvidenceExecutions(q: EvidenceQuery): Promise<Evidenc
       outcome: r.outcome,
       ruleId: r.ruleId,
       controls: r.controls ?? null,
-      // agent 由写入侧（ADR 0041 §4）校验后落库，这里只做类型收窄。
-      agent: (r.agent as EvidenceAgent | null) ?? null,
+      agent: agentOf(r.agent),
       evidenceCorrelationId: r.evidenceCorrelationId,
       policyTenantId: r.policy.teamId ?? r.policy.userId,
       guardDecisionId: guardDecisionIdOf(r.metadata),
     }));
+}
+
+/**
+ * 校验 jsonb agent：须为对象且 provider/model 为字符串（version/session 可选、须为字符串），否则 null。
+ * 只重建已知字段——畸形历史行既不会污染 agentTally，也不会把非整数等值带进 canonicalHash 致导出失败。
+ */
+export function agentOf(value: unknown): EvidenceAgent | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const { provider, model, version, session } = value as Record<string, unknown>;
+  if (typeof provider !== 'string' || typeof model !== 'string') return null;
+  if (version !== undefined && typeof version !== 'string') return null;
+  if (session !== undefined && typeof session !== 'string') return null;
+  return {
+    provider,
+    model,
+    ...(version !== undefined ? { version } : {}),
+    ...(session !== undefined ? { session } : {}),
+    source: 'declared',
+  };
 }
 
 /** 取 metadata.guardDecisionId；非字符串或缺省一律 null。 */
