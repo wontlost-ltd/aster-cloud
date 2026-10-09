@@ -108,27 +108,32 @@ export function hasDbBinding(): boolean {
 }
 
 /**
- * 是否运行在本地 `next dev`（Node 进程）中。
+ * 是否运行在真实 Node 运行时（而非 workerd）中。
  *
  * 背景：本地 dev 下 @opennextjs/cloudflare 会经 getPlatformProxy 懒启动 workerd，
  * getCloudflareContext() 返回的 env **也带 HYPERDRIVE binding**（connectionString
  * 由 WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE 覆盖为直连 PG）。
  * 这个本地代理不做连接池，若按 Workers 路径每次调用新建 client，连接会打满
- * max_connections（实测 202/200 → too many clients）。
+ * max_connections（实测 202/200 → too many clients）。`next start`、CI e2e、docker
+ * 等任何真实 Node 进程同理，都必须复用单例；只有 workerd 内才有 Hyperdrive 池化。
  *
- * 判定：Node 进程（process.release.name === 'node'）且 NODE_ENV !== 'production'。
- * 真实 Workers 运行时没有 Node 的 process.release，因此生产行为不受影响。
+ * 判定：process.release.name === 'node' 且**不在 workerd 内**。
+ * 不能只看 process.release：较新兼容日期下 workerd 的原生 process v2 也可能报告
+ * release.name === 'node'。workerd 以 navigator.userAgent === 'Cloudflare-Workers'
+ * 或存在全局 WebSocketPair 识别。
  */
-function isLocalNodeDev(): boolean {
-  return (
-    typeof process !== 'undefined' &&
-    process.release?.name === 'node' &&
-    process.env.NODE_ENV !== 'production'
-  );
+function isNodeRuntime(): boolean {
+  const isNode = typeof process !== 'undefined' && process.release?.name === 'node';
+  return isNode && !isWorkerd();
+}
+
+function isWorkerd(): boolean {
+  const g = globalThis as { navigator?: { userAgent?: string }; WebSocketPair?: unknown };
+  return g.navigator?.userAgent === 'Cloudflare-Workers' || g.WebSocketPair !== undefined;
 }
 
 /**
- * 本地开发单例：仍尊重 Hyperdrive 本地代理给出的连接串，但全进程只建一个 client。
+ * Node 运行时单例：仍尊重 Hyperdrive 本地代理给出的连接串，但全进程只建一个 client。
  */
 function getLocalDevDb(env?: CloudflareEnv): ReturnType<typeof createDb> {
   if (!globalForDb.__asterLocalDevDb) {
@@ -172,7 +177,7 @@ export function createDb(env?: CloudflareEnv) {
  */
 export async function getDbAsync(): Promise<ReturnType<typeof createDb>> {
   const env = await getCloudflareEnv();
-  if (isLocalNodeDev()) {
+  if (isNodeRuntime()) {
     return getLocalDevDb(env ?? undefined);
   }
   return createDb(env ?? undefined);
@@ -180,8 +185,8 @@ export async function getDbAsync(): Promise<ReturnType<typeof createDb>> {
 
 /**
  * 获取数据库实例
- * - 在 Cloudflare Workers 中：每次调用创建新实例（Hyperdrive 管理实际连接池）
- * - 在本地开发中：使用单例避免连接泄漏
+ * - 在 Cloudflare Workers（workerd）中：每次调用创建新实例（Hyperdrive 管理实际连接池）
+ * - 在 Node 运行时（next dev / next start / CI / docker）中：使用单例避免连接泄漏
  *
  * 性能说明：
  * - Hyperdrive 在边缘维护连接池，"创建连接"实际上是获取预热连接
@@ -199,8 +204,8 @@ export function getDb() {
   const env = getCloudflareEnvSync();
 
   // 真实 Cloudflare Workers：每次创建新实例（Hyperdrive 管理连接池）。
-  // 本地 next dev 下的 HYPERDRIVE 是无池化的本地代理，必须走单例（见 isLocalNodeDev）。
-  if (env?.HYPERDRIVE && !isLocalNodeDev()) {
+  // Node 运行时（含本地 next dev 的无池化 HYPERDRIVE 代理）必须走单例（见 isNodeRuntime）。
+  if (env?.HYPERDRIVE && !isNodeRuntime()) {
     return createDb(env);
   }
 
@@ -223,7 +228,7 @@ export async function withRequestDb<T>(
   fn: (db: ReturnType<typeof createDb>) => Promise<T>
 ): Promise<T> {
   const env = getCloudflareEnvSync();
-  const db = isLocalNodeDev() ? getLocalDevDb(env ?? undefined) : createDb(env ?? undefined);
+  const db = isNodeRuntime() ? getLocalDevDb(env ?? undefined) : createDb(env ?? undefined);
   return requestDbStorage.run(db, () => fn(db));
 }
 

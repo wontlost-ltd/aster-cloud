@@ -39,6 +39,7 @@ describe('getDb 本地 dev 代理检测', () => {
   afterEach(() => {
     setRelease(originalRelease);
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     delete req.cache[opennextPath];
     globalForDb.__asterLocalDevDb = null;
   });
@@ -66,8 +67,17 @@ describe('getDb 本地 dev 代理检测', () => {
     expect(getDb()).not.toBe(getDb());
   });
 
-  it('NODE_ENV=production：每次调用新建 client', async () => {
+  it('NODE_ENV=production 的真实 Node 进程：仍复用单例', async () => {
     vi.stubEnv('NODE_ENV', 'production');
+    const { getDb, getDbAsync } = await import('@/db');
+    const a = getDb();
+    expect(getDb()).toBe(a);
+    expect(await getDbAsync()).toBe(a);
+  });
+
+  it('workerd 原生 process v2（release.name=node 但 UA=Cloudflare-Workers）：每次调用新建 client', async () => {
+    setRelease({ name: 'node' });
+    vi.stubGlobal('navigator', { userAgent: 'Cloudflare-Workers' });
     const { getDb } = await import('@/db');
     expect(getDb()).not.toBe(getDb());
   });
