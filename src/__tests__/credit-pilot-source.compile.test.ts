@@ -12,6 +12,27 @@ import { creditPilotSource, PILOT_APPLICANTS, type PilotLocale } from '@/config/
 const LEXICONS: Record<PilotLocale, unknown> = { en: EN_US, zh: ZH_CN, de: DE_DE };
 const LOCALES: PilotLocale[] = ['en', 'zh', 'de'];
 
+// 探测已安装引擎是否带 Verdict 内置：旧引擎把 Verdict 当类型变量，能编译出 core 但执行报未定义函数，
+// 所以必须编译后再执行一次（ADR 0044 §10：依赖升级前整组 skip，升级后自动恢复）。
+function detectVerdictSupport(): boolean {
+  const probe = compile('Module probe.\n\nRule main produce Verdict:\n  Return Verdict.allow().\n', {
+    lexicon: EN_US,
+  } as Parameters<typeof compile>[1]);
+  const errors = ((probe as { diagnostics?: { severity?: string }[] }).diagnostics ?? []).filter(
+    (d) => d.severity === 'error',
+  );
+  if (!probe.core || errors.length > 0) return false;
+  const ev = evaluate(probe.core, 'main', {});
+  return ev.success && (ev.value as { outcome?: string } | null)?.outcome === 'ALLOW';
+}
+
+const engineHasVerdict = detectVerdictSupport();
+if (!engineHasVerdict) {
+  console.warn(
+    '[credit-pilot-source.compile] skipped — ADR 0044 §10: installed @aster-cloud/aster-lang-ts lacks Verdict builtins; test runs once the dependency is bumped',
+  );
+}
+
 const EXPECTED: Record<50000 | 80000, Record<keyof typeof PILOT_APPLICANTS, string>> = {
   50000: { allow: 'ALLOW', deny: 'DENY', requireApproval: 'REQUIRE_APPROVAL', escalate: 'ESCALATE' },
   80000: { allow: 'ALLOW', deny: 'DENY', requireApproval: 'ALLOW', escalate: 'ESCALATE' },
@@ -29,7 +50,7 @@ function compileOrFail(loc: PilotLocale, threshold: 50000 | 80000) {
   return result.core!;
 }
 
-describe('credit pilot policy compiles & decides in every language', () => {
+describe.skipIf(!engineHasVerdict)('credit pilot policy compiles & decides in every language', () => {
   for (const loc of LOCALES) {
     for (const threshold of [50000, 80000] as const) {
       it(`${loc} @ ${threshold}: four applicants map to expected outcomes`, () => {

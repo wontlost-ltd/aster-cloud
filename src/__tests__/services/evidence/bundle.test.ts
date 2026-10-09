@@ -282,7 +282,7 @@ describe('v2 bundleHash', () => {
   });
 });
 
-describe('v2 manifest', () => {
+describe('v3 manifest', () => {
   const entries = [
     entry({ id: 'a', evidenceCorrelationId: 'c-a', decision: 'require_approval' },
       { auditId: 1, currentHash: 'h1', prevHash: null, hashVersion: 2 },

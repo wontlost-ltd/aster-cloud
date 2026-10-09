@@ -50,6 +50,8 @@ The script executes four fixtures, approves the require-approval execution as `c
 
 ### 3. Browser path
 
+Do everything except the approval as the policy owner `cp-owner` (logs page, **Compare versions** (What-If) and export); approve as `cp-officer`. Signed in as `cp-analyst`, What-If cannot find the target version (`TARGET_VERSION_MISSING`).
+
 1. Execute a large application (`requestedAmount ≥ 50000`) against `pol-credit-pilot`.
 2. Sign in as the Credit Officer and approve it on `/approvals`.
 3. On the policy page, use **Compare versions** for v1 → v2.

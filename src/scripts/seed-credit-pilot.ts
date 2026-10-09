@@ -154,15 +154,19 @@ async function upsertVersion(db: Db, spec: (typeof VERSIONS)[number]): Promise<v
   await db.insert(schema.policyVersions).values({ id: spec.id, ...values });
 }
 
+// 属主当前有效的试点 key（同名、同用户、同团队、未吊销）。
+const ownerKeyWhere = () =>
+  and(
+    eq(schema.apiKeys.name, API_KEY_NAME),
+    eq(schema.apiKeys.userId, CREDIT_PILOT.ownerId),
+    eq(schema.apiKeys.teamId, CREDIT_PILOT.teamId),
+    isNull(schema.apiKeys.revokedAt),
+  );
+
 // 明文 key 只能在创建时拿到一次；已存在则不重复创建。
 async function ensureOwnerKey(db: Db): Promise<void> {
   const existing = await db.query.apiKeys.findFirst({
-    where: and(
-      eq(schema.apiKeys.name, API_KEY_NAME),
-      eq(schema.apiKeys.userId, CREDIT_PILOT.ownerId),
-      eq(schema.apiKeys.teamId, CREDIT_PILOT.teamId),
-      isNull(schema.apiKeys.revokedAt),
-    ),
+    where: ownerKeyWhere(),
   });
   if (existing) {
     console.log(LOG, `API key ${API_KEY_NAME} 已存在，明文不可再取`);
@@ -172,8 +176,9 @@ async function ensureOwnerKey(db: Db): Promise<void> {
     const created = await createApiKey(CREDIT_PILOT.ownerId, API_KEY_NAME, CREDIT_PILOT.teamId);
     console.log(LOG, `API key ${API_KEY_NAME} 明文（仅此一次）:`, created.key);
   } catch (err) {
-    // 快照推送依赖 aster-api；不可达时 key 行已落库但明文丢失，需吊销后重跑。
-    console.warn(LOG, '创建 API key 时出错（aster-api 可能不可达）', err);
+    // 快照推送依赖 aster-api；推送失败时行已落库而明文随异常丢失，吊销它，下次重跑才能重新签发。
+    await db.update(schema.apiKeys).set({ revokedAt: new Date() }).where(ownerKeyWhere());
+    console.warn(LOG, '创建 API key 失败（aster-api 可能不可达），已吊销本次插入的 key；请在 aster-api 就绪后重跑 seed', err);
   }
 }
 

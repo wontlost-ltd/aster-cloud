@@ -50,6 +50,8 @@ Das Skript führt vier Fixtures aus, gibt die freigabepflichtige Ausführung als
 
 ### 3. Weg im Browser
 
+Alles außer der Freigabe als Richtlinieneigentümer `cp-owner` erledigen (Protokollseite, **Compare versions** (What-If) und Export); die Freigabe als `cp-officer`. Als `cp-analyst` angemeldet findet What-If die Zielversion nicht (`TARGET_VERSION_MISSING`).
+
 1. Einen großen Antrag (`requestedAmount ≥ 50000`) gegen `pol-credit-pilot` ausführen.
 2. Als Credit Officer anmelden und auf `/approvals` freigeben.
 3. Auf der Richtlinienseite mit **Compare versions** v1 → v2 vergleichen.

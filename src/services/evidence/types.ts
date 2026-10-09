@@ -268,12 +268,6 @@ export interface EvidenceManifestV2 {
   };
 }
 
-/** 完整证据包（manifest + 有序 entries）。 */
-export interface EvidenceBundle {
-  manifest: EvidenceManifest;
-  entries: EvidenceEntry[];
-}
-
 export interface EvidenceBundleV2 {
   manifest: EvidenceManifestV2;
   entries: EvidenceEntryV2[];

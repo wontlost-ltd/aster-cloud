@@ -43,11 +43,18 @@ describe('mapArticle14', () => {
     expect(status([e({ whatIf: { batchId: 'b', baseOutcome: 'ALLOW', targetOutcome: 'ALLOW', baseLegacy: false } })])['14(4)(a)']).toBe('partial');
     expect(status([e({})])['14(4)(a)']).toBe('none');
   });
+  it('14(4)(a)：在途（targetOutcome 为 null）或失败（ERROR）的比对不算', () => {
+    const w = (targetOutcome: string | null) => e({ whatIf: { batchId: 'b', baseOutcome: 'ALLOW', targetOutcome, baseLegacy: false } });
+    expect(status([w(null)])['14(4)(a)']).toBe('none');
+    expect(status([w('ERROR')])['14(4)(a)']).toBe('none');
+  });
   it('14(4)(b) 恒 none', () => {
     expect(status([e({ controls: ['EU_AI_ACT:ART14'], reviewers: [rv({})] })])['14(4)(b)']).toBe('none');
   });
   it('14(4)(c)：ruleId 与 reasonCodes 均非空', () => {
     expect(status([e({ ruleId: 'CP-DECIDE', reasonCodes: ['large_exposure'] })])['14(4)(c)']).toBe('evidenced');
+    const c = mapArticle14([e({ executionId: 'a', ruleId: 'CP-DECIDE', reasonCodes: ['large_exposure'] })]).clauses.find((x) => x.clause === '14(4)(c)')!;
+    expect(c.evidence).toEqual([{ executionId: 'a', field: 'ruleId' }, { executionId: 'a', field: 'reasonCodes' }]);
     expect(status([e({ ruleId: 'CP-DECIDE', reasonCodes: [] })])['14(4)(c)']).toBe('none');
   });
   it('14(4)(d)：已验证角色 REJECTED evidenced；APPROVED partial；未验证角色的 REJECTED 不算', () => {
@@ -58,5 +65,13 @@ describe('mapArticle14', () => {
   it('14(5)：复核者 ≥ 2 才 evidenced', () => {
     expect(status([e({ reviewers: [rv({}), rv({ userId: 'u2' })] })])['14(5)']).toBe('evidenced');
     expect(status([e({ reviewers: [rv({})] })])['14(5)']).toBe('none');
+  });
+  it('版本级复核者（policy-proof / version-approval）不证 14(4)(d)/(e)/14(5)，但计入 14(3)', () => {
+    const proofRejected = e({ outcome: 'REQUIRE_APPROVAL', controls: ['EU_AI_ACT:ART14'], reviewers: [rv({ source: 'policy-proof', outcome: 'REJECTED' })] });
+    expect(status([proofRejected])).toMatchObject({ '14(3)': 'evidenced', '14(4)(d)': 'none', '14(4)(e)': 'partial' });
+    const twoVersion = e({ reviewers: [rv({ source: 'version-approval' }), rv({ source: 'version-approval', userId: 'u2' })] });
+    expect(status([twoVersion])['14(5)']).toBe('none');
+    const twoGuard = e({ reviewers: [rv({}), rv({ userId: 'u2', outcome: 'REJECTED' })] });
+    expect(status([twoGuard])).toMatchObject({ '14(4)(d)': 'evidenced', '14(5)': 'evidenced' });
   });
 });

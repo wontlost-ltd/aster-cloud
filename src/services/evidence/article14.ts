@@ -21,7 +21,14 @@ const refs = (entries: readonly EvidenceEntry[], field: string, pick: (e: Eviden
 const hasControl = (e: EvidenceEntry) => (e.controls ?? []).includes(ART14_CONTROL);
 const isPending = (e: EvidenceEntry) => e.outcome === 'REQUIRE_APPROVAL' || e.outcome === 'ESCALATE';
 const hasReviewer = (e: EvidenceEntry) => e.reviewers.length > 0;
-const verified = (e: EvidenceEntry, outcome: string) => e.reviewers.some((r) => r.roleVerified && r.outcome === outcome);
+// 执行级干预只认 guard-approval：版本级 proof/approval 挂在该版本每条执行上，不代表有人复核过这条输出
+const executionReviewers = (e: EvidenceEntry) => e.reviewers.filter((r) => r.source === 'guard-approval');
+const verified = (e: EvidenceEntry, outcome: string) =>
+  executionReviewers(e).some((r) => r.roleVerified && r.outcome === outcome);
+// 在途批次（targetOutcome 为 null）与失败项（ERROR）不是完成的比对结论
+const hasComparison = (e: EvidenceEntry) =>
+  e.whatIf !== null && e.whatIf.targetOutcome !== null && e.whatIf.targetOutcome !== 'ERROR';
+const isInterpretable = (e: EvidenceEntry) => e.ruleId !== null && Array.isArray(e.reasonCodes) && e.reasonCodes.length > 0;
 
 /** 两组证据：都有 evidenced、其一 partial、全无 none。 */
 function both(a: EvidenceRef[], b: EvidenceRef[]): { status: ClauseStatus; evidence: EvidenceRef[] } {
@@ -38,10 +45,13 @@ const JUDGES: ReadonlyArray<[string, string, Judge]> = [
   ['14(1)', 'Designed for effective human oversight', (es) => some(refs(es, 'controls', hasControl))],
   ['14(2)', 'Oversight proportionate to risk', (es) => some(refs(es, 'outcome', isPending))],
   ['14(3)', 'Oversight measures built in', (es) => both(refs(es, 'controls', hasControl), refs(es, 'reviewers', hasReviewer))],
-  ['14(4)(a)', 'Overseer can understand capacities and limitations', (es) => some(refs(es, 'whatIf', (e) => e.whatIf !== null), 'partial')],
+  ['14(4)(a)', 'Overseer can understand capacities and limitations', (es) => some(refs(es, 'whatIf', hasComparison), 'partial')],
   ['14(4)(b)', 'Awareness of automation bias', () => ({ status: 'none', evidence: [] })],
   ['14(4)(c)', 'Correctly interpret the output', (es) =>
-    some(refs(es, 'ruleId,reasonCodes', (e) => e.ruleId !== null && Array.isArray(e.reasonCodes) && e.reasonCodes.length > 0))],
+    some(es.filter(isInterpretable).flatMap((e) => [
+      { executionId: e.executionId, field: 'ruleId' },
+      { executionId: e.executionId, field: 'reasonCodes' },
+    ]))],
   ['14(4)(d)', 'Decide not to use or override the output', (es) => {
     const rejected = refs(es, 'reviewers', (e) => verified(e, 'REJECTED'));
     if (rejected.length > 0) return { status: 'evidenced', evidence: rejected };
@@ -49,11 +59,11 @@ const JUDGES: ReadonlyArray<[string, string, Judge]> = [
   }],
   ['14(4)(e)', 'Intervene or halt the system', (es) => {
     const blocked = refs(es, 'outcome', (e) => e.outcome === 'REQUIRE_APPROVAL');
-    const reviewed = refs(es, 'reviewers', (e) => e.outcome === 'REQUIRE_APPROVAL' && hasReviewer(e));
+    const reviewed = refs(es, 'reviewers', (e) => e.outcome === 'REQUIRE_APPROVAL' && executionReviewers(e).length > 0);
     if (reviewed.length > 0) return { status: 'evidenced', evidence: [...blocked, ...reviewed] };
     return some(blocked, 'partial');
   }],
-  ['14(5)', 'Verification by at least two persons', (es) => some(refs(es, 'reviewers', (e) => e.reviewers.length >= 2))],
+  ['14(5)', 'Verification by at least two persons', (es) => some(refs(es, 'reviewers', (e) => executionReviewers(e).length >= 2))],
 ];
 
 export const ARTICLE14_CLAUSES: ReadonlyArray<{ clause: string; title: string }> = JUDGES.map(([clause, title]) => ({ clause, title }));

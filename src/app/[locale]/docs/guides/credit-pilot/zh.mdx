@@ -50,6 +50,8 @@ CP_API_KEY=<属主 key> NEXTAUTH_SECRET=<secret> pnpm tsx scripts/run-credit-pil
 
 ### 3. 浏览器路径
 
+除审批外均以策略属主 `cp-owner` 操作（日志页、**Compare versions**（What-If）与导出）；审批以 `cp-officer` 登录。以 `cp-analyst` 登录时 What-If 找不到目标版本（`TARGET_VERSION_MISSING`）。
+
 1. 对 `pol-credit-pilot` 执行一笔大额申请（`requestedAmount ≥ 50000`）。
 2. 以信贷专员登录，在 `/approvals` 批准。
 3. 在策略页用 **Compare versions** 对比 v1 → v2。
