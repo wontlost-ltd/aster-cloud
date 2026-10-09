@@ -356,7 +356,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       mapping: {
         toggle: 'Regulatory mapping',
         loading: 'Loading mapping…',
-        notAvailable: 'This export has no regulatory mapping (created before schema 4).',
+        notAvailable: 'This export has no registry-driven regulatory mapping (created before schema 4).',
+        loadFailed: 'Could not load the mapping. Collapse and expand to retry.',
         noFrameworks: 'No registered control with mapped clauses appears in this export.',
         registryVersion: 'Controls registry {version}',
         disclaimer: 'Describes only fields present in this bundle; not a compliance conclusion.',
@@ -1032,7 +1033,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       mapping: {
         toggle: '法规对照',
         loading: '正在加载对照…',
-        notAvailable: '此导出不含法规对照（早于第 4 版格式）。',
+        notAvailable: '此导出不含注册表驱动的法规对照（早于第 4 版格式）。',
+        loadFailed: '对照加载失败，收起后重新展开即可重试。',
         noFrameworks: '此导出中没有带对照条款的已登记控制点。',
         registryVersion: '控制注册表 {version}',
         disclaimer: '仅陈述证据包内已有字段，不构成合规结论。',
@@ -1703,7 +1705,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       mapping: {
         toggle: 'Regulatorische Zuordnung',
         loading: 'Zuordnung wird geladen…',
-        notAvailable: 'Dieser Export enthält keine regulatorische Zuordnung (vor Schema 4 erstellt).',
+        notAvailable: 'Dieser Export enthält keine registergesteuerte regulatorische Zuordnung (vor Schema 4 erstellt).',
+        loadFailed: 'Zuordnung konnte nicht geladen werden. Zum Wiederholen zu- und wieder aufklappen.',
         noFrameworks: 'Dieser Export enthält keine registrierte Kontrolle mit zugeordneten Klauseln.',
         registryVersion: 'Kontrollregister {version}',
         disclaimer: 'Beschreibt nur Felder dieses Pakets; keine Compliance-Aussage.',
@@ -2372,7 +2375,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       mapping: {
         toggle: 'Regulatory mapping',
         loading: 'Loading mapping…',
-        notAvailable: 'This export has no regulatory mapping (created before schema 4).',
+        notAvailable: 'This export has no registry-driven regulatory mapping (created before schema 4).',
+        loadFailed: 'Could not load the mapping. Collapse and expand to retry.',
         noFrameworks: 'No registered control with mapped clauses appears in this export.',
         registryVersion: 'Controls registry {version}',
         disclaimer: 'Describes only fields present in this bundle; not a compliance conclusion.',

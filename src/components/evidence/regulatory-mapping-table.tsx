@@ -72,3 +72,20 @@ export function RegulatoryMappingTable({ mapping, locale, labels }: {
     </div>
   );
 }
+
+// 报告页单行对照的取数状态：'loading'=请求中，'error'=请求失败（可重试），null=接口如实返回无对照
+export type MappingState = RegulatoryMapping | null | 'loading' | 'error';
+
+export interface RegulatoryMappingPanelLabels extends RegulatoryMappingLabels {
+  loading: string;
+  loadFailed: string;
+}
+
+// 失败与「不含对照」分开呈现：前者是取数问题，不能说成证据包本身没有对照
+export function RegulatoryMappingPanel({ state, locale, labels }: {
+  state: MappingState; locale: string; labels: RegulatoryMappingPanelLabels;
+}) {
+  if (state === 'loading') return <p className="text-sm text-fg-muted">{labels.loading}</p>;
+  if (state === 'error') return <p className="text-sm text-danger">{labels.loadFailed}</p>;
+  return <RegulatoryMappingTable mapping={state} locale={locale} labels={labels} />;
+}

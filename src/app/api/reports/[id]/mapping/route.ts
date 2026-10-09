@@ -20,6 +20,7 @@ export async function GET(
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
+  // 不卡 status === 'completed'：未完成行尚无 manifest，readStoredEvidenceExport 返回 null，自然得到 mapping: null
   const stored = readStoredEvidenceExport(report.data);
   // v1–v3 不含注册表驱动的对照：如实返回 null，由 UI 显示「此版本不含对照」
   const mapping = stored && stored.manifest.schemaVersion === '4' ? stored.manifest.regulatoryMapping : null;

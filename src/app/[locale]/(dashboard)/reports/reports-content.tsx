@@ -20,7 +20,11 @@ import {
 import { extractErrorMessage } from '@/lib/api/error-envelope';
 import { summarizeStoredExport, type StoredEvidenceSummary } from '@/services/evidence/stored';
 import type { RegulatoryMapping } from '@/services/evidence/regulatory-mapping';
-import { RegulatoryMappingTable, type RegulatoryMappingLabels } from '@/components/evidence/regulatory-mapping-table';
+import {
+  RegulatoryMappingPanel,
+  type MappingState,
+  type RegulatoryMappingPanelLabels,
+} from '@/components/evidence/regulatory-mapping-table';
 
 interface PolicyOption {
   id: string;
@@ -38,9 +42,6 @@ interface EvidenceExportRow {
   createdAt: string;
   completedAt: string | null;
 }
-
-// 已展开行的对照：undefined=未加载，'loading'=请求中，null=无对照或读取失败
-type MappingState = RegulatoryMapping | null | 'loading';
 
 interface Preview {
   count: number;
@@ -89,7 +90,9 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
   const [openMappingId, setOpenMappingId] = useState<string | null>(null);
   const [mappings, setMappings] = useState<Record<string, MappingState>>({});
 
-  const mappingLabels: RegulatoryMappingLabels = {
+  const mappingLabels: RegulatoryMappingPanelLabels = {
+    loading: t('mapping.loading'),
+    loadFailed: t('mapping.loadFailed'),
     notAvailable: t('mapping.notAvailable'),
     noFrameworks: t('mapping.noFrameworks'),
     // 占位符交给组件替换版本号，这里取原文
@@ -108,14 +111,15 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
     },
   };
 
-  // 展开/收起某行对照；首次展开时才拉取，之后复用已取到的结果
+  // 展开/收起某行对照；未取过或上次失败时才拉取，成功结果（含 null）复用
   const toggleMapping = async (id: string) => {
     if (openMappingId === id) {
       setOpenMappingId(null);
       return;
     }
     setOpenMappingId(id);
-    if (mappings[id] !== undefined) return;
+    const cached = mappings[id];
+    if (cached !== undefined && cached !== 'error') return;
     setMappings((m) => ({ ...m, [id]: 'loading' }));
     const mapping = await fetchMapping(id);
     setMappings((m) => ({ ...m, [id]: mapping }));
@@ -392,15 +396,11 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
                     {openMappingId === e.id && (
                       <tr className="border-b border-border bg-bg-subtle">
                         <td colSpan={5} className="px-4 py-3">
-                          {mappings[e.id] === 'loading' || mappings[e.id] === undefined ? (
-                            <p className="text-sm text-fg-muted">{t('mapping.loading')}</p>
-                          ) : (
-                            <RegulatoryMappingTable
-                              mapping={mappings[e.id] as RegulatoryMapping | null}
-                              locale={locale}
-                              labels={mappingLabels}
-                            />
-                          )}
+                          <RegulatoryMappingPanel
+                            state={mappings[e.id] ?? 'loading'}
+                            locale={locale}
+                            labels={mappingLabels}
+                          />
                         </td>
                       </tr>
                     )}
@@ -437,13 +437,13 @@ function defaultStart(): string {
   return d.toISOString().slice(0, 10);
 }
 
-// 拉取单个导出的对照；非 2xx 或网络失败都按「无对照」呈现，不阻塞页面
-async function fetchMapping(id: string): Promise<RegulatoryMapping | null> {
+// 拉取单个导出的对照；非 2xx（含会话过期）或网络失败返回 'error'，与「无对照」区分
+async function fetchMapping(id: string): Promise<MappingState> {
   try {
     const r = await fetch(`/api/reports/${encodeURIComponent(id)}/mapping`);
-    if (!r.ok) return null;
+    if (!r.ok) return 'error';
     return ((await r.json()) as { mapping: RegulatoryMapping | null }).mapping;
   } catch {
-    return null;
+    return 'error';
   }
 }

@@ -1,7 +1,11 @@
 // 法规对照表（ADR 0045 §5）：状态徽标、按 locale 取条款标题、证据条数与空态。
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
-import { RegulatoryMappingTable, type RegulatoryMappingLabels } from '@/components/evidence/regulatory-mapping-table';
+import {
+  RegulatoryMappingPanel,
+  RegulatoryMappingTable,
+  type RegulatoryMappingLabels,
+} from '@/components/evidence/regulatory-mapping-table';
 import type { RegulatoryMapping } from '@/services/evidence/regulatory-mapping';
 
 const labels: RegulatoryMappingLabels = {
@@ -53,5 +57,27 @@ describe('RegulatoryMappingTable', () => {
     expect(screen.getByText('no-frameworks')).toBeTruthy();
     expect(screen.getByText('registry 1.0.0')).toBeTruthy();
     expect(screen.queryByRole('table')).toBeNull();
+  });
+});
+
+describe('RegulatoryMappingPanel', () => {
+  const panelLabels = { ...labels, loading: 'loading', loadFailed: 'load-failed' };
+
+  it('加载失败显示 loadFailed，而不是「不含对照」', () => {
+    render(<RegulatoryMappingPanel state="error" locale="en" labels={panelLabels} />);
+    expect(screen.getByText('load-failed')).toBeTruthy();
+    expect(screen.queryByText('not-available')).toBeNull();
+  });
+
+  it('请求中显示 loading；取到后渲染对照表', () => {
+    const { rerender } = render(<RegulatoryMappingPanel state="loading" locale="en" labels={panelLabels} />);
+    expect(screen.getByText('loading')).toBeTruthy();
+    rerender(<RegulatoryMappingPanel state={mapping} locale="en" labels={panelLabels} />);
+    expect(screen.getByText('registry 1.0.0')).toBeTruthy();
+  });
+
+  it('接口如实返回 null（v1–v3）显示不含对照', () => {
+    render(<RegulatoryMappingPanel state={null} locale="en" labels={panelLabels} />);
+    expect(screen.getByText('not-available')).toBeTruthy();
   });
 });

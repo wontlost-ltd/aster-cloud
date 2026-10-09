@@ -116,9 +116,10 @@ test('信贷试点：执行、审批、What-If、证据导出与 Article 14 对�
       expect(diffClauses(articleClauses(bundle.manifest.regulatoryMapping), EXPECTED_CLAUSE_STATUS)).toEqual([]);
       expect(bundle.entries.some((e) => e.whatIf != null)).toBe(true);
 
-      // 报告页第一行（刚导出的 v4）展开对照，与证据包内的判定一致
-      const firstRow = page.locator('tbody tr').first();
-      await firstRow.getByRole('button', { name: 'Regulatory mapping' }).click();
+      // 以下载地址中的导出 id 锁定刚导出的那一行，展开对照，与证据包内的判定一致
+      const downloadPath = new URL(download.url()).pathname;
+      const exportRow = page.locator('tr').filter({ has: page.locator(`a[href="${downloadPath}"]`) });
+      await exportRow.getByRole('button', { name: 'Regulatory mapping' }).click();
       await expect(page.getByTestId('clause-row-14(4)(d)').getByRole('cell').nth(2)).toHaveText('Partial');
       await expect(page.getByTestId('clause-row-14(5)').getByRole('cell').nth(2)).toHaveText('No evidence');
     }));
