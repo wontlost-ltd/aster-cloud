@@ -4,7 +4,7 @@
  * 三个来源按 source 标注：
  * - policy-proof：PolicyProof（ADR 0037），身份来自 PolicyReviewer 授权记录 ⇒ roleVerified=true；
  * - version-approval：PolicyApproval 版本审批 ⇒ roleVerified=true；
- * - guard-approval：运行时 guard 审批，角色为调用方自报头 ⇒ roleVerified=false。
+ * - guard-approval：运行时 guard 审批，角色由 aster-api 对照成员已授予的业务角色验证（ADR 0042 §2.3）⇒ roleVerified=true。
  *
  * 键一律是 PolicyVersion.id：Execution.policyVersionRowId、PolicyApproval.versionId、
  * PolicyProof.policyVersionId 三者同一 id 空间，无需映射。
@@ -99,6 +99,6 @@ export async function loadVersionApprovalReviewers(policyVersionRowIds: string[]
 export function guardApprovalReviewers(approvals: ChainApproval[]): Reviewer[] {
   return approvals.map((a) => ({
     userId: a.decidedBy ?? 'unknown', role: a.requiredRole ?? 'unknown', source: 'guard-approval', outcome: a.outcome,
-    decidedAt: a.decidedAt, ref: String(a.auditId), roleVerified: false,
+    decidedAt: a.decidedAt, ref: String(a.auditId), roleVerified: true,
   }));
 }

@@ -168,7 +168,7 @@ describe('createEvidenceExport v2', () => {
     expect(e3.receipt).toEqual({ status: 'unavailable' });
     expect(e3.reviewers).toEqual([{
       userId: 'u-g', role: 'risk_officer', source: 'guard-approval', outcome: 'APPROVED',
-      decidedAt: '2026-10-03T01:00:00Z', ref: '31', roleVerified: false,
+      decidedAt: '2026-10-03T01:00:00Z', ref: '31', roleVerified: true,
     }]);
     expect(e1).not.toHaveProperty('policyTenantId');
     expect(e3).not.toHaveProperty('guardDecisionId');

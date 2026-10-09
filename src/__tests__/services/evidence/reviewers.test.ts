@@ -1,4 +1,4 @@
-// 复核者拼装单测（ADR 0041 §5.2）：proof 取每 (policyId,nodeId) 最新；版本审批逐条；guard 审批 roleVerified=false。
+// 复核者拼装单测（ADR 0041 §5.2）：proof 取每 (policyId,nodeId) 最新；版本审批逐条；guard 审批 roleVerified=true。
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -114,7 +114,7 @@ describe('loadVersionApprovalReviewers', () => {
 });
 
 describe('guardApprovalReviewers', () => {
-  it('映射字段；requiredRole 缺省为 unknown；roleVerified=false', () => {
+  it('映射字段；requiredRole 缺省为 unknown；roleVerified=true', () => {
     const approvals: ChainApproval[] = [
       { auditId: 8, decisionId: 'd-1', outcome: 'APPROVED', decidedBy: 'u-1', requiredRole: 'risk', comment: null,
         decidedAt: '2026-10-01T01:00:00Z', currentHash: 'h1', decisionReceiptHash: 'hd' },
@@ -123,9 +123,9 @@ describe('guardApprovalReviewers', () => {
     ];
     expect(guardApprovalReviewers(approvals)).toEqual([
       { userId: 'u-1', role: 'risk', source: 'guard-approval', outcome: 'APPROVED',
-        decidedAt: '2026-10-01T01:00:00Z', ref: '8', roleVerified: false },
+        decidedAt: '2026-10-01T01:00:00Z', ref: '8', roleVerified: true },
       { userId: 'u-2', role: 'unknown', source: 'guard-approval', outcome: 'REJECTED',
-        decidedAt: '2026-10-01T02:00:00Z', ref: '9', roleVerified: false },
+        decidedAt: '2026-10-01T02:00:00Z', ref: '9', roleVerified: true },
     ]);
   });
 });

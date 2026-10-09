@@ -279,7 +279,7 @@ describe('v2 manifest', () => {
   const entries = [
     entry({ id: 'a', evidenceCorrelationId: 'c-a', decision: 'require_approval' },
       { auditId: 1, currentHash: 'h1', prevHash: null, hashVersion: 2 },
-      [reviewer({ source: 'policy-proof' }), reviewer({ ref: 'g', source: 'guard-approval', roleVerified: false })]),
+      [reviewer({ source: 'policy-proof' }), reviewer({ ref: 'g', source: 'guard-approval', roleVerified: true })]),
     entry({ id: 'b', evidenceCorrelationId: null, agent: null, decision: 'escalate' }),
     entry({ id: 'c', evidenceCorrelationId: 'c-c', agent: { provider: 'openai', model: 'gpt', source: 'declared' } },
       { status: 'unavailable' }, [reviewer({ ref: 'v', source: 'version-approval' })]),
