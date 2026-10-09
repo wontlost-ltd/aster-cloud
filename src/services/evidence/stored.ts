@@ -1,6 +1,6 @@
 // 已持久化证据导出的读取侧（ADR 0041 §5）。
 //
-// ComplianceReport.data 里可能是 v1 或 v2 包：写入只产 v2，读取按 schemaVersion 收窄，
+// ComplianceReport.data 里可能是 v1/v2/v3 包：写入只产 v3，读取按 schemaVersion 收窄，
 // 未知版本一律当作不可读（返回 null），绝不按 v2 形状强行解释。纯函数，客户端与服务端共用。
 
 import type {
@@ -9,7 +9,7 @@ import type {
   StoredEvidenceManifest,
 } from './types';
 
-/** ComplianceReport.data 中证据导出的存储形态（v1 / v2）。 */
+/** ComplianceReport.data 中证据导出的存储形态（v1 / v2 / v3）。 */
 export interface StoredEvidenceExport {
   kind: 'evidence-export';
   manifest: StoredEvidenceManifest;
@@ -17,7 +17,7 @@ export interface StoredEvidenceExport {
   format: EvidenceExportRequest['format'];
 }
 
-const KNOWN_SCHEMA_VERSIONS: ReadonlySet<unknown> = new Set<StoredEvidenceManifest['schemaVersion']>(['1', '2']);
+const KNOWN_SCHEMA_VERSIONS: ReadonlySet<unknown> = new Set<StoredEvidenceManifest['schemaVersion']>(['1', '2', '3']);
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -31,7 +31,7 @@ export function readStoredEvidenceExport(data: unknown): StoredEvidenceExport | 
   return data as unknown as StoredEvidenceExport;
 }
 
-/** 历史列表摘要（v1/v2 共有字段）。 */
+/** 历史列表摘要（各版本共有字段）。 */
 export interface StoredEvidenceSummary {
   schemaVersion: StoredEvidenceManifest['schemaVersion'];
   count: number;
@@ -44,6 +44,8 @@ export function summarizeManifest(manifest: StoredEvidenceManifest): StoredEvide
       return { schemaVersion: '1', count: manifest.totals.count, bundleHash: manifest.bundleHash };
     case '2':
       return { schemaVersion: '2', count: manifest.totals.count, bundleHash: manifest.bundleHash };
+    case '3':
+      return { schemaVersion: '3', count: manifest.totals.count, bundleHash: manifest.bundleHash };
   }
 }
 

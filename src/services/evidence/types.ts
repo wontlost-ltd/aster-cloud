@@ -5,6 +5,7 @@
 // 与被替换的旧 compliance-score 报告根本不同：这里只呈现执行链**已经产生**的权威事实。
 
 import type { ExecutionSource } from '@/lib/prisma';
+import type { Article14Mapping } from './article14';
 import type { Reviewer } from './reviewers';
 
 /** 执行决策六态（与 executionDecisionEnum 一致）；legacy 行可能为 null → 归入 'unknown' 统计桶。 */
@@ -45,6 +46,14 @@ export interface EvidenceAgent {
   source: 'declared';
 }
 
+/** 最近一次 What-If 回放的结论摘要（ADR 0044 §3）。 */
+export interface EvidenceWhatIf {
+  batchId: string;
+  baseOutcome: string;
+  targetOutcome: string | null;
+  baseLegacy: boolean;
+}
+
 /**
  * 单条执行的证据条目。全部来自 executions 表已存的权威字段——哈希由 aster-api 计算，cloud 只搬运。
  * **不含明文 input/output/traceJson**（PII）；只含可交叉验证的哈希 + 溯源。legacy 行哈希/decision 可能为 null。
@@ -78,6 +87,8 @@ export interface EvidenceEntry {
   receipt: ReceiptRef;
   /** 三来源统一复核者，按 (decidedAt, ref) 排序以保证 bundleHash 确定。 */
   reviewers: Reviewer[];
+  /** 最近一次 What-If 回放的结论码；无回放或取不到为 null。 */
+  whatIf: EvidenceWhatIf | null;
 }
 
 /** 导出格式。 */
@@ -89,8 +100,8 @@ export type EvidenceFormat = 'json' | 'jsonl';
  */
 export interface EvidenceManifest {
   kind: 'evidence-export';
-  /** v2 起 entries 含 outcome/ruleId/controls/agent/receipt/reviewers；已存的 v1 包按原样下载。 */
-  schemaVersion: '2';
+  /** v3 起 entries 含 whatIf、manifest 含 regulatoryMapping；已存的 v1/v2 包按原样下载。 */
+  schemaVersion: '3';
   generatedAt: string;
   /** 单策略快照，或全部策略范围。 */
   policy:
@@ -109,6 +120,8 @@ export interface EvidenceManifest {
   reviewerTally: Record<Reviewer['source'], number>;
   /** 无证据关联 id（receipt=legacy）的条目数。 */
   legacyEntries: number;
+  /** EU AI Act 第 14 条对照。 */
+  regulatoryMapping: Article14Mapping;
   notes: {
     /** 缺 canonical 哈希的 legacy 行数（导出覆盖缺口，供审计方知情——绝不伪造哈希）。 */
     legacyRowsWithoutHashes: number;
@@ -116,6 +129,8 @@ export interface EvidenceManifest {
     receiptsUnavailable: number;
     /** aster-api 未找到收据的条目数。 */
     receiptsMissing: number;
+    /** What-If 回放取不到（超时/网络/非 2xx）的条目数。 */
+    whatIfUnavailable: number;
     /** 校验 recipe：告诉审计方如何重算 bundleHash。 */
     verification: string;
   };
@@ -185,9 +200,88 @@ export interface EvidenceBundleV1 {
   entries: EvidenceEntryV1[];
 }
 
+// ---- schemaVersion '2' 冻结类型：ADR 0044 起只读。
+
+export interface EvidenceEntryV2 {
+  executionId: string;
+  policyId: string;
+  policyVersion: number | null;
+  /** 不可变版本行引用（可精确定位当时编译产物）。 */
+  policyVersionRowId: string | null;
+  decision: EvidenceDecision | null;
+  canonicalInputHash: string | null;
+  canonicalOutputHash: string | null;
+  traceHash: string | null;
+  canonicalizationVersion: string | null;
+  /** 双引擎溯源：源/运行时 toolchain id。 */
+  toolchain: { source: string | null; runtime: string | null };
+  replayabilityStatus: string | null;
+  replayabilityReasons: unknown;
+  reasonCodes: unknown;
+  source: ExecutionSource;
+  durationMs: number;
+  /** ISO-8601 UTC。 */
+  createdAt: string;
+  /** 服务端派生的结果大写码（ALLOW/DENY/REQUIRE_APPROVAL/…）；旧行为 null。 */
+  outcome: string | null;
+  ruleId: string | null;
+  controls: string[] | null;
+  agent: EvidenceAgent | null;
+  evidenceCorrelationId: string | null;
+  receipt: ReceiptRef;
+  /** 三来源统一复核者，按 (decidedAt, ref) 排序以保证 bundleHash 确定。 */
+  reviewers: Reviewer[];
+}
+
+
+export interface EvidenceManifestV2 {
+  kind: 'evidence-export';
+  /** v2 entries 含 outcome/ruleId/controls/agent/receipt/reviewers；已存的 v1 包按原样下载。 */
+  schemaVersion: '2';
+  generatedAt: string;
+  /** 单策略快照，或全部策略范围。 */
+  policy:
+    | { id: string; name: string; version: number | null; policyVersionRowId: string | null }
+    | { scope: 'all' };
+  range: { start: string | null; end: string | null };
+  totals: { count: number };
+  decisionTally: DecisionTally;
+  canonicalizationVersion: string;
+  /** hex sha256（复用 canonicalHash，带 CANONICALIZATION_VERSION 前缀）。 */
+  bundleHash: string;
+  /** 收据来源与独立校验入口。 */
+  receiptSource: { kind: 'aster-api-hash-chain'; verifier: 'GET /api/v1/audit/receipts' };
+  /** 按 `${provider}/${model}` 计数；无 agent 计入 'unknown'。 */
+  agentTally: Record<string, number>;
+  reviewerTally: Record<Reviewer['source'], number>;
+  /** 无证据关联 id（receipt=legacy）的条目数。 */
+  legacyEntries: number;
+  notes: {
+    /** 缺 canonical 哈希的 legacy 行数（导出覆盖缺口，供审计方知情——绝不伪造哈希）。 */
+    legacyRowsWithoutHashes: number;
+    /** 收据取不到（超时/网络/非 2xx）的条目数——导出仍完成，如实标注。 */
+    receiptsUnavailable: number;
+    /** aster-api 未找到收据的条目数。 */
+    receiptsMissing: number;
+    /** 校验 recipe：告诉审计方如何重算 bundleHash。 */
+    verification: string;
+  };
+}
+
+/** 完整证据包（manifest + 有序 entries）。 */
+export interface EvidenceBundle {
+  manifest: EvidenceManifest;
+  entries: EvidenceEntry[];
+}
+
+export interface EvidenceBundleV2 {
+  manifest: EvidenceManifestV2;
+  entries: EvidenceEntryV2[];
+}
+
 /** 已持久化的 manifest / bundle：读取侧须按 schemaVersion 收窄后再访问版本专有字段。 */
-export type StoredEvidenceManifest = EvidenceManifestV1 | EvidenceManifest;
-export type StoredEvidenceBundle = EvidenceBundleV1 | EvidenceBundle;
+export type StoredEvidenceManifest = EvidenceManifestV1 | EvidenceManifestV2 | EvidenceManifest;
+export type StoredEvidenceBundle = EvidenceBundleV1 | EvidenceBundleV2 | EvidenceBundle;
 
 /** 预览（导出前给 UI 看规模，不含行体）。 */
 export interface EvidencePreview {

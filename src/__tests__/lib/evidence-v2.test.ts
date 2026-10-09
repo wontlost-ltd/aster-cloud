@@ -176,7 +176,7 @@ describe('createEvidenceExport v2', () => {
 
   it('★manifest 计数', async () => {
     const { manifest } = await createEvidenceExport('user-1', { format: 'json' });
-    expect(manifest.schemaVersion).toBe('2');
+    expect(manifest.schemaVersion).toBe('3');
     expect(manifest.totals.count).toBe(3);
     expect(manifest.legacyEntries).toBe(1);
     expect(manifest.notes.receiptsUnavailable).toBe(1);

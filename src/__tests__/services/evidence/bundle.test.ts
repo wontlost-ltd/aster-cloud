@@ -16,7 +16,7 @@ import {
 import { canonicalHash, CANONICALIZATION_VERSION } from '@/lib/canonical-json';
 import type { ReceiptLookup } from '@/services/evidence/receipts-client';
 import type { Reviewer } from '@/services/evidence/reviewers';
-import type { EvidenceEntry, ReceiptRef } from '@/services/evidence/types';
+import type { EvidenceEntry, EvidenceWhatIf, ReceiptRef } from '@/services/evidence/types';
 
 function row(over: Partial<EvidenceRow> = {}): EvidenceRow {
   // 用 'key' in over 区分「未传」与「显式 null」——?? 会把显式 null 折叠成默认值（本测试早期 bug）。
@@ -51,8 +51,13 @@ function row(over: Partial<EvidenceRow> = {}): EvidenceRow {
 const LEGACY: ReceiptRef = { status: 'legacy' };
 
 /** 默认 legacy 收据、无复核者的条目（既有断言只关心哈希/溯源字段）。 */
-function entry(over: Partial<EvidenceRow> = {}, receipt: ReceiptRef = LEGACY, reviewers: Reviewer[] = []): EvidenceEntry {
-  return buildEvidenceEntry(row(over), receipt, reviewers);
+function entry(
+  over: Partial<EvidenceRow> = {},
+  receipt: ReceiptRef = LEGACY,
+  reviewers: Reviewer[] = [],
+  whatIf: EvidenceWhatIf | null = null,
+): EvidenceEntry {
+  return buildEvidenceEntry(row(over), receipt, reviewers, whatIf);
 }
 
 function reviewer(over: Partial<Reviewer>): Reviewer {
@@ -286,9 +291,9 @@ describe('v2 manifest', () => {
     entry({ id: 'd', evidenceCorrelationId: 'c-d' }, { status: 'missing' }),
   ];
 
-  it('schemaVersion=2、receiptSource、agentTally、reviewerTally、legacy/unavailable/missing 计数', () => {
+  it('schemaVersion=3、receiptSource、agentTally、reviewerTally、legacy/unavailable/missing 计数', () => {
     const m = buildManifest({ policy, range, entries, generatedAt: gen });
-    expect(m.schemaVersion).toBe('2');
+    expect(m.schemaVersion).toBe('3');
     expect(m.receiptSource).toEqual({ kind: 'aster-api-hash-chain', verifier: 'GET /api/v1/audit/receipts' });
     expect(m.agentTally).toEqual({ 'anthropic/claude': 2, unknown: 1, 'openai/gpt': 1 });
     expect(m.reviewerTally).toEqual({ 'guard-approval': 1, 'policy-proof': 1, 'version-approval': 1 });
@@ -297,8 +302,8 @@ describe('v2 manifest', () => {
     expect(m.notes.receiptsMissing).toBe(1);
     expect(m.decisionTally).toMatchObject({ require_approval: 1, escalate: 1, approved: 2 });
     expect(m.notes.verification).toBe(
-      'bundleHash = canonicalHash(entries sorted by [createdAt, executionId]) over schemaVersion 2 entries ' +
-      '(includes outcome/ruleId/controls/agent/receipt/reviewers); receipts verifiable via GET /api/v1/audit/receipts; ' +
+      'bundleHash = canonicalHash(entries sorted by [createdAt, executionId]) over schemaVersion 3 entries ' +
+      '(includes outcome/ruleId/controls/agent/receipt/reviewers/whatIf); receipts verifiable via GET /api/v1/audit/receipts; ' +
       'v1 bundles use their own recipe.',
     );
   });
@@ -306,5 +311,29 @@ describe('v2 manifest', () => {
   it('空 entries：三来源复核者计数恒为 0，agentTally 为空', () => {
     expect(tallyReviewers([])).toEqual({ 'guard-approval': 0, 'policy-proof': 0, 'version-approval': 0 });
     expect(tallyAgents([])).toEqual({});
+  });
+});
+
+describe('v3：What-If 与法规对照', () => {
+  it('entry 带 whatIf、manifest 带 regulatoryMapping 与 whatIfUnavailable', () => {
+    const e = entry({}, LEGACY, [], null);
+    expect(e.whatIf).toBeNull();
+    const wi = { batchId: 'b1', baseOutcome: 'REQUIRE_APPROVAL', targetOutcome: 'ALLOW', baseLegacy: false };
+    const e2 = buildEvidenceEntry(row({ id: 'exec-2' }), LEGACY, [], wi);
+    expect(e2.whatIf).toEqual(wi);
+    const m = buildManifest({ policy, range: { start: null, end: null }, entries: [e, e2], generatedAt: gen, whatIfUnavailable: 1 });
+    expect(m.schemaVersion).toBe('3');
+    expect(m.notes.whatIfUnavailable).toBe(1);
+    expect(m.regulatoryMapping.framework).toBe('EU_AI_ACT');
+    expect(m.regulatoryMapping.clauses.map((c) => c.clause)).toEqual(['14(1)', '14(2)', '14(3)', '14(4)(a)', '14(4)(b)', '14(4)(c)', '14(4)(d)', '14(4)(e)', '14(5)']);
+  });
+  it('whatIfUnavailable 缺省为 0', () => {
+    const m = buildManifest({ policy, range: { start: null, end: null }, entries: [], generatedAt: gen });
+    expect(m.notes.whatIfUnavailable).toBe(0);
+  });
+  it('whatIf 参与 bundleHash（entries 字段）', () => {
+    const a = computeBundleHash([entry({}, LEGACY, [], null)]);
+    const b = computeBundleHash([buildEvidenceEntry(row(), LEGACY, [], { batchId: 'b', baseOutcome: 'ALLOW', targetOutcome: 'ALLOW', baseLegacy: false })]);
+    expect(a).not.toBe(b);
   });
 });

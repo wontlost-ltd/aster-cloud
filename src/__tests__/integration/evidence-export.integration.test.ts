@@ -246,7 +246,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('evidence-export 数据层（�
   it('★无关联 id 的行导出为 schemaVersion 2 + receipt=legacy（不发起收据请求）', async () => {
     await seedExecution({ id: 'e1', createdAt: new Date('2026-07-01T00:00:00Z') });
     const { id, manifest } = await createEvidenceExport(U, { policyId: POL, format: 'json' });
-    expect(manifest.schemaVersion).toBe('2');
+    expect(manifest.schemaVersion).toBe('3');
     expect(manifest.legacyEntries).toBe(1);
     const body = JSON.parse((await getEvidenceExportBundle(U, id))!.body);
     expect(body.entries[0].receipt).toEqual({ status: 'legacy' });

@@ -30,7 +30,7 @@ test('导出 JSON 证据包：schemaVersion 2 且含已验证角色的 guard-app
   expect(download.suggestedFilename()).toMatch(/^aster-evidence-[0-9a-f]{12}\.json$/);
   const bundle = JSON.parse(readFileSync(await download.path(), 'utf8')) as Bundle;
 
-  expect(bundle.manifest.schemaVersion).toBe('2');
+  expect(bundle.manifest.schemaVersion).toBe('3');
   expect(bundle.manifest.bundleHash).toMatch(/^[0-9a-f]{64}$/);
   const reviewers = bundle.entries.flatMap((e) => e.reviewers ?? []);
   expect(reviewers).toContainEqual(

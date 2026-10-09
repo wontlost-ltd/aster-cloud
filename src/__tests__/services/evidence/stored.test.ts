@@ -20,16 +20,19 @@ const V2_MANIFEST = {
   notes: { legacyRowsWithoutHashes: 0, receiptsUnavailable: 1, receiptsMissing: 0, verification: 'v2 recipe' },
 };
 
+const V3_MANIFEST = { ...V2_MANIFEST, schemaVersion: '3', totals: { count: 1 }, bundleHash: 'h' };
+
 const stored = (manifest: unknown) => ({ kind: 'evidence-export', manifest, bundle: { manifest, entries: [] }, format: 'json' });
 
 describe('readStoredEvidenceExport', () => {
-  it('★v1 与 v2 行均可读，manifest 原样返回', () => {
+  it('★v1/v2/v3 行均可读，manifest 原样返回', () => {
     expect(readStoredEvidenceExport(stored(V1))?.manifest).toBe(V1);
     expect(readStoredEvidenceExport(stored(V2_MANIFEST))?.manifest).toBe(V2_MANIFEST);
+    expect(readStoredEvidenceExport(stored(V3_MANIFEST))?.manifest).toBe(V3_MANIFEST);
   });
 
   it('★未知 schemaVersion / 缺 manifest / 非证据行 / null ⇒ null', () => {
-    expect(readStoredEvidenceExport(stored({ ...V1, schemaVersion: '3' }))).toBeNull();
+    expect(readStoredEvidenceExport(stored({ ...V1, schemaVersion: '4' }))).toBeNull();
     expect(readStoredEvidenceExport({ kind: 'evidence-export' })).toBeNull();
     expect(readStoredEvidenceExport({ ...stored(V1), kind: 'compliance' })).toBeNull();
     expect(readStoredEvidenceExport(null)).toBeNull();
@@ -44,6 +47,7 @@ describe('readStoredEvidenceExport', () => {
 describe('summarizeManifest / summarizeStoredExport', () => {
   it('★按版本取条数与 bundleHash', () => {
     expect(summarizeManifest(V1)).toEqual({ schemaVersion: '1', count: 3, bundleHash: 'a'.repeat(64) });
+    expect(summarizeStoredExport(stored(V3_MANIFEST))).toEqual({ schemaVersion: '3', count: 1, bundleHash: 'h' });
     expect(summarizeStoredExport(stored(V2_MANIFEST))).toEqual({ schemaVersion: '2', count: 5, bundleHash: 'b'.repeat(64) });
   });
 
