@@ -273,7 +273,10 @@ export function WhatIfBatchPanel({
       }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        setError(body.message ?? t('startFailed'));
+        // 权益校验超时：aster-api 返回 503 plan_check_unavailable——这是「暂时查不到套餐」，
+        // 不是「没有权益」，不能复用 needsPro 引导升级，只提示稍后重试。
+        const planCheckDown = res.status === 503 && body.error === 'plan_check_unavailable';
+        setError(planCheckDown ? t('planCheckUnavailable') : (body.message ?? t('startFailed')));
         return;
       }
       setBatch((await res.json()) as BatchState);

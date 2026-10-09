@@ -93,6 +93,15 @@ describe('POST /api/v1/policies/:id/whatif-batches', () => {
     expect((await res.json()).error).toBe('whatif_not_entitled');
   });
 
+  it('★503 plan_check_unavailable 原样透传——不得变成 403/502', async () => {
+    createWhatIfBatch.mockRejectedValue(
+      new FakePolicyApiError('plan lookup timed out', 503, 'plan_check_unavailable'),
+    );
+    const res = await POST(postReq(validBody), { params });
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toBe('plan_check_unavailable');
+  });
+
   it('★409 原样透传——与 403 是不同的事', async () => {
     createWhatIfBatch.mockRejectedValue(
       new FakePolicyApiError('busy', 409, 'whatif_batch_in_progress'),

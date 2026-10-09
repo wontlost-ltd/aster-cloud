@@ -143,6 +143,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         ERROR: 'Error',
       },
       needsPro: 'This feature requires a Pro plan or above.',
+      // 权益校验超时（503 plan_check_unavailable），区别于 needsPro。
+      planCheckUnavailable: 'Plan check is temporarily unavailable — please retry.',
       entitlementHint: 'See how switching to another policy version would have changed past decisions.',
       alreadyRunning: 'A batch is already running. You can start a new one once it finishes.',
       // ★超出留存期时的诚实标注（issue #396）：预设档位已被静态裁掉，
@@ -803,6 +805,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         ERROR: '出错',
       },
       needsPro: '此功能需要 Pro 及以上套餐。',
+      // 权益校验超时（503 plan_check_unavailable），区别于 needsPro。
+      planCheckUnavailable: '权益校验暂不可用，请稍后重试',
       entitlementHint: '看看把策略换成另一个版本，过去的决策会有什么不同。',
       alreadyRunning: '已有批次在运行，完成后可再发起。',
       windowTruncated:
@@ -1443,6 +1447,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         ERROR: 'Fehler',
       },
       needsPro: 'Diese Funktion erfordert mindestens den Pro-Tarif.',
+      // 权益校验超时（503 plan_check_unavailable），区别于 needsPro。
+      planCheckUnavailable: 'Die Tarifprüfung ist vorübergehend nicht verfügbar – bitte erneut versuchen.',
       entitlementHint: 'Sehen Sie, wie sich vergangene Entscheidungen mit einer anderen Richtlinienversion geändert hätten.',
       alreadyRunning: 'Es läuft bereits ein Lauf. Nach dessen Abschluss können Sie einen neuen starten.',
       windowTruncated:
@@ -2082,6 +2088,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         ERROR: 'त्रुटि',
       },
       needsPro: 'इस सुविधा के लिए Pro या उससे ऊपर की योजना आवश्यक है।',
+      // 权益校验超时（503 plan_check_unavailable），区别于 needsPro。
+      planCheckUnavailable: 'योजना जाँच अस्थायी रूप से उपलब्ध नहीं है — कृपया पुनः प्रयास करें।',
       entitlementHint: 'देखें कि किसी दूसरे नीति संस्करण पर स्विच करने से पिछले निर्णय कैसे बदलते।',
       alreadyRunning: 'एक बैच पहले से चल रहा है। पूरा होने पर नया शुरू कर सकते हैं।',
       windowTruncated:

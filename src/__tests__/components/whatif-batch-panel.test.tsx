@@ -333,6 +333,32 @@ describe('What-If 面板：呈现约束（ADR 0034 §1.1）', () => {
       expect(document.body.textContent).not.toMatch(/already running/i);
     });
 
+    it('★503 plan_check_unavailable 提示稍后重试，不得说「需要 Pro」', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: 'plan_check_unavailable', message: 'plan lookup timed out' }, 503),
+      );
+      render(<WhatIfBatchPanel {...props} />);
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /run analysis/i }));
+      });
+
+      await waitFor(() =>
+        expect(screen.getByText('Plan check is temporarily unavailable — please retry.')).toBeTruthy(),
+      );
+      expect(document.body.textContent).not.toMatch(/requires a Pro plan/i);
+    });
+
+    it('其他 503（非 plan_check_unavailable）走通用失败文案', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ error: 'upstream_down', message: 'Upstream down' }, 503));
+      render(<WhatIfBatchPanel {...props} />);
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /run analysis/i }));
+      });
+
+      await waitFor(() => expect(screen.getByText('Upstream down')).toBeTruthy());
+      expect(document.body.textContent).not.toMatch(/temporarily unavailable|requires a Pro plan/i);
+    });
+
     it('★409 提示等待并给出当前批次——与 403 是不同的话', async () => {
       fetchMock
         .mockResolvedValueOnce(

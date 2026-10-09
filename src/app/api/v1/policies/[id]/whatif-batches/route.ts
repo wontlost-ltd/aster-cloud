@@ -12,6 +12,7 @@
  * <p>★<b>状态码原样透传</b>：403（无权益，引导升级）与 409（并发超限，提示等待）
  * 在 aster-api 侧就是两件不同的事，cloud 不得把它们合并成一个泛化错误——
  * 那会让前端无法区分「去升级」与「等一会儿」。
+ * 503 plan_check_unavailable（权益校验超时）同样原样透传，前端提示「稍后重试」而非「去升级」。
  */
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
