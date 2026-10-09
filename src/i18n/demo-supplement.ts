@@ -463,6 +463,22 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         require_approval: 'Needs approval',
         escalate: 'Escalated',
       },
+      // 版本对比面板（原硬编码中文，/en 等页面需本地化）。
+      versionCompare: {
+        title: 'Version comparison',
+        baseVersion: 'Base version',
+        compareVersion: 'Compare version',
+        defaultSuffix: '(default)',
+        linesAdded: '+{n} lines added',
+        linesRemoved: '-{n} lines removed',
+        loadSourceError: 'Could not load version source',
+        unknownError: 'Unknown error',
+      },
+      // 版本列表补充（其余按钮文案复用包内 policies.versions.actions.*）。
+      versions: {
+        awaitingOthers: 'Waiting for another approver',
+        approvalCount: '{count} approval records',
+      },
       logs: {
         // 执行日志里 indeterminate（值输出）行的中性状态标签。
         computed: 'Computed',
@@ -1087,6 +1103,22 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noDecision: '无决策（值输出）',
         require_approval: '需人工批准',
         escalate: '已升级',
+      },
+      // 版本对比面板（原硬编码中文，/en 等页面需本地化）。
+      versionCompare: {
+        title: '版本对比',
+        baseVersion: '基准版本',
+        compareVersion: '比较版本',
+        defaultSuffix: '（默认）',
+        linesAdded: '+{n} 行添加',
+        linesRemoved: '-{n} 行删除',
+        loadSourceError: '无法加载版本源码',
+        unknownError: '未知错误',
+      },
+      // 版本列表补充（其余按钮文案复用包内 policies.versions.actions.*）。
+      versions: {
+        awaitingOthers: '等待他人审批',
+        approvalCount: '{count} 条审批记录',
       },
       logs: {
         computed: '已计算',
@@ -1713,6 +1745,22 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         require_approval: 'Freigabe nötig',
         escalate: 'Eskaliert',
       },
+      // 版本对比面板（原硬编码中文，/en 等页面需本地化）。
+      versionCompare: {
+        title: 'Versionsvergleich',
+        baseVersion: 'Basisversion',
+        compareVersion: 'Vergleichsversion',
+        defaultSuffix: '(Standard)',
+        linesAdded: '+{n} Zeilen hinzugefügt',
+        linesRemoved: '-{n} Zeilen entfernt',
+        loadSourceError: 'Versionsquelle konnte nicht geladen werden',
+        unknownError: 'Unbekannter Fehler',
+      },
+      // 版本列表补充（其余按钮文案复用包内 policies.versions.actions.*）。
+      versions: {
+        awaitingOthers: 'Wartet auf andere Prüfer',
+        approvalCount: '{count} Freigabeeinträge',
+      },
       logs: {
         computed: 'Berechnet',
         require_approval: 'Freigabe nötig',
@@ -2335,6 +2383,22 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noDecision: 'कोई निर्णय नहीं (मान आउटपुट)',
         require_approval: 'अनुमोदन आवश्यक',
         escalate: 'एस्केलेट किया गया',
+      },
+      // 版本对比面板（原硬编码中文，/en 等页面需本地化）。
+      versionCompare: {
+        title: 'संस्करण तुलना',
+        baseVersion: 'आधार संस्करण',
+        compareVersion: 'तुलना संस्करण',
+        defaultSuffix: '(डिफ़ॉल्ट)',
+        linesAdded: '+{n} पंक्तियाँ जोड़ी गईं',
+        linesRemoved: '-{n} पंक्तियाँ हटाई गईं',
+        loadSourceError: 'संस्करण स्रोत लोड नहीं हो सका',
+        unknownError: 'अज्ञात त्रुटि',
+      },
+      // 版本列表补充（其余按钮文案复用包内 policies.versions.actions.*）。
+      versions: {
+        awaitingOthers: 'किसी अन्य अनुमोदक की प्रतीक्षा',
+        approvalCount: '{count} अनुमोदन रिकॉर्ड',
       },
       logs: {
         computed: 'परिकलित',

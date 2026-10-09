@@ -211,7 +211,7 @@ export function PolicyVersionList({
   if (versions.length === 0) {
     return (
       <div className="text-center py-8 text-fg-muted dark:text-fg-subtle">
-        暂无版本记录
+        {t('noVersions')}
       </div>
     );
   }
@@ -253,7 +253,7 @@ export function PolicyVersionList({
                     </span>
                   )}
                   {version._count?.approvals !== undefined && version._count.approvals > 0 && (
-                    <span>{version._count.approvals} 条审批记录</span>
+                    <span>{t('approvalCount', { count: version._count.approvals })}</span>
                   )}
                 </div>
 
@@ -297,20 +297,20 @@ export function PolicyVersionList({
                       onClick={() => openActionDialog('approve', version)}
                       className="text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-md"
                     >
-                      批准
+                      {t('actions.approve')}
                     </button>
                     <button
                       onClick={() => openActionDialog('reject', version)}
                       className="text-sm bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-md"
                     >
-                      拒绝
+                      {t('actions.reject')}
                     </button>
                   </>
                 )}
 
                 {version.status === 'PENDING_APPROVAL' && !canApprove(version) && (
                   <span className="text-xs text-yellow-600 dark:text-yellow-400">
-                    等待他人审批
+                    {t('awaitingOthers')}
                   </span>
                 )}
 
@@ -319,7 +319,7 @@ export function PolicyVersionList({
                     onClick={() => openActionDialog('set-default', version)}
                     className="text-sm bg-primary-subtle dark:bg-primary-active text-primary-hover dark:text-primary-fg hover:bg-primary-subtle dark:hover:bg-primary-hover px-3 py-1.5 rounded-md"
                   >
-                    设为默认
+                    {t('actions.setDefault')}
                   </button>
                 )}
 
@@ -328,7 +328,7 @@ export function PolicyVersionList({
                     onClick={() => openActionDialog('deprecate', version)}
                     className="text-sm text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 px-2 py-1"
                   >
-                    废弃
+                    {t('actions.deprecate')}
                   </button>
                 )}
 
@@ -339,7 +339,7 @@ export function PolicyVersionList({
                       onClick={() => openActionDialog('archive', version)}
                       className="text-sm text-fg-muted dark:text-fg-subtle hover:text-fg dark:hover:text-gray-300 px-2 py-1"
                     >
-                      归档
+                      {t('actions.archive')}
                     </button>
                   )}
               </div>
@@ -371,7 +371,7 @@ export function PolicyVersionList({
           )
         }
         confirmLabel={dialogConfig.confirmLabel}
-        cancelLabel="取消"
+        cancelLabel={tCommon('cancel')}
         variant={dialogConfig.variant}
         isLoading={actionLoading}
       />

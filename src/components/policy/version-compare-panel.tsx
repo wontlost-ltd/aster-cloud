@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslations } from 'next-intl';
 import { WhatIfBatchPanel } from './whatif-batch-panel';
 import type { PolicyVersionStatus } from '@/lib/prisma';
 
@@ -154,6 +155,8 @@ export function VersionComparePanel({
   whatIfEntitled = false,
   retentionDays = null,
 }: VersionComparePanelProps) {
+  // 文案走 i18n（policies.versionCompare，demo-supplement 四语）；此前硬编码中文导致 /en 页面显示中文。
+  const t = useTranslations('policies.versionCompare');
   const sortedVersions = useMemo(
     () => [...versions].sort((a, b) => b.version - a.version),
     [versions]
@@ -220,14 +223,14 @@ export function VersionComparePanel({
         if (cancelled) return;
 
         if (left === null || right === null) {
-          setError('无法加载版本源码');
+          setError(t('loadSourceError'));
         } else {
           setLeftSource(left);
           setRightSource(right);
         }
       } catch (err) {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : '未知错误');
+        setError(err instanceof Error ? err.message : t('unknownError'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -237,7 +240,7 @@ export function VersionComparePanel({
     return () => {
       cancelled = true;
     };
-  }, [leftVersion, rightVersion, fetchSource]);
+  }, [leftVersion, rightVersion, fetchSource, t]);
 
   const diffLines = useMemo(() => {
     if (leftSource === null || rightSource === null) return [];
@@ -255,7 +258,7 @@ export function VersionComparePanel({
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-border dark:border-gray-700">
         <h2 className="text-xl font-semibold text-fg dark:text-white">
-          版本对比
+          {t('title')}
         </h2>
         {onClose && (
           <button
@@ -273,7 +276,7 @@ export function VersionComparePanel({
       <div className="flex items-center gap-4 px-6 py-4 border-b border-border dark:border-gray-700">
         <div className="flex-1">
           <label className="block text-sm font-medium text-fg-muted dark:text-fg-subtle mb-1">
-            基准版本
+            {t('baseVersion')}
           </label>
           <select
             value={leftVersion}
@@ -282,7 +285,7 @@ export function VersionComparePanel({
           >
             {sortedVersions.map((v) => (
               <option key={v.version} value={v.version}>
-                v{v.version} - {v.status} {v.isDefault ? '(默认)' : ''}
+                v{v.version} - {v.status} {v.isDefault ? t('defaultSuffix') : ''}
               </option>
             ))}
           </select>
@@ -296,7 +299,7 @@ export function VersionComparePanel({
 
         <div className="flex-1">
           <label className="block text-sm font-medium text-fg-muted dark:text-fg-subtle mb-1">
-            比较版本
+            {t('compareVersion')}
           </label>
           <select
             value={rightVersion}
@@ -305,7 +308,7 @@ export function VersionComparePanel({
           >
             {sortedVersions.map((v) => (
               <option key={v.version} value={v.version}>
-                v{v.version} - {v.status} {v.isDefault ? '(默认)' : ''}
+                v{v.version} - {v.status} {v.isDefault ? t('defaultSuffix') : ''}
               </option>
             ))}
           </select>
@@ -314,8 +317,8 @@ export function VersionComparePanel({
 
       {/* Stats */}
       <div className="flex items-center gap-4 px-6 py-2 text-sm border-b border-border dark:border-gray-700">
-        <span className="text-green-600 dark:text-green-400">+{stats.added} 行添加</span>
-        <span className="text-red-600 dark:text-red-400">-{stats.removed} 行删除</span>
+        <span className="text-green-600 dark:text-green-400">{t('linesAdded', { n: stats.added })}</span>
+        <span className="text-red-600 dark:text-red-400">{t('linesRemoved', { n: stats.removed })}</span>
       </div>
 
       {/* Diff View */}
