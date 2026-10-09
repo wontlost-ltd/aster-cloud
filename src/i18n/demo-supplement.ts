@@ -352,6 +352,26 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       thActions: 'Actions',
       status: { generating: 'Generating', completed: 'Completed', failed: 'Failed' },
       download: 'Download',
+      // 法规对照（ADR 0045 §5）：报告页按行展开注册表驱动的对照表。
+      mapping: {
+        toggle: 'Regulatory mapping',
+        loading: 'Loading mapping…',
+        notAvailable: 'This export has no regulatory mapping (created before schema 4).',
+        noFrameworks: 'No registered control with mapped clauses appears in this export.',
+        registryVersion: 'Controls registry {version}',
+        disclaimer: 'Describes only fields present in this bundle; not a compliance conclusion.',
+        columns: {
+          clause: 'Clause',
+          title: 'Requirement',
+          status: 'Status',
+          evidence: 'Evidence',
+        },
+        status: {
+          evidenced: 'Evidenced',
+          partial: 'Partial',
+          none: 'No evidence',
+        },
+      },
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
@@ -1008,6 +1028,26 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       thActions: '操作',
       status: { generating: '生成中', completed: '已完成', failed: '失败' },
       download: '下载',
+      // 法规对照（ADR 0045 §5）：报告页按行展开注册表驱动的对照表。
+      mapping: {
+        toggle: '法规对照',
+        loading: '正在加载对照…',
+        notAvailable: '此导出不含法规对照（早于第 4 版格式）。',
+        noFrameworks: '此导出中没有带对照条款的已登记控制点。',
+        registryVersion: '控制注册表 {version}',
+        disclaimer: '仅陈述证据包内已有字段，不构成合规结论。',
+        columns: {
+          clause: '条款',
+          title: '要求',
+          status: '状态',
+          evidence: '证据',
+        },
+        status: {
+          evidenced: '已证实',
+          partial: '部分',
+          none: '无证据',
+        },
+      },
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
@@ -1659,6 +1699,26 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       thActions: 'Aktionen',
       status: { generating: 'Wird erstellt', completed: 'Abgeschlossen', failed: 'Fehlgeschlagen' },
       download: 'Herunterladen',
+      // 法规对照（ADR 0045 §5）：报告页按行展开注册表驱动的对照表。
+      mapping: {
+        toggle: 'Regulatorische Zuordnung',
+        loading: 'Zuordnung wird geladen…',
+        notAvailable: 'Dieser Export enthält keine regulatorische Zuordnung (vor Schema 4 erstellt).',
+        noFrameworks: 'Dieser Export enthält keine registrierte Kontrolle mit zugeordneten Klauseln.',
+        registryVersion: 'Kontrollregister {version}',
+        disclaimer: 'Beschreibt nur Felder dieses Pakets; keine Compliance-Aussage.',
+        columns: {
+          clause: 'Klausel',
+          title: 'Anforderung',
+          status: 'Status',
+          evidence: 'Nachweis',
+        },
+        status: {
+          evidenced: 'Belegt',
+          partial: 'Teilweise',
+          none: 'Kein Nachweis',
+        },
+      },
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
@@ -2308,6 +2368,26 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       thActions: 'क्रियाएँ',
       status: { generating: 'बन रहा', completed: 'पूर्ण', failed: 'विफल' },
       download: 'डाउनलोड',
+      // 法规对照（ADR 0045 §5）：报告页按行展开注册表驱动的对照表。
+      mapping: {
+        toggle: 'Regulatory mapping',
+        loading: 'Loading mapping…',
+        notAvailable: 'This export has no regulatory mapping (created before schema 4).',
+        noFrameworks: 'No registered control with mapped clauses appears in this export.',
+        registryVersion: 'Controls registry {version}',
+        disclaimer: 'Describes only fields present in this bundle; not a compliance conclusion.',
+        columns: {
+          clause: 'Clause',
+          title: 'Requirement',
+          status: 'Status',
+          evidence: 'Evidence',
+        },
+        status: {
+          evidenced: 'Evidenced',
+          partial: 'Partial',
+          none: 'No evidence',
+        },
+      },
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {

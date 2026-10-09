@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
@@ -18,7 +18,9 @@ import {
   Stack,
 } from '@/components/ui';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
-import { summarizeStoredExport } from '@/services/evidence/stored';
+import { summarizeStoredExport, type StoredEvidenceSummary } from '@/services/evidence/stored';
+import type { RegulatoryMapping } from '@/services/evidence/regulatory-mapping';
+import { RegulatoryMappingTable, type RegulatoryMappingLabels } from '@/components/evidence/regulatory-mapping-table';
 
 interface PolicyOption {
   id: string;
@@ -32,9 +34,13 @@ interface EvidenceExportRow {
   period: string | null;
   count: number | null;
   bundleHash: string | null;
+  schemaVersion: StoredEvidenceSummary['schemaVersion'] | null;
   createdAt: string;
   completedAt: string | null;
 }
+
+// 已展开行的对照：undefined=未加载，'loading'=请求中，null=无对照或读取失败
+type MappingState = RegulatoryMapping | null | 'loading';
 
 interface Preview {
   count: number;
@@ -80,6 +86,40 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exports, setExports] = useState<EvidenceExportRow[]>(initialExports);
+  const [openMappingId, setOpenMappingId] = useState<string | null>(null);
+  const [mappings, setMappings] = useState<Record<string, MappingState>>({});
+
+  const mappingLabels: RegulatoryMappingLabels = {
+    notAvailable: t('mapping.notAvailable'),
+    noFrameworks: t('mapping.noFrameworks'),
+    // 占位符交给组件替换版本号，这里取原文
+    registryVersion: t.raw('mapping.registryVersion') as string,
+    disclaimer: t('mapping.disclaimer'),
+    columns: {
+      clause: t('mapping.columns.clause'),
+      title: t('mapping.columns.title'),
+      status: t('mapping.columns.status'),
+      evidence: t('mapping.columns.evidence'),
+    },
+    status: {
+      evidenced: t('mapping.status.evidenced'),
+      partial: t('mapping.status.partial'),
+      none: t('mapping.status.none'),
+    },
+  };
+
+  // 展开/收起某行对照；首次展开时才拉取，之后复用已取到的结果
+  const toggleMapping = async (id: string) => {
+    if (openMappingId === id) {
+      setOpenMappingId(null);
+      return;
+    }
+    setOpenMappingId(id);
+    if (mappings[id] !== undefined) return;
+    setMappings((m) => ({ ...m, [id]: 'loading' }));
+    const mapping = await fetchMapping(id);
+    setMappings((m) => ({ ...m, [id]: mapping }));
+  };
 
   const rangePayload = () => ({
     policyId: policyId || null,
@@ -132,6 +172,7 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
             period: e.period ?? null,
             count: summary?.count ?? null,
             bundleHash: summary?.bundleHash ?? null,
+            schemaVersion: summary?.schemaVersion ?? null,
             createdAt: e.createdAt,
             completedAt: e.completedAt,
           };
@@ -310,30 +351,60 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
               </thead>
               <tbody>
                 {exports.map((e) => (
-                  <tr key={e.id} className="border-b border-border">
-                    <td className="px-4 py-3">{e.title}</td>
-                    <td className="px-4 py-3 text-fg-muted">{e.count ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      <Badge variant={e.status === 'completed' ? 'success' : e.status === 'failed' ? 'danger' : 'neutral'}>
-                        {t(`status.${e.status}`)}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 text-fg-muted">
-                      {new Date(e.createdAt).toLocaleString(locale)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {e.status === 'completed' ? (
-                        <a
-                          href={`/api/reports/${encodeURIComponent(e.id)}/download`}
-                          className="text-xs text-primary hover:underline"
-                        >
-                          {t('download')}
-                        </a>
-                      ) : (
-                        <span className="text-xs text-fg-muted">—</span>
-                      )}
-                    </td>
-                  </tr>
+                  <Fragment key={e.id}>
+                    <tr className="border-b border-border">
+                      <td className="px-4 py-3">{e.title}</td>
+                      <td className="px-4 py-3 text-fg-muted">{e.count ?? '—'}</td>
+                      <td className="px-4 py-3">
+                        <Badge variant={e.status === 'completed' ? 'success' : e.status === 'failed' ? 'danger' : 'neutral'}>
+                          {t(`status.${e.status}`)}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-fg-muted">
+                        {new Date(e.createdAt).toLocaleString(locale)}
+                      </td>
+                      <td className="px-4 py-3">
+                        {e.status === 'completed' ? (
+                          <span className="flex items-center gap-3">
+                            <a
+                              href={`/api/reports/${encodeURIComponent(e.id)}/download`}
+                              className="text-xs text-primary hover:underline"
+                            >
+                              {t('download')}
+                            </a>
+                            {/* 只有 v4 证据包带注册表驱动的对照；更早版本禁用并提示原因 */}
+                            <button
+                              type="button"
+                              onClick={() => toggleMapping(e.id)}
+                              disabled={e.schemaVersion !== '4'}
+                              title={e.schemaVersion === '4' ? undefined : t('mapping.notAvailable')}
+                              aria-expanded={openMappingId === e.id}
+                              className="text-xs text-primary hover:underline disabled:cursor-not-allowed disabled:text-fg-muted disabled:no-underline"
+                            >
+                              {t('mapping.toggle')}
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="text-xs text-fg-muted">—</span>
+                        )}
+                      </td>
+                    </tr>
+                    {openMappingId === e.id && (
+                      <tr className="border-b border-border bg-bg-subtle">
+                        <td colSpan={5} className="px-4 py-3">
+                          {mappings[e.id] === 'loading' || mappings[e.id] === undefined ? (
+                            <p className="text-sm text-fg-muted">{t('mapping.loading')}</p>
+                          ) : (
+                            <RegulatoryMappingTable
+                              mapping={mappings[e.id] as RegulatoryMapping | null}
+                              locale={locale}
+                              labels={mappingLabels}
+                            />
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -364,4 +435,15 @@ function decisionVariant(k: (typeof DECISION_KEYS)[number]): 'success' | 'danger
 function defaultStart(): string {
   const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   return d.toISOString().slice(0, 10);
+}
+
+// 拉取单个导出的对照；非 2xx 或网络失败都按「无对照」呈现，不阻塞页面
+async function fetchMapping(id: string): Promise<RegulatoryMapping | null> {
+  try {
+    const r = await fetch(`/api/reports/${encodeURIComponent(id)}/mapping`);
+    if (!r.ok) return null;
+    return ((await r.json()) as { mapping: RegulatoryMapping | null }).mapping;
+  } catch {
+    return null;
+  }
 }

@@ -1,7 +1,7 @@
 ---
 title: "Kreditpilot: Nachweise zu Artikel 14"
 description: "Kreditpilot durchgängig ausführen und die Artikel-14-Zuordnung im Nachweispaket lesen — Feldnachweise, keine Konformitätsaussage."
-updated: 2026-10-09
+updated: 2026-10-10
 apiVersion: v1
 ---
 
@@ -56,35 +56,46 @@ Alles außer der Freigabe als Richtlinieneigentümer `cp-owner` erledigen (Proto
 2. Als Credit Officer anmelden und auf `/approvals` freigeben.
 3. Auf der Richtlinienseite mit **Compare versions** v1 → v2 vergleichen.
 4. Auf `/reports` das Nachweispaket als JSON exportieren.
+5. In der neuen Zeile auf **Regulatorische Zuordnung** klicken, um die Klauseltabelle ohne Öffnen der Datei zu sehen.
 
 ## Die Artikel-14-Zuordnung lesen
 
-Das Paket (Manifest `schemaVersion: "3"`) enthält `manifest.regulatoryMapping`:
+Die Zuordnung wird vom Kontrollregister gesteuert (`@aster-cloud/controls` 1.0.0, ADR 0045): Jede registrierte Kontrolle mit zugeordneten Klauseln bringt ihre eigene Klauselliste und Bewertungsregeln mit, und jeder Export wendet dieselben Regeln an. Auf `/reports` öffnet **Regulatorische Zuordnung** bei einem abgeschlossenen Export die Tabelle direkt; die Paketdatei enthält dieselben Daten.
+
+Das Paket (Manifest `schemaVersion: "4"`) enthält `manifest.regulatoryMapping`:
 
 ```json
 {
-  "framework": "EU_AI_ACT",
-  "article": "14",
-  "clauses": [
-    { "clause": "14(1)", "title": "…", "status": "evidenced",
-      "evidence": [{ "executionId": "…", "field": "controls" }] }
+  "registryVersion": "1.0.0",
+  "frameworks": [
+    {
+      "framework": "EU_AI_ACT",
+      "article": "14",
+      "control": "EU_AI_ACT:ART14",
+      "clauses": [
+        { "clause": "14(1)", "title": { "en": "…", "zh": "…", "de": "…" }, "status": "evidenced",
+          "evidence": [{ "executionId": "…", "field": "controls" }] }
+      ]
+    }
   ]
 }
 ```
 
-Jeder Klauselstatus ist `evidenced`, `partial` oder `none` und wird ausschließlich aus Feldern der Paketeinträge abgeleitet. Ohne Einträge ist jede Klausel `none`.
+`registryVersion` nennt die Registerversion, aus der die Regeln stammen. `frameworks` enthält eine Gruppe je registrierter Kontrolle mit zugeordneten Klauseln, die in den Paketeinträgen (`controls`) vorkommt; jede Gruppe trägt in `clauses[]` einen Status `evidenced`, `partial` oder `none`, der ausschließlich aus Feldern der Paketeinträge abgeleitet wird, sowie `evidence`-Verweise (`executionId` + `field`). Ganz ohne Einträge wird jede Gruppe aufgeführt und jede Klausel ist `none`; gibt es Einträge, aber keiner trägt eine solche Kontrolle, ist `frameworks` leer. Pakete der Schemata 1–3 enthalten keine registergesteuerte Zuordnung, und die Berichtsseite weist darauf hin.
+
+Ein „verifizierter Prüfer“ ist unten ein `reviewers`-Element mit `source: "guard-approval"` und `roleVerified: true`; Nachweise und Freigaben auf Versionsebene zählen nicht, weil sie nicht zeigen, dass jemand genau diese Ausgabe geprüft hat.
 
 | Klausel | Regel (nur Eintragsfelder) | Pilotlauf | Warum nur partial / none |
 |---|---|---|---|
 | 14(1) Aufsicht durch Gestaltung | `controls` eines Eintrags enthält `EU_AI_ACT:ART14` → evidenced, sonst none | evidenced | — |
 | 14(2) Risikokonfiguration | ein Eintrag mit `outcome ∈ {REQUIRE_APPROVAL, ESCALATE}` existiert → evidenced, sonst none | evidenced | — |
 | 14(3) eingebaute Maßnahmen | wie 14(1) **und** ein Eintrag mit `reviewers.length > 0` → evidenced; nur eines von beiden → partial | evidenced | — |
-| 14(4)(a) Verständnis | ein Eintrag mit `whatIf` ungleich null → partial, sonst none | partial | Vergleichbarkeit ist nicht dasselbe wie Verständnis |
+| 14(4)(a) Verständnis | ein Eintrag mit abgeschlossenem What-If-Vergleich (`whatIf.targetOutcome` weder null noch `ERROR`) → partial, sonst none | partial | Vergleichbarkeit ist nicht dasselbe wie Verständnis |
 | 14(4)(b) Automatisierungsbias | kein Feld kann es belegen | none | immer none |
 | 14(4)(c) Ausgabe interpretieren | `ruleId` und `reasonCodes` beide nicht leer → evidenced, sonst none | evidenced | — |
-| 14(4)(d) übersteuern / nicht verwenden | `reviewers` enthält `roleVerified: true` mit `outcome = REJECTED` → evidenced; nur APPROVED → partial; keines → none | partial | das Skript gibt nur frei, es lehnt nie ab |
-| 14(4)(e) eingreifen / anhalten | `outcome = REQUIRE_APPROVAL` und `reviewers.length > 0` → evidenced; blockiert ohne Prüfung → partial | evidenced | — |
-| 14(5) Vier-Augen-Prüfung | ein Eintrag mit `reviewers.length ≥ 2` → evidenced, sonst none | none | der Pilot hat nur einen Prüfer |
+| 14(4)(d) übersteuern / nicht verwenden | ein verifizierter Prüfer mit `outcome = REJECTED` → evidenced; nur APPROVED → partial; keines → none | partial | das Skript gibt nur frei, es lehnt nie ab |
+| 14(4)(e) eingreifen / anhalten | irgendein verifizierter Prüfer → evidenced (Nachweis: die `reviewers`-Verweise); `outcome = REQUIRE_APPROVAL` ohne Prüfer → partial | evidenced | — |
+| 14(5) Vier-Augen-Prüfung | ein Eintrag mit mindestens zwei verifizierten Prüfern → evidenced, sonst none | none | der Pilot hat nur einen Prüfer |
 
 Jeder Eintrag trägt außerdem `whatIf: { batchId, baseOutcome, targetOutcome, baseLegacy } | null`. Schlägt die Replay-Abfrage fehl, ist jedes `whatIf` null, `manifest.notes.whatIfUnavailable` zählt die Ausfälle, der Export wird trotzdem abgeschlossen und 14(4)(a) fällt auf none zurück.
 

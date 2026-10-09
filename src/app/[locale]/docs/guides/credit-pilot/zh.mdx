@@ -1,7 +1,7 @@
 ---
 title: "信贷试点：第 14 条证据"
 description: "端到端跑通信贷试点——播种团队、执行信贷策略、以信贷专员身份审批、对比策略版本，并解读证据包中的欧盟 AI 法案第 14 条对照。"
-updated: 2026-10-09
+updated: 2026-10-10
 apiVersion: v1
 ---
 
@@ -56,35 +56,46 @@ CP_API_KEY=<属主 key> NEXTAUTH_SECRET=<secret> pnpm tsx scripts/run-credit-pil
 2. 以信贷专员登录，在 `/approvals` 批准。
 3. 在策略页用 **Compare versions** 对比 v1 → v2。
 4. 在 `/reports` 以 JSON 导出证据包。
+5. 在新导出行点 **法规对照**，无需打开文件即可查看条款表。
 
 ## 对照表怎么读
 
-证据包（manifest `schemaVersion: "3"`）含 `manifest.regulatoryMapping`：
+对照由控制注册表（`@aster-cloud/controls` 1.0.0，ADR 0045）驱动：每个带对照条款的已登记控制点自带条款清单与判定规则，所有导出按同一套规则判定。在 `/reports` 对已完成的导出点 **法规对照** 即可直接展开查看；证据包文件内是同一份数据。
+
+证据包（manifest `schemaVersion: "4"`）含 `manifest.regulatoryMapping`：
 
 ```json
 {
-  "framework": "EU_AI_ACT",
-  "article": "14",
-  "clauses": [
-    { "clause": "14(1)", "title": "…", "status": "evidenced",
-      "evidence": [{ "executionId": "…", "field": "controls" }] }
+  "registryVersion": "1.0.0",
+  "frameworks": [
+    {
+      "framework": "EU_AI_ACT",
+      "article": "14",
+      "control": "EU_AI_ACT:ART14",
+      "clauses": [
+        { "clause": "14(1)", "title": { "en": "…", "zh": "…", "de": "…" }, "status": "evidenced",
+          "evidence": [{ "executionId": "…", "field": "controls" }] }
+      ]
+    }
   ]
 }
 ```
 
-每款状态为 `evidenced`、`partial` 或 `none`，只依据证据包条目上的字段判定。条目为空时全部为 `none`。
+`registryVersion` 标明判定规则来自哪个注册表版本。`frameworks` 为证据包条目（`controls`）中出现的、带对照条款的每个已登记控制点各列一组；每组 `clauses[]` 的状态为 `evidenced`、`partial` 或 `none`，只依据证据包条目上的字段判定，并附 `evidence` 引用（`executionId` + `field`）。条目为空时列出全部控制点组且每款为 `none`；有条目但都不带这类控制点时 `frameworks` 为空。第 1–3 版证据包不含注册表驱动的对照，报告页会如实提示。
+
+下表中「已验证复核人」指 `reviewers` 中 `source: "guard-approval"` 且 `roleVerified: true` 的项；版本级的 proof 与审批不计入，因为它们不能说明有人复核过这条输出。
 
 | 款 | 判定（只看条目字段） | 试点结果 | 为什么只是 partial / none |
 |---|---|---|---|
 | 14(1) 监督设计 | 任一条目 `controls` 含 `EU_AI_ACT:ART14` → evidenced，否则 none | evidenced | — |
 | 14(2) 风险配置 | 存在 `outcome ∈ {REQUIRE_APPROVAL, ESCALATE}` 条目 → evidenced，否则 none | evidenced | — |
 | 14(3) 监督措施内建 | 同 14(1) **且**存在 `reviewers.length > 0` → evidenced；仅满足其一 → partial | evidenced | — |
-| 14(4)(a) 理解能力 | 存在 `whatIf` 非 null 条目 → partial，否则 none | partial | 可比对不等于理解 |
+| 14(4)(a) 理解能力 | 存在已完成的 What-If 比对（`whatIf.targetOutcome` 非 null 且非 `ERROR`）→ partial，否则 none | partial | 可比对不等于理解 |
 | 14(4)(b) 自动化偏见 | 无可证字段 | none | 恒 none |
 | 14(4)(c) 解读输出 | `ruleId` 与 `reasonCodes` 均非空 → evidenced，否则 none | evidenced | — |
-| 14(4)(d) 否决/不使用 | `reviewers` 含 `roleVerified: true` 且 `outcome = REJECTED` → evidenced；只有 APPROVED → partial；都没有 → none | partial | 脚本只做批准，从不拒绝 |
-| 14(4)(e) 干预/停止 | `outcome = REQUIRE_APPROVAL` 且 `reviewers.length > 0` → evidenced；有阻断无复核 → partial | evidenced | — |
-| 14(5) 双人验证 | 任一条目 `reviewers.length ≥ 2` → evidenced，否则 none | none | 试点只有一名复核人 |
+| 14(4)(d) 否决/不使用 | 已验证复核人且 `outcome = REJECTED` → evidenced；只有 APPROVED → partial；都没有 → none | partial | 脚本只做批准，从不拒绝 |
+| 14(4)(e) 干预/停止 | 存在已验证复核人 → evidenced（证据为 `reviewers` 引用）；只有 `outcome = REQUIRE_APPROVAL` 而无复核 → partial | evidenced | — |
+| 14(5) 双人验证 | 同一条目至少两名已验证复核人 → evidenced，否则 none | none | 试点只有一名复核人 |
 
 每个条目还带 `whatIf: { batchId, baseOutcome, targetOutcome, baseLegacy } | null`。回放查询失败时所有 `whatIf` 为 null，`manifest.notes.whatIfUnavailable` 记录次数，导出照常完成，14(4)(a) 退化为 none。
 

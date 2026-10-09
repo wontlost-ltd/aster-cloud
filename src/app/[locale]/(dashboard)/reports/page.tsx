@@ -38,6 +38,7 @@ export default async function ReportsPage({ params }: PageProps) {
       period: e.period ?? null,
       count: summary?.count ?? null,
       bundleHash: summary?.bundleHash ?? null,
+      schemaVersion: summary?.schemaVersion ?? null,
       createdAt: e.createdAt.toISOString(),
       completedAt: e.completedAt?.toISOString() ?? null,
     };

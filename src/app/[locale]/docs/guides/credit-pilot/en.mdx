@@ -1,7 +1,7 @@
 ---
 title: "Credit pilot: Article 14 evidence"
 description: "Run the credit pilot end to end and read the EU AI Act Article 14 mapping in the evidence bundle — field evidence, not a compliance conclusion."
-updated: 2026-10-09
+updated: 2026-10-10
 apiVersion: v1
 ---
 
@@ -56,35 +56,46 @@ Do everything except the approval as the policy owner `cp-owner` (logs page, **C
 2. Sign in as the Credit Officer and approve it on `/approvals`.
 3. On the policy page, use **Compare versions** for v1 → v2.
 4. On `/reports`, export the evidence bundle as JSON.
+5. On the new row, click **Regulatory mapping** to view the clause table without opening the file.
 
 ## Reading the Article 14 mapping
 
-The bundle (manifest `schemaVersion: "3"`) contains `manifest.regulatoryMapping`:
+The mapping is driven by the controls registry (`@aster-cloud/controls` 1.0.0, ADR 0045): every registered control that has mapped clauses brings its own clause list and judging rules, and every export applies the same rules. On `/reports`, click **Regulatory mapping** on a completed export to view the table directly; the bundle file carries the same data.
+
+The bundle (manifest `schemaVersion: "4"`) contains `manifest.regulatoryMapping`:
 
 ```json
 {
-  "framework": "EU_AI_ACT",
-  "article": "14",
-  "clauses": [
-    { "clause": "14(1)", "title": "…", "status": "evidenced",
-      "evidence": [{ "executionId": "…", "field": "controls" }] }
+  "registryVersion": "1.0.0",
+  "frameworks": [
+    {
+      "framework": "EU_AI_ACT",
+      "article": "14",
+      "control": "EU_AI_ACT:ART14",
+      "clauses": [
+        { "clause": "14(1)", "title": { "en": "…", "zh": "…", "de": "…" }, "status": "evidenced",
+          "evidence": [{ "executionId": "…", "field": "controls" }] }
+      ]
+    }
   ]
 }
 ```
 
-Each clause status is `evidenced`, `partial` or `none`, derived only from fields on the bundle entries. With no entries, every clause is `none`.
+`registryVersion` names the registry release the rules came from. `frameworks` lists one group per registered control that has mapped clauses and appears in the bundle's entries (`controls`); each group's `clauses[]` carries a status of `evidenced`, `partial` or `none`, derived only from fields on the bundle entries, plus `evidence` references (`executionId` + `field`). With no entries at all, every group is listed and every clause is `none`; when entries exist but none carries such a control, `frameworks` is empty. Bundles from schema 1–3 have no registry-driven mapping and the reports page says so.
+
+A "verified reviewer" below is a `reviewers` item with `source: "guard-approval"` and `roleVerified: true`; version-level proofs and approvals do not count, because they do not show that anyone reviewed that particular output.
 
 | Clause | Rule (entry fields only) | Pilot run | Why only partial / none |
 |---|---|---|---|
 | 14(1) oversight by design | any entry's `controls` contains `EU_AI_ACT:ART14` → evidenced, otherwise none | evidenced | — |
 | 14(2) risk configuration | an entry with `outcome ∈ {REQUIRE_APPROVAL, ESCALATE}` exists → evidenced, otherwise none | evidenced | — |
 | 14(3) measures built in | as 14(1) **and** an entry with `reviewers.length > 0` → evidenced; only one of the two → partial | evidenced | — |
-| 14(4)(a) understanding | an entry with non-null `whatIf` → partial, otherwise none | partial | being able to compare versions is not the same as understanding the system |
+| 14(4)(a) understanding | an entry with a completed What-If comparison (`whatIf.targetOutcome` neither null nor `ERROR`) → partial, otherwise none | partial | being able to compare versions is not the same as understanding the system |
 | 14(4)(b) automation bias | no field can evidence it | none | always none |
 | 14(4)(c) interpreting output | `ruleId` and `reasonCodes` both non-empty → evidenced, otherwise none | evidenced | — |
-| 14(4)(d) override / not use | `reviewers` contains `roleVerified: true` with `outcome = REJECTED` → evidenced; only APPROVED → partial; neither → none | partial | the script only approves, it never rejects |
-| 14(4)(e) intervene / stop | `outcome = REQUIRE_APPROVAL` and `reviewers.length > 0` → evidenced; blocked without review → partial | evidenced | — |
-| 14(5) two-person verification | any entry with `reviewers.length ≥ 2` → evidenced, otherwise none | none | the pilot uses a single reviewer |
+| 14(4)(d) override / not use | a verified reviewer with `outcome = REJECTED` → evidenced; only APPROVED → partial; neither → none | partial | the script only approves, it never rejects |
+| 14(4)(e) intervene / stop | any verified reviewer → evidenced (evidence: the `reviewers` refs); `outcome = REQUIRE_APPROVAL` without one → partial | evidenced | — |
+| 14(5) two-person verification | an entry with at least two verified reviewers → evidenced, otherwise none | none | the pilot uses a single reviewer |
 
 Each entry also carries `whatIf: { batchId, baseOutcome, targetOutcome, baseLegacy } | null`. If the replay lookup fails, every `whatIf` is null, `manifest.notes.whatIfUnavailable` counts the misses, the export still completes, and 14(4)(a) degrades to none.
 

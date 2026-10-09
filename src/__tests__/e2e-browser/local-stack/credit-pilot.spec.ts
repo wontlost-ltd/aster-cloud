@@ -101,7 +101,7 @@ test('信贷试点：执行、审批、What-If、证据导出与 Article 14 对�
       expect(count).toBeGreaterThanOrEqual(1);
     }));
 
-  await test.step('导出证据包 v3 并对照 Article 14 款项', () =>
+  await test.step('导出证据包 v4 并对照 Article 14 款项', () =>
     asUser(browser, 'cp-owner', async (page) => {
       await page.goto('/en/reports');
       await page.getByLabel('Policy').selectOption({ label: 'Credit pilot (ADR 0044)' });
@@ -115,5 +115,11 @@ test('信贷试点：执行、审批、What-If、证据导出与 Article 14 对�
       expect(bundle.manifest.schemaVersion).toBe('4');
       expect(diffClauses(articleClauses(bundle.manifest.regulatoryMapping), EXPECTED_CLAUSE_STATUS)).toEqual([]);
       expect(bundle.entries.some((e) => e.whatIf != null)).toBe(true);
+
+      // 报告页第一行（刚导出的 v4）展开对照，与证据包内的判定一致
+      const firstRow = page.locator('tbody tr').first();
+      await firstRow.getByRole('button', { name: 'Regulatory mapping' }).click();
+      await expect(page.getByTestId('clause-row-14(4)(d)').getByRole('cell').nth(2)).toHaveText('Partial');
+      await expect(page.getByTestId('clause-row-14(5)').getByRole('cell').nth(2)).toHaveText('No evidence');
     }));
 });
