@@ -29,7 +29,7 @@
  *   1 = 出现新缺键（或真相源/基线文件读不到）
  */
 
-import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, realpathSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 
@@ -145,6 +145,14 @@ function hasLeaf(tree, path) {
   return typeof cur === 'string';
 }
 
+/** 从 `start`（开引号位置）跳到匹配的未转义闭引号之后；未闭合则返回文本末尾。 */
+function skipString(text, start) {
+  const quote = text[start];
+  let i = start + 1;
+  while (i < text.length && text[i] !== quote) i += text[i] === '\\' ? 2 : 1;
+  return i + 1;
+}
+
 /**
  * 展开单行内联对象 `{ a: 'x', b: { c: "y" } }` 的叶子键路径。
  *
@@ -165,13 +173,13 @@ function collectInlineKeys(text, base, out) {
       i += obj[0].length;
     } else if (leaf) {
       out.add([...path, leaf[1]].join('.'));
-      i += leaf[0].length;
-      const quote = leaf[2];
-      while (i < text.length && text[i] !== quote) i += text[i] === '\\' ? 2 : 1;
-      i++;
+      i = skipString(text, i + leaf[0].length - 1);
     } else if (/^\s*\}/.test(rest)) {
       if (opened.length) { opened.pop(); path.pop(); }
       i += rest.indexOf('}') + 1;
+    } else if (/['"`]/.test(text[i])) {
+      // 非字面量值（三元、数组、调用）里的字符串也整体跳过，避免其中的 `word: 'x'` 被当成键。
+      i = skipString(text, i);
     } else {
       i++;
     }
@@ -189,9 +197,16 @@ export function parseSupplementKeys(src) {
   if (start < 0) return new Set();
   let depth = 0;
   let end = start;
+  // 配平时跳过字符串与 // 注释：值里不成对的 `{` / `}` 不应改变深度。
   for (let i = src.indexOf('{', start); i < src.length; i++) {
-    if (src[i] === '{') depth++;
-    else if (src[i] === '}') {
+    const ch = src[i];
+    if (ch === "'" || ch === '"' || ch === '`') i = skipString(src, i) - 1;
+    else if (ch === '/' && src[i + 1] === '/') {
+      const nl = src.indexOf('\n', i);
+      i = nl < 0 ? src.length : nl;
+    }
+    else if (ch === '{') depth++;
+    else if (ch === '}') {
       depth--;
       if (depth === 0) { end = i; break; }
     }
@@ -327,6 +342,8 @@ function main() {
 }
 
 // 仅作为 CLI 直接运行时执行；被测试 import 时不产生副作用。
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Node 会解析 import.meta.url 的符号链接但不解析 argv[1]，经软链接检出运行时
+// 若直接比较会永远不相等、main() 不执行、门禁静默 exit 0（失败开放），故先 realpath。
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   main();
 }

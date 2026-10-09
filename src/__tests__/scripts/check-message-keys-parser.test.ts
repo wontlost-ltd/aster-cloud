@@ -36,4 +36,25 @@ describe('parseSupplementKeys', () => {
   it('只读取 en 子树', () => {
     expect(keys(`    only: 'x',`)).toEqual(['only']);
   });
+
+  it('字符串值内的 { : , 不影响结构，也不产生多余键', () => {
+    expect(keys(`    a: { x: 'has { and : and , inside', y: "{count} items" },`)).toEqual(['a.x', 'a.y']);
+  });
+
+  it('值里的转义引号不会提前结束字符串，其后的 `z: 1` 不成为键', () => {
+    expect(keys(`    a: { x: 'it\\'s: {z: 1}', y: 'ok' },`)).toEqual(['a.x', 'a.y']);
+  });
+
+  it('行尾 // 注释先被剥离，内联对象照常解析', () => {
+    expect(keys(`    a: { x: 'X', y: 'Y' }, // c`)).toEqual(['a.x', 'a.y']);
+  });
+
+  it('字符串里含 // 时行被截断、对象无法闭合：整行丢弃（失败安全：宁缺不造键）', () => {
+    // 丢键只会让门禁多报缺失、促使人工核对；造出幻影键则会漏报，故这是可接受方向。
+    expect(keys(`    a: { x: 'https://e.com', y: 'Y' },`)).toEqual([]);
+  });
+
+  it('非字面量值（三元）只登记其键，值内字符串里的 `foo: "bar"` 不成为键', () => {
+    expect(keys(`    a: { x: cond ? 'foo: "bar"' : 'z', y: 'Y' },`)).toEqual(['a.y']);
+  });
 });
