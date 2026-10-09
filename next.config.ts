@@ -132,10 +132,10 @@ const nextConfig: NextConfig = {
   // 仅 dev 生效：webpack dev 默认只缓冲最近 5 个按需编译的入口、闲置 60s 即释放，
   // 本地栈 E2E 预热的页面/路由会被后续编译挤掉并在用例中途重编译（冷启动超时）。
   // 放宽缓冲与闲置时长，让预热结果在整轮用例内保持有效；生产构建不读此项。
-  onDemandEntries: {
-    maxInactiveAge: 30 * 60 * 1000,
-    pagesBufferLength: 100,
-  },
+  // 只在本地栈 E2E 容器（启动时 -e E2E_LOCAL_STACK=1）启用，日常 dev 保持默认。
+  ...(process.env.E2E_LOCAL_STACK === '1'
+    ? { onDemandEntries: { maxInactiveAge: 30 * 60 * 1000, pagesBufferLength: 100 } }
+    : {}),
   // Externalize heavy client-only packages to prevent bundling issues
   serverExternalPackages: [
     'monaco-editor',

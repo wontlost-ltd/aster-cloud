@@ -38,6 +38,19 @@ const base = {
   deprecatedAt: null, deprecatedBy: null, archivedAt: null, archivedBy: null,
 };
 
+describe('版本 UI 文案 key 四语齐备', () => {
+  it('★common.cancel 与 versionCompare/versions 补充键在四个语种都有定义', () => {
+    const sup = DEMO_SUPPLEMENT as unknown as Record<string, Record<string, Record<string, Record<string, unknown>>>>;
+    for (const locale of ['en', 'zh', 'de', 'hi']) {
+      expect(sup[locale].common?.cancel, `${locale} common.cancel`).toBeTruthy();
+      const compare = sup[locale].policies.versionCompare ?? {};
+      const missing = Object.keys(sup.en.policies.versionCompare).filter((k) => !(k in compare));
+      expect(missing, `${locale} versionCompare 缺 key`).toEqual([]);
+      expect(Object.keys(sup[locale].policies.versions ?? {})).toEqual(Object.keys(sup.en.policies.versions));
+    }
+  });
+});
+
 describe('版本 UI 英文渲染', () => {
   it('★VersionComparePanel：标题/基准/比较版本为英文，无中文', async () => {
     const versions = [
@@ -69,6 +82,8 @@ describe('版本 UI 英文渲染', () => {
     expect(screen.getByText('Deprecate')).toBeTruthy();
     expect(screen.getByText('Archive')).toBeTruthy();
     expect(screen.getByText('2 approval records')).toBeTruthy();
+    // 文案缺失时 next-intl 会回显原始 key（如 policies.versions.actions.archive）
+    expect(container.textContent).not.toMatch(/policies\.|common\./);
     expect(CJK.test(container.textContent ?? '')).toBe(false);
   });
 });

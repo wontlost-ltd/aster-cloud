@@ -5,6 +5,7 @@ import { eq, and, isNull } from 'drizzle-orm';
 import { getTranslations } from 'next-intl/server';
 import { queryExecutionLogs, getExecutionStats } from '@/lib/policy-execution-log';
 import { LogsContent } from './logs-content';
+import { toClientLog } from './log-mapping';
 
 async function getInitialLogsData(userId: string, policyId: string) {
   // 并行获取策略信息、日志和统计
@@ -50,20 +51,22 @@ export default async function PolicyLogsPage({
   }
 
   // 序列化日志数据（Date -> string）
-  const initialLogs = logsResult.items.map((item) => ({
-    id: item.id,
-    success: item.success,
-    decision: item.decision,
-    input: item.input,
-    output: item.output,
-    error: item.error,
-    duration: item.durationMs,
-    source: item.source,
-    policyVersion: item.policyVersion,
-    createdAt: item.createdAt.toISOString(),
-    runnerParityStatus: item.runnerParityStatus,
-    metadata: item.metadata,
-  }));
+  const initialLogs = logsResult.items.map((item) =>
+    toClientLog({
+      id: item.id,
+      success: item.success,
+      decision: item.decision,
+      input: item.input,
+      output: item.output,
+      error: item.error,
+      durationMs: item.durationMs,
+      source: item.source,
+      policyVersion: item.policyVersion,
+      createdAt: item.createdAt.toISOString(),
+      runnerParityStatus: item.runnerParityStatus,
+      metadata: item.metadata,
+    }),
+  );
 
   const initialStats = {
     totalExecutions: stats.totalExecutions,

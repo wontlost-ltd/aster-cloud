@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { formatDate } from '@/lib/format';
 import { Link } from '@/i18n/navigation';
 import { Breadcrumbs, Container, PageHeader } from '@/components/ui';
+import { toClientLog } from './log-mapping';
 
 type ExecutionSource = 'WEB' | 'API' | 'CLI' | 'dashboard' | 'api' | 'playground';
 
@@ -55,11 +56,6 @@ export function formatDuration(ms: unknown): string {
   if (typeof ms !== 'number' || !Number.isFinite(ms)) return '—';
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
-}
-
-/** API 行（durationMs）→ 组件行（duration），与服务端 page.tsx 的序列化保持同一字段名。 */
-function toClientLog(item: Omit<ExecutionLog, 'duration'> & { durationMs?: number; duration?: number }): ExecutionLog {
-  return { ...item, duration: item.durationMs ?? item.duration ?? Number.NaN };
 }
 
 /** 日志行的展示分类：值输出 / 待人工处置（需批准、升级）/ 通过 / 失败。 */
@@ -390,7 +386,7 @@ export function LogsContent({
       if (!res.ok) throw new Error('Failed to fetch logs');
 
       const data = await res.json();
-      setLogs((data.items || []).map(toClientLog));
+      setLogs((data.items || []).map(toClientLog) as ExecutionLog[]);
       setTotalPages(data.pagination?.totalPages || 1);
     } catch (err) {
       // 被取消不是错误：这是更新的请求接手了，静默返回并把 loading
@@ -523,7 +519,8 @@ export function LogsContent({
                 {stats.successCount} / {stats.successCount + stats.failureCount}
               </p>
               <p className="mt-1 text-xs text-emerald-200" data-testid="logs-rate-note">
-                {t.logs.pendingLabel}: {(stats.pendingCount ?? 0).toLocaleString()} · {t.logs.rateNote}
+                {t.logs.pendingLabel}: {(stats.pendingCount ?? 0).toLocaleString()} · {t.logs.computed}:{' '}
+                {(stats.indeterminateCount ?? 0).toLocaleString()} · {t.logs.rateNote}
               </p>
             </div>
           </div>

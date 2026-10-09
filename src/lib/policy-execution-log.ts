@@ -360,7 +360,8 @@ export interface ExecutionStats {
 /**
  * 按决策口径派生统计（纯函数，便于单测）：
  * - 通过 = approved（success=true）；
- * - 失败 = 拒绝 + 错误 = 总数 - 通过 - 无决策 - 待处置；
+ * - 失败 = 拒绝 + 错误 = 总数 - 通过 - 无决策 - 待处置；按余数计算，因此 decision 为 null 的
+ *   历史行若 success=false 也落入「失败」（success=true 的 null 行计入通过）；
  * - 通过率分母只含已定论的决策（通过 + 失败），待处置（require_approval/escalate）
  *   尚无结论、无决策（indeterminate）是值输出，二者都不参与，避免把待审批行算成 0%。
  */

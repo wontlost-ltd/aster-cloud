@@ -5,6 +5,9 @@
  * 第一个用例会撞上 15s navigationTimeout。这里在任何用例前先把用例与页面调用的 API 路由、
  * 再按用例登录态把会访问的页面各访问一次，并给足超时，让编译成本落在预热阶段。
  *
+ * 预热要在整轮用例内有效，依赖 aster-cloud 容器以 `-e E2E_LOCAL_STACK=1` 启动（next.config.ts 据此放宽
+ * webpack dev 的 onDemandEntries 缓冲，否则预热入口会被挤掉）。
+ *
  * 只在 BASE_CLOUD 含 localhost 时执行；生产冒烟直接返回，不产生任何请求。
  */
 import { chromium, request, type Browser } from '@playwright/test';

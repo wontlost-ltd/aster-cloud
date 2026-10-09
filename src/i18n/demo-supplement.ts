@@ -456,6 +456,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         saving: 'Saving…',
       },
     },
+    // 通用取消（版本列表确认框等；hi 语言包缺此键）。
+    common: { cancel: 'Cancel' },
     policies: {
       execute: {
         // 值/计算输出策略（如 greet 返回文本）：执行成功但无 allow/deny 语义。
@@ -1101,6 +1103,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         saving: '保存中…',
       },
     },
+    // 通用取消（版本列表确认框等；hi 语言包缺此键）。
+    common: { cancel: '取消' },
     policies: {
       execute: {
         computed: '已计算',
@@ -1744,6 +1748,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         saving: 'Speichern…',
       },
     },
+    // 通用取消（版本列表确认框等；hi 语言包缺此键）。
+    common: { cancel: 'Abbrechen' },
     policies: {
       execute: {
         computed: 'Berechnet',
@@ -2385,6 +2391,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         saving: 'सहेज रहे हैं…',
       },
     },
+    // 通用取消（版本列表确认框等；hi 语言包缺此键）。
+    common: { cancel: 'रद्द करें' },
     policies: {
       execute: {
         computed: 'परिकलित',

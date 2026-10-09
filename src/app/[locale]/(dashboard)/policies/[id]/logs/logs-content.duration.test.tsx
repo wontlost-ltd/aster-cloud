@@ -58,7 +58,7 @@ describe('LogsContent 时长与统计', () => {
         locale="en"
         initialLogs={[mkLog('e1', undefined), mkLog('e2', 42)]}
         initialStats={{
-          totalExecutions: 5, successCount: 1, failureCount: 0, pendingCount: 4,
+          totalExecutions: 6, successCount: 1, failureCount: 0, pendingCount: 4, indeterminateCount: 1,
           avgDurationMs: Number.NaN, successRate: 100, bySource: [], recentTrend: [],
         }}
         initialTotalPages={1}
@@ -68,5 +68,6 @@ describe('LogsContent 时长与统计', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText('42ms')).toBeTruthy();
     expect(screen.getByTestId('logs-rate-note').textContent).toContain('Pending: 4');
+    expect(screen.getByTestId('logs-rate-note').textContent).toContain('Computed: 1');
   });
 });
