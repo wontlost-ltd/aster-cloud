@@ -93,8 +93,10 @@ CP_API_KEY=<分析员 key> NEXTAUTH_SECRET=<secret> pnpm tsx scripts/run-credit-
 - **收据**——绕开 Aster Cloud，直接向 aster-api 复取签名收据：
 
   ```bash
-  curl -H "X-Api-Key: $CP_API_KEY" \
+  curl -H "Authorization: Bearer $CP_API_KEY" \
     "$ASTER_API/api/v1/audit/receipts?correlationIds=<id1>,<id2>"
   ```
+
+  `$ASTER_API` 为 aster-api 基地址（本地栈：`http://localhost:8080`）。
 
 - **包哈希**——按 `manifest.notes.verification` 的步骤重算 `bundleHash`。哈希覆盖 `entries`（含 `whatIf`）；manifest（因而对照表与 notes）不进哈希。

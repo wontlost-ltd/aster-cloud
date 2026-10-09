@@ -93,8 +93,10 @@ Again: this table describes the evidence present in the bundle. Whether a deploy
 - **Receipts** — re-fetch the signed receipts directly from aster-api, independent of Aster Cloud:
 
   ```bash
-  curl -H "X-Api-Key: $CP_API_KEY" \
+  curl -H "Authorization: Bearer $CP_API_KEY" \
     "$ASTER_API/api/v1/audit/receipts?correlationIds=<id1>,<id2>"
   ```
+
+  `$ASTER_API` is the aster-api base URL (local stack: `http://localhost:8080`).
 
 - **Bundle hash** — follow the recipe in `manifest.notes.verification` to recompute `bundleHash`. The hash covers `entries` (including `whatIf`); the manifest, and therefore the mapping and notes, are not part of the hash.

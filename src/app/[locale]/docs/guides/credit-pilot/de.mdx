@@ -93,8 +93,10 @@ Nochmals: Diese Tabelle beschreibt die im Paket vorhandenen Nachweise. Ob ein Ei
 - **Belege** — die signierten Belege unabhängig von Aster Cloud direkt bei aster-api abrufen:
 
   ```bash
-  curl -H "X-Api-Key: $CP_API_KEY" \
+  curl -H "Authorization: Bearer $CP_API_KEY" \
     "$ASTER_API/api/v1/audit/receipts?correlationIds=<id1>,<id2>"
   ```
+
+  `$ASTER_API` ist die Basis-URL von aster-api (lokaler Stack: `http://localhost:8080`).
 
 - **Paket-Hash** — `bundleHash` nach der Anleitung in `manifest.notes.verification` neu berechnen. Der Hash umfasst `entries` (einschließlich `whatIf`); das Manifest und damit Zuordnung und Notes gehen nicht in den Hash ein.
