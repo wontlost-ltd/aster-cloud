@@ -58,8 +58,9 @@ test('信贷试点：执行、审批、What-If、证据导出与 Article 14 对�
     return id;
   });
 
+  // 日志接口按 policies.userId 校验归属，团队成员不可读，故以策略属主 cp-owner 查看
   await test.step('日志最新行带待审批入口', () =>
-    asUser(browser, 'cp-analyst', async (page) => {
+    asUser(browser, 'cp-owner', async (page) => {
       await page.goto(`/en/policies/${POLICY}/logs`);
       const link = page.locator(`a[href$="/approvals?decisionId=${decisionId}"]`);
       await expect(link).toBeVisible();
@@ -80,8 +81,9 @@ test('信贷试点：执行、审批、What-If、证据导出与 Article 14 对�
       expect(status).toBe('APPROVED');
     }));
 
+  // What-If 按策略属主限定租户（ADR 0034 §4.3），仅 cp-owner 能取到目标版本
   await test.step('What-If v1→v2 出现 Needs approval → Allow 转移', () =>
-    asUser(browser, 'cp-analyst', async (page) => {
+    asUser(browser, 'cp-owner', async (page) => {
       await page.goto(`/en/policies/${POLICY}`);
       await page.getByRole('button', { name: 'Compare versions' }).click();
       const selects = page.locator('select').filter({ has: page.locator('option', { hasText: /^v\d+ - / }) });

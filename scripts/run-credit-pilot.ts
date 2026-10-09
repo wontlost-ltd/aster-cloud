@@ -96,9 +96,9 @@ async function stepApprove(correlationId: string): Promise<void> {
   log(2, `已批准 ${item.id}`);
 }
 
-// 第 3 步：分析员发起 What-If 批量并轮询至完成
+// 第 3 步：What-If 按策略属主限定租户（ADR 0034 §4.3），分析员无法取到目标版本，故以 cp-owner 发起并轮询
 async function stepWhatIf(): Promise<void> {
-  const auth = await cookieAuth('analystId');
+  const auth = await cookieAuth('ownerId');
   const base = `/api/v1/policies/${POLICY}/whatif-batches`;
   const [baseVersionId, targetVersionId] = CREDIT_PILOT.versionIds;
   const body = { baseVersionId, targetVersionId, windowKind: 'LAST_MONTH', includeToday: true };

@@ -25,7 +25,7 @@ const WARM_PAGES: Array<[string, StackUser]> = [
   ['/en/policies/pol-adr0041-team', 'm-free'],
   ['/en/reports', 'm-free'],
   ['/en/teams/team1/members', 'owner1'],
-  ['/en/policies/pol-credit-pilot', 'cp-analyst'],
+  ['/en/policies/pol-credit-pilot', 'cp-owner'],
   ['/en/approvals', 'cp-officer'],
   ['/en/reports', 'cp-owner'],
 ];
