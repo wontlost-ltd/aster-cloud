@@ -1,50 +1,67 @@
-// EU AI Act 第 14 条（人类监督）对照的类型与条款清单（ADR 0044 §3）。
-//
-// 各条款的判定逻辑在下一任务补全；当前 mapArticle14 对每个条款一律返回 none / 无证据，
-// 仅保证 manifest 的形状稳定，绝不臆造「已满足」。
-
+/**
+ * EU AI Act Article 14（人工监督）对照（ADR 0044 §3.1）。
+ *
+ * 纯函数：只读证据包条目字段，给每款一个 evidenced / partial / none 与指向的 (executionId, field)。
+ * 不打分、不给建议；无字段可证的款项如实标 none。子项目 5 控制注册表就绪后由注册表驱动替换本表。
+ */
 import type { EvidenceEntry } from './types';
 
-/** 条款覆盖状态。 */
-export type ClauseStatus = 'covered' | 'partial' | 'none';
+export type ClauseStatus = 'evidenced' | 'partial' | 'none';
+export interface EvidenceRef { executionId: string; field: string }
+export interface Article14Clause { clause: string; title: string; status: ClauseStatus; evidence: EvidenceRef[] }
+export interface Article14Mapping { framework: 'EU_AI_ACT'; article: '14'; clauses: Article14Clause[] }
 
-/** 支撑某条款的证据引用（指向 manifest 字段或条目集合）。 */
-export interface EvidenceRef {
-  field: string;
-  count: number;
+const ART14_CONTROL = 'EU_AI_ACT:ART14';
+
+type Judge = (entries: readonly EvidenceEntry[]) => { status: ClauseStatus; evidence: EvidenceRef[] };
+
+const refs = (entries: readonly EvidenceEntry[], field: string, pick: (e: EvidenceEntry) => boolean): EvidenceRef[] =>
+  entries.filter(pick).map((e) => ({ executionId: e.executionId, field }));
+
+const hasControl = (e: EvidenceEntry) => (e.controls ?? []).includes(ART14_CONTROL);
+const isPending = (e: EvidenceEntry) => e.outcome === 'REQUIRE_APPROVAL' || e.outcome === 'ESCALATE';
+const hasReviewer = (e: EvidenceEntry) => e.reviewers.length > 0;
+const verified = (e: EvidenceEntry, outcome: string) => e.reviewers.some((r) => r.roleVerified && r.outcome === outcome);
+
+/** 两组证据：都有 evidenced、其一 partial、全无 none。 */
+function both(a: EvidenceRef[], b: EvidenceRef[]): { status: ClauseStatus; evidence: EvidenceRef[] } {
+  const evidence = [...a, ...b];
+  if (a.length > 0 && b.length > 0) return { status: 'evidenced', evidence };
+  return { status: evidence.length > 0 ? 'partial' : 'none', evidence };
 }
 
-export interface Article14Clause {
-  clause: string;
-  title: string;
-  status: ClauseStatus;
-  evidence: EvidenceRef[];
+function some(evidence: EvidenceRef[], status: ClauseStatus = 'evidenced') {
+  return { status: evidence.length > 0 ? status : 'none', evidence };
 }
 
-export interface Article14Mapping {
-  framework: 'EU_AI_ACT';
-  article: '14';
-  clauses: Article14Clause[];
-}
-
-/** 第 14 条九个条款，按法条顺序。 */
-export const ARTICLE14_CLAUSES: ReadonlyArray<{ clause: string; title: string }> = [
-  { clause: '14(1)', title: 'Designed to be effectively overseen by natural persons' },
-  { clause: '14(2)', title: 'Oversight aims to prevent or minimise risks' },
-  { clause: '14(3)', title: 'Oversight measures commensurate with risk and context' },
-  { clause: '14(4)(a)', title: 'Understand the capacities and limitations of the system' },
-  { clause: '14(4)(b)', title: 'Remain aware of automation bias' },
-  { clause: '14(4)(c)', title: 'Correctly interpret the output' },
-  { clause: '14(4)(d)', title: 'Decide not to use, disregard, override or reverse the output' },
-  { clause: '14(4)(e)', title: 'Intervene or interrupt the system' },
-  { clause: '14(5)', title: 'Two-person verification for biometric identification' },
+const JUDGES: ReadonlyArray<[string, string, Judge]> = [
+  ['14(1)', 'Designed for effective human oversight', (es) => some(refs(es, 'controls', hasControl))],
+  ['14(2)', 'Oversight proportionate to risk', (es) => some(refs(es, 'outcome', isPending))],
+  ['14(3)', 'Oversight measures built in', (es) => both(refs(es, 'controls', hasControl), refs(es, 'reviewers', hasReviewer))],
+  ['14(4)(a)', 'Overseer can understand capacities and limitations', (es) => some(refs(es, 'whatIf', (e) => e.whatIf !== null), 'partial')],
+  ['14(4)(b)', 'Awareness of automation bias', () => ({ status: 'none', evidence: [] })],
+  ['14(4)(c)', 'Correctly interpret the output', (es) =>
+    some(refs(es, 'ruleId,reasonCodes', (e) => e.ruleId !== null && Array.isArray(e.reasonCodes) && e.reasonCodes.length > 0))],
+  ['14(4)(d)', 'Decide not to use or override the output', (es) => {
+    const rejected = refs(es, 'reviewers', (e) => verified(e, 'REJECTED'));
+    if (rejected.length > 0) return { status: 'evidenced', evidence: rejected };
+    return some(refs(es, 'reviewers', (e) => verified(e, 'APPROVED')), 'partial');
+  }],
+  ['14(4)(e)', 'Intervene or halt the system', (es) => {
+    const blocked = refs(es, 'outcome', (e) => e.outcome === 'REQUIRE_APPROVAL');
+    const reviewed = refs(es, 'reviewers', (e) => e.outcome === 'REQUIRE_APPROVAL' && hasReviewer(e));
+    if (reviewed.length > 0) return { status: 'evidenced', evidence: [...blocked, ...reviewed] };
+    return some(blocked, 'partial');
+  }],
+  ['14(5)', 'Verification by at least two persons', (es) => some(refs(es, 'reviewers', (e) => e.reviewers.length >= 2))],
 ];
 
-/** 占位判定：全部 none；真实判定见下一任务。 */
-export function mapArticle14(_entries: readonly EvidenceEntry[]): Article14Mapping {
+export const ARTICLE14_CLAUSES: ReadonlyArray<{ clause: string; title: string }> = JUDGES.map(([clause, title]) => ({ clause, title }));
+
+export function mapArticle14(entries: readonly EvidenceEntry[]): Article14Mapping {
   return {
     framework: 'EU_AI_ACT',
     article: '14',
-    clauses: ARTICLE14_CLAUSES.map((c) => ({ ...c, status: 'none', evidence: [] })),
+    clauses: JUDGES.map(([clause, title, judge]) => ({ clause, title, ...judge(entries) })),
   };
 }
