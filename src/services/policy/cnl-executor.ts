@@ -166,6 +166,8 @@ export interface PolicyExecutionResult {
     ruleId?: string;
     /** 规则关联的合规控制点（aster-api 响应 controls）。 */
     controls?: string[];
+    /** Verdict 理由码：优先取 aster-api 响应 decision.reason，回退取 Verdict 结果的 reason；供 reasonCodes 落库。 */
+    reason?: string;
     /** aster-api 证据关联 id（响应 evidence.correlationId）。 */
     evidenceCorrelationId?: string;
   };
@@ -503,6 +505,17 @@ export function parseApprovalFromResult(
 }
 
 /**
+ * 取 Verdict 理由：aster-api 结构化 decision.reason 为权威，旧后端无此字段时回退 result（__type=Verdict）的 reason。
+ * 空串视为无理由。
+ */
+function verdictReasonOf(apiResponse: PolicyEvaluateResponse): string | undefined {
+  if (apiResponse.decision?.reason) return apiResponse.decision.reason;
+  const result = apiResponse.result as { __type?: unknown; reason?: unknown } | null | undefined;
+  if (!result || typeof result !== 'object' || result.__type !== 'Verdict') return undefined;
+  return typeof result.reason === 'string' && result.reason !== '' ? result.reason : undefined;
+}
+
+/**
  * 构建 CNL 执行结果
  *
  * 策略：
@@ -527,6 +540,7 @@ export function buildCNLResult(policy: Policy, apiResponse: PolicyEvaluateRespon
     const { approved, message, indeterminate } = parsed;
     // aster-api 的结构化 decision 是权威来源；旧版后端无此字段时回退解析 result。
     const outcome = asVerdictOutcome(apiResponse.decision?.outcome) ?? parsed.outcome;
+    const reason = verdictReasonOf(apiResponse);
 
     // indeterminate（成功执行但无 allow/deny 语义，如 greet 返回纯文本）与待人工处置
     // （REQUIRE_APPROVAL/ESCALATE）：fail-closed 不批准，但**不计入 deniedReasons**——
@@ -551,6 +565,7 @@ export function buildCNLResult(policy: Policy, apiResponse: PolicyEvaluateRespon
         executionTime: apiResponse.executionTimeMs,
         ...(indeterminate ? { decision: 'indeterminate' as const } : {}),
         ...(outcome ? { outcome } : {}),
+        ...(reason ? { reason } : {}),
         ...evidenceMetadata,
         // 回放地基（ADR 0030）：aster-api replayCapture 返回的权威 hash，透传给 execute route 落 Execution。
         ...(apiResponse.replayMetadata ? { replay: apiResponse.replayMetadata } : {}),

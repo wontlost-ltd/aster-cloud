@@ -276,7 +276,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       locale: detectCNLLocale(policy.content),
       aliasSetJson: replayAliasSetJson,
       functionName: executionResult.executedFunction ?? null,
-    }, executionResult.metadata.traceSkeleton);
+    }, executionResult.metadata.traceSkeleton, executionResult.metadata.reason);
 
     // 异步写入（fire-and-forget）
     const now = new Date();

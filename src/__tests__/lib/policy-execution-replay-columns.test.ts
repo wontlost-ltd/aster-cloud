@@ -169,9 +169,18 @@ describe('buildReplayColumns — 回放列语义（M2.1b 后）', () => {
     expect(buildReplayColumns(REPLAY, { ...REFS, aliasSetJson: null }).aliasSetJson).toBeNull();
   });
 
-  it('reasonCodes：数组透传，非数组落 null', () => {
-    expect(buildReplayColumns(REPLAY, REFS).reasonCodes).toEqual([]);
+  it('reasonCodes：非空数组透传，空数组/非数组且无 Verdict 理由落 null', () => {
+    expect(buildReplayColumns({ ...REPLAY, reasonCodes: ['x'] }, REFS).reasonCodes).toEqual(['x']);
+    expect(buildReplayColumns(REPLAY, REFS).reasonCodes).toBeNull();
     expect(buildReplayColumns({ ...REPLAY, reasonCodes: undefined }, REFS).reasonCodes).toBeNull();
+  });
+
+  it('reasonCodes：Verdict 理由兜底，后端理由码优先', () => {
+    expect(buildReplayColumns(REPLAY, REFS, undefined, 'large_exposure').reasonCodes).toEqual(['large_exposure']);
+    expect(buildReplayColumns(undefined, REFS, undefined, 'large_exposure').reasonCodes).toEqual(['large_exposure']);
+    expect(buildReplayColumns({ ...REPLAY, reasonCodes: ['backend'] }, REFS, undefined, 'large_exposure').reasonCodes)
+      .toEqual(['backend']);
+    expect(buildReplayColumns(undefined, REFS).reasonCodes).toBeNull();
   });
 });
 

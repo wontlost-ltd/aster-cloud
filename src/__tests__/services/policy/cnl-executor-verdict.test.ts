@@ -12,6 +12,18 @@ afterEach(() => {
 });
 
 describe('cnl-executor Verdict 五态（ADR 0041 §4）', () => {
+  it('metadata.reason：decision.reason 优先，回退 Verdict 结果 reason，ALLOW 无理由则缺省', () => {
+    const fromResult = buildCNLResult(policy, { result: { __type: 'Verdict', outcome: 'DENY', reason: 'large_exposure' }, executionTimeMs: 1, error: null } as PolicyEvaluateResponse);
+    expect(fromResult.metadata.reason).toBe('large_exposure');
+    const fromDecision = buildCNLResult(policy, {
+      result: { __type: 'Verdict', outcome: 'DENY', reason: 'r-result' }, decision: { outcome: 'DENY', reason: 'r-decision' },
+      executionTimeMs: 1, error: null,
+    } as PolicyEvaluateResponse);
+    expect(fromDecision.metadata.reason).toBe('r-decision');
+    const allow = buildCNLResult(policy, { result: { __type: 'Verdict', outcome: 'ALLOW' }, executionTimeMs: 1, error: null } as PolicyEvaluateResponse);
+    expect(allow.metadata.reason).toBeUndefined();
+  });
+
   it('REQUIRE_APPROVAL 派生 require_approval 并保留 outcome/ruleId/controls/evidence', () => {
     const resp = {
       result: { __type: 'Verdict', outcome: 'REQUIRE_APPROVAL', role: 'DPO', reason: 'r' }, executionTimeMs: 3, error: null,
