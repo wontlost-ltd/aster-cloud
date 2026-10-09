@@ -12,7 +12,7 @@ export const NOT_LOCAL_REASON = '仅针对本地 aster-cloud 栈（BASE_CLOUD �
 // 会话夹具目录，由 scripts/e2e-local-session.ts 在容器内生成
 const STATE_DIR = process.env.E2E_STATE_DIR || join(process.cwd(), '.superpowers/e2e-local');
 
-export function stateFor(user: 'm-free' | 'm-dpo' | 'owner1' | 't1'): string {
+export function stateFor(user: 'm-free' | 'm-dpo' | 'owner1' | 't1' | 'cp-owner' | 'cp-officer' | 'cp-analyst'): string {
   return join(STATE_DIR, `state-${user}.json`);
 }
 

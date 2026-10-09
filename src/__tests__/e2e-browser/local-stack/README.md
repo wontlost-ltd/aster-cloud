@@ -4,7 +4,7 @@
 
 ## 会话夹具
 
-栈内种子用户没有密码，登录态通过伪造 Auth.js v5 JWT 会话 cookie 获得：`scripts/e2e-local-session.ts` 用 `next-auth/jwt` 的 `encode`（salt 为 cookie 名 `authjs.session-token`，有效期 1 天）为 `m-free`、`m-dpo`、`owner1`、`t1` 生成 Playwright storageState，写到 `.superpowers/e2e-local/state-<user>.json`（已被 git 忽略，切勿提交）。脚本必须在容器内运行，以读取 `NEXTAUTH_SECRET`：
+栈内种子用户没有密码，登录态通过伪造 Auth.js v5 JWT 会话 cookie 获得：`scripts/e2e-local-session.ts` 用 `next-auth/jwt` 的 `encode`（salt 为 cookie 名 `authjs.session-token`，有效期 1 天）为 `m-free`、`m-dpo`、`owner1`、`t1`、`cp-owner`、`cp-officer`、`cp-analyst` 生成 Playwright storageState，写到 `.superpowers/e2e-local/state-<user>.json`（已被 git 忽略，切勿提交）。脚本必须在容器内运行，以读取 `NEXTAUTH_SECRET`：
 
 ```bash
 export PATH=/opt/homebrew/opt/node@24/bin:/opt/podman/bin:$PATH
@@ -20,6 +20,7 @@ cookie 过期（1 天）后重新执行即可。
 | `BASE_CLOUD` | 必填，例如 `http://localhost:3100`；不含 `localhost` 时全部跳过 |
 | `E2E_STATE_DIR` | 可选，storageState 目录，默认 `.superpowers/e2e-local` |
 | `E2E_LOCAL_STACK` | 设在 **aster-cloud 容器**上（`-e E2E_LOCAL_STACK=1`），不是 Playwright 进程；开启 dev 入口长缓冲，保证预热在整轮用例内有效 |
+| `CP_API_KEY` | 可选，信贷试点租户的 API key；`credit-pilot` 用它经 `/api/v1/policies/pol-credit-pilot/execute` 执行一笔 REQUIRE_APPROVAL 申请，缺失时该用例跳过 |
 | `PODMAN_BIN` | 可选，podman 路径，默认 `/opt/podman/bin/podman`（用例用 psql 校验落库结果） |
 
 ## 运行
@@ -43,3 +44,4 @@ webpack dev 默认只保留最近 5 个按需编译入口、闲置 60s 即释放
 - `team-business-roles` 会为 m-free 增加再删除 `CISO`，结束时还原。
 - `whatif-matrix` 与 `evidence-export` 各新建一个批次 / 导出记录。
 - What-If 依赖 aster-api 向 cloud 查询套餐（超时 1.5s，失败即拒绝）；dev 服务器冷编译时可能偶发 “requires a Pro plan”，重跑即可。
+- `credit-pilot`（ADR 0044 §5）前置：先运行 `pnpm seed:credit-pilot` 生成 `pol-credit-pilot`（v1/v2）与 cp-owner / cp-officer / cp-analyst，并重新生成会话夹具；再提供 `CP_API_KEY`（spec 自行以 API 执行一笔需审批申请，等价于 run 脚本第 1 步）。该用例会新增一次执行、批准一条 `credit-pilot` 待审批、新建一个 What-If 批次与一次导出。

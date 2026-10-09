@@ -22,6 +22,9 @@ const USERS: SeedUser[] = [
   { id: 'm-dpo', email: 'm-dpo@stack.test', plan: 'free' },
   { id: 'owner1', email: 'owner1@stack.test', plan: 'team' },
   { id: 't1', email: 't1@stack.test', plan: 'pro' },
+  { id: 'cp-owner', email: 'cp-owner@stack.test', plan: 'team' },
+  { id: 'cp-officer', email: 'cp-officer@stack.test', plan: 'pro' },
+  { id: 'cp-analyst', email: 'cp-analyst@stack.test', plan: 'pro' },
 ];
 
 async function main(): Promise<void> {

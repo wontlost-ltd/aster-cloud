@@ -25,6 +25,9 @@ const WARM_PAGES: Array<[string, StackUser]> = [
   ['/en/policies/pol-adr0041-team', 'm-free'],
   ['/en/reports', 'm-free'],
   ['/en/teams/team1/members', 'owner1'],
+  ['/en/policies/pol-credit-pilot', 'cp-analyst'],
+  ['/en/approvals', 'cp-officer'],
+  ['/en/reports', 'cp-owner'],
 ];
 
 // 用例与页面客户端会调用的 API 路由：dev 模式下路由按首次请求编译（实测 3–7s），会吃掉用例
@@ -47,6 +50,9 @@ const WARM_APIS = [
   '/api/reports/warmup/download',
   '/api/teams/team1/members',
   '/api/teams/team1/members/warmup',
+  '/api/v1/policies/pol-credit-pilot/versions',
+  '/api/v1/policies/pol-credit-pilot/whatif-batches',
+  '/api/policies/pol-credit-pilot/logs',
 ];
 
 const WARM_TIMEOUT_MS = 180_000;
