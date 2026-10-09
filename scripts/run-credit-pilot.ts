@@ -43,10 +43,17 @@ async function call<T>(auth: Auth, method: string, path: string, expect: number,
   return (text ? JSON.parse(text) : null) as T;
 }
 
+// 会话密钥只解析一次，缺失时同时点名两个变量
+let cachedSecret: string | undefined;
+function secret(): string {
+  cachedSecret ??= process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+  if (!cachedSecret) throw new Error('缺少环境变量 AUTH_SECRET / NEXTAUTH_SECRET');
+  return cachedSecret;
+}
+
 async function cookieAuth(who: Who): Promise<Auth> {
   const id = CREDIT_PILOT[who];
-  const secret = process.env.AUTH_SECRET || need('NEXTAUTH_SECRET');
-  const value = await sessionCookie({ id, email: `${id}@stack.test`, plan: PLANS[who] }, secret);
+  const value = await sessionCookie({ id, email: `${id}@stack.test`, plan: PLANS[who] }, secret());
   return { header: 'Cookie', value: `${SESSION_COOKIE_NAME}=${value}` };
 }
 
@@ -97,7 +104,9 @@ async function stepWhatIf(): Promise<void> {
   while (Date.now() < deadline) {
     const cur = await call<{ status: string }>(auth, 'GET', `${base}/${batch.id}`, 200);
     if (cur.status === 'COMPLETED') return log(3, '批量已完成');
-    if (cur.status === 'FAILED') throw new Error(`What-If 批量失败：${JSON.stringify(cur)}`);
+    if (cur.status === 'FAILED' || cur.status === 'EXPIRED') {
+      throw new Error(`What-If 批量终止于 ${cur.status}：${JSON.stringify(cur)}`);
+    }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
   throw new Error(`What-If 批量 ${batch.id} 超时（${POLL_LIMIT_MS / 1000}s）`);
