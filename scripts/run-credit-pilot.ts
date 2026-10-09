@@ -37,13 +37,25 @@ function need(name: string): string {
 }
 
 // 统一请求：非预期状态码即抛错，带上响应正文便于定位
-async function call<T>(auth: Auth, method: string, path: string, expect: number, body?: unknown): Promise<T> {
+const RETRY_503_MAX = 3;
+
+async function call<T>(auth: Auth, method: string, path: string, expect: number, body?: unknown, retryStep?: number): Promise<T> {
   const headers: Record<string, string> = { ...auth };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
-  const res = await fetch(`${BASE}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
-  const text = await res.text();
-  if (res.status !== expect) throw new Error(`${method} ${path} → ${res.status}（期望 ${expect}）：${text.slice(0, 500)}`);
-  return (text ? JSON.parse(text) : null) as T;
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${BASE}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    const text = await res.text();
+    // 云端冷启动时 api 回查权益可能超时而回 503（带 Retry-After）；仅对显式传入步骤号的调用按 Retry-After 重试
+    if (res.status === 503 && retryStep !== undefined && attempt < RETRY_503_MAX) {
+      const seconds = Number(res.headers.get('Retry-After')) || 5;
+      const code = (() => { try { return (JSON.parse(text) as { error?: string }).error ?? ''; } catch { return ''; } })();
+      log(retryStep, `503 ${code}，${seconds}s 后重试`);
+      await new Promise((r) => setTimeout(r, seconds * 1000));
+      continue;
+    }
+    if (res.status !== expect) throw new Error(`${method} ${path} → ${res.status}（期望 ${expect}）：${text.slice(0, 500)}`);
+    return (text ? JSON.parse(text) : null) as T;
+  }
 }
 
 // 会话密钥只解析一次，缺失时同时点名两个变量
@@ -102,7 +114,7 @@ async function stepWhatIf(): Promise<void> {
   const base = `/api/v1/policies/${POLICY}/whatif-batches`;
   const [baseVersionId, targetVersionId] = CREDIT_PILOT.versionIds;
   const body = { baseVersionId, targetVersionId, windowKind: 'LAST_MONTH', includeToday: true };
-  const batch = await call<{ batchId: string }>(auth, 'POST', base, 202, body);
+  const batch = await call<{ batchId: string }>(auth, 'POST', base, 202, body, 3);
   log(3, `批量 ${batch.batchId} 已创建`);
   const deadline = Date.now() + POLL_LIMIT_MS;
   while (Date.now() < deadline) {
