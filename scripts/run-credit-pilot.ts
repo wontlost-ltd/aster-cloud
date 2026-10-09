@@ -3,6 +3,7 @@
  * 导出证据包 → 核对 Article 14 九款状态。
  *
  *   BASE_CLOUD=http://localhost:3100 CP_API_KEY=... NEXTAUTH_SECRET=... npx tsx scripts/run-credit-pilot.ts
+ * CP_ORIGIN 可覆盖 cookie 请求的 Origin（默认 BASE_CLOUD）。
  * 退出码：0 全部通过；1 任一步骤失败；2 条款状态与期望不符。仅用于本地栈。
  */
 import { writeFileSync } from 'node:fs';
@@ -11,6 +12,8 @@ import { EXPECTED_CLAUSE_STATUS, diffClauses, type ClauseMappingLike } from './l
 import { SESSION_COOKIE_NAME, sessionCookie } from './lib/session-cookie';
 
 const BASE = process.env.BASE_CLOUD || 'http://localhost:3100';
+// CSRF 网关只认 allow-list 内的 Origin（CSRF_ALLOWED_ORIGINS / NEXT_PUBLIC_APP_URL），可与 BASE_CLOUD 不同
+const ORIGIN = process.env.CP_ORIGIN || BASE;
 const OUT = process.env.OUT || './credit-pilot-bundle.json';
 const POLICY = CREDIT_PILOT.policyId;
 const POLL_INTERVAL_MS = 2_000;
@@ -19,7 +22,7 @@ const POLL_LIMIT_MS = 120_000;
 type Who = 'ownerId' | 'officerId' | 'analystId';
 const PLANS: Record<Who, string> = { ownerId: 'team', officerId: 'pro', analystId: 'pro' };
 
-interface Auth { header: string; value: string }
+type Auth = Record<string, string>;
 interface Execution { outcome: string; correlationId: string }
 interface InboxItem { id: string; evidenceCorrelationId: string | null }
 
@@ -35,7 +38,7 @@ function need(name: string): string {
 
 // 统一请求：非预期状态码即抛错，带上响应正文便于定位
 async function call<T>(auth: Auth, method: string, path: string, expect: number, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = { [auth.header]: auth.value };
+  const headers: Record<string, string> = { ...auth };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const res = await fetch(`${BASE}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   const text = await res.text();
@@ -54,7 +57,8 @@ function secret(): string {
 async function cookieAuth(who: Who): Promise<Auth> {
   const id = CREDIT_PILOT[who];
   const value = await sessionCookie({ id, email: `${id}@stack.test`, plan: PLANS[who] }, secret());
-  return { header: 'Cookie', value: `${SESSION_COOKIE_NAME}=${value}` };
+  // cookie 会话的变更请求须带 Origin 才能过 CSRF 网关
+  return { Cookie: `${SESSION_COOKIE_NAME}=${value}`, Origin: ORIGIN };
 }
 
 async function execute(auth: Auth, applicant: PilotApplicant): Promise<Execution> {
@@ -70,7 +74,7 @@ async function execute(auth: Auth, applicant: PilotApplicant): Promise<Execution
 
 // 第 1 步：四组申请人各执行一次，结论须恰好覆盖四种
 async function stepExecute(): Promise<Record<keyof typeof PILOT_APPLICANTS, Execution>> {
-  const auth = { header: 'Authorization', value: `Bearer ${need('CP_API_KEY')}` };
+  const auth = { Authorization: `Bearer ${need('CP_API_KEY')}` };
   const want = { allow: 'ALLOW', deny: 'DENY', requireApproval: 'REQUIRE_APPROVAL', escalate: 'ESCALATE' } as const;
   const results = {} as Record<keyof typeof PILOT_APPLICANTS, Execution>;
   for (const key of Object.keys(want) as Array<keyof typeof want>) {
