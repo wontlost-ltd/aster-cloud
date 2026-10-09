@@ -28,6 +28,8 @@ function render(ui: ReactElement) {
   );
 }
 
+const TRANSITIONS_TITLE = (DEMO_SUPPLEMENT.en.whatIf as { transitionsTitle: string }).transitionsTitle;
+
 const fetchMock = vi.fn();
 
 beforeEach(() => {
@@ -255,6 +257,54 @@ describe('What-If 面板：呈现约束（ADR 0034 §1.1）', () => {
       );
       // 渲染成 0 会被读成「换版本没有金额影响」——一个没有依据的结论
       expect(document.body.textContent).not.toMatch(/Estimated value change:?\s*0\b/);
+    });
+
+    it('完成态渲染转移矩阵的非零对与说明计数（ADR 0043 §5）', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(
+          {
+            ...base,
+            plannedCount: 3,
+            result: {
+              changed: 2, newlyApproved: 0, newlyRejected: 2, totalSampled: 3, estimatedValueDelta: null,
+              transitions: { 'ALLOW->REQUIRE_APPROVAL': 2, 'DENY->DENY': 1, 'ESCALATE->DENY': 0 },
+              byTargetOutcome: { ALLOW: 0, DENY: 1, REQUIRE_APPROVAL: 2, ESCALATE: 0, INDETERMINATE: 0, ERROR: 0 },
+              incomparable: 0,
+              legacyBase: 1,
+            },
+          },
+          202,
+        ),
+      );
+      render(<WhatIfBatchPanel {...props} />);
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /run analysis/i }));
+      });
+      await screen.findByText(TRANSITIONS_TITLE);
+      expect(screen.getByText('Allow → Needs approval')).toBeInTheDocument();
+      expect(screen.getByText('Deny → Deny')).toBeInTheDocument();
+      // 零计数对不得出现
+      expect(screen.queryByText(/Escalate → /)).toBeNull();
+      expect(screen.getByText(/1 legacy baseline/)).toBeInTheDocument();
+      expect(screen.queryByText(/could not be compared/)).toBeNull();
+    });
+
+    it('旧批次无 transitions 时不渲染矩阵', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(
+          {
+            ...base,
+            result: { changed: 5, newlyApproved: 3, newlyRejected: 2, totalSampled: 42, estimatedValueDelta: 1200 },
+          },
+          202,
+        ),
+      );
+      render(<WhatIfBatchPanel {...props} />);
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /run analysis/i }));
+      });
+      await waitFor(() => expect(document.body.textContent).toMatch(/all 42/i));
+      expect(screen.queryByText(TRANSITIONS_TITLE)).toBeNull();
     });
   });
 

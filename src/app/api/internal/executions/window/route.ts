@@ -99,6 +99,8 @@ export async function GET(req: Request) {
       id: true,
       input: true,
       decision: true,
+      // 四态基线（ADR 0043 §5）：旧行为 null，由 api 侧回退到布尔 decision
+      outcome: true,
       success: true,
       functionName: true,
       locale: true,

@@ -59,6 +59,14 @@ interface BatchState {
     newlyRejected: number;
     totalSampled: number;
     estimatedValueDelta: number | null;
+    /** 四态转移矩阵 {"BASE->TARGET": n}，只含非零项（ADR 0043 §5）；旧批次缺失 */
+    transitions?: Record<string, number>;
+    /** 目标版本各四态结果的计数；旧批次缺失 */
+    byTargetOutcome?: Record<string, number>;
+    /** 任一侧为 INDETERMINATE/ERROR、无法比较的条数 */
+    incomparable?: number;
+    /** 基线由旧布尔 decision 推导的条数 */
+    legacyBase?: number;
   };
   /**
    * 仅 FAILED：失败**类别**列表。
@@ -457,6 +465,20 @@ export function WhatIfBatchPanel({
                 <Metric label={t('newlyApproved')} value={batch.result.newlyApproved} />
                 <Metric label={t('newlyRejected')} value={batch.result.newlyRejected} />
               </div>
+              {/* 四态转移矩阵（ADR 0043 §5）：旧批次无该字段时整块不渲染 */}
+              {batch.result.transitions && (
+                <TransitionMatrix transitions={batch.result.transitions} t={t} />
+              )}
+              {(batch.result.incomparable ?? 0) > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {t('incomparable', { count: batch.result.incomparable ?? 0 })}
+                </p>
+              )}
+              {(batch.result.legacyBase ?? 0) > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {t('legacyBase', { count: batch.result.legacyBase ?? 0 })}
+                </p>
+              )}
               <p className="text-sm">
                 {t('valueImpact')}:{' '}
                 {batch.result.estimatedValueDelta === null ? (
@@ -527,6 +549,51 @@ function Metric({ label, value }: { label: string; value: number }) {
     <div className="rounded border p-3">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-lg font-semibold tabular-nums">{value}</div>
+    </div>
+  );
+}
+
+/**
+ * 四态转移矩阵：把 `BASE->TARGET` 键解析成「原决策 → 新决策」行。
+ *
+ * 只列非零项——服务端本就只下发非零项，这里再过滤一次以防旧/异常数据；
+ * 全为零时整块不渲染，避免出现只有标题的空表。
+ */
+function TransitionMatrix({
+  transitions,
+  t,
+}: {
+  transitions: Record<string, number>;
+  t: (k: string) => string;
+}) {
+  const rows = Object.entries(transitions)
+    .filter(([, n]) => n > 0)
+    .map(([key, n]) => {
+      const [base, target] = key.split('->');
+      return { key, label: `${t(`outcome.${base}`)} → ${t(`outcome.${target}`)}`, n };
+    });
+  if (rows.length === 0) return null;
+  return (
+    <div className="space-y-1 text-sm">
+      <h4 className="font-medium">{t('transitionsTitle')}</h4>
+      <table className="w-full text-left">
+        <thead className="text-xs text-muted-foreground">
+          <tr>
+            <th className="font-normal">
+              {t('transitionFrom')} → {t('transitionTo')}
+            </th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.key}>
+              <td>{r.label}</td>
+              <td className="text-right tabular-nums">{r.n}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

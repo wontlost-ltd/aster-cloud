@@ -169,6 +169,8 @@ describe('GET /api/internal/executions/window', () => {
       expect(cols.id).toBe(true);
       expect(cols.input).toBe(true);
       expect(cols.decision).toBe(true);
+      // 四态基线（ADR 0043 §5）
+      expect(cols.outcome).toBe(true);
       // 不该出现的
       expect(cols.output).toBeUndefined();
       expect(cols.traceJson).toBeUndefined();
