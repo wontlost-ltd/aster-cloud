@@ -11,6 +11,8 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './src/__tests__/e2e-browser',
+  // 本地栈冷启动预热；BASE_CLOUD 不含 localhost 时内部直接返回。
+  globalSetup: './src/__tests__/e2e-browser/local-stack/global-setup.ts',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
