@@ -6,6 +6,8 @@ import { readFileSync } from 'node:fs';
 import { NOT_LOCAL, NOT_LOCAL_REASON, stateFor } from './helpers';
 
 test.skip(NOT_LOCAL, NOT_LOCAL_REASON);
+// dev 服务器为单实例，并行会互相拖慢导致超时，统一串行
+test.describe.configure({ mode: 'serial' });
 test.use({ storageState: stateFor('m-free') });
 
 interface Reviewer { source: string; role: string; roleVerified: boolean; outcome: string }

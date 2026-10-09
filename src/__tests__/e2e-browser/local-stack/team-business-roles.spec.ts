@@ -2,11 +2,30 @@
  * ADR 0042 团队业务角色：owner 在成员页查看与编辑业务角色。
  * 用例结束时还原 m-free 的角色，保证可重复运行。
  */
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import { NOT_LOCAL, NOT_LOCAL_REASON, psql, stateFor } from './helpers';
 
 test.skip(NOT_LOCAL, NOT_LOCAL_REASON);
 test.use({ storageState: stateFor('owner1') });
+test.describe.configure({ mode: 'serial' });
+
+// 经成员接口把 m-free 的业务角色清空：前后各执行一次，即使上次运行中断也能自愈
+async function resetFreeRoles(request: APIRequestContext) {
+  const list = await request.get('/api/teams/team1/members');
+  expect(list.ok()).toBeTruthy();
+  const { members } = (await list.json()) as { members: Array<{ id: string; userId: string }> };
+  const member = members.find((m) => m.userId === 'm-free');
+  expect(member, 'team1 中应有 m-free').toBeTruthy();
+  const res = await request.put(`/api/teams/team1/members/${member!.id}`, {
+    data: { businessRoles: [] },
+    // 写接口有 CSRF 校验，要求同源 Origin
+    headers: { Origin: new URL(process.env.BASE_CLOUD!).origin },
+  });
+  expect(res.status(), await res.text()).toBe(200);
+}
+
+test.beforeEach(async ({ page }) => resetFreeRoles(page.request));
+test.afterEach(async ({ page }) => resetFreeRoles(page.request));
 
 function memberRow(page: Page, email: string) {
   return page.getByRole('listitem').filter({ hasText: email });

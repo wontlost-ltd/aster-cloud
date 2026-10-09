@@ -23,6 +23,8 @@ cookie 过期（1 天）后重新执行即可。
 
 ## 运行
 
+必须带 `--workers=1`：本地 dev 服务器是单实例，并行跑会互相拖慢导致超时，并可能让中断的用例残留数据（各文件也已声明 `mode: 'serial'`）。
+
 ```bash
 BASE_CLOUD=http://localhost:3100 pnpm exec playwright test src/__tests__/e2e-browser/local-stack --project=chromium-desktop --workers=1
 ```

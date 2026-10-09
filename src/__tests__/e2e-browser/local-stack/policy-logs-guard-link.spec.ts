@@ -5,6 +5,8 @@ import { test, expect } from '@playwright/test';
 import { NOT_LOCAL, NOT_LOCAL_REASON, stateFor } from './helpers';
 
 test.skip(NOT_LOCAL, NOT_LOCAL_REASON);
+// dev 服务器为单实例，并行会互相拖慢导致超时，统一串行
+test.describe.configure({ mode: 'serial' });
 test.use({ storageState: stateFor('m-free') });
 
 test('待审批执行行链接到 /approvals?decisionId=', async ({ page }) => {

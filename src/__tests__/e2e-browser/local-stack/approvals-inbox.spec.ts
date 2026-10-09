@@ -6,6 +6,8 @@ import { test, expect, type Page } from '@playwright/test';
 import { NOT_LOCAL, NOT_LOCAL_REASON, psql, stateFor } from './helpers';
 
 test.skip(NOT_LOCAL, NOT_LOCAL_REASON);
+// dev 服务器为单实例，并行会互相拖慢导致超时，统一串行
+test.describe.configure({ mode: 'serial' });
 
 const TEAM = 'Stack Team';
 
