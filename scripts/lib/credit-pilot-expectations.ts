@@ -2,7 +2,7 @@
  * 信贷试点 Article 14 对照期望表与比对（ADR 0044 §5）。
  * 纯函数、无 I/O，供跑通脚本与 E2E spec 共用。
  */
-import type { ClauseStatus } from '../../src/services/evidence/article14';
+import type { ClauseStatus } from '../../src/services/evidence/regulatory-mapping';
 
 // 试点场景下九款的期望状态：未覆盖的款项显式写 none，防止静默漂移
 export const EXPECTED_CLAUSE_STATUS: Record<string, ClauseStatus> = {
@@ -29,4 +29,13 @@ export function diffClauses(mapping: ClauseMappingLike, expected: Record<string,
     if (got === undefined) return [`${clause}: missing`];
     return got === want ? [] : [`${clause}: expected ${want}, got ${got}`];
   });
+}
+
+export interface RegulatoryMappingLike {
+  frameworks: ReadonlyArray<{ control: string; clauses: ReadonlyArray<{ clause: string; status: string }> }>;
+}
+
+// 取某控制点的条款组；缺失时返回空组，由 diffClauses 报出每款 missing
+export function articleClauses(mapping: RegulatoryMappingLike, control = 'EU_AI_ACT:ART14'): ClauseMappingLike {
+  return { clauses: mapping.frameworks.find((f) => f.control === control)?.clauses ?? [] };
 }

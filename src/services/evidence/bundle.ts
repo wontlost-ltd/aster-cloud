@@ -5,8 +5,8 @@
 // 让审计方能用同一规则跨实现重算校验。
 
 import { canonicalHash, CANONICALIZATION_VERSION } from '@/lib/canonical-json';
-import { mapArticle14 } from './article14';
 import type { ReceiptLookup } from './receipts-client';
+import { mapRegulatory } from './regulatory-mapping';
 import type { Reviewer } from './reviewers';
 import type {
   DecisionTally,
@@ -140,7 +140,7 @@ function countReceiptStatus(entries: readonly EvidenceEntry[], status: 'missing'
 }
 
 const VERIFICATION_RECIPE =
-  'bundleHash = canonicalHash(entries sorted by [createdAt, executionId]) over schemaVersion 3 entries ' +
+  'bundleHash = canonicalHash(entries sorted by [createdAt, executionId]) over schemaVersion 4 entries ' +
   '(includes outcome/ruleId/controls/agent/receipt/reviewers/whatIf); receipts verifiable via GET /api/v1/audit/receipts; ' +
   'v1 bundles use their own recipe.';
 
@@ -189,7 +189,7 @@ export function buildManifest(input: BuildManifestInput): EvidenceManifest {
   ).length;
   return {
     kind: 'evidence-export',
-    schemaVersion: '3',
+    schemaVersion: '4',
     generatedAt: input.generatedAt.toISOString(),
     policy: input.policy,
     range: {
@@ -204,7 +204,7 @@ export function buildManifest(input: BuildManifestInput): EvidenceManifest {
     agentTally: tallyAgents(sorted),
     reviewerTally: tallyReviewers(sorted),
     legacyEntries: countReceiptStatus(sorted, 'legacy'),
-    regulatoryMapping: mapArticle14(sorted),
+    regulatoryMapping: mapRegulatory(sorted),
     notes: {
       legacyRowsWithoutHashes,
       receiptsUnavailable: countReceiptStatus(sorted, 'unavailable'),

@@ -8,7 +8,7 @@
  */
 import { writeFileSync } from 'node:fs';
 import { CREDIT_PILOT, PILOT_APPLICANTS, type PilotApplicant } from '../src/config/credit-pilot-source';
-import { EXPECTED_CLAUSE_STATUS, diffClauses, type ClauseMappingLike } from './lib/credit-pilot-expectations';
+import { EXPECTED_CLAUSE_STATUS, articleClauses, diffClauses, type RegulatoryMappingLike } from './lib/credit-pilot-expectations';
 import { SESSION_COOKIE_NAME, sessionCookie } from './lib/session-cookie';
 
 const BASE = process.env.BASE_CLOUD || 'http://localhost:3100';
@@ -129,10 +129,10 @@ async function stepWhatIf(): Promise<void> {
 }
 
 // 第 4 步：报告按策略属主查找，故以 cp-owner 导出
-async function stepExport(): Promise<{ manifest: { regulatoryMapping: ClauseMappingLike } }> {
+async function stepExport(): Promise<{ manifest: { regulatoryMapping: RegulatoryMappingLike } }> {
   const auth = await cookieAuth('ownerId');
   const report = await call<{ id: string }>(auth, 'POST', '/api/reports', 201, { policyId: POLICY, format: 'json' });
-  const bundle = await call<{ manifest: { regulatoryMapping: ClauseMappingLike } }>(
+  const bundle = await call<{ manifest: { regulatoryMapping: RegulatoryMappingLike } }>(
     auth, 'GET', `/api/reports/${report.id}/download`, 200,
   );
   writeFileSync(OUT, JSON.stringify(bundle, null, 2));
@@ -145,8 +145,9 @@ async function main(): Promise<number> {
   await stepApprove(executions.requireApproval.correlationId);
   await stepWhatIf();
   const bundle = await stepExport();
-  const mapping = bundle.manifest?.regulatoryMapping;
-  if (!mapping) throw new Error('证据包缺 manifest.regulatoryMapping');
+  const regulatoryMapping = bundle.manifest?.regulatoryMapping;
+  if (!regulatoryMapping) throw new Error('证据包缺 manifest.regulatoryMapping');
+  const mapping = articleClauses(regulatoryMapping);
   console.table(mapping.clauses.map((c) => ({ clause: c.clause, status: c.status, expected: EXPECTED_CLAUSE_STATUS[c.clause] })));
   const diff = diffClauses(mapping, EXPECTED_CLAUSE_STATUS);
   diff.forEach((d) => console.error(`[pilot] step 5 不符 ${d}`));

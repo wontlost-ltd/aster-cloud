@@ -5,7 +5,7 @@
 // 与被替换的旧 compliance-score 报告根本不同：这里只呈现执行链**已经产生**的权威事实。
 
 import type { ExecutionSource } from '@/lib/prisma';
-import type { Article14Mapping } from './article14';
+import type { RegulatoryMapping } from './regulatory-mapping';
 import type { Reviewer } from './reviewers';
 
 /** 执行决策六态（与 executionDecisionEnum 一致）；legacy 行可能为 null → 归入 'unknown' 统计桶。 */
@@ -100,8 +100,8 @@ export type EvidenceFormat = 'json' | 'jsonl';
  */
 export interface EvidenceManifest {
   kind: 'evidence-export';
-  /** v3 起 entries 含 whatIf、manifest 含 regulatoryMapping；已存的 v1/v2 包按原样下载。 */
-  schemaVersion: '3';
+  /** v4 起 regulatoryMapping 由控制注册表驱动、按控制点分组并带 registryVersion；已存的 v1–v3 包按原样下载。 */
+  schemaVersion: '4';
   generatedAt: string;
   /** 单策略快照，或全部策略范围。 */
   policy:
@@ -120,8 +120,8 @@ export interface EvidenceManifest {
   reviewerTally: Record<Reviewer['source'], number>;
   /** 无证据关联 id（receipt=legacy）的条目数。 */
   legacyEntries: number;
-  /** EU AI Act 第 14 条对照。 */
-  regulatoryMapping: Article14Mapping;
+  /** 法规对照：按控制点分组，条款判定由控制注册表驱动。 */
+  regulatoryMapping: RegulatoryMapping;
   notes: {
     /** 缺 canonical 哈希的 legacy 行数（导出覆盖缺口，供审计方知情——绝不伪造哈希）。 */
     legacyRowsWithoutHashes: number;
@@ -273,9 +273,64 @@ export interface EvidenceBundleV2 {
   entries: EvidenceEntryV2[];
 }
 
+// ---- schemaVersion '3' 冻结类型：ADR 0045 起只读；regulatoryMapping 为当时的单条第 14 条对照形状。
+
+export interface EvidenceManifestV3 {
+  kind: 'evidence-export';
+  /** v3 起 entries 含 whatIf、manifest 含 regulatoryMapping；已存的 v1/v2 包按原样下载。 */
+  schemaVersion: '3';
+  generatedAt: string;
+  /** 单策略快照，或全部策略范围。 */
+  policy:
+    | { id: string; name: string; version: number | null; policyVersionRowId: string | null }
+    | { scope: 'all' };
+  range: { start: string | null; end: string | null };
+  totals: { count: number };
+  decisionTally: DecisionTally;
+  canonicalizationVersion: string;
+  /** hex sha256（复用 canonicalHash，带 CANONICALIZATION_VERSION 前缀）。 */
+  bundleHash: string;
+  /** 收据来源与独立校验入口。 */
+  receiptSource: { kind: 'aster-api-hash-chain'; verifier: 'GET /api/v1/audit/receipts' };
+  /** 按 `${provider}/${model}` 计数；无 agent 计入 'unknown'。 */
+  agentTally: Record<string, number>;
+  reviewerTally: Record<Reviewer['source'], number>;
+  /** 无证据关联 id（receipt=legacy）的条目数。 */
+  legacyEntries: number;
+  /** EU AI Act 第 14 条对照。 */
+  regulatoryMapping: {
+    framework: 'EU_AI_ACT';
+    article: '14';
+    clauses: Array<{
+      clause: string;
+      title: string;
+      status: 'evidenced' | 'partial' | 'none';
+      evidence: Array<{ executionId: string; field: string }>;
+    }>;
+  };
+  notes: {
+    /** 缺 canonical 哈希的 legacy 行数（导出覆盖缺口，供审计方知情——绝不伪造哈希）。 */
+    legacyRowsWithoutHashes: number;
+    /** 收据取不到（超时/网络/非 2xx）的条目数——导出仍完成，如实标注。 */
+    receiptsUnavailable: number;
+    /** aster-api 未找到收据的条目数。 */
+    receiptsMissing: number;
+    /** What-If 回放取不到（超时/网络/非 2xx）的条目数。 */
+    whatIfUnavailable: number;
+    /** 校验 recipe：告诉审计方如何重算 bundleHash。 */
+    verification: string;
+  };
+}
+
+export interface EvidenceBundleV3 {
+  manifest: EvidenceManifestV3;
+  /** v4 未改条目形状；条目一旦变化须先在此冻结为 EvidenceEntryV3。 */
+  entries: EvidenceEntry[];
+}
+
 /** 已持久化的 manifest / bundle：读取侧须按 schemaVersion 收窄后再访问版本专有字段。 */
-export type StoredEvidenceManifest = EvidenceManifestV1 | EvidenceManifestV2 | EvidenceManifest;
-export type StoredEvidenceBundle = EvidenceBundleV1 | EvidenceBundleV2 | EvidenceBundle;
+export type StoredEvidenceManifest = EvidenceManifestV1 | EvidenceManifestV2 | EvidenceManifestV3 | EvidenceManifest;
+export type StoredEvidenceBundle = EvidenceBundleV1 | EvidenceBundleV2 | EvidenceBundleV3 | EvidenceBundle;
 
 /** 预览（导出前给 UI 看规模，不含行体）。 */
 export interface EvidencePreview {

@@ -123,7 +123,7 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
       }>;
       setExports(
         rows.map((e) => {
-          // 历史行可能是 v1/v2/v3 manifest：经 summarizeStoredExport 按 schemaVersion 收窄，未知版本显示占位。
+          // 历史行可能是 v1–v4 manifest：经 summarizeStoredExport 按 schemaVersion 收窄，未知版本显示占位。
           const summary = summarizeStoredExport(e.data);
           return {
             id: e.id,

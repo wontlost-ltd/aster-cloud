@@ -1,5 +1,5 @@
 /**
- * ADR 0041 证据包 v2：导出 JSON，校验 manifest.schemaVersion 与 guard-approval 审阅人。
+ * ADR 0041 证据包（现行 v4）：导出 JSON，校验 manifest.schemaVersion 与 guard-approval 审阅人。
  */
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
@@ -16,7 +16,7 @@ interface Bundle {
   entries: Array<{ reviewers?: Reviewer[] }>;
 }
 
-test('导出 JSON 证据包：schemaVersion 2 且含已验证角色的 guard-approval 审阅人', async ({ page }) => {
+test('导出 JSON 证据包：现行 schemaVersion 且含已验证角色的 guard-approval 审阅人', async ({ page }) => {
   await page.goto('/en/reports');
   await expect(page.getByRole('heading', { name: 'Evidence export' }).first()).toBeVisible();
 
@@ -30,7 +30,7 @@ test('导出 JSON 证据包：schemaVersion 2 且含已验证角色的 guard-app
   expect(download.suggestedFilename()).toMatch(/^aster-evidence-[0-9a-f]{12}\.json$/);
   const bundle = JSON.parse(readFileSync(await download.path(), 'utf8')) as Bundle;
 
-  expect(bundle.manifest.schemaVersion).toBe('3');
+  expect(bundle.manifest.schemaVersion).toBe('4');
   expect(bundle.manifest.bundleHash).toMatch(/^[0-9a-f]{64}$/);
   const reviewers = bundle.entries.flatMap((e) => e.reviewers ?? []);
   expect(reviewers).toContainEqual(

@@ -1,12 +1,12 @@
 /**
  * ADR 0044 §5 信贷试点端到端：执行需审批申请 → 日志 guard 入口 → 合规官批准 →
- * What-If v1→v2 转移 → 证据包 v3 导出与 Article 14 款项对照。
+ * What-If v1→v2 转移 → 证据包 v4 导出与 Article 14 款项对照。
  * 执行走 API（执行页表单由 schema 动态生成，难以稳定驱动），其余步骤全部走页面。
  */
 import { test, expect, type Browser, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { PILOT_APPLICANTS } from '@/config/credit-pilot-source';
-import { EXPECTED_CLAUSE_STATUS, diffClauses, type ClauseMappingLike } from '../../../../scripts/lib/credit-pilot-expectations';
+import { EXPECTED_CLAUSE_STATUS, articleClauses, diffClauses, type RegulatoryMappingLike } from '../../../../scripts/lib/credit-pilot-expectations';
 import { NOT_LOCAL, NOT_LOCAL_REASON, psql, stateFor } from './helpers';
 
 test.skip(NOT_LOCAL, NOT_LOCAL_REASON);
@@ -18,7 +18,7 @@ const POLICY = 'pol-credit-pilot';
 const API_KEY = process.env.CP_API_KEY;
 
 interface Bundle {
-  manifest: { schemaVersion: string; regulatoryMapping: ClauseMappingLike };
+  manifest: { schemaVersion: string; regulatoryMapping: RegulatoryMappingLike };
   entries: Array<{ whatIf?: unknown }>;
 }
 
@@ -112,8 +112,8 @@ test('信贷试点：执行、审批、What-If、证据导出与 Article 14 对�
       expect(download.suggestedFilename()).toMatch(/^aster-evidence-[0-9a-f]{12}\.json$/);
       const bundle = JSON.parse(readFileSync(await download.path(), 'utf8')) as Bundle;
 
-      expect(bundle.manifest.schemaVersion).toBe('3');
-      expect(diffClauses(bundle.manifest.regulatoryMapping, EXPECTED_CLAUSE_STATUS)).toEqual([]);
+      expect(bundle.manifest.schemaVersion).toBe('4');
+      expect(diffClauses(articleClauses(bundle.manifest.regulatoryMapping), EXPECTED_CLAUSE_STATUS)).toEqual([]);
       expect(bundle.entries.some((e) => e.whatIf != null)).toBe(true);
     }));
 });

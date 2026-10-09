@@ -282,7 +282,7 @@ describe('v2 bundleHash', () => {
   });
 });
 
-describe('v3 manifest', () => {
+describe('v4 manifest', () => {
   const entries = [
     entry({ id: 'a', evidenceCorrelationId: 'c-a', decision: 'require_approval' },
       { auditId: 1, currentHash: 'h1', prevHash: null, hashVersion: 2 },
@@ -293,9 +293,9 @@ describe('v3 manifest', () => {
     entry({ id: 'd', evidenceCorrelationId: 'c-d' }, { status: 'missing' }),
   ];
 
-  it('schemaVersion=3、receiptSource、agentTally、reviewerTally、legacy/unavailable/missing 计数', () => {
+  it('schemaVersion=4、receiptSource、agentTally、reviewerTally、legacy/unavailable/missing 计数', () => {
     const m = buildManifest({ policy, range, entries, generatedAt: gen });
-    expect(m.schemaVersion).toBe('3');
+    expect(m.schemaVersion).toBe('4');
     expect(m.receiptSource).toEqual({ kind: 'aster-api-hash-chain', verifier: 'GET /api/v1/audit/receipts' });
     expect(m.agentTally).toEqual({ 'anthropic/claude': 2, unknown: 1, 'openai/gpt': 1 });
     expect(m.reviewerTally).toEqual({ 'guard-approval': 1, 'policy-proof': 1, 'version-approval': 1 });
@@ -304,7 +304,7 @@ describe('v3 manifest', () => {
     expect(m.notes.receiptsMissing).toBe(1);
     expect(m.decisionTally).toMatchObject({ require_approval: 1, escalate: 1, approved: 2 });
     expect(m.notes.verification).toBe(
-      'bundleHash = canonicalHash(entries sorted by [createdAt, executionId]) over schemaVersion 3 entries ' +
+      'bundleHash = canonicalHash(entries sorted by [createdAt, executionId]) over schemaVersion 4 entries ' +
       '(includes outcome/ruleId/controls/agent/receipt/reviewers/whatIf); receipts verifiable via GET /api/v1/audit/receipts; ' +
       'v1 bundles use their own recipe.',
     );
@@ -316,18 +316,20 @@ describe('v3 manifest', () => {
   });
 });
 
-describe('v3：What-If 与法规对照', () => {
+describe('v4：What-If 与法规对照', () => {
   it('entry 带 whatIf、manifest 带 regulatoryMapping 与 whatIfUnavailable', () => {
     const e = entry({}, LEGACY, [], null);
     expect(e.whatIf).toBeNull();
     const wi = { batchId: 'b1', baseOutcome: 'REQUIRE_APPROVAL', targetOutcome: 'ALLOW', baseLegacy: false };
-    const e2 = buildEvidenceEntry(row({ id: 'exec-2' }), LEGACY, [], wi);
+    const e2 = buildEvidenceEntry(row({ id: 'exec-2', controls: ['EU_AI_ACT:ART14'] }), LEGACY, [], wi);
     expect(e2.whatIf).toEqual(wi);
     const m = buildManifest({ policy, range: { start: null, end: null }, entries: [e, e2], generatedAt: gen, whatIfUnavailable: 1 });
-    expect(m.schemaVersion).toBe('3');
+    expect(m.schemaVersion).toBe('4');
     expect(m.notes.whatIfUnavailable).toBe(1);
-    expect(m.regulatoryMapping.framework).toBe('EU_AI_ACT');
-    expect(m.regulatoryMapping.clauses.map((c) => c.clause)).toEqual(['14(1)', '14(2)', '14(3)', '14(4)(a)', '14(4)(b)', '14(4)(c)', '14(4)(d)', '14(4)(e)', '14(5)']);
+    expect(m.regulatoryMapping.registryVersion).toBe('1.0.0');
+    const art14 = m.regulatoryMapping.frameworks.find((f) => f.control === 'EU_AI_ACT:ART14')!;
+    expect(art14).toMatchObject({ framework: 'EU_AI_ACT', article: '14' });
+    expect(art14.clauses.map((c) => c.clause)).toEqual(['14(1)', '14(2)', '14(3)', '14(4)(a)', '14(4)(b)', '14(4)(c)', '14(4)(d)', '14(4)(e)', '14(5)']);
   });
   it('whatIfUnavailable 缺省为 0', () => {
     const m = buildManifest({ policy, range: { start: null, end: null }, entries: [], generatedAt: gen });

@@ -243,10 +243,10 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('evidence-export 数据层（�
     });
   });
 
-  it('★无关联 id 的行导出为 schemaVersion 2 + receipt=legacy（不发起收据请求）', async () => {
+  it('★无关联 id 的行导出为现行 schemaVersion 4 + receipt=legacy（不发起收据请求）', async () => {
     await seedExecution({ id: 'e1', createdAt: new Date('2026-07-01T00:00:00Z') });
     const { id, manifest } = await createEvidenceExport(U, { policyId: POL, format: 'json' });
-    expect(manifest.schemaVersion).toBe('3');
+    expect(manifest.schemaVersion).toBe('4');
     expect(manifest.legacyEntries).toBe(1);
     const body = JSON.parse((await getEvidenceExportBundle(U, id))!.body);
     expect(body.entries[0].receipt).toEqual({ status: 'legacy' });
@@ -258,13 +258,14 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('evidence-export 数据层（�
     const prev = process.env.ASTER_POLICY_API_INTERNAL_URL;
     process.env.ASTER_POLICY_API_INTERNAL_URL = 'http://127.0.0.1:1';
     try {
-      await seedExecution({ id: 'exec-w1', createdAt: new Date('2026-07-01T00:00:00Z'), outcome: 'REQUIRE_APPROVAL' });
+      await seedExecution({ id: 'exec-w1', createdAt: new Date('2026-07-01T00:00:00Z'), outcome: 'REQUIRE_APPROVAL', controls: ['EU_AI_ACT:ART14'] });
       const { id } = await createEvidenceExport(U, { policyId: POL, format: 'json' });
       const body = JSON.parse((await getEvidenceExportBundle(U, id))!.body);
-      expect(body.manifest.schemaVersion).toBe('3');
+      expect(body.manifest.schemaVersion).toBe('4');
       expect(body.entries.every((e: { whatIf: unknown }) => e.whatIf === null)).toBe(true);
       expect(body.manifest.notes.whatIfUnavailable).toBe(body.entries.length);
-      const clause = body.manifest.regulatoryMapping.clauses.find((c: { clause: string }) => c.clause === '14(4)(a)');
+      const art14 = body.manifest.regulatoryMapping.frameworks.find((f: { control: string }) => f.control === 'EU_AI_ACT:ART14');
+      const clause = art14.clauses.find((c: { clause: string }) => c.clause === '14(4)(a)');
       expect(clause.status).toBe('none');
     } finally {
       if (prev === undefined) delete process.env.ASTER_POLICY_API_INTERNAL_URL;

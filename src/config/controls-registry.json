@@ -1,0 +1,26 @@
+{
+  "version": "1.0.0",
+  "frameworks": [
+    { "id": "EU_AI_ACT", "title": { "en": "EU AI Act", "zh": "欧盟人工智能法", "de": "EU-KI-Verordnung" } },
+    { "id": "GDPR", "title": { "en": "General Data Protection Regulation", "zh": "通用数据保护条例", "de": "Datenschutz-Grundverordnung" } },
+    { "id": "SOX", "title": { "en": "Sarbanes-Oxley Act", "zh": "萨班斯-奥克斯利法案", "de": "Sarbanes-Oxley Act" } }
+  ],
+  "controls": [
+    { "key": "EU_AI_ACT:ART14", "framework": "EU_AI_ACT", "article": "14", "title": { "en": "Human oversight", "zh": "人工监督", "de": "Menschliche Aufsicht" } },
+    { "key": "GDPR:ART6", "framework": "GDPR", "article": "6", "title": { "en": "Lawfulness of processing", "zh": "处理的合法性", "de": "Rechtmäßigkeit der Verarbeitung" } },
+    { "key": "GDPR:ART17", "framework": "GDPR", "article": "17", "title": { "en": "Right to erasure", "zh": "删除权", "de": "Recht auf Löschung" } },
+    { "key": "GDPR:ART22", "framework": "GDPR", "article": "22", "title": { "en": "Automated individual decision-making", "zh": "自动化个人决策", "de": "Automatisierte Entscheidungen im Einzelfall" } },
+    { "key": "SOX:404", "framework": "SOX", "article": "404", "title": { "en": "Internal control over financial reporting", "zh": "财务报告内部控制", "de": "Interne Kontrolle der Finanzberichterstattung" } }
+  ],
+  "clauses": [
+    { "control": "EU_AI_ACT:ART14", "clause": "14(1)", "title": { "en": "Designed for effective human oversight", "zh": "设计上可被有效人工监督", "de": "Auf wirksame menschliche Aufsicht ausgelegt" }, "evidenced": ["control"], "partial": [] },
+    { "control": "EU_AI_ACT:ART14", "clause": "14(2)", "title": { "en": "Oversight proportionate to risk", "zh": "监督与风险相称", "de": "Risikoangemessene Aufsicht" }, "evidenced": ["outcome.pending"], "partial": [] },
+    { "control": "EU_AI_ACT:ART14", "clause": "14(3)", "title": { "en": "Oversight measures built in", "zh": "内建监督措施", "de": "Eingebaute Aufsichtsmaßnahmen" }, "evidenced": ["control", "reviewers.any"], "partial": ["control", "reviewers.any"] },
+    { "control": "EU_AI_ACT:ART14", "clause": "14(4)(a)", "title": { "en": "Overseer can understand capacities and limitations", "zh": "监督者理解系统能力与局限", "de": "Verständnis von Fähigkeiten und Grenzen" }, "evidenced": [], "partial": ["whatIf.comparable"] },
+    { "control": "EU_AI_ACT:ART14", "clause": "14(4)(b)", "title": { "en": "Awareness of automation bias", "zh": "意识到自动化偏见", "de": "Bewusstsein für Automatisierungsbias" }, "evidenced": [], "partial": [] },
+    { "control": "EU_AI_ACT:ART14", "clause": "14(4)(c)", "title": { "en": "Correctly interpret the output", "zh": "正确解读输出", "de": "Ausgabe korrekt interpretieren" }, "evidenced": ["rule.reason"], "partial": [] },
+    { "control": "EU_AI_ACT:ART14", "clause": "14(4)(d)", "title": { "en": "Decide not to use or override the output", "zh": "决定不使用或推翻输出", "de": "Ausgabe nicht verwenden oder übersteuern" }, "evidenced": ["reviewers.guard.rejected"], "partial": ["reviewers.guard.approved"] },
+    { "control": "EU_AI_ACT:ART14", "clause": "14(4)(e)", "title": { "en": "Intervene or halt the system", "zh": "干预或停止系统", "de": "Eingreifen oder System anhalten" }, "evidenced": ["reviewers.guard.any"], "partial": ["outcome.requireApproval"] },
+    { "control": "EU_AI_ACT:ART14", "clause": "14(5)", "title": { "en": "Verification by at least two persons", "zh": "至少两人核实", "de": "Überprüfung durch mindestens zwei Personen" }, "evidenced": ["reviewers.guard.two"], "partial": [] }
+  ]
+}
