@@ -60,7 +60,7 @@ Alles außer der Freigabe als Richtlinieneigentümer `cp-owner` erledigen (Proto
 
 ## Die Artikel-14-Zuordnung lesen
 
-Die Zuordnung wird vom Kontrollregister gesteuert (`@aster-cloud/controls` 1.0.0, ADR 0045): Jede registrierte Kontrolle mit zugeordneten Klauseln bringt ihre eigene Klauselliste und Bewertungsregeln mit, und jeder Export wendet dieselben Regeln an. Auf `/reports` öffnet **Regulatorische Zuordnung** bei einem abgeschlossenen Export die Tabelle direkt; die Paketdatei enthält dieselben Daten.
+Die Zuordnung wird vom Kontrollregister 1.0.0 gesteuert (ADR 0045; das Paket `@aster-cloud/controls` ist noch nicht veröffentlicht, daher liegt eine Kopie des Registers in diesem Repository): Jede registrierte Kontrolle mit zugeordneten Klauseln bringt ihre eigene Klauselliste und Bewertungsregeln mit, und jeder Export wendet dieselben Regeln an. Auf `/reports` öffnet **Regulatorische Zuordnung** bei einem abgeschlossenen Export die Tabelle direkt; die Paketdatei enthält dieselben Daten.
 
 Das Paket (Manifest `schemaVersion: "4"`) enthält `manifest.regulatoryMapping`:
 
@@ -82,6 +82,8 @@ Das Paket (Manifest `schemaVersion: "4"`) enthält `manifest.regulatoryMapping`:
 ```
 
 `registryVersion` nennt die Registerversion, aus der die Regeln stammen. `frameworks` enthält eine Gruppe je registrierter Kontrolle mit zugeordneten Klauseln, die in den Paketeinträgen (`controls`) vorkommt; jede Gruppe trägt in `clauses[]` einen Status `evidenced`, `partial` oder `none`, der ausschließlich aus Feldern der Paketeinträge abgeleitet wird, sowie `evidence`-Verweise (`executionId` + `field`). Ganz ohne Einträge wird jede Gruppe aufgeführt und jede Klausel ist `none`; gibt es Einträge, aber keiner trägt eine solche Kontrolle, ist `frameworks` leer. Pakete der Schemata 1–3 enthalten keine registergesteuerte Zuordnung, und die Berichtsseite weist darauf hin.
+
+Die Nachweise stammen aus allen Einträgen des Pakets. Bei einem Export über alle Richtlinien können die Klauseln einer Gruppe daher durch Ausführungen von Regeln belegt werden, die diese Kontrolle selbst nicht tragen; so zählt etwa eine Guard-Ablehnung an der Regel einer anderen Richtlinie für 14(4)(d). Über die `executionId`-Verweise lässt sich prüfen, aus welcher Ausführung jeder Nachweis stammt.
 
 Ein „verifizierter Prüfer“ ist unten ein `reviewers`-Element mit `source: "guard-approval"` und `roleVerified: true`; Nachweise und Freigaben auf Versionsebene zählen nicht, weil sie nicht zeigen, dass jemand genau diese Ausgabe geprüft hat.
 

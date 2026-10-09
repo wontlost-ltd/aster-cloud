@@ -60,7 +60,7 @@ Do everything except the approval as the policy owner `cp-owner` (logs page, **C
 
 ## Reading the Article 14 mapping
 
-The mapping is driven by the controls registry (`@aster-cloud/controls` 1.0.0, ADR 0045): every registered control that has mapped clauses brings its own clause list and judging rules, and every export applies the same rules. On `/reports`, click **Regulatory mapping** on a completed export to view the table directly; the bundle file carries the same data.
+The mapping is driven by controls registry 1.0.0 (ADR 0045; the `@aster-cloud/controls` package is not published yet, so a copy of the registry ships inside this repository): every registered control that has mapped clauses brings its own clause list and judging rules, and every export applies the same rules. On `/reports`, click **Regulatory mapping** on a completed export to view the table directly; the bundle file carries the same data.
 
 The bundle (manifest `schemaVersion: "4"`) contains `manifest.regulatoryMapping`:
 
@@ -82,6 +82,8 @@ The bundle (manifest `schemaVersion: "4"`) contains `manifest.regulatoryMapping`
 ```
 
 `registryVersion` names the registry release the rules came from. `frameworks` lists one group per registered control that has mapped clauses and appears in the bundle's entries (`controls`); each group's `clauses[]` carries a status of `evidenced`, `partial` or `none`, derived only from fields on the bundle entries, plus `evidence` references (`executionId` + `field`). With no entries at all, every group is listed and every clause is `none`; when entries exist but none carries such a control, `frameworks` is empty. Bundles from schema 1–3 have no registry-driven mapping and the reports page says so.
+
+Evidence is drawn from all entries in the bundle. In an export covering all policies, a group's clauses can therefore be evidenced by executions of rules that do not themselves carry that control; for example, a guard rejection on another policy's rule can count toward 14(4)(d). Use the `executionId` references to check which execution each piece of evidence comes from.
 
 A "verified reviewer" below is a `reviewers` item with `source: "guard-approval"` and `roleVerified: true`; version-level proofs and approvals do not count, because they do not show that anyone reviewed that particular output.
 
