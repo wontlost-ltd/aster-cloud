@@ -44,4 +44,4 @@ webpack dev 默认只保留最近 5 个按需编译入口、闲置 60s 即释放
 - `team-business-roles` 会为 m-free 增加再删除 `CISO`，结束时还原。
 - `whatif-matrix` 与 `evidence-export` 各新建一个批次 / 导出记录。
 - What-If 依赖 aster-api 向 cloud 查询套餐（超时 1.5s，失败即拒绝）；dev 服务器冷编译时可能偶发 “requires a Pro plan”，重跑即可。
-- `credit-pilot`（ADR 0044 §5）前置：先运行 `pnpm seed:credit-pilot` 生成 `pol-credit-pilot`（v1/v2）与 cp-owner / cp-officer / cp-analyst，并重新生成会话夹具；再提供 `CP_API_KEY`（spec 自行以 API 执行一笔需审批申请，等价于 run 脚本第 1 步）。What-If 与日志页均按策略属主限定，须由 cp-owner 运行（分析员会得到 `TARGET_VERSION_MISSING` / 404）。该用例会新增一次执行、批准一条 `credit-pilot` 待审批、新建一个 What-If 批次与一次导出。
+- `credit-pilot`（ADR 0044 §5）前置：先运行 `pnpm seed:credit-pilot` 生成 `pol-credit-pilot`（v1/v2）与 cp-owner / cp-officer / cp-analyst，并重新生成会话夹具；再提供 `CP_API_KEY`（须为 cp-owner 的 key：团队成员执行的记录目前无法被 What-If 回放，ADR 0034 §4.3 属主限定，见 ADR 0044 §10 后续事项；spec 自行以 API 执行一笔需审批申请，等价于 run 脚本第 1 步）。What-If 与日志页均按策略属主限定，须由 cp-owner 运行（分析员会得到 `TARGET_VERSION_MISSING` / 404）。该用例会新增一次执行、批准一条 `credit-pilot` 待审批、新建一个 What-If 批次与一次导出。

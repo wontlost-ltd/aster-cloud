@@ -33,12 +33,12 @@ apiVersion: v1
 pnpm seed:credit-pilot
 ```
 
-播种幂等。它创建团队 `credit-pilot`，用户 `cp-owner`、`cp-officer`（业务角色 "Credit Officer"）和 `cp-analyst`，以及策略 `pol-credit-pilot` 的版本 1（阈值 50000）和版本 2（阈值 80000）。分析员的 API key **只打印一次**，请立即复制。
+播种幂等。它创建团队 `credit-pilot`，用户 `cp-owner`、`cp-officer`（业务角色 "Credit Officer"）和 `cp-analyst`，以及策略 `pol-credit-pilot` 的版本 1（阈值 50000）和版本 2（阈值 80000）。策略属主（`cp-owner`）的 API key **只打印一次**，请立即复制。执行须使用属主 key：团队成员执行的记录目前无法被 What-If 回放（ADR 0034 §4.3 属主限定；已列为 ADR 0044 §10 后续事项）。
 
 ### 2. 脚本跑通
 
 ```bash
-CP_API_KEY=<分析员 key> NEXTAUTH_SECRET=<secret> pnpm tsx scripts/run-credit-pilot.ts
+CP_API_KEY=<属主 key> NEXTAUTH_SECRET=<secret> pnpm tsx scripts/run-credit-pilot.ts
 ```
 
 | 变量 | 默认值 | 含义 |

@@ -72,7 +72,7 @@ async function execute(auth: Auth, applicant: PilotApplicant): Promise<Execution
   return { outcome, correlationId };
 }
 
-// 第 1 步：四组申请人各执行一次，结论须恰好覆盖四种
+// 第 1 步：以 cp-owner 的 Bearer key 让四组申请人各执行一次，结论须恰好覆盖四种（属主执行才可被 What-If 回放）
 async function stepExecute(): Promise<Record<keyof typeof PILOT_APPLICANTS, Execution>> {
   const auth = { Authorization: `Bearer ${need('CP_API_KEY')}` };
   const want = { allow: 'ALLOW', deny: 'DENY', requireApproval: 'REQUIRE_APPROVAL', escalate: 'ESCALATE' } as const;

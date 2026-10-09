@@ -5,7 +5,9 @@
  *   - Team credit-pilot（owner=cp-owner）
  *   - User cp-owner(team) / cp-officer(pro, 业务角色 Credit Officer) / cp-analyst(pro)
  *   - Policy pol-credit-pilot 与两条已批准版本：v1（阈值 50000）为上线默认版本，v2（阈值 80000）作 What-If 对比目标
- *   - cp-analyst 的团队 API key credit-pilot-analyst（明文仅首次创建时打印）
+ *   - cp-owner 的团队 API key credit-pilot-owner（明文仅首次创建时打印）；吊销旧的 credit-pilot-analyst key
+ *     由属主经 API key 执行：What-If / 日志 / 导出均按策略属主限定（ADR 0034 §4.3），
+ *     团队成员执行的记录当前无法被 What-If 回放；cp-analyst 仅作普通成员
  *
  * 幂等：按 id / key 名查有则更新、无则插入；多次运行不会重复创建
  *
@@ -30,7 +32,8 @@ type Db = ReturnType<typeof drizzle<typeof schema>>;
 
 const LOG = '[seed-credit-pilot]';
 const TOOLCHAIN_ID = 'abi=1.0;core=1.0.30;validator=1;build=dev';
-const API_KEY_NAME = 'credit-pilot-analyst';
+const API_KEY_NAME = 'credit-pilot-owner';
+const LEGACY_KEY_NAME = 'credit-pilot-analyst';
 
 interface UserSpec {
   id: string;
@@ -152,11 +155,11 @@ async function upsertVersion(db: Db, spec: (typeof VERSIONS)[number]): Promise<v
 }
 
 // 明文 key 只能在创建时拿到一次；已存在则不重复创建。
-async function ensureAnalystKey(db: Db): Promise<void> {
+async function ensureOwnerKey(db: Db): Promise<void> {
   const existing = await db.query.apiKeys.findFirst({
     where: and(
       eq(schema.apiKeys.name, API_KEY_NAME),
-      eq(schema.apiKeys.userId, CREDIT_PILOT.analystId),
+      eq(schema.apiKeys.userId, CREDIT_PILOT.ownerId),
       eq(schema.apiKeys.teamId, CREDIT_PILOT.teamId),
       isNull(schema.apiKeys.revokedAt),
     ),
@@ -166,12 +169,28 @@ async function ensureAnalystKey(db: Db): Promise<void> {
     return;
   }
   try {
-    const created = await createApiKey(CREDIT_PILOT.analystId, API_KEY_NAME, CREDIT_PILOT.teamId);
+    const created = await createApiKey(CREDIT_PILOT.ownerId, API_KEY_NAME, CREDIT_PILOT.teamId);
     console.log(LOG, `API key ${API_KEY_NAME} 明文（仅此一次）:`, created.key);
   } catch (err) {
     // 快照推送依赖 aster-api；不可达时 key 行已落库但明文丢失，需吊销后重跑。
     console.warn(LOG, '创建 API key 时出错（aster-api 可能不可达）', err);
   }
+}
+
+// 旧版播种为分析员建的 key 已不再使用；吊销未吊销者，重复运行无副作用。
+async function revokeLegacyKey(db: Db): Promise<void> {
+  const revoked = await db
+    .update(schema.apiKeys)
+    .set({ revokedAt: new Date() })
+    .where(
+      and(
+        eq(schema.apiKeys.name, LEGACY_KEY_NAME),
+        eq(schema.apiKeys.teamId, CREDIT_PILOT.teamId),
+        isNull(schema.apiKeys.revokedAt),
+      ),
+    )
+    .returning({ id: schema.apiKeys.id });
+  if (revoked.length > 0) console.log(LOG, `已吊销旧 API key ${LEGACY_KEY_NAME}`, revoked.length);
 }
 
 async function refreshSnapshots(): Promise<void> {
@@ -211,7 +230,8 @@ async function main(): Promise<void> {
     await upsertVersion(db, spec);
   }
 
-  await ensureAnalystKey(db);
+  await revokeLegacyKey(db);
+  await ensureOwnerKey(db);
   await refreshSnapshots();
 
   await sql.end();

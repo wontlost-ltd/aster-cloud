@@ -33,12 +33,12 @@ Version 2 only raises the CP-003 threshold from 50000 to 80000, so a What-If com
 pnpm seed:credit-pilot
 ```
 
-The seed is idempotent. It creates team `credit-pilot` with users `cp-owner`, `cp-officer` (business role "Credit Officer") and `cp-analyst`, and policy `pol-credit-pilot` with version 1 (threshold 50000) and version 2 (threshold 80000). It prints the analyst's API key **once** — copy it.
+The seed is idempotent. It creates team `credit-pilot` with users `cp-owner`, `cp-officer` (business role "Credit Officer") and `cp-analyst`, and policy `pol-credit-pilot` with version 1 (threshold 50000) and version 2 (threshold 80000). It prints the policy owner's (`cp-owner`) API key **once** — copy it. Executions must be made with the owner's key: records executed by team members cannot be replayed by What-If today (owner scoping per ADR 0034 §4.3; listed as a follow-up in ADR 0044 §10).
 
 ### 2. Scripted run
 
 ```bash
-CP_API_KEY=<analyst key> NEXTAUTH_SECRET=<secret> pnpm tsx scripts/run-credit-pilot.ts
+CP_API_KEY=<owner key> NEXTAUTH_SECRET=<secret> pnpm tsx scripts/run-credit-pilot.ts
 ```
 
 | Variable | Default | Meaning |

@@ -33,12 +33,12 @@ Version 2 hebt nur den CP-003-Schwellenwert von 50000 auf 80000 an, sodass ein W
 pnpm seed:credit-pilot
 ```
 
-Das Seeding ist idempotent. Es legt das Team `credit-pilot` mit den Benutzern `cp-owner`, `cp-officer` (Geschäftsrolle "Credit Officer") und `cp-analyst` an sowie die Richtlinie `pol-credit-pilot` mit Version 1 (Schwellenwert 50000) und Version 2 (Schwellenwert 80000). Der API-Schlüssel des Analysten wird **nur einmal** ausgegeben — kopieren Sie ihn sofort.
+Das Seeding ist idempotent. Es legt das Team `credit-pilot` mit den Benutzern `cp-owner`, `cp-officer` (Geschäftsrolle "Credit Officer") und `cp-analyst` an sowie die Richtlinie `pol-credit-pilot` mit Version 1 (Schwellenwert 50000) und Version 2 (Schwellenwert 80000). Der API-Schlüssel des Richtlinieneigentümers (`cp-owner`) wird **nur einmal** ausgegeben — kopieren Sie ihn sofort. Ausführungen müssen mit dem Eigentümer-Schlüssel erfolgen: Von Teammitgliedern ausgeführte Datensätze können What-If derzeit nicht wiedergeben (Eigentümer-Bindung gemäß ADR 0034 §4.3; als Folgearbeit in ADR 0044 §10 geführt).
 
 ### 2. Skriptlauf
 
 ```bash
-CP_API_KEY=<Analysten-Schlüssel> NEXTAUTH_SECRET=<secret> pnpm tsx scripts/run-credit-pilot.ts
+CP_API_KEY=<Eigentümer-Schlüssel> NEXTAUTH_SECRET=<secret> pnpm tsx scripts/run-credit-pilot.ts
 ```
 
 | Variable | Standard | Bedeutung |
