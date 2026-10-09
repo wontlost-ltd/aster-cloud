@@ -1,0 +1,100 @@
+---
+title: "Kreditpilot: Nachweise zu Artikel 14"
+description: "Kreditpilot durchgängig ausführen und die Artikel-14-Zuordnung im Nachweispaket lesen — Feldnachweise, keine Konformitätsaussage."
+updated: 2026-10-09
+apiVersion: v1
+---
+
+# Kreditpilot: Nachweise zu Artikel 14
+
+Der Kreditpilot ist ein kleines, reproduzierbares Szenario, das menschliche Aufsicht durchgängig durchspielt: Eine Kreditrichtlinie erzeugt automatische Entscheidungen, Freigabeanforderungen und Eskalationen; ein Credit Officer prüft das große Exposure; zwei Richtlinienversionen werden per What-If verglichen; und das exportierte Nachweispaket enthält eine Zuordnung zu Artikel 14 der EU-KI-Verordnung.
+
+> Die Artikel-14-Zuordnung gibt nur an, welche Felder im Nachweispaket vorhanden sind. Sie ist **keine** Konformitätsaussage, vergibt keine Bewertung und gibt keine Empfehlung.
+
+## Was der Pilot tut
+
+Die Richtlinie `pol-credit-pilot` (`aster.pilot.credit`) hat eine einzige Einstiegsregel `decide` mit der Eingabe `Applicant { creditScore, monthlyIncome, monthlyDebt, requestedAmount, activeDefaults }`. Die Regel trägt `@control("EU_AI_ACT:ART14")`; Zweige mit automatischer Ablehnung tragen zusätzlich `@control("GDPR:ART22")`. Die Zweige werden in Tabellenreihenfolge geprüft (Ablehnung vor Freigabe, Freigabe vor Eskalation):
+
+| ID | Bedingung | Ergebnis |
+|---|---|---|
+| `CP-001 active_default` | `activeDefaults ≥ 1` | `Verdict.deny("active_default")` |
+| `CP-002 dti_too_high` | `monthlyDebt > monthlyIncome × 0.45` | `Verdict.deny("dti_exceeds_limit")` |
+| `CP-003 large_amount_review` | `requestedAmount ≥ 50000` | `Verdict.require_approval("Credit Officer", "large_exposure")` |
+| `CP-004 borderline_score` | `620 ≤ creditScore ≤ 679` | `Verdict.escalate("borderline_credit_score")` |
+| `CP-005 default_allow` | sonst | `Verdict.allow()` |
+
+Version 2 hebt nur den CP-003-Schwellenwert von 50000 auf 80000 an, sodass ein What-If-Vergleich v1 → v2 einen Übergang `REQUIRE_APPROVAL → ALLOW` zeigt.
+
+## Ausführen
+
+### 1. Daten anlegen
+
+```bash
+pnpm seed:credit-pilot
+```
+
+Das Seeding ist idempotent. Es legt das Team `credit-pilot` mit den Benutzern `cp-owner`, `cp-officer` (Geschäftsrolle "Credit Officer") und `cp-analyst` an sowie die Richtlinie `pol-credit-pilot` mit Version 1 (Schwellenwert 50000) und Version 2 (Schwellenwert 80000). Der API-Schlüssel des Analysten wird **nur einmal** ausgegeben — kopieren Sie ihn sofort.
+
+### 2. Skriptlauf
+
+```bash
+CP_API_KEY=<Analysten-Schlüssel> NEXTAUTH_SECRET=<secret> pnpm tsx scripts/run-credit-pilot.ts
+```
+
+| Variable | Standard | Bedeutung |
+|---|---|---|
+| `BASE_CLOUD` | `http://localhost:3100` | Basis-URL von Aster Cloud |
+| `OUT` | `./credit-pilot-bundle.json` | Zielpfad des Nachweispakets |
+
+Das Skript führt vier Fixtures aus, gibt die freigabepflichtige Ausführung als `cp-officer` frei, führt das What-If v1 → v2 aus, exportiert das Paket und gibt den Status jeder Klausel aus. Exit-Code `1` bedeutet, dass ein Schritt fehlgeschlagen ist (der Schrittname wird ausgegeben); Exit-Code `2` bedeutet, dass ein Klauselstatus nicht der erwarteten Tabelle unten entspricht.
+
+### 3. Weg im Browser
+
+1. Einen großen Antrag (`requestedAmount ≥ 50000`) gegen `pol-credit-pilot` ausführen.
+2. Als Credit Officer anmelden und auf `/approvals` freigeben.
+3. Auf der Richtlinienseite mit **Compare versions** v1 → v2 vergleichen.
+4. Auf `/reports` das Nachweispaket als JSON exportieren.
+
+## Die Artikel-14-Zuordnung lesen
+
+Das Paket (Manifest `schemaVersion: "3"`) enthält `manifest.regulatoryMapping`:
+
+```json
+{
+  "framework": "EU_AI_ACT",
+  "article": "14",
+  "clauses": [
+    { "clause": "14(1)", "title": "…", "status": "evidenced",
+      "evidence": [{ "executionId": "…", "field": "controls" }] }
+  ]
+}
+```
+
+Jeder Klauselstatus ist `evidenced`, `partial` oder `none` und wird ausschließlich aus Feldern der Paketeinträge abgeleitet. Ohne Einträge ist jede Klausel `none`.
+
+| Klausel | Regel (nur Eintragsfelder) | Pilotlauf | Warum nur partial / none |
+|---|---|---|---|
+| 14(1) Aufsicht durch Gestaltung | `controls` eines Eintrags enthält `EU_AI_ACT:ART14` → evidenced, sonst none | evidenced | — |
+| 14(2) Risikokonfiguration | ein Eintrag mit `outcome ∈ {REQUIRE_APPROVAL, ESCALATE}` existiert → evidenced, sonst none | evidenced | — |
+| 14(3) eingebaute Maßnahmen | wie 14(1) **und** ein Eintrag mit `reviewers.length > 0` → evidenced; nur eines von beiden → partial | evidenced | — |
+| 14(4)(a) Verständnis | ein Eintrag mit `whatIf` ungleich null → partial, sonst none | partial | Vergleichbarkeit ist nicht dasselbe wie Verständnis |
+| 14(4)(b) Automatisierungsbias | kein Feld kann es belegen | none | immer none |
+| 14(4)(c) Ausgabe interpretieren | `ruleId` und `reasonCodes` beide nicht leer → evidenced, sonst none | evidenced | — |
+| 14(4)(d) übersteuern / nicht verwenden | `reviewers` enthält `roleVerified: true` mit `outcome = REJECTED` → evidenced; nur APPROVED → partial; keines → none | partial | das Skript gibt nur frei, es lehnt nie ab |
+| 14(4)(e) eingreifen / anhalten | `outcome = REQUIRE_APPROVAL` und `reviewers.length > 0` → evidenced; blockiert ohne Prüfung → partial | evidenced | — |
+| 14(5) Vier-Augen-Prüfung | ein Eintrag mit `reviewers.length ≥ 2` → evidenced, sonst none | none | der Pilot hat nur einen Prüfer |
+
+Jeder Eintrag trägt außerdem `whatIf: { batchId, baseOutcome, targetOutcome, baseLegacy } | null`. Schlägt die Replay-Abfrage fehl, ist jedes `whatIf` null, `manifest.notes.whatIfUnavailable` zählt die Ausfälle, der Export wird trotzdem abgeschlossen und 14(4)(a) fällt auf none zurück.
+
+Nochmals: Diese Tabelle beschreibt die im Paket vorhandenen Nachweise. Ob ein Einsatz Artikel 14 erfüllt, beurteilen Sie und Ihre Prüfer.
+
+## Unabhängige Prüfung
+
+- **Belege** — die signierten Belege unabhängig von Aster Cloud direkt bei aster-api abrufen:
+
+  ```bash
+  curl -H "X-Api-Key: $CP_API_KEY" \
+    "$ASTER_API/api/v1/audit/receipts?correlationIds=<id1>,<id2>"
+  ```
+
+- **Paket-Hash** — `bundleHash` nach der Anleitung in `manifest.notes.verification` neu berechnen. Der Hash umfasst `entries` (einschließlich `whatIf`); das Manifest und damit Zuordnung und Notes gehen nicht in den Hash ein.

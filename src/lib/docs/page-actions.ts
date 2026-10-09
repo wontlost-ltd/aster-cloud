@@ -268,6 +268,12 @@ export const PAGE_ACTIONS: Record<RouteSlug, PageActionSet> = {
     primary: playground('websocket-preview'),
     secondary: [],
   },
+
+  // 指南：试点流程从控制台起步，跑完后去看自己的执行轨迹。
+  'guides/credit-pilot': {
+    primary: openDashboard(),
+    secondary: [viewMyTraces()],
+  },
 };
 
 /**

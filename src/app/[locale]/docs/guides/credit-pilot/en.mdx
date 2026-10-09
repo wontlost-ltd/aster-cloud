@@ -1,0 +1,100 @@
+---
+title: "Credit pilot: Article 14 evidence"
+description: "Run the credit pilot end to end and read the EU AI Act Article 14 mapping in the evidence bundle — field evidence, not a compliance conclusion."
+updated: 2026-10-09
+apiVersion: v1
+---
+
+# Credit pilot: Article 14 evidence
+
+The credit pilot is a small, reproducible scenario that exercises human oversight end to end: a credit policy produces automatic decisions, approvals and escalations; a Credit Officer reviews the large exposure; two policy versions are compared with What-If; and the exported evidence bundle carries a mapping onto EU AI Act Article 14.
+
+> The Article 14 mapping only states which fields are present in the evidence bundle. It is **not** a compliance conclusion, carries no score and gives no recommendation.
+
+## What the pilot does
+
+Policy `pol-credit-pilot` (`aster.pilot.credit`) has a single entry rule `decide` taking an `Applicant { creditScore, monthlyIncome, monthlyDebt, requestedAmount, activeDefaults }`. The rule is tagged `@control("EU_AI_ACT:ART14")`; branches that produce an automatic denial are additionally tagged `@control("GDPR:ART22")`. Branches are evaluated in table order (deny before approval, approval before escalation):
+
+| ID | Condition | Verdict |
+|---|---|---|
+| `CP-001 active_default` | `activeDefaults ≥ 1` | `Verdict.deny("active_default")` |
+| `CP-002 dti_too_high` | `monthlyDebt > monthlyIncome × 0.45` | `Verdict.deny("dti_exceeds_limit")` |
+| `CP-003 large_amount_review` | `requestedAmount ≥ 50000` | `Verdict.require_approval("Credit Officer", "large_exposure")` |
+| `CP-004 borderline_score` | `620 ≤ creditScore ≤ 679` | `Verdict.escalate("borderline_credit_score")` |
+| `CP-005 default_allow` | otherwise | `Verdict.allow()` |
+
+Version 2 only raises the CP-003 threshold from 50000 to 80000, so a What-If comparison of v1 → v2 shows a `REQUIRE_APPROVAL → ALLOW` transition.
+
+## Run it
+
+### 1. Seed
+
+```bash
+pnpm seed:credit-pilot
+```
+
+The seed is idempotent. It creates team `credit-pilot` with users `cp-owner`, `cp-officer` (business role "Credit Officer") and `cp-analyst`, and policy `pol-credit-pilot` with version 1 (threshold 50000) and version 2 (threshold 80000). It prints the analyst's API key **once** — copy it.
+
+### 2. Scripted run
+
+```bash
+CP_API_KEY=<analyst key> NEXTAUTH_SECRET=<secret> pnpm tsx scripts/run-credit-pilot.ts
+```
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `BASE_CLOUD` | `http://localhost:3100` | Aster Cloud base URL |
+| `OUT` | `./credit-pilot-bundle.json` | Where the evidence bundle is written |
+
+The script executes four fixtures, approves the require-approval execution as `cp-officer`, runs the v1 → v2 What-If, exports the bundle and prints each clause status. Exit code `1` means a step failed (the step name is printed); exit code `2` means a clause status did not match the expected table below.
+
+### 3. Browser path
+
+1. Execute a large application (`requestedAmount ≥ 50000`) against `pol-credit-pilot`.
+2. Sign in as the Credit Officer and approve it on `/approvals`.
+3. On the policy page, use **Compare versions** for v1 → v2.
+4. On `/reports`, export the evidence bundle as JSON.
+
+## Reading the Article 14 mapping
+
+The bundle (manifest `schemaVersion: "3"`) contains `manifest.regulatoryMapping`:
+
+```json
+{
+  "framework": "EU_AI_ACT",
+  "article": "14",
+  "clauses": [
+    { "clause": "14(1)", "title": "…", "status": "evidenced",
+      "evidence": [{ "executionId": "…", "field": "controls" }] }
+  ]
+}
+```
+
+Each clause status is `evidenced`, `partial` or `none`, derived only from fields on the bundle entries. With no entries, every clause is `none`.
+
+| Clause | Rule (entry fields only) | Pilot run | Why only partial / none |
+|---|---|---|---|
+| 14(1) oversight by design | any entry's `controls` contains `EU_AI_ACT:ART14` → evidenced, otherwise none | evidenced | — |
+| 14(2) risk configuration | an entry with `outcome ∈ {REQUIRE_APPROVAL, ESCALATE}` exists → evidenced, otherwise none | evidenced | — |
+| 14(3) measures built in | as 14(1) **and** an entry with `reviewers.length > 0` → evidenced; only one of the two → partial | evidenced | — |
+| 14(4)(a) understanding | an entry with non-null `whatIf` → partial, otherwise none | partial | being able to compare versions is not the same as understanding the system |
+| 14(4)(b) automation bias | no field can evidence it | none | always none |
+| 14(4)(c) interpreting output | `ruleId` and `reasonCodes` both non-empty → evidenced, otherwise none | evidenced | — |
+| 14(4)(d) override / not use | `reviewers` contains `roleVerified: true` with `outcome = REJECTED` → evidenced; only APPROVED → partial; neither → none | partial | the script only approves, it never rejects |
+| 14(4)(e) intervene / stop | `outcome = REQUIRE_APPROVAL` and `reviewers.length > 0` → evidenced; blocked without review → partial | evidenced | — |
+| 14(5) two-person verification | any entry with `reviewers.length ≥ 2` → evidenced, otherwise none | none | the pilot uses a single reviewer |
+
+Each entry also carries `whatIf: { batchId, baseOutcome, targetOutcome, baseLegacy } | null`. If the replay lookup fails, every `whatIf` is null, `manifest.notes.whatIfUnavailable` counts the misses, the export still completes, and 14(4)(a) degrades to none.
+
+Again: this table describes the evidence present in the bundle. Whether a deployment satisfies Article 14 is a judgement for you and your assessors.
+
+## Independent verification
+
+- **Receipts** — re-fetch the signed receipts directly from aster-api, independent of Aster Cloud:
+
+  ```bash
+  curl -H "X-Api-Key: $CP_API_KEY" \
+    "$ASTER_API/api/v1/audit/receipts?correlationIds=<id1>,<id2>"
+  ```
+
+- **Bundle hash** — follow the recipe in `manifest.notes.verification` to recompute `bundleHash`. The hash covers `entries` (including `whatIf`); the manifest, and therefore the mapping and notes, are not part of the hash.

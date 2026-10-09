@@ -434,6 +434,12 @@ routes:
     source: src/app/[locale]/docs/getting-started/page.tsx
     locales: all
 
+  - path: /docs/guides/credit-pilot
+    status: canonical-here
+    owner: docs
+    source: src/app/[locale]/docs/guides/credit-pilot/page.tsx
+    locales: all
+
   - path: /docs/api
     status: canonical-here
     owner: docs-api

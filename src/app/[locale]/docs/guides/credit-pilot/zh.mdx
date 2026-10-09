@@ -1,0 +1,100 @@
+---
+title: "信贷试点：第 14 条证据"
+description: "端到端跑通信贷试点——播种团队、执行信贷策略、以信贷专员身份审批、对比策略版本，并解读证据包中的欧盟 AI 法案第 14 条对照。"
+updated: 2026-10-09
+apiVersion: v1
+---
+
+# 信贷试点：第 14 条证据
+
+信贷试点是一个可复现的小场景，端到端演练人工监督：信贷策略产出自动结论、审批与升级；信贷专员复核大额敞口；用 What-If 对比两个策略版本；导出的证据包内附欧盟 AI 法案第 14 条对照。
+
+> 第 14 条对照只陈述证据包内已有哪些字段，**不是**合规结论，不打分，也不给建议。
+
+## 试点做什么
+
+策略 `pol-credit-pilot`（`aster.pilot.credit`）只有一条入口规则 `decide`，输入 `Applicant { creditScore, monthlyIncome, monthlyDebt, requestedAmount, activeDefaults }`。规则标注 `@control("EU_AI_ACT:ART14")`；产出自动拒绝的分支另加 `@control("GDPR:ART22")`。分支按表序判定（拒绝优先于审批，审批优先于升级）：
+
+| ID | 条件 | 结论 |
+|---|---|---|
+| `CP-001 active_default` | `activeDefaults ≥ 1` | `Verdict.deny("active_default")` |
+| `CP-002 dti_too_high` | `monthlyDebt > monthlyIncome × 0.45` | `Verdict.deny("dti_exceeds_limit")` |
+| `CP-003 large_amount_review` | `requestedAmount ≥ 50000` | `Verdict.require_approval("Credit Officer", "large_exposure")` |
+| `CP-004 borderline_score` | `620 ≤ creditScore ≤ 679` | `Verdict.escalate("borderline_credit_score")` |
+| `CP-005 default_allow` | 其余 | `Verdict.allow()` |
+
+版本 2 只把 CP-003 阈值从 50000 提到 80000，因此 v1 → v2 的 What-If 对比会出现 `REQUIRE_APPROVAL → ALLOW` 转移。
+
+## 跑通步骤
+
+### 1. 播种
+
+```bash
+pnpm seed:credit-pilot
+```
+
+播种幂等。它创建团队 `credit-pilot`，用户 `cp-owner`、`cp-officer`（业务角色 "Credit Officer"）和 `cp-analyst`，以及策略 `pol-credit-pilot` 的版本 1（阈值 50000）和版本 2（阈值 80000）。分析员的 API key **只打印一次**，请立即复制。
+
+### 2. 脚本跑通
+
+```bash
+CP_API_KEY=<分析员 key> NEXTAUTH_SECRET=<secret> pnpm tsx scripts/run-credit-pilot.ts
+```
+
+| 变量 | 默认值 | 含义 |
+|---|---|---|
+| `BASE_CLOUD` | `http://localhost:3100` | Aster Cloud 地址 |
+| `OUT` | `./credit-pilot-bundle.json` | 证据包写出位置 |
+
+脚本执行四组用例，以 `cp-officer` 批准需审批的那次执行，跑 v1 → v2 What-If，导出证据包并打印各款状态。退出码 `1` 表示某一步失败（会打印步骤名）；退出码 `2` 表示某款状态与下方预期表不符。
+
+### 3. 浏览器路径
+
+1. 对 `pol-credit-pilot` 执行一笔大额申请（`requestedAmount ≥ 50000`）。
+2. 以信贷专员登录，在 `/approvals` 批准。
+3. 在策略页用 **Compare versions** 对比 v1 → v2。
+4. 在 `/reports` 以 JSON 导出证据包。
+
+## 对照表怎么读
+
+证据包（manifest `schemaVersion: "3"`）含 `manifest.regulatoryMapping`：
+
+```json
+{
+  "framework": "EU_AI_ACT",
+  "article": "14",
+  "clauses": [
+    { "clause": "14(1)", "title": "…", "status": "evidenced",
+      "evidence": [{ "executionId": "…", "field": "controls" }] }
+  ]
+}
+```
+
+每款状态为 `evidenced`、`partial` 或 `none`，只依据证据包条目上的字段判定。条目为空时全部为 `none`。
+
+| 款 | 判定（只看条目字段） | 试点结果 | 为什么只是 partial / none |
+|---|---|---|---|
+| 14(1) 监督设计 | 任一条目 `controls` 含 `EU_AI_ACT:ART14` → evidenced，否则 none | evidenced | — |
+| 14(2) 风险配置 | 存在 `outcome ∈ {REQUIRE_APPROVAL, ESCALATE}` 条目 → evidenced，否则 none | evidenced | — |
+| 14(3) 监督措施内建 | 同 14(1) **且**存在 `reviewers.length > 0` → evidenced；仅满足其一 → partial | evidenced | — |
+| 14(4)(a) 理解能力 | 存在 `whatIf` 非 null 条目 → partial，否则 none | partial | 可比对不等于理解 |
+| 14(4)(b) 自动化偏见 | 无可证字段 | none | 恒 none |
+| 14(4)(c) 解读输出 | `ruleId` 与 `reasonCodes` 均非空 → evidenced，否则 none | evidenced | — |
+| 14(4)(d) 否决/不使用 | `reviewers` 含 `roleVerified: true` 且 `outcome = REJECTED` → evidenced；只有 APPROVED → partial；都没有 → none | partial | 脚本只做批准，从不拒绝 |
+| 14(4)(e) 干预/停止 | `outcome = REQUIRE_APPROVAL` 且 `reviewers.length > 0` → evidenced；有阻断无复核 → partial | evidenced | — |
+| 14(5) 双人验证 | 任一条目 `reviewers.length ≥ 2` → evidenced，否则 none | none | 试点只有一名复核人 |
+
+每个条目还带 `whatIf: { batchId, baseOutcome, targetOutcome, baseLegacy } | null`。回放查询失败时所有 `whatIf` 为 null，`manifest.notes.whatIfUnavailable` 记录次数，导出照常完成，14(4)(a) 退化为 none。
+
+再次强调：本表只描述证据包内已有的证据。部署是否满足第 14 条，由你和评估方判断。
+
+## 独立核验
+
+- **收据**——绕开 Aster Cloud，直接向 aster-api 复取签名收据：
+
+  ```bash
+  curl -H "X-Api-Key: $CP_API_KEY" \
+    "$ASTER_API/api/v1/audit/receipts?correlationIds=<id1>,<id2>"
+  ```
+
+- **包哈希**——按 `manifest.notes.verification` 的步骤重算 `bundleHash`。哈希覆盖 `entries`（含 `whatIf`）；manifest（因而对照表与 notes）不进哈希。

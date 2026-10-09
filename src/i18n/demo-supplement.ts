@@ -160,6 +160,12 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       failureUnknown: 'Unclassified failure.',
     },
     docs: {
+      sidebar: {
+        guides: {
+          title: 'Guides',
+          creditPilot: 'Credit pilot (Article 14)',
+        },
+      },
       overlay: {
         openFull: 'Open full docs',
         close: 'Close docs',
@@ -822,6 +828,12 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       failureUnknown: '未归类的失败。',
     },
     docs: {
+      sidebar: {
+        guides: {
+          title: '指南',
+          creditPilot: '信贷试点（第 14 条）',
+        },
+      },
       overlay: {
         openFull: '打开完整文档',
         close: '关闭文档',
@@ -1466,6 +1478,12 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       failureUnknown: 'Nicht klassifizierter Fehler.',
     },
     docs: {
+      sidebar: {
+        guides: {
+          title: 'Leitfäden',
+          creditPilot: 'Kreditpilot (Artikel 14)',
+        },
+      },
       overlay: {
         openFull: 'Vollständige Doku öffnen',
         close: 'Doku schließen',
@@ -2109,6 +2127,12 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       failureUnknown: 'अवर्गीकृत विफलता।',
     },
     docs: {
+      sidebar: {
+        guides: {
+          title: 'Guides',
+          creditPilot: 'Credit pilot (Article 14)',
+        },
+      },
       overlay: {
         openFull: 'पूरा दस्तावेज़ खोलें',
         close: 'दस्तावेज़ बंद करें',
