@@ -341,6 +341,9 @@ export interface ExecutionStats {
   requireApprovalCount: number;
   /** 已升级（Verdict ESCALATE）的执行数——待处置，不计入失败。 */
   escalateCount: number;
+  /** 待人工处置合计（require_approval + escalate）。 */
+  pendingCount: number;
+  /** 通过率 = 通过 /（通过 + 失败）；待处置与无决策行不参与。 */
   successRate: number;
   avgDurationMs: number;
   bySource: {
@@ -352,6 +355,26 @@ export interface ExecutionStats {
     successCount: number;
     failureCount: number;
   }[];
+}
+
+/**
+ * 按决策口径派生统计（纯函数，便于单测）：
+ * - 通过 = approved（success=true）；
+ * - 失败 = 拒绝 + 错误 = 总数 - 通过 - 无决策 - 待处置；
+ * - 通过率分母只含已定论的决策（通过 + 失败），待处置（require_approval/escalate）
+ *   尚无结论、无决策（indeterminate）是值输出，二者都不参与，避免把待审批行算成 0%。
+ */
+export function deriveDecisionStats(counts: {
+  totalExecutions: number;
+  successCount: number;
+  indeterminateCount: number;
+  pendingCount: number;
+}): { failureCount: number; pendingCount: number; successRate: number } {
+  const { totalExecutions, successCount, indeterminateCount, pendingCount } = counts;
+  const failureCount = Math.max(0, totalExecutions - successCount - indeterminateCount - pendingCount);
+  const settled = successCount + failureCount;
+  const successRate = settled > 0 ? (successCount / settled) * 100 : 0;
+  return { failureCount, pendingCount, successRate };
 }
 
 /**
@@ -528,13 +551,12 @@ export async function getExecutionStats(
   // Filter out executions with deleted policies
   const executionData = executionsList.filter(e => !e.policy.deletedAt);
 
-  // 失败 = 总数 - 通过(approved) - 无决策(indeterminate 值输出)。修复：此前 total-approved
-  // 把值输出策略误计入失败。真实拒绝/错误才算失败。successRate 分母排除 indeterminate
-  // （值输出不参与"准入通过率"，否则会稀释真实决策的通过率）。
-  // 待人工处置（require_approval/escalate）同样不是失败，但仍是真实决策，保留在通过率分母中。
-  const failureCount = Math.max(0, totalExecutions - successCount - indeterminateCount - requireApprovalCount - escalateCount);
-  const decisionTotal = totalExecutions - indeterminateCount;
-  const successRate = decisionTotal > 0 ? (successCount / decisionTotal) * 100 : 0;
+  const { failureCount, pendingCount, successRate } = deriveDecisionStats({
+    totalExecutions,
+    successCount,
+    indeterminateCount,
+    pendingCount: requireApprovalCount + escalateCount,
+  });
   const avgDurationMs =
     executionData.length > 0
       ? executionData.reduce((sum, e) => sum + e.durationMs, 0) / executionData.length
@@ -588,6 +610,7 @@ export async function getExecutionStats(
     indeterminateCount,
     requireApprovalCount,
     escalateCount,
+    pendingCount,
     successRate: Math.round(successRate * 100) / 100,
     avgDurationMs: Math.round(avgDurationMs),
     bySource,

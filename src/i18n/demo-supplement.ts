@@ -473,6 +473,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         viewApproval: 'Pending approval · View',
         registerGuard: 'Register again',
         guardError: 'Approval registration failed',
+        // 统计卡：待处置数量与通过率口径说明。
+        pendingLabel: 'Pending',
+        rateNote: 'Rate counts settled decisions only (approved vs. denied/error); pending and value-only runs are excluded.',
       },
       form: {
         aliases: {
@@ -1092,6 +1095,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         viewApproval: '待审批 · 查看',
         registerGuard: '重新登记',
         guardError: '审批登记失败',
+        // 统计卡：待处置数量与通过率口径说明。
+        pendingLabel: '待处置',
+        rateNote: '通过率仅统计已定论的决策（通过 vs 拒绝/错误）；待处置与值输出不计入。',
       },
       form: {
         aliases: {
@@ -1714,6 +1720,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         viewApproval: 'Freigabe ausstehend · Ansehen',
         registerGuard: 'Erneut registrieren',
         guardError: 'Freigabe-Registrierung fehlgeschlagen',
+        // 统计卡：待处置数量与通过率口径说明。
+        pendingLabel: 'Ausstehend',
+        rateNote: 'Die Quote zählt nur abgeschlossene Entscheidungen (genehmigt vs. abgelehnt/Fehler); ausstehende und reine Wertausgaben sind ausgenommen.',
       },
       form: {
         aliases: {
@@ -2334,6 +2343,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         viewApproval: 'अनुमोदन लंबित · देखें',
         registerGuard: 'फिर से पंजीकृत करें',
         guardError: 'अनुमोदन पंजीकरण विफल',
+        // 统计卡：待处置数量与通过率口径说明。
+        pendingLabel: 'लंबित',
+        rateNote: 'दर केवल तय निर्णयों (स्वीकृत बनाम अस्वीकृत/त्रुटि) को गिनती है; लंबित और केवल-मान रन शामिल नहीं हैं।',
       },
       form: {
         aliases: {

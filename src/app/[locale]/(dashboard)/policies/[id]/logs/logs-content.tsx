@@ -32,6 +32,8 @@ interface Stats {
   failureCount: number;
   /** 无决策（值/计算输出）执行数——不计入失败。可选（后端新增字段）。 */
   indeterminateCount?: number;
+  /** 待人工处置（require_approval + escalate）执行数——不计入失败，也不参与通过率。 */
+  pendingCount?: number;
   avgDurationMs: number;
   successRate: number;
   bySource: Array<{
@@ -43,6 +45,21 @@ interface Stats {
     successCount: number;
     failureCount: number;
   }>;
+}
+
+/**
+ * 时长展示：API 字段名是 durationMs，历史行/异常数据可能缺失或非数字，
+ * 此时显示「—」而非拼出 NaN。
+ */
+export function formatDuration(ms: unknown): string {
+  if (typeof ms !== 'number' || !Number.isFinite(ms)) return '—';
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(2)}s`;
+}
+
+/** API 行（durationMs）→ 组件行（duration），与服务端 page.tsx 的序列化保持同一字段名。 */
+function toClientLog(item: Omit<ExecutionLog, 'duration'> & { durationMs?: number; duration?: number }): ExecutionLog {
+  return { ...item, duration: item.durationMs ?? item.duration ?? Number.NaN };
 }
 
 /** 日志行的展示分类：值输出 / 待人工处置（需批准、升级）/ 通过 / 失败。 */
@@ -132,6 +149,10 @@ interface Translations {
     totalExecutions: string;
     successRate: string;
     avgDuration: string;
+    /** 待处置数量标签（统计卡）。 */
+    pendingLabel: string;
+    /** 通过率口径说明：仅统计已定论决策。 */
+    rateNote: string;
     recentActivity: string;
     loadError: string;
     /** 待审批行「查看审批」链接文案。 */
@@ -369,7 +390,7 @@ export function LogsContent({
       if (!res.ok) throw new Error('Failed to fetch logs');
 
       const data = await res.json();
-      setLogs(data.items || []);
+      setLogs((data.items || []).map(toClientLog));
       setTotalPages(data.pagination?.totalPages || 1);
     } catch (err) {
       // 被取消不是错误：这是更新的请求接手了，静默返回并把 loading
@@ -418,11 +439,6 @@ export function LogsContent({
   };
 
   const hasActiveFilters = successFilter || sourceFilter || startDate || endDate;
-
-  const formatDuration = (ms: number) => {
-    if (ms < 1000) return `${ms}ms`;
-    return `${(ms / 1000).toFixed(2)}s`;
-  };
 
   const getSourceLabel = (source: string) => {
     switch (source) {
@@ -504,7 +520,10 @@ export function LogsContent({
                 {Math.round(stats.successRate)}%
               </p>
               <p className="mt-1 text-xs text-emerald-200">
-                {stats.successCount} / {stats.totalExecutions}
+                {stats.successCount} / {stats.successCount + stats.failureCount}
+              </p>
+              <p className="mt-1 text-xs text-emerald-200" data-testid="logs-rate-note">
+                {t.logs.pendingLabel}: {(stats.pendingCount ?? 0).toLocaleString()} · {t.logs.rateNote}
               </p>
             </div>
           </div>
