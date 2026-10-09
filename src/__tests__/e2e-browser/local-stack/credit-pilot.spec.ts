@@ -10,6 +10,7 @@ import { EXPECTED_CLAUSE_STATUS, diffClauses, type ClauseMappingLike } from '../
 import { NOT_LOCAL, NOT_LOCAL_REASON, psql, stateFor } from './helpers';
 
 test.skip(NOT_LOCAL, NOT_LOCAL_REASON);
+test.skip(!process.env.CP_API_KEY, '缺少 CP_API_KEY，无法执行试点策略');
 // dev 服务器为单实例，并行会互相拖慢导致超时，统一串行
 test.describe.configure({ mode: 'serial' });
 
@@ -37,9 +38,8 @@ async function asUser<T>(
 
 test('信贷试点：执行、审批、What-If、证据导出与 Article 14 对照', async ({ browser, request }) => {
   test.setTimeout(180_000);
-  test.skip(!API_KEY, '缺少 CP_API_KEY，无法执行试点策略');
-
-  await test.step('API 执行一笔需审批申请', async () => {
+  // 以本次执行的证据关联号锚定后续审批行，避免误选残留待审批
+  const decisionId = await test.step('API 执行一笔需审批申请', async () => {
     const res = await request.post(`/api/v1/policies/${POLICY}/execute`, {
       headers: { Authorization: `Bearer ${API_KEY}` },
       data: { input: { applicant: PILOT_APPLICANTS.requireApproval } },
@@ -47,25 +47,27 @@ test('信贷试点：执行、审批、What-If、证据导出与 Article 14 对�
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     expect(body.data.metadata.outcome).toBe('REQUIRE_APPROVAL');
-    expect(body.data.metadata.evidenceCorrelationId).toBeTruthy();
+    const corr = body.data.metadata.evidenceCorrelationId as string;
+    expect(corr).toBeTruthy();
+    const id = psql(
+      'aster_policy',
+      'select a.decision_id from guard_approvals a join guard_decisions d on d.id = a.decision_id ' +
+        `where d.tenant_id='credit-pilot' and d.evidence_correlation_id='${corr}' and a.status='PENDING'`,
+    );
+    expect(id, '本次执行未生成待审批').toMatch(/^[0-9a-f-]{36}$/);
+    return id;
   });
 
   await test.step('日志最新行带待审批入口', () =>
     asUser(browser, 'cp-analyst', async (page) => {
       await page.goto(`/en/policies/${POLICY}/logs`);
-      const link = page.getByRole('link', { name: 'Pending approval · View' }).first();
+      const link = page.locator(`a[href$="/approvals?decisionId=${decisionId}"]`);
       await expect(link).toBeVisible();
-      expect(await link.getAttribute('href')).toMatch(/\/approvals\?decisionId=[0-9a-f-]{36}$/);
+      await expect(link).toHaveText('Pending approval · View');
     }));
 
   await test.step('合规官批准最新待审批', () =>
     asUser(browser, 'cp-officer', async (page) => {
-      const decisionId = psql(
-        'aster_policy',
-        "select decision_id from guard_approvals where tenant_id='credit-pilot' and status='PENDING' " +
-          'order by created_at desc limit 1',
-      );
-      expect(decisionId, '试点租户没有待审批').toBeTruthy();
       await page.goto('/en/approvals');
       const row = page.locator(`tr[data-decision-id="${decisionId}"]`);
       await row.getByRole('button', { name: 'Approve' }).click();
@@ -92,7 +94,8 @@ test('信贷试点：执行、审批、What-If、证据导出与 Article 14 对�
       await expect(page.getByText('Decision transitions')).toBeVisible({ timeout: 90_000 });
       const row = page.getByRole('row').filter({ hasText: 'Needs approval → Allow' });
       await expect(row).toBeVisible();
-      const count = Number(await row.getByRole('cell').last().textContent());
+      const countText = (await row.getByRole('cell').last().textContent()) ?? '';
+      const count = parseInt(countText.replace(/[^\d]/g, ''), 10);
       expect(count).toBeGreaterThanOrEqual(1);
     }));
 
