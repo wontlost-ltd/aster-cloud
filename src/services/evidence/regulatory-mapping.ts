@@ -36,6 +36,11 @@ const SOURCES: Record<EvidenceSource, SourceFn> = {
     .flatMap((e) => [ref(e, 'ruleId'), ref(e, 'reasonCodes')]),
 };
 
+/** 证据来源是否为本引擎可判定的已知名（注册表副本的来源词表须是 SOURCES 键的子集）。 */
+export function isEvidenceSource(name: string): name is EvidenceSource {
+  return Object.hasOwn(SOURCES, name);
+}
+
 function dedupe(refs: EvidenceRef[]): EvidenceRef[] {
   const seen = new Set<string>();
   return refs.filter((r) => {
