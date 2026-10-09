@@ -45,15 +45,20 @@ interface EvidenceExportData extends StoredEvidenceExport {
   bundle: EvidenceBundle;
 }
 
-/** 按租户把行上的某个 id 分组（空 id 跳过），供收据客户端按租户批量查询。 */
-function idsByTenant(rows: readonly EvidenceRow[], idOf: (r: EvidenceRow) => string | null): Map<string, string[]> {
+/** 按租户把行上的某个 id 分组（空 id 跳过），供客户端按租户批量查询；租户默认取 policyTenantId。 */
+function idsByTenant(
+  rows: readonly EvidenceRow[],
+  idOf: (r: EvidenceRow) => string | null,
+  tenantOf: (r: EvidenceRow) => string = (r) => r.policyTenantId,
+): Map<string, string[]> {
   const out = new Map<string, string[]>();
   for (const r of rows) {
     const id = idOf(r);
     if (!id) continue;
-    const list = out.get(r.policyTenantId) ?? [];
+    const tenant = tenantOf(r);
+    const list = out.get(tenant) ?? [];
     list.push(id);
-    out.set(r.policyTenantId, list);
+    out.set(tenant, list);
   }
   return out;
 }
@@ -114,7 +119,9 @@ export async function enrichEntries(rows: readonly EvidenceRow[], deps: EnrichDe
   const [lookup, guardLookup, replay, proofs, approvals] = await Promise.all([
     lookupByTenant(idsByTenant(rows, (r) => r.evidenceCorrelationId), deps.fetchReceipts, limiter),
     lookupByTenant(idsByTenant(rows, (r) => r.guardDecisionId), deps.fetchDecisionReceipts, limiter),
-    replayByTenant(idsByTenant(rows, (r) => r.id), deps.fetchReplayItems, limiter),
+    // What-If 批次按策略所有者 userId 作租户（BFF 以会话用户建批次，窗口/版本查询按所有者收窄，ADR 0034 §4.3），
+    // 与收据所用的 policyTenantId（teamId 优先）不同，故此处按 policyOwnerId 分组。
+    replayByTenant(idsByTenant(rows, (r) => r.id, (r) => r.policyOwnerId), deps.fetchReplayItems, limiter),
     loadProofReviewers(versionIds),
     loadVersionApprovalReviewers(versionIds),
   ]);

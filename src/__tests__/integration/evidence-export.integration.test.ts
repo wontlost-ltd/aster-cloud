@@ -236,10 +236,10 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('evidence-export 数据层（�
     expect(a).toMatchObject({
       id: 'v2-a', outcome: 'REQUIRE_APPROVAL', ruleId: 'R-1', controls: ['GDPR:ART17'],
       agent: { provider: 'anthropic', model: 'claude', source: 'declared' },
-      evidenceCorrelationId: 'corr-a', policyTenantId: U, guardDecisionId: 'gd-a',
+      evidenceCorrelationId: 'corr-a', policyTenantId: U, policyOwnerId: U, guardDecisionId: 'gd-a',
     });
     expect(b).toMatchObject({
-      id: 'v2-b', outcome: null, agent: null, evidenceCorrelationId: null, policyTenantId: 'team-ev', guardDecisionId: null,
+      id: 'v2-b', outcome: null, agent: null, evidenceCorrelationId: null, policyTenantId: 'team-ev', policyOwnerId: U, guardDecisionId: null,
     });
   });
 

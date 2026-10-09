@@ -305,7 +305,7 @@ describe('receipts-client：线上形状归一', () => {
       sourceToolchainId: null, runtimeToolchainId: null, replayabilityStatus: null, replayabilityReasons: null,
       reasonCodes: null, source: 'api', durationMs: 1, createdAt: new Date('2026-10-01T00:00:00Z'),
       outcome: 'ALLOW', ruleId: null, controls: null, agent: null, evidenceCorrelationId: 'c-0',
-      policyTenantId: 't-1', guardDecisionId: null,
+      policyTenantId: 't-1', policyOwnerId: 'u-1', guardDecisionId: null,
     }, ref, []);
     expect(() => buildBundle({
       policy: { scope: 'all' }, range: { start: null, end: null }, entries: [entry],

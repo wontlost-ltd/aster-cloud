@@ -20,6 +20,7 @@ const row = (id: string): EvidenceRow =>
     id,
     createdAt: new Date('2026-07-01T00:00:00Z'),
     policyTenantId: 't1',
+    policyOwnerId: 'owner-1',
     policyVersionRowId: null,
     evidenceCorrelationId: null,
     guardDecisionId: null,
@@ -54,5 +55,26 @@ describe('enrichEntries What-If 接线', () => {
     );
     expect(entries.map((e) => e.whatIf)).toEqual([null, null]);
     expect(whatIfUnavailable).toBe(2);
+  });
+
+  it('What-If 按所有者 userId 查询，收据按团队租户查询', async () => {
+    const replayTenants: string[] = [];
+    const receiptTenants: string[] = [];
+    const receipt = async (tenant: string) => {
+      receiptTenants.push(tenant);
+      return { receipts: new Map(), missing: new Set<string>(), unavailable: new Set<string>(), approvals: new Map() };
+    };
+    const r = { ...row('exec-1'), policyTenantId: 'team-1', policyOwnerId: 'user-1',
+      evidenceCorrelationId: 'c-1', guardDecisionId: 'gd-1' } as EvidenceRow;
+    await enrichEntries([r], {
+      fetchReceipts: receipt,
+      fetchDecisionReceipts: receipt,
+      fetchReplayItems: async (tenant: string) => {
+        replayTenants.push(tenant);
+        return { items: new Map(), unavailable: new Set<string>() };
+      },
+    } as unknown as EnrichDeps);
+    expect(replayTenants).toEqual(['user-1']);
+    expect(receiptTenants).toEqual(['team-1', 'team-1']);
   });
 });

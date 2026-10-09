@@ -44,6 +44,7 @@ function row(over: Partial<EvidenceRow> = {}): EvidenceRow {
     agent: 'agent' in over ? over.agent! : { provider: 'anthropic', model: 'claude', source: 'declared' },
     evidenceCorrelationId: 'evidenceCorrelationId' in over ? over.evidenceCorrelationId! : null,
     policyTenantId: over.policyTenantId ?? 'tenant-1',
+    policyOwnerId: over.policyOwnerId ?? 'owner-1',
     guardDecisionId: 'guardDecisionId' in over ? over.guardDecisionId! : null,
   };
 }
@@ -201,6 +202,7 @@ describe('v2 条目：收据 / 复核者 / agent / outcome', () => {
     });
     // 查询专用字段不进 entry
     expect(e).not.toHaveProperty('policyTenantId');
+    expect(e).not.toHaveProperty('policyOwnerId');
     expect(e).not.toHaveProperty('guardDecisionId');
   });
 

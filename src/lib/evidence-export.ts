@@ -132,6 +132,7 @@ export async function queryEvidenceExecutions(q: EvidenceQuery): Promise<Evidenc
       agent: agentOf(r.agent),
       evidenceCorrelationId: r.evidenceCorrelationId,
       policyTenantId: policyTenantId(r.policy),
+      policyOwnerId: r.policy.userId,
       guardDecisionId: guardDecisionIdOf(r.metadata),
     }));
 }
