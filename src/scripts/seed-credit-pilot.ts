@@ -4,7 +4,7 @@
  * 创建：
  *   - Team credit-pilot（owner=cp-owner）
  *   - User cp-owner(team) / cp-officer(pro, 业务角色 Credit Officer) / cp-analyst(pro)
- *   - Policy pol-credit-pilot 与两条已批准版本（阈值 50000 → 80000，后者为默认）
+ *   - Policy pol-credit-pilot 与两条已批准版本：v1（阈值 50000）为上线默认版本，v2（阈值 80000）作 What-If 对比目标
  *   - cp-analyst 的团队 API key credit-pilot-analyst（明文仅首次创建时打印）
  *
  * 幂等：按 id / key 名查有则更新、无则插入；多次运行不会重复创建
@@ -44,10 +44,10 @@ const USERS: UserSpec[] = [
   { id: CREDIT_PILOT.analystId, plan: 'pro', businessRoles: [] },
 ];
 
-// 版本 1 为原阈值 50000，版本 2 放宽到 80000 并作为默认版本。
+// 版本 1（阈值 50000）上线为默认版本；版本 2 放宽到 80000，仅作 What-If 对比目标。
 const VERSIONS = [
-  { id: CREDIT_PILOT.versionIds[0], version: 1, content: creditPilotSource('en', 50000), isDefault: false },
-  { id: CREDIT_PILOT.versionIds[1], version: 2, content: creditPilotSource('en', 80000), isDefault: true },
+  { id: CREDIT_PILOT.versionIds[0], version: 1, content: creditPilotSource('en', 50000), isDefault: true },
+  { id: CREDIT_PILOT.versionIds[1], version: 2, content: creditPilotSource('en', 80000), isDefault: false },
 ];
 
 function sha256(text: string): string {
@@ -120,8 +120,8 @@ async function upsertPolicy(db: Db): Promise<void> {
     userId: CREDIT_PILOT.ownerId,
     teamId: CREDIT_PILOT.teamId,
     name: 'Credit pilot (ADR 0044)',
-    content: creditPilotSource('en', 80000),
-    version: 2,
+    content: creditPilotSource('en', 50000),
+    version: 1,
     isPublic: false,
     updatedAt: new Date(),
   };
