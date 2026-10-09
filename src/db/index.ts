@@ -108,6 +108,36 @@ export function hasDbBinding(): boolean {
 }
 
 /**
+ * 是否运行在本地 `next dev`（Node 进程）中。
+ *
+ * 背景：本地 dev 下 @opennextjs/cloudflare 会经 getPlatformProxy 懒启动 workerd，
+ * getCloudflareContext() 返回的 env **也带 HYPERDRIVE binding**（connectionString
+ * 由 WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE 覆盖为直连 PG）。
+ * 这个本地代理不做连接池，若按 Workers 路径每次调用新建 client，连接会打满
+ * max_connections（实测 202/200 → too many clients）。
+ *
+ * 判定：Node 进程（process.release.name === 'node'）且 NODE_ENV !== 'production'。
+ * 真实 Workers 运行时没有 Node 的 process.release，因此生产行为不受影响。
+ */
+function isLocalNodeDev(): boolean {
+  return (
+    typeof process !== 'undefined' &&
+    process.release?.name === 'node' &&
+    process.env.NODE_ENV !== 'production'
+  );
+}
+
+/**
+ * 本地开发单例：仍尊重 Hyperdrive 本地代理给出的连接串，但全进程只建一个 client。
+ */
+function getLocalDevDb(env?: CloudflareEnv): ReturnType<typeof createDb> {
+  if (!globalForDb.__asterLocalDevDb) {
+    globalForDb.__asterLocalDevDb = createDb(env);
+  }
+  return globalForDb.__asterLocalDevDb;
+}
+
+/**
  * 创建数据库客户端
  * Hyperdrive 负责连接池，这里只是创建客户端包装器
  */
@@ -142,6 +172,9 @@ export function createDb(env?: CloudflareEnv) {
  */
 export async function getDbAsync(): Promise<ReturnType<typeof createDb>> {
   const env = await getCloudflareEnv();
+  if (isLocalNodeDev()) {
+    return getLocalDevDb(env ?? undefined);
+  }
   return createDb(env ?? undefined);
 }
 
@@ -165,16 +198,14 @@ export function getDb() {
   // 尝试获取 Cloudflare 上下文
   const env = getCloudflareEnvSync();
 
-  // Cloudflare Workers 环境：每次创建新实例（Hyperdrive 管理连接池）
-  if (env?.HYPERDRIVE) {
+  // 真实 Cloudflare Workers：每次创建新实例（Hyperdrive 管理连接池）。
+  // 本地 next dev 下的 HYPERDRIVE 是无池化的本地代理，必须走单例（见 isLocalNodeDev）。
+  if (env?.HYPERDRIVE && !isLocalNodeDev()) {
     return createDb(env);
   }
 
   // 本地开发环境：使用单例避免连接泄漏（挂 globalThis 才能跨 HMR 存活）
-  if (!globalForDb.__asterLocalDevDb) {
-    globalForDb.__asterLocalDevDb = createDb();
-  }
-  return globalForDb.__asterLocalDevDb;
+  return getLocalDevDb(env ?? undefined);
 }
 
 /**
@@ -192,7 +223,7 @@ export async function withRequestDb<T>(
   fn: (db: ReturnType<typeof createDb>) => Promise<T>
 ): Promise<T> {
   const env = getCloudflareEnvSync();
-  const db = createDb(env ?? undefined);
+  const db = isLocalNodeDev() ? getLocalDevDb(env ?? undefined) : createDb(env ?? undefined);
   return requestDbStorage.run(db, () => fn(db));
 }
 
