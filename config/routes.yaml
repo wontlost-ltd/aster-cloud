@@ -254,6 +254,13 @@ routes:
     auth: required
     locales: all
 
+  - path: /approvals
+    status: canonical-here
+    owner: app
+    source: src/app/[locale]/(dashboard)/approvals/page.tsx
+    auth: required
+    locales: all
+
   - path: /domain-vocabularies
     status: canonical-here
     owner: app
