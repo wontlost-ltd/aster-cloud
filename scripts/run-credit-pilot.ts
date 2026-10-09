@@ -102,18 +102,18 @@ async function stepWhatIf(): Promise<void> {
   const base = `/api/v1/policies/${POLICY}/whatif-batches`;
   const [baseVersionId, targetVersionId] = CREDIT_PILOT.versionIds;
   const body = { baseVersionId, targetVersionId, windowKind: 'LAST_MONTH', includeToday: true };
-  const batch = await call<{ id: string }>(auth, 'POST', base, 202, body);
-  log(3, `批量 ${batch.id} 已创建`);
+  const batch = await call<{ batchId: string }>(auth, 'POST', base, 202, body);
+  log(3, `批量 ${batch.batchId} 已创建`);
   const deadline = Date.now() + POLL_LIMIT_MS;
   while (Date.now() < deadline) {
-    const cur = await call<{ status: string }>(auth, 'GET', `${base}/${batch.id}`, 200);
+    const cur = await call<{ status: string }>(auth, 'GET', `${base}/${batch.batchId}`, 200);
     if (cur.status === 'COMPLETED') return log(3, '批量已完成');
     if (cur.status === 'FAILED' || cur.status === 'EXPIRED') {
       throw new Error(`What-If 批量终止于 ${cur.status}：${JSON.stringify(cur)}`);
     }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
-  throw new Error(`What-If 批量 ${batch.id} 超时（${POLL_LIMIT_MS / 1000}s）`);
+  throw new Error(`What-If 批量 ${batch.batchId} 超时（${POLL_LIMIT_MS / 1000}s）`);
 }
 
 // 第 4 步：报告按策略属主查找，故以 cp-owner 导出
