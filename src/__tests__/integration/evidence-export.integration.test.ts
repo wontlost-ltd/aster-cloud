@@ -253,6 +253,25 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('evidence-export 数据层（�
     expect(body.entries[0].reviewers).toEqual([]);
   });
 
+  it('★回放端点不可用：导出完成，whatIf 全 null，notes.whatIfUnavailable = 条目数，14(4)(a) 为 none', async () => {
+    // 基址指向无人监听端口：收据与回放查找都降级为 unavailable，导出不得失败。
+    const prev = process.env.ASTER_POLICY_API_INTERNAL_URL;
+    process.env.ASTER_POLICY_API_INTERNAL_URL = 'http://127.0.0.1:1';
+    try {
+      await seedExecution({ id: 'exec-w1', createdAt: new Date('2026-07-01T00:00:00Z'), outcome: 'REQUIRE_APPROVAL' });
+      const { id } = await createEvidenceExport(U, { policyId: POL, format: 'json' });
+      const body = JSON.parse((await getEvidenceExportBundle(U, id))!.body);
+      expect(body.manifest.schemaVersion).toBe('3');
+      expect(body.entries.every((e: { whatIf: unknown }) => e.whatIf === null)).toBe(true);
+      expect(body.manifest.notes.whatIfUnavailable).toBe(body.entries.length);
+      const clause = body.manifest.regulatoryMapping.clauses.find((c: { clause: string }) => c.clause === '14(4)(a)');
+      expect(clause.status).toBe('none');
+    } finally {
+      if (prev === undefined) delete process.env.ASTER_POLICY_API_INTERNAL_URL;
+      else process.env.ASTER_POLICY_API_INTERNAL_URL = prev;
+    }
+  });
+
   it('★已存的 v1 证据包按原样下载（不重算、不升级）', async () => {
     const v1Manifest = {
       kind: 'evidence-export', schemaVersion: '1', generatedAt: '2026-07-01T00:00:00.000Z', policy: { scope: 'all' },

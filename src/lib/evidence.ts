@@ -28,6 +28,7 @@ import {
   loadVersionApprovalReviewers,
   type Reviewer,
 } from '@/services/evidence/reviewers';
+import { fetchReplayItems, mergeReplayLookups, type ReplayItemLookup } from '@/services/evidence/replay-items-client';
 import { readStoredEvidenceExport, type StoredEvidenceExport } from '@/services/evidence/stored';
 import type {
   EvidenceBundle,
@@ -37,7 +38,7 @@ import type {
 } from '@/services/evidence/types';
 
 /**
- * 本次写入的存储形态：只产 v2；历史 v1 行由 readStoredEvidenceExport 按 schemaVersion 收窄读取，不做重算或升级。
+ * 本次写入的存储形态：只产 v3；历史 v1 行由 readStoredEvidenceExport 按 schemaVersion 收窄读取，不做重算或升级。
  */
 interface EvidenceExportData extends StoredEvidenceExport {
   manifest: EvidenceManifest;
@@ -76,17 +77,44 @@ async function lookupByTenant(
   return mergeLookups(await Promise.all([...groups].map(([tenant, ids]) => fetcher(tenant, ids, fetch, limiter))));
 }
 
+type ReplayFetcher = (
+  tenantId: string,
+  ids: string[],
+  fetchImpl: typeof fetch,
+  limiter: Limiter,
+) => Promise<ReplayItemLookup>;
+
+/** 查找依赖的注入点：默认走真实客户端，单测可替换为桩。 */
+export interface EnrichDeps {
+  fetchReceipts: ReceiptFetcher;
+  fetchDecisionReceipts: ReceiptFetcher;
+  fetchReplayItems: ReplayFetcher;
+}
+
+const DEFAULT_DEPS: EnrichDeps = { fetchReceipts, fetchDecisionReceipts, fetchReplayItems };
+
+/** 与 lookupByTenant 同口径：逐租户取最新 What-If 结论后合并，客户端自身不抛错。 */
+async function replayByTenant(
+  groups: Map<string, string[]>,
+  fetcher: ReplayFetcher,
+  limiter: Limiter,
+): Promise<ReplayItemLookup> {
+  return mergeReplayLookups(await Promise.all([...groups].map(([tenant, ids]) => fetcher(tenant, ids, fetch, limiter))));
+}
+
 /**
- * 为每行拼装链收据与三来源复核者，生成 v2 条目。
+ * 为每行拼装链收据、三来源复核者与 What-If 结论，生成 v3 条目。
+ * What-If 取不到不阻断导出（与收据同口径）：条目 whatIf 置 null，数量计入 whatIfUnavailable。
  * ★租户前置：版本 id 只取自已按 userId 过滤的 rows，满足 loadProofReviewers/loadVersionApprovalReviewers 的约定。
  */
-async function enrichEntries(rows: readonly EvidenceRow[]) {
+export async function enrichEntries(rows: readonly EvidenceRow[], deps: EnrichDeps = DEFAULT_DEPS) {
   const versionIds = [...new Set(rows.map((r) => r.policyVersionRowId).filter((v): v is string => !!v))];
-  // 一个导出一个限流器：两类查找 × 所有租户合计在途批次 ≤ RECEIPT_CONCURRENCY。
+  // 一个导出一个限流器：三类查找 × 所有租户合计在途批次 ≤ RECEIPT_CONCURRENCY。
   const limiter = createLimiter(RECEIPT_CONCURRENCY);
-  const [lookup, guardLookup, proofs, approvals] = await Promise.all([
-    lookupByTenant(idsByTenant(rows, (r) => r.evidenceCorrelationId), fetchReceipts, limiter),
-    lookupByTenant(idsByTenant(rows, (r) => r.guardDecisionId), fetchDecisionReceipts, limiter),
+  const [lookup, guardLookup, replay, proofs, approvals] = await Promise.all([
+    lookupByTenant(idsByTenant(rows, (r) => r.evidenceCorrelationId), deps.fetchReceipts, limiter),
+    lookupByTenant(idsByTenant(rows, (r) => r.guardDecisionId), deps.fetchDecisionReceipts, limiter),
+    replayByTenant(idsByTenant(rows, (r) => r.id), deps.fetchReplayItems, limiter),
     loadProofReviewers(versionIds),
     loadVersionApprovalReviewers(versionIds),
   ]);
@@ -94,16 +122,20 @@ async function enrichEntries(rows: readonly EvidenceRow[]) {
     vid ? [...(proofs.get(vid) ?? []), ...(approvals.get(vid) ?? [])] : [];
   const guardReviewers = (did: string | null): Reviewer[] =>
     did ? guardApprovalReviewers(guardLookup.approvals.get(did) ?? []) : [];
-  return rows.map((r) =>
-    buildEvidenceEntry(r, receiptFor(r, lookup), [
-      ...versionReviewers(r.policyVersionRowId),
-      ...guardReviewers(r.guardDecisionId),
-    ]),
+  const entries = rows.map((r) =>
+    buildEvidenceEntry(
+      r,
+      receiptFor(r, lookup),
+      [...versionReviewers(r.policyVersionRowId), ...guardReviewers(r.guardDecisionId)],
+      replay.items.get(r.id) ?? null,
+    ),
   );
+  const whatIfUnavailable = rows.filter((r) => replay.unavailable.has(r.id)).length;
+  return { entries, whatIfUnavailable };
 }
 
 /**
- * 创建证据导出：查真实执行 → 取链收据/复核者 → 组装 v2 bundle → 持久化（generating→completed/failed）。
+ * 创建证据导出：查真实执行 → 取链收据/复核者 → 组装 v3 bundle → 持久化（generating→completed/failed）。
  * 收据取不到不使导出失败：条目如实标 unavailable，manifest.notes 计数。
  * 返回 { id, manifest }（不回整个 bundle，下载走 getEvidenceExportBundle）。
  */
@@ -152,10 +184,12 @@ export async function createEvidenceExport(
       verifiableOnly: request.verifiableOnly,
     });
 
+    const { entries, whatIfUnavailable } = await enrichEntries(rows);
     const bundle = buildBundle({
       policy: policySnapshot,
       range: { start: request.startDate ?? null, end: request.endDate ?? null },
-      entries: await enrichEntries(rows),
+      entries,
+      whatIfUnavailable,
       generatedAt: now,
     });
 
