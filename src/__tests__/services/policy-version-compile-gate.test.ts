@@ -281,3 +281,29 @@ describe('治理档案落库（ADR 0046 §6）：取自保存时的编译结果'
     );
   });
 });
+
+describe('检查不可用时声明了档案的源码 fail-closed（ADR 0046 §4）', () => {
+  const profiled = { source: 'Module a.\nProfile "governed".\n', locale: 'en-US' };
+  const plain = { source: 'Module a.\n', locale: 'en-US' };
+  const failWith = (err: unknown): CompileValidator => vi.fn().mockRejectedValue(err);
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('声明档案 + 超时 → PolicyCompileUnavailableError', async () => {
+    await expect(assertCompilable(failWith(new Error('Request timeout')), profiled)).rejects.toBeInstanceOf(
+      PolicyCompileUnavailableError,
+    );
+  });
+
+  it('未声明档案 + 超时 → 照旧放行', async () => {
+    await expect(assertCompilable(failWith(new Error('Request timeout')), plain)).resolves.toBeNull();
+  });
+
+  it('createVersion 自跑门禁：声明档案且上游不可用 → 不落库', async () => {
+    mockVersionsFindFirst.mockResolvedValue(null);
+    await expect(
+      createVersion({ ...baseParams, source: profiled.source, validateCompilable: failWith(new Error('503')) }),
+    ).rejects.toBeInstanceOf(PolicyCompileUnavailableError);
+    expect(mockInsertReturning).not.toHaveBeenCalled();
+  });
+});

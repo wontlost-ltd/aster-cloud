@@ -46,6 +46,7 @@ function save(content: string) {
 }
 
 const PLAIN = 'Module m.\n\nRule r given x as Int, produce Bool:\n  Return x at least 1.\n';
+const PROFILED = 'Module m.\nProfile "governed".\n\nRule r given x as Int, produce Bool:\n  Return x at least 1.\n';
 
 describe('保存入口：编译检查不可用（真实错误类）', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -57,6 +58,30 @@ describe('保存入口：编译检查不可用（真实错误类）', () => {
     expect(res.status).toBe(503);
     expect(res.headers.get('Retry-After')).toBe('7');
     expect(body.error).toBe('compile_unavailable');
+    expect(mockValuesInsert).not.toHaveBeenCalled();
+  });
+
+  it('声明档案 + 上游 408 超时 → 503 compile_unavailable，不落库', async () => {
+    mockCompile.mockRejectedValue(new PolicyApiError('Request timeout', 408, 'TIMEOUT'));
+    const res = await save(PROFILED);
+    expect(res.status).toBe(503);
+    expect(res.headers.get('Retry-After')).not.toBeNull();
+    expect((await res.json()).error).toBe('compile_unavailable');
+    expect(mockValuesInsert).not.toHaveBeenCalled();
+  });
+
+  it('未声明档案 + 上游 408 超时 → 照旧放行保存', async () => {
+    mockCompile.mockRejectedValue(new PolicyApiError('Request timeout', 408, 'TIMEOUT'));
+    const res = await save(PLAIN);
+    expect(res.status).toBe(201);
+    expect(mockValuesInsert).toHaveBeenCalled();
+  });
+
+  it('声明档案 + 上游 5xx → 503 compile_unavailable，不落库', async () => {
+    mockCompile.mockRejectedValue(new PolicyApiError('upstream down', 502));
+    const res = await save(PROFILED);
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toBe('compile_unavailable');
     expect(mockValuesInsert).not.toHaveBeenCalled();
   });
 });

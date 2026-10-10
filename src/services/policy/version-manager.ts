@@ -26,6 +26,7 @@ import {
   validateUserAliases,
   type ReservedSets,
 } from '@/lib/policy-alias';
+import { declaresProfile } from '@/lib/policy-profile-declaration';
 
 type PolicyVersion = InferSelectModel<typeof policyVersions>;
 type PolicyVersionStatus = PolicyVersion['status'];
@@ -106,6 +107,9 @@ export class PolicyCompileUnavailableError extends PolicyCompileError {
   }
 }
 
+/** 编译检查不可用且上游未给出重试时间时的默认重试秒数（aster-api 限流窗口为一分钟）。 */
+export const DEFAULT_COMPILE_RETRY_AFTER_SECONDS = 60;
+
 /** 编译诊断：severity 判「是否有 error」，code/message 用于给出具体拒绝原因。 */
 export interface CompileDiagnostic {
   severity: 'error' | 'warning' | 'info' | 'hint';
@@ -129,7 +133,7 @@ function compileErrorFor(errors: readonly CompileDiagnostic[]): PolicyCompileErr
  * 注入（依赖倒置）——version-manager 不直接依赖 HTTP 客户端，保持可测且解耦。
  * 用与执行一致的输入（source+locale+aliasSet）编译，避免「前端带 alias 编译
  * 通过、后端不带 alias 误判 error」的前后端语义分裂。校验器自身抛异常（如
- * aster-api 不可达）由 createVersion fail-open 放行。
+ * aster-api 不可达）的处理见 assertCompilable。
  */
 export type CompileValidator = (input: {
   source: string;
@@ -142,7 +146,8 @@ export type CompileValidator = (input: {
  * 治理档案 id（未声明或检查放行时为 null），供建版本时落库。
  * 校验器抛 PolicyCompileError（如上游 4xx 用户输入错误）或其子类
  * PolicyCompileUnavailableError（上游限流）→ 上抛拒绝落库；
- * 其它异常（5xx/网络/超时）→ fail-open 放行（记录，不阻断保存）。
+ * 其它异常（5xx/网络/超时）：源码声明了治理档案时同样按不可用拒绝（否则 E705/E706 被放过，
+ * ADR 0046 §4），未声明档案时 fail-open 放行（记录，不阻断保存）。
  *
  * POST/PUT 路由在 db.transaction **之前**调用（避免事务内网络调用+持锁等待）；
  * createVersion 内部也调它，作为无事务直调入口（如 v1/versions）的兜底。
@@ -166,6 +171,9 @@ export async function assertCompilable(
     return result.profile || null;
   } catch (err) {
     if (err instanceof PolicyCompileError) throw err;
+    if (declaresProfile(input.source)) {
+      throw new PolicyCompileUnavailableError(DEFAULT_COMPILE_RETRY_AFTER_SECONDS);
+    }
     console.warn(
       '[assertCompilable] compile precheck unavailable, allowing save',
       err instanceof Error ? err.message : err,
@@ -194,8 +202,8 @@ export interface CreateVersionParams {
   toolchainId?: string;
   /**
    * 源码可编译性校验器（注入）。提供时：编译源码，若含 error 诊断则抛
-   * PolicyCompileError（拒绝落库不可编译源码）。fail-open：校验器自身抛异常
-   * （编译服务不可达）→ 记录并放行。缺省=不校验（向后兼容）。
+   * PolicyCompileError（拒绝落库不可编译源码）。校验器自身抛异常（编译服务不可达）
+   * 时按 assertCompilable 的规则放行或拒绝。缺省=不校验（向后兼容）。
    */
   validateCompilable?: CompileValidator;
   /**
