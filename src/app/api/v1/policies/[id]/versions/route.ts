@@ -15,6 +15,7 @@ import {
   PolicyCompileError,
 } from '@/services/policy/version-manager';
 import { makeCompileValidator } from '@/lib/policy-compile-validator';
+import { compileGateErrorResponse } from '@/lib/policy-compile-response';
 import {
   getStructuralAliasGrant,
   buildAliasReservedForUser,
@@ -174,12 +175,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
-    // 有解析错误的源码——用户可修正的 4xx。
+    // 编译门禁拒绝：源码有阻断诊断 → 400；编译检查暂不可用 → 503 可重试。
     if (error instanceof PolicyCompileError) {
-      return NextResponse.json(
-        { error: 'compile_error', message: error.message },
-        { status: 400 },
-      );
+      return compileGateErrorResponse(error);
     }
     console.error('[Versions POST] Error:', error);
     return NextResponse.json(

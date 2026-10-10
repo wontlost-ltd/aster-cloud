@@ -5,6 +5,7 @@ import { eq, desc, sql } from 'drizzle-orm';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
 import { assertCompilable, PolicyCompileError } from '@/services/policy/version-manager';
 import { makeCompileValidator } from '@/lib/policy-compile-validator';
+import { compileGateErrorResponse } from '@/lib/policy-compile-response';
 
 
 type RouteParams = { params: Promise<{ teamId: string }> };
@@ -186,12 +187,9 @@ export async function POST(req: Request, { params }: RouteParams) {
       { status: 201 }
     );
   } catch (error: unknown) {
-    // 有解析错误的源码——用户可修正的 4xx，不是 500。
+    // 编译门禁拒绝：源码有阻断诊断 → 400；编译检查暂不可用 → 503 可重试。
     if (error instanceof PolicyCompileError) {
-      return NextResponse.json(
-        { error: 'compile_error', message: error.message },
-        { status: 400 }
-      );
+      return compileGateErrorResponse(error);
     }
     console.error('Error creating team policy:', error);
     return NextResponse.json({ error: '服务器内部错误' }, { status: 500 });

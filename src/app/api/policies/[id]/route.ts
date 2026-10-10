@@ -9,6 +9,7 @@ import {
   PolicyCompileError,
 } from '@/services/policy/version-manager';
 import { makeCompileValidator } from '@/lib/policy-compile-validator';
+import { compileGateErrorResponse } from '@/lib/policy-compile-response';
 import { getStructuralAliasGrant, buildAliasReservedForUser } from '@/lib/structural-alias-grants';
 import { canonicalAliasJson } from '@/lib/policy-alias';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
@@ -261,7 +262,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
 
     // 只有新建版本（源码变更）才编译校验；在事务外 preflight（避免事务内网络调用）。
     // 用与 createVersion 一致的 aliasSetInput（effective 别名）编译，避免语义分裂。
-    // 有 error 诊断抛 PolicyCompileError → 下方 catch 转 400。
+    // 有 error 诊断抛 PolicyCompileError → 下方 catch 转 400（检查不可用时 503）。
     if (newVersion) {
       await assertCompilable(makeCompileValidator(session.user.id), {
         source: versionSource,
@@ -311,12 +312,9 @@ export async function PUT(req: Request, { params }: RouteParams) {
 
     return NextResponse.json(policy);
   } catch (error) {
-    // 有解析错误的源码——用户可修正的 4xx。
+    // 编译门禁拒绝：源码有阻断诊断 → 400；编译检查暂不可用 → 503 可重试。
     if (error instanceof PolicyCompileError) {
-      return NextResponse.json(
-        { error: 'compile_error', message: error.message },
-        { status: 400 },
-      );
+      return compileGateErrorResponse(error);
     }
     console.error('Error updating policy:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

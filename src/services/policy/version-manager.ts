@@ -79,15 +79,49 @@ export async function assertPolicyOwnership(policyId: string, userId: string): P
  * 与「别名校验失败」区分：那是别名输入非法，这是源码本身不可编译。
  */
 export class PolicyCompileError extends Error {
+  /** 有值表示「编译检查暂不可用、可稍后重试」，路由据此返回 503 + Retry-After。 */
+  readonly retryAfterSeconds?: number;
+
   constructor(message = '策略存在解析错误，无法保存，请先修复后再试。') {
     super(message);
     this.name = 'PolicyCompileError';
   }
 }
 
-/** 编译诊断（只关心 severity 判「是否有 error」）。 */
+/**
+ * 编译检查暂不可用（如 aster-api 限流 429）。仍拒绝落库（fail-closed），
+ * 否则限流期间 E705/E706 等阻断性诊断会被放过；但它不是用户源码的错，
+ * 路由返回 503 并提示稍后重试，而不是「解析错误」。
+ */
+export class PolicyCompileUnavailableError extends PolicyCompileError {
+  override readonly retryAfterSeconds: number;
+
+  constructor(
+    retryAfterSeconds: number,
+    message = '策略编译检查暂时繁忙，暂无法保存，请稍后重试。',
+  ) {
+    super(message);
+    this.name = 'PolicyCompileUnavailableError';
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+/** 编译诊断：severity 判「是否有 error」，code/message 用于给出具体拒绝原因。 */
 export interface CompileDiagnostic {
   severity: 'error' | 'warning' | 'info' | 'hint';
+  code?: string;
+  message?: string;
+}
+
+/** 治理档案的阻断码（ADR 0046 §4）：档案未知 / 规则缺少档案要求的控制点。 */
+const PROFILE_ERROR_CODES: ReadonlySet<string> = new Set(['E705', 'E706']);
+
+/** 按阻断诊断构造保存失败异常：含档案码时用档案专用文案并附首条档案诊断消息。 */
+function compileErrorFor(errors: readonly CompileDiagnostic[]): PolicyCompileError {
+  const profileError = errors.find((d) => d.code && PROFILE_ERROR_CODES.has(d.code));
+  if (!profileError) return new PolicyCompileError();
+  const detail = profileError.message ? `：${profileError.message}` : '。';
+  return new PolicyCompileError(`策略违反所声明的治理档案，无法保存${detail}`);
 }
 
 /**
@@ -105,7 +139,8 @@ export type CompileValidator = (input: {
 
 /**
  * 跑源码可编译性门禁：编译含 error 诊断则抛 PolicyCompileError。
- * 校验器抛 PolicyCompileError（如上游 4xx 用户输入错误）→ 上抛拒绝落库；
+ * 校验器抛 PolicyCompileError（如上游 4xx 用户输入错误）或其子类
+ * PolicyCompileUnavailableError（上游限流）→ 上抛拒绝落库；
  * 其它异常（5xx/网络/超时）→ fail-open 放行（记录，不阻断保存）。
  *
  * POST/PUT 路由在 db.transaction **之前**调用（避免事务内网络调用+持锁等待）；
@@ -121,11 +156,11 @@ export async function assertCompilable(
 ): Promise<void> {
   try {
     const result = await validator(input);
-    const hasError = (result.diagnostics ?? []).some(
+    const errors = (result.diagnostics ?? []).filter(
       (d) => d.severity === 'error',
     );
-    if (hasError) {
-      throw new PolicyCompileError();
+    if (errors.length > 0) {
+      throw compileErrorFor(errors);
     }
   } catch (err) {
     if (err instanceof PolicyCompileError) throw err;

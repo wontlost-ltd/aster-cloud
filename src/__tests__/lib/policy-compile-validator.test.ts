@@ -13,7 +13,10 @@ vi.mock('@/services/policy/policy-api', async (importOriginal) => {
 
 import { makeCompileValidator } from '@/lib/policy-compile-validator';
 import { PolicyApiError } from '@/services/policy/policy-api';
-import { PolicyCompileError } from '@/services/policy/version-manager';
+import {
+  PolicyCompileError,
+  PolicyCompileUnavailableError,
+} from '@/services/policy/version-manager';
 
 describe('makeCompileValidator — 异常分类', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -45,6 +48,37 @@ describe('makeCompileValidator — 异常分类', () => {
     const v = makeCompileValidator('u1');
     // 不应被转成 PolicyCompileError（那会误拒合法保存）；原样上抛走 fail-open。
     await expect(v(input)).rejects.toBe(err);
+  });
+
+  it('408 回归：仍原样上抛，不转成任何 PolicyCompileError（含不可用）', async () => {
+    const err = new PolicyApiError('Request timeout', 408, 'TIMEOUT');
+    mockCompile.mockRejectedValue(err);
+    const v = makeCompileValidator('u1');
+    const caught = await v(input).catch((e: unknown) => e);
+    expect(caught).toBe(err);
+    expect(caught).not.toBeInstanceOf(PolicyCompileError);
+  });
+
+  it('429（限流）→ 抛 PolicyCompileUnavailableError，带上游 retryAfter，不是解析错误', async () => {
+    mockCompile.mockRejectedValue(
+      new PolicyApiError('Too Many Requests', 429, 'Too Many Requests', undefined, {
+        error: 'Too Many Requests',
+        retryAfter: 17,
+      }),
+    );
+    const v = makeCompileValidator('u1');
+    const caught = await v(input).catch((e: unknown) => e);
+    expect(caught).toBeInstanceOf(PolicyCompileUnavailableError);
+    expect((caught as PolicyCompileUnavailableError).retryAfterSeconds).toBe(17);
+    expect((caught as Error).message).not.toContain('解析错误');
+  });
+
+  it('429 且错误体无 retryAfter → 使用默认重试秒数', async () => {
+    mockCompile.mockRejectedValue(new PolicyApiError('HTTP 429', 429));
+    const v = makeCompileValidator('u1');
+    const caught = await v(input).catch((e: unknown) => e);
+    expect(caught).toBeInstanceOf(PolicyCompileUnavailableError);
+    expect((caught as PolicyCompileUnavailableError).retryAfterSeconds).toBe(60);
   });
 
   it('网络/超时（非 PolicyApiError）→ 原样上抛', async () => {

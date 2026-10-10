@@ -97,4 +97,17 @@ describe('POST /api/teams/{teamId}/policies 编译门禁', () => {
     await POST(req(VALID), ctx as never);
     expect(mockValuesInsert).not.toHaveBeenCalled();
   });
+
+  it('编译检查不可用（上游限流）→ 503 + Retry-After，不落库', async () => {
+    const err = Object.assign(new mockPolicyCompileError('策略编译检查暂时不可用'), {
+      retryAfterSeconds: 9,
+    });
+    mockAssertCompilable.mockRejectedValueOnce(err);
+    const res = await POST(req(VALID), ctx as never);
+    const body = await res.json();
+    expect(res.status).toBe(503);
+    expect(res.headers.get('Retry-After')).toBe('9');
+    expect(body.error).toBe('compile_unavailable');
+    expect(mockValuesInsert).not.toHaveBeenCalled();
+  });
 });

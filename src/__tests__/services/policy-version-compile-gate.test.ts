@@ -34,6 +34,7 @@ import {
   createVersion,
   assertCompilable,
   PolicyCompileError,
+  PolicyCompileUnavailableError,
   type CompileValidator,
 } from '@/services/policy/version-manager';
 
@@ -103,6 +104,16 @@ describe('createVersion — 源码可编译性门禁', () => {
     expect(mockInsertReturning).toHaveBeenCalled();
   });
 
+  it('校验器抛 PolicyCompileUnavailableError（上游限流）→ fail-closed，不落库', async () => {
+    const validateCompilable: CompileValidator = vi
+      .fn()
+      .mockRejectedValue(new PolicyCompileUnavailableError(30));
+    await expect(
+      createVersion({ ...baseParams, validateCompilable }),
+    ).rejects.toBeInstanceOf(PolicyCompileUnavailableError);
+    expect(mockInsertReturning).not.toHaveBeenCalled();
+  });
+
   it('未提供 validateCompilable → 不校验（向后兼容），正常落库', async () => {
     const r = await createVersion(baseParams);
     expect(r.version).toBe(1);
@@ -163,5 +174,60 @@ describe('assertCompilable — 治理档案诊断（ADR 0046 §4）', () => {
     await expect(
       assertCompilable(validator, { source: 'Module X.', locale: 'en-US' }),
     ).resolves.toBeUndefined();
+  });
+
+  it('E706 → 抛档案专用文案，并附首条档案诊断消息', async () => {
+    const validator: CompileValidator = vi.fn().mockResolvedValue({
+      diagnostics: [
+        { severity: 'warning', code: 'W700', message: 'warn' },
+        { severity: 'error', code: 'E706', message: 'rule r lacks EU_AI_ACT control' },
+        { severity: 'error', code: 'E705', message: 'second' },
+      ],
+    });
+    const caught = await assertCompilable(validator, {
+      source: 'Module X.',
+      locale: 'en-US',
+    }).catch((e: unknown) => e);
+    expect(caught).toBeInstanceOf(PolicyCompileError);
+    const message = (caught as Error).message;
+    expect(message).not.toContain('解析错误');
+    expect(message).toContain('治理档案');
+    expect(message).toContain('rule r lacks EU_AI_ACT control');
+    expect(message).not.toContain('second');
+  });
+
+  it('档案码与普通解析错误并存 → 仍用档案文案（取档案码的诊断）', async () => {
+    const validator: CompileValidator = vi.fn().mockResolvedValue({
+      diagnostics: [
+        { severity: 'error', code: 'E001', message: 'syntax' },
+        { severity: 'error', code: 'E705', message: 'unknown profile "X"' },
+      ],
+    });
+    const caught = await assertCompilable(validator, {
+      source: 'Module X.',
+      locale: 'en-US',
+    }).catch((e: unknown) => e);
+    expect((caught as Error).message).toContain('unknown profile "X"');
+    expect((caught as Error).message).not.toContain('syntax');
+  });
+
+  it('无档案码的 error → 仍是默认解析错误文案', async () => {
+    const validator: CompileValidator = vi.fn().mockResolvedValue({
+      diagnostics: [{ severity: 'error', code: 'E001', message: 'syntax' }],
+    });
+    const caught = await assertCompilable(validator, {
+      source: 'Module X.',
+      locale: 'en-US',
+    }).catch((e: unknown) => e);
+    expect((caught as Error).message).toBe(new PolicyCompileError().message);
+  });
+
+  it('上游不可用（PolicyCompileUnavailableError）→ 上抛，不 fail-open', async () => {
+    const validator: CompileValidator = vi
+      .fn()
+      .mockRejectedValue(new PolicyCompileUnavailableError(5));
+    await expect(
+      assertCompilable(validator, { source: 'Module X.', locale: 'en-US' }),
+    ).rejects.toBeInstanceOf(PolicyCompileUnavailableError);
   });
 });

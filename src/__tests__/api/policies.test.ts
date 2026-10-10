@@ -468,6 +468,24 @@ describe('Policies API - Drizzle Migration', () => {
       expect(mockCreateVersion).not.toHaveBeenCalled();
     });
 
+    it('编译检查不可用（带 retryAfterSeconds）→ 503 compile_unavailable + Retry-After，不落库', async () => {
+      class Unavailable extends mockPolicyCompileError {
+        readonly retryAfterSeconds = 42;
+        constructor() {
+          super('策略编译检查暂时不可用');
+        }
+      }
+      mockAssertCompilable.mockRejectedValueOnce(new Unavailable());
+      const response = await POST(
+        makeRequest('http://localhost/api/policies', 'POST', validBody),
+      );
+      const body = await response.json();
+      expect(response.status).toBe(503);
+      expect(response.headers.get('Retry-After')).toBe('42');
+      expect(body.error).toBe('compile_unavailable');
+      expect(mockCreateVersion).not.toHaveBeenCalled();
+    });
+
     it('保存前调 assertCompilable 门禁（已接线）', async () => {
       await POST(makeRequest('http://localhost/api/policies', 'POST', validBody));
       expect(mockAssertCompilable).toHaveBeenCalledWith(
