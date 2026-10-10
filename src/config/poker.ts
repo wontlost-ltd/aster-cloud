@@ -258,7 +258,7 @@ Rule classifyScore5 given cards, produce:
   Let maxGroup be List.max(List.map(Map.values(List.groupBy(ranks, identity)), groupLen)).
   Let span be List.max(ranks) minus List.min(ranks).
   Let kickers be tiebreakRanks(ranks).
-  Let straightHigh be List.get(sortedDistinct, 4).
+  Let straightHigh be List.max(ranks).
   Let isFlush be distinctSuits equals to 1.
   Let isWheel be distinctRanks equals to 5 and List.get(sortedDistinct, 4) equals to 14 and List.get(sortedDistinct, 3) equals to 5.
   Let isStraight be distinctRanks equals to 5 and span equals to 4.
@@ -348,7 +348,7 @@ Rule decide given table, produce Text:
   令 最大组 定义为 List.max(List.map(Map.values(List.groupBy(点数表, 本身)), 组长度))。
   令 跨度 定义为 List.max(点数表) 减去 List.min(点数表)。
   令 关键牌 定义为 关键牌序(点数表)。
-  令 顺子高 定义为 List.get(排序点数, 4)。
+  令 顺子高 定义为 List.max(点数表)。
   令 是同花 定义为 不同花色 等于 1。
   令 是轮子 定义为 不同点数 等于 5 并且 List.get(排序点数, 4) 等于 14 并且 List.get(排序点数, 3) 等于 5。
   令 是顺子 定义为 不同点数 等于 5 并且 跨度 等于 4。
@@ -438,7 +438,7 @@ Regel handWert gegeben hand liefert:
   sei groessteGruppe gleich List.max(List.map(Map.values(List.groupBy(werte, selbst)), gruppenLaenge)).
   sei spanne gleich List.max(werte) minus List.min(werte).
   sei schluessel gleich schluesselWerte(werte).
-  sei reiheHoch gleich List.get(sortierteWerte, 4).
+  sei reiheHoch gleich List.max(werte).
   sei istFarbe gleich andersFarben entspricht 1.
   sei istRad gleich andersWerte entspricht 5 und List.get(sortierteWerte, 4) entspricht 14 und List.get(sortierteWerte, 3) entspricht 5.
   sei istReihe gleich andersWerte entspricht 5 und spanne entspricht 4.
