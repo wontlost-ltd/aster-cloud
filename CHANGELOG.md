@@ -6,6 +6,33 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- 保存时把编译得到的档案写入 PolicyVersion.profile，详情页读库不再编译（ADR 0046 §6） *(governance)*
+- 信贷试点 v3 以语法糖书写并声明 eu-ai-act-high-risk 档案（ADR 0046 §6） *(pilot)*
+- 执行记录档案、证据包 v5 与档案展示（ADR 0046 §6） *(governance)*
+- 报告页渲染注册表驱动的法规对照（ADR 0045 §5） *(reports)*
+- 对照表由控制注册表驱动，证据包 v4（ADR 0045 §4） *(evidence)*
+- 信贷试点端到端驱动脚本——执行、审批、What-If、导出并核对 Article 14 对照（ADR 0044 §5） *(pilot)*
+- 信贷试点三语 Verdict 策略、租户播种脚本、用研模板迁 Verdict（ADR 0044 §2/§5） *(pilot)*
+- 导出时按执行 id 取最新 What-If 结论挂到条目（ADR 0044 §3.3） *(evidence)*
+- Article 14 对照纯函数——逐款 evidenced/partial/none 与证据指向（ADR 0044 §3.1） *(evidence)*
+- 证据包 v3——条目挂 What-If 结论，manifest 预留法规对照（ADR 0044 §3） *(evidence)*
+- 窗口接口带 outcome，面板渲染四态转移矩阵（ADR 0043 §5） *(whatif)*
+- 审批收件箱——跨租户待审批、按已验证角色可审、通知入口（ADR 0042 §5.2） *(approvals)*
+- 需审批执行以证据锚定开 guard 决策并记录 guardDecisionId，登记重试与站内通知（ADR 0042 §5.1/§5.3） *(executions)*
+- 内部签名 v3（query/userId/businessRoles）与 guard 客户端方法（ADR 0042 §4） *(policy-api)*
+- 团队成员/个人业务角色，授予入口与 verify/快照下发（ADR 0042 §2） *(teams)*
+- 证据包 v2——链收据、统一复核者、模型身份与五态统计（ADR 0041 §5） *(evidence)*
+- 链收据客户端（分批/超时/unavailable）与统一复核者拼装（ADR 0041 §2.4/§5.2） *(evidence)*
+- 决策五态、证据列与 agent 透传（ADR 0041 §4） *(executions)*
+- API key 作用域选择与团队列（ADR 0015 §6） *(ui)*
+- API 调用量按配额 owner 共享池统计，usage 落 quotaOwnerId（ADR 0015 §4） *(quota)*
+- 成员/所有权/团队变化时吊销或重推团队 key，owner 套餐变化失效团队 plan 缓存（ADR 0015 §5） *(teams)*
+- 团队作用域 key 的创建/列表/校验，吊销与成员变动的快照通知（ADR 0015 §5） *(api-keys)*
+- Verify/snapshot 走身份解析器，下发 quotaOwnerId 与团队租户（ADR 0015 §2-§3） *(internal)*
+- Key 身份解析器——个人/团队 key 的租户、角色与配额归属（ADR 0015 §2） *(api-keys)*
+- ApiKey.teamId 与 ApiCallRecord.quotaOwnerId（ADR 0015 §1） *(db)*
+- 结果解析器识别 Verdict 内置值（ADR 0039） *(policy)*
+- 人工复核面板 —— ADR 0037 §14/§15 证据链落地 (#474) *(review)*
 - 把 useAsterLSP 接进编辑器，并下发租户领域词汇 (#454) *(playground)*
 - 编辑器补全按 locale 提供 CNL 关键词 (#452) *(playground)*
 - 补齐 poemDemoPage.result 三语 + gate 支持折行值，真缺归零 (#436) *(i18n)*
@@ -301,6 +328,10 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
+- PROFILE_KEYWORDS 仅模块内使用，取消导出 *(policy)*
+- 存储 manifest 定型为 EvidenceManifestV1 | EvidenceManifest，读取侧按 schemaVersion 收窄（ADR 0041 §5） *(evidence)*
+- 策略租户 id 统一经 policyTenantId 推导（teamId || userId） *(evidence)*
+- 快照体单一来源，补个人 key 回归测试与钩子顺序/防御 *(internal)*
 - 孤勇改 alias-literal（源码即诗+字面量宏，放弃 decision） (#307) *(demos)*
 - 孤勇歌词改押韵工整版(便于谱曲) (#305) *(demos)*
 - 孤勇布尔前提改双字意象词（单字缺意境→更好理解） (#304) *(demos)*
@@ -328,6 +359,14 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Documentation
 
+- Note unpublished registry package and pooled evidence *(credit-pilot)*
+- 收据核验示例改用 Bearer 认证并说明 ASTER_API 基地址（ADR 0044 §5） *(guides)*
+- 信贷试点指南三语——跑通步骤、Article 14 对照解读、独立核验（ADR 0044 §5） *(guides)*
+- ADR 0015 终审同步——类型、403 体、发布顺序、v1 配额口径、cron 行 *(adr)*
+- ADR 0015 定稿——本地全栈验收结果 *(adr)*
+- ADR 0015 代码事实修正与实施计划
+- ADR 0015 团队作用域 API key 与 owner 共享配额池 *(adr)*
+- Refresh unreleased (#473) *(changelog)*
 - Refresh unreleased (#472) *(changelog)*
 - Refresh unreleased (#460) *(changelog)*
 - Refresh unreleased (#458) *(changelog)*
@@ -636,6 +675,54 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- Api 内部故障码 COMPILE_INTERNAL_ERROR 按编译不可用处理，声明档案 503、未声明照旧放行 (F6-R) *(compile-gate)*
+- 创建时间挂载前按 UTC 确定性渲染，消除服务端与浏览器时区不同导致的 hydration mismatch *(reports)*
+- 上游 success:false 且无 error 诊断视为编译不可用，声明档案的源码 503 拒绝 (F6) *(compile-gate)*
+- Map E707 governance check unavailable to retryable 503 *(policy)*
+- 发往 aster-api 的调用一律签内部 HMAC v3，使 api 限流按租户分桶 (ADR 0046 D9) *(policy-api)*
+- POST 提交后的缓存失效改为不阻塞并吞掉异常，与 PUT 一致 *(policy)*
+- 档案声明检测改为保守识别，不再要求紧跟 Module 行 *(policy)*
+- 编译检查不可达时声明了档案的源码拒绝保存（503 可重试） *(policy)*
+- 建版本事务内的安全事件与别名读取改用事务连接，缓存失效移到提交后 *(policy)*
+- 编译门禁把上游 429 视为暂不可用（503 可重试），档案违规给出专用原因 *(policy)*
+- Node 运行时单例改用真正的连接池，修复建策略事务内死锁 *(db)*
+- 档案徽标带 aliasSet 编译、编辑器显示档案、独立限流桶（ADR 0046 §6） *(governance)*
+- 加固 check-message-keys 的 CLI 守卫与内联解析 *(i18n)*
+- Check-message-keys 解析器支持单行内联对象 *(i18n)*
+- 补登记 /approvals 页面并跳过审批 API 的路由覆盖检查 *(routes)*
+- 对照加载失败与「不含对照」分开呈现并可重试（ADR 0045 §5） *(reports)*
+- ADR 0044 final-review fix wave *(evidence)*
+- Retry What-If create on 503 with Retry-After *(credit-pilot)*
+- Persist Verdict reason as reasonCodes fallback *(execution)*
+- Look up What-If items by policy owner id *(evidence)*
+- Pilot executions use the policy owner's API key *(credit-pilot)*
+- Run What-If and logs as policy owner cp-owner *(credit-pilot)*
+- What-If 批量响应按 batchId 取 id（ADR 0044 §5） *(pilot)*
+- Cookie 会话请求带 Origin 以通过 CSRF 网关，CP_ORIGIN 可覆盖（ADR 0044 §5） *(pilot)*
+- 试点策略上线 v1（阈值 50000），v2 仅作 What-If 对比目标（ADR 0044 §5） *(pilot)*
+- What-If 轮询把 EXPIRED 视为终态失败；会话密钥统一解析（ADR 0044 §5） *(pilot)*
+- 评审跟进——共享日志映射、显示无决策数、E2E 缓冲开关 *(ui-e2e)*
+- 503 plan_check_unavailable 提示稍后重试，区别于需要 Pro *(whatif)*
+- 版本对比面板与版本列表去硬编码中文 *(i18n)*
+- 时长缺失显示「—」，统计按决策口径计算通过率 *(logs)*
+- 单例判定改为「真实 Node 且非 workerd」，去掉 NODE_ENV 条件 *(db)*
+- 本地 next dev 的 Hyperdrive 代理复用单例连接，避免打满 max_connections *(db)*
+- Guard-approval 复核者 roleVerified=true（ADR 0042 §2.3） *(evidence)*
+- 成员业务角色写入/回读绑定 teamId、编辑器非编辑态跟随 props（ADR 0042 §2.1） *(teams)*
+- 上游不可用映射 502、收件箱单次角色快照与 8 s 超时、客户端网络异常与 tab 竞态（ADR 0042 §5.2） *(approvals)*
+- 执行行先落库再登记 guard 决策、仅租户成员可开审批、principal 恒为发起人（ADR 0042 §5.1/§5.3） *(executions)*
+- Guard 调用专用 8 s 超时、路径 id 本地校验与签名重算/跨仓固定向量测试（ADR 0042 §4） *(policy-api)*
+- Runner-launcher 签名恢复独立 7 行协议，不随 ADR 0042 v3 变更 *(api-signing)*
+- 展开详情按决策分类选择面板，待处置行不再显示错误面板（ADR 0041 §4） *(logs)*
+- PolicyProof 取最新时按 (createdAt, id) 决胜，复核者确定可复现（ADR 0041 §5.2） *(evidence)*
+- 收据线上形状归一、失败诊断与全局共享限流（ADR 0041 §2.4/§5.4） *(evidence)*
+- 按租户分组改为原地追加、agent jsonb 校验、复核者按码点排序（ADR 0041 §5） *(evidence)*
+- 收据客户端可控超时、批内原子合并与三集合互斥，批量降为 50（ADR 0041 §2.4） *(evidence)*
+- Agent:null 视为缺省；日志/执行面板为需批准与升级态单独显示 *(executions)*
+- 自动降级只吊销个人 key，不动团队 key *(cron)*
+- 团队名插值用函数替换器防 $ 模式注入；下拉顺序确定；补齐作用域列与 403 文案测试 *(ui)*
+- Usage 入口校验 quotaOwnerId；池键单一来源供告警 cron 复用 *(quota)*
+- 快照通知分块并发、空成员 id 不得吊销整队、团队路径 401 测试 *(api-keys)*
 - Build/on-prem-build/e2e 改回托管 runner + 全部补 timeout (#471) *(ci)*
 - Changelog 改用 App 令牌，根治 bot PR 的审批死锁（#455 方案 b） (#457) *(ci)*
 - 默认 origin 清单移除 localhost（k3s#489 同源问题） (#448) *(lsp)*
