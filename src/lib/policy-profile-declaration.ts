@@ -9,7 +9,7 @@
  * PROFILE 记号的本地化用词，取自 ADR 0046 §9.1 最终用词表（en / zh / de / hi）。
  * 已安装的 aster-lang-ts 词表尚无 PROFILE 记号，故集中维护于此。
  */
-export const PROFILE_KEYWORDS: readonly string[] = ['Profile', '档案', 'Profil', 'प्रोफ़ाइल'].map((w) =>
+const PROFILE_KEYWORDS: readonly string[] = ['Profile', '档案', 'Profil', 'प्रोफ़ाइल'].map((w) =>
   w.normalize('NFC'),
 );
 
