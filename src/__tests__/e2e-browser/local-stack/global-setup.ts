@@ -48,6 +48,7 @@ const WARM_APIS = [
   '/api/approvals/team1/warmup/approve',
   '/api/reports',
   '/api/reports/warmup/download',
+  '/api/reports/warmup/mapping',
   '/api/teams/team1/members',
   '/api/teams/team1/members/warmup',
   '/api/v1/policies/pol-credit-pilot/versions',

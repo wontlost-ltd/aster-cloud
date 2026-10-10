@@ -142,7 +142,18 @@ async function stepExport(): Promise<{ manifest: { regulatoryMapping: Regulatory
   return bundle;
 }
 
+// dev 下路由按首次请求编译（实测 5 s 以上）：What-If 期间 api 回调 cloud 的执行窗口路由若此时才编译，
+// 会撞上 api 的 15 s 回调超时。先各发一次 GET 只为触发编译，状态码无关紧要。
+const WARM_ROUTES = ['/api/internal/executions/window', '/api/reports/warmup/mapping'];
+
+async function warmRoutes(): Promise<void> {
+  for (const path of WARM_ROUTES) {
+    await fetch(`${BASE}${path}`).catch((e: Error) => console.warn(`[pilot] 预热 ${path} 失败：${e.message}`));
+  }
+}
+
 async function main(): Promise<number> {
+  await warmRoutes();
   const executions = await stepExecute();
   await stepApprove(executions.requireApproval.correlationId);
   await stepWhatIf();

@@ -35,7 +35,7 @@ BASE_CLOUD=http://localhost:3100 pnpm exec playwright test src/__tests__/e2e-bro
 
 ## 冷启动预热
 
-`playwright.config.ts` 的 `globalSetup`（`local-stack/global-setup.ts`）在 `BASE_CLOUD` 含 `localhost` 时，于任何用例之前按各用例实际使用的登录态（m-free / m-dpo / owner1）依次访问 `/en/dashboard`、`/en/approvals`、`/en/policies/pol-adr0041-team/logs`、`/en/policies/pol-adr0041-team`、`/en/reports`、`/en/teams/team1/members`，每页等到网络空闲（让懒加载 chunk 与客户端 API 调用也在预热阶段编译完），再对用例与页面会调用的 API 路由（套餐查询、日志、版本、What-If 批次、证据导出与下载、团队成员等，清单见 `WARM_APIS`）各发一次 GET 触发编译（每项超时 180s）。因此 `podman restart aster-cloud` 后看到 `Ready in` 即可直接运行，首个用例不会再撞 15s 导航超时。预热耗时会以 `[warmup]` 日志输出；生产目标下预热不执行。
+`playwright.config.ts` 的 `globalSetup`（`local-stack/global-setup.ts`）在 `BASE_CLOUD` 含 `localhost` 时，于任何用例之前按各用例实际使用的登录态（m-free / m-dpo / owner1）依次访问 `/en/dashboard`、`/en/approvals`、`/en/policies/pol-adr0041-team/logs`、`/en/policies/pol-adr0041-team`、`/en/reports`、`/en/teams/team1/members`，每页等到网络空闲（让懒加载 chunk 与客户端 API 调用也在预热阶段编译完），再对用例与页面会调用的 API 路由（套餐查询、日志、版本、What-If 批次、证据导出、下载与法规映射、团队成员等，清单见 `WARM_APIS`）各发一次 GET 触发编译（每项超时 180s）。因此 `podman restart aster-cloud` 后看到 `Ready in` 即可直接运行，首个用例不会再撞 15s 导航超时。预热耗时会以 `[warmup]` 日志输出；生产目标下预热不执行。
 
 webpack dev 默认只保留最近 5 个按需编译入口、闲置 60s 即释放，预热会被后续编译挤掉；为此 `next.config.ts` 在 `E2E_LOCAL_STACK=1` 时放宽 `onDemandEntries`（缓冲 100 个、闲置 30 分钟，仅 dev 生效）。该变量由 dev 服务器启动时读取，**栈容器必须以 `-e E2E_LOCAL_STACK=1` 启动**（对已有容器 `podman restart` 不会改变环境变量，需按栈配方重建）；未设置时预热仍执行，但长套件中途可能出现重编译超时。
 
