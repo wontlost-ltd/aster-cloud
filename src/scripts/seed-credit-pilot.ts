@@ -4,7 +4,8 @@
  * 创建：
  *   - Team credit-pilot（owner=cp-owner）
  *   - User cp-owner(team) / cp-officer(pro, 业务角色 Credit Officer) / cp-analyst(pro)
- *   - Policy pol-credit-pilot 与两条已批准版本：v1（阈值 50000）为上线默认版本，v2（阈值 80000）作 What-If 对比目标
+ *   - Policy pol-credit-pilot 与三条已批准版本：v1（阈值 50000）与 v2（阈值 80000）作 What-If 对比；
+ *     v3 以语法糖重写 v1 并声明 eu-ai-act-high-risk 档案（ADR 0046 §6），为在线默认版本
  *   - cp-owner 的团队 API key credit-pilot-owner（明文仅首次创建时打印）；吊销旧的 credit-pilot-analyst key
  *     由属主经 API key 执行：What-If / 日志 / 导出均按策略属主限定（ADR 0034 §4.3），
  *     团队成员执行的记录当前无法被 What-If 回放；cp-analyst 仅作普通成员
@@ -25,7 +26,7 @@ import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { and, eq, isNull } from 'drizzle-orm';
 import * as schema from '@/db/schema';
-import { creditPilotSource, CREDIT_PILOT } from '@/config/credit-pilot-source';
+import { creditPilotSource, creditPilotSugarSource, CREDIT_PILOT } from '@/config/credit-pilot-source';
 import { createApiKey, refreshTeamKeySnapshots } from '@/lib/api-keys';
 
 type Db = ReturnType<typeof drizzle<typeof schema>>;
@@ -47,10 +48,14 @@ const USERS: UserSpec[] = [
   { id: CREDIT_PILOT.analystId, plan: 'pro', businessRoles: [] },
 ];
 
-// 版本 1（阈值 50000）上线为默认版本；版本 2 放宽到 80000，仅作 What-If 对比目标。
+// v1→v2 仅作 What-If 对比；v3 与 v1 结论相同，为在线默认版本。
+// 按序写入：先把 v1 的默认标记清掉，再置 v3 为默认，任一时刻至多一个默认版本。
+const LIVE_CONTENT = creditPilotSugarSource('en');
+const LIVE_VERSION = 3;
 const VERSIONS = [
-  { id: CREDIT_PILOT.versionIds[0], version: 1, content: creditPilotSource('en', 50000), isDefault: true },
+  { id: CREDIT_PILOT.versionIds[0], version: 1, content: creditPilotSource('en', 50000), isDefault: false },
   { id: CREDIT_PILOT.versionIds[1], version: 2, content: creditPilotSource('en', 80000), isDefault: false },
+  { id: CREDIT_PILOT.versionIds[2], version: LIVE_VERSION, content: LIVE_CONTENT, isDefault: true },
 ];
 
 function sha256(text: string): string {
@@ -123,8 +128,8 @@ async function upsertPolicy(db: Db): Promise<void> {
     userId: CREDIT_PILOT.ownerId,
     teamId: CREDIT_PILOT.teamId,
     name: 'Credit pilot (ADR 0044)',
-    content: creditPilotSource('en', 50000),
-    version: 1,
+    content: LIVE_CONTENT,
+    version: LIVE_VERSION,
     isPublic: false,
     updatedAt: new Date(),
   };

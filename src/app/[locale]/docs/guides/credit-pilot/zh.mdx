@@ -23,7 +23,39 @@ apiVersion: v1
 | `CP-004 borderline_score` | `620 ≤ creditScore ≤ 679` | `Verdict.escalate("borderline_credit_score")` |
 | `CP-005 default_allow` | 其余 | `Verdict.allow()` |
 
-版本 2 只把 CP-003 阈值从 50000 提到 80000，因此 v1 → v2 的 What-If 对比会出现 `REQUIRE_APPROVAL → ALLOW` 转移。
+版本 2 只把 CP-003 阈值从 50000 提到 80000，因此 v1 → v2 的 What-If 对比会出现 `REQUIRE_APPROVAL → ALLOW` 转移。版本 3 是在线版本：与 v1 相同的五个分支，用 `当` / `否则` 语法糖逐条改写，并声明治理档案 `eu-ai-act-high-risk`（见下节），结论与 v1 完全一致。
+
+## 档案声明与语法糖写法（v3）
+
+紧随 `模块` 声明的 `档案` 行声明本模块须满足的治理档案（ADR 0046）。`eu-ai-act-high-risk` 要求每条 Verdict 规则带 `@id`、只用已登记的 `@control`，且至少带一个已登记的 `EU_AI_ACT` 控制点。编译器负责检查：档案未登记报 `E705`，规则违反某项要求报 `E706`。两者都是错误，因此声明了档案却不合规的模块**无法保存**、建版或审批；没有 `档案` 行的模块不受影响。
+
+`当 <条件>，<结论>。` 是 `如果 <条件>：返回 Verdict.<结论>(…)` 的简写，`否则 <结论>。` 是末尾 `返回` 的简写，且必须是所在块的最后一条语句。结论词为 `允许`、`拒绝 "<原因>"`、`升级 "<原因>"` 与 `需审批人 "<角色>" 因为 "<原因>"`。语法糖与长写法编译出同样的 Core IR，trace 与证据完全一致。
+
+v3 的中文写法（播种入库的是英文版，结论相同）：
+
+```
+模块 aster.pilot.credit。
+档案 "eu-ai-act-high-risk"。
+
+定义 Applicant 包含
+  creditScore 作为 整数，
+  monthlyIncome 作为 Decimal，
+  monthlyDebt 作为 Decimal，
+  requestedAmount 作为 Decimal，
+  activeDefaults 作为 整数。
+
+@id("CP-DECIDE")
+@control("EU_AI_ACT:ART14")
+@control("GDPR:ART22")
+规则 decide 给定 applicant 作为 Applicant 产出 Verdict：
+  当 applicant.activeDefaults 至少 1，拒绝 "active_default"。
+  当 applicant.monthlyDebt 大于 applicant.monthlyIncome 乘以 0.45m，拒绝 "dti_exceeds_limit"。
+  当 applicant.requestedAmount 至少 50000m，需审批人 "Credit Officer" 因为 "large_exposure"。
+  当 applicant.creditScore 至少 620 并且 applicant.creditScore 至多 679，升级 "borderline_credit_score"。
+  否则 允许。
+```
+
+删掉其中的 `@id("CP-DECIDE")`，保存即以 `E706`（规则 `decide` 缺 `@id`）失败；只保留 `@control("GDPR:ART22")` 同样报 `E706`，因为不再有 `EU_AI_ACT` 控制点。
 
 ## 跑通步骤
 
@@ -33,7 +65,7 @@ apiVersion: v1
 pnpm seed:credit-pilot
 ```
 
-播种幂等。它创建团队 `credit-pilot`，用户 `cp-owner`、`cp-officer`（业务角色 "Credit Officer"）和 `cp-analyst`，以及策略 `pol-credit-pilot` 的版本 1（阈值 50000）和版本 2（阈值 80000）。策略属主（`cp-owner`）的 API key **只打印一次**，请立即复制。执行须使用属主 key：团队成员执行的记录目前无法被 What-If 回放（ADR 0034 §4.3 属主限定；已列为 ADR 0044 §10 后续事项）。
+播种幂等。它创建团队 `credit-pilot`，用户 `cp-owner`、`cp-officer`（业务角色 "Credit Officer"）和 `cp-analyst`，以及策略 `pol-credit-pilot` 的三个已批准版本：版本 1（阈值 50000）与版本 2（阈值 80000）供 What-If 对比，版本 3（v1 的语法糖改写并声明档案）为在线默认版本。策略属主（`cp-owner`）的 API key **只打印一次**，请立即复制。执行须使用属主 key：团队成员执行的记录目前无法被 What-If 回放（ADR 0034 §4.3 属主限定；已列为 ADR 0044 §10 后续事项）。
 
 ### 2. 脚本跑通
 
@@ -60,13 +92,13 @@ CP_API_KEY=<属主 key> NEXTAUTH_SECRET=<secret> pnpm tsx scripts/run-credit-pil
 
 ## 对照表怎么读
 
-对照由控制注册表 1.0.0 驱动（ADR 0045；`@aster-cloud/controls` 包尚未发布，注册表目前以副本形式随本仓库提供）：每个带对照条款的已登记控制点自带条款清单与判定规则，所有导出按同一套规则判定。在 `/reports` 对已完成的导出点 **法规对照** 即可直接展开查看；证据包文件内是同一份数据。
+对照由控制注册表 1.1.0 驱动（ADR 0045；`@aster-cloud/controls` 包尚未发布，注册表目前以副本形式随本仓库提供）：每个带对照条款的已登记控制点自带条款清单与判定规则，所有导出按同一套规则判定。在 `/reports` 对已完成的导出点 **法规对照** 即可直接展开查看；证据包文件内是同一份数据。
 
-证据包（manifest `schemaVersion: "4"`）含 `manifest.regulatoryMapping`：
+证据包（manifest `schemaVersion: "5"`）含 `manifest.regulatoryMapping` 与 `manifest.profilesUsed`：
 
 ```json
 {
-  "registryVersion": "1.0.0",
+  "registryVersion": "1.1.0",
   "frameworks": [
     {
       "framework": "EU_AI_ACT",
@@ -80,6 +112,15 @@ CP_API_KEY=<属主 key> NEXTAUTH_SECRET=<secret> pnpm tsx scripts/run-credit-pil
   ]
 }
 ```
+
+```json
+"profilesUsed": [
+  { "id": "eu-ai-act-high-risk",
+    "title": { "en": "EU AI Act high-risk system", "zh": "欧盟人工智能法高风险系统", "de": "Hochrisiko-KI-System nach EU-KI-Verordnung" } }
+]
+```
+
+每个条目带其模块声明的档案（v3 的执行为 `"profile": "eu-ai-act-high-risk"`；v1/v2 或未声明档案的模块为 `null`）。`profilesUsed` 列出条目中出现过的全部档案，标题取自同一注册表版本。
 
 `registryVersion` 标明判定规则来自哪个注册表版本。`frameworks` 为证据包条目（`controls`）中出现的、带对照条款的每个已登记控制点各列一组；每组 `clauses[]` 的状态为 `evidenced`、`partial` 或 `none`，只依据证据包条目上的字段判定，并附 `evidence` 引用（`executionId` + `field`）。条目为空时列出全部控制点组且每款为 `none`；有条目但都不带这类控制点时 `frameworks` 为空。第 1–3 版证据包不含注册表驱动的对照，报告页会如实提示。
 

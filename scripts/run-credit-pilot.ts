@@ -1,6 +1,6 @@
 /**
  * 信贷试点端到端跑通脚本（ADR 0044 §5）：执行四组申请 → 信贷员审批 → What-If 批量 →
- * 导出证据包 → 核对 Article 14 九款状态。
+ * 导出证据包 → 核对 Article 14 九款状态。执行走在线默认版本 v3（ADR 0046 §6），What-If 对比 v1→v2。
  *
  *   BASE_CLOUD=http://localhost:3100 CP_API_KEY=... NEXTAUTH_SECRET=... npx tsx scripts/run-credit-pilot.ts
  * CP_ORIGIN 可覆盖 cookie 请求的 Origin（默认 BASE_CLOUD）。
@@ -112,7 +112,9 @@ async function stepApprove(correlationId: string): Promise<void> {
 async function stepWhatIf(): Promise<void> {
   const auth = await cookieAuth('ownerId');
   const base = `/api/v1/policies/${POLICY}/whatif-batches`;
-  const [baseVersionId, targetVersionId] = CREDIT_PILOT.versionIds;
+  // 对比仍是 v1→v2；在线默认版本 v3 与 v1 结论相同，不参与对比
+  const baseVersionId = CREDIT_PILOT.versionIds[0];
+  const targetVersionId = CREDIT_PILOT.versionIds[1];
   const body = { baseVersionId, targetVersionId, windowKind: 'LAST_MONTH', includeToday: true };
   const batch = await call<{ batchId: string }>(auth, 'POST', base, 202, body, 3);
   log(3, `批量 ${batch.batchId} 已创建`);

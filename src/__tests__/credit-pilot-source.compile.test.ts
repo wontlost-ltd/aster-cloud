@@ -4,10 +4,17 @@
  * en/zh/de 三语 × 两个阈值（50000/80000）都必须在生产同款浏览器引擎里编译无错误，
  * 且四组试点申请人分别得到 ALLOW / DENY / REQUIRE_APPROVAL / ESCALATE；
  * 阈值放宽到 80000 后，金额 60000 的需审批申请人改判 ALLOW。
+ * v3（ADR 0046 §6）以 When/Otherwise 语法糖书写并声明档案，三语结论须与阈值 50000 的 v1 相同。
  */
 import { describe, it, expect } from 'vitest';
 import { compile, evaluate, EN_US, ZH_CN, DE_DE } from '@aster-cloud/aster-lang-ts/browser';
-import { creditPilotSource, PILOT_APPLICANTS, type PilotLocale } from '@/config/credit-pilot-source';
+import {
+  CREDIT_PILOT,
+  creditPilotSource,
+  creditPilotSugarSource,
+  PILOT_APPLICANTS,
+  type PilotLocale,
+} from '@/config/credit-pilot-source';
 
 const LEXICONS: Record<PilotLocale, unknown> = { en: EN_US, zh: ZH_CN, de: DE_DE };
 const LOCALES: PilotLocale[] = ['en', 'zh', 'de'];
@@ -38,32 +45,66 @@ const EXPECTED: Record<50000 | 80000, Record<keyof typeof PILOT_APPLICANTS, stri
   80000: { allow: 'ALLOW', deny: 'DENY', requireApproval: 'ALLOW', escalate: 'ESCALATE' },
 };
 
-function compileOrFail(loc: PilotLocale, threshold: 50000 | 80000) {
-  const result = compile(creditPilotSource(loc, threshold), {
+// 探测已安装引擎是否支持档案声明与 When/Otherwise 语法糖（ADR 0046）：旧引擎解析即报错，或丢失 profile
+function detectSugarSupport(): boolean {
+  if (!engineHasVerdict) return false;
+  const probe = compile('Module probe.\nProfile "governed".\n\nRule main produce Verdict:\n  Otherwise allow.\n', {
+    lexicon: EN_US,
+  } as Parameters<typeof compile>[1]);
+  const errors = ((probe as { diagnostics?: { severity?: string }[] }).diagnostics ?? []).filter(
+    (d) => d.severity === 'error',
+  );
+  return !!probe.core && errors.length === 0 && (probe.core as { profile?: string }).profile === 'governed';
+}
+
+const engineHasSugar = detectSugarSupport();
+if (engineHasVerdict && !engineHasSugar) {
+  console.warn(
+    '[credit-pilot-source.compile] v3 skipped — ADR 0046 §5: installed @aster-cloud/aster-lang-ts lacks Profile / When-Otherwise sugar; runs once the dependency is bumped',
+  );
+}
+
+function compileSource(source: string, loc: PilotLocale, label: string) {
+  const result = compile(source, {
     lexicon: LEXICONS[loc],
   } as Parameters<typeof compile>[1]);
   const diags = ((result as { diagnostics?: { severity?: string }[] }).diagnostics ?? []).filter(
     (d) => d.severity === 'error',
   );
-  expect(diags.length, `[${loc}/${threshold}] diagnostics: ${JSON.stringify(diags)}`).toBe(0);
-  expect(result.core, `[${loc}/${threshold}] core`).toBeTruthy();
+  expect(diags.length, `[${label}] diagnostics: ${JSON.stringify(diags)}`).toBe(0);
+  expect(result.core, `[${label}] core`).toBeTruthy();
   return result.core!;
+}
+
+function compileOrFail(loc: PilotLocale, threshold: 50000 | 80000) {
+  return compileSource(creditPilotSource(loc, threshold), loc, `${loc}/${threshold}`);
+}
+
+function expectOutcomes(core: ReturnType<typeof compileOrFail>, label: string, threshold: 50000 | 80000) {
+  for (const [key, applicant] of Object.entries(PILOT_APPLICANTS)) {
+    const ev = evaluate(core, 'decide', { applicant });
+    expect(ev.success, `[${label}] ${key}: ${ev.error ?? ''}`).toBe(true);
+    const outcome = (ev.value as { outcome?: string }).outcome;
+    expect(outcome, `[${label}] ${key}`).toBe(EXPECTED[threshold][key as keyof typeof PILOT_APPLICANTS]);
+  }
 }
 
 describe.skipIf(!engineHasVerdict)('credit pilot policy compiles & decides in every language', () => {
   for (const loc of LOCALES) {
     for (const threshold of [50000, 80000] as const) {
       it(`${loc} @ ${threshold}: four applicants map to expected outcomes`, () => {
-        const core = compileOrFail(loc, threshold);
-        for (const [key, applicant] of Object.entries(PILOT_APPLICANTS)) {
-          const ev = evaluate(core, 'decide', { applicant });
-          expect(ev.success, `[${loc}/${threshold}] ${key}: ${ev.error ?? ''}`).toBe(true);
-          const outcome = (ev.value as { outcome?: string }).outcome;
-          expect(outcome, `[${loc}/${threshold}] ${key}`).toBe(
-            EXPECTED[threshold][key as keyof typeof PILOT_APPLICANTS],
-          );
-        }
+        expectOutcomes(compileOrFail(loc, threshold), `${loc}/${threshold}`, threshold);
       });
     }
+  }
+});
+
+describe.skipIf(!engineHasSugar)('credit pilot v3 (sugar + profile) decides like v1 in every language', () => {
+  for (const loc of LOCALES) {
+    it(`${loc} v3: declares the profile and matches v1 @ 50000`, () => {
+      const core = compileSource(creditPilotSugarSource(loc), loc, `${loc}/v3`);
+      expect((core as { profile?: string }).profile).toBe(CREDIT_PILOT.profile);
+      expectOutcomes(core, `${loc}/v3`, 50000);
+    });
   }
 });

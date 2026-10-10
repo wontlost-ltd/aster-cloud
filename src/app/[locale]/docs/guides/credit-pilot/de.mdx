@@ -23,7 +23,39 @@ Die Richtlinie `pol-credit-pilot` (`aster.pilot.credit`) hat eine einzige Einsti
 | `CP-004 borderline_score` | `620 ≤ creditScore ≤ 679` | `Verdict.escalate("borderline_credit_score")` |
 | `CP-005 default_allow` | sonst | `Verdict.allow()` |
 
-Version 2 hebt nur den CP-003-Schwellenwert von 50000 auf 80000 an, sodass ein What-If-Vergleich v1 → v2 einen Übergang `REQUIRE_APPROVAL → ALLOW` zeigt.
+Version 2 hebt nur den CP-003-Schwellenwert von 50000 auf 80000 an, sodass ein What-If-Vergleich v1 → v2 einen Übergang `REQUIRE_APPROVAL → ALLOW` zeigt. Version 3 ist die Live-Version: dieselben fünf Zweige wie v1, mit der Kurzschreibweise `bei` / `sonst` umgeschrieben und mit dem Governance-Profil `eu-ai-act-high-risk` deklariert (siehe unten). Sie entscheidet genau wie v1.
+
+## Profildeklaration und Kurzschreibweise (v3)
+
+Eine `Profil`-Zeile direkt nach dem `Modul`-Kopf deklariert, welches Governance-Profil das Modul erfüllen muss (ADR 0046). `eu-ai-act-high-risk` verlangt, dass jede Verdict-Regel ein `@id` trägt, nur registrierte `@control`-Werte verwendet und mindestens eine registrierte `EU_AI_ACT`-Kontrolle trägt. Der Compiler prüft das: Ein unbekanntes Profil meldet `E705`, eine Regel, die eine Anforderung verletzt, meldet `E706`. Beides sind Fehler; ein Modul, das ein Profil deklariert und es verletzt, lässt sich daher **nicht speichern**, versionieren oder freigeben. Module ohne `Profil`-Zeile sind nicht betroffen.
+
+`bei <Bedingung>, <Ergebnis>.` ist die Kurzform von `wenn <Bedingung>: gib zurück Verdict.<Ergebnis>(…)`, `sonst <Ergebnis>.` die Kurzform des abschließenden `gib zurück`; `sonst` muss die letzte Anweisung seines Blocks sein. Die Ergebnisse sind `erlauben`, `ablehnen "<Grund>"`, `eskalieren "<Grund>"` und `Genehmigung durch "<Rolle>" weil "<Grund>"`. Die Kurzschreibweise ergibt dieselbe Core IR wie die Langform; Trace und Nachweise sind identisch.
+
+Version 3 auf Deutsch (angelegt wird die englische Fassung, mit denselben Ergebnissen):
+
+```
+Modul aster.pilot.credit.
+Profil "eu-ai-act-high-risk".
+
+Definiere Applicant hat
+  creditScore als Ganzzahl,
+  monthlyIncome als Decimal,
+  monthlyDebt als Decimal,
+  requestedAmount als Decimal,
+  activeDefaults als Ganzzahl.
+
+@id("CP-DECIDE")
+@control("EU_AI_ACT:ART14")
+@control("GDPR:ART22")
+Regel decide gegeben applicant als Applicant liefert Verdict:
+  bei applicant.activeDefaults mindestens 1, ablehnen "active_default".
+  bei applicant.monthlyDebt größer als applicant.monthlyIncome mal 0.45m, ablehnen "dti_exceeds_limit".
+  bei applicant.requestedAmount mindestens 50000m, Genehmigung durch "Credit Officer" weil "large_exposure".
+  bei applicant.creditScore mindestens 620 und applicant.creditScore höchstens 679, eskalieren "borderline_credit_score".
+  sonst erlauben.
+```
+
+Wird `@id("CP-DECIDE")` entfernt, schlägt das Speichern mit `E706` fehl (Regel `decide` ohne `@id`); bleibt nur `@control("GDPR:ART22")`, meldet der Compiler ebenfalls `E706`, weil keine `EU_AI_ACT`-Kontrolle mehr vorhanden ist.
 
 ## Ausführen
 
@@ -33,7 +65,7 @@ Version 2 hebt nur den CP-003-Schwellenwert von 50000 auf 80000 an, sodass ein W
 pnpm seed:credit-pilot
 ```
 
-Das Seeding ist idempotent. Es legt das Team `credit-pilot` mit den Benutzern `cp-owner`, `cp-officer` (Geschäftsrolle "Credit Officer") und `cp-analyst` an sowie die Richtlinie `pol-credit-pilot` mit Version 1 (Schwellenwert 50000) und Version 2 (Schwellenwert 80000). Der API-Schlüssel des Richtlinieneigentümers (`cp-owner`) wird **nur einmal** ausgegeben — kopieren Sie ihn sofort. Ausführungen müssen mit dem Eigentümer-Schlüssel erfolgen: Von Teammitgliedern ausgeführte Datensätze können What-If derzeit nicht wiedergeben (Eigentümer-Bindung gemäß ADR 0034 §4.3; als Folgearbeit in ADR 0044 §10 geführt).
+Das Seeding ist idempotent. Es legt das Team `credit-pilot` mit den Benutzern `cp-owner`, `cp-officer` (Geschäftsrolle "Credit Officer") und `cp-analyst` an sowie die Richtlinie `pol-credit-pilot` mit drei freigegebenen Versionen: Version 1 (Schwellenwert 50000) und Version 2 (Schwellenwert 80000) für den What-If-Vergleich und Version 3 (die Kurzschreibweise von v1 mit Profildeklaration) als Live-Standardversion. Der API-Schlüssel des Richtlinieneigentümers (`cp-owner`) wird **nur einmal** ausgegeben — kopieren Sie ihn sofort. Ausführungen müssen mit dem Eigentümer-Schlüssel erfolgen: Von Teammitgliedern ausgeführte Datensätze können What-If derzeit nicht wiedergeben (Eigentümer-Bindung gemäß ADR 0034 §4.3; als Folgearbeit in ADR 0044 §10 geführt).
 
 ### 2. Skriptlauf
 
@@ -60,13 +92,13 @@ Alles außer der Freigabe als Richtlinieneigentümer `cp-owner` erledigen (Proto
 
 ## Die Artikel-14-Zuordnung lesen
 
-Die Zuordnung wird vom Kontrollregister 1.0.0 gesteuert (ADR 0045; das Paket `@aster-cloud/controls` ist noch nicht veröffentlicht, daher liegt eine Kopie des Registers in diesem Repository): Jede registrierte Kontrolle mit zugeordneten Klauseln bringt ihre eigene Klauselliste und Bewertungsregeln mit, und jeder Export wendet dieselben Regeln an. Auf `/reports` öffnet **Regulatorische Zuordnung** bei einem abgeschlossenen Export die Tabelle direkt; die Paketdatei enthält dieselben Daten.
+Die Zuordnung wird vom Kontrollregister 1.1.0 gesteuert (ADR 0045; das Paket `@aster-cloud/controls` ist noch nicht veröffentlicht, daher liegt eine Kopie des Registers in diesem Repository): Jede registrierte Kontrolle mit zugeordneten Klauseln bringt ihre eigene Klauselliste und Bewertungsregeln mit, und jeder Export wendet dieselben Regeln an. Auf `/reports` öffnet **Regulatorische Zuordnung** bei einem abgeschlossenen Export die Tabelle direkt; die Paketdatei enthält dieselben Daten.
 
-Das Paket (Manifest `schemaVersion: "4"`) enthält `manifest.regulatoryMapping`:
+Das Paket (Manifest `schemaVersion: "5"`) enthält `manifest.regulatoryMapping` und `manifest.profilesUsed`:
 
 ```json
 {
-  "registryVersion": "1.0.0",
+  "registryVersion": "1.1.0",
   "frameworks": [
     {
       "framework": "EU_AI_ACT",
@@ -80,6 +112,15 @@ Das Paket (Manifest `schemaVersion: "4"`) enthält `manifest.regulatoryMapping`:
   ]
 }
 ```
+
+```json
+"profilesUsed": [
+  { "id": "eu-ai-act-high-risk",
+    "title": { "en": "EU AI Act high-risk system", "zh": "欧盟人工智能法高风险系统", "de": "Hochrisiko-KI-System nach EU-KI-Verordnung" } }
+]
+```
+
+Jeder Eintrag trägt das Profil, das sein Modul deklariert (`"profile": "eu-ai-act-high-risk"` für Ausführungen von v3; `null` für v1/v2 oder Module ohne Profil). `profilesUsed` listet jedes Profil, das in einem Eintrag vorkommt, mit Titeln aus derselben Registerversion.
 
 `registryVersion` nennt die Registerversion, aus der die Regeln stammen. `frameworks` enthält eine Gruppe je registrierter Kontrolle mit zugeordneten Klauseln, die in den Paketeinträgen (`controls`) vorkommt; jede Gruppe trägt in `clauses[]` einen Status `evidenced`, `partial` oder `none`, der ausschließlich aus Feldern der Paketeinträge abgeleitet wird, sowie `evidence`-Verweise (`executionId` + `field`). Ganz ohne Einträge wird jede Gruppe aufgeführt und jede Klausel ist `none`; gibt es Einträge, aber keiner trägt eine solche Kontrolle, ist `frameworks` leer. Pakete der Schemata 1–3 enthalten keine registergesteuerte Zuordnung, und die Berichtsseite weist darauf hin.
 

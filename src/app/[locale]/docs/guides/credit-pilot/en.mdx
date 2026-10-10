@@ -23,7 +23,39 @@ Policy `pol-credit-pilot` (`aster.pilot.credit`) has a single entry rule `decide
 | `CP-004 borderline_score` | `620 ≤ creditScore ≤ 679` | `Verdict.escalate("borderline_credit_score")` |
 | `CP-005 default_allow` | otherwise | `Verdict.allow()` |
 
-Version 2 only raises the CP-003 threshold from 50000 to 80000, so a What-If comparison of v1 → v2 shows a `REQUIRE_APPROVAL → ALLOW` transition.
+Version 2 only raises the CP-003 threshold from 50000 to 80000, so a What-If comparison of v1 → v2 shows a `REQUIRE_APPROVAL → ALLOW` transition. Version 3 is the live version: the same five branches as v1, rewritten with the `When` / `Otherwise` shorthand and declaring the governance profile `eu-ai-act-high-risk` (see below). It decides exactly like v1.
+
+## Profile declaration and shorthand (v3)
+
+A `Profile` line right after the `Module` header declares which governance profile the module must satisfy (ADR 0046). `eu-ai-act-high-risk` requires every Verdict rule to carry an `@id`, to use only registered `@control` values, and to carry at least one registered `EU_AI_ACT` control. The compiler checks this: an unknown profile reports `E705`, a rule that breaks a requirement reports `E706`. Both are errors, so a module that declares a profile and violates it **cannot be saved**, versioned or approved. Modules without a `Profile` line are unaffected.
+
+`When <condition>, <outcome>.` is shorthand for `If <condition>: Return Verdict.<outcome>(…)`, and `Otherwise <outcome>.` for the final `Return`; `Otherwise` must be the last statement of its block. The outcomes are `allow`, `deny "<reason>"`, `escalate "<reason>"` and `require approval by "<role>" because "<reason>"`. The shorthand compiles to the same Core IR as the long form, so traces and evidence are identical.
+
+Version 3 as seeded:
+
+```
+Module aster.pilot.credit.
+Profile "eu-ai-act-high-risk".
+
+Define Applicant has
+  creditScore as Int,
+  monthlyIncome as Decimal,
+  monthlyDebt as Decimal,
+  requestedAmount as Decimal,
+  activeDefaults as Int.
+
+@id("CP-DECIDE")
+@control("EU_AI_ACT:ART14")
+@control("GDPR:ART22")
+Rule decide given applicant as Applicant, produce Verdict:
+  When applicant.activeDefaults at least 1, deny "active_default".
+  When applicant.monthlyDebt greater than applicant.monthlyIncome times 0.45m, deny "dti_exceeds_limit".
+  When applicant.requestedAmount at least 50000m, require approval by "Credit Officer" because "large_exposure".
+  When applicant.creditScore at least 620 and applicant.creditScore at most 679, escalate "borderline_credit_score".
+  Otherwise allow.
+```
+
+Removing `@id("CP-DECIDE")` from this source makes the save fail with `E706` (rule `decide` is missing `@id`); keeping only `@control("GDPR:ART22")` fails with `E706` as well, because no `EU_AI_ACT` control is left.
 
 ## Run it
 
@@ -33,7 +65,7 @@ Version 2 only raises the CP-003 threshold from 50000 to 80000, so a What-If com
 pnpm seed:credit-pilot
 ```
 
-The seed is idempotent. It creates team `credit-pilot` with users `cp-owner`, `cp-officer` (business role "Credit Officer") and `cp-analyst`, and policy `pol-credit-pilot` with version 1 (threshold 50000) and version 2 (threshold 80000). It prints the policy owner's (`cp-owner`) API key **once** — copy it. Executions must be made with the owner's key: records executed by team members cannot be replayed by What-If today (owner scoping per ADR 0034 §4.3; listed as a follow-up in ADR 0044 §10).
+The seed is idempotent. It creates team `credit-pilot` with users `cp-owner`, `cp-officer` (business role "Credit Officer") and `cp-analyst`, and policy `pol-credit-pilot` with three approved versions: version 1 (threshold 50000) and version 2 (threshold 80000) for the What-If comparison, and version 3 (the shorthand rewrite of v1 with the profile declaration) as the live default. It prints the policy owner's (`cp-owner`) API key **once** — copy it. Executions must be made with the owner's key: records executed by team members cannot be replayed by What-If today (owner scoping per ADR 0034 §4.3; listed as a follow-up in ADR 0044 §10).
 
 ### 2. Scripted run
 
@@ -60,13 +92,13 @@ Do everything except the approval as the policy owner `cp-owner` (logs page, **C
 
 ## Reading the Article 14 mapping
 
-The mapping is driven by controls registry 1.0.0 (ADR 0045; the `@aster-cloud/controls` package is not published yet, so a copy of the registry ships inside this repository): every registered control that has mapped clauses brings its own clause list and judging rules, and every export applies the same rules. On `/reports`, click **Regulatory mapping** on a completed export to view the table directly; the bundle file carries the same data.
+The mapping is driven by controls registry 1.1.0 (ADR 0045; the `@aster-cloud/controls` package is not published yet, so a copy of the registry ships inside this repository): every registered control that has mapped clauses brings its own clause list and judging rules, and every export applies the same rules. On `/reports`, click **Regulatory mapping** on a completed export to view the table directly; the bundle file carries the same data.
 
-The bundle (manifest `schemaVersion: "4"`) contains `manifest.regulatoryMapping`:
+The bundle (manifest `schemaVersion: "5"`) contains `manifest.regulatoryMapping` and `manifest.profilesUsed`:
 
 ```json
 {
-  "registryVersion": "1.0.0",
+  "registryVersion": "1.1.0",
   "frameworks": [
     {
       "framework": "EU_AI_ACT",
@@ -80,6 +112,15 @@ The bundle (manifest `schemaVersion: "4"`) contains `manifest.regulatoryMapping`
   ]
 }
 ```
+
+```json
+"profilesUsed": [
+  { "id": "eu-ai-act-high-risk",
+    "title": { "en": "EU AI Act high-risk system", "zh": "欧盟人工智能法高风险系统", "de": "Hochrisiko-KI-System nach EU-KI-Verordnung" } }
+]
+```
+
+Each entry carries the profile its module declared (`"profile": "eu-ai-act-high-risk"` for executions of v3; `null` for v1/v2 or modules without a profile). `profilesUsed` lists every profile that appears on an entry, with titles from the same registry version.
 
 `registryVersion` names the registry release the rules came from. `frameworks` lists one group per registered control that has mapped clauses and appears in the bundle's entries (`controls`); each group's `clauses[]` carries a status of `evidenced`, `partial` or `none`, derived only from fields on the bundle entries, plus `evidence` references (`executionId` + `field`). With no entries at all, every group is listed and every clause is `none`; when entries exist but none carries such a control, `frameworks` is empty. Bundles from schema 1–3 have no registry-driven mapping and the reports page says so.
 
