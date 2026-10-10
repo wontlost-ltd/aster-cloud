@@ -271,19 +271,21 @@ export async function PUT(req: Request, { params }: RouteParams) {
       });
     }
 
+    // allowStructural 来源：
+    //   - 别名有变（aliasChanged）→ 按当前 per-user 授权权威判定（新引入的别名须现授权）。
+    //   - 别名沿用活跃版本（!aliasChanged，如 content-only 编辑）→ 视为已授权：这些别名在
+    //     原版本创建时已授权+校验+冻结，授权撤销不得阻断对已有策略的后续（非别名）编辑，
+    //     与执行端「冻结即信任」同口径。避免撤销授权后合法用户改不了源码。
+    // 两项读取放在事务外：事务内经全局 db 读要第二条连接，池满时与事务互等。
+    const allowStructural = aliasChanged
+      ? await getStructuralAliasGrant(session.user.id)
+      : true;
+    const aliasReserved = newVersion && aliasSetInput
+      ? await buildAliasReservedForUser(session.user.id, compileLocale)
+      : undefined;
+
     const policy = await db.transaction(async (tx) => {
       if (newVersion) {
-        // allowStructural 来源：
-        //   - 别名有变（aliasChanged）→ 按当前 per-user 授权权威判定（新引入的别名须现授权）。
-        //   - 别名沿用活跃版本（!aliasChanged，如 content-only 编辑）→ 视为已授权：这些别名在
-        //     原版本创建时已授权+校验+冻结，授权撤销不得阻断对已有策略的后续（非别名）编辑，
-        //     与执行端「冻结即信任」同口径。避免撤销授权后合法用户改不了源码。
-        const allowStructural = aliasChanged
-          ? await getStructuralAliasGrant(session.user.id)
-          : true;
-        const aliasReserved = aliasSetInput
-          ? await buildAliasReservedForUser(session.user.id, compileLocale)
-          : undefined;
         const createdVersion = await createVersion({
           policyId: id,
           source: versionSource,

@@ -35,25 +35,42 @@ export interface SecurityEventQueryOptions {
   offset?: number;
 }
 
+/** 可写安全事件的客户端：全局 db 或调用方的事务。 */
+type SecurityEventWriter = Pick<typeof db, 'insert' | 'transaction'>;
+
+function insertSecurityEvent(writer: Pick<typeof db, 'insert'>, data: SecurityEventData) {
+  return writer.insert(securityEvents).values({
+    id: crypto.randomUUID(),
+    eventType: data.eventType,
+    severity: data.severity,
+    policyId: data.policyId,
+    userId: data.userId,
+    ipAddress: data.ipAddress,
+    userAgent: data.userAgent,
+    requestId: data.requestId,
+    details: data.details,
+  });
+}
+
 /**
  * 记录安全事件
  *
  * 安全事件记录是异步的，失败不会影响主流程。
  * 生产环境建议配合消息队列实现可靠投递。
+ *
+ * 在调用方事务内记录时传入 tx：事件与业务写入同提交同回滚，且不向连接池要第二条连接
+ * （Node 单例池满时事务会与自己互等）。写入包在保存点里，失败只回滚保存点，不污染外层事务。
  */
-export async function logSecurityEvent(data: SecurityEventData): Promise<void> {
+export async function logSecurityEvent(
+  data: SecurityEventData,
+  tx?: SecurityEventWriter,
+): Promise<void> {
   try {
-    await db.insert(securityEvents).values({
-      id: crypto.randomUUID(),
-      eventType: data.eventType,
-      severity: data.severity,
-      policyId: data.policyId,
-      userId: data.userId,
-      ipAddress: data.ipAddress,
-      userAgent: data.userAgent,
-      requestId: data.requestId,
-      details: data.details,
-    });
+    if (tx) {
+      await tx.transaction((savepoint) => insertSecurityEvent(savepoint, data));
+    } else {
+      await insertSecurityEvent(db, data);
+    }
   } catch (error) {
     // 安全事件记录失败不应影响主流程
     console.error('[SecurityEvent] Failed to log event:', error);

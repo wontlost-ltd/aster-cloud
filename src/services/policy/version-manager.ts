@@ -29,7 +29,7 @@ import {
 
 type PolicyVersion = InferSelectModel<typeof policyVersions>;
 type PolicyVersionStatus = PolicyVersion['status'];
-type VersionDbClient = Pick<typeof db, 'query' | 'insert'>;
+type VersionDbClient = Pick<typeof db, 'query' | 'insert' | 'transaction'>;
 
 /**
  * 调用方不是该策略的所有者（或策略不存在/已软删）。路由 catch 后返回 404——
@@ -195,7 +195,11 @@ export interface CreateVersionParams {
    * （编译服务不可达）→ 记录并放行。缺省=不校验（向后兼容）。
    */
   validateCompilable?: CompileValidator;
-  /** 事务客户端；用于把 policy insert + version insert 包进同一事务。 */
+  /**
+   * 事务客户端；用于把 policy insert + version insert 包进同一事务。
+   * 提供时版本行与安全事件都经它写入，缓存失效由调用方在提交后执行（事务内失效会让并发读
+   * 在提交前把旧值重新填回缓存）。
+   */
   dbClient?: VersionDbClient;
 }
 
@@ -325,10 +329,13 @@ export async function createVersion(
       hasStructuralAliases,
       structuralAliasAuthorized: params.allowStructuralAliases === true,
     },
-  });
+  }, params.dbClient);
 
-  // ★写完必须失效执行缓存：命中缓存的执行路径不查库（见 invalidateAfterVersionChange）
-  await invalidateAfterVersionChange(policyId);
+  // ★写完必须失效执行缓存：命中缓存的执行路径不查库（见 invalidateAfterVersionChange）。
+  // 在事务内建版本时由调用方提交后失效。
+  if (!params.dbClient) {
+    await invalidateAfterVersionChange(policyId);
+  }
   return {
     id: created.id,
     version: newVersionNumber,

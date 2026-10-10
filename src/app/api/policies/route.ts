@@ -18,6 +18,7 @@ import {
   getStructuralAliasGrant,
 } from '@/lib/structural-alias-grants';
 import { errorEnvelope } from '@/lib/api/error-envelope';
+import { invalidatePolicyCache } from '@/lib/cache';
 import { eq, isNull, desc, sql, and, inArray } from 'drizzle-orm';
 
 // GET /api/policies - List user's policies
@@ -292,6 +293,8 @@ export async function POST(req: Request) {
       console.log('PolicyVersion insert succeeded');
       return createdPolicy;
     });
+    // 缓存失效在提交后执行（createVersion 在事务内不做）。
+    await invalidatePolicyCache(policy.id);
 
     return NextResponse.json(policy, { status: 201 });
   } catch (error: unknown) {
