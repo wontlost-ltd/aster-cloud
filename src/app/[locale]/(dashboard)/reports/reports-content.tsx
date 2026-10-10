@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useState } from 'react';
+import { Fragment, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
@@ -89,6 +89,7 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
   const [exports, setExports] = useState<EvidenceExportRow[]>(initialExports);
   const [openMappingId, setOpenMappingId] = useState<string | null>(null);
   const [mappings, setMappings] = useState<Record<string, MappingState>>({});
+  const mounted = useSyncExternalStore(noopSubscribe, () => true, () => false);
 
   const mappingLabels: RegulatoryMappingPanelLabels = {
     loading: t('mapping.loading'),
@@ -366,7 +367,7 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
                         </Badge>
                       </td>
                       <td className="px-4 py-3 text-fg-muted">
-                        {new Date(e.createdAt).toLocaleString(locale)}
+                        {formatCreatedAt(e.createdAt, locale, mounted)}
                       </td>
                       <td className="px-4 py-3">
                         {e.status === 'completed' ? (
@@ -430,6 +431,18 @@ function decisionVariant(k: (typeof DECISION_KEYS)[number]): 'success' | 'danger
     default:
       return 'neutral';
   }
+}
+
+const noopSubscribe = () => () => {};
+
+/**
+ * 创建时间是真实时刻，按浏览器本地时区显示。服务端（容器多为 UTC）与浏览器时区不同，
+ * 直接 toLocaleString 会让 SSR 与首帧文本不一致而 hydration mismatch；挂载前两端都输出
+ * 确定性的 UTC 文本，挂载后再切到本地格式。
+ */
+function formatCreatedAt(iso: string, locale: string, mounted: boolean): string {
+  if (!mounted) return `${iso.slice(0, 16).replace('T', ' ')} UTC`;
+  return new Date(iso).toLocaleString(locale);
 }
 
 /** 默认起始日 = 30 天前（YYYY-MM-DD）。 */
