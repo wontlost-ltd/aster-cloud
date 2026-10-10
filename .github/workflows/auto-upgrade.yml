@@ -1,18 +1,75 @@
 name: Auto Upgrade aster-lang-ts
 
+# 拉取模型：aster-lang-ts 发版后不再跨 org 推送触发本 workflow（跨 org 凭据刻意不放宽），
+# 改由本仓每日定时查 npm 最新版，与 package.json 钉版比较后决定是否开升级 PR。
+# 也可手动触发；version 留空即取 npm latest。
+# 决策逻辑在 scripts/resolve-aster-lang-upgrade.mjs（有单测）。
 on:
+  schedule:
+    # 每日一次。未发新版时只跑轻量的 resolve job（稀疏检出 + npm view），成本可忽略。
+    - cron: '23 21 * * *'
   workflow_dispatch:
     inputs:
       version:
-        description: 'aster-lang-ts version (e.g. v0.0.31)'
-        required: true
+        description: 'aster-lang-ts 版本（如 1.0.32 或 v1.0.32）；留空取 npm latest'
+        required: false
+        default: ''
+
+# 同一时刻只允许一个升级流程，避免定时与手动触发并发推同一分支。
+concurrency:
+  group: auto-upgrade-aster-lang-ts
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
-  upgrade:
+  resolve:
     runs-on: ubuntu-latest
+    # ★所有 job 必须有 timeout（见 ci.yml 同类说明）。
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      action: ${{ steps.decide.outputs.action }}
+      version: ${{ steps.decide.outputs.version }}
+      branch: ${{ steps.decide.outputs.branch }}
+    steps:
+      # 只需 package.json 与决策脚本：稀疏检出让「已是最新」的日常空跑保持廉价。
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            package.json
+            scripts/resolve-aster-lang-upgrade.mjs
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Decide (latest vs pinned, open PR check)
+        id: decide
+        env:
+          # 输入经 env 传入，不直接拼进 shell，避免注入；脚本内再做严格版本格式校验。
+          REQUESTED_VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: node scripts/resolve-aster-lang-upgrade.mjs resolve
+
+  upgrade:
+    needs: resolve
+    if: ${{ needs.resolve.outputs.action == 'upgrade' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
       pull-requests: write
+      # 用于在升级分支上显式派发 ci.yml（见末步说明）。
+      actions: write
+    env:
+      VERSION: ${{ needs.resolve.outputs.version }}
+      BRANCH: ${{ needs.resolve.outputs.branch }}
     steps:
       - uses: actions/checkout@v7
 
@@ -25,26 +82,48 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Upgrade to specific version
+      # package.json 与 lsp-package.json 必须同步钉到同一精确版本（check-lsp-pin 守护）。
+      - name: Bump package.json and lsp-package.json in lockstep
         run: |
-          VERSION="${{ github.event.inputs.version }}"
-          pnpm add @aster-cloud/aster-lang-ts@${VERSION#v}
+          set -euo pipefail
+          pnpm add --save-exact "@aster-cloud/aster-lang-ts@${VERSION}"
+          node scripts/resolve-aster-lang-upgrade.mjs bump-pins "${VERSION}"
+          node scripts/check-lsp-pin.mjs
 
       - run: pnpm test:run
       - run: pnpm run build:next
 
       - name: Create upgrade PR
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="${{ github.event.inputs.version }}"
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b deps/aster-lang-ts-${VERSION}
-          git add package.json pnpm-lock.yaml
+          git checkout -b "${BRANCH}"
+          git add package.json pnpm-lock.yaml lsp-package.json
           git commit -m "chore(deps): upgrade @aster-cloud/aster-lang-ts to ${VERSION}"
-          git push origin deps/aster-lang-ts-${VERSION}
+          # 分支可能残留自已关闭的旧 PR；该分支专属本 workflow，强推覆盖即可。
+          git push --force origin "HEAD:refs/heads/${BRANCH}"
           gh pr create \
+            --base main \
+            --head "${BRANCH}" \
             --title "chore(deps): upgrade aster-lang-ts to ${VERSION}" \
-            --body "Automatically triggered by aster-lang-ts release. CI tests passed." \
-            --base main
+            --body "$(cat <<BODY
+          Automated upgrade of \`@aster-cloud/aster-lang-ts\` to \`${VERSION}\` (pulled from npm by the scheduled auto-upgrade workflow).
+
+          - \`package.json\` and \`lsp-package.json\` bumped in lockstep
+          - \`pnpm test:run\` and \`pnpm run build:next\` passed in the upgrade run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          **CI note:** this PR was opened with the repo \`GITHUB_TOKEN\`, which by GitHub design does not fire \`pull_request\` workflows. The upgrade run dispatches \`ci.yml\` on this branch via \`workflow_dispatch\` instead, so the CI checks attach to the head commit. If no CI run appears (or it sits in \`action_required\`), run: \`gh workflow run ci.yml -R ${GITHUB_REPOSITORY} --ref ${BRANCH}\` or approve it with \`gh api -X POST repos/${GITHUB_REPOSITORY}/actions/runs/<id>/approve\`.
+          BODY
+          )"
+
+      # GITHUB_TOKEN 开的 PR 不会触发 pull_request 事件，但 workflow_dispatch 是官方豁免项：
+      # 在升级分支上显式派发 ci.yml，让完整 CI 跑在 PR 的 head commit 上。尽力而为，失败只告警。
+      - name: Dispatch CI on upgrade branch
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run ci.yml --repo "${GITHUB_REPOSITORY}" --ref "${BRANCH}" \
+            || echo "::warning::CI 派发失败，请手动执行: gh workflow run ci.yml --ref ${BRANCH}"

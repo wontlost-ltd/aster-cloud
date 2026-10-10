@@ -42,6 +42,8 @@ updates:
 
     # Don't auto-bump packages we own and pin deliberately.
     ignore:
+      # 其中 @aster-cloud/aster-lang-ts 由 auto-upgrade.yml 拉取升级（需同步 lsp-package.json 钉版），
+      # 此处保持忽略，避免与其产生两份互相竞争的升级 PR。
       - dependency-name: "@aster-cloud/*"
       # Major bumps on Next.js / React land manually after a smoke
       # cycle on staging — see docs/runbooks/staging-deploy.md.
