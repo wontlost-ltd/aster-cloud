@@ -5,6 +5,7 @@
 // 与被替换的旧 compliance-score 报告根本不同：这里只呈现执行链**已经产生**的权威事实。
 
 import type { ExecutionSource } from '@/lib/prisma';
+import type { LocalizedTitle } from './control-registry';
 import type { RegulatoryMapping } from './regulatory-mapping';
 import type { Reviewer } from './reviewers';
 
@@ -89,6 +90,14 @@ export interface EvidenceEntry {
   reviewers: Reviewer[];
   /** 最近一次 What-If 回放的结论码；无回放或取不到为 null。 */
   whatIf: EvidenceWhatIf | null;
+  /** 模块声明的治理档案 id（ADR 0046）；未声明或旧行为 null。 */
+  profile: string | null;
+}
+
+/** manifest 中列出的一个治理档案。 */
+export interface ProfileUsed {
+  id: string;
+  title: LocalizedTitle;
 }
 
 /** 导出格式。 */
@@ -100,8 +109,8 @@ export type EvidenceFormat = 'json' | 'jsonl';
  */
 export interface EvidenceManifest {
   kind: 'evidence-export';
-  /** v4 起 regulatoryMapping 由控制注册表驱动、按控制点分组并带 registryVersion；已存的 v1–v3 包按原样下载。 */
-  schemaVersion: '4';
+  /** v5 起 entries 含 profile、manifest 含 profilesUsed；已存的 v1–v4 包按原样下载。 */
+  schemaVersion: '5';
   generatedAt: string;
   /** 单策略快照，或全部策略范围。 */
   policy:
@@ -122,6 +131,8 @@ export interface EvidenceManifest {
   legacyEntries: number;
   /** 法规对照：按控制点分组，条款判定由控制注册表驱动。 */
   regulatoryMapping: RegulatoryMapping;
+  /** 条目中出现过的治理档案：按注册表顺序，未登记的排最后按字母序；标题版本即 regulatoryMapping.registryVersion。 */
+  profilesUsed: ProfileUsed[];
   notes: {
     /** 缺 canonical 哈希的 legacy 行数（导出覆盖缺口，供审计方知情——绝不伪造哈希）。 */
     legacyRowsWithoutHashes: number;
@@ -324,13 +335,93 @@ export interface EvidenceManifestV3 {
 
 export interface EvidenceBundleV3 {
   manifest: EvidenceManifestV3;
-  /** v4 未改条目形状；条目一旦变化须先在此冻结为 EvidenceEntryV3。 */
-  entries: EvidenceEntry[];
+  /** v3 与 v4 条目形状相同。 */
+  entries: EvidenceEntryV4[];
+}
+
+// ---- schemaVersion '4' 冻结类型：ADR 0046 起只读；条目无 profile，manifest 无 profilesUsed。
+
+export interface EvidenceEntryV4 {
+  executionId: string;
+  policyId: string;
+  policyVersion: number | null;
+  /** 不可变版本行引用（可精确定位当时编译产物）。 */
+  policyVersionRowId: string | null;
+  decision: EvidenceDecision | null;
+  canonicalInputHash: string | null;
+  canonicalOutputHash: string | null;
+  traceHash: string | null;
+  canonicalizationVersion: string | null;
+  /** 双引擎溯源：源/运行时 toolchain id。 */
+  toolchain: { source: string | null; runtime: string | null };
+  replayabilityStatus: string | null;
+  replayabilityReasons: unknown;
+  reasonCodes: unknown;
+  source: ExecutionSource;
+  durationMs: number;
+  /** ISO-8601 UTC。 */
+  createdAt: string;
+  /** 服务端派生的结果大写码（ALLOW/DENY/REQUIRE_APPROVAL/…）；旧行为 null。 */
+  outcome: string | null;
+  ruleId: string | null;
+  controls: string[] | null;
+  agent: EvidenceAgent | null;
+  evidenceCorrelationId: string | null;
+  receipt: ReceiptRef;
+  /** 三来源统一复核者，按 (decidedAt, ref) 排序以保证 bundleHash 确定。 */
+  reviewers: Reviewer[];
+  /** 最近一次 What-If 回放的结论码；无回放或取不到为 null。 */
+  whatIf: EvidenceWhatIf | null;
+}
+
+export interface EvidenceManifestV4 {
+  kind: 'evidence-export';
+  /** v4 起 regulatoryMapping 由控制注册表驱动、按控制点分组并带 registryVersion；已存的 v1–v3 包按原样下载。 */
+  schemaVersion: '4';
+  generatedAt: string;
+  /** 单策略快照，或全部策略范围。 */
+  policy:
+    | { id: string; name: string; version: number | null; policyVersionRowId: string | null }
+    | { scope: 'all' };
+  range: { start: string | null; end: string | null };
+  totals: { count: number };
+  decisionTally: DecisionTally;
+  canonicalizationVersion: string;
+  /** hex sha256（复用 canonicalHash，带 CANONICALIZATION_VERSION 前缀）。 */
+  bundleHash: string;
+  /** 收据来源与独立校验入口。 */
+  receiptSource: { kind: 'aster-api-hash-chain'; verifier: 'GET /api/v1/audit/receipts' };
+  /** 按 `${provider}/${model}` 计数；无 agent 计入 'unknown'。 */
+  agentTally: Record<string, number>;
+  reviewerTally: Record<Reviewer['source'], number>;
+  /** 无证据关联 id（receipt=legacy）的条目数。 */
+  legacyEntries: number;
+  /** 法规对照：按控制点分组，条款判定由控制注册表驱动。 */
+  regulatoryMapping: RegulatoryMapping;
+  notes: {
+    /** 缺 canonical 哈希的 legacy 行数（导出覆盖缺口，供审计方知情——绝不伪造哈希）。 */
+    legacyRowsWithoutHashes: number;
+    /** 收据取不到（超时/网络/非 2xx）的条目数——导出仍完成，如实标注。 */
+    receiptsUnavailable: number;
+    /** aster-api 未找到收据的条目数。 */
+    receiptsMissing: number;
+    /** What-If 回放取不到（超时/网络/非 2xx）的条目数。 */
+    whatIfUnavailable: number;
+    /** 校验 recipe：告诉审计方如何重算 bundleHash。 */
+    verification: string;
+  };
+}
+
+export interface EvidenceBundleV4 {
+  manifest: EvidenceManifestV4;
+  entries: EvidenceEntryV4[];
 }
 
 /** 已持久化的 manifest / bundle：读取侧须按 schemaVersion 收窄后再访问版本专有字段。 */
-export type StoredEvidenceManifest = EvidenceManifestV1 | EvidenceManifestV2 | EvidenceManifestV3 | EvidenceManifest;
-export type StoredEvidenceBundle = EvidenceBundleV1 | EvidenceBundleV2 | EvidenceBundleV3 | EvidenceBundle;
+export type StoredEvidenceManifest =
+  | EvidenceManifestV1 | EvidenceManifestV2 | EvidenceManifestV3 | EvidenceManifestV4 | EvidenceManifest;
+export type StoredEvidenceBundle =
+  | EvidenceBundleV1 | EvidenceBundleV2 | EvidenceBundleV3 | EvidenceBundleV4 | EvidenceBundle;
 
 /** 预览（导出前给 UI 看规模，不含行体）。 */
 export interface EvidencePreview {

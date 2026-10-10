@@ -6,6 +6,7 @@ import { getTranslations } from 'next-intl/server';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
 import { resolveRetention } from '@/lib/retention/execution-retention';
+import { detectCNLLocale } from '@/services/policy/cnl-executor';
 import { PolicyDetailContent } from './policy-detail-content';
 
 // 服务端数据获取
@@ -118,6 +119,7 @@ export default async function PolicyDetailPage({
       policyContent: t('detail.policyContent'),
       versionHistory: t('detail.versionHistory'),
       backToPolicies: t('detail.backToPolicies'),
+      profile: t('detail.profile'),
     },
     deleteDialog: {
       title: t('deleteDialog.title'),
@@ -144,6 +146,7 @@ export default async function PolicyDetailPage({
       whatIfEntitled={whatIfEntitled}
       retentionDays={retentionDays}
       policy={{ ...policy, isFrozen: freeze.isFrozen }}
+      sourceLocale={detectCNLLocale(policy.content)}
       translations={translations}
       locale={locale}
     />

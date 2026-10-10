@@ -68,7 +68,13 @@ describe('cnl-executor Verdict 五态（ADR 0041 §4）', () => {
     expect(r.metadata).not.toHaveProperty('ruleId');
     expect(r.metadata).not.toHaveProperty('controls');
     expect(r.metadata).not.toHaveProperty('evidenceCorrelationId');
+    expect(r.metadata).not.toHaveProperty('profile');
     expect(deriveExecutionOutcome(r)).toBe('ALLOW');
+  });
+
+  it('评估响应带 profile 时透传到 metadata（ADR 0046 §6）', () => {
+    const r = buildCNLResult(policy, { result: true, executionTimeMs: 1, error: null, profile: 'eu-ai-act-high-risk' } as PolicyEvaluateResponse);
+    expect(r.metadata.profile).toBe('eu-ai-act-high-risk');
   });
 
   it('evaluateSource 透传 agent 到请求体，无 agent 时不带键', async () => {

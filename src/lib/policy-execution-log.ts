@@ -273,14 +273,16 @@ export interface ExecutionEvidenceColumns {
   /** 落库的 agent 带 source:'declared'——标明是调用方自报、非平台认证。 */
   agent: (AgentIdentity & { source: 'declared' }) | null;
   evidenceCorrelationId: string | null;
+  /** 模块声明的治理档案 id（ADR 0046 §6）。 */
+  profile: string | null;
 }
 
 /**
- * 构建 Execution 证据列：从执行结果 metadata 取 ruleId/controls/evidenceCorrelationId，
+ * 构建 Execution 证据列：从执行结果 metadata 取 ruleId/controls/evidenceCorrelationId/profile，
  * agent 附加 source:'declared'。缺失一律写 null（不写 undefined，保证列值显式）。
  */
 export function buildEvidenceColumns(
-  metadata: { ruleId?: string; controls?: string[]; evidenceCorrelationId?: string },
+  metadata: { ruleId?: string; controls?: string[]; evidenceCorrelationId?: string; profile?: string },
   agent: AgentIdentity | null,
 ): ExecutionEvidenceColumns {
   return {
@@ -288,6 +290,7 @@ export function buildEvidenceColumns(
     controls: metadata.controls ?? null,
     agent: agent ? { ...agent, source: 'declared' } : null,
     evidenceCorrelationId: metadata.evidenceCorrelationId ?? null,
+    profile: metadata.profile ?? null,
   };
 }
 

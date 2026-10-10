@@ -906,6 +906,8 @@ export const executions = pgTable(
     agent: jsonb('agent'),
     // aster-api 证据关联 id（响应 evidence.correlationId），用于跨系统对齐同一次决策。
     evidenceCorrelationId: text('evidenceCorrelationId'),
+    // 模块声明的治理档案 id（ADR 0046 §6，迁移 0053）；未声明或旧行为 NULL。
+    profile: text('profile'),
   },
   (table) => [
     index('Execution_userId_idx').on(table.userId),

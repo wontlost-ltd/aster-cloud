@@ -38,7 +38,7 @@ import type {
 } from '@/services/evidence/types';
 
 /**
- * 本次写入的存储形态：只产 v4；历史 v1–v3 行由 readStoredEvidenceExport 按 schemaVersion 收窄读取，不做重算或升级。
+ * 本次写入的存储形态：只产 v5；历史 v1–v4 行由 readStoredEvidenceExport 按 schemaVersion 收窄读取，不做重算或升级。
  */
 interface EvidenceExportData extends StoredEvidenceExport {
   manifest: EvidenceManifest;

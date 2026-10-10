@@ -5,6 +5,7 @@
 // 让审计方能用同一规则跨实现重算校验。
 
 import { canonicalHash, CANONICALIZATION_VERSION } from '@/lib/canonical-json';
+import { defaultControlRegistry, profileTitle, type ControlRegistryData } from './control-registry';
 import type { ReceiptLookup } from './receipts-client';
 import { mapRegulatory } from './regulatory-mapping';
 import type { Reviewer } from './reviewers';
@@ -17,6 +18,7 @@ import type {
   EvidenceFormat,
   EvidenceManifest,
   EvidenceWhatIf,
+  ProfileUsed,
   ReceiptRef,
   StoredEvidenceBundle,
 } from './types';
@@ -51,6 +53,8 @@ export interface EvidenceRow {
   policyOwnerId: string;
   /** metadata.guardDecisionId；无则 null。只用于取 guard 审批，不进 entry。 */
   guardDecisionId: string | null;
+  /** 模块声明的治理档案 id；旧行或未声明为 null。 */
+  profile: string | null;
 }
 
 /** 按行的证据关联 id 在收据查找结果中定位：无 id → legacy；取失败 → unavailable；未命中 → missing。 */
@@ -103,6 +107,7 @@ export function buildEvidenceEntry(
     receipt,
     reviewers: [...reviewers].sort(compareReviewers),
     whatIf,
+    profile: row.profile,
   };
 }
 
@@ -140,8 +145,8 @@ function countReceiptStatus(entries: readonly EvidenceEntry[], status: 'missing'
 }
 
 const VERIFICATION_RECIPE =
-  'bundleHash = canonicalHash(entries sorted by [createdAt, executionId]) over schemaVersion 4 entries ' +
-  '(includes outcome/ruleId/controls/agent/receipt/reviewers/whatIf); receipts verifiable via GET /api/v1/audit/receipts; ' +
+  'bundleHash = canonicalHash(entries sorted by [createdAt, executionId]) over schemaVersion 5 entries ' +
+  '(includes outcome/ruleId/controls/agent/receipt/reviewers/whatIf/profile); receipts verifiable via GET /api/v1/audit/receipts; ' +
   'v1 bundles use their own recipe.';
 
 /** 统计 decision 分布；decision=null（legacy）计入 unknown 桶。 */
@@ -173,6 +178,20 @@ export function computeBundleHash(entries: readonly EvidenceEntry[]): string {
   return canonicalHash(sortEntries(entries) as unknown[]);
 }
 
+/**
+ * 条目中出现过的档案 id 去重后，按注册表 profiles 顺序映射标题；
+ * 注册表未登记的 id 排在已登记之后、按码点序，标题三语均为 id 本身。
+ */
+export function collectProfiles(
+  entries: readonly EvidenceEntry[],
+  registry: ControlRegistryData = defaultControlRegistry,
+): ProfileUsed[] {
+  const used = new Set(entries.flatMap((e) => (e.profile === null ? [] : [e.profile])));
+  const known = registry.profiles.map((p) => p.id).filter((id) => used.has(id));
+  const unknown = [...used].filter((id) => !known.includes(id)).sort(compareCodePoints);
+  return [...known, ...unknown].map((id) => ({ id, title: profileTitle(id, registry) }));
+}
+
 export interface BuildManifestInput {
   policy: EvidenceManifest['policy'];
   range: { start: Date | null; end: Date | null };
@@ -189,7 +208,7 @@ export function buildManifest(input: BuildManifestInput): EvidenceManifest {
   ).length;
   return {
     kind: 'evidence-export',
-    schemaVersion: '4',
+    schemaVersion: '5',
     generatedAt: input.generatedAt.toISOString(),
     policy: input.policy,
     range: {
@@ -205,6 +224,7 @@ export function buildManifest(input: BuildManifestInput): EvidenceManifest {
     reviewerTally: tallyReviewers(sorted),
     legacyEntries: countReceiptStatus(sorted, 'legacy'),
     regulatoryMapping: mapRegulatory(sorted),
+    profilesUsed: collectProfiles(sorted),
     notes: {
       legacyRowsWithoutHashes,
       receiptsUnavailable: countReceiptStatus(sorted, 'unavailable'),

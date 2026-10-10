@@ -19,11 +19,11 @@ import {
 } from '@/components/ui';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
 import { summarizeStoredExport, type StoredEvidenceSummary } from '@/services/evidence/stored';
-import type { RegulatoryMapping } from '@/services/evidence/regulatory-mapping';
 import {
   RegulatoryMappingPanel,
   type MappingState,
   type RegulatoryMappingPanelLabels,
+  type RegulatoryMappingView,
 } from '@/components/evidence/regulatory-mapping-table';
 
 interface PolicyOption {
@@ -93,6 +93,7 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
   const mappingLabels: RegulatoryMappingPanelLabels = {
     loading: t('mapping.loading'),
     loadFailed: t('mapping.loadFailed'),
+    profiles: t('mapping.profiles'),
     notAvailable: t('mapping.notAvailable'),
     noFrameworks: t('mapping.noFrameworks'),
     // 占位符交给组件替换版本号，这里取原文
@@ -167,7 +168,7 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
       }>;
       setExports(
         rows.map((e) => {
-          // 历史行可能是 v1–v4 manifest：经 summarizeStoredExport 按 schemaVersion 收窄，未知版本显示占位。
+          // 历史行可能是 v1–v5 manifest：经 summarizeStoredExport 按 schemaVersion 收窄，未知版本显示占位。
           const summary = summarizeStoredExport(e.data);
           return {
             id: e.id,
@@ -376,12 +377,12 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
                             >
                               {t('download')}
                             </a>
-                            {/* 只有 v4 证据包带注册表驱动的对照；更早版本禁用并提示原因 */}
+                            {/* 只有 v4 起的证据包带注册表驱动的对照；更早版本禁用并提示原因 */}
                             <button
                               type="button"
                               onClick={() => toggleMapping(e.id)}
-                              disabled={e.schemaVersion !== '4'}
-                              title={e.schemaVersion === '4' ? undefined : t('mapping.notAvailable')}
+                              disabled={!hasMapping(e.schemaVersion)}
+                              title={hasMapping(e.schemaVersion) ? undefined : t('mapping.notAvailable')}
                               aria-expanded={openMappingId === e.id}
                               className="text-xs text-primary hover:underline disabled:cursor-not-allowed disabled:text-fg-muted disabled:no-underline"
                             >
@@ -437,12 +438,15 @@ function defaultStart(): string {
   return d.toISOString().slice(0, 10);
 }
 
+const MAPPING_SCHEMA_VERSIONS: ReadonlySet<string | null> = new Set(['4', '5']);
+const hasMapping = (schemaVersion: string | null) => MAPPING_SCHEMA_VERSIONS.has(schemaVersion);
+
 // 拉取单个导出的对照；非 2xx（含会话过期）或网络失败返回 'error'，与「无对照」区分
 async function fetchMapping(id: string): Promise<MappingState> {
   try {
     const r = await fetch(`/api/reports/${encodeURIComponent(id)}/mapping`);
     if (!r.ok) return 'error';
-    return ((await r.json()) as { mapping: RegulatoryMapping | null }).mapping;
+    return ((await r.json()) as { mapping: RegulatoryMappingView | null }).mapping;
   } catch {
     return 'error';
   }

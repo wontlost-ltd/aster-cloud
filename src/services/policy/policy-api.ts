@@ -119,6 +119,8 @@ export interface PolicyEvaluateResponse {
   controls?: string[];
   /** 证据关联信息：correlationId 用于跨系统对齐同一次决策。 */
   evidence?: { correlationId: string };
+  /** 模块声明的治理档案 id（ADR 0046）；未声明时缺省。 */
+  profile?: string;
 }
 
 /**
@@ -199,6 +201,8 @@ export interface PolicyCompileResponse {
   diagnostics?: PolicyDiagnostic[];
   /** 错误信息 */
   error?: string;
+  /** 模块声明的治理档案 id（ADR 0046）；未声明时缺省。 */
+  profile?: string;
 }
 
 export interface PolicyDiagnostic {

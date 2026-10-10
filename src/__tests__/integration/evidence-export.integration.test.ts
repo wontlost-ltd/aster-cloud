@@ -229,28 +229,39 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('evidence-export 数据层（�
     await seedExecution({
       id: 'v2-a', createdAt: new Date('2026-07-01T00:00:00Z'), outcome: 'REQUIRE_APPROVAL', ruleId: 'R-1',
       controls: ['GDPR:ART17'], agent: { provider: 'anthropic', model: 'claude', source: 'declared' },
-      evidenceCorrelationId: 'corr-a', metadata: { guardDecisionId: 'gd-a' },
+      evidenceCorrelationId: 'corr-a', metadata: { guardDecisionId: 'gd-a' }, profile: 'governed',
     });
     await seedExecution({ id: 'v2-b', policyId: 'pol-team', createdAt: new Date('2026-07-02T00:00:00Z') });
     const [a, b] = await queryEvidenceExecutions({ userId: U });
     expect(a).toMatchObject({
       id: 'v2-a', outcome: 'REQUIRE_APPROVAL', ruleId: 'R-1', controls: ['GDPR:ART17'],
       agent: { provider: 'anthropic', model: 'claude', source: 'declared' },
-      evidenceCorrelationId: 'corr-a', policyTenantId: U, policyOwnerId: U, guardDecisionId: 'gd-a',
+      evidenceCorrelationId: 'corr-a', policyTenantId: U, policyOwnerId: U, guardDecisionId: 'gd-a', profile: 'governed',
     });
     expect(b).toMatchObject({
-      id: 'v2-b', outcome: null, agent: null, evidenceCorrelationId: null, policyTenantId: 'team-ev', policyOwnerId: U, guardDecisionId: null,
+      id: 'v2-b', outcome: null, agent: null, evidenceCorrelationId: null, policyTenantId: 'team-ev', policyOwnerId: U, guardDecisionId: null, profile: null,
     });
   });
 
-  it('★无关联 id 的行导出为现行 schemaVersion 4 + receipt=legacy（不发起收据请求）', async () => {
+  it('★无关联 id 的行导出为现行 schemaVersion 5 + receipt=legacy（不发起收据请求）', async () => {
     await seedExecution({ id: 'e1', createdAt: new Date('2026-07-01T00:00:00Z') });
     const { id, manifest } = await createEvidenceExport(U, { policyId: POL, format: 'json' });
-    expect(manifest.schemaVersion).toBe('4');
+    expect(manifest.schemaVersion).toBe('5');
     expect(manifest.legacyEntries).toBe(1);
+    expect(manifest.profilesUsed).toEqual([]);
     const body = JSON.parse((await getEvidenceExportBundle(U, id))!.body);
     expect(body.entries[0].receipt).toEqual({ status: 'legacy' });
     expect(body.entries[0].reviewers).toEqual([]);
+    expect(body.entries[0].profile).toBeNull();
+  });
+
+  it('★profile 列落库后进入条目与 manifest.profilesUsed（ADR 0046 §6）', async () => {
+    await seedExecution({ id: 'p1', createdAt: new Date('2026-07-01T00:00:00Z'), profile: 'eu-ai-act-high-risk' });
+    await seedExecution({ id: 'p2', createdAt: new Date('2026-07-02T00:00:00Z') });
+    const { id, manifest } = await createEvidenceExport(U, { policyId: POL, format: 'json' });
+    expect(manifest.profilesUsed.map((p) => p.id)).toEqual(['eu-ai-act-high-risk']);
+    const body = JSON.parse((await getEvidenceExportBundle(U, id))!.body);
+    expect(body.entries.map((e: { profile: string | null }) => e.profile)).toEqual(['eu-ai-act-high-risk', null]);
   });
 
   it('★回放端点不可用：导出完成，whatIf 全 null，notes.whatIfUnavailable = 条目数，14(4)(a) 为 none', async () => {
@@ -261,7 +272,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('evidence-export 数据层（�
       await seedExecution({ id: 'exec-w1', createdAt: new Date('2026-07-01T00:00:00Z'), outcome: 'REQUIRE_APPROVAL', controls: ['EU_AI_ACT:ART14'] });
       const { id } = await createEvidenceExport(U, { policyId: POL, format: 'json' });
       const body = JSON.parse((await getEvidenceExportBundle(U, id))!.body);
-      expect(body.manifest.schemaVersion).toBe('4');
+      expect(body.manifest.schemaVersion).toBe('5');
       expect(body.entries.every((e: { whatIf: unknown }) => e.whatIf === null)).toBe(true);
       expect(body.manifest.notes.whatIfUnavailable).toBe(body.entries.length);
       const art14 = body.manifest.regulatoryMapping.frameworks.find((f: { control: string }) => f.control === 'EU_AI_ACT:ART14');

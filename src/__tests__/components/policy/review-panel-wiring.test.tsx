@@ -47,6 +47,9 @@ vi.mock('@/components/policy/share-with-teams-card', () => ({
 vi.mock('@/components/policy/policy-analytics-section', () => ({
   PolicyAnalyticsSection: () => <div />,
 }));
+vi.mock('@/components/policy/policy-profile-badge', () => ({
+  PolicyProfileBadge: () => <div />,
+}));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), back: vi.fn() }),
 }));
@@ -97,6 +100,7 @@ describe('复核面板接线（策略详情页）', () => {
     render(
       <PolicyDetailContent
         policy={policyOf('pol-42') as never}
+        sourceLocale="en-US"
         translations={translations}
         locale="zh"
       />,
@@ -110,6 +114,7 @@ describe('复核面板接线（策略详情页）', () => {
     render(
       <PolicyDetailContent
         policy={policyOf('pol-42') as never}
+        sourceLocale="en-US"
         translations={translations}
         locale="zh"
       />,
@@ -123,6 +128,7 @@ describe('复核面板接线（策略详情页）', () => {
     render(
       <PolicyDetailContent
         policy={policyOf('another-policy') as never}
+        sourceLocale="en-US"
         translations={translations}
         locale="zh"
       />,

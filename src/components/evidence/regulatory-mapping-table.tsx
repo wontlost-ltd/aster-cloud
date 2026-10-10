@@ -2,9 +2,15 @@
 
 // 法规对照表（ADR 0045 §5）：只呈现证据包内注册表驱动的对照结果，不做任何判定。
 import { Badge } from '@/components/ui';
+import { localizedTitle } from '@/services/evidence/control-registry';
 import type { ClauseStatus, FrameworkMapping, RegulatoryMapping } from '@/services/evidence/regulatory-mapping';
+import type { ProfileUsed } from '@/services/evidence/types';
+
+/** 对照接口返回的视图：v5 证据包另附所用治理档案（ADR 0046 §6），v4 无此字段。 */
+export type RegulatoryMappingView = RegulatoryMapping & { profilesUsed?: ProfileUsed[] };
 
 export interface RegulatoryMappingLabels {
+  profiles: string;
   notAvailable: string;
   noFrameworks: string;
   registryVersion: string;
@@ -17,12 +23,8 @@ const BADGE: Record<ClauseStatus, 'success' | 'warning' | 'neutral'> = {
   evidenced: 'success', partial: 'warning', none: 'neutral',
 };
 
-type TitleLocale = 'en' | 'zh' | 'de';
-// 条款标题只有 en/zh/de 三语，其余 locale（如 hi）回退英文
-const titleLocale = (locale: string): TitleLocale => (locale === 'zh' || locale === 'de' ? locale : 'en');
-
-function FrameworkTable({ framework, lang, labels }: {
-  framework: FrameworkMapping; lang: TitleLocale; labels: RegulatoryMappingLabels;
+function FrameworkTable({ framework, locale, labels }: {
+  framework: FrameworkMapping; locale: string; labels: RegulatoryMappingLabels;
 }) {
   return (
     <table className="w-full text-sm">
@@ -39,7 +41,7 @@ function FrameworkTable({ framework, lang, labels }: {
         {framework.clauses.map((c) => (
           <tr key={c.clause} className="border-b border-border" data-testid={`clause-row-${c.clause}`}>
             <td className="px-2 py-1">{c.clause}</td>
-            <td className="px-2 py-1">{c.title[lang]}</td>
+            <td className="px-2 py-1">{localizedTitle(c.title, locale)}</td>
             <td className="px-2 py-1"><Badge variant={BADGE[c.status]}>{labels.status[c.status]}</Badge></td>
             <td className="px-2 py-1">
               <details>
@@ -54,27 +56,38 @@ function FrameworkTable({ framework, lang, labels }: {
   );
 }
 
+// 证据包所用治理档案；无档案（含 v4 包）时不占位
+function ProfilesLine({ profiles, locale, label }: { profiles: ProfileUsed[]; locale: string; label: string }) {
+  if (profiles.length === 0) return null;
+  return (
+    <p className="flex flex-wrap items-center gap-2 text-sm" data-testid="profiles-used">
+      <span className="text-fg-muted">{label}</span>
+      {profiles.map((p) => <Badge key={p.id} variant="neutral">{localizedTitle(p.title, locale)}</Badge>)}
+    </p>
+  );
+}
+
 export function RegulatoryMappingTable({ mapping, locale, labels }: {
-  mapping: RegulatoryMapping | null; locale: string; labels: RegulatoryMappingLabels;
+  mapping: RegulatoryMappingView | null; locale: string; labels: RegulatoryMappingLabels;
 }) {
   if (!mapping) return <p className="text-sm text-fg-muted">{labels.notAvailable}</p>;
-  const lang = titleLocale(locale);
   return (
     <div className="space-y-4">
+      <ProfilesLine profiles={mapping.profilesUsed ?? []} locale={locale} label={labels.profiles} />
       <p className="text-xs text-fg-muted">
         <span>{labels.registryVersion.replace('{version}', mapping.registryVersion)}</span> · {labels.disclaimer}
       </p>
       {mapping.frameworks.length === 0 ? (
         <p className="text-sm text-fg-muted">{labels.noFrameworks}</p>
       ) : (
-        mapping.frameworks.map((f) => <FrameworkTable key={f.control} framework={f} lang={lang} labels={labels} />)
+        mapping.frameworks.map((f) => <FrameworkTable key={f.control} framework={f} locale={locale} labels={labels} />)
       )}
     </div>
   );
 }
 
 // 报告页单行对照的取数状态：'loading'=请求中，'error'=请求失败（可重试），null=接口如实返回无对照
-export type MappingState = RegulatoryMapping | null | 'loading' | 'error';
+export type MappingState = RegulatoryMappingView | null | 'loading' | 'error';
 
 export interface RegulatoryMappingPanelLabels extends RegulatoryMappingLabels {
   loading: string;

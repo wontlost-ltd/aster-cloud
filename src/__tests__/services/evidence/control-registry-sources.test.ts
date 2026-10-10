@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { defaultControlRegistry } from '@/services/evidence/control-registry';
+import { defaultControlRegistry, localizedTitle, profileTitle } from '@/services/evidence/control-registry';
 import { isEvidenceSource } from '@/services/evidence/regulatory-mapping';
 
 // 不依赖兄弟仓、在 CI 中必跑：类型断言 `raw as ControlRegistryData` 会掩盖副本里的未知来源，
@@ -28,5 +28,26 @@ describe('内置控制注册表副本', () => {
     expect(isEvidenceSource('reviewers.guard.two')).toBe(true);
     expect(isEvidenceSource('reviewers.guard.three')).toBe(false);
     expect(isEvidenceSource('toString')).toBe(false);
+  });
+});
+
+describe('内置注册表的治理档案（ADR 0046 §3）', () => {
+  const { frameworks, profiles } = defaultControlRegistry;
+
+  it('档案 id 唯一，且 frameworks 要求均为已登记框架', () => {
+    const ids = profiles.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const known = new Set(frameworks.map((f) => f.id));
+    expect(profiles.flatMap((p) => p.requires.frameworks).filter((f) => !known.has(f))).toEqual([]);
+  });
+
+  it('profileTitle：已登记取注册表标题，未登记三语均为 id', () => {
+    expect(profileTitle('governed').zh).toBe('受治理规则');
+    expect(profileTitle('local-x')).toEqual({ en: 'local-x', zh: 'local-x', de: 'local-x' });
+  });
+
+  it('localizedTitle：hi 等未覆盖 locale 回退英文', () => {
+    const title = { en: 'E', zh: 'Z', de: 'D' };
+    expect([localizedTitle(title, 'zh'), localizedTitle(title, 'de'), localizedTitle(title, 'hi')]).toEqual(['Z', 'D', 'E']);
   });
 });

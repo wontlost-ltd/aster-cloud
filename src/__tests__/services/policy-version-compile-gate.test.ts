@@ -145,3 +145,23 @@ describe('assertCompilable — 事务外 preflight', () => {
     await expect(assertCompilable(v, input)).resolves.toBeUndefined();
   });
 });
+
+describe('assertCompilable — 治理档案诊断（ADR 0046 §4）', () => {
+  it('E705（severity error）→ 抛 PolicyCompileError', async () => {
+    const validator: CompileValidator = vi.fn().mockResolvedValue({
+      diagnostics: [{ severity: 'error', code: 'E705' }],
+    });
+    await expect(
+      assertCompilable(validator, { source: 'Module X.', locale: 'en-US' }),
+    ).rejects.toBeInstanceOf(PolicyCompileError);
+  });
+
+  it('只含 W700（warning）→ 不抛', async () => {
+    const validator: CompileValidator = vi.fn().mockResolvedValue({
+      diagnostics: [{ severity: 'warning', code: 'W700' }],
+    });
+    await expect(
+      assertCompilable(validator, { source: 'Module X.', locale: 'en-US' }),
+    ).resolves.toBeUndefined();
+  });
+});

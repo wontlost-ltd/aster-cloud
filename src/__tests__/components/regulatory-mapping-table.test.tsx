@@ -9,7 +9,7 @@ import {
 import type { RegulatoryMapping } from '@/services/evidence/regulatory-mapping';
 
 const labels: RegulatoryMappingLabels = {
-  notAvailable: 'not-available', noFrameworks: 'no-frameworks', registryVersion: 'registry {version}', disclaimer: 'disclaimer',
+  profiles: 'profiles-label', notAvailable: 'not-available', noFrameworks: 'no-frameworks', registryVersion: 'registry {version}', disclaimer: 'disclaimer',
   columns: { clause: 'clause', title: 'title', status: 'status', evidence: 'evidence' },
   status: { evidenced: 'S-evidenced', partial: 'S-partial', none: 'S-none' },
 };
@@ -45,6 +45,18 @@ describe('RegulatoryMappingTable', () => {
   it('hi 等未覆盖的 locale 回退英文标题', () => {
     render(<RegulatoryMappingTable mapping={mapping} locale="hi" labels={labels} />);
     expect(screen.getByText('Awareness of automation bias')).toBeTruthy();
+  });
+
+  it('带 profilesUsed 时在顶部列出档案标题（按 locale）', () => {
+    const profilesUsed = [{ id: 'eu-ai-act-high-risk', title: t('EU AI Act high-risk system', '欧盟人工智能法高风险系统') }];
+    render(<RegulatoryMappingTable mapping={{ ...mapping, profilesUsed }} locale="zh" labels={labels} />);
+    expect(screen.getByText('profiles-label')).toBeTruthy();
+    expect(screen.getByText('欧盟人工智能法高风险系统')).toBeTruthy();
+  });
+
+  it('无 profilesUsed（v4）或为空时不显示档案行', () => {
+    render(<RegulatoryMappingTable mapping={{ ...mapping, profilesUsed: [] }} locale="en" labels={labels} />);
+    expect(screen.queryByText('profiles-label')).toBeNull();
   });
 
   it('mapping 为 null 显示不含对照', () => {

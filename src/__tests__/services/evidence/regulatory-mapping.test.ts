@@ -11,7 +11,7 @@ function e(over: Partial<EvidenceEntry>): EvidenceEntry {
     toolchain: { source: null, runtime: null }, replayabilityStatus: null, replayabilityReasons: null,
     reasonCodes: null, source: 'api', durationMs: 1, createdAt: '2026-10-09T00:00:00.000Z',
     outcome: 'ALLOW', ruleId: null, controls: ['EU_AI_ACT:ART14'], agent: null, evidenceCorrelationId: null,
-    receipt: { status: 'legacy' }, reviewers: [], whatIf: null, ...over,
+    receipt: { status: 'legacy' }, reviewers: [], whatIf: null, profile: null, ...over,
   };
 }
 const rv = (over: Partial<Reviewer>): Reviewer => ({
@@ -105,7 +105,7 @@ describe('mapRegulatory：EU AI Act 第 14 条', () => {
 describe('mapRegulatory：注册表驱动', () => {
   it('entries 为空：所有带条款的组全部 none，并写注册表版本', () => {
     const m = mapRegulatory([]);
-    expect(m.registryVersion).toBe('1.0.0');
+    expect(m.registryVersion).toBe('1.1.0');
     expect(m.frameworks.map((f) => f.control)).toEqual(['EU_AI_ACT:ART14']);
     expect(m.frameworks[0]!.clauses.every((c) => c.status === 'none' && c.evidence.length === 0)).toBe(true);
   });
@@ -125,6 +125,7 @@ describe('mapRegulatory：注册表驱动', () => {
       version: '9.9.9', frameworks: [{ id: 'X', title: { en: 'X', zh: 'X', de: 'X' } }],
       controls: [{ key: 'X:1', framework: 'X', article: '1', title: { en: 'x', zh: 'x', de: 'x' } }],
       clauses: [{ control: 'X:1', clause: '1(1)', title: { en: 'a', zh: 'a', de: 'a' }, evidenced: ['outcome.pending' as const], partial: [] }],
+      profiles: [],
     };
     const m = mapRegulatory([e({ controls: ['X:1'], outcome: 'ESCALATE' })], registry);
     expect(m.frameworks[0]).toMatchObject({ framework: 'X', article: '1', control: 'X:1' });

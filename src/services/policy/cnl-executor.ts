@@ -170,6 +170,8 @@ export interface PolicyExecutionResult {
     reason?: string;
     /** aster-api 证据关联 id（响应 evidence.correlationId）。 */
     evidenceCorrelationId?: string;
+    /** 模块声明的治理档案 id（aster-api 响应 profile，ADR 0046）。 */
+    profile?: string;
   };
   /** CNL 引擎返回的原始结果 */
   result?: unknown;
@@ -529,6 +531,7 @@ export function buildCNLResult(policy: Policy, apiResponse: PolicyEvaluateRespon
     ...(apiResponse.ruleId ? { ruleId: apiResponse.ruleId } : {}),
     ...(apiResponse.controls ? { controls: apiResponse.controls } : {}),
     ...(apiResponse.evidence?.correlationId ? { evidenceCorrelationId: apiResponse.evidence.correlationId } : {}),
+    ...(apiResponse.profile ? { profile: apiResponse.profile } : {}),
   };
 
   // 如果有 result，尝试解析（即使 success=false）

@@ -112,7 +112,7 @@ test('信贷试点：执行、审批、What-If、证据导出与 Article 14 对�
       expect(download.suggestedFilename()).toMatch(/^aster-evidence-[0-9a-f]{12}\.json$/);
       const bundle = JSON.parse(readFileSync(await download.path(), 'utf8')) as Bundle;
 
-      expect(bundle.manifest.schemaVersion).toBe('4');
+      expect(bundle.manifest.schemaVersion).toBe('5');
       expect(diffClauses(articleClauses(bundle.manifest.regulatoryMapping), EXPECTED_CLAUSE_STATUS)).toEqual([]);
       expect(bundle.entries.some((e) => e.whatIf != null)).toBe(true);
 

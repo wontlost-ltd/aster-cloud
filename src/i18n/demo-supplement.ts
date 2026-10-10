@@ -354,6 +354,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       download: 'Download',
       // 法规对照（ADR 0045 §5）：报告页按行展开注册表驱动的对照表。
       mapping: {
+        profiles: 'Profiles',
         toggle: 'Regulatory mapping',
         loading: 'Loading mapping…',
         notAvailable: 'This export has no registry-driven regulatory mapping (created before schema 4).',
@@ -486,6 +487,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
     common: { cancel: 'Cancel' },
     policies: {
+      // 策略详情页治理档案徽标（ADR 0046 §6）。
+      detail: { profile: 'Profile' },
       execute: {
         // 值/计算输出策略（如 greet 返回文本）：执行成功但无 allow/deny 语义。
         computed: 'Computed',
@@ -1031,6 +1034,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       download: '下载',
       // 法规对照（ADR 0045 §5）：报告页按行展开注册表驱动的对照表。
       mapping: {
+        profiles: '治理档案',
         toggle: '法规对照',
         loading: '正在加载对照…',
         notAvailable: '此导出不含注册表驱动的法规对照（早于第 4 版格式）。',
@@ -1160,6 +1164,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
     common: { cancel: '取消' },
     policies: {
+      // 策略详情页治理档案徽标（ADR 0046 §6）。
+      detail: { profile: '治理档案' },
       execute: {
         computed: '已计算',
         noDecision: '无决策（值输出）',
@@ -1703,6 +1709,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       download: 'Herunterladen',
       // 法规对照（ADR 0045 §5）：报告页按行展开注册表驱动的对照表。
       mapping: {
+        profiles: 'Profile',
         toggle: 'Regulatorische Zuordnung',
         loading: 'Zuordnung wird geladen…',
         notAvailable: 'Dieser Export enthält keine registergesteuerte regulatorische Zuordnung (vor Schema 4 erstellt).',
@@ -1832,6 +1839,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
     common: { cancel: 'Abbrechen' },
     policies: {
+      // 策略详情页治理档案徽标（ADR 0046 §6）。
+      detail: { profile: 'Profil' },
       execute: {
         computed: 'Berechnet',
         noDecision: 'Keine Entscheidung (Wertausgabe)',
@@ -2373,6 +2382,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       download: 'डाउनलोड',
       // 法规对照（ADR 0045 §5）：报告页按行展开注册表驱动的对照表。
       mapping: {
+        profiles: 'Profiles',
         toggle: 'Regulatory mapping',
         loading: 'Loading mapping…',
         notAvailable: 'This export has no registry-driven regulatory mapping (created before schema 4).',
@@ -2502,6 +2512,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
     common: { cancel: 'रद्द करें' },
     policies: {
+      // 策略详情页治理档案徽标（ADR 0046 §6）。
+      detail: { profile: 'Profile' },
       execute: {
         computed: 'परिकलित',
         noDecision: 'कोई निर्णय नहीं (मान आउटपुट)',

@@ -98,6 +98,7 @@ export async function queryEvidenceExecutions(q: EvidenceQuery): Promise<Evidenc
       controls: true,
       agent: true,
       evidenceCorrelationId: true,
+      profile: true,
       // metadata 只为取 guardDecisionId，不进 entry。
       metadata: true,
       // ⚠️ 故意不选 input/output/traceJson——证据包=哈希/溯源清单，非明文数据 dump（PII）。
@@ -134,6 +135,7 @@ export async function queryEvidenceExecutions(q: EvidenceQuery): Promise<Evidenc
       policyTenantId: policyTenantId(r.policy),
       policyOwnerId: r.policy.userId,
       guardDecisionId: guardDecisionIdOf(r.metadata),
+      profile: r.profile ?? null,
     }));
 }
 
