@@ -81,4 +81,21 @@ describe('getDb 本地 dev 代理检测', () => {
     const { getDb } = await import('@/db');
     expect(getDb()).not.toBe(getDb());
   });
+
+  // 单例是 Node 进程内唯一的 client：池大小若为 1，db.transaction 占住唯一连接后，
+  // 事务回调里经全局 db 发出的查询（如 createVersion 内的 logSecurityEvent）会永远排队，
+  // POST/PUT /api/policies 因而挂死。单例必须是真正的连接池。
+  it('Node 运行时单例的连接池大于 1（事务内经全局 db 的查询不死锁）', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    const { getDb } = await import('@/db');
+    const client = (getDb() as unknown as { $client: { options: { max: number } } }).$client;
+    expect(client.options.max).toBeGreaterThan(1);
+  });
+
+  it('Workers 路径仍为每请求 max=1（Hyperdrive 负责池化）', async () => {
+    setRelease(undefined);
+    const { getDb } = await import('@/db');
+    const client = (getDb() as unknown as { $client: { options: { max: number } } }).$client;
+    expect(client.options.max).toBe(1);
+  });
 });
