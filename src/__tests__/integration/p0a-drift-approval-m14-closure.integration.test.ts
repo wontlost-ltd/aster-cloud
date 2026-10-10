@@ -15,7 +15,6 @@
 // ★前置：DB 须已应用 0039 trigger（drizzle-kit push 不跑迁移 SQL——用 pnpm db:migrate 或手 apply 0039）。
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { sql } from 'drizzle-orm';
 import { db, regressionReports, regressionDriftApprovals, regressionCases } from '@/lib/prisma';
 import {
   createDriftApproval,
@@ -23,7 +22,7 @@ import {
   computeReportHash,
   type RunReport,
 } from '@/services/policy/rule-regression-runner';
-import { setupTestDb, teardownTestDb } from './setup-postgres';
+import { deleteAppendOnlyRows, setupTestDb, teardownTestDb } from './setup-postgres';
 
 const POL = 'pol-m14c-1';
 const PVR = 'pv-m14c-1';
@@ -90,11 +89,7 @@ async function seedReport(id: string, caseHashVersion: 'case-hash/m1.1' | 'case-
 }
 
 async function reset() {
-  await db.execute(sql`SET session_replication_role = replica`);
-  await db.delete(regressionDriftApprovals);
-  await db.delete(regressionReports);
-  await db.delete(regressionCases);
-  await db.execute(sql`SET session_replication_role = DEFAULT`);
+  await deleteAppendOnlyRows([regressionDriftApprovals, regressionReports, regressionCases]);
 }
 
 async function expectRejected(run: () => Promise<unknown>, pattern: RegExp): Promise<void> {

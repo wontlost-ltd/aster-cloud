@@ -16,7 +16,7 @@ import {
 import { canonicalHash, CANONICALIZATION_VERSION } from '@/lib/canonical-json';
 import type { ReceiptLookup } from '@/services/evidence/receipts-client';
 import type { Reviewer } from '@/services/evidence/reviewers';
-import type { EvidenceEntry, ReceiptRef } from '@/services/evidence/types';
+import type { EvidenceEntry, EvidenceWhatIf, ReceiptRef } from '@/services/evidence/types';
 
 function row(over: Partial<EvidenceRow> = {}): EvidenceRow {
   // 用 'key' in over 区分「未传」与「显式 null」——?? 会把显式 null 折叠成默认值（本测试早期 bug）。
@@ -44,15 +44,22 @@ function row(over: Partial<EvidenceRow> = {}): EvidenceRow {
     agent: 'agent' in over ? over.agent! : { provider: 'anthropic', model: 'claude', source: 'declared' },
     evidenceCorrelationId: 'evidenceCorrelationId' in over ? over.evidenceCorrelationId! : null,
     policyTenantId: over.policyTenantId ?? 'tenant-1',
+    policyOwnerId: over.policyOwnerId ?? 'owner-1',
     guardDecisionId: 'guardDecisionId' in over ? over.guardDecisionId! : null,
+    profile: 'profile' in over ? over.profile! : null,
   };
 }
 
 const LEGACY: ReceiptRef = { status: 'legacy' };
 
 /** 默认 legacy 收据、无复核者的条目（既有断言只关心哈希/溯源字段）。 */
-function entry(over: Partial<EvidenceRow> = {}, receipt: ReceiptRef = LEGACY, reviewers: Reviewer[] = []): EvidenceEntry {
-  return buildEvidenceEntry(row(over), receipt, reviewers);
+function entry(
+  over: Partial<EvidenceRow> = {},
+  receipt: ReceiptRef = LEGACY,
+  reviewers: Reviewer[] = [],
+  whatIf: EvidenceWhatIf | null = null,
+): EvidenceEntry {
+  return buildEvidenceEntry(row(over), receipt, reviewers, whatIf);
 }
 
 function reviewer(over: Partial<Reviewer>): Reviewer {
@@ -196,6 +203,7 @@ describe('v2 条目：收据 / 复核者 / agent / outcome', () => {
     });
     // 查询专用字段不进 entry
     expect(e).not.toHaveProperty('policyTenantId');
+    expect(e).not.toHaveProperty('policyOwnerId');
     expect(e).not.toHaveProperty('guardDecisionId');
   });
 
@@ -275,7 +283,7 @@ describe('v2 bundleHash', () => {
   });
 });
 
-describe('v2 manifest', () => {
+describe('v5 manifest', () => {
   const entries = [
     entry({ id: 'a', evidenceCorrelationId: 'c-a', decision: 'require_approval' },
       { auditId: 1, currentHash: 'h1', prevHash: null, hashVersion: 2 },
@@ -286,9 +294,9 @@ describe('v2 manifest', () => {
     entry({ id: 'd', evidenceCorrelationId: 'c-d' }, { status: 'missing' }),
   ];
 
-  it('schemaVersion=2、receiptSource、agentTally、reviewerTally、legacy/unavailable/missing 计数', () => {
+  it('schemaVersion=5、receiptSource、agentTally、reviewerTally、legacy/unavailable/missing 计数', () => {
     const m = buildManifest({ policy, range, entries, generatedAt: gen });
-    expect(m.schemaVersion).toBe('2');
+    expect(m.schemaVersion).toBe('5');
     expect(m.receiptSource).toEqual({ kind: 'aster-api-hash-chain', verifier: 'GET /api/v1/audit/receipts' });
     expect(m.agentTally).toEqual({ 'anthropic/claude': 2, unknown: 1, 'openai/gpt': 1 });
     expect(m.reviewerTally).toEqual({ 'guard-approval': 1, 'policy-proof': 1, 'version-approval': 1 });
@@ -297,8 +305,8 @@ describe('v2 manifest', () => {
     expect(m.notes.receiptsMissing).toBe(1);
     expect(m.decisionTally).toMatchObject({ require_approval: 1, escalate: 1, approved: 2 });
     expect(m.notes.verification).toBe(
-      'bundleHash = canonicalHash(entries sorted by [createdAt, executionId]) over schemaVersion 2 entries ' +
-      '(includes outcome/ruleId/controls/agent/receipt/reviewers); receipts verifiable via GET /api/v1/audit/receipts; ' +
+      'bundleHash = canonicalHash(entries sorted by [createdAt, executionId]) over schemaVersion 5 entries ' +
+      '(includes outcome/ruleId/controls/agent/receipt/reviewers/whatIf/profile); receipts verifiable via GET /api/v1/audit/receipts; ' +
       'v1 bundles use their own recipe.',
     );
   });
@@ -306,5 +314,70 @@ describe('v2 manifest', () => {
   it('空 entries：三来源复核者计数恒为 0，agentTally 为空', () => {
     expect(tallyReviewers([])).toEqual({ 'guard-approval': 0, 'policy-proof': 0, 'version-approval': 0 });
     expect(tallyAgents([])).toEqual({});
+  });
+});
+
+describe('v5：What-If 与法规对照', () => {
+  it('entry 带 whatIf、manifest 带 regulatoryMapping 与 whatIfUnavailable', () => {
+    const e = entry({}, LEGACY, [], null);
+    expect(e.whatIf).toBeNull();
+    const wi = { batchId: 'b1', baseOutcome: 'REQUIRE_APPROVAL', targetOutcome: 'ALLOW', baseLegacy: false };
+    const e2 = buildEvidenceEntry(row({ id: 'exec-2', controls: ['EU_AI_ACT:ART14'] }), LEGACY, [], wi);
+    expect(e2.whatIf).toEqual(wi);
+    const m = buildManifest({ policy, range: { start: null, end: null }, entries: [e, e2], generatedAt: gen, whatIfUnavailable: 1 });
+    expect(m.schemaVersion).toBe('5');
+    expect(m.notes.whatIfUnavailable).toBe(1);
+    expect(m.regulatoryMapping.registryVersion).toBe('1.1.0');
+    const art14 = m.regulatoryMapping.frameworks.find((f) => f.control === 'EU_AI_ACT:ART14')!;
+    expect(art14).toMatchObject({ framework: 'EU_AI_ACT', article: '14' });
+    expect(art14.clauses.map((c) => c.clause)).toEqual(['14(1)', '14(2)', '14(3)', '14(4)(a)', '14(4)(b)', '14(4)(c)', '14(4)(d)', '14(4)(e)', '14(5)']);
+  });
+  it('whatIfUnavailable 缺省为 0', () => {
+    const m = buildManifest({ policy, range: { start: null, end: null }, entries: [], generatedAt: gen });
+    expect(m.notes.whatIfUnavailable).toBe(0);
+  });
+  it('whatIf 参与 bundleHash（entries 字段）', () => {
+    const a = computeBundleHash([entry({}, LEGACY, [], null)]);
+    const b = computeBundleHash([buildEvidenceEntry(row(), LEGACY, [], { batchId: 'b', baseOutcome: 'ALLOW', targetOutcome: 'ALLOW', baseLegacy: false })]);
+    expect(a).not.toBe(b);
+  });
+});
+
+describe('v5：治理档案（ADR 0046 §6）', () => {
+  const build = (profiles: Array<string | null>) => buildManifest({
+    policy, range, generatedAt: gen,
+    entries: profiles.map((profile, i) => entry({ id: `p-${i}`, profile })),
+  });
+
+  it('条目带 profile，缺省为 null', () => {
+    expect(entry({ profile: 'governed' }).profile).toBe('governed');
+    expect(entry().profile).toBeNull();
+  });
+
+  it('profilesUsed 去重并按注册表顺序，标题取自注册表', () => {
+    const m = build(['eu-ai-act-high-risk', 'governed', null, 'governed']);
+    expect(m.schemaVersion).toBe('5');
+    expect(m.profilesUsed).toEqual([
+      { id: 'governed', title: { en: 'Governed rules', zh: '受治理规则', de: 'Gesteuerte Regeln' } },
+      {
+        id: 'eu-ai-act-high-risk',
+        title: { en: 'EU AI Act high-risk system', zh: '欧盟人工智能法高风险系统', de: 'Hochrisiko-KI-System nach EU-KI-Verordnung' },
+      },
+    ]);
+  });
+
+  it('全部条目无档案 → profilesUsed 为 []', () => {
+    expect(build([null, null]).profilesUsed).toEqual([]);
+    expect(build([]).profilesUsed).toEqual([]);
+  });
+
+  it('注册表外的档案 id 排在已登记之后、按字母序，三语标题均为该 id', () => {
+    const m = build(['zeta-local', 'alpha-local', 'governed']);
+    expect(m.profilesUsed.map((p) => p.id)).toEqual(['governed', 'alpha-local', 'zeta-local']);
+    expect(m.profilesUsed[1].title).toEqual({ en: 'alpha-local', zh: 'alpha-local', de: 'alpha-local' });
+  });
+
+  it('profile 参与 bundleHash（entries 字段）', () => {
+    expect(computeBundleHash([entry()])).not.toBe(computeBundleHash([entry({ profile: 'governed' })]));
   });
 });

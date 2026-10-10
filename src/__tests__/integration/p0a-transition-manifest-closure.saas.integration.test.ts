@@ -18,7 +18,7 @@ import {
   reportIdsWithVerifiedTransition,
 } from '@/services/policy/regression-upgrade-manifest';
 import { deriveReportSignabilityDetail, type RunReport } from '@/services/policy/rule-regression-runner';
-import { setupTestDb, teardownTestDb } from './setup-postgres';
+import { deleteAppendOnlyRows, setupTestDb, teardownTestDb, withAppendOnlyBypass } from './setup-postgres';
 
 const REP = 'rep-tm-1';
 const POL = 'pol-tm-1';
@@ -67,10 +67,7 @@ async function seedReport() {
 }
 
 async function reset() {
-  await db.execute(sql`SET session_replication_role = replica`);
-  await db.delete(regressionUpgradeManifests);
-  await db.delete(regressionReports);
-  await db.execute(sql`SET session_replication_role = DEFAULT`);
+  await deleteAppendOnlyRows([regressionUpgradeManifests, regressionReports]);
 }
 
 function rsaPem(): string {
@@ -219,9 +216,9 @@ describe.skipIf(process.env.LICENSE_E2E !== '1' || process.env.DEPLOYMENT_MODE =
       } as typeof regressionReports.$inferInsert);
       // 攻击：直改存储行改挂到 rep-tm-2（存储 reportId/reportHash 改，但签名体仍绑 REP 的 rhash-tm-1）。
       // append-only guard 冻结列，须绕 trigger 直改（模拟 DB 层攻击）。
-      await db.execute(sql`SET session_replication_role = replica`);
-      await db.execute(sql`UPDATE "RegressionUpgradeManifest" SET "reportId"='rep-tm-2',"reportHash"='rhash-tm-2' WHERE id=${r.manifestId}`);
-      await db.execute(sql`SET session_replication_role = DEFAULT`);
+      await withAppendOnlyBypass(async (tx) => {
+        await tx.execute(sql`UPDATE "RegressionUpgradeManifest" SET "reportId"='rep-tm-2',"reportHash"='rhash-tm-2' WHERE id=${r.manifestId}`);
+      });
       // ★读路径重新验签：签名体 reportHash=rhash-tm-1 ≠ 存储/父报告 rhash-tm-2 → 拒。
       const ev = await deriveReportTransitionEvidence('rep-tm-2');
       expect(ev.transitionVerified).toBeNull();
@@ -234,9 +231,9 @@ describe.skipIf(process.env.LICENSE_E2E !== '1' || process.env.DEPLOYMENT_MODE =
         approvedBy: APPROVER, expiresAt: shortExpiry,
       });
       // 攻击：直改存储 expiresAt 延长到 1 年后（签名体仍是 shortExpiry）。
-      await db.execute(sql`SET session_replication_role = replica`);
-      await db.execute(sql`UPDATE "RegressionUpgradeManifest" SET "expiresAt"=${new Date(Date.now() + 365 * 24 * 3600_000).toISOString()} WHERE id=${r.manifestId}`);
-      await db.execute(sql`SET session_replication_role = DEFAULT`);
+      await withAppendOnlyBypass(async (tx) => {
+        await tx.execute(sql`UPDATE "RegressionUpgradeManifest" SET "expiresAt"=${new Date(Date.now() + 365 * 24 * 3600_000).toISOString()} WHERE id=${r.manifestId}`);
+      });
       // ★读路径：签名体 expiresAt(short) ≠ 存储 expiresAt(延长) → 拒。
       const ev = await deriveReportTransitionEvidence(REP);
       expect(ev.transitionVerified).toBeNull();

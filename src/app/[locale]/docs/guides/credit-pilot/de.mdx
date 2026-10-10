@@ -1,0 +1,158 @@
+---
+title: "Kreditpilot: Nachweise zu Artikel 14"
+description: "Kreditpilot durchgängig ausführen und die Artikel-14-Zuordnung im Nachweispaket lesen — Feldnachweise, keine Konformitätsaussage."
+updated: 2026-10-10
+apiVersion: v1
+---
+
+# Kreditpilot: Nachweise zu Artikel 14
+
+Der Kreditpilot ist ein kleines, reproduzierbares Szenario, das menschliche Aufsicht durchgängig durchspielt: Eine Kreditrichtlinie erzeugt automatische Entscheidungen, Freigabeanforderungen und Eskalationen; ein Credit Officer prüft das große Exposure; zwei Richtlinienversionen werden per What-If verglichen; und das exportierte Nachweispaket enthält eine Zuordnung zu Artikel 14 der EU-KI-Verordnung.
+
+> Die Artikel-14-Zuordnung gibt nur an, welche Felder im Nachweispaket vorhanden sind. Sie ist **keine** Konformitätsaussage, vergibt keine Bewertung und gibt keine Empfehlung.
+
+## Was der Pilot tut
+
+Die Richtlinie `pol-credit-pilot` (`aster.pilot.credit`) hat eine einzige Einstiegsregel `decide` mit der Eingabe `Applicant { creditScore, monthlyIncome, monthlyDebt, requestedAmount, activeDefaults }`. Die Regel trägt `@control("EU_AI_ACT:ART14")`; Zweige mit automatischer Ablehnung tragen zusätzlich `@control("GDPR:ART22")`. Die Zweige werden in Tabellenreihenfolge geprüft (Ablehnung vor Freigabe, Freigabe vor Eskalation):
+
+| ID | Bedingung | Ergebnis |
+|---|---|---|
+| `CP-001 active_default` | `activeDefaults ≥ 1` | `Verdict.deny("active_default")` |
+| `CP-002 dti_too_high` | `monthlyDebt > monthlyIncome × 0.45` | `Verdict.deny("dti_exceeds_limit")` |
+| `CP-003 large_amount_review` | `requestedAmount ≥ 50000` | `Verdict.require_approval("Credit Officer", "large_exposure")` |
+| `CP-004 borderline_score` | `620 ≤ creditScore ≤ 679` | `Verdict.escalate("borderline_credit_score")` |
+| `CP-005 default_allow` | sonst | `Verdict.allow()` |
+
+Version 2 hebt nur den CP-003-Schwellenwert von 50000 auf 80000 an, sodass ein What-If-Vergleich v1 → v2 einen Übergang `REQUIRE_APPROVAL → ALLOW` zeigt. Version 3 ist die Live-Version: dieselben fünf Zweige wie v1, mit der Kurzschreibweise `bei` / `sonst` umgeschrieben und mit dem Governance-Profil `eu-ai-act-high-risk` deklariert (siehe unten). Sie entscheidet genau wie v1.
+
+## Profildeklaration und Kurzschreibweise (v3)
+
+Eine `Profil`-Zeile direkt nach dem `Modul`-Kopf deklariert, welches Governance-Profil das Modul erfüllen muss (ADR 0046). `eu-ai-act-high-risk` verlangt, dass jede Verdict-Regel ein `@id` trägt, nur registrierte `@control`-Werte verwendet und mindestens eine registrierte `EU_AI_ACT`-Kontrolle trägt. Der Compiler prüft das: Ein unbekanntes Profil meldet `E705`, eine Regel, die eine Anforderung verletzt, meldet `E706`. Beides sind Fehler; ein Modul, das ein Profil deklariert und es verletzt, lässt sich daher **nicht speichern**, versionieren oder freigeben. Module ohne `Profil`-Zeile sind nicht betroffen.
+
+`bei <Bedingung>, <Ergebnis>.` ist die Kurzform von `wenn <Bedingung>: gib zurück Verdict.<Ergebnis>(…)`, `sonst <Ergebnis>.` die Kurzform des abschließenden `gib zurück`; `sonst` muss die letzte Anweisung seines Blocks sein. Die Ergebnisse sind `erlauben`, `ablehnen "<Grund>"`, `eskalieren "<Grund>"` und `Genehmigung durch "<Rolle>" weil "<Grund>"`. Die Kurzschreibweise ergibt dieselbe Core IR wie die Langform; Trace und Nachweise sind identisch.
+
+Version 3 auf Deutsch (angelegt wird die englische Fassung, mit denselben Ergebnissen):
+
+```
+Modul aster.pilot.credit.
+Profil "eu-ai-act-high-risk".
+
+Definiere Applicant hat
+  creditScore als Ganzzahl,
+  monthlyIncome als Decimal,
+  monthlyDebt als Decimal,
+  requestedAmount als Decimal,
+  activeDefaults als Ganzzahl.
+
+@id("CP-DECIDE")
+@control("EU_AI_ACT:ART14")
+@control("GDPR:ART22")
+Regel decide gegeben applicant als Applicant liefert Verdict:
+  bei applicant.activeDefaults mindestens 1, ablehnen "active_default".
+  bei applicant.monthlyDebt größer als applicant.monthlyIncome mal 0.45m, ablehnen "dti_exceeds_limit".
+  bei applicant.requestedAmount mindestens 50000m, Genehmigung durch "Credit Officer" weil "large_exposure".
+  bei applicant.creditScore mindestens 620 und applicant.creditScore höchstens 679, eskalieren "borderline_credit_score".
+  sonst erlauben.
+```
+
+Wird `@id("CP-DECIDE")` entfernt, schlägt das Speichern mit `E706` fehl (Regel `decide` ohne `@id`); bleibt nur `@control("GDPR:ART22")`, meldet der Compiler ebenfalls `E706`, weil keine `EU_AI_ACT`-Kontrolle mehr vorhanden ist.
+
+## Ausführen
+
+### 1. Daten anlegen
+
+```bash
+pnpm seed:credit-pilot
+```
+
+Das Seeding ist idempotent. Es legt das Team `credit-pilot` mit den Benutzern `cp-owner`, `cp-officer` (Geschäftsrolle "Credit Officer") und `cp-analyst` an sowie die Richtlinie `pol-credit-pilot` mit drei freigegebenen Versionen: Version 1 (Schwellenwert 50000) und Version 2 (Schwellenwert 80000) für den What-If-Vergleich und Version 3 (die Kurzschreibweise von v1 mit Profildeklaration) als Live-Standardversion. Der API-Schlüssel des Richtlinieneigentümers (`cp-owner`) wird **nur einmal** ausgegeben — kopieren Sie ihn sofort. Ausführungen müssen mit dem Eigentümer-Schlüssel erfolgen: Von Teammitgliedern ausgeführte Datensätze können What-If derzeit nicht wiedergeben (Eigentümer-Bindung gemäß ADR 0034 §4.3; als Folgearbeit in ADR 0044 §10 geführt).
+
+### 2. Skriptlauf
+
+```bash
+CP_API_KEY=<Eigentümer-Schlüssel> NEXTAUTH_SECRET=<secret> pnpm tsx scripts/run-credit-pilot.ts
+```
+
+| Variable | Standard | Bedeutung |
+|---|---|---|
+| `BASE_CLOUD` | `http://localhost:3100` | Basis-URL von Aster Cloud |
+| `OUT` | `./credit-pilot-bundle.json` | Zielpfad des Nachweispakets |
+
+Das Skript führt vier Fixtures aus, gibt die freigabepflichtige Ausführung als `cp-officer` frei, führt das What-If v1 → v2 aus, exportiert das Paket und gibt den Status jeder Klausel aus. Exit-Code `1` bedeutet, dass ein Schritt fehlgeschlagen ist (der Schrittname wird ausgegeben); Exit-Code `2` bedeutet, dass ein Klauselstatus nicht der erwarteten Tabelle unten entspricht.
+
+### 3. Weg im Browser
+
+Alles außer der Freigabe als Richtlinieneigentümer `cp-owner` erledigen (Protokollseite, **Compare versions** (What-If) und Export); die Freigabe als `cp-officer`. Als `cp-analyst` angemeldet findet What-If die Zielversion nicht (`TARGET_VERSION_MISSING`).
+
+1. Einen großen Antrag (`requestedAmount ≥ 50000`) gegen `pol-credit-pilot` ausführen.
+2. Als Credit Officer anmelden und auf `/approvals` freigeben.
+3. Auf der Richtlinienseite mit **Compare versions** v1 → v2 vergleichen.
+4. Auf `/reports` das Nachweispaket als JSON exportieren.
+5. In der neuen Zeile auf **Regulatorische Zuordnung** klicken, um die Klauseltabelle ohne Öffnen der Datei zu sehen.
+
+## Die Artikel-14-Zuordnung lesen
+
+Die Zuordnung wird vom Kontrollregister 1.1.0 gesteuert (ADR 0045; das Paket `@aster-cloud/controls` ist noch nicht veröffentlicht, daher liegt eine Kopie des Registers in diesem Repository): Jede registrierte Kontrolle mit zugeordneten Klauseln bringt ihre eigene Klauselliste und Bewertungsregeln mit, und jeder Export wendet dieselben Regeln an. Auf `/reports` öffnet **Regulatorische Zuordnung** bei einem abgeschlossenen Export die Tabelle direkt; die Paketdatei enthält dieselben Daten.
+
+Das Paket (Manifest `schemaVersion: "5"`) enthält `manifest.regulatoryMapping` und `manifest.profilesUsed`:
+
+```json
+{
+  "registryVersion": "1.1.0",
+  "frameworks": [
+    {
+      "framework": "EU_AI_ACT",
+      "article": "14",
+      "control": "EU_AI_ACT:ART14",
+      "clauses": [
+        { "clause": "14(1)", "title": { "en": "…", "zh": "…", "de": "…" }, "status": "evidenced",
+          "evidence": [{ "executionId": "…", "field": "controls" }] }
+      ]
+    }
+  ]
+}
+```
+
+```json
+"profilesUsed": [
+  { "id": "eu-ai-act-high-risk",
+    "title": { "en": "EU AI Act high-risk system", "zh": "欧盟人工智能法高风险系统", "de": "Hochrisiko-KI-System nach EU-KI-Verordnung" } }
+]
+```
+
+Jeder Eintrag trägt das Profil, das sein Modul deklariert (`"profile": "eu-ai-act-high-risk"` für Ausführungen von v3; `null` für v1/v2 oder Module ohne Profil). `profilesUsed` listet jedes Profil, das in einem Eintrag vorkommt, mit Titeln aus derselben Registerversion.
+
+`registryVersion` nennt die Registerversion, aus der die Regeln stammen. `frameworks` enthält eine Gruppe je registrierter Kontrolle mit zugeordneten Klauseln, die in den Paketeinträgen (`controls`) vorkommt; jede Gruppe trägt in `clauses[]` einen Status `evidenced`, `partial` oder `none`, der ausschließlich aus Feldern der Paketeinträge abgeleitet wird, sowie `evidence`-Verweise (`executionId` + `field`). Ganz ohne Einträge wird jede Gruppe aufgeführt und jede Klausel ist `none`; gibt es Einträge, aber keiner trägt eine solche Kontrolle, ist `frameworks` leer. Pakete der Schemata 1–3 enthalten keine registergesteuerte Zuordnung, und die Berichtsseite weist darauf hin.
+
+Die Nachweise stammen aus allen Einträgen des Pakets. Bei einem Export über alle Richtlinien können die Klauseln einer Gruppe daher durch Ausführungen von Regeln belegt werden, die diese Kontrolle selbst nicht tragen; so zählt etwa eine Guard-Ablehnung an der Regel einer anderen Richtlinie für 14(4)(d). Über die `executionId`-Verweise lässt sich prüfen, aus welcher Ausführung jeder Nachweis stammt.
+
+Ein „verifizierter Prüfer“ ist unten ein `reviewers`-Element mit `source: "guard-approval"` und `roleVerified: true`; Nachweise und Freigaben auf Versionsebene zählen nicht, weil sie nicht zeigen, dass jemand genau diese Ausgabe geprüft hat.
+
+| Klausel | Regel (nur Eintragsfelder) | Pilotlauf | Warum nur partial / none |
+|---|---|---|---|
+| 14(1) Aufsicht durch Gestaltung | `controls` eines Eintrags enthält `EU_AI_ACT:ART14` → evidenced, sonst none | evidenced | — |
+| 14(2) Risikokonfiguration | ein Eintrag mit `outcome ∈ {REQUIRE_APPROVAL, ESCALATE}` existiert → evidenced, sonst none | evidenced | — |
+| 14(3) eingebaute Maßnahmen | wie 14(1) **und** ein Eintrag mit `reviewers.length > 0` → evidenced; nur eines von beiden → partial | evidenced | — |
+| 14(4)(a) Verständnis | ein Eintrag mit abgeschlossenem What-If-Vergleich (`whatIf.targetOutcome` weder null noch `ERROR`) → partial, sonst none | partial | Vergleichbarkeit ist nicht dasselbe wie Verständnis |
+| 14(4)(b) Automatisierungsbias | kein Feld kann es belegen | none | immer none |
+| 14(4)(c) Ausgabe interpretieren | `ruleId` und `reasonCodes` beide nicht leer → evidenced, sonst none | evidenced | — |
+| 14(4)(d) übersteuern / nicht verwenden | ein verifizierter Prüfer mit `outcome = REJECTED` → evidenced; nur APPROVED → partial; keines → none | partial | das Skript gibt nur frei, es lehnt nie ab |
+| 14(4)(e) eingreifen / anhalten | irgendein verifizierter Prüfer → evidenced (Nachweis: die `reviewers`-Verweise); `outcome = REQUIRE_APPROVAL` ohne Prüfer → partial | evidenced | — |
+| 14(5) Vier-Augen-Prüfung | ein Eintrag mit mindestens zwei verifizierten Prüfern → evidenced, sonst none | none | der Pilot hat nur einen Prüfer |
+
+Jeder Eintrag trägt außerdem `whatIf: { batchId, baseOutcome, targetOutcome, baseLegacy } | null`. Schlägt die Replay-Abfrage fehl, ist jedes `whatIf` null, `manifest.notes.whatIfUnavailable` zählt die Ausfälle, der Export wird trotzdem abgeschlossen und 14(4)(a) fällt auf none zurück.
+
+Nochmals: Diese Tabelle beschreibt die im Paket vorhandenen Nachweise. Ob ein Einsatz Artikel 14 erfüllt, beurteilen Sie und Ihre Prüfer.
+
+## Unabhängige Prüfung
+
+- **Belege** — die signierten Belege unabhängig von Aster Cloud direkt bei aster-api abrufen:
+
+  ```bash
+  curl -H "Authorization: Bearer $CP_API_KEY" \
+    "$ASTER_API/api/v1/audit/receipts?correlationIds=<id1>,<id2>"
+  ```
+
+  `$ASTER_API` ist die Basis-URL von aster-api (lokaler Stack: `http://localhost:8080`).
+
+- **Paket-Hash** — `bundleHash` nach der Anleitung in `manifest.notes.verification` neu berechnen. Der Hash umfasst `entries` (einschließlich `whatIf`); das Manifest und damit Zuordnung und Notes gehen nicht in den Hash ein.

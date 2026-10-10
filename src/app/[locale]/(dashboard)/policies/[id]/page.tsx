@@ -1,12 +1,21 @@
 import { getSession } from '@/lib/auth';
 import { redirect, notFound } from 'next/navigation';
-import { db, policies, executions, users } from '@/lib/prisma';
+import { db, policies, policyVersions, executions, users } from '@/lib/prisma';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { getTranslations } from 'next-intl/server';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
 import { resolveRetention } from '@/lib/retention/execution-retention';
 import { PolicyDetailContent } from './policy-detail-content';
+
+// 活跃版本保存时落库的治理档案 id（ADR 0046 §6）；未声明档案或旧版本为 null
+async function loadActiveProfile(policyId: string, version: number): Promise<string | null> {
+  const activeVersion = await db.query.policyVersions.findFirst({
+    where: and(eq(policyVersions.policyId, policyId), eq(policyVersions.version, version)),
+    columns: { profile: true },
+  });
+  return activeVersion?.profile ?? null;
+}
 
 // 服务端数据获取
 async function getPolicyData(userId: string, policyId: string) {
@@ -96,6 +105,8 @@ export default async function PolicyDetailPage({
   //   必然空窗、而选项还在那里——那套窗口实际只适用于留存期最长的企业级用户。
   const retentionDays = resolveRetention(planUser?.plan).executionDays;
 
+  const profile = await loadActiveProfile(id, policy.version);
+
   const t = await getTranslations('policies');
 
   // 预渲染翻译字符串
@@ -118,6 +129,7 @@ export default async function PolicyDetailPage({
       policyContent: t('detail.policyContent'),
       versionHistory: t('detail.versionHistory'),
       backToPolicies: t('detail.backToPolicies'),
+      profile: t('detail.profile'),
     },
     deleteDialog: {
       title: t('deleteDialog.title'),
@@ -144,6 +156,7 @@ export default async function PolicyDetailPage({
       whatIfEntitled={whatIfEntitled}
       retentionDays={retentionDays}
       policy={{ ...policy, isFrozen: freeze.isFrozen }}
+      profile={profile}
       translations={translations}
       locale={locale}
     />

@@ -1,0 +1,158 @@
+---
+title: "Credit pilot: Article 14 evidence"
+description: "Run the credit pilot end to end and read the EU AI Act Article 14 mapping in the evidence bundle — field evidence, not a compliance conclusion."
+updated: 2026-10-10
+apiVersion: v1
+---
+
+# Credit pilot: Article 14 evidence
+
+The credit pilot is a small, reproducible scenario that exercises human oversight end to end: a credit policy produces automatic decisions, approvals and escalations; a Credit Officer reviews the large exposure; two policy versions are compared with What-If; and the exported evidence bundle carries a mapping onto EU AI Act Article 14.
+
+> The Article 14 mapping only states which fields are present in the evidence bundle. It is **not** a compliance conclusion, carries no score and gives no recommendation.
+
+## What the pilot does
+
+Policy `pol-credit-pilot` (`aster.pilot.credit`) has a single entry rule `decide` taking an `Applicant { creditScore, monthlyIncome, monthlyDebt, requestedAmount, activeDefaults }`. The rule is tagged `@control("EU_AI_ACT:ART14")`; branches that produce an automatic denial are additionally tagged `@control("GDPR:ART22")`. Branches are evaluated in table order (deny before approval, approval before escalation):
+
+| ID | Condition | Verdict |
+|---|---|---|
+| `CP-001 active_default` | `activeDefaults ≥ 1` | `Verdict.deny("active_default")` |
+| `CP-002 dti_too_high` | `monthlyDebt > monthlyIncome × 0.45` | `Verdict.deny("dti_exceeds_limit")` |
+| `CP-003 large_amount_review` | `requestedAmount ≥ 50000` | `Verdict.require_approval("Credit Officer", "large_exposure")` |
+| `CP-004 borderline_score` | `620 ≤ creditScore ≤ 679` | `Verdict.escalate("borderline_credit_score")` |
+| `CP-005 default_allow` | otherwise | `Verdict.allow()` |
+
+Version 2 only raises the CP-003 threshold from 50000 to 80000, so a What-If comparison of v1 → v2 shows a `REQUIRE_APPROVAL → ALLOW` transition. Version 3 is the live version: the same five branches as v1, rewritten with the `When` / `Otherwise` shorthand and declaring the governance profile `eu-ai-act-high-risk` (see below). It decides exactly like v1.
+
+## Profile declaration and shorthand (v3)
+
+A `Profile` line right after the `Module` header declares which governance profile the module must satisfy (ADR 0046). `eu-ai-act-high-risk` requires every Verdict rule to carry an `@id`, to use only registered `@control` values, and to carry at least one registered `EU_AI_ACT` control. The compiler checks this: an unknown profile reports `E705`, a rule that breaks a requirement reports `E706`. Both are errors, so a module that declares a profile and violates it **cannot be saved**, versioned or approved. Modules without a `Profile` line are unaffected.
+
+`When <condition>, <outcome>.` is shorthand for `If <condition>: Return Verdict.<outcome>(…)`, and `Otherwise <outcome>.` for the final `Return`; `Otherwise` must be the last statement of its block. The outcomes are `allow`, `deny "<reason>"`, `escalate "<reason>"` and `require approval by "<role>" because "<reason>"`. The shorthand compiles to the same Core IR as the long form, so traces and evidence are identical.
+
+Version 3 as seeded:
+
+```
+Module aster.pilot.credit.
+Profile "eu-ai-act-high-risk".
+
+Define Applicant has
+  creditScore as Int,
+  monthlyIncome as Decimal,
+  monthlyDebt as Decimal,
+  requestedAmount as Decimal,
+  activeDefaults as Int.
+
+@id("CP-DECIDE")
+@control("EU_AI_ACT:ART14")
+@control("GDPR:ART22")
+Rule decide given applicant as Applicant, produce Verdict:
+  When applicant.activeDefaults at least 1, deny "active_default".
+  When applicant.monthlyDebt greater than applicant.monthlyIncome times 0.45m, deny "dti_exceeds_limit".
+  When applicant.requestedAmount at least 50000m, require approval by "Credit Officer" because "large_exposure".
+  When applicant.creditScore at least 620 and applicant.creditScore at most 679, escalate "borderline_credit_score".
+  Otherwise allow.
+```
+
+Removing `@id("CP-DECIDE")` from this source makes the save fail with `E706` (rule `decide` is missing `@id`); keeping only `@control("GDPR:ART22")` fails with `E706` as well, because no `EU_AI_ACT` control is left.
+
+## Run it
+
+### 1. Seed
+
+```bash
+pnpm seed:credit-pilot
+```
+
+The seed is idempotent. It creates team `credit-pilot` with users `cp-owner`, `cp-officer` (business role "Credit Officer") and `cp-analyst`, and policy `pol-credit-pilot` with three approved versions: version 1 (threshold 50000) and version 2 (threshold 80000) for the What-If comparison, and version 3 (the shorthand rewrite of v1 with the profile declaration) as the live default. It prints the policy owner's (`cp-owner`) API key **once** — copy it. Executions must be made with the owner's key: records executed by team members cannot be replayed by What-If today (owner scoping per ADR 0034 §4.3; listed as a follow-up in ADR 0044 §10).
+
+### 2. Scripted run
+
+```bash
+CP_API_KEY=<owner key> NEXTAUTH_SECRET=<secret> pnpm tsx scripts/run-credit-pilot.ts
+```
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `BASE_CLOUD` | `http://localhost:3100` | Aster Cloud base URL |
+| `OUT` | `./credit-pilot-bundle.json` | Where the evidence bundle is written |
+
+The script executes four fixtures, approves the require-approval execution as `cp-officer`, runs the v1 → v2 What-If, exports the bundle and prints each clause status. Exit code `1` means a step failed (the step name is printed); exit code `2` means a clause status did not match the expected table below.
+
+### 3. Browser path
+
+Do everything except the approval as the policy owner `cp-owner` (logs page, **Compare versions** (What-If) and export); approve as `cp-officer`. Signed in as `cp-analyst`, What-If cannot find the target version (`TARGET_VERSION_MISSING`).
+
+1. Execute a large application (`requestedAmount ≥ 50000`) against `pol-credit-pilot`.
+2. Sign in as the Credit Officer and approve it on `/approvals`.
+3. On the policy page, use **Compare versions** for v1 → v2.
+4. On `/reports`, export the evidence bundle as JSON.
+5. On the new row, click **Regulatory mapping** to view the clause table without opening the file.
+
+## Reading the Article 14 mapping
+
+The mapping is driven by controls registry 1.1.0 (ADR 0045; the `@aster-cloud/controls` package is not published yet, so a copy of the registry ships inside this repository): every registered control that has mapped clauses brings its own clause list and judging rules, and every export applies the same rules. On `/reports`, click **Regulatory mapping** on a completed export to view the table directly; the bundle file carries the same data.
+
+The bundle (manifest `schemaVersion: "5"`) contains `manifest.regulatoryMapping` and `manifest.profilesUsed`:
+
+```json
+{
+  "registryVersion": "1.1.0",
+  "frameworks": [
+    {
+      "framework": "EU_AI_ACT",
+      "article": "14",
+      "control": "EU_AI_ACT:ART14",
+      "clauses": [
+        { "clause": "14(1)", "title": { "en": "…", "zh": "…", "de": "…" }, "status": "evidenced",
+          "evidence": [{ "executionId": "…", "field": "controls" }] }
+      ]
+    }
+  ]
+}
+```
+
+```json
+"profilesUsed": [
+  { "id": "eu-ai-act-high-risk",
+    "title": { "en": "EU AI Act high-risk system", "zh": "欧盟人工智能法高风险系统", "de": "Hochrisiko-KI-System nach EU-KI-Verordnung" } }
+]
+```
+
+Each entry carries the profile its module declared (`"profile": "eu-ai-act-high-risk"` for executions of v3; `null` for v1/v2 or modules without a profile). `profilesUsed` lists every profile that appears on an entry, with titles from the same registry version.
+
+`registryVersion` names the registry release the rules came from. `frameworks` lists one group per registered control that has mapped clauses and appears in the bundle's entries (`controls`); each group's `clauses[]` carries a status of `evidenced`, `partial` or `none`, derived only from fields on the bundle entries, plus `evidence` references (`executionId` + `field`). With no entries at all, every group is listed and every clause is `none`; when entries exist but none carries such a control, `frameworks` is empty. Bundles from schema 1–3 have no registry-driven mapping and the reports page says so.
+
+Evidence is drawn from all entries in the bundle. In an export covering all policies, a group's clauses can therefore be evidenced by executions of rules that do not themselves carry that control; for example, a guard rejection on another policy's rule can count toward 14(4)(d). Use the `executionId` references to check which execution each piece of evidence comes from.
+
+A "verified reviewer" below is a `reviewers` item with `source: "guard-approval"` and `roleVerified: true`; version-level proofs and approvals do not count, because they do not show that anyone reviewed that particular output.
+
+| Clause | Rule (entry fields only) | Pilot run | Why only partial / none |
+|---|---|---|---|
+| 14(1) oversight by design | any entry's `controls` contains `EU_AI_ACT:ART14` → evidenced, otherwise none | evidenced | — |
+| 14(2) risk configuration | an entry with `outcome ∈ {REQUIRE_APPROVAL, ESCALATE}` exists → evidenced, otherwise none | evidenced | — |
+| 14(3) measures built in | as 14(1) **and** an entry with `reviewers.length > 0` → evidenced; only one of the two → partial | evidenced | — |
+| 14(4)(a) understanding | an entry with a completed What-If comparison (`whatIf.targetOutcome` neither null nor `ERROR`) → partial, otherwise none | partial | being able to compare versions is not the same as understanding the system |
+| 14(4)(b) automation bias | no field can evidence it | none | always none |
+| 14(4)(c) interpreting output | `ruleId` and `reasonCodes` both non-empty → evidenced, otherwise none | evidenced | — |
+| 14(4)(d) override / not use | a verified reviewer with `outcome = REJECTED` → evidenced; only APPROVED → partial; neither → none | partial | the script only approves, it never rejects |
+| 14(4)(e) intervene / stop | any verified reviewer → evidenced (evidence: the `reviewers` refs); `outcome = REQUIRE_APPROVAL` without one → partial | evidenced | — |
+| 14(5) two-person verification | an entry with at least two verified reviewers → evidenced, otherwise none | none | the pilot uses a single reviewer |
+
+Each entry also carries `whatIf: { batchId, baseOutcome, targetOutcome, baseLegacy } | null`. If the replay lookup fails, every `whatIf` is null, `manifest.notes.whatIfUnavailable` counts the misses, the export still completes, and 14(4)(a) degrades to none.
+
+Again: this table describes the evidence present in the bundle. Whether a deployment satisfies Article 14 is a judgement for you and your assessors.
+
+## Independent verification
+
+- **Receipts** — re-fetch the signed receipts directly from aster-api, independent of Aster Cloud:
+
+  ```bash
+  curl -H "Authorization: Bearer $CP_API_KEY" \
+    "$ASTER_API/api/v1/audit/receipts?correlationIds=<id1>,<id2>"
+  ```
+
+  `$ASTER_API` is the aster-api base URL (local stack: `http://localhost:8080`).
+
+- **Bundle hash** — follow the recipe in `manifest.notes.verification` to recompute `bundleHash`. The hash covers `entries` (including `whatIf`); the manifest, and therefore the mapping and notes, are not part of the hash.

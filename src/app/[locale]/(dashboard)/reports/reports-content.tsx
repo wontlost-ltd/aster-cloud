@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
@@ -18,7 +18,13 @@ import {
   Stack,
 } from '@/components/ui';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
-import { summarizeStoredExport } from '@/services/evidence/stored';
+import { summarizeStoredExport, type StoredEvidenceSummary } from '@/services/evidence/stored';
+import {
+  RegulatoryMappingPanel,
+  type MappingState,
+  type RegulatoryMappingPanelLabels,
+  type RegulatoryMappingView,
+} from '@/components/evidence/regulatory-mapping-table';
 
 interface PolicyOption {
   id: string;
@@ -32,6 +38,7 @@ interface EvidenceExportRow {
   period: string | null;
   count: number | null;
   bundleHash: string | null;
+  schemaVersion: StoredEvidenceSummary['schemaVersion'] | null;
   createdAt: string;
   completedAt: string | null;
 }
@@ -80,6 +87,45 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exports, setExports] = useState<EvidenceExportRow[]>(initialExports);
+  const [openMappingId, setOpenMappingId] = useState<string | null>(null);
+  const [mappings, setMappings] = useState<Record<string, MappingState>>({});
+  const mounted = useSyncExternalStore(noopSubscribe, () => true, () => false);
+
+  const mappingLabels: RegulatoryMappingPanelLabels = {
+    loading: t('mapping.loading'),
+    loadFailed: t('mapping.loadFailed'),
+    profiles: t('mapping.profiles'),
+    notAvailable: t('mapping.notAvailable'),
+    noFrameworks: t('mapping.noFrameworks'),
+    // 占位符交给组件替换版本号，这里取原文
+    registryVersion: t.raw('mapping.registryVersion') as string,
+    disclaimer: t('mapping.disclaimer'),
+    columns: {
+      clause: t('mapping.columns.clause'),
+      title: t('mapping.columns.title'),
+      status: t('mapping.columns.status'),
+      evidence: t('mapping.columns.evidence'),
+    },
+    status: {
+      evidenced: t('mapping.status.evidenced'),
+      partial: t('mapping.status.partial'),
+      none: t('mapping.status.none'),
+    },
+  };
+
+  // 展开/收起某行对照；未取过或上次失败时才拉取，成功结果（含 null）复用
+  const toggleMapping = async (id: string) => {
+    if (openMappingId === id) {
+      setOpenMappingId(null);
+      return;
+    }
+    setOpenMappingId(id);
+    const cached = mappings[id];
+    if (cached !== undefined && cached !== 'error') return;
+    setMappings((m) => ({ ...m, [id]: 'loading' }));
+    const mapping = await fetchMapping(id);
+    setMappings((m) => ({ ...m, [id]: mapping }));
+  };
 
   const rangePayload = () => ({
     policyId: policyId || null,
@@ -123,7 +169,7 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
       }>;
       setExports(
         rows.map((e) => {
-          // 历史行可能是 v1 或 v2 manifest：经 summarizeStoredExport 按 schemaVersion 收窄，未知版本显示占位。
+          // 历史行可能是 v1–v5 manifest：经 summarizeStoredExport 按 schemaVersion 收窄，未知版本显示占位。
           const summary = summarizeStoredExport(e.data);
           return {
             id: e.id,
@@ -132,6 +178,7 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
             period: e.period ?? null,
             count: summary?.count ?? null,
             bundleHash: summary?.bundleHash ?? null,
+            schemaVersion: summary?.schemaVersion ?? null,
             createdAt: e.createdAt,
             completedAt: e.completedAt,
           };
@@ -310,30 +357,56 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
               </thead>
               <tbody>
                 {exports.map((e) => (
-                  <tr key={e.id} className="border-b border-border">
-                    <td className="px-4 py-3">{e.title}</td>
-                    <td className="px-4 py-3 text-fg-muted">{e.count ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      <Badge variant={e.status === 'completed' ? 'success' : e.status === 'failed' ? 'danger' : 'neutral'}>
-                        {t(`status.${e.status}`)}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 text-fg-muted">
-                      {new Date(e.createdAt).toLocaleString(locale)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {e.status === 'completed' ? (
-                        <a
-                          href={`/api/reports/${encodeURIComponent(e.id)}/download`}
-                          className="text-xs text-primary hover:underline"
-                        >
-                          {t('download')}
-                        </a>
-                      ) : (
-                        <span className="text-xs text-fg-muted">—</span>
-                      )}
-                    </td>
-                  </tr>
+                  <Fragment key={e.id}>
+                    <tr className="border-b border-border">
+                      <td className="px-4 py-3">{e.title}</td>
+                      <td className="px-4 py-3 text-fg-muted">{e.count ?? '—'}</td>
+                      <td className="px-4 py-3">
+                        <Badge variant={e.status === 'completed' ? 'success' : e.status === 'failed' ? 'danger' : 'neutral'}>
+                          {t(`status.${e.status}`)}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-fg-muted">
+                        {formatCreatedAt(e.createdAt, locale, mounted)}
+                      </td>
+                      <td className="px-4 py-3">
+                        {e.status === 'completed' ? (
+                          <span className="flex items-center gap-3">
+                            <a
+                              href={`/api/reports/${encodeURIComponent(e.id)}/download`}
+                              className="text-xs text-primary hover:underline"
+                            >
+                              {t('download')}
+                            </a>
+                            {/* 只有 v4 起的证据包带注册表驱动的对照；更早版本禁用并提示原因 */}
+                            <button
+                              type="button"
+                              onClick={() => toggleMapping(e.id)}
+                              disabled={!hasMapping(e.schemaVersion)}
+                              title={hasMapping(e.schemaVersion) ? undefined : t('mapping.notAvailable')}
+                              aria-expanded={openMappingId === e.id}
+                              className="text-xs text-primary hover:underline disabled:cursor-not-allowed disabled:text-fg-muted disabled:no-underline"
+                            >
+                              {t('mapping.toggle')}
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="text-xs text-fg-muted">—</span>
+                        )}
+                      </td>
+                    </tr>
+                    {openMappingId === e.id && (
+                      <tr className="border-b border-border bg-bg-subtle">
+                        <td colSpan={5} className="px-4 py-3">
+                          <RegulatoryMappingPanel
+                            state={mappings[e.id] ?? 'loading'}
+                            locale={locale}
+                            labels={mappingLabels}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -360,8 +433,34 @@ function decisionVariant(k: (typeof DECISION_KEYS)[number]): 'success' | 'danger
   }
 }
 
+const noopSubscribe = () => () => {};
+
+/**
+ * 创建时间是真实时刻，按浏览器本地时区显示。服务端（容器多为 UTC）与浏览器时区不同，
+ * 直接 toLocaleString 会让 SSR 与首帧文本不一致而 hydration mismatch；挂载前两端都输出
+ * 确定性的 UTC 文本，挂载后再切到本地格式。
+ */
+function formatCreatedAt(iso: string, locale: string, mounted: boolean): string {
+  if (!mounted) return `${iso.slice(0, 16).replace('T', ' ')} UTC`;
+  return new Date(iso).toLocaleString(locale);
+}
+
 /** 默认起始日 = 30 天前（YYYY-MM-DD）。 */
 function defaultStart(): string {
   const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   return d.toISOString().slice(0, 10);
+}
+
+const MAPPING_SCHEMA_VERSIONS: ReadonlySet<string | null> = new Set(['4', '5']);
+const hasMapping = (schemaVersion: string | null) => MAPPING_SCHEMA_VERSIONS.has(schemaVersion);
+
+// 拉取单个导出的对照；非 2xx（含会话过期）或网络失败返回 'error'，与「无对照」区分
+async function fetchMapping(id: string): Promise<MappingState> {
+  try {
+    const r = await fetch(`/api/reports/${encodeURIComponent(id)}/mapping`);
+    if (!r.ok) return 'error';
+    return ((await r.json()) as { mapping: RegulatoryMappingView | null }).mapping;
+  } catch {
+    return 'error';
+  }
 }

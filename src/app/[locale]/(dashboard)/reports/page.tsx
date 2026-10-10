@@ -29,7 +29,7 @@ export default async function ReportsPage({ params }: PageProps) {
   ]);
 
   const initialExports = exports.map((e) => {
-    // 历史行可能是 v1 或 v2 manifest：经 summarizeStoredExport 按 schemaVersion 收窄，未知版本显示占位。
+    // 历史行可能是 v1–v5 manifest：经 summarizeStoredExport 按 schemaVersion 收窄，未知版本显示占位。
     const summary = summarizeStoredExport(e.data);
     return {
       id: e.id,
@@ -38,6 +38,7 @@ export default async function ReportsPage({ params }: PageProps) {
       period: e.period ?? null,
       count: summary?.count ?? null,
       bundleHash: summary?.bundleHash ?? null,
+      schemaVersion: summary?.schemaVersion ?? null,
       createdAt: e.createdAt.toISOString(),
       completedAt: e.completedAt?.toISOString() ?? null,
     };

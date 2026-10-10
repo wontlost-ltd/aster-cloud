@@ -167,6 +167,7 @@ import { getSession } from '@/lib/auth';
 import { db } from '@/lib/prisma';
 import { getPolicyFreezeStatus, isPolicyFrozen } from '@/lib/policy-freeze';
 import { softDeletePolicy } from '@/lib/policy-lifecycle';
+import { invalidatePolicyCache } from '@/lib/cache';
 import { detectPII } from '@/services/pii/detector';
 import type { PIIDetectionResult } from '@/services/pii/detector';
 
@@ -251,6 +252,7 @@ function mockPolicyVersion(overrides: Record<string, unknown> = {}) {
     aliasSet: null,
     sourceEnvelopeSha256: null,
     sourceToolchainId: null,
+    profile: null,
     createdAt: new Date(),
     ...overrides,
   };
@@ -468,11 +470,44 @@ describe('Policies API - Drizzle Migration', () => {
       expect(mockCreateVersion).not.toHaveBeenCalled();
     });
 
+    it('编译检查不可用（带 retryAfterSeconds）→ 503 compile_unavailable + Retry-After，不落库', async () => {
+      class Unavailable extends mockPolicyCompileError {
+        readonly retryAfterSeconds = 42;
+        constructor() {
+          super('策略编译检查暂时不可用');
+        }
+      }
+      mockAssertCompilable.mockRejectedValueOnce(new Unavailable());
+      const response = await POST(
+        makeRequest('http://localhost/api/policies', 'POST', validBody),
+      );
+      const body = await response.json();
+      expect(response.status).toBe(503);
+      expect(response.headers.get('Retry-After')).toBe('42');
+      expect(body.error).toBe('compile_unavailable');
+      expect(mockCreateVersion).not.toHaveBeenCalled();
+    });
+
     it('保存前调 assertCompilable 门禁（已接线）', async () => {
       await POST(makeRequest('http://localhost/api/policies', 'POST', validBody));
       expect(mockAssertCompilable).toHaveBeenCalledWith(
         expect.any(Function),
         expect.objectContaining({ source: validBody.content }),
+      );
+    });
+
+    it('提交后缓存失效抛错不影响建策略结果（仍 201）', async () => {
+      vi.mocked(invalidatePolicyCache).mockRejectedValueOnce(new Error('kv down'));
+      const response = await POST(makeRequest('http://localhost/api/policies', 'POST', validBody));
+      expect(response.status).toBe(201);
+    });
+
+    it('门禁编译得到的 profile 随版本落库（ADR 0046 §6）', async () => {
+      mockAssertCompilable.mockResolvedValueOnce('eu-ai-act-high-risk');
+      const response = await POST(makeRequest('http://localhost/api/policies', 'POST', validBody));
+      expect(response.status).toBe(201);
+      expect(mockCreateVersion).toHaveBeenCalledWith(
+        expect.objectContaining({ profile: 'eu-ai-act-high-risk' }),
       );
     });
 
@@ -694,6 +729,18 @@ describe('Policies API - Drizzle Migration', () => {
       );
 
       expect(response.status).toBe(200);
+    });
+
+    it('新版本带上门禁编译得到的 profile（ADR 0046 §6）', async () => {
+      mockAssertCompilable.mockResolvedValueOnce('governed');
+      const response = await PUT(
+        makeRequest('http://localhost/api/policies/p1', 'PUT', updateBody),
+        mockParams,
+      );
+      expect(response.status).toBe(200);
+      expect(mockCreateVersion).toHaveBeenCalledWith(
+        expect.objectContaining({ profile: 'governed' }),
+      );
     });
 
     it('审计 High：仅改 aliasSet（content 不变）也创建新版本走 createVersion', async () => {

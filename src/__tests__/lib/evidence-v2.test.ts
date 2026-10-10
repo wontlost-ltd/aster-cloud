@@ -62,7 +62,7 @@ function row(over: Partial<EvidenceRow>): EvidenceRow {
     sourceToolchainId: null, runtimeToolchainId: null, replayabilityStatus: null, replayabilityReasons: null,
     reasonCodes: null, source: 'api', durationMs: 1, createdAt: new Date('2026-10-01T00:00:00Z'),
     outcome: 'ALLOW', ruleId: null, controls: null, agent: null, evidenceCorrelationId: null,
-    policyTenantId: 'team-1', guardDecisionId: null,
+    policyTenantId: 'team-1', policyOwnerId: 'user-1', guardDecisionId: null, profile: null,
     ...over,
   };
 }
@@ -171,12 +171,13 @@ describe('createEvidenceExport v2', () => {
       decidedAt: '2026-10-03T01:00:00Z', ref: '31', roleVerified: true,
     }]);
     expect(e1).not.toHaveProperty('policyTenantId');
+    expect(e1).not.toHaveProperty('policyOwnerId');
     expect(e3).not.toHaveProperty('guardDecisionId');
   });
 
   it('★manifest 计数', async () => {
     const { manifest } = await createEvidenceExport('user-1', { format: 'json' });
-    expect(manifest.schemaVersion).toBe('2');
+    expect(manifest.schemaVersion).toBe('5');
     expect(manifest.totals.count).toBe(3);
     expect(manifest.legacyEntries).toBe(1);
     expect(manifest.notes.receiptsUnavailable).toBe(1);

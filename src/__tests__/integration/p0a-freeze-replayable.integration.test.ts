@@ -48,7 +48,7 @@ import {
 } from '@/lib/policy-execution-log';
 import type { PolicyReplayMetadata } from '@/services/policy/policy-api';
 import { freezeFromExecutions } from '@/services/policy/rule-regression-runner';
-import { setupTestDb, teardownTestDb } from './setup-postgres';
+import { deleteAppendOnlyRows, setupTestDb, teardownTestDb } from './setup-postgres';
 
 // ★真实捕获物（provenance）：本地 aster-api quarkusDev（GraalVM/Truffle，M2.1b step-trace armed）
 //   对 `Module aster.test. Rule greet given name as Text: Return name.` + {"name":"Ada"} 经 HMAC
@@ -127,16 +127,19 @@ async function seedExecution(id: string, status: string, locale: string) {
   } as typeof executions.$inferInsert);
 }
 
+// 基线迁移里 User / Policy 的 updatedAt 是 NOT NULL 且无库级默认值（schema 的 defaultNow 未落进迁移），须显式赋值。
 async function seedParents() {
   await db.insert(users).values({
     id: OWNER,
     replayRetentionEnabled: true, // 开 retention → freeze 才存 inputJson（可回放前提）。
+    updatedAt: new Date(),
   } as typeof users.$inferInsert);
   await db.insert(policies).values({
     id: POL,
     userId: OWNER,
     name: 'greet policy',
     content: 'Module aster.test. Rule greet given name as Text: Return name.',
+    updatedAt: new Date(),
   } as typeof policies.$inferInsert);
   await db.insert(policyVersions).values({
     id: PV_ROW,
@@ -149,7 +152,7 @@ async function seedParents() {
 }
 
 async function resetTables() {
-  await db.delete(regressionCases);
+  await deleteAppendOnlyRows([regressionCases]);
   await db.delete(executions);
   await db.delete(policyVersions);
   await db.delete(policies);

@@ -27,6 +27,7 @@ import { useEntryRuleDecorations } from './use-entry-rule-decorations';
 import { extractUseRefs, type UseRef } from '@/lib/aster/modules';
 import type { AsterModuleCatalogEntry } from '@/services/policy/policy-api';
 import { useAsterLSP } from '@/hooks/useAsterLSP';
+import { summarizeCoreModule, type EditorCompileModuleSummary } from './core-module-summary';
 
 // Monaco 语言 ID
 const ASTER_LANG_ID = 'aster-cnl';
@@ -84,11 +85,7 @@ export interface EditorCompileDiagnostic {
   code?: string;
 }
 
-export interface EditorCompileModuleSummary {
-  name: string;
-  functions: string[];
-  types: string[];
-}
+export type { EditorCompileModuleSummary };
 
 // R23-Critical-2: AI complete 直连 aster-api 已停用。改走 server-side proxy
 // `/api/llm/complete`（aster-cloud）做 NextAuth 鉴权 + HMAC 转签。
@@ -613,23 +610,8 @@ export function MonacoPolicyEditor({
       endColumn: Math.max(1, d.span?.end.col ?? d.span?.start.col ?? 1),
       code: typeof d.code === 'string' ? d.code : d.code != null ? String(d.code) : undefined,
     }));
-    // module 摘要：仅当编译成功产出 Core IR 时可得（父层 Decision 面板据此渲染）。
-    // Core Module = { kind:'Module', name, decls:[{kind:'Func'|'Data'|'Enum'|'Import', name}] }。
-    let moduleSummary: EditorCompileModuleSummary | undefined;
-    const core = compileResult?.core as
-      | { name?: string | null; decls?: ReadonlyArray<{ kind?: string; name?: string }> }
-      | undefined;
-    if (compileResult?.success && core?.name) {
-      const decls = core.decls ?? [];
-      moduleSummary = {
-        name: core.name,
-        functions: decls.filter((d) => d.kind === 'Func').map((d) => d.name ?? '').filter(Boolean),
-        types: decls
-          .filter((d) => d.kind === 'Data' || d.kind === 'Enum')
-          .map((d) => d.name ?? '')
-          .filter(Boolean),
-      };
-    }
+    // module 摘要：仅当编译成功产出 Core IR 时可得（父层 Decision 面板据此渲染，含治理档案）。
+    const moduleSummary = summarizeCoreModule(compileResult);
     // state：空源码 idle，否则 ok。不用 'pending'——实时 validate() 是同步 debounce，
     // compiling 标志仅 compileSource()（手动全量编译）用，realtime 路径不置位，硬套会造成
     // 假 pending + 短暂 stale 诊断。'error' 态（parser crash）也归 ok：错误已作为 diagnostic

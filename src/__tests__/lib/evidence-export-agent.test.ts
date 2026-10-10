@@ -62,6 +62,15 @@ describe('queryEvidenceExecutions agent 校验', () => {
     expect(rows.map((r) => r.policyTenantId)).toEqual(['u-1', 'team-1']);
   });
 
+  it('★profile 列透传到 EvidenceRow；旧行 null（ADR 0046 §6）', async () => {
+    findMany.mockResolvedValue([
+      { ...dbRow(null), profile: 'governed' },
+      { ...dbRow(null), id: 'e2', profile: null },
+    ]);
+    const rows = await queryEvidenceExecutions({ userId: 'u-1' });
+    expect(rows.map((r) => r.profile)).toEqual(['governed', null]);
+  });
+
   it('agentOf：合法值只保留已知字段；可选字段类型错或非对象 → null', () => {
     expect(agentOf({ provider: 'p', model: 'm', version: '1', session: 's', source: 'declared', extra: 0.7 }))
       .toEqual({ provider: 'p', model: 'm', version: '1', session: 's', source: 'declared' });

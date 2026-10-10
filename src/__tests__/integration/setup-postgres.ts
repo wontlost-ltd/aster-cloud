@@ -11,6 +11,9 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { GenericContainer, type StartedTestContainer } from 'testcontainers';
 import * as schema from '@/db/schema';
+import { sql } from 'drizzle-orm';
+import type { PgTable } from 'drizzle-orm/pg-core';
+import { db } from '@/lib/prisma';
 
 let container: StartedTestContainer | null = null;
 let sqlClient: ReturnType<typeof postgres> | null = null;
@@ -80,4 +83,26 @@ export async function teardownTestDb(): Promise<void> {
   sqlClient = null;
   await container?.stop();
   container = null;
+}
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * 在绕过 append-only trigger（0037 等）的事务里执行 fn，仅测试用。
+ * SET LOCAL 与 fn 内的语句在同一事务、同一条连接上；会话级 SET 在连接池下可能与后续语句分到不同连接。
+ */
+export async function withAppendOnlyBypass(fn: (tx: Tx) => Promise<void>): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL session_replication_role = replica`);
+    await fn(tx);
+  });
+}
+
+/** 清空 append-only 表（如 RegressionCase / RegressionReport），按给定顺序删除。 */
+export async function deleteAppendOnlyRows(tables: readonly PgTable[]): Promise<void> {
+  await withAppendOnlyBypass(async (tx) => {
+    for (const table of tables) {
+      await tx.delete(table);
+    }
+  });
 }

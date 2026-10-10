@@ -147,6 +147,15 @@ export function projectTraceSkeleton(input: PolicyTraceSkeleton): PolicyTraceSke
 }
 
 /**
+ * reasonCodes 唯一取值口径：后端回放元数据给出非空数组时以其为准；否则用 Verdict 理由兜底，二者皆无则 null。
+ * aster-api 的 evaluate 响应不带 reasonCodes，不兜底则 Verdict 理由丢失，14(4)(c) 永远无法举证。
+ */
+export function resolveReasonCodes(replayCodes: unknown, verdictReason: string | undefined): unknown[] | null {
+  if (Array.isArray(replayCodes) && replayCodes.length > 0) return replayCodes;
+  return verdictReason ? [verdictReason] : null;
+}
+
+/**
  * 构建 Execution 回放列（M1）。见 {@link ReplayVersionRefs} doc 的 M1 语义。
  */
 export function buildReplayColumns(
@@ -156,7 +165,9 @@ export function buildReplayColumns(
    * 决策骨架（Phase 0，可选）。★独立于 replay 参数：骨架不含业务值，
    * 即便 replayMetadata 缺失（未开 capture）也应落库——它是零 PII 成本的分析地基。
    */
-  traceSkeleton?: PolicyTraceSkeleton
+  traceSkeleton?: PolicyTraceSkeleton,
+  /** Verdict 理由（metadata.reason）；后端未给 reasonCodes 时作为单元素理由码落库（ADR 0044 §3.1 14(4)(c)）。 */
+  verdictReason?: string
 ): ExecutionReplayColumns {
   // 版本引用列总是可填（不依赖 replayMetadata）——即使未开 capture，记录执行时的不可变版本引用
   // 仍有审计价值。回放 hash 列则依赖 replayMetadata。
@@ -169,7 +180,7 @@ export function buildReplayColumns(
     vocabSnapshotRef: refs.vocabSnapshotRef ?? null,
     sourceToolchainId: refs.sourceToolchainId,
     runtimeToolchainId: null,
-    reasonCodes: null,
+    reasonCodes: resolveReasonCodes(undefined, verdictReason),
     traceJson: null,
     traceSkeletonJson: null,
     traceHash: null,
@@ -244,7 +255,7 @@ export function buildReplayColumns(
   return {
     ...base,
     runtimeToolchainId: replay.runtimeToolchainId ?? null,
-    reasonCodes: Array.isArray(replay.reasonCodes) ? replay.reasonCodes : null,
+    reasonCodes: resolveReasonCodes(replay.reasonCodes, verdictReason),
     traceHash: replay.traceHash ?? null,
     canonicalInputHash: replay.canonicalInputHash ?? null,
     canonicalOutputHash: replay.canonicalOutputHash ?? null,
@@ -262,14 +273,16 @@ export interface ExecutionEvidenceColumns {
   /** 落库的 agent 带 source:'declared'——标明是调用方自报、非平台认证。 */
   agent: (AgentIdentity & { source: 'declared' }) | null;
   evidenceCorrelationId: string | null;
+  /** 模块声明的治理档案 id（ADR 0046 §6）。 */
+  profile: string | null;
 }
 
 /**
- * 构建 Execution 证据列：从执行结果 metadata 取 ruleId/controls/evidenceCorrelationId，
+ * 构建 Execution 证据列：从执行结果 metadata 取 ruleId/controls/evidenceCorrelationId/profile，
  * agent 附加 source:'declared'。缺失一律写 null（不写 undefined，保证列值显式）。
  */
 export function buildEvidenceColumns(
-  metadata: { ruleId?: string; controls?: string[]; evidenceCorrelationId?: string },
+  metadata: { ruleId?: string; controls?: string[]; evidenceCorrelationId?: string; profile?: string },
   agent: AgentIdentity | null,
 ): ExecutionEvidenceColumns {
   return {
@@ -277,6 +290,7 @@ export function buildEvidenceColumns(
     controls: metadata.controls ?? null,
     agent: agent ? { ...agent, source: 'declared' } : null,
     evidenceCorrelationId: metadata.evidenceCorrelationId ?? null,
+    profile: metadata.profile ?? null,
   };
 }
 

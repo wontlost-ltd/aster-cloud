@@ -27,6 +27,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "seed:usability": "tsx src/scripts/seed-usability-tenant.ts",
+    "seed:credit-pilot": "tsx src/scripts/seed-credit-pilot.ts",
     "seed:admin": "tsx src/scripts/seed-admin.ts",
     "check:locales": "tsx scripts/check-locales.ts",
     "check:locales:strict": "tsx scripts/check-locales.ts --strict",

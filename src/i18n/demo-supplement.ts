@@ -160,6 +160,12 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       failureUnknown: 'Unclassified failure.',
     },
     docs: {
+      sidebar: {
+        guides: {
+          title: 'Guides',
+          creditPilot: 'Credit pilot (Article 14)',
+        },
+      },
       overlay: {
         openFull: 'Open full docs',
         close: 'Close docs',
@@ -346,6 +352,28 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       thActions: 'Actions',
       status: { generating: 'Generating', completed: 'Completed', failed: 'Failed' },
       download: 'Download',
+      // 法规对照（ADR 0045 §5）：报告页按行展开注册表驱动的对照表。
+      mapping: {
+        profiles: 'Profiles',
+        toggle: 'Regulatory mapping',
+        loading: 'Loading mapping…',
+        notAvailable: 'This export has no registry-driven regulatory mapping (created before schema 4).',
+        loadFailed: 'Could not load the mapping. Collapse and expand to retry.',
+        noFrameworks: 'No registered control with mapped clauses appears in this export.',
+        registryVersion: 'Controls registry {version}',
+        disclaimer: 'Describes only fields present in this bundle; not a compliance conclusion.',
+        columns: {
+          clause: 'Clause',
+          title: 'Requirement',
+          status: 'Status',
+          evidence: 'Evidence',
+        },
+        status: {
+          evidenced: 'Evidenced',
+          partial: 'Partial',
+          none: 'No evidence',
+        },
+      },
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
@@ -459,6 +487,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
     common: { cancel: 'Cancel' },
     policies: {
+      // 策略详情页治理档案徽标（ADR 0046 §6）。
+      detail: { profile: 'Profile' },
       execute: {
         // 值/计算输出策略（如 greet 返回文本）：执行成功但无 allow/deny 语义。
         computed: 'Computed',
@@ -822,6 +852,12 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       failureUnknown: '未归类的失败。',
     },
     docs: {
+      sidebar: {
+        guides: {
+          title: '指南',
+          creditPilot: '信贷试点（第 14 条）',
+        },
+      },
       overlay: {
         openFull: '打开完整文档',
         close: '关闭文档',
@@ -996,6 +1032,28 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       thActions: '操作',
       status: { generating: '生成中', completed: '已完成', failed: '失败' },
       download: '下载',
+      // 法规对照（ADR 0045 §5）：报告页按行展开注册表驱动的对照表。
+      mapping: {
+        profiles: '治理档案',
+        toggle: '法规对照',
+        loading: '正在加载对照…',
+        notAvailable: '此导出不含注册表驱动的法规对照（早于第 4 版格式）。',
+        loadFailed: '对照加载失败，收起后重新展开即可重试。',
+        noFrameworks: '此导出中没有带对照条款的已登记控制点。',
+        registryVersion: '控制注册表 {version}',
+        disclaimer: '仅陈述证据包内已有字段，不构成合规结论。',
+        columns: {
+          clause: '条款',
+          title: '要求',
+          status: '状态',
+          evidence: '证据',
+        },
+        status: {
+          evidenced: '已证实',
+          partial: '部分',
+          none: '无证据',
+        },
+      },
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
@@ -1106,6 +1164,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
     common: { cancel: '取消' },
     policies: {
+      // 策略详情页治理档案徽标（ADR 0046 §6）。
+      detail: { profile: '治理档案' },
       execute: {
         computed: '已计算',
         noDecision: '无决策（值输出）',
@@ -1466,6 +1526,12 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       failureUnknown: 'Nicht klassifizierter Fehler.',
     },
     docs: {
+      sidebar: {
+        guides: {
+          title: 'Leitfäden',
+          creditPilot: 'Kreditpilot (Artikel 14)',
+        },
+      },
       overlay: {
         openFull: 'Vollständige Doku öffnen',
         close: 'Doku schließen',
@@ -1641,6 +1707,28 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       thActions: 'Aktionen',
       status: { generating: 'Wird erstellt', completed: 'Abgeschlossen', failed: 'Fehlgeschlagen' },
       download: 'Herunterladen',
+      // 法规对照（ADR 0045 §5）：报告页按行展开注册表驱动的对照表。
+      mapping: {
+        profiles: 'Profile',
+        toggle: 'Regulatorische Zuordnung',
+        loading: 'Zuordnung wird geladen…',
+        notAvailable: 'Dieser Export enthält keine registergesteuerte regulatorische Zuordnung (vor Schema 4 erstellt).',
+        loadFailed: 'Zuordnung konnte nicht geladen werden. Zum Wiederholen zu- und wieder aufklappen.',
+        noFrameworks: 'Dieser Export enthält keine registrierte Kontrolle mit zugeordneten Klauseln.',
+        registryVersion: 'Kontrollregister {version}',
+        disclaimer: 'Beschreibt nur Felder dieses Pakets; keine Compliance-Aussage.',
+        columns: {
+          clause: 'Klausel',
+          title: 'Anforderung',
+          status: 'Status',
+          evidence: 'Nachweis',
+        },
+        status: {
+          evidenced: 'Belegt',
+          partial: 'Teilweise',
+          none: 'Kein Nachweis',
+        },
+      },
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
@@ -1751,6 +1839,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
     common: { cancel: 'Abbrechen' },
     policies: {
+      // 策略详情页治理档案徽标（ADR 0046 §6）。
+      detail: { profile: 'Profil' },
       execute: {
         computed: 'Berechnet',
         noDecision: 'Keine Entscheidung (Wertausgabe)',
@@ -2109,6 +2199,12 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       failureUnknown: 'अवर्गीकृत विफलता।',
     },
     docs: {
+      sidebar: {
+        guides: {
+          title: 'Guides',
+          creditPilot: 'Credit pilot (Article 14)',
+        },
+      },
       overlay: {
         openFull: 'पूरा दस्तावेज़ खोलें',
         close: 'दस्तावेज़ बंद करें',
@@ -2284,6 +2380,28 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       thActions: 'क्रियाएँ',
       status: { generating: 'बन रहा', completed: 'पूर्ण', failed: 'विफल' },
       download: 'डाउनलोड',
+      // 法规对照（ADR 0045 §5）：报告页按行展开注册表驱动的对照表。
+      mapping: {
+        profiles: 'Profiles',
+        toggle: 'Regulatory mapping',
+        loading: 'Loading mapping…',
+        notAvailable: 'This export has no registry-driven regulatory mapping (created before schema 4).',
+        loadFailed: 'Could not load the mapping. Collapse and expand to retry.',
+        noFrameworks: 'No registered control with mapped clauses appears in this export.',
+        registryVersion: 'Controls registry {version}',
+        disclaimer: 'Describes only fields present in this bundle; not a compliance conclusion.',
+        columns: {
+          clause: 'Clause',
+          title: 'Requirement',
+          status: 'Status',
+          evidence: 'Evidence',
+        },
+        status: {
+          evidenced: 'Evidenced',
+          partial: 'Partial',
+          none: 'No evidence',
+        },
+      },
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
@@ -2394,6 +2512,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
     common: { cancel: 'रद्द करें' },
     policies: {
+      // 策略详情页治理档案徽标（ADR 0046 §6）。
+      detail: { profile: 'Profile' },
       execute: {
         computed: 'परिकलित',
         noDecision: 'कोई निर्णय नहीं (मान आउटपुट)',

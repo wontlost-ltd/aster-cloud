@@ -251,6 +251,14 @@
       "locales": "all"
     },
     {
+      "path": "/approvals",
+      "status": "canonical-here",
+      "owner": "app",
+      "source": "src/app/[locale]/(dashboard)/approvals/page.tsx",
+      "auth": "required",
+      "locales": "all"
+    },
+    {
       "path": "/domain-vocabularies",
       "status": "canonical-here",
       "owner": "app",
@@ -454,6 +462,13 @@
       "status": "canonical-here",
       "owner": "docs",
       "source": "src/app/[locale]/docs/getting-started/page.tsx",
+      "locales": "all"
+    },
+    {
+      "path": "/docs/guides/credit-pilot",
+      "status": "canonical-here",
+      "owner": "docs",
+      "source": "src/app/[locale]/docs/guides/credit-pilot/page.tsx",
       "locales": "all"
     },
     {

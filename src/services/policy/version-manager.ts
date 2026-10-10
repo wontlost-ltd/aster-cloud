@@ -26,10 +26,11 @@ import {
   validateUserAliases,
   type ReservedSets,
 } from '@/lib/policy-alias';
+import { declaresProfile } from '@/lib/policy-profile-declaration';
 
 type PolicyVersion = InferSelectModel<typeof policyVersions>;
 type PolicyVersionStatus = PolicyVersion['status'];
-type VersionDbClient = Pick<typeof db, 'query' | 'insert'>;
+type VersionDbClient = Pick<typeof db, 'query' | 'insert' | 'transaction'>;
 
 /**
  * 调用方不是该策略的所有者（或策略不存在/已软删）。路由 catch 后返回 404——
@@ -79,15 +80,63 @@ export async function assertPolicyOwnership(policyId: string, userId: string): P
  * 与「别名校验失败」区分：那是别名输入非法，这是源码本身不可编译。
  */
 export class PolicyCompileError extends Error {
+  /** 有值表示「编译检查暂不可用、可稍后重试」，路由据此返回 503 + Retry-After。 */
+  readonly retryAfterSeconds?: number;
+
   constructor(message = '策略存在解析错误，无法保存，请先修复后再试。') {
     super(message);
     this.name = 'PolicyCompileError';
   }
 }
 
-/** 编译诊断（只关心 severity 判「是否有 error」）。 */
+/**
+ * 编译检查暂不可用（如 aster-api 限流 429）。仍拒绝落库（fail-closed），
+ * 否则限流期间 E705/E706 等阻断性诊断会被放过；但它不是用户源码的错，
+ * 路由返回 503 并提示稍后重试，而不是「解析错误」。
+ */
+export class PolicyCompileUnavailableError extends PolicyCompileError {
+  override readonly retryAfterSeconds: number;
+
+  constructor(
+    retryAfterSeconds: number,
+    message = '策略编译检查暂时繁忙，暂无法保存，请稍后重试。',
+  ) {
+    super(message);
+    this.name = 'PolicyCompileUnavailableError';
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+/** 编译检查不可用且上游未给出重试时间时的默认重试秒数（aster-api 限流窗口为一分钟）。 */
+export const DEFAULT_COMPILE_RETRY_AFTER_SECONDS = 60;
+
+/** 编译诊断：severity 判「是否有 error」，code/message 用于给出具体拒绝原因。 */
 export interface CompileDiagnostic {
   severity: 'error' | 'warning' | 'info' | 'hint';
+  code?: string;
+  message?: string;
+}
+
+/** 治理档案的阻断码（ADR 0046 §4）：档案未知 / 规则缺少档案要求的控制点。 */
+const PROFILE_ERROR_CODES: ReadonlySet<string> = new Set(['E705', 'E706']);
+
+/** 治理检查无法运行的基础设施故障码（E707 GOV_CHECK_UNAVAILABLE），不是策略违规。 */
+const GOV_CHECK_UNAVAILABLE_CODE = 'E707';
+
+/**
+ * 按阻断诊断构造保存失败异常，优先级：档案违规（用户必须修正）> 治理检查不可用
+ * （按暂不可用拒绝，路由映射 503）> 通用解析错误。
+ */
+function compileErrorFor(errors: readonly CompileDiagnostic[]): PolicyCompileError {
+  const profileError = errors.find((d) => d.code && PROFILE_ERROR_CODES.has(d.code));
+  if (profileError) {
+    const detail = profileError.message ? `：${profileError.message}` : '。';
+    return new PolicyCompileError(`策略违反所声明的治理档案，无法保存${detail}`);
+  }
+  if (errors.some((d) => d.code === GOV_CHECK_UNAVAILABLE_CODE)) {
+    return new PolicyCompileUnavailableError(DEFAULT_COMPILE_RETRY_AFTER_SECONDS);
+  }
+  return new PolicyCompileError();
 }
 
 /**
@@ -95,18 +144,21 @@ export interface CompileDiagnostic {
  * 注入（依赖倒置）——version-manager 不直接依赖 HTTP 客户端，保持可测且解耦。
  * 用与执行一致的输入（source+locale+aliasSet）编译，避免「前端带 alias 编译
  * 通过、后端不带 alias 误判 error」的前后端语义分裂。校验器自身抛异常（如
- * aster-api 不可达）由 createVersion fail-open 放行。
+ * aster-api 不可达）的处理见 assertCompilable。
  */
 export type CompileValidator = (input: {
   source: string;
   locale: string;
   aliasSet?: Readonly<Record<string, readonly string[]>> | null;
-}) => Promise<{ diagnostics?: CompileDiagnostic[] }>;
+}) => Promise<{ diagnostics?: CompileDiagnostic[]; profile?: string }>;
 
 /**
- * 跑源码可编译性门禁：编译含 error 诊断则抛 PolicyCompileError。
- * 校验器抛 PolicyCompileError（如上游 4xx 用户输入错误）→ 上抛拒绝落库；
- * 其它异常（5xx/网络/超时）→ fail-open 放行（记录，不阻断保存）。
+ * 跑源码可编译性门禁：编译含 error 诊断则抛 PolicyCompileError；通过时返回模块声明的
+ * 治理档案 id（未声明或检查放行时为 null），供建版本时落库。
+ * 校验器抛 PolicyCompileError（如上游 4xx 用户输入错误）或其子类
+ * PolicyCompileUnavailableError（上游限流）→ 上抛拒绝落库；
+ * 其它异常（5xx/网络/超时）：源码声明了治理档案时同样按不可用拒绝（否则 E705/E706 被放过，
+ * ADR 0046 §4），未声明档案时 fail-open 放行（记录，不阻断保存）。
  *
  * POST/PUT 路由在 db.transaction **之前**调用（避免事务内网络调用+持锁等待）；
  * createVersion 内部也调它，作为无事务直调入口（如 v1/versions）的兜底。
@@ -118,21 +170,26 @@ export async function assertCompilable(
     locale: string;
     aliasSet?: Readonly<Record<string, readonly string[]>> | null;
   },
-): Promise<void> {
+): Promise<string | null> {
   try {
     const result = await validator(input);
-    const hasError = (result.diagnostics ?? []).some(
+    const errors = (result.diagnostics ?? []).filter(
       (d) => d.severity === 'error',
     );
-    if (hasError) {
-      throw new PolicyCompileError();
+    if (errors.length > 0) {
+      throw compileErrorFor(errors);
     }
+    return result.profile || null;
   } catch (err) {
     if (err instanceof PolicyCompileError) throw err;
+    if (declaresProfile(input.source)) {
+      throw new PolicyCompileUnavailableError(DEFAULT_COMPILE_RETRY_AFTER_SECONDS);
+    }
     console.warn(
       '[assertCompilable] compile precheck unavailable, allowing save',
       err instanceof Error ? err.message : err,
     );
+    return null;
   }
 }
 
@@ -156,11 +213,20 @@ export interface CreateVersionParams {
   toolchainId?: string;
   /**
    * 源码可编译性校验器（注入）。提供时：编译源码，若含 error 诊断则抛
-   * PolicyCompileError（拒绝落库不可编译源码）。fail-open：校验器自身抛异常
-   * （编译服务不可达）→ 记录并放行。缺省=不校验（向后兼容）。
+   * PolicyCompileError（拒绝落库不可编译源码）。校验器自身抛异常（编译服务不可达）
+   * 时按 assertCompilable 的规则放行或拒绝。缺省=不校验（向后兼容）。
    */
   validateCompilable?: CompileValidator;
-  /** 事务客户端；用于把 policy insert + version insert 包进同一事务。 */
+  /**
+   * 调用方在事务外跑门禁得到的治理档案 id（ADR 0046 §6）。提供 validateCompilable 时
+   * 以其编译结果为准。缺省=null。
+   */
+  profile?: string | null;
+  /**
+   * 事务客户端；用于把 policy insert + version insert 包进同一事务。
+   * 提供时版本行与安全事件都经它写入，缓存失效由调用方在提交后执行（事务内失效会让并发读
+   * 在提交前把旧值重新填回缓存）。
+   */
   dbClient?: VersionDbClient;
 }
 
@@ -230,13 +296,13 @@ export async function createVersion(
   // 有解析错误的源码不落库（覆盖所有 createVersion 入口）。POST/PUT 已在事务外
   // preflight（见 assertCompilable），故不再传 validateCompilable 进来避免事务内
   // 网络调用+重复编译；v1/versions 无事务，直接靠此兜底。
-  if (params.validateCompilable) {
-    await assertCompilable(params.validateCompilable, {
+  const profile = params.validateCompilable
+    ? await assertCompilable(params.validateCompilable, {
       source,
       locale,
       aliasSet: params.aliasSet,
-    });
-  }
+    })
+    : (params.profile ?? null);
 
   const toolchainId = params.toolchainId ?? cloudToolchainId();
   const sourceEnvelopeSha256 = computeSourceEnvelope(source, aliasSetJson, locale, toolchainId);
@@ -270,6 +336,7 @@ export async function createVersion(
     aliasSet: aliasSetJson,
     sourceEnvelopeSha256,
     sourceToolchainId: toolchainId,
+    profile,
   }).returning();
 
   const hasStructuralAliases = aliasSetJson
@@ -290,10 +357,13 @@ export async function createVersion(
       hasStructuralAliases,
       structuralAliasAuthorized: params.allowStructuralAliases === true,
     },
-  });
+  }, params.dbClient);
 
-  // ★写完必须失效执行缓存：命中缓存的执行路径不查库（见 invalidateAfterVersionChange）
-  await invalidateAfterVersionChange(policyId);
+  // ★写完必须失效执行缓存：命中缓存的执行路径不查库（见 invalidateAfterVersionChange）。
+  // 在事务内建版本时由调用方提交后失效。
+  if (!params.dbClient) {
+    await invalidateAfterVersionChange(policyId);
+  }
   return {
     id: created.id,
     version: newVersionNumber,

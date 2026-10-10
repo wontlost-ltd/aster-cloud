@@ -9,6 +9,7 @@ import {
   PolicyCompileError,
 } from '@/services/policy/version-manager';
 import { makeCompileValidator } from '@/lib/policy-compile-validator';
+import { compileGateErrorResponse } from '@/lib/policy-compile-response';
 import { getStructuralAliasGrant, buildAliasReservedForUser } from '@/lib/structural-alias-grants';
 import { canonicalAliasJson } from '@/lib/policy-alias';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
@@ -261,28 +262,31 @@ export async function PUT(req: Request, { params }: RouteParams) {
 
     // 只有新建版本（源码变更）才编译校验；在事务外 preflight（避免事务内网络调用）。
     // 用与 createVersion 一致的 aliasSetInput（effective 别名）编译，避免语义分裂。
-    // 有 error 诊断抛 PolicyCompileError → 下方 catch 转 400。
-    if (newVersion) {
-      await assertCompilable(makeCompileValidator(session.user.id), {
+    // 有 error 诊断抛 PolicyCompileError → 下方 catch 转 400（检查不可用时 503）。
+    // 通过时得到的治理档案 id 随新版本落库。
+    const profile = newVersion
+      ? await assertCompilable(makeCompileValidator(session.user.id), {
         source: versionSource,
         locale: compileLocale,
         aliasSet: aliasSetInput,
-      });
-    }
+      })
+      : null;
+
+    // allowStructural 来源：
+    //   - 别名有变（aliasChanged）→ 按当前 per-user 授权权威判定（新引入的别名须现授权）。
+    //   - 别名沿用活跃版本（!aliasChanged，如 content-only 编辑）→ 视为已授权：这些别名在
+    //     原版本创建时已授权+校验+冻结，授权撤销不得阻断对已有策略的后续（非别名）编辑，
+    //     与执行端「冻结即信任」同口径。避免撤销授权后合法用户改不了源码。
+    // 两项读取放在事务外：事务内经全局 db 读要第二条连接，池满时与事务互等。
+    const allowStructural = aliasChanged
+      ? await getStructuralAliasGrant(session.user.id)
+      : true;
+    const aliasReserved = newVersion && aliasSetInput
+      ? await buildAliasReservedForUser(session.user.id, compileLocale)
+      : undefined;
 
     const policy = await db.transaction(async (tx) => {
       if (newVersion) {
-        // allowStructural 来源：
-        //   - 别名有变（aliasChanged）→ 按当前 per-user 授权权威判定（新引入的别名须现授权）。
-        //   - 别名沿用活跃版本（!aliasChanged，如 content-only 编辑）→ 视为已授权：这些别名在
-        //     原版本创建时已授权+校验+冻结，授权撤销不得阻断对已有策略的后续（非别名）编辑，
-        //     与执行端「冻结即信任」同口径。避免撤销授权后合法用户改不了源码。
-        const allowStructural = aliasChanged
-          ? await getStructuralAliasGrant(session.user.id)
-          : true;
-        const aliasReserved = aliasSetInput
-          ? await buildAliasReservedForUser(session.user.id, compileLocale)
-          : undefined;
         const createdVersion = await createVersion({
           policyId: id,
           source: versionSource,
@@ -292,6 +296,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
           aliasSet: aliasSetInput,
           aliasReserved,
           allowStructuralAliases: allowStructural,
+          profile,
           dbClient: tx,
         });
         updateData.version = createdVersion.version; // 回填，保持 Policy.version ↔ PolicyVersion.version 一致
@@ -311,12 +316,9 @@ export async function PUT(req: Request, { params }: RouteParams) {
 
     return NextResponse.json(policy);
   } catch (error) {
-    // 有解析错误的源码——用户可修正的 4xx。
+    // 编译门禁拒绝：源码有阻断诊断 → 400；编译检查暂不可用 → 503 可重试。
     if (error instanceof PolicyCompileError) {
-      return NextResponse.json(
-        { error: 'compile_error', message: error.message },
-        { status: 400 },
-      );
+      return compileGateErrorResponse(error);
     }
     console.error('Error updating policy:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

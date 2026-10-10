@@ -133,11 +133,20 @@ function isWorkerd(): boolean {
 }
 
 /**
+ * Node 运行时单例的连接池大小。
+ *
+ * 单例是整个 Node 进程共用的唯一 client，没有 Hyperdrive 在前面池化，必须是真正的池：
+ * 池大小为 1 时，db.transaction 占住唯一连接，事务回调里经全局 db 发出的查询
+ * （如 createVersion 内的 logSecurityEvent / 缓存失效）会永远排队，请求挂死。
+ */
+const NODE_RUNTIME_POOL_MAX = 10;
+
+/**
  * Node 运行时单例：仍尊重 Hyperdrive 本地代理给出的连接串，但全进程只建一个 client。
  */
 function getLocalDevDb(env?: CloudflareEnv): ReturnType<typeof createDb> {
   if (!globalForDb.__asterLocalDevDb) {
-    globalForDb.__asterLocalDevDb = createDb(env);
+    globalForDb.__asterLocalDevDb = createDb(env, { max: NODE_RUNTIME_POOL_MAX });
   }
   return globalForDb.__asterLocalDevDb;
 }
@@ -146,14 +155,14 @@ function getLocalDevDb(env?: CloudflareEnv): ReturnType<typeof createDb> {
  * 创建数据库客户端
  * Hyperdrive 负责连接池，这里只是创建客户端包装器
  */
-export function createDb(env?: CloudflareEnv) {
+export function createDb(env?: CloudflareEnv, options?: { max?: number }) {
   const connectionString = getConnectionString(env);
 
   // 集成测试用更大 pool 才能验证 advisory lock 的并发竞争；
-  // Workers / Hyperdrive 生产路径不会读这个 env，保持 max=1 行为不变。
+  // Workers / Hyperdrive 生产路径不传 options，保持 max=1 行为不变。
   const isIntegrationTest =
     process.env.LICENSE_E2E === '1' && process.env.VITEST === 'true';
-  const max = isIntegrationTest ? 8 : 1;
+  const max = options?.max ?? (isIntegrationTest ? 8 : 1);
 
   const client = postgres(connectionString, {
     // Hyperdrive 处理连接池，Workers 限制并发连接数

@@ -25,6 +25,8 @@ export interface CompileModuleSummary {
   name: string;
   functions: string[];
   types: string[];
+  /** 模块声明的治理档案 id（ADR 0046）；未声明时缺省。 */
+  profile?: string;
 }
 
 export type CompileState = 'idle' | 'pending' | 'ok' | 'error';

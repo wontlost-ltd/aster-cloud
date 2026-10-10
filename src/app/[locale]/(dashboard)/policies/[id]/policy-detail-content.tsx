@@ -8,6 +8,7 @@ import { PolicyVersionsTab } from '@/components/policy/policy-versions-tab';
 import { PolicyReviewPanel } from '@/components/policy/policy-review-panel';
 import { ShareWithTeamsCard } from '@/components/policy/share-with-teams-card';
 import { PolicyAnalyticsSection } from '@/components/policy/policy-analytics-section';
+import { PolicyProfileBadge } from '@/components/policy/policy-profile-badge';
 
 interface PolicyVersion {
   id: string;
@@ -55,6 +56,7 @@ interface Translations {
     policyContent: string;
     versionHistory: string;
     backToPolicies: string;
+    profile: string;
   };
   deleteDialog: {
     title: string;
@@ -78,6 +80,8 @@ interface PolicyDetailContentProps {
   /** 执行日志留存天数（#396），透传给 What-If 面板裁剪窗口 */
   retentionDays?: number | null;
   policy: Policy;
+  /** 活跃版本落库的治理档案 id（ADR 0046 §6）。 */
+  profile?: string | null;
   translations: Translations;
   locale: string;
 }
@@ -86,6 +90,7 @@ export function PolicyDetailContent({
   whatIfEntitled = false,
   retentionDays = null,
   policy,
+  profile = null,
   translations: t,
   locale,
 }: PolicyDetailContentProps) {
@@ -179,6 +184,11 @@ export function PolicyDetailContent({
         }
         className="mb-6"
       />
+
+      {/* 治理档案徽标（ADR 0046 §6）：活跃版本声明了档案才显示 */}
+      <div className="mb-4 empty:hidden">
+        <PolicyProfileBadge profile={profile} locale={locale} label={t.detail.profile} />
+      </div>
 
       {error && (
         <div className="mb-4 rounded-md bg-red-50 p-4">

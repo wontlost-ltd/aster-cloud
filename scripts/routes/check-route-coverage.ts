@@ -110,7 +110,8 @@ function walkFiles(dir: string, predicate: (name: string) => boolean, out: strin
  *                        entries below DO get checked)
  *   - /api/user/*      — dashboard's own user-data fetches
  *   - /api/notifications, /api/api-keys, /api/teams/*,
- *     /api/policies (non-v1), /api/policy-groups, /api/reports
+ *     /api/policies (non-v1), /api/policy-groups, /api/reports,
+ *     /api/approvals
  *                        — dashboard backend; not docs-referenced.
  *                        Docs reference the /api/v1/* surface, which
  *                        IS in the manifest under the v1 wildcard.
@@ -131,6 +132,8 @@ const SKIP_PATTERNS: RegExp[] = [
   /^\/api\/policies(\/|$)/,
   /^\/api\/policy-groups(\/|$)/,
   /^\/api\/reports(\/|$)/,
+  // 审批收件箱后端：仅供 dashboard 的 cookie 会话调用，文档不引用
+  /^\/api\/approvals(\/|$)/,
   /^\/api\/renew(\/|$)/,
   /^\/api\/license\/revoked$/,
   /^\/api\/stripe(\/|$)/,

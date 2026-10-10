@@ -9,17 +9,12 @@
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { encode } from 'next-auth/jwt';
-
-// http 环境下 Auth.js v5 的会话 cookie 名，同时作为 JWE 派生盐
-const COOKIE_NAME = 'authjs.session-token';
-const MAX_AGE_SECONDS = 24 * 60 * 60;
-
-interface SeedUser {
-  id: string;
-  email: string;
-  plan: string;
-}
+import {
+  SESSION_COOKIE_NAME as COOKIE_NAME,
+  SESSION_MAX_AGE_SECONDS as MAX_AGE_SECONDS,
+  sessionCookie,
+  type SessionUser as SeedUser,
+} from './lib/session-cookie';
 
 // 与本地栈种子数据保持一致
 const USERS: SeedUser[] = [
@@ -27,6 +22,9 @@ const USERS: SeedUser[] = [
   { id: 'm-dpo', email: 'm-dpo@stack.test', plan: 'free' },
   { id: 'owner1', email: 'owner1@stack.test', plan: 'team' },
   { id: 't1', email: 't1@stack.test', plan: 'pro' },
+  { id: 'cp-owner', email: 'cp-owner@stack.test', plan: 'team' },
+  { id: 'cp-officer', email: 'cp-officer@stack.test', plan: 'pro' },
+  { id: 'cp-analyst', email: 'cp-analyst@stack.test', plan: 'pro' },
 ];
 
 async function main(): Promise<void> {
@@ -37,12 +35,7 @@ async function main(): Promise<void> {
   const expires = Math.floor(Date.now() / 1000) + MAX_AGE_SECONDS;
 
   for (const user of USERS) {
-    const value = await encode({
-      token: { sub: user.id, id: user.id, email: user.email, name: user.id, plan: user.plan, isAdmin: false },
-      secret,
-      salt: COOKIE_NAME,
-      maxAge: MAX_AGE_SECONDS,
-    });
+    const value = await sessionCookie(user, secret);
     const state = {
       cookies: [
         { name: COOKIE_NAME, value, domain: 'localhost', path: '/', httpOnly: true, secure: false, sameSite: 'Lax', expires },

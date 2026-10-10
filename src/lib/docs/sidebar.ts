@@ -88,4 +88,10 @@ export const docsSidebar = [
       { labelKey: 'docs.sidebar.apiWebsocket.preview', href: 'api/websocket/preview' },
     ],
   },
+  {
+    titleKey: 'docs.sidebar.guides.title',
+    items: [
+      { labelKey: 'docs.sidebar.guides.creditPilot', href: 'guides/credit-pilot' },
+    ],
+  },
 ] as const satisfies readonly DocsSidebarSection[];

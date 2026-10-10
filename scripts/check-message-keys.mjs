@@ -29,8 +29,8 @@
  *   1 = 出现新缺键（或真相源/基线文件读不到）
  */
 
-import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { readFileSync, writeFileSync, existsSync, realpathSync, readdirSync, statSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -145,14 +145,46 @@ function hasLeaf(tree, path) {
   return typeof cur === 'string';
 }
 
-if (!existsSync(PACKAGE)) {
-  console.error(`✗ 找不到已安装的文案包: ${PACKAGE}\n  先跑 pnpm install。`);
-  process.exit(1);
+/** 从 `start`（开引号位置）跳到匹配的未转义闭引号之后；未闭合则返回文本末尾。 */
+function skipString(text, start) {
+  const quote = text[start];
+  let i = start + 1;
+  while (i < text.length && text[i] !== quote) i += text[i] === '\\' ? 2 : 1;
+  return i + 1;
 }
-const pkg = JSON.parse(readFileSync(PACKAGE, 'utf-8'));
-// 真相源仅在并列 checkout 兄弟仓时可得（CI 的 aster-cloud job 不 checkout 它）。
-// 缺失时退化为「只比 npm 包」，并显式说明——不静默少查。
-const source = existsSync(SOURCE) ? JSON.parse(readFileSync(SOURCE, 'utf-8')) : null;
+
+/**
+ * 展开单行内联对象 `{ a: 'x', b: { c: "y" } }` 的叶子键路径。
+ *
+ * 逐字符扫描：字符串字面量整体跳过（值里的 `{`、`,`、`:` 不参与结构判定），
+ * `name: {` 入栈，`}` 出栈，`name: '值'` 记为叶子。
+ */
+function collectInlineKeys(text, base, out) {
+  const path = [...base];
+  const opened = [];
+  let i = text.indexOf('{') + 1;
+  while (i < text.length) {
+    const rest = text.slice(i);
+    const obj = rest.match(/^\s*,?\s*([A-Za-z_]\w*)\s*:\s*\{/);
+    const leaf = rest.match(/^\s*,?\s*([A-Za-z_]\w*)\s*:\s*(['"`])/);
+    if (obj) {
+      opened.push(obj[1]);
+      path.push(obj[1]);
+      i += obj[0].length;
+    } else if (leaf) {
+      out.add([...path, leaf[1]].join('.'));
+      i = skipString(text, i + leaf[0].length - 1);
+    } else if (/^\s*\}/.test(rest)) {
+      if (opened.length) { opened.pop(); path.pop(); }
+      i += rest.indexOf('}') + 1;
+    } else if (/['"`]/.test(text[i])) {
+      // 非字面量值（三元、数组、调用）里的字符串也整体跳过，避免其中的 `word: 'x'` 被当成键。
+      i = skipString(text, i);
+    } else {
+      i++;
+    }
+  }
+}
 
 /**
  * 从 demo-supplement.ts 里取 `en` 子树的**键路径集合**。
@@ -160,16 +192,21 @@ const source = existsSync(SOURCE) ? JSON.parse(readFileSync(SOURCE, 'utf-8')) : 
  * 不求值 TS、也不解析成对象——只需要「这个路径存在吗」。用括号配平找到
  * `en: {` 的范围，再按 `key:` 的缩进层级还原路径。值是什么无关紧要。
  */
-function supplementKeys() {
-  if (!existsSync(SUPPLEMENT)) return new Set();
-  const src = readFileSync(SUPPLEMENT, 'utf-8');
+export function parseSupplementKeys(src) {
   const start = src.indexOf('\n  en: {');
   if (start < 0) return new Set();
   let depth = 0;
   let end = start;
+  // 配平时跳过字符串与 // 注释：值里不成对的 `{` / `}` 不应改变深度。
   for (let i = src.indexOf('{', start); i < src.length; i++) {
-    if (src[i] === '{') depth++;
-    else if (src[i] === '}') {
+    const ch = src[i];
+    if (ch === "'" || ch === '"' || ch === '`') i = skipString(src, i) - 1;
+    else if (ch === '/' && src[i + 1] === '/') {
+      const nl = src.indexOf('\n', i);
+      i = nl < 0 ? src.length : nl;
+    }
+    else if (ch === '{') depth++;
+    else if (ch === '}') {
       depth--;
       if (depth === 0) { end = i; break; }
     }
@@ -184,6 +221,13 @@ function supplementKeys() {
     while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
     const open = line.match(/^\s*([A-Za-z_]\w*)\s*:\s*\{\s*$/);
     if (open) { stack.push({ indent, name: open[1] }); continue; }
+    // 单行内联对象 `key: { a: 'x', b: { c: "y" } },`：在同一行内闭合，不入栈。
+    const inline = line.match(/^\s*([A-Za-z_]\w*)\s*:\s*(\{.*\})\s*,?\s*$/);
+    if (inline) {
+      const base = [...stack.slice(1).map((f) => f.name), inline[1]];
+      collectInlineKeys(inline[2], base, out);
+      continue;
+    }
     // ★值可能被 prettier 折到下一行：
     //     emptyHint:
     //       'Skeletons are captured when…',
@@ -197,89 +241,109 @@ function supplementKeys() {
   }
   return out;
 }
-const supplement = supplementKeys();
+function main() {
+  if (!existsSync(PACKAGE)) {
+    console.error(`✗ 找不到已安装的文案包: ${PACKAGE}\n  先跑 pnpm install。`);
+    process.exit(1);
+  }
+  const pkg = JSON.parse(readFileSync(PACKAGE, 'utf-8'));
+  // 真相源仅在并列 checkout 兄弟仓时可得（CI 的 aster-cloud job 不 checkout 它）。
+  // 缺失时退化为「只比 npm 包」，并显式说明——不静默少查。
+  const source = existsSync(SOURCE) ? JSON.parse(readFileSync(SOURCE, 'utf-8')) : null;
 
-const missing = new Map(); // key -> Set<file>
-let unboundFiles = 0;
-let scanned = 0;
+  const supplement = existsSync(SUPPLEMENT)
+    ? parseSupplementKeys(readFileSync(SUPPLEMENT, 'utf-8'))
+    : new Set();
 
-for (const file of sourceFiles(join(PROJECT_ROOT, 'src'))) {
-  const { unbound, keys, hasT } = extract(file);
-  unboundFiles += unbound;
-  if (!hasT) continue;
-  scanned++;
-  for (const key of keys) {
-    if (!hasLeaf(pkg, key) && !supplement.has(key)) {
-      if (!missing.has(key)) missing.set(key, new Set());
-      missing.get(key).add(relative(PROJECT_ROOT, file));
+  const missing = new Map(); // key -> Set<file>
+  let unboundFiles = 0;
+  let scanned = 0;
+
+  for (const file of sourceFiles(join(PROJECT_ROOT, 'src'))) {
+    const { unbound, keys, hasT } = extract(file);
+    unboundFiles += unbound;
+    if (!hasT) continue;
+    scanned++;
+    for (const key of keys) {
+      if (!hasLeaf(pkg, key) && !supplement.has(key)) {
+        if (!missing.has(key)) missing.set(key, new Set());
+        missing.get(key).add(relative(PROJECT_ROOT, file));
+      }
     }
   }
-}
 
-const found = [...missing.keys()].sort();
+  const found = [...missing.keys()].sort();
 
-if (LIST) {
-  for (const k of found) console.log(`${k}\t${[...missing.get(k)].join(',')}`);
-  process.exit(0);
-}
-
-if (UPDATE) {
-  writeFileSync(BASELINE, JSON.stringify({ missing: found }, null, 2) + '\n');
-  console.log(`✓ 基线已更新: ${found.length} 个已知缺失键 → ${relative(PROJECT_ROOT, BASELINE)}`);
-  process.exit(0);
-}
-
-const baseline = existsSync(BASELINE)
-  ? new Set(JSON.parse(readFileSync(BASELINE, 'utf-8')).missing ?? [])
-  : new Set();
-
-const added = found.filter((k) => !baseline.has(k));
-const fixed = [...baseline].filter((k) => !missing.has(k)).sort();
-
-console.log(
-  `扫描 ${scanned} 个含 useTranslations 的文件` +
-    (unboundFiles > 0 ? `（${unboundFiles} 个无法解析绑定，未查）` : '（全部可解析绑定）'),
-);
-// 把缺失分成「等发版」与「真缺文案」——两者的处置完全不同。
-const pendingRelease = source ? found.filter((k) => hasLeaf(source, k)) : [];
-const trulyMissing = source ? found.filter((k) => !hasLeaf(source, k)) : found;
-if (source) {
-  console.log(
-    `缺失键: ${found.length}（基线 ${baseline.size}）` +
-      ` = 等发版 ${pendingRelease.length} + 真缺文案 ${trulyMissing.length}`,
-  );
-} else {
-  console.log(
-    `缺失键: ${found.length}（基线 ${baseline.size}）` +
-      `\n  注：未并列 checkout aster-lang-locales，无法区分「等发版」与「真缺文案」。`,
-  );
-}
-
-if (fixed.length > 0) {
-  console.log(`\n✓ 已修复 ${fixed.length} 个（可跑 --update 收窄基线）:`);
-  for (const k of fixed.slice(0, 10)) console.log(`    ${k}`);
-  if (fixed.length > 10) console.log(`    … 另 ${fixed.length - 10} 个`);
-}
-
-if (added.length > 0) {
-  console.error(`\n✗ 新增 ${added.length} 个基线外的缺失键——文案真相源里没有它们:`);
-  for (const k of added) {
-    console.error(`    ${k}`);
-    for (const f of missing.get(k)) console.error(`        ${f}`);
+  if (LIST) {
+    for (const k of found) console.log(`${k}\t${[...missing.get(k)].join(',')}`);
+    process.exit(0);
   }
-  const addedPending = source ? added.filter((k) => hasLeaf(source, k)) : [];
-  if (addedPending.length > 0) {
-    console.error(
-      `\n  其中 ${addedPending.length} 个**真相源已有**，只是 npm 包未发版——` +
-        `不要重复写文案，等发版列车即可。`,
+
+  if (UPDATE) {
+    writeFileSync(BASELINE, JSON.stringify({ missing: found }, null, 2) + '\n');
+    console.log(`✓ 基线已更新: ${found.length} 个已知缺失键 → ${relative(PROJECT_ROOT, BASELINE)}`);
+    process.exit(0);
+  }
+
+  const baseline = existsSync(BASELINE)
+    ? new Set(JSON.parse(readFileSync(BASELINE, 'utf-8')).missing ?? [])
+    : new Set();
+
+  const added = found.filter((k) => !baseline.has(k));
+  const fixed = [...baseline].filter((k) => !missing.has(k)).sort();
+
+  console.log(
+    `扫描 ${scanned} 个含 useTranslations 的文件` +
+      (unboundFiles > 0 ? `（${unboundFiles} 个无法解析绑定，未查）` : '（全部可解析绑定）'),
+  );
+  // 把缺失分成「等发版」与「真缺文案」——两者的处置完全不同。
+  const pendingRelease = source ? found.filter((k) => hasLeaf(source, k)) : [];
+  const trulyMissing = source ? found.filter((k) => !hasLeaf(source, k)) : found;
+  if (source) {
+    console.log(
+      `缺失键: ${found.length}（基线 ${baseline.size}）` +
+        ` = 等发版 ${pendingRelease.length} + 真缺文案 ${trulyMissing.length}`,
+    );
+  } else {
+    console.log(
+      `缺失键: ${found.length}（基线 ${baseline.size}）` +
+        `\n  注：未并列 checkout aster-lang-locales，无法区分「等发版」与「真缺文案」。`,
     );
   }
-  console.error(
-    `\n  修法：在 aster-lang-locales 的三语 ui-messages 里补上这些键（真相源），\n` +
-      `  再同步 aster-api 的 classpath 副本。切勿只加到 npm 包或 cloud 本地。\n` +
-      `  若确属误报（如动态拼接的键），可跑 --update 但需在 PR 说明理由。`,
-  );
-  process.exit(1);
+
+  if (fixed.length > 0) {
+    console.log(`\n✓ 已修复 ${fixed.length} 个（可跑 --update 收窄基线）:`);
+    for (const k of fixed.slice(0, 10)) console.log(`    ${k}`);
+    if (fixed.length > 10) console.log(`    … 另 ${fixed.length - 10} 个`);
+  }
+
+  if (added.length > 0) {
+    console.error(`\n✗ 新增 ${added.length} 个基线外的缺失键——文案真相源里没有它们:`);
+    for (const k of added) {
+      console.error(`    ${k}`);
+      for (const f of missing.get(k)) console.error(`        ${f}`);
+    }
+    const addedPending = source ? added.filter((k) => hasLeaf(source, k)) : [];
+    if (addedPending.length > 0) {
+      console.error(
+        `\n  其中 ${addedPending.length} 个**真相源已有**，只是 npm 包未发版——` +
+          `不要重复写文案，等发版列车即可。`,
+      );
+    }
+    console.error(
+      `\n  修法：在 aster-lang-locales 的三语 ui-messages 里补上这些键（真相源），\n` +
+        `  再同步 aster-api 的 classpath 副本。切勿只加到 npm 包或 cloud 本地。\n` +
+        `  若确属误报（如动态拼接的键），可跑 --update 但需在 PR 说明理由。`,
+    );
+    process.exit(1);
+  }
+
+  console.log('\n✓ 没有基线外的新缺失键');
 }
 
-console.log('\n✓ 没有基线外的新缺失键');
+// 仅作为 CLI 直接运行时执行；被测试 import 时不产生副作用。
+// Node 会解析 import.meta.url 的符号链接但不解析 argv[1]，经软链接检出运行时
+// 若直接比较会永远不相等、main() 不执行、门禁静默 exit 0（失败开放），故先 realpath。
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
+  main();
+}

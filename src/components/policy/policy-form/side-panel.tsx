@@ -17,6 +17,7 @@ import { AIAssistantPanel } from '@/components/policy/ai-assistant-panel';
 import { CNLSyntaxReferencePanel } from '@/components/policy/cnl-syntax-reference-panel';
 import { PolicyAliasPanel } from '@/components/policy/policy-alias-panel';
 import type { ReservedSets } from '@/lib/policy-alias-shared';
+import { localizedTitle, profileTitle } from '@/services/evidence/control-registry';
 import type {
   CompileDiagnostic,
   CompileModuleSummary,
@@ -262,6 +263,7 @@ export function SidePanel({
                 state={compileState}
                 diagnostics={compileDiagnostics ?? []}
                 module={compileModule}
+                locale={uiLocale}
                 onJumpToLine={onJumpToLine}
               />
             </div>
@@ -276,18 +278,22 @@ export function SidePanel({
 /* Decision tab                                                        */
 /* ------------------------------------------------------------------ */
 
-function DecisionTab({
+export function DecisionTab({
   state,
   diagnostics,
   module: moduleInfo,
+  locale,
   onJumpToLine,
 }: {
   state?: CompileState;
   diagnostics: CompileDiagnostic[];
   module?: CompileModuleSummary;
+  /** 界面 locale，决定治理档案标题语言。 */
+  locale: string;
   onJumpToLine?: (line: number, column: number) => void;
 }) {
   const t = useTranslations('policies.form');
+  const tDetail = useTranslations('policies.detail');
   // Empty editor / first mount: helpful nudge, not an error.
   // 内容内边距对齐关键词别名/策略信息卡片（px-5 py-5），确保各 tab 内容
   // 从卡片边缘的起始位置一致，视觉上「填满」宽度而非左对齐留白。
@@ -333,6 +339,13 @@ function DecisionTab({
             <span className="font-semibold text-fg">{t('decisionModule')}: </span>
             <span className="font-mono text-fg-muted">{moduleInfo.name}</span>
           </div>
+          {/* 治理档案（ADR 0046 §6）：取自浏览器 Core IR，与详情页同一标签与注册表标题 */}
+          {moduleInfo.profile && (
+            <div>
+              <span className="font-semibold text-fg">{tDetail('profile')}: </span>
+              <span className="text-fg-muted">{localizedTitle(profileTitle(moduleInfo.profile), locale)}</span>
+            </div>
+          )}
           {moduleInfo.functions.length > 0 && (
             <div>
               <span className="font-semibold text-fg">
