@@ -5,8 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  # auto-upgrade.yml 用 GITHUB_TOKEN 开的依赖升级 PR 不会触发 pull_request，
-  # 由它在升级分支上显式派发本 workflow；main 专属的发布类 job 均以 push 事件为条件，不受影响。
+  # 供手动在任意分支补跑 CI；main 专属的发布类 job 均以 push 事件为条件，不受影响。
   workflow_dispatch:
 
 # 同一 ref 上新 push 到来时取消尚在跑的过时 CI（PR 连续 push 常见）——省算力/排队。
