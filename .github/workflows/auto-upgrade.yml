@@ -65,13 +65,49 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      # 用于在升级分支上显式派发 ci.yml（见末步说明）。
-      actions: write
     env:
       VERSION: ${{ needs.resolve.outputs.version }}
       BRANCH: ${{ needs.resolve.outputs.branch }}
     steps:
+      # 用 App 令牌推分支、开 PR，与 changelog.yml 同一做法（#455）：
+      # public 仓库对 bot（github.token）触发的 run 挂 action_required，required checks 永不报告；
+      # App 令牌触发的 pull_request CI 照常自动运行，且不放宽外部贡献者的审批策略。
+      # 未配凭据时回落 github.token：PR 仍会开出，但 CI 需人工处理，warning 说明原因。
+      - name: Mint App token (avoids bot-triggered approval gate)
+        id: apptoken
+        if: ${{ vars.IMAGE_PIN_APP_CLIENT_ID != '' }}
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          client-id: ${{ vars.IMAGE_PIN_APP_CLIENT_ID }}
+          private-key: ${{ secrets.IMAGE_PIN_APP_PRIVATE_KEY }}
+          owner: wontlost-ltd
+          repositories: aster-cloud
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Resolve token (App token, fallback to github.token)
+        id: tok
+        env:
+          APP_TOKEN: ${{ steps.apptoken.outputs.token }}
+          FALLBACK: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -n "${APP_TOKEN:-}" ]; then
+            echo "::add-mask::${APP_TOKEN}"
+            echo "token=${APP_TOKEN}" >> "$GITHUB_OUTPUT"
+            echo "bot=aster-image-pin[bot]" >> "$GITHUB_OUTPUT"
+            echo "::notice::使用 App 令牌 —— 升级 PR 的 CI 将自动运行"
+          else
+            echo "::add-mask::${FALLBACK}"
+            echo "token=${FALLBACK}" >> "$GITHUB_OUTPUT"
+            echo "bot=github-actions[bot]" >> "$GITHUB_OUTPUT"
+            echo "::warning::未配 IMAGE_PIN_APP_CLIENT_ID，回落 github.token —— 升级 PR 的 CI 不会自动运行（见 #455）"
+          fi
+
+      # checkout 必须带同一令牌：git push 用的是 checkout 写入的凭据，push 决定 CI run 的触发者。
       - uses: actions/checkout@v7
+        with:
+          token: ${{ steps.tok.outputs.token }}
 
       - uses: pnpm/action-setup@v6
 
@@ -95,11 +131,13 @@ jobs:
 
       - name: Create upgrade PR
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.tok.outputs.token }}
+          BOT: ${{ steps.tok.outputs.bot }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # 提交身份跟随所用令牌，便于日后排查「谁推的」。
+          git config user.name "${BOT}"
+          git config user.email "${BOT}@users.noreply.github.com"
           git checkout -b "${BRANCH}"
           git add package.json pnpm-lock.yaml lsp-package.json
           git commit -m "chore(deps): upgrade @aster-cloud/aster-lang-ts to ${VERSION}"
@@ -114,16 +152,5 @@ jobs:
 
           - \`package.json\` and \`lsp-package.json\` bumped in lockstep
           - \`pnpm test:run\` and \`pnpm run build:next\` passed in the upgrade run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
-
-          **CI note:** this PR was opened with the repo \`GITHUB_TOKEN\`, which by GitHub design does not fire \`pull_request\` workflows. The upgrade run dispatches \`ci.yml\` on this branch via \`workflow_dispatch\` instead, so the CI checks attach to the head commit. If no CI run appears (or it sits in \`action_required\`), run: \`gh workflow run ci.yml -R ${GITHUB_REPOSITORY} --ref ${BRANCH}\` or approve it with \`gh api -X POST repos/${GITHUB_REPOSITORY}/actions/runs/<id>/approve\`.
           BODY
           )"
-
-      # GITHUB_TOKEN 开的 PR 不会触发 pull_request 事件，但 workflow_dispatch 是官方豁免项：
-      # 在升级分支上显式派发 ci.yml，让完整 CI 跑在 PR 的 head commit 上。尽力而为，失败只告警。
-      - name: Dispatch CI on upgrade branch
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh workflow run ci.yml --repo "${GITHUB_REPOSITORY}" --ref "${BRANCH}" \
-            || echo "::warning::CI 派发失败，请手动执行: gh workflow run ci.yml --ref ${BRANCH}"
