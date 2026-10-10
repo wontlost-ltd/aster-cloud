@@ -295,8 +295,10 @@ export async function POST(req: Request) {
       console.log('PolicyVersion insert succeeded');
       return createdPolicy;
     });
-    // 缓存失效在提交后执行（createVersion 在事务内不做）。
-    await invalidatePolicyCache(policy.id);
+    // 缓存失效在提交后执行（createVersion 在事务内不做）；失败只记日志，不影响已提交的结果。
+    invalidatePolicyCache(policy.id).catch((err) =>
+      console.warn('[Cache] Failed to invalidate policy cache:', err),
+    );
 
     return NextResponse.json(policy, { status: 201 });
   } catch (error: unknown) {

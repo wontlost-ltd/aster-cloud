@@ -167,6 +167,7 @@ import { getSession } from '@/lib/auth';
 import { db } from '@/lib/prisma';
 import { getPolicyFreezeStatus, isPolicyFrozen } from '@/lib/policy-freeze';
 import { softDeletePolicy } from '@/lib/policy-lifecycle';
+import { invalidatePolicyCache } from '@/lib/cache';
 import { detectPII } from '@/services/pii/detector';
 import type { PIIDetectionResult } from '@/services/pii/detector';
 
@@ -493,6 +494,12 @@ describe('Policies API - Drizzle Migration', () => {
         expect.any(Function),
         expect.objectContaining({ source: validBody.content }),
       );
+    });
+
+    it('提交后缓存失效抛错不影响建策略结果（仍 201）', async () => {
+      vi.mocked(invalidatePolicyCache).mockRejectedValueOnce(new Error('kv down'));
+      const response = await POST(makeRequest('http://localhost/api/policies', 'POST', validBody));
+      expect(response.status).toBe(201);
     });
 
     it('门禁编译得到的 profile 随版本落库（ADR 0046 §6）', async () => {
