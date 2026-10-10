@@ -5,7 +5,7 @@
  * 支持 REST 和 WebSocket 两种调用方式。
  */
 
-import { signRequest, signInternalCallerHeaders } from '@/lib/api-signing';
+import { signRequest, signInternalCallerHeaders, type InternalCallerHeaders } from '@/lib/api-signing';
 import { API_ENDPOINTS } from '@/config/api-versions';
 import type {
   GuardApprovalPage,
@@ -317,6 +317,25 @@ function assertGuardPathId(id: string): void {
 }
 
 /**
+ * api RateLimitFilter 对 /q/ 管理端点豁免限流，其余路径的已验签内部调用都按租户分桶，
+ * 因此除 /q/ 外一律签名。
+ */
+function isRateLimitBucketable(pathname: string): boolean {
+  return !pathname.startsWith('/q/');
+}
+
+let missingInternalKeyWarned = false;
+
+/** 缺内部密钥只在进程内告警一次：维持不签的旧行为，api 侧这些调用回落到按 IP 限流。 */
+function warnMissingInternalKeyOnce(): void {
+  if (missingInternalKeyWarned) return;
+  missingInternalKeyWarned = true;
+  console.warn(
+    '[PolicyAPI] ASTER_PLAN_GATE_HMAC_KEY 未配置：发往 aster-api 的调用不签内部头，api 侧按出口 IP 限流'
+  );
+}
+
+/**
  * Policy API 客户端类
  */
 export class PolicyApiClient {
@@ -384,23 +403,11 @@ export class PolicyApiClient {
         Object.assign(headers, sigHeaders);
       }
 
-      // /evaluate-source 受 InternalCallerFilter 保护：必须带 X-Internal-Caller + HMAC 签名
-      // 防止外部客户绕过审核流提交未批准源码（详见 AKA-9）
-      // 红队 P0-C：签名绑定 body + tenant + role，参数须与 headers 里实际发送的一致。
-      // What-If 批次同样受 InternalCallerFilter 保护：它按窗口重跑历史执行，
-      // 属于「内部编排」而非终端用户可直呼的能力（ADR 0034 §7.2 的权益判定在 api 侧）。
-      // Action Guard（ADR 0042 §4.2）同样走内部通道：审批人身份与业务角色须经签名才被 api 信任。
-      const needsInternalCaller =
-        pathname === API_ENDPOINTS.evaluateSource ||
-        /\/whatif-batches(\/|$)/.test(pathname) ||
-        pathname.startsWith(API_ENDPOINTS.guardPrefix);
-      if (needsInternalCaller && process.env.ASTER_PLAN_GATE_HMAC_KEY) {
-        // v3：query 取实际 fetch URL 的原始查询串，userId 与 X-User-Id 头一致（ADR 0042 §4.1）。
-        const internalHeaders = await signInternalCallerHeaders(
-          method, pathname, bodyStr, this.tenantId, this.userRole,
-          { query: new URL(url).search.slice(1), userId: this.userId, businessRoles: this.businessRoles },
-        );
-        Object.assign(headers, internalHeaders);
+      // 内部 HMAC v3：evaluate-source / What-If / guard 由 api InternalCallerFilter 强制验签；
+      // 其余调用由 api RateLimitFilter 验签后按「cloud-bff × 已签名租户」分桶（ADR 0046 C3/D9）。
+      // 签名绑定 body + tenant + role + query + userId + 业务角色，参数须与实际发送的头一致。
+      if (isRateLimitBucketable(pathname)) {
+        Object.assign(headers, await this.internalCallerHeaders(method, pathname, url, bodyStr));
       }
 
       // OTEL-1: 注入 W3C traceparent，让 aster-api 端的 OTel span 与 cloud 串起来
@@ -442,6 +449,26 @@ export class PolicyApiClient {
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+
+  /**
+   * 生成内部调用签名头；缺密钥时返回空头（请求照常不签发出）并只告警一次。
+   * v3：query 取实际 fetch URL 的原始查询串，userId 与 X-User-Id 头一致（ADR 0042 §4.1）。
+   */
+  private async internalCallerHeaders(
+    method: string,
+    pathname: string,
+    url: string,
+    bodyStr: string | undefined
+  ): Promise<Partial<InternalCallerHeaders>> {
+    if (!process.env.ASTER_PLAN_GATE_HMAC_KEY) {
+      warnMissingInternalKeyOnce();
+      return {};
+    }
+    return signInternalCallerHeaders(
+      method, pathname, bodyStr, this.tenantId, this.userRole,
+      { query: new URL(url).search.slice(1), userId: this.userId, businessRoles: this.businessRoles },
+    );
   }
 
   /**
