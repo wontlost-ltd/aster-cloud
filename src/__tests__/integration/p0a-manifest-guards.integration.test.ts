@@ -14,7 +14,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import { db, regressionReports, regressionUpgradeManifests } from '@/lib/prisma';
-import { setupTestDb, teardownTestDb } from './setup-postgres';
+import { deleteAppendOnlyRows, setupTestDb, teardownTestDb } from './setup-postgres';
 
 const POL = 'pol-mg-1';
 const PVR = 'pv-mg-1';
@@ -38,10 +38,7 @@ async function seedReport() {
 
 async function reset() {
   // append-only：清理须绕 trigger（仅测试）。
-  await db.execute(sql`SET session_replication_role = replica`);
-  await db.delete(regressionUpgradeManifests);
-  await db.delete(regressionReports);
-  await db.execute(sql`SET session_replication_role = DEFAULT`);
+  await deleteAppendOnlyRows([regressionUpgradeManifests, regressionReports]);
 }
 
 async function expectRejected(run: () => Promise<unknown>, pattern: RegExp): Promise<void> {

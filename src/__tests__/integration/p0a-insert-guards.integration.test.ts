@@ -18,7 +18,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import { db, regressionReports, regressionDriftApprovals, regressionCases } from '@/lib/prisma';
 import { createDriftApproval } from '@/services/policy/rule-regression-runner';
-import { setupTestDb, teardownTestDb } from './setup-postgres';
+import { deleteAppendOnlyRows, setupTestDb, teardownTestDb } from './setup-postgres';
 
 const POL = 'pol-ig-1';
 const PVR = 'pv-ig-1';
@@ -57,11 +57,7 @@ async function seedReport() {
 
 async function reset() {
   // append-only：清理须绕 trigger（仅测试）。
-  await db.execute(sql`SET session_replication_role = replica`);
-  await db.delete(regressionDriftApprovals);
-  await db.delete(regressionReports);
-  await db.delete(regressionCases);
-  await db.execute(sql`SET session_replication_role = DEFAULT`);
+  await deleteAppendOnlyRows([regressionDriftApprovals, regressionReports, regressionCases]);
 }
 
 /**
