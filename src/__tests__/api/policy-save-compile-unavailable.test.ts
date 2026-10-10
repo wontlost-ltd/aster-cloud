@@ -85,3 +85,56 @@ describe('保存入口：编译检查不可用（真实错误类）', () => {
     expect(mockValuesInsert).not.toHaveBeenCalled();
   });
 });
+
+// 与 aster-api PolicyCompileResourceCatchAllTest 成对：api 编译端点兜底失败时的响应原样，
+// 诊断码 COMPILE_INTERNAL_ERROR 表示「编译没做成」，不是源码错误。
+const API_INTERNAL_FAILURE = {
+  success: false,
+  diagnostics: [
+    {
+      severity: 'error',
+      message: '编译服务内部错误，未能完成编译，请稍后重试',
+      startLine: 1,
+      startColumn: 1,
+      endLine: 1,
+      endColumn: 1,
+      code: 'COMPILE_INTERNAL_ERROR',
+      featureId: null,
+      blocking: false,
+    },
+  ],
+  error: '编译失败: boom',
+};
+
+describe('保存入口：api 编译端点内部故障（COMPILE_INTERNAL_ERROR）', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('声明档案 → 503 compile_unavailable + Retry-After，不落库', async () => {
+    mockCompile.mockResolvedValue(API_INTERNAL_FAILURE);
+    const res = await save(PROFILED);
+    expect(res.status).toBe(503);
+    expect(res.headers.get('Retry-After')).not.toBeNull();
+    expect((await res.json()).error).toBe('compile_unavailable');
+    expect(mockValuesInsert).not.toHaveBeenCalled();
+  });
+
+  it('未声明档案 → 照旧放行保存', async () => {
+    mockCompile.mockResolvedValue(API_INTERNAL_FAILURE);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const res = await save(PLAIN);
+    expect(res.status).toBe(201);
+    expect(mockValuesInsert).toHaveBeenCalled();
+  });
+
+  it('普通编译错误（无码 error 诊断）→ 仍为 400 compile_error，不落库', async () => {
+    mockCompile.mockResolvedValue({
+      success: false,
+      diagnostics: [{ severity: 'error', message: 'Unexpected token', startLine: 4, startColumn: 12, endLine: 4, endColumn: 12, code: null }],
+    });
+    const res = await save(PROFILED);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('compile_error');
+    expect(mockValuesInsert).not.toHaveBeenCalled();
+  });
+});
+
