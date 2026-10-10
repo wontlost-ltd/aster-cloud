@@ -34,9 +34,10 @@ import {
   freezeFromExecutions,
   run,
   verifyStoredReportIntegrity,
+  RULE_REGRESSION_RUNNER_VERSION,
   type RunReport,
 } from '@/services/policy/rule-regression-runner';
-import { setupTestDb, teardownTestDb } from './setup-postgres';
+import { deleteAppendOnlyRows, setupTestDb, teardownTestDb } from './setup-postgres';
 
 // 真实后端捕获物（与 freeze 集成测试同源）。
 const REAL_BACKEND_REPLAY: PolicyReplayMetadata = {
@@ -68,10 +69,13 @@ const REFS: ReplayVersionRefs = {
   functionName: FN,
 };
 
+// 基线迁移里 User / Policy 的 updatedAt 是 NOT NULL 且无库级默认值（schema 的 defaultNow 未落进迁移），须显式赋值。
 async function seedAll() {
-  await db.insert(users).values({ id: OWNER, replayRetentionEnabled: true } as typeof users.$inferInsert);
+  await db.insert(users).values({
+    id: OWNER, replayRetentionEnabled: true, updatedAt: new Date(),
+  } as typeof users.$inferInsert);
   await db.insert(policies).values({
-    id: POL, userId: OWNER, name: 'greet policy', content: CNL,
+    id: POL, userId: OWNER, name: 'greet policy', content: CNL, updatedAt: new Date(),
   } as typeof policies.$inferInsert);
   await db.insert(policyVersions).values({
     id: PV_ROW, policyId: POL, version: 1, content: CNL,
@@ -86,8 +90,7 @@ async function seedAll() {
 }
 
 async function resetAll() {
-  await db.delete(regressionReports);
-  await db.delete(regressionCases);
+  await deleteAppendOnlyRows([regressionReports, regressionCases]);
   await db.delete(executions);
   await db.delete(policyVersions);
   await db.delete(policies);
@@ -116,7 +119,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1' || process.env.P0A_LIVE_BACKEND 
       const report = await run({ policyId: POL, policyVersionRowId: PV_ROW, actorUserId: OWNER, tenantId: OWNER });
       // commit 半：逐 case 带 caseHash + caseHashVersion。★Item 4 F 后 run 产 m1.4（+ unsignableReasons 轴）；
       // m1.2/m1.3/m1.4 都绑 caseHash（golden 承诺，verifyReportIntegrity 认这些）。
-      expect(report.runnerVersion).toBe('p0a-runner/m1.4');
+      expect(report.runnerVersion).toBe(RULE_REGRESSION_RUNNER_VERSION);
       expect(report.cases.length).toBeGreaterThanOrEqual(1);
 
       const goldenRows = await db

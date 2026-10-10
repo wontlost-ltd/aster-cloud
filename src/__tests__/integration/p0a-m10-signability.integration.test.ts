@@ -13,7 +13,7 @@
 // Run: LICENSE_E2E=1 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/aster_cloud pnpm test:integration
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db, policies, policyVersions, users, regressionCases, regressionReports } from '@/lib/prisma';
 import {
   run,
@@ -21,11 +21,12 @@ import {
   verifyReportIntegrity,
   deriveReportSignability,
   CASE_HASH_VERSION_M10,
+  RULE_REGRESSION_RUNNER_VERSION,
   type RunReport,
   type GoldenCaseSnapshot,
   type CaseRunDetail,
 } from '@/services/policy/rule-regression-runner';
-import { setupTestDb, teardownTestDb } from './setup-postgres';
+import { deleteAppendOnlyRows, setupTestDb, teardownTestDb } from './setup-postgres';
 
 const OWNER = 'user-p0a-m10-1';
 const POL = 'pol-p0a-m10-1';
@@ -43,9 +44,14 @@ const M10_FIELDS = {
 };
 const M10_HASH = computeCaseHash(M10_FIELDS, CASE_HASH_VERSION_M10);
 
+// 基线迁移里 User / Policy 的 updatedAt 是 NOT NULL 且无库级默认值（schema 的 defaultNow 未落进迁移），须显式赋值。
 async function seedM10Case() {
-  await db.insert(users).values({ id: OWNER, replayRetentionEnabled: true } as typeof users.$inferInsert);
-  await db.insert(policies).values({ id: POL, userId: OWNER, name: 'greet', content: 'M.' } as typeof policies.$inferInsert);
+  await db.insert(users).values({
+    id: OWNER, replayRetentionEnabled: true, updatedAt: new Date(),
+  } as typeof users.$inferInsert);
+  await db.insert(policies).values({
+    id: POL, userId: OWNER, name: 'greet', content: 'M.', updatedAt: new Date(),
+  } as typeof policies.$inferInsert);
   await db.insert(policyVersions).values({
     id: PV_ROW, policyId: POL, version: 1, content: 'M.', sourceToolchainId: 'tc-src', sourceEnvelopeSha256: 'env-m10',
   } as typeof policyVersions.$inferInsert);
@@ -61,12 +67,9 @@ async function seedM10Case() {
 }
 
 async function reset() {
-  // ★RegressionCase/Report 是 append-only（0037 trigger 禁 DELETE）——测试清理须临时关本地会话的
-  // replication role 绕过 trigger（仅测试；deterministic reportHash 会与上次 run 的残留撞 unique 约束）。
-  await db.execute(sql`SET session_replication_role = replica`);
-  await db.delete(regressionReports);
-  await db.delete(regressionCases);
-  await db.execute(sql`SET session_replication_role = DEFAULT`);
+  // ★RegressionCase/Report 是 append-only（0037 trigger 禁 DELETE），须绕过 trigger 清理
+  // （deterministic reportHash 会与上次 run 的残留撞 unique 约束）。
+  await deleteAppendOnlyRows([regressionReports, regressionCases]);
   await db.delete(policyVersions);
   await db.delete(policies);
   await db.delete(users);
@@ -134,7 +137,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('P0-A Item 2 m1.0 签字策略�
 
     // run 真实产出：m1.4 报告（Item 4 F），signability=**真二值** 'UNSIGNABLE'（含 m1.0 弱绑定 case），
     // legacy case 不算 runnable。★Codex 复审致命 3：m1.4 顶层 signability 只用真二值，不用 LEGACY 枚举。
-    expect(report.runnerVersion).toBe('p0a-runner/m1.4');
+    expect(report.runnerVersion).toBe(RULE_REGRESSION_RUNNER_VERSION);
     expect(report.signability).toBe('UNSIGNABLE');
     // ★纯 m1.0 且 status=NON_REPLAYABLE（0 runnable，不声称跨升级）→ 只 LEGACY reason，无 provenance reason。
     expect(report.unsignableReasons).toEqual(['LEGACY_CASE_HASH_VERSION']);

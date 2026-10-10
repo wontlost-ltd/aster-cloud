@@ -11,6 +11,9 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { GenericContainer, type StartedTestContainer } from 'testcontainers';
 import * as schema from '@/db/schema';
+import { sql } from 'drizzle-orm';
+import type { PgTable } from 'drizzle-orm/pg-core';
+import { db } from '@/lib/prisma';
 
 let container: StartedTestContainer | null = null;
 let sqlClient: ReturnType<typeof postgres> | null = null;
@@ -80,4 +83,17 @@ export async function teardownTestDb(): Promise<void> {
   sqlClient = null;
   await container?.stop();
   container = null;
+}
+
+/**
+ * 清空 append-only 表（0037 的 trigger 禁止 DELETE RegressionCase / RegressionReport）。
+ * SET LOCAL 与 DELETE 放在同一事务里，保证落在同一条连接上；会话级 SET 在连接池下可能与 DELETE 分到不同连接。
+ */
+export async function deleteAppendOnlyRows(tables: readonly PgTable[]): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL session_replication_role = replica`);
+    for (const table of tables) {
+      await tx.delete(table);
+    }
+  });
 }
