@@ -1,0 +1,62 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+/**
+ * 保存入口在编译检查不可用时的端到端响应（POST /api/teams/{teamId}/policies）。
+ *
+ * 其余路由测试整体 mock version-manager，只能用鸭子类型构造带 retryAfterSeconds 的错误。
+ * 此处保留真实的 version-manager、编译校验器与响应映射，只 mock 上游 HTTP 客户端，
+ * 确认真实的 PolicyCompileUnavailableError 能穿过 instanceof 判别变成 503。
+ */
+const { mockCompile, mockValuesInsert } = vi.hoisted(() => {
+  const mockReturningInsert = vi.fn().mockResolvedValue([
+    { id: 'p-new', name: 'n', description: null, teamId: 't1', createdAt: new Date() },
+  ]);
+  return {
+    mockCompile: vi.fn(),
+    mockValuesInsert: vi.fn().mockReturnValue({ returning: mockReturningInsert }),
+  };
+});
+
+vi.mock('@/lib/auth', () => ({
+  getSession: vi.fn().mockResolvedValue({ user: { id: 'user-1' } }),
+}));
+vi.mock('@/lib/prisma', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/prisma')>()),
+  db: { insert: vi.fn(() => ({ values: mockValuesInsert })) },
+}));
+vi.mock('@/lib/team-permissions', () => ({
+  checkTeamPermission: vi.fn().mockResolvedValue({ allowed: true }),
+  TeamPermission: { CREATE_POLICY: 'CREATE_POLICY', VIEW_POLICIES: 'VIEW_POLICIES' },
+}));
+vi.mock('@/services/policy/policy-api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/policy/policy-api')>()),
+  createPolicyApiClient: vi.fn(() => ({ compile: mockCompile })),
+}));
+
+const { POST } = await import('@/app/api/teams/[teamId]/policies/route');
+const { PolicyApiError } = await import('@/services/policy/policy-api');
+
+function save(content: string) {
+  const req = new Request('http://localhost/api/teams/t1/policies', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'loan', content }),
+  });
+  return POST(req, { params: Promise.resolve({ teamId: 't1' }) } as never);
+}
+
+const PLAIN = 'Module m.\n\nRule r given x as Int, produce Bool:\n  Return x at least 1.\n';
+
+describe('保存入口：编译检查不可用（真实错误类）', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('上游 429 → 真实 PolicyCompileUnavailableError → 503 compile_unavailable + Retry-After，不落库', async () => {
+    mockCompile.mockRejectedValue(new PolicyApiError('rate limited', 429, 'RATE_LIMITED', undefined, { retryAfter: 7 }));
+    const res = await save(PLAIN);
+    const body = await res.json();
+    expect(res.status).toBe(503);
+    expect(res.headers.get('Retry-After')).toBe('7');
+    expect(body.error).toBe('compile_unavailable');
+    expect(mockValuesInsert).not.toHaveBeenCalled();
+  });
+});
