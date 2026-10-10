@@ -14,8 +14,12 @@ describe('declaresProfile', () => {
     expect(declaresProfile(source)).toBe(true);
   });
 
+  it('hi 的 फ़ 用预组合字符 U+095E 书写时同样识别', () => {
+    expect(declaresProfile('मॉड्यूल a.b।\nप्रो\u095Eाइल "governed"।\n')).toBe(true);
+  });
+
   it('hi 的 फ़ 用分解写法（फ + 下加点）同样识别', () => {
-    expect(declaresProfile('मॉड्यूल a.b।\nप्रोफ़ाइल "governed"।\n')).toBe(true);
+    expect(declaresProfile('मॉड्यूल a.b।\nप्रोफ\u093Cाइल "governed"।\n')).toBe(true);
   });
 
   it('Module 行前后的空行与注释不影响判定', () => {
