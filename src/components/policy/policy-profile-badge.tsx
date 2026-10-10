@@ -10,17 +10,22 @@ interface PolicyProfileBadgeProps {
   source: string;
   /** 源码的 CNL locale（如 zh-CN），与执行时一致。 */
   sourceLocale: string;
+  /** 活跃版本冻结的 aliasSet；依赖别名的源码须带上才能编译通过。 */
+  aliasSet: Record<string, string[]> | null;
   /** 界面 locale，决定档案标题语言。 */
   locale: string;
   label: string;
 }
 
-async function fetchProfile(source: string, sourceLocale: string): Promise<string | null> {
+type CompileInput = Pick<PolicyProfileBadgeProps, 'source' | 'sourceLocale' | 'aliasSet'>;
+
+async function fetchProfile({ source, sourceLocale, aliasSet }: CompileInput): Promise<string | null> {
   try {
     const r = await fetch('/api/policies/compile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source, locale: sourceLocale }),
+      // purpose=profile 让服务端按独立限流桶计数，不占编辑器编译额度
+      body: JSON.stringify({ source, locale: sourceLocale, aliasSet, purpose: 'profile' }),
     });
     if (!r.ok) return null;
     const body = (await r.json()) as { profile?: unknown };
@@ -30,18 +35,18 @@ async function fetchProfile(source: string, sourceLocale: string): Promise<strin
   }
 }
 
-export function PolicyProfileBadge({ source, sourceLocale, locale, label }: PolicyProfileBadgeProps) {
+export function PolicyProfileBadge({ source, sourceLocale, aliasSet, locale, label }: PolicyProfileBadgeProps) {
   const [profile, setProfile] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    void fetchProfile(source, sourceLocale).then((id) => {
+    void fetchProfile({ source, sourceLocale, aliasSet }).then((id) => {
       if (active) setProfile(id);
     });
     return () => {
       active = false;
     };
-  }, [source, sourceLocale]);
+  }, [source, sourceLocale, aliasSet]);
 
   if (!profile) return null;
   return (

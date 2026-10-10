@@ -1,6 +1,6 @@
 import { getSession } from '@/lib/auth';
 import { redirect, notFound } from 'next/navigation';
-import { db, policies, executions, users } from '@/lib/prisma';
+import { db, policies, policyVersions, executions, users } from '@/lib/prisma';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { getTranslations } from 'next-intl/server';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
@@ -8,6 +8,20 @@ import { getEffectiveLimits, type PlanType } from '@/lib/plans';
 import { resolveRetention } from '@/lib/retention/execution-retention';
 import { detectCNLLocale } from '@/services/policy/cnl-executor';
 import { PolicyDetailContent } from './policy-detail-content';
+
+// 活跃版本冻结的 aliasSet（canonical JSON，与编辑页同一口径）；无别名或解析失败为 null
+async function loadActiveAliasSet(policyId: string, version: number): Promise<Record<string, string[]> | null> {
+  const activeVersion = await db.query.policyVersions.findFirst({
+    where: and(eq(policyVersions.policyId, policyId), eq(policyVersions.version, version)),
+    columns: { aliasSet: true },
+  });
+  if (!activeVersion?.aliasSet) return null;
+  try {
+    return JSON.parse(activeVersion.aliasSet) as Record<string, string[]>;
+  } catch {
+    return null;
+  }
+}
 
 // 服务端数据获取
 async function getPolicyData(userId: string, policyId: string) {
@@ -97,6 +111,8 @@ export default async function PolicyDetailPage({
   //   必然空窗、而选项还在那里——那套窗口实际只适用于留存期最长的企业级用户。
   const retentionDays = resolveRetention(planUser?.plan).executionDays;
 
+  const aliasSet = await loadActiveAliasSet(id, policy.version);
+
   const t = await getTranslations('policies');
 
   // 预渲染翻译字符串
@@ -147,6 +163,7 @@ export default async function PolicyDetailPage({
       retentionDays={retentionDays}
       policy={{ ...policy, isFrozen: freeze.isFrozen }}
       sourceLocale={detectCNLLocale(policy.content)}
+      aliasSet={aliasSet}
       translations={translations}
       locale={locale}
     />

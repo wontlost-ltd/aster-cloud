@@ -23,17 +23,49 @@ import {
  * debounce client-side, so traffic profile is similar.
  */
 
+// 详情页档案徽标（purpose=profile）走独立限流桶：浏览详情不消耗编辑器的编译额度，限额相同。
+function rateLimitKey(purpose: unknown, userId: string): string {
+  return purpose === 'profile' ? `policy-profile:${userId}` : `policy-compile:${userId}`;
+}
+
+// aliasSet 须为「kind → 短语数组」；缺省或 null 视为无别名，其余形状判为非法
+function isAliasSet(value: unknown): value is Record<string, string[]> | null | undefined {
+  if (value === undefined || value === null) return true;
+  if (typeof value !== 'object' || Array.isArray(value)) return false;
+  return Object.values(value).every((v) => Array.isArray(v) && v.every((s) => typeof s === 'string'));
+}
+
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // 限流桶取决于请求体里的 purpose，故先解析请求体；非法 JSON 不触达上游，也不计入额度。
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    return NextResponse.json(
+      { error: 'Request body must be a valid object' },
+      { status: 400 },
+    );
+  }
+
+  const { source, locale, aliasSet, purpose } = body as {
+    source?: string;
+    locale?: string;
+    aliasSet?: unknown;
+    purpose?: unknown;
+  };
+
   // Rate-limit keyed by user — IP is read for telemetry only, never
   // used as a primary key (would punish corporate NATs).
   void getClientIp(req);
-  const rateLimitKey = `policy-compile:${session.user.id}`;
-  const result = checkRateLimit(rateLimitKey, RateLimitPresets.EVALUATE_SOURCE);
+  const result = checkRateLimit(rateLimitKey(purpose, session.user.id), RateLimitPresets.EVALUATE_SOURCE);
   const headers = getRateLimitHeaders(result, RateLimitPresets.EVALUATE_SOURCE);
   if (!result.allowed) {
     return NextResponse.json(
@@ -42,26 +74,16 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
+  if (!source || typeof source !== 'string') {
     return NextResponse.json(
-      { error: 'Invalid JSON body' },
-      { status: 400, headers },
-    );
-  }
-  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
-    return NextResponse.json(
-      { error: 'Request body must be a valid object' },
+      { error: 'Source code is required' },
       { status: 400, headers },
     );
   }
 
-  const { source, locale } = body as { source?: string; locale?: string };
-  if (!source || typeof source !== 'string') {
+  if (!isAliasSet(aliasSet)) {
     return NextResponse.json(
-      { error: 'Source code is required' },
+      { error: 'aliasSet must map keyword kinds to string arrays' },
       { status: 400, headers },
     );
   }
@@ -80,6 +102,8 @@ export async function POST(req: Request) {
     const response = await client.compile({
       source,
       locale: locale || 'en-US',
+      // 与保存校验、执行同一 aliasSet：依赖别名的源码不会被误判为解析错误。
+      aliasSet: aliasSet ?? null,
     });
     // Pass diagnostics through verbatim — the client maps them to
     // Monaco markers.

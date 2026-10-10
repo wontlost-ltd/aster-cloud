@@ -82,6 +82,8 @@ interface PolicyDetailContentProps {
   policy: Policy;
   /** 源码的 CNL locale（与执行一致），供编译取档案。 */
   sourceLocale: string;
+  /** 活跃版本冻结的 aliasSet（与执行一致），供编译取档案。 */
+  aliasSet?: Record<string, string[]> | null;
   translations: Translations;
   locale: string;
 }
@@ -91,6 +93,7 @@ export function PolicyDetailContent({
   retentionDays = null,
   policy,
   sourceLocale,
+  aliasSet = null,
   translations: t,
   locale,
 }: PolicyDetailContentProps) {
@@ -187,7 +190,7 @@ export function PolicyDetailContent({
 
       {/* 治理档案徽标（ADR 0046 §6）：编译响应带 profile 才显示 */}
       <div className="mb-4 empty:hidden">
-        <PolicyProfileBadge source={policy.content} sourceLocale={sourceLocale} locale={locale} label={t.detail.profile} />
+        <PolicyProfileBadge source={policy.content} sourceLocale={sourceLocale} aliasSet={aliasSet} locale={locale} label={t.detail.profile} />
       </div>
 
       {error && (
