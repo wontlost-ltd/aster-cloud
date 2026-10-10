@@ -37,6 +37,7 @@ import {
   assertCompilable,
   PolicyCompileError,
   PolicyCompileUnavailableError,
+  DEFAULT_COMPILE_RETRY_AFTER_SECONDS,
   type CompileValidator,
 } from '@/services/policy/version-manager';
 
@@ -222,6 +223,39 @@ describe('assertCompilable — 治理档案诊断（ADR 0046 §4）', () => {
       locale: 'en-US',
     }).catch((e: unknown) => e);
     expect((caught as Error).message).toBe(new PolicyCompileError().message);
+  });
+
+  it('仅 E707（治理检查不可用）→ PolicyCompileUnavailableError，使用默认重试秒数', async () => {
+    const validator: CompileValidator = vi.fn().mockResolvedValue({
+      diagnostics: [{ severity: 'error', code: 'E707', message: 'gov check down' }],
+    });
+    const caught = await assertCompilable(validator, {
+      source: 'Module X.',
+      locale: 'en-US',
+    }).catch((e: unknown) => e);
+    expect(caught).toBeInstanceOf(PolicyCompileUnavailableError);
+    expect((caught as PolicyCompileUnavailableError).retryAfterSeconds).toBe(
+      DEFAULT_COMPILE_RETRY_AFTER_SECONDS,
+    );
+    expect((caught as Error).message).not.toContain('治理档案');
+  });
+
+  it('E707 与 E705/E706 并存 → 档案违规优先，抛 400 语义的 PolicyCompileError', async () => {
+    const validator: CompileValidator = vi.fn().mockResolvedValue({
+      diagnostics: [
+        { severity: 'error', code: 'E707' },
+        { severity: 'error', code: 'E706', message: 'rule r lacks @id' },
+      ],
+    });
+    const caught = await assertCompilable(validator, {
+      source: 'Module X.',
+      locale: 'en-US',
+    }).catch((e: unknown) => e);
+    expect(caught).toBeInstanceOf(PolicyCompileError);
+    expect(caught).not.toBeInstanceOf(PolicyCompileUnavailableError);
+    expect((caught as PolicyCompileError).retryAfterSeconds).toBeUndefined();
+    expect((caught as Error).message).toContain('治理档案');
+    expect((caught as Error).message).toContain('rule r lacks @id');
   });
 
   it('上游不可用（PolicyCompileUnavailableError）→ 上抛，不 fail-open', async () => {

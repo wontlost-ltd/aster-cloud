@@ -120,12 +120,23 @@ export interface CompileDiagnostic {
 /** 治理档案的阻断码（ADR 0046 §4）：档案未知 / 规则缺少档案要求的控制点。 */
 const PROFILE_ERROR_CODES: ReadonlySet<string> = new Set(['E705', 'E706']);
 
-/** 按阻断诊断构造保存失败异常：含档案码时用档案专用文案并附首条档案诊断消息。 */
+/** 治理检查无法运行的基础设施故障码（E707 GOV_CHECK_UNAVAILABLE），不是策略违规。 */
+const GOV_CHECK_UNAVAILABLE_CODE = 'E707';
+
+/**
+ * 按阻断诊断构造保存失败异常，优先级：档案违规（用户必须修正）> 治理检查不可用
+ * （按暂不可用拒绝，路由映射 503）> 通用解析错误。
+ */
 function compileErrorFor(errors: readonly CompileDiagnostic[]): PolicyCompileError {
   const profileError = errors.find((d) => d.code && PROFILE_ERROR_CODES.has(d.code));
-  if (!profileError) return new PolicyCompileError();
-  const detail = profileError.message ? `：${profileError.message}` : '。';
-  return new PolicyCompileError(`策略违反所声明的治理档案，无法保存${detail}`);
+  if (profileError) {
+    const detail = profileError.message ? `：${profileError.message}` : '。';
+    return new PolicyCompileError(`策略违反所声明的治理档案，无法保存${detail}`);
+  }
+  if (errors.some((d) => d.code === GOV_CHECK_UNAVAILABLE_CODE)) {
+    return new PolicyCompileUnavailableError(DEFAULT_COMPILE_RETRY_AFTER_SECONDS);
+  }
+  return new PolicyCompileError();
 }
 
 /**
