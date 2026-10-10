@@ -1,15 +1,9 @@
-// 策略详情页档案徽标（ADR 0046 §6）：编译响应带 profile 才显示，标题按 locale 取自注册表。
+// 策略详情页档案徽标（ADR 0046 §6）：档案取自保存时落库的 PolicyVersion.profile，不发编译请求。
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup } from '@testing-library/react';
 import { PolicyProfileBadge } from '@/components/policy/policy-profile-badge';
 
 const originalFetch = global.fetch;
-
-function mockCompile(body: unknown, ok = true) {
-  const fetchMock = vi.fn().mockResolvedValue({ ok, json: async () => body });
-  global.fetch = fetchMock as unknown as typeof fetch;
-  return fetchMock;
-}
 
 afterEach(() => {
   cleanup();
@@ -17,28 +11,22 @@ afterEach(() => {
 });
 
 describe('PolicyProfileBadge', () => {
-  it('编译响应带 profile → 显示按 locale 的档案标题，并以源码 locale 请求编译', async () => {
-    const fetchMock = mockCompile({ success: true, profile: 'eu-ai-act-high-risk' });
-    const aliasSet = { TIMES: ['multiplied by'] };
-    render(<PolicyProfileBadge source="Module X." sourceLocale="de-DE" aliasSet={aliasSet} locale="zh" label="治理档案" />);
-    await waitFor(() => expect(screen.getByText('欧盟人工智能法高风险系统')).toBeTruthy());
+  it('有 profile → 显示按 locale 的注册表标题，且不发任何请求', () => {
+    const fetchMock = vi.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<PolicyProfileBadge profile="eu-ai-act-high-risk" locale="zh" label="治理档案" />);
+    expect(screen.getByText('欧盟人工智能法高风险系统')).toBeTruthy();
     expect(screen.getByText('治理档案')).toBeTruthy();
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe('/api/policies/compile');
-    expect(JSON.parse(init.body)).toEqual({ source: 'Module X.', locale: 'de-DE', aliasSet, purpose: 'profile' });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('编译响应无 profile → 不渲染', async () => {
-    const fetchMock = mockCompile({ success: true });
-    const { container } = render(<PolicyProfileBadge source="Module X." sourceLocale="en-US" aliasSet={null} locale="en" label="Profile" />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+  it('profile 为 null（未声明或旧版本）→ 不渲染', () => {
+    const { container } = render(<PolicyProfileBadge profile={null} locale="en" label="Profile" />);
     expect(container.textContent).toBe('');
   });
 
-  it('编译请求失败 → 不渲染、不抛错', async () => {
-    const fetchMock = mockCompile({ error: 'x' }, false);
-    const { container } = render(<PolicyProfileBadge source="Module X." sourceLocale="en-US" aliasSet={null} locale="en" label="Profile" />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(container.textContent).toBe('');
+  it('未知档案 id → 以 id 作标题', () => {
+    render(<PolicyProfileBadge profile="custom-x" locale="en" label="Profile" />);
+    expect(screen.getByText('custom-x')).toBeTruthy();
   });
 });

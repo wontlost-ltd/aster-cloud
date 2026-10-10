@@ -263,13 +263,14 @@ export async function PUT(req: Request, { params }: RouteParams) {
     // 只有新建版本（源码变更）才编译校验；在事务外 preflight（避免事务内网络调用）。
     // 用与 createVersion 一致的 aliasSetInput（effective 别名）编译，避免语义分裂。
     // 有 error 诊断抛 PolicyCompileError → 下方 catch 转 400（检查不可用时 503）。
-    if (newVersion) {
-      await assertCompilable(makeCompileValidator(session.user.id), {
+    // 通过时得到的治理档案 id 随新版本落库。
+    const profile = newVersion
+      ? await assertCompilable(makeCompileValidator(session.user.id), {
         source: versionSource,
         locale: compileLocale,
         aliasSet: aliasSetInput,
-      });
-    }
+      })
+      : null;
 
     // allowStructural 来源：
     //   - 别名有变（aliasChanged）→ 按当前 per-user 授权权威判定（新引入的别名须现授权）。
@@ -295,6 +296,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
           aliasSet: aliasSetInput,
           aliasReserved,
           allowStructuralAliases: allowStructural,
+          profile,
           dbClient: tx,
         });
         updateData.version = createdVersion.version; // 回填，保持 Policy.version ↔ PolicyVersion.version 一致

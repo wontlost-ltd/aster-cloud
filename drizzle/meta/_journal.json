@@ -386,6 +386,13 @@
       "when": 1789800000000,
       "tag": "0053_execution_profile",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1789900000000,
+      "tag": "0054_policy_version_profile",
+      "breakpoints": true
     }
   ]
 }

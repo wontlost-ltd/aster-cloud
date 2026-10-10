@@ -639,6 +639,8 @@ export const policyVersions = pgTable(
     sourceEnvelopeSha256: text('sourceEnvelopeSha256'),
     // sourceToolchainId：envelope 计算所用工具链身份，供 tip-anchor verifier 重算验证。
     sourceToolchainId: text('sourceToolchainId'),
+    // 保存时编译得到的治理档案 id（ADR 0046 §6），NULL=未声明档案或旧版本。
+    profile: text('profile'),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
   },
   (table) => [

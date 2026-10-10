@@ -266,7 +266,8 @@ export async function POST(req: Request) {
 
     // 编译门禁在开启事务**之前** preflight——避免事务内网络调用（慢/超时会持锁
     // + 挂着已插入行等 30s）。有 error 诊断抛 PolicyCompileError → 下方 catch 转 400（检查不可用时 503）。
-    await assertCompilable(makeCompileValidator(session.user.id), {
+    // 通过时得到的治理档案 id 随首个版本落库。
+    const profile = await assertCompilable(makeCompileValidator(session.user.id), {
       source: content,
       locale: compileLocale,
       aliasSet: aliasSetInput,
@@ -288,6 +289,7 @@ export async function POST(req: Request) {
         aliasSet: aliasSetInput,
         aliasReserved,
         allowStructuralAliases: allowStructural,
+        profile,
         dbClient: tx,
       });
       console.log('PolicyVersion insert succeeded');

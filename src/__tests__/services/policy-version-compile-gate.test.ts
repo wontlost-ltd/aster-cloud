@@ -2,15 +2,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // createVersion 的 compile 门禁在 DB 访问之前执行——error 路径不触达 DB。
 // 为覆盖 pass/fail-open（会走到 DB insert），mock prisma 的 insert + query。
-const { mockInsertReturning, mockVersionsFindFirst } = vi.hoisted(() => ({
-  mockInsertReturning: vi.fn(),
-  mockVersionsFindFirst: vi.fn(),
-}));
+const { mockInsertReturning, mockInsertValues, mockVersionsFindFirst } = vi.hoisted(() => {
+  const mockInsertReturning = vi.fn();
+  return {
+    mockInsertReturning,
+    mockInsertValues: vi.fn(() => ({ returning: mockInsertReturning })),
+    mockVersionsFindFirst: vi.fn(),
+  };
+});
 
 vi.mock('@/lib/prisma', () => {
-  const insert = vi.fn(() => ({
-    values: vi.fn(() => ({ returning: mockInsertReturning })),
-  }));
+  const insert = vi.fn(() => ({ values: mockInsertValues }));
   return {
     db: {
       insert,
@@ -146,14 +148,14 @@ describe('assertCompilable — 事务外 preflight', () => {
     const v: CompileValidator = vi
       .fn()
       .mockRejectedValue(new Error('503 unavailable'));
-    await expect(assertCompilable(v, input)).resolves.toBeUndefined();
+    await expect(assertCompilable(v, input)).resolves.toBeNull();
   });
 
   it('无 error 诊断 → 放行', async () => {
     const v: CompileValidator = vi
       .fn()
       .mockResolvedValue({ diagnostics: [{ severity: 'warning' }] });
-    await expect(assertCompilable(v, input)).resolves.toBeUndefined();
+    await expect(assertCompilable(v, input)).resolves.toBeNull();
   });
 });
 
@@ -173,7 +175,7 @@ describe('assertCompilable — 治理档案诊断（ADR 0046 §4）', () => {
     });
     await expect(
       assertCompilable(validator, { source: 'Module X.', locale: 'en-US' }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBeNull();
   });
 
   it('E706 → 抛档案专用文案，并附首条档案诊断消息', async () => {
@@ -229,5 +231,53 @@ describe('assertCompilable — 治理档案诊断（ADR 0046 §4）', () => {
     await expect(
       assertCompilable(validator, { source: 'Module X.', locale: 'en-US' }),
     ).rejects.toBeInstanceOf(PolicyCompileUnavailableError);
+  });
+});
+
+describe('治理档案落库（ADR 0046 §6）：取自保存时的编译结果', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockVersionsFindFirst.mockResolvedValue(null);
+    mockInsertReturning.mockResolvedValue([
+      { id: 'v1', version: 1, sourceHash: 'h', sourceEnvelopeSha256: 'e' },
+    ]);
+  });
+
+  const input = { source: 'Module X.', locale: 'en-US' };
+
+  it('assertCompilable 返回编译响应中的 profile', async () => {
+    const v: CompileValidator = vi
+      .fn()
+      .mockResolvedValue({ diagnostics: [], profile: 'governed' });
+    await expect(assertCompilable(v, input)).resolves.toBe('governed');
+  });
+
+  it('编译响应不带 profile → 返回 null', async () => {
+    const v: CompileValidator = vi.fn().mockResolvedValue({ diagnostics: [] });
+    await expect(assertCompilable(v, input)).resolves.toBeNull();
+  });
+
+  it('createVersion 自跑门禁时把编译得到的 profile 写入版本行', async () => {
+    const validateCompilable: CompileValidator = vi
+      .fn()
+      .mockResolvedValue({ diagnostics: [], profile: 'eu-ai-act-high-risk' });
+    await createVersion({ ...baseParams, validateCompilable });
+    expect(mockInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ profile: 'eu-ai-act-high-risk' }),
+    );
+  });
+
+  it('调用方事务外已跑门禁时传入 profile，原样写入', async () => {
+    await createVersion({ ...baseParams, profile: 'governed' });
+    expect(mockInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ profile: 'governed' }),
+    );
+  });
+
+  it('未声明档案或未编译 → profile 写 null', async () => {
+    await createVersion(baseParams);
+    expect(mockInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ profile: null }),
+    );
   });
 });

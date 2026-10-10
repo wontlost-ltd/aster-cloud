@@ -6,21 +6,15 @@ import { getTranslations } from 'next-intl/server';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
 import { resolveRetention } from '@/lib/retention/execution-retention';
-import { detectCNLLocale } from '@/services/policy/cnl-executor';
 import { PolicyDetailContent } from './policy-detail-content';
 
-// 活跃版本冻结的 aliasSet（canonical JSON，与编辑页同一口径）；无别名或解析失败为 null
-async function loadActiveAliasSet(policyId: string, version: number): Promise<Record<string, string[]> | null> {
+// 活跃版本保存时落库的治理档案 id（ADR 0046 §6）；未声明档案或旧版本为 null
+async function loadActiveProfile(policyId: string, version: number): Promise<string | null> {
   const activeVersion = await db.query.policyVersions.findFirst({
     where: and(eq(policyVersions.policyId, policyId), eq(policyVersions.version, version)),
-    columns: { aliasSet: true },
+    columns: { profile: true },
   });
-  if (!activeVersion?.aliasSet) return null;
-  try {
-    return JSON.parse(activeVersion.aliasSet) as Record<string, string[]>;
-  } catch {
-    return null;
-  }
+  return activeVersion?.profile ?? null;
 }
 
 // 服务端数据获取
@@ -111,7 +105,7 @@ export default async function PolicyDetailPage({
   //   必然空窗、而选项还在那里——那套窗口实际只适用于留存期最长的企业级用户。
   const retentionDays = resolveRetention(planUser?.plan).executionDays;
 
-  const aliasSet = await loadActiveAliasSet(id, policy.version);
+  const profile = await loadActiveProfile(id, policy.version);
 
   const t = await getTranslations('policies');
 
@@ -162,8 +156,7 @@ export default async function PolicyDetailPage({
       whatIfEntitled={whatIfEntitled}
       retentionDays={retentionDays}
       policy={{ ...policy, isFrozen: freeze.isFrozen }}
-      sourceLocale={detectCNLLocale(policy.content)}
-      aliasSet={aliasSet}
+      profile={profile}
       translations={translations}
       locale={locale}
     />

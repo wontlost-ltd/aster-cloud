@@ -52,10 +52,17 @@ const USERS: UserSpec[] = [
 // 按序写入：先把 v1 的默认标记清掉，再置 v3 为默认，任一时刻至多一个默认版本。
 const LIVE_CONTENT = creditPilotSugarSource('en');
 const LIVE_VERSION = 3;
+// profile 与保存路径一致：只有声明档案的 v3 带档案 id（ADR 0046 §6）。
 const VERSIONS = [
-  { id: CREDIT_PILOT.versionIds[0], version: 1, content: creditPilotSource('en', 50000), isDefault: false },
-  { id: CREDIT_PILOT.versionIds[1], version: 2, content: creditPilotSource('en', 80000), isDefault: false },
-  { id: CREDIT_PILOT.versionIds[2], version: LIVE_VERSION, content: LIVE_CONTENT, isDefault: true },
+  { id: CREDIT_PILOT.versionIds[0], version: 1, content: creditPilotSource('en', 50000), isDefault: false, profile: null },
+  { id: CREDIT_PILOT.versionIds[1], version: 2, content: creditPilotSource('en', 80000), isDefault: false, profile: null },
+  {
+    id: CREDIT_PILOT.versionIds[2],
+    version: LIVE_VERSION,
+    content: LIVE_CONTENT,
+    isDefault: true,
+    profile: CREDIT_PILOT.profile,
+  },
 ];
 
 function sha256(text: string): string {
@@ -151,6 +158,7 @@ async function upsertVersion(db: Db, spec: (typeof VERSIONS)[number]): Promise<v
     createdBy: CREDIT_PILOT.ownerId,
     isDefault: spec.isDefault,
     sourceToolchainId: TOOLCHAIN_ID,
+    profile: spec.profile,
   };
   if (existing) {
     await db.update(schema.policyVersions).set(values).where(eq(schema.policyVersions.id, spec.id));

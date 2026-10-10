@@ -29,6 +29,12 @@ describe('makeCompileValidator — 异常分类', () => {
     expect(r.diagnostics).toEqual([{ severity: 'error' }]);
   });
 
+  it('成功 → 透传编译响应中的 profile（供保存时落库）', async () => {
+    mockCompile.mockResolvedValue({ success: true, diagnostics: [], profile: 'governed' });
+    const r = await makeCompileValidator('u1')(input);
+    expect(r.profile).toBe('governed');
+  });
+
   it('上游 4xx（如 aliasSet 超限）→ 抛 PolicyCompileError（拒绝，不 fail-open）', async () => {
     mockCompile.mockRejectedValue(new PolicyApiError('alias_set_too_large', 400));
     const v = makeCompileValidator('u1');

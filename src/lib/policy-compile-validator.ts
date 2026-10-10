@@ -44,7 +44,7 @@ export function makeCompileValidator(userId: string): CompileValidator {
         // aliasSet 类型收敛：CompileValidator 用 readonly，client 用可变；结构一致。
         aliasSet: aliasSet as Record<string, string[]> | null | undefined,
       });
-      return { diagnostics: result.diagnostics };
+      return { diagnostics: result.diagnostics, profile: result.profile };
     } catch (err) {
       if (err instanceof PolicyApiError && err.statusCode === 429) {
         throw new PolicyCompileUnavailableError(retryAfterOf(err));

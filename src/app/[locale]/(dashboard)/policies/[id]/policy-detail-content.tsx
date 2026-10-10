@@ -80,10 +80,8 @@ interface PolicyDetailContentProps {
   /** 执行日志留存天数（#396），透传给 What-If 面板裁剪窗口 */
   retentionDays?: number | null;
   policy: Policy;
-  /** 源码的 CNL locale（与执行一致），供编译取档案。 */
-  sourceLocale: string;
-  /** 活跃版本冻结的 aliasSet（与执行一致），供编译取档案。 */
-  aliasSet?: Record<string, string[]> | null;
+  /** 活跃版本落库的治理档案 id（ADR 0046 §6）。 */
+  profile?: string | null;
   translations: Translations;
   locale: string;
 }
@@ -92,8 +90,7 @@ export function PolicyDetailContent({
   whatIfEntitled = false,
   retentionDays = null,
   policy,
-  sourceLocale,
-  aliasSet = null,
+  profile = null,
   translations: t,
   locale,
 }: PolicyDetailContentProps) {
@@ -188,9 +185,9 @@ export function PolicyDetailContent({
         className="mb-6"
       />
 
-      {/* 治理档案徽标（ADR 0046 §6）：编译响应带 profile 才显示 */}
+      {/* 治理档案徽标（ADR 0046 §6）：活跃版本声明了档案才显示 */}
       <div className="mb-4 empty:hidden">
-        <PolicyProfileBadge source={policy.content} sourceLocale={sourceLocale} aliasSet={aliasSet} locale={locale} label={t.detail.profile} />
+        <PolicyProfileBadge profile={profile} locale={locale} label={t.detail.profile} />
       </div>
 
       {error && (

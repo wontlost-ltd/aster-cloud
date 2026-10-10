@@ -251,6 +251,7 @@ function mockPolicyVersion(overrides: Record<string, unknown> = {}) {
     aliasSet: null,
     sourceEnvelopeSha256: null,
     sourceToolchainId: null,
+    profile: null,
     createdAt: new Date(),
     ...overrides,
   };
@@ -494,6 +495,15 @@ describe('Policies API - Drizzle Migration', () => {
       );
     });
 
+    it('门禁编译得到的 profile 随版本落库（ADR 0046 §6）', async () => {
+      mockAssertCompilable.mockResolvedValueOnce('eu-ai-act-high-risk');
+      const response = await POST(makeRequest('http://localhost/api/policies', 'POST', validBody));
+      expect(response.status).toBe(201);
+      expect(mockCreateVersion).toHaveBeenCalledWith(
+        expect.objectContaining({ profile: 'eu-ai-act-high-risk' }),
+      );
+    });
+
     it('should pass aliasSet into createVersion with server-built reserved sets', async () => {
       const aliasSet = { TIMES: ['multiplied by'] };
       const response = await POST(makeRequest('http://localhost/api/policies', 'POST', {
@@ -712,6 +722,18 @@ describe('Policies API - Drizzle Migration', () => {
       );
 
       expect(response.status).toBe(200);
+    });
+
+    it('新版本带上门禁编译得到的 profile（ADR 0046 §6）', async () => {
+      mockAssertCompilable.mockResolvedValueOnce('governed');
+      const response = await PUT(
+        makeRequest('http://localhost/api/policies/p1', 'PUT', updateBody),
+        mockParams,
+      );
+      expect(response.status).toBe(200);
+      expect(mockCreateVersion).toHaveBeenCalledWith(
+        expect.objectContaining({ profile: 'governed' }),
+      );
     });
 
     it('审计 High：仅改 aliasSet（content 不变）也创建新版本走 createVersion', async () => {

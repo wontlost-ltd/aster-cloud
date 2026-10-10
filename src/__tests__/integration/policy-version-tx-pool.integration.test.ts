@@ -13,9 +13,9 @@ vi.mock('server-only', () => ({}));
 vi.mock('@/lib/auth', () => ({
   getSession: vi.fn(async () => ({ user: { id: 'user-tx-pool-1' } })),
 }));
-// 编译门禁走网络，与本用例无关：恒判可编译。
+// 编译门禁走网络，与本用例无关：恒判可编译，并带回档案 id 以验证落库。
 vi.mock('@/lib/policy-compile-validator', () => ({
-  makeCompileValidator: () => async () => ({ diagnostics: [] }),
+  makeCompileValidator: () => async () => ({ diagnostics: [], profile: 'governed' }),
 }));
 
 import { createDb } from '@/db';
@@ -108,6 +108,11 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('策略保存事务（连接池
 
     const events = await pool.select().from(securityEvents).where(eq(securityEvents.policyId, policyId));
     expect(events.map((e) => e.eventType)).toEqual(['VERSION_CREATED']);
+    const [version] = await pool
+      .select({ profile: policyVersions.profile })
+      .from(policyVersions)
+      .where(eq(policyVersions.policyId, policyId));
+    expect(version.profile).toBe('governed');
   });
 
   it('PUT 改源码与别名：别名授权读取与安全事件不占第二条连接', async () => {

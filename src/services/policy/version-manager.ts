@@ -135,10 +135,11 @@ export type CompileValidator = (input: {
   source: string;
   locale: string;
   aliasSet?: Readonly<Record<string, readonly string[]>> | null;
-}) => Promise<{ diagnostics?: CompileDiagnostic[] }>;
+}) => Promise<{ diagnostics?: CompileDiagnostic[]; profile?: string }>;
 
 /**
- * 跑源码可编译性门禁：编译含 error 诊断则抛 PolicyCompileError。
+ * 跑源码可编译性门禁：编译含 error 诊断则抛 PolicyCompileError；通过时返回模块声明的
+ * 治理档案 id（未声明或检查放行时为 null），供建版本时落库。
  * 校验器抛 PolicyCompileError（如上游 4xx 用户输入错误）或其子类
  * PolicyCompileUnavailableError（上游限流）→ 上抛拒绝落库；
  * 其它异常（5xx/网络/超时）→ fail-open 放行（记录，不阻断保存）。
@@ -153,7 +154,7 @@ export async function assertCompilable(
     locale: string;
     aliasSet?: Readonly<Record<string, readonly string[]>> | null;
   },
-): Promise<void> {
+): Promise<string | null> {
   try {
     const result = await validator(input);
     const errors = (result.diagnostics ?? []).filter(
@@ -162,12 +163,14 @@ export async function assertCompilable(
     if (errors.length > 0) {
       throw compileErrorFor(errors);
     }
+    return result.profile || null;
   } catch (err) {
     if (err instanceof PolicyCompileError) throw err;
     console.warn(
       '[assertCompilable] compile precheck unavailable, allowing save',
       err instanceof Error ? err.message : err,
     );
+    return null;
   }
 }
 
@@ -195,6 +198,11 @@ export interface CreateVersionParams {
    * （编译服务不可达）→ 记录并放行。缺省=不校验（向后兼容）。
    */
   validateCompilable?: CompileValidator;
+  /**
+   * 调用方在事务外跑门禁得到的治理档案 id（ADR 0046 §6）。提供 validateCompilable 时
+   * 以其编译结果为准。缺省=null。
+   */
+  profile?: string | null;
   /**
    * 事务客户端；用于把 policy insert + version insert 包进同一事务。
    * 提供时版本行与安全事件都经它写入，缓存失效由调用方在提交后执行（事务内失效会让并发读
@@ -269,13 +277,13 @@ export async function createVersion(
   // 有解析错误的源码不落库（覆盖所有 createVersion 入口）。POST/PUT 已在事务外
   // preflight（见 assertCompilable），故不再传 validateCompilable 进来避免事务内
   // 网络调用+重复编译；v1/versions 无事务，直接靠此兜底。
-  if (params.validateCompilable) {
-    await assertCompilable(params.validateCompilable, {
+  const profile = params.validateCompilable
+    ? await assertCompilable(params.validateCompilable, {
       source,
       locale,
       aliasSet: params.aliasSet,
-    });
-  }
+    })
+    : (params.profile ?? null);
 
   const toolchainId = params.toolchainId ?? cloudToolchainId();
   const sourceEnvelopeSha256 = computeSourceEnvelope(source, aliasSetJson, locale, toolchainId);
@@ -309,6 +317,7 @@ export async function createVersion(
     aliasSet: aliasSetJson,
     sourceEnvelopeSha256,
     sourceToolchainId: toolchainId,
+    profile,
   }).returning();
 
   const hasStructuralAliases = aliasSetJson
