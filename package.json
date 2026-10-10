@@ -133,7 +133,7 @@
     "typescript": "^6.0.3",
     "vite": "^8.2.1",
     "vitest": "^4.1.11",
-    "wrangler": "^4.130.0",
+    "wrangler": "^4.142.0",
     "yaml": "^2.9.0"
   },
   "pnpm": {
