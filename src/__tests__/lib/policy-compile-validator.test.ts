@@ -14,6 +14,7 @@ vi.mock('@/services/policy/policy-api', async (importOriginal) => {
 import { makeCompileValidator } from '@/lib/policy-compile-validator';
 import { PolicyApiError } from '@/services/policy/policy-api';
 import {
+  assertCompilable,
   PolicyCompileError,
   PolicyCompileUnavailableError,
 } from '@/services/policy/version-manager';
@@ -101,5 +102,41 @@ describe('makeCompileValidator — 异常分类', () => {
     expect(mockCompile).toHaveBeenCalledWith(
       expect.objectContaining({ aliasSet: { TIMES: ['multiplied by'] } }),
     );
+  });
+});
+
+// success:false 却没有 error 诊断 = 上游没把编译做成（兜底异常），不是「源码没有错误」。
+describe('makeCompileValidator — success:false 且无 error 诊断视为编译不可用', () => {
+  beforeEach(() => vi.clearAllMocks());
+  const profiled = { source: 'Module a.\nProfile "governed".\n', locale: 'en-US' };
+  const plain = { source: 'Module a.\n', locale: 'en-US' };
+
+  it.each([
+    ['空诊断', { success: false, diagnostics: [] }],
+    ['缺 diagnostics 字段', { success: false }],
+    ['只有 warning', { success: false, diagnostics: [{ severity: 'warning', code: 'W600' }] }],
+  ])('%s → 抛非 PolicyCompileError 的普通错误', async (_name, response) => {
+    mockCompile.mockResolvedValue(response);
+    const caught = await makeCompileValidator('u1')(plain).catch((e: unknown) => e);
+    expect(caught).toBeInstanceOf(Error);
+    expect(caught).not.toBeInstanceOf(PolicyCompileError);
+  });
+
+  it('success:false 带 error 诊断 → 照常返回诊断（由门禁按编译错误拒绝）', async () => {
+    const diagnostics = [{ severity: 'error', message: 'bad' }];
+    mockCompile.mockResolvedValue({ success: false, diagnostics });
+    await expect(makeCompileValidator('u1')(plain)).resolves.toEqual({ diagnostics, profile: undefined });
+  });
+
+  it('声明了档案的源码 → assertCompilable 按不可用拒绝（503 compile_unavailable）', async () => {
+    mockCompile.mockResolvedValue({ success: false, diagnostics: [] });
+    const caught = await assertCompilable(makeCompileValidator('u1'), profiled).catch((e: unknown) => e);
+    expect(caught).toBeInstanceOf(PolicyCompileUnavailableError);
+  });
+
+  it('未声明档案的源码 → 维持现状放行', async () => {
+    mockCompile.mockResolvedValue({ success: false, diagnostics: [] });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await expect(assertCompilable(makeCompileValidator('u1'), plain)).resolves.toBeNull();
   });
 });

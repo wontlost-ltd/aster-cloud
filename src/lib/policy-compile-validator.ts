@@ -1,4 +1,8 @@
-import { createPolicyApiClient, PolicyApiError } from '@/services/policy/policy-api';
+import {
+  createPolicyApiClient,
+  PolicyApiError,
+  type PolicyCompileResponse,
+} from '@/services/policy/policy-api';
 import {
   DEFAULT_COMPILE_RETRY_AFTER_SECONDS,
   PolicyCompileError,
@@ -12,6 +16,10 @@ function retryAfterOf(err: PolicyApiError): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
     ? Math.ceil(value)
     : DEFAULT_COMPILE_RETRY_AFTER_SECONDS;
+}
+
+function hasErrorDiagnostic(diagnostics: PolicyCompileResponse['diagnostics']): boolean {
+  return (diagnostics ?? []).some((d) => d.severity === 'error');
 }
 
 /**
@@ -29,6 +37,8 @@ function retryAfterOf(err: PolicyApiError): number {
  *   路由返回 503 + Retry-After。
  * - 上游 5xx / 超时 / 网络不可达 → 原样上抛，由 assertCompilable 决定：声明了治理档案的
  *   源码按不可用拒绝（503），未声明的 fail-open 放行（保存可用性不被编译服务可用性绑架）。
+ * - 上游返回 success:false 却没有 error 诊断 = 编译没做成而非源码无错 → 抛普通错误，
+ *   同样交给 assertCompilable 按是否声明档案决定。
  *
  * createVersion 只在返回的 diagnostics 含 severity==='error' 时拒绝落库。
  */
@@ -42,6 +52,9 @@ export function makeCompileValidator(userId: string): CompileValidator {
         // aliasSet 类型收敛：CompileValidator 用 readonly，client 用可变；结构一致。
         aliasSet: aliasSet as Record<string, string[]> | null | undefined,
       });
+      if (result.success === false && !hasErrorDiagnostic(result.diagnostics)) {
+        throw new Error(`compile unavailable: ${result.error ?? 'upstream failed without diagnostics'}`);
+      }
       return { diagnostics: result.diagnostics, profile: result.profile };
     } catch (err) {
       if (err instanceof PolicyApiError && err.statusCode === 429) {
