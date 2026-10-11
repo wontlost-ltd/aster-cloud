@@ -724,8 +724,10 @@ jobs:
   #   要求 PR 作者是 image-pin App、分支为 image-pin/*；人工 PR 改 lsp pin 必红。
   #   此前没有本 job，lsp 的 pin 在 #533 之后就**没有任何合法更新路径**。
   # 与 image-pin-pr（migrate）共用 open-image-pin-pr.sh，仅以 env 指向 lsp 的 lock/kust。
-  # 不等待 ArgoCD：lsp 无迁移类副作用，selfHeal 会按 digest 自动 sync；
-  #   发布结果由 ArgoCD 应用状态与线上握手确认。
+  # 不等待 ArgoCD：lsp 无迁移类副作用，pin PR 合并后由 appset 的 syncPolicy.automated 自动 sync。
+  # ⚠️ 本 job 之后**没有**任何上线后校验。ArgoCD Healthy 与容器 /health 都不会拉起 LSP 子进程，
+  #   2026-10 的「每个会话 0.7s 断开」事故在二者眼里都是健康的。上线后须人工做一次真实
+  #   WebSocket 握手确认（或另行补 post-deploy 探针）。
   image-pin-pr-lsp:
     needs: build-lsp-image
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.IMAGE_PIN_APP_ID != '' }}

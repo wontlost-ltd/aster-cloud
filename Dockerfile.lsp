@@ -1,7 +1,8 @@
 # Aster LSP WebSocket Server - Optimized minimal image
 # Only includes ws and @aster-cloud/aster-lang-ts dependencies
 
-FROM node:22-alpine AS base
+# 与 package.json engines（>=24）及 aster-lang-ts 的 engines 对齐；CI 的 check:lsp-runtime 也跑在 Node 24。
+FROM node:24-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
@@ -11,6 +12,8 @@ WORKDIR /app
 COPY lsp-package.json ./package.json
 
 # Install pnpm and minimal dependencies
+# pnpm 版本由 lsp-package.json 的 packageManager 固定（与根 package.json 一致），
+# 否则 corepack 会取当时最新的 pnpm，镜像行为随上游发版漂移。
 RUN corepack enable pnpm && pnpm install --prod --ignore-scripts
 
 # Production image - minimal footprint
