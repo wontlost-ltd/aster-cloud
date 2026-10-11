@@ -615,10 +615,9 @@ jobs:
   #   同样 pin cosign v2.5.2（见该 job 注释里记录的 v3 new-bundle 事故）、
   #   同样先签后 fail-closed verify。Dockerfile.lsp 本就在本仓，构建上下文一致。
   #
-  # ⚠️ 边界（如实标注）：本 job 只产出**已签名的不可变 digest**。lsp 目前
-  #   **不在 ArgoCD 管理下**（apps/aster-lang/lsp 无 kustomization.yaml，而 appset 按
-  #   `apps/aster-lang/*/kustomization.yaml` glob 发现应用），故这里**不开 image-pin PR**——
-  #   开了也没有部署载体可 pin。让 ArgoCD 接管 lsp 是独立的生产 cutover，单独立项。
+  # 发布链：本 job 产出已签名的不可变 digest → 下方 image-pin-pr-lsp 由 image-pin bot
+  #   向 k3s 开 PR 双写 apps/aster-lang/lsp/{image-lock,kustomization}.yaml → ArgoCD 发布。
+  #   （k3s#512 已让 ArgoCD 接管 lsp；k3s#533 起 lsp pin 走 strict lane，只接受 bot PR。）
   build-lsp-image:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [build]
@@ -717,9 +716,67 @@ jobs:
             echo "- digest: \`${DIGEST}\`"
             echo "- tag: \`docker.io/wontlost/aster-lsp:${GITHUB_SHA}\`（不可变）"
             echo ""
-            echo "⚠️ lsp 尚未在 ArgoCD 管理下（apps/aster-lang/lsp 无 kustomization.yaml），"
-            echo "故本次**不开 image-pin PR**。接管 + pin 见 aster-deploy#9。"
+            echo "k3s pin 由 image-pin-pr-lsp job 开 PR 更新。"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── aster-lsp：image-pin bot 向 k3s 开 PR 更新 lsp digest pin ──────────────
+  # ★为什么必须是 bot：k3s verify-image-pin 对 lsp-pin lane 跑 check-pr-shape，
+  #   要求 PR 作者是 image-pin App、分支为 image-pin/*；人工 PR 改 lsp pin 必红。
+  #   此前没有本 job，lsp 的 pin 在 #533 之后就**没有任何合法更新路径**。
+  # 与 image-pin-pr（migrate）共用 open-image-pin-pr.sh，仅以 env 指向 lsp 的 lock/kust。
+  # 不等待 ArgoCD：lsp 无迁移类副作用，selfHeal 会按 digest 自动 sync；
+  #   发布结果由 ArgoCD 应用状态与线上握手确认。
+  image-pin-pr-lsp:
+    needs: build-lsp-image
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.IMAGE_PIN_APP_ID != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: image-pin-pr-aster-lsp     # per-image：不与 migrate 的 job 互相取消
+      cancel-in-progress: true
+    steps:
+      - name: Final stale gate (再确认 github.sha 仍是 origin/main tip)
+        id: stalegate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # k3s freshness 要求 sourceSha == aster-cloud main HEAD；过时 run 开的 PR 必红，直接跳过。
+          tip="$(gh api "repos/${{ github.repository }}/commits/main" --jq .sha)"
+          echo "this run: ${GITHUB_SHA}  origin/main tip: ${tip}"
+          if [ "${GITHUB_SHA}" != "${tip}" ]; then
+            echo "::notice::main 已前进，本 run 过时 → 跳过 lsp image-pin PR（下次 push 重建固定分支）"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Mint k3s-scoped token (跨 org：App 装在 wontlost-ltd/k3s)
+        if: ${{ steps.stalegate.outputs.skip != 'true' }}
+        id: k3stoken
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          client-id: ${{ vars.IMAGE_PIN_APP_CLIENT_ID }}
+          private-key: ${{ secrets.IMAGE_PIN_APP_PRIVATE_KEY }}
+          owner: wontlost-ltd
+          repositories: k3s
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Checkout (for shared script)
+        if: ${{ steps.stalegate.outputs.skip != 'true' }}
+        uses: actions/checkout@v7
+
+      - name: Open/update lsp image-pin PR to k3s
+        if: ${{ steps.stalegate.outputs.skip != 'true' }}
+        env:
+          GH_TOKEN: ${{ steps.k3stoken.outputs.token }}
+          DIGEST: ${{ needs.build-lsp-image.outputs.digest }}
+          SOURCE_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          LOCK_PATH: apps/aster-lang/lsp/image-lock.yaml
+          KUSTOMIZATION_PATH: apps/aster-lang/lsp/kustomization.yaml
+        run: |
+          bash scripts/ci/open-image-pin-pr.sh \
+            docker.io/wontlost/aster-lsp image-pin/aster-lsp
 
   # ── 统一 digest pin 设计 A′ Phase 2：CI 开 PR 到 k3s 改 migrate image-lock ──────
   # 见 wontlost-ltd/k3s#4、k3s .github/image-pin/。独立 job：fail-loud 但**不阻塞**上面的
