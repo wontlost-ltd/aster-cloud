@@ -113,6 +113,10 @@ jobs:
       # app, else the deployed language server runs a stale compiler.
       - name: LSP compiler pin matches app
         run: pnpm run check:lsp-pin
+      # ★版本对得上不代表跑得起来：aster-lang-ts 的 vscode-languageserver 是可选 peer，
+      #   pnpm 不装。这里按 Dockerfile.lsp 同一方式安装并完成一次真实 initialize 握手。
+      - name: LSP server starts from lsp-package.json
+        run: pnpm run check:lsp-runtime
       # #98: .env.production is bundled to the client — only NEXT_PUBLIC_* allowed.
       - name: .env.production has only NEXT_PUBLIC_* keys
         run: pnpm run check:env-production
