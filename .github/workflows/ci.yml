@@ -115,7 +115,9 @@ jobs:
         run: pnpm run check:lsp-pin
       # image-pin PR 合并门控：只在 k3s verify-image-pin 通过后合并（issue #506）。离线测试，无网络。
       - name: image-pin merge gate tests
-        run: bash scripts/ci/open-image-pin-pr-merge.test.sh
+        run: |
+          bash scripts/ci/open-image-pin-pr-merge.test.sh
+          bash scripts/ci/open-image-pin-pr-flow.test.sh
       # ★版本对得上不代表跑得起来：aster-lang-ts 的 vscode-languageserver 是可选 peer，
       #   pnpm 不装。这里按 Dockerfile.lsp 同一方式安装并完成一次真实 initialize 握手。
       - name: LSP server starts from lsp-package.json
@@ -599,7 +601,7 @@ jobs:
 
       # ── Phase 3 P3-2b：已移除 `Promote :latest` + `Trigger ArgoCD sync` 旧发布语义 ──
       # P3-0 后 migrate 也走 GitOps by-digest：image-pin-pr job 开 PR 改 k3s migrate digest →
-      # verify-image-pin → auto-merge → ArgoCD sync → PostSync 迁移 hook 按新 digest 跑。
+      # verify-image-pin 通过 → 脚本合并 pin PR → ArgoCD sync → PostSync 迁移 hook 按新 digest 跑。
       # 旧的 promote :latest（浮动 tag）+ 构建后立即 trigger-sync（此时 git digest 未更新,sync
       # 的仍是旧 digest）在 by-digest 下已非有效发布通道,故删除。
       # #187 的 fail-loud（CI 必须知道迁移是否真应用）由下方 image-pin-pr job 的
@@ -873,7 +875,7 @@ jobs:
           [ -n "$ARGOCD_AUTH_TOKEN" ] || { echo "::error title=migration not verified::ARGOCD_AUTH_TOKEN 未配置（Production env）→ 无法确认迁移已应用。详见 #187。"; exit 1; }
           [ -n "$PR" ] || { echo "::error::wait_required=true 但 pr_number 空（脚本输出异常）"; exit 1; }
 
-          # 1) 等**本次** PR 合并（按明确 pr_number,非历史反推）。auto-merge 依赖 verify-image-pin 过。
+          # 1) 等**本次** PR 合并（按明确 pr_number,非历史反推）。脚本在 verify-image-pin 通过后才合并。
           for i in $(seq 1 80); do   # ~20min
             state="$(GH_TOKEN="$K3S_TOKEN" gh pr view "$PR" -R wontlost-ltd/k3s --json state --jq .state)"
             case "$state" in
