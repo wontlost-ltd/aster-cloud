@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Loader2,
+  Sparkles,
   WifiOff,
 } from 'lucide-react';
 import { cn } from '@/components/ui';
@@ -40,6 +41,15 @@ export interface StatusBarProps {
   compileTransportError?: string;
   /** Click the compile chip → open decision panel. */
   onCompileChipClick?: () => void;
+  /**
+   * AI 行内补全开关（与设置页共用同一份本地偏好）。不传则不显示。
+   * hydrating 期间禁用：此时 enabled 还是默认值，点下去会覆盖用户真实设置。
+   */
+  aiCompletion?: {
+    enabled: boolean;
+    hydrating: boolean;
+    onToggle: () => void;
+  };
 }
 
 export function StatusBar({
@@ -51,6 +61,7 @@ export function StatusBar({
   compileDiagnostics,
   compileTransportError,
   onCompileChipClick,
+  aiCompletion,
 }: StatusBarProps) {
   const t = useTranslations('policies.form');
   const lineCount = content.length === 0 ? 0 : content.split('\n').length;
@@ -100,6 +111,29 @@ export function StatusBar({
 
       {/* Right-aligned shortcut hints */}
       <span className="ml-auto flex items-center gap-3">
+        {aiCompletion && (
+          <>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={aiCompletion.enabled}
+              aria-label={t('statusAiCompletionLabel')}
+              title={t('statusAiCompletionHint')}
+              disabled={aiCompletion.hydrating}
+              onClick={aiCompletion.onToggle}
+              data-testid="status-ai-completion-toggle"
+              className={cn(
+                'inline-flex items-center gap-1 rounded px-1 -mx-1 hover:bg-bg-muted',
+                'focus-visible:outline-none focus-visible:shadow-ring disabled:opacity-50',
+                aiCompletion.enabled ? 'text-fg' : 'text-fg-subtle',
+              )}
+            >
+              <Sparkles className="size-3" aria-hidden />
+              {aiCompletion.enabled ? t('statusAiCompletionOn') : t('statusAiCompletionOff')}
+            </button>
+            <Separator />
+          </>
+        )}
         <ShortcutHint label={t('statusSaveHint')} />
         <Separator />
         <ShortcutHint label={t('statusPaletteHint')} />

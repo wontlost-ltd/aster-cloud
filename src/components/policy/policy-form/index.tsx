@@ -72,6 +72,7 @@ import { normalizeLocale } from '@/data/policy-examples';
 
 import { SidePanel, type SidePanelTab } from './side-panel';
 import { StatusBar } from './status-bar';
+import { useAiInlineCompletion } from '@/lib/preferences/ai-inline-completion';
 import { usePolicyDraft, type PolicyDraftFields } from './use-policy-draft';
 import { useUnsavedWarning } from './use-unsaved-warning';
 import { usePolicyShortcuts } from './use-policy-shortcuts';
@@ -202,6 +203,7 @@ export function PolicyForm({
   // UI state
   // ---------------------------------------------------------------
   const [sidePanelOpen, setSidePanelOpen] = useState(mode === 'create');
+  const aiInlineCompletion = useAiInlineCompletion();
   const [requestedTab, setRequestedTab] = useState<SidePanelTab | undefined>(
     mode === 'create' ? 'settings' : undefined,
   );
@@ -677,7 +679,9 @@ export function PolicyForm({
                   setEditorReady(true);
                 }}
                 onCompileChange={setCompile}
-                enableAICompletion
+                // 用户在设置页或状态栏关闭后不再发出任何 AI 补全请求；
+                // 读取本地偏好完成前按关闭处理，避免首帧按默认值误发请求。
+                enableAICompletion={aiInlineCompletion.value && !aiInlineCompletion.hydrating}
                 onToggleAIPanel={() => openSidePanel('ai')}
               />
             )}
@@ -741,6 +745,11 @@ export function PolicyForm({
           compileDiagnostics={compile.diagnostics}
           compileTransportError={compile.transportError}
           onCompileChipClick={() => openSidePanel('problems')}
+          aiCompletion={{
+            enabled: aiInlineCompletion.value,
+            hydrating: aiInlineCompletion.hydrating,
+            onToggle: () => aiInlineCompletion.setValue(!aiInlineCompletion.value),
+          }}
         />
 
         {/* ----- Editor command palette ----- */}

@@ -429,6 +429,22 @@ export function MonacoPolicyEditor({
   const moduleCompletionProviderDisposableRef = useRef<{ dispose: () => void } | null>(null);
   const moduleHoverProviderDisposableRef = useRef<{ dispose: () => void } | null>(null);
   const inlineCompletionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 被新一次输入取消的那次补全请求的 resolve：取消时必须以空结果 resolve，
+  // 否则每次连续按键都会留下一个永不结束的 Promise。
+  const pendingInlineResolveRef = useRef<((r: { items: [] }) => void) | null>(null);
+  // AI 行内补全开关的当前值。provider 在挂载时注册一次，运行期切换开关不会重新注册，
+  // 故在每次请求时读这个 ref，而不是闭包里挂载那一刻的 prop。
+  const aiCompletionEnabledRef = useRef(enableAICompletion);
+  useEffect(() => {
+    aiCompletionEnabledRef.current = enableAICompletion;
+    if (!enableAICompletion) {
+      // 关闭时立刻取消已排队但尚未发出的请求
+      if (inlineCompletionTimerRef.current) clearTimeout(inlineCompletionTimerRef.current);
+      inlineCompletionTimerRef.current = null;
+      pendingInlineResolveRef.current?.({ items: [] });
+      pendingInlineResolveRef.current = null;
+    }
+  }, [enableAICompletion]);
   const { resolvedTheme } = useTheme();
   const t = useTranslations('diagnostics');
   const tEntry = useTranslations('policies.ruleSelector');
@@ -759,17 +775,31 @@ export function MonacoPolicyEditor({
         });
       }
 
-      // 注册 AI inline 补全 provider
-      if (enableAICompletion) {
+      // 注册 AI inline 补全 provider（只读编辑器不需要）。
+      // ★始终注册、按 aiCompletionEnabledRef 在请求时判定：开关可在编辑中途切换，
+      //   而 onMount 只执行一次，若按挂载时的 prop 决定是否注册，中途打开将不生效。
+      if (!readOnly) {
         inlineProviderDisposableRef.current?.dispose();
         inlineProviderDisposableRef.current = monaco.languages.registerInlineCompletionsProvider(ASTER_LANG_ID, {
           provideInlineCompletions: async (model: editor.ITextModel, position: import('monaco-editor').Position, _context: import('monaco-editor').languages.InlineCompletionContext, token: import('monaco-editor').CancellationToken) => {
-            // 取消前一个 debounce
+            // 取消前一个 debounce，并结束被取消的那次请求
             if (inlineCompletionTimerRef.current) clearTimeout(inlineCompletionTimerRef.current);
+            pendingInlineResolveRef.current?.({ items: [] });
+            pendingInlineResolveRef.current = null;
+
+            // 开关关闭：不发请求、不消耗 AI 额度
+            if (!aiCompletionEnabledRef.current) return { items: [] };
 
             // 仅在输入暂停 500ms 后触发
             return new Promise((resolve) => {
+              pendingInlineResolveRef.current = resolve;
               inlineCompletionTimerRef.current = setTimeout(async () => {
+                // 定时器已触发：这次请求不再可被"取消即 resolve"，交给下方逻辑自行 resolve
+                if (pendingInlineResolveRef.current === resolve) pendingInlineResolveRef.current = null;
+                if (!aiCompletionEnabledRef.current) {
+                  resolve({ items: [] });
+                  return;
+                }
                 if (token.isCancellationRequested) {
                   resolve({ items: [] });
                   return;
@@ -969,7 +999,7 @@ export function MonacoPolicyEditor({
     // tenantId 在 callback body 内已不再被引用（R23 之后 server-side
     // proxy 从 session 取 tenantId，不再依赖 caller-supplied X-Tenant-Id），
     // 故从 deps 移除，避免不必要的 callback 重建。
-    [lexicon, isDark, vocabulary, onEditorReady, enableAICompletion, locale, onToggleAIPanel, onExplainSelection]
+    [lexicon, isDark, vocabulary, onEditorReady, readOnly, locale, onToggleAIPanel, onExplainSelection]
   );
 
   // 主题切换时更新
@@ -991,6 +1021,8 @@ export function MonacoPolicyEditor({
   useEffect(() => {
     return () => {
       if (inlineCompletionTimerRef.current) clearTimeout(inlineCompletionTimerRef.current);
+      pendingInlineResolveRef.current?.({ items: [] });
+      pendingInlineResolveRef.current = null;
       inlineProviderDisposableRef.current?.dispose();
       moduleCompletionProviderDisposableRef.current?.dispose();
       moduleHoverProviderDisposableRef.current?.dispose();
