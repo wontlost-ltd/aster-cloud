@@ -15,4 +15,6 @@ process.stdin.on('data', () => {
   process.stdout.write(zh.subarray(0, cut));
   setTimeout(() => process.stdout.write(Buffer.concat([zh.subarray(cut), env])), 20);
 });
-setInterval(() => {}, 1000);
+const keepAlive = setInterval(() => {}, 1000);
+// 与真实语言服务器一致：stdin 关闭（网关退出）即退出，避免成为孤儿进程
+process.stdin.on('end', () => { clearInterval(keepAlive); process.exit(0); });
