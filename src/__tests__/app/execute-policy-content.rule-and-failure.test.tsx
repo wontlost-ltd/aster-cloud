@@ -255,40 +255,58 @@ describe('ExecutePolicyContent — 加载后立即切换 Rule 不被覆盖', () 
 });
 
 describe('ExecutePolicyContent — ENTRY_AMBIGUOUS 候选按钮只选中 Rule，不用旧输入执行', () => {
-  it('★点击候选：不再发执行请求，选中该 Rule，示例换成该 Rule 的参数，提示收起', async () => {
-    executeResponse = {
-      success: false,
-      error: 'ambiguous entry',
-      diagnostics: [{ code: 'ENTRY_AMBIGUOUS', message: 'pick one', candidates: ['power', 'calculate'] }],
-    };
+  const ambiguous = {
+    success: false,
+    error: 'ambiguous entry',
+    diagnostics: [{ code: 'ENTRY_AMBIGUOUS', message: '未指定入口函数，候选函数不唯一', candidates: ['power', 'calculate'] }],
+  };
+  const executeCalls = () =>
+    fetchMock.mock.calls.filter(([url, init]) => String(url).includes('/execute') && init?.method === 'POST');
+
+  it('★多 Rule、无 @entry 且未选 Rule 时执行按钮禁用（不白跑一次）', async () => {
     await renderPage();
-    // 用户手改了输入（power 形状），然后在未选 Rule 的情况下执行
-    fireEvent.change(jsonInput(), { target: { value: '{"base": 9, "exponent": 2}' } });
-    fireEvent.click(screen.getByRole('button', { name: 'policies.execute.executeButton' }));
+    const button = screen.getByTestId('execute-policy-button') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    fireEvent.click(button);
+    expect(executeCalls()).toHaveLength(0);
+  });
+
+  it('★点击候选：不再发执行请求，选中该 Rule，示例换成该 Rule 的参数，提示与旧结果收起', async () => {
+    // 兜底场景：前端已选 Rule，服务端仍判入口不唯一（前后端判断不一致）
+    executeResponse = ambiguous;
+    const select = await renderPage();
+    fireEvent.change(select, { target: { value: 'power' } });
+    await waitFor(() => expect(JSON.parse(jsonInput().value)).toEqual({ base: 'sample', exponent: 'sample' }), WAIT);
+    fireEvent.click(screen.getByTestId('execute-policy-button'));
     const candidate = await screen.findByRole('button', { name: 'calculate' }, WAIT);
-    const executeCalls = () =>
-      fetchMock.mock.calls.filter(([url, init]) => String(url).includes('/execute') && init?.method === 'POST');
     expect(executeCalls()).toHaveLength(1);
+    // 提示用本地化文案，而非服务端写死的中文 message
+    expect(screen.getByText('policies.execute.entryAmbiguousBody')).toBeTruthy();
+    // 原始 JSON（<pre>）里仍有服务端 message，故按元素整段文本精确匹配
+    expect(screen.queryByText('未指定入口函数，候选函数不唯一')).toBeNull();
+    expect(document.body.textContent).toContain('ambiguous entry');
 
     fireEvent.click(candidate);
 
     await waitFor(() => {
-      const select = document.querySelector('select') as HTMLSelectElement;
-      expect(select.value).toBe('calculate');
+      expect((document.querySelector('select') as HTMLSelectElement).value).toBe('calculate');
       expect(JSON.parse(jsonInput().value)).toEqual({ request: 'sample' });
     }, WAIT);
     expect(executeCalls()).toHaveLength(1);
     expect(screen.queryByRole('button', { name: 'calculate' })).toBeNull();
+    expect(document.body.textContent).not.toContain('ambiguous entry');
   });
 });
 
 describe('ExecutePolicyContent — 加载请求忽略过期响应', () => {
-  it('★policyId 切换后，旧策略的响应晚到不会覆盖新策略的内容', async () => {
+  it('★policyId 切换后，旧请求被中止，其响应晚到也不会覆盖新策略的内容', async () => {
+    let p1Signal: AbortSignal | undefined;
     const P2_SOURCE = ['Module demo.p2.', '', 'Rule only given z as Int, produce Int:', '  Return z.'].join('\n');
     let releaseP1: () => void = () => {};
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
       const isGet = !init || !init.method || init.method === 'GET';
       if (url.endsWith('/api/policies/p1') && isGet) {
+        p1Signal = init?.signal ?? undefined;
         return new Promise((resolve, reject) => {
           init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
           releaseP1 = () => resolve({ ok: true, json: async () => ({ name: 'Old', content: SOURCE }) });
@@ -305,6 +323,7 @@ describe('ExecutePolicyContent — 加载请求忽略过期响应', () => {
     const view = render(<ExecutePolicyContent policyId="p1" locale="en" />);
     view.rerender(<ExecutePolicyContent policyId="p2" locale="en" />);
     await waitFor(() => expect(JSON.parse(jsonInput().value)).toEqual({ z: 'sample' }), WAIT);
+    expect(p1Signal?.aborted).toBe(true);
 
     releaseP1();
     await new Promise((r) => setTimeout(r, 50));

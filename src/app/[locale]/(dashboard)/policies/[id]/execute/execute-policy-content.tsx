@@ -402,8 +402,15 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
   const selectCandidateRule = (candidate: string) => {
     setSelectedRule(candidate);
     setExecutionDiagnostics([]);
+    // 上一次（入口不唯一）的失败结果一并收起，否则看起来像是「选择」本身失败了
+    setResult(null);
     setError('');
   };
+
+  // 多个 Rule、无 @entry 且未选 Rule 时，服务端必然返回 ENTRY_AMBIGUOUS（EntryPointSelector）。
+  // 前端能确定性地预判，故直接禁用执行，避免白跑一次（每次都会写执行记录并计入用量）；
+  // 规则选择器此时已显示 ambiguousHint。候选面板只作为前后端判断不一致时的兜底。
+  const mustChooseRule = ruleSymbols.length > 1 && !selectedRule;
 
   const handleExecute = async () => {
     const functionName = selectedRule;
@@ -760,7 +767,8 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
 
             <button
               onClick={() => handleExecute()}
-              disabled={isLoading}
+              disabled={isLoading || mustChooseRule}
+              data-testid="execute-policy-button"
               className="mt-4 w-full inline-flex justify-center items-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-primary-hover focus:ring-2 focus:ring-primary/20 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? (
@@ -816,7 +824,9 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
                       {t('entryAmbiguousTitle')}
                     </h4>
                     <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
-                      {ambiguousEntryDiagnostic.message || t('entryAmbiguousBody')}
+                      {/* 服务端 message 为写死的中文（EvaluationResponse），且不提示下一步；
+                          固定用本地化文案「选择一个候选 Rule 后重跑」 */}
+                      {t('entryAmbiguousBody')}
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {ambiguousEntryDiagnostic.candidates.map((candidate) => (
