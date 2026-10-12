@@ -118,6 +118,44 @@ export function evaluateUpgrade(input, config) {
 }
 
 // Create HTTP server for health checks and WebSocket upgrade
+/**
+ * LSP stdio 分帧解码器：按 Content-Length 切出完整消息。
+ *
+ * ★Content-Length 是 **UTF-8 字节数**。必须在 Buffer 上按字节切，切完整条再解码。
+ *   旧实现把 stdout 拼成 JS 字符串后按字符切：中文 1 字符 = 3 字节，切多了，
+ *   消息尾部吞进下一条的头，浏览器收到粘连/截断的 JSON；块边界落在多字节字符
+ *   中间时 data.toString() 还会产生替换字符。zh 用户的每条含中文的消息都受影响。
+ *
+ * @returns {{ push(chunk: Buffer): string[] }} 每次 push 返回本次凑齐的完整消息（已解码）
+ */
+export function createLspFrameDecoder() {
+  let buffer = Buffer.alloc(0);
+  const separator = Buffer.from('\r\n\r\n');
+  return {
+    push(chunk) {
+      buffer = Buffer.concat([buffer, chunk]);
+      const messages = [];
+      for (;;) {
+        const headerEnd = buffer.indexOf(separator);
+        if (headerEnd === -1) break;
+        const header = buffer.subarray(0, headerEnd).toString('ascii');
+        const match = header.match(/Content-Length: *(\d+)/i);
+        if (!match) {
+          // 无 Content-Length 的头无法定界，丢弃该头继续找下一条
+          buffer = buffer.subarray(headerEnd + separator.length);
+          continue;
+        }
+        const start = headerEnd + separator.length;
+        const end = start + parseInt(match[1], 10);
+        if (buffer.length < end) break;
+        messages.push(buffer.subarray(start, end).toString('utf-8'));
+        buffer = buffer.subarray(end);
+      }
+      return messages;
+    },
+  };
+}
+
 const server = createServer((req, res) => {
   const { pathname } = parse(req.url, true);
 
@@ -241,7 +279,7 @@ wss.on('connection', (ws, request) => {
 
   // Forward messages from LSP process (stdout) to WebSocket
   // Use a message queue to ensure messages are sent one at a time
-  let buffer = '';
+  const frameDecoder = createLspFrameDecoder();
   const messageQueue = [];
   let isSending = false;
 
@@ -269,30 +307,8 @@ wss.on('connection', (ws, request) => {
   };
 
   lspProcess.stdout?.on('data', (data) => {
-    buffer += data.toString();
-
-    // Parse LSP messages (Content-Length header format)
-    while (true) {
-      const headerEnd = buffer.indexOf('\r\n\r\n');
-      if (headerEnd === -1) break;
-
-      const header = buffer.slice(0, headerEnd);
-      const contentLengthMatch = header.match(/Content-Length: (\d+)/i);
-      if (!contentLengthMatch) {
-        buffer = buffer.slice(headerEnd + 4);
-        continue;
-      }
-
-      const contentLength = parseInt(contentLengthMatch[1], 10);
-      const messageStart = headerEnd + 4;
-      const messageEnd = messageStart + contentLength;
-
-      if (buffer.length < messageEnd) break;
-
-      const message = buffer.slice(messageStart, messageEnd);
-      buffer = buffer.slice(messageEnd);
-
-      // Queue message instead of sending directly
+    // 按字节分帧（见 createLspFrameDecoder），每条完整消息单独成一个 WebSocket 帧
+    for (const message of frameDecoder.push(data)) {
       messageQueue.push(message);
     }
 

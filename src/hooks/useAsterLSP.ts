@@ -22,12 +22,25 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import type { editor, languages, IDisposable, Position } from 'monaco-editor';
 import { buildLspInitOptions, shouldApplyDiagnostics } from '@/lib/lsp-init-options';
+import { respondToServerRequest } from '@/lib/lsp-server-requests';
+import { splitJsonMessages } from '@/lib/lsp-json-frames';
+
+type MonacoNamespace = typeof import('monaco-editor');
 
 export type CNLLocale = 'en-US' | 'zh-CN' | 'de-DE';
 
 export interface UseAsterLSPOptions {
   /** Monaco editor instance */
   editor: editor.IStandaloneCodeEditor | null;
+  /**
+   * 编辑器**自己的** Monaco 命名空间（@monaco-editor/react onMount 的第二个参数）。
+   *
+   * ★必须由调用方传入，hook 不得自行 import('monaco-editor')：@monaco-editor/react
+   *   未配置 loader 时从 CDN 加载 Monaco，自行 import 得到的是打包进来的**第二份**实例。
+   *   provider 注册在那一份上，编辑器永远不会调用——hover/跳转/引用等全部失效，
+   *   还白白多下载一份 Monaco。为 null 时不连接。
+   */
+  monaco: MonacoNamespace | null;
   /** Document URI for LSP */
   documentUri: string;
   /** CNL language locale */
@@ -192,6 +205,7 @@ function lspRangeToMonaco(range: LSPRange): { startLineNumber: number; startColu
  */
 export function useAsterLSP({
   editor,
+  monaco,
   documentUri,
   locale = 'en-US',
   tenantId,
@@ -219,6 +233,9 @@ export function useAsterLSP({
   const editorRef = useRef(editor);
   // eslint-disable-next-line react-hooks/refs
   editorRef.current = editor;
+  const monacoRef = useRef(monaco);
+  // eslint-disable-next-line react-hooks/refs
+  monacoRef.current = monaco;
   const documentUriRef = useRef(documentUri);
   // eslint-disable-next-line react-hooks/refs
   documentUriRef.current = documentUri;
@@ -332,24 +349,23 @@ export function useAsterLSP({
           console.log('[LSP] Diagnostics received:', diagnosticParams.diagnostics.length);
 
           const currentEditor = editorRef.current;
-          if (currentEditor) {
+          const monaco = monacoRef.current;
+          if (currentEditor && monaco) {
             const model = currentEditor.getModel();
             if (model) {
-              import('monaco-editor').then((monaco) => {
-                const markers = diagnosticParams.diagnostics.map((d) => ({
-                  severity: d.severity === 1 ? monaco.MarkerSeverity.Error
-                    : d.severity === 2 ? monaco.MarkerSeverity.Warning
-                    : d.severity === 3 ? monaco.MarkerSeverity.Info
-                    : monaco.MarkerSeverity.Hint,
-                  message: d.message,
-                  startLineNumber: d.range.start.line + 1,
-                  startColumn: d.range.start.character + 1,
-                  endLineNumber: d.range.end.line + 1,
-                  endColumn: d.range.end.character + 1,
-                }));
-                console.log('[LSP] Setting Monaco markers:', markers.length);
-                monaco.editor.setModelMarkers(model, 'aster-lsp', markers);
-              });
+              const markers = diagnosticParams.diagnostics.map((d) => ({
+                severity: d.severity === 1 ? monaco.MarkerSeverity.Error
+                  : d.severity === 2 ? monaco.MarkerSeverity.Warning
+                  : d.severity === 3 ? monaco.MarkerSeverity.Info
+                  : monaco.MarkerSeverity.Hint,
+                message: d.message,
+                startLineNumber: d.range.start.line + 1,
+                startColumn: d.range.start.character + 1,
+                endLineNumber: d.range.end.line + 1,
+                endColumn: d.range.end.character + 1,
+              }));
+              console.log('[LSP] Setting Monaco markers:', markers.length);
+              monaco.editor.setModelMarkers(model, 'aster-lsp', markers);
             }
           }
           break;
@@ -387,6 +403,14 @@ export function useAsterLSP({
       return;
     }
 
+    // 带 id 的 method 消息是服务端**请求**，必须应答（否则服务端那一侧永久挂起）。
+    const reply = respondToServerRequest(message);
+    if (reply) {
+      const ws = wsRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(reply));
+      return;
+    }
+
     if (message.method) {
       handleServerNotification(message.method, message.params);
     }
@@ -396,35 +420,8 @@ export function useAsterLSP({
    * Handle incoming LSP messages
    */
   const handleMessage = useCallback((data: string) => {
-    try {
-      const message: LSPMessage = JSON.parse(data);
-      processMessage(message);
-      return;
-    } catch {
-      // Handle concatenated JSON
-    }
-
-    const remaining = data.trim();
-    let depth = 0;
-    let start = 0;
-
-    for (let i = 0; i < remaining.length; i++) {
-      const char = remaining[i];
-      if (char === '{') {
-        if (depth === 0) start = i;
-        depth++;
-      } else if (char === '}') {
-        depth--;
-        if (depth === 0) {
-          const jsonStr = remaining.slice(start, i + 1);
-          try {
-            const message: LSPMessage = JSON.parse(jsonStr);
-            processMessage(message);
-          } catch (e) {
-            console.error('[LSP] Failed to parse message segment:', e);
-          }
-        }
-      }
+    for (const message of splitJsonMessages(data)) {
+      processMessage(message as LSPMessage);
     }
   }, [processMessage]);
 
@@ -432,7 +429,8 @@ export function useAsterLSP({
    * Register Monaco language providers for LSP features
    */
   const registerProviders = useCallback(async () => {
-    const monaco = await import('monaco-editor');
+    const monaco = monacoRef.current;
+    if (!monaco) return;
     const languageId = 'aster-cnl';
 
     // Dispose existing providers
@@ -755,13 +753,13 @@ export function useAsterLSP({
         capabilities: {
           textDocument: {
             synchronization: {
-              dynamicRegistration: true,
+              dynamicRegistration: false,
               willSave: false,
               didSave: true,
               willSaveWaitUntil: false,
             },
             completion: {
-              dynamicRegistration: true,
+              dynamicRegistration: false,
               completionItem: {
                 snippetSupport: true,
                 commitCharactersSupport: true,
@@ -769,33 +767,33 @@ export function useAsterLSP({
               },
             },
             hover: {
-              dynamicRegistration: true,
+              dynamicRegistration: false,
               contentFormat: ['markdown', 'plaintext'],
             },
             signatureHelp: {
-              dynamicRegistration: true,
+              dynamicRegistration: false,
               signatureInformation: {
                 documentationFormat: ['markdown', 'plaintext'],
               },
             },
             definition: {
-              dynamicRegistration: true,
+              dynamicRegistration: false,
             },
             references: {
-              dynamicRegistration: true,
+              dynamicRegistration: false,
             },
             documentHighlight: {
-              dynamicRegistration: true,
+              dynamicRegistration: false,
             },
             documentSymbol: {
-              dynamicRegistration: true,
+              dynamicRegistration: false,
               hierarchicalDocumentSymbolSupport: true,
             },
             formatting: {
-              dynamicRegistration: true,
+              dynamicRegistration: false,
             },
             codeAction: {
-              dynamicRegistration: true,
+              dynamicRegistration: false,
               codeActionLiteralSupport: {
                 codeActionKind: {
                   valueSet: ['quickfix', 'refactor', 'source'],
@@ -803,7 +801,7 @@ export function useAsterLSP({
               },
             },
             rename: {
-              dynamicRegistration: true,
+              dynamicRegistration: false,
               prepareSupport: true,
             },
             publishDiagnostics: {
@@ -813,10 +811,10 @@ export function useAsterLSP({
           workspace: {
             workspaceFolders: false,
             didChangeConfiguration: {
-              dynamicRegistration: true,
+              dynamicRegistration: false,
             },
             didChangeWatchedFiles: {
-              dynamicRegistration: true,
+              dynamicRegistration: false,
             },
           },
         },
@@ -828,6 +826,15 @@ export function useAsterLSP({
       console.log('[LSP] Initialized:', initResult);
 
       sendNotification('initialized', {});
+
+      // ★服务端只从 settings 读 locale（aster-lang-ts server.js 的 onDidChangeConfiguration
+      //   → s.locale）；网关传的 ASTER_LOCALE 环境变量与 initializationOptions.locale
+      //   都不生效。客户端未声明 workspace.configuration，服务端就采用这里推送的 settings。
+      //   不推送 → 服务端按英文解析 zh/de 文档，hover/跳转全部报「Unexpected character」。
+      //   必须在 didOpen 之前发，首个解析才会用对 lexicon。
+      sendNotification('workspace/didChangeConfiguration', {
+        settings: { asterLanguageServer: { locale } },
+      });
 
       // Register Monaco providers after LSP is initialized
       await registerProviders();
@@ -1012,7 +1019,8 @@ export function useAsterLSP({
   useEffect(() => {
     isDisposedRef.current = false;
 
-    if (autoConnect && editor) {
+    // 没有编辑器自己的 Monaco 实例就不连：provider 无处注册，连上也只是空跑 didChange。
+    if (autoConnect && editor && monaco) {
       connect();
     }
 
@@ -1020,7 +1028,7 @@ export function useAsterLSP({
       isDisposedRef.current = true;
       disconnect();
     };
-  }, [autoConnect, editor, connect, disconnect]);
+  }, [autoConnect, editor, monaco, connect, disconnect]);
 
   // Sync document changes to LSP
   useEffect(() => {
