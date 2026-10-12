@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react';
 import { useTranslations } from 'next-intl';
 import { formatDate } from '@/lib/format';
 import { Link } from '@/i18n/navigation';
@@ -349,6 +349,7 @@ export function LogsContent({
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(initialTotalPages);
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
+  const mounted = useSyncExternalStore(noopSubscribe, () => true, () => false);
 
   // 重新登记后只就地更新该行 metadata，不整页重拉
   const updateLogMetadata = useCallback((logId: string, metadata: ExecutionLog['metadata']) => {
@@ -449,21 +450,6 @@ export function LogsContent({
     }
   };
 
-  const formatRelativeTime = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return formatDate(dateStr, locale);
-  };
-
   return (
     <Container size="xl" className="py-6 sm:py-10">
       {/* deep 页：保留面包屑（Policies > 策略名 > Logs），原返回箭头由面包屑导航取代。 */}
@@ -496,7 +482,7 @@ export function LogsContent({
                 </div>
               </div>
               <p className="mt-4 text-sm font-medium text-primary-fg">{t.logs.totalExecutions}</p>
-              <p className="mt-1 text-3xl font-bold text-white">{stats.totalExecutions.toLocaleString()}</p>
+              <p className="mt-1 text-3xl font-bold text-white">{stats.totalExecutions.toLocaleString(locale)}</p>
             </div>
           </div>
 
@@ -519,8 +505,8 @@ export function LogsContent({
                 {stats.successCount} / {stats.successCount + stats.failureCount}
               </p>
               <p className="mt-1 text-xs text-emerald-200" data-testid="logs-rate-note">
-                {t.logs.pendingLabel}: {(stats.pendingCount ?? 0).toLocaleString()} · {t.logs.computed}:{' '}
-                {(stats.indeterminateCount ?? 0).toLocaleString()} · {t.logs.rateNote}
+                {t.logs.pendingLabel}: {(stats.pendingCount ?? 0).toLocaleString(locale)} · {t.logs.computed}:{' '}
+                {(stats.indeterminateCount ?? 0).toLocaleString(locale)} · {t.logs.rateNote}
               </p>
             </div>
           </div>
@@ -537,7 +523,7 @@ export function LogsContent({
                 </div>
               </div>
               <p className="mt-4 text-sm font-medium text-rose-100">{t.logs.failed}</p>
-              <p className="mt-1 text-3xl font-bold text-white">{stats.failureCount.toLocaleString()}</p>
+              <p className="mt-1 text-3xl font-bold text-white">{stats.failureCount.toLocaleString(locale)}</p>
             </div>
           </div>
 
@@ -746,8 +732,8 @@ export function LogsContent({
                       </div>
 
                       {/* Timestamp */}
-                      <div className="text-sm text-fg-subtle" title={new Date(log.createdAt).toLocaleString()}>
-                        {formatRelativeTime(log.createdAt)}
+                      <div className="text-sm text-fg-subtle" title={formatCreatedAtUtc(log.createdAt, locale)}>
+                        {mounted ? formatRelativeTime(log.createdAt, locale) : formatCreatedAtUtc(log.createdAt, locale)}
                       </div>
 
                       {/* Expand/Collapse Button */}
@@ -871,4 +857,28 @@ export function LogsContent({
       </div>
     </Container>
   );
+}
+
+// 日志列表首屏由服务端渲染（运行时为 UTC，且"现在"是服务端时刻），浏览器再按本地时区与本地时刻水合：
+// 绝对时间固定按 UTC 格式化并标注时区，两端文本一致；相对时间依赖"现在"，挂载后才切换显示。
+const CREATED_AT_FORMAT = { dateStyle: 'medium', timeStyle: 'medium', timeZone: 'UTC' } as const;
+
+const noopSubscribe = () => () => {};
+
+function formatCreatedAtUtc(iso: string, locale: string): string {
+  return `${new Intl.DateTimeFormat(locale, CREATED_AT_FORMAT).format(new Date(iso))} UTC`;
+}
+
+/** 相对时间（仅挂载后调用）：7 天以上回落为本地日期。 */
+function formatRelativeTime(iso: string, locale: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return formatDate(iso, locale);
 }
