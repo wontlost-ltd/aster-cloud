@@ -10,9 +10,17 @@ process.stdin.on('data', () => {
   if (replied) return;
   replied = true;
   const zh = frame({ jsonrpc: '2.0', method: 'window/logMessage', params: { type: 3, message: '模块 已加载：规则 计算' } });
-  const env = frame({ jsonrpc: '2.0', method: 'test/env', params: { cwd: process.cwd(), home: process.env.HOME } });
+  const env = frame({ jsonrpc: '2.0', method: 'test/env', params: { cwd: process.cwd(), home: process.env.HOME, pid: process.pid } });
   const cut = zh.indexOf(Buffer.from('载')) + 1;
   process.stdout.write(zh.subarray(0, cut));
   setTimeout(() => process.stdout.write(Buffer.concat([zh.subarray(cut), env])), 20);
 });
-setInterval(() => {}, 1000);
+const keepAlive = setInterval(() => {}, 1000);
+// 与真实语言服务器一致：stdin 关闭（网关退出）即退出，避免成为孤儿进程
+// ASTER_FAKE_STUBBORN=1（ASTER_* 会被网关转发给子进程）：忽略 stdin 关闭与 SIGTERM，
+// 用来验证清理是按进程组 SIGKILL 的，而不是靠子进程自觉退出
+if (process.env.ASTER_FAKE_STUBBORN === '1') {
+  process.on('SIGTERM', () => {});
+} else {
+  process.stdin.on('end', () => { clearInterval(keepAlive); process.exit(0); });
+}

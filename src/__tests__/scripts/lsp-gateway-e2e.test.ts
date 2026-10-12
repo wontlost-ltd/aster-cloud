@@ -8,14 +8,15 @@
  *   - 每个连接独立的工作目录 / HOME（语言服务器把工作区索引写在 cwd 下），
  *     两个连接互不相同，连接关闭后目录被删除。
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import type { ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
+import { killAllGateways, killGateways, spawnGateway } from './fixtures/gateway-process';
 
 const ROOT = join(__dirname, '..', '..', '..');
 const ORIGIN = 'http://localhost:3000';
@@ -34,7 +35,7 @@ const freePort = () => new Promise<number>((resolve) => {
 beforeAll(async () => {
   port = await freePort();
   tmpRoot = mkdtempSync(join(tmpdir(), 'lsp-gw-e2e-'));
-  gateway = spawn('node', [join(ROOT, 'lsp-server.mjs')], {
+  gateway = spawnGateway([join(ROOT, 'lsp-server.mjs')], {
     env: {
       PATH: process.env.PATH,
       PORT: String(port),
@@ -51,10 +52,13 @@ beforeAll(async () => {
     const timer = setTimeout(() => reject(new Error('gateway did not start')), 10_000);
     gateway.stdout!.on('data', (d) => { if (String(d).includes('ready on')) { clearTimeout(timer); resolve(); } });
   });
+  // 网关必须带 die-with-parent 预加载：测试进程被强杀时它才会随之退出（见 gateway-process.ts）
+  expect(gateway.spawnargs.some((x) => x.endsWith('die-with-parent.mjs'))).toBe(true);
 }, 20_000);
 
-afterAll(() => {
-  gateway?.kill('SIGTERM');
+// ★无论用例成败都杀掉网关进程组（含假语言服务器），避免留下孤儿进程
+afterAll(async () => {
+  await killAllGateways();
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 
@@ -109,13 +113,20 @@ describe('LSP 网关端到端', () => {
 /* ★独立网关实例：SIGTERM 时 shutdown() 直接 process.exit，子进程的 exit 回调来不及清理目录；
  *   启动时还要清掉上一次被 SIGKILL 留下的目录。 */
 describe('网关生命周期：工作目录清理', () => {
+  // 本组每个用例自起网关：用例失败时也在这里杀掉，而不是依赖用例末尾的 kill
+  const started: ChildProcess[] = [];
+  afterEach(async () => {
+    await killGateways(started.splice(0));
+  });
+
   const startGateway = async (tmp: string) => {
     const p = await freePort();
-    const gw = spawn('node', [join(ROOT, 'lsp-server.mjs')], {
+    const gw = spawnGateway([join(ROOT, 'lsp-server.mjs')], {
       env: { PATH: process.env.PATH, PORT: String(p), HOSTNAME: '127.0.0.1', NODE_ENV: 'test', LSP_AUTH_TOKEN: TOKEN,
         ALLOWED_ORIGINS: ORIGIN, TMPDIR: tmp, LSP_SERVER_SCRIPT: join(__dirname, 'fixtures', 'fake-lsp-server.mjs') },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+    started.push(gw);
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('gateway did not start')), 10_000);
       gw.stdout!.on('data', (d) => { if (String(d).includes('ready on')) { clearTimeout(timer); resolve(); } });
