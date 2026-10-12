@@ -319,7 +319,7 @@ export function DecisionTab({
                   'focus-visible:outline-none focus-visible:shadow-ring',
                   d.severity === 'error'
                     ? 'border-danger/30 bg-danger/5 text-danger hover:bg-danger/10'
-                    : 'border-warning/30 bg-warning/5 text-warning-fg hover:bg-warning/10',
+                    : 'border-warning/30 bg-warning/5 text-warning hover:bg-warning/10',
                 )}
               >
                 <div className="font-mono text-[11px] opacity-70">
