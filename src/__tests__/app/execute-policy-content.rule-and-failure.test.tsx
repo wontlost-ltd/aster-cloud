@@ -216,3 +216,39 @@ describe('ExecutePolicyContent — @entry 不在首位时首屏只按 @entry 提
     expect(used).toEqual(['calculate']);
   });
 });
+
+describe('ExecutePolicyContent — 加载后立即切换 Rule 不被覆盖', () => {
+  /**
+   * 确定性复现竞态：加载那次 commit 之后、passive effect 刷新之前切换 Rule。
+   * fireEvent 自带 act 会先刷完 effect，测不到这个窗口；这里在 MutationObserver 回调
+   * （commit 后的微任务，早于 scheduler 刷 passive effect）里同步改值并派发原生 change。
+   * 若 ruleSymbols effect 无条件重置为默认 Rule，用户的选择会被覆盖，本用例变红。
+   */
+  it('★加载 commit 后、effect 刷新前切换的 Rule 保持选中，示例按该 Rule 生成', async () => {
+    const { ExecutePolicyContent } = await import(
+      '@/app/[locale]/(dashboard)/policies/[id]/execute/execute-policy-content'
+    );
+    let fired = false;
+    const mo = new MutationObserver(() => {
+      if (fired) return;
+      const select = document.querySelector('select') as HTMLSelectElement | null;
+      if (!select || select.options.length < 3) return;
+      fired = true;
+      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!;
+      setter.call(select, 'calculate');
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    mo.observe(document.body, { childList: true, subtree: true, attributes: true });
+    render(<ExecutePolicyContent policyId="p1" locale="en" />);
+    try {
+      await waitFor(() => expect(fired).toBe(true), WAIT);
+    } finally {
+      mo.disconnect();
+    }
+    await waitFor(() => {
+      const select = document.querySelector('select') as HTMLSelectElement;
+      expect(select.value).toBe('calculate');
+      expect(JSON.parse(jsonInput().value)).toEqual({ request: 'sample' });
+    }, WAIT);
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chooseDefaultRule, extractRuleSymbols } from '@/lib/aster/rules';
+import { chooseDefaultRule, reconcileSelectedRule, extractRuleSymbols } from '@/lib/aster/rules';
 
 describe('extractRuleSymbols', () => {
   it('extracts a single Rule and selects it by default', () => {
@@ -68,5 +68,27 @@ describe('extractRuleSymbols', () => {
 
     expect(rules.map((rule) => rule.name)).toEqual(['latinName', '中文规则', 'pruefen', 'haupt_regel']);
     expect(chooseDefaultRule(rules)).toBe('haupt_regel');
+  });
+});
+
+describe('reconcileSelectedRule', () => {
+  const rules = [
+    { name: 'power', isEntry: false },
+    { name: 'factorial', isEntry: false },
+    { name: 'calculate', isEntry: false },
+  ];
+
+  it('★用户已选且仍存在的规则保留（无条件回落默认值时，加载后立即切换的选择会被覆盖）', () => {
+    expect(reconcileSelectedRule('calculate', rules)).toBe('calculate');
+  });
+
+  it('已选规则不在新列表里时回落到默认规则', () => {
+    expect(reconcileSelectedRule('gone', [{ name: 'only', isEntry: false }])).toBe('only');
+    expect(reconcileSelectedRule('gone', rules)).toBeNull();
+  });
+
+  it('尚未选择时取默认规则（@entry 优先）', () => {
+    expect(reconcileSelectedRule(null, [...rules, { name: 'main', isEntry: true }])).toBe('main');
+    expect(reconcileSelectedRule(null, rules)).toBeNull();
   });
 });
