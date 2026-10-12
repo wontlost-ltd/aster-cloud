@@ -16,6 +16,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { join } from 'path';
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
 
 const hostname = process.env.HOSTNAME || '0.0.0.0';
 const port = parseInt(process.env.PORT || '3001', 10);
@@ -403,7 +405,16 @@ function spawnLSPServer(locale) {
 
     // Construct the path to the LSP server directly
     // In production (Docker), node_modules is in the same directory as this file
-    const lspServerPath = join(__dirname, 'node_modules', '@aster-cloud', 'aster-lang-ts', 'dist', 'src', 'lsp', 'server.js');
+    // LSP_SERVER_SCRIPT 仅供测试替换为假语言服务器；生产不设置。
+    // ★名字刻意不以 ASTER_ 开头：ASTER_* 会被转发给子进程。
+    const lspServerPath = process.env.LSP_SERVER_SCRIPT
+      || join(__dirname, 'node_modules', '@aster-cloud', 'aster-lang-ts', 'dist', 'src', 'lsp', 'server.js');
+
+    // ★每个连接独立的工作目录（也作 HOME）：语言服务器把工作区索引写在 cwd 下的
+    //   .asteri/lsp-index.json，并在启动时读回。所有连接共用 /app 时，一个租户的模块
+    //   会出现在另一个租户的 getAllModules() 里（Use <module> 的跳转可解析到别家模块）。
+    //   连接结束、子进程退出后整个目录删除（见 cleanupWorkDir）。
+    const workDir = mkdtempSync(join(tmpdir(), 'aster-lsp-'));
 
     console.log(`[LSP] Starting LSP server from: ${lspServerPath}`);
 
@@ -413,7 +424,7 @@ function spawnLSPServer(locale) {
     // business inheriting them. Only forward what it actually needs to run.
     const childEnv = {
       PATH: process.env.PATH,
-      HOME: process.env.HOME,
+      HOME: workDir,
       NODE_ENV: process.env.NODE_ENV,
       ASTER_LOCALE: locale,
     };
@@ -428,12 +439,25 @@ function spawnLSPServer(locale) {
     const lspProcess = spawn('node', [lspServerPath, '--stdio'], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: childEnv,
+      cwd: workDir,
     });
+    // 子进程无论因何退出（连接关闭 SIGTERM、崩溃）都删掉它的工作目录
+    lspProcess.once('exit', () => cleanupWorkDir(workDir));
+    lspProcess.once('error', () => cleanupWorkDir(workDir));
 
     return lspProcess;
   } catch (error) {
     console.error('[LSP] Failed to spawn LSP server:', error);
     return null;
+  }
+}
+
+/** 删除连接专属工作目录；失败只记日志，不影响网关 */
+function cleanupWorkDir(dir) {
+  try {
+    rmSync(dir, { recursive: true, force: true });
+  } catch (error) {
+    console.error('[LSP] Failed to remove work dir:', error);
   }
 }
 

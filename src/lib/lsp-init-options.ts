@@ -55,3 +55,25 @@ export function buildLspInitOptions(
 export function shouldApplyDiagnostics(suppressDiagnostics: boolean | undefined): boolean {
   return !suppressDiagnostics;
 }
+
+/**
+ * 推给服务端的完整设置（workspace/didChangeConfiguration）。
+ *
+ * ★必须是**完整**设置而不只是 locale：生产镜像的 aster-lang-ts 1.0.32 对推送的设置
+ *   整体替换（`globalSettings = pushed || defaults`），只推 locale 会把 format.reflow 等默认值
+ *   全部丢掉。默认值抄自服务端 server.ts 的 defaultSettings（aster-lang-ts#219 起服务端改为合并）。
+ *
+ * index.persist 关掉：编辑器文档是 inmemory 的，没有可持久化的工作区；网关也已为每个连接
+ * 分配独立工作目录，这里再关一层，避免任何跨连接的索引落盘。
+ */
+export function buildLspSettings(locale: string) {
+  return {
+    maxNumberOfProblems: 1000,
+    format: { mode: 'lossless', reflow: true },
+    index: { persist: false },
+    rename: { scope: 'workspace' },
+    diagnostics: { workspace: true },
+    streaming: { referencesChunk: 200, renameChunk: 200, logChunks: false },
+    locale,
+  } as const;
+}

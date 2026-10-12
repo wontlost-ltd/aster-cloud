@@ -21,9 +21,10 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import type { editor, languages, IDisposable, Position } from 'monaco-editor';
-import { buildLspInitOptions, shouldApplyDiagnostics } from '@/lib/lsp-init-options';
+import { buildLspInitOptions, buildLspSettings, shouldApplyDiagnostics } from '@/lib/lsp-init-options';
 import { respondToServerRequest } from '@/lib/lsp-server-requests';
 import { splitJsonMessages } from '@/lib/lsp-json-frames';
+import { selectLspFeatures, type LspFeatures, type LspServerCapabilities } from '@/lib/lsp-features';
 
 type MonacoNamespace = typeof import('monaco-editor');
 
@@ -236,9 +237,11 @@ export function useAsterLSP({
   const monacoRef = useRef(monaco);
   // eslint-disable-next-line react-hooks/refs
   monacoRef.current = monaco;
+  // ★以编辑器模型的真实 URI 为准（服务端返回的位置都带这个 URI，Monaco 只认完全一致的模型 URI），
+  //   documentUri prop 仅在还没有模型时兜底。
   const documentUriRef = useRef(documentUri);
   // eslint-disable-next-line react-hooks/refs
-  documentUriRef.current = documentUri;
+  documentUriRef.current = editor?.getModel()?.uri.toString() ?? documentUri;
 
   /**
    * Get the WebSocket URL for LSP connection
@@ -428,10 +431,22 @@ export function useAsterLSP({
   /**
    * Register Monaco language providers for LSP features
    */
-  const registerProviders = useCallback(async () => {
+  const registerProviders = useCallback(async (features: LspFeatures) => {
     const monaco = monacoRef.current;
     if (!monaco) return;
     const languageId = 'aster-cnl';
+
+    // ★同一语言 id 下还有别的模型（如 AI diff 预览也用 aster-cnl）。provider 只服务 LSP 文档，
+    //   其余模型返回空——否则在预览里 hover 会显示主文档的结果。
+    const isLspModel = (model: editor.ITextModel) => model.uri.toString() === documentUriRef.current;
+
+    // ★同一功能的失败只报一次：provider 随光标/按键频繁触发，逐次 console.error 会刷屏。
+    const reportedFailures = new Set<string>();
+    const reportProviderError = (feature: string, e: unknown) => {
+      if (reportedFailures.has(feature)) return;
+      reportedFailures.add(feature);
+      if (!suppressErrors) console.warn(`[LSP] ${feature} request failed (further failures suppressed):`, e);
+    };
 
     // Dispose existing providers
     providerDisposablesRef.current.forEach(d => d.dispose());
@@ -444,301 +459,331 @@ export function useAsterLSP({
     });
 
     // Hover Provider
-    const hoverProvider = monaco.languages.registerHoverProvider(languageId, {
-      provideHover: async (model, position): Promise<languages.Hover | null> => {
-        try {
-          const result = await sendRequest<LSPHover | null>('textDocument/hover', makeTextDocumentPositionParams(position));
-          if (!result) return null;
+    if (features.hover) {
+      const hoverProvider = monaco.languages.registerHoverProvider(languageId, {
+        provideHover: async (model, position): Promise<languages.Hover | null> => {
+          if (!isLspModel(model)) return null;
+          try {
+            const result = await sendRequest<LSPHover | null>('textDocument/hover', makeTextDocumentPositionParams(position));
+            if (!result) return null;
 
-          let contents: { value: string }[];
-          if (typeof result.contents === 'string') {
-            contents = [{ value: result.contents }];
-          } else if (Array.isArray(result.contents)) {
-            contents = result.contents.map(c => typeof c === 'string' ? { value: c } : { value: c.value });
-          } else {
-            contents = [{ value: result.contents.value }];
+            let contents: { value: string }[];
+            if (typeof result.contents === 'string') {
+              contents = [{ value: result.contents }];
+            } else if (Array.isArray(result.contents)) {
+              contents = result.contents.map(c => typeof c === 'string' ? { value: c } : { value: c.value });
+            } else {
+              contents = [{ value: result.contents.value }];
+            }
+
+            return {
+              contents,
+              range: result.range ? lspRangeToMonaco(result.range) : undefined,
+            };
+          } catch (e) {
+            reportProviderError('Hover', e);
+            return null;
           }
-
-          return {
-            contents,
-            range: result.range ? lspRangeToMonaco(result.range) : undefined,
-          };
-        } catch (e) {
-          console.error('[LSP] Hover error:', e);
-          return null;
-        }
-      },
-    });
-    providerDisposablesRef.current.push(hoverProvider);
+        },
+      });
+      providerDisposablesRef.current.push(hoverProvider);
+    }
 
     // Definition Provider
-    const definitionProvider = monaco.languages.registerDefinitionProvider(languageId, {
-      provideDefinition: async (model, position): Promise<languages.Definition | null> => {
-        try {
-          const result = await sendRequest<LSPLocation | LSPLocation[] | null>('textDocument/definition', makeTextDocumentPositionParams(position));
-          if (!result) return null;
+    if (features.definition) {
+      const definitionProvider = monaco.languages.registerDefinitionProvider(languageId, {
+        provideDefinition: async (model, position): Promise<languages.Definition | null> => {
+          if (!isLspModel(model)) return null;
+          try {
+            const result = await sendRequest<LSPLocation | LSPLocation[] | null>('textDocument/definition', makeTextDocumentPositionParams(position));
+            if (!result) return null;
 
-          const locations = Array.isArray(result) ? result : [result];
-          return locations.map(loc => ({
-            uri: monaco.Uri.parse(loc.uri),
-            range: lspRangeToMonaco(loc.range),
-          }));
-        } catch (e) {
-          console.error('[LSP] Definition error:', e);
-          return null;
-        }
-      },
-    });
-    providerDisposablesRef.current.push(definitionProvider);
+            const locations = Array.isArray(result) ? result : [result];
+            return locations.map(loc => ({
+              uri: monaco.Uri.parse(loc.uri),
+              range: lspRangeToMonaco(loc.range),
+            }));
+          } catch (e) {
+            reportProviderError('Definition', e);
+            return null;
+          }
+        },
+      });
+      providerDisposablesRef.current.push(definitionProvider);
+    }
 
     // References Provider
-    const referencesProvider = monaco.languages.registerReferenceProvider(languageId, {
-      provideReferences: async (model, position, context): Promise<languages.Location[] | null> => {
-        try {
-          const result = await sendRequest<LSPLocation[] | null>('textDocument/references', {
-            ...makeTextDocumentPositionParams(position),
-            context: { includeDeclaration: context.includeDeclaration },
-          });
-          if (!result) return null;
+    if (features.references) {
+      const referencesProvider = monaco.languages.registerReferenceProvider(languageId, {
+        provideReferences: async (model, position, context): Promise<languages.Location[] | null> => {
+          if (!isLspModel(model)) return null;
+          try {
+            const result = await sendRequest<LSPLocation[] | null>('textDocument/references', {
+              ...makeTextDocumentPositionParams(position),
+              context: { includeDeclaration: context.includeDeclaration },
+            });
+            if (!result) return null;
 
-          return result.map(loc => ({
-            uri: monaco.Uri.parse(loc.uri),
-            range: lspRangeToMonaco(loc.range),
-          }));
-        } catch (e) {
-          console.error('[LSP] References error:', e);
-          return null;
-        }
-      },
-    });
-    providerDisposablesRef.current.push(referencesProvider);
+            return result.map(loc => ({
+              uri: monaco.Uri.parse(loc.uri),
+              range: lspRangeToMonaco(loc.range),
+            }));
+          } catch (e) {
+            reportProviderError('References', e);
+            return null;
+          }
+        },
+      });
+      providerDisposablesRef.current.push(referencesProvider);
+    }
 
     // Document Symbol Provider
-    const documentSymbolProvider = monaco.languages.registerDocumentSymbolProvider(languageId, {
-      provideDocumentSymbols: async (_model): Promise<languages.DocumentSymbol[] | null> => {
-        try {
-          const result = await sendRequest<LSPDocumentSymbol[] | LSPSymbolInformation[] | null>('textDocument/documentSymbol', {
-            textDocument: { uri: documentUriRef.current },
-          });
-          if (!result || result.length === 0) return null;
+    if (features.documentSymbol) {
+      const documentSymbolProvider = monaco.languages.registerDocumentSymbolProvider(languageId, {
+        provideDocumentSymbols: async (_model): Promise<languages.DocumentSymbol[] | null> => {
+          if (!isLspModel(_model)) return null;
+          try {
+            const result = await sendRequest<LSPDocumentSymbol[] | LSPSymbolInformation[] | null>('textDocument/documentSymbol', {
+              textDocument: { uri: documentUriRef.current },
+            });
+            if (!result || result.length === 0) return null;
 
-          // Convert LSP symbols to Monaco symbols
-          const convertSymbol = (sym: LSPDocumentSymbol): languages.DocumentSymbol => ({
-            name: sym.name,
-            detail: sym.detail || '',
-            kind: sym.kind as languages.SymbolKind,
-            range: lspRangeToMonaco(sym.range),
-            selectionRange: lspRangeToMonaco(sym.selectionRange),
-            children: sym.children?.map(convertSymbol),
-            tags: [],
-          });
-
-          // Check if it's DocumentSymbol or SymbolInformation format
-          if ('range' in result[0] && 'selectionRange' in result[0]) {
-            return (result as LSPDocumentSymbol[]).map(convertSymbol);
-          } else {
-            // Convert SymbolInformation to DocumentSymbol
-            return (result as LSPSymbolInformation[]).map(sym => ({
+            // Convert LSP symbols to Monaco symbols
+            const convertSymbol = (sym: LSPDocumentSymbol): languages.DocumentSymbol => ({
               name: sym.name,
-              detail: sym.containerName || '',
+              detail: sym.detail || '',
               kind: sym.kind as languages.SymbolKind,
-              range: lspRangeToMonaco(sym.location.range),
-              selectionRange: lspRangeToMonaco(sym.location.range),
+              range: lspRangeToMonaco(sym.range),
+              selectionRange: lspRangeToMonaco(sym.selectionRange),
+              children: sym.children?.map(convertSymbol),
               tags: [],
-            }));
+            });
+
+            // Check if it's DocumentSymbol or SymbolInformation format
+            if ('range' in result[0] && 'selectionRange' in result[0]) {
+              return (result as LSPDocumentSymbol[]).map(convertSymbol);
+            } else {
+              // Convert SymbolInformation to DocumentSymbol
+              return (result as LSPSymbolInformation[]).map(sym => ({
+                name: sym.name,
+                detail: sym.containerName || '',
+                kind: sym.kind as languages.SymbolKind,
+                range: lspRangeToMonaco(sym.location.range),
+                selectionRange: lspRangeToMonaco(sym.location.range),
+                tags: [],
+              }));
+            }
+          } catch (e) {
+            reportProviderError('DocumentSymbol', e);
+            return null;
           }
-        } catch (e) {
-          console.error('[LSP] DocumentSymbol error:', e);
-          return null;
-        }
-      },
-    });
-    providerDisposablesRef.current.push(documentSymbolProvider);
+        },
+      });
+      providerDisposablesRef.current.push(documentSymbolProvider);
+    }
 
     // Signature Help Provider
-    const signatureHelpProvider = monaco.languages.registerSignatureHelpProvider(languageId, {
-      signatureHelpTriggerCharacters: ['(', ','],
-      signatureHelpRetriggerCharacters: [',', ')'],
-      provideSignatureHelp: async (model, position): Promise<languages.SignatureHelpResult | null> => {
-        try {
-          const result = await sendRequest<LSPSignatureHelp | null>('textDocument/signatureHelp', makeTextDocumentPositionParams(position));
-          if (!result || result.signatures.length === 0) return null;
+    if (features.signatureHelp) {
+      const signatureHelpProvider = monaco.languages.registerSignatureHelpProvider(languageId, {
+        signatureHelpTriggerCharacters: ['(', ','],
+        signatureHelpRetriggerCharacters: [',', ')'],
+        provideSignatureHelp: async (model, position): Promise<languages.SignatureHelpResult | null> => {
+          if (!isLspModel(model)) return null;
+          try {
+            const result = await sendRequest<LSPSignatureHelp | null>('textDocument/signatureHelp', makeTextDocumentPositionParams(position));
+            if (!result || result.signatures.length === 0) return null;
 
-          return {
-            value: {
-              signatures: result.signatures.map(sig => ({
-                label: sig.label,
-                documentation: typeof sig.documentation === 'string'
-                  ? sig.documentation
-                  : sig.documentation?.value,
-                parameters: sig.parameters?.map(param => ({
-                  label: param.label,
-                  documentation: typeof param.documentation === 'string'
-                    ? param.documentation
-                    : param.documentation?.value,
-                })) || [],
-              })),
-              activeSignature: result.activeSignature ?? 0,
-              activeParameter: result.activeParameter ?? 0,
-            },
-            dispose: () => {},
-          };
-        } catch (e) {
-          console.error('[LSP] SignatureHelp error:', e);
-          return null;
-        }
-      },
-    });
-    providerDisposablesRef.current.push(signatureHelpProvider);
+            return {
+              value: {
+                signatures: result.signatures.map(sig => ({
+                  label: sig.label,
+                  documentation: typeof sig.documentation === 'string'
+                    ? sig.documentation
+                    : sig.documentation?.value,
+                  parameters: sig.parameters?.map(param => ({
+                    label: param.label,
+                    documentation: typeof param.documentation === 'string'
+                      ? param.documentation
+                      : param.documentation?.value,
+                  })) || [],
+                })),
+                activeSignature: result.activeSignature ?? 0,
+                activeParameter: result.activeParameter ?? 0,
+              },
+              dispose: () => {},
+            };
+          } catch (e) {
+            reportProviderError('SignatureHelp', e);
+            return null;
+          }
+        },
+      });
+      providerDisposablesRef.current.push(signatureHelpProvider);
+    }
 
     // Code Action Provider
-    const codeActionProvider = monaco.languages.registerCodeActionProvider(languageId, {
-      provideCodeActions: async (model, range, context): Promise<languages.CodeActionList | null> => {
-        try {
-          const result = await sendRequest<LSPCodeAction[] | null>('textDocument/codeAction', {
-            textDocument: { uri: documentUriRef.current },
-            range: {
-              start: monacoPositionToLsp({ lineNumber: range.startLineNumber, column: range.startColumn }),
-              end: monacoPositionToLsp({ lineNumber: range.endLineNumber, column: range.endColumn }),
-            },
-            context: {
-              diagnostics: context.markers.map(m => ({
-                range: {
-                  start: { line: m.startLineNumber - 1, character: m.startColumn - 1 },
-                  end: { line: m.endLineNumber - 1, character: m.endColumn - 1 },
-                },
-                message: m.message,
-                severity: m.severity === monaco.MarkerSeverity.Error ? 1
-                  : m.severity === monaco.MarkerSeverity.Warning ? 2
-                  : m.severity === monaco.MarkerSeverity.Info ? 3
-                  : 4,
-              })),
-            },
-          });
-          if (!result || result.length === 0) return null;
+    if (features.codeAction) {
+      const codeActionProvider = monaco.languages.registerCodeActionProvider(languageId, {
+        provideCodeActions: async (model, range, context): Promise<languages.CodeActionList | null> => {
+          if (!isLspModel(model)) return null;
+          try {
+            const result = await sendRequest<LSPCodeAction[] | null>('textDocument/codeAction', {
+              textDocument: { uri: documentUriRef.current },
+              range: {
+                start: monacoPositionToLsp({ lineNumber: range.startLineNumber, column: range.startColumn }),
+                end: monacoPositionToLsp({ lineNumber: range.endLineNumber, column: range.endColumn }),
+              },
+              context: {
+                diagnostics: context.markers.map(m => ({
+                  range: {
+                    start: { line: m.startLineNumber - 1, character: m.startColumn - 1 },
+                    end: { line: m.endLineNumber - 1, character: m.endColumn - 1 },
+                  },
+                  message: m.message,
+                  // ★code 必须带上：服务端的 Quick Fix 按 code 识别诊断（message 已本地化）
+                  code: typeof m.code === 'string' ? m.code : m.code?.value,
+                  severity: m.severity === monaco.MarkerSeverity.Error ? 1
+                    : m.severity === monaco.MarkerSeverity.Warning ? 2
+                    : m.severity === monaco.MarkerSeverity.Info ? 3
+                    : 4,
+                })),
+              },
+            });
+            if (!result || result.length === 0) return null;
 
-          return {
-            actions: result.map(action => ({
-              title: action.title,
-              kind: action.kind,
-              isPreferred: action.isPreferred,
-              edit: action.edit ? {
-                edits: Object.entries(action.edit.changes || {}).flatMap(([uri, edits]) =>
-                  edits.map(edit => ({
+            return {
+              actions: result.map(action => ({
+                title: action.title,
+                kind: action.kind,
+                isPreferred: action.isPreferred,
+                edit: action.edit ? {
+                  edits: Object.entries(action.edit.changes || {}).flatMap(([uri, edits]) =>
+                    edits.map(edit => ({
+                      resource: monaco.Uri.parse(uri),
+                      textEdit: {
+                        range: lspRangeToMonaco(edit.range),
+                        text: edit.newText,
+                      },
+                      versionId: undefined,
+                    }))
+                  ),
+                } : undefined,
+              })),
+              dispose: () => {},
+            };
+          } catch (e) {
+            reportProviderError('CodeAction', e);
+            return null;
+          }
+        },
+      });
+      providerDisposablesRef.current.push(codeActionProvider);
+    }
+
+    // Rename Provider
+    if (features.rename) {
+      const renameProvider = monaco.languages.registerRenameProvider(languageId, {
+        provideRenameEdits: async (model, position, newName): Promise<languages.WorkspaceEdit | null> => {
+          if (!isLspModel(model)) return null;
+          try {
+            const result = await sendRequest<LSPWorkspaceEdit | null>('textDocument/rename', {
+              ...makeTextDocumentPositionParams(position),
+              newName,
+            });
+            if (!result) return null;
+
+            const edits: languages.IWorkspaceTextEdit[] = [];
+            if (result.changes) {
+              for (const [uri, textEdits] of Object.entries(result.changes)) {
+                for (const edit of textEdits) {
+                  edits.push({
                     resource: monaco.Uri.parse(uri),
                     textEdit: {
                       range: lspRangeToMonaco(edit.range),
                       text: edit.newText,
                     },
                     versionId: undefined,
-                  }))
-                ),
-              } : undefined,
-            })),
-            dispose: () => {},
-          };
-        } catch (e) {
-          console.error('[LSP] CodeAction error:', e);
-          return null;
-        }
-      },
-    });
-    providerDisposablesRef.current.push(codeActionProvider);
-
-    // Rename Provider
-    const renameProvider = monaco.languages.registerRenameProvider(languageId, {
-      provideRenameEdits: async (model, position, newName): Promise<languages.WorkspaceEdit | null> => {
-        try {
-          const result = await sendRequest<LSPWorkspaceEdit | null>('textDocument/rename', {
-            ...makeTextDocumentPositionParams(position),
-            newName,
-          });
-          if (!result) return null;
-
-          const edits: languages.IWorkspaceTextEdit[] = [];
-          if (result.changes) {
-            for (const [uri, textEdits] of Object.entries(result.changes)) {
-              for (const edit of textEdits) {
-                edits.push({
-                  resource: monaco.Uri.parse(uri),
-                  textEdit: {
-                    range: lspRangeToMonaco(edit.range),
-                    text: edit.newText,
-                  },
-                  versionId: undefined,
-                });
+                  });
+                }
               }
             }
+            return { edits };
+          } catch (e) {
+            reportProviderError('Rename', e);
+            return null;
           }
-          return { edits };
-        } catch (e) {
-          console.error('[LSP] Rename error:', e);
-          return null;
-        }
-      },
-      resolveRenameLocation: async (model, position): Promise<languages.RenameLocation | null> => {
-        try {
-          const result = await sendRequest<{ range: LSPRange; placeholder: string } | null>('textDocument/prepareRename', makeTextDocumentPositionParams(position));
-          if (!result) return null;
+        },
+        resolveRenameLocation: async (model, position): Promise<languages.RenameLocation | null> => {
+          if (!isLspModel(model)) return null;
+          try {
+            const result = await sendRequest<{ range: LSPRange; placeholder: string } | null>('textDocument/prepareRename', makeTextDocumentPositionParams(position));
+            if (!result) return null;
 
-          return {
-            range: lspRangeToMonaco(result.range),
-            text: result.placeholder,
-          };
-        } catch (e) {
-          console.error('[LSP] PrepareRename error:', e);
-          return null;
-        }
-      },
-    });
-    providerDisposablesRef.current.push(renameProvider);
+            return {
+              range: lspRangeToMonaco(result.range),
+              text: result.placeholder,
+            };
+          } catch (e) {
+            reportProviderError('PrepareRename', e);
+            return null;
+          }
+        },
+      });
+      providerDisposablesRef.current.push(renameProvider);
+    }
 
     // Document Formatting Provider
-    const formattingProvider = monaco.languages.registerDocumentFormattingEditProvider(languageId, {
-      provideDocumentFormattingEdits: async (model, options): Promise<languages.TextEdit[] | null> => {
-        try {
-          const result = await sendRequest<LSPTextEdit[] | null>('textDocument/formatting', {
-            textDocument: { uri: documentUriRef.current },
-            options: {
-              tabSize: options.tabSize,
-              insertSpaces: options.insertSpaces,
-            },
-          });
-          if (!result) return null;
+    if (features.formatting) {
+      const formattingProvider = monaco.languages.registerDocumentFormattingEditProvider(languageId, {
+        provideDocumentFormattingEdits: async (model, options): Promise<languages.TextEdit[] | null> => {
+          if (!isLspModel(model)) return null;
+          try {
+            const result = await sendRequest<LSPTextEdit[] | null>('textDocument/formatting', {
+              textDocument: { uri: documentUriRef.current },
+              options: {
+                tabSize: options.tabSize,
+                insertSpaces: options.insertSpaces,
+              },
+            });
+            if (!result) return null;
 
-          return result.map(edit => ({
-            range: lspRangeToMonaco(edit.range),
-            text: edit.newText,
-          }));
-        } catch (e) {
-          console.error('[LSP] Formatting error:', e);
-          return null;
-        }
-      },
-    });
-    providerDisposablesRef.current.push(formattingProvider);
+            return result.map(edit => ({
+              range: lspRangeToMonaco(edit.range),
+              text: edit.newText,
+            }));
+          } catch (e) {
+            reportProviderError('Formatting', e);
+            return null;
+          }
+        },
+      });
+      providerDisposablesRef.current.push(formattingProvider);
+    }
 
     // Document Highlight Provider
-    const highlightProvider = monaco.languages.registerDocumentHighlightProvider(languageId, {
-      provideDocumentHighlights: async (model, position): Promise<languages.DocumentHighlight[] | null> => {
-        try {
-          const result = await sendRequest<Array<{ range: LSPRange; kind?: number }> | null>('textDocument/documentHighlight', makeTextDocumentPositionParams(position));
-          if (!result) return null;
+    if (features.documentHighlight) {
+      const highlightProvider = monaco.languages.registerDocumentHighlightProvider(languageId, {
+        provideDocumentHighlights: async (model, position): Promise<languages.DocumentHighlight[] | null> => {
+          if (!isLspModel(model)) return null;
+          try {
+            const result = await sendRequest<Array<{ range: LSPRange; kind?: number }> | null>('textDocument/documentHighlight', makeTextDocumentPositionParams(position));
+            if (!result) return null;
 
-          return result.map(h => ({
-            range: lspRangeToMonaco(h.range),
-            kind: h.kind as languages.DocumentHighlightKind ?? monaco.languages.DocumentHighlightKind.Text,
-          }));
-        } catch (e) {
-          console.error('[LSP] DocumentHighlight error:', e);
-          return null;
-        }
-      },
-    });
-    providerDisposablesRef.current.push(highlightProvider);
+            return result.map(h => ({
+              range: lspRangeToMonaco(h.range),
+              kind: h.kind as languages.DocumentHighlightKind ?? monaco.languages.DocumentHighlightKind.Text,
+            }));
+          } catch (e) {
+            reportProviderError('DocumentHighlight', e);
+            return null;
+          }
+        },
+      });
+      providerDisposablesRef.current.push(highlightProvider);
+    }
 
     console.log('[LSP] Monaco providers registered');
-  }, [sendRequest]);
+  }, [sendRequest, suppressErrors]);
 
   /**
    * Initialize LSP connection
@@ -746,8 +791,11 @@ export function useAsterLSP({
   const initializeLSP = useCallback(async () => {
     if (!editor) return;
 
+    const model = editor.getModel();
+    if (model) documentUriRef.current = model.uri.toString();
+
     try {
-      const initResult = await sendRequest('initialize', {
+      const initResult = await sendRequest<{ capabilities?: LspServerCapabilities }>('initialize', {
         processId: null,
         rootUri: null,
         capabilities: {
@@ -833,17 +881,16 @@ export function useAsterLSP({
       //   不推送 → 服务端按英文解析 zh/de 文档，hover/跳转全部报「Unexpected character」。
       //   必须在 didOpen 之前发，首个解析才会用对 lexicon。
       sendNotification('workspace/didChangeConfiguration', {
-        settings: { asterLanguageServer: { locale } },
+        settings: { asterLanguageServer: buildLspSettings(locale) },
       });
 
-      // Register Monaco providers after LSP is initialized
-      await registerProviders();
+      // 只注册当前服务端真正可用的功能（见 selectLspFeatures）
+      await registerProviders(selectLspFeatures(locale, initResult?.capabilities));
 
-      const model = editor.getModel();
       if (model) {
         sendNotification('textDocument/didOpen', {
           textDocument: {
-            uri: documentUri,
+            uri: documentUriRef.current,
             languageId: 'aster-cnl',
             version: model.getVersionId(),
             text: model.getValue(),
@@ -862,7 +909,6 @@ export function useAsterLSP({
     //   若被闭包捕获成旧值，用户在别处增删领域术语后 LSP 会一直用过期词汇。
   }, [
     editor,
-    documentUri,
     locale,
     tenantId,
     domainVocabularies,
@@ -1040,7 +1086,7 @@ export function useAsterLSP({
     const disposable = model.onDidChangeContent(() => {
       sendNotification('textDocument/didChange', {
         textDocument: {
-          uri: documentUri,
+          uri: documentUriRef.current,
           version: model.getVersionId(),
         },
         contentChanges: [

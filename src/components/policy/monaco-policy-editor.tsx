@@ -561,8 +561,11 @@ export function MonacoPolicyEditor({
    *   - 关键字补全：归本地 provider（buildKeywordSuggestions，按 locale 与用户别名给词）。
    *     LSP 的补全只有关键字 + 英文类型名（Text/Int…，zh 下是错词），不提供任何
    *     用户符号，接上只会产生重复或错误条目，故不注册 LSP 补全。
-   *   - hover / 跳转定义 / 引用 / 文档符号 / 签名帮助 / 代码操作 / 重命名 / 格式化 /
-   *     高亮：归 LSP（浏览器侧没有对应实现；模块目录 hover 只覆盖 Use 行，不重叠）。
+   *   - hover / 跳转定义 / 文档符号 / 签名帮助 / 代码操作 / 格式化 / 高亮 / 引用 / 重命名：
+   *     由 LSP 提供，但**只注册当前服务端真正支持的**（见 lib/lsp-features 的 selectLspFeatures）：
+   *     生产镜像（aster-lang-ts 1.0.32）只对 en-US 提供前七项，引用/重命名不注册；
+   *     服务端带上 experimental.aster 标志（aster-lang-ts#219）后，zh/de 与引用/重命名才启用。
+   *     模块目录 hover 只覆盖 Use 行，与 LSP hover 不重叠。
    *
    * ★仅在配置了 NEXT_PUBLIC_LSP_HOST 时启用：未配置时 hook 会回落到同源
    *   `/api/lsp`，而生产站跑在 Cloudflare Workers 上、根本没有该路由，
