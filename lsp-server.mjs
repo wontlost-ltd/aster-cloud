@@ -16,6 +16,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { join } from 'path';
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
 
 const hostname = process.env.HOSTNAME || '0.0.0.0';
 const port = parseInt(process.env.PORT || '3001', 10);
@@ -118,6 +120,44 @@ export function evaluateUpgrade(input, config) {
 }
 
 // Create HTTP server for health checks and WebSocket upgrade
+/**
+ * LSP stdio 分帧解码器：按 Content-Length 切出完整消息。
+ *
+ * ★Content-Length 是 **UTF-8 字节数**。必须在 Buffer 上按字节切，切完整条再解码。
+ *   旧实现把 stdout 拼成 JS 字符串后按字符切：中文 1 字符 = 3 字节，切多了，
+ *   消息尾部吞进下一条的头，浏览器收到粘连/截断的 JSON；块边界落在多字节字符
+ *   中间时 data.toString() 还会产生替换字符。zh 用户的每条含中文的消息都受影响。
+ *
+ * @returns {{ push(chunk: Buffer): string[] }} 每次 push 返回本次凑齐的完整消息（已解码）
+ */
+export function createLspFrameDecoder() {
+  let buffer = Buffer.alloc(0);
+  const separator = Buffer.from('\r\n\r\n');
+  return {
+    push(chunk) {
+      buffer = Buffer.concat([buffer, chunk]);
+      const messages = [];
+      for (;;) {
+        const headerEnd = buffer.indexOf(separator);
+        if (headerEnd === -1) break;
+        const header = buffer.subarray(0, headerEnd).toString('ascii');
+        const match = header.match(/Content-Length: *(\d+)/i);
+        if (!match) {
+          // 无 Content-Length 的头无法定界，丢弃该头继续找下一条
+          buffer = buffer.subarray(headerEnd + separator.length);
+          continue;
+        }
+        const start = headerEnd + separator.length;
+        const end = start + parseInt(match[1], 10);
+        if (buffer.length < end) break;
+        messages.push(buffer.subarray(start, end).toString('utf-8'));
+        buffer = buffer.subarray(end);
+      }
+      return messages;
+    },
+  };
+}
+
 const server = createServer((req, res) => {
   const { pathname } = parse(req.url, true);
 
@@ -241,7 +281,7 @@ wss.on('connection', (ws, request) => {
 
   // Forward messages from LSP process (stdout) to WebSocket
   // Use a message queue to ensure messages are sent one at a time
-  let buffer = '';
+  const frameDecoder = createLspFrameDecoder();
   const messageQueue = [];
   let isSending = false;
 
@@ -269,30 +309,8 @@ wss.on('connection', (ws, request) => {
   };
 
   lspProcess.stdout?.on('data', (data) => {
-    buffer += data.toString();
-
-    // Parse LSP messages (Content-Length header format)
-    while (true) {
-      const headerEnd = buffer.indexOf('\r\n\r\n');
-      if (headerEnd === -1) break;
-
-      const header = buffer.slice(0, headerEnd);
-      const contentLengthMatch = header.match(/Content-Length: (\d+)/i);
-      if (!contentLengthMatch) {
-        buffer = buffer.slice(headerEnd + 4);
-        continue;
-      }
-
-      const contentLength = parseInt(contentLengthMatch[1], 10);
-      const messageStart = headerEnd + 4;
-      const messageEnd = messageStart + contentLength;
-
-      if (buffer.length < messageEnd) break;
-
-      const message = buffer.slice(messageStart, messageEnd);
-      buffer = buffer.slice(messageEnd);
-
-      // Queue message instead of sending directly
+    // 按字节分帧（见 createLspFrameDecoder），每条完整消息单独成一个 WebSocket 帧
+    for (const message of frameDecoder.push(data)) {
       messageQueue.push(message);
     }
 
@@ -387,7 +405,16 @@ function spawnLSPServer(locale) {
 
     // Construct the path to the LSP server directly
     // In production (Docker), node_modules is in the same directory as this file
-    const lspServerPath = join(__dirname, 'node_modules', '@aster-cloud', 'aster-lang-ts', 'dist', 'src', 'lsp', 'server.js');
+    // LSP_SERVER_SCRIPT 仅供测试替换为假语言服务器；生产不设置。
+    // ★名字刻意不以 ASTER_ 开头：ASTER_* 会被转发给子进程。
+    const lspServerPath = process.env.LSP_SERVER_SCRIPT
+      || join(__dirname, 'node_modules', '@aster-cloud', 'aster-lang-ts', 'dist', 'src', 'lsp', 'server.js');
+
+    // ★每个连接独立的工作目录（也作 HOME）：语言服务器把工作区索引写在 cwd 下的
+    //   .asteri/lsp-index.json，并在启动时读回。所有连接共用 /app 时，一个租户的模块
+    //   会出现在另一个租户的 getAllModules() 里（Use <module> 的跳转可解析到别家模块）。
+    //   连接结束、子进程退出后整个目录删除（见 cleanupWorkDir）。
+    const workDir = mkdtempSync(join(tmpdir(), 'aster-lsp-'));
 
     console.log(`[LSP] Starting LSP server from: ${lspServerPath}`);
 
@@ -397,7 +424,7 @@ function spawnLSPServer(locale) {
     // business inheriting them. Only forward what it actually needs to run.
     const childEnv = {
       PATH: process.env.PATH,
-      HOME: process.env.HOME,
+      HOME: workDir,
       NODE_ENV: process.env.NODE_ENV,
       ASTER_LOCALE: locale,
     };
@@ -412,12 +439,25 @@ function spawnLSPServer(locale) {
     const lspProcess = spawn('node', [lspServerPath, '--stdio'], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: childEnv,
+      cwd: workDir,
     });
+    // 子进程无论因何退出（连接关闭 SIGTERM、崩溃）都删掉它的工作目录
+    lspProcess.once('exit', () => cleanupWorkDir(workDir));
+    lspProcess.once('error', () => cleanupWorkDir(workDir));
 
     return lspProcess;
   } catch (error) {
     console.error('[LSP] Failed to spawn LSP server:', error);
     return null;
+  }
+}
+
+/** 删除连接专属工作目录；失败只记日志，不影响网关 */
+function cleanupWorkDir(dir) {
+  try {
+    rmSync(dir, { recursive: true, force: true });
+  } catch (error) {
+    console.error('[LSP] Failed to remove work dir:', error);
   }
 }
 

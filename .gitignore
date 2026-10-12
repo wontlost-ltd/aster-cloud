@@ -70,3 +70,6 @@ playwright-report/
 
 # CCG workflow scratch (tasks/specs) — not product code
 .ccg/
+
+# LSP 本地运行时写出的工作区索引（不应入库）
+.asteri/

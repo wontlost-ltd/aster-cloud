@@ -575,9 +575,17 @@ export function MonacoPolicyEditor({
   /* LSP 接线（issue #500）。此前 useAsterLSP 是**死代码**——集群里没有服务端，
    * 也没有任何组件调用它，两头都没接上。
    *
-   * ★职责边界：诊断**不归 LSP 管**。上面的 useAsterCompiler 已在浏览器内做
-   *   完整 parse+typecheck（且别名感知、离线可用）。LSP 只补三件浏览器侧做不到的：
-   *   跳转定义、签名帮助、跨文件引用。两者不重叠，故不会出现双份红波浪线。
+   * ★职责边界（每项能力只有一个来源，避免重复）：
+   *   - 诊断：归浏览器侧 useAsterCompiler（完整 parse+typecheck，别名感知、离线可用），
+   *     LSP 推送的诊断被丢弃（suppressDiagnostics），故不会出现双份红波浪线。
+   *   - 关键字补全：归本地 provider（buildKeywordSuggestions，按 locale 与用户别名给词）。
+   *     LSP 的补全只有关键字 + 英文类型名（Text/Int…，zh 下是错词），不提供任何
+   *     用户符号，接上只会产生重复或错误条目，故不注册 LSP 补全。
+   *   - hover / 跳转定义 / 文档符号 / 签名帮助 / 代码操作 / 格式化 / 高亮 / 引用 / 重命名：
+   *     由 LSP 提供，但**只注册当前服务端真正支持的**（见 lib/lsp-features 的 selectLspFeatures）：
+   *     生产镜像（aster-lang-ts 1.0.32）只对 en-US 提供前七项，引用/重命名不注册；
+   *     服务端带上 experimental.aster 标志（aster-lang-ts#219）后，zh/de 与引用/重命名才启用。
+   *     模块目录 hover 只覆盖 Use 行，与 LSP hover 不重叠。
    *
    * ★仅在配置了 NEXT_PUBLIC_LSP_HOST 时启用：未配置时 hook 会回落到同源
    *   `/api/lsp`，而生产站跑在 Cloudflare Workers 上、根本没有该路由，
@@ -598,6 +606,8 @@ export function MonacoPolicyEditor({
   /* eslint-disable react-hooks/refs */
   useAsterLSP({
     editor: lspEnabled && isEditorReady ? editorRef.current : null,
+    // ★必须是编辑器自己的 Monaco（onMount 拿到的那一份），见 useAsterLSP 的 monaco 选项说明。
+    monaco: lspEnabled && isEditorReady ? monacoRef.current : null,
     documentUri: lspDocumentUri,
     locale: compilerLocale,
     tenantId,
