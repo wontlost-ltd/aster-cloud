@@ -582,7 +582,10 @@ export function buildCNLResult(policy: Policy, apiResponse: PolicyEvaluateRespon
     };
   }
 
-  // 没有 result 且调用失败，返回错误
+  // 没有 result 且调用失败，返回错误。
+  // ★必须标 engineError：这是引擎执行失败（编译/运行报错），不是策略的拒绝决策。
+  //   缺了它，deriveExecutionDecision 会落到 'denied'——执行页显示「拒绝」，
+  //   执行记录与证据也把一次系统故障记成 DENY。与 buildCNLErrorResult 同口径。
   return {
     allowed: false,
     approved: false,
@@ -596,6 +599,7 @@ export function buildCNLResult(policy: Policy, apiResponse: PolicyEvaluateRespon
       matchedRuleCount: 0,
       denyCount: 1,
       engine: 'aster-cnl',
+      engineError: true,
       executionTime: apiResponse.executionTimeMs,
       ...(apiResponse.replayMetadata ? { replay: apiResponse.replayMetadata } : {}),
       ...(apiResponse.traceSkeleton ? { traceSkeleton: apiResponse.traceSkeleton } : {}),
