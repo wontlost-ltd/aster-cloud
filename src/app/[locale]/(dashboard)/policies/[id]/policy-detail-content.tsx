@@ -9,7 +9,7 @@ import { PolicyReviewPanel } from '@/components/policy/policy-review-panel';
 import { ShareWithTeamsCard } from '@/components/policy/share-with-teams-card';
 import { PolicyAnalyticsSection } from '@/components/policy/policy-analytics-section';
 import { PolicyProfileBadge } from '@/components/policy/policy-profile-badge';
-import { CedarExportPanel, cedarModuleName, type CedarExportLabels } from '@/components/policy/cedar-export-panel';
+import { CedarExportPanel, type CedarExportLabels } from '@/components/policy/cedar-export-panel';
 
 interface PolicyVersion {
   id: string;
@@ -192,12 +192,8 @@ export function PolicyDetailContent({
         <PolicyProfileBadge profile={profile} locale={locale} label={t.detail.profile} />
       </div>
 
-      {/* 导出为 Cedar（ADR 0047 §6）：导出激活版本，只读操作，冻结策略同样可导出 */}
-      <CedarExportPanel
-        policyId={policy.id}
-        moduleName={cedarModuleName(policy.content)}
-        labels={t.cedarExport}
-      />
+      {/* 导出为 Cedar（ADR 0047 §6）：导出 secure-execute 会执行的版本，只读操作，冻结策略同样可导出 */}
+      <CedarExportPanel policyId={policy.id} labels={t.cedarExport} />
 
       {error && (
         <div className="mb-4 rounded-md bg-red-50 p-4">

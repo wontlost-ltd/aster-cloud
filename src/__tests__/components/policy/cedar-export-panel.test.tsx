@@ -1,8 +1,8 @@
-// 策略详情页「导出为 Cedar」面板（ADR 0047 §6）：可导出时下载两个文件并报告探针比对数；
-// 不可导出时列出诊断；忙时显示服务端消息；其余失败显示通用失败文案。
+// 策略详情页「导出为 Cedar」面板（ADR 0047 §6）：可导出时按响应原样下载两个文件（文件名取编译器给出的模块名）
+// 并报告探针比对数；不可导出时列出诊断；无可执行版本（409）时提示先批准；忙时显示服务端消息；其余失败显示通用失败文案。
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { CedarExportPanel, cedarModuleName } from '@/components/policy/cedar-export-panel';
+import { CedarExportPanel } from '@/components/policy/cedar-export-panel';
 
 const labels = {
   button: 'Export to Cedar',
@@ -10,6 +10,7 @@ const labels = {
   verified: 'Verified against Cedar on {count} probes',
   notExportable: 'This policy cannot be exported to Cedar',
   failed: 'Export failed',
+  noExecutableVersion: 'Approve a version before exporting to Cedar',
 };
 
 function jsonResponse(status: number, body: unknown) {
@@ -39,15 +40,18 @@ afterEach(() => {
 });
 
 function renderPanel() {
-  render(<CedarExportPanel policyId="p1" moduleName="finance.loan" labels={labels} />);
+  render(<CedarExportPanel policyId="p1" labels={labels} />);
   fireEvent.click(screen.getByRole('button', { name: 'Export to Cedar' }));
 }
 
 describe('CedarExportPanel', () => {
-  it('exportable: POSTs to the owner route, downloads both files, reports probes', async () => {
+  // 键序刻意与 JS 重序列化不同（整数形态键 "1" 会被 JSON.stringify 提前），并含大写 \u001F 转义与空白
+  const schemaText = '{"Aster":{"actions":{"read":{},"1":{}},"note":"a\\u001Fb"}}';
+
+  it('exportable: POSTs to the owner route, downloads both files verbatim under moduleName, reports probes', async () => {
     const fetchMock = vi.fn(async () => jsonResponse(200, {
-      exportable: true, policies: 'permit(principal, action, resource);', schema: { ns: { entityTypes: {} } },
-      probes: { count: 4, agreed: 4 }, diagnostics: [],
+      exportable: true, moduleName: 'finance.loan', policies: 'permit(principal, action, resource);',
+      schema: JSON.parse(schemaText), schemaText, probes: { count: 4, agreed: 4 }, diagnostics: [],
     }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -60,9 +64,41 @@ describe('CedarExportPanel', () => {
     expect(blobs[0].type).toBe('text/plain');
     expect(await blobs[0].text()).toBe('permit(principal, action, resource);');
     expect(blobs[1].type).toBe('application/json');
-    // 紧凑序列化：与 aster-api 审计 POLICY_EXPORTED 的 schemaHash 同一字节，下载文件可直接按哈希对账
-    expect(await blobs[1].text()).toBe('{"ns":{"entityTypes":{}}}');
     expect(revokeObjectURL).toHaveBeenCalledTimes(2);
+  });
+
+  it('downloaded schema equals schemaText byte-for-byte (the audited schemaHash input), not a re-serialisation', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, {
+      exportable: true, moduleName: 'm', policies: 'p', schema: JSON.parse(schemaText), schemaText,
+      probes: { count: 1, agreed: 1 }, diagnostics: [],
+    })));
+
+    renderPanel();
+
+    await screen.findByText('Verified against Cedar on 1 probes');
+    const downloaded = await blobs[1].text();
+    expect(downloaded).toBe(schemaText);
+    expect(downloaded).not.toBe(JSON.stringify(JSON.parse(schemaText)));
+  });
+
+  it('falls back to "policy" file names when moduleName is absent', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, {
+      exportable: true, moduleName: null, policies: 'p', schema: {}, schemaText: '{}', probes: { count: 1, agreed: 1 }, diagnostics: [],
+    })));
+
+    renderPanel();
+
+    await screen.findByText('Verified against Cedar on 1 probes');
+    expect(downloads.map((d) => d.name)).toEqual(['policy.cedar', 'policy.cedarschema.json']);
+  });
+
+  it('409 no executable version: asks to approve a version first; no downloads', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(409, { error: 'no executable version' })));
+
+    renderPanel();
+
+    expect(await screen.findByText('Approve a version before exporting to Cedar')).toBeDefined();
+    expect(createObjectURL).not.toHaveBeenCalled();
   });
 
   it('not exportable: lists diagnostics with code, line and message; no downloads', async () => {
@@ -105,17 +141,5 @@ describe('CedarExportPanel', () => {
 
     expect(await screen.findByText('Export failed')).toBeDefined();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Export to Cedar' }).hasAttribute('disabled')).toBe(false));
-  });
-});
-
-describe('cedarModuleName', () => {
-  it('reads the module declaration in en/de/zh', () => {
-    expect(cedarModuleName('Module finance.loan.\n\nRule x given a: Int, produce Bool:')).toBe('finance.loan');
-    expect(cedarModuleName('Modul finanz.kredit.\n')).toBe('finanz.kredit');
-    expect(cedarModuleName('模块 金融.贷款。\n')).toBe('金融.贷款');
-  });
-
-  it('falls back to "policy" when there is no module declaration', () => {
-    expect(cedarModuleName('if x then y')).toBe('policy');
   });
 });

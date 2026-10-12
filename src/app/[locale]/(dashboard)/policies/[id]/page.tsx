@@ -138,6 +138,7 @@ export default async function PolicyDetailPage({
       verified: t.raw('cedarExport.verified') as string,
       notExportable: t('cedarExport.notExportable'),
       failed: t('cedarExport.failed'),
+      noExecutableVersion: t('cedarExport.noExecutableVersion'),
     },
     deleteDialog: {
       title: t('deleteDialog.title'),

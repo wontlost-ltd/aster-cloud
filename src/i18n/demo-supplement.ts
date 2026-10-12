@@ -503,6 +503,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         verified: 'Verified against Cedar on {count} probes',
         notExportable: 'This policy cannot be exported to Cedar',
         failed: 'Export failed',
+        noExecutableVersion: 'Approve a version before exporting to Cedar',
       },
       execute: {
         // 值/计算输出策略（如 greet 返回文本）：执行成功但无 allow/deny 语义。
@@ -1200,6 +1201,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         verified: '已用 Cedar 比对 {count} 个探针',
         notExportable: '该策略无法导出为 Cedar',
         failed: '导出失败',
+        noExecutableVersion: '导出到 Cedar 前请先批准一个版本',
       },
       execute: {
         computed: '已计算',
@@ -1895,6 +1897,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         verified: 'Mit Cedar an {count} Prüffällen abgeglichen',
         notExportable: 'Diese Richtlinie kann nicht nach Cedar exportiert werden',
         failed: 'Export fehlgeschlagen',
+        noExecutableVersion: 'Genehmigen Sie eine Version, bevor Sie nach Cedar exportieren',
       },
       execute: {
         computed: 'Berechnet',
@@ -2588,6 +2591,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         verified: 'Verified against Cedar on {count} probes',
         notExportable: 'This policy cannot be exported to Cedar',
         failed: 'Export failed',
+        noExecutableVersion: 'Approve a version before exporting to Cedar',
       },
       execute: {
         computed: 'परिकलित',

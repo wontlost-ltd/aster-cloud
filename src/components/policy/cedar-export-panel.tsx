@@ -2,8 +2,8 @@
 
 /*
  * 策略详情页「导出为 Cedar」面板（ADR 0047 §6）。
- * 调所有者路由导出激活版本：可导出时下载 <module>.cedar 与 <module>.cedarschema.json，
- * 并报告与 Cedar 比对过的探针数；不可导出时列出诊断。文案由服务端页面预渲染传入。
+ * 调所有者路由导出可执行版本：可导出时原样下载 <module>.cedar 与 <module>.cedarschema.json（模块名取编译器给出的
+ * moduleName），并报告与 Cedar 比对过的探针数；不可导出时列出诊断；无可执行版本时提示先批准。文案由服务端页面预渲染传入。
  */
 import { useCallback, useState } from 'react';
 import type { PolicyCedarExportResponse, PolicyDiagnostic } from '@/services/policy/policy-api';
@@ -15,11 +15,11 @@ export interface CedarExportLabels {
   verified: string;
   notExportable: string;
   failed: string;
+  noExecutableVersion: string;
 }
 
 interface CedarExportPanelProps {
   policyId: string;
-  moduleName: string;
   labels: CedarExportLabels;
 }
 
@@ -29,13 +29,6 @@ type ExportState =
   | { kind: 'verified'; count: number }
   | { kind: 'notExportable'; diagnostics: PolicyDiagnostic[] }
   | { kind: 'error'; message: string };
-
-// 模块声明（en/de/zh）决定下载文件名；无声明时用通用名
-const MODULE_DECL = /^\s*(?:Module|Modul|模块)\s+(\S+?)[.。]?\s*$/m;
-
-export function cedarModuleName(content: string): string {
-  return MODULE_DECL.exec(content)?.[1] ?? 'policy';
-}
 
 function downloadFile(name: string, text: string, type: string): void {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -48,23 +41,25 @@ function downloadFile(name: string, text: string, type: string): void {
   URL.revokeObjectURL(url);
 }
 
-// 503 为服务端导出并发已满，显示服务端消息提示稍后重试；其余失败统一显示 failed
+// 409 为无可执行版本，提示先批准；503 为服务端导出并发已满，显示服务端消息提示稍后重试；其余失败统一显示 failed
 async function failureMessage(res: Response, labels: CedarExportLabels): Promise<string> {
+  if (res.status === 409) return labels.noExecutableVersion;
   if (res.status !== 503) return labels.failed;
   const body = (await res.json().catch(() => null)) as { message?: unknown } | null;
   return typeof body?.message === 'string' && body.message ? body.message : labels.failed;
 }
 
-async function runExport(policyId: string, moduleName: string, labels: CedarExportLabels): Promise<ExportState> {
+async function runExport(policyId: string, labels: CedarExportLabels): Promise<ExportState> {
   const res = await fetch(`/api/policies/${policyId}/export/cedar`, { method: 'POST' });
   if (!res.ok) return { kind: 'error', message: await failureMessage(res, labels) };
   const data = (await res.json()) as PolicyCedarExportResponse;
-  if (!data.exportable || data.policies == null || data.schema == null) {
+  if (!data.exportable || data.policies == null || data.schemaText == null) {
     return { kind: 'notExportable', diagnostics: data.diagnostics ?? [] };
   }
+  const moduleName = data.moduleName ?? 'policy';
+  // 两个文件都原样写出、不重新序列化：其 SHA-256 即 aster-api 审计记录的 policiesHash / schemaHash
   downloadFile(`${moduleName}.cedar`, data.policies, 'text/plain');
-  // schema 紧凑序列化，与 aster-api 审计记录的 schemaHash 字节一致，下载文件可按 SHA-256 与审计链对账
-  downloadFile(`${moduleName}.cedarschema.json`, JSON.stringify(data.schema), 'application/json');
+  downloadFile(`${moduleName}.cedarschema.json`, data.schemaText, 'application/json');
   return { kind: 'verified', count: data.probes?.count ?? 0 };
 }
 
@@ -98,18 +93,18 @@ function ExportResult({ state, labels }: { state: ExportState; labels: CedarExpo
   );
 }
 
-export function CedarExportPanel({ policyId, moduleName, labels }: CedarExportPanelProps) {
+export function CedarExportPanel({ policyId, labels }: CedarExportPanelProps) {
   const [state, setState] = useState<ExportState>({ kind: 'idle' });
   const busy = state.kind === 'busy';
 
   const handleExport = useCallback(async () => {
     setState({ kind: 'busy' });
     try {
-      setState(await runExport(policyId, moduleName, labels));
+      setState(await runExport(policyId, labels));
     } catch {
       setState({ kind: 'error', message: labels.failed });
     }
-  }, [policyId, moduleName, labels]);
+  }, [policyId, labels]);
 
   return (
     <div className="mb-6">

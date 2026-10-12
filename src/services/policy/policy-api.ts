@@ -216,11 +216,17 @@ export interface PolicyCedarExportRequest {
   claimedRef?: Record<string, string>;
 }
 
-/** 导出为 Cedar 响应：不可导出时 exportable=false、policies/schema 为 null，诊断说明原因。 */
+/**
+ * 导出为 Cedar 响应：不可导出时 exportable=false、policies/schema/schemaText 为 null，诊断说明原因。
+ * schemaText 为 aster-api 校验并计入审计 schemaHash 的 schema 原文，下载时须原样写出；schema 为其解析形态。
+ * moduleName 为编译器给出的模块名，编译失败时为 null。
+ */
 export interface PolicyCedarExportResponse {
   exportable: boolean;
+  moduleName?: string | null;
   policies: string | null;
   schema: Record<string, unknown> | null;
+  schemaText?: string | null;
   ruleId?: string | null;
   profile?: string | null;
   controls?: unknown;
