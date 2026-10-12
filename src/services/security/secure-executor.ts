@@ -213,26 +213,7 @@ export async function executeSecurely(
     }
   } else {
     // 4b. 默认版本执行：优先 isDefault，否则最新批准
-    targetVersion = (await db.query.policyVersions.findFirst({
-      where: and(
-        eq(policyVersions.policyId, request.policyId),
-        eq(policyVersions.status, 'APPROVED'),
-        eq(policyVersions.isDefault, true)
-      ),
-      with: { policy: true },
-    })) as PolicyVersionWithPolicy | null;
-
-    if (!targetVersion) {
-      // 没有默认版本，取最新批准版本
-      targetVersion = (await db.query.policyVersions.findFirst({
-        where: and(
-          eq(policyVersions.policyId, request.policyId),
-          eq(policyVersions.status, 'APPROVED')
-        ),
-        orderBy: [desc(policyVersions.version)],
-        with: { policy: true },
-      })) as PolicyVersionWithPolicy | null;
-    }
+    targetVersion = await findDefaultExecutableVersion(request.policyId);
 
     if (!targetVersion) {
       return {
@@ -428,6 +409,32 @@ export async function getExecutableVersions(policyId: string): Promise<
 }
 
 /**
+ * 未指定版本时 secure-execute 执行的版本：优先 isDefault 的 APPROVED 版本，否则最新 APPROVED 版本；
+ * 都没有时返回 null。草稿等未批准版本永不入选——Cedar 导出复用本函数，保证导出的就是会被执行的版本。
+ */
+export async function findDefaultExecutableVersion(policyId: string): Promise<PolicyVersionWithPolicy | null> {
+  const preferred = await db.query.policyVersions.findFirst({
+    where: and(
+      eq(policyVersions.policyId, policyId),
+      eq(policyVersions.status, 'APPROVED'),
+      eq(policyVersions.isDefault, true)
+    ),
+    with: { policy: true },
+  });
+  if (preferred) return preferred as PolicyVersionWithPolicy;
+
+  const latest = await db.query.policyVersions.findFirst({
+    where: and(
+      eq(policyVersions.policyId, policyId),
+      eq(policyVersions.status, 'APPROVED')
+    ),
+    orderBy: [desc(policyVersions.version)],
+    with: { policy: true },
+  });
+  return (latest as PolicyVersionWithPolicy | undefined) ?? null;
+}
+
+/**
  * 获取策略的默认版本信息
  *
  * 用于前端初始加载时获取默认执行版本的哈希。
@@ -437,38 +444,7 @@ export async function getDefaultVersionInfo(policyId: string): Promise<{
   sourceHash: string;
   source: string;
 } | null> {
-  // 优先获取默认版本
-  let version = await db.query.policyVersions.findFirst({
-    where: and(
-      eq(policyVersions.policyId, policyId),
-      eq(policyVersions.status, 'APPROVED'),
-      eq(policyVersions.isDefault, true)
-    ),
-    columns: {
-      version: true,
-      sourceHash: true,
-      source: true,
-      content: true,
-    },
-  });
-
-  // 没有默认版本则获取最新批准版本
-  if (!version) {
-    version = await db.query.policyVersions.findFirst({
-      where: and(
-        eq(policyVersions.policyId, policyId),
-        eq(policyVersions.status, 'APPROVED')
-      ),
-      orderBy: [desc(policyVersions.version)],
-      columns: {
-        version: true,
-        sourceHash: true,
-        source: true,
-        content: true,
-      },
-    });
-  }
-
+  const version = await findDefaultExecutableVersion(policyId);
   if (!version || !version.sourceHash) {
     return null;
   }
