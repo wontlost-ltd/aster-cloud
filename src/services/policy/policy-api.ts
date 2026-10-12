@@ -205,6 +205,30 @@ export interface PolicyCompileResponse {
   profile?: string;
 }
 
+/** 导出为 Cedar 请求（ADR 0047 §6）：source 与 versionId 恰给其一。 */
+export interface PolicyCedarExportRequest {
+  source?: string;
+  locale: string;
+  aliasSet?: Record<string, string[]> | null;
+  functionName?: string;
+  versionId?: number;
+  /** 调用方自述引用，原样记入审计、不经核验；至多 4 项，键值须符合 [A-Za-z0-9._:/-]{1,128}。 */
+  claimedRef?: Record<string, string>;
+}
+
+/** 导出为 Cedar 响应：不可导出时 exportable=false、policies/schema 为 null，诊断说明原因。 */
+export interface PolicyCedarExportResponse {
+  exportable: boolean;
+  policies: string | null;
+  schema: Record<string, unknown> | null;
+  ruleId?: string | null;
+  profile?: string | null;
+  controls?: unknown;
+  probes?: { count: number; agreed: number } | null;
+  diagnostics: PolicyDiagnostic[];
+  sourceHash?: string;
+}
+
 export interface PolicyDiagnostic {
   /** 严重级别 */
   severity: 'error' | 'warning' | 'info' | 'hint';
@@ -429,7 +453,8 @@ export class PolicyApiClient {
           response.status,
           errorData.code ?? (typeof errorData.error === 'string' ? errorData.error : undefined),
           Array.isArray(errorData.diagnostics) ? errorData.diagnostics : undefined,
-          isPlainObject(errorData) ? errorData : undefined
+          isPlainObject(errorData) ? errorData : undefined,
+          response.headers?.get('Retry-After') ?? undefined
         );
       }
 
@@ -535,6 +560,11 @@ export class PolicyApiClient {
       // 仅在有别名时携带（与 evaluateSource 一致），避免空字段增大请求体。
       ...(hasAliases ? { aliasSet: request.aliasSet } : {}),
     });
+  }
+
+  /** 导出为 Cedar（ADR 0047 §6）：不可导出仍是 200，503 cedar_export_busy 表示服务端并发已满。 */
+  async exportCedar(request: PolicyCedarExportRequest): Promise<PolicyCedarExportResponse> {
+    return this.request<PolicyCedarExportResponse>('POST', API_ENDPOINTS.exportCedar, request);
   }
 
   /**
@@ -744,7 +774,9 @@ export class PolicyApiError extends Error {
     public readonly code?: string,
     public readonly diagnostics?: PolicyEvaluateDiagnostic[],
     /** 原始错误体（如 guard 的 verifiedRoles / outcome），供调用方按 code 细分处理 */
-    public readonly details?: Record<string, unknown>
+    public readonly details?: Record<string, unknown>,
+    /** 上游 Retry-After 响应头（如导出忙 503），供路由原样透传 */
+    public readonly retryAfter?: string
   ) {
     super(message);
     this.name = 'PolicyApiError';

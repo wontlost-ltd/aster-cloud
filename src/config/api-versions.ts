@@ -16,6 +16,8 @@ export const API_ENDPOINTS = {
   evaluateSource: `${prefix}/policies/evaluate-source`,
   compile: `${prefix}/policies/compile`,
   schema: `${prefix}/policies/schema`,
+  // 导出为 Cedar（ADR 0047 §6）：端点要求已验证身份，request() 自动附内部签名
+  exportCedar: `${prefix}/policies/export/cedar`,
   /**
    * What-If 批次（ADR 0034）。★路径含 policyId，故用函数而非常量——
    * 签名时只取 pathname（不含 query），与 InternalCallerFilter 的
