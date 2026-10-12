@@ -582,25 +582,34 @@ export function buildCNLResult(policy: Policy, apiResponse: PolicyEvaluateRespon
     };
   }
 
-  // 没有 result 且调用失败，返回错误
+  // 没有 result：按 aster-api 是否给出 error 区分两种情况。
+  //   - error 非空 → 引擎执行失败（编译/运行报错）。必须标 engineError，否则
+  //     deriveExecutionDecision 落到 'denied'，系统故障会被显示与记录成 DENY。
+  //     与 buildCNLErrorResult 同口径。
+  //   - error 为空 → 成功执行但结果为空（如 `产出 可选 整数` 的 Rule 返回 无值）：
+  //     aster-api 把 polyglot null 包成 success(null)。这既不是故障也不是拒绝，
+  //     归为 indeterminate（无 allow/deny 语义），不写 deniedReasons。
+  const engineErrorMessage = apiResponse.error?.trim() ? apiResponse.error : null;
+  const sharedMetadata = {
+    evaluatedAt: new Date().toISOString(),
+    policyId: policy.id,
+    policyName: policy.name,
+    ruleCount: 0,
+    matchedRuleCount: 0,
+    engine: 'aster-cnl' as const,
+    executionTime: apiResponse.executionTimeMs,
+    ...(apiResponse.replayMetadata ? { replay: apiResponse.replayMetadata } : {}),
+    ...(apiResponse.traceSkeleton ? { traceSkeleton: apiResponse.traceSkeleton } : {}),
+    ...evidenceMetadata,
+  };
   return {
     allowed: false,
     approved: false,
     matchedRules: [],
-    deniedReasons: [apiResponse.error || 'Policy evaluation failed: no result returned'],
-    metadata: {
-      evaluatedAt: new Date().toISOString(),
-      policyId: policy.id,
-      policyName: policy.name,
-      ruleCount: 0,
-      matchedRuleCount: 0,
-      denyCount: 1,
-      engine: 'aster-cnl',
-      executionTime: apiResponse.executionTimeMs,
-      ...(apiResponse.replayMetadata ? { replay: apiResponse.replayMetadata } : {}),
-      ...(apiResponse.traceSkeleton ? { traceSkeleton: apiResponse.traceSkeleton } : {}),
-      ...evidenceMetadata,
-    },
+    deniedReasons: engineErrorMessage ? [engineErrorMessage] : [],
+    metadata: engineErrorMessage
+      ? { ...sharedMetadata, denyCount: 1, engineError: true }
+      : { ...sharedMetadata, denyCount: 0, decision: 'indeterminate' as const },
     result: apiResponse.result,
     executedFunction: apiResponse.executedFunction,
     diagnostics: apiResponse.diagnostics,
