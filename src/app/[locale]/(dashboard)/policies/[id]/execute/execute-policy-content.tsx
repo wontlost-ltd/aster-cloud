@@ -274,7 +274,12 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
     // 之前 catch 块只 setInput('{}')，不通知用户——404 / 鉴权失败 / API
     // shape 变更都会让页面静默无内容，且 AI Explain 按钮静默消失。修复后
     // 显式设置 schemaError，让 UI 可见地报告失败原因。
-    fetch(`/api/policies/${policyId}`)
+    //
+    // policyId / locale 变化时 effect 会重跑：旧请求必须中止，且它的响应即使晚到也不能写入状态，
+    // 否则旧策略的内容、示例和默认 Rule 会覆盖新策略（cleanup 里置 stale 并 abort）。
+    const controller = new AbortController();
+    let stale = false;
+    fetch(`/api/policies/${policyId}`, { signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) {
           throw new Error(`HTTP ${res.status} fetching policy ${policyId}`);
@@ -282,6 +287,7 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
         return res.json();
       })
       .then((data) => {
+        if (stale) return;
         setPolicyName(data.name);
         setPolicyContent(data.content || '');
         // P0-R2: 低置信度检测时 fallback 到 page locale，避免给 AI Explain
@@ -332,11 +338,17 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
         }
       })
       .catch((err) => {
+        // 被新请求取代（含 abort）时静默丢弃，不能把旧请求的失败显示在新策略上
+        if (stale) return;
         // 显式失败：主文案走 i18n，detail 仅在折叠区显示（避免泄漏内部细节）
         const reason = err instanceof Error ? err.message : String(err);
         setSchemaError({ messageKey: 'policy.fetch_failed', detail: reason });
         setInput('{}');
       });
+    return () => {
+      stale = true;
+      controller.abort();
+    };
   }, [policyId, fetchSchema, locale]);
 
   useEffect(() => {
@@ -382,11 +394,19 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
     });
   };
 
-  const handleExecute = async (functionNameOverride?: string) => {
-    const functionName = functionNameOverride ?? selectedRule;
-    if (functionNameOverride) {
-      setSelectedRule(functionNameOverride);
-    }
+  // ENTRY_AMBIGUOUS 的候选按钮：只选中该 Rule，不立即执行。
+  // 当前输入/表单是按原 Rule（或未选 Rule 时的第一个函数）生成的，直接拿去执行候选 Rule
+  // 会提交形状不符的参数；随后示例又被重置成候选 Rule 的，用户手改的输入也随之丢失。
+  // 选中后由「切换 Rule」的 effect 生成该 Rule 的示例，用户确认输入后再点执行（与提示文案
+  // 「选择一个候选 Rule 后重跑」一致）。
+  const selectCandidateRule = (candidate: string) => {
+    setSelectedRule(candidate);
+    setExecutionDiagnostics([]);
+    setError('');
+  };
+
+  const handleExecute = async () => {
+    const functionName = selectedRule;
     setIsLoading(true);
     setError('');
     setResult(null);
@@ -803,7 +823,7 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
                         <button
                           key={candidate}
                           type="button"
-                          onClick={() => handleExecute(candidate)}
+                          onClick={() => selectCandidateRule(candidate)}
                           disabled={isLoading}
                           className="rounded-md border border-amber-300 bg-bg px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50 dark:border-amber-700 dark:bg-gray-900 dark:text-amber-100 dark:hover:bg-amber-900/30"
                         >

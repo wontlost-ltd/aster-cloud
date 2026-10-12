@@ -22,6 +22,7 @@ const PARAMS: Record<string, { name: string; type: string; typeKind: string }[]>
   power: [{ name: 'base', type: 'Int', typeKind: 'primitive' }, { name: 'exponent', type: 'Int', typeKind: 'primitive' }],
   calculate: [{ name: 'request', type: 'Text', typeKind: 'primitive' }],
   pi: [],
+  only: [{ name: 'z', type: 'Int', typeKind: 'primitive' }],
 };
 const extractSchema = vi.fn((_src: string, opts?: { functionName?: string }) => {
   const fn = opts?.functionName ?? 'power';
@@ -250,5 +251,125 @@ describe('ExecutePolicyContent — 加载后立即切换 Rule 不被覆盖', () 
       expect(select.value).toBe('calculate');
       expect(JSON.parse(jsonInput().value)).toEqual({ request: 'sample' });
     }, WAIT);
+  });
+});
+
+describe('ExecutePolicyContent — ENTRY_AMBIGUOUS 候选按钮只选中 Rule，不用旧输入执行', () => {
+  it('★点击候选：不再发执行请求，选中该 Rule，示例换成该 Rule 的参数，提示收起', async () => {
+    executeResponse = {
+      success: false,
+      error: 'ambiguous entry',
+      diagnostics: [{ code: 'ENTRY_AMBIGUOUS', message: 'pick one', candidates: ['power', 'calculate'] }],
+    };
+    await renderPage();
+    // 用户手改了输入（power 形状），然后在未选 Rule 的情况下执行
+    fireEvent.change(jsonInput(), { target: { value: '{"base": 9, "exponent": 2}' } });
+    fireEvent.click(screen.getByRole('button', { name: 'policies.execute.executeButton' }));
+    const candidate = await screen.findByRole('button', { name: 'calculate' }, WAIT);
+    const executeCalls = () =>
+      fetchMock.mock.calls.filter(([url, init]) => String(url).includes('/execute') && init?.method === 'POST');
+    expect(executeCalls()).toHaveLength(1);
+
+    fireEvent.click(candidate);
+
+    await waitFor(() => {
+      const select = document.querySelector('select') as HTMLSelectElement;
+      expect(select.value).toBe('calculate');
+      expect(JSON.parse(jsonInput().value)).toEqual({ request: 'sample' });
+    }, WAIT);
+    expect(executeCalls()).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'calculate' })).toBeNull();
+  });
+});
+
+describe('ExecutePolicyContent — 加载请求忽略过期响应', () => {
+  it('★policyId 切换后，旧策略的响应晚到不会覆盖新策略的内容', async () => {
+    const P2_SOURCE = ['Module demo.p2.', '', 'Rule only given z as Int, produce Int:', '  Return z.'].join('\n');
+    let releaseP1: () => void = () => {};
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const isGet = !init || !init.method || init.method === 'GET';
+      if (url.endsWith('/api/policies/p1') && isGet) {
+        return new Promise((resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+          releaseP1 = () => resolve({ ok: true, json: async () => ({ name: 'Old', content: SOURCE }) });
+        });
+      }
+      if (url.endsWith('/api/policies/p2') && isGet) {
+        return Promise.resolve({ ok: true, json: async () => ({ name: 'New', content: P2_SOURCE }) });
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    const { ExecutePolicyContent } = await import(
+      '@/app/[locale]/(dashboard)/policies/[id]/execute/execute-policy-content'
+    );
+    const view = render(<ExecutePolicyContent policyId="p1" locale="en" />);
+    view.rerender(<ExecutePolicyContent policyId="p2" locale="en" />);
+    await waitFor(() => expect(JSON.parse(jsonInput().value)).toEqual({ z: 'sample' }), WAIT);
+
+    releaseP1();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(JSON.parse(jsonInput().value)).toEqual({ z: 'sample' });
+    expect(screen.queryByText('Old')).toBeNull();
+  });
+
+  it('★旧请求在新策略加载后才失败：不显示加载失败，也不清空新策略的输入', async () => {
+    const P2_SOURCE = ['Module demo.p2.', '', 'Rule only given z as Int, produce Int:', '  Return z.'].join('\n');
+    let failP1: () => void = () => {};
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const isGet = !init || !init.method || init.method === 'GET';
+      if (url.endsWith('/api/policies/p1') && isGet) {
+        // 无视 signal，在新策略加载之后才失败
+        return new Promise((_resolve, reject) => {
+          failP1 = () => reject(new Error('HTTP 500 fetching policy p1'));
+        });
+      }
+      if (url.endsWith('/api/policies/p2') && isGet) {
+        return Promise.resolve({ ok: true, json: async () => ({ name: 'New', content: P2_SOURCE }) });
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    const { ExecutePolicyContent } = await import(
+      '@/app/[locale]/(dashboard)/policies/[id]/execute/execute-policy-content'
+    );
+    const view = render(<ExecutePolicyContent policyId="p1" locale="en" />);
+    view.rerender(<ExecutePolicyContent policyId="p2" locale="en" />);
+    await waitFor(() => expect(JSON.parse(jsonInput().value)).toEqual({ z: 'sample' }), WAIT);
+
+    failP1();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(JSON.parse(jsonInput().value)).toEqual({ z: 'sample' });
+    expect(document.body.textContent).not.toContain('HTTP 500 fetching policy p1');
+  });
+
+  it('★旧请求未能被中止（响应已在途）时，晚到的数据也被丢弃', async () => {
+    const P2_SOURCE = ['Module demo.p2.', '', 'Rule only given z as Int, produce Int:', '  Return z.'].join('\n');
+    let releaseP1: () => void = () => {};
+    // 模拟 abort 来不及生效：旧请求无视 signal，照常 resolve
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const isGet = !init || !init.method || init.method === 'GET';
+      if (url.endsWith('/api/policies/p1') && isGet) {
+        return new Promise((resolve) => {
+          releaseP1 = () => resolve({ ok: true, json: async () => ({ name: 'Old', content: SOURCE }) });
+        });
+      }
+      if (url.endsWith('/api/policies/p2') && isGet) {
+        return Promise.resolve({ ok: true, json: async () => ({ name: 'New', content: P2_SOURCE }) });
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    const { ExecutePolicyContent } = await import(
+      '@/app/[locale]/(dashboard)/policies/[id]/execute/execute-policy-content'
+    );
+    const view = render(<ExecutePolicyContent policyId="p1" locale="en" />);
+    view.rerender(<ExecutePolicyContent policyId="p2" locale="en" />);
+    await waitFor(() => expect(JSON.parse(jsonInput().value)).toEqual({ z: 'sample' }), WAIT);
+
+    releaseP1();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(JSON.parse(jsonInput().value)).toEqual({ z: 'sample' });
+    expect(screen.queryByText('Old')).toBeNull();
   });
 });
