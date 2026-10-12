@@ -26,6 +26,7 @@ class FakeWebSocket {
   static instances: FakeWebSocket[] = [];
   static serverCaps: Record<string, unknown> = NEW_SERVER_CAPS;
   static hoverFails = false;
+  static prepareRename: 'null' | 'error' = 'null';
   readyState = 0;
   sent: Sent[] = [];
   onopen: (() => void) | null = null;
@@ -51,6 +52,11 @@ class FakeWebSocket {
         ? { jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: 'boom' } }
         : { jsonrpc: '2.0', id: msg.id, result: { contents: { kind: 'markdown', value: '**规则** twice' } } });
     }
+    if (msg.method === 'textDocument/prepareRename') {
+      this.serverSend(FakeWebSocket.prepareRename === 'error'
+        ? { jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: 'boom' } }
+        : { jsonrpc: '2.0', id: msg.id, result: null });
+    }
     if (msg.method === 'textDocument/codeAction') {
       this.serverSend({ jsonrpc: '2.0', id: msg.id, result: [] });
     }
@@ -60,7 +66,7 @@ class FakeWebSocket {
 }
 
 function makeFakeMonaco() {
-  const providers: Record<string, { provideHover?: (...a: unknown[]) => unknown; provideCodeActions?: (...a: unknown[]) => unknown }> = {};
+  const providers: Record<string, { provideHover?: (...a: unknown[]) => unknown; provideCodeActions?: (...a: unknown[]) => unknown; resolveRenameLocation?: (...a: unknown[]) => unknown }> = {};
   const reg = (kind: string) => vi.fn((_lang: string, p: unknown) => { providers[kind] = p as never; return { dispose: vi.fn() }; });
   return {
     providers,
@@ -92,6 +98,7 @@ const fakeModel = {
   getValue: () => '模块 demo.p。',
   getVersionId: () => 1,
   onDidChangeContent: (fn: () => void) => { contentListeners.push(fn); return { dispose: vi.fn() }; },
+  getWordAtPosition: () => ({ word: 'the', startColumn: 7, endColumn: 10 }),
 };
 const otherModel = { ...fakeModel, uri: { toString: () => 'inmemory://model/2' } };
 const fakeEditor = { getModel: () => fakeModel };
@@ -102,6 +109,7 @@ describe('useAsterLSP 协议', () => {
     FakeWebSocket.instances = [];
     FakeWebSocket.serverCaps = NEW_SERVER_CAPS;
     FakeWebSocket.hoverFails = false;
+    FakeWebSocket.prepareRename = 'null';
     vi.stubGlobal('WebSocket', FakeWebSocket);
     process.env.NEXT_PUBLIC_LSP_HOST = 'lsp.example.test';
   });
@@ -262,6 +270,21 @@ describe('useAsterLSP 协议', () => {
     await waitFor(() => expect(FakeWebSocket.instances[0].sent.some((m) => m.method === 'textDocument/didChange')).toBe(true));
     const change = FakeWebSocket.instances[0].sent.find((m) => m.method === 'textDocument/didChange');
     expect((change?.params as { textDocument: { uri: string } }).textDocument.uri).toBe(MODEL_URI);
+  });
+
+  /* ★服务端 prepareRename 回 null 表示「这里不能重命名」（冠词、关键字、词汇词）。客户端若也回 null，
+   *   Monaco 视为「没有意见」，照样对光标下的词调用 provideRenameEdits（monaco rename.js）。
+   *   必须回 { rejectReason } 让 Monaco 拒绝，且提示按 locale 本地化。 */
+  it.each([
+    ['zh-CN', 'null', '此处无法重命名'],
+    ['en-US', 'null', 'cannot be renamed'],
+    ['zh-CN', 'error', '此处无法重命名'],
+  ] as const)('★%s / prepareRename=%s：resolveRenameLocation 返回 rejectReason', async (locale, mode, expected) => {
+    FakeWebSocket.prepareRename = mode;
+    const monaco = mount(locale);
+    await waitFor(() => expect(monaco.languages.registerRenameProvider).toHaveBeenCalled());
+    const loc = await monaco.providers.rename.resolveRenameLocation!(fakeModel, { lineNumber: 1, column: 8 }) as { rejectReason?: string } | null;
+    expect(loc?.rejectReason).toContain(expected);
   });
 });
 
