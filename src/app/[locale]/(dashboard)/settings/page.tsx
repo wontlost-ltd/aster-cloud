@@ -35,6 +35,7 @@ import {
 import {
   LocaleDetectionToggle,
   AssistantToggle,
+  AiInlineCompletionToggle,
   SignOutButton,
   DeleteAccountFlow,
 } from './settings-client';
@@ -145,6 +146,27 @@ export default async function SettingsPage({ params }: PageProps) {
                   ariaLabel={t('language.autoDetect')}
                   enabledHint={t('language.enabled')}
                   disabledHint={t('language.disabled')}
+                />
+              </Stack>
+            </Stack>
+          </CardBody>
+        </Card>
+
+        {/* AI 行内补全开关（client island）。与编辑器状态栏的开关共用同一份本地偏好。 */}
+        <Card>
+          <CardBody className="pt-6">
+            <Stack gap={4}>
+              <h2 className="font-display text-xl font-semibold tracking-tight text-fg">
+                {t('aiCompletion.title')}
+              </h2>
+              <Stack direction="row" justify="between" align="center" gap={4}>
+                <Stack gap={1}>
+                  <p className="text-sm text-fg-muted">{t('aiCompletion.description')}</p>
+                </Stack>
+                <AiInlineCompletionToggle
+                  ariaLabel={t('aiCompletion.title')}
+                  enabledHint={t('aiCompletion.enabled')}
+                  disabledHint={t('aiCompletion.disabled')}
                 />
               </Stack>
             </Stack>

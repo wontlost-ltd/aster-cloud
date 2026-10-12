@@ -390,6 +390,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     settings: {
+      // AI 行内补全开关（设置页）
+      aiCompletion: {
+        title: 'AI inline completion',
+        description: 'While you type in the policy editor, the current line and up to 10 lines before it are sent to the AI after a short pause to suggest a continuation. Each suggestion uses AI quota unless you use your own key.',
+        enabled: 'On. The editor requests AI suggestions as you type.',
+        disabled: 'Off. The editor sends no AI completion requests.',
+      },
       // 个人业务角色面板（ADR 0042 §2.1）。
       businessRoles: {
         title: 'Business roles',
@@ -528,6 +535,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         rateNote: 'Rate counts settled decisions only (approved vs. denied/error); pending and value-only runs are excluded.',
       },
       form: {
+        // AI 行内补全开关（状态栏）
+        statusAiCompletionOn: 'AI completion: on',
+        statusAiCompletionOff: 'AI completion: off',
+        statusAiCompletionLabel: 'AI inline completion',
+        statusAiCompletionHint: 'Suggests the next code while you type; each pause uses AI quota. Click to toggle.',
         aliases: {
           title: 'Keyword aliases',
           hint: 'Add comma-separated multi-word phrases for policy keywords.',
@@ -1070,6 +1082,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     settings: {
+      // AI 行内补全开关（设置页）
+      aiCompletion: {
+        title: 'AI 行内补全',
+        description: '在策略编辑器中输入时，输入停顿后会把光标所在行及之前最多 10 行发给 AI，生成续写建议。每次建议都会消耗 AI 额度（使用自有密钥时除外）。',
+        enabled: '已开启：编辑器会在输入时请求 AI 建议。',
+        disabled: '已关闭：编辑器不会发出任何 AI 补全请求。',
+      },
       // 个人业务角色面板（ADR 0042 §2.1）。
       businessRoles: {
         title: '业务角色',
@@ -1200,6 +1219,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         rateNote: '通过率仅统计已定论的决策（通过 vs 拒绝/错误）；待处置与值输出不计入。',
       },
       form: {
+        // AI 行内补全开关（状态栏）
+        statusAiCompletionOn: 'AI 补全：开',
+        statusAiCompletionOff: 'AI 补全：关',
+        statusAiCompletionLabel: 'AI 行内补全',
+        statusAiCompletionHint: '输入时自动建议后续代码；每次停顿都会消耗 AI 额度。点击切换。',
         aliases: {
           title: '关键词别名',
           hint: '为策略关键词添加逗号分隔的多词短语。',
@@ -1745,6 +1769,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     settings: {
+      // AI 行内补全开关（设置页）
+      aiCompletion: {
+        title: 'KI-Inline-Vervollständigung',
+        description: 'Beim Tippen im Richtlinien-Editor werden nach einer kurzen Pause die aktuelle Zeile und bis zu 10 Zeilen davor an die KI gesendet, um eine Fortsetzung vorzuschlagen. Jeder Vorschlag verbraucht KI-Kontingent, außer bei eigenem Schlüssel.',
+        enabled: 'An. Der Editor fordert beim Tippen KI-Vorschläge an.',
+        disabled: 'Aus. Der Editor sendet keine KI-Vervollständigungsanfragen.',
+      },
       // 个人业务角色面板（ADR 0042 §2.1）。
       businessRoles: {
         title: 'Geschäftsrollen',
@@ -1875,6 +1906,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         rateNote: 'Die Quote zählt nur abgeschlossene Entscheidungen (genehmigt vs. abgelehnt/Fehler); ausstehende und reine Wertausgaben sind ausgenommen.',
       },
       form: {
+        // AI 行内补全开关（状态栏）
+        statusAiCompletionOn: 'KI-Vervollständigung: an',
+        statusAiCompletionOff: 'KI-Vervollständigung: aus',
+        statusAiCompletionLabel: 'KI-Inline-Vervollständigung',
+        statusAiCompletionHint: 'Schlägt beim Tippen den nächsten Code vor; jede Pause verbraucht KI-Kontingent. Zum Umschalten klicken.',
         aliases: {
           title: 'Keyword-Aliase',
           hint: 'Mehrwort-Phrasen kommagetrennt für Policy-Keywords hinzufügen.',
@@ -2418,6 +2454,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     settings: {
+      // AI 行内补全开关（设置页）
+      aiCompletion: {
+        title: 'AI इनलाइन पूर्णता',
+        description: 'नीति संपादक में टाइप करते समय, थोड़े विराम के बाद वर्तमान पंक्ति और उससे पहले की अधिकतम 10 पंक्तियाँ AI को भेजी जाती हैं ताकि आगे का सुझाव मिल सके। अपनी कुंजी के बिना हर सुझाव AI कोटा खर्च करता है।',
+        enabled: 'चालू। संपादक टाइप करते समय AI सुझाव माँगता है।',
+        disabled: 'बंद। संपादक कोई AI पूर्णता अनुरोध नहीं भेजता।',
+      },
       // 个人业务角色面板（ADR 0042 §2.1）。
       businessRoles: {
         title: 'व्यावसायिक भूमिकाएँ',
@@ -2548,6 +2591,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         rateNote: 'दर केवल तय निर्णयों (स्वीकृत बनाम अस्वीकृत/त्रुटि) को गिनती है; लंबित और केवल-मान रन शामिल नहीं हैं।',
       },
       form: {
+        // AI 行内补全开关（状态栏）
+        statusAiCompletionOn: 'AI पूर्णता: चालू',
+        statusAiCompletionOff: 'AI पूर्णता: बंद',
+        statusAiCompletionLabel: 'AI इनलाइन पूर्णता',
+        statusAiCompletionHint: 'टाइप करते समय अगला कोड सुझाता है; हर विराम पर AI कोटा खर्च होता है। बदलने के लिए क्लिक करें।',
         aliases: {
           title: 'कीवर्ड उपनाम',
           hint: 'Policy कीवर्ड के लिए कॉमा से अलग बहु-शब्द वाक्यांश जोड़ें।',
