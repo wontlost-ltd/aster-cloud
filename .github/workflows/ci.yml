@@ -113,6 +113,9 @@ jobs:
       # app, else the deployed language server runs a stale compiler.
       - name: LSP compiler pin matches app
         run: pnpm run check:lsp-pin
+      # image-pin PR 合并门控：只在 k3s verify-image-pin 通过后合并（issue #506）。离线测试，无网络。
+      - name: image-pin merge gate tests
+        run: bash scripts/ci/open-image-pin-pr-merge.test.sh
       # ★版本对得上不代表跑得起来：aster-lang-ts 的 vscode-languageserver 是可选 peer，
       #   pnpm 不装。这里按 Dockerfile.lsp 同一方式安装并完成一次真实 initialize 握手。
       - name: LSP server starts from lsp-package.json
@@ -762,6 +765,8 @@ jobs:
           repositories: k3s
           permission-contents: write
           permission-pull-requests: write
+          # 读 k3s 上 verify-image-pin 的结果：脚本等验签通过后才合并（issue #506）。
+          permission-checks: read
 
       - name: Checkout (for shared script)
         if: ${{ steps.stalegate.outputs.skip != 'true' }}
@@ -828,6 +833,8 @@ jobs:
           repositories: k3s
           permission-contents: write
           permission-pull-requests: write
+          # 读 k3s 上 verify-image-pin 的结果：脚本等验签通过后才合并（issue #506）。
+          permission-checks: read
 
       # checkout 本仓以取用共享脚本（image-pin-pr 是独立 job，需自己 checkout）。
       - name: Checkout (for shared script)
