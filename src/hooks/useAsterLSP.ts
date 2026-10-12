@@ -185,6 +185,16 @@ interface LSPWorkspaceEdit {
 /**
  * Convert Monaco position to LSP position
  */
+/** 不可重命名时的提示（hook 不在 next-intl 上下文里，按 CNL locale 直接给出） */
+const RENAME_REJECT_REASON: Record<CNLLocale, string> = {
+  'en-US': 'This element cannot be renamed.',
+  'zh-CN': '此处无法重命名。',
+  'de-DE': 'Dieses Element kann nicht umbenannt werden.',
+};
+function renameRejectReason(locale: CNLLocale): string {
+  return RENAME_REJECT_REASON[locale] ?? RENAME_REJECT_REASON['en-US'];
+}
+
 function monacoPositionToLsp(pos: { lineNumber: number; column: number }): LSPPosition {
   return { line: pos.lineNumber - 1, character: pos.column - 1 };
 }
@@ -713,11 +723,23 @@ export function useAsterLSP({
             return null;
           }
         },
-        resolveRenameLocation: async (model, position): Promise<languages.RenameLocation | null> => {
+        resolveRenameLocation: async (model, position): Promise<(languages.RenameLocation & languages.Rejection) | null> => {
           if (!isLspModel(model)) return null;
+          // ★服务端回 null（冠词、关键字、词汇词等不可重命名）时必须明确拒绝：
+          //   回 null 在 Monaco 里是「没有意见」，它会照样对光标下的词调用 provideRenameEdits。
+          const reject = (): languages.RenameLocation & languages.Rejection => {
+            const word = model.getWordAtPosition(position);
+            return {
+              range: word
+                ? { startLineNumber: position.lineNumber, startColumn: word.startColumn, endLineNumber: position.lineNumber, endColumn: word.endColumn }
+                : { startLineNumber: position.lineNumber, startColumn: position.column, endLineNumber: position.lineNumber, endColumn: position.column },
+              text: word?.word ?? '',
+              rejectReason: renameRejectReason(locale),
+            };
+          };
           try {
             const result = await sendRequest<{ range: LSPRange; placeholder: string } | null>('textDocument/prepareRename', makeTextDocumentPositionParams(position));
-            if (!result) return null;
+            if (!result) return reject();
 
             return {
               range: lspRangeToMonaco(result.range),
@@ -725,7 +747,7 @@ export function useAsterLSP({
             };
           } catch (e) {
             reportProviderError('PrepareRename', e);
-            return null;
+            return reject();
           }
         },
       });
@@ -783,7 +805,7 @@ export function useAsterLSP({
     }
 
     console.log('[LSP] Monaco providers registered');
-  }, [sendRequest, suppressErrors]);
+  }, [sendRequest, suppressErrors, locale]);
 
   /**
    * Initialize LSP connection
