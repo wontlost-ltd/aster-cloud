@@ -583,7 +583,7 @@ export function MonacoPolicyEditor({
    *     用户符号，接上只会产生重复或错误条目，故不注册 LSP 补全。
    *   - hover / 跳转定义 / 文档符号 / 签名帮助 / 代码操作 / 格式化 / 高亮 / 引用 / 重命名：
    *     由 LSP 提供，但**只注册当前服务端真正支持的**（见 lib/lsp-features 的 selectLspFeatures）：
-   *     生产镜像（aster-lang-ts 1.0.32）只对 en-US 提供前七项，引用/重命名不注册；
+   *     生产镜像（aster-lang-ts 1.0.32）只对 en-US / de-DE 提供前七项（zh 不提供），引用/重命名不注册；
    *     服务端带上 experimental.aster 标志（aster-lang-ts#219）后，zh/de 与引用/重命名才启用。
    *     模块目录 hover 只覆盖 Use 行，与 LSP hover 不重叠。
    *

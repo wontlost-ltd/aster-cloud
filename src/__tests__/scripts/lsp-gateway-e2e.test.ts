@@ -10,7 +10,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -95,6 +96,8 @@ describe('LSP 网关端到端', () => {
     expect(realpathSync(ea.params!.home!)).toBe(realpathSync(dirA));
     expect(realpathSync(dirA).startsWith(realpathSync(tmpRoot))).toBe(true);
     expect(existsSync(dirA)).toBe(true);
+    // owner 文件供启动时的过期清理判断（sweepStaleWorkDirs）
+    expect(existsSync(join(dirA, '.owner-pid'))).toBe(true);
 
     a.ws.close(); b.ws.close();
     for (let i = 0; i < 50 && (existsSync(dirA) || existsSync(dirB)); i++) await new Promise((r) => setTimeout(r, 100));
@@ -102,3 +105,52 @@ describe('LSP 网关端到端', () => {
     expect(existsSync(dirB)).toBe(false);
   }, 15_000);
 });
+
+/* ★独立网关实例：SIGTERM 时 shutdown() 直接 process.exit，子进程的 exit 回调来不及清理目录；
+ *   启动时还要清掉上一次被 SIGKILL 留下的目录。 */
+describe('网关生命周期：工作目录清理', () => {
+  const startGateway = async (tmp: string) => {
+    const p = await freePort();
+    const gw = spawn('node', [join(ROOT, 'lsp-server.mjs')], {
+      env: { PATH: process.env.PATH, PORT: String(p), HOSTNAME: '127.0.0.1', NODE_ENV: 'test', LSP_AUTH_TOKEN: TOKEN,
+        ALLOWED_ORIGINS: ORIGIN, TMPDIR: tmp, LSP_SERVER_SCRIPT: join(__dirname, 'fixtures', 'fake-lsp-server.mjs') },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('gateway did not start')), 10_000);
+      gw.stdout!.on('data', (d) => { if (String(d).includes('ready on')) { clearTimeout(timer); resolve(); } });
+    });
+    return { gw, port: p };
+  };
+
+  it('★SIGTERM 关闭网关后不留下每连接工作目录', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'lsp-gw-term-'));
+    const { gw, port: p } = await startGateway(tmp);
+    const ws = new WebSocket(`ws://127.0.0.1:${p}/lsp?locale=zh-CN&token=${TOKEN}`, { headers: { Origin: ORIGIN } });
+    const env = await new Promise<Frame>((resolve, reject) => {
+      ws.on('message', (d) => { const f = JSON.parse(String(d)) as Frame; if (f.method === 'test/env') resolve(f); });
+      ws.on('open', () => ws.send(JSON.stringify({ jsonrpc: '2.0', method: 'initialized', params: {} })));
+      ws.on('error', reject);
+    });
+    const dir = env.params!.cwd!;
+    expect(existsSync(dir)).toBe(true);
+    const exited = new Promise((r) => gw.once('exit', r));
+    gw.kill('SIGTERM');
+    await exited;
+    expect(existsSync(dir)).toBe(false);
+    rmSync(tmp, { recursive: true, force: true });
+  }, 20_000);
+
+  it('★启动时清掉 owner 已退出的遗留目录', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'lsp-gw-sweep-'));
+    const stale = join(tmp, 'aster-lsp-stale');
+    mkdirSync(stale);
+    const dead = spawnSync('node', ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf-8' }).stdout.trim();
+    writeFileSync(join(stale, '.owner-pid'), dead);
+    const { gw } = await startGateway(tmp);
+    expect(existsSync(stale)).toBe(false);
+    gw.kill('SIGTERM');
+    rmSync(tmp, { recursive: true, force: true });
+  }, 20_000);
+});
+
