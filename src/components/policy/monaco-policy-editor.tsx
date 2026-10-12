@@ -432,6 +432,8 @@ export function MonacoPolicyEditor({
   // 被新一次输入取消的那次补全请求的 resolve：取消时必须以空结果 resolve，
   // 否则每次连续按键都会留下一个永不结束的 Promise。
   const pendingInlineResolveRef = useRef<((r: { items: [] }) => void) | null>(null);
+  // 已发出、尚未返回的那次补全请求：关闭开关时中止它，避免关闭后仍弹出建议。
+  const inflightInlineAbortRef = useRef<AbortController | null>(null);
   // AI 行内补全开关的当前值。provider 在挂载时注册一次，运行期切换开关不会重新注册，
   // 故在每次请求时读这个 ref，而不是闭包里挂载那一刻的 prop。
   const aiCompletionEnabledRef = useRef(enableAICompletion);
@@ -443,6 +445,8 @@ export function MonacoPolicyEditor({
       inlineCompletionTimerRef.current = null;
       pendingInlineResolveRef.current?.({ items: [] });
       pendingInlineResolveRef.current = null;
+      inflightInlineAbortRef.current?.abort();
+      inflightInlineAbortRef.current = null;
     }
   }, [enableAICompletion]);
   const { resolvedTheme } = useTheme();
@@ -829,6 +833,7 @@ export function MonacoPolicyEditor({
 
                   const abortCtrl = new AbortController();
                   token.onCancellationRequested(() => abortCtrl.abort());
+                  inflightInlineAbortRef.current = abortCtrl;
 
                   const resp = await fetch(`/api/llm/complete`, {
                     method: 'POST',
@@ -837,14 +842,16 @@ export function MonacoPolicyEditor({
                     signal: abortCtrl.signal,
                   });
 
-                  if (!resp.ok || token.isCancellationRequested) {
+                  if (inflightInlineAbortRef.current === abortCtrl) inflightInlineAbortRef.current = null;
+                  // 请求期间开关被关闭：丢弃结果，不显示建议
+                  if (!resp.ok || token.isCancellationRequested || !aiCompletionEnabledRef.current) {
                     resolve({ items: [] });
                     return;
                   }
 
                   const data = await resp.json();
                   const completion = data.completion;
-                  if (!completion) {
+                  if (!completion || !aiCompletionEnabledRef.current) {
                     resolve({ items: [] });
                     return;
                   }
@@ -1023,6 +1030,8 @@ export function MonacoPolicyEditor({
       if (inlineCompletionTimerRef.current) clearTimeout(inlineCompletionTimerRef.current);
       pendingInlineResolveRef.current?.({ items: [] });
       pendingInlineResolveRef.current = null;
+      inflightInlineAbortRef.current?.abort();
+      inflightInlineAbortRef.current = null;
       inlineProviderDisposableRef.current?.dispose();
       moduleCompletionProviderDisposableRef.current?.dispose();
       moduleHoverProviderDisposableRef.current?.dispose();

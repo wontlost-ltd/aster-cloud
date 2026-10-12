@@ -234,6 +234,47 @@ describe('AI 行内补全开关：调用点', () => {
     expect(llmCalls()).toHaveLength(1);
   });
 
+  it('★关闭开关时排队中的请求立即结束（不等定时器触发）', async () => {
+    const { rerender } = render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" enableAICompletion />);
+    await waitFor(() => expect(inlineProviders.length).toBeGreaterThan(0));
+    const pending = provider().provideInlineCompletions(fakeModel, position, {}, token());
+    let settled = false;
+    void Promise.resolve(pending).then(() => { settled = true; });
+    rerender(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" enableAICompletion={false} />);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(true);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(llmCalls()).toHaveLength(0);
+  });
+
+  it('★请求已发出后关闭开关：中止该请求并丢弃结果', async () => {
+    let signal: AbortSignal | undefined;
+    let respond: (r: Response) => void = () => {};
+    fetchMock.mockImplementation((_url: string, init?: RequestInit) => {
+      signal = init?.signal ?? undefined;
+      return new Promise<Response>((res) => { respond = res; });
+    });
+    const { rerender } = render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" enableAICompletion />);
+    await waitFor(() => expect(inlineProviders.length).toBeGreaterThan(0));
+    const pending = provider().provideInlineCompletions(fakeModel, position, {}, token());
+    await vi.advanceTimersByTimeAsync(600);
+    expect(llmCalls()).toHaveLength(1);
+    rerender(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" enableAICompletion={false} />);
+    expect(signal?.aborted).toBe(true);
+    respond(new Response(JSON.stringify({ completion: 'GHOST' }), { status: 200 }));
+    await expect(pending).resolves.toEqual({ items: [] });
+  });
+
+  it('卸载时排队中的请求以空结果结束且不发请求', async () => {
+    const view = render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" enableAICompletion />);
+    await waitFor(() => expect(inlineProviders.length).toBeGreaterThan(0));
+    const pending = provider().provideInlineCompletions(fakeModel, position, {}, token());
+    view.unmount();
+    await vi.advanceTimersByTimeAsync(1000);
+    await expect(pending).resolves.toEqual({ items: [] });
+    expect(llmCalls()).toHaveLength(0);
+  });
+
   it('只读编辑器不注册 inline provider', async () => {
     render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" readOnly enableAICompletion />);
     await vi.advanceTimersByTimeAsync(50);

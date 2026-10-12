@@ -393,7 +393,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       // AI 行内补全开关（设置页）
       aiCompletion: {
         title: 'AI inline completion',
-        description: 'While you type in the policy editor, the last 10 lines are sent to the AI after a short pause to suggest a continuation. Each suggestion uses AI quota unless you use your own key.',
+        description: 'While you type in the policy editor, the current line and up to 10 lines before it are sent to the AI after a short pause to suggest a continuation. Each suggestion uses AI quota unless you use your own key.',
         enabled: 'On. The editor requests AI suggestions as you type.',
         disabled: 'Off. The editor sends no AI completion requests.',
       },
@@ -1085,7 +1085,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       // AI 行内补全开关（设置页）
       aiCompletion: {
         title: 'AI 行内补全',
-        description: '在策略编辑器中输入时，输入停顿后会把光标前最多 10 行发给 AI，生成续写建议。每次建议都会消耗 AI 额度（使用自有密钥时除外）。',
+        description: '在策略编辑器中输入时，输入停顿后会把光标所在行及之前最多 10 行发给 AI，生成续写建议。每次建议都会消耗 AI 额度（使用自有密钥时除外）。',
         enabled: '已开启：编辑器会在输入时请求 AI 建议。',
         disabled: '已关闭：编辑器不会发出任何 AI 补全请求。',
       },
@@ -1772,7 +1772,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       // AI 行内补全开关（设置页）
       aiCompletion: {
         title: 'KI-Inline-Vervollständigung',
-        description: 'Beim Tippen im Richtlinien-Editor werden nach einer kurzen Pause bis zu 10 Zeilen vor dem Cursor an die KI gesendet, um eine Fortsetzung vorzuschlagen. Jeder Vorschlag verbraucht KI-Kontingent, außer bei eigenem Schlüssel.',
+        description: 'Beim Tippen im Richtlinien-Editor werden nach einer kurzen Pause die aktuelle Zeile und bis zu 10 Zeilen davor an die KI gesendet, um eine Fortsetzung vorzuschlagen. Jeder Vorschlag verbraucht KI-Kontingent, außer bei eigenem Schlüssel.',
         enabled: 'An. Der Editor fordert beim Tippen KI-Vorschläge an.',
         disabled: 'Aus. Der Editor sendet keine KI-Vervollständigungsanfragen.',
       },
@@ -2457,7 +2457,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       // AI 行内补全开关（设置页）
       aiCompletion: {
         title: 'AI इनलाइन पूर्णता',
-        description: 'नीति संपादक में टाइप करते समय, थोड़े विराम के बाद कर्सर से पहले की अधिकतम 10 पंक्तियाँ AI को भेजी जाती हैं ताकि आगे का सुझाव मिल सके। अपनी कुंजी के बिना हर सुझाव AI कोटा खर्च करता है।',
+        description: 'नीति संपादक में टाइप करते समय, थोड़े विराम के बाद वर्तमान पंक्ति और उससे पहले की अधिकतम 10 पंक्तियाँ AI को भेजी जाती हैं ताकि आगे का सुझाव मिल सके। अपनी कुंजी के बिना हर सुझाव AI कोटा खर्च करता है।',
         enabled: 'चालू। संपादक टाइप करते समय AI सुझाव माँगता है।',
         disabled: 'बंद। संपादक कोई AI पूर्णता अनुरोध नहीं भेजता।',
       },

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
+import { renderToString } from 'react-dom/server';
 
 vi.mock('next-intl', () => ({ useTranslations: () => (k: string) => k }));
 
@@ -83,5 +84,12 @@ describe('状态栏 AI 补全开关', () => {
     act(() => status.click());
     expect(settings.getAttribute('aria-checked')).toBe('true');
     expect(window.localStorage.getItem(AI_INLINE_COMPLETION_KEY)).toBe('true');
+  });
+
+  it('设置页开关：读取本地偏好前禁用（防止用默认值覆盖真实设置）', () => {
+    const html = renderToString(<AiInlineCompletionToggle ariaLabel="ai" enabledHint="on" disabledHint="off" />);
+    expect(html).toMatch(/data-testid="settings-ai-completion-toggle"[^>]*disabled=""|disabled=""[^>]*data-testid="settings-ai-completion-toggle"/);
+    render(<AiInlineCompletionToggle ariaLabel="ai" enabledHint="on" disabledHint="off" />);
+    expect((screen.getByTestId('settings-ai-completion-toggle') as HTMLButtonElement).disabled).toBe(false);
   });
 });

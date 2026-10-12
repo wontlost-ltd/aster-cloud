@@ -7,10 +7,12 @@
  * 都是「纯客户端 UI 偏好、按浏览器持久、需要跨标签页同步」，读写逻辑完全相同。
  * 这里把那套 useSyncExternalStore 适配写成可复用的工厂，新偏好不再复制一份。
  *
- * <p>约束（与 assistant-context 的设计说明一致）：
- * - getSnapshot 必须在值未变时返回同一个值，故维护缓存，只在写入或 storage 事件时失效；
+ * <p>约束：
+ * - **每次都直接读 localStorage，不做缓存。** 值是 boolean 原始值，未变时天然 Object.is 相等，
+ *   满足 useSyncExternalStore 的快照稳定要求。缓存反而有害：标签页里没有订阅者时
+ *   storage 监听已被移除，其他标签页的修改无人失效缓存，再次挂载会读到过期值。
  * - 服务端快照固定为默认值，首帧 HTML 与 SSR 一致，不会 hydration mismatch；
- * - 存储不可用（隐私模式等）时退回默认值，本次会话内写入仍生效；
+ * - 存储不可用（隐私模式等）时退回本次会话内最后写入的值，否则为默认值；
  * - storage 事件不在当前标签页触发，写入时手动通知本页订阅者。
  */
 'use client';
@@ -32,19 +34,18 @@ export interface BooleanPreference {
 
 export function createBooleanPreference(key: string, defaultValue: boolean): BooleanPreference {
   const listeners = new Set<() => void>();
-  let cached: boolean | null = null;
+  // 仅在 localStorage 不可读写时兜底：保证本次会话内写入仍生效。
+  let sessionValue: boolean | null = null;
 
   const read = (): boolean => {
     if (typeof window === 'undefined') return defaultValue;
-    if (cached === null) {
-      try {
-        const raw = window.localStorage.getItem(key);
-        cached = raw === null ? defaultValue : raw === 'true';
-      } catch {
-        cached = defaultValue;
-      }
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (raw !== null) return raw === 'true';
+    } catch {
+      /* 存储不可用：落到会话内的值 */
     }
-    return cached;
+    return sessionValue ?? defaultValue;
   };
 
   const notify = () => {
@@ -52,7 +53,7 @@ export function createBooleanPreference(key: string, defaultValue: boolean): Boo
   };
 
   const write = (value: boolean): void => {
-    cached = value;
+    sessionValue = value;
     try {
       window.localStorage.setItem(key, String(value));
     } catch {
@@ -63,11 +64,9 @@ export function createBooleanPreference(key: string, defaultValue: boolean): Boo
 
   const subscribe = (onChange: () => void): (() => void) => {
     listeners.add(onChange);
+    // key 为 null 表示其他标签页执行了 localStorage.clear()
     const onStorage = (e: StorageEvent) => {
-      if (e.key === key) {
-        cached = null;
-        onChange();
-      }
+      if (e.key === key || e.key === null) onChange();
     };
     window.addEventListener('storage', onStorage);
     return () => {
