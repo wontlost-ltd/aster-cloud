@@ -63,7 +63,8 @@ async function runExport(policyId: string, moduleName: string, labels: CedarExpo
     return { kind: 'notExportable', diagnostics: data.diagnostics ?? [] };
   }
   downloadFile(`${moduleName}.cedar`, data.policies, 'text/plain');
-  downloadFile(`${moduleName}.cedarschema.json`, JSON.stringify(data.schema, null, 2), 'application/json');
+  // schema 紧凑序列化，与 aster-api 审计记录的 schemaHash 字节一致，下载文件可按 SHA-256 与审计链对账
+  downloadFile(`${moduleName}.cedarschema.json`, JSON.stringify(data.schema), 'application/json');
   return { kind: 'verified', count: data.probes?.count ?? 0 };
 }
 

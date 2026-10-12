@@ -60,7 +60,8 @@ describe('CedarExportPanel', () => {
     expect(blobs[0].type).toBe('text/plain');
     expect(await blobs[0].text()).toBe('permit(principal, action, resource);');
     expect(blobs[1].type).toBe('application/json');
-    expect(await blobs[1].text()).toBe(JSON.stringify({ ns: { entityTypes: {} } }, null, 2));
+    // 紧凑序列化：与 aster-api 审计 POLICY_EXPORTED 的 schemaHash 同一字节，下载文件可直接按哈希对账
+    expect(await blobs[1].text()).toBe('{"ns":{"entityTypes":{}}}');
     expect(revokeObjectURL).toHaveBeenCalledTimes(2);
   });
 
