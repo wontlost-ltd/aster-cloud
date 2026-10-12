@@ -244,14 +244,21 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
       } else if (!data.success && data.error) {
         // Schema extraction failed - display error and use default empty JSON
         console.warn('Schema extraction failed:', data.error);
+        // ★必须清掉上一个 Rule 的参数表与表单值，否则表单模式会把旧 Rule 的参数提交给新 Rule。
+        setSchema(null);
+        setFormValues({});
         setSchemaError({ messageKey: 'policy.schema_failed', detail: data.error });
         setInput('{}');
       } else {
-        // No parameters found - use default empty JSON
+        // No parameters found - use default empty JSON（同样清掉旧 Rule 的参数表与表单值）
+        setSchema(null);
+        setFormValues({});
         setInput('{}');
       }
     } catch (err) {
       console.error('Failed to extract schema:', err);
+      setSchema(null);
+      setFormValues({});
       setSchemaError({
         messageKey: 'policy.schema_failed',
         detail: err instanceof Error ? err.message : 'Failed to extract schema',
@@ -313,6 +320,9 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
           // 之后用户切换 Rule 时由下方 effect 按所选 Rule 重新提取。
           const defaultRule = chooseDefaultRule(extractRuleSymbols(data.content));
           schemaRuleRef.current = defaultRule;
+          // 与源码同一批写入默认 Rule：否则首个 commit 里 selectedRule 仍为 null，
+          // 下方 effect 会先按第一个函数多提取一次（@entry 不在首位时会闪出错误的示例）。
+          setSelectedRule(defaultRule);
           fetchSchema(data.content, detectedLocale, aliasSet, defaultRule ?? undefined);
           setSchemaSource({ content: data.content, locale: detectedLocale, aliasSet });
         } else {

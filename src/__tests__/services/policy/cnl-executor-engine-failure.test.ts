@@ -25,8 +25,24 @@ describe('buildCNLResult — 引擎失败（无 result）', () => {
     expect(deriveExecutionDecision(buildCNLResult(policy, failure))).toBe('error');
   });
 
-  it('无 error 字段的空响应同样视为引擎失败', () => {
-    const r = buildCNLResult(policy, { result: null, executionTimeMs: 0, error: null } as unknown as PolicyEvaluateResponse);
+  it('error 为空、result 为 null（Rule 合法返回 无值）是 indeterminate，不是引擎失败也不是拒绝', () => {
+    const r = buildCNLResult(policy, { result: null, executionTimeMs: 1, error: null } as unknown as PolicyEvaluateResponse);
+    expect(r.metadata.engineError).toBeUndefined();
+    expect(r.metadata.decision).toBe('indeterminate');
+    expect(r.deniedReasons).toEqual([]);
+    expect(r.metadata.denyCount).toBe(0);
+    expect(deriveExecutionDecision(r)).toBe('indeterminate');
+  });
+
+  it('只含空白的 error 不算引擎失败', () => {
+    const r = buildCNLResult(policy, { result: null, executionTimeMs: 1, error: '   ' } as unknown as PolicyEvaluateResponse);
+    expect(deriveExecutionDecision(r)).toBe('indeterminate');
+  });
+
+  it('error 非空且 result 为 undefined 同样是引擎失败', () => {
+    const r = buildCNLResult(policy, { executionTimeMs: 0, error: 'boom' } as unknown as PolicyEvaluateResponse);
+    expect(r.metadata.engineError).toBe(true);
+    expect(r.deniedReasons).toEqual(['boom']);
     expect(deriveExecutionDecision(r)).toBe('error');
   });
 

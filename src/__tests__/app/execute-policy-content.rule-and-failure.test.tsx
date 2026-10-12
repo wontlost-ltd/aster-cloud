@@ -21,9 +21,11 @@ vi.mock('@/hooks/use-deployment-mode', () => ({
 const PARAMS: Record<string, { name: string; type: string; typeKind: string }[]> = {
   power: [{ name: 'base', type: 'Int', typeKind: 'primitive' }, { name: 'exponent', type: 'Int', typeKind: 'primitive' }],
   calculate: [{ name: 'request', type: 'Text', typeKind: 'primitive' }],
+  pi: [],
 };
 const extractSchema = vi.fn((_src: string, opts?: { functionName?: string }) => {
   const fn = opts?.functionName ?? 'power';
+  if (fn === 'broken') return { success: false, error: "Function 'broken' not found" };
   return { success: true, functionName: fn, parameters: PARAMS[fn] };
 });
 vi.mock('@aster-cloud/aster-lang-ts/browser', () => ({
@@ -48,7 +50,27 @@ const SOURCE = [
   '',
   'Rule calculate given request as Text, produce Int:',
   '  Return 0.',
+  '',
+  'Rule pi produce Int:',
+  '  Return 3.',
+  '',
+  'Rule broken produce Int:',
+  '  Return 0.',
 ].join('\n');
+
+// @entry 不在首位：默认 Rule 应为 calculate，首屏示例不能按第一个函数 power 生成。
+const ENTRY_SECOND_SOURCE = [
+  'Module demo.calc.',
+  '',
+  'Rule power given base as Int, exponent as Int, produce Int:',
+  '  Return base.',
+  '',
+  '@entry',
+  'Rule calculate given request as Text, produce Int:',
+  '  Return 0.',
+].join('\n');
+
+let currentSource = SOURCE;
 
 const fetchMock = vi.fn();
 let executeResponse: unknown = {};
@@ -57,9 +79,10 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
   fetchMock.mockReset();
   extractSchema.mockClear();
+  currentSource = SOURCE;
   fetchMock.mockImplementation((url: string, init?: RequestInit) => {
     if (url.endsWith('/api/policies/p1') && (!init || !init.method || init.method === 'GET')) {
-      return Promise.resolve({ ok: true, json: async () => ({ name: 'Calc', content: SOURCE }) });
+      return Promise.resolve({ ok: true, json: async () => ({ name: 'Calc', content: currentSource }) });
     }
     if (url.includes('/api/policies/p1/execute')) {
       return Promise.resolve({ ok: true, json: async () => executeResponse });
@@ -140,5 +163,56 @@ describe('ExecutePolicyContent — 引擎执行失败不显示为拒绝', () => 
 
     await waitFor(() => expect(screen.getByText('policies.execute.rejected')).toBeInTheDocument(), WAIT);
     expect(screen.queryByText('policies.execute.executionFailed')).not.toBeInTheDocument();
+  });
+});
+
+// 取最近一次执行请求的 body。
+const lastExecuteBody = () => {
+  const call = [...fetchMock.mock.calls].reverse().find(([u]) => String(u).includes('/execute'));
+  return call ? JSON.parse(String((call[1] as RequestInit).body)) : undefined;
+};
+
+describe('ExecutePolicyContent — 切换到无参数或提取失败的 Rule 时清掉旧参数', () => {
+  // 先在 power 上切到表单模式，再换 Rule：旧实现保留 power 的 schema/formValues，
+  // 表单模式会把 {base, exponent} 提交给新 Rule。
+  async function switchFromPowerFormTo(rule: string) {
+    executeResponse = { executionId: 'e3', success: true, durationMs: 1, output: { matchedRules: [], actions: [], approved: true, metadata: {} } };
+    const select = await renderPage();
+    fireEvent.change(select, { target: { value: 'power' } });
+    await waitFor(() => expect(JSON.parse(jsonInput().value)).toEqual({ base: 'sample', exponent: 'sample' }), WAIT);
+    fireEvent.click(screen.getByText('Form'));
+    fireEvent.change(select, { target: { value: rule } });
+    await waitFor(() => expect(extractSchema.mock.calls.some(([, o]) => o?.functionName === rule)).toBe(true), WAIT);
+    fireEvent.click(screen.getByText('policies.execute.executeButton').closest('button')!);
+    await waitFor(() => expect(lastExecuteBody()).toBeDefined(), WAIT);
+    return lastExecuteBody();
+  }
+
+  it('新 Rule 没有参数：提交空输入，不带旧 Rule 的参数', async () => {
+    const body = await switchFromPowerFormTo('pi');
+    expect(body).toEqual({ input: {}, functionName: 'pi' });
+    expect(screen.queryByText('base')).not.toBeInTheDocument();
+  });
+
+  it('新 Rule 的 schema 提取失败：提交空输入，不带旧 Rule 的参数', async () => {
+    const body = await switchFromPowerFormTo('broken');
+    expect(body).toEqual({ input: {}, functionName: 'broken' });
+    expect(screen.queryByText('base')).not.toBeInTheDocument();
+  });
+});
+
+describe('ExecutePolicyContent — @entry 不在首位时首屏只按 @entry 提取', () => {
+  it('从加载起每次提取都用 @entry Rule，从不回落到第一个函数', async () => {
+    currentSource = ENTRY_SECOND_SOURCE;
+    // 有唯一 @entry 时页面不渲染 Rule 选择框，故直接等 JSON 输入区就绪。
+    const { ExecutePolicyContent } = await import(
+      '@/app/[locale]/(dashboard)/policies/[id]/execute/execute-policy-content'
+    );
+    render(<ExecutePolicyContent policyId="p1" locale="en" />);
+    await waitFor(() => expect(JSON.parse(jsonInput().value)).toEqual({ request: 'sample' }), WAIT);
+    // 再给 effect 一个回合，确认没有额外的回落提取。
+    await new Promise((r) => setTimeout(r, 50));
+    const used = extractSchema.mock.calls.map(([, o]) => o?.functionName ?? null);
+    expect(used).toEqual(['calculate']);
   });
 });
