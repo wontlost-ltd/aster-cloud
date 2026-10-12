@@ -28,7 +28,7 @@ import { Breadcrumbs } from '@/components/ui/breadcrumbs';
 import { DecisionTracePanel, type DecisionTrace } from '@/components/policy/decision-trace-panel';
 import { RuleSelector } from '@/components/policy/rule-selector';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
-import { chooseDefaultRule, extractRuleSymbols } from '@/lib/aster/rules';
+import { chooseDefaultRule, reconcileSelectedRule, extractRuleSymbols } from '@/lib/aster/rules';
 // P0-R2 (codex review Low #9): import 必须在顶部
 import { detectCNLLanguage, isHighConfidence } from '@/lib/cnl-language-detector';
 
@@ -340,9 +340,10 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
   }, [policyId, fetchSchema, locale]);
 
   useEffect(() => {
-    // ruleSymbols 变化时重置默认规则（selectedRule 仍可被用户手动改），故意在 effect 内 set
+    // ruleSymbols 变化时校正所选规则：用户已选且仍存在的规则保留，否则回落到默认规则。
+    // 用函数式更新读取最新值：若这里无条件 set 默认值，加载后用户立即切换的规则会被覆盖。
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSelectedRule(chooseDefaultRule(ruleSymbols));
+    setSelectedRule((current) => reconcileSelectedRule(current, ruleSymbols));
   }, [ruleSymbols]);
 
   // 用户切换 Rule 时按该 Rule 重新提取参数并生成示例（首次加载已在加载回调里按默认 Rule 提取）。
