@@ -277,6 +277,7 @@ describe('ExecutePolicyContent — ENTRY_AMBIGUOUS 候选按钮只选中 Rule，
     const select = await renderPage();
     fireEvent.change(select, { target: { value: 'power' } });
     await waitFor(() => expect(JSON.parse(jsonInput().value)).toEqual({ base: 'sample', exponent: 'sample' }), WAIT);
+    fireEvent.change(jsonInput(), { target: { value: '{"base":5,"exponent":2}' } });
     fireEvent.click(screen.getByTestId('execute-policy-button'));
     const candidate = await screen.findByRole('button', { name: 'calculate' }, WAIT);
     expect(executeCalls()).toHaveLength(1);
@@ -295,6 +296,10 @@ describe('ExecutePolicyContent — ENTRY_AMBIGUOUS 候选按钮只选中 Rule，
     expect(executeCalls()).toHaveLength(1);
     expect(screen.queryByRole('button', { name: 'calculate' })).toBeNull();
     expect(document.body.textContent).not.toContain('ambiguous entry');
+
+    // 候选按钮同样先存草稿：切回 power 时恢复执行前的输入
+    fireEvent.change(document.querySelector('select') as HTMLSelectElement, { target: { value: 'power' } });
+    await waitFor(() => expect(jsonInput().value).toBe('{"base":5,"exponent":2}'), WAIT);
   });
 });
 
@@ -390,5 +395,83 @@ describe('ExecutePolicyContent — 加载请求忽略过期响应', () => {
 
     expect(JSON.parse(jsonInput().value)).toEqual({ z: 'sample' });
     expect(screen.queryByText('Old')).toBeNull();
+  });
+});
+
+describe('ExecutePolicyContent — 切换 Rule 不丢用户输入', () => {
+  const formInputs = () =>
+    [...document.querySelectorAll('input')].filter((el) => el.type !== 'hidden') as HTMLInputElement[];
+
+  it('★JSON：改过的输入切走再切回会恢复；初次去的 Rule 仍用它自己的示例', async () => {
+    // SOURCE 多 Rule 无 @entry：初始未选 Rule，示例按第一个函数 power 生成
+    const select = await renderPage();
+    await waitFor(() => expect(JSON.parse(jsonInput().value)).toEqual({ base: 'sample', exponent: 'sample' }), WAIT);
+    const edited = '{\n  "base": 2,\n  "exponent": 10\n}';
+    fireEvent.change(jsonInput(), { target: { value: edited } });
+
+    fireEvent.change(select, { target: { value: 'calculate' } });
+    await waitFor(() => expect(JSON.parse(jsonInput().value)).toEqual({ request: 'sample' }), WAIT);
+    fireEvent.change(jsonInput(), { target: { value: '{"request":"1+1"}' } });
+
+    fireEvent.change(select, { target: { value: 'power' } });
+    await waitFor(() => expect(jsonInput().value).toBe(edited), WAIT);
+    expect(select.value).toBe('power');
+
+    fireEvent.change(select, { target: { value: 'calculate' } });
+    await waitFor(() => expect(jsonInput().value).toBe('{"request":"1+1"}'), WAIT);
+  });
+
+  it('★未选 Rule 时改的输入，选中示例所属的第一个函数后保留', async () => {
+    const select = await renderPage();
+    await waitFor(() => expect(JSON.parse(jsonInput().value)).toEqual({ base: 'sample', exponent: 'sample' }), WAIT);
+    expect(select.value).toBe('');
+    fireEvent.change(jsonInput(), { target: { value: '{"base":3,"exponent":4}' } });
+    fireEvent.change(select, { target: { value: 'power' } });
+    await waitFor(() => expect(extractSchema.mock.calls.some(([, o]) => o?.functionName === 'power')).toBe(true), WAIT);
+    expect(jsonInput().value).toBe('{"base":3,"exponent":4}');
+  });
+
+  it('★表单：改过的字段切走再切回会恢复', async () => {
+    const select = await renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Form' }, WAIT));
+    await waitFor(() => expect(formInputs().length).toBe(2), WAIT);
+    fireEvent.change(formInputs()[0], { target: { value: '7' } });
+    expect(formInputs()[0].value).toBe('7');
+
+    fireEvent.change(select, { target: { value: 'calculate' } });
+    await waitFor(() => expect(formInputs().length).toBe(1), WAIT);
+    fireEvent.change(select, { target: { value: 'power' } });
+    await waitFor(() => {
+      expect(formInputs().length).toBe(2);
+      expect(formInputs()[0].value).toBe('7');
+    }, WAIT);
+  });
+
+  it('★换了策略后草稿作废：同名 Rule 重新用示例', async () => {
+    const { ExecutePolicyContent } = await import(
+      '@/app/[locale]/(dashboard)/policies/[id]/execute/execute-policy-content'
+    );
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (/\/api\/policies\/p[12]$/.test(url) && (!init?.method || init.method === 'GET')) {
+        return Promise.resolve({ ok: true, json: async () => ({ name: 'Calc', content: SOURCE }) });
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    const view = render(<ExecutePolicyContent policyId="p1" locale="en" />);
+    const select = () => document.querySelector('select') as HTMLSelectElement;
+    await waitFor(() => expect(JSON.parse(jsonInput().value)).toEqual({ base: 'sample', exponent: 'sample' }), WAIT);
+    // p1 上给 calculate 留下草稿
+    fireEvent.change(select(), { target: { value: 'calculate' } });
+    await waitFor(() => expect(JSON.parse(jsonInput().value)).toEqual({ request: 'sample' }), WAIT);
+    fireEvent.change(jsonInput(), { target: { value: '{"request":"1+1"}' } });
+    fireEvent.change(select(), { target: { value: 'power' } });
+    await waitFor(() => expect(JSON.parse(jsonInput().value)).toEqual({ base: 'sample', exponent: 'sample' }), WAIT);
+
+    view.rerender(<ExecutePolicyContent policyId="p2" locale="en" />);
+    await waitFor(() => expect(select().value).toBe(''), WAIT);
+    // p2 上第一次去 calculate：应是示例，不能是 p1 留下的草稿
+    fireEvent.change(select(), { target: { value: 'calculate' } });
+    await waitFor(() => expect(extractSchema.mock.calls.filter(([, o]) => o?.functionName === 'calculate').length).toBe(2), WAIT);
+    expect(JSON.parse(jsonInput().value)).toEqual({ request: 'sample' });
   });
 });
