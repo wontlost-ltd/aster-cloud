@@ -86,17 +86,19 @@ function makeFakeMonaco() {
 
 // 模型 URI 与 documentUri prop 故意不同：@monaco-editor/react 未传 path 时模型 URI 就是 inmemory://model/N
 const MODEL_URI = 'inmemory://model/1';
+const contentListeners: Array<() => void> = [];
 const fakeModel = {
   uri: { toString: () => MODEL_URI },
   getValue: () => '模块 demo.p。',
   getVersionId: () => 1,
-  onDidChangeContent: () => ({ dispose: vi.fn() }),
+  onDidChangeContent: (fn: () => void) => { contentListeners.push(fn); return { dispose: vi.fn() }; },
 };
 const otherModel = { ...fakeModel, uri: { toString: () => 'inmemory://model/2' } };
 const fakeEditor = { getModel: () => fakeModel };
 
 describe('useAsterLSP 协议', () => {
   beforeEach(() => {
+    contentListeners.length = 0;
     FakeWebSocket.instances = [];
     FakeWebSocket.serverCaps = NEW_SERVER_CAPS;
     FakeWebSocket.hoverFails = false;
@@ -249,4 +251,17 @@ describe('useAsterLSP 协议', () => {
     expect(err.mock.calls.filter((c) => String(c[0]).includes('Hover'))).toHaveLength(0);
     warn.mockRestore(); err.mockRestore();
   });
+
+  /* ★N12：didChange 也必须用模型 URI。若只改了 didOpen，服务端会把编辑当成另一份文档，
+   *   之后的跳转/重命名都基于打开时的旧内容。 */
+  it('★didChange 用编辑器模型的真实 URI', async () => {
+    mount();
+    await opened();
+    await waitFor(() => expect(contentListeners.length).toBeGreaterThan(0));
+    contentListeners.forEach((fn) => fn());
+    await waitFor(() => expect(FakeWebSocket.instances[0].sent.some((m) => m.method === 'textDocument/didChange')).toBe(true));
+    const change = FakeWebSocket.instances[0].sent.find((m) => m.method === 'textDocument/didChange');
+    expect((change?.params as { textDocument: { uri: string } }).textDocument.uri).toBe(MODEL_URI);
+  });
 });
+

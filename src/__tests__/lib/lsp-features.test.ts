@@ -30,4 +30,15 @@ describe('selectLspFeatures', () => {
     expect(f.hover).toBe(true);
     expect(f.definition || f.rename || f.references).toBe(false);
   });
+
+  it('★旧服务端 + de：基于解析的功能可用（实测 1.0.32 可解析 de，含变音标识符），引用/重命名仍不注册', () => {
+    const f = selectLspFeatures('de-DE', ALL);
+    expect(f.hover && f.definition && f.documentSymbol && f.documentHighlight).toBe(true);
+    expect(f.references || f.rename).toBe(false);
+  });
+
+  it('旧服务端 + hi：未实测，不注册', () => {
+    expect(Object.values(selectLspFeatures('hi-IN', ALL)).every((v) => v === false)).toBe(true);
+  });
 });
+
