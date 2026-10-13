@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth';
 import { db, policyGroups, policies, teamMembers } from '@/lib/prisma';
 import { eq, and, or, isNull, sql, asc, inArray } from 'drizzle-orm';
 import { errorEnvelope } from '@/lib/api/error-envelope';
+import { buildGroupTree } from '@/lib/policy-group-hierarchy';
 
 
 // GET /api/policy-groups - 获取用户的策略分组树
@@ -95,20 +96,10 @@ export async function GET() {
       _count: { policies: countByGroup.get(group.id) ?? 0 },
     }));
 
-    // 构建树形结构
-    const groupMap = new Map(groups.map((g) => [g.id, { ...g, children: [] as typeof groups }]));
-    const rootGroups: typeof groups = [];
-
-    for (const group of groups) {
-      if (group.parentId && groupMap.has(group.parentId)) {
-        const parent = groupMap.get(group.parentId);
-        if (parent) {
-          (parent.children as typeof groups).push(groupMap.get(group.id)!);
-        }
-      } else {
-        rootGroups.push(groupMap.get(group.id)!);
-      }
-    }
+    // 构建树形结构。处在环上的分组按顶层处理：否则 A↔B 互为子节点，序列化 JSON 时
+    // 报循环引用，整个分组列表 500（#478）。
+    type GroupNode = (typeof groups)[number] & { children: GroupNode[] };
+    const rootGroups = buildGroupTree(groups, (g): GroupNode => ({ ...g, children: [] }));
 
     return NextResponse.json({
       groups: rootGroups,
