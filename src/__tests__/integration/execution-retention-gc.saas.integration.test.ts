@@ -66,12 +66,15 @@ async function seedExecution(
 }
 
 async function seedTenant(userId: string, plan: string) {
-  await db.insert(users).values({ id: userId, plan } as typeof users.$inferInsert);
+  // ★User / Policy 的 updatedAt 为 NOT NULL 且无库默认值（由应用层写入）——漏了它本测试曾在 main 上整体红，
+  //   而 CI 不跑这组集成测试（LICENSE_E2E 门控），一直没人发现。
+  await db.insert(users).values({ id: userId, plan, updatedAt: NOW } as typeof users.$inferInsert);
   await db.insert(policies).values({
     id: POL(userId),
     userId,
     name: `policy for ${plan}`,
     content: 'Module aster.test. Rule r: Return 1.',
+    updatedAt: NOW,
   } as typeof policies.$inferInsert);
 }
 
@@ -200,6 +203,80 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')(
         .from(executions)
         .where(eq(executions.id, entRow));
       expect(ent.skeleton).toBeTruthy();
+    });
+
+    describe('分批处理（#481）', () => {
+      /** 造 n 条同一租户、同一年龄的超期执行（id 互不相同）。 */
+      async function seedMany(userId: string, n: number, ageDays: number, withSkeleton = false) {
+        for (let i = 0; i < n; i++) {
+          await db.insert(executions).values({
+            id: `exec-${userId}-batch-${i}`,
+            userId,
+            policyId: POL(userId),
+            createdAt: ago(ageDays),
+            input: { i },
+            durationMs: 1,
+            success: true,
+            decision: 'approved',
+            source: 'api',
+            ...(withSkeleton
+              ? { traceSkeletonJson: { schemaVersion: 'trace-skeleton/v1', steps: [] } }
+              : {}),
+          } as typeof executions.$inferInsert);
+        }
+      }
+
+      it('★积压超过一批：分多批删完，计数为真实删除数，complete=true', async () => {
+        await seedMany(U_FREE, 5, 30);
+        await seedExecution(U_FREE, 1);
+
+        const result = await runExecutionRetentionGc({ now: NOW, batchSize: 2, maxBatches: 10 });
+
+        expect(result.deletedByPlan.free).toBe(5);
+        expect(result.complete).toBe(true);
+        expect(await survivingIds(U_FREE)).toEqual([`exec-${U_FREE}-1d`]);
+      });
+
+      it('★积压恰为批大小的整数倍：最后一批为空即判定清完', async () => {
+        await seedMany(U_FREE, 4, 30);
+        const result = await runExecutionRetentionGc({ now: NOW, batchSize: 2, maxBatches: 3 });
+        expect(result.deletedByPlan.free).toBe(4);
+        expect(result.complete).toBe(true);
+      });
+
+      it('★达到单次批数上限：只删上限内的行、complete=false；下次运行接着删', async () => {
+        await seedMany(U_FREE, 5, 30);
+
+        const first = await runExecutionRetentionGc({ now: NOW, batchSize: 2, maxBatches: 2 });
+        expect(first.deletedByPlan.free).toBe(4);
+        expect(first.complete).toBe(false);
+        expect(await survivingIds(U_FREE)).toHaveLength(1);
+
+        const second = await runExecutionRetentionGc({ now: NOW, batchSize: 2, maxBatches: 2 });
+        expect(second.deletedByPlan.free).toBe(1);
+        expect(second.complete).toBe(true);
+        expect(await survivingIds(U_FREE)).toHaveLength(0);
+      });
+
+      it('★骨架同样分批清空，达到上限时 complete=false', async () => {
+        await seedMany(U_ENT, 3, SKELETON_RETENTION_DAYS + 30, true);
+
+        const first = await runExecutionRetentionGc({ now: NOW, batchSize: 2, maxBatches: 1 });
+        expect(first.skeletonsCleared).toBe(2);
+        expect(first.complete).toBe(false);
+
+        const second = await runExecutionRetentionGc({ now: NOW, batchSize: 2, maxBatches: 1 });
+        expect(second.skeletonsCleared).toBe(1);
+        expect(second.complete).toBe(true);
+        // 行都还在，只是骨架被清空
+        expect(await survivingIds(U_ENT)).toHaveLength(3);
+      });
+
+      it('默认参数下少量数据一次清完：complete=true', async () => {
+        await seedExecution(U_FREE, 30);
+        const result = await runExecutionRetentionGc({ now: NOW });
+        expect(result.complete).toBe(true);
+      });
     });
   },
 );
