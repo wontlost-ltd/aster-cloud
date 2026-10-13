@@ -2,7 +2,11 @@
  * SSE text/event-stream 帧解析（浏览器 useSSEStream 与服务端 llm-sse-proxy 共用）。
  */
 
-export type SSEEventType = 'delta' | 'validation_error' | 'repair_start' | 'final' | 'error';
+/**
+ * upstream_reached：aster-api 已连上第三方 AI，本次调用计入配额（#470）。不带内容，
+ * 浏览器侧各消费者按未知类型忽略；只供 llm-sse-proxy 计费判断。
+ */
+export type SSEEventType = 'delta' | 'validation_error' | 'repair_start' | 'final' | 'error' | 'upstream_reached';
 
 export interface SSEEvent {
   type: SSEEventType;
@@ -105,13 +109,27 @@ export function isContentEvent(event: SSEEvent | null): boolean {
 }
 
 /**
- * 逐 chunk 观察一条 SSE 字节流里是否出现过内容帧（{@link isContentEvent}）。
+ * 这一帧是否说明本次调用要计入 AI 配额（#470）。
+ *
+ * <p>规则：请求到达了第三方 AI 就计费——不论随后是 provider 报错、超时、没有内容，
+ * 还是用户中途断开。aster-api 在连上 provider 时发 upstream_reached 帧标记这一点。
+ * 在它之前就结束的（安全拒答、未配置 key、BYOK 无效、连不上 provider）不计。
+ *
+ * <p>内容帧也算：内容必然来自 provider。这让尚未发出 upstream_reached 的旧版 aster-api
+ * 保持原有计费口径，两个仓库可以任意顺序部署。
+ */
+export function isBillableEvent(event: SSEEvent | null): boolean {
+  return !!event && (event.type === 'upstream_reached' || isContentEvent(event));
+}
+
+/**
+ * 逐 chunk 观察一条 SSE 字节流里是否出现过计费帧（{@link isBillableEvent}）。
  *
  * <p>帧可能被拆在多个 chunk 里，多字节字符也可能被切开，故按流式解码并缓冲不完整的帧。
- * 一旦见到内容帧就不再解析、不再缓冲。
+ * 一旦见到计费帧就不再解析、不再缓冲。
  */
-export function createSseContentWatcher(): {
-  /** 喂入一个 chunk，返回到目前为止是否已出现内容帧。 */
+export function createSseBillableWatcher(): {
+  /** 喂入一个 chunk，返回到目前为止是否已出现计费帧。 */
   push: (chunk: Uint8Array) => boolean;
   /** 流结束时调用：解析末尾没有空行收尾的最后一帧。 */
   finish: () => boolean;
@@ -120,7 +138,7 @@ export function createSseContentWatcher(): {
   let buffer = '';
   let seen = false;
   const scan = (frames: string[]) => {
-    seen = frames.some((frame) => isContentEvent(parseSSEFrame(frame)));
+    seen = frames.some((frame) => isBillableEvent(parseSSEFrame(frame)));
   };
   return {
     push(chunk) {
