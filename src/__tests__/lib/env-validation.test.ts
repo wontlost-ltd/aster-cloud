@@ -68,6 +68,27 @@ describe('env-validation — SaaS mode', () => {
     expect(result.missing.some((m) => m.startsWith('DATABASE_URL'))).toBe(true);
   });
 
+  /* ★生产 Worker 经 HYPERDRIVE binding 连库、从不设 DATABASE_URL。
+   *   不认 binding 会在每次冷启动刷一条假的「缺 DATABASE_URL」。 */
+  it('★有 Hyperdrive binding 时缺 DATABASE_URL 不算缺失', () => {
+    const env = makeFullSaasProductionEnv();
+    delete env.DATABASE_URL;
+    const result = checkEnv(env, 'saas', { hasDbBinding: true });
+    expect(result.ok).toBe(true);
+    expect(result.missing).toEqual([]);
+  });
+
+  it('★binding 只豁免 DATABASE_URL，不豁免其它缺失项', () => {
+    const env = makeFullSaasProductionEnv();
+    delete env.DATABASE_URL;
+    delete env.CRON_SECRET;
+    delete env.STRIPE_SECRET_KEY;
+    const result = checkEnv(env, 'saas', { hasDbBinding: true });
+    expect(result.missing.some((m) => m.startsWith('DATABASE_URL'))).toBe(false);
+    expect(result.missing.some((m) => m.startsWith('CRON_SECRET'))).toBe(true);
+    expect(result.missing.some((m) => m.startsWith('STRIPE_SECRET_KEY'))).toBe(true);
+  });
+
   it('production 缺 Pro priceId 任一 → missing', () => {
     const env = makeFullSaasProductionEnv();
     delete env.NEXT_PUBLIC_STRIPE_PRO_MONTHLY_CNY_PRICE_ID;
