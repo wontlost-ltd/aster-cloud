@@ -214,11 +214,14 @@ describe('编辑器接线：LSP 参数下发', () => {
    *   第二份实例，provider 全注册在它上面——编辑器永远不会调用，hover/跳转等全部失效
    *   （生产实测：showHover 不发 textDocument/hover）。 */
   it('★LSP hook 收到编辑器自己的 monaco 实例', async () => {
+    // 远端网关要配齐 token 才会启用 LSP，这里只验证 monaco 实例的传递
     process.env.NEXT_PUBLIC_LSP_HOST = 'lsp.example.test';
+    process.env.NEXT_PUBLIC_LSP_TOKEN = 'tok';
     render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" />);
     await waitFor(() => expect(lspCalls.some((c) => c.editor)).toBe(true));
     expect(lspCalls.filter((c) => c.editor).at(-1)!.monaco).toBe(fakeMonaco);
     delete process.env.NEXT_PUBLIC_LSP_HOST;
+    delete process.env.NEXT_PUBLIC_LSP_TOKEN;
   });
 
   /* ★lspEnabled 恒 true 会让生产站（Cloudflare Workers，无 /api/lsp 路由）
