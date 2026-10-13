@@ -218,11 +218,44 @@ describe('编辑器接线：LSP 参数下发', () => {
     expect(lspCalls.at(-1)!.autoConnect).toBe(false);
   });
 
-  it('★readOnly 视图不连接 LSP', async () => {
+  /* ★远端网关强制 token：构建期没内联 NEXT_PUBLIC_LSP_TOKEN 时，握手必然 401，
+   *   浏览器会把失败原样打进控制台（JS 拦不住）。缺 token 就不该连。 */
+  it('★远端 LSP_HOST 缺 token 时不自动连接', async () => {
     process.env.NEXT_PUBLIC_LSP_HOST = 'lsp.example.test';
+    delete process.env.NEXT_PUBLIC_LSP_TOKEN;
+    render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" />);
+    await waitFor(() => expect(lspCalls.length).toBeGreaterThan(0));
+    expect(lspCalls.at(-1)!.autoConnect).toBe(false);
+    delete process.env.NEXT_PUBLIC_LSP_HOST;
+  });
+
+  it('远端 LSP_HOST 配齐 token 时自动连接', async () => {
+    process.env.NEXT_PUBLIC_LSP_HOST = 'lsp.example.test';
+    process.env.NEXT_PUBLIC_LSP_TOKEN = 'tok';
+    render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" />);
+    await waitFor(() => expect(lspCalls.length).toBeGreaterThan(0));
+    expect(lspCalls.at(-1)!.autoConnect).toBe(true);
+    delete process.env.NEXT_PUBLIC_LSP_HOST;
+    delete process.env.NEXT_PUBLIC_LSP_TOKEN;
+  });
+
+  it('本地 LSP_HOST 无 token 也自动连接（本地网关非生产模式放行）', async () => {
+    process.env.NEXT_PUBLIC_LSP_HOST = 'localhost:3001';
+    delete process.env.NEXT_PUBLIC_LSP_TOKEN;
+    render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" />);
+    await waitFor(() => expect(lspCalls.length).toBeGreaterThan(0));
+    expect(lspCalls.at(-1)!.autoConnect).toBe(true);
+    delete process.env.NEXT_PUBLIC_LSP_HOST;
+  });
+
+  it('★readOnly 视图不连接 LSP', async () => {
+    // 配齐 token，确保这里只由 readOnly 决定，而不是被缺 token 顺带挡掉
+    process.env.NEXT_PUBLIC_LSP_HOST = 'lsp.example.test';
+    process.env.NEXT_PUBLIC_LSP_TOKEN = 'tok';
     render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" readOnly />);
     await waitFor(() => expect(lspCalls.length).toBeGreaterThan(0));
     expect(lspCalls.at(-1)!.autoConnect).toBe(false);
     delete process.env.NEXT_PUBLIC_LSP_HOST;
+    delete process.env.NEXT_PUBLIC_LSP_TOKEN;
   });
 });

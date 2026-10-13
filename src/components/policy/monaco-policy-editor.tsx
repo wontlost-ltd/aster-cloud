@@ -407,6 +407,17 @@ function formatPublishedAt(value: string): string {
   return date.toLocaleString();
 }
 
+/**
+ * 判断 LSP 网关是否配置完整、值得发起连接。
+ * 远端网关强制 token，缺 token 的握手必然 401；本地网关允许无 token。
+ */
+export function isLspConfigured(host: string | undefined, token: string | undefined): boolean {
+  const h = (host ?? '').trim().replace(/^(https?|wss?):\/\//, '');
+  if (!h) return false;
+  const isLocal = /^(localhost|127\.0\.0\.1)(:|\/|$)/.test(h);
+  return isLocal || Boolean(token?.trim());
+}
+
 export function MonacoPolicyEditor({
   value,
   onChange,
@@ -562,8 +573,17 @@ export function MonacoPolicyEditor({
    * ★仅在配置了 NEXT_PUBLIC_LSP_HOST 时启用：未配置时 hook 会回落到同源
    *   `/api/lsp`，而生产站跑在 Cloudflare Workers 上、根本没有该路由，
    *   结果是连不上还要按 reconnectDelay 反复重试。宁可整块不启用。
+   *
+   * ★远端网关还要求 NEXT_PUBLIC_LSP_TOKEN：生产网关（lsp-server.mjs 的
+   *   evaluateUpgrade）配置了 LSP_AUTH_TOKEN，不带 token 的握手一律 401。
+   *   浏览器会把失败的握手原样打进控制台，JS 无法拦截（suppressErrors 管不到）。
+   *   故构建期没内联 token 时直接不连，而不是发一个必然被拒的握手。
+   *   本地网关（localhost / 127.0.0.1）在非生产模式下允许无 token，不受此限。
    */
-  const lspEnabled = Boolean(process.env.NEXT_PUBLIC_LSP_HOST) && !readOnly;
+  const lspEnabled = isLspConfigured(
+    process.env.NEXT_PUBLIC_LSP_HOST,
+    process.env.NEXT_PUBLIC_LSP_TOKEN,
+  ) && !readOnly;
   const lspDocumentUri = useMemo(
     () => `inmemory://policy/${domain ?? 'default'}.aster`,
     [domain],
