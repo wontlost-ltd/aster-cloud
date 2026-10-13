@@ -39,6 +39,13 @@ describe('parseSSEFrame', () => {
       expect(e?.data).toBe('hello');
     });
 
+    it('upstream_reached（#470 计费标记）：解析为该类型、不带内容', () => {
+      const e = parseSSEFrame('data: {"type":"upstream_reached"}');
+      expect(e?.type).toBe('upstream_reached');
+      expect(e?.data).toBeUndefined();
+      expect(e?.error).toBeUndefined();
+    });
+
     it('repair_start with progress data', () => {
       const frame = 'data: {"type":"repair_start","data":"2/5"}';
       const e = parseSSEFrame(frame);

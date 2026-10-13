@@ -1,25 +1,25 @@
 /**
- * SSE 内容帧观察（#470）：只有用户能看到的产出才算「有产出」。
+ * SSE 计费帧观察（#470）：请求到达第三方 AI（upstream_reached）或出现内容即计费。
  * 帧格式取自 aster-api 实际输出（LlmProxyService.toJson / AiAssistantResource.refusalStream）。
  */
 import { describe, it, expect } from 'vitest';
-import { createSseContentWatcher } from '@/lib/sse-frame';
+import { createSseBillableWatcher } from '@/lib/sse-frame';
 
 const enc = new TextEncoder();
 const feed = (...chunks: string[]) => {
-  const w = createSseContentWatcher();
+  const w = createSseBillableWatcher();
   const seen = chunks.map((c) => w.push(enc.encode(c)));
   return { seen, finish: () => w.finish() };
 };
 
-describe('createSseContentWatcher', () => {
-  it('★只有一条 error 帧（未配置 key / BYOK 无效 / LLM 调用失败）：无产出', () => {
+describe('createSseBillableWatcher', () => {
+  it('★只有一条 error 帧（未配置 key / BYOK 无效 / 连不上 provider）：不计费', () => {
     const { seen, finish } = feed('data: {"type":"error","error":"未配置 LLM API Key"}\n\n');
     expect(seen).toEqual([false]);
     expect(finish()).toBe(false);
   });
 
-  it('★安全拒答（event: error + JSON）：无产出', () => {
+  it('★安全拒答（event: error + JSON）：不计费', () => {
     const { seen, finish } = feed('event: error\ndata: {"error":"out_of_scope","message":"超出范围","rule_id":"r1"}\n\n');
     expect(seen).toEqual([false]);
     expect(finish()).toBe(false);
@@ -44,7 +44,7 @@ describe('createSseContentWatcher', () => {
 
   it('★帧被逐字节拆开（含中文）：帧完整前不提前判定，完整后判定', () => {
     const bytes = enc.encode('data: {"type":"delta","data":"规则 计算"}\n\n');
-    const w = createSseContentWatcher();
+    const w = createSseBillableWatcher();
     const seen = [...bytes].map((b) => w.push(new Uint8Array([b])));
     expect(seen.slice(0, -1).every((s) => !s)).toBe(true);
     expect(seen.at(-1)).toBe(true);
@@ -59,5 +59,33 @@ describe('createSseContentWatcher', () => {
   it('CRLF 分隔与旧式 event: delta + 文本 data 也识别', () => {
     expect(feed('data: {"type":"delta","data":"a"}\r\n\r\n').seen).toEqual([true]);
     expect(feed('event: delta\ndata: hi\n\n').seen).toEqual([true]);
+  });
+
+  it('★upstream_reached 之后 provider 报错：已到达第三方，计费', () => {
+    const { seen } = feed(
+      'data: {"type":"upstream_reached"}\n\n',
+      'data: {"type":"error","error":"LLM API 错误 (500)"}\n\n',
+    );
+    expect(seen).toEqual([true, true]);
+  });
+
+  it('★只有 upstream_reached、随后流就断了（用户断开 / provider 沉默）：计费', () => {
+    const { seen, finish } = feed('data: {"type":"upstream_reached"}\n\n');
+    expect(seen).toEqual([true]);
+    expect(finish()).toBe(true);
+  });
+
+  it('★upstream_reached 之后 LLM 未生成内容：计费', () => {
+    const { seen } = feed('data: {"type":"upstream_reached"}\n\ndata: {"type":"error","error":"LLM 未生成内容"}\n\n');
+    expect(seen).toEqual([true]);
+  });
+
+  it('upstream_reached 帧被拆在两个 chunk：帧完整时才判定', () => {
+    expect(feed('data: {"type":"upstream_', 'reached"}\n\n').seen).toEqual([false, true]);
+  });
+
+  it('旧版 aster-api（不发 upstream_reached）：仍按内容计费', () => {
+    expect(feed('data: {"type":"error","error":"x"}\n\n').seen).toEqual([false]);
+    expect(feed('data: {"type":"delta","data":"Rule"}\n\n').seen).toEqual([true]);
   });
 });
