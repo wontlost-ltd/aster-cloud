@@ -21,6 +21,7 @@ import { signInternalCallerHeaders } from '@/lib/api-signing';
 import { checkAiQuota, recordAiUsage } from '@/lib/ai-quota';
 import { aiQuotaHttpStatus } from '@/lib/ai-quota-http';
 import { resolveByokEnvelope, injectByokEnvelope } from '@/lib/byok-envelope';
+import { createSseContentWatcher } from '@/lib/sse-frame';
 
 const ASTER_API_BASE =
   process.env.ASTER_POLICY_API_INTERNAL_URL ||
@@ -148,9 +149,12 @@ export async function proxyLlmSse(
   // 成功记账：驱动 checkAiQuota 的月配额与速率计数（否则计数永不递增、配额门虚设）。
   // callKind 从 upstreamPath 末段派生（/api/v1/ai/generate → generate）。
   //
-  // ★记账时机改为「流真正产出第一个字节之后」，而不是上游 2xx 响应头一到就记（issue #441）。
-  //   此前是后者——但 2xx 只说明**上游接受了请求**，流尚未转发也未产出任何内容。
-  //   用户秒取消、或流建立后中途网络错误，都会让一次**零产出**的调用计入成功配额。
+  // ★记账时机是「流里出现第一个**内容帧**之后」：非空 delta 或带内容的 final（见 isContentEvent）。
+  //   - 不是上游 2xx 响应头一到就记（issue #441）：2xx 只说明上游接受了请求，
+  //     用户秒取消、或流建立后中途网络错误，都会让零产出的调用计入成功配额。
+  //   - 也不是「第一个字节」就记（#470）：aster-api 在 HTTP 200 下用单条 error 帧报告
+  //     安全拒答、BYOK 凭证无效、未配置 key、LLM 调用失败、LLM 未生成内容——
+  //     第一个字节就是这条 error，零产出照样计费。
   //
   //   为什么不是「记完再按结果撤销」：recordAiUsage 的 upsert 刻意保留首次 status
   //   （见 ai-quota.ts 的 onConflictDoUpdate——createdAt/status 不被占位/回填改写），
@@ -179,13 +183,18 @@ export async function proxyLlmSse(
     }
   });
 
-  // 透传流并在**第一个 chunk** 到达时记账。不缓冲、不改内容——只在中间插一个观察点。
+  // 透传流并在第一个内容帧出现时记账。字节原样转发、不延迟——只在旁边解析帧做判断。
+  const contentWatcher = createSseContentWatcher();
   const metered = upstreamResp.body.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) {
-        // 记账是 fire-and-forget：绝不能让计费 IO 阻塞或中断用户的流。
-        void recordUsageOnce();
         controller.enqueue(chunk);
+        // 记账是 fire-and-forget：绝不能让计费 IO 阻塞或中断用户的流。
+        if (contentWatcher.push(chunk)) void recordUsageOnce();
+      },
+      flush() {
+        // 最后一帧可能没有空行收尾
+        if (contentWatcher.finish()) void recordUsageOnce();
       },
     })
   );
