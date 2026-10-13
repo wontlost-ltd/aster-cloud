@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db, policyGroups, teamMembers } from '@/lib/prisma';
 import { eq, and, inArray, sql } from 'drizzle-orm';
+import { wouldCreateParentCycle } from '@/lib/policy-group-hierarchy';
+import { lookupGroupParent } from '@/lib/policy-group-parent-lookup';
 
 // POST /api/policy-groups/reorder - 批量更新分组排序
 export async function POST(req: Request) {
@@ -77,6 +79,17 @@ export async function POST(req: Request) {
     const systemGroups = groups.filter((g) => g.isSystem && orderIdSet.has(g.id));
     if (systemGroups.length > 0) {
       return NextResponse.json({ error: 'Cannot reorder system groups' }, { status: 403 });
+    }
+
+    // 父子关系不得成环（#478）：PUT 路径一直有这条校验，reorder 一次能改多个 parentId，
+    // 曾可用 [{id: A, parentId: B}, {id: B, parentId: A}] 直接造出 A↔B。按整批改动一起判断。
+    const parentEdits = new Map<string, string | null>(
+      (orders as Array<{ id: string; parentId?: string | null }>)
+        .filter((o) => o.parentId !== undefined)
+        .map((o) => [o.id, o.parentId || null]),
+    );
+    if (await wouldCreateParentCycle(parentEdits, lookupGroupParent)) {
+      return NextResponse.json({ error: 'Cannot move group to its own descendant' }, { status: 400 });
     }
 
     // 批量更新排序
