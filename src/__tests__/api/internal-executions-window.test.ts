@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  */
 
 const verifyInternalSignature = vi.hoisted(() => vi.fn());
-vi.mock('@/lib/api-signing', () => ({ verifyInternalSignature }));
+vi.mock('@/lib/internal-signature', () => ({ verifyInternalSignature }));
 
 const captured = vi.hoisted(() => ({ where: undefined as unknown, columns: undefined as unknown }));
 const rows = vi.hoisted(() => ({ value: [] as unknown[] }));

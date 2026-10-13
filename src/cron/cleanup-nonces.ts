@@ -1,48 +1,17 @@
 /**
- * Nonce 清理定时任务
+ * Nonce 清理任务与积压健康检查。
  *
- * 定期清理过期的 Nonce 记录，防止数据库无限增长。
- * 建议每 5 分钟运行一次。
+ * 每小时由 /api/cron/cleanup-nonces 调度（cron-registry 的 cleanup-nonces）。
+ * /api/internal/* 每次入站调用都会写一条 UsedNonce（#480），不清理表会无限增长。
  */
 
 import { cleanupExpiredNonces, getNonceStats } from '@/services/security/nonce-service';
 
-/**
- * 清理过期的 Nonce 记录
- *
- * @returns 清理结果
- */
-export async function cleanupNoncesJob(): Promise<{
-  deletedCount: number;
-  stats: { total: number; expired: number; active: number };
-}> {
-  console.log('[Cron] Starting nonce cleanup...');
-
-  try {
-    // 获取清理前的统计信息
-    const statsBefore = await getNonceStats();
-    console.log(
-      `[Cron] Before cleanup: total=${statsBefore.total}, expired=${statsBefore.expired}, active=${statsBefore.active}`
-    );
-
-    // 执行清理
-    const deletedCount = await cleanupExpiredNonces();
-    console.log(`[Cron] Cleaned up ${deletedCount} expired nonces`);
-
-    // 获取清理后的统计信息
-    const statsAfter = await getNonceStats();
-    console.log(
-      `[Cron] After cleanup: total=${statsAfter.total}, active=${statsAfter.active}`
-    );
-
-    return {
-      deletedCount,
-      stats: statsAfter,
-    };
-  } catch (error) {
-    console.error('[Cron] Nonce cleanup failed:', error);
-    throw error;
-  }
+/** 删除已过期的 nonce；complete=false 表示积压本次没清完，留给下一次。 */
+export async function cleanupNoncesJob(): Promise<{ deletedCount: number; complete: boolean }> {
+  const result = await cleanupExpiredNonces();
+  console.log(`[Cron] Cleaned up ${result.deletedCount} expired nonces (complete=${result.complete})`);
+  return result;
 }
 
 /**

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { CLIENT_CAPABILITIES } from '@/hooks/use-deployment-mode';
@@ -28,7 +28,7 @@ import { Breadcrumbs } from '@/components/ui/breadcrumbs';
 import { DecisionTracePanel, type DecisionTrace } from '@/components/policy/decision-trace-panel';
 import { RuleSelector } from '@/components/policy/rule-selector';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
-import { chooseDefaultRule, extractRuleSymbols } from '@/lib/aster/rules';
+import { chooseDefaultRule, reconcileSelectedRule, extractRuleSymbols } from '@/lib/aster/rules';
 // P0-R2 (codex review Low #9): import 必须在顶部
 import { detectCNLLanguage, isHighConfidence } from '@/lib/cnl-language-detector';
 
@@ -60,6 +60,8 @@ interface ExecutionResult {
       decision?: 'indeterminate';
       /** Verdict 结果码（ADR 0041 §4）：REQUIRE_APPROVAL/ESCALATE 为待人工处置态。 */
       outcome?: string;
+      /** 引擎执行失败（编译/运行报错）：没有决策，不能显示成「拒绝」。 */
+      engineError?: boolean;
     };
   };
   decisionTrace?: DecisionTrace;
@@ -77,6 +79,12 @@ function pendingOutcomeKey(outcome: string | undefined): 'require_approval' | 'e
 }
 
 const PENDING_BADGE_CLASS = 'inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-sm font-medium text-amber-800';
+
+/** 某个 Rule 上次留下的输入：JSON 与表单两种输入方式各一份。 */
+interface RuleDraft {
+  input: string;
+  formValues: Record<string, Record<string, unknown>>;
+}
 
 interface ExecutionDiagnostic {
   code: string;
@@ -188,6 +196,21 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
   const [formValues, setFormValues] = useState<Record<string, Record<string, unknown>>>({});
   // 策略源码：用于提取规则符号（ruleSymbols）和按 locale 选词典。
   const [policyContent, setPolicyContent] = useState('');
+  // schema 提取的输入（源码 + 检测到的语言 + 冻结别名），与所选 Rule 一起决定参数表。
+  const [schemaSource, setSchemaSource] = useState<{
+    content: string;
+    locale: PolicyLocale;
+    aliasSet: Record<string, readonly string[]> | null;
+  } | null>(null);
+  // 最近一次提取 schema 所用的 Rule：effect 据此跳过与首次加载重复的提取。
+  const schemaRuleRef = useRef<string | null>(null);
+  // 每个函数上次留下的输入（JSON 与表单两份）。切走时存、切回时恢复，否则用户手改的输入
+  // 会被新 Rule 的示例覆盖且无法找回。只按函数名区分、不跨函数复用，恢复的输入一定是该函数的参数形状。
+  const ruleDraftsRef = useRef(new Map<string, RuleDraft>());
+  // 当前输入实际对应的函数（schema 提取所用的那个），草稿以它为键。
+  // 不能用 selectedRule：未选 Rule 时示例按第一个函数生成，此时 selectedRule 为 null，
+  // 用户随后选中这个函数时应恢复刚才的输入，而不是再覆盖一次。
+  const inputRuleRef = useRef('');
 
   const ruleSymbols = useMemo(() => extractRuleSymbols(policyContent), [policyContent]);
   const ambiguousEntryDiagnostic = executionDiagnostics.find((diag) => diag.code === 'ENTRY_AMBIGUOUS');
@@ -202,6 +225,7 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
     content: string,
     detectedLocale: PolicyLocale,
     aliasSet?: Record<string, readonly string[]> | null,
+    functionName?: string,
   ) => {
     if (!content) return;
 
@@ -220,7 +244,9 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
               },
             }
           : baseLexicon;
-      const data = extractSchema(content, { lexicon });
+      // functionName：按所选 Rule 提取参数；未选时由编译器回落到第一个函数（单 Rule 时即该 Rule）。
+      const data = extractSchema(content, functionName ? { lexicon, functionName } : { lexicon });
+      inputRuleRef.current = (data.success && data.functionName) || functionName || '';
 
       if (data.success && data.parameters && data.parameters.length > 0) {
         setSchema(data);
@@ -232,14 +258,21 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
       } else if (!data.success && data.error) {
         // Schema extraction failed - display error and use default empty JSON
         console.warn('Schema extraction failed:', data.error);
+        // ★必须清掉上一个 Rule 的参数表与表单值，否则表单模式会把旧 Rule 的参数提交给新 Rule。
+        setSchema(null);
+        setFormValues({});
         setSchemaError({ messageKey: 'policy.schema_failed', detail: data.error });
         setInput('{}');
       } else {
-        // No parameters found - use default empty JSON
+        // No parameters found - use default empty JSON（同样清掉旧 Rule 的参数表与表单值）
+        setSchema(null);
+        setFormValues({});
         setInput('{}');
       }
     } catch (err) {
       console.error('Failed to extract schema:', err);
+      setSchema(null);
+      setFormValues({});
       setSchemaError({
         messageKey: 'policy.schema_failed',
         detail: err instanceof Error ? err.message : 'Failed to extract schema',
@@ -255,7 +288,12 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
     // 之前 catch 块只 setInput('{}')，不通知用户——404 / 鉴权失败 / API
     // shape 变更都会让页面静默无内容，且 AI Explain 按钮静默消失。修复后
     // 显式设置 schemaError，让 UI 可见地报告失败原因。
-    fetch(`/api/policies/${policyId}`)
+    //
+    // policyId / locale 变化时 effect 会重跑：旧请求必须中止，且它的响应即使晚到也不能写入状态，
+    // 否则旧策略的内容、示例和默认 Rule 会覆盖新策略（cleanup 里置 stale 并 abort）。
+    const controller = new AbortController();
+    let stale = false;
+    fetch(`/api/policies/${policyId}`, { signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) {
           throw new Error(`HTTP ${res.status} fetching policy ${policyId}`);
@@ -263,6 +301,9 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
         return res.json();
       })
       .then((data) => {
+        if (stale) return;
+        // 草稿只对这一份源码有效：换了策略（或重新加载）后 Rule 名可能同名而参数不同
+        ruleDraftsRef.current.clear();
         setPolicyName(data.name);
         setPolicyContent(data.content || '');
         // P0-R2: 低置信度检测时 fallback 到 page locale，避免给 AI Explain
@@ -297,7 +338,15 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
           }
         }
         if (data.content) {
-          fetchSchema(data.content, detectedLocale, aliasSet);
+          // 首次加载即按默认 Rule 同步提取（保持示例与源码同一轮渲染就绪的原时序）；
+          // 之后用户切换 Rule 时由下方 effect 按所选 Rule 重新提取。
+          const defaultRule = chooseDefaultRule(extractRuleSymbols(data.content));
+          schemaRuleRef.current = defaultRule;
+          // 与源码同一批写入默认 Rule：否则首个 commit 里 selectedRule 仍为 null，
+          // 下方 effect 会先按第一个函数多提取一次（@entry 不在首位时会闪出错误的示例）。
+          setSelectedRule(defaultRule);
+          fetchSchema(data.content, detectedLocale, aliasSet, defaultRule ?? undefined);
+          setSchemaSource({ content: data.content, locale: detectedLocale, aliasSet });
         } else {
           // 策略内容为空（合法的边界情况）—— 显式提示而非静默
           setInput('{}');
@@ -305,18 +354,47 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
         }
       })
       .catch((err) => {
+        // 被新请求取代（含 abort）时静默丢弃，不能把旧请求的失败显示在新策略上
+        if (stale) return;
         // 显式失败：主文案走 i18n，detail 仅在折叠区显示（避免泄漏内部细节）
         const reason = err instanceof Error ? err.message : String(err);
         setSchemaError({ messageKey: 'policy.fetch_failed', detail: reason });
         setInput('{}');
       });
+    return () => {
+      stale = true;
+      controller.abort();
+    };
   }, [policyId, fetchSchema, locale]);
 
   useEffect(() => {
-    // ruleSymbols 变化时重置默认规则（selectedRule 仍可被用户手动改），故意在 effect 内 set
+    // ruleSymbols 变化时校正所选规则：用户已选且仍存在的规则保留，否则回落到默认规则。
+    // 用函数式更新读取最新值：若这里无条件 set 默认值，加载后用户立即切换的规则会被覆盖。
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSelectedRule(chooseDefaultRule(ruleSymbols));
+    setSelectedRule((current) => reconcileSelectedRule(current, ruleSymbols));
   }, [ruleSymbols]);
+
+  // 用户切换 Rule 时按该 Rule 重新提取参数并生成示例（首次加载已在加载回调里按默认 Rule 提取）。
+  // 表单值与 JSON 输入是用户可编辑的 state，切换 Rule 时整体换成新 Rule 的：该 Rule 有草稿
+  // （之前来过）就恢复草稿，否则用示例。参数表（schema）总是重新提取。
+  useEffect(() => {
+    if (!schemaSource || schemaRuleRef.current === selectedRule) return;
+    schemaRuleRef.current = selectedRule;
+    fetchSchema(schemaSource.content, schemaSource.locale, schemaSource.aliasSet, selectedRule ?? undefined);
+    const draft = ruleDraftsRef.current.get(inputRuleRef.current);
+    if (draft) {
+      // 与 fetchSchema 内的示例写入同批提交，后写者生效，不会闪出示例
+      setInput(draft.input);
+      setFormValues(draft.formValues);
+    }
+  }, [schemaSource, selectedRule, fetchSchema]);
+
+  // 切换 Rule 的唯一入口（规则选择器与候选按钮共用）：先把当前输入记为它所属函数的草稿。
+  // 自动校正（reconcileSelectedRule）不走这里——那时原 Rule 已不存在，没有可恢复的对象。
+  const switchRule = (next: string | null) => {
+    ruleDraftsRef.current.set(inputRuleRef.current, { input, formValues });
+    setSelectedRule(next);
+  };
 
   // 重新生成示例数据（使用检测到的策略语言生成本地化示例值）
   const regenerateSampleData = useCallback(() => {
@@ -346,11 +424,26 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
     });
   };
 
-  const handleExecute = async (functionNameOverride?: string) => {
-    const functionName = functionNameOverride ?? selectedRule;
-    if (functionNameOverride) {
-      setSelectedRule(functionNameOverride);
-    }
+  // ENTRY_AMBIGUOUS 的候选按钮：只选中该 Rule，不立即执行。
+  // 当前输入/表单是按原 Rule（或未选 Rule 时的第一个函数）生成的，直接拿去执行候选 Rule
+  // 会提交形状不符的参数；随后示例又被重置成候选 Rule 的，用户手改的输入也随之丢失。
+  // 选中后由「切换 Rule」的 effect 生成该 Rule 的示例，用户确认输入后再点执行（与提示文案
+  // 「选择一个候选 Rule 后重跑」一致）。
+  const selectCandidateRule = (candidate: string) => {
+    switchRule(candidate);
+    setExecutionDiagnostics([]);
+    // 上一次（入口不唯一）的失败结果一并收起，否则看起来像是「选择」本身失败了
+    setResult(null);
+    setError('');
+  };
+
+  // 多个 Rule、无 @entry 且未选 Rule 时，服务端必然返回 ENTRY_AMBIGUOUS（EntryPointSelector）。
+  // 前端能确定性地预判，故直接禁用执行，避免白跑一次（每次都会写执行记录并计入用量）；
+  // 规则选择器此时已显示 ambiguousHint。候选面板只作为前后端判断不一致时的兜底。
+  const mustChooseRule = ruleSymbols.length > 1 && !selectedRule;
+
+  const handleExecute = async () => {
+    const functionName = selectedRule;
     setIsLoading(true);
     setError('');
     setResult(null);
@@ -698,13 +791,14 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
               <RuleSelector
                 rules={ruleSymbols}
                 value={selectedRule}
-                onChange={setSelectedRule}
+                onChange={switchRule}
               />
             </div>
 
             <button
               onClick={() => handleExecute()}
-              disabled={isLoading}
+              disabled={isLoading || mustChooseRule}
+              data-testid="execute-policy-button"
               className="mt-4 w-full inline-flex justify-center items-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-primary-hover focus:ring-2 focus:ring-primary/20 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? (
@@ -760,14 +854,16 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
                       {t('entryAmbiguousTitle')}
                     </h4>
                     <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
-                      {ambiguousEntryDiagnostic.message || t('entryAmbiguousBody')}
+                      {/* 服务端 message 为写死的中文（EvaluationResponse），且不提示下一步；
+                          固定用本地化文案「选择一个候选 Rule 后重跑」 */}
+                      {t('entryAmbiguousBody')}
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {ambiguousEntryDiagnostic.candidates.map((candidate) => (
                         <button
                           key={candidate}
                           type="button"
-                          onClick={() => handleExecute(candidate)}
+                          onClick={() => selectCandidateRule(candidate)}
                           disabled={isLoading}
                           className="rounded-md border border-amber-300 bg-bg px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50 dark:border-amber-700 dark:bg-gray-900 dark:text-amber-100 dark:hover:bg-amber-900/30"
                         >
@@ -820,11 +916,16 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
                 )}
 
                 {/* Decision —— indeterminate 显示中性「无决策（值输出）」而非红色「拒绝」：
-                    值/计算输出策略没有 allow/deny 语义，标红拒绝会误导。 */}
+                    值/计算输出策略没有 allow/deny 语义，标红拒绝会误导。
+                    engineError（引擎执行失败）同理：系统故障不是策略决策，显示「执行失败」。 */}
                 {result.output && (
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-fg-muted">{t('decision')}</span>
-                    {pendingOutcomeKey(result.output.metadata?.outcome) ? (
+                    {result.output.metadata?.engineError ? (
+                      <span className="inline-flex items-center rounded-full bg-bg-subtle px-2.5 py-0.5 text-sm font-medium text-fg-muted">
+                        {t('executionFailed')}
+                      </span>
+                    ) : pendingOutcomeKey(result.output.metadata?.outcome) ? (
                       <span className={PENDING_BADGE_CLASS}>
                         {t(pendingOutcomeKey(result.output.metadata?.outcome)!)}
                       </span>

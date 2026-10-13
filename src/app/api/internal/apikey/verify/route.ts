@@ -11,7 +11,7 @@
  * 个人 key 与团队 key 的映射见 ADR 0015 §2。
  */
 import { NextResponse } from 'next/server';
-import { verifyInternalSignature } from '@/lib/api-signing';
+import { verifyInternalSignature } from '@/lib/internal-signature';
 import { resolveApiKeyIdentity } from '@/lib/api-key-identity';
 
 export const runtime = 'nodejs';

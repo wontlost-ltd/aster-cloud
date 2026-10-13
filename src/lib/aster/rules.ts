@@ -78,3 +78,18 @@ export function chooseDefaultRule(rules: Pick<RuleSymbol, 'name' | 'isEntry'>[])
 
   return null;
 }
+
+/**
+ * 规则列表变化后应选中的规则。
+ *
+ * <p>用户已选的规则仍在新列表里时保留它，否则回落到 {@link chooseDefaultRule}。
+ * 执行页在规则列表变化时会重新计算一次所选规则；若无条件重置为默认值，
+ * 页面刚加载、这次重算尚未执行时用户切换的规则会被覆盖回默认值。
+ */
+export function reconcileSelectedRule(
+  current: string | null,
+  rules: Pick<RuleSymbol, 'name' | 'isEntry'>[],
+): string | null {
+  if (current !== null && rules.some((rule) => rule.name === current)) return current;
+  return chooseDefaultRule(rules);
+}

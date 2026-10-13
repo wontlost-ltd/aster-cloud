@@ -15,6 +15,9 @@ const { mockFindFirst, mockCountOwnerPoolUsage } = vi.hoisted(() => ({
   mockCountOwnerPoolUsage: vi.fn(),
 }));
 
+// 重放拒绝由 internal-signature 单测与真 Postgres 集成测试覆盖；本文件只关心路由行为。
+vi.mock('@/services/security/nonce-service', () => ({ claimNonce: vi.fn(async () => true) }));
+
 vi.mock('@/lib/prisma', () => ({
   db: { query: { users: { findFirst: mockFindFirst } } },
   users: { id: 'users.id' },

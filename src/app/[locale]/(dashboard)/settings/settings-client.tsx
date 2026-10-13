@@ -27,6 +27,7 @@ import { ConfirmDialog } from '@/components/ui';
 import { Alert, AlertDescription, Button, cn } from '@/components/ui';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
 import { useAssistant } from '@/components/assistant/assistant-context';
+import { useAiInlineCompletion } from '@/lib/preferences/ai-inline-completion';
 
 const LOCALE_DETECTION_COOKIE = 'aster-locale-detection';
 
@@ -263,6 +264,62 @@ export function DeleteAccountFlow({
         variant="danger"
         isLoading={isDeleting}
       />
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* AiInlineCompletionToggle                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 策略编辑器 AI 行内补全开关。
+ *
+ * <p>与编辑器状态栏上的开关读写同一份本地偏好（见 lib/preferences/ai-inline-completion），
+ * 任意一处切换，另一处立即同步（含其他标签页）。
+ */
+export function AiInlineCompletionToggle({
+  ariaLabel,
+  enabledHint,
+  disabledHint,
+}: {
+  ariaLabel: string;
+  enabledHint: string;
+  disabledHint: string;
+}) {
+  const { value: checked, hydrating, setValue } = useAiInlineCompletion();
+
+  return (
+    <>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={ariaLabel}
+        // 读到本地偏好前禁用：此刻 checked 是默认值，点下去会覆盖用户真实设置。
+        disabled={hydrating}
+        onClick={() => setValue(!checked)}
+        data-testid="settings-ai-completion-toggle"
+        className={cn(
+          'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent',
+          'transition-colors duration-fast ease-standard',
+          'focus-visible:outline-none focus-visible:shadow-ring',
+          'disabled:cursor-not-allowed disabled:opacity-50',
+          checked ? 'bg-primary' : 'bg-bg-muted',
+        )}
+      >
+        <span
+          aria-hidden
+          className={cn(
+            'pointer-events-none inline-block size-5 transform rounded-full bg-bg shadow ring-0',
+            'transition-transform duration-fast ease-standard',
+            checked ? 'translate-x-5' : 'translate-x-0',
+          )}
+        />
+      </button>
+      <p className="text-xs text-fg-subtle" data-ai-completion-hint>
+        {checked ? enabledHint : disabledHint}
+      </p>
     </>
   );
 }

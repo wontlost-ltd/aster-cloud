@@ -7,9 +7,11 @@ import {
   AlertTriangle,
   CheckCircle2,
   Loader2,
+  Sparkles,
   WifiOff,
 } from 'lucide-react';
 import { cn } from '@/components/ui';
+import { isAssistantLauncherVisible, useAssistant } from '@/components/assistant/assistant-context';
 import type { CompileDiagnostic, CompileState } from './use-compile';
 
 /**
@@ -40,6 +42,15 @@ export interface StatusBarProps {
   compileTransportError?: string;
   /** Click the compile chip → open decision panel. */
   onCompileChipClick?: () => void;
+  /**
+   * AI 行内补全开关（与设置页共用同一份本地偏好）。不传则不显示。
+   * hydrating 期间禁用：此时 enabled 还是默认值，点下去会覆盖用户真实设置。
+   */
+  aiCompletion?: {
+    enabled: boolean;
+    hydrating: boolean;
+    onToggle: () => void;
+  };
 }
 
 export function StatusBar({
@@ -51,14 +62,23 @@ export function StatusBar({
   compileDiagnostics,
   compileTransportError,
   onCompileChipClick,
+  aiCompletion,
 }: StatusBarProps) {
   const t = useTranslations('policies.form');
   const lineCount = content.length === 0 ? 0 : content.split('\n').length;
   const ago = useTimeAgo(lastSavedAt);
+  // 悬浮助手按钮（fixed bottom-4 right-4，48px，距视口右缘共 4rem）显示时会盖住状态栏
+  // 右端的快捷键提示。状态栏所在容器贴近视口右缘，故按钮显示时右外边距放到 5rem 让开它
+  const reserveLauncher = isAssistantLauncherVisible(useAssistant());
 
   return (
     <footer
-      className="mx-4 sm:mx-6 flex items-center gap-3 rounded-md border border-border bg-bg-subtle px-3 py-1.5 text-xs text-fg-muted"
+      data-testid="policy-status-bar"
+      className={cn(
+        'ml-4 sm:ml-6',
+        reserveLauncher ? 'mr-20' : 'mr-4 sm:mr-6',
+        'flex items-center gap-3 rounded-md border border-border bg-bg-subtle px-3 py-1.5 text-xs text-fg-muted',
+      )}
       role="status"
       aria-live="polite"
     >
@@ -93,13 +113,36 @@ export function StatusBar({
 
       <Separator />
       {isDirty ? (
-        <span className="text-warning-fg">{t('statusUnsaved')}</span>
+        <span className="text-warning">{t('statusUnsaved')}</span>
       ) : lastSavedAt > 0 ? (
         <span>{t('statusSavedAgo', { time: ago })}</span>
       ) : null}
 
       {/* Right-aligned shortcut hints */}
       <span className="ml-auto flex items-center gap-3">
+        {aiCompletion && (
+          <>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={aiCompletion.enabled}
+              aria-label={t('statusAiCompletionLabel')}
+              title={t('statusAiCompletionHint')}
+              disabled={aiCompletion.hydrating}
+              onClick={aiCompletion.onToggle}
+              data-testid="status-ai-completion-toggle"
+              className={cn(
+                'inline-flex items-center gap-1 rounded px-1 -mx-1 hover:bg-bg-muted',
+                'focus-visible:outline-none focus-visible:shadow-ring disabled:opacity-50',
+                aiCompletion.enabled ? 'text-fg' : 'text-fg-subtle',
+              )}
+            >
+              <Sparkles className="size-3" aria-hidden />
+              {aiCompletion.enabled ? t('statusAiCompletionOn') : t('statusAiCompletionOff')}
+            </button>
+            <Separator />
+          </>
+        )}
         <ShortcutHint label={t('statusSaveHint')} />
         <Separator />
         <ShortcutHint label={t('statusPaletteHint')} />
@@ -149,7 +192,7 @@ function CompileChip({
   }
   if (warningCount > 0) {
     return (
-      <span className="inline-flex items-center gap-1 text-warning-fg">
+      <span className="inline-flex items-center gap-1 text-warning">
         <AlertTriangle aria-hidden className="size-3" />
         {t('compileWarnings', { count: warningCount })}
       </span>

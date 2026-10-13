@@ -75,8 +75,9 @@ localConnectionString = "postgres://placeholder:placeholder@localhost:5432/aster
 # - 03:45 UTC: /api/cron/domain-vocabulary-retention（B13 — 90 天降级用户词汇归档）
 # - 04:00 UTC: /api/cron/execution-retention-gc（#396 — 按 plan 清执行日志 + 180d 清决策骨架）
 # - 04:15 UTC: /api/cron/two-factor-code-gc（#400 — 回收码已过期且限次窗口也已过期的 2FA 行）
+# - 每小时 :25: /api/cron/cleanup-nonces（#480 — 回收 /api/internal/* 入站签名用过的过期 nonce）
 [triggers]
-crons = ["30 4 * * *", "0 5 * * *", "0 */6 * * *", "0 8 * * 1", "15 3 * * *", "45 3 * * *", "0 4 * * *", "15 4 * * *"]
+crons = ["30 4 * * *", "0 5 * * *", "0 */6 * * *", "0 8 * * 1", "15 3 * * *", "45 3 * * *", "0 4 * * *", "15 4 * * *", "25 * * * *"]
 
 # 环境变量（公开的，非敏感信息）
 [vars]

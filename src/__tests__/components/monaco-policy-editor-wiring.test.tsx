@@ -209,6 +209,18 @@ describe('编辑器接线：LSP 参数下发', () => {
     delete process.env.NEXT_PUBLIC_LSP_HOST;
   });
 
+  /* ★hook 必须拿到**编辑器自己的** Monaco 实例。@monaco-editor/react 未配 loader 时
+   *   从 CDN 加载 Monaco；hook 若自行 import('monaco-editor')，得到的是打包进来的
+   *   第二份实例，provider 全注册在它上面——编辑器永远不会调用，hover/跳转等全部失效
+   *   （生产实测：showHover 不发 textDocument/hover）。 */
+  it('★LSP hook 收到编辑器自己的 monaco 实例', async () => {
+    process.env.NEXT_PUBLIC_LSP_HOST = 'lsp.example.test';
+    render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" />);
+    await waitFor(() => expect(lspCalls.some((c) => c.editor)).toBe(true));
+    expect(lspCalls.filter((c) => c.editor).at(-1)!.monaco).toBe(fakeMonaco);
+    delete process.env.NEXT_PUBLIC_LSP_HOST;
+  });
+
   /* ★lspEnabled 恒 true 会让生产站（Cloudflare Workers，无 /api/lsp 路由）
    *   陷入 reconnect 风暴；readOnly 视图也不该连。 */
   it('★未配 LSP_HOST 时不自动连接', async () => {

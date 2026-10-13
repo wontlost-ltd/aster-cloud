@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations, useLocale } from 'next-intl';
-import { useAssistant } from './assistant-context';
+import { isAssistantLauncherVisible, useAssistant } from './assistant-context';
 import { retrieve } from '@/lib/assistant/retrieval';
 import {
   getDocsSearchIndex,
@@ -170,7 +170,7 @@ export function AssistantPanel() {
   // （hydrating 期间不渲染，避免"先闪出来又消失"）。
   if (!state || state.hydrating || !state.enabled) return null;
 
-  if (!open) {
+  if (isAssistantLauncherVisible(state)) {
     return (
       <button
         type="button"

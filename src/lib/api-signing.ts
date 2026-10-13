@@ -335,11 +335,24 @@ export type InternalVerifyResult =
   | { ok: true; usedLegacyCanonical: boolean }
   | { ok: false; reason: string };
 
+/**
+ * 只验签名、不查重放的结果。v2 通过时带回已验证的时间戳与 nonce，
+ * 供 internal-signature.ts 认领 nonce。
+ */
+export type InternalSignatureCheck =
+  | { ok: true; usedLegacyCanonical: false; timestamp: number; nonce: string }
+  | { ok: true; usedLegacyCanonical: true }
+  | { ok: false; reason: string };
+
 /** 时间戳窗口（秒）。与 aster-api 侧 InternalCallerFilter 的 300s 保持一致。 */
-const INTERNAL_TS_WINDOW_SEC = 300;
+export const INTERNAL_TS_WINDOW_SEC = 300;
 
 /**
- * 校验 aster-api → aster-cloud 的内部调用签名。
+ * 校验 aster-api → aster-cloud 的内部调用签名（只验签名与时间窗，**不查重放**）。
+ *
+ * <p>路由不要直接调用本函数，应调用 `@/lib/internal-signature` 的
+ * `verifyInternalSignature`：它在本函数通过后认领 nonce，同一签名第二次即被拒（#480）。
+ * 本函数保持无状态，是为了让本文件不依赖数据库。
  *
  * <h3>为什么需要它</h3>
  *
@@ -371,12 +384,12 @@ const INTERNAL_TS_WINDOW_SEC = 300;
  * @param rawBody  已读出的原始 body 文本；GET 传空串
  * @param secret   共享密钥
  */
-export async function verifyInternalSignature(
+export async function checkInternalSignature(
   req: Request,
   rawBody: string,
   secret: string,
   opts?: { allowLegacy?: boolean },
-): Promise<InternalVerifyResult> {
+): Promise<InternalSignatureCheck> {
   const timestamp = req.headers.get('X-Aster-Timestamp');
   const signature = req.headers.get('X-Internal-Signature')
     ?? req.headers.get('X-Aster-Signature');
@@ -403,7 +416,7 @@ export async function verifyInternalSignature(
     const bodyHash = await sha256Hex(new TextEncoder().encode(rawBody).buffer as ArrayBuffer);
     const canonicalV2 = `${method}\n${url.pathname}\n${ts}\n${nonce}\n${bodyHash}`;
     if (await hmacVerify(secret, canonicalV2, signature)) {
-      return { ok: true, usedLegacyCanonical: false };
+      return { ok: true, usedLegacyCanonical: false, timestamp: ts, nonce };
     }
   }
 

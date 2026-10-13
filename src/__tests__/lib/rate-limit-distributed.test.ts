@@ -15,15 +15,29 @@ vi.mock('@opennextjs/cloudflare', () => ({
 import { checkRateLimitDistributed } from '@/lib/rate-limit-distributed';
 import { resetRateLimit } from '@/lib/rate-limit';
 
-/** 简单的内存 KV mock（模拟 Cloudflare KVNamespace 的 get/put）。 */
+/**
+ * 内存 KV mock（模拟 Cloudflare KVNamespace 的 get/put）。
+ *
+ * ★put 必须与真实 KV 一样拒绝 expirationTtl < 60（官方文档：The minimum value is 60）。
+ * 曾经 mock 接受任意 TTL：生产上 put 恒抛错、静默回退内存限流，而内存限流计数结果相同，
+ * 测试照样全绿（#477）。
+ */
 function makeKv() {
   const store = new Map<string, string>();
   return {
     store,
     get: vi.fn(async (k: string) => store.get(k) ?? null),
-    put: vi.fn(async (k: string, v: string) => { store.set(k, v); }),
+    put: vi.fn(async (k: string, v: string, opts?: { expirationTtl?: number }) => {
+      if (opts?.expirationTtl !== undefined && opts.expirationTtl < 60) {
+        throw new Error(`KV PUT failed: 400 Invalid expiration_ttl of ${opts.expirationTtl}. Expiration TTL must be at least 60.`);
+      }
+      store.set(k, v);
+    }),
   };
 }
+
+/** 计数确实写进了 KV（而不是静默回退到内存限流）。 */
+const kvCount = (kv: ReturnType<typeof makeKv>) => [...kv.store.values()].map(Number);
 
 const CFG = { windowMs: 60_000, maxRequests: 3 };
 
@@ -52,6 +66,32 @@ describe('checkRateLimitDistributed (审计 #168)', () => {
     expect(r3.remaining).toBe(0);
     expect(r4.allowed).toBe(false); // 第 4 次超上限 3
     expect(r4.retryAfterSeconds).toBeGreaterThan(0);
+    expect(kvCount(kv)).toEqual([3]);
+  });
+
+  it('★60s 窗口内任意时刻写入的 TTL 都满足 KV 下限 60s，计数落在 KV（#477）', async () => {
+    const windowStart = 60_000 * 1_000;
+    // 窗口起点、中段、最后 1 秒——旧实现只有起点后约 1 秒内 TTL ≥ 60
+    for (const offset of [0, 1_000, 30_000, 59_000, 59_999]) {
+      const kv = makeKv();
+      mockGetCloudflareContext.mockResolvedValue({ env: { CACHE: kv } });
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const r = await checkRateLimitDistributed(`ttl-${offset}`, CFG, windowStart + offset);
+      expect(r.allowed).toBe(true);
+      expect(kvCount(kv), `offset ${offset}`).toEqual([1]);
+      expect(kv.put.mock.calls[0][2]?.expirationTtl).toBeGreaterThanOrEqual(60);
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
+      resetRateLimit(`ttl-${offset}`);
+    }
+  });
+
+  it('长窗口（1 小时）的 TTL 仍覆盖到窗口结束', async () => {
+    const kv = makeKv();
+    mockGetCloudflareContext.mockResolvedValue({ env: { CACHE: kv } });
+    const hour = { windowMs: 3_600_000, maxRequests: 3 };
+    await checkRateLimitDistributed('u1', hour, 3_600_000 * 10 + 1_000);
+    expect(kv.put.mock.calls[0][2]?.expirationTtl).toBeGreaterThanOrEqual(3_599);
   });
 
   it('KV 可用：窗口滚动后计数重置（新窗口 key）', async () => {
@@ -92,7 +132,11 @@ describe('checkRateLimitDistributed (审计 #168)', () => {
     const kv = makeKv();
     kv.put.mockRejectedValue(new Error('kv write quota exceeded'));
     mockGetCloudflareContext.mockResolvedValue({ env: { CACHE: kv } });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const r1 = await checkRateLimitDistributed('u1', CFG);
+    // 回退必须留痕：曾经静默回退，KV 写入从未成功也无人察觉（#477）
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('[rate-limit]'), expect.any(Error));
+    warn.mockRestore();
     await checkRateLimitDistributed('u1', CFG);
     await checkRateLimitDistributed('u1', CFG);
     const r4 = await checkRateLimitDistributed('u1', CFG);

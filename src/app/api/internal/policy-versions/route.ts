@@ -27,7 +27,7 @@
 import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 
-import { verifyInternalSignature } from '@/lib/api-signing';
+import { verifyInternalSignature } from '@/lib/internal-signature';
 import { db, policyVersions, policies } from '@/lib/prisma';
 
 export const runtime = 'nodejs';

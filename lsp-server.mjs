@@ -16,6 +16,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { join } from 'path';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
 
 const hostname = process.env.HOSTNAME || '0.0.0.0';
 const port = parseInt(process.env.PORT || '3001', 10);
@@ -54,6 +56,69 @@ const authDisabled = process.env.LSP_AUTH_DISABLED === 'true';
 
 // Track active LSP connections for cleanup
 const activeConnections = new Map();
+
+/** 本进程创建、尚未删除的每连接工作目录（shutdown 时同步清理） */
+const liveWorkDirs = new Set();
+const WORK_DIR_PREFIX = 'aster-lsp-';
+const OWNER_FILE = '.owner-pid';
+/** 无 owner 文件的遗留目录（旧版本或写入前崩溃）超过这个时长才视为过期 */
+const LEGACY_STALE_MS = 60 * 60 * 1000;
+
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM：进程存在但无权发信号，仍视为存活
+    return error?.code === 'EPERM';
+  }
+}
+
+/**
+ * 启动时清理过期的每连接工作目录。
+ *
+ * ★为什么需要：容器重启（SIGKILL / OOM）时子进程的 exit 回调来不及执行，目录留在 /tmp；
+ *   而 /tmp 是 emptyDir，容器重启后仍在，只会越积越多。
+ * ★判据按 owner 进程而非一律删除：本地开发或测试可能有多个网关共用同一个 TMPDIR。
+ *   - owner 进程已不存在 → 过期
+ *   - owner 就是本进程 → 过期（容器里网关通常是 PID 1，重启后 PID 复用；刚启动时本进程
+ *     还没创建过任何目录）
+ *   - 没有 owner 文件 → 超过 LEGACY_STALE_MS 才删
+ *
+ * @returns {string[]} 被删除的目录
+ */
+export function sweepStaleWorkDirs(root = tmpdir(), now = Date.now()) {
+  const removed = [];
+  let entries = [];
+  try {
+    entries = readdirSync(root, { withFileTypes: true });
+  } catch {
+    return removed;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith(WORK_DIR_PREFIX)) continue;
+    const dir = join(root, entry.name);
+    let stale;
+    try {
+      const pid = Number.parseInt(readFileSync(join(dir, OWNER_FILE), 'utf-8'), 10);
+      stale = !Number.isFinite(pid) || pid === process.pid || !isProcessAlive(pid);
+    } catch {
+      try {
+        stale = now - statSync(dir).mtimeMs > LEGACY_STALE_MS;
+      } catch {
+        stale = false;
+      }
+    }
+    if (!stale) continue;
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      removed.push(dir);
+    } catch (error) {
+      console.error('[LSP] Failed to sweep stale work dir:', error);
+    }
+  }
+  return removed;
+}
 
 /**
  * Constant-time string compare to avoid leaking token length/prefix via timing.
@@ -118,6 +183,44 @@ export function evaluateUpgrade(input, config) {
 }
 
 // Create HTTP server for health checks and WebSocket upgrade
+/**
+ * LSP stdio 分帧解码器：按 Content-Length 切出完整消息。
+ *
+ * ★Content-Length 是 **UTF-8 字节数**。必须在 Buffer 上按字节切，切完整条再解码。
+ *   旧实现把 stdout 拼成 JS 字符串后按字符切：中文 1 字符 = 3 字节，切多了，
+ *   消息尾部吞进下一条的头，浏览器收到粘连/截断的 JSON；块边界落在多字节字符
+ *   中间时 data.toString() 还会产生替换字符。zh 用户的每条含中文的消息都受影响。
+ *
+ * @returns {{ push(chunk: Buffer): string[] }} 每次 push 返回本次凑齐的完整消息（已解码）
+ */
+export function createLspFrameDecoder() {
+  let buffer = Buffer.alloc(0);
+  const separator = Buffer.from('\r\n\r\n');
+  return {
+    push(chunk) {
+      buffer = Buffer.concat([buffer, chunk]);
+      const messages = [];
+      for (;;) {
+        const headerEnd = buffer.indexOf(separator);
+        if (headerEnd === -1) break;
+        const header = buffer.subarray(0, headerEnd).toString('ascii');
+        const match = header.match(/Content-Length: *(\d+)/i);
+        if (!match) {
+          // 无 Content-Length 的头无法定界，丢弃该头继续找下一条
+          buffer = buffer.subarray(headerEnd + separator.length);
+          continue;
+        }
+        const start = headerEnd + separator.length;
+        const end = start + parseInt(match[1], 10);
+        if (buffer.length < end) break;
+        messages.push(buffer.subarray(start, end).toString('utf-8'));
+        buffer = buffer.subarray(end);
+      }
+      return messages;
+    },
+  };
+}
+
 const server = createServer((req, res) => {
   const { pathname } = parse(req.url, true);
 
@@ -241,7 +344,7 @@ wss.on('connection', (ws, request) => {
 
   // Forward messages from LSP process (stdout) to WebSocket
   // Use a message queue to ensure messages are sent one at a time
-  let buffer = '';
+  const frameDecoder = createLspFrameDecoder();
   const messageQueue = [];
   let isSending = false;
 
@@ -269,30 +372,8 @@ wss.on('connection', (ws, request) => {
   };
 
   lspProcess.stdout?.on('data', (data) => {
-    buffer += data.toString();
-
-    // Parse LSP messages (Content-Length header format)
-    while (true) {
-      const headerEnd = buffer.indexOf('\r\n\r\n');
-      if (headerEnd === -1) break;
-
-      const header = buffer.slice(0, headerEnd);
-      const contentLengthMatch = header.match(/Content-Length: (\d+)/i);
-      if (!contentLengthMatch) {
-        buffer = buffer.slice(headerEnd + 4);
-        continue;
-      }
-
-      const contentLength = parseInt(contentLengthMatch[1], 10);
-      const messageStart = headerEnd + 4;
-      const messageEnd = messageStart + contentLength;
-
-      if (buffer.length < messageEnd) break;
-
-      const message = buffer.slice(messageStart, messageEnd);
-      buffer = buffer.slice(messageEnd);
-
-      // Queue message instead of sending directly
+    // 按字节分帧（见 createLspFrameDecoder），每条完整消息单独成一个 WebSocket 帧
+    for (const message of frameDecoder.push(data)) {
       messageQueue.push(message);
     }
 
@@ -340,6 +421,8 @@ const shutdown = () => {
     ws.close();
     lspProcess.kill();
   }
+  // ★同步删除：下面的 process.exit 不会等子进程的 exit 回调（cleanupWorkDir）执行
+  for (const dir of [...liveWorkDirs]) cleanupWorkDir(dir);
   server.close(() => {
     console.log('[Server] Closed');
     process.exit(0);
@@ -360,6 +443,9 @@ const isMain = (() => {
 if (isMain) {
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
+
+  const swept = sweepStaleWorkDirs();
+  if (swept.length > 0) console.log(`[LSP] Swept ${swept.length} stale work dir(s)`);
 
   // Start server
   server.listen(port, hostname, () => {
@@ -387,7 +473,19 @@ function spawnLSPServer(locale) {
 
     // Construct the path to the LSP server directly
     // In production (Docker), node_modules is in the same directory as this file
-    const lspServerPath = join(__dirname, 'node_modules', '@aster-cloud', 'aster-lang-ts', 'dist', 'src', 'lsp', 'server.js');
+    // LSP_SERVER_SCRIPT 仅供测试替换为假语言服务器；生产不设置。
+    // ★名字刻意不以 ASTER_ 开头：ASTER_* 会被转发给子进程。
+    const lspServerPath = process.env.LSP_SERVER_SCRIPT
+      || join(__dirname, 'node_modules', '@aster-cloud', 'aster-lang-ts', 'dist', 'src', 'lsp', 'server.js');
+
+    // ★每个连接独立的工作目录（也作 HOME）：语言服务器把工作区索引写在 cwd 下的
+    //   .asteri/lsp-index.json，并在启动时读回。所有连接共用 /app 时，一个租户的模块
+    //   会出现在另一个租户的 getAllModules() 里（Use <module> 的跳转可解析到别家模块）。
+    //   连接结束、子进程退出后整个目录删除（见 cleanupWorkDir）。
+    const workDir = mkdtempSync(join(tmpdir(), WORK_DIR_PREFIX));
+    // owner 文件供启动时的过期清理判断（见 sweepStaleWorkDirs）
+    writeFileSync(join(workDir, OWNER_FILE), String(process.pid));
+    liveWorkDirs.add(workDir);
 
     console.log(`[LSP] Starting LSP server from: ${lspServerPath}`);
 
@@ -397,7 +495,7 @@ function spawnLSPServer(locale) {
     // business inheriting them. Only forward what it actually needs to run.
     const childEnv = {
       PATH: process.env.PATH,
-      HOME: process.env.HOME,
+      HOME: workDir,
       NODE_ENV: process.env.NODE_ENV,
       ASTER_LOCALE: locale,
     };
@@ -412,12 +510,26 @@ function spawnLSPServer(locale) {
     const lspProcess = spawn('node', [lspServerPath, '--stdio'], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: childEnv,
+      cwd: workDir,
     });
+    // 子进程无论因何退出（连接关闭 SIGTERM、崩溃）都删掉它的工作目录
+    lspProcess.once('exit', () => cleanupWorkDir(workDir));
+    lspProcess.once('error', () => cleanupWorkDir(workDir));
 
     return lspProcess;
   } catch (error) {
     console.error('[LSP] Failed to spawn LSP server:', error);
     return null;
+  }
+}
+
+/** 删除连接专属工作目录；失败只记日志，不影响网关 */
+function cleanupWorkDir(dir) {
+  liveWorkDirs.delete(dir);
+  try {
+    rmSync(dir, { recursive: true, force: true });
+  } catch (error) {
+    console.error('[LSP] Failed to remove work dir:', error);
   }
 }
 

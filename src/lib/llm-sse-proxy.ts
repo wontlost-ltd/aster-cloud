@@ -21,6 +21,7 @@ import { signInternalCallerHeaders } from '@/lib/api-signing';
 import { checkAiQuota, recordAiUsage } from '@/lib/ai-quota';
 import { aiQuotaHttpStatus } from '@/lib/ai-quota-http';
 import { resolveByokEnvelope, injectByokEnvelope } from '@/lib/byok-envelope';
+import { createSseBillableWatcher } from '@/lib/sse-frame';
 
 const ASTER_API_BASE =
   process.env.ASTER_POLICY_API_INTERNAL_URL ||
@@ -148,17 +149,18 @@ export async function proxyLlmSse(
   // 成功记账：驱动 checkAiQuota 的月配额与速率计数（否则计数永不递增、配额门虚设）。
   // callKind 从 upstreamPath 末段派生（/api/v1/ai/generate → generate）。
   //
-  // ★记账时机改为「流真正产出第一个字节之后」，而不是上游 2xx 响应头一到就记（issue #441）。
-  //   此前是后者——但 2xx 只说明**上游接受了请求**，流尚未转发也未产出任何内容。
-  //   用户秒取消、或流建立后中途网络错误，都会让一次**零产出**的调用计入成功配额。
+  // ★记账规则：请求到达了第三方 AI 就计一笔（#470），判定见 sse-frame.ts 的 isBillableEvent。
+  //   - aster-api 连上 provider 时先发 upstream_reached 帧：此后 provider 报错、超时、
+  //     没有内容、用户中途断开，都计费——请求已经到达第三方。
+  //   - 在它之前就结束的不计：安全拒答、未配置 key、BYOK 无效、连不上 provider——
+  //     aster-api 在 HTTP 200 下用单条 error 帧报告这些，第一个字节就是这条 error。
+  //   - 也不是上游 2xx 响应头一到就记（issue #441）：2xx 只说明 aster-api 接受了请求，
+  //     还没到 provider。
   //
   //   为什么不是「记完再按结果撤销」：recordAiUsage 的 upsert 刻意保留首次 status
   //   （见 ai-quota.ts 的 onConflictDoUpdate——createdAt/status 不被占位/回填改写），
-  //   那是 #185 回填契约的一部分。所以无法事后把 success 改成 error，
-  //   只能把「记」这个动作推迟到确实有产出之后。
-  //
-  //   仍然是**乐观**的（首字节 ≠ 完整回答），但把「零产出也计费」这一类整体消除了。
-  //   token 精确计量与按真实完成计费仍在 Phase 3（aster-api 成功路径回填同一 requestId）。
+  //   那是 #185 回填契约的一部分。所以只能把「记」这个动作推迟到确知已到达 provider。
+  //   真实 token 由 aster-api 按同一 requestId 回填。
   const callKind = upstreamPath.endsWith('/suggest') ? 'suggest' : 'generate';
   const recordUsageOnce = createOnceRecorder(async () => {
     try {
@@ -179,13 +181,18 @@ export async function proxyLlmSse(
     }
   });
 
-  // 透传流并在**第一个 chunk** 到达时记账。不缓冲、不改内容——只在中间插一个观察点。
+  // 透传流并在第一个计费帧出现时记账。字节原样转发、不延迟——只在旁边解析帧做判断。
+  const billableWatcher = createSseBillableWatcher();
   const metered = upstreamResp.body.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) {
-        // 记账是 fire-and-forget：绝不能让计费 IO 阻塞或中断用户的流。
-        void recordUsageOnce();
         controller.enqueue(chunk);
+        // 记账是 fire-and-forget：绝不能让计费 IO 阻塞或中断用户的流。
+        if (billableWatcher.push(chunk)) void recordUsageOnce();
+      },
+      flush() {
+        // 最后一帧可能没有空行收尾
+        if (billableWatcher.finish()) void recordUsageOnce();
       },
     })
   );

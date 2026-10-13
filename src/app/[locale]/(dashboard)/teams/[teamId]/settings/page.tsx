@@ -440,7 +440,7 @@ export default function TeamSettingsPage() {
           <div className="space-y-3">
             <p>{t('settings.transferDialogBody')}</p>
             {eligibleMembers.length === 0 ? (
-              <p className="text-sm text-warning-fg">
+              <p className="text-sm text-warning">
                 {t('settings.transferNoEligible')}
               </p>
             ) : (

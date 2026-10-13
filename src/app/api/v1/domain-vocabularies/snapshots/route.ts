@@ -12,12 +12,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { errorEnvelope } from '@/lib/api/error-envelope';
 import { listOwnerSnapshots } from '@/lib/domain-vocabulary-snapshot';
-
-function parsePositiveInt(value: string | null, fallback: number): number {
-  if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
-}
+import { parsePositiveInt } from '@/lib/api/query-params';
 
 export async function GET(req: Request) {
   try {

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db, policyGroups, policies, teamMembers } from '@/lib/prisma';
 import { eq, and, or, isNull, sql, desc, inArray } from 'drizzle-orm';
+import { wouldCreateParentCycle } from '@/lib/policy-group-hierarchy';
+import { lookupGroupParent } from '@/lib/policy-group-parent-lookup';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -245,9 +247,9 @@ export async function PUT(req: Request, { params }: RouteParams) {
         }
       }
 
-      // 检查新父分组是否是当前分组的子孙
+      // 检查新父分组是否是当前分组的子孙（沿父链向上走，库里已有环也不会死循环）
       if (parentId) {
-        const isDescendant = await checkIsDescendant(id, parentId);
+        const isDescendant = await wouldCreateParentCycle(new Map([[id, parentId]]), lookupGroupParent);
         if (isDescendant) {
           return NextResponse.json(
             { error: 'Cannot move group to its own descendant' },
@@ -442,24 +444,4 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     console.error('Error deleting policy group:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
-
-// 辅助函数：检查 targetId 是否是 sourceId 的子孙节点
-async function checkIsDescendant(sourceId: string, targetId: string): Promise<boolean> {
-  const children = await db.query.policyGroups.findMany({
-    where: eq(policyGroups.parentId, sourceId),
-    columns: { id: true },
-  });
-
-  for (const child of children) {
-    if (child.id === targetId) {
-      return true;
-    }
-    const isDescendant = await checkIsDescendant(child.id, targetId);
-    if (isDescendant) {
-      return true;
-    }
-  }
-
-  return false;
 }

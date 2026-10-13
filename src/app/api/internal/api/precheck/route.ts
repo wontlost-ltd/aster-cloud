@@ -11,7 +11,7 @@
  * 个人 key 传本人；套餐、封禁与月度用量都按该 owner 取，用量走 owner 共享池。
  */
 import { NextResponse } from 'next/server';
-import { verifyInternalSignature } from '@/lib/api-signing';
+import { verifyInternalSignature } from '@/lib/internal-signature';
 import { db, users } from '@/lib/prisma';
 import { eq } from 'drizzle-orm';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';

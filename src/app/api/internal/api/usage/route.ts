@@ -8,7 +8,7 @@
  */
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
-import { verifyInternalSignature } from '@/lib/api-signing';
+import { verifyInternalSignature } from '@/lib/internal-signature';
 import { db, apiCallRecords, apiKeys } from '@/lib/prisma';
 import { and, eq, isNull, lt, or } from 'drizzle-orm';
 import { countOwnerPoolUsage, currentPeriodMonth } from '@/lib/api-quota-pool';

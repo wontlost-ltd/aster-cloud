@@ -440,6 +440,26 @@ export function MonacoPolicyEditor({
   const moduleCompletionProviderDisposableRef = useRef<{ dispose: () => void } | null>(null);
   const moduleHoverProviderDisposableRef = useRef<{ dispose: () => void } | null>(null);
   const inlineCompletionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 被新一次输入取消的那次补全请求的 resolve：取消时必须以空结果 resolve，
+  // 否则每次连续按键都会留下一个永不结束的 Promise。
+  const pendingInlineResolveRef = useRef<((r: { items: [] }) => void) | null>(null);
+  // 已发出、尚未返回的那次补全请求：关闭开关时中止它，避免关闭后仍弹出建议。
+  const inflightInlineAbortRef = useRef<AbortController | null>(null);
+  // AI 行内补全开关的当前值。provider 在挂载时注册一次，运行期切换开关不会重新注册，
+  // 故在每次请求时读这个 ref，而不是闭包里挂载那一刻的 prop。
+  const aiCompletionEnabledRef = useRef(enableAICompletion);
+  useEffect(() => {
+    aiCompletionEnabledRef.current = enableAICompletion;
+    if (!enableAICompletion) {
+      // 关闭时立刻取消已排队但尚未发出的请求
+      if (inlineCompletionTimerRef.current) clearTimeout(inlineCompletionTimerRef.current);
+      inlineCompletionTimerRef.current = null;
+      pendingInlineResolveRef.current?.({ items: [] });
+      pendingInlineResolveRef.current = null;
+      inflightInlineAbortRef.current?.abort();
+      inflightInlineAbortRef.current = null;
+    }
+  }, [enableAICompletion]);
   const { resolvedTheme } = useTheme();
   const t = useTranslations('diagnostics');
   const tEntry = useTranslations('policies.ruleSelector');
@@ -566,9 +586,17 @@ export function MonacoPolicyEditor({
   /* LSP 接线（issue #500）。此前 useAsterLSP 是**死代码**——集群里没有服务端，
    * 也没有任何组件调用它，两头都没接上。
    *
-   * ★职责边界：诊断**不归 LSP 管**。上面的 useAsterCompiler 已在浏览器内做
-   *   完整 parse+typecheck（且别名感知、离线可用）。LSP 只补三件浏览器侧做不到的：
-   *   跳转定义、签名帮助、跨文件引用。两者不重叠，故不会出现双份红波浪线。
+   * ★职责边界（每项能力只有一个来源，避免重复）：
+   *   - 诊断：归浏览器侧 useAsterCompiler（完整 parse+typecheck，别名感知、离线可用），
+   *     LSP 推送的诊断被丢弃（suppressDiagnostics），故不会出现双份红波浪线。
+   *   - 关键字补全：归本地 provider（buildKeywordSuggestions，按 locale 与用户别名给词）。
+   *     LSP 的补全只有关键字 + 英文类型名（Text/Int…，zh 下是错词），不提供任何
+   *     用户符号，接上只会产生重复或错误条目，故不注册 LSP 补全。
+   *   - hover / 跳转定义 / 文档符号 / 签名帮助 / 代码操作 / 格式化 / 高亮 / 引用 / 重命名：
+   *     由 LSP 提供，但**只注册当前服务端真正支持的**（见 lib/lsp-features 的 selectLspFeatures）：
+   *     生产镜像（aster-lang-ts 1.0.32）只对 en-US / de-DE 提供前七项（zh 不提供），引用/重命名不注册；
+   *     服务端带上 experimental.aster 标志（aster-lang-ts#219）后，zh/de 与引用/重命名才启用。
+   *     模块目录 hover 只覆盖 Use 行，与 LSP hover 不重叠。
    *
    * ★仅在配置了 NEXT_PUBLIC_LSP_HOST 时启用：未配置时 hook 会回落到同源
    *   `/api/lsp`，而生产站跑在 Cloudflare Workers 上、根本没有该路由，
@@ -598,6 +626,8 @@ export function MonacoPolicyEditor({
   /* eslint-disable react-hooks/refs */
   useAsterLSP({
     editor: lspEnabled && isEditorReady ? editorRef.current : null,
+    // ★必须是编辑器自己的 Monaco（onMount 拿到的那一份），见 useAsterLSP 的 monaco 选项说明。
+    monaco: lspEnabled && isEditorReady ? monacoRef.current : null,
     documentUri: lspDocumentUri,
     locale: compilerLocale,
     tenantId,
@@ -779,17 +809,31 @@ export function MonacoPolicyEditor({
         });
       }
 
-      // 注册 AI inline 补全 provider
-      if (enableAICompletion) {
+      // 注册 AI inline 补全 provider（只读编辑器不需要）。
+      // ★始终注册、按 aiCompletionEnabledRef 在请求时判定：开关可在编辑中途切换，
+      //   而 onMount 只执行一次，若按挂载时的 prop 决定是否注册，中途打开将不生效。
+      if (!readOnly) {
         inlineProviderDisposableRef.current?.dispose();
         inlineProviderDisposableRef.current = monaco.languages.registerInlineCompletionsProvider(ASTER_LANG_ID, {
           provideInlineCompletions: async (model: editor.ITextModel, position: import('monaco-editor').Position, _context: import('monaco-editor').languages.InlineCompletionContext, token: import('monaco-editor').CancellationToken) => {
-            // 取消前一个 debounce
+            // 取消前一个 debounce，并结束被取消的那次请求
             if (inlineCompletionTimerRef.current) clearTimeout(inlineCompletionTimerRef.current);
+            pendingInlineResolveRef.current?.({ items: [] });
+            pendingInlineResolveRef.current = null;
+
+            // 开关关闭：不发请求、不消耗 AI 额度
+            if (!aiCompletionEnabledRef.current) return { items: [] };
 
             // 仅在输入暂停 500ms 后触发
             return new Promise((resolve) => {
+              pendingInlineResolveRef.current = resolve;
               inlineCompletionTimerRef.current = setTimeout(async () => {
+                // 定时器已触发：这次请求不再可被"取消即 resolve"，交给下方逻辑自行 resolve
+                if (pendingInlineResolveRef.current === resolve) pendingInlineResolveRef.current = null;
+                if (!aiCompletionEnabledRef.current) {
+                  resolve({ items: [] });
+                  return;
+                }
                 if (token.isCancellationRequested) {
                   resolve({ items: [] });
                   return;
@@ -819,6 +863,7 @@ export function MonacoPolicyEditor({
 
                   const abortCtrl = new AbortController();
                   token.onCancellationRequested(() => abortCtrl.abort());
+                  inflightInlineAbortRef.current = abortCtrl;
 
                   const resp = await fetch(`/api/llm/complete`, {
                     method: 'POST',
@@ -827,14 +872,16 @@ export function MonacoPolicyEditor({
                     signal: abortCtrl.signal,
                   });
 
-                  if (!resp.ok || token.isCancellationRequested) {
+                  if (inflightInlineAbortRef.current === abortCtrl) inflightInlineAbortRef.current = null;
+                  // 请求期间开关被关闭：丢弃结果，不显示建议
+                  if (!resp.ok || token.isCancellationRequested || !aiCompletionEnabledRef.current) {
                     resolve({ items: [] });
                     return;
                   }
 
                   const data = await resp.json();
                   const completion = data.completion;
-                  if (!completion) {
+                  if (!completion || !aiCompletionEnabledRef.current) {
                     resolve({ items: [] });
                     return;
                   }
@@ -989,7 +1036,7 @@ export function MonacoPolicyEditor({
     // tenantId 在 callback body 内已不再被引用（R23 之后 server-side
     // proxy 从 session 取 tenantId，不再依赖 caller-supplied X-Tenant-Id），
     // 故从 deps 移除，避免不必要的 callback 重建。
-    [lexicon, isDark, vocabulary, onEditorReady, enableAICompletion, locale, onToggleAIPanel, onExplainSelection]
+    [lexicon, isDark, vocabulary, onEditorReady, readOnly, locale, onToggleAIPanel, onExplainSelection]
   );
 
   // 主题切换时更新
@@ -1011,6 +1058,10 @@ export function MonacoPolicyEditor({
   useEffect(() => {
     return () => {
       if (inlineCompletionTimerRef.current) clearTimeout(inlineCompletionTimerRef.current);
+      pendingInlineResolveRef.current?.({ items: [] });
+      pendingInlineResolveRef.current = null;
+      inflightInlineAbortRef.current?.abort();
+      inflightInlineAbortRef.current = null;
       inlineProviderDisposableRef.current?.dispose();
       moduleCompletionProviderDisposableRef.current?.dispose();
       moduleHoverProviderDisposableRef.current?.dispose();

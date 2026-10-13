@@ -17,7 +17,7 @@
  * 而 §1.1 要求「窗口内全量成功」，故窗口定义本身就应排除它们。
  */
 import { NextResponse } from 'next/server';
-import { verifyInternalSignature } from '@/lib/api-signing';
+import { verifyInternalSignature } from '@/lib/internal-signature';
 import { db, executions } from '@/lib/prisma';
 import { and, eq, gt, gte, lt, asc } from 'drizzle-orm';
 
