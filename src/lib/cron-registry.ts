@@ -88,6 +88,15 @@ function floorToHourBucket(now: Date, bucketHours: number): Date {
   );
 }
 
+function floorToHourAtMinute(now: Date, minute: number): Date {
+  // 本小时的 :minute；还没到就取上一小时的。
+  const d = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), minute, 0, 0),
+  );
+  if (d.getTime() > now.getTime()) d.setUTCHours(d.getUTCHours() - 1);
+  return d;
+}
+
 function floorToWeekdayAtHour(now: Date, weekday: number, hour: number): Date {
   // weekday: 0=Sun, 1=Mon … Mirrors cron's "DOW" field.
   const d = new Date(
@@ -175,6 +184,15 @@ export const CRON_REGISTRY: ReadonlyArray<CronJob> = [
     // users' active vocab once they cross the 90-day downgrade retention.
     windowStartFor: (now) => floorToUtcDayAtHour(now, 3, 45),
     healthcheckEnv: 'HEALTHCHECKS_DOMAIN_VOCAB_RETENTION_URL',
+  },
+  {
+    jobName: 'cleanup-nonces',
+    cron: '25 * * * *',
+    routePath: '/api/cron/cleanup-nonces',
+    // 每小时 :25 —— 避开整点与 :15/:30/:45 的既有 cron。/api/internal/* 每次入站调用
+    // 都写一条 UsedNonce（#480），记录只需活到签名时间戳 + 6 分钟，故按小时回收。
+    windowStartFor: (now) => floorToHourAtMinute(now, 25),
+    healthcheckEnv: 'HEALTHCHECKS_NONCE_CLEANUP_URL',
   },
 ] as const;
 

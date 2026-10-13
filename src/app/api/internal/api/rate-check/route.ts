@@ -7,7 +7,7 @@
  * Redis 不可达时 fail-open。
  */
 import { NextResponse } from 'next/server';
-import { verifyInternalSignature } from '@/lib/api-signing';
+import { verifyInternalSignature } from '@/lib/internal-signature';
 import { checkRate } from '@/lib/api-rate-limiter';
 import type { PlanType } from '@/lib/plans';
 

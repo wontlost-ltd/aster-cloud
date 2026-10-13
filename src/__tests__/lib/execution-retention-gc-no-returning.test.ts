@@ -18,3 +18,12 @@ describe('execution-retention-gc', () => {
     expect(code).toMatch(/affectedRows\(\s*await db\.update\(/);
   });
 });
+
+describe('nonce-service', () => {
+  it('★回收不调用 .returning()，计数取驱动返回的受影响行数（#480，同 #481）', () => {
+    const src = readFileSync(join(process.cwd(), 'src/services/security/nonce-service.ts'), 'utf-8');
+    const code = src.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+    expect(code).not.toMatch(/\.returning\s*\(/);
+    expect(code).toMatch(/affectedRows\(\s*await db\.delete\(usedNonces\)/);
+  });
+});
