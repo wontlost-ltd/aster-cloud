@@ -17,15 +17,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCronAuth } from '@/lib/cron-auth';
 import { processQueuedBulkJobs } from '@/lib/domain-vocabulary-jobs';
+import { parsePositiveInt } from '@/lib/api/query-params';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-function parsePositiveInt(value: string | null, fallback: number): number {
-  if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
-}
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const guard = requireCronAuth(req);

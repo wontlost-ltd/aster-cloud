@@ -24,6 +24,7 @@ import {
   previewAddTerm,
   type TermInput,
 } from '@/lib/domain-vocabulary';
+import { parsePositiveInt } from '@/lib/api/query-params';
 
 const TERM_KINDS = ['struct', 'field', 'function', 'enum_value'] as const;
 
@@ -98,12 +99,6 @@ function vocabErrorToEnvelope(error: VocabularyError): NextResponse {
     default:
       return errorEnvelope({ status: 500, code: error.code, message: error.message });
   }
-}
-
-function parsePositiveInt(value: string | null, fallback: number): number {
-  if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 export async function GET(req: Request) {

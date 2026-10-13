@@ -3,8 +3,13 @@ import { getSession } from '@/lib/auth';
 import { db, policies } from '@/lib/prisma';
 import { eq, and, isNull } from 'drizzle-orm';
 import { queryExecutionLogs, getExecutionStats, getRecentExecutions } from '@/lib/policy-execution-log';
-import type { ExecutionSource } from '@/lib/prisma';
-import { executionDecisionEnum } from '@/db/schema';
+import { executionDecisionEnum, executionSourceEnum } from '@/db/schema';
+import { parseDateParam, parseEnumParam, parsePositiveInt } from '@/lib/api/query-params';
+
+/** 单页 / 最近执行条数上限。 */
+const MAX_PAGE_SIZE = 100;
+/** 统计回溯天数上限：再长的区间对单个策略的统计没有意义，只会拖慢查询。 */
+const MAX_STATS_DAYS = 365;
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -35,29 +40,26 @@ export async function GET(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'Policy not found' }, { status: 404 });
     }
 
-    // 解析查询参数
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const pageSize = Math.min(parseInt(searchParams.get('pageSize') || '20', 10), 100);
+    // 解析查询参数：非法值回落默认值或忽略该过滤条件，不把 NaN / Invalid Date / 非法枚举交给查询层
+    const page = parsePositiveInt(searchParams.get('page'), 1);
+    const pageSize = parsePositiveInt(searchParams.get('pageSize'), 20, MAX_PAGE_SIZE);
     const success = searchParams.get('success');
-    // 按准入决策过滤（可选）：取值以 executionDecisionEnum 为准（含 require_approval/escalate）。非法值忽略。
-    const decisionParam = searchParams.get('decision');
-    const decision = (executionDecisionEnum.enumValues as readonly string[]).includes(decisionParam ?? '')
-      ? (decisionParam as (typeof executionDecisionEnum.enumValues)[number])
-      : undefined;
-    const source = searchParams.get('source') as ExecutionSource | null;
-    const startDate = searchParams.get('startDate');
-    const endDate = searchParams.get('endDate');
+    // 按准入决策过滤（可选）：取值以 executionDecisionEnum 为准（含 require_approval/escalate）。
+    const decision = parseEnumParam(searchParams.get('decision'), executionDecisionEnum.enumValues);
+    const source = parseEnumParam(searchParams.get('source'), executionSourceEnum.enumValues);
+    const startDate = parseDateParam(searchParams.get('startDate'));
+    const endDate = parseDateParam(searchParams.get('endDate'));
     const mode = searchParams.get('mode'); // 'recent' | 'stats' | undefined
 
     // 根据模式返回不同数据
     if (mode === 'recent') {
-      const limit = parseInt(searchParams.get('limit') || '10', 10);
+      const limit = parsePositiveInt(searchParams.get('limit'), 10, MAX_PAGE_SIZE);
       const items = await getRecentExecutions(id, session.user.id, limit);
       return NextResponse.json({ items, policy: { id: policy.id, name: policy.name } });
     }
 
     if (mode === 'stats') {
-      const days = parseInt(searchParams.get('days') || '30', 10);
+      const days = parsePositiveInt(searchParams.get('days'), 30, MAX_STATS_DAYS);
       const stats = await getExecutionStats(session.user.id, id, days);
       return NextResponse.json({ stats, policy: { id: policy.id, name: policy.name } });
     }
@@ -68,9 +70,9 @@ export async function GET(req: Request, { params }: RouteParams) {
       policyId: id,
       success: success ? success === 'true' : undefined,
       decision,
-      source: source || undefined,
-      startDate: startDate ? new Date(startDate) : undefined,
-      endDate: endDate ? new Date(endDate) : undefined,
+      source,
+      startDate,
+      endDate,
       page,
       pageSize,
     });
