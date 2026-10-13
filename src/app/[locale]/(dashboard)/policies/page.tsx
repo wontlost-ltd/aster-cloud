@@ -15,6 +15,7 @@ import {
 } from '@/lib/list-search-params';
 import { PoliciesContent } from './policies-content';
 import type { PolicyGroup } from '@/components/policy/policy-group-tree';
+import { buildGroupTree } from '@/lib/policy-group-hierarchy';
 
 const POLICIES_URL_OPTS: ListUrlOptions = {
   defaultPageSize: 25,
@@ -24,37 +25,19 @@ const POLICIES_URL_OPTS: ListUrlOptions = {
 
 type SidebarGroup = PolicyGroupWithCount & { _count: { policies: number } };
 
-/** Recursively assemble the sidebar tree expected by PolicyGroupTree. */
-function buildGroupTree(groups: SidebarGroup[]): PolicyGroup[] {
-  const groupMap = new Map<string, PolicyGroup>(
-    groups.map((g) => [
-      g.id,
-      {
-        id: g.id,
-        name: g.name,
-        description: g.description,
-        icon: g.icon,
-        parentId: g.parentId,
-        isSystem: g.isSystem,
-        sortOrder: g.sortOrder,
-        _count: { policies: g._count.policies },
-        children: [],
-      },
-    ]),
-  );
-  const rootGroups: PolicyGroup[] = [];
-
-  for (const group of groups) {
-    const node = groupMap.get(group.id)!;
-    if (group.parentId && groupMap.has(group.parentId)) {
-      const parent = groupMap.get(group.parentId)!;
-      parent.children.push(node);
-    } else {
-      rootGroups.push(node);
-    }
-  }
-
-  return rootGroups;
+/** 组装 PolicyGroupTree 所需的侧栏树（环上的分组落在顶层，见 buildGroupTree）。 */
+function toSidebarTree(groups: SidebarGroup[]): PolicyGroup[] {
+  return buildGroupTree(groups, (g): PolicyGroup => ({
+    id: g.id,
+    name: g.name,
+    description: g.description,
+    icon: g.icon,
+    parentId: g.parentId,
+    isSystem: g.isSystem,
+    sortOrder: g.sortOrder,
+    _count: { policies: g._count.policies },
+    children: [],
+  }));
 }
 
 export default async function PoliciesPage({
@@ -140,7 +123,7 @@ export default async function PoliciesPage({
     ...g,
     _count: { policies: g.policyCount },
   }));
-  const groupTree = buildGroupTree(groupsForClient);
+  const groupTree = toSidebarTree(groupsForClient);
 
   const freezeInfo = {
     limit: freezeStatus.limit,

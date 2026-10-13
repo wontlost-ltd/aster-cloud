@@ -166,6 +166,96 @@ describe('proxyLlmSse — AI 配额门控 + 成功记账', () => {
     expect(mockRecordAiUsage).not.toHaveBeenCalled();
   });
 
+  describe('★没到达 provider：HTTP 200 但只有 error 帧 → 不记账（#470）', () => {
+    // aster-api 在 200 下用单条 error 帧报告这些失败；第一个字节就是这条 error。
+    const cases: Array<[string, string]> = [
+      ['未配置 key', 'data: {"type":"error","error":"未配置 LLM API Key"}\n\n'],
+      ['BYOK 凭证无效', 'data: {"type":"error","error":"BYOK 凭证无效: bad"}\n\n'],
+      ['连不上 provider', 'data: {"type":"error","error":"LLM 连接失败"}\n\n'],
+      ['安全拒答', 'event: error\ndata: {"error":"out_of_scope","message":"超出范围","rule_id":"r1"}\n\n'],
+    ];
+    for (const [name, frame] of cases) {
+      it(name, async () => {
+        mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+        mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: false });
+        globalThis.fetch = vi.fn().mockResolvedValue(
+          new Response(frame, { status: 200, headers: { 'content-type': 'text/event-stream' } }),
+        );
+        const { proxyLlmSse } = await import('@/lib/llm-sse-proxy');
+        const res = await proxyLlmSse(req() as never, { upstreamPath: '/api/v1/ai/generate' });
+        // 帧原样透传给前端（前端据此显示错误）
+        expect(await drain(res)).toBe(frame);
+        expect(mockRecordAiUsage).not.toHaveBeenCalled();
+      });
+    }
+  });
+
+  describe('★已到达 provider（upstream_reached）→ 记一笔，即便没有任何内容（#470）', () => {
+    const REACHED = 'data: {"type":"upstream_reached"}\n\n';
+    const cases: Array<[string, string]> = [
+      ['provider 返回错误', REACHED + 'data: {"type":"error","error":"LLM API 错误 (500)"}\n\n'],
+      ['provider 沉默到读超时', REACHED + 'data: {"type":"error","error":"LLM 响应读取失败"}\n\n'],
+      ['LLM 未生成内容', REACHED + 'data: {"type":"error","error":"LLM 未生成内容"}\n\n'],
+      ['连上后流直接结束（用户断开）', REACHED],
+      ['中途失败（已有内容）', REACHED + 'data: {"type":"delta","data":"Rule"}\n\ndata: {"type":"error","error":"流式响应异常"}\n\n'],
+    ];
+    for (const [name, body] of cases) {
+      it(name, async () => {
+        mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+        mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: false });
+        globalThis.fetch = vi.fn().mockResolvedValue(
+          new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } }),
+        );
+        const { proxyLlmSse } = await import('@/lib/llm-sse-proxy');
+        const res = await proxyLlmSse(req() as never, { upstreamPath: '/api/v1/ai/generate' });
+        expect(await drain(res)).toBe(body);
+        await vi.waitFor(() => expect(mockRecordAiUsage).toHaveBeenCalledTimes(1));
+        expect(mockRecordAiUsage.mock.calls[0][0]).toMatchObject({ status: 'success', callKind: 'generate' });
+      });
+    }
+
+    it('repair 重试每个 attempt 各发一次 upstream_reached：仍只记一笔', async () => {
+      mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+      mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: false });
+      const body = REACHED + 'data: {"type":"delta","data":"x"}\n\n'
+        + 'data: {"type":"repair_start","data":"2/3"}\n\n' + REACHED + 'data: {"type":"delta","data":"y"}\n\n';
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } }),
+      );
+      const { proxyLlmSse } = await import('@/lib/llm-sse-proxy');
+      await drain(await proxyLlmSse(req() as never, { upstreamPath: '/api/v1/ai/generate' }));
+      await vi.waitFor(() => expect(mockRecordAiUsage).toHaveBeenCalledTimes(1));
+      await new Promise((r) => setTimeout(r, 20));
+      expect(mockRecordAiUsage).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('★真实格式：delta 帧到达即记一笔', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+    mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: false });
+    const body = 'data: {"type":"delta","data":"Rule"}\n\ndata: {"type":"final","data":"Rule x.","validated":true}\n\n';
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } }),
+    );
+    const { proxyLlmSse } = await import('@/lib/llm-sse-proxy');
+    const res = await proxyLlmSse(req() as never, { upstreamPath: '/api/v1/ai/generate' });
+    expect(await drain(res)).toBe(body);
+    await vi.waitFor(() => expect(mockRecordAiUsage).toHaveBeenCalledTimes(1));
+  });
+
+  it('★末尾 final 没有空行收尾：流结束时记一笔', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+    mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: false });
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response('data: {"type":"final","data":"Module m.","validated":true}', {
+        status: 200, headers: { 'content-type': 'text/event-stream' },
+      }),
+    );
+    const { proxyLlmSse } = await import('@/lib/llm-sse-proxy');
+    await drain(await proxyLlmSse(req() as never, { upstreamPath: '/api/v1/ai/generate' }));
+    await vi.waitFor(() => expect(mockRecordAiUsage).toHaveBeenCalledTimes(1));
+  });
+
   it('★多 chunk 的流只记一笔（防按 chunk 重复记账）', async () => {
     // TransformStream 的 transform 对**每个 chunk** 都会调用——不去重会把一次调用
     // 记成上千笔，比原来的「乐观多记一笔」严重得多。

@@ -19,6 +19,9 @@ const { mockUsersFindMany, mockApiKeysFindMany, mockResolveMany } = vi.hoisted((
 }));
 
 // 只替换解析函数；列常量取真实值，以钉住 apiKeys 查询带上 teamId
+// 重放拒绝由 internal-signature 单测与真 Postgres 集成测试覆盖；本文件只关心路由行为。
+vi.mock('@/services/security/nonce-service', () => ({ claimNonce: vi.fn(async () => true) }));
+
 vi.mock('@/lib/api-key-identity', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api-key-identity')>()),
   resolveApiKeyIdentities: mockResolveMany,

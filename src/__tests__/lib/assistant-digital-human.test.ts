@@ -79,6 +79,11 @@ describe('digital human provider', () => {
     expect(await collect(p.answer({ ...base, groundingHits: [] }))).toBe('版本与审批');
   });
 
+  it('★upstream_reached 计费帧（#470）不进答案、不报错', async () => {
+    mockFetch(sseStream(['data: {"type":"upstream_reached"}\n\n', delta('版本')]));
+    expect(await collect(p.answer({ ...base, groundingHits: [] }))).toBe('版本');
+  });
+
   it('★跨 chunk 的半截帧能正确拼回（不丢字、不吞空格）', async () => {
     // 一帧被网络切成两块到达——这是真实 SSE 的常态
     const whole = delta(' 保留 前导空格');

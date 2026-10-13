@@ -80,6 +80,12 @@ function pendingOutcomeKey(outcome: string | undefined): 'require_approval' | 'e
 
 const PENDING_BADGE_CLASS = 'inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-sm font-medium text-amber-800';
 
+/** 某个 Rule 上次留下的输入：JSON 与表单两种输入方式各一份。 */
+interface RuleDraft {
+  input: string;
+  formValues: Record<string, Record<string, unknown>>;
+}
+
 interface ExecutionDiagnostic {
   code: string;
   message: string;
@@ -198,6 +204,13 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
   } | null>(null);
   // 最近一次提取 schema 所用的 Rule：effect 据此跳过与首次加载重复的提取。
   const schemaRuleRef = useRef<string | null>(null);
+  // 每个函数上次留下的输入（JSON 与表单两份）。切走时存、切回时恢复，否则用户手改的输入
+  // 会被新 Rule 的示例覆盖且无法找回。只按函数名区分、不跨函数复用，恢复的输入一定是该函数的参数形状。
+  const ruleDraftsRef = useRef(new Map<string, RuleDraft>());
+  // 当前输入实际对应的函数（schema 提取所用的那个），草稿以它为键。
+  // 不能用 selectedRule：未选 Rule 时示例按第一个函数生成，此时 selectedRule 为 null，
+  // 用户随后选中这个函数时应恢复刚才的输入，而不是再覆盖一次。
+  const inputRuleRef = useRef('');
 
   const ruleSymbols = useMemo(() => extractRuleSymbols(policyContent), [policyContent]);
   const ambiguousEntryDiagnostic = executionDiagnostics.find((diag) => diag.code === 'ENTRY_AMBIGUOUS');
@@ -233,6 +246,7 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
           : baseLexicon;
       // functionName：按所选 Rule 提取参数；未选时由编译器回落到第一个函数（单 Rule 时即该 Rule）。
       const data = extractSchema(content, functionName ? { lexicon, functionName } : { lexicon });
+      inputRuleRef.current = (data.success && data.functionName) || functionName || '';
 
       if (data.success && data.parameters && data.parameters.length > 0) {
         setSchema(data);
@@ -288,6 +302,8 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
       })
       .then((data) => {
         if (stale) return;
+        // 草稿只对这一份源码有效：换了策略（或重新加载）后 Rule 名可能同名而参数不同
+        ruleDraftsRef.current.clear();
         setPolicyName(data.name);
         setPolicyContent(data.content || '');
         // P0-R2: 低置信度检测时 fallback 到 page locale，避免给 AI Explain
@@ -359,12 +375,26 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
   }, [ruleSymbols]);
 
   // 用户切换 Rule 时按该 Rule 重新提取参数并生成示例（首次加载已在加载回调里按默认 Rule 提取）。
-  // 表单值与 JSON 输入是用户可编辑的 state，切换 Rule 时必须整体重置为新 Rule 的示例。
+  // 表单值与 JSON 输入是用户可编辑的 state，切换 Rule 时整体换成新 Rule 的：该 Rule 有草稿
+  // （之前来过）就恢复草稿，否则用示例。参数表（schema）总是重新提取。
   useEffect(() => {
     if (!schemaSource || schemaRuleRef.current === selectedRule) return;
     schemaRuleRef.current = selectedRule;
     fetchSchema(schemaSource.content, schemaSource.locale, schemaSource.aliasSet, selectedRule ?? undefined);
+    const draft = ruleDraftsRef.current.get(inputRuleRef.current);
+    if (draft) {
+      // 与 fetchSchema 内的示例写入同批提交，后写者生效，不会闪出示例
+      setInput(draft.input);
+      setFormValues(draft.formValues);
+    }
   }, [schemaSource, selectedRule, fetchSchema]);
+
+  // 切换 Rule 的唯一入口（规则选择器与候选按钮共用）：先把当前输入记为它所属函数的草稿。
+  // 自动校正（reconcileSelectedRule）不走这里——那时原 Rule 已不存在，没有可恢复的对象。
+  const switchRule = (next: string | null) => {
+    ruleDraftsRef.current.set(inputRuleRef.current, { input, formValues });
+    setSelectedRule(next);
+  };
 
   // 重新生成示例数据（使用检测到的策略语言生成本地化示例值）
   const regenerateSampleData = useCallback(() => {
@@ -400,7 +430,7 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
   // 选中后由「切换 Rule」的 effect 生成该 Rule 的示例，用户确认输入后再点执行（与提示文案
   // 「选择一个候选 Rule 后重跑」一致）。
   const selectCandidateRule = (candidate: string) => {
-    setSelectedRule(candidate);
+    switchRule(candidate);
     setExecutionDiagnostics([]);
     // 上一次（入口不唯一）的失败结果一并收起，否则看起来像是「选择」本身失败了
     setResult(null);
@@ -761,7 +791,7 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
               <RuleSelector
                 rules={ruleSymbols}
                 value={selectedRule}
-                onChange={setSelectedRule}
+                onChange={switchRule}
               />
             </div>
 

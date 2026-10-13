@@ -91,6 +91,16 @@ describe('window-start math (UTC)', () => {
     expect(w.toISOString()).toBe('2026-05-19T03:15:00.000Z');
   });
 
+  it('"25 * * * *" cleanup-nonces snaps to this hour :25 once past it', () => {
+    const w = currentWindowStart('cleanup-nonces', new Date('2026-10-13T07:40:00.000Z'));
+    expect(w.toISOString()).toBe('2026-10-13T07:25:00.000Z');
+  });
+
+  it('"25 * * * *" cleanup-nonces before :25 picks the previous hour (across midnight)', () => {
+    const w = currentWindowStart('cleanup-nonces', new Date('2026-10-13T00:10:00.000Z'));
+    expect(w.toISOString()).toBe('2026-10-12T23:25:00.000Z');
+  });
+
   it('two calls inside the same bucket produce the same window-start', () => {
     const a = currentWindowStart('user-purge', new Date('2026-05-19T10:00:00.000Z'));
     const b = currentWindowStart('user-purge', new Date('2026-05-19T23:59:00.000Z'));

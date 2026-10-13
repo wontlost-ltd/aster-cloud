@@ -18,6 +18,7 @@ import { and, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 
 import { db } from '@/lib/prisma';
 import { executions, users } from '@/db/schema';
+import { affectedRows, runInBatches } from '@/lib/retention/batching';
 
 import {
   SKELETON_RETENTION_DAYS,
@@ -40,7 +41,25 @@ export interface RetentionGcResult {
   /** 清空了多少条骨架（只置 null，不删行） */
   readonly skeletonsCleared: number;
   readonly skeletonRetentionDays: number;
+  /**
+   * 本次是否清完了所有超期数据。false = 达到单次批数上限、还有积压，
+   * 留给下一次 cron 继续（GC 幂等）。
+   */
+  readonly complete: boolean;
 }
+
+/**
+ * 单批处理的行数上限：每批一条短语句。
+ *
+ * <p>历史积压可能有上百万行：一条语句删完是一个超长事务，且会撞上 Worker 的执行时限。
+ */
+export const GC_BATCH_SIZE = 5_000;
+
+/**
+ * 单次运行、每条清理轴的批数上限。积压一次清不完就留给下一次 cron，
+ * 结果里 {@link RetentionGcResult.complete} 为 false。
+ */
+export const GC_MAX_BATCHES_PER_RUN = 100;
 
 function cutoff(days: number, now: Date): Date {
   const d = new Date(now);
@@ -54,9 +73,12 @@ function cutoff(days: number, now: Date): Date {
  * @param now 注入当前时间以便测试；生产传 undefined 用系统时间
  */
 export async function runExecutionRetentionGc(
-  opts: { now?: Date } = {},
+  opts: { now?: Date; batchSize?: number; maxBatches?: number } = {},
 ): Promise<RetentionGcResult> {
   const now = opts.now ?? new Date();
+  const batchSize = opts.batchSize ?? GC_BATCH_SIZE;
+  const maxBatches = opts.maxBatches ?? GC_MAX_BATCHES_PER_RUN;
+  let complete = true;
   const byPlan = retentionByPlan();
 
   const deletedByPlan: Record<string, number> = {};
@@ -84,37 +106,50 @@ export async function runExecutionRetentionGc(
       .from(users)
       .where(sql`${users.plan}::text = ${plan}`);
 
-    const rows = await db
-      .delete(executions)
-      .where(
-        and(
-          lt(executions.createdAt, cutoff(decision.executionDays, now)),
-          inArray(executions.userId, owners),
-        ),
-      )
-      .returning({ id: executions.id });
+    const planCutoff = cutoff(decision.executionDays, now);
+    const deleted = await runInBatches(
+      async () => {
+        const doomed = db
+          .select({ id: executions.id })
+          .from(executions)
+          .where(and(lt(executions.createdAt, planCutoff), inArray(executions.userId, owners)))
+          .limit(batchSize);
+        return affectedRows(await db.delete(executions).where(inArray(executions.id, doomed)));
+      },
+      batchSize,
+      maxBatches,
+    );
 
-    deletedByPlan[plan] = rows.length;
+    deletedByPlan[plan] = deleted.affected;
+    complete &&= deleted.complete;
   }
 
   // 骨架：只清列不删行。已被上面按 plan 删掉的行自然不在了，剩下的行里
   // 若骨架超期就置 null——行本身仍按 Audit 口径保留。
-  const cleared = await db
-    .update(executions)
-    .set({ traceSkeletonJson: null })
-    .where(
-      and(
-        lt(executions.createdAt, cutoff(SKELETON_RETENTION_DAYS, now)),
-        isNotNull(executions.traceSkeletonJson),
-      ),
-    )
-    .returning({ id: executions.id });
+  const skeletonCutoff = cutoff(SKELETON_RETENTION_DAYS, now);
+  const cleared = await runInBatches(
+    async () => {
+      // 每批都重新挑：上一批已置 null 的行不再满足 isNotNull，不会被重复选中
+      const stale = db
+        .select({ id: executions.id })
+        .from(executions)
+        .where(and(lt(executions.createdAt, skeletonCutoff), isNotNull(executions.traceSkeletonJson)))
+        .limit(batchSize);
+      return affectedRows(
+        await db.update(executions).set({ traceSkeletonJson: null }).where(inArray(executions.id, stale)),
+      );
+    },
+    batchSize,
+    maxBatches,
+  );
+  complete &&= cleared.complete;
 
   return {
     deletedByPlan,
     skipped,
     unlimitedPlans,
-    skeletonsCleared: cleared.length,
+    skeletonsCleared: cleared.affected,
     skeletonRetentionDays: SKELETON_RETENTION_DAYS,
+    complete,
   };
 }

@@ -190,3 +190,13 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
 export function useAssistant(): AssistantState | null {
   return useContext(AssistantContext);
 }
+
+/**
+ * 右下角悬浮助手按钮此刻是否显示。
+ *
+ * <p>AssistantPanel 按此决定是否渲染按钮；贴底的页面元素（如策略编辑器状态栏）
+ * 也按此给按钮让位。两处共用这一个判断，避免各写一份条件后漂移。
+ */
+export function isAssistantLauncherVisible(state: AssistantState | null): boolean {
+  return state !== null && !state.hydrating && state.enabled && !state.open;
+}

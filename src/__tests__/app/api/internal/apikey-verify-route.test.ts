@@ -11,6 +11,9 @@ import { createHmac, createHash } from 'node:crypto';
  */
 
 const { mockResolve } = vi.hoisted(() => ({ mockResolve: vi.fn() }));
+// 重放拒绝由 internal-signature 单测与真 Postgres 集成测试覆盖；本文件只关心路由行为。
+vi.mock('@/services/security/nonce-service', () => ({ claimNonce: vi.fn(async () => true) }));
+
 vi.mock('@/lib/api-key-identity', () => ({ resolveApiKeyIdentity: mockResolve }));
 
 const originalKey = process.env.ASTER_PLAN_GATE_HMAC_KEY;
