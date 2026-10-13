@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { verifyInternalSignature } from '@/lib/api-signing';
+import { verifyInternalSignature } from '@/lib/internal-signature';
 import { db, users, teams } from '@/lib/prisma';
 import { eq } from 'drizzle-orm';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';

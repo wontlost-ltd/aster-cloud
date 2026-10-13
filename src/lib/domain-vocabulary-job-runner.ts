@@ -29,6 +29,7 @@ import {
 import {
   VocabularyError,
 } from '@/lib/domain-vocabulary';
+import { isUniqueViolation } from '@/lib/pg-errors';
 
 const CHUNK_SIZE = 250;
 
@@ -61,18 +62,6 @@ function emptyRollup(): RollupShape {
   return { added: 0, reused: 0, modified: 0, skipped: 0, errorCount: 0 };
 }
 
-function isUniqueViolation(err: unknown): boolean {
-  // Same dual-check as domain-vocabulary.ts: postgres-js wraps the SQLSTATE
-  // on `cause`, while other drivers surface it on the top-level error.
-  if (typeof err !== 'object' || err === null) return false;
-  const candidates: unknown[] = [err];
-  if ('cause' in err) candidates.push((err as { cause: unknown }).cause);
-  return candidates.some((candidate) => {
-    if (typeof candidate !== 'object' || candidate === null) return false;
-    if (!('code' in candidate)) return false;
-    return (candidate as { code: unknown }).code === '23505';
-  });
-}
 
 function parseInput(rawJson: unknown): unknown[] {
   if (!Array.isArray(rawJson)) {

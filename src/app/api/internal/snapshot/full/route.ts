@@ -7,7 +7,7 @@
  * users 与 apiKeys 一并返回（按 userId 排序，cursor 是上一页最后一个 userId）。
  */
 import { NextResponse } from 'next/server';
-import { verifyInternalSignature } from '@/lib/api-signing';
+import { verifyInternalSignature } from '@/lib/internal-signature';
 import { db, users, apiKeys } from '@/lib/prisma';
 import { gt, asc, and, inArray, isNull } from 'drizzle-orm';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';

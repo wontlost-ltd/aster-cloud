@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { verifyInternalSignature } from '@/lib/api-signing';
+import { verifyInternalSignature } from '@/lib/internal-signature';
 import { recordAiUsage } from '@/lib/ai-quota';
 
 /**

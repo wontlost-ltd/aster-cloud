@@ -35,6 +35,9 @@ const {
   return { mockInsertValues, mockInsert, mockUpdateWhere, mockUpdateSet, mockUpdate, mockCountOwnerPoolUsage };
 });
 
+// 重放拒绝由 internal-signature 单测与真 Postgres 集成测试覆盖；本文件只关心路由行为。
+vi.mock('@/services/security/nonce-service', () => ({ claimNonce: vi.fn(async () => true) }));
+
 vi.mock('@/lib/prisma', () => ({
   db: { insert: mockInsert, update: mockUpdate },
   apiCallRecords: { id: 'apiCallRecords.id' },
