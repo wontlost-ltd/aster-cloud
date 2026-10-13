@@ -51,6 +51,12 @@ async function getKV(): Promise<KVNamespace | null> {
 const KEY_PREFIX = 'rl:';
 
 /**
+ * Cloudflare KV 的 expirationTtl 下限（秒）。低于它 put 直接报错
+ * （官方文档：「The minimum value is 60」）。
+ */
+const KV_MIN_EXPIRATION_TTL_SECONDS = 60;
+
+/**
  * 把 identifier 哈希进 KV key，避免 PII（如 IP+email）明文进 KV key，也规避 KV key 长度限制。
  * 哈希只用于 key 命名，不影响限流语义（同 identifier → 同 key）。
  */
@@ -96,10 +102,12 @@ export async function checkRateLimitDistributed(
     }
 
     // 递增并写回。read-modify-write 非原子（见文件头一致性权衡），但对限流目的可接受。
-    // TTL 设为窗口剩余时间（+1s 容差），窗口结束后 key 自动消失。
+    // TTL 取窗口剩余时间（+1s 容差），但不低于 KV 下限 60s：60s 窗口的剩余时间几乎总小于 60，
+    // 曾因此 put 恒抛错、恒回退内存限流（#477）。TTL 长于窗口不会拉长窗口——key 里带着
+    // windowStart，下一个窗口用新 key，旧 key 只是晚些被回收。
     // ★写在 try 内：若 put 抛错（KV 可读不可写=配额/权限/服务异常），整个 catch 会回退到
     // 内存限流，而不是"放行且不计数"（审计 #168 Codex 复审 High：写失败不得 fail-open to nothing）。
-    const ttlSeconds = Math.max(1, Math.ceil((resetAt - now) / 1000) + 1);
+    const ttlSeconds = Math.max(KV_MIN_EXPIRATION_TTL_SECONDS, Math.ceil((resetAt - now) / 1000) + 1);
     await kv.put(key, String(count + 1), { expirationTtl: ttlSeconds });
 
     return {
@@ -107,9 +115,11 @@ export async function checkRateLimitDistributed(
       remaining: config.maxRequests - (count + 1),
       resetAt,
     };
-  } catch {
+  } catch (err) {
     // 任何 KV 失败（读或写）→ 回退内存限流（fail-open to memory，仍有 per-isolate 兜底），
     // 而非无限流。限流基础设施抖动不该大面积拒合法用户，但也不能给"打挂 KV 即无限流"的口子。
+    // 回退必须留痕：曾经静默回退，KV 写入从未成功过也无人察觉（#477）。
+    console.warn('[rate-limit] KV 不可用，回退为单 isolate 内存限流：', err);
     return checkRateLimit(identifier, config);
   }
 }
