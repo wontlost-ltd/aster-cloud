@@ -131,6 +131,32 @@ describe('POST /api/llm/complete — AI 配额门控', () => {
     expect(body.result).toBe('ok');
   });
 
+  describe('★请求是否到达第三方 AI 决定是否计费（#518）', () => {
+    const cases: Array<[string, string, boolean]> = [
+      ['未配置 key / 连不上 provider：upstreamReached=false → 不计费',
+        '{"completion":"","model":"m","upstreamReached":false}', false],
+      ['provider 报错后的空补全：upstreamReached=true → 计费',
+        '{"completion":"","model":"m","upstreamReached":true}', true],
+      ['正常补全 → 计费', '{"completion":"Return 1.","model":"m","upstreamReached":true}', true],
+      ['旧版 aster-api（无该字段）→ 保持原口径计费', '{"completion":"","model":"m"}', true],
+      ['非 JSON 的 2xx → 保持原口径计费', 'ok', true],
+    ];
+    for (const [name, upstreamBody, billed] of cases) {
+      it(name, async () => {
+        mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+        mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: false });
+        globalThis.fetch = vi.fn().mockResolvedValue(
+          new Response(upstreamBody, { status: 200, headers: { 'content-type': 'application/json' } }),
+        );
+        const { POST } = await import('@/app/api/llm/complete/route');
+        const res = await POST(post() as never);
+        expect(res.status).toBe(200);
+        expect(await res.text()).toBe(upstreamBody); // 响应原样透传
+        expect(mockRecordAiUsage).toHaveBeenCalledTimes(billed ? 1 : 0);
+      });
+    }
+  });
+
   it('上游返回非 2xx → 透传错误，不记 success', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
     mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: false });

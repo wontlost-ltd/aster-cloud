@@ -119,11 +119,13 @@ export async function POST(req: NextRequest) {
 
   const text = await upstreamResp.text();
 
-  // 成功记账：checkAiQuota 的月配额/速率计数依赖 AiUsageRecord。对 2xx 调用记一笔 success，
-  // 让配额随使用消耗。token 精确计量（aster-api 上报）留后续；这里 0/0 只驱动次数/速率门控。
+  // 记账：checkAiQuota 的月配额/速率计数依赖 AiUsageRecord。请求到达了第三方 AI 才记一笔
+  // （#470 / #518）：aster-api 在 2xx 下用 upstreamReached=false 报告未配置 key、连不上 provider
+  // 时返回的空补全，这些不计费；provider 报错、超时等已到达的失败照样计费。
+  // token 精确计量由 aster-api 按同一 requestId 回填；这里 0/0 只驱动次数/速率门控。
   // Phase 3：usedByok 时带上 bindingId → recordAiUsage 内 stamp AiKeyBinding.lastUsedAt
   // （dashboard "最近使用" 真实反映 BYOK 推理用量）。
-  if (upstreamResp.ok) {
+  if (upstreamResp.ok && reachedUpstream(text)) {
     try {
       await recordAiUsage({
         userId: session.user.id,
@@ -148,4 +150,20 @@ export async function POST(req: NextRequest) {
         upstreamResp.headers.get('content-type') || 'application/json',
     },
   });
+}
+
+/**
+ * aster-api 的补全响应是否表示请求已到达第三方 AI。
+ *
+ * <p>只有明确的 `upstreamReached: false` 才算没到达；字段缺省（尚未发出该字段的旧版 aster-api）
+ * 或响应不是 JSON 时按已到达处理，保持原有计费口径，两仓可任意顺序部署。
+ */
+function reachedUpstream(responseText: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(responseText);
+    return !(typeof parsed === 'object' && parsed !== null
+      && (parsed as { upstreamReached?: unknown }).upstreamReached === false);
+  } catch {
+    return true;
+  }
 }
