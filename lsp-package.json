@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "dependencies": {
-    "@aster-cloud/aster-lang-ts": "1.0.33",
+    "@aster-cloud/aster-lang-ts": "1.0.34",
     "ws": "^8.19.0",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12",
