@@ -496,6 +496,15 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     policies: {
       // 策略详情页治理档案徽标（ADR 0046 §6）。
       detail: { profile: 'Profile' },
+      // 导出为 Cedar（ADR 0047 §6）。
+      cedarExport: {
+        button: 'Export to Cedar',
+        exporting: 'Exporting…',
+        verified: 'Verified against Cedar on {count} probes',
+        notExportable: 'This policy cannot be exported to Cedar',
+        failed: 'Export failed',
+        noExecutableVersion: 'Approve a version before exporting to Cedar',
+      },
       execute: {
         // 值/计算输出策略（如 greet 返回文本）：执行成功但无 allow/deny 语义。
         computed: 'Computed',
@@ -1185,6 +1194,15 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     policies: {
       // 策略详情页治理档案徽标（ADR 0046 §6）。
       detail: { profile: '治理档案' },
+      // 导出为 Cedar（ADR 0047 §6）。
+      cedarExport: {
+        button: '导出为 Cedar',
+        exporting: '导出中…',
+        verified: '已用 Cedar 比对 {count} 个探针',
+        notExportable: '该策略无法导出为 Cedar',
+        failed: '导出失败',
+        noExecutableVersion: '导出到 Cedar 前请先批准一个版本',
+      },
       execute: {
         computed: '已计算',
         noDecision: '无决策（值输出）',
@@ -1872,6 +1890,15 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     policies: {
       // 策略详情页治理档案徽标（ADR 0046 §6）。
       detail: { profile: 'Profil' },
+      // 导出为 Cedar（ADR 0047 §6）。
+      cedarExport: {
+        button: 'Nach Cedar exportieren',
+        exporting: 'Wird exportiert…',
+        verified: 'Mit Cedar an {count} Prüffällen abgeglichen',
+        notExportable: 'Diese Richtlinie kann nicht nach Cedar exportiert werden',
+        failed: 'Export fehlgeschlagen',
+        noExecutableVersion: 'Genehmigen Sie eine Version, bevor Sie nach Cedar exportieren',
+      },
       execute: {
         computed: 'Berechnet',
         noDecision: 'Keine Entscheidung (Wertausgabe)',
@@ -2557,6 +2584,15 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     policies: {
       // 策略详情页治理档案徽标（ADR 0046 §6）。
       detail: { profile: 'Profile' },
+      // 导出为 Cedar（ADR 0047 §6）。
+      cedarExport: {
+        button: 'Export to Cedar',
+        exporting: 'Exporting…',
+        verified: 'Verified against Cedar on {count} probes',
+        notExportable: 'This policy cannot be exported to Cedar',
+        failed: 'Export failed',
+        noExecutableVersion: 'Approve a version before exporting to Cedar',
+      },
       execute: {
         computed: 'परिकलित',
         noDecision: 'कोई निर्णय नहीं (मान आउटपुट)',

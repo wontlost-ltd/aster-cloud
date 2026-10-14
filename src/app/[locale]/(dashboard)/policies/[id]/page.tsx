@@ -131,6 +131,15 @@ export default async function PolicyDetailPage({
       backToPolicies: t('detail.backToPolicies'),
       profile: t('detail.profile'),
     },
+    // verified 保留 {count} 占位符，由面板按探针数替换
+    cedarExport: {
+      button: t('cedarExport.button'),
+      exporting: t('cedarExport.exporting'),
+      verified: t.raw('cedarExport.verified') as string,
+      notExportable: t('cedarExport.notExportable'),
+      failed: t('cedarExport.failed'),
+      noExecutableVersion: t('cedarExport.noExecutableVersion'),
+    },
     deleteDialog: {
       title: t('deleteDialog.title'),
       description: t('deleteDialog.description', { name: policy.name }),

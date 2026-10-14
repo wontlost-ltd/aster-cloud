@@ -70,6 +70,25 @@ describe('ApprovalsContent', () => {
     expect(screen.queryByRole('button', { name: 'approve' })).toBeNull();
   });
 
+  it('创建时间与运行时区无关（服务端 UTC 与浏览器本地时区渲染一致，避免 hydration mismatch）', () => {
+    const prevTz = process.env.TZ;
+    const createdCell = (tz: string) => {
+      process.env.TZ = tz;
+      const { container } = renderWith([item('a1', { createdAt: '2026-10-12T22:29:08Z' })]);
+      const text = container.querySelector('tbody tr td:nth-child(5)')?.textContent;
+      cleanup();
+      return text;
+    };
+    try {
+      const utc = createdCell('UTC');
+      expect(createdCell('Pacific/Auckland')).toBe(utc);
+      expect(createdCell('America/Los_Angeles')).toBe(utc);
+      expect(utc).toContain('UTC');
+    } finally {
+      process.env.TZ = prevTz;
+    }
+  });
+
   it('?decisionId= 命中的行高亮，其他行不高亮；个人租户显示本地化名称', () => {
     const { container } = renderWith([item('a1'), item('a2', { tenantId: 'u1', tenantName: '' })], 'd-a2');
     const rows = container.querySelectorAll('tbody tr');

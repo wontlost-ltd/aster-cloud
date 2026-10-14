@@ -37,6 +37,14 @@ interface Props {
 
 type T = ReturnType<typeof useTranslations>;
 
+// 列表首屏由服务端渲染（运行时为 UTC），浏览器再按本地时区水合：toLocaleString 两端结果不同会触发
+// hydration mismatch。固定按 UTC 格式化并标注时区，两端文本一致。
+const CREATED_AT_FORMAT = { dateStyle: 'medium', timeStyle: 'medium', timeZone: 'UTC' } as const;
+
+function formatCreatedAt(iso: string, locale: string): string {
+  return `${new Intl.DateTimeFormat(locale, CREATED_AT_FORMAT).format(new Date(iso))} UTC`;
+}
+
 function statusVariant(status: GuardApprovalStatus): 'success' | 'danger' | 'warning' | 'neutral' {
   if (status === 'APPROVED') return 'success';
   if (status === 'REJECTED') return 'danger';
@@ -260,7 +268,7 @@ export function ApprovalsContent({ locale, initialStatus, initialItems, initialU
                     <td className="px-4 py-3">{item.requiredRole ?? t('anyMember')}</td>
                     <td className="px-4 py-3">{item.tenantName || t('personalTenant')}</td>
                     <td className="px-4 py-3 text-fg-muted">
-                      {item.createdAt ? new Date(item.createdAt).toLocaleString(locale) : '—'}
+                      {item.createdAt ? formatCreatedAt(item.createdAt, locale) : '—'}
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant={statusVariant(item.status)}>{t(`status.${item.status}`)}</Badge>

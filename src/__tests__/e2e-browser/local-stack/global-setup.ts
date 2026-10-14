@@ -54,6 +54,7 @@ const WARM_APIS = [
   '/api/v1/policies/pol-credit-pilot/versions',
   '/api/v1/policies/pol-credit-pilot/whatif-batches',
   '/api/policies/pol-credit-pilot/logs',
+  '/api/policies/warmup/export/cedar',
 ];
 
 const WARM_TIMEOUT_MS = 180_000;
