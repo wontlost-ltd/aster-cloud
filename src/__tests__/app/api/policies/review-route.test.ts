@@ -787,12 +787,13 @@ describe('复核队列读取 — GET 授权与契约', () => {
   });
 
   it('★引擎版本过旧时 queueStatus 必须是 engine_outdated，且队列为空', async () => {
-    // 本仓 pin 的 aster-lang-ts 尚不含 runSemanticBridge，所以这条走的就是
-    // 生产当前的真实路径。关键是**不能把"不知道"报成"没问题"**：
-    // 若 queueStatus 恒为 'ok'，前端会显示"没有待复核项"，
-    // 审计员会以为机器都证明完了——而机器根本没跑。
+    // 模拟不含 runSemanticBridge 的旧引擎（1.0.34 及之前的发布版）。关键是
+    // **不能把"不知道"报成"没问题"**：若 queueStatus 恒为 'ok'，前端会显示
+    // "没有待复核项"，审计员会以为机器都证明完了——而机器根本没跑。
     mockPolicyFindFirst.mockResolvedValue({ id: 'pol1', userId: 'u1', teamId: null,
                                             content: 'Module m.' });
+    // vitest 对 mock 上不存在的导出会抛错，须显式给出 undefined 才是「无此导出」
+    vi.doMock('@aster-cloud/aster-lang-ts', () => ({ runSemanticBridge: undefined }));
     const { GET } = await import('@/app/api/policies/[id]/review/route');
 
     const body = await (await GET(get(), PARAMS)).json() as {
@@ -800,8 +801,7 @@ describe('复核队列读取 — GET 授权与契约', () => {
       items: unknown[];
       counts: { verified: number; reviewRequired: number; rejected: number };
     };
-    // ★本仓 pin 的 aster-lang-ts@1.0.28 尚无 runSemanticBridge，所以这里走的
-    //   就是生产当前的真实路径：**版本过旧**，而非引擎故障。
+    // 旧引擎无该导出 → **版本过旧**，而非引擎故障。
     expect(body.queueStatus).toBe('engine_outdated');
     // ★与「引擎抛异常 → engine_error」那条配对：两个状态必须**互相可区分**。
     //   把任一方改成另一方（或改成 'ok'），都会有用例变红。
