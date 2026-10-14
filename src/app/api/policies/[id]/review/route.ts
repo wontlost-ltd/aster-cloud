@@ -150,13 +150,12 @@ export async function GET(_req: Request, { params }: RouteParams) {
     try {
       // ★动态 import + 能力探测，而不是顶层静态导入。
       //
-      //   原因是**版本时序**：`runSemanticBridge` 目前只存在于 aster-lang-ts 的
-      //   未发布分支上，本仓 pin 的是 1.0.28（package.json），尚不含该导出。
-      //   顶层静态导入会让整个仓库 typecheck 失败 —— 即「功能代码等发版」。
-      //   探测式加载让本 PR 可独立合入：引擎旧版时队列为空（面板降级为
-      //   "只看已落库结论"），引擎跟上后无需改代码自动生效。
+      //   原因是**版本时序**：`runSemanticBridge` 自 aster-lang-ts 1.0.35 起才导出，
+      //   本仓 pin 更早版本时该导出不存在。顶层静态导入会让整个仓库 typecheck
+      //   失败 —— 即「功能代码等发版」。探测式加载让两边可独立合入：引擎旧版时
+      //   队列为空（面板降级为"只看已落库结论"），引擎跟上后无需改代码自动生效。
       //
-      //   等 pin bump 到含该导出的版本后，这里可以换回静态导入。
+      //   pin 稳定在 ≥1.0.35 后，这里可以换回静态导入。
       const mod = (await import('@aster-cloud/aster-lang-ts')) as unknown as {
         runSemanticBridge?: (src: string) => BridgeShape;
       };

@@ -27,7 +27,7 @@ export function psql(db: 'aster_cloud' | 'aster_policy', sql: string): string {
 }
 
 // aster-api 根地址（guard 决策端点所在），默认本地栈端口
-const BASE_API = process.env.BASE_API || 'http://localhost:8080';
+export const BASE_API = process.env.BASE_API || 'http://localhost:8080';
 
 /**
  * 经 aster-api 的 guard 决策端点为请求方 key 所属租户补一条新的待审批，返回 decisionId。
