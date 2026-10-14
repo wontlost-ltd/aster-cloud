@@ -11,19 +11,14 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from './schema';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { getCloudflareEnvSync, type CloudflareEnv } from './binding';
 
 // 类型导出
 export * from './schema';
 export type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 
-// Hyperdrive 类型定义
-interface HyperdriveBinding {
-  connectionString: string;
-}
-
-interface CloudflareEnv {
-  HYPERDRIVE?: HyperdriveBinding;
-}
+// 连接来源判定独立在 ./binding（无 postgres 依赖），供 instrumentation 等 edge 可达代码复用
+export { hasDbBinding } from './binding';
 
 // 请求级别的数据库连接存储
 const requestDbStorage = new AsyncLocalStorage<ReturnType<typeof createDb>>();
@@ -38,22 +33,6 @@ const requestDbStorage = new AsyncLocalStorage<ReturnType<typeof createDb>>();
 const globalForDb = globalThis as unknown as {
   __asterLocalDevDb?: ReturnType<typeof createDb> | null;
 };
-
-/**
- * 尝试从 OpenNext 获取 Cloudflare 上下文（同步版本）
- * 注意：只能在请求处理期间调用，不能在模块初始化时调用
- */
-function getCloudflareEnvSync(): CloudflareEnv | null {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { getCloudflareContext } = require('@opennextjs/cloudflare');
-    const context = getCloudflareContext({ async: false });
-    return context.env as CloudflareEnv;
-  } catch {
-    // 非 Cloudflare 环境或不在请求上下文中
-    return null;
-  }
-}
 
 /**
  * 尝试从 OpenNext 获取 Cloudflare 上下文（异步版本）
@@ -89,22 +68,6 @@ function getConnectionString(env?: CloudflareEnv): string {
     );
   }
   return url;
-}
-
-/**
- * 是否存在可用的数据库连接来源（Hyperdrive binding 或 DATABASE_URL）。
- *
- * 用于 build 期短路：`next build` / opennext 预渲染阶段既无 Hyperdrive binding、
- * 也无 DATABASE_URL，此时任何 getDb() 都会抛 "connection string not found"。
- * 冷启动自愈（db-bootstrap）在预渲染时被 layout 顺带触发，本判定让它安静跳过，
- * 而不是逐条 DDL 抛错刷屏。不抛错、纯布尔，安全用于任何环境。
- */
-export function hasDbBinding(): boolean {
-  const env = getCloudflareEnvSync();
-  if (env?.HYPERDRIVE?.connectionString) {
-    return true;
-  }
-  return Boolean(process.env.HYPERDRIVE_DATABASE_URL || process.env.DATABASE_URL);
 }
 
 /**

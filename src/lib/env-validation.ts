@@ -51,7 +51,19 @@ type EnvCheck = {
   requiredIn?: ReadonlyArray<DeploymentMode>;
   /** 给操作员看的简短描述，错误日志里会拼出来。 */
   description: string;
+  /**
+   * 为 true 时，只要运行时存在数据库 binding（Cloudflare Hyperdrive）即视为满足。
+   * 生产 Worker 经 HYPERDRIVE binding 连库，从不设 DATABASE_URL（见 src/db/index.ts
+   * getConnectionString 的优先级）；不认 binding 会在每次冷启动报一条假的「缺失」。
+   */
+  satisfiedByDbBinding?: boolean;
 };
+
+/** 校验时的运行时事实（env 字典表达不了的部分）。 */
+export interface EnvCheckOptions {
+  /** 运行时是否已有可用的数据库 binding（Hyperdrive）。 */
+  hasDbBinding?: boolean;
+}
 
 /**
  * 关键 env 清单。
@@ -64,7 +76,8 @@ const ENV_CHECKS: readonly EnvCheck[] = [
   {
     key: 'DATABASE_URL',
     required: 'always',
-    description: 'Drizzle / Postgres 连接串',
+    description: 'Drizzle / Postgres 连接串（Cloudflare 上由 HYPERDRIVE binding 提供时可不设）',
+    satisfiedByDbBinding: true,
   },
   {
     // Auth.js v5 标准名 AUTH_SECRET；wrangler.toml + 既有 Worker secrets
@@ -230,6 +243,7 @@ export interface ValidationResult {
 export function checkEnv(
   env: NodeJS.ProcessEnv = getProcessEnv(),
   mode?: DeploymentMode,
+  options: EnvCheckOptions = {},
 ): ValidationResult {
   // 惰性求值 mode：避免在调用 getDeploymentMode() 时触发其 fail-closed 检查
   // （比如当传入的 env 表示 build/test 但 process.env 仍是 production 时）。
@@ -241,6 +255,7 @@ export function checkEnv(
   for (const check of ENV_CHECKS) {
     // 模式过滤：requiredIn 限定的项目，不在当前模式则完全跳过（不 warn 不 missing）
     if (check.requiredIn && !check.requiredIn.includes(resolvedMode)) continue;
+    if (check.satisfiedByDbBinding && options.hasDbBinding) continue;
 
     // 多别名：任一被设置即视为通过
     const keys = Array.isArray(check.key) ? check.key : [check.key];
@@ -314,6 +329,7 @@ export function validateEnvOrThrow(
 export function validateEnvOrWarn(
   env: NodeJS.ProcessEnv = getProcessEnv(),
   mode?: DeploymentMode,
+  options: EnvCheckOptions = {},
 ): void {
   // 先做跳过判断，再解析 mode（同 validateEnvOrThrow 的原因）。
   if (env.NODE_ENV === 'test' || env.VITEST === 'true') return;
@@ -322,7 +338,7 @@ export function validateEnvOrWarn(
     return;
   }
 
-  const result = checkEnv(env, mode);
+  const result = checkEnv(env, mode, options);
   if (!result.ok) {
     console.error(
       `[env-validation] 缺失关键环境变量（runtime 启动将失败，部署模式: ${result.mode}）：`,

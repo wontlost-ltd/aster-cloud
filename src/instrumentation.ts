@@ -51,7 +51,11 @@ export async function register() {
     'default' in (globalThis.caches as unknown as { default?: unknown });
 
   if (isCloudflareWorker) {
-    validateEnvOrWarn();
+    // 生产 Worker 经 HYPERDRIVE binding 连库，不设 DATABASE_URL。
+    // 复用 db/binding 的判定（不含 postgres 驱动，edge 包可解析），
+    // 避免把「有 binding」误报成「缺 DATABASE_URL」。
+    const { hasDbBinding } = await import('./db/binding');
+    validateEnvOrWarn(undefined, undefined, { hasDbBinding: hasDbBinding() });
     return;
   }
 
