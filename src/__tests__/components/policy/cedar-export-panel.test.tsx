@@ -11,6 +11,7 @@ const labels = {
   notExportable: 'This policy cannot be exported to Cedar',
   failed: 'Export failed',
   noExecutableVersion: 'Approve a version before exporting to Cedar',
+  schemaNote: 'Schema covers only what the rule mentions',
 };
 
 function jsonResponse(status: number, body: unknown) {
@@ -58,6 +59,8 @@ describe('CedarExportPanel', () => {
     renderPanel();
 
     expect(await screen.findByText('Verified against Cedar on 4 probes')).toBeDefined();
+    // 成功导出后同时提示 schema 收窄（ADR 0047 §5），避免网关按 schema 校验时的意外拒绝
+    expect(screen.getByText('Schema covers only what the rule mentions')).toBeDefined();
     expect(fetchMock).toHaveBeenCalledWith('/api/policies/p1/export/cedar', { method: 'POST' });
     expect(createObjectURL).toHaveBeenCalledTimes(2);
     expect(downloads.map((d) => d.name)).toEqual(['finance.loan.cedar', 'finance.loan.cedarschema.json']);

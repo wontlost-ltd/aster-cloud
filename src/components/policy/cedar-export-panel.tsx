@@ -16,6 +16,8 @@ export interface CedarExportLabels {
   notExportable: string;
   failed: string;
   noExecutableVersion: string;
+  /** 导出的 schema 只覆盖规则提到的形状（ADR 0047 §5「对外形态收窄」），按 schema 校验请求的网关会更严 */
+  schemaNote: string;
 }
 
 interface CedarExportPanelProps {
@@ -79,7 +81,12 @@ function DiagnosticList({ diagnostics }: { diagnostics: PolicyDiagnostic[] }) {
 
 function ExportResult({ state, labels }: { state: ExportState; labels: CedarExportLabels }) {
   if (state.kind === 'verified') {
-    return <p className="mt-2 text-sm text-green-700">{labels.verified.replace('{count}', String(state.count))}</p>;
+    return (
+      <div className="mt-2 text-sm">
+        <p className="text-green-700">{labels.verified.replace('{count}', String(state.count))}</p>
+        <p className="mt-1 text-fg-muted">{labels.schemaNote}</p>
+      </div>
+    );
   }
   if (state.kind === 'error') {
     return <p className="mt-2 text-sm text-red-700" role="alert">{state.message}</p>;

@@ -139,6 +139,7 @@ export default async function PolicyDetailPage({
       notExportable: t('cedarExport.notExportable'),
       failed: t('cedarExport.failed'),
       noExecutableVersion: t('cedarExport.noExecutableVersion'),
+      schemaNote: t('cedarExport.schemaNote'),
     },
     deleteDialog: {
       title: t('deleteDialog.title'),
