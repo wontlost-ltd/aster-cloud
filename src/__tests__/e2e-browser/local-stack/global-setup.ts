@@ -8,6 +8,9 @@
  * 预热要在整轮用例内有效，依赖 aster-cloud 容器以 `-e E2E_LOCAL_STACK=1` 启动（next.config.ts 据此放宽
  * webpack dev 的 onDemandEntries 缓冲，否则预热入口会被挤掉）。
  *
+ * 生产构建（`node .next/standalone/server.js`）不按需编译，但首个请求要等 platform proxy 冷启动，且
+ * aster-api 回调 cloud 校验 API key 的路径同样冷：先等就绪、再预热该回调，最后才预热页面。
+ *
  * 只在 BASE_CLOUD 含 localhost 时执行；生产冒烟直接返回，不产生任何请求。
  */
 import { chromium, request, type Browser } from '@playwright/test';
@@ -59,6 +62,15 @@ const WARM_APIS = [
 
 const WARM_TIMEOUT_MS = 180_000;
 const NETWORK_IDLE_TIMEOUT_MS = 60_000;
+// 生产构建（standalone）启动后首个请求要等 @opennextjs/cloudflare 的 platform proxy 冷启动，宿主机繁忙时实测
+// 可达 150s 以上；预热前先等服务真正可应答，并把等待时间与用例的超时预算分开。
+const READY_BUDGET_MS = 600_000;
+const READY_POLL_MS = 5_000;
+// aster-api 根地址：用例经 aster-api 调 guard/execute 时，aster-api 会回调 cloud 的 apikey/verify 路由，
+// 该回调路径在 cloud 冷启动后同样慢，须单独预热（与 helpers.ts 的默认值一致）。
+const BASE_API = process.env.BASE_API || 'http://localhost:8080';
+const API_WARM_ROUNDS = 3;
+const API_WARM_FAST_MS = 5_000;
 
 /** 缺会话夹具时仍预热（会被重定向到登录页，至少编译中间件与登录页），不阻断运行。 */
 function storageFor(user: StackUser): string | undefined {
@@ -85,9 +97,55 @@ async function warmPage(browser: Browser, baseURL: string, path: string, user: S
   console.log(`[warmup] ${path} (${user}) ${Date.now() - started}ms`);
 }
 
+/** 轮询首页直到服务可应答（任意非 5xx 状态即可，登录重定向也算），超出预算则报错终止整轮用例。 */
+async function waitUntilReady(baseURL: string): Promise<void> {
+  const started = Date.now();
+  const ctx = await request.newContext({ baseURL, timeout: WARM_TIMEOUT_MS });
+  try {
+    while (Date.now() - started < READY_BUDGET_MS) {
+      const status = await ctx.get('/en').then((r) => r.status()).catch(() => 0);
+      if (status > 0 && status < 500) {
+        console.log(`[warmup] ready: /en → ${status} after ${Date.now() - started}ms`);
+        return;
+      }
+      await new Promise((r) => setTimeout(r, READY_POLL_MS));
+    }
+  } finally {
+    await ctx.dispose();
+  }
+  throw new Error(`[warmup] ${baseURL} 在 ${READY_BUDGET_MS}ms 内未就绪`);
+}
+
+/**
+ * 预热 aster-api → cloud 的 API key 校验回调：带 key 的只读请求会触发 aster-api 调 cloud
+ * `/api/internal/apikey/verify`，冷态下这一跳可能超过用例里 10–30s 的等待。连续请求直到一次足够快，
+ * 让后续用例的 guard/execute 调用落在热路径上。缺 key 时跳过（对应用例自身会 skip）。
+ */
+async function warmApiKeyVerify(): Promise<void> {
+  const apiKey = process.env.E2E_GUARD_API_KEY;
+  if (!apiKey) return;
+  const ctx = await request.newContext({ baseURL: BASE_API, timeout: WARM_TIMEOUT_MS });
+  try {
+    for (let round = 1; round <= API_WARM_ROUNDS; round += 1) {
+      const started = Date.now();
+      const status = await ctx
+        .get('/api/v1/policies', { headers: { Authorization: `Bearer ${apiKey}` } })
+        .then((r) => r.status())
+        .catch(() => 0);
+      const elapsed = Date.now() - started;
+      console.log(`[warmup] api key verify round ${round}: ${status} ${elapsed}ms`);
+      if (status > 0 && status < 500 && elapsed < API_WARM_FAST_MS) return;
+    }
+  } finally {
+    await ctx.dispose();
+  }
+}
+
 export default async function globalSetup(): Promise<void> {
   if (NOT_LOCAL) return;
   const baseURL = process.env.BASE_CLOUD as string;
+
+  await waitUntilReady(baseURL);
 
   // 先编译 API 路由，页面预热阶段的客户端请求就不会再触发新的服务端编译。
   const api = await request.newContext({ baseURL, storageState: storageFor('m-free'), timeout: WARM_TIMEOUT_MS });
@@ -97,6 +155,8 @@ export default async function globalSetup(): Promise<void> {
     console.log(`[warmup] ${path} ${Date.now() - started}ms`);
   }
   await api.dispose();
+
+  await warmApiKeyVerify();
 
   const browser = await chromium.launch();
   for (const [path, user] of WARM_PAGES) {
