@@ -504,7 +504,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         notExportable: 'This policy cannot be exported to Cedar',
         failed: 'Export failed',
         noExecutableVersion: 'Approve a version before exporting to Cedar',
-        schemaNote: 'The exported schema declares only the actions, roles and context keys this rule mentions. A gateway that validates requests against the schema rejects anything outside it — stricter than Aster, never looser.',
+        schemaNote: 'The exported schema declares only the actions and the context keys (with their types) this rule mentions. A gateway that validates requests against the schema rejects anything outside it — stricter than Aster, never looser.',
       },
       execute: {
         // 值/计算输出策略（如 greet 返回文本）：执行成功但无 allow/deny 语义。
@@ -1203,7 +1203,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         notExportable: '该策略无法导出为 Cedar',
         failed: '导出失败',
         noExecutableVersion: '导出到 Cedar 前请先批准一个版本',
-        schemaNote: '导出的 schema 只声明本规则提到的 action、角色与 context 键；按 schema 校验请求的网关会拒绝其余请求——只会比 Aster 更严，不会更松。',
+        schemaNote: '导出的 schema 只声明本规则提到的 action 与 context 键（含类型）；按 schema 校验请求的网关会拒绝其余请求——只会比 Aster 更严，不会更松。',
       },
       execute: {
         computed: '已计算',
@@ -1900,7 +1900,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         notExportable: 'Diese Richtlinie kann nicht nach Cedar exportiert werden',
         failed: 'Export fehlgeschlagen',
         noExecutableVersion: 'Genehmigen Sie eine Version, bevor Sie nach Cedar exportieren',
-        schemaNote: 'Das exportierte Schema deklariert nur die in dieser Regel genannten Actions, Rollen und Context-Schlüssel. Ein Gateway, das Anfragen gegen das Schema validiert, lehnt alles andere ab – strenger als Aster, nie laxer.',
+        schemaNote: 'Das exportierte Schema deklariert nur die in dieser Regel genannten Actions und Context-Schlüssel (mit ihren Typen). Ein Gateway, das Anfragen gegen das Schema validiert, lehnt alles andere ab – strenger als Aster, nie laxer.',
       },
       execute: {
         computed: 'Berechnet',
@@ -2595,7 +2595,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         notExportable: 'This policy cannot be exported to Cedar',
         failed: 'Export failed',
         noExecutableVersion: 'Approve a version before exporting to Cedar',
-        schemaNote: 'The exported schema declares only the actions, roles and context keys this rule mentions. A gateway that validates requests against the schema rejects anything outside it — stricter than Aster, never looser.',
+        schemaNote: 'The exported schema declares only the actions and the context keys (with their types) this rule mentions. A gateway that validates requests against the schema rejects anything outside it — stricter than Aster, never looser.',
       },
       execute: {
         computed: 'परिकलित',

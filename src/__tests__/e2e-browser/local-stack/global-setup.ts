@@ -15,7 +15,7 @@
  */
 import { chromium, request, type Browser } from '@playwright/test';
 import { existsSync } from 'node:fs';
-import { NOT_LOCAL, stateFor } from './helpers';
+import { BASE_API, NOT_LOCAL, stateFor } from './helpers';
 
 type StackUser = Parameters<typeof stateFor>[0];
 
@@ -66,9 +66,8 @@ const NETWORK_IDLE_TIMEOUT_MS = 60_000;
 // 可达 150s 以上；预热前先等服务真正可应答，并把等待时间与用例的超时预算分开。
 const READY_BUDGET_MS = 600_000;
 const READY_POLL_MS = 5_000;
-// aster-api 根地址：用例经 aster-api 调 guard/execute 时，aster-api 会回调 cloud 的 apikey/verify 路由，
-// 该回调路径在 cloud 冷启动后同样慢，须单独预热（与 helpers.ts 的默认值一致）。
-const BASE_API = process.env.BASE_API || 'http://localhost:8080';
+// 用例经 aster-api 调 guard/execute 时，aster-api 会回调 cloud 的 apikey/verify 路由，
+// 该回调路径在 cloud 冷启动后同样慢，须单独预热。
 const API_WARM_ROUNDS = 3;
 const API_WARM_FAST_MS = 5_000;
 
@@ -117,9 +116,10 @@ async function waitUntilReady(baseURL: string): Promise<void> {
 }
 
 /**
- * 预热 aster-api → cloud 的 API key 校验回调：带 key 的只读请求会触发 aster-api 调 cloud
- * `/api/internal/apikey/verify`，冷态下这一跳可能超过用例里 10–30s 的等待。连续请求直到一次足够快，
- * 让后续用例的 guard/execute 调用落在热路径上。缺 key 时跳过（对应用例自身会 skip）。
+ * 预热 aster-api → cloud 的 API key 校验回调：`/api/v1/guard/` 前缀受 ApiKeyAuthFilter 保护，带 key 的
+ * 只读列表请求会触发 aster-api 调 cloud `/api/internal/apikey/verify`，冷态下这一跳可能超过用例里
+ * 10–30s 的等待。连续请求直到一次足够快，让后续用例的 guard/execute 调用落在热路径上。
+ * 缺 key 时跳过（对应用例自身会 skip）；key 被拒（401/403）说明夹具有误，打警告便于排查。
  */
 async function warmApiKeyVerify(): Promise<void> {
   const apiKey = process.env.E2E_GUARD_API_KEY;
@@ -129,11 +129,15 @@ async function warmApiKeyVerify(): Promise<void> {
     for (let round = 1; round <= API_WARM_ROUNDS; round += 1) {
       const started = Date.now();
       const status = await ctx
-        .get('/api/v1/policies', { headers: { Authorization: `Bearer ${apiKey}` } })
+        .get('/api/v1/guard/approvals?size=1', { headers: { Authorization: `Bearer ${apiKey}` } })
         .then((r) => r.status())
         .catch(() => 0);
       const elapsed = Date.now() - started;
       console.log(`[warmup] api key verify round ${round}: ${status} ${elapsed}ms`);
+      if (status === 401 || status === 403) {
+        console.warn(`[warmup] E2E_GUARD_API_KEY 被 aster-api 拒绝（${status}），请检查 key 夹具`);
+        return;
+      }
       if (status > 0 && status < 500 && elapsed < API_WARM_FAST_MS) return;
     }
   } finally {
