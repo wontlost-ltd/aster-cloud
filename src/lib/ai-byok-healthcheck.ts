@@ -4,7 +4,8 @@
 
 import { db, aiKeyBindings, users } from '@/lib/prisma';
 import { eq } from 'drizzle-orm';
-import { getDecryptedBYOKKeyById } from '@/lib/ai-key-vault';
+import { getDecryptedBYOKKeyById, updateBYOKAvailableModels } from '@/lib/ai-key-vault';
+import { fetchByokModels } from '@/lib/byok-models';
 
 export type HealthCheckResult = {
   bindingId: string;
@@ -15,6 +16,27 @@ export type HealthCheckResult = {
 };
 
 type EmailSender = (to: string, subject: string, body: string) => Promise<void>;
+
+const MODELS_REFRESH_PER_RUN = 50;
+const MODELS_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const MODELS_FETCH_TIMEOUT_MS = 5_000;
+
+/** 经 aster-api 查询并写入 availableModels。返回「是否真的发起了查询」供预算计数：vertex 与 24h 内已查返回 false（不计），查询失败也返回 true（计入尝试，避免故障时反复打 api）。 */
+async function refreshAvailableModels(
+  b: { id: string; userId: string; provider: string; providerUrl: string | null; modelsCheckedAt?: Date | null },
+  apiKey: string,
+): Promise<boolean> {
+  if (b.provider !== 'openai' && b.provider !== 'anthropic') return false;
+  if (b.modelsCheckedAt && Date.now() - b.modelsCheckedAt.getTime() < MODELS_REFRESH_INTERVAL_MS) return false;
+  const res = await fetchByokModels(b.userId, { provider: b.provider, apiKey, baseUrl: b.providerUrl ?? null },
+    { timeoutMs: MODELS_FETCH_TIMEOUT_MS });
+  if (!res.ok) {
+    console.warn('[byok-healthcheck] models refresh failed for binding=%s: %s', b.id, res.error);
+    return true;
+  }
+  await updateBYOKAvailableModels(b.id, { models: res.models, defaultModel: res.defaultModel });
+  return true;
+}
 
 /**
  * 扫描所有 active BYOK 并 ping 验证
@@ -32,6 +54,7 @@ export async function checkAllBYOKKeys(sendEmail: EmailSender): Promise<HealthCh
 
   const results: HealthCheckResult[] = [];
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  let refreshAttempts = 0;
 
   for (const b of bindings) {
     // 多 key：按**本行 id** 解密（不能再按 provider 取——同 provider 多 key 会都 ping 到同一个）。
@@ -51,6 +74,10 @@ export async function checkAllBYOKKeys(sendEmail: EmailSender): Promise<HealthCh
         .update(aiKeyBindings)
         .set({ lastCheckedAt: new Date(), lastErrorAt: null, lastError: null, updatedAt: new Date() })
         .where(eq(aiKeyBindings.id, b.id));
+      // ADR 0048：顺带刷新可用模型列表（仅校验/提示用）。失败不影响健康状态，也不动 lastError。
+      // 预算：只刷 24h 未查过的，每轮最多尝试 MODELS_REFRESH_PER_RUN 次（成败都算），单次 5 s 超时，
+      // 新增耗时 ≤ 50 × 5 s；原有逐 binding ping 不受影响。
+      if (refreshAttempts < MODELS_REFRESH_PER_RUN && await refreshAvailableModels(b, apiKey)) refreshAttempts += 1;
       results.push({ bindingId: b.id, userId: b.userId, provider: b.provider, status: 'healthy' });
       continue;
     }
