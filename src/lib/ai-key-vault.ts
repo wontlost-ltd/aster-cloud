@@ -36,6 +36,8 @@ export async function saveBYOKKey(params: {
   tokenQuota?: number | null;
   /** 失效日期（可选）。null/undefined = 永不过期。 */
   expiresAt?: Date | null;
+  /** 指定模型 id（可选）。null/undefined = 平台默认。 */
+  model?: string | null;
 }): Promise<{ id: string }> {
   const secret = encryptionSecret();
   const keyHint = params.apiKey.slice(-4);
@@ -43,6 +45,7 @@ export async function saveBYOKKey(params: {
   const providerUrl = params.providerUrl ?? null;
   const tokenQuota = params.tokenQuota ?? null;
   const expiresAt = params.expiresAt ? params.expiresAt.toISOString() : null;
+  const model = params.model ?? null;
   const id = globalThis.crypto.randomUUID();
 
   // 多 key：新 key **总是新增一行**（不再按 provider upsert 覆盖）。priority = 该 provider
@@ -51,7 +54,7 @@ export async function saveBYOKKey(params: {
   await db.execute(sql`
     INSERT INTO "AiKeyBinding"
       ("id", "userId", "provider", "encryptedKey", "keyHint", "active",
-       "providerUrl", "tokenQuota", "expiresAt", "priority", "createdAt", "updatedAt")
+       "providerUrl", "tokenQuota", "expiresAt", "model", "priority", "createdAt", "updatedAt")
     VALUES (
       ${id},
       ${params.userId},
@@ -62,6 +65,7 @@ export async function saveBYOKKey(params: {
       ${providerUrl},
       ${tokenQuota},
       ${expiresAt}::timestamp,
+      ${model},
       (SELECT COALESCE(MAX("priority"), -1) + 1 FROM "AiKeyBinding"
         WHERE "userId" = ${params.userId} AND "provider" = ${params.provider}),
       NOW(),
@@ -122,10 +126,13 @@ export async function updateBYOKKeyMeta(params: {
   bindingId: string;
   tokenQuota?: number | null;
   expiresAt?: Date | null;
+  /** undefined=不动；null=清空（回到平台默认）；字符串=写入。 */
+  model?: string | null;
 }): Promise<{ provider: string; keyHint: string } | null> {
   const set: Record<string, unknown> = { updatedAt: new Date() };
   if (params.tokenQuota !== undefined) set.tokenQuota = params.tokenQuota;
   if (params.expiresAt !== undefined) set.expiresAt = params.expiresAt;
+  if (params.model !== undefined) set.model = params.model;
 
   const rows = await db
     .update(aiKeyBindings)
@@ -146,6 +153,7 @@ export interface ByokCandidate {
   providerUrl: string | null;
   tokenQuota: number | null;
   expiresAt: Date | null;
+  model: string | null;
 }
 /**
  * 某用户所有 **active** key 的候选列表（跨 provider），按调用优先级排序（priority asc，同 priority
@@ -170,6 +178,7 @@ export async function getBYOKCandidatesForInference(
       providerUrl: aiKeyBindings.providerUrl,
       tokenQuota: aiKeyBindings.tokenQuota,
       expiresAt: aiKeyBindings.expiresAt,
+      model: aiKeyBindings.model,
     })
     .from(aiKeyBindings)
     .where(where)
@@ -180,7 +189,43 @@ export async function getBYOKCandidatesForInference(
     providerUrl: r.providerUrl ?? null,
     tokenQuota: r.tokenQuota ?? null,
     expiresAt: r.expiresAt ?? null,
+    model: r.model ?? null,
   }));
+}
+
+/** 与 aster-api / byok-models.ts 同一形状；入库前再收敛一次，jsonb 上界 ≤ 200×128 字符。 */
+const MODEL_ID_RE = /^[A-Za-z0-9._:/-]{1,128}$/;
+const MAX_AVAILABLE_MODELS = 200;
+
+/** 写入最近一次模型列表查询结果（healthcheck / 保存时）。失败路径不调用本函数，旧列表保留。 */
+export async function updateBYOKAvailableModels(
+  bindingId: string,
+  result: { models: string[] | null; defaultModel: string },
+): Promise<void> {
+  const models = result.models
+    ? result.models.filter((m) => MODEL_ID_RE.test(m)).slice(0, MAX_AVAILABLE_MODELS)
+    : null;
+  await db
+    .update(aiKeyBindings)
+    .set({
+      availableModels: { models, defaultModel: result.defaultModel },
+      modelsCheckedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(aiKeyBindings.id, bindingId));
+}
+
+/** 按 (id, userId) 取 binding 的 provider / providerUrl（不解密），归属不符返回 null。 */
+export async function findBindingForUser(
+  userId: string,
+  bindingId: string,
+): Promise<{ id: string; provider: string; providerUrl: string | null } | null> {
+  const rows = await db
+    .select({ id: aiKeyBindings.id, provider: aiKeyBindings.provider, providerUrl: aiKeyBindings.providerUrl })
+    .from(aiKeyBindings)
+    .where(and(eq(aiKeyBindings.id, bindingId), eq(aiKeyBindings.userId, userId)))
+    .limit(1);
+  return rows[0] ? { ...rows[0], providerUrl: rows[0].providerUrl ?? null } : null;
 }
 
 /**

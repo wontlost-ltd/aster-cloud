@@ -1678,6 +1678,18 @@ export const aiKeyBindings = pgTable(
      * 全为 0，退化为「任取唯一一个」，行为不变。
      */
     priority: integer('priority').notNull().default(0),
+    /**
+     * 用户为这条 key 指定的模型 id（ADR 0048）。null=平台该 provider 的默认模型。
+     * 调用时由选中的 binding 决定 provider 与 model；不参与优先级排序。
+     */
+    model: text('model'),
+    /**
+     * 最近一次经 aster-api 查询到的 provider 模型列表：{ models: string[] | null, defaultModel: string }。
+     * models=null 表示网关不提供列表。只用于保存时校验与 UI 提示，不参与调用选择。
+     */
+    availableModels: jsonb('availableModels').$type<{ models: string[] | null; defaultModel: string }>(),
+    /** 上次查询模型列表的时间；查询失败不清空旧列表，只写 lastError。 */
+    modelsCheckedAt: timestamp('modelsCheckedAt', { mode: 'date' }),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
     updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
   },
