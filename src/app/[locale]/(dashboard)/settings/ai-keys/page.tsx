@@ -29,6 +29,9 @@ export default async function AiKeysPage() {
       lastErrorAt: true,
       lastError: true,
       createdAt: true,
+      model: true,
+      availableModels: true,
+      modelsCheckedAt: true,
     },
     orderBy: (t, { asc }) => [asc(t.provider), asc(t.priority), asc(t.createdAt)],
   });
@@ -50,6 +53,9 @@ export default async function AiKeysPage() {
     lastErrorAt: b.lastErrorAt?.toISOString() ?? null,
     lastError: b.lastError ?? null,
     createdAt: b.createdAt.toISOString(),
+    model: b.model ?? null,
+    availableModels: b.availableModels ?? null,
+    modelsCheckedAt: b.modelsCheckedAt?.toISOString() ?? null,
   }));
 
   return <AiKeysContent initialBindings={initialBindings} locale={locale} />;

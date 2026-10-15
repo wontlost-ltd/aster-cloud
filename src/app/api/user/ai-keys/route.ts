@@ -3,10 +3,87 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { db, aiKeyBindings } from '@/lib/prisma';
 import { eq } from 'drizzle-orm';
-import { saveBYOKKey, deleteBYOKKey, updateBYOKKeyMeta, reorderBYOKKeys } from '@/lib/ai-key-vault';
+import {
+  saveBYOKKey,
+  deleteBYOKKey,
+  updateBYOKKeyMeta,
+  reorderBYOKKeys,
+  updateBYOKAvailableModels,
+  getDecryptedBYOKKeyById,
+  findBindingForUser,
+} from '@/lib/ai-key-vault';
+import { fetchByokModels, MODEL_ID_RE } from '@/lib/byok-models';
 import { errorEnvelope } from '@/lib/api/error-envelope';
 import { byokTokensUsedThisMonth, resetByokQuotaUsage } from '@/lib/ai-quota';
 import { logAuditEvent, extractClientInfo } from '@/lib/audit-log';
+
+/**
+ * model 字段规范化（与 aster-api ByokEnvelopeParser.normalizeModel 同语义）：
+ * undefined=未提供（PATCH 不改）；null / 空串 / 纯空白 = 清空（平台默认）；
+ * 否则 trim 后须符合 MODEL_ID_RE。返回 { ok: false } 表示形状非法。
+ */
+function parseModelField(raw: unknown): { ok: true; model: string | null | undefined } | { ok: false } {
+  if (raw === undefined) return { ok: true, model: undefined };
+  if (raw === null) return { ok: true, model: null };
+  if (typeof raw !== 'string') return { ok: false };
+  const m = raw.trim();
+  if (m === '') return { ok: true, model: null };
+  return MODEL_ID_RE.test(m) ? { ok: true, model: m } : { ok: false };
+}
+
+/**
+ * 填了 model 时经 aster-api 查 provider 列表（ADR 0048 §3.4）：列表存在且不含该 model → 拒绝；
+ * 查询失败（provider 抖动）或网关不提供列表 → 放行。
+ */
+async function checkModelAgainstProvider(
+  userId: string,
+  creds: { provider: string; apiKey: string; baseUrl: string | null },
+  model: string | null,
+): Promise<{ result: Awaited<ReturnType<typeof fetchByokModels>> } | { rejected: string[] }> {
+  const result = await fetchByokModels(userId, creds);
+  if (result.ok && result.models && model && !result.models.includes(model)) {
+    return { rejected: result.models };
+  }
+  return { result };
+}
+
+function modelNotAvailable(available: string[]) {
+  return NextResponse.json({ error: 'model_not_available', available }, { status: 400 });
+}
+
+/**
+ * PATCH update 携带非空 model 时的校验：归属校验先于解密（不属于本人 → 404），
+ * vertex 不查列表；列表查询失败放行（modelsChecked=false），成功则回写可用列表缓存。
+ */
+async function validatePatchModel(
+  userId: string,
+  bindingId: string,
+  model: string,
+): Promise<NextResponse | { modelsChecked: boolean | undefined }> {
+  const binding = await findBindingForUser(userId, bindingId);
+  if (!binding) {
+    return NextResponse.json({ error: 'AI key not found' }, { status: 404 });
+  }
+  if (binding.provider === 'vertex') return { modelsChecked: undefined };
+
+  const apiKey = await getDecryptedBYOKKeyById(userId, bindingId);
+  if (!apiKey) {
+    return NextResponse.json({ error: 'AI key not found' }, { status: 404 });
+  }
+  const check = await checkModelAgainstProvider(
+    userId,
+    { provider: binding.provider, apiKey, baseUrl: binding.providerUrl },
+    model,
+  );
+  if ('rejected' in check) return modelNotAvailable(check.rejected);
+  if (check.result.ok) {
+    await updateBYOKAvailableModels(bindingId, {
+      models: check.result.models,
+      defaultModel: check.result.defaultModel,
+    });
+  }
+  return { modelsChecked: check.result.ok };
+}
 
 export async function GET() {
   try {
@@ -31,6 +108,9 @@ export async function GET() {
         lastErrorAt: true,
         lastError: true,
         createdAt: true,
+        model: true,
+        availableModels: true,
+        modelsCheckedAt: true,
       },
       orderBy: (t, { asc }) => [asc(t.provider), asc(t.priority), asc(t.createdAt)],
     });
@@ -76,6 +156,7 @@ export async function POST(req: Request) {
       providerUrl?: string | null;
       tokenQuota?: number | null;
       expiresAt?: string | null;
+      model?: string | null;
     };
     if (!body.apiKey || body.apiKey.length < 20) {
       return NextResponse.json({ error: 'Invalid API key' }, { status: 400 });
@@ -120,6 +201,25 @@ export async function POST(req: Request) {
       expiresAt = d;
     }
 
+    const parsedModel = parseModelField(body.model);
+    if (!parsedModel.ok) {
+      return NextResponse.json({ error: 'Invalid model' }, { status: 400 });
+    }
+    const model = parsedModel.model ?? null;
+
+    // 保存前经 aster-api 查一次 provider 模型列表（ADR 0048 §3.4）：填了 model 就校验存在；
+    // 查询失败不阻断保存（provider 抖动不该让用户存不了 key），只是不写 availableModels。
+    let models: Awaited<ReturnType<typeof fetchByokModels>> | null = null;
+    if (body.provider !== 'vertex') {
+      const check = await checkModelAgainstProvider(
+        session.user.id,
+        { provider: body.provider, apiKey: body.apiKey, baseUrl: providerUrl },
+        model,
+      );
+      if ('rejected' in check) return modelNotAvailable(check.rejected);
+      models = check.result;
+    }
+
     // 多 key：POST **总是新增一行**（同 provider 可多个 key）。返回新 binding id。
     const { id } = await saveBYOKKey({
       userId: session.user.id,
@@ -128,7 +228,13 @@ export async function POST(req: Request) {
       providerUrl,
       tokenQuota,
       expiresAt,
+      model,
     });
+
+    const modelsChecked = models?.ok === true;
+    if (models?.ok) {
+      await updateBYOKAvailableModels(id, { models: models.models, defaultModel: models.defaultModel });
+    }
 
     // 审计（管理员可追溯）：只记 binding id / provider / keyHint（后 4 位）/ 是否设了 url/额度/失效
     // 日期，**绝不**记明文 key。多 key 下 POST 一律是 create。
@@ -145,12 +251,18 @@ export async function POST(req: Request) {
         hasProviderUrl: providerUrl != null,
         tokenQuota,
         expiresAt: expiresAt ? expiresAt.toISOString() : null,
+        model,
       },
       ipAddress,
       userAgent,
     });
 
-    return NextResponse.json({ ok: true, id });
+    return NextResponse.json({
+      ok: true,
+      id,
+      modelsChecked,
+      availableModels: models?.ok ? models.models : undefined,
+    });
   } catch (err) {
     const env = errorEnvelope({
       status: 500,
@@ -167,7 +279,7 @@ export async function POST(req: Request) {
 }
 
 /**
- * 编辑既有 BYOK key 的额度/失效日期（不重输 key），或重置本月已用额度。
+ * 编辑既有 BYOK key 的额度/失效日期/model（不重输 key），或重置本月已用额度。
  *   - { id, tokenQuota?, expiresAt?, action?: 'update' }：改额度上限 / 失效日期。字段不传=不动；
  *     传 null=清空（额度→无限 / 失效日期→永不过期）。
  *   - { action: 'resetQuota' }：把用户 BYOK 用量重置水位线盖成 now()（清「本月已用」显示，不删审计）。
@@ -188,6 +300,7 @@ export async function PATCH(req: Request) {
       action?: 'update' | 'resetQuota' | 'reorder';
       tokenQuota?: number | null;
       expiresAt?: string | null;
+      model?: string | null;
       provider?: string;
       orderedIds?: string[];
     };
@@ -276,11 +389,26 @@ export async function PATCH(req: Request) {
       }
     }
 
-    if (tokenQuota === undefined && expiresAt === undefined) {
+    // model：与新建同语义（undefined 不动 / null 或空白清空 / 字符串须合法）。
+    const parsedModel = parseModelField(body.model);
+    if (!parsedModel.ok) {
+      return NextResponse.json({ error: 'Invalid model' }, { status: 400 });
+    }
+    const model = parsedModel.model;
+
+    if (tokenQuota === undefined && expiresAt === undefined && model === undefined) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
     }
 
-    const updated = await updateBYOKKeyMeta({ userId, bindingId: body.id, tokenQuota, expiresAt });
+    // 改 model 与新建同一校验路径：解密**本人**这条 key（归属不符 → 404，不解密），经 aster-api 查列表。
+    let modelsChecked: boolean | undefined;
+    if (typeof model === 'string') {
+      const validated = await validatePatchModel(userId, body.id, model);
+      if (validated instanceof NextResponse) return validated;
+      modelsChecked = validated.modelsChecked;
+    }
+
+    const updated = await updateBYOKKeyMeta({ userId, bindingId: body.id, tokenQuota, expiresAt, model });
     if (!updated) {
       // 没有匹配行 = 越权改别人的 key 或该 key 已删。不泄露存在性，统一 404。
       return NextResponse.json({ error: 'AI key not found' }, { status: 404 });
@@ -297,12 +425,13 @@ export async function PATCH(req: Request) {
         // 只记「改了哪些字段 + 新值」，便于管理员回溯；不记明文 key。
         ...(tokenQuota !== undefined ? { tokenQuota } : {}),
         ...(expiresAt !== undefined ? { expiresAt: expiresAt ? expiresAt.toISOString() : null } : {}),
+        ...(model !== undefined ? { model } : {}),
       },
       ipAddress,
       userAgent,
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, ...(modelsChecked !== undefined ? { modelsChecked } : {}) });
   } catch (err) {
     const env = errorEnvelope({
       status: 500,
