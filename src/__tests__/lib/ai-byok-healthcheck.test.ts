@@ -60,6 +60,14 @@ describe('BYOK healthcheck：刷新 availableModels（ADR 0048）', () => {
     expect(updateAvail).not.toHaveBeenCalled();
   });
 
+  it('★availableModels 写入失败 → 不抛出，binding 仍 healthy', async () => {
+    findMany.mockResolvedValue([{ id: 'b1', userId: 'u', provider: 'openai', providerUrl: null, lastErrorAt: null }]);
+    fetchModels.mockResolvedValue({ ok: true, models: ['gpt-4o'], defaultModel: 'gpt-4o-mini' });
+    updateAvail.mockRejectedValueOnce(new Error('db down'));
+    const res = await checkAllBYOKKeys(vi.fn());
+    expect(res[0].status).toBe('healthy');
+  });
+
   it('vertex 不查询列表', async () => {
     findMany.mockResolvedValue([{ id: 'b1', userId: 'u', provider: 'vertex', providerUrl: null, lastErrorAt: null }]);
     await checkAllBYOKKeys(vi.fn());

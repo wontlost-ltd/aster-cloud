@@ -140,13 +140,16 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
     // 「必须未来时间」拒绝。故比较当前输入与原值（都归一到 YYYY-MM-DD），未改则不带 expiresAt。
     const originalExpiryDay = b.expiresAt ? b.expiresAt.slice(0, 10) : '';
     const expiryChanged = editExpiry !== originalExpiryDay;
+    // model 同理：仅在改动时提交，避免额度/过期编辑触发服务端模型重校验。
+    const modelChanged = editModel.trim() !== (b.model ?? '');
     const payload: {
       id: string;
       action: 'update';
       tokenQuota: number | null;
-      model: string | null;
+      model?: string | null;
       expiresAt?: string | null;
-    } = { id: b.id, action: 'update', tokenQuota: quota, model: editModel.trim() || null };
+    } = { id: b.id, action: 'update', tokenQuota: quota };
+    if (modelChanged) payload.model = editModel.trim() || null;
     if (expiryChanged) {
       // 空=永不过期（null）；否则存当天 00:00:00 UTC（选哪天=那天起失效，见 handleSubmit 注释）。
       payload.expiresAt = editExpiry ? new Date(editExpiry + 'T00:00:00Z').toISOString() : null;
@@ -161,6 +164,10 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
       });
       if (!r.ok) {
         const data = await r.json().catch(() => ({}));
+        if (data.error === 'model_not_available') {
+          setRowError(t('modelNotAvailable', { available: ((data.available as string[]) ?? []).join(', ') }));
+          return;
+        }
         setRowError(extractErrorMessage(data) || t('saveFailed', { status: r.status }));
         return;
       }

@@ -34,7 +34,11 @@ async function refreshAvailableModels(
     console.warn('[byok-healthcheck] models refresh failed for binding=%s: %s', b.id, res.error);
     return true;
   }
-  await updateBYOKAvailableModels(b.id, { models: res.models, defaultModel: res.defaultModel });
+  try {
+    await updateBYOKAvailableModels(b.id, { models: res.models, defaultModel: res.defaultModel });
+  } catch (e) {
+    console.warn('[byok-healthcheck] availableModels write failed for binding=%s:', b.id, e);
+  }
   return true;
 }
 

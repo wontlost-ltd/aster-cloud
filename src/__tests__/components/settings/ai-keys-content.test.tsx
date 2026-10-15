@@ -156,4 +156,44 @@ describe('AiKeysContent 模型字段', () => {
     const body = JSON.parse(init.body as string);
     expect(body).toMatchObject({ id: 'a', action: 'update', model: null });
   });
+  it('行内仅改额度：PATCH 不带 model', async () => {
+    vi.stubGlobal('fetch', fetchReturning(200, { ok: true, bindings: [] }));
+    render(
+      <AiKeysContent
+        locale="en"
+        initialBindings={[
+          { ...baseBinding, id: 'a', provider: 'openai', keyHint: '1234', model: 'gpt-4o', availableModels: null, modelsCheckedAt: null },
+        ]}
+      />,
+      { wrapper },
+    );
+    fireEvent.click(screen.getByText('Edit'));
+    const quota = screen.getAllByRole('spinbutton').pop() as HTMLInputElement;
+    fireEvent.change(quota, { target: { value: '1000' } });
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    const body = JSON.parse((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as string);
+    expect(body).toMatchObject({ id: 'a', action: 'update', tokenQuota: 1000 });
+    expect('model' in body).toBe(false);
+  });
+
+  it('行内改模型：PATCH 带 model', async () => {
+    vi.stubGlobal('fetch', fetchReturning(200, { ok: true, bindings: [] }));
+    render(
+      <AiKeysContent
+        locale="en"
+        initialBindings={[
+          { ...baseBinding, id: 'a', provider: 'openai', keyHint: '1234', model: 'gpt-4o', availableModels: null, modelsCheckedAt: null },
+        ]}
+      />,
+      { wrapper },
+    );
+    fireEvent.click(screen.getByText('Edit'));
+    const input = screen.getAllByLabelText('Model (optional)')[1] as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'gpt-4o-mini' } });
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    const body = JSON.parse((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as string);
+    expect(body).toMatchObject({ id: 'a', action: 'update', model: 'gpt-4o-mini' });
+  });
 });
