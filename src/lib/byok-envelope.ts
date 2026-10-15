@@ -4,7 +4,7 @@
  *
  * 设计（Codex 审查）：
  *   - 只在服务端（cloud BFF）解密 BYOK key；浏览器 body 里的任何 `_byok` 一律不可信、被覆盖。
- *   - envelope 带 { provider, apiKey, baseUrl? }。**baseUrl 可选**：用户配置了自定义 Provider URL
+ *   - envelope 带 { provider, apiKey, baseUrl?, model? }。**baseUrl 可选**：用户配置了自定义 Provider URL
  *     才注入；aster-api **每次重新校验**（管理员 allowlist + SsrfGuard，防 SSRF），不信 cloud 传入值。
  *     baseUrl 为空则 aster-api 走官方硬编码端点（零行为变化）。cloud 侧不做 SSRF 判定（权威边界在
  *     真正发出站请求的 aster-api）。
@@ -32,6 +32,8 @@ export interface ByokEnvelope {
   baseUrl: string | null;
   /** AiKeyBinding.id —— 用于 Phase 3 精确 stamp lastUsedAt / usage 归类。不注入转发 body。 */
   bindingId: string;
+  /** AiKeyBinding.model：用户为该 key 指定的模型；null=平台该 provider 默认。非空则注入 `_byok.model`。 */
+  model: string | null;
 }
 
 /**
@@ -82,7 +84,7 @@ export async function resolveByokEnvelope(userId: string): Promise<ByokEnvelope 
     const apiKey = await getDecryptedBYOKKeyById(userId, c.id);
     if (!apiKey) continue;
 
-    return { provider, apiKey, baseUrl: c.providerUrl ?? null, bindingId: c.id };
+    return { provider, apiKey, baseUrl: c.providerUrl ?? null, bindingId: c.id, model: c.model ?? null };
   }
   return null;
 }
@@ -120,6 +122,10 @@ export function injectByokEnvelope(
     const byok: Record<string, string> = { provider: envelope.provider, apiKey: envelope.apiKey };
     if (envelope.baseUrl) {
       byok.baseUrl = envelope.baseUrl;
+    }
+    // model 仅在用户指定时注入；为空则 aster-api 用平台该 provider 默认（旧版 api 也能照常解析）。
+    if (envelope.model) {
+      byok.model = envelope.model;
     }
     parsed._byok = byok;
   }
