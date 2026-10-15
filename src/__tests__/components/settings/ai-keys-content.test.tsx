@@ -196,4 +196,23 @@ describe('AiKeysContent 模型字段', () => {
     const body = JSON.parse((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as string);
     expect(body).toMatchObject({ id: 'a', action: 'update', model: 'gpt-4o-mini' });
   });
+
+  it('行内保存失败 → 错误以 role=alert 呈现', async () => {
+    vi.stubGlobal('fetch', fetchReturning(400, { error: 'model_not_available', available: ['gpt-4o-mini'] }));
+    render(
+      <AiKeysContent
+        locale="en"
+        initialBindings={[
+          { ...baseBinding, id: 'a', provider: 'openai', keyHint: '1234', model: 'gpt-4o', availableModels: null, modelsCheckedAt: null },
+        ]}
+      />,
+      { wrapper },
+    );
+    fireEvent.click(screen.getByText('Edit'));
+    const input = screen.getAllByLabelText('Model (optional)')[1] as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'gpt-4o-mini' } });
+    fireEvent.click(screen.getByText('Save'));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('gpt-4o-mini');
+  });
 });

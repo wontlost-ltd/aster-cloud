@@ -165,6 +165,20 @@ describe('PATCH /api/user/ai-keys — 编辑额度/失效日期', () => {
     expect(await r.json()).toMatchObject({ ok: true, modelsChecked: false });
   });
 
+  it('★update model：availableModels 缓存写入失败 → 仍 200，modelsChecked=true', async () => {
+    vi.mocked(findBindingForUser).mockResolvedValue({ id: 'b1', provider: 'openai', providerUrl: null });
+    vi.mocked(getDecryptedBYOKKeyById).mockResolvedValue('sk-'.padEnd(24, 'x'));
+    vi.mocked(fetchByokModels).mockResolvedValue({ ok: true, models: ['gpt-4o'], defaultModel: 'gpt-4o-mini' });
+    vi.mocked(updateBYOKAvailableModels).mockRejectedValueOnce(new Error('db down'));
+    vi.mocked(updateBYOKKeyMeta).mockResolvedValue({ provider: 'openai', keyHint: 'xxxx' });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const r = await PATCH(patchReq({ id: 'b1', action: 'update', model: 'gpt-4o' }));
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ ok: true, modelsChecked: true });
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
   it('update：binding 不属于本人 → 404，不解密', async () => {
     vi.mocked(findBindingForUser).mockResolvedValue(null);
     const r = await PATCH(patchReq({ id: 'b-other', action: 'update', model: 'gpt-4o' }));
@@ -312,6 +326,18 @@ describe('POST /api/user/ai-keys — 多 key 新增', () => {
     expect(r.status).toBe(400);
     expect(await r.json()).toMatchObject({ error: 'model_not_available', available: ['gpt-4o-mini'] });
     expect(saveBYOKKey).not.toHaveBeenCalled();
+  });
+
+  it('★availableModels 缓存写入失败 → 仍 200 { ok, id, modelsChecked:true }', async () => {
+    vi.mocked(fetchByokModels).mockResolvedValue({ ok: true, models: ['gpt-4o'], defaultModel: 'gpt-4o-mini' });
+    vi.mocked(saveBYOKKey).mockResolvedValue({ id: 'new-w' });
+    vi.mocked(updateBYOKAvailableModels).mockRejectedValueOnce(new Error('db down'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const r = await POST(postReq({ provider: 'openai', apiKey: goodKey, model: 'gpt-4o' }));
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ ok: true, id: 'new-w', modelsChecked: true });
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it('★列表查询失败 → 仍保存，modelsChecked=false，不写 availableModels', async () => {

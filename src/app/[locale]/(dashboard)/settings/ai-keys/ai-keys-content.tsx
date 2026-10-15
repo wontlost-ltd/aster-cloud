@@ -518,12 +518,12 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
         {/* 已绑定 key 区的反馈就近渲染（编辑/重置/撤销的结果）——与上面「新增 key」表单的
             error/success 分开，避免在下方表格操作却把提示显示到上面 form 底部。 */}
         {rowError && (
-          <div className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800">
+          <div role="alert" className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800">
             {rowError}
           </div>
         )}
         {rowSuccess && (
-          <div className="mt-3 rounded-md bg-green-50 p-3 text-sm text-green-800">
+          <div role="status" className="mt-3 rounded-md bg-green-50 p-3 text-sm text-green-800">
             {rowSuccess}
           </div>
         )}

@@ -47,6 +47,21 @@ async function checkModelAgainstProvider(
   return { result };
 }
 
+/**
+ * 回写可用模型列表缓存（降级写）：校验已成功，缓存写失败不应让保存/编辑整体 500
+ * （key 行可能已入库，用户重试会产生重复 key）。仅告警，调用方照常返回 modelsChecked。
+ */
+async function writeAvailableModels(
+  id: string,
+  result: { models: string[] | null; defaultModel: string },
+): Promise<void> {
+  try {
+    await updateBYOKAvailableModels(id, { models: result.models, defaultModel: result.defaultModel });
+  } catch (e) {
+    console.warn('[ai-keys] availableModels write failed for binding=%s:', id, e);
+  }
+}
+
 function modelNotAvailable(available: string[]) {
   return NextResponse.json({ error: 'model_not_available', available }, { status: 400 });
 }
@@ -77,10 +92,7 @@ async function validatePatchModel(
   );
   if ('rejected' in check) return modelNotAvailable(check.rejected);
   if (check.result.ok) {
-    await updateBYOKAvailableModels(bindingId, {
-      models: check.result.models,
-      defaultModel: check.result.defaultModel,
-    });
+    await writeAvailableModels(bindingId, check.result);
   }
   return { modelsChecked: check.result.ok };
 }
@@ -233,7 +245,7 @@ export async function POST(req: Request) {
 
     const modelsChecked = models?.ok === true;
     if (models?.ok) {
-      await updateBYOKAvailableModels(id, { models: models.models, defaultModel: models.defaultModel });
+      await writeAvailableModels(id, models);
     }
 
     // 审计（管理员可追溯）：只记 binding id / provider / keyHint（后 4 位）/ 是否设了 url/额度/失效
