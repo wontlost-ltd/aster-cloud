@@ -88,4 +88,31 @@ describe('createSseBillableWatcher', () => {
     expect(feed('data: {"type":"error","error":"x"}\n\n').seen).toEqual([false]);
     expect(feed('data: {"type":"delta","data":"Rule"}\n\n').seen).toEqual([true]);
   });
+
+  it('★meta 帧先于 upstream_reached 到达 → watcher.model() 为该 model，且计费判定不变', () => {
+    const w = createSseBillableWatcher();
+    expect(w.push(enc.encode('data: {"type":"meta","data":"gpt-4o"}\n\n'))).toBe(false);
+    expect(w.model()).toBe('gpt-4o');
+    expect(w.push(enc.encode('data: {"type":"upstream_reached"}\n\n'))).toBe(true);
+    expect(w.model()).toBe('gpt-4o');
+  });
+
+  it('★旧版 api 无 meta 帧 → model() 为 null，计费判定与今天一致', () => {
+    const w = createSseBillableWatcher();
+    expect(w.push(enc.encode('data: {"type":"upstream_reached"}\n\n'))).toBe(true);
+    expect(w.model()).toBeNull();
+  });
+
+  it('meta 与 upstream_reached 在同一 chunk → 两者都识别', () => {
+    const w = createSseBillableWatcher();
+    expect(w.push(enc.encode('data: {"type":"meta","data":"gpt-4o"}\n\ndata: {"type":"upstream_reached"}\n\n'))).toBe(true);
+    expect(w.model()).toBe('gpt-4o');
+  });
+
+  it('meta 帧被 chunk 边界切开 → 拼接后仍识别', () => {
+    const w = createSseBillableWatcher();
+    expect(w.push(enc.encode('data: {"type":"me'))).toBe(false);
+    expect(w.push(enc.encode('ta","data":"gpt-4o"}\n\n'))).toBe(false);
+    expect(w.model()).toBe('gpt-4o');
+  });
 });

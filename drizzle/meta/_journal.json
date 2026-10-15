@@ -393,6 +393,13 @@
       "when": 1789900000000,
       "tag": "0054_policy_version_profile",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1790000000000,
+      "tag": "0055_ai_key_binding_model",
+      "breakpoints": true
     }
   ]
 }

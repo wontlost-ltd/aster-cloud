@@ -24,7 +24,7 @@ import { resolveByokEnvelope, injectByokEnvelope } from '@/lib/byok-envelope';
 
 // 候选工厂：默认 openai、无 url、无 quota、不过期。传入的候选已按调用优先级排好序（模拟 vault 已排序）。
 function cand(over: Partial<{
-  id: string; provider: string; providerUrl: string | null; tokenQuota: number | null; expiresAt: Date | null;
+  id: string; provider: string; providerUrl: string | null; tokenQuota: number | null; expiresAt: Date | null; model: string | null;
 }> = {}) {
   return {
     id: over.id ?? 'b1',
@@ -32,6 +32,7 @@ function cand(over: Partial<{
     providerUrl: over.providerUrl ?? null,
     tokenQuota: over.tokenQuota ?? null,
     expiresAt: over.expiresAt ?? null,
+    model: over.model ?? null,
   };
 }
 
@@ -51,9 +52,15 @@ describe('resolveByokEnvelope（多 key 选择层）', () => {
     mockCandidates.mockResolvedValue([cand({ id: 'binding-1' })]);
     mockDecryptById.mockResolvedValue('sk-user');
     expect(await resolveByokEnvelope('u1')).toEqual({
-      provider: 'openai', apiKey: 'sk-user', baseUrl: null, bindingId: 'binding-1',
+      provider: 'openai', apiKey: 'sk-user', baseUrl: null, bindingId: 'binding-1', model: null,
     });
     expect(mockDecryptById).toHaveBeenCalledWith('u1', 'binding-1');
+  });
+
+  it('候选带 model → envelope.model 透传', async () => {
+    mockCandidates.mockResolvedValue([cand({ id: 'b1', model: 'gpt-4o' })]);
+    mockDecryptById.mockResolvedValue('sk-user');
+    expect((await resolveByokEnvelope('u1'))?.model).toBe('gpt-4o');
   });
 
   it('★多 key：选 priority 最高（列表第一个可用）→ 只解密它', async () => {
@@ -159,8 +166,15 @@ describe('resolveByokEnvelope（多 key 选择层）', () => {
 });
 
 describe('injectByokEnvelope', () => {
+  it('envelope.model 非空 → 注入 _byok.model；为空 → 不带该字段（旧 api 兼容）', () => {
+    const withModel = injectByokEnvelope('{"a":1}', { provider: 'openai', apiKey: 'k', baseUrl: null, bindingId: 'b', model: 'gpt-4o' });
+    expect(JSON.parse(withModel.body)._byok).toEqual({ provider: 'openai', apiKey: 'k', model: 'gpt-4o' });
+    const noModel = injectByokEnvelope('{"a":1}', { provider: 'openai', apiKey: 'k', baseUrl: null, bindingId: 'b', model: null });
+    expect(JSON.parse(noModel.body)._byok).toEqual({ provider: 'openai', apiKey: 'k' });
+  });
+
   it('注入服务端 envelope 到顶层 _byok（含 provider+apiKey，★bindingId 不转发；baseUrl 为空不注入）', () => {
-    const out = injectByokEnvelope('{"goal":"x"}', { provider: 'openai', apiKey: 'sk', baseUrl: null, bindingId: 'b1' });
+    const out = injectByokEnvelope('{"goal":"x"}', { provider: 'openai', apiKey: 'sk', baseUrl: null, bindingId: 'b1', model: null });
     expect(out.injected).toBe(true);
     // bindingId 是 cloud 内部字段（用于 stamp lastUsedAt），绝不进转发 body；baseUrl 为空则不加字段
     expect(JSON.parse(out.body)).toEqual({ goal: 'x', _byok: { provider: 'openai', apiKey: 'sk' } });
@@ -169,7 +183,7 @@ describe('injectByokEnvelope', () => {
   // BYOK 自定义 Provider URL：baseUrl 非空 → 注入 _byok.baseUrl（aster-api 重新校验 allowlist+SSRF）。
   it('★baseUrl 非空 → 注入 _byok.baseUrl 供 aster-api 重校验', () => {
     const out = injectByokEnvelope('{"goal":"x"}', {
-      provider: 'openai', apiKey: 'sk', baseUrl: 'https://gw.example.com/v1', bindingId: 'b1',
+      provider: 'openai', apiKey: 'sk', baseUrl: 'https://gw.example.com/v1', bindingId: 'b1', model: null,
     });
     expect(out.injected).toBe(true);
     expect(JSON.parse(out.body)._byok).toEqual({
@@ -186,14 +200,14 @@ describe('injectByokEnvelope', () => {
   it('★caller 带 _byok + 服务端有 envelope → 用服务端的覆盖 caller 的', () => {
     const out = injectByokEnvelope(
       '{"goal":"x","_byok":{"provider":"evil","apiKey":"attacker"}}',
-      { provider: 'openai', apiKey: 'real', baseUrl: null, bindingId: 'b1' }
+      { provider: 'openai', apiKey: 'real', baseUrl: null, bindingId: 'b1', model: null }
     );
     expect(out.injected).toBe(true);
     expect(JSON.parse(out.body)._byok).toEqual({ provider: 'openai', apiKey: 'real' });
   });
 
   it('body 非 JSON → 原样返回、injected=false（避免"以为注入了"）', () => {
-    const out = injectByokEnvelope('not-json', { provider: 'openai', apiKey: 'sk', baseUrl: null, bindingId: 'b1' });
+    const out = injectByokEnvelope('not-json', { provider: 'openai', apiKey: 'sk', baseUrl: null, bindingId: 'b1', model: null });
     expect(out).toEqual({ body: 'not-json', injected: false });
   });
 
@@ -220,7 +234,7 @@ describe('injectByokEnvelope', () => {
   it('#185：_byok + _usage 同时注入', () => {
     const out = injectByokEnvelope(
       '{"goal":"x"}',
-      { provider: 'openai', apiKey: 'sk', baseUrl: null, bindingId: 'b1' },
+      { provider: 'openai', apiKey: 'sk', baseUrl: null, bindingId: 'b1', model: null },
       'req-9'
     );
     const parsed = JSON.parse(out.body);
