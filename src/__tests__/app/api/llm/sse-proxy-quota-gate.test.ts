@@ -214,6 +214,31 @@ describe('proxyLlmSse — AI 配额门控 + 成功记账', () => {
       });
     }
 
+    it('★meta + upstream_reached：占位记账的 model 为 meta 回传的实际 model（ADR 0048）', async () => {
+      mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+      mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: true });
+      const body = 'data: {"type":"meta","data":"gpt-4o"}\n\n' + REACHED;
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } }),
+      );
+      const { proxyLlmSse } = await import('@/lib/llm-sse-proxy');
+      expect(await drain(await proxyLlmSse(req() as never, { upstreamPath: '/api/v1/ai/generate' }))).toBe(body);
+      await vi.waitFor(() => expect(mockRecordAiUsage).toHaveBeenCalledTimes(1));
+      expect(mockRecordAiUsage.mock.calls[0][0]).toMatchObject({ model: 'gpt-4o' });
+    });
+
+    it('旧版 api 只有 upstream_reached（无 meta）：仍记账，model 为 unknown', async () => {
+      mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+      mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: false });
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(REACHED, { status: 200, headers: { 'content-type': 'text/event-stream' } }),
+      );
+      const { proxyLlmSse } = await import('@/lib/llm-sse-proxy');
+      await drain(await proxyLlmSse(req() as never, { upstreamPath: '/api/v1/ai/generate' }));
+      await vi.waitFor(() => expect(mockRecordAiUsage).toHaveBeenCalledTimes(1));
+      expect(mockRecordAiUsage.mock.calls[0][0]).toMatchObject({ model: 'unknown' });
+    });
+
     it('repair 重试每个 attempt 各发一次 upstream_reached：仍只记一笔', async () => {
       mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
       mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: false });

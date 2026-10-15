@@ -5,8 +5,10 @@
 /**
  * upstream_reached：aster-api 已连上第三方 AI，本次调用计入配额（#470）。不带内容，
  * 浏览器侧各消费者按未知类型忽略；只供 llm-sse-proxy 计费判断。
+ * meta：aster-api 首帧回传实际发出的 model（ADR 0048），data 为 model 名；非内容、非错误，
+ * 只供 llm-sse-proxy 记账用，浏览器侧忽略。
  */
-export type SSEEventType = 'delta' | 'validation_error' | 'repair_start' | 'final' | 'error' | 'upstream_reached';
+export type SSEEventType = 'delta' | 'validation_error' | 'repair_start' | 'final' | 'error' | 'upstream_reached' | 'meta';
 
 export interface SSEEvent {
   type: SSEEventType;
@@ -126,19 +128,27 @@ export function isBillableEvent(event: SSEEvent | null): boolean {
  * 逐 chunk 观察一条 SSE 字节流里是否出现过计费帧（{@link isBillableEvent}）。
  *
  * <p>帧可能被拆在多个 chunk 里，多字节字符也可能被切开，故按流式解码并缓冲不完整的帧。
- * 一旦见到计费帧就不再解析、不再缓冲。
+ * 一旦见到计费帧就不再解析、不再缓冲；meta 帧恒先于计费帧，故此时 model 已定。
  */
 export function createSseBillableWatcher(): {
   /** 喂入一个 chunk，返回到目前为止是否已出现计费帧。 */
   push: (chunk: Uint8Array) => boolean;
   /** 流结束时调用：解析末尾没有空行收尾的最后一帧。 */
   finish: () => boolean;
+  /** 首个 meta 帧携带的实际 model；无则 null。 */
+  model: () => string | null;
 } {
   const decoder = new TextDecoder();
   let buffer = '';
   let seen = false;
+  let model: string | null = null;
   const scan = (frames: string[]) => {
-    seen = frames.some((frame) => isBillableEvent(parseSSEFrame(frame)));
+    for (const frame of frames) {
+      const ev = parseSSEFrame(frame);
+      // meta 帧（ADR 0048）：aster-api 首帧回传实际发出的 model，先于计费帧；只取第一次。
+      if (ev?.type === 'meta' && model === null && typeof ev.data === 'string' && ev.data) model = ev.data;
+      if (isBillableEvent(ev)) seen = true;
+    }
   };
   return {
     push(chunk) {
@@ -157,5 +167,6 @@ export function createSseBillableWatcher(): {
       buffer = '';
       return seen;
     },
+    model: () => model,
   };
 }

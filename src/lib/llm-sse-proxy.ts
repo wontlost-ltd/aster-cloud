@@ -161,13 +161,15 @@ export async function proxyLlmSse(
   //   （见 ai-quota.ts 的 onConflictDoUpdate——createdAt/status 不被占位/回填改写），
   //   那是 #185 回填契约的一部分。所以只能把「记」这个动作推迟到确知已到达 provider。
   //   真实 token 由 aster-api 按同一 requestId 回填。
+  const billableWatcher = createSseBillableWatcher();
   const callKind = upstreamPath.endsWith('/suggest') ? 'suggest' : 'generate';
   const recordUsageOnce = createOnceRecorder(async () => {
     try {
       await recordAiUsage({
         userId: session.user.id,
         callKind,
-        model: 'unknown',
+        // ADR 0048：meta 帧回传的实际 model；旧版 api 不发 meta → 'unknown'。
+        model: billableWatcher.model() ?? 'unknown',
         promptTokens: 0,
         completionTokens: 0,
         usedByok,
@@ -182,7 +184,6 @@ export async function proxyLlmSse(
   });
 
   // 透传流并在第一个计费帧出现时记账。字节原样转发、不延迟——只在旁边解析帧做判断。
-  const billableWatcher = createSseBillableWatcher();
   const metered = upstreamResp.body.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) {

@@ -386,6 +386,23 @@ describe('recordAiUsage', () => {
     });
   });
 
+  it('★占位记录带真实 model：占位（无 token）不覆盖已有 model；带 token 的回填以回填值为准', async () => {
+    // 最近一次 .values() 参数与 .onConflictDoUpdate({ set }) 参数
+    const capturedUpsert = () => ({
+      values: mockInsertValues.mock.calls.at(-1)![0],
+      set: mockOnConflict.mock.calls.at(-1)![0].set,
+    });
+    // 占位：values.model 是真实 model，set.model 必须是「保留已有列」的 SQL 表达式（非字符串字面量）
+    await recordAiUsage({ userId: 'u', callKind: 'complete', model: 'gpt-4o', promptTokens: 0, completionTokens: 0, usedByok: true, requestId: 'r1', status: 'success' });
+    const placeholder = capturedUpsert();
+    expect(placeholder.values.model).toBe('gpt-4o');
+    expect(typeof placeholder.set.model).not.toBe('string');
+    // 回填（带 token）：model 以回填值为准——新版 api 回填的是实际发出 model（与占位一致）；
+    // 旧版 api 回填的是其请求/平台默认 model，这是既有 #185 契约（token 为权威），本用例把该规则锁定
+    await recordAiUsage({ userId: 'u', callKind: 'complete', model: 'gpt-4o-mini', promptTokens: 10, completionTokens: 5, usedByok: true, requestId: 'r1', status: 'success' });
+    expect(capturedUpsert().set.model).toBe('gpt-4o-mini');
+  });
+
   it('BYOK 调用 usedByok=true', async () => {
     await recordAiUsage({
       userId: 'user-1',
