@@ -29,6 +29,10 @@ interface BYOKBinding {
   lastErrorAt: string | null;
   lastError: string | null;
   createdAt: string;
+  /** ADR 0048：用户指定的模型；null = 使用平台默认。 */
+  model: string | null;
+  availableModels: { models: string[] | null; defaultModel: string } | null;
+  modelsCheckedAt: string | null;
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -63,6 +67,9 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
   const [providerUrl, setProviderUrl] = useState('');
   const [tokenQuota, setTokenQuota] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
+  // ADR 0048：可选模型 id；空 = 平台默认。notice = 保存成功但模型列表未能校验的提示。
+  const [model, setModel] = useState('');
+  const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Hydration-safe：toLocaleDateString/toLocaleString 在 SSR(Node) 与 CSR(浏览器) 的
@@ -82,6 +89,7 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editQuota, setEditQuota] = useState('');
   const [editExpiry, setEditExpiry] = useState('');
+  const [editModel, setEditModel] = useState('');
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [resetConfirmId, setResetConfirmId] = useState<string | null>(null);
   // 已绑定 key 区（编辑/重置/撤销）的反馈与上面「新增 key」表单的 error/success 分开——否则
@@ -104,12 +112,14 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
     setEditQuota(b.tokenQuota != null ? String(b.tokenQuota) : '');
     // date input 要 YYYY-MM-DD；从 ISO 截前 10 位。
     setEditExpiry(b.expiresAt ? b.expiresAt.slice(0, 10) : '');
+    setEditModel(b.model ?? '');
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setEditQuota('');
     setEditExpiry('');
+    setEditModel('');
   };
 
   const saveEdit = async (b: BYOKBinding) => {
@@ -130,12 +140,16 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
     // 「必须未来时间」拒绝。故比较当前输入与原值（都归一到 YYYY-MM-DD），未改则不带 expiresAt。
     const originalExpiryDay = b.expiresAt ? b.expiresAt.slice(0, 10) : '';
     const expiryChanged = editExpiry !== originalExpiryDay;
+    // model 同理：仅在改动时提交，避免额度/过期编辑触发服务端模型重校验。
+    const modelChanged = editModel.trim() !== (b.model ?? '');
     const payload: {
       id: string;
       action: 'update';
       tokenQuota: number | null;
+      model?: string | null;
       expiresAt?: string | null;
     } = { id: b.id, action: 'update', tokenQuota: quota };
+    if (modelChanged) payload.model = editModel.trim() || null;
     if (expiryChanged) {
       // 空=永不过期（null）；否则存当天 00:00:00 UTC（选哪天=那天起失效，见 handleSubmit 注释）。
       payload.expiresAt = editExpiry ? new Date(editExpiry + 'T00:00:00Z').toISOString() : null;
@@ -150,6 +164,10 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
       });
       if (!r.ok) {
         const data = await r.json().catch(() => ({}));
+        if (data.error === 'model_not_available') {
+          setRowError(t('modelNotAvailable', { available: ((data.available as string[]) ?? []).join(', ') }));
+          return;
+        }
         setRowError(extractErrorMessage(data) || t('saveFailed', { status: r.status }));
         return;
       }
@@ -189,8 +207,13 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+    setNotice(null);
     if (apiKey.length < 20) {
       setError(t('keyTooShort'));
+      return;
+    }
+    if (model.trim() && !/^[A-Za-z0-9._:/-]{1,128}$/.test(model.trim())) {
+      setError(t('modelInvalid'));
       return;
     }
     // 本地校验 tokenQuota（正整数）——服务端也校验,这里给即时反馈。
@@ -211,6 +234,7 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
         body: JSON.stringify({
           provider,
           apiKey,
+          model: model.trim() || null,
           providerUrl: providerUrl.trim() || null,
           tokenQuota: quotaNum,
           // 失效语义：选「7-31」= 7-31 当天起就不能用（该日已失效）。故存**当天 00:00:00 UTC**——
@@ -221,9 +245,16 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
       });
       if (!r.ok) {
         const data = await r.json().catch(() => ({}));
+        if (data.error === 'model_not_available') {
+          setError(t('modelNotAvailable', { available: ((data.available as string[]) ?? []).join(', ') }));
+          return;
+        }
         setError(extractErrorMessage(data) || t('saveFailed', { status: r.status }));
         return;
       }
+      const okData = await r.json().catch(() => ({}));
+      if (okData.modelsChecked === false) setNotice(t('modelUnverified'));
+      setModel('');
       setApiKey('');
       setProviderUrl('');
       setTokenQuota('');
@@ -389,6 +420,16 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
             </Select>
           </div>
           <div className="flex flex-col gap-2">
+            <Label htmlFor="ai-keys-model">{t('model')}</Label>
+            <Input
+              id="ai-keys-model"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder={t('modelPlaceholder')}
+            />
+            <p className="text-xs text-fg-muted">{t('modelHint')}</p>
+          </div>
+          <div className="flex flex-col gap-2">
             <Label htmlFor="ai-keys-secret">{t('apiKey')}</Label>
             <Input
               id="ai-keys-secret"
@@ -455,6 +496,11 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
               {success}
             </div>
           )}
+          {notice && (
+            <p className="text-sm text-amber-700" role="status">
+              {notice}
+            </p>
+          )}
 
           <button
             type="submit"
@@ -472,12 +518,12 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
         {/* 已绑定 key 区的反馈就近渲染（编辑/重置/撤销的结果）——与上面「新增 key」表单的
             error/success 分开，避免在下方表格操作却把提示显示到上面 form 底部。 */}
         {rowError && (
-          <div className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800">
+          <div role="alert" className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800">
             {rowError}
           </div>
         )}
         {rowSuccess && (
-          <div className="mt-3 rounded-md bg-green-50 p-3 text-sm text-green-800">
+          <div role="status" className="mt-3 rounded-md bg-green-50 p-3 text-sm text-green-800">
             {rowSuccess}
           </div>
         )}
@@ -492,6 +538,7 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
                   <th className="pb-2 text-left">{t('thProvider')}</th>
                   <th className="pb-2 text-left">{t('thPriority')}</th>
                   <th className="pb-2 text-left">{t('thKeyHint')}</th>
+                  <th className="pb-2 text-left">{t('thModel')}</th>
                   <th className="pb-2 text-left">{t('thStatus')}</th>
                   <th className="pb-2 text-left">{t('thQuota')}</th>
                   <th className="pb-2 text-left">{t('thExpiry')}</th>
@@ -542,6 +589,24 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
                       })()}
                     </td>
                     <td className="py-3 font-mono text-xs">****{b.keyHint}</td>
+                    <td className="py-3 font-mono text-xs">
+                      {editingId === b.id ? (
+                        <Input
+                          value={editModel}
+                          onChange={(e) => setEditModel(e.target.value)}
+                          placeholder={t('modelPlaceholder')}
+                          aria-label={t('model')}
+                        />
+                      ) : b.model ? (
+                        b.model
+                      ) : (
+                        <span className="font-sans text-fg-muted">
+                          {b.availableModels?.defaultModel
+                            ? t('modelDefault', { model: b.availableModels.defaultModel })
+                            : t('modelDefaultUnknown')}
+                        </span>
+                      )}
+                    </td>
                     <td className="py-3">
                       {b.active ? (
                         <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">

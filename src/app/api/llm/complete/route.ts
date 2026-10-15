@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
       await recordAiUsage({
         userId: session.user.id,
         callKind: 'complete',
-        model: 'unknown',
+        model: responseModel(text),
         promptTokens: 0,
         completionTokens: 0,
         usedByok,
@@ -165,5 +165,16 @@ function reachedUpstream(responseText: string): boolean {
       && (parsed as { upstreamReached?: unknown }).upstreamReached === false);
   } catch {
     return true;
+  }
+}
+
+/** aster-api 响应里的实际发出 model（ADR 0048）；旧版/非 JSON → 'unknown'。 */
+function responseModel(responseText: string): string {
+  try {
+    const parsed: unknown = JSON.parse(responseText);
+    const m = typeof parsed === 'object' && parsed !== null ? (parsed as { model?: unknown }).model : undefined;
+    return typeof m === 'string' && m ? m : 'unknown';
+  } catch {
+    return 'unknown';
   }
 }

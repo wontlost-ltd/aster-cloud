@@ -177,6 +177,11 @@ describe('POST /api/llm/complete — AI 配额门控', () => {
       injected: true,
     }));
     mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: -1, limit: -1, usedByok: true });
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response('{"completion":"x","model":"gpt-4o","upstreamReached":true}', {
+        status: 200, headers: { 'content-type': 'application/json' },
+      }),
+    );
 
     const { POST } = await import('@/app/api/llm/complete/route');
     const res = await POST(post() as never);
@@ -188,6 +193,19 @@ describe('POST /api/llm/complete — AI 配额门控', () => {
     const forwardedBody = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string;
     expect(JSON.parse(forwardedBody)._byok).toEqual({ provider: 'openai', apiKey: 'sk-user' });
     // 记账 usedByok=true
-    expect(mockRecordAiUsage.mock.calls[0][0]).toMatchObject({ usedByok: true });
+    expect(mockRecordAiUsage.mock.calls[0][0]).toMatchObject({ usedByok: true, model: 'gpt-4o' });
+  });
+
+  it('aster-api 响应无 model 字段（旧版）→ 仍记账，model 为 unknown', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+    mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: false });
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response('{"completion":"x","upstreamReached":true}', {
+        status: 200, headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const { POST } = await import('@/app/api/llm/complete/route');
+    await POST(post() as never);
+    expect(mockRecordAiUsage.mock.calls[0][0]).toMatchObject({ model: 'unknown' });
   });
 });

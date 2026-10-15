@@ -46,6 +46,12 @@ describe('parseSSEFrame', () => {
       expect(e?.error).toBeUndefined();
     });
 
+    it('meta 帧（ADR 0048 实际 model）：解析为 meta，不是内容也不是错误', () => {
+      const e = parseSSEFrame('data: {"type":"meta","data":"gpt-4o"}');
+      expect(e?.type).toBe('meta');
+      expect(e?.error).toBeUndefined();
+    });
+
     it('repair_start with progress data', () => {
       const frame = 'data: {"type":"repair_start","data":"2/5"}';
       const e = parseSSEFrame(frame);
