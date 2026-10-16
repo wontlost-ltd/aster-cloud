@@ -4,7 +4,7 @@ vi.mock('@/lib/api-signing', () => ({
   signInternalCallerHeaders: vi.fn().mockResolvedValue({ 'X-Internal-Signature': 'sig', 'X-Aster-Timestamp': '1', 'X-Aster-Nonce': 'n', 'X-Internal-Caller': 'cloud-bff' }),
 }));
 
-import { fetchByokModels } from '@/lib/byok-models';
+import { fetchByokModels, unverifiedReason } from '@/lib/byok-models';
 import { signInternalCallerHeaders } from '@/lib/api-signing';
 
 const creds = { provider: 'openai', apiKey: 'sk-x', baseUrl: null };
@@ -46,5 +46,23 @@ describe('fetchByokModels（经 aster-api POST /api/v1/ai/models）', () => {
   it('HMAC 密钥缺失 → ok:false cloud_misconfigured', async () => {
     vi.mocked(signInternalCallerHeaders).mockRejectedValueOnce(new Error('ASTER_PLAN_GATE_HMAC_KEY not configured'));
     expect(await fetchByokModels('u1', creds)).toEqual({ ok: false, error: 'cloud_misconfigured' });
+  });
+
+  it('★超时（AbortSignal.timeout → TimeoutError）→ ok:false error=timeout', async () => {
+    vi.mocked(fetch).mockRejectedValue(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+    expect(await fetchByokModels('u1', creds)).toEqual({ ok: false, error: 'timeout' });
+  });
+});
+
+describe('unverifiedReason（把 fetchByokModels 的 error 收敛成稳定原因码）', () => {
+  it.each([
+    ['cloud_misconfigured', 'cloud_misconfigured'],
+    ['models_unavailable', 'provider_unavailable'],
+    ['invalid_byok', 'endpoint_rejected'],
+    ['timeout', 'timeout'],
+    ['http_500', 'unknown'],
+    ['fetch failed', 'unknown'],
+  ])('%s → %s', (error, reason) => {
+    expect(unverifiedReason(error)).toBe(reason);
   });
 });

@@ -41,8 +41,9 @@ webpack dev 默认只保留最近 5 个按需编译入口、闲置 60s 即释放
 
 ## 数据前提与副作用
 
-- 依赖栈内种子：团队 `team1`、策略 `pol-adr0041-team`（v1 require_approval / v2 escalate）及其执行记录与 guard 待审批。
+- 依赖栈内种子：团队 `team1`、策略 `pol-adr0041-team`（v1 require_approval / v2 escalate）及其执行记录。
 - `approvals-inbox` 在 `beforeAll` 经 aster-api `POST /api/v1/guard/decisions`（与 aster-guard `scripts/e2e-local.mjs` 第 2 步相同）为 team1 新建两条 `e2e-` 待审批：一条由 m-dpo 批准，另一条留在 Pending 供只读视角；不再依赖 24 小时内手工补的数据。
+- `policy-logs-guard-link` 同样在 `beforeAll` 以 `E2E_GUARD_API_KEY` 为 team1 自补一条 `e2e-` 待审批执行（未设置该变量时跳过并注明原因），日志页的「Pending approval · View」行不再依赖 24 小时内的种子数据。
 - `team-business-roles` 会为 m-free 增加再删除 `CISO`，结束时还原。
 - `whatif-matrix` 与 `evidence-export` 各新建一个批次 / 导出记录。`whatif-matrix` 不写死执行数，以批次给出的可回放总数（扣除不可比条数）为期望值。
 - `cedar-export`（ADR 0047）以 t1 身份经 `POST /api/policies` 新建三条策略（结束时软删除）；导出的是可执行版本，故前两条经 psql 把 v1 置为 APPROVED（四眼原则下单用户无法自批），第三条保持草稿以断言「先批准」提示。可导出那条会在 aster-api 审计表追加一条 `POLICY_EXPORTED`，用例经 psql 核对其 `claimedRef` 与下载文件哈希；设 `CEDAR_EXPORT_OUT=<目录>` 时另存两个下载文件供 Cedar CLI 交叉核对。

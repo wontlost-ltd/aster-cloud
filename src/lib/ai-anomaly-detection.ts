@@ -5,6 +5,7 @@
 
 import { db, users, aiUsageRecords } from '@/lib/prisma';
 import { and, eq, gte, sql, isNotNull } from 'drizzle-orm';
+import { BILLABLE_STATUS_SQL } from '@/lib/ai-quota';
 
 interface AnomalySignal {
   userId: string;
@@ -60,17 +61,19 @@ export async function detectAndBan(): Promise<AnomalySignal[]> {
   }
 
   // 信号 3：失败率超高（≥10 次调用 + > 80% 失败 = 401/403/429）
+  // 「失败」只算被拒类状态（配额/限流/封禁/安全拦截）。到达 provider 后失败的 api_error 属于计费调用，
+  // 多由 provider 故障或 BYOK 模型配置错误造成，不是探测信号，不计入失败率。
   const sinceIso = since.toISOString();
   const failingUsers = await db.execute(sql`
     SELECT
       "userId",
       COUNT(*)::int AS total,
-      SUM(CASE WHEN status != 'success' THEN 1 ELSE 0 END)::int AS failed
+      SUM(CASE WHEN status NOT IN (${BILLABLE_STATUS_SQL}) THEN 1 ELSE 0 END)::int AS failed
     FROM "AiUsageRecord"
     WHERE "createdAt" >= ${sinceIso}::timestamp
     GROUP BY "userId"
     HAVING COUNT(*) >= 10
-       AND SUM(CASE WHEN status != 'success' THEN 1 ELSE 0 END) * 1.0 / COUNT(*) > 0.8
+       AND SUM(CASE WHEN status NOT IN (${BILLABLE_STATUS_SQL}) THEN 1 ELSE 0 END) * 1.0 / COUNT(*) > 0.8
   `);
 
   for (const row of failingUsers as unknown as Array<{ userId: string; total: number; failed: number }>) {

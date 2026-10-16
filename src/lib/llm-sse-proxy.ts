@@ -18,7 +18,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { signInternalCallerHeaders } from '@/lib/api-signing';
-import { checkAiQuota, recordAiUsage } from '@/lib/ai-quota';
+import { checkAiQuota, markAiUsageFailed, recordAiUsage } from '@/lib/ai-quota';
+import { runAfterResponse } from '@/lib/after-response';
 import { aiQuotaHttpStatus } from '@/lib/ai-quota-http';
 import { resolveByokEnvelope, injectByokEnvelope } from '@/lib/byok-envelope';
 import { createSseBillableWatcher } from '@/lib/sse-frame';
@@ -157,13 +158,18 @@ export async function proxyLlmSse(
   //   - 也不是上游 2xx 响应头一到就记（issue #441）：2xx 只说明 aster-api 接受了请求，
   //     还没到 provider。
   //
-  //   为什么不是「记完再按结果撤销」：recordAiUsage 的 upsert 刻意保留首次 status
-  //   （见 ai-quota.ts 的 onConflictDoUpdate——createdAt/status 不被占位/回填改写），
-  //   那是 #185 回填契约的一部分。所以只能把「记」这个动作推迟到确知已到达 provider。
+  // ★记账状态：先在第一个计费帧处插一笔 success 占位（与此前一致，保证并发流也立刻计入配额/速率门，
+  //   防止「19/20 时并发开几十条长流全部过门」）；流结束后若计费之后出现过 error 帧（provider 报错 /
+  //   拒绝模型 / 中途失败），再按 requestId 定向 UPDATE 为 api_error。api_error 同样计入配额
+  //   （见 ai-quota.ts BILLABLE_STATUSES），只是在用量记录里如实呈现为失败。
+  //
+  //   为什么改状态用定向 UPDATE 而不是再 upsert：recordAiUsage 的 upsert 刻意保留首次 status（#185
+  //   回填契约），而 aster-api 的 token 回填恒为 success、且可能先于 error 帧到达（「LLM 未生成内容」
+  //   就是先上报 usage 再发 error 帧）——upsert 改不动，只能 UPDATE。
   //   真实 token 由 aster-api 按同一 requestId 回填。
   const billableWatcher = createSseBillableWatcher();
   const callKind = upstreamPath.endsWith('/suggest') ? 'suggest' : 'generate';
-  const recordUsageOnce = createOnceRecorder(async () => {
+  const recordPlaceholderOnce = createOnceRecorder(async () => {
     try {
       await recordAiUsage({
         userId: session.user.id,
@@ -182,21 +188,44 @@ export async function proxyLlmSse(
       console.warn(`[llm-sse-proxy] recordAiUsage failed for user=${session.user.id}:`, e);
     }
   });
+  // 占位插入的 Promise：首个计费帧时发起（不阻塞流），由下面的 after 任务等待其落库。
+  let placeholder: Promise<void> | null = null;
+  const startPlaceholder = () => {
+    placeholder ??= recordPlaceholderOnce();
+  };
 
-  // 透传流并在第一个计费帧出现时记账。字节原样转发、不延迟——只在旁边解析帧做判断。
-  const metered = upstreamResp.body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        controller.enqueue(chunk);
-        // 记账是 fire-and-forget：绝不能让计费 IO 阻塞或中断用户的流。
-        if (billableWatcher.push(chunk)) void recordUsageOnce();
-      },
-      flush() {
-        // 最后一帧可能没有空行收尾
-        if (billableWatcher.finish()) void recordUsageOnce();
-      },
-    })
-  );
+  // 流的终点（正常结束 / 客户端断开或上游出错 / 请求中止）：多个终点可能先后触发，只结算一次。
+  let markStreamEnded!: () => void;
+  const streamEnded = new Promise<void>((resolve) => {
+    markStreamEnded = resolve;
+  });
+  // 兜底：部分运行时在客户端断开时不回调 transformer.cancel；请求 signal 中止同样标记流结束，
+  // 否则下面的 after 任务会一直等下去。
+  req.signal?.addEventListener('abort', () => markStreamEnded(), { once: true });
+
+  // 结算在请求作用域内交给 after()（runAfterResponse）：Cloudflare Workers 会等它跑完再回收，
+  // 占位插入与状态更新都不会因响应结束而被截断。
+  runAfterResponse(async () => {
+    await streamEnded;
+    // 最后一帧可能没有空行收尾：此时才见到的计费帧同样补记占位。
+    if (billableWatcher.finish()) startPlaceholder();
+    if (!placeholder) return;
+    await placeholder;
+    if (billableWatcher.failed()) await markAiUsageFailed(requestId);
+  });
+
+  // 透传流并在旁边解析帧；字节原样转发、不延迟。
+  // cancel 是 Streams 规范的 Transformer 钩子（Node ≥ 22 支持），TS lib 尚未声明，故用交叉类型补上。
+  const transformer: Transformer<Uint8Array, Uint8Array> & { cancel: () => void } = {
+    transform(chunk, controller) {
+      controller.enqueue(chunk);
+      if (billableWatcher.push(chunk)) startPlaceholder();
+    },
+    flush: () => markStreamEnded(),
+    // 客户端中途断开（或上游流出错）：已到达 provider 的调用照样计费。
+    cancel: () => markStreamEnded(),
+  };
+  const metered = upstreamResp.body.pipeThrough(new TransformStream(transformer));
 
   return new NextResponse(metered, {
     status: upstreamResp.status,

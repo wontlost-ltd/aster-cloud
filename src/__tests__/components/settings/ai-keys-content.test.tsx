@@ -110,6 +110,26 @@ describe('AiKeysContent 模型字段', () => {
     await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
   });
 
+  it.each([
+    ['provider_unavailable', /could not be verified.*rejected the key or is unavailable/],
+    ['timeout', /could not be verified.*timed out/],
+    ['endpoint_rejected', /could not be verified.*Provider URL or provider was rejected/],
+  ])('保存成功但未校验（%s）→ 提示附带原因', async (reason, re) => {
+    vi.stubGlobal('fetch', fetchReturning(200, { ok: true, id: 'b1', modelsChecked: false, unverifiedReason: reason }));
+    render(<AiKeysContent initialBindings={[]} locale="en" />, { wrapper });
+    fillAndSave();
+    expect(await screen.findByRole('status')).toHaveTextContent(re);
+  });
+
+  it('未知原因码 → 回落 unknown 文案，不显示 key 路径', async () => {
+    vi.stubGlobal('fetch', fetchReturning(200, { ok: true, id: 'b1', modelsChecked: false, unverifiedReason: 'weird' }));
+    render(<AiKeysContent initialBindings={[]} locale="en" />, { wrapper });
+    fillAndSave();
+    const status = await screen.findByRole('status');
+    expect(status).toHaveTextContent(/unknown error/);
+    expect(status.textContent).not.toContain('modelUnverifiedReason');
+  });
+
   it('已绑定列表显示 model 列：指定值或「Platform default」', () => {
     render(
       <AiKeysContent
@@ -214,5 +234,23 @@ describe('AiKeysContent 模型字段', () => {
     fireEvent.click(screen.getByText('Save'));
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('gpt-4o-mini');
+  });
+
+  it('行内改模型保存成功但未校验 → 行内提示附带原因', async () => {
+    vi.stubGlobal('fetch', fetchReturning(200, { ok: true, modelsChecked: false, unverifiedReason: 'provider_unavailable', bindings: [] }));
+    render(
+      <AiKeysContent
+        locale="en"
+        initialBindings={[
+          { ...baseBinding, id: 'a', provider: 'openai', keyHint: '1234', model: 'gpt-4o', availableModels: null, modelsCheckedAt: null },
+        ]}
+      />,
+      { wrapper },
+    );
+    fireEvent.click(screen.getByText('Edit'));
+    const input = screen.getAllByLabelText('Model (optional)')[1] as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'gpt-4o-mini' } });
+    fireEvent.click(screen.getByText('Save'));
+    expect(await screen.findByRole('status')).toHaveTextContent(/could not be verified.*rejected the key or is unavailable/);
   });
 });

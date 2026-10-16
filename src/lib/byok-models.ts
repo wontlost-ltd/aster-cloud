@@ -22,6 +22,39 @@ export type ByokModelsResult =
   | { ok: true; models: string[] | null; defaultModel: string }
   | { ok: false; error: string };
 
+/**
+ * 「模型列表未能校验」的稳定原因码，供 UI 解释为什么没校验成（只做提示，不阻断保存）。
+ * aster-api 的 502 models_unavailable 已把 provider 401/403/5xx/连接失败合并、且不回传上游状态码，
+ * 所以 cloud 只能区分到 provider_unavailable 这一层，不臆造更细的原因。
+ */
+export type UnverifiedReason =
+  | 'cloud_misconfigured'
+  | 'provider_unavailable'
+  | 'endpoint_rejected'
+  | 'timeout'
+  | 'unknown';
+
+const REASON_BY_ERROR: Record<string, UnverifiedReason> = {
+  cloud_misconfigured: 'cloud_misconfigured',
+  models_unavailable: 'provider_unavailable',
+  invalid_byok: 'endpoint_rejected',
+  timeout: 'timeout',
+};
+
+/** 把 fetchByokModels 的 error 映射成 UnverifiedReason；不认识的一律 unknown。 */
+export function unverifiedReason(error: string): UnverifiedReason {
+  return REASON_BY_ERROR[error] ?? 'unknown';
+}
+
+/**
+ * AbortSignal.timeout 触发时 fetch 以 DOMException TimeoutError（部分运行时为 AbortError）拒绝。
+ * DOMException 跨 realm 时不一定 instanceof Error，故按 name 结构判断。
+ */
+function isTimeout(e: unknown): boolean {
+  const name = (e as { name?: unknown } | null)?.name;
+  return name === 'TimeoutError' || name === 'AbortError';
+}
+
 export async function fetchByokModels(
   userId: string,
   creds: { provider: string; apiKey: string; baseUrl: string | null },
@@ -53,6 +86,7 @@ export async function fetchByokModels(
     const data = (await res.json()) as { models: string[] | null; defaultModel: string };
     return { ok: true, models: data.models ?? null, defaultModel: data.defaultModel };
   } catch (e) {
+    if (isTimeout(e)) return { ok: false, error: 'timeout' };
     return { ok: false, error: e instanceof Error ? e.message : 'fetch_failed' };
   }
 }

@@ -8,6 +8,7 @@
 
 import { db } from '@/lib/prisma';
 import { sql } from 'drizzle-orm';
+import { BILLABLE_STATUS_SQL } from '@/lib/ai-quota';
 
 /**
  * 阈值（生产环境通过 env 覆盖，留 escape hatch）
@@ -33,7 +34,7 @@ export async function todayPlatformCostCents(): Promise<number> {
     FROM "AiUsageRecord"
     WHERE "createdAt" >= ${todayIso}::timestamp
       AND "usedByok" = false
-      AND status = 'success'
+      AND status IN (${BILLABLE_STATUS_SQL})
   `);
   const rows = result as unknown as Array<{ cents: number }>;
   return rows[0]?.cents ?? 0;

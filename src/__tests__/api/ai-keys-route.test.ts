@@ -20,7 +20,8 @@ vi.mock('@/lib/ai-key-vault', () => ({
   getDecryptedBYOKKeyById: vi.fn(),
   findBindingForUser: vi.fn(),
 }));
-vi.mock('@/lib/byok-models', () => ({
+vi.mock('@/lib/byok-models', async (importOriginal) => ({
+  unverifiedReason: (await importOriginal<typeof import('@/lib/byok-models')>()).unverifiedReason,
   fetchByokModels: vi.fn(),
   MODEL_ID_RE: /^[A-Za-z0-9._:/-]{1,128}$/,
 }));
@@ -162,7 +163,22 @@ describe('PATCH /api/user/ai-keys — 编辑额度/失效日期', () => {
     vi.mocked(updateBYOKKeyMeta).mockResolvedValue({ provider: 'openai', keyHint: 'xxxx' });
     const r = await PATCH(patchReq({ id: 'b1', action: 'update', model: 'gpt-4o' }));
     expect(r.status).toBe(200);
-    expect(await r.json()).toMatchObject({ ok: true, modelsChecked: false });
+    expect(await r.json()).toMatchObject({ ok: true, modelsChecked: false, unverifiedReason: 'provider_unavailable' });
+  });
+
+  it('★update model：列表查询超时 → modelsChecked=false + unverifiedReason=timeout，并告警（不含 key）', async () => {
+    const key = 'sk-'.padEnd(24, 'z');
+    vi.mocked(findBindingForUser).mockResolvedValue({ id: 'b1', provider: 'openai', providerUrl: null });
+    vi.mocked(getDecryptedBYOKKeyById).mockResolvedValue(key);
+    vi.mocked(fetchByokModels).mockResolvedValue({ ok: false, error: 'timeout' });
+    vi.mocked(updateBYOKKeyMeta).mockResolvedValue({ provider: 'openai', keyHint: 'zzzz' });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const r = await PATCH(patchReq({ id: 'b1', action: 'update', model: 'gpt-4o' }));
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ ok: true, modelsChecked: false, unverifiedReason: 'timeout' });
+    expect(warn).toHaveBeenCalledWith('[ai-keys] models check failed for binding=%s: %s', 'b1', 'timeout');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(key);
+    warn.mockRestore();
   });
 
   it('★update model：availableModels 缓存写入失败 → 仍 200，modelsChecked=true', async () => {
@@ -345,8 +361,31 @@ describe('POST /api/user/ai-keys — 多 key 新增', () => {
     vi.mocked(saveBYOKKey).mockResolvedValue({ id: 'new-2' });
     const r = await POST(postReq({ provider: 'openai', apiKey: goodKey, model: 'gpt-4o' }));
     expect(r.status).toBe(200);
-    expect(await r.json()).toMatchObject({ ok: true, modelsChecked: false });
+    expect(await r.json()).toMatchObject({ ok: true, modelsChecked: false, unverifiedReason: 'provider_unavailable' });
     expect(updateBYOKAvailableModels).not.toHaveBeenCalled();
+  });
+
+  it('★列表查询 502 → unverifiedReason=provider_unavailable，并告警 binding id（不含 key）', async () => {
+    vi.mocked(fetchByokModels).mockResolvedValue({ ok: false, error: 'models_unavailable' });
+    vi.mocked(saveBYOKKey).mockResolvedValue({ id: 'new-502' });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const r = await POST(postReq({ provider: 'openai', apiKey: goodKey, model: 'gpt-4o' }));
+    expect(await r.json()).toMatchObject({ ok: true, modelsChecked: false, unverifiedReason: 'provider_unavailable' });
+    expect(warn).toHaveBeenCalledWith('[ai-keys] models check failed for binding=%s: %s', 'new-502', 'models_unavailable');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(goodKey);
+    warn.mockRestore();
+  });
+
+  it('列表查询超时 → unverifiedReason=timeout；校验成功时不带 unverifiedReason', async () => {
+    vi.mocked(fetchByokModels).mockResolvedValueOnce({ ok: false, error: 'timeout' });
+    vi.mocked(saveBYOKKey).mockResolvedValue({ id: 'new-t' });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const r = await POST(postReq({ provider: 'openai', apiKey: goodKey }));
+    expect(await r.json()).toMatchObject({ modelsChecked: false, unverifiedReason: 'timeout' });
+    vi.mocked(fetchByokModels).mockResolvedValueOnce({ ok: true, models: ['gpt-4o'], defaultModel: 'gpt-4o' });
+    const ok = await (await POST(postReq({ provider: 'openai', apiKey: goodKey }))).json();
+    expect(ok.unverifiedReason).toBeUndefined();
+    vi.mocked(console.warn).mockRestore();
   });
 
   it('网关不支持列表（models=null）→ 保存，不校验 model', async () => {

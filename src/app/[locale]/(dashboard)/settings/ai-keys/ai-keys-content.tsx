@@ -58,6 +58,20 @@ interface AiKeysContentProps {
 export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
   const t = useTranslations('settings.aiKeysPage');
   const tSettings = useTranslations('settings');
+
+  // 模型列表未能校验时的提示：服务端给了原因码就附上原因（未知码回落 unknown），没给则只显示通用提示。
+  // 键写成字面量，便于 check:message-keys 静态核对。
+  const unverifiedNotice = (reason: unknown): string => {
+    const reasons: Record<string, string> = {
+      cloud_misconfigured: t('modelUnverifiedReason.cloud_misconfigured'),
+      provider_unavailable: t('modelUnverifiedReason.provider_unavailable'),
+      endpoint_rejected: t('modelUnverifiedReason.endpoint_rejected'),
+      timeout: t('modelUnverifiedReason.timeout'),
+      unknown: t('modelUnverifiedReason.unknown'),
+    };
+    if (typeof reason !== 'string') return t('modelUnverified');
+    return `${t('modelUnverified')} ${reasons[reason] ?? reasons.unknown}`;
+  };
   const [bindings, setBindings] = useState<BYOKBinding[]>(initialBindings);
   const [provider, setProvider] = useState<'openai' | 'anthropic' | 'vertex'>(
     'openai',
@@ -171,7 +185,12 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
         setRowError(extractErrorMessage(data) || t('saveFailed', { status: r.status }));
         return;
       }
-      setRowSuccess(t('editSaved'));
+      const okData = await r.json().catch(() => ({}));
+      setRowSuccess(
+        okData.modelsChecked === false
+          ? `${t('editSaved')} ${unverifiedNotice(okData.unverifiedReason)}`
+          : t('editSaved'),
+      );
       cancelEdit();
       await refresh();
     } finally {
@@ -253,7 +272,7 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
         return;
       }
       const okData = await r.json().catch(() => ({}));
-      if (okData.modelsChecked === false) setNotice(t('modelUnverified'));
+      if (okData.modelsChecked === false) setNotice(unverifiedNotice(okData.unverifiedReason));
       setModel('');
       setApiKey('');
       setProviderUrl('');

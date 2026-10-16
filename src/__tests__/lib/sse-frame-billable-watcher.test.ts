@@ -3,7 +3,7 @@
  * 帧格式取自 aster-api 实际输出（LlmProxyService.toJson / AiAssistantResource.refusalStream）。
  */
 import { describe, it, expect } from 'vitest';
-import { createSseBillableWatcher } from '@/lib/sse-frame';
+import { createSseBillableWatcher, parseSSEFrame } from '@/lib/sse-frame';
 
 const enc = new TextEncoder();
 const feed = (...chunks: string[]) => {
@@ -114,5 +114,66 @@ describe('createSseBillableWatcher', () => {
     expect(w.push(enc.encode('data: {"type":"me'))).toBe(false);
     expect(w.push(enc.encode('ta","data":"gpt-4o"}\n\n'))).toBe(false);
     expect(w.model()).toBe('gpt-4o');
+  });
+
+  describe('failed()：到达 provider 之后出现 error 帧 → 本次调用以失败记账（状态 api_error，仍计费）', () => {
+    const REACHED = 'data: {"type":"upstream_reached"}\n\n';
+    const run = (...chunks: string[]) => {
+      const w = createSseBillableWatcher();
+      chunks.forEach((c) => w.push(enc.encode(c)));
+      w.finish();
+      return w;
+    };
+
+    it('★upstream_reached 后 provider 报错（含 provider_rejected_model）→ failed', () => {
+      expect(run(REACHED, 'data: {"type":"error","error":"provider_rejected_model"}\n\n').failed()).toBe(true);
+    });
+
+    it('★已有内容后中途失败 → failed', () => {
+      expect(run(REACHED, 'data: {"type":"delta","data":"Rule"}\n\n', 'data: {"type":"error","error":"流式响应异常"}\n\n').failed()).toBe(true);
+    });
+
+    it('同一 chunk 里 upstream_reached + error → failed', () => {
+      expect(run(REACHED + 'data: {"type":"error","error":"LLM 未生成内容"}\n\n').failed()).toBe(true);
+    });
+
+    it('末尾 error 帧没有空行收尾 → finish 时识别为 failed', () => {
+      expect(run(REACHED, 'data: {"type":"error","error":"x"}').failed()).toBe(true);
+    });
+
+    it('正常完成 / 只有 upstream_reached（用户断开）→ 不算 failed', () => {
+      expect(run(REACHED, 'data: {"type":"delta","data":"a"}\n\n', 'data: {"type":"final","data":"a","validated":true}\n\n').failed()).toBe(false);
+      expect(run(REACHED).failed()).toBe(false);
+    });
+
+    it('计费前的 error（未到达 provider）不算 failed——那一笔本就不记', () => {
+      expect(run('data: {"type":"error","error":"未配置 LLM API Key"}\n\n').failed()).toBe(false);
+    });
+
+    it('validation_error / repair_start 不是失败（repair 流程的正常帧）', () => {
+      expect(run(REACHED, 'data: {"type":"validation_error","error":"语法错误"}\n\n', 'data: {"type":"repair_start","data":"2/3"}\n\n').failed()).toBe(false);
+    });
+  });
+
+  describe('aster-api 安全拒答：单个裸 JSON item → 单条 data: 帧（不再是 data: data: 双层包裹）', () => {
+    const REFUSAL = 'data: {"type":"error","error":"out_of_scope","message":"超出范围","rule_id":"r1"}\n\n';
+
+    it('parseSSEFrame 解析为 error 事件；error 字段取面向用户的 message（机器码 out_of_scope 只用于识别）', () => {
+      expect(parseSSEFrame(REFUSAL)).toEqual({ type: 'error', data: undefined, error: '超出范围', validated: undefined });
+    });
+
+    it('无 message 时 error 字段回落为机器码 out_of_scope', () => {
+      expect(parseSSEFrame('data: {"type":"error","error":"out_of_scope","rule_id":"r1"}\n\n')).toMatchObject({
+        type: 'error',
+        error: 'out_of_scope',
+      });
+    });
+
+    it('★拒答 error 帧先于任何计费帧到达 → 不计费、failed() 为 false（拒答不记账）', () => {
+      const w = createSseBillableWatcher();
+      expect(w.push(enc.encode(REFUSAL))).toBe(false);
+      expect(w.finish()).toBe(false);
+      expect(w.failed()).toBe(false);
+    });
   });
 });

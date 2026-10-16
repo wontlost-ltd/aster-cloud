@@ -12,7 +12,7 @@ import {
   getDecryptedBYOKKeyById,
   findBindingForUser,
 } from '@/lib/ai-key-vault';
-import { fetchByokModels, MODEL_ID_RE } from '@/lib/byok-models';
+import { fetchByokModels, MODEL_ID_RE, unverifiedReason, type UnverifiedReason } from '@/lib/byok-models';
 import { errorEnvelope } from '@/lib/api/error-envelope';
 import { byokTokensUsedThisMonth, resetByokQuotaUsage } from '@/lib/ai-quota';
 import { logAuditEvent, extractClientInfo } from '@/lib/audit-log';
@@ -62,6 +62,18 @@ async function writeAvailableModels(
   }
 }
 
+/**
+ * 列表查询失败时的响应字段：modelsChecked=false + 稳定原因码（让 UI 说明为何未校验），
+ * 并以 binding id 告警，便于运维对照 aster-api 日志。只记 error 码，绝不记 key。
+ */
+function unverified(
+  bindingId: string,
+  error: string,
+): { modelsChecked: false; unverifiedReason: UnverifiedReason } {
+  console.warn('[ai-keys] models check failed for binding=%s: %s', bindingId, error);
+  return { modelsChecked: false, unverifiedReason: unverifiedReason(error) };
+}
+
 function modelNotAvailable(available: string[]) {
   return NextResponse.json({ error: 'model_not_available', available }, { status: 400 });
 }
@@ -74,12 +86,12 @@ async function validatePatchModel(
   userId: string,
   bindingId: string,
   model: string,
-): Promise<NextResponse | { modelsChecked: boolean | undefined }> {
+): Promise<NextResponse | { modelsChecked?: boolean; unverifiedReason?: UnverifiedReason }> {
   const binding = await findBindingForUser(userId, bindingId);
   if (!binding) {
     return NextResponse.json({ error: 'AI key not found' }, { status: 404 });
   }
-  if (binding.provider === 'vertex') return { modelsChecked: undefined };
+  if (binding.provider === 'vertex') return {};
 
   const apiKey = await getDecryptedBYOKKeyById(userId, bindingId);
   if (!apiKey) {
@@ -91,10 +103,9 @@ async function validatePatchModel(
     model,
   );
   if ('rejected' in check) return modelNotAvailable(check.rejected);
-  if (check.result.ok) {
-    await writeAvailableModels(bindingId, check.result);
-  }
-  return { modelsChecked: check.result.ok };
+  if (!check.result.ok) return unverified(bindingId, check.result.error);
+  await writeAvailableModels(bindingId, check.result);
+  return { modelsChecked: true };
 }
 
 export async function GET() {
@@ -243,10 +254,10 @@ export async function POST(req: Request) {
       model,
     });
 
-    const modelsChecked = models?.ok === true;
     if (models?.ok) {
       await writeAvailableModels(id, models);
     }
+    const checkFields = models && !models.ok ? unverified(id, models.error) : { modelsChecked: models?.ok === true };
 
     // 审计（管理员可追溯）：只记 binding id / provider / keyHint（后 4 位）/ 是否设了 url/额度/失效
     // 日期，**绝不**记明文 key。多 key 下 POST 一律是 create。
@@ -272,7 +283,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       id,
-      modelsChecked,
+      ...checkFields,
       availableModels: models?.ok ? models.models : undefined,
     });
   } catch (err) {
@@ -413,11 +424,11 @@ export async function PATCH(req: Request) {
     }
 
     // 改 model 与新建同一校验路径：解密**本人**这条 key（归属不符 → 404，不解密），经 aster-api 查列表。
-    let modelsChecked: boolean | undefined;
+    let checkFields: { modelsChecked?: boolean; unverifiedReason?: UnverifiedReason } = {};
     if (typeof model === 'string') {
       const validated = await validatePatchModel(userId, body.id, model);
       if (validated instanceof NextResponse) return validated;
-      modelsChecked = validated.modelsChecked;
+      checkFields = validated;
     }
 
     const updated = await updateBYOKKeyMeta({ userId, bindingId: body.id, tokenQuota, expiresAt, model });
@@ -443,7 +454,7 @@ export async function PATCH(req: Request) {
       userAgent,
     });
 
-    return NextResponse.json({ ok: true, ...(modelsChecked !== undefined ? { modelsChecked } : {}) });
+    return NextResponse.json({ ok: true, ...checkFields });
   } catch (err) {
     const env = errorEnvelope({
       status: 500,
