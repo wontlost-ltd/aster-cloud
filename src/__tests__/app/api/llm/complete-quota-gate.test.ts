@@ -157,6 +157,36 @@ describe('POST /api/llm/complete — AI 配额门控', () => {
     }
   });
 
+  it('★400 provider_rejected_model（已到达 provider）→ 透传 400，记一笔 api_error，model 为 BYOK 指定的模型', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+    mockResolveByok.mockResolvedValue({ provider: 'openai', apiKey: 'sk-x', baseUrl: null, bindingId: 'b1', model: 'gpt-9' });
+    mockInjectByok.mockImplementation((raw: string) => ({ body: raw, injected: true }));
+    mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: -1, limit: -1, usedByok: true });
+    const upstreamBody = '{"error":"provider_rejected_model","message":"provider 拒绝了所选模型: gpt-9"}';
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(upstreamBody, { status: 400, headers: { 'content-type': 'application/json' } }),
+    );
+    const { POST } = await import('@/app/api/llm/complete/route');
+    const res = await POST(post() as never);
+    expect(res.status).toBe(400);
+    expect(await res.text()).toBe(upstreamBody);
+    expect(mockRecordAiUsage).toHaveBeenCalledTimes(1);
+    expect(mockRecordAiUsage.mock.calls[0][0]).toMatchObject({
+      callKind: 'complete', status: 'api_error', model: 'gpt-9', usedByok: true, aiKeyBindingId: 'b1',
+    });
+  });
+
+  it('其他 400（如 invalid_byok，未到达 provider）→ 不记账', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+    mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: false });
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response('{"error":"invalid_byok","message":"x"}', { status: 400, headers: { 'content-type': 'application/json' } }),
+    );
+    const { POST } = await import('@/app/api/llm/complete/route');
+    expect((await POST(post() as never)).status).toBe(400);
+    expect(mockRecordAiUsage).not.toHaveBeenCalled();
+  });
+
   it('上游返回非 2xx → 透传错误，不记 success', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
     mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: false });

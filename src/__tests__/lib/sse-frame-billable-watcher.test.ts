@@ -115,4 +115,43 @@ describe('createSseBillableWatcher', () => {
     expect(w.push(enc.encode('ta","data":"gpt-4o"}\n\n'))).toBe(false);
     expect(w.model()).toBe('gpt-4o');
   });
+
+  describe('failed()：到达 provider 之后出现 error 帧 → 本次调用以失败记账（状态 api_error，仍计费）', () => {
+    const REACHED = 'data: {"type":"upstream_reached"}\n\n';
+    const run = (...chunks: string[]) => {
+      const w = createSseBillableWatcher();
+      chunks.forEach((c) => w.push(enc.encode(c)));
+      w.finish();
+      return w;
+    };
+
+    it('★upstream_reached 后 provider 报错（含 provider_rejected_model）→ failed', () => {
+      expect(run(REACHED, 'data: {"type":"error","error":"provider_rejected_model"}\n\n').failed()).toBe(true);
+    });
+
+    it('★已有内容后中途失败 → failed', () => {
+      expect(run(REACHED, 'data: {"type":"delta","data":"Rule"}\n\n', 'data: {"type":"error","error":"流式响应异常"}\n\n').failed()).toBe(true);
+    });
+
+    it('同一 chunk 里 upstream_reached + error → failed', () => {
+      expect(run(REACHED + 'data: {"type":"error","error":"LLM 未生成内容"}\n\n').failed()).toBe(true);
+    });
+
+    it('末尾 error 帧没有空行收尾 → finish 时识别为 failed', () => {
+      expect(run(REACHED, 'data: {"type":"error","error":"x"}').failed()).toBe(true);
+    });
+
+    it('正常完成 / 只有 upstream_reached（用户断开）→ 不算 failed', () => {
+      expect(run(REACHED, 'data: {"type":"delta","data":"a"}\n\n', 'data: {"type":"final","data":"a","validated":true}\n\n').failed()).toBe(false);
+      expect(run(REACHED).failed()).toBe(false);
+    });
+
+    it('计费前的 error（未到达 provider）不算 failed——那一笔本就不记', () => {
+      expect(run('data: {"type":"error","error":"未配置 LLM API Key"}\n\n').failed()).toBe(false);
+    });
+
+    it('validation_error / repair_start 不是失败（repair 流程的正常帧）', () => {
+      expect(run(REACHED, 'data: {"type":"validation_error","error":"语法错误"}\n\n', 'data: {"type":"repair_start","data":"2/3"}\n\n').failed()).toBe(false);
+    });
+  });
 });

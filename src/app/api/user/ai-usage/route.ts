@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { db, users, aiUsageRecords, aiKeyBindings } from '@/lib/prisma';
 import { eq, and, sum, sql, gte } from 'drizzle-orm';
-import { AI_MONTHLY_QUOTA, AI_RATE_LIMIT_PER_MINUTE } from '@/lib/ai-quota';
+import { AI_MONTHLY_QUOTA, AI_RATE_LIMIT_PER_MINUTE, countBillableCalls } from '@/lib/ai-quota';
 import type { PlanType } from '@/lib/plans';
 
 /**
@@ -45,19 +45,8 @@ export async function GET() {
   let degraded = false;
 
   try {
-    // 当月已用次数（仅 平台 LLM，不含 BYOK）
-    const monthlyUsed = await db
-      .select({ c: sql<number>`count(*)::int` })
-      .from(aiUsageRecords)
-      .where(
-        and(
-          eq(aiUsageRecords.userId, userId),
-          eq(aiUsageRecords.periodMonth, period),
-          eq(aiUsageRecords.usedByok, false),
-          eq(aiUsageRecords.status, 'success')
-        )
-      );
-    used = monthlyUsed[0]?.c ?? 0;
+    // 当月已用次数（仅 平台 LLM，不含 BYOK）：与月配额门同一计费口径（含到达 provider 后失败的 api_error）。
+    used = await countBillableCalls(userId, period);
 
     // 当月总成本（含 BYOK，给用户看真实消耗）
     const monthlyCost = await db

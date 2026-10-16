@@ -125,10 +125,11 @@ export function isBillableEvent(event: SSEEvent | null): boolean {
 }
 
 /**
- * 逐 chunk 观察一条 SSE 字节流里是否出现过计费帧（{@link isBillableEvent}）。
+ * 逐 chunk 观察一条 SSE 字节流：是否出现过计费帧（{@link isBillableEvent}），以及计费之后是否失败。
  *
  * <p>帧可能被拆在多个 chunk 里，多字节字符也可能被切开，故按流式解码并缓冲不完整的帧。
- * 一旦见到计费帧就不再解析、不再缓冲；meta 帧恒先于计费帧，故此时 model 已定。
+ * 见到计费帧后仍继续解析——决定记账状态的 error 帧可能晚到；一旦判定失败就不再解析、不再缓冲。
+ * meta 帧恒先于计费帧，故计费时 model 已定。
  */
 export function createSseBillableWatcher(): {
   /** 喂入一个 chunk，返回到目前为止是否已出现计费帧。 */
@@ -137,36 +138,42 @@ export function createSseBillableWatcher(): {
   finish: () => boolean;
   /** 首个 meta 帧携带的实际 model；无则 null。 */
   model: () => string | null;
+  /** 计费帧之后出现过 error 帧（provider 报错 / 拒绝模型 / 中途失败）→ 本次按 api_error 记账。 */
+  failed: () => boolean;
 } {
   const decoder = new TextDecoder();
   let buffer = '';
   let seen = false;
+  let failed = false;
   let model: string | null = null;
   const scan = (frames: string[]) => {
     for (const frame of frames) {
       const ev = parseSSEFrame(frame);
       // meta 帧（ADR 0048）：aster-api 首帧回传实际发出的 model，先于计费帧；只取第一次。
       if (ev?.type === 'meta' && model === null && typeof ev.data === 'string' && ev.data) model = ev.data;
+      // 计费前的 error（未到达 provider）不记账，故只看计费之后的 error。
+      if (seen && ev?.type === 'error') failed = true;
       if (isBillableEvent(ev)) seen = true;
     }
   };
   return {
     push(chunk) {
-      if (seen) return true;
+      if (failed) return true;
       buffer += decoder.decode(chunk, { stream: true });
       const frames = buffer.split(FRAME_SEPARATOR);
       buffer = frames.pop() ?? '';
       scan(frames);
-      if (seen) buffer = '';
+      if (failed) buffer = '';
       return seen;
     },
     finish() {
-      if (seen) return true;
+      if (failed) return true;
       buffer += decoder.decode();
       scan([buffer]);
       buffer = '';
       return seen;
     },
     model: () => model,
+    failed: () => failed,
   };
 }

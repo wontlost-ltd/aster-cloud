@@ -157,9 +157,14 @@ export async function proxyLlmSse(
   //   - 也不是上游 2xx 响应头一到就记（issue #441）：2xx 只说明 aster-api 接受了请求，
   //     还没到 provider。
   //
-  //   为什么不是「记完再按结果撤销」：recordAiUsage 的 upsert 刻意保留首次 status
-  //   （见 ai-quota.ts 的 onConflictDoUpdate——createdAt/status 不被占位/回填改写），
-  //   那是 #185 回填契约的一部分。所以只能把「记」这个动作推迟到确知已到达 provider。
+  // ★记账状态：计费之后出现 error 帧（provider 报错 / 拒绝模型 / 中途失败）记 api_error，
+  //   否则 success。api_error 同样计入月配额与速率（见 ai-quota.ts BILLABLE_STATUSES），
+  //   只是在用量记录里如实呈现为失败。
+  //
+  //   为什么推迟到流结束才记、而不是「先记 success 再改」：recordAiUsage 的 upsert 刻意保留
+  //   首次 status（见 ai-quota.ts 的 onConflictDoUpdate——createdAt/status 不被占位/回填改写），
+  //   那是 #185 回填契约的一部分；而决定状态的 error 帧可能在最后才到。所以只插一次，在流的
+  //   终点（正常结束 / 客户端断开 / 请求中止）按当时观察到的结果决定记不记、记什么状态。
   //   真实 token 由 aster-api 按同一 requestId 回填。
   const billableWatcher = createSseBillableWatcher();
   const callKind = upstreamPath.endsWith('/suggest') ? 'suggest' : 'generate';
@@ -176,27 +181,32 @@ export async function proxyLlmSse(
         // Phase 3：usedByok 时带 bindingId → stamp AiKeyBinding.lastUsedAt（dashboard 真实用量）。
         aiKeyBindingId: byok?.bindingId ?? null,
         requestId, // #185：占位一笔，aster-api SSE usage 回填真实 token 到同一 requestId
-        status: 'success',
+        status: billableWatcher.failed() ? 'api_error' : 'success',
       });
     } catch (e) {
       console.warn(`[llm-sse-proxy] recordAiUsage failed for user=${session.user.id}:`, e);
     }
   });
+  // 流的终点：解析残帧后，已到达 provider 才记账。多个终点可能先后触发，由 once 去重。
+  // 记账是 fire-and-forget：绝不能让计费 IO 阻塞或中断用户的流。
+  const settle = () => {
+    if (billableWatcher.finish()) void recordUsageOnce();
+  };
+  // 兜底：部分运行时在客户端断开时不回调 transformer.cancel，请求 signal 中止同样结算。
+  req.signal?.addEventListener('abort', settle, { once: true });
 
-  // 透传流并在第一个计费帧出现时记账。字节原样转发、不延迟——只在旁边解析帧做判断。
-  const metered = upstreamResp.body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        controller.enqueue(chunk);
-        // 记账是 fire-and-forget：绝不能让计费 IO 阻塞或中断用户的流。
-        if (billableWatcher.push(chunk)) void recordUsageOnce();
-      },
-      flush() {
-        // 最后一帧可能没有空行收尾
-        if (billableWatcher.finish()) void recordUsageOnce();
-      },
-    })
-  );
+  // 透传流并在旁边解析帧；字节原样转发、不延迟。
+  // cancel 是 Streams 规范的 Transformer 钩子（Node ≥ 22 支持），TS lib 尚未声明，故用交叉类型补上。
+  const transformer: Transformer<Uint8Array, Uint8Array> & { cancel: () => void } = {
+    transform(chunk, controller) {
+      controller.enqueue(chunk);
+      billableWatcher.push(chunk);
+    },
+    flush: settle,
+    // 客户端中途断开（或上游流出错）：已到达 provider 的调用照样计费。
+    cancel: settle,
+  };
+  const metered = upstreamResp.body.pipeThrough(new TransformStream(transformer));
 
   return new NextResponse(metered, {
     status: upstreamResp.status,

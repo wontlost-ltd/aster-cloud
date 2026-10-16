@@ -2,7 +2,7 @@
 // 详见 aster-deploy/docs/pm/07-ai-billing.md
 
 import { db, users, aiUsageRecords, aiKeyBindings } from '@/lib/prisma';
-import { and, eq, gte, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
 import { encryptForAudit } from '@/lib/ai-audit-vault';
 import { redactPii } from '@/lib/ai-pii-redactor';
@@ -156,7 +156,7 @@ export async function checkAiQuota(
         : Math.max(1, Math.floor(baseLimit * riskPolicy.aiQuotaMultiplier)));
   if (monthlyLimit !== -1) {
     const period = currentPeriod();
-    const monthlyCount = await countSuccessfulCalls(userId, period);
+    const monthlyCount = await countBillableCalls(userId, period);
     if (monthlyCount >= monthlyLimit) {
       return {
         allowed: false,
@@ -195,7 +195,7 @@ export async function checkAiQuota(
   // 计算剩余
   void getEffectiveLimits; // 保留 import，未来扩展用
   const period = currentPeriod();
-  const monthlyCount = await countSuccessfulCalls(userId, period);
+  const monthlyCount = await countBillableCalls(userId, period);
   return {
     allowed: true,
     remaining: monthlyLimit === -1 ? -1 : Math.max(0, monthlyLimit - monthlyCount),
@@ -203,6 +203,12 @@ export async function checkAiQuota(
     usedByok,
   };
 }
+
+/**
+ * 计入配额的记录状态：请求到达了 provider 就计费（#470）——成功是 success，到达后失败是 api_error。
+ * 拒绝类状态（quota_exhausted / rate_limited / banned / blocked_unsafe）没调 provider，不计。
+ */
+export const BILLABLE_STATUSES = ['success', 'api_error'] as const;
 
 /**
  * 调用完成后记录用量（异步、不阻塞业务路径）
@@ -360,7 +366,7 @@ export async function byokTokensUsedThisMonth(
         eq(aiUsageRecords.periodMonth, currentPeriod(at)),
         gte(aiUsageRecords.createdAt, lowerBound),
         eq(aiUsageRecords.usedByok, true),
-        eq(aiUsageRecords.status, 'success'),
+        inArray(aiUsageRecords.status, [...BILLABLE_STATUSES]),
       ),
     );
   return r[0]?.t ?? 0;
@@ -379,7 +385,8 @@ export async function resetByokQuotaUsage(userId: string): Promise<Date> {
   return now;
 }
 
-async function countSuccessfulCalls(userId: string, periodMonth: string): Promise<number> {
+/** 某月平台（非 BYOK）计费调用次数：月配额门与 /api/user/ai-usage 共用同一口径。 */
+export async function countBillableCalls(userId: string, periodMonth: string): Promise<number> {
   const r = await db
     .select({ c: sql<number>`count(*)::int` })
     .from(aiUsageRecords)
@@ -388,7 +395,7 @@ async function countSuccessfulCalls(userId: string, periodMonth: string): Promis
         eq(aiUsageRecords.userId, userId),
         eq(aiUsageRecords.periodMonth, periodMonth),
         eq(aiUsageRecords.usedByok, false),
-        eq(aiUsageRecords.status, 'success')
+        inArray(aiUsageRecords.status, [...BILLABLE_STATUSES])
       )
     );
   return r[0]?.c ?? 0;

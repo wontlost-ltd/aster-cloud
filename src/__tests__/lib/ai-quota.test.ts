@@ -32,7 +32,14 @@ vi.mock('@/lib/prisma', () => ({
   aiKeyBindings: { id: {}, userId: {}, active: {}, lastUsedAt: {}, lastErrorAt: {}, lastError: {}, updatedAt: {} },
 }));
 
-import { db } from '@/lib/prisma';
+// 只包一层 inArray 以便断言「计费状态集合」；其余 drizzle 行为保持真实。
+vi.mock('drizzle-orm', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('drizzle-orm')>();
+  return { ...orig, inArray: vi.fn(orig.inArray) };
+});
+
+import { inArray } from 'drizzle-orm';
+import { db, aiUsageRecords } from '@/lib/prisma';
 import {
   checkAiQuota,
   recordAiUsage,
@@ -40,6 +47,8 @@ import {
   resetByokQuotaUsage,
   AI_MONTHLY_QUOTA,
   AI_RATE_LIMIT_PER_MINUTE,
+  BILLABLE_STATUSES,
+  countBillableCalls,
 } from '@/lib/ai-quota';
 
 /**
@@ -599,5 +608,35 @@ describe('resetByokQuotaUsage', () => {
     expect(stamped.getTime()).toBeGreaterThanOrEqual(before);
     expect(stamped.getTime()).toBeLessThanOrEqual(after);
     expect(setArg.byokQuotaResetAt.getTime()).toBe(stamped.getTime());
+  });
+});
+
+describe('计费状态集合（到达 provider 的失败记 api_error，仍计入配额）', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('BILLABLE_STATUSES = success + api_error（拒绝/限流/封禁/安全拦截不计）', () => {
+    expect([...BILLABLE_STATUSES]).toEqual(['success', 'api_error']);
+  });
+
+  it('★月配额门：api_error 行与 success 行一样计入（此前这类失败被记成 success 并计入，口径不变）', async () => {
+    vi.mocked(db.query.users.findFirst).mockResolvedValue(mockUserBase({ plan: 'free' }));
+    setupSequentialCounts(20, 0, 0);
+    const r = await checkAiQuota('user-1');
+    expect(r.allowed).toBe(false);
+    expect(inArray).toHaveBeenCalledWith(aiUsageRecords.status, BILLABLE_STATUSES);
+  });
+
+  it('countBillableCalls 按计费状态集合计数（/api/user/ai-usage 复用同一口径）', async () => {
+    setupCountResult(7);
+    expect(await countBillableCalls('user-1', '2026-10')).toBe(7);
+    expect(inArray).toHaveBeenCalledWith(aiUsageRecords.status, BILLABLE_STATUSES);
+  });
+
+  it('byokTokensUsedThisMonth 同样按计费状态集合汇总（失败前已产出的 token 也耗用户 key）', async () => {
+    vi.mocked(db.query.users.findFirst).mockResolvedValue({ byokQuotaResetAt: null } as never);
+    setupCountResult(0);
+    mockSelect.mockReturnValue({ from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ t: 5 }]) }) });
+    expect(await byokTokensUsedThisMonth('user-1')).toBe(5);
+    expect(inArray).toHaveBeenCalledWith(aiUsageRecords.status, BILLABLE_STATUSES);
   });
 });

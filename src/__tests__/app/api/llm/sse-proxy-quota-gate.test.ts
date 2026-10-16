@@ -192,14 +192,16 @@ describe('proxyLlmSse — AI 配额门控 + 成功记账', () => {
 
   describe('★已到达 provider（upstream_reached）→ 记一笔，即便没有任何内容（#470）', () => {
     const REACHED = 'data: {"type":"upstream_reached"}\n\n';
-    const cases: Array<[string, string]> = [
-      ['provider 返回错误', REACHED + 'data: {"type":"error","error":"LLM API 错误 (500)"}\n\n'],
-      ['provider 沉默到读超时', REACHED + 'data: {"type":"error","error":"LLM 响应读取失败"}\n\n'],
-      ['LLM 未生成内容', REACHED + 'data: {"type":"error","error":"LLM 未生成内容"}\n\n'],
-      ['连上后流直接结束（用户断开）', REACHED],
-      ['中途失败（已有内容）', REACHED + 'data: {"type":"delta","data":"Rule"}\n\ndata: {"type":"error","error":"流式响应异常"}\n\n'],
+    // 第三列：记账状态——到达 provider 后出现 error 帧记 api_error（仍计费，只是如实标失败）。
+    const cases: Array<[string, string, 'success' | 'api_error']> = [
+      ['provider 返回错误', REACHED + 'data: {"type":"error","error":"LLM API 错误 (500)"}\n\n', 'api_error'],
+      ['provider 拒绝模型', REACHED + 'data: {"type":"error","error":"provider_rejected_model"}\n\n', 'api_error'],
+      ['provider 沉默到读超时', REACHED + 'data: {"type":"error","error":"LLM 响应读取失败"}\n\n', 'api_error'],
+      ['LLM 未生成内容', REACHED + 'data: {"type":"error","error":"LLM 未生成内容"}\n\n', 'api_error'],
+      ['连上后流直接结束（用户断开）', REACHED, 'success'],
+      ['中途失败（已有内容）', REACHED + 'data: {"type":"delta","data":"Rule"}\n\ndata: {"type":"error","error":"流式响应异常"}\n\n', 'api_error'],
     ];
-    for (const [name, body] of cases) {
+    for (const [name, body, status] of cases) {
       it(name, async () => {
         mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
         mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: false });
@@ -210,9 +212,60 @@ describe('proxyLlmSse — AI 配额门控 + 成功记账', () => {
         const res = await proxyLlmSse(req() as never, { upstreamPath: '/api/v1/ai/generate' });
         expect(await drain(res)).toBe(body);
         await vi.waitFor(() => expect(mockRecordAiUsage).toHaveBeenCalledTimes(1));
-        expect(mockRecordAiUsage.mock.calls[0][0]).toMatchObject({ status: 'success', callKind: 'generate' });
+        expect(mockRecordAiUsage.mock.calls[0][0]).toMatchObject({ status, callKind: 'generate' });
       });
     }
+
+    /** 上游先发给定帧后挂起（不 close），模拟客户端在流中途断开。 */
+    const hangingAfter = (frames: string) =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(frames));
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+
+    it('★客户端中途断开（已到达 provider、无错误）→ 仍记一笔 success', async () => {
+      mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+      mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: false });
+      globalThis.fetch = vi.fn().mockResolvedValue(hangingAfter(REACHED + 'data: {"type":"delta","data":"Ru"}\n\n'));
+      const { proxyLlmSse } = await import('@/lib/llm-sse-proxy');
+      const res = await proxyLlmSse(req() as never, { upstreamPath: '/api/v1/ai/generate' });
+      const reader = res.body!.getReader();
+      await reader.read();
+      await reader.cancel();
+      await vi.waitFor(() => expect(mockRecordAiUsage).toHaveBeenCalledTimes(1));
+      expect(mockRecordAiUsage.mock.calls[0][0]).toMatchObject({ status: 'success' });
+    });
+
+    it('★客户端在 error 帧之后断开 → 记一笔 api_error', async () => {
+      mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+      mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: false });
+      globalThis.fetch = vi.fn().mockResolvedValue(hangingAfter(REACHED + 'data: {"type":"error","error":"x"}\n\n'));
+      const { proxyLlmSse } = await import('@/lib/llm-sse-proxy');
+      const res = await proxyLlmSse(req() as never, { upstreamPath: '/api/v1/ai/generate' });
+      const reader = res.body!.getReader();
+      await reader.read();
+      await reader.cancel();
+      await vi.waitFor(() => expect(mockRecordAiUsage).toHaveBeenCalledTimes(1));
+      expect(mockRecordAiUsage.mock.calls[0][0]).toMatchObject({ status: 'api_error' });
+    });
+
+    it('★请求 signal 中止（运行时不回调 transformer.cancel 时的兜底）→ 已计费则记一笔', async () => {
+      mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+      mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: false });
+      globalThis.fetch = vi.fn().mockResolvedValue(hangingAfter(REACHED));
+      const ac = new AbortController();
+      const r = new Request('http://cloud.test/api/llm/generate', { method: 'POST', body: '{}', signal: ac.signal });
+      const { proxyLlmSse } = await import('@/lib/llm-sse-proxy');
+      const res = await proxyLlmSse(r as never, { upstreamPath: '/api/v1/ai/generate' });
+      await res.body!.getReader().read();
+      ac.abort();
+      await vi.waitFor(() => expect(mockRecordAiUsage).toHaveBeenCalledTimes(1));
+      expect(mockRecordAiUsage.mock.calls[0][0]).toMatchObject({ status: 'success' });
+    });
 
     it('★meta + upstream_reached：占位记账的 model 为 meta 回传的实际 model（ADR 0048）', async () => {
       mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
