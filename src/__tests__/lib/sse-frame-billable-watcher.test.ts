@@ -3,7 +3,7 @@
  * 帧格式取自 aster-api 实际输出（LlmProxyService.toJson / AiAssistantResource.refusalStream）。
  */
 import { describe, it, expect } from 'vitest';
-import { createSseBillableWatcher } from '@/lib/sse-frame';
+import { createSseBillableWatcher, parseSSEFrame } from '@/lib/sse-frame';
 
 const enc = new TextEncoder();
 const feed = (...chunks: string[]) => {
@@ -152,6 +152,28 @@ describe('createSseBillableWatcher', () => {
 
     it('validation_error / repair_start 不是失败（repair 流程的正常帧）', () => {
       expect(run(REACHED, 'data: {"type":"validation_error","error":"语法错误"}\n\n', 'data: {"type":"repair_start","data":"2/3"}\n\n').failed()).toBe(false);
+    });
+  });
+
+  describe('aster-api 安全拒答：单个裸 JSON item → 单条 data: 帧（不再是 data: data: 双层包裹）', () => {
+    const REFUSAL = 'data: {"type":"error","error":"out_of_scope","message":"超出范围","rule_id":"r1"}\n\n';
+
+    it('parseSSEFrame 解析为 error 事件；error 字段取面向用户的 message（机器码 out_of_scope 只用于识别）', () => {
+      expect(parseSSEFrame(REFUSAL)).toEqual({ type: 'error', data: undefined, error: '超出范围', validated: undefined });
+    });
+
+    it('无 message 时 error 字段回落为机器码 out_of_scope', () => {
+      expect(parseSSEFrame('data: {"type":"error","error":"out_of_scope","rule_id":"r1"}\n\n')).toMatchObject({
+        type: 'error',
+        error: 'out_of_scope',
+      });
+    });
+
+    it('★拒答 error 帧先于任何计费帧到达 → 不计费、failed() 为 false（拒答不记账）', () => {
+      const w = createSseBillableWatcher();
+      expect(w.push(enc.encode(REFUSAL))).toBe(false);
+      expect(w.finish()).toBe(false);
+      expect(w.failed()).toBe(false);
     });
   });
 });
