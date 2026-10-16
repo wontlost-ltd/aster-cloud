@@ -210,6 +210,9 @@ export async function checkAiQuota(
  */
 export const BILLABLE_STATUSES = ['success', 'api_error'] as const;
 
+/** 原生 SQL 里用的计费状态列表（参数化），形如 `status IN (${BILLABLE_STATUS_SQL})`。 */
+export const BILLABLE_STATUS_SQL = sql.join(BILLABLE_STATUSES.map((st) => sql`${st}`), sql`, `);
+
 /**
  * 调用完成后记录用量（异步、不阻塞业务路径）
  */
@@ -321,6 +324,24 @@ export async function recordAiUsage(params: {
       // （%s/%d/%o 等）→ 用 %s 占位以参数化传入，规避格式串注入。
       console.warn('[ai-usage] stamp AiKeyBinding.lastUsedAt failed for binding=%s:', params.aiKeyBindingId, e);
     }
+  }
+}
+
+/**
+ * 把某次调用的用量记录定向改成 api_error（到达 provider 后失败，仍计费）。
+ *
+ * 不走 recordAiUsage 的 upsert：upsert 保留首次 status，而 aster-api 的 token 回填恒为 success、
+ * 可能先于 cloud 观察到 error 帧落库——只有定向 UPDATE 能把这类行改成失败。
+ * 失败只告警：状态修正不应影响已完成的业务响应。
+ */
+export async function markAiUsageFailed(requestId: string): Promise<void> {
+  try {
+    await db
+      .update(aiUsageRecords)
+      .set({ status: 'api_error' })
+      .where(eq(aiUsageRecords.requestId, requestId));
+  } catch (e) {
+    console.warn('[ai-usage] mark api_error failed for request=%s:', requestId, e);
   }
 }
 

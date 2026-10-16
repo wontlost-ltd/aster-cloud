@@ -19,6 +19,8 @@ vi.mock('@/lib/prisma', () => ({
   aiUsageRecords: { userId: {}, promptHash: {}, createdAt: {}, usedByok: {}, status: {}, promptTokens: {}, completionTokens: {} },
 }));
 
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
 import { detectAndBan } from '@/lib/ai-anomaly-detection';
 
 /** 把 db.select().from().where().groupBy().having() 链路设置成返回固定结果 */
@@ -205,5 +207,18 @@ describe('detectAndBan', () => {
     const signals = await detectAndBan();
     expect(signals.length).toBe(2);
     expect(mockUpdate).toHaveBeenCalledTimes(2);
+  });
+
+  it('★Signal 3 的「失败」不含计费状态：api_error（provider 故障 / BYOK 模型错误）不计入失败率', async () => {
+    mockSelect.mockReturnValue(setupAggregateChain([]));
+    mockExecute.mockResolvedValue([]);
+    await detectAndBan();
+    const dialect = new PgDialect();
+    const queries = mockExecute.mock.calls.map((c) => dialect.sqlToQuery(c[0] as SQL));
+    const signal3 = queries.find((q) => q.sql.includes('CASE WHEN status'));
+    expect(signal3).toBeDefined();
+    expect(signal3!.sql).toContain('status NOT IN (');
+    expect(signal3!.sql).not.toContain("!= 'success'");
+    expect(signal3!.params).toEqual(expect.arrayContaining(['success', 'api_error']));
   });
 });

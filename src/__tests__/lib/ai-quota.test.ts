@@ -49,6 +49,7 @@ import {
   AI_RATE_LIMIT_PER_MINUTE,
   BILLABLE_STATUSES,
   countBillableCalls,
+  markAiUsageFailed,
 } from '@/lib/ai-quota';
 
 /**
@@ -638,5 +639,25 @@ describe('计费状态集合（到达 provider 的失败记 api_error，仍计�
     mockSelect.mockReturnValue({ from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ t: 5 }]) }) });
     expect(await byokTokensUsedThisMonth('user-1')).toBe(5);
     expect(inArray).toHaveBeenCalledWith(aiUsageRecords.status, BILLABLE_STATUSES);
+  });
+});
+
+describe('markAiUsageFailed（定向 UPDATE，不走保留首次 status 的 upsert）', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('按 requestId 把 status 改为 api_error，不碰 token/cost', async () => {
+    await markAiUsageFailed('req-1');
+    expect(mockUpdate).toHaveBeenCalledWith(aiUsageRecords);
+    expect(mockUpdateSet).toHaveBeenCalledWith({ status: 'api_error' });
+    expect(mockUpdateWhere).toHaveBeenCalledTimes(1);
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
+
+  it('DB 失败只告警，不抛出（状态修正不影响业务响应）', async () => {
+    mockUpdateWhere.mockRejectedValueOnce(new Error('db down'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await expect(markAiUsageFailed('req-2')).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
