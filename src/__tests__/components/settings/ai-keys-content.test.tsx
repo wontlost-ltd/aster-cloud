@@ -113,7 +113,7 @@ describe('AiKeysContent 模型字段', () => {
   it.each([
     ['provider_unavailable', /could not be verified.*rejected the key or is unavailable/],
     ['timeout', /could not be verified.*timed out/],
-    ['endpoint_rejected', /could not be verified.*allowlist/],
+    ['endpoint_rejected', /could not be verified.*Provider URL or provider was rejected/],
   ])('保存成功但未校验（%s）→ 提示附带原因', async (reason, re) => {
     vi.stubGlobal('fetch', fetchReturning(200, { ok: true, id: 'b1', modelsChecked: false, unverifiedReason: reason }));
     render(<AiKeysContent initialBindings={[]} locale="en" />, { wrapper });

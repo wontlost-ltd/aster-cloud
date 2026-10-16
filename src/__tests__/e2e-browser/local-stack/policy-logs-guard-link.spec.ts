@@ -15,19 +15,24 @@ test.skip(!GUARD_API_KEY, '缺少 E2E_GUARD_API_KEY（team1 成员的 API key）
 test.describe.configure({ mode: 'serial' });
 test.use({ storageState: stateFor('m-free') });
 
+let seededId = '';
+
 test.beforeAll(async () => {
-  await seedPendingGuardApproval(GUARD_API_KEY);
+  seededId = await seedPendingGuardApproval(GUARD_API_KEY);
 });
 
 test('待审批执行行链接到 /approvals?decisionId=', async ({ page }) => {
   await page.goto('/en/policies/pol-adr0041-team/logs');
-  const link = page.getByRole('link', { name: 'Pending approval · View' }).first();
+  // 断言本次自补的那条，而非任意一条：旧种子数据不能让用例误通过。
+  const link = page.locator(`a[href$="decisionId=${seededId}"]`);
   await expect(link).toBeVisible();
+  await expect(link).toHaveText('Pending approval · View');
   const href = await link.getAttribute('href');
   expect(href).toMatch(/\/approvals\?decisionId=[0-9a-f-]{36}$/);
 
   // 点击后进入收件箱并高亮对应决策行
   const decisionId = href!.split('decisionId=')[1];
+  expect(decisionId).toBe(seededId);
   await link.click();
   await expect(page).toHaveURL(/\/approvals\?decisionId=/);
   await expect(page.locator(`tr[data-decision-id="${decisionId}"]`)).toBeVisible();
