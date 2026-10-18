@@ -199,7 +199,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       eyebrow: 'Demos',
       title: 'See Aster in action',
-      subtitle: 'Five live demos — each runs the real engine in your browser, no signup.',
+      subtitle: 'Live demos — each runs the real engine in your browser, no signup.',
       enter: 'Open demo',
       cards: {
         guardian: {
@@ -951,7 +951,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       eyebrow: 'Demo 演示',
       title: '看 Aster 跑起来',
-      subtitle: '五个在线演示——每个都在你浏览器里跑真引擎，无需注册。',
+      subtitle: '在线演示——每个都在你浏览器里跑真引擎，无需注册。',
       enter: '打开演示',
       cards: {
         guardian: {
@@ -1685,7 +1685,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       eyebrow: 'Demos',
       title: 'Aster in Aktion erleben',
-      subtitle: 'Fünf Live-Demos — jede führt die echte Engine in Ihrem Browser aus, ohne Anmeldung.',
+      subtitle: 'Live-Demos — jede führt die echte Engine in Ihrem Browser aus, ohne Anmeldung.',
       enter: 'Demo öffnen',
       cards: {
         guardian: {
@@ -2418,7 +2418,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       eyebrow: 'डेमो',
       title: 'Aster को क्रिया में देखें',
-      subtitle: 'पाँच लाइव डेमो — हर एक आपके ब्राउज़र में असली इंजन चलाता है, बिना साइनअप।',
+      subtitle: 'लाइव डेमो — हर एक आपके ब्राउज़र में असली इंजन चलाता है, बिना साइनअप।',
       enter: 'डेमो खोलें',
       cards: {
         guardian: {

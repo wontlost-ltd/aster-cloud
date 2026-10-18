@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTheme } from 'next-themes';
 
-const EMBED_LOCALES = ['en', 'zh', 'de', 'hi'];
-const DEFAULT_BASE = process.env.NEXT_PUBLIC_GUARDIAN_EMBED_URL || 'https://aster-lang.dev/embed/guardian';
+import { GUARDIAN_EMBED_LOCALES, resolveGuardianEmbedBase } from '@/lib/guardian-embed';
+
+// 客户端 bundle 只会内联字面量形式的 NEXT_PUBLIC_* 读取。
+const DEFAULT_BASE = resolveGuardianEmbedBase(process.env.NEXT_PUBLIC_GUARDIAN_EMBED_URL);
 
 export function guardianEmbedUrl(locale: string, theme: 'light' | 'dark', base: string = DEFAULT_BASE): string {
-  const loc = EMBED_LOCALES.includes(locale) ? locale : 'en';
+  const loc = GUARDIAN_EMBED_LOCALES.includes(locale) ? locale : 'en';
   return `${base.replace(/\/+$/, '')}/${loc}?theme=${theme}`;
 }
 
@@ -39,7 +41,7 @@ export function GuardianEmbed({ locale, posterAlt }: { locale: string; posterAlt
         <iframe title={posterAlt} src={guardianEmbedUrl(locale, theme)} className="h-full w-full" loading="lazy" />
       ) : (
         // eslint-disable-next-line @next/next/no-img-element -- 静态海报占位，尺寸固定，无需 next/image 优化管线
-        <img src="/images/guardian-poster.webp" alt={posterAlt} className="h-full w-full object-cover" width={1280} height={800} />
+        <img src="/images/guardian-poster.webp" alt={posterAlt} className="h-full w-full object-cover" width={1280} height={800} loading="lazy" decoding="async" />
       )}
     </div>
   );

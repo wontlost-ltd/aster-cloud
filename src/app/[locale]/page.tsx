@@ -24,6 +24,7 @@
  */
 import { useTranslations } from 'next-intl';
 import { setRequestLocale } from 'next-intl/server';
+import { guardianTryItUrl } from '@/lib/guardian-embed';
 import { IS_SAAS } from '@/lib/deployment-mode';
 import {
   Languages,
@@ -487,7 +488,7 @@ function GuardianShowcase({ t, locale }: { t: ReturnType<typeof useTranslations>
             <GuardianEmbed locale={locale} posterAlt={t('guardianShowcase.posterAlt')} />
           </div>
           <a
-            href={`https://aster-lang.dev/${locale}/demos/guardian`}
+            href={guardianTryItUrl(locale)}
             className="text-sm font-medium text-primary hover:underline"
           >
             {t('guardianShowcase.tryIt')}

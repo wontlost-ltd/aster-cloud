@@ -3,7 +3,7 @@
 // Validates the structural contract; actual securityheaders.com scoring is
 // a manual sanity check post-deploy.
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { buildCspHeader, securityHeadersOnly } from '@/lib/security/csp';
 
 const NONCE = 'YWJjZGVmZ2hpamtsbW5vcA==';
@@ -176,5 +176,34 @@ describe('securityHeadersOnly', () => {
     const csp = buildCspHeader(NONCE);
     expect(csp).toMatch(/frame-src [^;]*https:\/\/aster-lang\.dev/);
     expect(csp).toMatch(/frame-ancestors 'none'/);
+  });
+
+  describe('AI Guardian embed origin', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    });
+
+    async function frameSrc(): Promise<string> {
+      vi.resetModules();
+      const mod = await import('@/lib/security/csp');
+      return mod.buildCspHeader(NONCE).match(/frame-src [^;]*/)![0];
+    }
+
+    it('allows a configured custom origin in frame-src only', async () => {
+      vi.stubEnv('NEXT_PUBLIC_GUARDIAN_EMBED_URL', 'http://localhost:3210/embed/guardian');
+      const fs = await frameSrc();
+      expect(fs).toContain('http://localhost:3210');
+      expect(fs).not.toContain('aster-lang.dev');
+      const { buildCspHeader } = await import('@/lib/security/csp');
+      const csp = buildCspHeader(NONCE);
+      expect(csp.match(/localhost:3210/g)?.length).toBe(1);
+      expect(csp).toContain("frame-ancestors 'none'");
+    });
+
+    it('falls back to the default origin on an invalid value without throwing', async () => {
+      vi.stubEnv('NEXT_PUBLIC_GUARDIAN_EMBED_URL', 'not a url');
+      expect(await frameSrc()).toContain('https://aster-lang.dev');
+    });
   });
 });

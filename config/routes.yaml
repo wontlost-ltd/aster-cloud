@@ -67,7 +67,7 @@ routes:
     owner: marketing
     source: src/app/[locale]/demos/page.tsx
     locales: all
-    notes: Demos index — card grid aggregating the five demos (credit / vocab / kitten / poker / poem)
+    notes: Demos index — card grid aggregating the demos (credit / vocab / kitten / poker / poem, plus guardian on SaaS)
 
   - path: /demos/credit
     status: canonical-here

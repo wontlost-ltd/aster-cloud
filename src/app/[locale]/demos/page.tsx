@@ -1,7 +1,7 @@
 /**
  * Demos 索引落地页（公开）。
  *
- * 把三个独立 demo（credit / kitten / vocab）聚合成一个卡片网格导航，作为统一入口。
+ * 把各独立 demo（SaaS 另含 guardian）聚合成一个卡片网格导航，作为统一入口。
  * landing footer 的单一「Demos」链接指向这里；各卡片进入对应 demo 子路由。
  */
 import type { Metadata } from 'next';

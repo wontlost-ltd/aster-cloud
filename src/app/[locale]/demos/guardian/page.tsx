@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { GuardianEmbed } from '@/components/marketing/guardian-embed';
 import { Container, Stack } from '@/components/ui';
+import { guardianTryItUrl } from '@/lib/guardian-embed';
 import { IS_SAAS } from '@/lib/deployment-mode';
 
 type Props = {
@@ -43,7 +44,7 @@ export default async function GuardianDemoPage({ params }: Props) {
             <GuardianEmbed locale={locale} posterAlt={t('posterAlt')} />
           </div>
           <a
-            href={`https://aster-lang.dev/${locale}/demos/guardian`}
+            href={guardianTryItUrl(locale)}
             className="text-sm font-medium text-primary hover:underline"
           >
             {t('tryIt')}
