@@ -67,7 +67,7 @@ routes:
     owner: marketing
     source: src/app/[locale]/demos/page.tsx
     locales: all
-    notes: Demos index — card grid aggregating the five demos (credit / vocab / kitten / poker / poem)
+    notes: Demos index — card grid aggregating the demos (credit / vocab / kitten / poker / poem, plus guardian on SaaS)
 
   - path: /demos/credit
     status: canonical-here
@@ -82,6 +82,13 @@ routes:
     source: src/app/[locale]/demos/vocab/page.tsx
     locales: all
     notes: Domain-vocabulary demo — write rules in industry terms across 3 domains (sales)
+
+  - path: /demos/guardian
+    status: canonical-here
+    owner: marketing
+    source: src/app/[locale]/demos/guardian/page.tsx
+    locales: all
+    notes: AI Guardian demo — embeds the aster-lang.dev story (SaaS only)
 
   - path: /demos/kitten
     status: canonical-here

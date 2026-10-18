@@ -1,4 +1,5 @@
 import { safeEnv } from '@/lib/runtime/safe-env';
+import { guardianEmbedOrigin } from '@/lib/guardian-embed';
 
 /**
  * Content Security Policy + adjacent security headers.
@@ -41,6 +42,10 @@ const MIXPANEL_DOMAINS = [
 const TURNSTILE_DOMAINS = [
   'https://challenges.cloudflare.com',
 ];
+
+// AI Guardian 演示：落地页与 /demos/guardian 以 iframe 嵌入 aster-lang.dev 的剧情（仅 SaaS 渲染）。
+// 来源取自与嵌入组件相同的 NEXT_PUBLIC_GUARDIAN_EMBED_URL；构建 CSP 时才经 safeEnv 读取，
+// 非法值回退默认，不在模块加载阶段触碰 process.env。
 
 // aster-api 直连域名（AI generate/explain/complete SSE + lexicons stream
 // 走客户端 fetch，不经 Next.js server proxy，所以必须在 connect-src 列白）。
@@ -192,7 +197,7 @@ export function buildCspHeader(nonce: string): string {
       ...ALL_TRUSTED_CONNECT_SRC,
       ...(isDev ? ['ws:', 'http://localhost:*'] : []),
     ],
-    'frame-src': ["'self'", ...STRIPE_DOMAINS, ...TURNSTILE_DOMAINS],
+    'frame-src': ["'self'", ...STRIPE_DOMAINS, ...TURNSTILE_DOMAINS, guardianEmbedOrigin(safeEnv('NEXT_PUBLIC_GUARDIAN_EMBED_URL'))],
     'frame-ancestors': ["'none'"],
     'form-action': ["'self'"],
     'base-uri': ["'self'"],

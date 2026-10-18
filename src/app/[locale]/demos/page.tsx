@@ -1,13 +1,14 @@
 /**
  * Demos 索引落地页（公开）。
  *
- * 把三个独立 demo（credit / kitten / vocab）聚合成一个卡片网格导航，作为统一入口。
+ * 把各独立 demo（SaaS 另含 guardian）聚合成一个卡片网格导航，作为统一入口。
  * landing footer 的单一「Demos」链接指向这里；各卡片进入对应 demo 子路由。
  */
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { Card, CardBody, Container, Stack } from '@/components/ui';
 import { Link } from '@/i18n/navigation';
+import { IS_SAAS } from '@/lib/deployment-mode';
 
 type Props = {
   params: Promise<{ locale: string }>;
@@ -25,13 +26,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 /** demo 卡片元数据：href 指向子路由，文案走 i18n（demosIndex.cards.<key>）。 */
-const DEMO_CARDS = [
+const DEMO_CARDS: ReadonlyArray<{ key: string; href: string; emoji: string }> = [
+  ...(IS_SAAS ? [{ key: 'guardian', href: '/demos/guardian', emoji: '🛡️' }] : []),
   { key: 'credit', href: '/demos/credit', emoji: '📊' },
   { key: 'vocab', href: '/demos/vocab', emoji: '🏷️' },
   { key: 'kitten', href: '/demos/kitten', emoji: '🐱' },
   { key: 'poker', href: '/demos/poker', emoji: '🃏' },
   { key: 'poem', href: '/demos/poem', emoji: '📜' },
-] as const;
+];
 
 export default async function DemosIndexPage({ params }: Props) {
   const { locale } = await params;

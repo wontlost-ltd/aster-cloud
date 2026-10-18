@@ -1,0 +1,50 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import { useTheme } from 'next-themes';
+
+import { GUARDIAN_EMBED_LOCALES, resolveGuardianEmbedBase } from '@/lib/guardian-embed';
+
+// 客户端 bundle 只会内联字面量形式的 NEXT_PUBLIC_* 读取。
+const DEFAULT_BASE = resolveGuardianEmbedBase(process.env.NEXT_PUBLIC_GUARDIAN_EMBED_URL);
+
+export function guardianEmbedUrl(locale: string, theme: 'light' | 'dark', base: string = DEFAULT_BASE): string {
+  const loc = GUARDIAN_EMBED_LOCALES.includes(locale) ? locale : 'en';
+  return `${base.replace(/\/+$/, '')}/${loc}?theme=${theme}`;
+}
+
+/**
+ * AI Guardian 剧情嵌入：先显示静态海报，区块接近视口时才创建 iframe，不影响首屏 LCP。
+ * 剧情的紧凑布局按 16:10（约 896×560）设计：md 起保持 16:10；更窄时 16:10 只剩约 214 px 高，
+ * 改用固定 560 px 高，让剧情在框内完整展示而不滚动。海报在窄框内完整显示（contain）。
+ */
+export function GuardianEmbed({ locale, posterAlt }: { locale: string; posterAlt: string }) {
+  const { resolvedTheme } = useTheme();
+  const box = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setVisible(true);
+        io.disconnect();
+      }
+    }, { rootMargin: '200px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  const theme = resolvedTheme === 'dark' ? 'dark' : 'light';
+  return (
+    <div ref={box} className="relative h-[560px] w-full overflow-hidden rounded-xl border border-border bg-bg-muted md:aspect-[16/10] md:h-auto">
+      {visible ? (
+        <iframe title={posterAlt} src={guardianEmbedUrl(locale, theme)} className="h-full w-full" loading="lazy" />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element -- 静态海报占位，尺寸固定，无需 next/image 优化管线
+        <img src="/images/guardian-poster.webp" alt={posterAlt} className="h-full w-full object-contain md:object-cover" width={1280} height={800} loading="lazy" decoding="async" />
+      )}
+    </div>
+  );
+}
