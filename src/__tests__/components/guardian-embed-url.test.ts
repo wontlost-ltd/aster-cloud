@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { guardianEmbedUrl } from '@/components/marketing/guardian-embed';
-import { guardianTryItUrl, resolveGuardianEmbedBase } from '@/lib/guardian-embed';
+import { GUARDIAN_EMBED_LOCALES, guardianTryItUrl, resolveGuardianEmbedBase } from '@/lib/guardian-embed';
+import { locales } from '@/i18n/config';
 
 describe('guardianEmbedUrl', () => {
   it('locale 进路径、theme 进查询参数', () => {
@@ -21,5 +22,11 @@ describe('guardianTryItUrl', () => {
   it('非法配置回退默认', () => {
     expect(guardianTryItUrl('de', 'nope')).toBe('https://aster-lang.dev/de/demos/guardian');
     expect(resolveGuardianEmbedBase('nope')).toBe('https://aster-lang.dev/embed/guardian');
+  });
+});
+
+describe('GUARDIAN_EMBED_LOCALES', () => {
+  it('与站点 locale 配置同源', () => {
+    expect(GUARDIAN_EMBED_LOCALES).toEqual(locales);
   });
 });
