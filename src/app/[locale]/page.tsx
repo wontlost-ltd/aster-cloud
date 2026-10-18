@@ -53,6 +53,7 @@ import {
   cn,
 } from '@/components/ui';
 import { CnlDemo } from '@/components/marketing/cnl-demo';
+import { GuardianEmbed } from '@/components/marketing/guardian-embed';
 import {
   getCurrencyForLocale,
   formatPrice,
@@ -87,6 +88,8 @@ function HomeContent({
         <Hero t={t} locale={locale} />
         <TrustBand t={t} />
         <Features t={t} />
+        {/* AI Guardian 演示嵌入 aster-lang.dev 的剧情，仅 SaaS 渲染（CSP frame-src 同样只在该来源放行）。 */}
+        {IS_SAAS && <GuardianShowcase t={t} locale={locale} />}
         {/* Pricing preview 是 SaaS 三档定价表（Free/Pro/Enterprise）。
             On-prem 客户的"定价"是 license 协商，公开三档表会误导。
             IS_SAAS = false 时 terser DCE 这个分支 + PricingPreview 子树。 */}
@@ -456,6 +459,39 @@ function Features({ t }: { t: ReturnType<typeof useTranslations> }) {
               </Card>
             ))}
           </div>
+        </Stack>
+      </Container>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* AI Guardian showcase                                                */
+/* ------------------------------------------------------------------ */
+
+function GuardianShowcase({ t, locale }: { t: ReturnType<typeof useTranslations>; locale: string }) {
+  return (
+    <section className="py-20">
+      <Container size="xl">
+        <Stack gap={8} align="center">
+          <Stack gap={2} align="center" className="text-center">
+            <p className="text-sm font-semibold uppercase tracking-wide text-primary">
+              {t('guardianShowcase.eyebrow')}
+            </p>
+            <h2 className="font-display text-4xl font-semibold tracking-tight text-fg">
+              {t('guardianShowcase.title')}
+            </h2>
+            <p className="max-w-2xl text-lg text-fg-muted">{t('guardianShowcase.subtitle')}</p>
+          </Stack>
+          <div className="w-full max-w-4xl">
+            <GuardianEmbed locale={locale} posterAlt={t('guardianShowcase.posterAlt')} />
+          </div>
+          <a
+            href={`https://aster-lang.dev/${locale}/demos/guardian`}
+            className="text-sm font-medium text-primary hover:underline"
+          >
+            {t('guardianShowcase.tryIt')}
+          </a>
         </Stack>
       </Container>
     </section>

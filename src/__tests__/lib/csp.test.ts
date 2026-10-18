@@ -171,4 +171,10 @@ describe('securityHeadersOnly', () => {
   it('Cross-Origin-Opener-Policy is same-origin', () => {
     expect(headers['Cross-Origin-Opener-Policy']).toBe('same-origin');
   });
+
+  it('allows the aster-lang.dev AI Guardian embed in frame-src only', () => {
+    const csp = buildCspHeader(NONCE);
+    expect(csp).toMatch(/frame-src [^;]*https:\/\/aster-lang\.dev/);
+    expect(csp).toMatch(/frame-ancestors 'none'/);
+  });
 });

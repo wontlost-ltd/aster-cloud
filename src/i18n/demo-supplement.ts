@@ -175,6 +175,23 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noResults: 'No results',
       },
     },
+    guardianShowcase: {
+      eyebrow: 'AI governance',
+      title: 'Every AI action, checked before it runs',
+      subtitle: 'An AI support agent calls tools; a plain-language Aster rule allows, escalates, sends for four-eyes approval or denies each call — and every decision leaves hash-linked evidence.',
+      posterAlt: 'AI Guardian demo: an agent’s tool calls pass through an Aster guard',
+      tryIt: 'Try it yourself →',
+    },
+    guardianPage: {
+      seo: {
+        title: 'AI Guardian demo — Aster Cloud',
+        description: 'Watch an AI agent’s tool calls get allowed, escalated, approved by a second person or denied by an Aster rule, with an evidence trail and a Cedar export.',
+      },
+      title: 'AI Guardian',
+      subtitle: 'The same rule that runs here guards real agents through aster-guard.',
+      posterAlt: 'AI Guardian demo: an agent’s tool calls pass through an Aster guard',
+      tryIt: 'Try it yourself on aster-lang.dev →',
+    },
     demosIndex: {
       seo: {
         title: 'Demos — Aster Lang',
@@ -185,6 +202,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       subtitle: 'Five live demos — each runs the real engine in your browser, no signup.',
       enter: 'Open demo',
       cards: {
+        guardian: {
+          title: 'AI Guardian 🛡️',
+          description: 'An AI support agent calls tools; a plain-language Aster rule allows, escalates, sends for four-eyes approval or denies each call — with hash-linked evidence.',
+        },
         credit: {
           title: 'Replay a credit decision',
           description: 'A real loan-approval rule decides an application — then replay exactly how, the answer you give a regulator. With a byte-for-byte two-engine check and a tamper-checkable decision hash.',
@@ -906,6 +927,23 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noResults: '无结果',
       },
     },
+    guardianShowcase: {
+      eyebrow: 'AI 治理',
+      title: '每一次 AI 操作，执行前先过一道检查',
+      subtitle: 'AI 客服智能体调用工具；一条白话 Aster 规则对每次调用放行、升级、交由双人复核批准或直接拒绝——每个决策都留下哈希链接的证据。',
+      posterAlt: 'AI Guardian 演示：智能体的工具调用经过 Aster 守卫',
+      tryIt: '亲手试试 →',
+    },
+    guardianPage: {
+      seo: {
+        title: 'AI Guardian 演示 — Aster Cloud',
+        description: '观看 AI 智能体的工具调用如何被 Aster 规则放行、升级、由第二个人批准或拒绝，并附带证据链与 Cedar 导出。',
+      },
+      title: 'AI Guardian',
+      subtitle: '这里运行的同一条规则，通过 aster-guard 守护真实的智能体。',
+      posterAlt: 'AI Guardian 演示：智能体的工具调用经过 Aster 守卫',
+      tryIt: '在 aster-lang.dev 亲手试试 →',
+    },
     demosIndex: {
       seo: {
         title: 'Demo 演示 — Aster Lang',
@@ -916,6 +954,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       subtitle: '五个在线演示——每个都在你浏览器里跑真引擎，无需注册。',
       enter: '打开演示',
       cards: {
+        guardian: {
+          title: 'AI Guardian 🛡️',
+          description: 'AI 客服智能体调用工具；一条白话 Aster 规则对每次调用放行、升级、交由双人复核批准或拒绝——并留下哈希链接的证据。',
+        },
         credit: {
           title: '回放一笔信贷决策',
           description: '一条真实的贷款准入规则对申请作出决策——然后逐步回放它是怎么得出的，正是你交给监管的答案。含双引擎逐字节核对与可核验的决策哈希。',
@@ -1619,6 +1661,23 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noResults: 'Keine Treffer',
       },
     },
+    guardianShowcase: {
+      eyebrow: 'KI-Governance',
+      title: 'Jede KI-Aktion wird geprüft, bevor sie läuft',
+      subtitle: 'Ein KI-Support-Agent ruft Werkzeuge auf; eine Aster-Regel in Klartext erlaubt, eskaliert, schickt in die Vier-Augen-Freigabe oder lehnt jeden Aufruf ab – und jede Entscheidung hinterlässt hashverkettete Nachweise.',
+      posterAlt: 'AI-Guardian-Demo: Die Werkzeugaufrufe eines Agenten laufen durch einen Aster-Wächter',
+      tryIt: 'Selbst ausprobieren →',
+    },
+    guardianPage: {
+      seo: {
+        title: 'AI-Guardian-Demo — Aster Cloud',
+        description: 'Sehen Sie, wie die Werkzeugaufrufe eines KI-Agenten von einer Aster-Regel erlaubt, eskaliert, von einer zweiten Person freigegeben oder abgelehnt werden – mit Nachweiskette und Cedar-Export.',
+      },
+      title: 'AI Guardian',
+      subtitle: 'Dieselbe Regel, die hier läuft, schützt echte Agenten über aster-guard.',
+      posterAlt: 'AI-Guardian-Demo: Die Werkzeugaufrufe eines Agenten laufen durch einen Aster-Wächter',
+      tryIt: 'Selbst ausprobieren auf aster-lang.dev →',
+    },
     demosIndex: {
       seo: {
         title: 'Demos — Aster Lang',
@@ -1629,6 +1688,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       subtitle: 'Fünf Live-Demos — jede führt die echte Engine in Ihrem Browser aus, ohne Anmeldung.',
       enter: 'Demo öffnen',
       cards: {
+        guardian: {
+          title: 'AI Guardian 🛡️',
+          description: 'Ein KI-Support-Agent ruft Werkzeuge auf; eine Aster-Regel in Klartext erlaubt, eskaliert, schickt in die Vier-Augen-Freigabe oder lehnt jeden Aufruf ab – mit hashverketteten Nachweisen.',
+        },
         credit: {
           title: 'Eine Kreditentscheidung wiedergeben',
           description: 'Eine echte Kreditvergaberegel entscheidet über einen Antrag — und Sie spielen genau nach, wie, die Antwort für eine Prüfbehörde. Mit Byte-für-Byte-Zwei-Engine-Abgleich und prüfbarem Entscheidungs-Hash.',
@@ -2331,6 +2394,23 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noResults: 'कोई परिणाम नहीं',
       },
     },
+    guardianShowcase: {
+      eyebrow: 'AI गवर्नेंस',
+      title: 'हर AI कार्रवाई चलने से पहले जाँची जाती है',
+      subtitle: 'एक AI सपोर्ट एजेंट टूल कॉल करता है; सरल भाषा में लिखा Aster नियम हर कॉल को अनुमति देता है, एस्केलेट करता है, दो-व्यक्ति अनुमोदन के लिए भेजता है या अस्वीकार करता है — और हर निर्णय हैश-लिंक्ड प्रमाण छोड़ता है।',
+      posterAlt: 'AI Guardian डेमो: एजेंट के टूल कॉल Aster गार्ड से गुज़रते हैं',
+      tryIt: 'खुद आज़माएँ →',
+    },
+    guardianPage: {
+      seo: {
+        title: 'AI Guardian डेमो — Aster Cloud',
+        description: 'देखें कि AI एजेंट के टूल कॉल को Aster नियम कैसे अनुमति देता है, एस्केलेट करता है, दूसरे व्यक्ति से अनुमोदित कराता है या अस्वीकार करता है — प्रमाण श्रृंखला और Cedar एक्सपोर्ट के साथ।',
+      },
+      title: 'AI Guardian',
+      subtitle: 'यहाँ चलने वाला वही नियम aster-guard के ज़रिए असली एजेंटों की रक्षा करता है।',
+      posterAlt: 'AI Guardian डेमो: एजेंट के टूल कॉल Aster गार्ड से गुज़रते हैं',
+      tryIt: 'aster-lang.dev पर खुद आज़माएँ →',
+    },
     demosIndex: {
       seo: {
         title: 'डेमो — Aster Lang',
@@ -2341,6 +2421,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       subtitle: 'पाँच लाइव डेमो — हर एक आपके ब्राउज़र में असली इंजन चलाता है, बिना साइनअप।',
       enter: 'डेमो खोलें',
       cards: {
+        guardian: {
+          title: 'AI Guardian 🛡️',
+          description: 'एक AI सपोर्ट एजेंट टूल कॉल करता है; सरल भाषा में लिखा Aster नियम हर कॉल को अनुमति देता है, एस्केलेट करता है, दो-व्यक्ति अनुमोदन के लिए भेजता है या अस्वीकार करता है — हैश-लिंक्ड प्रमाण के साथ।',
+        },
         credit: {
           title: 'एक क्रेडिट निर्णय फिर से चलाएँ',
           description: 'एक वास्तविक ऋण-स्वीकृति नियम एक आवेदन पर निर्णय लेता है — फिर ठीक से फिर से चलाएँ कि कैसे, वह उत्तर जो आप नियामक को देते हैं। बाइट-दर-बाइट दो-इंजन जाँच और सत्यापन-योग्य निर्णय हैश के साथ।',

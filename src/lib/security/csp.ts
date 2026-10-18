@@ -42,6 +42,12 @@ const TURNSTILE_DOMAINS = [
   'https://challenges.cloudflare.com',
 ];
 
+// AI Guardian 演示：落地页与 /demos/guardian 以 iframe 嵌入 aster-lang.dev 的剧情（仅 SaaS 渲染）。
+// 来源取自与嵌入组件相同的 NEXT_PUBLIC_GUARDIAN_EMBED_URL，本地验证指向本地 aster-dev 时无需改代码。
+export const GUARDIAN_EMBED_ORIGIN = new URL(
+  process.env.NEXT_PUBLIC_GUARDIAN_EMBED_URL || 'https://aster-lang.dev/embed/guardian',
+).origin;
+
 // aster-api 直连域名（AI generate/explain/complete SSE + lexicons stream
 // 走客户端 fetch，不经 Next.js server proxy，所以必须在 connect-src 列白）。
 //
@@ -192,7 +198,7 @@ export function buildCspHeader(nonce: string): string {
       ...ALL_TRUSTED_CONNECT_SRC,
       ...(isDev ? ['ws:', 'http://localhost:*'] : []),
     ],
-    'frame-src': ["'self'", ...STRIPE_DOMAINS, ...TURNSTILE_DOMAINS],
+    'frame-src': ["'self'", ...STRIPE_DOMAINS, ...TURNSTILE_DOMAINS, GUARDIAN_EMBED_ORIGIN],
     'frame-ancestors': ["'none'"],
     'form-action': ["'self'"],
     'base-uri': ["'self'"],

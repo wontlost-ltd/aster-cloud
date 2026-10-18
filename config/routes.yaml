@@ -83,6 +83,13 @@ routes:
     locales: all
     notes: Domain-vocabulary demo — write rules in industry terms across 3 domains (sales)
 
+  - path: /demos/guardian
+    status: canonical-here
+    owner: marketing
+    source: src/app/[locale]/demos/guardian/page.tsx
+    locales: all
+    notes: AI Guardian demo — embeds the aster-lang.dev story (SaaS only)
+
   - path: /demos/kitten
     status: canonical-here
     owner: marketing

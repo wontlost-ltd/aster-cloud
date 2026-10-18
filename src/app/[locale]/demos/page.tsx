@@ -8,6 +8,7 @@ import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { Card, CardBody, Container, Stack } from '@/components/ui';
 import { Link } from '@/i18n/navigation';
+import { IS_SAAS } from '@/lib/deployment-mode';
 
 type Props = {
   params: Promise<{ locale: string }>;
@@ -25,13 +26,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 /** demo 卡片元数据：href 指向子路由，文案走 i18n（demosIndex.cards.<key>）。 */
-const DEMO_CARDS = [
+const DEMO_CARDS: ReadonlyArray<{ key: string; href: string; emoji: string }> = [
+  ...(IS_SAAS ? [{ key: 'guardian', href: '/demos/guardian', emoji: '🛡️' }] : []),
   { key: 'credit', href: '/demos/credit', emoji: '📊' },
   { key: 'vocab', href: '/demos/vocab', emoji: '🏷️' },
   { key: 'kitten', href: '/demos/kitten', emoji: '🐱' },
   { key: 'poker', href: '/demos/poker', emoji: '🃏' },
   { key: 'poem', href: '/demos/poem', emoji: '📜' },
-] as const;
+];
 
 export default async function DemosIndexPage({ params }: Props) {
   const { locale } = await params;
