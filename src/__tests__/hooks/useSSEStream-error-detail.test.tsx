@@ -46,3 +46,10 @@ describe('useSSEStream.errorDetail', () => {
     expect(r2.current.errorDetail).toBeNull();
   });
 });
+
+describe('仅码 error 帧（平台来源）', () => {
+  it('providerMessage 为 null 而非 undefined', async () => {
+    const r = await run(sse({ type: 'error', error: 'provider_unavailable' }));
+    expect(r.current.errorDetail?.providerMessage).toBeNull();
+  });
+});

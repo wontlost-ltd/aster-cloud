@@ -13,6 +13,9 @@
  * - `languageSettings.toggleAriaLabel` / `languageSettings.saveFailed`（团队语言卡改为
  *   每行 Toggle 即点即生效后新增，与 platformLanguageSettings 同结构）
  *
+ * - `ai.*` 中 provider 错误文案（errorProvider*、goAiKeys）与 `settings.aiKeysPage.keyRejected`：
+ *   AI 助手/设置页按错误码展示的 cloud 专属文案，`ai` 命名空间主体仍在共享包，这里只叠加新键。
+ *
  * deepMergeMessages 深合并：只新增上述 key，不覆盖包里已有的 demoPage/languageSettings
  * 其余文案。缺 locale 的 key 由 request.ts 的 en 底座兜底。
  */

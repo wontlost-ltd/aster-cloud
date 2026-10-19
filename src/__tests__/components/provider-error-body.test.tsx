@@ -30,3 +30,13 @@ describe('ProviderErrorBody', () => {
     expect(screen.getByText('errorProviderRejectedModel{"model":"claude-x"}')).toBeDefined();
   });
 });
+
+describe('ProviderErrorBody — 仅码帧（平台来源，aster-api 省略 message）', () => {
+  it('无空次要行、无 "undefined"', () => {
+    const view = providerErrorView({ code: 'provider_unavailable', model: null, providerMessage: null })!;
+    const { container } = render(<ProviderErrorBody view={view} t={t} href="/x" />);
+    expect(container.textContent).toBe('errorProviderUnavailable');
+    expect(container.textContent).not.toContain('undefined');
+    expect(screen.queryByTestId('provider-error-detail')).toBeNull();
+  });
+});

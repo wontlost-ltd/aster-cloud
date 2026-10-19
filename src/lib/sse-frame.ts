@@ -90,6 +90,8 @@ export function parseSSEFrame(frame: string): SSEEvent | null {
     };
     // PromptScopeFilter 返回 { error: "out_of_scope", message: "...", rule_id: "..." }
     // 用 message 作为 user-facing 文案，error 仅作为机器可读的 code
+    // error 帧：event.error 是展示文本（有 provider message 时即该原话），机器码在 event.code；
+    // 需要按码分支的消费者必须用 code / errorDetail，不能拿 error 比较。
     const userMessage = parsed.message ?? parsed.error;
     return {
       type: eventType ?? parsed.type ?? 'delta',
