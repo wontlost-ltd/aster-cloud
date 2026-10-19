@@ -392,9 +392,13 @@ export function AIAssistantPanel({
         </div>
       </div>
 
-      {/* 流式输出区域 */}
-      {(streaming || content) && (
+      {/* 流式输出区域。
+          错误/拒绝/校验失败反馈必须独立于 content 渲染：provider 在产出任何内容前
+          就失败（meta → error）或 HTTP 拒绝时 content 为空、streaming 为 false，
+          若仅按 streaming||content 挂载，用户将看不到任何原因与设置入口。 */}
+      {(streaming || content || error || validationError) && (
         <div className="flex-1 px-4 pb-3 overflow-auto">
+          {(streaming || content) && (
           <div className="rounded-lg border border-border dark:border-gray-700 bg-bg-subtle dark:bg-gray-900 p-3">
             {/* 状态指示 */}
             {streaming && (
@@ -424,6 +428,7 @@ export function AIAssistantPanel({
               />
             </div>
           </div>
+          )}
 
           {/* 修复中校验错误（流式过程中短暂显示） */}
           {validationError && streaming && (
