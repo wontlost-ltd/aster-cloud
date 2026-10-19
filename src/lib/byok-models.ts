@@ -20,7 +20,38 @@ export const MODEL_ID_RE = /^[A-Za-z0-9._:/-]{1,128}$/;
 /** models === null：网关不提供列表（不算错误，保存时跳过存在性校验）。 */
 export type ByokModelsResult =
   | { ok: true; models: string[] | null; defaultModel: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string; rejection?: ProviderKeyRejection };
+
+/**
+ * provider 明确拒绝了这把 key 本身（aster-api 对 /models 回 422 provider_key_rejected）：
+ * 如 401/403 鉴权失败，或 Anthropic key 未绑定 workspace 的 400。这与「暂时查不到列表」不同——
+ * 重试没用，保存了也调不通，所以保存时必须拒绝并把 provider 的原话带给用户。
+ */
+export interface ProviderKeyRejection {
+  /** provider_auth_failed | provider_bad_request（保持字符串以便前向兼容新增原因）。 */
+  reason: string;
+  /** aster-api 已脱敏并截断的 provider 原话；旧版/缺省为 null。 */
+  message: string | null;
+  providerErrorType: string | null;
+}
+
+const REJECTION_MESSAGE_MAX = 300;
+
+function optString(v: unknown, max: number): string | null {
+  return typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null;
+}
+
+/** 解析 422 provider_key_rejected 响应体；形状不符返回 null（调用方按普通失败处理）。 */
+export function parseKeyRejection(body: unknown): ProviderKeyRejection | null {
+  if (typeof body !== 'object' || body === null) return null;
+  const b = body as Record<string, unknown>;
+  if (b.error !== 'provider_key_rejected') return null;
+  return {
+    reason: optString(b.reason, 64) ?? 'provider_bad_request',
+    message: optString(b.message, REJECTION_MESSAGE_MAX),
+    providerErrorType: optString(b.providerErrorType, 64),
+  };
+}
 
 /**
  * 「模型列表未能校验」的稳定原因码，供 UI 解释为什么没校验成（只做提示，不阻断保存）。
@@ -81,6 +112,9 @@ export async function fetchByokModels(
     });
     if (!res.ok) {
       const err = (await res.json().catch(() => null)) as { error?: string } | null;
+      // 422 仅在新版 aster-api 出现；旧版对同一场景回 502 models_unavailable，走下面的「未校验」旧路径。
+      const rejection = res.status === 422 ? parseKeyRejection(err) : null;
+      if (rejection) return { ok: false, error: 'provider_key_rejected', rejection };
       return { ok: false, error: err?.error ?? `http_${res.status}` };
     }
     const data = (await res.json()) as { models: string[] | null; defaultModel: string };

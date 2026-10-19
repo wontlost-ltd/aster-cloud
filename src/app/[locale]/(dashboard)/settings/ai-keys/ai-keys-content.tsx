@@ -72,6 +72,11 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
     if (typeof reason !== 'string') return t('modelUnverified');
     return `${t('modelUnverified')} ${reasons[reason] ?? reasons.unknown}`;
   };
+  // provider 拒绝 key 本身（400 provider_key_rejected）：本地化标题 + provider 原话（原文，不翻译）。
+  const keyRejectedNotice = (data: { message?: unknown }): string =>
+    typeof data.message === 'string' && data.message
+      ? `${t('keyRejected')} ${data.message}`
+      : t('keyRejected');
   const [bindings, setBindings] = useState<BYOKBinding[]>(initialBindings);
   const [provider, setProvider] = useState<'openai' | 'anthropic' | 'vertex'>(
     'openai',
@@ -178,6 +183,10 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
       });
       if (!r.ok) {
         const data = await r.json().catch(() => ({}));
+        if (data.error === 'provider_key_rejected') {
+          setRowError(keyRejectedNotice(data));
+          return;
+        }
         if (data.error === 'model_not_available') {
           setRowError(t('modelNotAvailable', { available: ((data.available as string[]) ?? []).join(', ') }));
           return;
@@ -264,6 +273,10 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
       });
       if (!r.ok) {
         const data = await r.json().catch(() => ({}));
+        if (data.error === 'provider_key_rejected') {
+          setError(keyRejectedNotice(data));
+          return;
+        }
         if (data.error === 'model_not_available') {
           setError(t('modelNotAvailable', { available: ((data.available as string[]) ?? []).join(', ') }));
           return;

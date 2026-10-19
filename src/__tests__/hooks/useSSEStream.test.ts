@@ -158,3 +158,27 @@ describe('parseSSEFrame', () => {
     });
   });
 });
+
+describe('parseSSEFrame — provider 错误帧（新旧形状）', () => {
+  const WORKSPACE_MSG = 'This API key is not scoped to a workspace, so this request must include the anthropic-workspace-id header with the ID of the workspace to use. Add the header, or use an API key that is scoped to a workspace.';
+
+  it('★新版：code / message / providerErrorType 全部解析，error 仍是展示文本', () => {
+    const e = parseSSEFrame(`data: ${JSON.stringify({ type: 'error', error: 'provider_bad_request', message: WORKSPACE_MSG, providerErrorType: 'invalid_request_error' })}`);
+    expect(e).toMatchObject({
+      type: 'error', code: 'provider_bad_request', message: WORKSPACE_MSG,
+      providerErrorType: 'invalid_request_error', error: WORKSPACE_MSG,
+    });
+  });
+
+  it('★旧版：仅 error 码、无附加字段 → code 有值，message / providerErrorType 缺省', () => {
+    const e = parseSSEFrame('data: {"type":"error","error":"provider_rejected_model"}');
+    expect(e?.code).toBe('provider_rejected_model');
+    expect(e?.message).toBeUndefined();
+    expect(e?.providerErrorType).toBeUndefined();
+    expect(e?.error).toBe('provider_rejected_model');
+  });
+
+  it('非 error 帧不带 code', () => {
+    expect(parseSSEFrame('data: {"type":"delta","data":"x"}')?.code).toBeUndefined();
+  });
+});

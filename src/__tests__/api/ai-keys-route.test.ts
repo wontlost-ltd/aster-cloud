@@ -417,3 +417,50 @@ describe('POST /api/user/ai-keys — 多 key 新增', () => {
     expect(fetchByokModels).not.toHaveBeenCalled();
   });
 });
+
+// 生产事故：Anthropic key 未绑定 workspace → aster-api 422 provider_key_rejected。
+describe('provider_key_rejected：保存/编辑时拒绝坏 key', () => {
+  const goodKey = 'sk-ant-'.padEnd(30, 'x');
+  const rejection = {
+    reason: 'provider_bad_request',
+    message: 'This API key is not scoped to a workspace, so this request must include the anthropic-workspace-id header with the ID of the workspace to use. Add the header, or use an API key that is scoped to a workspace.',
+    providerErrorType: 'invalid_request_error',
+  };
+  const rejected = { ok: false as const, error: 'provider_key_rejected', rejection };
+
+  it('★POST：400 provider_key_rejected + provider 原话，不 saveBYOKKey、不写审计', async () => {
+    vi.mocked(fetchByokModels).mockResolvedValue(rejected);
+    const r = await POST(postReq({ provider: 'anthropic', apiKey: goodKey }));
+    expect(r.status).toBe(400);
+    expect(await r.json()).toEqual({ error: 'provider_key_rejected', ...rejection });
+    expect(saveBYOKKey).not.toHaveBeenCalled();
+    expect(updateBYOKAvailableModels).not.toHaveBeenCalled();
+    expect(logAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it('★POST：未填 model 也校验 key（事故即此场景）', async () => {
+    vi.mocked(fetchByokModels).mockResolvedValue(rejected);
+    const r = await POST(postReq({ provider: 'anthropic', apiKey: goodKey, model: null }));
+    expect(r.status).toBe(400);
+    expect(fetchByokModels).toHaveBeenCalledTimes(1);
+  });
+
+  it('★PATCH update model：400 provider_key_rejected，不 updateBYOKKeyMeta', async () => {
+    vi.mocked(findBindingForUser).mockResolvedValue({ id: 'b1', provider: 'anthropic', providerUrl: null });
+    vi.mocked(getDecryptedBYOKKeyById).mockResolvedValue(goodKey);
+    vi.mocked(fetchByokModels).mockResolvedValue(rejected);
+    const r = await PATCH(patchReq({ id: 'b1', action: 'update', model: 'claude-sonnet-5-5' }));
+    expect(r.status).toBe(400);
+    expect(await r.json()).toMatchObject({ error: 'provider_key_rejected', reason: 'provider_bad_request', message: rejection.message });
+    expect(updateBYOKKeyMeta).not.toHaveBeenCalled();
+    expect(logAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it('★旧版 aster-api（502 models_unavailable）→ 仍保存且 unverified，行为不变', async () => {
+    vi.mocked(fetchByokModels).mockResolvedValue({ ok: false, error: 'models_unavailable' });
+    vi.mocked(saveBYOKKey).mockResolvedValue({ id: 'n1' });
+    const r = await POST(postReq({ provider: 'anthropic', apiKey: goodKey }));
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ ok: true, modelsChecked: false, unverifiedReason: 'provider_unavailable' });
+  });
+});
