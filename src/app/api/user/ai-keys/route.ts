@@ -74,6 +74,19 @@ function unverified(
   return { modelsChecked: false, unverifiedReason: unverifiedReason(error) };
 }
 
+/**
+ * provider 拒绝了 key 本身：不存、不改，400 带 provider 原话让用户当场修正。
+ * 非 rejection 的失败（502/超时/网络）返回 null，仍走「已保存，未校验」旧路径。
+ */
+function keyRejectedResponse(result: Awaited<ReturnType<typeof fetchByokModels>>): NextResponse | null {
+  if (result.ok || !result.rejection) return null;
+  const { reason, message, providerErrorType } = result.rejection;
+  return NextResponse.json(
+    { error: 'provider_key_rejected', reason, message, providerErrorType },
+    { status: 400 },
+  );
+}
+
 function modelNotAvailable(available: string[]) {
   return NextResponse.json({ error: 'model_not_available', available }, { status: 400 });
 }
@@ -103,6 +116,8 @@ async function validatePatchModel(
     model,
   );
   if ('rejected' in check) return modelNotAvailable(check.rejected);
+  const keyRejected = keyRejectedResponse(check.result);
+  if (keyRejected) return keyRejected;
   if (!check.result.ok) return unverified(bindingId, check.result.error);
   await writeAvailableModels(bindingId, check.result);
   return { modelsChecked: true };
@@ -240,6 +255,8 @@ export async function POST(req: Request) {
         model,
       );
       if ('rejected' in check) return modelNotAvailable(check.rejected);
+      const keyRejected = keyRejectedResponse(check.result);
+      if (keyRejected) return keyRejected;
       models = check.result;
     }
 

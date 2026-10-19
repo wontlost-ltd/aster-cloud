@@ -4,6 +4,8 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { useAIAssistant } from '@/hooks/useAIAssistant';
 import { denialMessage } from '@/lib/llm-error';
+import { providerErrorView } from '@/lib/provider-error';
+import { ProviderErrorBody } from './provider-error-body';
 import { AIDiffPreview } from './ai-diff-preview';
 import { track, Events } from '@/lib/mixpanel';
 import {
@@ -67,6 +69,7 @@ export function AIAssistantPanel({
     content,
     error,
     denial,
+    errorDetail,
     validationError,
     completed,
     validated,
@@ -76,6 +79,7 @@ export function AIAssistantPanel({
     cancel,
     reset,
   } = useAIAssistant();
+  const providerView = providerErrorView(errorDetail);
 
   // 聚焦输入框
   useEffect(() => {
@@ -462,7 +466,9 @@ export function AIAssistantPanel({
                   这行原始 JSON，用户只能去开控制台看真实原因。
                   服务端 message 是硬编码中文，故**不能**直接透传给 en/de/hi。 */}
               <span>
-                {denialMessage(denial, t) ?? error}
+                {providerView
+                  ? <ProviderErrorBody view={providerView} t={t} href={`/${uiLocale}/settings/ai-keys`} />
+                  : (denialMessage(denial, t) ?? error)}
                 {denial?.reason === 'ai_email_unverified' && (
                   <>
                     {' '}

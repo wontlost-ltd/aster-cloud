@@ -13,6 +13,9 @@
  * - `languageSettings.toggleAriaLabel` / `languageSettings.saveFailed`（团队语言卡改为
  *   每行 Toggle 即点即生效后新增，与 platformLanguageSettings 同结构）
  *
+ * - `ai.*` 中 provider 错误文案（errorProvider*、goAiKeys）与 `settings.aiKeysPage.keyRejected`：
+ *   AI 助手/设置页按错误码展示的 cloud 专属文案，`ai` 命名空间主体仍在共享包，这里只叠加新键。
+ *
  * deepMergeMessages 深合并：只新增上述 key，不覆盖包里已有的 demoPage/languageSettings
  * 其余文案。缺 locale 的 key 由 request.ts 的 en 底座兜底。
  */
@@ -515,8 +518,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           unknown: 'Reason: unknown error.',
         },
         modelInvalid: 'Model id may only contain letters, digits and . _ : / - (max 128).',
+        keyRejected: 'The provider rejected this API key, so it was not saved.',
         thModel: 'Model',
       },
+    },
+    ai: {
+      errorProviderAuthFailed: 'The AI provider rejected your API key (invalid, revoked or without permission). Check the key in Settings.',
+      errorProviderRejectedModel: 'The AI provider did not accept the request for model "{model}". Check the model name and that your key may use it.',
+      errorProviderRejectedModelUnknown: 'The AI provider did not accept the request for the configured model. Check the model name and that your key may use it.',
+      errorProviderBadRequest: 'The AI provider rejected the request. This is usually a key or account setup issue, such as a key that is not scoped to a workspace.',
+      errorProviderRateLimited: 'The AI provider is rate limiting requests. Please wait a moment and try again.',
+      errorProviderUnavailable: 'The AI provider is temporarily unavailable. Please try again later.',
+      goAiKeys: 'Open AI keys settings',
     },
     admin: {
       structuralAliasGrants: {
@@ -1252,8 +1265,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           unknown: '原因：未知错误。',
         },
         modelInvalid: '模型 id 只能包含字母、数字与 . _ : / -（最长 128）。',
+        keyRejected: '服务商拒绝了该 API 密钥，因此未保存。',
         thModel: '模型',
       },
+    },
+    ai: {
+      errorProviderAuthFailed: 'AI 服务商拒绝了你的 API 密钥（无效、已撤销或无权限）。请到设置中检查该密钥。',
+      errorProviderRejectedModel: 'AI 服务商未接受针对模型“{model}”的请求。请检查模型名称，以及你的密钥是否有权使用该模型。',
+      errorProviderRejectedModelUnknown: 'AI 服务商未接受针对所配置模型的请求。请检查模型名称，以及你的密钥是否有权使用该模型。',
+      errorProviderBadRequest: 'AI 服务商拒绝了该请求。通常是密钥或账号配置问题，例如密钥没有限定到某个 workspace。',
+      errorProviderRateLimited: 'AI 服务商正在限流，请稍等片刻后重试。',
+      errorProviderUnavailable: 'AI 服务商暂时不可用，请稍后重试。',
+      goAiKeys: '前往 AI 密钥设置',
     },
     admin: {
       structuralAliasGrants: {
@@ -1987,8 +2010,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           unknown: 'Grund: Unbekannter Fehler.',
         },
         modelInvalid: 'Die Modell-ID darf nur Buchstaben, Ziffern und . _ : / - enthalten (max. 128).',
+        keyRejected: 'Der Anbieter hat diesen API-Schlüssel abgelehnt, daher wurde er nicht gespeichert.',
         thModel: 'Modell',
       },
+    },
+    ai: {
+      errorProviderAuthFailed: 'Der KI-Anbieter hat Ihren API-Schlüssel abgelehnt (ungültig, widerrufen oder ohne Berechtigung). Prüfen Sie den Schlüssel in den Einstellungen.',
+      errorProviderRejectedModel: 'Der KI-Anbieter hat die Anfrage für das Modell „{model}“ nicht akzeptiert. Prüfen Sie den Modellnamen und ob Ihr Schlüssel es verwenden darf.',
+      errorProviderRejectedModelUnknown: 'Der KI-Anbieter hat die Anfrage für das konfigurierte Modell nicht akzeptiert. Prüfen Sie den Modellnamen und ob Ihr Schlüssel es verwenden darf.',
+      errorProviderBadRequest: 'Der KI-Anbieter hat die Anfrage abgelehnt. Meist liegt ein Problem mit Schlüssel oder Konto vor, z. B. ein Schlüssel ohne Workspace-Zuordnung.',
+      errorProviderRateLimited: 'Der KI-Anbieter begrenzt die Anfragen. Bitte warten Sie einen Moment und versuchen Sie es erneut.',
+      errorProviderUnavailable: 'Der KI-Anbieter ist vorübergehend nicht verfügbar. Bitte versuchen Sie es später erneut.',
+      goAiKeys: 'KI-Schlüssel-Einstellungen öffnen',
     },
     admin: {
       structuralAliasGrants: {
@@ -2720,8 +2753,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           unknown: 'कारण: अज्ञात त्रुटि।',
         },
         modelInvalid: 'मॉडल id में केवल अक्षर, अंक और . _ : / - हो सकते हैं (अधिकतम 128)।',
+        keyRejected: 'प्रदाता ने इस API कुंजी को अस्वीकार कर दिया, इसलिए इसे सहेजा नहीं गया।',
         thModel: 'मॉडल',
       },
+    },
+    ai: {
+      errorProviderAuthFailed: 'AI प्रदाता ने आपकी API कुंजी अस्वीकार कर दी (अमान्य, रद्द या अनुमति के बिना)। कृपया सेटिंग्स में कुंजी जाँचें।',
+      errorProviderRejectedModel: 'AI प्रदाता ने मॉडल "{model}" के लिए अनुरोध स्वीकार नहीं किया। मॉडल का नाम जाँचें और यह भी कि आपकी कुंजी उसका उपयोग कर सकती है।',
+      errorProviderRejectedModelUnknown: 'AI प्रदाता ने कॉन्फ़िगर किए गए मॉडल के लिए अनुरोध स्वीकार नहीं किया। मॉडल का नाम जाँचें और यह भी कि आपकी कुंजी उसका उपयोग कर सकती है।',
+      errorProviderBadRequest: 'AI प्रदाता ने अनुरोध अस्वीकार कर दिया। यह आमतौर पर कुंजी या खाते की सेटअप समस्या होती है, जैसे ऐसी कुंजी जो किसी workspace तक सीमित नहीं है।',
+      errorProviderRateLimited: 'AI प्रदाता अनुरोधों को सीमित कर रहा है। कृपया थोड़ी देर प्रतीक्षा करें और फिर प्रयास करें।',
+      errorProviderUnavailable: 'AI प्रदाता अस्थायी रूप से अनुपलब्ध है। कृपया बाद में पुनः प्रयास करें।',
+      goAiKeys: 'AI कुंजी सेटिंग्स खोलें',
     },
     admin: {
       structuralAliasGrants: {

@@ -15,6 +15,12 @@ export interface SSEEvent {
   data?: string;
   error?: string;
   validated?: boolean;
+  /** error 帧的机器可读码（payload.error）；`error` 字段为展示文本（message 优先），二者不可混用。 */
+  code?: string;
+  /** error 帧的 payload.message：新版 aster-api 为 provider 脱敏原话。 */
+  message?: string;
+  /** error 帧的 payload.providerErrorType（如 invalid_request_error）。 */
+  providerErrorType?: string;
 }
 
 /**
@@ -80,15 +86,21 @@ export function parseSSEFrame(frame: string): SSEEvent | null {
       error?: string;
       message?: string;
       rule_id?: string;
+      providerErrorType?: string;
     };
     // PromptScopeFilter 返回 { error: "out_of_scope", message: "...", rule_id: "..." }
     // 用 message 作为 user-facing 文案，error 仅作为机器可读的 code
+    // error 帧：event.error 是展示文本（有 provider message 时即该原话），机器码在 event.code；
+    // 需要按码分支的消费者必须用 code / errorDetail，不能拿 error 比较。
     const userMessage = parsed.message ?? parsed.error;
     return {
       type: eventType ?? parsed.type ?? 'delta',
       data: parsed.data,
       error: userMessage,
       validated: parsed.validated,
+      ...(typeof parsed.error === 'string' ? { code: parsed.error } : {}),
+      ...(typeof parsed.message === 'string' ? { message: parsed.message } : {}),
+      ...(typeof parsed.providerErrorType === 'string' ? { providerErrorType: parsed.providerErrorType } : {}),
     };
   } catch {
     // 非 JSON：当 type 提示是 delta 时拼回 content；否则带 event type 抛错

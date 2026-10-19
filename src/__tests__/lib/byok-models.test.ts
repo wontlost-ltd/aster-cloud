@@ -4,7 +4,7 @@ vi.mock('@/lib/api-signing', () => ({
   signInternalCallerHeaders: vi.fn().mockResolvedValue({ 'X-Internal-Signature': 'sig', 'X-Aster-Timestamp': '1', 'X-Aster-Nonce': 'n', 'X-Internal-Caller': 'cloud-bff' }),
 }));
 
-import { fetchByokModels, unverifiedReason } from '@/lib/byok-models';
+import { fetchByokModels, parseKeyRejection, unverifiedReason } from '@/lib/byok-models';
 import { signInternalCallerHeaders } from '@/lib/api-signing';
 
 const creds = { provider: 'openai', apiKey: 'sk-x', baseUrl: null };
@@ -64,5 +64,47 @@ describe('unverifiedReason（把 fetchByokModels 的 error 收敛成稳定原因
     ['fetch failed', 'unknown'],
   ])('%s → %s', (error, reason) => {
     expect(unverifiedReason(error)).toBe(reason);
+  });
+});
+
+// 生产事故原文：Anthropic key 未绑定 workspace 时的 400 提示。
+const WORKSPACE_MSG = 'This API key is not scoped to a workspace, so this request must include the anthropic-workspace-id header with the ID of the workspace to use. Add the header, or use an API key that is scoped to a workspace.';
+
+describe('fetchByokModels — 422 provider_key_rejected（新版 aster-api）', () => {
+  it('★事故 fixture：workspace 未绑定 → ok:false + rejection 携带 provider 原话', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({
+      error: 'provider_key_rejected', reason: 'provider_bad_request', message: WORKSPACE_MSG, providerErrorType: 'invalid_request_error',
+    }), { status: 422 }));
+    expect(await fetchByokModels('u1', creds)).toEqual({
+      ok: false,
+      error: 'provider_key_rejected',
+      rejection: { reason: 'provider_bad_request', message: WORKSPACE_MSG, providerErrorType: 'invalid_request_error' },
+    });
+  });
+
+  it('401 鉴权失败形状：reason=provider_auth_failed，message 缺省为 null', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ error: 'provider_key_rejected', reason: 'provider_auth_failed' }), { status: 422 }));
+    expect(await fetchByokModels('u1', creds)).toMatchObject({
+      ok: false, rejection: { reason: 'provider_auth_failed', message: null, providerErrorType: null },
+    });
+  });
+
+  it('★旧版 aster-api：同场景 502 models_unavailable → 无 rejection，仍是「未校验」旧路径', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ error: 'models_unavailable' }), { status: 502 }));
+    const res = await fetchByokModels('u1', creds);
+    expect(res).toEqual({ ok: false, error: 'models_unavailable' });
+  });
+
+  it('422 但 error 不是 provider_key_rejected → 不当作 rejection', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ error: 'something_else' }), { status: 422 }));
+    expect(await fetchByokModels('u1', creds)).toEqual({ ok: false, error: 'something_else' });
+  });
+
+  it('parseKeyRejection：非对象 / 超长 message 截断到 300', () => {
+    expect(parseKeyRejection(null)).toBeNull();
+    expect(parseKeyRejection('x')).toBeNull();
+    const r = parseKeyRejection({ error: 'provider_key_rejected', message: 'a'.repeat(500) });
+    expect(r?.message).toHaveLength(300);
+    expect(r?.reason).toBe('provider_bad_request');
   });
 });

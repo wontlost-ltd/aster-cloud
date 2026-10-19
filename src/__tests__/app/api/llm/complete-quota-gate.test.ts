@@ -176,6 +176,27 @@ describe('POST /api/llm/complete — AI 配额门控', () => {
     });
   });
 
+  // 生产事故原文：Anthropic key 未绑定 workspace → 新版 aster-api 回 400 provider_bad_request。
+  const WORKSPACE_MSG = 'This API key is not scoped to a workspace, so this request must include the anthropic-workspace-id header with the ID of the workspace to use. Add the header, or use an API key that is scoped to a workspace.';
+  for (const code of ['provider_auth_failed', 'provider_rejected_model', 'provider_bad_request']) {
+    it(`★400 ${code}（已到达 provider）→ 原样透传 body，记 api_error`, async () => {
+      mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+      mockResolveByok.mockResolvedValue({ provider: 'anthropic', apiKey: 'sk-ant-x', baseUrl: null, bindingId: 'b1', model: 'claude-x' });
+      mockInjectByok.mockImplementation((raw: string) => ({ body: raw, injected: true }));
+      mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: -1, limit: -1, usedByok: true });
+      const upstreamBody = JSON.stringify({ error: code, message: WORKSPACE_MSG, providerErrorType: 'invalid_request_error' });
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(upstreamBody, { status: 400, headers: { 'content-type': 'application/json' } }),
+      );
+      const { POST } = await import('@/app/api/llm/complete/route');
+      const res = await POST(post() as never);
+      expect(res.status).toBe(400);
+      expect(await res.text()).toBe(upstreamBody);
+      expect(mockRecordAiUsage).toHaveBeenCalledTimes(1);
+      expect(mockRecordAiUsage.mock.calls[0][0]).toMatchObject({ status: 'api_error', model: 'claude-x', usedByok: true });
+    });
+  }
+
   it('其他 400（如 invalid_byok，未到达 provider）→ 不记账', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
     mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: false });

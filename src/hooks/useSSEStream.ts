@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { parseLlmError, type LlmError } from '@/lib/llm-error';
 import { parseSSEFrame, type SSEEvent } from '@/lib/sse-frame';
+import type { StreamErrorDetail } from '@/lib/provider-error';
 
 // 帧解析与类型移到 lib（服务端 SSE 代理也要用，而本文件是 'use client'）；此处保留原导出路径
 export { parseSSEFrame, type SSEEvent, type SSEEventType } from '@/lib/sse-frame';
@@ -20,6 +21,11 @@ export interface UseSSEStreamResult {
    * `HTTP 403: {"error":"ai_email_unverified",...}` 这行原始 JSON 摔给用户。
    */
   denial: LlmError | null;
+  /**
+   * 流内 error 帧的结构化详情（码 + 实际发出的 model + provider 原话）。
+   * UI 经 `providerErrorView` 按码选本地化文案；与 `error` 并存，旧消费方不受影响。
+   */
+  errorDetail: StreamErrorDetail | null;
   validationError: string | null;
   completed: boolean;
   /** 编译是否通过（final 事件携带） */
@@ -36,6 +42,7 @@ export function useSSEStream(): UseSSEStreamResult {
   const [content, setContent] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [denial, setDenial] = useState<LlmError | null>(null);
+  const [errorDetail, setErrorDetail] = useState<StreamErrorDetail | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [completed, setCompleted] = useState(false);
   const [validated, setValidated] = useState(false);
@@ -46,6 +53,7 @@ export function useSSEStream(): UseSSEStreamResult {
     setContent('');
     setError(null);
     setDenial(null);
+    setErrorDetail(null);
     setValidationError(null);
     setCompleted(false);
     setValidated(false);
@@ -63,6 +71,7 @@ export function useSSEStream(): UseSSEStreamResult {
     setContent('');
     setError(null);
     setDenial(null);
+    setErrorDetail(null);
     setValidationError(null);
     setCompleted(false);
     setValidated(false);
@@ -111,8 +120,14 @@ export function useSSEStream(): UseSSEStreamResult {
       const decoder = new TextDecoder();
       let buffer = '';
 
+      // meta 帧（先于 error 帧）回传实际发出的 model，供「模型被拒」文案引用。
+      let metaModel: string | null = null;
+
       const dispatch = (event: SSEEvent) => {
         switch (event.type) {
+          case 'meta':
+            if (metaModel === null && event.data) metaModel = event.data;
+            break;
           case 'delta':
             if (event.data) setContent(prev => prev + event.data);
             break;
@@ -132,6 +147,9 @@ export function useSSEStream(): UseSSEStreamResult {
             break;
           case 'error':
             setError(event.error ?? event.data ?? 'Unknown error');
+            setErrorDetail(event.code
+              ? { code: event.code, model: metaModel, providerMessage: event.message ?? null }
+              : null);
             break;
         }
       };
@@ -170,5 +188,5 @@ export function useSSEStream(): UseSSEStreamResult {
     }
   }, [completed]);
 
-  return { streaming, content, error, denial, validationError, completed, validated, repairProgress, startStream, cancel, reset };
+  return { streaming, content, error, denial, errorDetail, validationError, completed, validated, repairProgress, startStream, cancel, reset };
 }

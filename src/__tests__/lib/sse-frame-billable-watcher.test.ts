@@ -159,7 +159,7 @@ describe('createSseBillableWatcher', () => {
     const REFUSAL = 'data: {"type":"error","error":"out_of_scope","message":"超出范围","rule_id":"r1"}\n\n';
 
     it('parseSSEFrame 解析为 error 事件；error 字段取面向用户的 message（机器码 out_of_scope 只用于识别）', () => {
-      expect(parseSSEFrame(REFUSAL)).toEqual({ type: 'error', data: undefined, error: '超出范围', validated: undefined });
+      expect(parseSSEFrame(REFUSAL)).toEqual({ type: 'error', data: undefined, error: '超出范围', validated: undefined, code: 'out_of_scope', message: '超出范围' });
     });
 
     it('无 message 时 error 字段回落为机器码 out_of_scope', () => {

@@ -99,6 +99,22 @@ describe('AiKeysContent 模型字段', () => {
     expect(await screen.findByText(/not available.*gpt-4o-mini/)).toBeDefined();
   });
 
+  it('★400 provider_key_rejected → 本地化标题 + provider 原话，不显示成功', async () => {
+    const msg = 'This API key is not scoped to a workspace, so this request must include the anthropic-workspace-id header with the ID of the workspace to use.';
+    vi.stubGlobal('fetch', fetchReturning(400, { error: 'provider_key_rejected', reason: 'provider_bad_request', message: msg }));
+    render(<AiKeysContent initialBindings={[]} locale="en" />, { wrapper });
+    fillAndSave();
+    expect(await screen.findByText(/The provider rejected this API key, so it was not saved\. This API key is not scoped to a workspace/)).toBeDefined();
+    expect(screen.queryByText(/Key saved/i)).toBeNull();
+  });
+
+  it('provider_key_rejected 无 message → 只显示标题', async () => {
+    vi.stubGlobal('fetch', fetchReturning(400, { error: 'provider_key_rejected', reason: 'provider_auth_failed', message: null }));
+    render(<AiKeysContent initialBindings={[]} locale="en" />, { wrapper });
+    fillAndSave();
+    expect(await screen.findByText('The provider rejected this API key, so it was not saved.')).toBeDefined();
+  });
+
   it('保存成功但 modelsChecked=false → 显示「未校验」提示，下次提交时清除', async () => {
     vi.stubGlobal('fetch', fetchReturning(200, { ok: true, id: 'b1', modelsChecked: false }));
     render(<AiKeysContent initialBindings={[]} locale="en" />, { wrapper });

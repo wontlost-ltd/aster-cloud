@@ -126,8 +126,9 @@ export async function POST(req: NextRequest) {
   // Phase 3：usedByok 时带上 bindingId → recordAiUsage 内 stamp AiKeyBinding.lastUsedAt
   // （dashboard "最近使用" 真实反映 BYOK 推理用量）。
   //
-  // 失败但已到达 provider：aster-api 对「provider 拒绝所选模型」回 400 provider_rejected_model
-  // （只在 BYOK 指定了 model 时出现，故发出的 model 即 byok.model）。这类调用同样计费，
+  // 失败但已到达 provider：aster-api 对 provider 4xx 回 400 provider_auth_failed /
+  // provider_rejected_model / provider_bad_request（旧版把任意 400 标成 provider_rejected_model）。
+  // 发出的 model 取 byok.model（未指定则 unknown）。这类调用同样计费，
   // 记 api_error 以便在用量里如实呈现失败；其余非 2xx 未到达 provider，不记。
   const outcome = usageOutcome(upstreamResp, text, byok?.model ?? null);
   if (outcome) {
@@ -159,7 +160,7 @@ export async function POST(req: NextRequest) {
 
 /**
  * 本次补全要不要记账、记什么状态；null = 未到达 provider，不记。
- * 2xx：按 upstreamReached 判断（success）；400 provider_rejected_model：已到达 provider（api_error）。
+ * 2xx：按 upstreamReached 判断（success）；400 + provider_* 码：已到达 provider（api_error）。
  */
 function usageOutcome(
   resp: Response,
@@ -169,11 +170,18 @@ function usageOutcome(
   if (resp.ok) {
     return reachedUpstream(responseText) ? { status: 'success', model: responseModel(responseText) } : null;
   }
-  if (resp.status === 400 && errorCode(responseText) === 'provider_rejected_model') {
+  if (resp.status === 400 && PROVIDER_CLIENT_ERROR_CODES.has(errorCode(responseText) ?? '')) {
     return { status: 'api_error', model: byokModel ?? 'unknown' };
   }
   return null;
 }
+
+/** provider 4xx 客户端错误码（鉴权失败 / 拒绝模型 / 其他请求错误）：请求都已到达 provider。 */
+const PROVIDER_CLIENT_ERROR_CODES: ReadonlySet<string> = new Set([
+  'provider_auth_failed',
+  'provider_rejected_model',
+  'provider_bad_request',
+]);
 
 /** aster-api 错误体里的机器可读 error 码；非 JSON / 无该字段 → null。 */
 function errorCode(responseText: string): string | null {
