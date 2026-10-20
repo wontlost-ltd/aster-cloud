@@ -216,6 +216,11 @@ const ENV_CHECKS: readonly EnvCheck[] = [
   //        当前判定为 nice-to-have 而非 must-have；若运营需要可以提升为
   //        `requiredIn: ['saas']`。
   //
+  //   AI_WORKSPACE_HANDOFF_PRIVATE_KEY / AI_WORKSPACE_HMAC_KEY
+  //     —— ADR 0049 AI 工作台：交接令牌 Ed25519 私钥（base64 PKCS#8）与服务间 HMAC 密钥。
+  //        仅在启用工作台（NEXT_PUBLIC_AI_WORKSPACE_URL 已配置）时才需要；缺失即该功能
+  //        保持关闭，旧版 React 面板不受影响，因此不能放入强校验。
+  //
   // 增加新 env 时若想强校验，往 ENV_CHECKS 加条目即可；若刻意保持 optional，
   // 务必在本节追加说明便于后续维护者审计。
 ] as const;
