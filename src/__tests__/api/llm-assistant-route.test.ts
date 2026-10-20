@@ -112,4 +112,10 @@ describe('POST /api/llm/assistant', () => {
     await POST(req({ query: 'q' }));
     expect((await forwardedBody()).adminInstructions).toHaveLength(ASSISTANT_INSTRUCTIONS_MAX_LEN);
   });
+  it('★把调用方原始 body 作为 callerBody 交给代理（AI 工作台签名覆盖的是改写前的 body）', async () => {
+    settings({ extra: '指引' });
+    const raw = JSON.stringify({ query: 'q', adminInstructions: 'x' });
+    await POST(new NextRequest('https://x.test/api/llm/assistant', { method: 'POST', body: raw }));
+    expect(proxyLlmSse.mock.calls[0][1]).toEqual({ upstreamPath: '/api/v1/ai/assistant', callerBody: raw });
+  });
 });

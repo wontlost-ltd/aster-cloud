@@ -43,9 +43,11 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   // 重写请求体：始终显式写 adminInstructions（有值则注入，无值则置 null），
   // ★绝不保留客户端传来的同名字段——否则等于给所有人开了个 prompt 注入口。
+  // 原文留着：AI 工作台的服务签名覆盖的是改写前的 body，代理要按它验签。
+  const rawBody = await req.text();
   let body: unknown;
   try {
-    body = JSON.parse(await req.text());
+    body = JSON.parse(rawBody);
   } catch {
     return errorEnvelope({ code: 'INVALID_JSON', message: '请求体不是合法 JSON', status: 400 });
   }
@@ -63,5 +65,5 @@ export async function POST(req: NextRequest): Promise<Response> {
     headers: req.headers,
     body: JSON.stringify(patched),
   });
-  return proxyLlmSse(forwarded, { upstreamPath: '/api/v1/ai/assistant' });
+  return proxyLlmSse(forwarded, { upstreamPath: '/api/v1/ai/assistant', callerBody: rawBody });
 }

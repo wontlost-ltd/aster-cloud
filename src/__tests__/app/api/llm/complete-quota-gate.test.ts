@@ -1,4 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { signedWorkspaceRequest, TEST_AI_WORKSPACE_KEY } from '@/__tests__/helpers/ai-workspace-signing';
 
 /**
  * /api/llm/complete AI 配额前置门控回归。
@@ -9,8 +10,9 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
  * quota 放行 → 才转发。
  */
 
-const { mockAuth, mockCheckAiQuota, mockRecordAiUsage, mockSign, mockResolveByok, mockInjectByok } = vi.hoisted(() => ({
+const { mockAuth, mockCheckAiQuota, mockRecordAiUsage, mockSign, mockResolveByok, mockInjectByok, mockClaimNonce } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
+  mockClaimNonce: vi.fn(),
   mockCheckAiQuota: vi.fn(),
   mockRecordAiUsage: vi.fn(),
   mockSign: vi.fn(),
@@ -23,7 +25,12 @@ vi.mock('@/lib/ai-quota', () => ({
   checkAiQuota: mockCheckAiQuota,
   recordAiUsage: mockRecordAiUsage,
 }));
-vi.mock('@/lib/api-signing', () => ({ signInternalCallerHeaders: mockSign }));
+// 出站签名用 mock；入站验签（AI 工作台服务签名）用真实实现。
+vi.mock('@/lib/api-signing', async (orig) => ({
+  ...(await orig<typeof import('@/lib/api-signing')>()),
+  signInternalCallerHeaders: mockSign,
+}));
+vi.mock('@/services/security/nonce-service', () => ({ claimNonce: mockClaimNonce }));
 vi.mock('@/lib/byok-envelope', () => ({
   resolveByokEnvelope: mockResolveByok,
   injectByokEnvelope: mockInjectByok,
@@ -49,6 +56,8 @@ describe('POST /api/llm/complete — AI 配额门控', () => {
     // 默认无 BYOK（平台路径）；inject 默认原样返回 body
     mockResolveByok.mockReset().mockResolvedValue(null);
     mockInjectByok.mockReset().mockImplementation((raw: string) => ({ body: raw, injected: false }));
+    mockClaimNonce.mockReset().mockResolvedValue(true);
+    vi.stubEnv('AI_WORKSPACE_HMAC_KEY', TEST_AI_WORKSPACE_KEY);
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response('{"result":"ok"}', { status: 200, headers: { 'content-type': 'application/json' } })
     );
@@ -56,6 +65,7 @@ describe('POST /api/llm/complete — AI 配额门控', () => {
 
   afterEach(() => {
     globalThis.fetch = realFetch;
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -64,6 +74,7 @@ describe('POST /api/llm/complete — AI 配额门控', () => {
     const { POST } = await import('@/app/api/llm/complete/route');
     const res = await POST(post() as never);
     expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: 'Unauthorized' });
     expect(mockCheckAiQuota).not.toHaveBeenCalled();
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
@@ -258,5 +269,27 @@ describe('POST /api/llm/complete — AI 配额门控', () => {
     const { POST } = await import('@/app/api/llm/complete/route');
     await POST(post() as never);
     expect(mockRecordAiUsage.mock.calls[0][0]).toMatchObject({ model: 'unknown' });
+  });
+  it('AI 工作台服务签名正确 → 以 u1 身份转发并按 u1 记账，不读会话', async () => {
+    mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: false });
+    const body = JSON.stringify({ prompt: 'x' });
+    const { POST } = await import('@/app/api/llm/complete/route');
+    const res = await POST((await signedWorkspaceRequest('http://cloud.test/api/llm/complete', body)) as never);
+    expect(res.status).toBe(200);
+    expect(mockAuth).not.toHaveBeenCalled();
+    expect(mockCheckAiQuota).toHaveBeenCalledWith('u1', { usedByok: false });
+    const init = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(init.headers['X-Tenant-Id']).toBe('u1');
+    expect(mockRecordAiUsage.mock.calls[0][0]).toMatchObject({ userId: 'u1', callKind: 'complete' });
+  });
+
+  it('★AI 工作台签名错误 → 401，不回落会话、不转发', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+    const { POST } = await import('@/app/api/llm/complete/route');
+    const bad = await signedWorkspaceRequest('http://cloud.test/api/llm/complete', '{}', { over: { 'X-Aster-User-Id': 'u2' } });
+    const res = await POST(bad as never);
+    expect(res.status).toBe(401);
+    expect(mockAuth).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });

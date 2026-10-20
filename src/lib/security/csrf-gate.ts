@@ -41,6 +41,20 @@ export const CSRF_EXEMPT_PREFIXES: readonly string[] = [
 
 const CSRF_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
+/**
+ * AI 工作台服务以签名代表用户调用 /api/llm/*（ADR 0049 §2.2）：S2S、无 Origin，需绕开 Origin 校验。
+ *
+ * <p>只看头、不验签——验签在路由里（src/lib/llm-caller.ts），带了这个头却验签失败一律 401、
+ * 不回落 cookie 会话，所以伪造这个头拿不到任何会话权限。浏览器跨站也设不了自定义头：
+ * 自定义头会触发 CORS 预检，而 cloud 从不对其放行。
+ * ★此处不读 env、不 import llm-caller（middleware import 链须保持轻量且无 process.env）。
+ * 取值须与 llm-caller.ts 的 AI_WORKSPACE_CALLER 一致。
+ */
+function isAiWorkspaceLlmCall(request: Request, pathname: string): boolean {
+  return pathname.startsWith('/api/llm/')
+    && request.headers.get('x-internal-caller') === 'ai-workspace';
+}
+
 /** 精确前缀匹配：等于该前缀，或以「前缀 + /」开头（避免 /api/authz 命中 /api/auth）。 */
 export function isCsrfExempt(pathname: string): boolean {
   return CSRF_EXEMPT_PREFIXES.some(
@@ -57,6 +71,7 @@ export function applyCsrfGate(request: Request): NextResponse | null {
   if (!pathname.startsWith('/api/')) return null;
   if (CSRF_SAFE_METHODS.has(request.method.toUpperCase())) return null;
   if (isCsrfExempt(pathname)) return null;
+  if (isAiWorkspaceLlmCall(request, pathname)) return null;
 
   const csrf = checkCsrf(request);
   if (csrf.allowed) return null;
