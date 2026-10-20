@@ -26,6 +26,7 @@ import {
   ChevronsRight,
   Menu,
   X,
+  Bot,
   type LucideIcon,
 } from 'lucide-react';
 import { Link } from '@/i18n/navigation';
@@ -70,6 +71,11 @@ export interface SidebarItem {
    * (no route change, so the user keeps their current page underneath).
    */
   onSelect?: () => void;
+  /**
+   * 外链/API 路由入口：渲染为原生 <a>（整页导航、不加 locale 前缀），
+   * 用于会 302 跨域的 AI 工作台交接路由。
+   */
+  external?: boolean;
 }
 
 export interface SidebarGroup {
@@ -152,6 +158,15 @@ function SidebarLink({
         >
           {inner}
         </button>
+      ) : item.external ? (
+        <a
+          href={item.href}
+          aria-label={collapsed ? item.label : undefined}
+          title={collapsed ? item.label : undefined}
+          className={className}
+        >
+          {inner}
+        </a>
       ) : (
         <Link
           href={item.href}
@@ -312,7 +327,10 @@ interface DashboardSidebarProps {
     expandSidebar: string;
     openMenu: string;
     closeMenu: string;
+    aiWorkspace: string;
   };
+  /** AI 工作台交接地址（含 locale）；仅在服务端判定该用户已灰度开启时传入。 */
+  aiWorkspaceHref?: string;
   /** Which admin items to render — driven by deployment-mode capabilities. */
   adminCapabilities: {
     riskTier: boolean;
@@ -331,6 +349,7 @@ export function DashboardSidebar({
   showBilling,
   labels,
   adminCapabilities,
+  aiWorkspaceHref,
 }: DashboardSidebarProps) {
   // Docs overlay opener — the Docs entry opens an in-dashboard reading
   // panel instead of navigating to /docs (so the user keeps their page).
@@ -405,6 +424,9 @@ export function DashboardSidebar({
     { href: '/security',  label: labels.security,  icon: Shield },
     { href: '/settings/api-keys', label: labels.apiKeys, icon: KeyRound },
     { href: '/settings/ai-keys',  label: labels.aiKeys,  icon: Sparkles },
+    ...(aiWorkspaceHref
+      ? [{ href: aiWorkspaceHref, label: labels.aiWorkspace, icon: Bot, external: true } as SidebarItem]
+      : []),
     // Docs entry — opens the in-dashboard docs overlay (onSelect) instead
     // of navigating to /docs, so the user keeps their current page
     // underneath and can close the overlay to return to it. Sits at the

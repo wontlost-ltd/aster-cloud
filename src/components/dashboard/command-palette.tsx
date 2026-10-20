@@ -26,6 +26,7 @@ import { track, Events } from '@/lib/mixpanel';
 import {
   ArrowRight,
   BookText,
+  Bot,
   ClipboardCheck,
   FileText,
   Home,
@@ -54,6 +55,7 @@ const ICONS: Record<CommandIcon, React.ComponentType<{ className?: string }>> = 
   'key-round':    KeyRound,
   'book-text':    BookText,
   'clipboard-check': ClipboardCheck,
+  'bot':          Bot,
 };
 
 // Note: buildCommands + types live in command-palette-commands.ts (no
@@ -121,7 +123,9 @@ export function CommandPalette({ commands, labels }: CommandPaletteProps) {
         trigger,
       });
       closePalette();
-      router.push(cmd.href);
+      // external 命令（AI 工作台交接路由）会 302 跨域，必须整页导航，不能走带 locale 前缀的 router。
+      if (cmd.external) window.location.assign(cmd.href);
+      else router.push(cmd.href);
     },
     [closePalette, query, router],
   );

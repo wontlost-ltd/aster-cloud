@@ -1,5 +1,6 @@
 import { safeEnv } from '@/lib/runtime/safe-env';
 import { guardianEmbedOrigin } from '@/lib/guardian-embed';
+import { aiWorkspaceOrigin } from '@/lib/ai-workspace';
 
 /**
  * Content Security Policy + adjacent security headers.
@@ -197,7 +198,10 @@ export function buildCspHeader(nonce: string): string {
       ...ALL_TRUSTED_CONNECT_SRC,
       ...(isDev ? ['ws:', 'http://localhost:*'] : []),
     ],
-    'frame-src': ["'self'", ...STRIPE_DOMAINS, ...TURNSTILE_DOMAINS, guardianEmbedOrigin(safeEnv('NEXT_PUBLIC_GUARDIAN_EMBED_URL'))],
+    'frame-src': ["'self'", ...STRIPE_DOMAINS, ...TURNSTILE_DOMAINS, guardianEmbedOrigin(safeEnv('NEXT_PUBLIC_GUARDIAN_EMBED_URL')),
+      // AI 工作台（ADR 0049）：仅在配置合法时放行其 origin；env 在函数内读取以满足 middleware 约束。
+      ...[aiWorkspaceOrigin(safeEnv('NEXT_PUBLIC_AI_WORKSPACE_URL'))].filter((o): o is string => o !== null),
+    ],
     'frame-ancestors': ["'none'"],
     'form-action': ["'self'"],
     'base-uri': ["'self'"],

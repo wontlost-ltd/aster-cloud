@@ -206,4 +206,36 @@ describe('securityHeadersOnly', () => {
       expect(await frameSrc()).toContain('https://aster-lang.dev');
     });
   });
+
+  describe('AI 工作台 origin', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    });
+
+    async function csp(): Promise<string> {
+      vi.resetModules();
+      const mod = await import('@/lib/security/csp');
+      return mod.buildCspHeader(NONCE);
+    }
+
+    it('已配置时 frame-src 恰好出现一次且 frame-ancestors 不变', async () => {
+      vi.stubEnv('NEXT_PUBLIC_AI_WORKSPACE_URL', 'https://ai.aster-lang.cloud');
+      const header = await csp();
+      expect(header.match(/frame-src [^;]*/)![0]).toContain('https://ai.aster-lang.cloud');
+      expect(header.match(/ai\.aster-lang\.cloud/g)?.length).toBe(1);
+      expect(header).toContain("frame-ancestors 'none'");
+    });
+
+    it('未配置时不出现工作台 origin', async () => {
+      vi.stubEnv('NEXT_PUBLIC_AI_WORKSPACE_URL', '');
+      expect(await csp()).not.toContain('ai.aster-lang.cloud');
+    });
+
+    it('非法值不抛错且不出现在 CSP', async () => {
+      vi.stubEnv('NEXT_PUBLIC_AI_WORKSPACE_URL', 'not a url');
+      const header = await csp();
+      expect(header).not.toContain('not a url');
+    });
+  });
 });
