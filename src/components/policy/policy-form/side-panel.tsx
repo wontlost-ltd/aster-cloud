@@ -14,6 +14,8 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { AIAssistantPanel } from '@/components/policy/ai-assistant-panel';
+import { AiWorkspacePanel } from '@/components/policy/ai-workspace-panel';
+import type { AiWorkspaceConfig } from '@/components/ai-workspace-context';
 import { CNLSyntaxReferencePanel } from '@/components/policy/cnl-syntax-reference-panel';
 import { PolicyAliasPanel } from '@/components/policy/policy-alias-panel';
 import type { ReservedSets } from '@/lib/policy-alias-shared';
@@ -95,6 +97,10 @@ export interface SidePanelProps {
   /** Externally request a specific tab (e.g. compile errored → focus
    *  Decision). Optional — if absent, the panel manages its own tab. */
   initialTab?: SidePanelTab;
+  /** 当前策略 id；未保存的新策略为 null（工作台面板以 'new' 代替）。 */
+  policyId?: string | null;
+  /** AI 工作台配置；启用时「AI」tab 嵌入工作台面板，否则沿用原 AIAssistantPanel。 */
+  aiWorkspace?: AiWorkspaceConfig | null;
 }
 
 export function SidePanel({
@@ -122,6 +128,8 @@ export function SidePanel({
   compileModule,
   onJumpToLine,
   initialTab,
+  policyId = null,
+  aiWorkspace = null,
 }: SidePanelProps) {
   const t = useTranslations('policies.form');
   const [tab, setTab] = useState<SidePanelTab>(initialTab ?? 'ai');
@@ -214,7 +222,19 @@ export function SidePanel({
             />
           </div>
         )}
-        {tab === 'ai' && (
+        {tab === 'ai' && aiWorkspace?.enabled && (
+          <div className="h-full">
+            <AiWorkspacePanel
+              base={aiWorkspace.base}
+              policyId={policyId ?? 'new'}
+              editor={editor}
+              cnlLocale={cnlLocale}
+              uiLocale={uiLocale}
+              onApplyContent={onApplyContent}
+            />
+          </div>
+        )}
+        {tab === 'ai' && !aiWorkspace?.enabled && (
           <div className="p-3">
             <AIAssistantPanel
               editor={editor}
