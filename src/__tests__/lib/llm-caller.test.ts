@@ -92,6 +92,63 @@ describe('resolveLlmCaller', () => {
   });
 });
 
+describe('resolveLlmCaller — 拒绝时记一行 console.warn（只含原因码与路径）', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubEnv('AI_WORKSPACE_HMAC_KEY', KEY);
+    mocks.auth.mockReset();
+    mocks.claimNonce.mockReset().mockResolvedValue(true);
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  async function warnFor(req: Request, body: string) {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { resolveLlmCaller } = await import('@/lib/llm-caller');
+    await resolveLlmCaller(req, body);
+    return warn;
+  }
+
+  /** 恰好一行，含原因码与路径，不含签名、nonce、用户 id、body、密钥。 */
+  function expectSingleLine(warn: ReturnType<typeof vi.spyOn>, reason: string, req: Request, body: string) {
+    expect(warn).toHaveBeenCalledTimes(1);
+    const line = warn.mock.calls[0].map(String).join(' ');
+    expect(line).toContain(`reason=${reason}`);
+    expect(line).toContain('path=/api/llm/suggest');
+    const secrets = [req.headers.get('x-internal-signature'), req.headers.get('x-aster-nonce'), 'u1', KEY];
+    for (const secret of secrets) expect(line).not.toContain(secret);
+    if (body.length > 2) expect(line).not.toContain(body);
+  }
+
+  it('签名错误 → bad_signature', async () => {
+    const req = await signed('{"source":"secret-src"}', { 'x-internal-signature': 'ab'.repeat(32) });
+    expectSingleLine(await warnFor(req, '{"source":"secret-src"}'), 'bad_signature', req, '{"source":"secret-src"}');
+  });
+  it('超窗 → stale_signature', async () => {
+    const req = await signed('{}', { 'x-aster-timestamp': '1000' });
+    expectSingleLine(await warnFor(req, '{}'), 'stale_signature', req, '{}');
+  });
+  it('重放 → replayed_nonce', async () => {
+    mocks.claimNonce.mockResolvedValue(false);
+    const req = await signed('{}');
+    expectSingleLine(await warnFor(req, '{}'), 'replayed_nonce', req, '{}');
+  });
+  it('密钥未配置 → ai_workspace_unconfigured', async () => {
+    vi.stubEnv('AI_WORKSPACE_HMAC_KEY', '');
+    const req = await signed('{}');
+    expectSingleLine(await warnFor(req, '{}'), 'ai_workspace_unconfigured', req, '{}');
+  });
+  it('验签通过与会话路径都不记', async () => {
+    mocks.auth.mockResolvedValue(null);
+    expect(await warnFor(await signed('{}'), '{}')).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+    const session = new Request('https://aster-lang.cloud/api/llm/suggest', { method: 'POST', body: '{}' });
+    expect(await warnFor(session, '{}')).not.toHaveBeenCalled();
+  });
+});
+
 describe('canonicalAiWorkspace — 跨语言共享 HMAC 向量（Java 侧钉同一值）', () => {
   const CANONICAL =
     'POST\n/api/llm/suggest\n1800000000\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nee7bd4c48c9c43b1068696c254751f09083b15f0381f55e453051c40cb5a549c\nu1';

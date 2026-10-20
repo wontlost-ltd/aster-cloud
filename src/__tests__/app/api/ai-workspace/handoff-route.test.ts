@@ -53,9 +53,15 @@ describe('GET /api/ai-workspace/handoff', () => {
     const { GET } = await import('@/app/api/ai-workspace/handoff/route');
     expect((await GET(req('?next=%2F'))).status).toBe(404);
   });
-  it.runIf(IS_SAAS_BUILD)('私钥缺失：503', async () => {
+  it.runIf(IS_SAAS_BUILD)('私钥缺失：503，并记一行 console.warn（不含用户信息）', async () => {
     vi.stubEnv('AI_WORKSPACE_HANDOFF_PRIVATE_KEY', '');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { GET } = await import('@/app/api/ai-workspace/handoff/route');
     expect((await GET(req('?next=%2F'))).status).toBe(503);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const line = warn.mock.calls[0].map(String).join(' ');
+    expect(line).toContain('AI_WORKSPACE_HANDOFF_PRIVATE_KEY');
+    for (const s of ['u1', 'Ann', 'a@x.io']) expect(line).not.toContain(s);
+    warn.mockRestore();
   });
 });

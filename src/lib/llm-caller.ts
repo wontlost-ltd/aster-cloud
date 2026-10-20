@@ -54,7 +54,12 @@ export async function resolveLlmCaller(req: Request, rawBody: string): Promise<L
   if (req.headers.get('x-internal-caller') !== AI_WORKSPACE_CALLER) {
     return resolveSessionCaller();
   }
-  return verifyWorkspaceCaller(req, rawBody);
+  const result = await verifyWorkspaceCaller(req, rawBody);
+  if (isLlmCallerError(result)) {
+    // 每次拒绝记一行便于排查密钥 / 时钟配置问题；只记原因码与路径，绝不记请求头、body、签名或用户 id
+    console.warn(`[llm-caller] ai-workspace call rejected: reason=${result.error} path=${new URL(req.url).pathname}`);
+  }
+  return result;
 }
 
 /** 会话路径：未登录时的错误体与此前各 /api/llm 路由一致（`{ error: 'Unauthorized' }`）。 */

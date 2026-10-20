@@ -122,4 +122,37 @@ describe('AiWorkspacePanel', () => {
     const { iframe } = setup('new');
     expect(iframe.getAttribute('src')).toContain(encodeURIComponent('/panel?policyId=new'));
   });
+
+  it('ready 先于 Monaco 挂载：编辑器可用后补发一次上下文', () => {
+    const onApplyContent = vi.fn();
+    const view = (ed: ReturnType<typeof fakeEditor> | null) => (
+      <AiWorkspacePanel base={BASE} policyId="p1" editor={ed as never} cnlLocale="zh" uiLocale="zh" onApplyContent={onApplyContent} />
+    );
+    const { rerender } = render(view(null));
+    const iframe = screen.getByTitle('aiWorkspace') as HTMLIFrameElement;
+    const postMessage = vi.fn();
+    Object.defineProperty(iframe, 'contentWindow', { value: { postMessage }, configurable: true });
+    send(ORIGIN, { type: 'aster.ai.ready', v: 1 });
+    postMessage.mockClear();
+
+    rerender(view(fakeEditor('Rule late.')));
+
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(postMessage).toHaveBeenCalledWith(
+      { type: 'aster.ai.context', v: 1, policyId: 'p1', source: 'Rule late.', cnlLocale: 'zh' },
+      ORIGIN,
+    );
+  });
+
+  it('未收到 ready 时编辑器挂载不推送上下文', () => {
+    const view = (ed: ReturnType<typeof fakeEditor> | null) => (
+      <AiWorkspacePanel base={BASE} policyId="p1" editor={ed as never} cnlLocale="zh" uiLocale="zh" onApplyContent={vi.fn()} />
+    );
+    const { rerender } = render(view(null));
+    const iframe = screen.getByTitle('aiWorkspace') as HTMLIFrameElement;
+    const postMessage = vi.fn();
+    Object.defineProperty(iframe, 'contentWindow', { value: { postMessage }, configurable: true });
+    rerender(view(fakeEditor()));
+    expect(postMessage).not.toHaveBeenCalled();
+  });
 });

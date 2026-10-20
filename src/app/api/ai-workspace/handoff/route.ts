@@ -28,7 +28,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
   const privateKey = safeEnv('AI_WORKSPACE_HANDOFF_PRIVATE_KEY');
-  if (!privateKey) return NextResponse.json({ error: 'ai_workspace_unconfigured' }, { status: 503 });
+  if (!privateKey) {
+    // 配置缺失时工作台会陷入交接失败，记一行便于排查（不含用户信息）
+    console.warn('[ai-workspace] handoff unavailable: AI_WORKSPACE_HANDOFF_PRIVATE_KEY is not set');
+    return NextResponse.json({ error: 'ai_workspace_unconfigured' }, { status: 503 });
+  }
 
   const token = await signHandoffToken(
     {

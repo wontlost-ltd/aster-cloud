@@ -141,6 +141,9 @@ export function SidePanel({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (initialTab) setTab(initialTab);
   }, [initialTab]);
+  // AI 工作台面板是否已打开过；未打开过不加载 iframe，避免进入编辑器就提前交接。
+  const [aiOpened, setAiOpened] = useState(tab === 'ai');
+  if (tab === 'ai' && !aiOpened) setAiOpened(true);
   const errorCount =
     compileDiagnostics?.filter((d) => d.severity === 'error').length ?? 0;
 
@@ -222,8 +225,9 @@ export function SidePanel({
             />
           </div>
         )}
-        {tab === 'ai' && aiWorkspace?.enabled && (
-          <div className="h-full">
+        {aiWorkspace?.enabled && aiOpened && (
+          // 工作台 iframe 首次打开后常驻，切到其他 tab 只隐藏：卸载会重新交接并中断进行中的流式 run
+          <div className="h-full" hidden={tab !== 'ai'}>
             <AiWorkspacePanel
               base={aiWorkspace.base}
               policyId={policyId ?? 'new'}

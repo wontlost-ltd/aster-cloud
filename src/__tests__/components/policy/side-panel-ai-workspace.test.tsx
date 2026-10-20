@@ -11,20 +11,22 @@ vi.mock('lucide-react', async () => ({ ...(await vi.importActual<Record<string, 
 vi.mock('@/components/policy/ai-assistant-panel', () => ({ AIAssistantPanel: () => <div data-testid="legacy-ai" /> }));
 vi.mock('@/components/policy/ai-workspace-panel', () => ({
   AiWorkspacePanel: (p: { base: string; policyId: string }) => (
-    <div data-testid="workspace-ai" data-base={p.base} data-policy={p.policyId} />
+    <div data-testid="workspace-ai" data-base={p.base} data-policy={p.policyId}>
+      <iframe title="workspace-frame" src={`${p.base}/panel`} />
+    </div>
   ),
 }));
 vi.mock('@/components/policy/cnl-syntax-reference-panel', () => ({ CNLSyntaxReferencePanel: () => null }));
 vi.mock('@/components/policy/policy-alias-panel', () => ({ PolicyAliasPanel: () => null }));
 
-import { SidePanel } from '@/components/policy/policy-form/side-panel';
+import { SidePanel, type SidePanelTab } from '@/components/policy/policy-form/side-panel';
 import type { AiWorkspaceConfig } from '@/components/ai-workspace-context';
 
 const messages = deepMergeMessages(zhBase as Record<string, unknown>, DEMO_SUPPLEMENT.zh);
 const noop = () => {};
 
-function renderPanel(aiWorkspace: AiWorkspaceConfig | null, policyId: string | null = 'p1') {
-  return render(
+function panel(aiWorkspace: AiWorkspaceConfig | null, policyId: string | null, initialTab: SidePanelTab) {
+  return (
     <IntlClientProvider locale="zh" messages={messages as never}>
       <SidePanel
         editor={null}
@@ -45,13 +47,19 @@ function renderPanel(aiWorkspace: AiWorkspaceConfig | null, policyId: string | n
         onApplyContent={noop}
         onApplyTemplate={noop}
         onClose={noop}
-        initialTab="ai"
+        initialTab={initialTab}
         policyId={policyId}
         aiWorkspace={aiWorkspace}
       />
-    </IntlClientProvider>,
+    </IntlClientProvider>
   );
 }
+
+function renderPanel(aiWorkspace: AiWorkspaceConfig | null, policyId: string | null = 'p1', initialTab: SidePanelTab = 'ai') {
+  return render(panel(aiWorkspace, policyId, initialTab));
+}
+
+const ENABLED: AiWorkspaceConfig = { base: 'https://ai.aster-lang.cloud', enabled: true };
 
 afterEach(cleanup);
 
@@ -73,5 +81,32 @@ describe('SidePanel AI tab 与 AI 工作台', () => {
   it('未保存策略 → policyId 为 new', () => {
     renderPanel({ base: 'https://ai.aster-lang.cloud', enabled: true }, null);
     expect(screen.getByTestId('workspace-ai').getAttribute('data-policy')).toBe('new');
+  });
+
+  it('切到其他 tab 再切回：iframe 常驻（同一节点、src 不变），其他 tab 时隐藏', () => {
+    const { rerender } = renderPanel(ENABLED);
+    const frame = screen.getByTitle('workspace-frame');
+    const src = frame.getAttribute('src');
+
+    rerender(panel(ENABLED, 'p1', 'problems'));
+    expect(screen.getByTitle('workspace-frame')).toBe(frame);
+    expect((screen.getByTestId('workspace-ai').parentElement as HTMLElement).hidden).toBe(true);
+
+    rerender(panel(ENABLED, 'p1', 'ai'));
+    expect(screen.getByTitle('workspace-frame')).toBe(frame);
+    expect(frame.getAttribute('src')).toBe(src);
+    expect((screen.getByTestId('workspace-ai').parentElement as HTMLElement).hidden).toBe(false);
+  });
+
+  it('从未打开 AI tab 时不加载工作台（不提前交接）', () => {
+    renderPanel(ENABLED, 'p1', 'problems');
+    expect(screen.queryByTestId('workspace-ai')).toBeNull();
+  });
+
+  it('未启用：旧面板仍随 tab 卸载（行为不变）', () => {
+    const { rerender } = renderPanel(null);
+    expect(screen.getByTestId('legacy-ai')).toBeTruthy();
+    rerender(panel(null, 'p1', 'problems'));
+    expect(screen.queryByTestId('legacy-ai')).toBeNull();
   });
 });

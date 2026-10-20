@@ -37,6 +37,8 @@ export function AiWorkspacePanel({ base, policyId, editor, cnlLocale, uiLocale, 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   // reauth 时递增 key 让 React 重建 iframe，从而重新走交接路由。
   const [frameKey, setFrameKey] = useState(0);
+  // 已收到 iframe 的 ready：之后编辑器才挂载时需补发上下文，否则直到用户输入前工作台都拿不到源码。
+  const readyRef = useRef(false);
   const src = `/api/ai-workspace/handoff?next=${encodeURIComponent(`/panel?policyId=${policyId}`)}&locale=${uiLocale}`;
 
   const post = useCallback(
@@ -50,7 +52,10 @@ export function AiWorkspacePanel({ base, policyId, editor, cnlLocale, uiLocale, 
 
   useEffect(() => {
     const handle = (msg: BridgeIn) => {
-      if (msg.type === 'aster.ai.ready') return postContext();
+      if (msg.type === 'aster.ai.ready') {
+        readyRef.current = true;
+        return postContext();
+      }
       if (msg.type === 'aster.ai.reauth') return setFrameKey((k) => k + 1);
       // Monaco 的 executeEdits 要求 IRange，比协议层 EditorLike 的 unknown 更严，只能在此收窄。
       const result = applyToEditor(editor as unknown as EditorLike | null, msg, policyId);
@@ -65,6 +70,11 @@ export function AiWorkspacePanel({ base, policyId, editor, cnlLocale, uiLocale, 
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [origin, editor, policyId, onApplyContent, post, postContext]);
+
+  // ready 先于 Monaco 挂载时，编辑器可用后补发一次上下文。
+  useEffect(() => {
+    if (editor && readyRef.current) postContext();
+  }, [editor, postContext]);
 
   // 编辑器内容变化后防抖推送上下文，让工作台始终基于最新源码对话。
   useEffect(() => {
