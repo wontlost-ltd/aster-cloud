@@ -9,20 +9,21 @@
  * 关键点：
  *   - SSE 必须保持 chunked transfer，绝不能 await resp.text()
  *   - 用 fetch 默认的 ReadableStream + NextResponse 直接转发 body
- *   - tenantId 从 NextAuth session 取，不信任 caller-supplied X-Tenant-Id
+ *   - tenantId 从已认证调用方取（NextAuth session 或 AI 工作台服务签名，见 llm-caller.ts），
+ *     不信任 caller-supplied X-Tenant-Id
  *   - 上游若返回非 2xx，只透传 status + body（错误也得让前端看到）
  *
  * 已知局限：与 /complete 相同 —— 没有 activeTeamId schema，tenantId
- * 固定为 session.user.id。team 用户在 UI 切换 team 时不会切租户配额。
+ * 固定为调用方的 userId。team 用户在 UI 切换 team 时不会切租户配额。
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/auth';
 import { signInternalCallerHeaders } from '@/lib/api-signing';
 import { checkAiQuota, markAiUsageFailed, recordAiUsage } from '@/lib/ai-quota';
 import { runAfterResponse } from '@/lib/after-response';
 import { aiQuotaHttpStatus } from '@/lib/ai-quota-http';
 import { resolveByokEnvelope, injectByokEnvelope } from '@/lib/byok-envelope';
 import { createSseBillableWatcher } from '@/lib/sse-frame';
+import { isLlmCallerError, resolveLlmCaller } from '@/lib/llm-caller';
 
 const ASTER_API_BASE =
   process.env.ASTER_POLICY_API_INTERNAL_URL ||
@@ -32,6 +33,11 @@ const ASTER_API_BASE =
 export interface SseProxyOptions {
   /** 上游 path，例如 "/api/v1/ai/generate" */
   upstreamPath: string;
+  /**
+   * 调用方实际发送（并签名）的原始 body。路由若在转交前改写了 body（如 assistant 注入
+   * adminInstructions），须把改写前的原文传进来，供 AI 工作台服务签名校验；缺省即 req 的 body。
+   */
+  callerBody?: string;
 }
 
 /**
@@ -55,26 +61,30 @@ function createOnceRecorder(fn: () => Promise<void>): () => Promise<void> {
 
 export async function proxyLlmSse(
   req: NextRequest,
-  { upstreamPath }: SseProxyOptions
+  { upstreamPath, callerBody }: SseProxyOptions
 ): Promise<Response> {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  // 同 /api/llm/complete：tenantId 强行从 session 派生，不读 body 也不读 header。
-  // 详见 src/app/api/llm/complete/route.ts 顶部注释里的 schema 局限说明。
-  const tenantId: string = session.user.id;
-
+  // body 只读这一次：它既是转发给上游的内容，也是 AI 工作台服务签名覆盖的内容。
   const rawBody = await req.text();
+
+  // 调用方：浏览器会话，或 AI 工作台以服务签名代表用户（ADR 0049 §2.2）。两者此后完全同路——
+  // BYOK、配额、签名转发、记账都按解析出的 userId 进行。
+  const caller = await resolveLlmCaller(req, callerBody ?? rawBody);
+  if (isLlmCallerError(caller)) {
+    return NextResponse.json({ error: caller.error }, { status: caller.status });
+  }
+  const userId = caller.userId;
+
+  // 同 /api/llm/complete：tenantId 强行从已认证的调用方派生，不读 body 也不读 X-Tenant-Id。
+  // 详见 src/app/api/llm/complete/route.ts 顶部注释里的 schema 局限说明。
+  const tenantId: string = userId;
 
   // BYOK 推理接入（Phase 2）：解析用户 active BYOK 凭证并注入 `_byok` envelope，以【实际是否注入】
   // 作为 usedByok 权威。注入后再签名（HMAC 覆盖最终 body）。解密失败 → fail-closed 503。
   let byok;
   try {
-    byok = await resolveByokEnvelope(session.user.id);
+    byok = await resolveByokEnvelope(userId);
   } catch (e) {
-    console.error(`[llm-sse-proxy] BYOK resolve failed for user=${session.user.id}:`, e);
+    console.error(`[llm-sse-proxy] BYOK resolve failed for user=${userId}:`, e);
     return NextResponse.json(
       { error: 'byok_unavailable', message: 'BYOK key decryption failed; try again later.' },
       { status: 503 }
@@ -87,7 +97,7 @@ export async function proxyLlmSse(
   // AI 配额前置门控。此前 LLM 代理路径【完全不检查配额】—— checkAiQuota 是死代码
   // （只有 /api/internal/ai/quota route 调它，而无人 fetch 该 route），导致任何登录用户
   // 都能无限烧平台 LLM 预算。BYOK 用本次用了用户 key → 跳过平台月配额，保留 ban/风险/邮箱/速率。
-  const quota = await checkAiQuota(session.user.id, { usedByok });
+  const quota = await checkAiQuota(userId, { usedByok });
   if (!quota.allowed) {
     const { status, headers } = aiQuotaHttpStatus(quota);
     return NextResponse.json(
@@ -172,7 +182,7 @@ export async function proxyLlmSse(
   const recordPlaceholderOnce = createOnceRecorder(async () => {
     try {
       await recordAiUsage({
-        userId: session.user.id,
+        userId,
         callKind,
         // ADR 0048：meta 帧回传的实际 model；旧版 api 不发 meta → 'unknown'。
         model: billableWatcher.model() ?? 'unknown',
@@ -185,7 +195,7 @@ export async function proxyLlmSse(
         status: 'success',
       });
     } catch (e) {
-      console.warn(`[llm-sse-proxy] recordAiUsage failed for user=${session.user.id}:`, e);
+      console.warn(`[llm-sse-proxy] recordAiUsage failed for user=${userId}:`, e);
     }
   });
   // 占位插入的 Promise：首个计费帧时发起（不阻塞流），由下面的 after 任务等待其落库。

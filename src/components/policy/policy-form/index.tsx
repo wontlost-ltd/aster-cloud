@@ -71,6 +71,7 @@ import { ConfirmDialog } from '@/components/ui';
 import { normalizeLocale } from '@/data/policy-examples';
 
 import { SidePanel, type SidePanelTab } from './side-panel';
+import { useAiWorkspace } from '@/components/ai-workspace-context';
 import { StatusBar } from './status-bar';
 import { useAiInlineCompletion } from '@/lib/preferences/ai-inline-completion';
 import { usePolicyDraft, type PolicyDraftFields } from './use-policy-draft';
@@ -170,6 +171,8 @@ export function PolicyForm({
   const t = useTranslations('policies.form');
   const tCommon = useTranslations('common');
   const cnlLocale = normalizeLocale(uiLocale);
+  // dashboard layout 下发的 AI 工作台开关；null 时「AI」tab 保持原面板。
+  const aiWorkspace = useAiWorkspace();
   // Mobile users (< md) are here to review, not to author CNL —
   // swap Monaco for a read-only viewer so the page is usable on
   // phones without dragging in the editor's keyboard + completion
@@ -730,6 +733,8 @@ export function PolicyForm({
                   ed.focus();
                 }}
                 initialTab={requestedTab}
+                policyId={policyId}
+                aiWorkspace={aiWorkspace}
               />
             </div>
           )}

@@ -592,6 +592,15 @@ routes:
     auth: required
     locales: none
 
+  - path: /api/ai-workspace/handoff
+    status: canonical-here
+    owner: ai
+    source: src/app/api/ai-workspace/handoff/route.ts
+    publicApi: false
+    auth: required
+    locales: none
+    notes: ADR 0049 handoff to AI workspace
+
   - path: /api/docs/*
     status: canonical-here
     owner: docs

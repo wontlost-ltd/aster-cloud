@@ -5,8 +5,8 @@
  * 提交的 X-Tenant-Id 自报身份）。任何人都能匿名烧 LLM token / 假冒任意 tenant。
  *
  * <p>本路由是 aster-cloud server-side proxy：
- *   1. NextAuth `auth()` 校验调用者已登录
- *   2. tenantId = session.user.id（详见 in-body comment 解释为什么不走 team activeTenantId）
+ *   1. resolveLlmCaller 校验调用方：NextAuth 会话，或 AI 工作台服务签名（ADR 0049）
+ *   2. tenantId = 调用方 userId（详见 in-body comment 解释为什么不走 team activeTenantId）
  *   3. signInternalCallerHeaders(method, path) 生成 X-Internal-Caller + HMAC
  *   4. 转发到 aster-api，把 ASTER_PLAN_GATE_HMAC_KEY 签名头带过去
  *
@@ -16,11 +16,11 @@
  * fetch(`/api/llm/complete`)，由 Next.js server 转发。
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/auth';
 import { signInternalCallerHeaders } from '@/lib/api-signing';
 import { checkAiQuota, recordAiUsage } from '@/lib/ai-quota';
 import { aiQuotaHttpStatus } from '@/lib/ai-quota-http';
 import { resolveByokEnvelope, injectByokEnvelope } from '@/lib/byok-envelope';
+import { isLlmCallerError, resolveLlmCaller } from '@/lib/llm-caller';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -33,21 +33,24 @@ const ASTER_API_BASE =
 const UPSTREAM_PATH = '/api/v1/ai/complete';
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
+  // body 只读这一次：既用于转发，也是 AI 工作台服务签名覆盖的内容。
   const rawBody = await req.text();
+
+  // 调用方：浏览器会话，或 AI 工作台以服务签名代表用户（ADR 0049 §2.2，见 llm-caller.ts）。
+  const caller = await resolveLlmCaller(req, rawBody);
+  if (isLlmCallerError(caller)) {
+    return NextResponse.json({ error: caller.error }, { status: caller.status });
+  }
+  const userId = caller.userId;
 
   // BYOK 推理接入（Phase 2）：解析用户 active BYOK 凭证并注入 `_byok` envelope。以【实际是否注入】
   // 作为 usedByok 权威（body 非 JSON 时注入会失败，避免"以为用了 BYOK"的偏差，Codex 审查）。
   // 解密失败=密钥系统/配置问题 → fail-closed 503（不静默回退平台，防偷烧平台预算）。
   let byok;
   try {
-    byok = await resolveByokEnvelope(session.user.id);
+    byok = await resolveByokEnvelope(userId);
   } catch (e) {
-    console.error(`[llm/complete] BYOK resolve failed for user=${session.user.id}:`, e);
+    console.error(`[llm/complete] BYOK resolve failed for user=${userId}:`, e);
     return NextResponse.json(
       { error: 'byok_unavailable', message: 'BYOK key decryption failed; try again later.' },
       { status: 503 }
@@ -60,7 +63,7 @@ export async function POST(req: NextRequest) {
 
   // AI 配额前置门控（同 proxyLlmSse）：此前 complete 路径不检查配额，任何登录用户都能
   // 无限烧平台 LLM 预算。BYOK 用了用户 key → 跳过平台月配额，保留 ban/风险/邮箱/速率。
-  const quota = await checkAiQuota(session.user.id, { usedByok });
+  const quota = await checkAiQuota(userId, { usedByok });
   if (!quota.allowed) {
     const { status, headers } = aiQuotaHttpStatus(quota);
     return NextResponse.json(
@@ -69,9 +72,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // R25-Major-2: 从 session 派生 tenantId —— caller-supplied X-Tenant-Id 不再被信任。
+  // R25-Major-2: 从已认证调用方（会话或 AI 工作台服务签名）派生 tenantId —— caller-supplied X-Tenant-Id 不再被信任。
   //
-  // 当前实现：固定使用 session.user.id。
+  // 当前实现：固定使用调用方 userId。
   //
   // 已知局限（schema 限制）：aster-cloud schema 有 teams + teamMembers 但
   // **没有 users.activeTeamId 列**，因此 server 端无法知道用户当前选中了哪个
@@ -85,7 +88,7 @@ export async function POST(req: NextRequest) {
   // 直到 schema 落地，"activeTenantId" 不存在；用 user.id 是诚实的回退，
   // **绝对不要**在没有 schema 支持的情况下读 `session.user.activeTenantId` ——
   // 那个字段不存在，会永远 undefined。
-  const tenantId: string = session.user.id;
+  const tenantId: string = userId;
 
   // body 已在上方注入 envelope。必须在注入【之后】再签名——HMAC 覆盖含 envelope 的最终 body。
   let signedHeaders: Awaited<ReturnType<typeof signInternalCallerHeaders>>;
@@ -134,7 +137,7 @@ export async function POST(req: NextRequest) {
   if (outcome) {
     try {
       await recordAiUsage({
-        userId: session.user.id,
+        userId,
         callKind: 'complete',
         model: outcome.model,
         promptTokens: 0,
@@ -145,7 +148,7 @@ export async function POST(req: NextRequest) {
         status: outcome.status,
       });
     } catch (e) {
-      console.warn(`[llm/complete] recordAiUsage failed for user=${session.user.id}:`, e);
+      console.warn(`[llm/complete] recordAiUsage failed for user=${userId}:`, e);
     }
   }
 

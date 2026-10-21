@@ -91,4 +91,21 @@ describe('applyCsrfGate — 中间件 CSRF 网关（审计 #168）', () => {
   it('非 /api 路径 → 网关不介入（返回 null）', () => {
     expect(applyCsrfGate(req('/dashboard', 'POST'))).toBeNull();
   });
+  describe('AI 工作台服务调用 /api/llm/*（ADR 0049 Part B）', () => {
+    const SVC = { 'x-internal-caller': 'ai-workspace' };
+    it('带 X-Internal-Caller: ai-workspace 的 /api/llm/* 变更请求无 Origin 也放行（路由自行验签）', () => {
+      for (const p of ['/api/llm/suggest', '/api/llm/generate', '/api/llm/assistant', '/api/llm/complete']) {
+        expect(gate(p, 'POST', SVC), `${p} should pass`).toBe('PASS');
+      }
+    });
+    it('★/api/llm/* 的 cookie 变更请求（无服务头、无 Origin）仍 → 403', () => {
+      expect(gate('/api/llm/suggest', 'POST')).toBe(403);
+      expect(gate('/api/llm/suggest', 'POST', { 'x-internal-caller': 'cloud-bff' })).toBe(403);
+    });
+    it('★服务头只在 /api/llm/* 生效：其它路径照旧 403', () => {
+      expect(gate('/api/policies', 'POST', SVC)).toBe(403);
+      expect(gate('/api/llmx/suggest', 'POST', SVC)).toBe(403);
+      expect(gate('/api/llm', 'POST', SVC)).toBe(403);
+    });
+  });
 });

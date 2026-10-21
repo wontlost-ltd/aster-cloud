@@ -1,4 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { signedWorkspaceRequest, TEST_AI_WORKSPACE_KEY } from '@/__tests__/helpers/ai-workspace-signing';
 
 /**
  * proxyLlmSse（/api/llm/generate + /api/llm/suggest 共用）AI 配额门控 + 成功记账回归。
@@ -8,8 +9,9 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
  * （驱动 checkAiQuota 的月配额/速率计数）。
  */
 
-const { mockAuth, mockCheckAiQuota, mockRecordAiUsage, mockMarkFailed, mockSign, mockResolveByok, mockInjectByok } = vi.hoisted(() => ({
+const { mockAuth, mockCheckAiQuota, mockRecordAiUsage, mockMarkFailed, mockSign, mockResolveByok, mockInjectByok, mockClaimNonce } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
+  mockClaimNonce: vi.fn(),
   mockMarkFailed: vi.fn(),
   mockCheckAiQuota: vi.fn(),
   mockRecordAiUsage: vi.fn(),
@@ -24,7 +26,12 @@ vi.mock('@/lib/ai-quota', () => ({
   recordAiUsage: mockRecordAiUsage,
   markAiUsageFailed: mockMarkFailed,
 }));
-vi.mock('@/lib/api-signing', () => ({ signInternalCallerHeaders: mockSign }));
+// 出站签名用 mock；入站验签（hmacVerify / sha256Hex，AI 工作台服务签名）用真实实现。
+vi.mock('@/lib/api-signing', async (orig) => ({
+  ...(await orig<typeof import('@/lib/api-signing')>()),
+  signInternalCallerHeaders: mockSign,
+}));
+vi.mock('@/services/security/nonce-service', () => ({ claimNonce: mockClaimNonce }));
 vi.mock('@/lib/byok-envelope', () => ({
   resolveByokEnvelope: mockResolveByok,
   injectByokEnvelope: mockInjectByok,
@@ -72,11 +79,14 @@ describe('proxyLlmSse — AI 配额门控 + 成功记账', () => {
     mockSign.mockReset().mockResolvedValue({ 'X-Internal-Caller': 'cloud-bff' });
     mockResolveByok.mockReset().mockResolvedValue(null);
     mockInjectByok.mockReset().mockImplementation((raw: string) => ({ body: raw, injected: false }));
+    mockClaimNonce.mockReset().mockResolvedValue(true);
+    vi.stubEnv('AI_WORKSPACE_HMAC_KEY', TEST_AI_WORKSPACE_KEY);
     globalThis.fetch = vi.fn().mockResolvedValue(sseStreamResponse());
   });
 
   afterEach(() => {
     globalThis.fetch = realFetch;
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -85,6 +95,7 @@ describe('proxyLlmSse — AI 配额门控 + 成功记账', () => {
     const { proxyLlmSse } = await import('@/lib/llm-sse-proxy');
     const res = await proxyLlmSse(req() as never, { upstreamPath: '/api/v1/ai/generate' });
     expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: 'Unauthorized' });
     expect(mockCheckAiQuota).not.toHaveBeenCalled();
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
@@ -488,5 +499,61 @@ describe('proxyLlmSse — AI 配额门控 + 成功记账', () => {
     expect(JSON.parse(forwardedBody)._byok).toEqual({ provider: 'anthropic', apiKey: 'sk-ant' });
     await drain(res);
     expect(mockRecordAiUsage.mock.calls[0][0]).toMatchObject({ usedByok: true });
+  });
+  describe('AI 工作台服务签名身份（ADR 0049 Part B）', () => {
+    const SUGGEST_URL = 'https://aster-lang.cloud/api/llm/suggest';
+    const BODY = JSON.stringify({ source: 'Module m.' });
+
+    it('服务签名正确 → 以 u1 身份转发（X-Tenant-Id: u1）、配额与记账都按 u1，不读会话', async () => {
+      mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: false });
+      const { proxyLlmSse } = await import('@/lib/llm-sse-proxy');
+      const signed = await signedWorkspaceRequest(SUGGEST_URL, BODY);
+      const res = await proxyLlmSse(signed as never, { upstreamPath: '/api/v1/ai/suggest' });
+      expect(res.status).toBe(200);
+      expect(mockAuth).not.toHaveBeenCalled();
+      expect(mockResolveByok).toHaveBeenCalledWith('u1');
+      expect(mockCheckAiQuota).toHaveBeenCalledWith('u1', { usedByok: false });
+      const init = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1];
+      expect(init.headers['X-Tenant-Id']).toBe('u1');
+      expect(init.body).toBe(BODY);
+      expect(mockSign.mock.calls[0][3]).toBe('u1');
+      await drain(res);
+      expect(mockRecordAiUsage.mock.calls[0][0]).toMatchObject({ userId: 'u1', callKind: 'suggest' });
+    });
+
+    it('★签名错误 → 401，不回落会话、不检查配额、不转发', async () => {
+      mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+      const { proxyLlmSse } = await import('@/lib/llm-sse-proxy');
+      const bad = await signedWorkspaceRequest(SUGGEST_URL, BODY, { key: 'x'.repeat(64) });
+      const res = await proxyLlmSse(bad as never, { upstreamPath: '/api/v1/ai/suggest' });
+      expect(res.status).toBe(401);
+      expect(mockAuth).not.toHaveBeenCalled();
+      expect(mockCheckAiQuota).not.toHaveBeenCalled();
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    });
+
+    it('密钥未配置 → 503，不转发', async () => {
+      vi.stubEnv('AI_WORKSPACE_HMAC_KEY', '');
+      const { proxyLlmSse } = await import('@/lib/llm-sse-proxy');
+      const signed = await signedWorkspaceRequest(SUGGEST_URL, BODY);
+      const res = await proxyLlmSse(signed as never, { upstreamPath: '/api/v1/ai/suggest' });
+      expect(res.status).toBe(503);
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    });
+
+    it('callerBody：按调用方原始 body 验签，转发的是改写后的 req body（assistant 路由）', async () => {
+      mockCheckAiQuota.mockResolvedValue({ allowed: true, remaining: 5, limit: 20, usedByok: false });
+      const url = 'https://aster-lang.cloud/api/llm/assistant';
+      const original = JSON.stringify({ query: 'q' });
+      const signed = await signedWorkspaceRequest(url, original);
+      const patched = JSON.stringify({ query: 'q', adminInstructions: null });
+      const forwarded = new Request(url, { method: 'POST', headers: signed.headers, body: patched });
+      const { proxyLlmSse } = await import('@/lib/llm-sse-proxy');
+      const res = await proxyLlmSse(forwarded as never, { upstreamPath: '/api/v1/ai/assistant', callerBody: original });
+      expect(res.status).toBe(200);
+      const init = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1];
+      expect(init.body).toBe(patched);
+      expect(init.headers['X-Tenant-Id']).toBe('u1');
+    });
   });
 });

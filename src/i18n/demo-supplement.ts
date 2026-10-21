@@ -239,7 +239,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       saveFailed: 'Could not update — please try again',
     },
     // 侧栏/导航「Reports」改标「Evidence」（URL 仍 /reports；deepMerge 覆盖包内字符串）。
-    dashboardNav: { reports: 'Evidence', approvals: 'Approvals' },
+    dashboardNav: { reports: 'Evidence', approvals: 'Approvals', aiWorkspace: 'AI workspace', commandPalette: { aiWorkspace: 'Open AI workspace' } },
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
     notifications: {
       guardApprovalRequested: 'Approval needed: {policyName}',
@@ -1000,7 +1000,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       toggleAriaLabel: '为本团队开关{language}',
       saveFailed: '更新失败——请重试',
     },
-    dashboardNav: { reports: '证据', approvals: '审批' },
+    dashboardNav: { reports: '证据', approvals: '审批', aiWorkspace: 'AI 工作台', commandPalette: { aiWorkspace: '打开 AI 工作台' } },
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
     notifications: {
       guardApprovalRequested: '待审批：{policyName}',
@@ -1744,7 +1744,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       toggleAriaLabel: '{language} für dieses Team umschalten',
       saveFailed: 'Aktualisierung fehlgeschlagen — bitte erneut versuchen',
     },
-    dashboardNav: { reports: 'Nachweise', approvals: 'Freigaben' },
+    dashboardNav: { reports: 'Nachweise', approvals: 'Freigaben', aiWorkspace: 'KI-Arbeitsbereich', commandPalette: { aiWorkspace: 'KI-Arbeitsbereich öffnen' } },
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
     notifications: {
       guardApprovalRequested: 'Freigabe erforderlich: {policyName}',
@@ -2487,7 +2487,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       toggleAriaLabel: 'इस टीम के लिए {language} टॉगल करें',
       saveFailed: 'अपडेट नहीं हो सका — कृपया पुनः प्रयास करें',
     },
-    dashboardNav: { reports: 'साक्ष्य', approvals: 'अनुमोदन' },
+    dashboardNav: { reports: 'साक्ष्य', approvals: 'अनुमोदन', aiWorkspace: 'एआई कार्यक्षेत्र', commandPalette: { aiWorkspace: 'एआई कार्यक्षेत्र खोलें' } },
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
     notifications: {
       guardApprovalRequested: 'अनुमोदन आवश्यक: {policyName}',

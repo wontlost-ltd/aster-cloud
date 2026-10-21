@@ -28,6 +28,9 @@ import {
 import { getEffectiveRole, canAccess } from '@/lib/effective-role';
 import { resolveUserAllowedLocales } from '@/lib/team-locales';
 import { defaultLocale } from '@/i18n/config';
+import { isAiWorkspaceEnabledFor, resolveAiWorkspaceBase } from '@/lib/ai-workspace';
+import { safeEnv } from '@/lib/runtime/safe-env';
+import { AiWorkspaceProvider } from '@/components/ai-workspace-context';
 
 /*
  * Dashboard shell — sidebar + slim topbar.
@@ -81,6 +84,20 @@ export default async function DashboardLayout({
 
   const session = await getSession();
   const userId = session?.user?.id ?? null;
+
+  // AI 工作台入口（ADR 0049）：仅服务端判定该用户已灰度开启时才产出交接地址；
+  // 该地址是 API 路由，不带 locale 前缀，由侧栏/命令面板以整页导航打开。
+  // 同一判定经 AiWorkspaceProvider 下发给策略编辑器，决定「AI」tab 是否嵌入工作台面板。
+  const aiWorkspaceBase = resolveAiWorkspaceBase(safeEnv('NEXT_PUBLIC_AI_WORKSPACE_URL'));
+  const aiWorkspace =
+    userId &&
+    aiWorkspaceBase &&
+    isAiWorkspaceEnabledFor(userId, aiWorkspaceBase, safeEnv('AI_WORKSPACE_ENABLED_FOR'))
+      ? { base: aiWorkspaceBase, enabled: true }
+      : null;
+  const aiWorkspaceHref = aiWorkspace
+    ? `/api/ai-workspace/handoff?next=%2F&locale=${locale}`
+    : undefined;
 
   // Force password rotation on first login for accounts provisioned
   // with a temporary password (admin bootstrap, future invitations).
@@ -180,7 +197,9 @@ export default async function DashboardLayout({
           expandSidebar: t('expandSidebar'),
           openMenu: t('mobile.openMenu'),
           closeMenu: t('mobile.closeMenu'),
+          aiWorkspace: t('aiWorkspace'),
         }}
+        aiWorkspaceHref={aiWorkspaceHref}
         adminCapabilities={{
           riskTier: CAN_RISKTIER,
           license: CAN_LICENSE,
@@ -234,6 +253,9 @@ export default async function DashboardLayout({
                     aiKeys:      tCmd('aiKeys'),
                     aiAssistant: tCmd('aiAssistant'),
                   },
+                  aiWorkspace: aiWorkspaceHref
+                    ? { label: tCmd('aiWorkspace'), href: aiWorkspaceHref }
+                    : undefined,
                   canCreate:  canAccess(role, 'member'),
                   showBilling,
                   // Seed the palette with a curated slice of docs
@@ -289,7 +311,7 @@ export default async function DashboardLayout({
           so flex/grid children can shrink.
         */}
         <main id="dashboard-main" tabIndex={-1} className="min-w-0 focus:outline-none">
-          {children}
+          <AiWorkspaceProvider value={aiWorkspace}>{children}</AiWorkspaceProvider>
         </main>
       </div>
       {/* 登录后「文档」overlay：覆盖在 dashboard 上的三栏阅读面板（不跳转）。

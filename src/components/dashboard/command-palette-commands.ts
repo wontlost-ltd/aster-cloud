@@ -28,7 +28,8 @@ export type CommandIcon =
   | 'settings'
   | 'key-round'
   | 'book-text'
-  | 'clipboard-check';
+  | 'clipboard-check'
+  | 'bot';
 
 export interface Command {
   /** Stable id for keying React lists and analytics events. */
@@ -46,6 +47,8 @@ export interface Command {
   /** Optional list of extra search keywords (e.g. translations of the label
    *  in other languages so a 中文 user can still search "policy"). */
   keywords?: string[];
+  /** 为 true 时 href 不带 locale 前缀，且需整页导航（如会 302 跨域的交接路由）。 */
+  external?: boolean;
 }
 
 /**
@@ -100,10 +103,12 @@ export interface BuildCommandsArgs {
    * dashboard palette doesn't change the privacy story.
    */
   docsSeeds?: ReadonlyArray<DocsCommandSeed>;
+  /** AI 工作台入口；仅当服务端判定已开启时传入（href 已含 locale，不再加前缀）。 */
+  aiWorkspace?: { label: string; href: string };
 }
 
 export function buildCommands({
-  routePrefix, labels, canCreate = true, showBilling = true, docsSeeds = [],
+  routePrefix, labels, canCreate = true, showBilling = true, docsSeeds = [], aiWorkspace,
 }: BuildCommandsArgs): Command[] {
   const p = routePrefix;
   const cmds: Command[] = [
@@ -113,6 +118,9 @@ export function buildCommands({
     { id: 'approvals',  group: 'navigate', icon: 'clipboard-check', label: labels.approvals, href: `${p}/approvals`,       keywords: ['approval', 'approve', '审批', 'genehmigung', 'अनुमोदन'] },
     { id: 'teams',      group: 'navigate', icon: 'users',        label: labels.teams,     href: `${p}/teams`,             keywords: ['team', '团队'] },
     { id: 'security',   group: 'navigate', icon: 'shield-check', label: labels.security,  href: `${p}/security`,          keywords: ['security', '安全'] },
+    ...(aiWorkspace
+      ? ([{ id: 'ai-workspace', group: 'navigate', icon: 'bot', label: aiWorkspace.label, href: aiWorkspace.href, external: true, keywords: ['ai', 'agent', '工作台', 'ki', 'एआई'] }] as Command[])
+      : []),
 
     ...(canCreate
       ? ([{ id: 'new-policy', group: 'create', icon: 'sparkles', label: labels.newPolicy, href: `${p}/policies/new`, keywords: ['create', '新建', 'neu'] }] as Command[])

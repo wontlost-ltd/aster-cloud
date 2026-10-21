@@ -141,5 +141,10 @@ AI_WORKSPACE_ENABLED_FOR = "784d38c4-f433-4369-b4dc-ab0f4f0cc2b9"
 # 遥测客户字段脱敏（J2 — 默认明文；启用后 SaaS 仅保存 anon-<hex>-<len>）：
 # wrangler secret put ASTER_TELEMETRY_MASK_CUSTOMER  # "1" to enable
 #
+# AI 工作台（ADR 0049）：
+# wrangler secret put AI_WORKSPACE_HANDOFF_PRIVATE_KEY  # Ed25519 私钥，base64 PKCS#8 DER
+# wrangler secret put AI_WORKSPACE_HMAC_KEY             # `openssl rand -hex 32`
+# NEXT_PUBLIC_AI_WORKSPACE_URL / AI_WORKSPACE_ENABLED_FOR 为公开配置，启用时再写入 [vars]。
+#
 # 遥测保留天数（J1 — 默认 365）：
 # wrangler secret put TELEMETRY_RETENTION_DAYS
