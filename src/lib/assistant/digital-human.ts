@@ -14,9 +14,7 @@
 
 import { parseSSEFrame } from '@/hooks/useSSEStream';
 import type { AssistantAnswerProvider } from './provider';
-
-/** 与 aster-api AssistantRequest.groundingHits 的上限对齐（超出会被 400 拒绝）。 */
-const MAX_GROUNDING_HITS = 16;
+import { toGroundingHits } from './retrieval';
 
 export function createDigitalHumanProvider(): AssistantAnswerProvider {
   return {
@@ -30,13 +28,7 @@ export function createDigitalHumanProvider(): AssistantAnswerProvider {
         body: JSON.stringify({
           query,
           locale,
-          // 只送模型作答需要的三个字段：score/kind/id 对生成无用，
-          // 白送只会放大 prompt 体积与成本。
-          groundingHits: groundingHits.slice(0, MAX_GROUNDING_HITS).map((h) => ({
-            title: h.title,
-            snippet: h.subtitle ?? '',
-            href: h.href,
-          })),
+          groundingHits: toGroundingHits(groundingHits),
         }),
       });
 

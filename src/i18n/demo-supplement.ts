@@ -164,6 +164,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     docs: {
       sidebar: {
+        // 入门：创建 API 密钥（助手检索的常见问题）
+        gettingStarted: { apiKeys: 'Create an API key' },
         guides: {
           title: 'Guides',
           creditPilot: 'Credit pilot (Article 14)',
@@ -601,6 +603,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         statusAiCompletionOff: 'AI completion: off',
         statusAiCompletionLabel: 'AI inline completion',
         statusAiCompletionHint: 'Suggests the next code while you type; each pause uses AI quota. Click to toggle.',
+        // 决策预览没有可展示内容时的说明（编译中 / 编译通过但无模块摘要等）
+        decisionEmpty: 'Nothing to preview yet. This panel shows compile errors and warnings, and once the policy compiles, its module, functions and types. Write a policy starting with a Module declaration and the result appears here.',
+        // 手机宽度下编辑器降级为只读视图时的提示
+        mobileReadOnlyNotice: 'Read-only on small screens. The policy editor needs a wider screen (at least 768 px): open this page on a tablet or desktop to edit and save.',
         aliases: {
           title: 'Keyword aliases',
           hint: 'Add comma-separated multi-word phrases for policy keywords.',
@@ -926,6 +932,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     docs: {
       sidebar: {
+        // 入门：创建 API 密钥（助手检索的常见问题）
+        gettingStarted: { apiKeys: '创建 API 密钥' },
         guides: {
           title: '指南',
           creditPilot: '信贷试点（第 14 条）',
@@ -1343,6 +1351,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         statusAiCompletionOff: 'AI 补全：关',
         statusAiCompletionLabel: 'AI 行内补全',
         statusAiCompletionHint: '输入时自动建议后续代码；每次停顿都会消耗 AI 额度。点击切换。',
+        // 决策预览没有可展示内容时的说明（编译中 / 编译通过但无模块摘要等）
+        decisionEmpty: '暂无可预览的内容。这里会显示编译错误与警告，以及策略编译通过后的模块、函数和类型。在编辑器中写出以 Module 声明开头的策略后，结果会出现在这里。',
+        // 手机宽度下编辑器降级为只读视图时的提示
+        mobileReadOnlyNotice: '小屏幕下仅可查看。编辑策略需要更宽的屏幕（至少 768 像素）：请在平板或电脑上打开此页面进行编辑和保存。',
         aliases: {
           title: '关键词别名',
           hint: '为策略关键词添加逗号分隔的多词短语。',
@@ -1670,6 +1682,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     docs: {
       sidebar: {
+        // 入门：创建 API 密钥（助手检索的常见问题）
+        gettingStarted: { apiKeys: 'API-Schlüssel erstellen' },
         guides: {
           title: 'Leitfäden',
           creditPilot: 'Kreditpilot (Artikel 14)',
@@ -2088,6 +2102,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         statusAiCompletionOff: 'KI-Vervollständigung: aus',
         statusAiCompletionLabel: 'KI-Inline-Vervollständigung',
         statusAiCompletionHint: 'Schlägt beim Tippen den nächsten Code vor; jede Pause verbraucht KI-Kontingent. Zum Umschalten klicken.',
+        // 决策预览没有可展示内容时的说明（编译中 / 编译通过但无模块摘要等）
+        decisionEmpty: 'Noch nichts in der Vorschau. Hier erscheinen Kompilierfehler und Warnungen sowie – sobald die Policy kompiliert – Modul, Funktionen und Typen. Schreibe eine Policy, die mit einer Module-Deklaration beginnt, dann erscheint das Ergebnis hier.',
+        // 手机宽度下编辑器降级为只读视图时的提示
+        mobileReadOnlyNotice: 'Auf kleinen Bildschirmen nur lesbar. Der Policy-Editor braucht einen breiteren Bildschirm (mindestens 768 px): Öffne diese Seite auf einem Tablet oder Desktop, um zu bearbeiten und zu speichern.',
         aliases: {
           title: 'Keyword-Aliase',
           hint: 'Mehrwort-Phrasen kommagetrennt für Policy-Keywords hinzufügen.',
@@ -2413,6 +2431,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     docs: {
       sidebar: {
+        // 入门：创建 API 密钥（助手检索的常见问题）
+        gettingStarted: { apiKeys: 'API कुंजी बनाएँ' },
         guides: {
           title: 'Guides',
           creditPilot: 'Credit pilot (Article 14)',
@@ -2831,6 +2851,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         statusAiCompletionOff: 'AI पूर्णता: बंद',
         statusAiCompletionLabel: 'AI इनलाइन पूर्णता',
         statusAiCompletionHint: 'टाइप करते समय अगला कोड सुझाता है; हर विराम पर AI कोटा खर्च होता है। बदलने के लिए क्लिक करें।',
+        // 决策预览没有可展示内容时的说明（编译中 / 编译通过但无模块摘要等）
+        decisionEmpty: 'अभी पूर्वावलोकन के लिए कुछ नहीं है। यहाँ संकलन त्रुटियाँ और चेतावनियाँ दिखती हैं, और Policy संकलित होने के बाद उसका मॉड्यूल, फ़ंक्शन और प्रकार। Module घोषणा से शुरू होने वाली Policy लिखें, परिणाम यहाँ दिखेगा।',
+        // 手机宽度下编辑器降级为只读视图时的提示
+        mobileReadOnlyNotice: 'छोटी स्क्रीन पर केवल देखा जा सकता है। Policy संपादक के लिए चौड़ी स्क्रीन (कम से कम 768 px) चाहिए: संपादित और सहेजने के लिए यह पेज टैबलेट या डेस्कटॉप पर खोलें।',
         aliases: {
           title: 'कीवर्ड उपनाम',
           hint: 'Policy कीवर्ड के लिए कॉमा से अलग बहु-शब्द वाक्यांश जोड़ें।',

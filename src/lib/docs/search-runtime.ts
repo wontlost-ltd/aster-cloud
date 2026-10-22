@@ -165,6 +165,14 @@ function matchStrength(entry: SearchEntry, tokens: string[]): number {
   );
 }
 
+/** 条目任一字段命中的不同 token 个数。 */
+function matchCoverage(entry: SearchEntry, tokens: string[]): number {
+  const fields = [entry.title, entry.description, entry.slug, ...entry.headings].map((f) =>
+    f.toLowerCase(),
+  );
+  return tokens.filter((tok) => fields.some((f) => f.includes(tok))).length;
+}
+
 /**
  * Score a single entry against the expanded token set. Returns the
  * first matching tier (we don't sum tiers — a heading match shouldn't
@@ -224,6 +232,11 @@ export function searchDocs(
     const la = matchStrength(a.entry, tokens);
     const lb = matchStrength(b.entry, tokens);
     if (la !== lb) return lb - la;
+    // 再同：命中的不同 token 更多（问句覆盖更全）优先。自然问句会拆出大量短 token，
+    // 「如何创建 API 密钥」下只碰到 "api" 的条目不应靠 slug 字典序排到真正答案前面。
+    const ca = matchCoverage(a.entry, tokens);
+    const cb = matchCoverage(b.entry, tokens);
+    if (ca !== cb) return cb - ca;
     return a.entry.slug.localeCompare(b.entry.slug);
   });
   const limit = opts.limit ?? 8;

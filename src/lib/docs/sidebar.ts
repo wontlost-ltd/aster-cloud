@@ -38,6 +38,7 @@ export const docsSidebar = [
     items: [
       { labelKey: 'docs.sidebar.gettingStarted.overview', href: 'getting-started/overview' },
       { labelKey: 'docs.sidebar.gettingStarted.authentication', href: 'getting-started/authentication' },
+      { labelKey: 'docs.sidebar.gettingStarted.apiKeys', href: 'getting-started/api-keys' },
       { labelKey: 'docs.sidebar.gettingStarted.quickstart', href: 'getting-started/quickstart' },
       { labelKey: 'docs.sidebar.gettingStarted.errors', href: 'getting-started/errors' },
     ],

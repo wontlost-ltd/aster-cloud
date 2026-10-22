@@ -78,6 +78,7 @@ import { usePolicyDraft, type PolicyDraftFields } from './use-policy-draft';
 import { useUnsavedWarning } from './use-unsaved-warning';
 import { usePolicyShortcuts } from './use-policy-shortcuts';
 import { useIsMobile } from './use-is-mobile';
+import { useFitViewportHeight } from './use-fit-viewport-height';
 import { EditorPalette } from './editor-palette';
 import { EditorRail } from './editor-rail';
 import { CNLSyntaxConverterDialog } from '@/components/policy/cnl-syntax-converter-dialog';
@@ -256,6 +257,14 @@ export function PolicyForm({
     setSidePanelOpen(true);
   }, []);
 
+  // 工作区高度按实际顶边填满首屏；错误横幅出现/消失会推移顶边，需重新测量。
+  // reserve = 状态栏（约 30px）+ 间距 12px + 底部留白，保证状态栏同在视口内。
+  const workbenchRef = useRef<HTMLDivElement>(null);
+  const workbenchHeight = useFitViewportHeight(
+    workbenchRef,
+    { min: 560, max: 900, reserve: 64 },
+    [serverError !== null],
+  );
   const previousErrorCountRef = useRef(0);
   useEffect(() => {
     if (compileErrorCount > 0 && previousErrorCountRef.current === 0) {
@@ -620,6 +629,19 @@ export function PolicyForm({
           }
         />
 
+        {/* ----- 手机只读提示 ----- */}
+        {/* 窄屏下编辑器降级为只读视图、也没有保存与侧栏：明确告诉用户原因与去处，
+            否则一个只有「取消」的「编辑策略」页看起来像坏了。 */}
+        {isMobile && (
+          <div
+            role="note"
+            data-testid="policy-mobile-readonly-notice"
+            className="rounded-lg border border-border bg-bg-muted px-4 py-2 text-sm text-fg-muted"
+          >
+            {t('mobileReadOnlyNotice')}
+          </div>
+        )}
+
         {/* ----- Server error banner ----- */}
         {serverError && (
           <div
@@ -640,10 +662,12 @@ export function PolicyForm({
 
         {/* ----- IDE workbench: rail + editor + drawer ----- */}
         <div
+          ref={workbenchRef}
           className="flex gap-3"
           // Meta 和别名移入抽屉后，主任务区可以吃到更多垂直空间。
           // 低于 lg 时 rail/抽屉隐藏，编辑器仍自然占满可用宽度。
-          style={{ height: 'clamp(560px, calc(100vh - 12rem), 900px)' }}
+          // 测量前用 CSS 估算兜底；测量后按实际顶边填满首屏，状态栏也留在视口内。
+          style={{ height: workbenchHeight ?? 'clamp(560px, calc(100vh - 12rem), 900px)' }}
         >
           {!isMobile && (
             <EditorRail

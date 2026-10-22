@@ -1,0 +1,38 @@
+---
+title: "创建 API 密钥"
+description: "在「设置 → API 密钥」输入名称并点「创建密钥」。完整密钥（ak_ 开头）只显示一次，请立即复制。调用 API 时放在 Authorization: Bearer <密钥> 请求头中。"
+updated: 2026-10-23
+apiVersion: v1
+---
+
+# 创建 API 密钥
+
+从你的应用调用 Aster Cloud API（例如评估策略）需要一个 API 密钥。
+
+## 创建步骤
+
+1. 打开 [设置 → API 密钥](/zh/settings/api-keys)（左侧导航「API 密钥」）。
+2. 在「创建新的 API 密钥」中选择作用域：「个人」，或你所在的某个团队。
+3. 输入一个便于识别的名称（如「生产环境」「开发环境」），点击「创建密钥」。
+4. 页面会显示完整密钥（以 `ak_` 开头）。**密钥只显示这一次**，请立即复制并妥善保存；之后列表中只显示前缀。
+
+<Callout type="warning" title="密钥只显示一次">
+关闭提示后无法再次查看完整密钥。若遗失，请撤销旧密钥并新建一个。
+</Callout>
+
+## 在请求中使用密钥
+
+把密钥放在 `Authorization` 请求头中，格式为 `Bearer <密钥>`：
+
+```bash
+curl -X POST https://policy.aster-lang.dev/api/v1/policies/evaluate \
+  -H "Authorization: Bearer ak_your_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{"policyModule":"aster.finance.loan","policyFunction":"evaluateLoanEligibility","context":[{"creditScore":750}]}'
+```
+
+只接受 `Authorization: Bearer` 这一种写法；缺少或无效的密钥返回 `401 Unauthorized`。
+
+## 撤销密钥
+
+在「设置 → API 密钥」的密钥列表中点「撤销」。撤销立即生效，且无法恢复；使用该密钥的调用随即返回 `401`。

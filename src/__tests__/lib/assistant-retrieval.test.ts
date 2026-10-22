@@ -178,3 +178,17 @@ describe('站外文档源（aster-lang.dev）', () => {
     expect(retrieve('策略', empty)).toEqual(retrieve('策略', opts));
   });
 })
+
+describe('同分文档沿用 searchDocs 的细排顺序（F28）', () => {
+  it('不以 id 字典序打乱 searchDocs 已排好的同分文档', () => {
+    const index: SearchIndex = {
+      locale: 'zh',
+      entries: [
+        { slug: 'a/graphql', title: 'GraphQL API 概览', description: '', headings: [] },
+        { slug: 'z/api-keys', title: '创建 API 密钥', description: '', headings: [] },
+      ],
+    };
+    const hits = retrieve('如何创建 API 密钥？', { docsIndex: index, commands: [], docsPrefix: '/zh' });
+    expect(hits[0].href).toBe('/zh/docs/z/api-keys');
+  });
+});

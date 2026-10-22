@@ -32,3 +32,24 @@ describe('ai-workspace config', () => {
     expect(AI_WORKSPACE_NEXT_PATTERN.test('/panel?policyId=a&x=1')).toBe(false);
   });
 });
+
+describe('工作台主题参数（F29）', () => {
+  it('只接受解析后的 dark/light', async () => {
+    const { toWorkspaceTheme } = await import('@/lib/ai-workspace');
+    expect(toWorkspaceTheme('dark')).toBe('dark');
+    expect(toWorkspaceTheme('light')).toBe('light');
+    expect(toWorkspaceTheme('system')).toBeNull();
+    expect(toWorkspaceTheme(undefined)).toBeNull();
+    expect(toWorkspaceTheme('<x>')).toBeNull();
+  });
+
+  it('交接地址带 next / locale / theme', async () => {
+    const { aiWorkspaceHandoffSrc } = await import('@/lib/ai-workspace');
+    const src = aiWorkspaceHandoffSrc({ next: '/panel?policyId=p1', locale: 'zh', theme: 'dark' });
+    expect(src.startsWith('/api/ai-workspace/handoff?')).toBe(true);
+    const params = new URLSearchParams(src.split('?').slice(1).join('?'));
+    expect(params.get('next')).toBe('/panel?policyId=p1');
+    expect(params.get('locale')).toBe('zh');
+    expect(params.get('theme')).toBe('dark');
+  });
+});

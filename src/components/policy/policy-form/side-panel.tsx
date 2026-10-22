@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { AIAssistantPanel } from '@/components/policy/ai-assistant-panel';
 import { AiWorkspacePanel } from '@/components/policy/ai-workspace-panel';
+import { useSuppressAssistantLauncher } from '@/components/assistant/assistant-context';
 import type { AiWorkspaceConfig } from '@/components/ai-workspace-context';
 import { CNLSyntaxReferencePanel } from '@/components/policy/cnl-syntax-reference-panel';
 import { PolicyAliasPanel } from '@/components/policy/policy-alias-panel';
@@ -144,6 +145,9 @@ export function SidePanel({
   // AI 工作台面板是否已打开过；未打开过不加载 iframe，避免进入编辑器就提前交接。
   const [aiOpened, setAiOpened] = useState(tab === 'ai');
   if (tab === 'ai' && !aiOpened) setAiOpened(true);
+  // 「AI」tab 本身就是 AI 入口，且其输入框/发送按钮贴在视口右下角，正好落在悬浮助手按钮下面：
+  // 打开期间让出悬浮按钮，切走或关闭侧栏即恢复。
+  useSuppressAssistantLauncher(tab === 'ai');
   const errorCount =
     compileDiagnostics?.filter((d) => d.severity === 'error').length ?? 0;
 
@@ -328,10 +332,19 @@ export function DecisionTab({
   }
   const errors = diagnostics.filter((d) => d.severity === 'error');
   const warnings = diagnostics.filter((d) => d.severity === 'warning');
+  const hasDiagnostics = errors.length > 0 || warnings.length > 0;
+  const showModule = !!moduleInfo && errors.length === 0;
+  // 编译中、或编译通过但没有模块摘要时，下面两块都不渲染——不能只剩一个标题，
+  // 要告诉用户这里会显示什么、何时出现。
+  if (!hasDiagnostics && !showModule) {
+    return (
+      <div className="px-5 py-5 text-sm text-fg-muted">{t('decisionEmpty')}</div>
+    );
+  }
 
   return (
     <div className="space-y-4 px-5 py-5">
-      {(errors.length > 0 || warnings.length > 0) && (
+      {hasDiagnostics && (
         <ul className="space-y-1.5">
           {[...errors, ...warnings].map((d, i) => (
             <li key={`${d.startLine}-${d.startColumn}-${i}`}>
@@ -357,7 +370,7 @@ export function DecisionTab({
         </ul>
       )}
 
-      {moduleInfo && errors.length === 0 && (
+      {showModule && moduleInfo && (
         <div className="space-y-2 rounded-md border border-border bg-bg-subtle p-3 text-xs">
           <div>
             <span className="font-semibold text-fg">{t('decisionModule')}: </span>

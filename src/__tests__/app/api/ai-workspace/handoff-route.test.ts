@@ -33,6 +33,21 @@ describe('GET /api/ai-workspace/handoff', () => {
     expect(loc.searchParams.get('next')).toBe('/panel?policyId=p-1');
     expect(loc.searchParams.get('token')).toMatch(/^[\w-]+\.[\w-]+$/);
   });
+  it.runIf(IS_SAAS_BUILD)('★theme=dark|light 原样转交给工作台 /handoff（F29）', async () => {
+    const { GET } = await import('@/app/api/ai-workspace/handoff/route');
+    for (const theme of ['dark', 'light']) {
+      const res = await GET(req(`?next=%2Fpanel&locale=zh&theme=${theme}`));
+      expect(new URL(res.headers.get('location')!).searchParams.get('theme')).toBe(theme);
+    }
+  });
+  it.runIf(IS_SAAS_BUILD)('theme 缺失、system 或非法值：不转交 theme', async () => {
+    const { GET } = await import('@/app/api/ai-workspace/handoff/route');
+    for (const qs of ['', '&theme=system', '&theme=%3Cscript%3E']) {
+      const res = await GET(req(`?next=%2Fpanel&locale=zh${qs}`));
+      expect(res.status).toBe(302);
+      expect(new URL(res.headers.get('location')!).searchParams.has('theme')).toBe(false);
+    }
+  });
   it.runIf(!IS_SAAS_BUILD)('非 SaaS 部署：已登录也是 404', async () => {
     const { GET } = await import('@/app/api/ai-workspace/handoff/route');
     expect((await GET(req('?next=%2F'))).status).toBe(404);

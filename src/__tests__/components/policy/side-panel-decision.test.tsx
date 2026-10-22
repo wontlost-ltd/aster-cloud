@@ -39,3 +39,47 @@ describe('DecisionTab 治理档案', () => {
     expect(screen.queryByText(/治理档案/)).toBeNull();
   });
 });
+
+describe('DecisionTab 空状态（F6）', () => {
+  const EMPTY = /暂无可预览的内容/;
+  const renderState = (state: 'pending' | 'ok' | 'error', diagnostics: Parameters<typeof DecisionTab>[0]['diagnostics'] = []) =>
+    render(
+      <IntlClientProvider locale="zh" messages={messages as never}>
+        <DecisionTab state={state} diagnostics={diagnostics} locale="zh" />
+      </IntlClientProvider>,
+    );
+
+  it('★编译通过但没有模块摘要 → 显示说明，而不是空白', () => {
+    renderState('ok');
+    expect(screen.getByText(EMPTY)).toBeTruthy();
+  });
+
+  it('编译中 → 显示说明', () => {
+    renderState('pending');
+    expect(screen.getByText(EMPTY)).toBeTruthy();
+  });
+
+  it('只有 info/hint 诊断 → 显示说明', () => {
+    renderState('ok', [{ severity: 'info', message: 'i', startLine: 1, startColumn: 1, endLine: 1, endColumn: 2 }]);
+    expect(screen.getByText(EMPTY)).toBeTruthy();
+  });
+
+  it('有错误 → 显示错误列表，不显示空状态', () => {
+    renderState('error', [{ severity: 'error', message: 'boom', startLine: 2, startColumn: 3, endLine: 2, endColumn: 4 }]);
+    expect(screen.getByText('boom')).toBeTruthy();
+    expect(screen.queryByText(EMPTY)).toBeNull();
+  });
+
+  it('有模块摘要 → 不显示空状态', () => {
+    renderZh(base);
+    expect(screen.queryByText(EMPTY)).toBeNull();
+  });
+});
+
+describe('编辑器新增文案四语齐全（F6 / F30）', () => {
+  it.each(['en', 'zh', 'de', 'hi'] as const)('%s 含 decisionEmpty 与 mobileReadOnlyNotice', (locale) => {
+    const form = (DEMO_SUPPLEMENT[locale] as { policies: { form: Record<string, unknown> } }).policies.form;
+    expect(typeof form.decisionEmpty === 'string' && form.decisionEmpty.length > 0).toBe(true);
+    expect(typeof form.mobileReadOnlyNotice === 'string' && form.mobileReadOnlyNotice.length > 0).toBe(true);
+  });
+});

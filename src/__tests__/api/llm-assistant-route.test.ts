@@ -16,17 +16,20 @@ vi.mock('@/lib/platform-settings', async (orig) => {
   return { ...actual, getSetting };
 });
 vi.mock('@/lib/llm-sse-proxy', () => ({ proxyLlmSse }));
+// 路由引用 llm-caller 的调用方常量，后者依赖 NextAuth；本测试不走会话解析。
+vi.mock('@/auth', () => ({ auth: vi.fn() }));
 
 const { POST } = await import('@/app/api/llm/assistant/route');
 const { PLATFORM_SETTING_KEYS } = await import('@/lib/platform-settings');
 
-function req(body: unknown) {
+function req(body: unknown, headers: Record<string, string> = {}) {
   return new NextRequest('https://x.test/api/llm/assistant', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(body),
   });
 }
+const WORKSPACE = { 'X-Internal-Caller': 'ai-workspace' };
 
 /** 取代理实际收到的请求体。 */
 async function forwardedBody() {
@@ -117,5 +120,52 @@ describe('POST /api/llm/assistant', () => {
     const raw = JSON.stringify({ query: 'q', adminInstructions: 'x' });
     await POST(new NextRequest('https://x.test/api/llm/assistant', { method: 'POST', body: raw }));
     expect(proxyLlmSse.mock.calls[0][1]).toEqual({ upstreamPath: '/api/v1/ai/assistant', callerBody: raw });
+  });
+
+  it('★未带 groundingHits（AI 工作台恒送空数组）→ 服务端用同一索引补检索（F15）', async () => {
+    settings({ extra: '' });
+    await POST(req({ query: '如何创建 API 密钥？', locale: 'zh-CN', groundingHits: [] }));
+    const b = await forwardedBody();
+    expect(b.groundingHits.length).toBeGreaterThan(0);
+    expect(b.groundingHits[0].href).toBe('/zh/docs/getting-started/api-keys');
+  });
+
+  it('客户端已带命中时原样使用，不再补检索', async () => {
+    settings({ extra: '' });
+    const hits = [{ title: 't', snippet: 's', href: '/h' }];
+    await POST(req({ query: '如何创建 API 密钥？', groundingHits: hits }));
+    expect((await forwardedBody()).groundingHits).toEqual(hits);
+  });
+
+  it('★AI 工作台调用：追加「没有检索结果列表」说明，站内链接为绝对地址', async () => {
+    settings({ extra: '' });
+    const { NO_RESULTS_UI_NOTE } = await import('@/lib/assistant/server-grounding');
+    await POST(req({ query: 'API 密钥', locale: 'zh-CN', groundingHits: [] }, WORKSPACE));
+    const b = await forwardedBody();
+    expect(b.adminInstructions).toBe(NO_RESULTS_UI_NOTE);
+    expect(b.groundingHits[0].href).toBe('https://x.test/zh/docs/getting-started/api-keys');
+  });
+
+  it('AI 工作台调用 + 管理员指令：两者都保留，总长不超上限', async () => {
+    const { ASSISTANT_INSTRUCTIONS_MAX_LEN } = await import('@/lib/platform-settings');
+    const { NO_RESULTS_UI_NOTE } = await import('@/lib/assistant/server-grounding');
+    settings({ extra: '指引' });
+    await POST(req({ query: 'q' }, WORKSPACE));
+    expect((await forwardedBody()).adminInstructions).toBe(`指引\n\n${NO_RESULTS_UI_NOTE}`);
+
+    proxyLlmSse.mockClear();
+    settings({ extra: 'あ'.repeat(ASSISTANT_INSTRUCTIONS_MAX_LEN) });
+    await POST(req({ query: 'q' }, WORKSPACE));
+    const long = (await forwardedBody()).adminInstructions as string;
+    expect(long.length).toBeLessThanOrEqual(ASSISTANT_INSTRUCTIONS_MAX_LEN);
+    expect(long.endsWith(NO_RESULTS_UI_NOTE)).toBe(true);
+  });
+
+  it('浏览器会话调用：不追加说明，链接保持站内相对路径', async () => {
+    settings({ extra: '' });
+    await POST(req({ query: 'API 密钥', locale: 'zh', groundingHits: [] }));
+    const b = await forwardedBody();
+    expect(b.adminInstructions).toBeNull();
+    expect(b.groundingHits[0].href.startsWith('/zh/docs/')).toBe(true);
   });
 });
