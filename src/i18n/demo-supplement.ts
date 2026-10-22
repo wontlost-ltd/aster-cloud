@@ -325,6 +325,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     //   漏改了这个入口，于是仪表盘仍在向外部用户承诺三套合规框架。
     //   在信贷风控领域「我们支持 SOC2」是有法律分量的说法，故按实际能力改写。
     dashboard: {
+      // 两个独立计量：cloud 自身 /api/v1 REST 调用（UsageRecord api_call）与 aster-api 的 Policy 执行 API（ApiCallRecord），分开命名免得看似矛盾。
+      stats: { restApiCalls: 'Cloud REST API calls' },
       // 首页 AHA 卡片（原为硬编码英文）。
       aha: {
         achievedTitle: '🎉 First policy published',
@@ -557,6 +559,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
     common: { cancel: 'Cancel' },
+    billing: {
+      restApiCallsThisMonth: 'Cloud REST API calls this month',
+      policyApiCallsThisMonth: 'Policy Execution API calls this month',
+    },
     policies: {
       // 回收站永久删除确认：点名被删除的策略（{name} 由客户端替换）。
       trash: { confirmPermanentDeleteNamed: 'Permanently delete "{name}"? This action cannot be undone.' },
@@ -1105,6 +1111,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 见 en 段注释：入口原文承诺 GDPR/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
+      stats: { restApiCalls: 'Cloud REST API 调用' },
       aha: {
         achievedTitle: '🎉 已发布首个策略',
         hoursAfterSignup: '注册后 {hours} 小时',
@@ -1332,6 +1339,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
     common: { cancel: '取消' },
+    billing: {
+      restApiCallsThisMonth: '本月 Cloud REST API 调用次数',
+      policyApiCallsThisMonth: '本月 Policy 执行 API 调用次数',
+    },
     policies: {
       trash: { confirmPermanentDeleteNamed: '确定要永久删除策略「{name}」吗？此操作无法撤销。' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
@@ -1875,6 +1886,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 见 en 段注释：入口原文承诺 DSGVO/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
+      stats: { restApiCalls: 'Cloud-REST-API-Aufrufe' },
       aha: {
         achievedTitle: '🎉 Erste Richtlinie veröffentlicht',
         hoursAfterSignup: '{hours} Stunden nach der Registrierung',
@@ -2107,6 +2119,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
     common: { cancel: 'Abbrechen' },
+    billing: {
+      restApiCallsThisMonth: 'Cloud-REST-API-Aufrufe diesen Monat',
+      policyApiCallsThisMonth: 'Policy-Ausführungs-API-Aufrufe diesen Monat',
+    },
     policies: {
       trash: { confirmPermanentDeleteNamed: 'Richtlinie „{name}“ endgültig löschen? Diese Aktion kann nicht rückgängig gemacht werden.' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
@@ -2648,6 +2664,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 见 en 段注释：入口原文承诺 GDPR/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
+      stats: { restApiCalls: 'Cloud REST API कॉल' },
       aha: {
         achievedTitle: '🎉 पहली नीति प्रकाशित',
         hoursAfterSignup: 'साइन अप के {hours} घंटे बाद',
@@ -2875,6 +2892,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
     common: { cancel: 'रद्द करें' },
+    billing: {
+      restApiCallsThisMonth: 'इस माह Cloud REST API कॉल',
+      policyApiCallsThisMonth: 'इस माह नीति निष्पादन API कॉल',
+    },
     policies: {
       trash: { confirmPermanentDeleteNamed: 'नीति "{name}" को स्थायी रूप से हटाएँ? यह क्रिया पूर्ववत नहीं की जा सकती।' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。

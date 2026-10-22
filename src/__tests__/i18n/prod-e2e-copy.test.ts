@@ -42,6 +42,8 @@ const KEYS = [
   'dashboard.aha.achievedTitle', 'dashboard.aha.hoursAfterSignup', 'dashboard.aha.achieved', 'dashboard.aha.insideWindow',
   'dashboard.aha.publishFirstTitle', 'dashboard.aha.publishFirstBody', 'dashboard.aha.createPolicy',
   'dashboard.aha.challengeTitle', 'dashboard.aha.challengeBody', 'dashboard.aha.hoursRemaining',
+  // F26 两个 API 计量分别命名
+  'dashboard.stats.restApiCalls', 'billing.restApiCallsThisMonth', 'billing.policyApiCallsThisMonth',
 ];
 
 describe('生产 E2E 文案：四语完整', () => {

@@ -81,7 +81,8 @@ export default async function DashboardPage() {
     stats: {
       totalPolicies: t('stats.totalPolicies'),
       executionsThisMonth: t('stats.executionsThisMonth'),
-      apiCalls: t('stats.apiCalls'),
+      // 该卡片计的是 cloud 自身 /api/v1 REST 调用；Policy 执行 API 另有用量卡片，二者是独立计量
+      apiCalls: t('stats.restApiCalls'),
       piiFieldsDetected: t('stats.piiFieldsDetected'),
       limitTemplate: t.raw('stats.limit'),
       upgradeForApi: t('stats.upgradeForApi'),
