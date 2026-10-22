@@ -93,6 +93,18 @@ describe('POST', () => {
     );
   });
 
+  it('★熔断已生效但审计写入失败 → 仍报告成功（只记日志），不返回 503', async () => {
+    vi.mocked(requireAdmin).mockResolvedValueOnce({ userId: 'admin-1' } as never);
+    vi.mocked(tripCircuitManually).mockResolvedValueOnce({ affected: 3 });
+    vi.mocked(logAuditEvent).mockRejectedValueOnce(new Error('db down'));
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await POST(post({ action: 'trip' }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, affected: 3 });
+    expect(spy).toHaveBeenCalledWith('[ai-circuit] audit write failed for ai-circuit.trip', 'Error');
+    spy.mockRestore();
+  });
+
   it('未知 action → 400', async () => {
     vi.mocked(requireAdmin).mockResolvedValueOnce({ userId: 'admin-1' } as never);
     const res = await POST(post({ action: 'explode' }));

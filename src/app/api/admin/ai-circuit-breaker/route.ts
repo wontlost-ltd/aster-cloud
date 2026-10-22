@@ -19,9 +19,21 @@ import {
 import { extractClientInfo, logAuditEvent } from '@/lib/audit-log';
 import { requireAdmin } from '@/lib/admin-auth';
 import { requireLicenseWriteOk } from '@/lib/license-write-gate';
-import { errorEnvelope } from '@/lib/api/error-envelope';
+import { errorEnvelope, safeErrorCode } from '@/lib/api/error-envelope';
 
 const ensureAdmin = requireAdmin;
+
+/**
+ * 熔断 / 解除已经生效后再写审计：审计写入失败只记日志，不能把已成功的操作报成 503
+ * （管理员会误以为没生效而反复操作）。
+ */
+async function auditAfterSuccess(entry: Parameters<typeof logAuditEvent>[0]): Promise<void> {
+  try {
+    await logAuditEvent(entry);
+  } catch (err) {
+    console.error(`[ai-circuit] audit write failed for ${entry.action}`, safeErrorCode(err));
+  }
+}
 
 export async function GET() {
   // Try/catch wrap so any throw from auth() / todayPlatformCostCents()
@@ -80,7 +92,7 @@ export async function POST(req: Request) {
     if (body.action === 'release') {
       const result = await releaseCircuit(check.userId);
       console.warn(`[ai-circuit] manual release by ${check.userId}, released ${result.released} users`);
-      await logAuditEvent({
+      await auditAfterSuccess({
         userId: check.userId,
         action: 'ai-circuit.release',
         resource: 'ai-circuit-breaker',
@@ -92,7 +104,7 @@ export async function POST(req: Request) {
     if (body.action === 'trip') {
       const result = await tripCircuitManually(check.userId);
       console.warn(`[ai-circuit] manual trip by ${check.userId}, affected ${result.affected} users`);
-      await logAuditEvent({
+      await auditAfterSuccess({
         userId: check.userId,
         action: 'ai-circuit.trip',
         resource: 'ai-circuit-breaker',
