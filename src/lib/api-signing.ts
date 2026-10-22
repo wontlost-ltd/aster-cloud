@@ -54,7 +54,8 @@ export async function hmacVerify(secret: string, data: string, hexSignature: str
   return crypto.subtle.verify('HMAC', key, sigBytes.buffer as ArrayBuffer, encoder.encode(data));
 }
 
-function generateNonce(): string {
+/** 16 字节随机数的小写 hex（32 字符），用作一次性签名 nonce。 */
+export function generateNonce(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   return Array.from(bytes)

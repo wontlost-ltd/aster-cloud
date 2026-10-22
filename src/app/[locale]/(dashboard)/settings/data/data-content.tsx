@@ -20,6 +20,21 @@ import {
   toast,
 } from '@/components/ui';
 
+/** 抹除接口里 AI 工作台部分的结果（F23）；工作台未部署时不出现。 */
+type WorkspaceErase =
+  | { error: string }
+  | { deletedConversations: number; tenantHold: boolean; held: string[] };
+
+/** 工作台抹除后需要常驻提示的情形：失败、或有线程因法律保留未删除。 */
+type EraseNotice = { kind: 'failed' } | { kind: 'held'; count: number } | { kind: 'tenantHold' };
+
+function toEraseNotice(ws: WorkspaceErase | undefined): EraseNotice | null {
+  if (!ws) return null;
+  if ('error' in ws) return { kind: 'failed' };
+  if (ws.tenantHold) return { kind: 'tenantHold' };
+  return ws.held.length > 0 ? { kind: 'held', count: ws.held.length } : null;
+}
+
 /**
  * Client island for /settings/data.
  *
@@ -39,10 +54,14 @@ export function DataContent() {
   // 导出失败用按钮下方的常驻提示，而不是几秒即逝的 toast（生产上用户反馈「点了没反应」）。
   // 只显示本地化文案 + requestId（便于客服关联日志），不渲染服务端原文。
   const [downloadError, setDownloadError] = useState<{ requestId: string | null } | null>(null);
+  // 下载成功但未能包含 AI 工作台数据（F23）：文件照常下载，同时常驻提示。
+  const [workspaceExportMissing, setWorkspaceExportMissing] = useState(false);
+  const [eraseNotice, setEraseNotice] = useState<EraseNotice | null>(null);
 
   const downloadJson = async () => {
     setIsDownloading(true);
     setDownloadError(null);
+    setWorkspaceExportMissing(false);
     try {
       // GDPR Article 15 export endpoint. The sibling /ai-data path
       // is DELETE-only — GET against it returns 405.
@@ -58,7 +77,16 @@ export function DataContent() {
         setDownloadError({ requestId });
         return;
       }
-      const blob = await res.blob();
+      const text = await res.text();
+      const parsed = (() => {
+        try {
+          return JSON.parse(text) as { aiWorkspace?: { error?: unknown } };
+        } catch {
+          return null;
+        }
+      })();
+      setWorkspaceExportMissing(typeof parsed?.aiWorkspace?.error === 'string');
+      const blob = new Blob([text], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -78,11 +106,13 @@ export function DataContent() {
 
   const eraseContent = async () => {
     setIsErasing(true);
+    setEraseNotice(null);
     try {
       const res = await fetch('/api/user/ai-data', { method: 'DELETE' });
       const data = (await res.json().catch(() => ({}))) as {
         records_cleared?: number;
         error?: string;
+        aiWorkspace?: WorkspaceErase;
       };
       if (!res.ok) {
         toast.error(t('deleteCard.failure', { error: extractErrorMessage(data) || res.status }));
@@ -91,6 +121,7 @@ export function DataContent() {
       toast.success(
         t('deleteCard.success', { count: data.records_cleared ?? 0 }),
       );
+      setEraseNotice(toEraseNotice(data.aiWorkspace));
       setConfirmErase(false);
     } finally {
       setIsErasing(false);
@@ -138,6 +169,11 @@ export function DataContent() {
                 </AlertDescription>
               </Alert>
             )}
+            {workspaceExportMissing && (
+              <Alert variant="warning" className="mt-4">
+                <AlertDescription>{t('workspaceExportUnavailable')}</AlertDescription>
+              </Alert>
+            )}
           </CardBody>
         </Card>
 
@@ -155,6 +191,16 @@ export function DataContent() {
             >
               {t('deleteCard.action')}
             </Button>
+            {eraseNotice && (
+              <Alert variant="warning" className="mt-4">
+                <AlertDescription>
+                  {eraseNotice.kind === 'failed' && t('deleteCard.workspaceFailed')}
+                  {eraseNotice.kind === 'held' &&
+                    t('deleteCard.workspaceHeld', { count: eraseNotice.count })}
+                  {eraseNotice.kind === 'tenantHold' && t('deleteCard.workspaceTenantHold')}
+                </AlertDescription>
+              </Alert>
+            )}
           </CardBody>
         </Card>
       </Stack>

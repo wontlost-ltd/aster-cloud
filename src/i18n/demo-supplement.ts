@@ -427,6 +427,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       // GDPR 导出失败的本地化提示（F24），不显示服务端原文。
       dataPage: {
         downloadUnavailable: 'We couldn\'t prepare your AI data export right now. The problem has been logged; please try again later or contact support.',
+        // AI 工作台对话的导出 / 抹除结果（F23）。
+        workspaceExportUnavailable: 'Your file was downloaded, but it doesn\'t include your AI workspace conversations because the workspace couldn\'t be reached. Please try again later or contact support.',
+        deleteCard: {
+          workspaceFailed: 'Your AI call content was cleared, but your AI workspace conversations could not be deleted. Please try again later or contact support.',
+          workspaceHeld: '{count, plural, one {# AI workspace conversation is} other {# AI workspace conversations are}} under a legal hold and {count, plural, one {was} other {were}} kept. Everything else was deleted. Contact support if you have questions.',
+          workspaceTenantHold: 'Your AI workspace conversations are under a legal hold, so none of them were deleted. Contact support if you have questions.',
+        },
       },
       // AI 熔断器手动熔断控件（F18）。
       aiCircuitBreakerPage: {
@@ -1369,6 +1376,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       // GDPR 导出失败的本地化提示（F24），不显示服务端原文。
       dataPage: {
         downloadUnavailable: '暂时无法导出你的 AI 数据。问题已记录，请稍后重试或联系支持团队。',
+        // AI 工作台对话的导出 / 抹除结果（F23）。
+        workspaceExportUnavailable: '文件已下载，但暂时无法连接 AI 工作台，其中未包含你的 AI 工作台对话。请稍后重试或联系支持团队。',
+        deleteCard: {
+          workspaceFailed: 'AI 调用内容已清除，但 AI 工作台对话未能删除。请稍后重试或联系支持团队。',
+          workspaceHeld: '有 {count} 段 AI 工作台对话处于法律保留状态，已予保留；其余内容均已删除。如有疑问请联系支持团队。',
+          workspaceTenantHold: '你的 AI 工作台对话处于法律保留状态，因此均未删除。如有疑问请联系支持团队。',
+        },
       },
       // AI 熔断器手动熔断控件（F18）。
       aiCircuitBreakerPage: {
@@ -2306,6 +2320,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       // GDPR 导出失败的本地化提示（F24），不显示服务端原文。
       dataPage: {
         downloadUnavailable: 'Ihr KI-Datenexport kann gerade nicht erstellt werden. Das Problem wurde protokolliert; bitte versuchen Sie es später erneut oder wenden Sie sich an den Support.',
+        // AI 工作台对话的导出 / 抹除结果（F23）。
+        workspaceExportUnavailable: 'Die Datei wurde heruntergeladen, enthält aber keine Unterhaltungen aus dem KI-Arbeitsbereich, da dieser nicht erreichbar war. Bitte versuchen Sie es später erneut oder wenden Sie sich an den Support.',
+        deleteCard: {
+          workspaceFailed: 'Die Inhalte Ihrer KI-Aufrufe wurden gelöscht, die Unterhaltungen im KI-Arbeitsbereich jedoch nicht. Bitte versuchen Sie es später erneut oder wenden Sie sich an den Support.',
+          workspaceHeld: '{count, plural, one {# Unterhaltung im KI-Arbeitsbereich unterliegt einer rechtlichen Aufbewahrungspflicht und wurde} other {# Unterhaltungen im KI-Arbeitsbereich unterliegen einer rechtlichen Aufbewahrungspflicht und wurden}} beibehalten. Alles andere wurde gelöscht. Bei Fragen wenden Sie sich an den Support.',
+          workspaceTenantHold: 'Ihre Unterhaltungen im KI-Arbeitsbereich unterliegen einer rechtlichen Aufbewahrungspflicht, daher wurde keine davon gelöscht. Bei Fragen wenden Sie sich an den Support.',
+        },
       },
       // AI 熔断器手动熔断控件（F18）。
       aiCircuitBreakerPage: {
@@ -3241,6 +3262,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       // GDPR 导出失败的本地化提示（F24），不显示服务端原文。
       dataPage: {
         downloadUnavailable: 'अभी आपका AI डेटा निर्यात तैयार नहीं किया जा सका। समस्या दर्ज कर ली गई है; कृपया बाद में पुनः प्रयास करें या सहायता से संपर्क करें।',
+        // AI 工作台对话的导出 / 抹除结果（F23）。
+        workspaceExportUnavailable: 'फ़ाइल डाउनलोड हो गई, लेकिन एआई कार्यक्षेत्र से संपर्क नहीं हो सका, इसलिए इसमें आपकी एआई कार्यक्षेत्र बातचीत शामिल नहीं है। कृपया बाद में पुनः प्रयास करें या सहायता से संपर्क करें।',
+        deleteCard: {
+          workspaceFailed: 'आपकी AI कॉल की सामग्री हटा दी गई, लेकिन आपकी एआई कार्यक्षेत्र बातचीत हटाई नहीं जा सकी। कृपया बाद में पुनः प्रयास करें या सहायता से संपर्क करें।',
+          workspaceHeld: '{count} एआई कार्यक्षेत्र बातचीत कानूनी रोक (legal hold) के अधीन हैं और रखी गई हैं; बाकी सब हटा दिया गया। प्रश्न हों तो सहायता से संपर्क करें।',
+          workspaceTenantHold: 'आपकी एआई कार्यक्षेत्र बातचीत कानूनी रोक (legal hold) के अधीन हैं, इसलिए उनमें से कोई भी नहीं हटाई गई। प्रश्न हों तो सहायता से संपर्क करें।',
+        },
       },
       // AI 熔断器手动熔断控件（F18）。
       aiCircuitBreakerPage: {

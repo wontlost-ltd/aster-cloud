@@ -7,6 +7,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('@/auth', () => ({ auth: vi.fn(async () => ({ user: { id: 'u1' } })) }));
 const { execute } = vi.hoisted(() => ({ execute: vi.fn() }));
 vi.mock('@/lib/prisma', () => ({ db: { execute } }));
+// 工作台客户端依赖 llm-caller（canonical 拼接），后者引入 nonce 服务；本测试不走验签。
+vi.mock('@/services/security/nonce-service', () => ({ claimNonce: vi.fn() }));
 
 import { GET } from '@/app/api/user/ai-data-export/route';
 
@@ -16,9 +18,13 @@ let errorSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   vi.clearAllMocks();
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  // 默认工作台未部署（dev / test 默认），各用例按需开启。
+  vi.stubEnv('NEXT_PUBLIC_AI_WORKSPACE_URL', '');
 });
 afterEach(() => {
   errorSpy.mockRestore();
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   if (original === undefined) delete process.env.AI_AUDIT_ENCRYPTION_SECRET;
   else process.env.AI_AUDIT_ENCRYPTION_SECRET = original;
 });
@@ -50,5 +56,51 @@ describe('GET /api/user/ai-data-export', () => {
     const res = await GET();
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ user_id: 'u1', record_count: 1 });
+  });
+
+  it('工作台未部署 → 不调用工作台，响应中没有 aiWorkspace（F23）', async () => {
+    process.env.AI_AUDIT_ENCRYPTION_SECRET = 'test-audit-secret-min-16-chars';
+    execute.mockResolvedValueOnce([]);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const body = await (await GET()).json();
+    expect(body).not.toHaveProperty('aiWorkspace');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('★工作台已部署 → 合并工作台导出到 aiWorkspace（F23）', async () => {
+    process.env.AI_AUDIT_ENCRYPTION_SECRET = 'test-audit-secret-min-16-chars';
+    vi.stubEnv('NEXT_PUBLIC_AI_WORKSPACE_URL', 'https://ai.aster-lang.cloud');
+    vi.stubEnv('AI_WORKSPACE_GDPR_HMAC_KEY', 'gdpr-test-key');
+    execute.mockResolvedValueOnce([{ id: 'r1' }]);
+    const payload = {
+      userId: 'u1',
+      persisted: true,
+      conversations: [{ threadId: 'policy:p-1', title: 't', messages: [] }],
+      audit: [],
+    };
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify(payload), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await GET();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ user_id: 'u1', record_count: 1, records: [{ id: 'r1' }] });
+    expect(body.aiWorkspace).toEqual(payload);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://ai.aster-lang.cloud/internal/gdpr/export');
+  });
+
+  it('★工作台调用失败 → 仍返回 cloud 数据，aiWorkspace 为 unavailable（F23）', async () => {
+    process.env.AI_AUDIT_ENCRYPTION_SECRET = 'test-audit-secret-min-16-chars';
+    vi.stubEnv('NEXT_PUBLIC_AI_WORKSPACE_URL', 'https://ai.aster-lang.cloud');
+    vi.stubEnv('AI_WORKSPACE_GDPR_HMAC_KEY', 'gdpr-test-key');
+    execute.mockResolvedValueOnce([{ id: 'r1' }]);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":"storage_unavailable"}', { status: 503 })));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const res = await GET();
+    warn.mockRestore();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.records).toEqual([{ id: 'r1' }]);
+    expect(body.aiWorkspace).toEqual({ error: 'unavailable' });
   });
 });

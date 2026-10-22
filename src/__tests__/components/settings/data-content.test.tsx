@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import React from 'react';
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { DEMO_SUPPLEMENT } from '@/i18n/demo-supplement';
@@ -52,5 +52,87 @@ describe('DataContent 下载失败', () => {
     expect(alert.textContent).toContain(S.downloadUnavailable as string);
     expect(alert.textContent).toContain('req-123');
     expect(alert.textContent).not.toContain('temporarily unavailable');
+  });
+});
+
+// AI 工作台对话的导出 / 抹除（F23）：工作台部分失败或有法律保留时给常驻的本地化提示。
+const D = S.deleteCard as Record<string, string>;
+
+function renderZh() {
+  render(
+    <NextIntlClientProvider locale="zh" messages={messages}>
+      <DataContent />
+    </NextIntlClientProvider>,
+  );
+}
+
+describe('DataContent AI 工作台导出', () => {
+  it('★工作台数据未能包含 → 文件照常下载，并提示工作台部分缺失', async () => {
+    const createObjectURL = vi.fn(() => 'blob:x');
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ records: [], aiWorkspace: { error: 'unavailable' } }), { status: 200 })),
+    );
+    renderZh();
+    fireEvent.click(screen.getByRole('button', { name: (S.downloadCard as Record<string, string>).action }));
+    expect(await screen.findByText(S.workspaceExportUnavailable as string)).toBeTruthy();
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(screen.queryByText(S.downloadUnavailable as string)).toBeNull();
+  });
+
+  it('工作台数据已包含 → 不提示', async () => {
+    const createObjectURL = vi.fn(() => 'blob:x');
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ records: [], aiWorkspace: { conversations: [] } }), { status: 200 })),
+    );
+    renderZh();
+    fireEvent.click(screen.getByRole('button', { name: (S.downloadCard as Record<string, string>).action }));
+    await vi.waitFor(() => expect(createObjectURL).toHaveBeenCalled());
+    expect(screen.queryByText(S.workspaceExportUnavailable as string)).toBeNull();
+  });
+});
+
+describe('DataContent AI 工作台抹除', () => {
+  // jsdom 未实现 <dialog>.showModal/close（ConfirmDialog 依赖）：补最小桩，只切换 open 属性。
+  beforeAll(() => {
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+
+  async function erase(response: unknown) {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(response), { status: 200 })));
+    renderZh();
+    fireEvent.click(screen.getByRole('button', { name: D.action }));
+    fireEvent.click(await screen.findByRole('button', { name: D.confirmAction }));
+  }
+
+  it('★有线程处于法律保留 → 提示保留数量', async () => {
+    await erase({ records_cleared: 2, aiWorkspace: { deletedConversations: 3, deletedAudit: 9, tenantHold: false, held: ['a', 'b'] } });
+    const expected = D.workspaceHeld.replace('{count}', '2');
+    expect(await screen.findByText(expected)).toBeTruthy();
+  });
+
+  it('用户级法律保留 → 提示全部未删除', async () => {
+    await erase({ records_cleared: 0, aiWorkspace: { deletedConversations: 0, deletedAudit: 0, tenantHold: true, held: ['a'] } });
+    expect(await screen.findByText(D.workspaceTenantHold)).toBeTruthy();
+  });
+
+  it('★工作台抹除失败 → 提示部分失败', async () => {
+    await erase({ records_cleared: 2, aiWorkspace: { error: 'unavailable' } });
+    expect(await screen.findByText(D.workspaceFailed)).toBeTruthy();
+  });
+
+  it('工作台全部删除或未部署 → 不提示', async () => {
+    await erase({ records_cleared: 2, aiWorkspace: { deletedConversations: 1, deletedAudit: 1, tenantHold: false, held: [] } });
+    await vi.waitFor(() => expect(screen.queryByRole('button', { name: D.confirmAction })).toBeNull());
+    expect(screen.queryByText(D.workspaceFailed)).toBeNull();
+    expect(screen.queryByText(D.workspaceTenantHold)).toBeNull();
   });
 });

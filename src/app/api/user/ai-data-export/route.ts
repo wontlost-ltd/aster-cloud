@@ -5,12 +5,15 @@
  * - 仅本人可调取（NextAuth session）
  * - 加密原文实时解密；safetyFlags / redactedPrompt 直返
  * - 不返回他人数据；不暴露管理元字段
+ * - AI 工作台已部署时，合并工作台存储的对话与审计到 `aiWorkspace`（F23）；工作台调用失败
+ *   不影响 cloud 数据的导出，`aiWorkspace` 置为 `{ error: 'unavailable' }`，由界面提示未包含
  */
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { db } from '@/lib/prisma';
 import { sql } from 'drizzle-orm';
 import { errorEnvelope } from '@/lib/api/error-envelope';
+import { exportAiWorkspaceData } from '@/lib/ai-workspace-gdpr';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -78,11 +81,15 @@ export async function GET() {
   }
 
   const records = result as unknown as Array<Record<string, unknown>>;
+  const workspace = await exportAiWorkspaceData(userId);
 
   return NextResponse.json({
     user_id: userId,
     exported_at: new Date().toISOString(),
     record_count: records.length,
     records,
+    // 工作台未部署时不出现此键；失败时只给固定错误码，不透出上游原因。
+    ...(workspace.status === 'ok' ? { aiWorkspace: workspace.data } : {}),
+    ...(workspace.status === 'error' ? { aiWorkspace: { error: 'unavailable' } } : {}),
   });
 }

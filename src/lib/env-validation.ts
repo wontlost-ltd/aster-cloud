@@ -221,6 +221,12 @@ const ENV_CHECKS: readonly EnvCheck[] = [
   //        仅在启用工作台（NEXT_PUBLIC_AI_WORKSPACE_URL 已配置）时才需要；缺失即该功能
   //        保持关闭，旧版 React 面板不受影响，因此不能放入强校验。
   //
+  //   AI_WORKSPACE_GDPR_HMAC_KEY
+  //     —— cloud → 工作台 GDPR 导出 / 抹除端点的签名密钥（F23，见 lib/ai-workspace-gdpr.ts），
+  //        与工作台 AIW_GDPR_HMAC_KEY 同值、与 AI_WORKSPACE_HMAC_KEY 不同。工作台地址未配置时
+  //        不调用；地址已配置而缺此密钥时，导出 / 清除照常完成 cloud 部分并提示工作台部分失败，
+  //        不影响启动，因此不放入强校验。
+  //
   // 增加新 env 时若想强校验，往 ENV_CHECKS 加条目即可；若刻意保持 optional，
   // 务必在本节追加说明便于后续维护者审计。
 ] as const;
