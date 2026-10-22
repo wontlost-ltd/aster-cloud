@@ -281,6 +281,23 @@ const server = createServer((req, res) => {
 // Create WebSocket server for LSP connections
 const wss = new WebSocketServer({ noServer: true });
 
+// Cloudflare 隧道约 100 秒无流量即断开 WebSocket：空闲编辑器会反复断线重连，
+// 重试耗尽后前端报 "[LSP] Initialization failed: Disconnected"。
+// 每 30 秒发协议级 ping 保活，并终止上一轮未回 pong 的死连接（ws 官方推荐做法）。
+export const KEEPALIVE_INTERVAL_MS = 30_000;
+let keepaliveTimer = null;
+
+export function keepaliveTick(clients) {
+  for (const ws of clients) {
+    if (ws.isAlive === false) {
+      ws.terminate();
+      continue;
+    }
+    ws.isAlive = false;
+    ws.ping();
+  }
+}
+
 // Handle WebSocket upgrade requests
 server.on('upgrade', (request, socket, head) => {
   const { pathname, query } = parse(request.url, true);
@@ -316,6 +333,10 @@ server.on('upgrade', (request, socket, head) => {
 // Handle new WebSocket connections
 wss.on('connection', (ws, request) => {
   console.log('[LSP] New WebSocket connection');
+  ws.isAlive = true;
+  ws.on('pong', () => {
+    ws.isAlive = true;
+  });
 
   // Parse query parameters for locale
   const { query } = parse(request.url, true);
@@ -417,6 +438,7 @@ wss.on('connection', (ws, request) => {
 // Cleanup on server shutdown
 const shutdown = () => {
   console.log('[Server] Shutting down...');
+  if (keepaliveTimer) clearInterval(keepaliveTimer);
   for (const [ws, lspProcess] of activeConnections) {
     ws.close();
     lspProcess.kill();
@@ -443,6 +465,7 @@ const isMain = (() => {
 if (isMain) {
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
+  keepaliveTimer = setInterval(() => keepaliveTick(wss.clients), KEEPALIVE_INTERVAL_MS);
 
   const swept = sweepStaleWorkDirs();
   if (swept.length > 0) console.log(`[LSP] Swept ${swept.length} stale work dir(s)`);
