@@ -548,6 +548,28 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
+    // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
+    // 细分出的展示类型，见 lib/security-event-display.ts。
+    security: {
+      eventTypes: {
+        SIGNATURE_INVALID: 'Invalid signature',
+        NONCE_REUSED: 'Nonce replay',
+        TIMESTAMP_EXPIRED: 'Timestamp expired',
+        HASH_MISMATCH: 'Hash mismatch',
+        UNAUTHORIZED_APPROVAL: 'Unauthorized approval',
+        SELF_APPROVAL_ATTEMPT: 'Self-approval attempt',
+        POLICY_EXECUTED: 'Policy executed',
+        POLICY_EXECUTION_FAILED: 'Policy execution failed',
+        APPROVAL_SUBMITTED: 'Submitted for approval',
+        APPROVAL_DECISION: 'Approval decision',
+        VERSION_CREATED: 'Version created',
+        VERSION_NOT_FOUND: 'Version not found',
+        DEPRECATED_VERSION_EXECUTED: 'Deprecated version executed',
+        VERSION_SET_DEFAULT: 'Default version set',
+        VERSION_DEPRECATED: 'Version deprecated',
+        VERSION_ARCHIVED: 'Version archived',
+      },
+    },
     common: { cancel: 'Cancel' },
     policies: {
       // 策略详情页治理档案徽标（ADR 0046 §6）。
@@ -1300,6 +1322,28 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
+    // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
+    // 细分出的展示类型，见 lib/security-event-display.ts。
+    security: {
+      eventTypes: {
+        SIGNATURE_INVALID: '签名无效',
+        NONCE_REUSED: 'Nonce 重放',
+        TIMESTAMP_EXPIRED: '时间戳过期',
+        HASH_MISMATCH: '哈希不匹配',
+        UNAUTHORIZED_APPROVAL: '未授权审批',
+        SELF_APPROVAL_ATTEMPT: '自审批尝试',
+        POLICY_EXECUTED: '策略执行',
+        POLICY_EXECUTION_FAILED: '策略执行失败',
+        APPROVAL_SUBMITTED: '提交审批',
+        APPROVAL_DECISION: '审批决策',
+        VERSION_CREATED: '版本创建',
+        VERSION_NOT_FOUND: '版本不存在',
+        DEPRECATED_VERSION_EXECUTED: '执行已废弃版本',
+        VERSION_SET_DEFAULT: '设置默认版本',
+        VERSION_DEPRECATED: '版本被废弃',
+        VERSION_ARCHIVED: '版本被归档',
+      },
+    },
     common: { cancel: '取消' },
     policies: {
       // 策略详情页治理档案徽标（ADR 0046 §6）。
@@ -2050,6 +2094,28 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
+    // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
+    // 细分出的展示类型，见 lib/security-event-display.ts。
+    security: {
+      eventTypes: {
+        SIGNATURE_INVALID: 'Ungültige Signatur',
+        NONCE_REUSED: 'Nonce-Wiederverwendung',
+        TIMESTAMP_EXPIRED: 'Zeitstempel abgelaufen',
+        HASH_MISMATCH: 'Hash-Abweichung',
+        UNAUTHORIZED_APPROVAL: 'Unberechtigte Freigabe',
+        SELF_APPROVAL_ATTEMPT: 'Versuch der Selbstfreigabe',
+        POLICY_EXECUTED: 'Policy ausgeführt',
+        POLICY_EXECUTION_FAILED: 'Policy-Ausführung fehlgeschlagen',
+        APPROVAL_SUBMITTED: 'Zur Freigabe eingereicht',
+        APPROVAL_DECISION: 'Freigabeentscheidung',
+        VERSION_CREATED: 'Version erstellt',
+        VERSION_NOT_FOUND: 'Version nicht gefunden',
+        DEPRECATED_VERSION_EXECUTED: 'Veraltete Version ausgeführt',
+        VERSION_SET_DEFAULT: 'Standardversion festgelegt',
+        VERSION_DEPRECATED: 'Version als veraltet markiert',
+        VERSION_ARCHIVED: 'Version archiviert',
+      },
+    },
     common: { cancel: 'Abbrechen' },
     policies: {
       // 策略详情页治理档案徽标（ADR 0046 §6）。
@@ -2798,6 +2864,28 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
+    // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
+    // 细分出的展示类型，见 lib/security-event-display.ts。
+    security: {
+      eventTypes: {
+        SIGNATURE_INVALID: 'अमान्य हस्ताक्षर',
+        NONCE_REUSED: 'Nonce पुनः उपयोग',
+        TIMESTAMP_EXPIRED: 'टाइमस्टैम्प समाप्त',
+        HASH_MISMATCH: 'हैश मेल नहीं खाता',
+        UNAUTHORIZED_APPROVAL: 'अनधिकृत अनुमोदन',
+        SELF_APPROVAL_ATTEMPT: 'स्व-अनुमोदन का प्रयास',
+        POLICY_EXECUTED: 'नीति निष्पादित',
+        POLICY_EXECUTION_FAILED: 'नीति निष्पादन विफल',
+        APPROVAL_SUBMITTED: 'अनुमोदन के लिए जमा किया गया',
+        APPROVAL_DECISION: 'अनुमोदन निर्णय',
+        VERSION_CREATED: 'संस्करण बनाया गया',
+        VERSION_NOT_FOUND: 'संस्करण नहीं मिला',
+        DEPRECATED_VERSION_EXECUTED: 'अप्रचलित संस्करण निष्पादित',
+        VERSION_SET_DEFAULT: 'डिफ़ॉल्ट संस्करण सेट किया गया',
+        VERSION_DEPRECATED: 'संस्करण अप्रचलित किया गया',
+        VERSION_ARCHIVED: 'संस्करण संग्रहीत',
+      },
+    },
     common: { cancel: 'रद्द करें' },
     policies: {
       // 策略详情页治理档案徽标（ADR 0046 §6）。
