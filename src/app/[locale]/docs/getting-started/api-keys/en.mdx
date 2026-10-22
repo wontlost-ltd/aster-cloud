@@ -1,0 +1,38 @@
+---
+title: "Create an API Key"
+description: "In Settings → API Keys, enter a name and click Create Key. The full key (ak_…) is shown only once; copy it. Send it as Authorization: Bearer <key>."
+updated: 2026-10-23
+apiVersion: v1
+---
+
+# Create an API Key
+
+You need an API key to call the Aster Cloud API (for example, to evaluate a policy) from your own application.
+
+## Steps
+
+1. Open [Settings → API Keys](/settings/api-keys) (the "API Keys" item in the left navigation).
+2. Under "Create New API Key", choose the scope: "Personal", or one of your teams.
+3. Enter a recognizable name (such as "Production" or "Development") and click "Create Key".
+4. The page shows the full key (starting with `ak_`). **The key is shown only this once.** Copy it and store it safely; afterwards the list shows only its prefix.
+
+<Callout type="warning" title="The key is shown only once">
+Once you dismiss the notice you cannot view the full key again. If you lose it, revoke the old key and create a new one.
+</Callout>
+
+## Use the key in requests
+
+Send the key in the `Authorization` header as `Bearer <key>`:
+
+```bash
+curl -X POST https://policy.aster-lang.dev/api/v1/policies/evaluate \
+  -H "Authorization: Bearer ak_your_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{"policyModule":"aster.finance.loan","policyFunction":"evaluateLoanEligibility","context":[{"creditScore":750}]}'
+```
+
+Only the `Authorization: Bearer` form is accepted. A missing or invalid key returns `401 Unauthorized`.
+
+## Revoke a key
+
+Click "Revoke" next to the key in Settings → API Keys. Revocation takes effect immediately and cannot be undone; calls using that key then return `401`.

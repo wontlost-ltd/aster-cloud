@@ -165,6 +165,10 @@ export const PAGE_ACTIONS: Record<RouteSlug, PageActionSet> = {
     primary: goToApiKeys(),
     secondary: [],
   },
+  'getting-started/api-keys': {
+    primary: goToApiKeys(),
+    secondary: [playground('evaluate-source')],
+  },
   'getting-started/quickstart': {
     primary: playground('evaluate-source'),
     secondary: [goToApiKeys()],

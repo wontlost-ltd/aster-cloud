@@ -1,0 +1,38 @@
+---
+title: "API-Schlüssel erstellen"
+description: "Unter Einstellungen → API-Schlüssel Namen eingeben, „Schlüssel erstellen“ klicken. Schlüssel (ak_…) nur einmal sichtbar. Senden als Authorization: Bearer <Key>."
+updated: 2026-10-23
+apiVersion: v1
+---
+
+# API-Schlüssel erstellen
+
+Um die Aster-Cloud-API (zum Beispiel die Richtlinienauswertung) aus Ihrer Anwendung aufzurufen, brauchen Sie einen API-Schlüssel.
+
+## Schritte
+
+1. Öffnen Sie [Einstellungen → API-Schlüssel](/de/settings/api-keys) (Eintrag „API-Schlüssel“ in der linken Navigation).
+2. Wählen Sie unter „Neuen API-Schlüssel erstellen“ den Geltungsbereich: „Persönlich“ oder eines Ihrer Teams.
+3. Geben Sie einen erkennbaren Namen ein (z. B. „Produktion“ oder „Entwicklung“) und klicken Sie auf „Schlüssel erstellen“.
+4. Die Seite zeigt den vollständigen Schlüssel (beginnt mit `ak_`). **Der Schlüssel wird nur dieses eine Mal angezeigt.** Kopieren Sie ihn und bewahren Sie ihn sicher auf; danach zeigt die Liste nur noch das Präfix.
+
+<Callout type="warning" title="Der Schlüssel wird nur einmal angezeigt">
+Nach dem Schließen des Hinweises lässt sich der vollständige Schlüssel nicht mehr anzeigen. Geht er verloren, widerrufen Sie ihn und erstellen Sie einen neuen.
+</Callout>
+
+## Schlüssel in Anfragen verwenden
+
+Senden Sie den Schlüssel im Header `Authorization` im Format `Bearer <Schlüssel>`:
+
+```bash
+curl -X POST https://policy.aster-lang.dev/api/v1/policies/evaluate \
+  -H "Authorization: Bearer ak_your_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{"policyModule":"aster.finance.loan","policyFunction":"evaluateLoanEligibility","context":[{"creditScore":750}]}'
+```
+
+Nur die Form `Authorization: Bearer` wird akzeptiert. Ein fehlender oder ungültiger Schlüssel liefert `401 Unauthorized`.
+
+## Schlüssel widerrufen
+
+Klicken Sie in Einstellungen → API-Schlüssel neben dem Schlüssel auf „Widerrufen“. Der Widerruf wirkt sofort und kann nicht rückgängig gemacht werden; Aufrufe mit diesem Schlüssel liefern danach `401`.

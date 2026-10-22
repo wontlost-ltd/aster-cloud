@@ -201,3 +201,17 @@ describe('CJK 连写查询（中文自然提问）', () => {
     expect(expandQuery('版本')).toContain('版本');
   });
 });
+
+describe('同层级同长度：覆盖更多问句 token 的条目优先（F28）', () => {
+  it('「如何创建 API 密钥」下只碰到 "api" 的条目不再靠 slug 字典序排在前面', () => {
+    const index = {
+      locale: 'zh',
+      entries: [
+        { slug: 'a/graphql', title: 'GraphQL API 概览', description: '', headings: [] },
+        { slug: 'z/api-keys', title: '创建 API 密钥', description: '', headings: [] },
+      ],
+    };
+    const hits = searchDocs('如何创建 API 密钥？', index);
+    expect(hits.map((h) => h.entry.slug)).toEqual(['z/api-keys', 'a/graphql']);
+  });
+});

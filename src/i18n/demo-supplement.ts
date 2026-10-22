@@ -164,6 +164,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     docs: {
       sidebar: {
+        // 入门：创建 API 密钥（助手检索的常见问题）
+        gettingStarted: { apiKeys: 'Create an API key' },
         guides: {
           title: 'Guides',
           creditPilot: 'Credit pilot (Article 14)',
@@ -930,6 +932,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     docs: {
       sidebar: {
+        // 入门：创建 API 密钥（助手检索的常见问题）
+        gettingStarted: { apiKeys: '创建 API 密钥' },
         guides: {
           title: '指南',
           creditPilot: '信贷试点（第 14 条）',
@@ -1678,6 +1682,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     docs: {
       sidebar: {
+        // 入门：创建 API 密钥（助手检索的常见问题）
+        gettingStarted: { apiKeys: 'API-Schlüssel erstellen' },
         guides: {
           title: 'Leitfäden',
           creditPilot: 'Kreditpilot (Artikel 14)',
@@ -2425,6 +2431,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     docs: {
       sidebar: {
+        // 入门：创建 API 密钥（助手检索的常见问题）
+        gettingStarted: { apiKeys: 'API कुंजी बनाएँ' },
         guides: {
           title: 'Guides',
           creditPilot: 'Credit pilot (Article 14)',
