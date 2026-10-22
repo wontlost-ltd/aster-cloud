@@ -12,8 +12,10 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { useLocale } from 'next-intl';
 
 import { Button, Card, CardBody, Stack } from '@/components/ui';
+import { formatDate } from '@/lib/format';
 
 interface TrustedDevice {
   id: string;
@@ -38,6 +40,7 @@ export interface TrustedDevicesLabels {
 }
 
 export function TrustedDevicesPanel({ labels: t }: { labels: TrustedDevicesLabels }) {
+  const locale = useLocale();
   const [devices, setDevices] = useState<TrustedDevice[] | null>(null);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -112,8 +115,8 @@ export function TrustedDevicesPanel({ labels: t }: { labels: TrustedDevicesLabel
     }
   };
 
-  const fmt = (iso: string | null) =>
-    iso ? new Date(iso).toLocaleDateString() : t.never;
+  // 与全站其余页面同一个日期格式（lib/format），不再用浏览器默认 locale。
+  const fmt = (iso: string | null) => (iso ? formatDate(iso, locale) : t.never);
 
   return (
     <Card>

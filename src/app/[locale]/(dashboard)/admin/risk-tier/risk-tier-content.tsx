@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { Container, PageHeader, Breadcrumbs } from '@/components/ui';
+import { formatDate } from '@/lib/format';
 
 interface RiskRow {
   id: string;
@@ -37,6 +38,7 @@ const TIER_COLORS: Record<number, string> = {
 
 export function RiskTierAdminContent() {
   const t = useTranslations('admin.riskTier');
+  const locale = useLocale();
   const [rows, setRows] = useState<RiskRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -221,7 +223,7 @@ export function RiskTierAdminContent() {
                     )}
                     {r.deletedAt && (
                       <div className="mt-0.5 text-xs text-red-600">
-                        {t('table.tombstoned')}: {new Date(r.deletedAt).toLocaleDateString()}
+                        {t('table.tombstoned')}: {formatDate(r.deletedAt, locale)}
                       </div>
                     )}
                   </td>
@@ -230,7 +232,7 @@ export function RiskTierAdminContent() {
                   <td className="px-3 py-2 text-right text-sm tabular-nums">{r.reactivationCount}</td>
                   <td className="px-3 py-2 text-xs font-mono">{r.riskTierReason ?? '—'}</td>
                   <td className="px-3 py-2 text-xs text-fg-muted">
-                    {new Date(r.createdAt).toLocaleDateString()}
+                    {formatDate(r.createdAt, locale)}
                   </td>
                   <td className="px-3 py-2 text-right">
                     <button
