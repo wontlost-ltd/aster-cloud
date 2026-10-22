@@ -5,8 +5,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 
+const MESSAGES: Record<string, string> = { 'common.cancel': '取消', 'common.confirm': '确认' };
 vi.mock('next-intl', () => ({
-  useTranslations: (ns: string) => (key: string) => ({ 'common.cancel': '取消', 'common.confirm': '确认' })[`${ns}.${key}`] ?? key,
+  useTranslations: (ns: string) => (key: string) => MESSAGES[`${ns}.${key}`] ?? key,
 }));
 vi.mock('@aster-cloud/ui', () => ({
   ConfirmDialog: ({ confirmLabel, cancelLabel, title }: { confirmLabel?: string; cancelLabel?: string; title: string }) => (
