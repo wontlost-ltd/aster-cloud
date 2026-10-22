@@ -51,3 +51,28 @@ describe('套餐功能文案', () => {
     });
   }
 });
+
+/**
+ * 公开定价页（/pricing）套餐要点（F20 遗留）：pricingPage.tiers.*.features 是包内数组，
+ * 由本地补充层整体替换；同样不点名模型，语言列表与已配置 locales 一致（含 hi）。
+ */
+describe('公开定价页套餐要点', () => {
+  for (const loc of Object.keys(PKG) as Array<keyof typeof PKG>) {
+    it(`[${loc}] 不含 gpt- 模型名，语言列表包含 hi`, () => {
+      const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, PKG[loc]), 'utf8'));
+      const messages = deepMergeMessages(pkg, DEMO_SUPPLEMENT[loc]) as {
+        pricingPage: { tiers: Record<string, { features: string[] }> };
+      };
+      const tiers = messages.pricingPage.tiers;
+      const all = Object.values(tiers).flatMap((tier) => tier.features);
+      for (const feat of all) expect(feat).not.toMatch(/gpt-/i);
+      for (const tier of ['free', 'pro']) {
+        // 数组整体替换：条目数与包内一致，避免误删其它要点。
+        expect(tiers[tier].features).toHaveLength(pkg.pricingPage.tiers[tier].features.length);
+        const langLine = tiers[tier].features.find((f) => f.includes(locales.join(' / ')));
+        expect(langLine, tier).toBeDefined();
+        expect(langLine).toContain('hi');
+      }
+    });
+  }
+});

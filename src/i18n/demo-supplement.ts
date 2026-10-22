@@ -20,7 +20,10 @@
  * 其余文案。缺 locale 的 key 由 request.ts 的 en 底座兜底。
  */
 
-import type { Locale } from './config';
+import { locales, type Locale } from './config';
+
+/** 公开定价页「全语言包」列出的语种，与 PLAN_FEATURE_MESSAGE_VALUES.languages 同源（F20）。 */
+const PRICING_LANGUAGES = locales.join(' / ');
 
 type MessageTree = Record<string, unknown>;
 
@@ -693,6 +696,38 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       overview: {
         trialCardTitle: 'Trial',
+      },
+    },
+    // 公开定价页套餐要点（F20）：与 billing.plans.features 同口径——不写具体模型名，语言列表由
+    // locales 推导。数组在 deepMergeMessages 中整体替换，因此完整复制包内数组，仅改相关条目。
+    pricingPage: {
+      tiers: {
+        free: {
+          features: [
+            '1 user',
+            '5 published rules',
+            '1,000 evaluations / month',
+            '20 AI drafts / month',
+            `All language packs (${PRICING_LANGUAGES})`,
+            '7-day audit log',
+            '✗ No reviewer role',
+            '✗ Not SOX-compliant',
+          ],
+        },
+        pro: {
+          features: [
+            'Unlimited team members',
+            '100 published rules',
+            '50,000 evaluations / month',
+            '500 AI drafts / seat / month',
+            `All language packs (${PRICING_LANGUAGES})`,
+            '90-day audit log',
+            'Invite reviewers — each seat ¥299 / month',
+            'Reviewer ≠ author (enforced for ≥ 2 seats)',
+            'Meets SOX Segregation of Duties',
+            'Stripe billing, monthly or yearly',
+          ],
+        },
       },
     },
     // 设置页助手说明（F21）：管理员开启「助手回答」时使用，见 lib/assistant/settings-hint.ts。
@@ -1602,6 +1637,38 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         trialCardTitle: '试用',
       },
     },
+    // 公开定价页套餐要点（F20）：与 billing.plans.features 同口径——不写具体模型名，语言列表由
+    // locales 推导。数组在 deepMergeMessages 中整体替换，因此完整复制包内数组，仅改相关条目。
+    pricingPage: {
+      tiers: {
+        free: {
+          features: [
+            '1 人',
+            '5 条已发布规则',
+            '1,000 次评估 / 月',
+            '每月 20 次 AI 草稿',
+            `全语言包（${PRICING_LANGUAGES}）`,
+            '审计日志 7 天',
+            '✗ 没有 reviewer 角色',
+            '✗ 不符合 SOX 合规',
+          ],
+        },
+        pro: {
+          features: [
+            '无限团队成员',
+            '100 条已发布规则',
+            '50,000 次评估 / 月',
+            '每席每月 500 次 AI 草稿',
+            `全语言包（${PRICING_LANGUAGES}）`,
+            '审计日志 90 天',
+            '邀请 reviewer——每席 ¥299 / 月',
+            'Reviewer ≠ 提交人（≥ 2 席强制）',
+            '满足 SOX 职责分离',
+            'Stripe 月付 / 年付',
+          ],
+        },
+      },
+    },
     // 设置页助手说明（F21）：管理员开启「助手回答」时使用，见 lib/assistant/settings-hint.ts。
     assistant: {
       settingsHintAiAnswers: '全站辅助工具，帮你查找文档与页面。回答只依据本站文档，可能由 AI 生成——不联网检索。',
@@ -2507,6 +2574,38 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         trialCardTitle: 'Testphase',
       },
     },
+    // 公开定价页套餐要点（F20）：与 billing.plans.features 同口径——不写具体模型名，语言列表由
+    // locales 推导。数组在 deepMergeMessages 中整体替换，因此完整复制包内数组，仅改相关条目。
+    pricingPage: {
+      tiers: {
+        free: {
+          features: [
+            '1 Nutzer',
+            '5 veröffentlichte Regeln',
+            '1.000 Auswertungen / Monat',
+            '20 KI-Entwürfe / Monat',
+            `Alle Sprachpakete (${PRICING_LANGUAGES})`,
+            '7-Tage-Audit-Log',
+            '✗ Keine Prüfer-Rolle',
+            '✗ Nicht SOX-konform',
+          ],
+        },
+        pro: {
+          features: [
+            'Unbegrenzte Team-Mitglieder',
+            '100 veröffentlichte Regeln',
+            '50.000 Auswertungen / Monat',
+            '500 KI-Entwürfe / Sitz / Monat',
+            `Alle Sprachpakete (${PRICING_LANGUAGES})`,
+            '90-Tage-Audit-Log',
+            'Reviewer einladen — jeder Sitz ¥299 / Monat',
+            'Prüfer ≠ Autor (ab 2 Sitzen erzwungen)',
+            'SOX-konforme Funktionstrennung',
+            'Stripe-Abrechnung, monatlich oder jährlich',
+          ],
+        },
+      },
+    },
     // 设置页助手说明（F21）：管理员开启「助手回答」时使用，见 lib/assistant/settings-hint.ts。
     assistant: {
       settingsHintAiAnswers: 'Ein seitenweites Hilfswerkzeug zum Finden von Dokumentation und Seiten. Antworten stützen sich nur auf die Dokumentation dieser Website und können KI-generiert sein; es wird nicht im Web gesucht.',
@@ -3408,6 +3507,38 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       overview: {
         trialCardTitle: 'परीक्षण',
+      },
+    },
+    // 公开定价页套餐要点（F20）：与 billing.plans.features 同口径——不写具体模型名，语言列表由
+    // locales 推导。数组在 deepMergeMessages 中整体替换，因此完整复制包内数组，仅改相关条目。
+    pricingPage: {
+      tiers: {
+        free: {
+          features: [
+            '1 उपयोगकर्ता',
+            '5 प्रकाशित नियम',
+            '1,000 मूल्यांकन / माह',
+            '20 AI ड्राफ़्ट / माह',
+            `सभी भाषा पैक (${PRICING_LANGUAGES})`,
+            '7-दिवसीय ऑडिट लॉग',
+            '✗ कोई समीक्षक भूमिका नहीं',
+            '✗ SOX-अनुपालित नहीं',
+          ],
+        },
+        pro: {
+          features: [
+            'असीमित टीम सदस्य',
+            '100 प्रकाशित नियम',
+            '50,000 मूल्यांकन / माह',
+            '500 AI ड्राफ़्ट / सीट / माह',
+            `सभी भाषा पैक (${PRICING_LANGUAGES})`,
+            '90-दिवसीय ऑडिट लॉग',
+            'समीक्षक आमंत्रित करें — प्रत्येक सीट ¥299 / माह',
+            'समीक्षक ≠ लेखक (≥ 2 सीटों के लिए लागू)',
+            'SOX कर्तव्य पृथक्करण को पूरा करता है',
+            'Stripe बिलिंग, मासिक या वार्षिक',
+          ],
+        },
       },
     },
     // 设置页助手说明（F21）：管理员开启「助手回答」时使用，见 lib/assistant/settings-hint.ts。
