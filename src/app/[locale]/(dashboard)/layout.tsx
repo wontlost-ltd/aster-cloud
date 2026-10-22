@@ -18,6 +18,9 @@ import { DocsOverlay } from '@/components/docs/docs-overlay';
 import { NotificationsBell } from '@/components/notifications/notifications-bell';
 import { SkipToContent } from '@/components/skip-to-content';
 import { getSession } from '@/lib/auth';
+import { cookies } from 'next/headers';
+import { runAfterResponse } from '@/lib/after-response';
+import { TRUSTED_DEVICE_COOKIE, touchTrustedDeviceLastUsed } from '@/lib/trusted-device';
 import { isAdminFromSession } from '@/lib/admin-auth';
 import {
   CAN_BILLING,
@@ -93,6 +96,13 @@ export default async function DashboardLayout({
 
   const session = await getSession();
   const userId = session?.user?.id ?? null;
+
+  // 已信任设备的「最近使用」随实际使用刷新（节流，见 touchTrustedDeviceLastUsed）；放到响应之后，
+  // 不拖慢页面渲染，失败只记日志。
+  const trustedDeviceToken = userId ? (await cookies()).get(TRUSTED_DEVICE_COOKIE)?.value : undefined;
+  if (userId && trustedDeviceToken) {
+    runAfterResponse(() => touchTrustedDeviceLastUsed(userId, trustedDeviceToken));
+  }
 
   // AI 工作台入口（ADR 0049）：仅服务端判定该用户已灰度开启时才产出交接地址；
   // 该地址是 API 路由，不带 locale 前缀，由侧栏/命令面板以整页导航打开。

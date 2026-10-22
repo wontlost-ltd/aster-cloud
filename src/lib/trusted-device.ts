@@ -39,7 +39,7 @@ export const TRUSTED_DEVICE_COOKIE = 'aster_td';
 export const TRUST_TTL_DAYS = 30;
 
 /**
- * 「最近使用」刷新的节流间隔。设备列表接口每次打开设置页都会调用，
+ * 「最近使用」刷新的节流间隔。每次进入登录后页面都可能刷新，
  * 1 小时内不重复写库——这个字段只用于让用户辨认设备，不需要秒级精度。
  */
 export const LAST_USED_TOUCH_INTERVAL_MS = 60 * 60_000;
@@ -238,6 +238,33 @@ export async function listTrustedDevices(
     devices.push({ ...row, current });
   }
   return devices;
+}
+
+/**
+ * 登录后页面（dashboard 布局）每次渲染时调用：刷新当前设备的 lastUsedAt，使「最近使用」
+ * 反映真实使用，而不只是登录或打开设置页的时刻。
+ *
+ * 单条带条件的 UPDATE：只命中本人、未过期、且上次记录早于节流间隔的那一行，
+ * 绝大多数调用不命中任何行，不需要先读再写。
+ */
+export async function touchTrustedDeviceLastUsed(
+  userId: string,
+  token: string | null | undefined,
+  now: Date = new Date(),
+): Promise<void> {
+  if (!token) return;
+  const staleBefore = new Date(now.getTime() - LAST_USED_TOUCH_INTERVAL_MS);
+  await getDb()
+    .update(trustedDevices)
+    .set({ lastUsedAt: now })
+    .where(
+      and(
+        eq(trustedDevices.userId, userId),
+        eq(trustedDevices.tokenHash, hashToken(token)),
+        gt(trustedDevices.expires, now),
+        or(isNull(trustedDevices.lastUsedAt), lt(trustedDevices.lastUsedAt, staleBefore)),
+      ),
+    );
 }
 
 /** 清理过期设备行。 */

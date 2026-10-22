@@ -9,9 +9,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * 修复：签发即写入；设备列表接口按 cookie 识别当前设备，并节流（1 小时）刷新。
  */
 
-const { rows, updates, inserts } = vi.hoisted(() => ({
+const { rows, updates, inserts, wheres } = vi.hoisted(() => ({
   rows: [] as Array<Record<string, unknown>>,
   updates: [] as Array<Record<string, unknown>>,
+  wheres: [] as unknown[],
   inserts: [] as Array<Record<string, unknown>>,
 }));
 
@@ -21,7 +22,12 @@ vi.mock('@/db', () => ({
     update: () => ({
       set: (v: Record<string, unknown>) => {
         updates.push(v);
-        return { where: () => Promise.resolve() };
+        return {
+          where: (w: unknown) => {
+            wheres.push(w);
+            return Promise.resolve();
+          },
+        };
       },
     }),
     insert: () => ({
@@ -38,7 +44,10 @@ import {
   issueTrustedDevice,
   listTrustedDevices,
   shouldTouchLastUsed,
+  touchTrustedDeviceLastUsed,
 } from '@/lib/trusted-device';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
 
 const NOW = new Date('2026-10-22T12:00:00.000Z');
 const sha = (s: string) => createHash('sha256').update(s, 'utf8').digest('hex');
@@ -59,6 +68,7 @@ beforeEach(() => {
   rows.length = 0;
   updates.length = 0;
   inserts.length = 0;
+  wheres.length = 0;
 });
 
 describe('shouldTouchLastUsed', () => {
@@ -110,5 +120,24 @@ describe('listTrustedDevices', () => {
     expect(list[0].current).toBe(false);
     expect(updates).toEqual([]);
     expect(list[0]).not.toHaveProperty('tokenHash');
+  });
+});
+
+describe('touchTrustedDeviceLastUsed（登录后页面的通用刷新路径）', () => {
+  it('★单条带条件 UPDATE：只命中本人、该 token、未过期且早于节流间隔的设备', async () => {
+    await touchTrustedDeviceLastUsed('u1', TOKEN, NOW);
+    expect(updates).toEqual([{ lastUsedAt: NOW }]);
+    const q = new PgDialect().sqlToQuery(wheres[0] as SQL);
+    expect(q.sql).toContain('"lastUsedAt" is null or');
+    expect(q.params).toEqual(
+      expect.arrayContaining(['u1', sha(TOKEN), new Date(NOW.getTime() - LAST_USED_TOUCH_INTERVAL_MS).toISOString()]),
+    );
+    // 明文 token 不进入 SQL 参数
+    expect(q.params).not.toContain(TOKEN);
+  });
+
+  it('没有可信设备 cookie → 不写库', async () => {
+    await touchTrustedDeviceLastUsed('u1', undefined, NOW);
+    expect(updates).toEqual([]);
   });
 });
