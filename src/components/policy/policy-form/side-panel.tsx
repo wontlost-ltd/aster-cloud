@@ -332,10 +332,19 @@ export function DecisionTab({
   }
   const errors = diagnostics.filter((d) => d.severity === 'error');
   const warnings = diagnostics.filter((d) => d.severity === 'warning');
+  const hasDiagnostics = errors.length > 0 || warnings.length > 0;
+  const showModule = !!moduleInfo && errors.length === 0;
+  // 编译中、或编译通过但没有模块摘要时，下面两块都不渲染——不能只剩一个标题，
+  // 要告诉用户这里会显示什么、何时出现。
+  if (!hasDiagnostics && !showModule) {
+    return (
+      <div className="px-5 py-5 text-sm text-fg-muted">{t('decisionEmpty')}</div>
+    );
+  }
 
   return (
     <div className="space-y-4 px-5 py-5">
-      {(errors.length > 0 || warnings.length > 0) && (
+      {hasDiagnostics && (
         <ul className="space-y-1.5">
           {[...errors, ...warnings].map((d, i) => (
             <li key={`${d.startLine}-${d.startColumn}-${i}`}>
@@ -361,7 +370,7 @@ export function DecisionTab({
         </ul>
       )}
 
-      {moduleInfo && errors.length === 0 && (
+      {showModule && moduleInfo && (
         <div className="space-y-2 rounded-md border border-border bg-bg-subtle p-3 text-xs">
           <div>
             <span className="font-semibold text-fg">{t('decisionModule')}: </span>

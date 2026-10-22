@@ -629,6 +629,19 @@ export function PolicyForm({
           }
         />
 
+        {/* ----- 手机只读提示 ----- */}
+        {/* 窄屏下编辑器降级为只读视图、也没有保存与侧栏：明确告诉用户原因与去处，
+            否则一个只有「取消」的「编辑策略」页看起来像坏了。 */}
+        {isMobile && (
+          <div
+            role="note"
+            data-testid="policy-mobile-readonly-notice"
+            className="rounded-lg border border-border bg-bg-muted px-4 py-2 text-sm text-fg-muted"
+          >
+            {t('mobileReadOnlyNotice')}
+          </div>
+        )}
+
         {/* ----- Server error banner ----- */}
         {serverError && (
           <div
