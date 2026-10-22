@@ -22,7 +22,7 @@
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
-import { and, eq, gt, lt } from 'drizzle-orm';
+import { and, eq, gt, isNull, lt, or } from 'drizzle-orm';
 
 import { getDb } from '@/db';
 import { trustedDevices } from '@/db/schema';
@@ -37,6 +37,17 @@ export const TRUSTED_DEVICE_COOKIE = 'aster_td';
  * 等于把二因子降级成一因子 + 持有物。再长就与"记住我"没有区别了。
  */
 export const TRUST_TTL_DAYS = 30;
+
+/**
+ * 「最近使用」刷新的节流间隔。设备列表接口每次打开设置页都会调用，
+ * 1 小时内不重复写库——这个字段只用于让用户辨认设备，不需要秒级精度。
+ */
+export const LAST_USED_TOUCH_INTERVAL_MS = 60 * 60_000;
+
+/** lastUsedAt 是否已陈旧到需要刷新（从未记录也算）。 */
+export function shouldTouchLastUsed(lastUsedAt: Date | null, now: Date): boolean {
+  return !lastUsedAt || now.getTime() - lastUsedAt.getTime() >= LAST_USED_TOUCH_INTERVAL_MS;
+}
 
 function hashToken(raw: string): string {
   return createHash('sha256').update(raw, 'utf8').digest('hex');
@@ -114,6 +125,8 @@ export async function issueTrustedDevice(
     label: coarseLabel(userAgent),
     expires: new Date(now.getTime() + TRUST_TTL_DAYS * 24 * 60 * 60_000),
     createdAt: now,
+    // 签发发生在这台设备刚完成登录的时刻——它此刻就在使用中，不能显示「从未」。
+    lastUsedAt: now,
   });
 
   return token;
@@ -179,12 +192,24 @@ export async function revokeAllTrustedDevices(userId: string): Promise<number> {
   return rows.length;
 }
 
-/** 列出用户的有效可信设备，供设置页展示。★不返回 tokenHash。 */
-export async function listTrustedDevices(userId: string, now: Date = new Date()) {
+/**
+ * 列出用户的有效可信设备，供设置页展示。★不返回 tokenHash。
+ *
+ * 传入当前请求携带的 token（cookie）时：标记哪一台是「当前设备」，并按
+ * LAST_USED_TOUCH_INTERVAL_MS 节流刷新它的 lastUsedAt。此前 lastUsedAt 只在
+ * 「凭可信设备跳过二次验证」那一刻写入，而 session 有效期内不会再登录，
+ * 正在使用的设备因此长期显示「从未」。
+ */
+export async function listTrustedDevices(
+  userId: string,
+  now: Date = new Date(),
+  currentToken?: string | null,
+) {
   const db = getDb();
-  return db
+  const rows = await db
     .select({
       id: trustedDevices.id,
+      tokenHash: trustedDevices.tokenHash,
       label: trustedDevices.label,
       lastUsedAt: trustedDevices.lastUsedAt,
       createdAt: trustedDevices.createdAt,
@@ -192,6 +217,27 @@ export async function listTrustedDevices(userId: string, now: Date = new Date())
     })
     .from(trustedDevices)
     .where(and(eq(trustedDevices.userId, userId), gt(trustedDevices.expires, now)));
+
+  const currentHash = currentToken ? hashToken(currentToken) : null;
+  const devices = [];
+  for (const { tokenHash, ...row } of rows) {
+    const current = currentHash !== null && safeEqualHex(tokenHash, currentHash);
+    if (current && shouldTouchLastUsed(row.lastUsedAt, now)) {
+      // 单调守卫：并发请求或时钟回拨时不把时间往回写。
+      await db
+        .update(trustedDevices)
+        .set({ lastUsedAt: now })
+        .where(
+          and(
+            eq(trustedDevices.id, row.id),
+            or(isNull(trustedDevices.lastUsedAt), lt(trustedDevices.lastUsedAt, now)),
+          ),
+        );
+      row.lastUsedAt = now;
+    }
+    devices.push({ ...row, current });
+  }
+  return devices;
 }
 
 /** 清理过期设备行。 */

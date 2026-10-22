@@ -317,6 +317,7 @@ export default async function SettingsPage({ params }: PageProps) {
             description: t('trustedDevices.description'),
             empty: t('trustedDevices.empty'),
             unknownDevice: t('trustedDevices.unknownDevice'),
+            currentDevice: t('trustedDevices.currentDevice'),
             lastUsed: t('trustedDevices.lastUsed'),
             never: t('trustedDevices.never'),
             expires: t('trustedDevices.expires'),

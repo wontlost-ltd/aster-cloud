@@ -23,6 +23,8 @@ interface TrustedDevice {
   lastUsedAt: string | null;
   createdAt: string;
   expires: string;
+  /** 是否就是发起本次请求的这台设备（服务端按 cookie 比对得出）。 */
+  current?: boolean;
 }
 
 export interface TrustedDevicesLabels {
@@ -30,6 +32,7 @@ export interface TrustedDevicesLabels {
   description: string;
   empty: string;
   unknownDevice: string;
+  currentDevice: string;
   lastUsed: string;
   never: string;
   expires: string;
@@ -143,6 +146,11 @@ export function TrustedDevicesPanel({ labels: t }: { labels: TrustedDevicesLabel
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-fg">
                       {d.label ?? t.unknownDevice}
+                      {d.current && (
+                        <span className="ml-2 rounded bg-green-100 px-1.5 py-0.5 text-xs font-medium text-green-700">
+                          {t.currentDevice}
+                        </span>
+                      )}
                     </p>
                     <p className="text-xs text-fg-muted">
                       {t.lastUsed}: {fmt(d.lastUsedAt)} · {t.expires}: {fmt(d.expires)}

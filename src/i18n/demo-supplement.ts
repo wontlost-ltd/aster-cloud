@@ -467,6 +467,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         alreadyEnabled: 'Authenticator is already enabled. Turn it off first to set up a new device.',
       },
       trustedDevices: {
+        // 设备列表里标记发起请求的这台设备（F22）。
+        currentDevice: 'This device',
         title: 'Trusted devices',
         description: 'Devices where you ticked “Remember this device”. They skip the email code for 30 days — remove any you no longer control.',
         empty: 'No trusted devices. You will be asked for a code each time you sign in.',
@@ -1311,6 +1313,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         alreadyEnabled: '验证器已启用。要换设备请先关闭，再重新设置。',
       },
       trustedDevices: {
+        // 设备列表里标记发起请求的这台设备（F22）。
+        currentDevice: '当前设备',
         title: '已信任的设备',
         description: '您勾选过「记住该设备」的设备。它们在 30 天内免验证码——请移除您已不再掌控的设备。',
         empty: '暂无已信任设备。每次登录都会要求输入验证码。',
@@ -2150,6 +2154,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         alreadyEnabled: 'Authenticator ist bereits aktiviert. Deaktivieren Sie ihn zuerst, um ein neues Gerät einzurichten.',
       },
       trustedDevices: {
+        // 设备列表里标记发起请求的这台设备（F22）。
+        currentDevice: 'Dieses Gerät',
         title: 'Vertrauenswürdige Geräte',
         description: 'Geräte, für die Sie „Diesem Gerät vertrauen“ aktiviert haben. Sie überspringen den E-Mail-Code 30 Tage lang — entfernen Sie Geräte, die Sie nicht mehr kontrollieren.',
         empty: 'Keine vertrauenswürdigen Geräte. Bei jeder Anmeldung wird ein Code abgefragt.',
@@ -2987,6 +2993,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         alreadyEnabled: 'प्रमाणक पहले से सक्षम है। नया डिवाइस सेट करने के लिए पहले इसे बंद करें।',
       },
       trustedDevices: {
+        // 设备列表里标记发起请求的这台设备（F22）。
+        currentDevice: 'यह डिवाइस',
         title: 'विश्वसनीय डिवाइस',
         description: 'वे डिवाइस जिन पर आपने “इस डिवाइस को याद रखें” चुना था। वे 30 दिनों तक ईमेल कोड छोड़ देते हैं — जिन पर अब आपका नियंत्रण नहीं, उन्हें हटाएँ।',
         empty: 'कोई विश्वसनीय डिवाइस नहीं। हर साइन-इन पर कोड माँगा जाएगा।',
