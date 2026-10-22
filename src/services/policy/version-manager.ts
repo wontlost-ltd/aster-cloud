@@ -10,7 +10,7 @@
  * - ARCHIVED: 已归档，不可执行
  */
 
-import { db, policies, policyVersions, policyApprovals } from '@/lib/prisma';
+import { db, policies, policyVersions, policyApprovals, teamMembers } from '@/lib/prisma';
 import { eq, and, inArray, isNull, desc, sql } from 'drizzle-orm';
 import type { InferSelectModel } from 'drizzle-orm';
 import { computeChainedHash, computeSourceHash } from '../security/policy-security';
@@ -31,6 +31,7 @@ import { getTeamMemberRole } from '@/lib/team-permissions';
 import {
   canReviewPolicyVersions,
   decideVersionApproval,
+  TEAM_REVIEWER_ROLES,
   type VersionReviewContext,
 } from './version-approval-rules';
 
@@ -107,6 +108,16 @@ export async function loadVersionReviewContext(
   if (!policy) return null;
   const reviewerTeamRole = policy.teamId ? await getTeamMemberRole(reviewerId, policy.teamId) : null;
   return { policyOwnerId: policy.userId, policyTeamId: policy.teamId, reviewerId, reviewerTeamRole };
+}
+
+/** 团队全部 owner/admin 的用户 id（判断团队策略是否还有合格审批人）；个人策略返回空数组。 */
+export async function loadTeamReviewerIds(teamId: string | null): Promise<string[]> {
+  if (!teamId) return [];
+  const rows = await db.query.teamMembers.findMany({
+    where: and(eq(teamMembers.teamId, teamId), inArray(teamMembers.role, [...TEAM_REVIEWER_ROLES])),
+    columns: { userId: true },
+  });
+  return rows.map((r) => r.userId);
 }
 
 /**

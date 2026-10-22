@@ -23,6 +23,7 @@ import { Link } from '@/i18n/navigation';
 import { useApi } from '@/lib/api';
 import {
   decideVersionApproval,
+  lacksEligibleReviewer,
   type VersionReviewContext,
 } from '@/services/policy/version-approval-rules';
 
@@ -91,6 +92,8 @@ interface VersionsContentProps {
   currentUserId: string;
   /** 审阅判定上下文（服务端按策略与当前用户的团队角色算好） */
   review: Omit<VersionReviewContext, 'reviewerId'>;
+  /** 策略所属团队全部 owner/admin 的用户 id；用于提示「团队里没有其他人能审批」。个人策略为空。 */
+  teamReviewerIds?: readonly string[];
   labels: { backToPolicy: string; policiesLink: string };
 }
 
@@ -100,6 +103,7 @@ export function VersionsContent({
   locale,
   currentUserId,
   review,
+  teamReviewerIds = [],
   labels,
 }: VersionsContentProps) {
   const t = useTranslations('policies.versions');
@@ -342,9 +346,20 @@ export function VersionsContent({
                   const actions = allowedActions(v);
                   if (actions.length === 0) {
                     // 待审批但当前用户不能审批（作者本人或无审阅权）：说明在等谁，而不是留空
-                    return v.status === 'PENDING_APPROVAL' ? (
-                      <span className="text-xs text-warning">{t('awaitingOthers')}</span>
-                    ) : null;
+                    if (v.status !== 'PENDING_APPROVAL') return null;
+                    // 团队里除作者外没有 owner/admin：「等待他人」永远等不到，指向团队成员管理去任命管理员
+                    if (review.policyTeamId && lacksEligibleReviewer(review.policyTeamId, teamReviewerIds, v.createdBy)) {
+                      return (
+                        <Link
+                          href={`/teams/${review.policyTeamId}/members`}
+                          className="text-xs text-warning underline hover:text-warning/80"
+                          data-testid="no-eligible-reviewer"
+                        >
+                          {t('noEligibleReviewer')}
+                        </Link>
+                      );
+                    }
+                    return <span className="text-xs text-warning">{t('awaitingOthers')}</span>;
                   }
                   return (
                     <Dropdown

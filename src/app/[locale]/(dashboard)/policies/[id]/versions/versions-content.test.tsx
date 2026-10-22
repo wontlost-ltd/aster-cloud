@@ -54,9 +54,14 @@ import { VersionsContent } from './versions-content';
 
 const labels = { backToPolicy: 'back', policiesLink: 'policies' };
 
-function renderAs(currentUserId: string, review: { policyOwnerId: string; policyTeamId: string | null; reviewerTeamRole: 'owner' | 'admin' | 'member' | 'viewer' | null }) {
+function renderAs(
+  currentUserId: string,
+  review: { policyOwnerId: string; policyTeamId: string | null; reviewerTeamRole: 'owner' | 'admin' | 'member' | 'viewer' | null },
+  teamReviewerIds: string[] = ['author', 'admin1'],
+) {
   return render(
-    <VersionsContent policyId="p1" policyName="loan" locale="zh" currentUserId={currentUserId} review={review} labels={labels} />,
+    <VersionsContent policyId="p1" policyName="loan" locale="zh" currentUserId={currentUserId} review={review}
+      teamReviewerIds={teamReviewerIds} labels={labels} />,
   );
 }
 
@@ -80,6 +85,14 @@ describe('VersionsContent 审批操作', () => {
     renderAs('author', { policyOwnerId: 'author', policyTeamId: 'team1', reviewerTeamRole: 'admin' });
     expect(screen.queryByRole('button', { name: 'policies.versions.actions.approve' })).toBeNull();
     expect(screen.getByText('policies.versions.awaitingOthers')).toBeTruthy();
+  });
+
+  it('★团队里除作者外没有 owner/admin（review I3）：提示任命管理员并链接到团队成员管理', () => {
+    renderAs('author', { policyOwnerId: 'author', policyTeamId: 'team1', reviewerTeamRole: 'owner' }, ['author']);
+    const hint = screen.getByTestId('no-eligible-reviewer');
+    expect(hint.textContent).toBe('policies.versions.noEligibleReviewer');
+    expect(hint.getAttribute('href')).toContain('/teams/team1/members');
+    expect(screen.queryByText('policies.versions.awaitingOthers')).toBeNull();
   });
 
   it('团队普通成员：不能审批', () => {

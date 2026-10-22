@@ -267,6 +267,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         view: 'View',
         awaitingOthers: 'Waiting for another approver',
         unknownUser: 'Unknown',
+        // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
+        noEligibleReviewer: 'No other team owner or admin can approve this — make a member an admin in team settings',
       },
       title: 'Approvals',
       subtitle: 'Actions that need a human decision across all your workspaces. You can decide only where your verified business role matches.',
@@ -815,6 +817,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         approvalCount: '{count} approval records',
         // 个人策略所有者审批自己提交的版本时的说明（审计里记为自审）。
         selfApproveNote: 'You are reviewing your own submission. Personal policies have no second reviewer, so this is allowed; the decision is recorded in the audit log as a self-approval.',
+        // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
+        noEligibleReviewer: 'No other team owner or admin can approve this — make a member an admin in team settings',
       },
       logs: {
         // 筛选区标题、相对时间「刚刚」、加载与空态提示（原为硬编码英文）。
@@ -1277,6 +1281,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         view: '查看',
         awaitingOthers: '等待他人审批',
         unknownUser: '未知',
+        // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
+        noEligibleReviewer: '团队中没有其他所有者或管理员可审批——请在团队设置中将一位成员设为管理员',
       },
       title: '审批',
       subtitle: '汇总你所在全部工作区中需要人工决定的动作。只有已验证业务角色匹配时才能审批。',
@@ -1805,6 +1811,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         awaitingOthers: '等待他人审批',
         approvalCount: '{count} 条审批记录',
         selfApproveNote: '你正在审批自己提交的版本。个人策略没有第二位审批人，因此允许自审；本次决定会在审计日志中标记为自审。',
+        // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
+        noEligibleReviewer: '团队中没有其他所有者或管理员可审批——请在团队设置中将一位成员设为管理员',
         // 覆盖包内 zh 文案的笔误「请请」；待 aster-lang-locales 上游修正后可删除本条覆盖。
         sox: { selfApprovalNotAllowed: '不能批准自己创建的版本，请其他团队成员审批。' },
       },
@@ -2266,6 +2274,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         view: 'Ansehen',
         awaitingOthers: 'Wartet auf eine andere freigebende Person',
         unknownUser: 'Unbekannt',
+        // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
+        noEligibleReviewer: 'Im Team gibt es keine andere Inhaberin, keinen anderen Inhaber und keinen Admin, die freigeben können – machen Sie in den Teameinstellungen ein Mitglied zum Admin',
       },
       title: 'Freigaben',
       subtitle: 'Aktionen, die eine menschliche Entscheidung brauchen – über alle Ihre Arbeitsbereiche. Entscheiden können Sie nur, wenn Ihre verifizierte Geschäftsrolle passt.',
@@ -2800,6 +2810,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         awaitingOthers: 'Wartet auf andere Prüfer',
         approvalCount: '{count} Freigabeeinträge',
         selfApproveNote: 'Sie prüfen Ihre eigene Einreichung. Persönliche Richtlinien haben keine zweite prüfende Person, daher ist das erlaubt; die Entscheidung wird im Audit-Protokoll als Selbstfreigabe vermerkt.',
+        // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
+        noEligibleReviewer: 'Im Team gibt es keine andere Inhaberin, keinen anderen Inhaber und keinen Admin, die freigeben können – machen Sie in den Teameinstellungen ein Mitglied zum Admin',
       },
       logs: {
         filtersTitle: 'Filter',
@@ -3257,6 +3269,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         view: 'देखें',
         awaitingOthers: 'किसी अन्य अनुमोदक की प्रतीक्षा',
         unknownUser: 'अज्ञात',
+        // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
+        noEligibleReviewer: 'टीम में अनुमोदन के लिए कोई अन्य स्वामी या व्यवस्थापक नहीं है — टीम सेटिंग्स में किसी सदस्य को व्यवस्थापक बनाएँ',
       },
       title: 'अनुमोदन',
       subtitle: 'आपके सभी वर्कस्पेस में वे कार्रवाइयाँ जिन पर मानवीय निर्णय चाहिए। आप केवल वहीं निर्णय ले सकते हैं जहाँ आपकी सत्यापित व्यावसायिक भूमिका मेल खाती है।',
@@ -3786,6 +3800,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         awaitingOthers: 'किसी अन्य अनुमोदक की प्रतीक्षा',
         approvalCount: '{count} अनुमोदन रिकॉर्ड',
         selfApproveNote: 'आप अपना ही जमा किया गया संस्करण जाँच रहे हैं। व्यक्तिगत नीतियों में कोई दूसरा समीक्षक नहीं होता, इसलिए इसकी अनुमति है; यह निर्णय ऑडिट लॉग में स्व-अनुमोदन के रूप में दर्ज होगा।',
+        // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
+        noEligibleReviewer: 'टीम में अनुमोदन के लिए कोई अन्य स्वामी या व्यवस्थापक नहीं है — टीम सेटिंग्स में किसी सदस्य को व्यवस्थापक बनाएँ',
       },
       logs: {
         filtersTitle: 'फ़िल्टर',

@@ -213,7 +213,16 @@ function VersionApprovalsSection({ items, locale, t }: { items: PendingVersionAp
                   <td className="px-4 py-3 text-fg-muted">{formatCreatedAt(item.submittedAt, locale)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      {!item.canAct && <Badge variant="neutral">{t('versions.awaitingOthers')}</Badge>}
+                      {!item.canAct && !item.noEligibleReviewer && (
+                        <Badge variant="neutral">{t('versions.awaitingOthers')}</Badge>
+                      )}
+                      {/* 团队里除作者外没有 owner/admin：四眼原则下无人能审批，引导去团队成员管理任命管理员 */}
+                      {item.noEligibleReviewer && item.teamId && (
+                        <Link href={`/teams/${item.teamId}/members`} data-testid="no-eligible-reviewer"
+                          className="text-xs text-warning underline hover:text-warning/80">
+                          {t('versions.noEligibleReviewer')}
+                        </Link>
+                      )}
                       <Link href={`/policies/${item.policyId}/versions`}
                         className="text-sm font-medium text-primary hover:text-primary-hover">
                         {t(item.canAct ? 'versions.review' : 'versions.view')} →

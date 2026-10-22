@@ -11,7 +11,7 @@
 import type { TeamRole } from '@/lib/team-permissions';
 
 /** 能审批团队策略版本的团队角色。 */
-const TEAM_REVIEWER_ROLES: readonly TeamRole[] = ['owner', 'admin'];
+export const TEAM_REVIEWER_ROLES: readonly TeamRole[] = ['owner', 'admin'];
 
 export interface VersionReviewContext {
   /** 策略所有者（policies.userId） */
@@ -49,4 +49,20 @@ export function decideVersionApproval(
     return isAuthor ? { allowed: false, reason: 'segregation_of_duties' } : { allowed: true, selfApproved: false };
   }
   return { allowed: true, selfApproved: isAuthor };
+}
+
+/**
+ * 团队策略的待审批版本是否根本没有合格审批人：团队里除版本作者外没有任何 owner/admin。
+ * 四眼原则不放宽（产品决定），界面据此提示把一位成员设为管理员，而不是只显示「等待他人审批」。
+ * 个人策略恒为 false（所有者可自审）。
+ *
+ * @param teamReviewerIds 策略所属团队全部 owner/admin 的用户 id
+ */
+export function lacksEligibleReviewer(
+  policyTeamId: string | null,
+  teamReviewerIds: readonly string[],
+  versionAuthorId: string | null,
+): boolean {
+  if (!policyTeamId) return false;
+  return !teamReviewerIds.some((id) => id !== versionAuthorId);
 }

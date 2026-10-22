@@ -54,7 +54,7 @@ function renderWith(items: InboxItem[], highlightDecisionId: string | null = nul
 function versionItem(over: Partial<PendingVersionApproval> = {}): PendingVersionApproval {
   return {
     versionId: 'v1', policyId: 'p1', policyName: 'loan-evaluation', version: 2, submittedBy: 'Sam',
-    submittedAt: '2026-10-22T08:30:00Z', canAct: true, ...over,
+    submittedAt: '2026-10-22T08:30:00Z', canAct: true, teamId: null, noEligibleReviewer: false, ...over,
   };
 }
 
@@ -85,6 +85,14 @@ describe('ApprovalsContent — 策略版本审批分区', () => {
     expect(screen.getByText('versions.unknownUser')).toBeTruthy();
     expect(screen.getByRole('link', { name: /versions\.view/ })).toBeTruthy();
     expect(screen.queryByRole('link', { name: /versions\.review/ })).toBeNull();
+  });
+
+  it('★团队里除作者外没有 owner/admin（review I3）：提示任命管理员并链接到团队成员管理', () => {
+    renderWith([], null, [versionItem({ canAct: false, teamId: 'team1', noEligibleReviewer: true })]);
+    const hint = screen.getByTestId('no-eligible-reviewer');
+    expect(hint.textContent).toBe('versions.noEligibleReviewer');
+    expect(hint.getAttribute('href')).toBe('/teams/team1/members');
+    expect(screen.queryByText('versions.awaitingOthers')).toBeNull();
   });
 });
 

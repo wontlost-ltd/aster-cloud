@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { db, policies } from '@/lib/prisma';
 import { and, eq, isNull } from 'drizzle-orm';
-import { loadVersionReviewContext } from '@/services/policy/version-manager';
+import { loadTeamReviewerIds, loadVersionReviewContext } from '@/services/policy/version-manager';
 import { canReviewPolicyVersions } from '@/services/policy/version-approval-rules';
 import { VersionsContent } from './versions-content';
 import { localizedTitle } from '@/lib/page-metadata';
@@ -43,7 +43,10 @@ export default async function VersionsPage({ params }: RouteParams) {
     redirect(`/${locale}/policies`);
   }
 
-  const t = await getTranslations('policies');
+  const [t, teamReviewerIds] = await Promise.all([
+    getTranslations('policies'),
+    loadTeamReviewerIds(review.policyTeamId),
+  ]);
   return (
     <VersionsContent
       policyId={policy.id}
@@ -55,6 +58,7 @@ export default async function VersionsPage({ params }: RouteParams) {
         policyTeamId: review.policyTeamId,
         reviewerTeamRole: review.reviewerTeamRole,
       }}
+      teamReviewerIds={teamReviewerIds}
       labels={{
         backToPolicy: t('detail.backToPolicies'),
         policiesLink: t('title'),

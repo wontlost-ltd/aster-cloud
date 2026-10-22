@@ -13,7 +13,11 @@ import 'server-only';
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db, policies, policyVersions, securityEvents, teamMembers, users } from '@/lib/prisma';
 import type { TeamRole } from '@/lib/team-permissions';
-import { decideVersionApproval } from '@/services/policy/version-approval-rules';
+import {
+  decideVersionApproval,
+  lacksEligibleReviewer,
+  TEAM_REVIEWER_ROLES,
+} from '@/services/policy/version-approval-rules';
 
 export interface PendingVersionApproval {
   versionId: string;
@@ -25,6 +29,10 @@ export interface PendingVersionApproval {
   /** 提交时间（ISO）；取最近一次提交审批事件，事件缺失时退回版本创建时间。 */
   submittedAt: string;
   canAct: boolean;
+  /** 策略所属团队；个人策略为 null。 */
+  teamId: string | null;
+  /** 团队策略里除作者外没有任何 owner/admin，四眼原则下无人能审批（界面提示任命管理员）。 */
+  noEligibleReviewer: boolean;
 }
 
 interface SubmitEvent {
@@ -69,6 +77,18 @@ async function loadReviewerTeamRoles(userId: string): Promise<Map<string, TeamRo
   return new Map(memberships.map((m) => [m.teamId, m.role as TeamRole]));
 }
 
+/** 各团队全部 owner/admin 的用户 id，用于判断待审批版本是否还有合格审批人。 */
+async function loadTeamReviewerIds(teamIds: string[]): Promise<Map<string, string[]>> {
+  const byTeam = new Map<string, string[]>();
+  if (teamIds.length === 0) return byTeam;
+  const rows = await db.query.teamMembers.findMany({
+    where: and(inArray(teamMembers.teamId, teamIds), inArray(teamMembers.role, [...TEAM_REVIEWER_ROLES])),
+    columns: { teamId: true, userId: true },
+  });
+  for (const r of rows) byTeam.set(r.teamId, [...(byTeam.get(r.teamId) ?? []), r.userId]);
+  return byTeam;
+}
+
 export async function listPendingVersionApprovals(userId: string): Promise<PendingVersionApproval[]> {
   const teamRoles = await loadReviewerTeamRoles(userId);
   const reviewerTeams = [...teamRoles.keys()];
@@ -95,8 +115,14 @@ export async function listPendingVersionApprovals(userId: string): Promise<Pendi
   const events = await loadSubmitEvents([...new Set(pending.map((v) => v.policyId))]);
   const submitterOf = (v: (typeof pending)[number]) => events.get(`${v.policyId}:${v.version}`)?.userId ?? v.createdBy;
   const submitterIds = [...new Set(pending.map(submitterOf).filter((id): id is string => !!id))];
-  const names = await loadDisplayNames(submitterIds);
   const policyById = new Map(owned.map((p) => [p.id, p]));
+  const pendingTeamIds = [
+    ...new Set(pending.map((v) => policyById.get(v.policyId)?.teamId).filter((id): id is string => !!id)),
+  ];
+  const [names, reviewersByTeam] = await Promise.all([
+    loadDisplayNames(submitterIds),
+    loadTeamReviewerIds(pendingTeamIds),
+  ]);
 
   return pending
     .map((v) => {
@@ -117,6 +143,12 @@ export async function listPendingVersionApprovals(userId: string): Promise<Pendi
         submittedBy: submitter ? (names.get(submitter) ?? null) : null,
         submittedAt: (events.get(`${v.policyId}:${v.version}`)?.createdAt ?? v.createdAt).toISOString(),
         canAct: verdict.allowed,
+        teamId: policy?.teamId ?? null,
+        noEligibleReviewer: lacksEligibleReviewer(
+          policy?.teamId ?? null,
+          policy?.teamId ? (reviewersByTeam.get(policy.teamId) ?? []) : [],
+          v.createdBy,
+        ),
       };
     })
     .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));

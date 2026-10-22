@@ -27,7 +27,7 @@ vi.mock('@/lib/prisma', () => {
       },
     },
     policies: { userId: col('policies.userId'), teamId: col('policies.teamId'), deletedAt: col('policies.deletedAt') },
-    teamMembers: { userId: col('teamMembers.userId'), role: col('teamMembers.role') },
+    teamMembers: { userId: col('teamMembers.userId'), teamId: col('teamMembers.teamId'), role: col('teamMembers.role') },
     policyVersions: { policyId: col('policyVersions.policyId'), status: col('policyVersions.status') },
     securityEvents: {
       policyId: col('securityEvents.policyId'), eventType: col('securityEvents.eventType'),
@@ -128,6 +128,48 @@ describe('listPendingVersionApprovals', () => {
     const items = await listPendingVersionApprovals('author');
 
     expect(items.map((i) => i.canAct)).toEqual([false]);
+  });
+
+  it('★团队只有一位 owner 加普通成员（review I3）：owner 的提交无人能审批，标记 noEligibleReviewer', async () => {
+    h.membersFindMany
+      .mockResolvedValueOnce([{ teamId: 'team1', role: 'owner' }])
+      .mockResolvedValueOnce([{ teamId: 'team1', userId: 'owner' }]);
+    h.policiesFindMany.mockResolvedValue([{ id: 'tp1', name: 'team-loan', userId: 'owner', teamId: 'team1' }]);
+    h.versionsFindMany.mockResolvedValue([
+      { id: 'v1', policyId: 'tp1', version: 1, createdBy: 'owner', createdAt: T1 },
+    ]);
+
+    const items = await listPendingVersionApprovals('owner');
+
+    expect(h.membersFindMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: { and: [{ inArray: ['teamMembers.teamId', ['team1']] }, { inArray: ['teamMembers.role', ['owner', 'admin']] }] },
+    }));
+    expect(items.map((i) => [i.canAct, i.noEligibleReviewer, i.teamId])).toEqual([[false, true, 'team1']]);
+  });
+
+  it('团队另有一位 admin：作者的提交只读但有人可审批，不标记 noEligibleReviewer', async () => {
+    h.membersFindMany
+      .mockResolvedValueOnce([{ teamId: 'team1', role: 'owner' }])
+      .mockResolvedValueOnce([{ teamId: 'team1', userId: 'owner' }, { teamId: 'team1', userId: 'admin1' }]);
+    h.policiesFindMany.mockResolvedValue([{ id: 'tp1', name: 'team-loan', userId: 'owner', teamId: 'team1' }]);
+    h.versionsFindMany.mockResolvedValue([
+      { id: 'v1', policyId: 'tp1', version: 1, createdBy: 'owner', createdAt: T1 },
+    ]);
+
+    const items = await listPendingVersionApprovals('owner');
+
+    expect(items.map((i) => [i.canAct, i.noEligibleReviewer])).toEqual([[false, false]]);
+  });
+
+  it('个人策略不查团队管理员，也不标记 noEligibleReviewer', async () => {
+    h.versionsFindMany.mockResolvedValue([
+      { id: 'v-own', policyId: 'p1', version: 2, createdBy: 'owner', createdAt: T0 },
+    ]);
+
+    const items = await listPendingVersionApprovals('owner');
+
+    expect(h.membersFindMany).toHaveBeenCalledTimes(1);
+    expect(items.map((i) => [i.noEligibleReviewer, i.teamId])).toEqual([[false, null]]);
   });
 
   it('提交人/时间取最近一次提交事件；无事件时退回作者与创建时间；按提交时间倒序', async () => {
