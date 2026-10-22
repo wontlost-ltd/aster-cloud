@@ -10,7 +10,8 @@ const h = vi.hoisted(() => ({
   policiesFindMany: vi.fn(),
   membersFindMany: vi.fn(),
   versionsFindMany: vi.fn(),
-  eventsFindMany: vi.fn(),
+  eventsQuery: vi.fn(),
+  eventsChain: {} as Record<string, unknown>,
   usersFindMany: vi.fn(),
 }));
 
@@ -22,8 +23,21 @@ vi.mock('@/lib/prisma', () => {
         policies: { findMany: h.policiesFindMany },
         teamMembers: { findMany: h.membersFindMany },
         policyVersions: { findMany: h.versionsFindMany },
-        securityEvents: { findMany: h.eventsFindMany },
         users: { findMany: h.usersFindMany },
+      },
+      // 提交事件走 selectDistinctOn 链：记录每一步的参数，最终 limit() 返回 eventsQuery 的结果
+      selectDistinctOn: (on: unknown, fields: unknown) => {
+        const chain: Record<string, unknown> = { on, fields };
+        h.eventsChain = chain;
+        return {
+          from: (t: unknown) => (chain.from = t, {
+            where: (w: unknown) => (chain.where = w, {
+              orderBy: (...o: unknown[]) => (chain.orderBy = o, {
+                limit: (n: number) => (chain.limit = n, h.eventsQuery()),
+              }),
+            }),
+          }),
+        };
       },
     },
     policies: { userId: col('policies.userId'), teamId: col('policies.teamId'), deletedAt: col('policies.deletedAt') },
@@ -43,7 +57,11 @@ vi.mock('drizzle-orm', () => ({
   inArray: (c: { name: string }, v: unknown) => ({ inArray: [c.name, v] }),
   isNull: (c: { name: string }) => ({ isNull: c.name }),
   desc: (c: { name: string }) => ({ desc: c.name }),
-  sql: () => ({ sql: 'submit-action' }),
+  // 模板标签：把字面量片段拼起来、插值按原样收集，便于断言过滤条件
+  sql: Object.assign(
+    (strings: TemplateStringsArray, ...values: unknown[]) => ({ sql: strings.join('?'), values }),
+    { join: (parts: unknown[]) => ({ join: parts }) },
+  ),
 }));
 
 import { listPendingVersionApprovals } from '@/lib/version-approvals-inbox';
@@ -59,7 +77,7 @@ beforeEach(() => {
     { id: 'p1', name: 'loan-evaluation', userId: 'owner', teamId: null },
     { id: 'p2', name: 'refund', userId: 'owner', teamId: null },
   ]);
-  h.eventsFindMany.mockResolvedValue([]);
+  h.eventsQuery.mockResolvedValue([]);
   h.usersFindMany.mockResolvedValue([]);
 });
 
@@ -177,9 +195,9 @@ describe('listPendingVersionApprovals', () => {
       { id: 'v1', policyId: 'p1', version: 2, createdBy: 'author', createdAt: T0 },
       { id: 'v2', policyId: 'p2', version: 5, createdBy: 'colleague', createdAt: T1 },
     ]);
-    h.eventsFindMany.mockResolvedValue([
-      { policyId: 'p1', userId: 'submitter', details: { version: 2, action: 'SUBMIT_FOR_APPROVAL' }, createdAt: T2 },
-      { policyId: 'p1', userId: 'older', details: { version: 2, action: 'SUBMIT_FOR_APPROVAL' }, createdAt: T0 },
+    // DISTINCT ON 已在 SQL 里每版只取最新一条
+    h.eventsQuery.mockResolvedValue([
+      { policyId: 'p1', version: '2', userId: 'submitter', createdAt: T2 },
     ]);
     h.usersFindMany.mockResolvedValue([
       { id: 'submitter', name: 'Sam', email: 'sam@example.com' },
@@ -192,13 +210,17 @@ describe('listPendingVersionApprovals', () => {
       ['v1', 'loan-evaluation', 2, 'Sam', T2.toISOString()],
       ['v2', 'refund', 5, 'col@example.com', T1.toISOString()],
     ]);
-    expect(h.eventsFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { and: [
-        { inArray: ['securityEvents.policyId', ['p1', 'p2']] },
-        { eq: ['securityEvents.eventType', 'APPROVAL_DECISION'] },
-        { sql: 'submit-action' },
-      ] },
-    }));
+    // 只查待审批的 (policyId, version) 对，每版取最新一条，行数上限 = 待审批版本数
+    const chain = h.eventsChain as { where: { and: Array<{ sql?: string; values?: unknown[] }> }; limit: number; orderBy: unknown[] };
+    expect(chain.limit).toBe(2);
+    const pairFilter = chain.where.and.find((c) => c.sql?.includes(') IN ('));
+    expect(pairFilter?.values?.[2]).toEqual({
+      join: [
+        { sql: '(?, ?)', values: ['p1', '2'] },
+        { sql: '(?, ?)', values: ['p2', '5'] },
+      ],
+    });
+    expect(chain.orderBy).toHaveLength(3);
     expect(h.usersFindMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { inArray: ['users.id', ['submitter', 'colleague']] },
     }));

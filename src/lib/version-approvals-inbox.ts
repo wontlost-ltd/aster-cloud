@@ -40,23 +40,37 @@ interface SubmitEvent {
   createdAt: Date;
 }
 
-/** 最近一次「提交审批」安全事件，按 policyId:version 索引（事件已按时间倒序）。 */
-async function loadSubmitEvents(policyIds: string[]): Promise<Map<string, SubmitEvent>> {
-  const events = await db.query.securityEvents.findMany({
-    where: and(
-      inArray(securityEvents.policyId, policyIds),
-      eq(securityEvents.eventType, 'APPROVAL_DECISION'),
-      sql`${securityEvents.details}->>'action' = 'SUBMIT_FOR_APPROVAL'`,
-    ),
-    columns: { policyId: true, userId: true, details: true, createdAt: true },
-    orderBy: [desc(securityEvents.createdAt)],
-  });
-  const latest = new Map<string, SubmitEvent>();
-  for (const e of events) {
-    const key = `${e.policyId}:${(e.details as { version?: unknown }).version}`;
-    if (!latest.has(key)) latest.set(key, { userId: e.userId, createdAt: e.createdAt });
-  }
-  return latest;
+/**
+ * 每个待审批版本最近一次「提交审批」安全事件，按 policyId:version 索引。
+ * 只查待审批的 (policyId, version)，并用 DISTINCT ON 每版只取最新一条：
+ * 结果行数不超过待审批版本数，不随历史提交事件增长。
+ */
+async function loadSubmitEvents(
+  pending: ReadonlyArray<{ policyId: string; version: number }>,
+): Promise<Map<string, SubmitEvent>> {
+  const versionExpr = sql<string>`${securityEvents.details}->>'version'`;
+  const pairs = sql.join(
+    pending.map((v) => sql`(${v.policyId}, ${String(v.version)})`),
+    sql`, `,
+  );
+  const events = await db
+    .selectDistinctOn([securityEvents.policyId, versionExpr], {
+      policyId: securityEvents.policyId,
+      version: versionExpr,
+      userId: securityEvents.userId,
+      createdAt: securityEvents.createdAt,
+    })
+    .from(securityEvents)
+    .where(
+      and(
+        eq(securityEvents.eventType, 'APPROVAL_DECISION'),
+        sql`${securityEvents.details}->>'action' = 'SUBMIT_FOR_APPROVAL'`,
+        sql`(${securityEvents.policyId}, ${versionExpr}) IN (${pairs})`,
+      ),
+    )
+    .orderBy(securityEvents.policyId, versionExpr, desc(securityEvents.createdAt))
+    .limit(pending.length);
+  return new Map(events.map((e) => [`${e.policyId}:${e.version}`, { userId: e.userId, createdAt: e.createdAt }]));
 }
 
 async function loadDisplayNames(ids: string[]): Promise<Map<string, string>> {
@@ -112,7 +126,7 @@ export async function listPendingVersionApprovals(userId: string): Promise<Pendi
   });
   if (pending.length === 0) return [];
 
-  const events = await loadSubmitEvents([...new Set(pending.map((v) => v.policyId))]);
+  const events = await loadSubmitEvents(pending);
   const submitterOf = (v: (typeof pending)[number]) => events.get(`${v.policyId}:${v.version}`)?.userId ?? v.createdBy;
   const submitterIds = [...new Set(pending.map(submitterOf).filter((id): id is string => !!id))];
   const policyById = new Map(owned.map((p) => [p.id, p]));
