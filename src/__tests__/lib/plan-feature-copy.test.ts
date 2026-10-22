@@ -9,8 +9,8 @@ import { PLANS, PLAN_FEATURE_MESSAGE_VALUES } from '@/lib/plans';
 
 /**
  * 套餐卡片文案（F20）：
- * - 「全语言包」列出的语种来自已配置 locales（此前写死 en / zh / de，hi 已启用却不在列）；
- * - 不点名具体模型（此前写 gpt-4o-mini / gpt-5.2，与实际使用的模型不符）；
+ * - 「全语言包」列出的语种来自已配置 locales，启用的语种（含 hi）都在列；
+ * - 不点名具体模型：实际模型取决于平台默认或用户自带密钥，写死的型号会与实际不符；
  * - 账单概览的 "Trial" 卡片标题走 i18n。
  */
 const ROOT = path.resolve(__dirname, '../../..');
