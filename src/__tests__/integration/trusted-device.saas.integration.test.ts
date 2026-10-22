@@ -175,7 +175,8 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('可信设备安全属性（iss
       .select({ v: trustedDevices.lastUsedAt })
       .from(trustedDevices)
       .where(eq(trustedDevices.userId, ALICE));
-    expect(before[0].v).toBeNull();
+    // 签发即记一次使用（F22：此前为 null，正在使用的设备显示「从未」）。
+    expect(before[0].v).toEqual(NOW);
 
     const used = later(1);
     expect(await isTrustedDevice(ALICE, token, used)).toBe(true);
@@ -184,7 +185,27 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('可信设备安全属性（iss
       .select({ v: trustedDevices.lastUsedAt })
       .from(trustedDevices)
       .where(eq(trustedDevices.userId, ALICE));
-    expect(after[0].v, 'lastUsedAt 从未更新').not.toBeNull();
+    expect(after[0].v, 'lastUsedAt 未随校验刷新').toEqual(used);
+  });
+
+  it('★设备列表按 cookie 标记当前设备并节流刷新 lastUsedAt（F22）', async () => {
+    const mine = await issueTrustedDevice(ALICE, null, NOW);
+    await issueTrustedDevice(ALICE, null, NOW);
+
+    // 1 小时内再看：标记当前设备，但不重复写库。
+    const soon = new Date(NOW.getTime() + 10 * 60_000);
+    const first = await listTrustedDevices(ALICE, soon, mine);
+    expect(first.filter((d) => d.current)).toHaveLength(1);
+    expect(first.find((d) => d.current)?.lastUsedAt).toEqual(NOW);
+
+    // 一天后再看：当前设备刷新，另一台不动。
+    const next = later(1);
+    await listTrustedDevices(ALICE, next, mine);
+    const stored = await listTrustedDevices(ALICE, next);
+    expect(stored.map((d) => d.lastUsedAt?.toISOString()).sort()).toEqual(
+      [NOW.toISOString(), next.toISOString()].sort(),
+    );
+    expect(stored.every((d) => !d.current)).toBe(true);
   });
 
   it('purge 只清过期的', async () => {

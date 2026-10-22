@@ -20,7 +20,10 @@
  * 其余文案。缺 locale 的 key 由 request.ts 的 en 底座兜底。
  */
 
-import type { Locale } from './config';
+import { locales, type Locale } from './config';
+
+/** 公开定价页「全语言包」列出的语种，与 PLAN_FEATURE_MESSAGE_VALUES.languages 同源（F20）。 */
+const PRICING_LANGUAGES = locales.join(' / ');
 
 type MessageTree = Record<string, unknown>;
 
@@ -164,6 +167,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     docs: {
       sidebar: {
+        // 入门：创建 API 密钥（助手检索的常见问题）
+        gettingStarted: { apiKeys: 'Create an API key' },
         guides: {
           title: 'Guides',
           creditPilot: 'Credit pilot (Article 14)',
@@ -249,6 +254,22 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 审批收件箱（ADR 0042 §5.2）。
     approvals: {
+      // 策略版本审批分区（生产 E2E Q1）与 Action-Guard 分区标题。
+      guardTitle: 'Action approvals',
+      versions: {
+        title: 'Policy version approvals',
+        subtitle: 'Versions submitted for approval on your policies and on team policies you administer. Team policies need an owner or admin other than the author; on personal policies you may approve your own submission.',
+        empty: 'No policy versions are waiting for approval.',
+        thVersion: 'Version',
+        thSubmitter: 'Submitted by',
+        thSubmitted: 'Submitted',
+        review: 'Review',
+        view: 'View',
+        awaitingOthers: 'Waiting for another approver',
+        unknownUser: 'Unknown',
+        // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
+        noEligibleReviewer: 'No other team owner or admin can approve this — make a member an admin in team settings',
+      },
       title: 'Approvals',
       subtitle: 'Actions that need a human decision across all your workspaces. You can decide only where your verified business role matches.',
       status: {
@@ -325,6 +346,21 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     //   漏改了这个入口，于是仪表盘仍在向外部用户承诺三套合规框架。
     //   在信贷风控领域「我们支持 SOC2」是有法律分量的说法，故按实际能力改写。
     dashboard: {
+      // 两个独立计量：cloud 自身 /api/v1 REST 调用（UsageRecord api_call）与 aster-api 的 Policy 执行 API（ApiCallRecord），分开命名免得看似矛盾。
+      stats: { restApiCalls: 'Cloud REST API calls' },
+      // 首页 AHA 卡片（原为硬编码英文）。
+      aha: {
+        achievedTitle: '🎉 First policy published',
+        hoursAfterSignup: '{hours} hours after signup',
+        achieved: 'Achieved',
+        insideWindow: '✨ Inside the {hours}h AHA window — way to go!',
+        publishFirstTitle: 'Publish your first policy',
+        publishFirstBody: 'Ready to ship your first rule? It only takes a few minutes.',
+        createPolicy: 'Create policy →',
+        challengeTitle: 'AHA Moment Challenge',
+        challengeBody: 'Publish your first policy within {hours}h of signup',
+        hoursRemaining: '⏰ {hours}h remaining',
+      },
       quickActions: {
         generateReport: 'Export evidence',
         generateReportDesc: 'Decision records with audit hashes',
@@ -401,6 +437,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
+      createTeam: {
+        nameInvalid: 'Team name must be 2–50 characters.',
+        slugInvalid: 'Team URL must be 2–50 characters: lowercase letters, digits and single hyphens, not starting or ending with a hyphen.',
+      },
       members: {
         businessRolesLabel: 'Business roles:',
         businessRolesNone: 'None',
@@ -414,6 +455,30 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     settings: {
+      // GDPR 导出失败的本地化提示（F24），不显示服务端原文。
+      dataPage: {
+        downloadUnavailable: 'We couldn\'t prepare your AI data export right now. The problem has been logged; please try again later or contact support.',
+        // AI 工作台对话的导出 / 抹除结果（F23）。
+        workspaceExportUnavailable: 'Your file was downloaded, but it doesn\'t include your AI workspace conversations because the workspace couldn\'t be reached. Please try again later or contact support.',
+        // 审计原文无法解密时的降级导出提示（review I2）。
+        auditContentUnavailable: 'Your file was downloaded with all your AI call records, but the original prompt and response text couldn\'t be decrypted right now and is not included. The problem has been logged; please try again later or contact support.',
+        deleteCard: {
+          workspaceFailed: 'Your AI call content was cleared, but your AI workspace conversations could not be deleted. Please try again later or contact support.',
+          workspaceHeld: '{count, plural, one {# AI workspace conversation is} other {# AI workspace conversations are}} under a legal hold and {count, plural, one {was} other {were}} kept. Everything else was deleted. Contact support if you have questions.',
+          workspaceTenantHold: 'Your AI workspace conversations are under a legal hold, so none of them were deleted. Contact support if you have questions.',
+        },
+      },
+      // AI 熔断器手动熔断控件（F18）。
+      aiCircuitBreakerPage: {
+        trip: 'Trip circuit manually',
+        tripHint: 'Stops new AI calls for Free and Trial plans until the end of the UTC day or until you release it, including for users who sign up or move to these plans after the trip. Paid plans are not affected. Use it when a provider incident is driving cost before the automatic thresholds are reached.',
+        tripConfirmTitle: 'Trip the circuit manually?',
+        tripConfirmBody: 'Free and Trial users, including anyone who signs up or moves to these plans later today, will be unable to make new AI calls until the end of the UTC day or until the circuit is released. This action is audited.',
+        tripConfirmAction: 'Trip circuit',
+        tripSuccess: 'Circuit tripped.',
+        tripFailure: 'Could not trip the circuit: {error}',
+        manualNote: 'Tripped manually by an administrator',
+      },
       // AI 行内补全开关（设置页）
       aiCompletion: {
         title: 'AI inline completion',
@@ -462,6 +527,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         alreadyEnabled: 'Authenticator is already enabled. Turn it off first to set up a new device.',
       },
       trustedDevices: {
+        // 设备列表里标记发起请求的这台设备（F22）。
+        currentDevice: 'This device',
         title: 'Trusted devices',
         description: 'Devices where you ticked “Remember this device”. They skip the email code for 30 days — remove any you no longer control.',
         empty: 'No trusted devices. You will be asked for a code each time you sign in.',
@@ -484,6 +551,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         errorPlanNoApiAccess: 'The team owner’s plan does not include API access.',
       },
       aiKeysPage: {
+        // 失效日期已过的 key（F13）：推理层会跳过，状态必须如实显示。
+        statusExpired: 'Expired',
         // AI Key 行内编辑 + 重置额度（本地补充，ui-messages 包尚无这些 key）。
         edit: 'Edit',
         editSave: 'Save',
@@ -532,6 +601,89 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: 'Open AI keys settings',
     },
     admin: {
+      // 许可证撤销：ID 不在已签发记录中的提示（Q2，不阻止撤销）。
+      licenseRevoke: {
+        newForm: {
+          checking: 'Checking…',
+          unknownLicenseWarning: 'This license is not in the issued-license records (it may have been issued offline). Double-check the ID before revoking.',
+        },
+      },
+      // 风险等级处理台的等级名称（F19：此前写死英文）。
+      riskTier: {
+        tierCard: 'Tier {tier} ({label})',
+        tiers: {
+          trusted: 'trusted',
+          normal: 'normal',
+          elevated: 'elevated',
+          high: 'high',
+          hard: 'hard',
+        },
+      },
+      // 管理员概览「最近管理事件」的事件名（F17）：键由 lib/admin-event-labels.ts 从 action id 推导。
+      pulse: {
+        audit: {
+          events: {
+            policyCreate: 'Policy created',
+            policyUpdate: 'Policy updated',
+            policyDelete: 'Policy deleted',
+            policyExecute: 'Policy executed',
+            policyPublish: 'Policy published',
+            policyArchive: 'Policy archived',
+            policyShared: 'Policy shared',
+            policyShareReaffirmed: 'Policy share confirmed',
+            policySharePermissionChanged: 'Policy share permission changed',
+            policyShareRevoked: 'Policy share revoked',
+            teamCreate: 'Team created',
+            teamMemberAdd: 'Team member added',
+            teamMemberRemove: 'Team member removed',
+            teamTransfer: 'Team ownership transferred',
+            subscriptionUpgrade: 'Subscription upgraded',
+            subscriptionDowngrade: 'Subscription downgraded',
+            subscriptionCancelled: 'Subscription cancelled',
+            subscriptionAutoDowngraded: 'Subscription downgraded automatically',
+            subscriptionTrialWillEnd: 'Trial ending soon',
+            subscriptionSeatsReconciled: 'Subscription seats reconciled',
+            paymentSucceeded: 'Payment succeeded',
+            paymentFailed: 'Payment failed',
+            paymentFailedTrialDowngrade: 'Payment failed, trial downgraded',
+            paymentDisputeCreated: 'Payment dispute opened',
+            apiKeyCreate: 'API key created',
+            apiKeyRevoke: 'API key revoked',
+            aiKeyCreate: 'AI key added',
+            aiKeyUpdate: 'AI key updated',
+            aiKeyResetQuota: 'AI key quota reset',
+            aiKeyReorder: 'AI key priority changed',
+            aiKeyDelete: 'AI key removed',
+            aiCircuitTrip: 'AI circuit breaker tripped manually',
+            aiCircuitRelease: 'AI circuit breaker released',
+            userDelete: 'Account deleted',
+            userRiskTierOverridden: 'Risk tier overridden',
+            userRiskTierRaised: 'Risk tier raised',
+            userRiskTierDecayed: 'Risk tier lowered over time',
+            userHardPurged: 'Account permanently purged',
+            settingsUpdate: 'Settings updated',
+            lexiconTermAdd: 'Vocabulary term added',
+            lexiconTermModify: 'Vocabulary term changed',
+            lexiconTermDelete: 'Vocabulary term deleted',
+            lexiconTermRestore: 'Vocabulary term restored',
+            lexiconAvailabilityEnable: 'Language enabled',
+            lexiconAvailabilityDisable: 'Language disabled',
+            byokAllowlistAdd: 'AI provider host allowed',
+            byokAllowlistRemove: 'AI provider host removed',
+            licenseRevoked: 'License revoked',
+            licenseRevocationUndone: 'License revocation undone',
+            licenseRevocationRepublished: 'Revocation list republished',
+            ruleRegressionFreeze: 'Regression baseline frozen',
+            ruleRegressionRun: 'Regression check run',
+            ruleRegressionApproveDrift: 'Regression drift approved',
+            ruleRegressionRevokeApproval: 'Regression approval revoked',
+            ruleRegressionApproveTransition: 'Toolchain upgrade approved',
+            ruleRegressionRevokeTransition: 'Toolchain upgrade approval revoked',
+            ahaFirstPolicyPublished: 'First policy published',
+            docsJump: 'Opened app from docs',
+          },
+        },
+      },
       structuralAliasGrants: {
         title: 'Structural keyword aliases',
         description: 'Grant selected users permission to alias Module, Rule, If, Otherwise, Match, When, and Return.',
@@ -543,8 +695,93 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
+    // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
+    // 细分出的展示类型，见 lib/security-event-display.ts。
+    security: {
+      eventTypes: {
+        SIGNATURE_INVALID: 'Invalid signature',
+        NONCE_REUSED: 'Nonce replay',
+        TIMESTAMP_EXPIRED: 'Timestamp expired',
+        HASH_MISMATCH: 'Hash mismatch',
+        UNAUTHORIZED_APPROVAL: 'Unauthorized approval',
+        SELF_APPROVAL_ATTEMPT: 'Self-approval attempt',
+        POLICY_EXECUTED: 'Policy executed',
+        POLICY_EXECUTION_FAILED: 'Policy execution failed',
+        APPROVAL_SUBMITTED: 'Submitted for approval',
+        APPROVAL_DECISION: 'Approval decision',
+        VERSION_CREATED: 'Version created',
+        VERSION_NOT_FOUND: 'Version not found',
+        DEPRECATED_VERSION_EXECUTED: 'Deprecated version executed',
+        VERSION_SET_DEFAULT: 'Default version set',
+        VERSION_DEPRECATED: 'Version deprecated',
+        VERSION_ARCHIVED: 'Version archived',
+      },
+    },
+    // 页面 <title>（F19）：界面上没有现成文案可复用的页面名，见 lib/page-metadata.ts。
+    pageTitles: {
+      policyDetail: 'Policy details',
+      policyEdit: 'Edit policy',
+      policyExecute: 'Run policy',
+      billingPlans: 'Plans',
+    },
+    // 套餐文案（F20）：不写具体模型名（实际模型取决于平台默认 / 用户 BYOK）；语言列表由
+    // PLAN_FEATURE_MESSAGE_VALUES 按已配置 locales 注入。trialCardTitle 替换写死的 "Trial"。
+    billing: {
+      restApiCallsThisMonth: 'Cloud REST API calls this month',
+      policyApiCallsThisMonth: 'Policy Execution API calls this month',
+      // 两项 API 计量各自独立计数的说明（review minor）。
+      apiMetersSeparate: 'These two API meters are counted separately, and each has its own monthly allowance of the same size; calls on one do not use up the other.',
+      plans: {
+        features: {
+          aiDrafts20: '20 AI drafts / month',
+          aiDrafts500: '500 AI drafts / seat / month',
+          allLanguagePacks: 'All language packs ({languages})',
+        },
+      },
+      overview: {
+        trialCardTitle: 'Trial',
+      },
+    },
+    // 公开定价页套餐要点（F20）：与 billing.plans.features 同口径——不写具体模型名，语言列表由
+    // locales 推导。数组在 deepMergeMessages 中整体替换，因此完整复制包内数组，仅改相关条目。
+    pricingPage: {
+      tiers: {
+        free: {
+          features: [
+            '1 user',
+            '5 published rules',
+            '1,000 evaluations / month',
+            '20 AI drafts / month',
+            `All language packs (${PRICING_LANGUAGES})`,
+            '7-day audit log',
+            '✗ No reviewer role',
+            '✗ Not SOX-compliant',
+          ],
+        },
+        pro: {
+          features: [
+            'Unlimited team members',
+            '100 published rules',
+            '50,000 evaluations / month',
+            '500 AI drafts / seat / month',
+            `All language packs (${PRICING_LANGUAGES})`,
+            '90-day audit log',
+            'Invite reviewers — each seat ¥299 / month',
+            'Reviewer ≠ author (enforced for ≥ 2 seats)',
+            'Meets SOX Segregation of Duties',
+            'Stripe billing, monthly or yearly',
+          ],
+        },
+      },
+    },
+    // 设置页助手说明（F21）：管理员开启「助手回答」时使用，见 lib/assistant/settings-hint.ts。
+    assistant: {
+      settingsHintAiAnswers: 'A site-wide helper for finding docs and pages. Answers are based only on this site\'s documentation and may be generated by AI; it does not search the web.',
+    },
     common: { cancel: 'Cancel' },
     policies: {
+      // 回收站永久删除确认：点名被删除的策略（{name} 由客户端替换）。
+      trash: { confirmPermanentDeleteNamed: 'Permanently delete "{name}"? This action cannot be undone.' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
       detail: { profile: 'Profile' },
       // 导出为 Cedar（ADR 0047 §6）。
@@ -580,8 +817,28 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       versions: {
         awaitingOthers: 'Waiting for another approver',
         approvalCount: '{count} approval records',
+        // 个人策略所有者审批自己提交的版本时的说明（审计里记为自审）。
+        selfApproveNote: 'You are reviewing your own submission. Personal policies have no second reviewer, so this is allowed; the decision is recorded in the audit log as a self-approval.',
+        // SOX 套餐下个人策略无法由他人审批：引导移入团队（review I4）。
+        sox: { moveToTeamRequired: 'Your plan requires approval by someone other than the author, and only you can review a personal policy. Move this policy into a team so another team owner or admin can approve it.' },
+        // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
+        noEligibleReviewer: 'No other team owner or admin can approve this — make a member an admin in team settings',
       },
       logs: {
+        // 筛选区标题、相对时间「刚刚」、加载与空态提示（原为硬编码英文）。
+        filtersTitle: 'Filters',
+        justNow: 'Just now',
+        loadingLogs: 'Loading execution logs…',
+        noLogsHint: 'Execute the policy to see logs here',
+        // runner-parity 影子校验徽章。
+        parity: {
+          tooltip: 'Runner replay parity (shadow check)',
+          match: 'parity ✓',
+          divergent: 'parity ✗',
+          unavailable: 'parity —',
+          error: 'parity error',
+          indeterminate: 'parity ?',
+        },
         // 执行日志里 indeterminate（值输出）行的中性状态标签。
         computed: 'Computed',
         // Verdict 待处置态（ADR 0041 §4）：需人工批准 / 已升级，非失败。
@@ -601,6 +858,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         statusAiCompletionOff: 'AI completion: off',
         statusAiCompletionLabel: 'AI inline completion',
         statusAiCompletionHint: 'Suggests the next code while you type; each pause uses AI quota. Click to toggle.',
+        // 决策预览没有可展示内容时的说明（编译中 / 编译通过但无模块摘要等）
+        decisionEmpty: 'Nothing to preview yet. This panel shows compile errors and warnings, and once the policy compiles, its module, functions and types. Write a policy starting with a Module declaration and the result appears here.',
+        // 手机宽度下编辑器降级为只读视图时的提示
+        mobileReadOnlyNotice: 'Read-only on small screens. The policy editor needs a wider screen (at least 768 px): open this page on a tablet or desktop to edit and save.',
         aliases: {
           title: 'Keyword aliases',
           hint: 'Add comma-separated multi-word phrases for policy keywords.',
@@ -926,6 +1187,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     docs: {
       sidebar: {
+        // 入门：创建 API 密钥（助手检索的常见问题）
+        gettingStarted: { apiKeys: '创建 API 密钥' },
         guides: {
           title: '指南',
           creditPilot: '信贷试点（第 14 条）',
@@ -1010,6 +1273,21 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 审批收件箱（ADR 0042 §5.2）。
     approvals: {
+      guardTitle: '动作审批',
+      versions: {
+        title: '策略版本审批',
+        subtitle: '你名下策略及你担任 owner/admin 的团队策略中已提交审批的版本。团队策略须由作者以外的团队 owner/admin 审批；个人策略可由你审批自己的提交。',
+        empty: '没有等待审批的策略版本。',
+        thVersion: '版本',
+        thSubmitter: '提交人',
+        thSubmitted: '提交时间',
+        review: '去审批',
+        view: '查看',
+        awaitingOthers: '等待他人审批',
+        unknownUser: '未知',
+        // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
+        noEligibleReviewer: '团队中没有其他所有者或管理员可审批——请在团队设置中将一位成员设为管理员',
+      },
       title: '审批',
       subtitle: '汇总你所在全部工作区中需要人工决定的动作。只有已验证业务角色匹配时才能审批。',
       status: {
@@ -1076,6 +1354,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 见 en 段注释：入口原文承诺 GDPR/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
+      stats: { restApiCalls: 'Cloud REST API 调用' },
+      aha: {
+        achievedTitle: '🎉 已发布首个策略',
+        hoursAfterSignup: '注册后 {hours} 小时',
+        achieved: '已达成',
+        insideWindow: '✨ 在 {hours} 小时 AHA 窗口内完成——干得漂亮！',
+        publishFirstTitle: '发布你的第一个策略',
+        publishFirstBody: '准备好上线第一条规则了吗？只需几分钟。',
+        createPolicy: '创建策略 →',
+        challengeTitle: 'AHA 时刻挑战',
+        challengeBody: '注册后 {hours} 小时内发布你的第一个策略',
+        hoursRemaining: '⏰ 还剩 {hours} 小时',
+      },
       quickActions: {
         generateReport: '导出证据',
         generateReportDesc: '决策记录与审计哈希',
@@ -1151,6 +1442,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
+      createTeam: {
+        nameInvalid: '团队名称需为 2–50 个字符。',
+        slugInvalid: '团队 URL 需为 2–50 个字符，仅可使用小写字母、数字和单个连字符，且不能以连字符开头或结尾。',
+      },
       members: {
         businessRolesLabel: '业务角色：',
         businessRolesNone: '无',
@@ -1164,6 +1460,30 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     settings: {
+      // GDPR 导出失败的本地化提示（F24），不显示服务端原文。
+      dataPage: {
+        downloadUnavailable: '暂时无法导出你的 AI 数据。问题已记录，请稍后重试或联系支持团队。',
+        // AI 工作台对话的导出 / 抹除结果（F23）。
+        workspaceExportUnavailable: '文件已下载，但暂时无法连接 AI 工作台，其中未包含你的 AI 工作台对话。请稍后重试或联系支持团队。',
+        // 审计原文无法解密时的降级导出提示（review I2）。
+        auditContentUnavailable: '文件已下载，包含你的全部 AI 调用记录，但提示词与回复原文暂时无法解密，未包含在内。问题已记录，请稍后重试或联系支持团队。',
+        deleteCard: {
+          workspaceFailed: 'AI 调用内容已清除，但 AI 工作台对话未能删除。请稍后重试或联系支持团队。',
+          workspaceHeld: '有 {count} 段 AI 工作台对话处于法律保留状态，已予保留；其余内容均已删除。如有疑问请联系支持团队。',
+          workspaceTenantHold: '你的 AI 工作台对话处于法律保留状态，因此均未删除。如有疑问请联系支持团队。',
+        },
+      },
+      // AI 熔断器手动熔断控件（F18）。
+      aiCircuitBreakerPage: {
+        trip: '手动熔断',
+        tripHint: '立即停止 Free 与 Trial 套餐的新 AI 调用（包括熔断后才注册或转入这两个套餐的用户），持续到今日 UTC 结束或手动解除；付费套餐不受影响。用于上游故障正在推高成本、尚未触及自动阈值的情况。',
+        tripConfirmTitle: '确认手动熔断？',
+        tripConfirmBody: 'Free 与 Trial 用户（包括今天稍后才注册或转入这两个套餐的用户）将无法发起新的 AI 调用，直到今日 UTC 结束或解除熔断。此操作会写入审计日志。',
+        tripConfirmAction: '熔断',
+        tripSuccess: '已手动熔断。',
+        tripFailure: '熔断失败：{error}',
+        manualNote: '由管理员手动熔断',
+      },
       // AI 行内补全开关（设置页）
       aiCompletion: {
         title: 'AI 行内补全',
@@ -1212,6 +1532,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         alreadyEnabled: '验证器已启用。要换设备请先关闭，再重新设置。',
       },
       trustedDevices: {
+        // 设备列表里标记发起请求的这台设备（F22）。
+        currentDevice: '当前设备',
         title: '已信任的设备',
         description: '您勾选过「记住该设备」的设备。它们在 30 天内免验证码——请移除您已不再掌控的设备。',
         empty: '暂无已信任设备。每次登录都会要求输入验证码。',
@@ -1233,6 +1555,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         errorPlanNoApiAccess: '团队 owner 的套餐不含 API 访问。',
       },
       aiKeysPage: {
+        // 失效日期已过的 key（F13）：推理层会跳过，状态必须如实显示。
+        statusExpired: '已失效',
         edit: '编辑',
         editSave: '保存',
         editCancel: '取消',
@@ -1279,6 +1603,89 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: '前往 AI 密钥设置',
     },
     admin: {
+      // 许可证撤销：ID 不在已签发记录中的提示（Q2，不阻止撤销）。
+      licenseRevoke: {
+        newForm: {
+          checking: '核对中…',
+          unknownLicenseWarning: '该许可证不在已签发记录中（可能为离线签发）—— 请核对 ID。',
+        },
+      },
+      // 风险等级处理台的等级名称（F19：此前写死英文）。
+      riskTier: {
+        tierCard: '等级 {tier}（{label}）',
+        tiers: {
+          trusted: '可信',
+          normal: '常规',
+          elevated: '偏高',
+          high: '高',
+          hard: '严格',
+        },
+      },
+      // 管理员概览「最近管理事件」的事件名（F17）：键由 lib/admin-event-labels.ts 从 action id 推导。
+      pulse: {
+        audit: {
+          events: {
+            policyCreate: '创建策略',
+            policyUpdate: '更新策略',
+            policyDelete: '删除策略',
+            policyExecute: '执行策略',
+            policyPublish: '发布策略',
+            policyArchive: '归档策略',
+            policyShared: '共享策略',
+            policyShareReaffirmed: '确认策略共享',
+            policySharePermissionChanged: '变更策略共享权限',
+            policyShareRevoked: '撤销策略共享',
+            teamCreate: '创建团队',
+            teamMemberAdd: '添加团队成员',
+            teamMemberRemove: '移除团队成员',
+            teamTransfer: '转移团队所有权',
+            subscriptionUpgrade: '升级订阅',
+            subscriptionDowngrade: '降级订阅',
+            subscriptionCancelled: '取消订阅',
+            subscriptionAutoDowngraded: '订阅自动降级',
+            subscriptionTrialWillEnd: '试用即将结束',
+            subscriptionSeatsReconciled: '订阅席位对账',
+            paymentSucceeded: '付款成功',
+            paymentFailed: '付款失败',
+            paymentFailedTrialDowngrade: '付款失败，试用降级',
+            paymentDisputeCreated: '付款争议',
+            apiKeyCreate: '创建 API 密钥',
+            apiKeyRevoke: '撤销 API 密钥',
+            aiKeyCreate: '添加 AI 密钥',
+            aiKeyUpdate: '更新 AI 密钥',
+            aiKeyResetQuota: '重置 AI 密钥额度',
+            aiKeyReorder: '调整 AI 密钥优先级',
+            aiKeyDelete: '删除 AI 密钥',
+            aiCircuitTrip: '手动熔断 AI',
+            aiCircuitRelease: '解除 AI 熔断',
+            userDelete: '删除账户',
+            userRiskTierOverridden: '手动覆盖风险等级',
+            userRiskTierRaised: '风险等级上调',
+            userRiskTierDecayed: '风险等级自动回落',
+            userHardPurged: '账户永久清除',
+            settingsUpdate: '更新设置',
+            lexiconTermAdd: '添加词汇',
+            lexiconTermModify: '修改词汇',
+            lexiconTermDelete: '删除词汇',
+            lexiconTermRestore: '恢复词汇',
+            lexiconAvailabilityEnable: '启用语言',
+            lexiconAvailabilityDisable: '停用语言',
+            byokAllowlistAdd: '添加 AI 提供商白名单',
+            byokAllowlistRemove: '移除 AI 提供商白名单',
+            licenseRevoked: '撤销许可证',
+            licenseRevocationUndone: '撤回许可证撤销',
+            licenseRevocationRepublished: '重新发布撤销列表',
+            ruleRegressionFreeze: '冻结回归基线',
+            ruleRegressionRun: '运行回归检查',
+            ruleRegressionApproveDrift: '批准回归偏差',
+            ruleRegressionRevokeApproval: '撤销回归批准',
+            ruleRegressionApproveTransition: '批准工具链升级',
+            ruleRegressionRevokeTransition: '撤销工具链升级批准',
+            ahaFirstPolicyPublished: '首次发布策略',
+            docsJump: '从文档跳转到应用',
+          },
+        },
+      },
       structuralAliasGrants: {
         title: '结构词别名授权',
         description: '为指定用户开启 Module、Rule、If、Otherwise、Match、When、Return 的别名权限。',
@@ -1290,8 +1697,92 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
+    // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
+    // 细分出的展示类型，见 lib/security-event-display.ts。
+    security: {
+      eventTypes: {
+        SIGNATURE_INVALID: '签名无效',
+        NONCE_REUSED: 'Nonce 重放',
+        TIMESTAMP_EXPIRED: '时间戳过期',
+        HASH_MISMATCH: '哈希不匹配',
+        UNAUTHORIZED_APPROVAL: '未授权审批',
+        SELF_APPROVAL_ATTEMPT: '自审批尝试',
+        POLICY_EXECUTED: '策略执行',
+        POLICY_EXECUTION_FAILED: '策略执行失败',
+        APPROVAL_SUBMITTED: '提交审批',
+        APPROVAL_DECISION: '审批决策',
+        VERSION_CREATED: '版本创建',
+        VERSION_NOT_FOUND: '版本不存在',
+        DEPRECATED_VERSION_EXECUTED: '执行已废弃版本',
+        VERSION_SET_DEFAULT: '设置默认版本',
+        VERSION_DEPRECATED: '版本被废弃',
+        VERSION_ARCHIVED: '版本被归档',
+      },
+    },
+    // 页面 <title>（F19）：界面上没有现成文案可复用的页面名，见 lib/page-metadata.ts。
+    pageTitles: {
+      policyDetail: '策略详情',
+      policyEdit: '编辑策略',
+      policyExecute: '执行策略',
+      billingPlans: '套餐',
+    },
+    // 套餐文案（F20）：不写具体模型名（实际模型取决于平台默认 / 用户 BYOK）；语言列表由
+    // PLAN_FEATURE_MESSAGE_VALUES 按已配置 locales 注入。trialCardTitle 替换写死的 "Trial"。
+    billing: {
+      restApiCallsThisMonth: '本月 Cloud REST API 调用次数',
+      policyApiCallsThisMonth: '本月 Policy 执行 API 调用次数',
+      // 两项 API 计量各自独立计数的说明（review minor）。
+      apiMetersSeparate: '以上两项 API 计量分别计数，各自享有同样大小的月度额度，互不占用。',
+      plans: {
+        features: {
+          aiDrafts20: '每月 20 次 AI 草稿',
+          aiDrafts500: '每席每月 500 次 AI 草稿',
+          allLanguagePacks: '全语言包（{languages}）',
+        },
+      },
+      overview: {
+        trialCardTitle: '试用',
+      },
+    },
+    // 公开定价页套餐要点（F20）：与 billing.plans.features 同口径——不写具体模型名，语言列表由
+    // locales 推导。数组在 deepMergeMessages 中整体替换，因此完整复制包内数组，仅改相关条目。
+    pricingPage: {
+      tiers: {
+        free: {
+          features: [
+            '1 人',
+            '5 条已发布规则',
+            '1,000 次评估 / 月',
+            '每月 20 次 AI 草稿',
+            `全语言包（${PRICING_LANGUAGES}）`,
+            '审计日志 7 天',
+            '✗ 没有 reviewer 角色',
+            '✗ 不符合 SOX 合规',
+          ],
+        },
+        pro: {
+          features: [
+            '无限团队成员',
+            '100 条已发布规则',
+            '50,000 次评估 / 月',
+            '每席每月 500 次 AI 草稿',
+            `全语言包（${PRICING_LANGUAGES}）`,
+            '审计日志 90 天',
+            '邀请 reviewer——每席 ¥299 / 月',
+            'Reviewer ≠ 提交人（≥ 2 席强制）',
+            '满足 SOX 职责分离',
+            'Stripe 月付 / 年付',
+          ],
+        },
+      },
+    },
+    // 设置页助手说明（F21）：管理员开启「助手回答」时使用，见 lib/assistant/settings-hint.ts。
+    assistant: {
+      settingsHintAiAnswers: '全站辅助工具，帮你查找文档与页面。回答只依据本站文档，可能由 AI 生成——不联网检索。',
+    },
     common: { cancel: '取消' },
     policies: {
+      trash: { confirmPermanentDeleteNamed: '确定要永久删除策略「{name}」吗？此操作无法撤销。' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
       detail: { profile: '治理档案' },
       // 导出为 Cedar（ADR 0047 §6）。
@@ -1325,8 +1816,29 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       versions: {
         awaitingOthers: '等待他人审批',
         approvalCount: '{count} 条审批记录',
+        selfApproveNote: '你正在审批自己提交的版本。个人策略没有第二位审批人，因此允许自审；本次决定会在审计日志中标记为自审。',
+        // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
+        noEligibleReviewer: '团队中没有其他所有者或管理员可审批——请在团队设置中将一位成员设为管理员',
+        // 覆盖包内 zh 文案的笔误「请请」；待 aster-lang-locales 上游修正后可删除本条覆盖。
+        sox: {
+          selfApprovalNotAllowed: '不能批准自己创建的版本，请其他团队成员审批。',
+          // SOX 套餐下个人策略无法由他人审批：引导移入团队（review I4）。
+          moveToTeamRequired: '你的套餐要求由作者以外的人审批，而个人策略只有你本人能审批。请把该策略移到团队中，由团队的其他所有者或管理员审批。',
+        },
       },
       logs: {
+        filtersTitle: '筛选',
+        justNow: '刚刚',
+        loadingLogs: '正在加载执行日志…',
+        noLogsHint: '执行该策略后，日志会显示在这里',
+        parity: {
+          tooltip: '执行器回放一致性（影子校验）',
+          match: '一致 ✓',
+          divergent: '不一致 ✗',
+          unavailable: '未校验 —',
+          error: '校验出错',
+          indeterminate: '无法判定 ?',
+        },
         computed: '已计算',
         require_approval: '需人工批准',
         escalate: '已升级',
@@ -1343,6 +1855,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         statusAiCompletionOff: 'AI 补全：关',
         statusAiCompletionLabel: 'AI 行内补全',
         statusAiCompletionHint: '输入时自动建议后续代码；每次停顿都会消耗 AI 额度。点击切换。',
+        // 决策预览没有可展示内容时的说明（编译中 / 编译通过但无模块摘要等）
+        decisionEmpty: '暂无可预览的内容。这里会显示编译错误与警告，以及策略编译通过后的模块、函数和类型。在编辑器中写出以 Module 声明开头的策略后，结果会出现在这里。',
+        // 手机宽度下编辑器降级为只读视图时的提示
+        mobileReadOnlyNotice: '小屏幕下仅可查看。编辑策略需要更宽的屏幕（至少 768 像素）：请在平板或电脑上打开此页面进行编辑和保存。',
         aliases: {
           title: '关键词别名',
           hint: '为策略关键词添加逗号分隔的多词短语。',
@@ -1670,6 +2186,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     docs: {
       sidebar: {
+        // 入门：创建 API 密钥（助手检索的常见问题）
+        gettingStarted: { apiKeys: 'API-Schlüssel erstellen' },
         guides: {
           title: 'Leitfäden',
           creditPilot: 'Kreditpilot (Artikel 14)',
@@ -1754,6 +2272,21 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 审批收件箱（ADR 0042 §5.2）。
     approvals: {
+      guardTitle: 'Aktionsfreigaben',
+      versions: {
+        title: 'Freigaben von Richtlinienversionen',
+        subtitle: 'Zur Freigabe eingereichte Versionen Ihrer Richtlinien und der Teamrichtlinien, die Sie verwalten. Teamrichtlinien müssen von einem Owner oder Admin freigegeben werden, der nicht der Autor ist; bei persönlichen Richtlinien dürfen Sie Ihre eigene Einreichung freigeben.',
+        empty: 'Keine Richtlinienversionen warten auf Freigabe.',
+        thVersion: 'Version',
+        thSubmitter: 'Eingereicht von',
+        thSubmitted: 'Eingereicht am',
+        review: 'Prüfen',
+        view: 'Ansehen',
+        awaitingOthers: 'Wartet auf eine andere freigebende Person',
+        unknownUser: 'Unbekannt',
+        // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
+        noEligibleReviewer: 'Im Team gibt es keine andere Inhaberin, keinen anderen Inhaber und keinen Admin, die freigeben können – machen Sie in den Teameinstellungen ein Mitglied zum Admin',
+      },
       title: 'Freigaben',
       subtitle: 'Aktionen, die eine menschliche Entscheidung brauchen – über alle Ihre Arbeitsbereiche. Entscheiden können Sie nur, wenn Ihre verifizierte Geschäftsrolle passt.',
       status: {
@@ -1821,6 +2354,24 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 见 en 段注释：入口原文承诺 DSGVO/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
+      stats: { restApiCalls: 'Cloud-REST-API-Aufrufe' },
+      aha: {
+        achievedTitle: '🎉 Erste Richtlinie veröffentlicht',
+        hoursAfterSignup: '{hours} Stunden nach der Registrierung',
+        achieved: 'Erreicht',
+        insideWindow: '✨ Innerhalb des {hours}-Stunden-AHA-Fensters – super!',
+        publishFirstTitle: 'Veröffentlichen Sie Ihre erste Richtlinie',
+        publishFirstBody: 'Bereit, Ihre erste Regel live zu schalten? Das dauert nur wenige Minuten.',
+        createPolicy: 'Richtlinie erstellen →',
+        challengeTitle: 'AHA-Moment-Challenge',
+        challengeBody: 'Veröffentlichen Sie Ihre erste Richtlinie innerhalb von {hours} Stunden nach der Registrierung',
+        hoursRemaining: '⏰ noch {hours} Std.',
+      },
+      // 包内 de 未翻译 Policy Execution API，本地覆盖。
+      apiUsage: {
+        title: 'Policy-Ausführungs-API',
+        lockedHint: 'Die Policy-Ausführungs-API ist im Free-Plan nicht enthalten. Auf Pro/Team upgraden oder 14-Tage-Trial starten.',
+      },
       quickActions: {
         generateReport: 'Nachweise exportieren',
         generateReportDesc: 'Entscheidungsdaten mit Audit-Hashes',
@@ -1896,6 +2447,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
+      createTeam: {
+        nameInvalid: 'Der Teamname muss 2–50 Zeichen lang sein.',
+        slugInvalid: 'Die Team-URL muss 2–50 Zeichen lang sein: Kleinbuchstaben, Ziffern und einzelne Bindestriche, ohne Bindestrich am Anfang oder Ende.',
+      },
       members: {
         businessRolesLabel: 'Geschäftsrollen:',
         businessRolesNone: 'Keine',
@@ -1909,6 +2465,30 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     settings: {
+      // GDPR 导出失败的本地化提示（F24），不显示服务端原文。
+      dataPage: {
+        downloadUnavailable: 'Ihr KI-Datenexport kann gerade nicht erstellt werden. Das Problem wurde protokolliert; bitte versuchen Sie es später erneut oder wenden Sie sich an den Support.',
+        // AI 工作台对话的导出 / 抹除结果（F23）。
+        workspaceExportUnavailable: 'Die Datei wurde heruntergeladen, enthält aber keine Unterhaltungen aus dem KI-Arbeitsbereich, da dieser nicht erreichbar war. Bitte versuchen Sie es später erneut oder wenden Sie sich an den Support.',
+        // 审计原文无法解密时的降级导出提示（review I2）。
+        auditContentUnavailable: 'Die Datei wurde mit allen Ihren KI-Aufrufdatensätzen heruntergeladen, der Originaltext von Prompts und Antworten konnte jedoch gerade nicht entschlüsselt werden und ist nicht enthalten. Das Problem wurde protokolliert; bitte versuchen Sie es später erneut oder wenden Sie sich an den Support.',
+        deleteCard: {
+          workspaceFailed: 'Die Inhalte Ihrer KI-Aufrufe wurden gelöscht, die Unterhaltungen im KI-Arbeitsbereich jedoch nicht. Bitte versuchen Sie es später erneut oder wenden Sie sich an den Support.',
+          workspaceHeld: '{count, plural, one {# Unterhaltung im KI-Arbeitsbereich unterliegt einer rechtlichen Aufbewahrungspflicht und wurde} other {# Unterhaltungen im KI-Arbeitsbereich unterliegen einer rechtlichen Aufbewahrungspflicht und wurden}} beibehalten. Alles andere wurde gelöscht. Bei Fragen wenden Sie sich an den Support.',
+          workspaceTenantHold: 'Ihre Unterhaltungen im KI-Arbeitsbereich unterliegen einer rechtlichen Aufbewahrungspflicht, daher wurde keine davon gelöscht. Bei Fragen wenden Sie sich an den Support.',
+        },
+      },
+      // AI 熔断器手动熔断控件（F18）。
+      aiCircuitBreakerPage: {
+        trip: 'Manuell auslösen',
+        tripHint: 'Stoppt neue KI-Aufrufe für die Tarife Free und Trial bis zum Ende des UTC-Tages oder bis zur Freigabe – auch für Nutzer, die sich danach registrieren oder in diese Tarife wechseln. Bezahlte Tarife sind nicht betroffen. Für Anbieterstörungen, die Kosten verursachen, bevor die automatischen Schwellen erreicht sind.',
+        tripConfirmTitle: 'Schutzschalter manuell auslösen?',
+        tripConfirmBody: 'Free- und Trial-Nutzer, auch wer sich heute noch registriert oder in diese Tarife wechselt, können bis zum Ende des UTC-Tages oder bis zur Freigabe keine neuen KI-Aufrufe starten. Diese Aktion wird protokolliert.',
+        tripConfirmAction: 'Auslösen',
+        tripSuccess: 'Schutzschalter ausgelöst.',
+        tripFailure: 'Auslösen fehlgeschlagen: {error}',
+        manualNote: 'Manuell von einem Administrator ausgelöst',
+      },
       // AI 行内补全开关（设置页）
       aiCompletion: {
         title: 'KI-Inline-Vervollständigung',
@@ -1957,6 +2537,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         alreadyEnabled: 'Authenticator ist bereits aktiviert. Deaktivieren Sie ihn zuerst, um ein neues Gerät einzurichten.',
       },
       trustedDevices: {
+        // 设备列表里标记发起请求的这台设备（F22）。
+        currentDevice: 'Dieses Gerät',
         title: 'Vertrauenswürdige Geräte',
         description: 'Geräte, für die Sie „Diesem Gerät vertrauen“ aktiviert haben. Sie überspringen den E-Mail-Code 30 Tage lang — entfernen Sie Geräte, die Sie nicht mehr kontrollieren.',
         empty: 'Keine vertrauenswürdigen Geräte. Bei jeder Anmeldung wird ein Code abgefragt.',
@@ -1978,6 +2560,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         errorPlanNoApiAccess: 'Der Tarif des Team-Owners enthält keinen API-Zugang.',
       },
       aiKeysPage: {
+        // 失效日期已过的 key（F13）：推理层会跳过，状态必须如实显示。
+        statusExpired: 'Abgelaufen',
         edit: 'Bearbeiten',
         editSave: 'Speichern',
         editCancel: 'Abbrechen',
@@ -2024,6 +2608,89 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: 'KI-Schlüssel-Einstellungen öffnen',
     },
     admin: {
+      // 许可证撤销：ID 不在已签发记录中的提示（Q2，不阻止撤销）。
+      licenseRevoke: {
+        newForm: {
+          checking: 'Wird geprüft…',
+          unknownLicenseWarning: 'Diese Lizenz ist nicht in den Aufzeichnungen ausgestellter Lizenzen (möglicherweise offline ausgestellt). Prüfen Sie die ID vor dem Widerruf.',
+        },
+      },
+      // 风险等级处理台的等级名称（F19：此前写死英文）。
+      riskTier: {
+        tierCard: 'Stufe {tier} ({label})',
+        tiers: {
+          trusted: 'vertrauenswürdig',
+          normal: 'normal',
+          elevated: 'erhöht',
+          high: 'hoch',
+          hard: 'streng',
+        },
+      },
+      // 管理员概览「最近管理事件」的事件名（F17）：键由 lib/admin-event-labels.ts 从 action id 推导。
+      pulse: {
+        audit: {
+          events: {
+            policyCreate: 'Policy erstellt',
+            policyUpdate: 'Policy aktualisiert',
+            policyDelete: 'Policy gelöscht',
+            policyExecute: 'Policy ausgeführt',
+            policyPublish: 'Policy veröffentlicht',
+            policyArchive: 'Policy archiviert',
+            policyShared: 'Policy geteilt',
+            policyShareReaffirmed: 'Policy-Freigabe bestätigt',
+            policySharePermissionChanged: 'Freigabeberechtigung geändert',
+            policyShareRevoked: 'Policy-Freigabe widerrufen',
+            teamCreate: 'Team erstellt',
+            teamMemberAdd: 'Teammitglied hinzugefügt',
+            teamMemberRemove: 'Teammitglied entfernt',
+            teamTransfer: 'Teambesitz übertragen',
+            subscriptionUpgrade: 'Abonnement hochgestuft',
+            subscriptionDowngrade: 'Abonnement herabgestuft',
+            subscriptionCancelled: 'Abonnement gekündigt',
+            subscriptionAutoDowngraded: 'Abonnement automatisch herabgestuft',
+            subscriptionTrialWillEnd: 'Testphase endet bald',
+            subscriptionSeatsReconciled: 'Abonnementplätze abgeglichen',
+            paymentSucceeded: 'Zahlung erfolgreich',
+            paymentFailed: 'Zahlung fehlgeschlagen',
+            paymentFailedTrialDowngrade: 'Zahlung fehlgeschlagen, Testphase herabgestuft',
+            paymentDisputeCreated: 'Zahlungsstreit eröffnet',
+            apiKeyCreate: 'API-Schlüssel erstellt',
+            apiKeyRevoke: 'API-Schlüssel widerrufen',
+            aiKeyCreate: 'KI-Schlüssel hinzugefügt',
+            aiKeyUpdate: 'KI-Schlüssel aktualisiert',
+            aiKeyResetQuota: 'KI-Schlüssel-Kontingent zurückgesetzt',
+            aiKeyReorder: 'KI-Schlüssel-Priorität geändert',
+            aiKeyDelete: 'KI-Schlüssel entfernt',
+            aiCircuitTrip: 'KI-Schutzschalter manuell ausgelöst',
+            aiCircuitRelease: 'KI-Schutzschalter zurückgesetzt',
+            userDelete: 'Konto gelöscht',
+            userRiskTierOverridden: 'Risikostufe manuell überschrieben',
+            userRiskTierRaised: 'Risikostufe erhöht',
+            userRiskTierDecayed: 'Risikostufe automatisch gesenkt',
+            userHardPurged: 'Konto endgültig gelöscht',
+            settingsUpdate: 'Einstellungen aktualisiert',
+            lexiconTermAdd: 'Begriff hinzugefügt',
+            lexiconTermModify: 'Begriff geändert',
+            lexiconTermDelete: 'Begriff gelöscht',
+            lexiconTermRestore: 'Begriff wiederhergestellt',
+            lexiconAvailabilityEnable: 'Sprache aktiviert',
+            lexiconAvailabilityDisable: 'Sprache deaktiviert',
+            byokAllowlistAdd: 'KI-Anbieter-Host zugelassen',
+            byokAllowlistRemove: 'KI-Anbieter-Host entfernt',
+            licenseRevoked: 'Lizenz widerrufen',
+            licenseRevocationUndone: 'Lizenzwiderruf zurückgenommen',
+            licenseRevocationRepublished: 'Widerrufsliste neu veröffentlicht',
+            ruleRegressionFreeze: 'Regressions-Baseline eingefroren',
+            ruleRegressionRun: 'Regressionsprüfung ausgeführt',
+            ruleRegressionApproveDrift: 'Regressionsabweichung genehmigt',
+            ruleRegressionRevokeApproval: 'Regressionsgenehmigung widerrufen',
+            ruleRegressionApproveTransition: 'Toolchain-Upgrade genehmigt',
+            ruleRegressionRevokeTransition: 'Toolchain-Upgrade-Genehmigung widerrufen',
+            ahaFirstPolicyPublished: 'Erste Policy veröffentlicht',
+            docsJump: 'Aus der Dokumentation zur App gewechselt',
+          },
+        },
+      },
       structuralAliasGrants: {
         title: 'Aliase für Strukturwörter',
         description: 'Erlauben Sie ausgewählten Nutzern Aliase für Module, Rule, If, Otherwise, Match, When und Return.',
@@ -2035,8 +2702,92 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
+    // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
+    // 细分出的展示类型，见 lib/security-event-display.ts。
+    security: {
+      eventTypes: {
+        SIGNATURE_INVALID: 'Ungültige Signatur',
+        NONCE_REUSED: 'Nonce-Wiederverwendung',
+        TIMESTAMP_EXPIRED: 'Zeitstempel abgelaufen',
+        HASH_MISMATCH: 'Hash-Abweichung',
+        UNAUTHORIZED_APPROVAL: 'Unberechtigte Freigabe',
+        SELF_APPROVAL_ATTEMPT: 'Versuch der Selbstfreigabe',
+        POLICY_EXECUTED: 'Policy ausgeführt',
+        POLICY_EXECUTION_FAILED: 'Policy-Ausführung fehlgeschlagen',
+        APPROVAL_SUBMITTED: 'Zur Freigabe eingereicht',
+        APPROVAL_DECISION: 'Freigabeentscheidung',
+        VERSION_CREATED: 'Version erstellt',
+        VERSION_NOT_FOUND: 'Version nicht gefunden',
+        DEPRECATED_VERSION_EXECUTED: 'Veraltete Version ausgeführt',
+        VERSION_SET_DEFAULT: 'Standardversion festgelegt',
+        VERSION_DEPRECATED: 'Version als veraltet markiert',
+        VERSION_ARCHIVED: 'Version archiviert',
+      },
+    },
+    // 页面 <title>（F19）：界面上没有现成文案可复用的页面名，见 lib/page-metadata.ts。
+    pageTitles: {
+      policyDetail: 'Policy-Details',
+      policyEdit: 'Policy bearbeiten',
+      policyExecute: 'Policy ausführen',
+      billingPlans: 'Tarife',
+    },
+    // 套餐文案（F20）：不写具体模型名（实际模型取决于平台默认 / 用户 BYOK）；语言列表由
+    // PLAN_FEATURE_MESSAGE_VALUES 按已配置 locales 注入。trialCardTitle 替换写死的 "Trial"。
+    billing: {
+      restApiCallsThisMonth: 'Cloud-REST-API-Aufrufe diesen Monat',
+      policyApiCallsThisMonth: 'Policy-Ausführungs-API-Aufrufe diesen Monat',
+      // 两项 API 计量各自独立计数的说明（review minor）。
+      apiMetersSeparate: 'Diese beiden API-Zähler werden getrennt gezählt und haben jeweils ein eigenes, gleich großes Monatskontingent; Aufrufe des einen verbrauchen nichts vom anderen.',
+      plans: {
+        features: {
+          aiDrafts20: '20 KI-Entwürfe / Monat',
+          aiDrafts500: '500 KI-Entwürfe / Sitz / Monat',
+          allLanguagePacks: 'Alle Sprachpakete ({languages})',
+        },
+      },
+      overview: {
+        trialCardTitle: 'Testphase',
+      },
+    },
+    // 公开定价页套餐要点（F20）：与 billing.plans.features 同口径——不写具体模型名，语言列表由
+    // locales 推导。数组在 deepMergeMessages 中整体替换，因此完整复制包内数组，仅改相关条目。
+    pricingPage: {
+      tiers: {
+        free: {
+          features: [
+            '1 Nutzer',
+            '5 veröffentlichte Regeln',
+            '1.000 Auswertungen / Monat',
+            '20 KI-Entwürfe / Monat',
+            `Alle Sprachpakete (${PRICING_LANGUAGES})`,
+            '7-Tage-Audit-Log',
+            '✗ Keine Prüfer-Rolle',
+            '✗ Nicht SOX-konform',
+          ],
+        },
+        pro: {
+          features: [
+            'Unbegrenzte Team-Mitglieder',
+            '100 veröffentlichte Regeln',
+            '50.000 Auswertungen / Monat',
+            '500 KI-Entwürfe / Sitz / Monat',
+            `Alle Sprachpakete (${PRICING_LANGUAGES})`,
+            '90-Tage-Audit-Log',
+            'Reviewer einladen — jeder Sitz ¥299 / Monat',
+            'Prüfer ≠ Autor (ab 2 Sitzen erzwungen)',
+            'SOX-konforme Funktionstrennung',
+            'Stripe-Abrechnung, monatlich oder jährlich',
+          ],
+        },
+      },
+    },
+    // 设置页助手说明（F21）：管理员开启「助手回答」时使用，见 lib/assistant/settings-hint.ts。
+    assistant: {
+      settingsHintAiAnswers: 'Ein seitenweites Hilfswerkzeug zum Finden von Dokumentation und Seiten. Antworten stützen sich nur auf die Dokumentation dieser Website und können KI-generiert sein; es wird nicht im Web gesucht.',
+    },
     common: { cancel: 'Abbrechen' },
     policies: {
+      trash: { confirmPermanentDeleteNamed: 'Richtlinie „{name}“ endgültig löschen? Diese Aktion kann nicht rückgängig gemacht werden.' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
       detail: { profile: 'Profil' },
       // 导出为 Cedar（ADR 0047 §6）。
@@ -2070,8 +2821,25 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       versions: {
         awaitingOthers: 'Wartet auf andere Prüfer',
         approvalCount: '{count} Freigabeeinträge',
+        selfApproveNote: 'Sie prüfen Ihre eigene Einreichung. Persönliche Richtlinien haben keine zweite prüfende Person, daher ist das erlaubt; die Entscheidung wird im Audit-Protokoll als Selbstfreigabe vermerkt.',
+        // SOX 套餐下个人策略无法由他人审批：引导移入团队（review I4）。
+        sox: { moveToTeamRequired: 'Ihr Tarif verlangt eine Freigabe durch eine andere Person als die Autorin bzw. den Autor, und eine persönliche Richtlinie können nur Sie prüfen. Verschieben Sie diese Richtlinie in ein Team, damit eine andere Inhaberin, ein anderer Inhaber oder ein Admin des Teams sie freigeben kann.' },
+        // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
+        noEligibleReviewer: 'Im Team gibt es keine andere Inhaberin, keinen anderen Inhaber und keinen Admin, die freigeben können – machen Sie in den Teameinstellungen ein Mitglied zum Admin',
       },
       logs: {
+        filtersTitle: 'Filter',
+        justNow: 'Gerade eben',
+        loadingLogs: 'Ausführungsprotokolle werden geladen…',
+        noLogsHint: 'Führen Sie die Richtlinie aus, um hier Protokolle zu sehen',
+        parity: {
+          tooltip: 'Runner-Replay-Parität (Schattenprüfung)',
+          match: 'Parität ✓',
+          divergent: 'Parität ✗',
+          unavailable: 'Parität —',
+          error: 'Paritätsfehler',
+          indeterminate: 'Parität ?',
+        },
         computed: 'Berechnet',
         require_approval: 'Freigabe nötig',
         escalate: 'Eskaliert',
@@ -2088,6 +2856,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         statusAiCompletionOff: 'KI-Vervollständigung: aus',
         statusAiCompletionLabel: 'KI-Inline-Vervollständigung',
         statusAiCompletionHint: 'Schlägt beim Tippen den nächsten Code vor; jede Pause verbraucht KI-Kontingent. Zum Umschalten klicken.',
+        // 决策预览没有可展示内容时的说明（编译中 / 编译通过但无模块摘要等）
+        decisionEmpty: 'Noch nichts in der Vorschau. Hier erscheinen Kompilierfehler und Warnungen sowie – sobald die Policy kompiliert – Modul, Funktionen und Typen. Schreibe eine Policy, die mit einer Module-Deklaration beginnt, dann erscheint das Ergebnis hier.',
+        // 手机宽度下编辑器降级为只读视图时的提示
+        mobileReadOnlyNotice: 'Auf kleinen Bildschirmen nur lesbar. Der Policy-Editor braucht einen breiteren Bildschirm (mindestens 768 px): Öffne diese Seite auf einem Tablet oder Desktop, um zu bearbeiten und zu speichern.',
         aliases: {
           title: 'Keyword-Aliase',
           hint: 'Mehrwort-Phrasen kommagetrennt für Policy-Keywords hinzufügen.',
@@ -2413,6 +3185,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     docs: {
       sidebar: {
+        // 入门：创建 API 密钥（助手检索的常见问题）
+        gettingStarted: { apiKeys: 'API कुंजी बनाएँ' },
         guides: {
           title: 'Guides',
           creditPilot: 'Credit pilot (Article 14)',
@@ -2487,7 +3261,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       toggleAriaLabel: 'इस टीम के लिए {language} टॉगल करें',
       saveFailed: 'अपडेट नहीं हो सका — कृपया पुनः प्रयास करें',
     },
-    dashboardNav: { reports: 'साक्ष्य', approvals: 'अनुमोदन', aiWorkspace: 'एआई कार्यक्षेत्र', commandPalette: { aiWorkspace: 'एआई कार्यक्षेत्र खोलें' } },
+    dashboardNav: { reports: 'साक्ष्य', approvals: 'अनुमोदन', aiWorkspace: 'AI कार्यक्षेत्र', commandPalette: { aiWorkspace: 'AI कार्यक्षेत्र खोलें' } },
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
     notifications: {
       guardApprovalRequested: 'अनुमोदन आवश्यक: {policyName}',
@@ -2497,6 +3271,21 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 审批收件箱（ADR 0042 §5.2）。
     approvals: {
+      guardTitle: 'कार्रवाई अनुमोदन',
+      versions: {
+        title: 'नीति संस्करण अनुमोदन',
+        subtitle: 'आपकी नीतियों और जिन टीमों के आप owner/admin हैं उनकी नीतियों के वे संस्करण जो अनुमोदन के लिए जमा किए गए हैं। टीम नीतियों को लेखक के अलावा किसी टीम owner/admin का अनुमोदन चाहिए; व्यक्तिगत नीतियों में आप अपना जमा किया गया संस्करण स्वयं अनुमोदित कर सकते हैं।',
+        empty: 'कोई नीति संस्करण अनुमोदन की प्रतीक्षा में नहीं है।',
+        thVersion: 'संस्करण',
+        thSubmitter: 'जमाकर्ता',
+        thSubmitted: 'जमा करने का समय',
+        review: 'समीक्षा करें',
+        view: 'देखें',
+        awaitingOthers: 'किसी अन्य अनुमोदक की प्रतीक्षा',
+        unknownUser: 'अज्ञात',
+        // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
+        noEligibleReviewer: 'टीम में अनुमोदन के लिए कोई अन्य स्वामी या व्यवस्थापक नहीं है — टीम सेटिंग्स में किसी सदस्य को व्यवस्थापक बनाएँ',
+      },
       title: 'अनुमोदन',
       subtitle: 'आपके सभी वर्कस्पेस में वे कार्रवाइयाँ जिन पर मानवीय निर्णय चाहिए। आप केवल वहीं निर्णय ले सकते हैं जहाँ आपकी सत्यापित व्यावसायिक भूमिका मेल खाती है।',
       status: {
@@ -2564,6 +3353,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 见 en 段注释：入口原文承诺 GDPR/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
+      stats: { restApiCalls: 'Cloud REST API कॉल' },
+      aha: {
+        achievedTitle: '🎉 पहली नीति प्रकाशित',
+        hoursAfterSignup: 'साइन अप के {hours} घंटे बाद',
+        achieved: 'प्राप्त किया',
+        insideWindow: '✨ {hours} घंटे की AHA अवधि के भीतर — शानदार!',
+        publishFirstTitle: 'अपनी पहली नीति प्रकाशित करें',
+        publishFirstBody: 'अपना पहला नियम शुरू करने के लिए तैयार हैं? इसमें बस कुछ मिनट लगते हैं।',
+        createPolicy: 'नीति बनाएँ →',
+        challengeTitle: 'AHA क्षण चुनौती',
+        challengeBody: 'साइन अप के {hours} घंटे के भीतर अपनी पहली नीति प्रकाशित करें',
+        hoursRemaining: '⏰ {hours} घंटे शेष',
+      },
       quickActions: {
         generateReport: 'साक्ष्य निर्यात करें',
         generateReportDesc: 'ऑडिट हैश सहित निर्णय रिकॉर्ड',
@@ -2639,6 +3441,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
+      createTeam: {
+        nameInvalid: 'टीम का नाम 2–50 अक्षरों का होना चाहिए।',
+        slugInvalid: 'टीम URL 2–50 अक्षरों का होना चाहिए: केवल छोटे अक्षर, अंक और एकल हाइफ़न, और हाइफ़न से शुरू या समाप्त नहीं होना चाहिए।',
+      },
       members: {
         businessRolesLabel: 'व्यावसायिक भूमिकाएँ:',
         businessRolesNone: 'कोई नहीं',
@@ -2652,6 +3459,30 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     settings: {
+      // GDPR 导出失败的本地化提示（F24），不显示服务端原文。
+      dataPage: {
+        downloadUnavailable: 'अभी आपका AI डेटा निर्यात तैयार नहीं किया जा सका। समस्या दर्ज कर ली गई है; कृपया बाद में पुनः प्रयास करें या सहायता से संपर्क करें।',
+        // AI 工作台对话的导出 / 抹除结果（F23）。
+        workspaceExportUnavailable: 'फ़ाइल डाउनलोड हो गई, लेकिन AI कार्यक्षेत्र से संपर्क नहीं हो सका, इसलिए इसमें आपकी AI कार्यक्षेत्र बातचीत शामिल नहीं है। कृपया बाद में पुनः प्रयास करें या सहायता से संपर्क करें।',
+        // 审计原文无法解密时的降级导出提示（review I2）。
+        auditContentUnavailable: 'फ़ाइल आपके सभी AI कॉल रिकॉर्ड के साथ डाउनलोड हो गई, लेकिन प्रॉम्प्ट और उत्तर का मूल पाठ अभी डिक्रिप्ट नहीं किया जा सका, इसलिए वह शामिल नहीं है। समस्या दर्ज कर ली गई है; कृपया बाद में पुनः प्रयास करें या सहायता से संपर्क करें।',
+        deleteCard: {
+          workspaceFailed: 'आपकी AI कॉल की सामग्री हटा दी गई, लेकिन आपकी AI कार्यक्षेत्र बातचीत हटाई नहीं जा सकी। कृपया बाद में पुनः प्रयास करें या सहायता से संपर्क करें।',
+          workspaceHeld: '{count} AI कार्यक्षेत्र बातचीत कानूनी रोक (legal hold) के अधीन हैं और रखी गई हैं; बाकी सब हटा दिया गया। प्रश्न हों तो सहायता से संपर्क करें।',
+          workspaceTenantHold: 'आपकी AI कार्यक्षेत्र बातचीत कानूनी रोक (legal hold) के अधीन हैं, इसलिए उनमें से कोई भी नहीं हटाई गई। प्रश्न हों तो सहायता से संपर्क करें।',
+        },
+      },
+      // AI 熔断器手动熔断控件（F18）。
+      aiCircuitBreakerPage: {
+        trip: 'मैन्युअल रूप से सर्किट ट्रिप करें',
+        tripHint: 'Free और Trial प्लान के नए AI कॉल UTC दिन के अंत तक या रिलीज़ करने तक रोक देता है, उन उपयोगकर्ताओं के लिए भी जो इसके बाद साइन अप करते हैं या इन प्लान में आते हैं। सशुल्क प्लान प्रभावित नहीं होते। तब उपयोग करें जब प्रदाता की खराबी स्वचालित सीमा तक पहुँचने से पहले लागत बढ़ा रही हो।',
+        tripConfirmTitle: 'सर्किट मैन्युअल रूप से ट्रिप करें?',
+        tripConfirmBody: 'Free और Trial उपयोगकर्ता (आज बाद में साइन अप करने या इन प्लान में आने वाले भी) UTC दिन के अंत तक या सर्किट रिलीज़ होने तक नए AI कॉल नहीं कर पाएँगे। यह क्रिया ऑडिट लॉग में दर्ज होती है।',
+        tripConfirmAction: 'ट्रिप करें',
+        tripSuccess: 'सर्किट ट्रिप किया गया।',
+        tripFailure: 'सर्किट ट्रिप नहीं हो सका: {error}',
+        manualNote: 'व्यवस्थापक द्वारा मैन्युअल रूप से ट्रिप किया गया',
+      },
       // AI 行内补全开关（设置页）
       aiCompletion: {
         title: 'AI इनलाइन पूर्णता',
@@ -2700,6 +3531,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         alreadyEnabled: 'प्रमाणक पहले से सक्षम है। नया डिवाइस सेट करने के लिए पहले इसे बंद करें।',
       },
       trustedDevices: {
+        // 设备列表里标记发起请求的这台设备（F22）。
+        currentDevice: 'यह डिवाइस',
         title: 'विश्वसनीय डिवाइस',
         description: 'वे डिवाइस जिन पर आपने “इस डिवाइस को याद रखें” चुना था। वे 30 दिनों तक ईमेल कोड छोड़ देते हैं — जिन पर अब आपका नियंत्रण नहीं, उन्हें हटाएँ।',
         empty: 'कोई विश्वसनीय डिवाइस नहीं। हर साइन-इन पर कोड माँगा जाएगा।',
@@ -2721,6 +3554,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         errorPlanNoApiAccess: 'टीम owner के प्लान में API एक्सेस शामिल नहीं है।',
       },
       aiKeysPage: {
+        // 失效日期已过的 key（F13）：推理层会跳过，状态必须如实显示。
+        statusExpired: 'समाप्त',
         edit: 'संपादित करें',
         editSave: 'सहेजें',
         editCancel: 'रद्द करें',
@@ -2767,6 +3602,89 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: 'AI कुंजी सेटिंग्स खोलें',
     },
     admin: {
+      // 许可证撤销：ID 不在已签发记录中的提示（Q2，不阻止撤销）。
+      licenseRevoke: {
+        newForm: {
+          checking: 'जाँच हो रही है…',
+          unknownLicenseWarning: 'यह लाइसेंस जारी किए गए लाइसेंस रिकॉर्ड में नहीं है (संभवतः ऑफ़लाइन जारी किया गया)। रद्द करने से पहले ID की जाँच करें।',
+        },
+      },
+      // 风险等级处理台的等级名称（F19：此前写死英文）。
+      riskTier: {
+        tierCard: 'स्तर {tier} ({label})',
+        tiers: {
+          trusted: 'विश्वसनीय',
+          normal: 'सामान्य',
+          elevated: 'बढ़ा हुआ',
+          high: 'उच्च',
+          hard: 'कठोर',
+        },
+      },
+      // 管理员概览「最近管理事件」的事件名（F17）：键由 lib/admin-event-labels.ts 从 action id 推导。
+      pulse: {
+        audit: {
+          events: {
+            policyCreate: 'नीति बनाई गई',
+            policyUpdate: 'नीति अपडेट की गई',
+            policyDelete: 'नीति हटाई गई',
+            policyExecute: 'नीति निष्पादित',
+            policyPublish: 'नीति प्रकाशित',
+            policyArchive: 'नीति संग्रहीत',
+            policyShared: 'नीति साझा की गई',
+            policyShareReaffirmed: 'नीति साझाकरण की पुष्टि',
+            policySharePermissionChanged: 'साझाकरण अनुमति बदली गई',
+            policyShareRevoked: 'नीति साझाकरण रद्द',
+            teamCreate: 'टीम बनाई गई',
+            teamMemberAdd: 'टीम सदस्य जोड़ा गया',
+            teamMemberRemove: 'टीम सदस्य हटाया गया',
+            teamTransfer: 'टीम स्वामित्व स्थानांतरित',
+            subscriptionUpgrade: 'सदस्यता अपग्रेड',
+            subscriptionDowngrade: 'सदस्यता डाउनग्रेड',
+            subscriptionCancelled: 'सदस्यता रद्द',
+            subscriptionAutoDowngraded: 'सदस्यता स्वतः डाउनग्रेड',
+            subscriptionTrialWillEnd: 'परीक्षण जल्द समाप्त होगा',
+            subscriptionSeatsReconciled: 'सदस्यता सीटों का मिलान',
+            paymentSucceeded: 'भुगतान सफल',
+            paymentFailed: 'भुगतान विफल',
+            paymentFailedTrialDowngrade: 'भुगतान विफल, परीक्षण डाउनग्रेड',
+            paymentDisputeCreated: 'भुगतान विवाद खोला गया',
+            apiKeyCreate: 'API कुंजी बनाई गई',
+            apiKeyRevoke: 'API कुंजी रद्द',
+            aiKeyCreate: 'AI कुंजी जोड़ी गई',
+            aiKeyUpdate: 'AI कुंजी अपडेट की गई',
+            aiKeyResetQuota: 'AI कुंजी कोटा रीसेट',
+            aiKeyReorder: 'AI कुंजी प्राथमिकता बदली गई',
+            aiKeyDelete: 'AI कुंजी हटाई गई',
+            aiCircuitTrip: 'AI सर्किट ब्रेकर मैन्युअल रूप से ट्रिप',
+            aiCircuitRelease: 'AI सर्किट ब्रेकर रिलीज़',
+            userDelete: 'खाता हटाया गया',
+            userRiskTierOverridden: 'जोखिम स्तर ओवरराइड',
+            userRiskTierRaised: 'जोखिम स्तर बढ़ाया गया',
+            userRiskTierDecayed: 'जोखिम स्तर स्वतः घटा',
+            userHardPurged: 'खाता स्थायी रूप से हटाया गया',
+            settingsUpdate: 'सेटिंग्स अपडेट',
+            lexiconTermAdd: 'शब्द जोड़ा गया',
+            lexiconTermModify: 'शब्द बदला गया',
+            lexiconTermDelete: 'शब्द हटाया गया',
+            lexiconTermRestore: 'शब्द पुनर्स्थापित',
+            lexiconAvailabilityEnable: 'भाषा सक्षम',
+            lexiconAvailabilityDisable: 'भाषा अक्षम',
+            byokAllowlistAdd: 'AI प्रदाता होस्ट अनुमत',
+            byokAllowlistRemove: 'AI प्रदाता होस्ट हटाया गया',
+            licenseRevoked: 'लाइसेंस रद्द',
+            licenseRevocationUndone: 'लाइसेंस रद्दीकरण वापस लिया गया',
+            licenseRevocationRepublished: 'रद्दीकरण सूची पुनः प्रकाशित',
+            ruleRegressionFreeze: 'रिग्रेशन बेसलाइन फ़्रीज़',
+            ruleRegressionRun: 'रिग्रेशन जाँच चलाई गई',
+            ruleRegressionApproveDrift: 'रिग्रेशन विचलन स्वीकृत',
+            ruleRegressionRevokeApproval: 'रिग्रेशन अनुमोदन रद्द',
+            ruleRegressionApproveTransition: 'टूलचेन अपग्रेड स्वीकृत',
+            ruleRegressionRevokeTransition: 'टूलचेन अपग्रेड अनुमोदन रद्द',
+            ahaFirstPolicyPublished: 'पहली नीति प्रकाशित',
+            docsJump: 'दस्तावेज़ से ऐप खोला गया',
+          },
+        },
+      },
       structuralAliasGrants: {
         title: 'संरचना कीवर्ड उपनाम',
         description: 'चयनित उपयोगकर्ताओं को Module, Rule, If, Otherwise, Match, When और Return के उपनाम की अनुमति दें।',
@@ -2778,19 +3696,103 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
+    // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
+    // 细分出的展示类型，见 lib/security-event-display.ts。
+    security: {
+      eventTypes: {
+        SIGNATURE_INVALID: 'अमान्य हस्ताक्षर',
+        NONCE_REUSED: 'Nonce पुनः उपयोग',
+        TIMESTAMP_EXPIRED: 'टाइमस्टैम्प समाप्त',
+        HASH_MISMATCH: 'हैश मेल नहीं खाता',
+        UNAUTHORIZED_APPROVAL: 'अनधिकृत अनुमोदन',
+        SELF_APPROVAL_ATTEMPT: 'स्व-अनुमोदन का प्रयास',
+        POLICY_EXECUTED: 'नीति निष्पादित',
+        POLICY_EXECUTION_FAILED: 'नीति निष्पादन विफल',
+        APPROVAL_SUBMITTED: 'अनुमोदन के लिए जमा किया गया',
+        APPROVAL_DECISION: 'अनुमोदन निर्णय',
+        VERSION_CREATED: 'संस्करण बनाया गया',
+        VERSION_NOT_FOUND: 'संस्करण नहीं मिला',
+        DEPRECATED_VERSION_EXECUTED: 'अप्रचलित संस्करण निष्पादित',
+        VERSION_SET_DEFAULT: 'डिफ़ॉल्ट संस्करण सेट किया गया',
+        VERSION_DEPRECATED: 'संस्करण अप्रचलित किया गया',
+        VERSION_ARCHIVED: 'संस्करण संग्रहीत',
+      },
+    },
+    // 页面 <title>（F19）：界面上没有现成文案可复用的页面名，见 lib/page-metadata.ts。
+    pageTitles: {
+      policyDetail: 'नीति विवरण',
+      policyEdit: 'नीति संपादित करें',
+      policyExecute: 'नीति चलाएँ',
+      billingPlans: 'प्लान',
+    },
+    // 套餐文案（F20）：不写具体模型名（实际模型取决于平台默认 / 用户 BYOK）；语言列表由
+    // PLAN_FEATURE_MESSAGE_VALUES 按已配置 locales 注入。trialCardTitle 替换写死的 "Trial"。
+    billing: {
+      restApiCallsThisMonth: 'इस माह Cloud REST API कॉल',
+      policyApiCallsThisMonth: 'इस माह नीति निष्पादन API कॉल',
+      // 两项 API 计量各自独立计数的说明（review minor）。
+      apiMetersSeparate: 'ये दोनों API मीटर अलग-अलग गिने जाते हैं और प्रत्येक का अपना समान आकार का मासिक कोटा है; एक के कॉल दूसरे का कोटा नहीं घटाते।',
+      plans: {
+        features: {
+          aiDrafts20: '20 AI ड्राफ़्ट / माह',
+          aiDrafts500: '500 AI ड्राफ़्ट / सीट / माह',
+          allLanguagePacks: 'सभी भाषा पैक ({languages})',
+        },
+      },
+      overview: {
+        trialCardTitle: 'परीक्षण',
+      },
+    },
+    // 公开定价页套餐要点（F20）：与 billing.plans.features 同口径——不写具体模型名，语言列表由
+    // locales 推导。数组在 deepMergeMessages 中整体替换，因此完整复制包内数组，仅改相关条目。
+    pricingPage: {
+      tiers: {
+        free: {
+          features: [
+            '1 उपयोगकर्ता',
+            '5 प्रकाशित नियम',
+            '1,000 मूल्यांकन / माह',
+            '20 AI ड्राफ़्ट / माह',
+            `सभी भाषा पैक (${PRICING_LANGUAGES})`,
+            '7-दिवसीय ऑडिट लॉग',
+            '✗ कोई समीक्षक भूमिका नहीं',
+            '✗ SOX-अनुपालित नहीं',
+          ],
+        },
+        pro: {
+          features: [
+            'असीमित टीम सदस्य',
+            '100 प्रकाशित नियम',
+            '50,000 मूल्यांकन / माह',
+            '500 AI ड्राफ़्ट / सीट / माह',
+            `सभी भाषा पैक (${PRICING_LANGUAGES})`,
+            '90-दिवसीय ऑडिट लॉग',
+            'समीक्षक आमंत्रित करें — प्रत्येक सीट ¥299 / माह',
+            'समीक्षक ≠ लेखक (≥ 2 सीटों के लिए लागू)',
+            'SOX कर्तव्य पृथक्करण को पूरा करता है',
+            'Stripe बिलिंग, मासिक या वार्षिक',
+          ],
+        },
+      },
+    },
+    // 设置页助手说明（F21）：管理员开启「助手回答」时使用，见 lib/assistant/settings-hint.ts。
+    assistant: {
+      settingsHintAiAnswers: 'दस्तावेज़ और पेज खोजने के लिए साइट-व्यापी सहायक। उत्तर केवल इस साइट के दस्तावेज़ों पर आधारित होते हैं और AI द्वारा जनरेट किए जा सकते हैं; यह वेब पर खोज नहीं करता।',
+    },
     common: { cancel: 'रद्द करें' },
     policies: {
+      trash: { confirmPermanentDeleteNamed: 'नीति "{name}" को स्थायी रूप से हटाएँ? यह क्रिया पूर्ववत नहीं की जा सकती।' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
       detail: { profile: 'Profile' },
       // 导出为 Cedar（ADR 0047 §6）。
       cedarExport: {
-        button: 'Export to Cedar',
-        exporting: 'Exporting…',
-        verified: 'Verified against Cedar on {count} probes',
-        notExportable: 'This policy cannot be exported to Cedar',
-        failed: 'Export failed',
-        noExecutableVersion: 'Approve a version before exporting to Cedar',
-        schemaNote: 'The exported schema declares only the actions and the context keys (with their types) this rule mentions. A gateway that validates requests against the schema rejects anything outside it — stricter than Aster, never looser.',
+        button: 'Cedar में निर्यात करें',
+        exporting: 'निर्यात हो रहा है…',
+        verified: '{count} जाँचों पर Cedar से सत्यापित',
+        notExportable: 'इस नीति को Cedar में निर्यात नहीं किया जा सकता',
+        failed: 'निर्यात विफल रहा',
+        noExecutableVersion: 'Cedar में निर्यात करने से पहले किसी संस्करण को स्वीकृत करें',
+        schemaNote: 'निर्यात किया गया स्कीमा केवल वे actions और context कुंजियाँ (उनके प्रकारों सहित) घोषित करता है जिनका यह नियम उल्लेख करता है। जो गेटवे अनुरोधों को स्कीमा से सत्यापित करता है, वह इसके बाहर की हर चीज़ अस्वीकार करता है — Aster से अधिक सख़्त, कभी ढीला नहीं।',
       },
       execute: {
         computed: 'परिकलित',
@@ -2813,8 +3815,25 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       versions: {
         awaitingOthers: 'किसी अन्य अनुमोदक की प्रतीक्षा',
         approvalCount: '{count} अनुमोदन रिकॉर्ड',
+        selfApproveNote: 'आप अपना ही जमा किया गया संस्करण जाँच रहे हैं। व्यक्तिगत नीतियों में कोई दूसरा समीक्षक नहीं होता, इसलिए इसकी अनुमति है; यह निर्णय ऑडिट लॉग में स्व-अनुमोदन के रूप में दर्ज होगा।',
+        // SOX 套餐下个人策略无法由他人审批：引导移入团队（review I4）。
+        sox: { moveToTeamRequired: 'आपकी योजना में लेखक के अलावा किसी अन्य व्यक्ति का अनुमोदन आवश्यक है, और व्यक्तिगत नीति की समीक्षा केवल आप कर सकते हैं। इस नीति को किसी टीम में ले जाएँ ताकि टीम का कोई अन्य स्वामी या व्यवस्थापक इसे अनुमोदित कर सके।' },
+        // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
+        noEligibleReviewer: 'टीम में अनुमोदन के लिए कोई अन्य स्वामी या व्यवस्थापक नहीं है — टीम सेटिंग्स में किसी सदस्य को व्यवस्थापक बनाएँ',
       },
       logs: {
+        filtersTitle: 'फ़िल्टर',
+        justNow: 'अभी-अभी',
+        loadingLogs: 'निष्पादन लॉग लोड हो रहे हैं…',
+        noLogsHint: 'यहाँ लॉग देखने के लिए नीति निष्पादित करें',
+        parity: {
+          tooltip: 'रनर रीप्ले समानता (छाया जाँच)',
+          match: 'समानता ✓',
+          divergent: 'समानता ✗',
+          unavailable: 'समानता —',
+          error: 'समानता त्रुटि',
+          indeterminate: 'समानता ?',
+        },
         computed: 'परिकलित',
         require_approval: 'अनुमोदन आवश्यक',
         escalate: 'एस्केलेट किया गया',
@@ -2831,6 +3850,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         statusAiCompletionOff: 'AI पूर्णता: बंद',
         statusAiCompletionLabel: 'AI इनलाइन पूर्णता',
         statusAiCompletionHint: 'टाइप करते समय अगला कोड सुझाता है; हर विराम पर AI कोटा खर्च होता है। बदलने के लिए क्लिक करें।',
+        // 决策预览没有可展示内容时的说明（编译中 / 编译通过但无模块摘要等）
+        decisionEmpty: 'अभी पूर्वावलोकन के लिए कुछ नहीं है। यहाँ संकलन त्रुटियाँ और चेतावनियाँ दिखती हैं, और Policy संकलित होने के बाद उसका मॉड्यूल, फ़ंक्शन और प्रकार। Module घोषणा से शुरू होने वाली Policy लिखें, परिणाम यहाँ दिखेगा।',
+        // 手机宽度下编辑器降级为只读视图时的提示
+        mobileReadOnlyNotice: 'छोटी स्क्रीन पर केवल देखा जा सकता है। Policy संपादक के लिए चौड़ी स्क्रीन (कम से कम 768 px) चाहिए: संपादित और सहेजने के लिए यह पेज टैबलेट या डेस्कटॉप पर खोलें।',
         aliases: {
           title: 'कीवर्ड उपनाम',
           hint: 'Policy कीवर्ड के लिए कॉमा से अलग बहु-शब्द वाक्यांश जोड़ें।',

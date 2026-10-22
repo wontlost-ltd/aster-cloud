@@ -7,36 +7,43 @@ import { useTranslations } from 'next-intl';
 import { Container, PageHeader, Input, Label } from '@/components/ui';
 import { CLIENT_CAPABILITIES } from '@/hooks/use-deployment-mode';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
+import {
+  generateSlug,
+  randomSlugSuffix,
+  validateSlug,
+  validateTeamName,
+} from '@/lib/validation';
 
 export default function NewTeamPage() {
   const t = useTranslations('teams');
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  // 字段级校验错误：表单用 noValidate 关掉浏览器原生气泡（只有英文/系统语言），
+  // 提交时按与服务端同一套规则（lib/validation）校验并显示本地化文案。
+  const [nameError, setNameError] = useState('');
+  const [slugError, setSlugError] = useState('');
+  // 名称里没有可用 ASCII 时 slug 的兜底后缀：整个表单生命周期内固定，避免每次键入都变。
+  const [slugSuffix] = useState(randomSlugSuffix);
   const [formData, setFormData] = useState({
     name: '',
     slug: '',
   });
 
-  // 自动生成 slug
-  const generateSlug = (name: string) => {
-    return name
-      .toLowerCase()
-      .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
-      .replace(/^-|-$/g, '')
-      .substring(0, 50);
-  };
-
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const name = e.target.value;
+    setNameError('');
+    setSlugError('');
     setFormData({
       name,
-      slug: generateSlug(name),
+      // 名称清空时 slug 也清空，而不是留下一个与名称无关的兜底值。
+      slug: name.trim() ? generateSlug(name, slugSuffix) : '',
     });
   };
 
   const handleSlugChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const slug = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+    setSlugError('');
     setFormData((prev) => ({
       ...prev,
       slug,
@@ -45,6 +52,12 @@ export default function NewTeamPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const nameOk = validateTeamName(formData.name).valid;
+    const slugOk = validateSlug(formData.slug).valid;
+    setNameError(nameOk ? '' : t('createTeam.nameInvalid'));
+    setSlugError(slugOk ? '' : t('createTeam.slugInvalid'));
+    if (!nameOk || !slugOk) return;
+
     setIsLoading(true);
     setError('');
 
@@ -90,7 +103,7 @@ export default function NewTeamPage() {
       />
 
       <div className="rounded-lg border border-border bg-bg shadow-sm">
-        <form onSubmit={handleSubmit} className="px-6 py-4 space-y-6">
+        <form onSubmit={handleSubmit} noValidate className="px-6 py-4 space-y-6">
           {error && (
             <div className="rounded-md bg-red-50 p-4">
               <p className="text-sm text-red-700">{error}</p>
@@ -112,7 +125,14 @@ export default function NewTeamPage() {
               value={formData.name}
               onChange={handleNameChange}
               placeholder={t('createTeam.namePlaceholder')}
+              aria-invalid={nameError ? true : undefined}
+              aria-describedby={nameError ? 'name-error' : undefined}
             />
+            {nameError && (
+              <p id="name-error" role="alert" className="text-xs text-red-700 dark:text-red-300">
+                {nameError}
+              </p>
+            )}
             <p className="text-xs text-fg-muted">{t('createTeam.nameHint')}</p>
           </div>
 
@@ -122,14 +142,6 @@ export default function NewTeamPage() {
               <span className="inline-flex items-center rounded-l-md border border-r-0 border-border bg-bg-subtle px-3 text-sm text-fg-muted">
                 /teams/
               </span>
-              {/*
-                Pattern needs the dash escaped so the regex parses under
-                the unicode-sets ('v') flag — modern Chrome rejects the
-                bare `[a-z0-9-]+` with "Invalid character class" because
-                the `-` between two literal ranges is reserved for class
-                subtraction in `v`-mode. `\\-` (escaped) or moving the
-                dash to start/end resolves it. We escape; reads identical.
-              */}
               <Input
                 type="text"
                 id="slug"
@@ -137,13 +149,19 @@ export default function NewTeamPage() {
                 required
                 minLength={2}
                 maxLength={50}
-                pattern="[a-z0-9\-]+"
                 value={formData.slug}
                 onChange={handleSlugChange}
                 className="rounded-l-none"
                 placeholder={t('createTeam.slugPlaceholder')}
+                aria-invalid={slugError ? true : undefined}
+                aria-describedby={slugError ? 'slug-error' : undefined}
               />
             </div>
+            {slugError && (
+              <p id="slug-error" role="alert" className="text-xs text-red-700 dark:text-red-300">
+                {slugError}
+              </p>
+            )}
             <p className="text-xs text-fg-muted">{t('createTeam.slugHint')}</p>
           </div>
 

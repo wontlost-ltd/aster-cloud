@@ -9,6 +9,7 @@ const prismaMocks = vi.hoisted(() => ({
   usersFindFirst: vi.fn(),
   teamsFindFirst: vi.fn(),
   policyVersionsFindFirst: vi.fn(),
+  policiesFindFirst: vi.fn(),
   selectChain: vi.fn(),
 }));
 
@@ -20,7 +21,11 @@ vi.mock('@/services/policy/version-manager', async () => {
   const actual = await vi.importActual<typeof import('@/services/policy/version-manager')>(
     '@/services/policy/version-manager',
   );
-  return { approveVersion: vi.fn(), PolicyAccessDeniedError: actual.PolicyAccessDeniedError };
+  return {
+    approveVersion: vi.fn(),
+    PolicyAccessDeniedError: actual.PolicyAccessDeniedError,
+    SegregationOfDutiesError: actual.SegregationOfDutiesError,
+  };
 });
 vi.mock('@/lib/prisma', () => ({
   db: {
@@ -28,12 +33,14 @@ vi.mock('@/lib/prisma', () => ({
       users: { findFirst: prismaMocks.usersFindFirst },
       teams: { findFirst: prismaMocks.teamsFindFirst },
       policyVersions: { findFirst: prismaMocks.policyVersionsFindFirst },
+      policies: { findFirst: prismaMocks.policiesFindFirst },
     },
     select: prismaMocks.selectChain,
   },
   users: {},
   teams: {},
   teamMembers: {},
+  policies: {},
   policyVersions: {},
 }));
 
@@ -89,6 +96,9 @@ describe('SOX guard — adversarial inputs', () => {
     prismaMocks.usersFindFirst.mockReset();
     prismaMocks.teamsFindFirst.mockReset();
     prismaMocks.policyVersionsFindFirst.mockReset();
+    // 默认团队策略：既有场景描述的是团队策略的 seats 分支；个人策略另有用例（review I4）
+    prismaMocks.policiesFindFirst.mockReset();
+    prismaMocks.policiesFindFirst.mockResolvedValue({ teamId: 't1' });
     prismaMocks.selectChain.mockReset();
     mockApprove.mockReset();
     mockAuth.mockReset();

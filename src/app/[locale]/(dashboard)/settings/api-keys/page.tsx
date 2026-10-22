@@ -6,6 +6,9 @@ import { listApiKeys } from '@/lib/api-keys';
 import { db, teamMembers } from '@/lib/prisma';
 import { ApiKeysContent } from './api-keys-content';
 import { toTeamOptions } from './team-options';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('settings.apiKeys', 'title');
 
 export default async function ApiKeysPage() {
   const session = await getSession();

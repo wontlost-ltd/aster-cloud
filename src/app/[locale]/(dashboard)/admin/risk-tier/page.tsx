@@ -8,6 +8,9 @@ import { notFound } from 'next/navigation';
 import { isAdminFromSession } from '@/lib/admin-auth';
 import { CAN_RISKTIER } from '@/lib/deployment-mode';
 import { RiskTierAdminContent } from './risk-tier-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('admin.nav', 'riskTier');
 
 type Props = {
   params: Promise<{ locale: string }>;

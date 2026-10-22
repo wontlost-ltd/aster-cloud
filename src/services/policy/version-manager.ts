@@ -10,7 +10,7 @@
  * - ARCHIVED: 已归档，不可执行
  */
 
-import { db, policies, policyVersions, policyApprovals } from '@/lib/prisma';
+import { db, policies, policyVersions, policyApprovals, teamMembers } from '@/lib/prisma';
 import { eq, and, inArray, isNull, desc, sql } from 'drizzle-orm';
 import type { InferSelectModel } from 'drizzle-orm';
 import { computeChainedHash, computeSourceHash } from '../security/policy-security';
@@ -27,6 +27,13 @@ import {
   type ReservedSets,
 } from '@/lib/policy-alias';
 import { declaresProfile } from '@/lib/policy-profile-declaration';
+import { getTeamMemberRole } from '@/lib/team-permissions';
+import {
+  canReviewPolicyVersions,
+  decideVersionApproval,
+  TEAM_REVIEWER_ROLES,
+  type VersionReviewContext,
+} from './version-approval-rules';
 
 type PolicyVersion = InferSelectModel<typeof policyVersions>;
 type PolicyVersionStatus = PolicyVersion['status'];
@@ -73,6 +80,56 @@ export async function assertPolicyOwnership(policyId: string, userId: string): P
   if (!owned) {
     throw new PolicyAccessDeniedError();
   }
+}
+
+/**
+ * 审批人是版本作者且该策略适用四眼原则（团队策略）。路由 catch 后返回
+ * 403 { error: 'segregation_of_duties' }，与 checkSoxGuard 的错误码一致。
+ */
+export class SegregationOfDutiesError extends Error {
+  constructor(message = '不能审批自己创建的版本（四眼原则）') {
+    super(message);
+    this.name = 'SegregationOfDutiesError';
+  }
+}
+
+/**
+ * 载入审阅判定所需的上下文：策略所有者、所属团队、审阅人在该团队的角色（复用 team-permissions）。
+ * 策略不存在或已软删返回 null。
+ */
+export async function loadVersionReviewContext(
+  policyId: string,
+  reviewerId: string,
+): Promise<VersionReviewContext | null> {
+  const policy = await db.query.policies.findFirst({
+    where: and(eq(policies.id, policyId), isNull(policies.deletedAt)),
+    columns: { userId: true, teamId: true },
+  });
+  if (!policy) return null;
+  const reviewerTeamRole = policy.teamId ? await getTeamMemberRole(reviewerId, policy.teamId) : null;
+  return { policyOwnerId: policy.userId, policyTeamId: policy.teamId, reviewerId, reviewerTeamRole };
+}
+
+/** 团队全部 owner/admin 的用户 id（判断团队策略是否还有合格审批人）；个人策略返回空数组。 */
+export async function loadTeamReviewerIds(teamId: string | null): Promise<string[]> {
+  if (!teamId) return [];
+  const rows = await db.query.teamMembers.findMany({
+    where: and(eq(teamMembers.teamId, teamId), inArray(teamMembers.role, [...TEAM_REVIEWER_ROLES])),
+    columns: { userId: true },
+  });
+  return rows.map((r) => r.userId);
+}
+
+/**
+ * 版本只读访问（版本列表、详情、源码）：策略所有者，或有权审阅的人（团队策略的团队 owner/admin）。
+ * 审批人必须能看到待审版本的源码与审批历史才能做决定。其余人一律按「策略不存在」处理。
+ */
+export async function assertVersionReadAccess(policyId: string, userId: string): Promise<VersionReviewContext> {
+  const ctx = await loadVersionReviewContext(policyId, userId);
+  if (!ctx || (ctx.policyOwnerId !== userId && !canReviewPolicyVersions(ctx))) {
+    throw new PolicyAccessDeniedError();
+  }
+  return ctx;
 }
 
 /**
@@ -466,9 +523,12 @@ export async function approveVersion(params: {
 }): Promise<void> {
   const { policyId, version, approverId, decision, comment } = params;
 
-  // ★必须在四眼原则之前：四眼原则判 createdBy === approverId，
-  // 对外部攻击者恒为 false，反而会放行。归属校验是它成立的前提。
-  await assertPolicyOwnership(policyId, approverId);
+  // ★审阅权必须在四眼原则之前判定：四眼原则只比较 createdBy === approverId，
+  // 对外部攻击者恒为 false，反而会放行。无审阅权一律按「策略不存在」处理。
+  const ctx = await loadVersionReviewContext(policyId, approverId);
+  if (!ctx || !canReviewPolicyVersions(ctx)) {
+    throw new PolicyAccessDeniedError();
+  }
 
   const targetVersion = await db.query.policyVersions.findFirst({
     where: and(
@@ -482,8 +542,9 @@ export async function approveVersion(params: {
     throw new Error(`版本 v${version} 不存在或不在待审批状态`);
   }
 
-  // 四眼原则：创建者不能审批自己的版本
-  if (targetVersion.createdBy === approverId) {
+  // 团队策略：四眼原则，作者不能审批；个人策略：所有者可审批自己的提交（标记 selfApproved）
+  const verdict = decideVersionApproval({ ...ctx, versionAuthorId: targetVersion.createdBy });
+  if (!verdict.allowed) {
     await logSecurityEvent({
       eventType: 'SELF_APPROVAL_ATTEMPT',
       severity: 'WARNING',
@@ -491,7 +552,7 @@ export async function approveVersion(params: {
       userId: approverId,
       details: { version },
     });
-    throw new Error('不能审批自己创建的版本（四眼原则）');
+    throw new SegregationOfDutiesError();
   }
 
   // 创建审批记录
@@ -526,7 +587,8 @@ export async function approveVersion(params: {
     severity: 'INFO',
     policyId,
     userId: approverId,
-    details: { version, decision, comment },
+    // 个人策略自审没有第二个人，审计事件显式标记，供审计与报表区分
+    details: { version, decision, comment, ...(verdict.selfApproved ? { selfApproved: true } : {}) },
   });
 
   // PM 02 north-star: detect AHA moment (author's first approved version).
@@ -778,9 +840,9 @@ export async function getVersionDetail(params: {
 }) {
   const { policyId, version, userId } = params;
 
-  // 版本详情含策略源码与完整审批历史，必须限定所有者——
+  // 版本详情含策略源码与完整审批历史，只给所有者与有权审阅的人——
   // 此前仅凭 policyId 即可读取任意租户的版本详情。
-  await assertPolicyOwnership(policyId, userId);
+  await assertVersionReadAccess(policyId, userId);
 
   const row = await db.query.policyVersions.findFirst({
     where: and(
@@ -834,7 +896,7 @@ export async function getVersionSource(params: {
 }): Promise<{ source: string; sourceHash: string } | null> {
   const { policyId, version, userId } = params;
 
-  await assertPolicyOwnership(policyId, userId);
+  await assertVersionReadAccess(policyId, userId);
 
   const result = await db.query.policyVersions.findFirst({
     where: and(

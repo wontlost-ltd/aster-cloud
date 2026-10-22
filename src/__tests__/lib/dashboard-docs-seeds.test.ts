@@ -6,7 +6,7 @@
  * must:
  *   - Cap the result at MAX_SEEDS (12) so the palette stays scannable.
  *   - Apply locale-aware hrefs ('' for `en`, `/zh` / `/de` otherwise).
- *   - Lead with the four getting-started pages (the IA's stated
+ *   - Lead with the five getting-started pages (the IA's stated
  *     intent — preserved by walking `docsSidebar` in declared order
  *     rather than the search-index's alphabetical order).
  *   - Localize labels from the active index (so a zh dashboard user
@@ -22,6 +22,7 @@ import { buildDocsSeeds } from '@/lib/docs/dashboard-docs-seeds';
 const GETTING_STARTED_SLUGS = new Set<string>([
   'getting-started/overview',
   'getting-started/authentication',
+  'getting-started/api-keys',
   'getting-started/quickstart',
   'getting-started/errors',
 ]);
@@ -31,15 +32,15 @@ describe('buildDocsSeeds', () => {
     expect(buildDocsSeeds('en').length).toBeLessThanOrEqual(12);
   });
 
-  it('leads with the four getting-started pages', () => {
+  it('leads with the five getting-started pages', () => {
     const seeds = buildDocsSeeds('en');
     const firstFourSlugs = seeds
-      .slice(0, 4)
+      .slice(0, GETTING_STARTED_SLUGS.size)
       .map((s) => s.href.replace(/^\/docs\//, ''));
     for (const slug of firstFourSlugs) {
       expect(
         GETTING_STARTED_SLUGS.has(slug),
-        `expected first 4 seeds to be onboarding pages, got: ${slug}`,
+        `expected the first seeds to be onboarding pages, got: ${slug}`,
       ).toBe(true);
     }
   });

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { eq } from 'drizzle-orm';
 import { db, users } from '@/lib/prisma';
@@ -17,6 +18,9 @@ import { DocsOverlay } from '@/components/docs/docs-overlay';
 import { NotificationsBell } from '@/components/notifications/notifications-bell';
 import { SkipToContent } from '@/components/skip-to-content';
 import { getSession } from '@/lib/auth';
+import { cookies } from 'next/headers';
+import { runAfterResponse } from '@/lib/after-response';
+import { TRUSTED_DEVICE_COOKIE, touchTrustedDeviceLastUsed } from '@/lib/trusted-device';
 import { isAdminFromSession } from '@/lib/admin-auth';
 import {
   CAN_BILLING,
@@ -31,6 +35,14 @@ import { defaultLocale } from '@/i18n/config';
 import { isAiWorkspaceEnabledFor, resolveAiWorkspaceBase } from '@/lib/ai-workspace';
 import { safeEnv } from '@/lib/runtime/safe-env';
 import { AiWorkspaceProvider } from '@/components/ai-workspace-context';
+import { AssistantLauncherSafeArea } from '@/components/assistant/assistant-context';
+import { APP_TITLE_TEMPLATE } from '@/lib/page-metadata';
+
+// 应用内页面标题：各页用 localizedTitle 给出本地化页名，这里补品牌后缀。
+// 未声明标题的页面落到 default，而不是沿用根布局的营销标题。
+export const metadata: Metadata = {
+  title: { default: 'Aster Cloud', template: APP_TITLE_TEMPLATE },
+};
 
 /*
  * Dashboard shell — sidebar + slim topbar.
@@ -85,6 +97,13 @@ export default async function DashboardLayout({
   const session = await getSession();
   const userId = session?.user?.id ?? null;
 
+  // 已信任设备的「最近使用」随实际使用刷新（节流，见 touchTrustedDeviceLastUsed）；放到响应之后，
+  // 不拖慢页面渲染，失败只记日志。
+  const trustedDeviceToken = userId ? (await cookies()).get(TRUSTED_DEVICE_COOKIE)?.value : undefined;
+  if (userId && trustedDeviceToken) {
+    runAfterResponse(() => touchTrustedDeviceLastUsed(userId, trustedDeviceToken));
+  }
+
   // AI 工作台入口（ADR 0049）：仅服务端判定该用户已灰度开启时才产出交接地址；
   // 该地址是 API 路由，不带 locale 前缀，由侧栏/命令面板以整页导航打开。
   // 同一判定经 AiWorkspaceProvider 下发给策略编辑器，决定「AI」tab 是否嵌入工作台面板。
@@ -128,6 +147,7 @@ export default async function DashboardLayout({
     signOut: tSettings('signOut'),
     signingOut: tSettings('signingOut'),
     help: t('userMenu.help'),
+    about: t('about.title'),
   };
 
   const aboutLabels = {
@@ -312,6 +332,8 @@ export default async function DashboardLayout({
         */}
         <main id="dashboard-main" tabIndex={-1} className="min-w-0 focus:outline-none">
           <AiWorkspaceProvider value={aiWorkspace}>{children}</AiWorkspaceProvider>
+          {/* 右下角悬浮助手按钮的底部安全区：任何页面滚到底都不会有内容压在按钮下面 */}
+          <AssistantLauncherSafeArea />
         </main>
       </div>
       {/* 登录后「文档」overlay：覆盖在 dashboard 上的三栏阅读面板（不跳转）。

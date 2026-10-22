@@ -146,3 +146,16 @@ export function extractRequestId(body: unknown): string | null {
   }
   return null;
 }
+
+/**
+ * 可安全写入日志的错误标识：数据库错误码（如 pgcrypto 解密失败的 39000）优先，否则取错误类名。
+ *
+ * 绑定了密钥或明文 key 的查询失败时，DrizzleQueryError 的 message 会带出全部绑定参数，
+ * 所以这类 catch 只能记录本函数的结果与 requestId，绝不能记录 err 本身或 err.message。
+ */
+export function safeErrorCode(err: unknown): string {
+  const e = err as { code?: unknown; cause?: { code?: unknown } } | null;
+  const code = e?.cause?.code ?? e?.code;
+  if (typeof code === 'string' && code) return code;
+  return err instanceof Error ? err.name : 'unknown';
+}

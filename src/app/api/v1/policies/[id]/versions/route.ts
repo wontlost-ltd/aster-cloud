@@ -12,8 +12,10 @@ import {
   createVersion,
   listVersions,
   listExecutableVersions,
+  loadVersionReviewContext,
   PolicyCompileError,
 } from '@/services/policy/version-manager';
+import { canReviewPolicyVersions } from '@/services/policy/version-approval-rules';
 import { makeCompileValidator } from '@/lib/policy-compile-validator';
 import { compileGateErrorResponse } from '@/lib/policy-compile-response';
 import {
@@ -44,8 +46,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { id } = await params;
 
     // 读授权校验（IDOR 修复）：此前任何登录用户可列任意 policy id 的版本历史。
-    // 最小安全口径：策略所有者或公开策略可读（与 GET /api/policies/[id] 的 owner/public
-    // 分支一致；团队共享读暂不在此入口放开，避免口径超前）。
+    // 口径：策略所有者、公开策略，或有权审阅该策略版本的人（团队策略的团队 owner/admin，
+    // 他们要在版本页上批准/驳回）。其余团队成员的共享读暂不在此入口放开。
     const readable = await db.query.policies.findFirst({
       where: and(
         eq(policies.id, id),
@@ -53,7 +55,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       ),
       columns: { userId: true, isPublic: true },
     });
-    if (!readable || (readable.userId !== session.user.id && !readable.isPublic)) {
+    const reviewer = readable && readable.userId !== session.user.id && !readable.isPublic
+      ? await loadVersionReviewContext(id, session.user.id)
+      : null;
+    const allowed = readable
+      && (readable.userId === session.user.id || readable.isPublic || (reviewer && canReviewPolicyVersions(reviewer)));
+    if (!allowed) {
       return NextResponse.json({ error: '策略不存在' }, { status: 404 });
     }
 

@@ -9,6 +9,9 @@ interface PageProps {
 }
 
 import { buildPoliciesNewCallback } from './build-callback';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('policies', 'newPolicy');
 
 export default async function NewPolicyPage({ params, searchParams }: PageProps) {
   const { locale } = await params;

@@ -270,3 +270,55 @@ describe('AiKeysContent 模型字段', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(/could not be verified.*rejected the key or is unavailable/);
   });
 });
+
+describe('AiKeysContent 失效状态（F13）', () => {
+  it('★失效日期已过的 key 显示 Expired，而不是 Active', () => {
+    render(
+      <AiKeysContent
+        locale="en"
+        initialBindings={[
+          {
+            ...baseBinding,
+            id: 'old',
+            provider: 'openai',
+            keyHint: '0801',
+            expiresAt: '2026-08-01T00:00:00.000Z',
+            model: null,
+            availableModels: null,
+            modelsCheckedAt: null,
+          },
+          {
+            ...baseBinding,
+            id: 'fresh',
+            provider: 'anthropic',
+            keyHint: '9999',
+            expiresAt: '2999-01-01T00:00:00.000Z',
+            model: null,
+            availableModels: null,
+            modelsCheckedAt: null,
+          },
+        ]}
+      />,
+      { wrapper },
+    );
+    expect(screen.getAllByText('Expired')).toHaveLength(1);
+    expect(screen.getAllByText('Active')).toHaveLength(1);
+  });
+
+  it('★首帧（SSR / 水合前）按服务端渲染时刻判定，与服务端输出一致', async () => {
+    const { renderToString } = await import('react-dom/server');
+    const binding = {
+      ...baseBinding, id: 'edge', provider: 'openai', keyHint: '1023', expiresAt: '2026-10-23T00:00:00.000Z',
+      model: null, availableModels: null, modelsCheckedAt: null,
+    };
+    const Wrapper = wrapper;
+    // 服务端在失效时刻之前渲染：即使执行此测试的时钟已过失效时刻，首帧也必须显示 Active
+    const html = renderToString(
+      <Wrapper>
+        <AiKeysContent locale="en" initialBindings={[binding]} renderedAt={Date.parse('2026-10-22T23:59:59Z')} />
+      </Wrapper>,
+    );
+    expect(html).toContain('Active');
+    expect(html).not.toContain('Expired');
+  });
+});

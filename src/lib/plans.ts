@@ -1,6 +1,8 @@
 // src/lib/plans.ts
 // 单一真相源：集中管理订阅计划的展示、配额与价格配置
 
+import { locales } from '@/i18n/config';
+
 // ==================== 货币配置 ====================
 export const CURRENCY_CONFIG = {
   USD: { symbol: '$', code: 'USD', locale: 'en-US' },
@@ -75,6 +77,13 @@ export type PlanCapabilities = {
   customLexiconBulkUploadAsync: boolean;
   customIntegrations?: boolean;
 };
+
+/**
+ * 套餐功能文案的插值参数（t('billing.plans.features.{key}', PLAN_FEATURE_MESSAGE_VALUES)）。
+ * 「全语言包」列出的语种由已配置的 locales 推导，不在文案里写死，增减语种时自动保持一致。
+ * 所有渲染套餐功能的地方都必须传入这组参数。
+ */
+export const PLAN_FEATURE_MESSAGE_VALUES = { languages: locales.join(' / ') } as const;
 
 // Plan feature keys for i18n (use with t('billing.plans.features.{key}'))
 // PM v1.1：统一用于首页和账单页的功能描述

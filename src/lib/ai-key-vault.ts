@@ -249,21 +249,6 @@ export async function getDecryptedBYOKKeyById(
   return rows[0]?.key ?? null;
 }
 
-/** 解密用户的 BYOK key（仅供 LLM 调用使用） */
-export async function getDecryptedBYOKKey(userId: string, provider: string): Promise<string | null> {
-  const secret = encryptionSecret();
-  const result = await db.execute(sql`
-    SELECT pgp_sym_decrypt("encryptedKey"::bytea, ${secret}::text) AS key
-    FROM "AiKeyBinding"
-    WHERE "userId" = ${userId}
-      AND "provider" = ${provider}
-      AND "active" = true
-    LIMIT 1
-  `);
-  const rows = result as unknown as Array<{ key: string | null }>;
-  return rows[0]?.key ?? null;
-}
-
 /** 停用 BYOK（临时禁用而不删除；保留供内部使用/未来 UI）。 */
 export async function deactivateBYOKKey(userId: string, provider: string): Promise<void> {
   await db

@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { useTheme } from 'next-themes';
 import type { editor as monaco } from 'monaco-editor';
-import { aiWorkspaceOrigin } from '@/lib/ai-workspace';
+import { aiWorkspaceHandoffSrc, aiWorkspaceOrigin, toWorkspaceTheme } from '@/lib/ai-workspace';
 import {
   applyToEditor,
   contextMessage,
@@ -39,7 +40,12 @@ export function AiWorkspacePanel({ base, policyId, editor, cnlLocale, uiLocale, 
   const [frameKey, setFrameKey] = useState(0);
   // 已收到 iframe 的 ready：之后编辑器才挂载时需补发上下文，否则直到用户输入前工作台都拿不到源码。
   const readyRef = useRef(false);
-  const src = `/api/ai-workspace/handoff?next=${encodeURIComponent(`/panel?policyId=${policyId}`)}&locale=${uiLocale}`;
+  // 传给工作台的是「解析后的」主题（system 已按系统偏好落到 dark/light）。
+  // 主题切换会改变 src，iframe 随之重新交接并以新主题加载——可接受的整页刷新。
+  const theme = toWorkspaceTheme(useTheme().resolvedTheme);
+  const src = theme
+    ? aiWorkspaceHandoffSrc({ next: `/panel?policyId=${policyId}`, locale: uiLocale, theme })
+    : null;
 
   const post = useCallback(
     (msg: object) => iframeRef.current?.contentWindow?.postMessage(msg, origin),
@@ -89,6 +95,9 @@ export function AiWorkspacePanel({ base, policyId, editor, cnlLocale, uiLocale, 
       sub.dispose();
     };
   }, [editor, postContext]);
+
+  // 主题尚未解析（仅挂载瞬间）时先不加载，避免先按错误主题加载、再整页重载一次。
+  if (!src) return null;
 
   return (
     <iframe

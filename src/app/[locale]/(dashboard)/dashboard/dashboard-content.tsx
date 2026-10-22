@@ -12,23 +12,19 @@
  *
  * Behaviors preserved verbatim:
  *   - Trial / plan banner switch
- *   - Restore-hint toast on double-click of a deleted policy
- *   - PII badge, deleted-strike styling
+ *   - PII badge
  *   - Usage progress bars when limits are finite
  *   - DunningBanner, AhaStatusCard, AiUsageCard, ApiUsageCard all
  *     mounted in their original slots
  */
 'use client';
 
-import { useState, useCallback } from 'react';
 import {
   Plus,
   FileText,
   KeyRound,
-  Info,
   CheckCircle2,
   AlertTriangle,
-  X,
 } from 'lucide-react';
 import { Link } from '@/i18n/navigation';
 import { CLIENT_CAPABILITIES } from '@/hooks/use-deployment-mode';
@@ -89,7 +85,6 @@ interface Policy {
   piiFields: string[] | null;
   updatedAt: string;
   _count: { executions: number };
-  isDeleted?: boolean;
 }
 
 interface Translations {
@@ -125,8 +120,6 @@ interface Translations {
     createFirst: string;
     noDescription: string;
     runsTemplate: string;
-    deleted: string;
-    restoreHint: string;
   };
 }
 
@@ -168,36 +161,10 @@ export function DashboardContent({
   translations: t,
   locale,
 }: DashboardContentProps) {
-  // Double-click on a deleted policy → show "How to restore" hint.
-  // Server data marks isDeleted; the user reaches here from the recent
-  // policies list and may not realize they need the trash UI to restore.
-  // Counter is per-policy; threshold = 2 keeps single accidental clicks
-  // quiet, two-in-a-row triggers the affordance.
-  const [_deletedClickCount, setDeletedClickCount] = useState<Record<string, number>>({});
-  const [showRestoreHint, setShowRestoreHint] = useState(false);
-
-  const handleDeletedPolicyClick = useCallback((policyId: string) => {
-    setDeletedClickCount((prev) => {
-      const newCount = (prev[policyId] || 0) + 1;
-      if (newCount >= 2) {
-        setShowRestoreHint(true);
-        setTimeout(() => setShowRestoreHint(false), 3000);
-      }
-      return { ...prev, [policyId]: newCount };
-    });
-  }, []);
-
   return (
     <Container size="xl" className="py-6 sm:py-10">
       <Stack gap={8}>
         <DunningBanner />
-
-        {showRestoreHint && (
-          <RestoreHintToast
-            message={t.recentPolicies.restoreHint}
-            onClose={() => setShowRestoreHint(false)}
-          />
-        )}
 
         {/* Welcome row + primary CTA — 顶层页：sidebar 已高亮 "Dashboard"
             + PageHeader h1 显页名 → 不放 Breadcrumbs（去三重重复）。 */}
@@ -358,10 +325,8 @@ export function DashboardContent({
                   <PolicyRow
                     key={policy.id}
                     policy={policy}
-                    deletedLabel={t.recentPolicies.deleted}
                     noDescription={t.recentPolicies.noDescription}
                     runsTemplate={t.recentPolicies.runsTemplate}
-                    onDeletedClick={handleDeletedPolicyClick}
                   />
                 ))}
               </ul>
@@ -471,44 +436,18 @@ function QuickAction({ href, icon: Icon, tone, title, description }: QuickAction
 }
 
 /* ------------------------------------------------------------------ */
-/* Policy row — handles both clickable + deleted (struck-through)      */
+/* Policy row                                                         */
 /* ------------------------------------------------------------------ */
 
 interface PolicyRowProps {
   policy: Policy;
-  deletedLabel: string;
   noDescription: string;
   runsTemplate: string;
-  onDeletedClick: (id: string) => void;
 }
 
-function PolicyRow({
-  policy, deletedLabel, noDescription, runsTemplate, onDeletedClick,
-}: PolicyRowProps) {
+function PolicyRow({ policy, noDescription, runsTemplate }: PolicyRowProps) {
   const runsText = formatTemplate(runsTemplate, { count: policy._count.executions });
   const piiCount = policy.piiFields?.length ?? 0;
-
-  if (policy.isDeleted) {
-    return (
-      <li>
-        <button
-          type="button"
-          onClick={() => onDeletedClick(policy.id)}
-          className="block w-full cursor-not-allowed text-left"
-        >
-          <PolicyRowInner
-            name={policy.name}
-            description={policy.description}
-            runsText={runsText}
-            piiCount={piiCount}
-            noDescription={noDescription}
-            deletedLabel={deletedLabel}
-            disabled
-          />
-        </button>
-      </li>
-    );
-  }
 
   return (
     <li>
@@ -516,61 +455,27 @@ function PolicyRow({
         href={`/policies/${policy.id}`}
         className="block transition-colors duration-fast hover:bg-bg-subtle"
       >
-        <PolicyRowInner
-          name={policy.name}
-          description={policy.description}
-          runsText={runsText}
-          piiCount={piiCount}
-          noDescription={noDescription}
-        />
+        <div className="px-4 py-4 sm:px-6">
+          <Stack gap={2}>
+            <Stack direction="row" justify="between" align="center" gap={2}>
+              <p className="truncate text-sm font-medium text-primary">{policy.name}</p>
+              {piiCount > 0 && <Badge variant="warning">{piiCount} PII</Badge>}
+            </Stack>
+            <Stack direction="row" justify="between" align="center" gap={2}>
+              <p className="truncate text-sm text-fg-muted">
+                {policy.description || noDescription}
+              </p>
+              <p className="shrink-0 text-sm text-fg-subtle">{runsText}</p>
+            </Stack>
+          </Stack>
+        </div>
       </Link>
     </li>
   );
 }
 
-function PolicyRowInner({
-  name, description, runsText, piiCount, noDescription, deletedLabel, disabled,
-}: {
-  name: string;
-  description: string | null;
-  runsText: string;
-  piiCount: number;
-  noDescription: string;
-  deletedLabel?: string;
-  disabled?: boolean;
-}) {
-  return (
-    <div className="px-4 py-4 sm:px-6">
-      <Stack gap={2}>
-        <Stack direction="row" justify="between" align="center" gap={2}>
-          <p
-            className={cn(
-              'truncate text-sm font-medium',
-              disabled ? 'text-fg-subtle line-through' : 'text-primary',
-            )}
-          >
-            {name}
-          </p>
-          <Stack direction="row" gap={2}>
-            {disabled && deletedLabel && (
-              <Badge variant="danger">{deletedLabel}</Badge>
-            )}
-            {piiCount > 0 && <Badge variant="warning">{piiCount} PII</Badge>}
-          </Stack>
-        </Stack>
-        <Stack direction="row" justify="between" align="center" gap={2}>
-          <p className="truncate text-sm text-fg-muted">
-            {description || noDescription}
-          </p>
-          <p className="shrink-0 text-sm text-fg-subtle">{runsText}</p>
-        </Stack>
-      </Stack>
-    </div>
-  );
-}
-
 /* ------------------------------------------------------------------ */
-/* Empty state + restore hint                                          */
+/* Empty state                                                        */
 /* ------------------------------------------------------------------ */
 
 function EmptyPolicies({ noPolicies, createFirst }: { noPolicies: string; createFirst: string }) {
@@ -586,27 +491,6 @@ function EmptyPolicies({ noPolicies, createFirst }: { noPolicies: string; create
           {createFirst}
         </Link>
       </Stack>
-    </div>
-  );
-}
-
-function RestoreHintToast({ message, onClose }: { message: string; onClose: () => void }) {
-  return (
-    <div className="fixed right-4 top-4 z-50 max-w-sm animate-in fade-in slide-in-from-top-2 duration-medium">
-      <Alert variant="warning" className="pr-12 shadow-lg">
-        <AlertDescription className="flex items-center gap-3">
-          <Info className="size-4 shrink-0" aria-hidden />
-          {message}
-        </AlertDescription>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Dismiss"
-          className="absolute right-3 top-3 text-warning hover:opacity-80"
-        >
-          <X className="size-4" aria-hidden />
-        </button>
-      </Alert>
     </div>
   );
 }

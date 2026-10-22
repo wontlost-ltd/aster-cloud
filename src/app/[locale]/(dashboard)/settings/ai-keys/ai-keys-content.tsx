@@ -13,6 +13,7 @@ import {
   Select,
 } from '@/components/ui';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
+import { isByokKeyExpired } from '@/lib/byok-expiry';
 
 interface BYOKBinding {
   id: string;
@@ -44,6 +45,8 @@ const PROVIDER_LABELS: Record<string, string> = {
 interface AiKeysContentProps {
   initialBindings: BYOKBinding[];
   locale: string;
+  /** 服务端渲染时刻（毫秒）：首帧按它判定「已失效」，保证 SSR 与客户端首帧一致。 */
+  renderedAt?: number;
 }
 
 /**
@@ -55,7 +58,7 @@ interface AiKeysContentProps {
  * when they switched locale. Strings now flow through next-intl
  * (settings.aiKeysPage.*) and provider names stay as proper nouns.
  */
-export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
+export function AiKeysContent({ initialBindings, locale, renderedAt }: AiKeysContentProps) {
   const t = useTranslations('settings.aiKeysPage');
   const tSettings = useTranslations('settings');
 
@@ -95,9 +98,15 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
   // 时区/locale 数据不同 → 首帧文本不一致 → React #418 hydration mismatch。用 mounted gate：
   // 服务端 + 客户端首帧都渲染确定性内容（ISO 日期 / 原始数字），挂载后再切 locale 格式。
   const [mounted, setMounted] = useState(false);
-  // hydration-safe mounted gate：挂载后才切 locale 日期/数字格式，仅 set 一次，故意在 effect 内 set
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => setMounted(true), []);
+  // 失效判定用的「当前时刻」：首帧取服务端渲染时刻（未提供时按最早时刻，即都不算失效），
+  // 挂载后换成浏览器当前时间——在失效边界上 SSR 与首帧也不会因时钟不同而不一致。
+  const [nowMs, setNowMs] = useState(renderedAt ?? 0);
+  // hydration-safe mounted gate：挂载后才切 locale 日期/数字格式与真实时钟，仅 set 一次，故意在 effect 内 set
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+    setNowMs(Date.now());
+  }, []);
   const [success, setSuccess] = useState<string | null>(null);
   // 多 key：撤销按 binding **id**（同 provider 多 key）；对话框标签仍显示 provider 名。
   const [revokeTarget, setRevokeTarget] = useState<{ id: string; provider: string } | null>(null);
@@ -640,13 +649,19 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
                       )}
                     </td>
                     <td className="py-3">
-                      {b.active ? (
-                        <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                          {t('statusActive')}
-                        </span>
-                      ) : (
+                      {/* 已过失效日期的 key 推理层会跳过（byok-envelope 同一判定），
+                          这里必须同样显示为已失效，不能因 active=true 仍标「活跃」。 */}
+                      {!b.active ? (
                         <span className="rounded bg-bg-muted px-2 py-0.5 text-xs font-medium text-fg-muted">
                           {t('statusDisabled')}
+                        </span>
+                      ) : isByokKeyExpired(b.expiresAt, nowMs) ? (
+                        <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                          {t('statusExpired')}
+                        </span>
+                      ) : (
+                        <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                          {t('statusActive')}
                         </span>
                       )}
                       {b.lastError && (

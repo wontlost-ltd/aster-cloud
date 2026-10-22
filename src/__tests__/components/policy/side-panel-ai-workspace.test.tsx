@@ -1,5 +1,5 @@
 // 编辑器侧栏「AI」tab（ADR 0049 Part B）：工作台启用时嵌入 iframe 面板，未启用时保持原 AIAssistantPanel。
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import zhBase from '@aster-cloud/ui-messages/zh-CN.json';
 import { IntlClientProvider } from '@/i18n/intl-client-provider';
@@ -21,6 +21,7 @@ vi.mock('@/components/policy/policy-alias-panel', () => ({ PolicyAliasPanel: () 
 
 import { SidePanel, type SidePanelTab } from '@/components/policy/policy-form/side-panel';
 import type { AiWorkspaceConfig } from '@/components/ai-workspace-context';
+import { AssistantProvider, useAssistant } from '@/components/assistant/assistant-context';
 
 const messages = deepMergeMessages(zhBase as Record<string, unknown>, DEMO_SUPPLEMENT.zh);
 const noop = () => {};
@@ -61,7 +62,21 @@ function renderPanel(aiWorkspace: AiWorkspaceConfig | null, policyId: string | n
 
 const ENABLED: AiWorkspaceConfig = { base: 'https://ai.aster-lang.cloud', enabled: true };
 
-afterEach(cleanup);
+// 侧栏容器只在 lg 及以上可见：用可控的 matchMedia 模拟视口宽度（jsdom 没有 matchMedia）
+let wide = true;
+beforeEach(() => {
+  wide = true;
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(min-width: 1024px)' ? wide : false,
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+});
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe('SidePanel AI tab 与 AI 工作台', () => {
   it('未启用 → 原 AIAssistantPanel', () => {
@@ -108,5 +123,34 @@ describe('SidePanel AI tab 与 AI 工作台', () => {
     expect(screen.getByTestId('legacy-ai')).toBeTruthy();
     rerender(panel(null, 'p1', 'problems'));
     expect(screen.queryByTestId('legacy-ai')).toBeNull();
+  });
+});
+
+describe('SidePanel AI tab 让出悬浮助手按钮（F1）', () => {
+  function Probe() {
+    const s = useAssistant();
+    return <span data-testid="suppressed">{String(s?.launcherSuppressed)}</span>;
+  }
+  const withAssistant = (tab: SidePanelTab) => (
+    <AssistantProvider>
+      <Probe />
+      {panel(ENABLED, 'p1', tab)}
+    </AssistantProvider>
+  );
+
+  it('★AI tab 打开时让出，切到其他 tab 或卸载侧栏后恢复', () => {
+    const { rerender, unmount } = render(withAssistant('ai'));
+    expect(screen.getByTestId('suppressed').textContent).toBe('true');
+    rerender(withAssistant('problems'));
+    expect(screen.getByTestId('suppressed').textContent).toBe('false');
+    rerender(withAssistant('ai'));
+    expect(screen.getByTestId('suppressed').textContent).toBe('true');
+    unmount();
+  });
+
+  it('★md–lg 视口：侧栏挂载但不可见，AI tab 不让出悬浮按钮', () => {
+    wide = false;
+    render(withAssistant('ai'));
+    expect(screen.getByTestId('suppressed').textContent).toBe('false');
   });
 });

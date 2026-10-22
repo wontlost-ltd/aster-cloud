@@ -174,13 +174,40 @@ export function retrieve(query: string, opts: RetrieveOptions): AssistantHit[] {
     });
   }
 
+  // 文档类命中的入列顺序即 searchDocs 的排序（它在同分内还按命中完整度、覆盖度细排），
+  // 同分时沿用该顺序，而不是退回 id 字典序把细排结果打乱。
+  const docRank = new Map(hits.filter((h) => h.kind !== 'action').map((h, i) => [h.id, i]));
+
   hits.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
     // 同分时：站内文档 > 站外文档 > 动作。用户问"怎么…"时说明性内容
     // 比跳转按钮更可能是答案；而本站内容又比离站内容更贴近当前上下文。
     if (a.kind !== b.kind) return KIND_ORDER[a.kind] - KIND_ORDER[b.kind];
+    if (a.kind !== 'action') return docRank.get(a.id)! - docRank.get(b.id)!;
     return a.id.localeCompare(b.id);
   });
 
   return hits.slice(0, limit);
+}
+
+/** 送给 aster-api 的一条 grounding（AssistantRequest.GroundingHit）。 */
+export interface GroundingHitPayload {
+  title: string;
+  snippet: string;
+  href: string;
+}
+
+/** 与 aster-api AssistantRequest.groundingHits 的上限对齐（超出会被 400 拒绝）。 */
+export const MAX_GROUNDING_HITS = 16;
+
+/**
+ * 检索命中 → 请求体里的 groundingHits。浏览器应答器与服务端补检索共用，保证两条路径送给
+ * 模型的形状一致：只送作答需要的三个字段，score/kind/id 对生成无用，白送只会放大 prompt。
+ */
+export function toGroundingHits(hits: readonly AssistantHit[]): GroundingHitPayload[] {
+  return hits.slice(0, MAX_GROUNDING_HITS).map((h) => ({
+    title: h.title,
+    snippet: h.subtitle ?? '',
+    href: h.href,
+  }));
 }

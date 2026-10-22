@@ -5,6 +5,9 @@ import { db, aiKeyBindings } from '@/lib/prisma';
 import { eq } from 'drizzle-orm';
 import { byokTokensUsedThisMonth } from '@/lib/ai-quota';
 import { AiKeysContent } from './ai-keys-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('settings.aiKeysPage', 'title');
 
 export default async function AiKeysPage() {
   const session = await getSession();
@@ -58,5 +61,8 @@ export default async function AiKeysPage() {
     modelsCheckedAt: b.modelsCheckedAt?.toISOString() ?? null,
   }));
 
-  return <AiKeysContent initialBindings={initialBindings} locale={locale} />;
+  // Server Component 每请求只渲染一次，Date.now() 在此渲染安全（非客户端重渲染）
+  // eslint-disable-next-line react-hooks/purity
+  const renderedAt = Date.now();
+  return <AiKeysContent initialBindings={initialBindings} locale={locale} renderedAt={renderedAt} />;
 }

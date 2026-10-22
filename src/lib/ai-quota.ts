@@ -52,7 +52,7 @@ export type AiQuotaResult =
  *
  * 顺序：
  *   1. 风险层 / 邮箱验证门
- *   2. 用户是否被自动封禁
+ *   2. 用户是否被自动封禁；Free/Trial 是否处于管理员手动熔断
  *   3. 月度次数配额（Phase 2：BYOK 用本次调用真的用了用户 key，跳过平台月配额）
  *   4. 每分钟速率（BYOK 也受限，防高频打爆代理/上游）
  *   5. 每小时速率（同上）
@@ -141,6 +141,21 @@ export async function checkAiQuota(
       message: user.aiBanReason || '账号被临时禁用 AI 功能',
       retryAfterSec: sec,
     };
+  }
+
+  // L1.5: 管理员手动熔断——覆盖熔断后才注册或降级进 Free/Trial、尚未被打 ban 的用户
+  // （cron 每 10 分钟补打一次 ban，这里保证补打前的窗口也被拦住）。动态 import 避免与熔断器模块循环依赖。
+  const { getManualTripUntil, MANUAL_TRIP_BAN_REASON, MANUAL_TRIP_PLANS } = await import('@/lib/ai-circuit-breaker');
+  if (MANUAL_TRIP_PLANS.includes(user.plan)) {
+    const until = await getManualTripUntil();
+    if (until) {
+      return {
+        allowed: false,
+        reason: 'ai_banned',
+        message: MANUAL_TRIP_BAN_REASON,
+        retryAfterSec: Math.ceil((until.getTime() - Date.now()) / 1000),
+      };
+    }
   }
 
   const plan = user.plan as PlanType;

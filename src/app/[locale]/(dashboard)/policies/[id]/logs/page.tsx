@@ -6,6 +6,9 @@ import { getTranslations } from 'next-intl/server';
 import { queryExecutionLogs, getExecutionStats } from '@/lib/policy-execution-log';
 import { LogsContent } from './logs-content';
 import { toClientLog } from './log-mapping';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('policies.logs', 'title');
 
 async function getInitialLogsData(userId: string, policyId: string) {
   // 并行获取策略信息、日志和统计
@@ -123,6 +126,10 @@ export default async function PolicyLogsPage({
       rateNote: t('logs.rateNote'),
       recentActivity: t('logs.recentActivity'),
       loadError: t('logs.loadError'),
+      filtersTitle: t('logs.filtersTitle'),
+      justNow: t('logs.justNow'),
+      loadingLogs: t('logs.loadingLogs'),
+      noLogsHint: t('logs.noLogsHint'),
       viewApproval: t('logs.viewApproval'),
       registerGuard: t('logs.registerGuard'),
       guardError: t('logs.guardError'),

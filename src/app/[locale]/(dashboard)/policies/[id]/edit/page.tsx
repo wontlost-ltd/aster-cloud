@@ -6,6 +6,9 @@ import { eq, and } from 'drizzle-orm';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { EditPolicyContent } from './edit-policy-content';
 import { getStructuralAliasGrant } from '@/lib/structural-alias-grants';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('pageTitles', 'policyEdit');
 
 interface PageProps {
   params: Promise<{ id: string; locale: string }>;

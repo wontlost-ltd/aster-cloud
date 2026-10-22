@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
 import {
+  Alert,
+  AlertDescription,
   Breadcrumbs,
   Button,
   Card,
@@ -18,6 +20,21 @@ import {
   toast,
 } from '@/components/ui';
 
+/** 抹除接口里 AI 工作台部分的结果（F23）；工作台未部署时不出现。 */
+type WorkspaceErase =
+  | { error: string }
+  | { deletedConversations: number; tenantHold: boolean; held: string[] };
+
+/** 工作台抹除后需要常驻提示的情形：失败、或有线程因法律保留未删除。 */
+type EraseNotice = { kind: 'failed' } | { kind: 'held'; count: number } | { kind: 'tenantHold' };
+
+function toEraseNotice(ws: WorkspaceErase | undefined): EraseNotice | null {
+  if (!ws) return null;
+  if ('error' in ws) return { kind: 'failed' };
+  if (ws.tenantHold) return { kind: 'tenantHold' };
+  return ws.held.length > 0 ? { kind: 'held', count: ws.held.length } : null;
+}
+
 /**
  * Client island for /settings/data.
  *
@@ -30,22 +47,53 @@ import {
 export function DataContent() {
   const t = useTranslations('settings.dataPage');
   const tSettings = useTranslations('settings');
+  const tCommon = useTranslations('common');
   const [confirmErase, setConfirmErase] = useState(false);
   const [isErasing, setIsErasing] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  // 导出失败用按钮下方的常驻提示，而不是几秒即逝的 toast（生产上用户反馈「点了没反应」）。
+  // 只显示本地化文案 + requestId（便于客服关联日志），不渲染服务端原文。
+  const [downloadError, setDownloadError] = useState<{ requestId: string | null } | null>(null);
+  // 下载成功但未能包含 AI 工作台数据（F23）：文件照常下载，同时常驻提示。
+  const [workspaceExportMissing, setWorkspaceExportMissing] = useState(false);
+  // 下载成功但审计原文无法解密（密钥缺失或被轮换）：其余记录照常下载，同时常驻提示。
+  const [auditContentMissing, setAuditContentMissing] = useState(false);
+  const [eraseNotice, setEraseNotice] = useState<EraseNotice | null>(null);
 
   const downloadJson = async () => {
     setIsDownloading(true);
+    setDownloadError(null);
+    setWorkspaceExportMissing(false);
+    setAuditContentMissing(false);
     try {
       // GDPR Article 15 export endpoint. The sibling /ai-data path
       // is DELETE-only — GET against it returns 405.
       const res = await fetch('/api/user/ai-data-export');
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        toast.error(t('downloadFailure', { error: extractErrorMessage(data) || res.status }));
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: { requestId?: unknown } | string;
+        };
+        const requestId =
+          (typeof data.error === 'object' && typeof data.error?.requestId === 'string'
+            ? data.error.requestId
+            : null) ?? res.headers.get('x-request-id');
+        setDownloadError({ requestId });
         return;
       }
-      const blob = await res.blob();
+      const text = await res.text();
+      const parsed = (() => {
+        try {
+          return JSON.parse(text) as {
+            aiWorkspace?: { error?: unknown };
+            auditContent?: { error?: unknown };
+          };
+        } catch {
+          return null;
+        }
+      })();
+      setWorkspaceExportMissing(typeof parsed?.aiWorkspace?.error === 'string');
+      setAuditContentMissing(typeof parsed?.auditContent?.error === 'string');
+      const blob = new Blob([text], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -55,12 +103,9 @@ export function DataContent() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-    } catch (err) {
-      toast.error(
-        t('downloadFailure', {
-          error: err instanceof Error ? err.message : String(err),
-        }),
-      );
+    } catch {
+      // 网络层失败（离线等）：同样给本地化提示，不展示异常原文。
+      setDownloadError({ requestId: null });
     } finally {
       setIsDownloading(false);
     }
@@ -68,11 +113,13 @@ export function DataContent() {
 
   const eraseContent = async () => {
     setIsErasing(true);
+    setEraseNotice(null);
     try {
       const res = await fetch('/api/user/ai-data', { method: 'DELETE' });
       const data = (await res.json().catch(() => ({}))) as {
         records_cleared?: number;
         error?: string;
+        aiWorkspace?: WorkspaceErase;
       };
       if (!res.ok) {
         toast.error(t('deleteCard.failure', { error: extractErrorMessage(data) || res.status }));
@@ -81,6 +128,7 @@ export function DataContent() {
       toast.success(
         t('deleteCard.success', { count: data.records_cleared ?? 0 }),
       );
+      setEraseNotice(toEraseNotice(data.aiWorkspace));
       setConfirmErase(false);
     } finally {
       setIsErasing(false);
@@ -116,6 +164,28 @@ export function DataContent() {
             >
               {t('downloadCard.action')}
             </Button>
+            {downloadError && (
+              <Alert variant="danger" className="mt-4">
+                <AlertDescription>
+                  {t('downloadUnavailable')}
+                  {downloadError.requestId && (
+                    <span className="mt-1 block font-mono text-xs opacity-80">
+                      {tCommon('errorId')}: {downloadError.requestId}
+                    </span>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
+            {auditContentMissing && (
+              <Alert variant="warning" className="mt-4">
+                <AlertDescription>{t('auditContentUnavailable')}</AlertDescription>
+              </Alert>
+            )}
+            {workspaceExportMissing && (
+              <Alert variant="warning" className="mt-4">
+                <AlertDescription>{t('workspaceExportUnavailable')}</AlertDescription>
+              </Alert>
+            )}
           </CardBody>
         </Card>
 
@@ -133,6 +203,16 @@ export function DataContent() {
             >
               {t('deleteCard.action')}
             </Button>
+            {eraseNotice && (
+              <Alert variant="warning" className="mt-4">
+                <AlertDescription>
+                  {eraseNotice.kind === 'failed' && t('deleteCard.workspaceFailed')}
+                  {eraseNotice.kind === 'held' &&
+                    t('deleteCard.workspaceHeld', { count: eraseNotice.count })}
+                  {eraseNotice.kind === 'tenantHold' && t('deleteCard.workspaceTenantHold')}
+                </AlertDescription>
+              </Alert>
+            )}
           </CardBody>
         </Card>
       </Stack>

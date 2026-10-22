@@ -20,6 +20,9 @@ import {
   type CurrentPublication,
   type RevokedLicense,
 } from './revocation-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('admin.nav', 'licenseRevoke');
 
 type Props = {
   params: Promise<{ locale: string }>;
@@ -54,10 +57,6 @@ export default async function LicenseRevokePage({ params }: Props) {
     />
   );
 }
-
-export const metadata = {
-  title: 'License Revocation',
-};
 
 async function fetchRevokedLicenses(): Promise<RevokedLicense[]> {
   const rows = await db.query.revokedLicenses.findMany({

@@ -13,7 +13,7 @@ import {
   findBindingForUser,
 } from '@/lib/ai-key-vault';
 import { fetchByokModels, MODEL_ID_RE, unverifiedReason, type UnverifiedReason } from '@/lib/byok-models';
-import { errorEnvelope } from '@/lib/api/error-envelope';
+import { errorEnvelope, safeErrorCode } from '@/lib/api/error-envelope';
 import { byokTokensUsedThisMonth, resetByokQuotaUsage } from '@/lib/ai-quota';
 import { logAuditEvent, extractClientInfo } from '@/lib/audit-log';
 
@@ -309,10 +309,11 @@ export async function POST(req: Request) {
       code: 'service_unavailable',
       message: 'Could not save the AI key. Please retry; the failure has been logged.',
     });
+    // saveBYOKKey 把明文 key 与主密钥作为绑定参数，错误原文会带出二者：只记错误码。
     console.error(
       '[ai-keys POST] handler failed',
       env.headers.get('x-request-id'),
-      err,
+      safeErrorCode(err),
     );
     return env;
   }
@@ -478,7 +479,8 @@ export async function PATCH(req: Request) {
       code: 'service_unavailable',
       message: 'Could not update the AI key. Please retry; the failure has been logged.',
     });
-    console.error('[ai-keys PATCH] handler failed', env.headers.get('x-request-id'), err);
+    // 校验路径会解密 key（绑定主密钥），错误原文可能带出密钥：只记错误码。
+    console.error('[ai-keys PATCH] handler failed', env.headers.get('x-request-id'), safeErrorCode(err));
     return env;
   }
 }

@@ -32,6 +32,10 @@ vi.mock('@/lib/prisma', () => ({
   aiKeyBindings: { id: {}, userId: {}, active: {}, lastUsedAt: {}, lastErrorAt: {}, lastError: {}, updatedAt: {} },
 }));
 
+// 手动熔断状态（review I5）：默认未熔断，个别用例覆盖。
+const { mockGetSetting } = vi.hoisted(() => ({ mockGetSetting: vi.fn(async (): Promise<unknown> => undefined) }));
+vi.mock('@/lib/platform-settings', () => ({ getSetting: mockGetSetting, setSetting: vi.fn() }));
+
 // 只包一层 inArray 以便断言「计费状态集合」；其余 drizzle 行为保持真实。
 vi.mock('drizzle-orm', async (importOriginal) => {
   const orig = await importOriginal<typeof import('drizzle-orm')>();
@@ -178,6 +182,44 @@ describe('checkAiQuota', () => {
 
       const result = await checkAiQuota('user-1');
       expect(result.allowed).toBe(true);
+    });
+  });
+
+  describe('管理员手动熔断（review I5）', () => {
+    const tripped = () => ({ until: new Date(Date.now() + 3_600_000).toISOString() });
+
+    it.each(['free', 'trial'])('★%s 用户（含熔断后才注册、尚未被打 ban 的）→ ai_banned，至熔断到期', async (plan) => {
+      mockGetSetting.mockResolvedValueOnce(tripped());
+      vi.mocked(db.query.users.findFirst).mockResolvedValue(mockUserBase({ plan, aiBannedUntil: null }));
+
+      const result = await checkAiQuota('user-1');
+      expect(result.allowed).toBe(false);
+      if (!result.allowed) {
+        expect(result.reason).toBe('ai_banned');
+        expect(result.message).toBe('全局成本熔断（free_trial_stopped，manual）');
+        expect(result.retryAfterSec).toBeGreaterThan(3500);
+        expect(result.retryAfterSec).toBeLessThanOrEqual(3600);
+      }
+    });
+
+    it('付费套餐不受手动熔断影响，且不读熔断状态', async () => {
+      vi.mocked(db.query.users.findFirst).mockResolvedValue(mockUserBase({ plan: 'pro' }));
+      setupSequentialCounts(0, 0, 0, 0);
+
+      const result = await checkAiQuota('user-1');
+      expect(result.allowed).toBe(true);
+      expect(mockGetSetting).not.toHaveBeenCalled();
+    });
+
+    it('手动熔断已过期或已解除 → 放行', async () => {
+      mockGetSetting.mockResolvedValueOnce({ until: new Date(Date.now() - 1000).toISOString() });
+      vi.mocked(db.query.users.findFirst).mockResolvedValue(mockUserBase({ plan: 'free' }));
+      setupSequentialCounts(0, 0, 0, 0);
+      expect((await checkAiQuota('user-1')).allowed).toBe(true);
+
+      mockGetSetting.mockResolvedValueOnce({ until: null });
+      setupSequentialCounts(0, 0, 0, 0);
+      expect((await checkAiQuota('user-1')).allowed).toBe(true);
     });
   });
 

@@ -12,8 +12,17 @@ import { notFound, redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { getUsageStats } from '@/lib/usage';
 import { CAN_BILLING } from '@/lib/deployment-mode';
-import { getCurrencyForLocale, PLANS, PlanType, CurrencyCode } from '@/lib/plans';
+import {
+  getCurrencyForLocale,
+  PLANS,
+  PLAN_FEATURE_MESSAGE_VALUES,
+  PlanType,
+  CurrencyCode,
+} from '@/lib/plans';
 import { PlansContent } from './plans-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('pageTitles', 'billingPlans');
 
 // FAQ item keys organized by category — preserved verbatim from
 // the pre-split /billing/page.tsx so existing copy + question order
@@ -86,7 +95,7 @@ export default async function BillingPlansPage() {
     }
   }
   for (const featureKey of allFeatureKeys) {
-    planFeatures[featureKey] = t(`plans.features.${featureKey}`);
+    planFeatures[featureKey] = t(`plans.features.${featureKey}`, PLAN_FEATURE_MESSAGE_VALUES);
   }
 
   const faqItems: Record<string, { question: string; answer: string }> = {};
@@ -106,7 +115,7 @@ export default async function BillingPlansPage() {
     currentPlan: t('currentPlan'),
     trialEndsTemplate: t.raw('trialEnds'),
     executionsThisMonth: t('executionsThisMonth'),
-    apiCallsThisMonth: t('apiCallsThisMonth'),
+    apiCallsThisMonth: t('restApiCallsThisMonth'),
     savedPolicies: t('savedPolicies'),
     monthly: t('monthly'),
     yearly: t('yearly'),

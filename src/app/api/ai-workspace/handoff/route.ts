@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { getEffectiveRole } from '@/lib/effective-role';
-import { AI_WORKSPACE_NEXT_PATTERN, isAiWorkspaceEnabledFor, resolveAiWorkspaceBase } from '@/lib/ai-workspace';
+import {
+  AI_WORKSPACE_NEXT_PATTERN,
+  isAiWorkspaceEnabledFor,
+  resolveAiWorkspaceBase,
+  toWorkspaceTheme,
+} from '@/lib/ai-workspace';
 import { signHandoffToken } from '@/lib/ai-workspace-handoff';
 import { safeEnv } from '@/lib/runtime/safe-env';
 
@@ -13,6 +18,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const next = req.nextUrl.searchParams.get('next') ?? '/';
   const localeParam = req.nextUrl.searchParams.get('locale') ?? 'en';
   const locale = LOCALES.has(localeParam) ? localeParam : 'en';
+  // 只接受 dark/light，其余值（含 system）丢弃，工作台按默认主题显示。
+  const theme = toWorkspaceTheme(req.nextUrl.searchParams.get('theme'));
   // next 必须落在白名单内，防止令牌被带到工作台任意路径
   if (!AI_WORKSPACE_NEXT_PATTERN.test(next)) return NextResponse.json({ error: 'invalid_next' }, { status: 400 });
 
@@ -47,5 +54,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const target = new URL(`${base}/handoff`);
   target.searchParams.set('token', token);
   target.searchParams.set('next', next);
+  if (theme) target.searchParams.set('theme', theme);
   return NextResponse.redirect(target, 302);
 }

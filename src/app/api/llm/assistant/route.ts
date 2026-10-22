@@ -21,6 +21,32 @@ import {
   getSetting,
 } from '@/lib/platform-settings';
 import { errorEnvelope } from '@/lib/api/error-envelope';
+import { AI_WORKSPACE_CALLER } from '@/lib/llm-caller';
+import { NO_RESULTS_UI_NOTE, retrieveServerGrounding } from '@/lib/assistant/server-grounding';
+import { safeEnv } from '@/lib/runtime/safe-env';
+
+/**
+ * 给工作台的站内链接要指向对外公开的站点：取配置的 NEXT_PUBLIC_APP_URL（生产必填），
+ * 不跟随请求 Host——工作台若经 workers.dev 或内部路由调用，链接也不能指向那些地址。
+ * 只有未配置（本地开发）或配置非法时才退回请求来源。
+ */
+function publicOrigin(requestOrigin: string): string {
+  const configured = safeEnv('NEXT_PUBLIC_APP_URL');
+  if (!configured) return requestOrigin;
+  try {
+    return new URL(configured).origin;
+  } catch {
+    return requestOrigin;
+  }
+}
+
+/** 合并管理员指令与调用方说明，总长不超过 aster-api 的上限（超限会被 400 拒绝）。 */
+function composeInstructions(admin: string, note: string | null): string | null {
+  if (!note) return admin.length > 0 ? admin : null;
+  const room = ASSISTANT_INSTRUCTIONS_MAX_LEN - note.length - 2;
+  const head = admin.slice(0, Math.max(0, room));
+  return head.length > 0 ? `${head}\n\n${note}` : note;
+}
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -54,9 +80,25 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (body === null || typeof body !== 'object' || Array.isArray(body)) {
     return errorEnvelope({ code: 'INVALID_JSON', message: '请求体必须是 JSON 对象', status: 400 });
   }
+  const fields = body as Record<string, unknown>;
+  // 仅凭请求头判断调用方界面形态：签名由下游 proxyLlmSse 校验，伪造头的请求在那里被 401，
+  // 这里的判断只影响措辞与链接形式，不涉及身份。
+  const fromWorkspace = req.headers.get('x-internal-caller') === AI_WORKSPACE_CALLER;
+  const hasHits = Array.isArray(fields.groundingHits) && fields.groundingHits.length > 0;
+  const groundingHits =
+    !hasHits && typeof fields.query === 'string' && fields.query.trim()
+      ? retrieveServerGrounding(fields.query, fields.locale, {
+          absoluteOrigin: fromWorkspace ? publicOrigin(req.nextUrl.origin) : undefined,
+        })
+      : fields.groundingHits;
   const patched = {
-    ...(body as Record<string, unknown>),
-    adminInstructions: instructions.length > 0 ? instructions : null,
+    ...fields,
+    ...(groundingHits !== undefined ? { groundingHits } : {}),
+    adminInstructions: composeInstructions(instructions, fromWorkspace ? NO_RESULTS_UI_NOTE : null),
+    // 工作台界面没有「答案下方的搜索结果」列表：让 aster-api 从系统提示中去掉引导查看搜索结果的那句。
+    // 浏览器调用方由服务端决定（不发此字段，aster-api 默认 true），不采信客户端自带的值；
+    // 旧版 aster-api 忽略未知字段，可先于其发布。
+    resultsUi: fromWorkspace ? false : undefined,
   };
 
   // 用改写后的 body 构造新请求交给共享代理（它会再叠加 BYOK envelope）。

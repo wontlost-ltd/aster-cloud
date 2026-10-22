@@ -1,0 +1,169 @@
+/**
+ * 审批收件箱里的「策略版本审批」（生产 E2E Q1）。
+ *
+ * 让版本提交审批（「提交审批」→「等待他人审批」）与 Action-Guard 审批一起出现在收件箱，
+ * 不必逐个策略打开版本页查找。这里按与 approveVersion 完全相同的规则（decideVersionApproval）列出待审批版本：
+ *   - 范围 = 用户名下未删除的策略 ∪ 用户担任 owner/admin 的团队的未删除策略；
+ *   - canAct = 审批规则允许：团队策略的团队 owner/admin 且不是作者；个人策略的所有者（可自审）。
+ *     不能审批的（如团队策略的作者本人）照样列出但只读，标注「等待他人审批」。
+ * 审批动作本身不在这里：条目链接到既有的版本页，由那里的批准/驳回走 approveVersion。
+ */
+import 'server-only';
+
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { db, policies, policyVersions, securityEvents, teamMembers, users } from '@/lib/prisma';
+import type { TeamRole } from '@/lib/team-permissions';
+import {
+  decideVersionApproval,
+  lacksEligibleReviewer,
+  TEAM_REVIEWER_ROLES,
+} from '@/services/policy/version-approval-rules';
+
+export interface PendingVersionApproval {
+  versionId: string;
+  policyId: string;
+  policyName: string;
+  version: number;
+  /** 提交人显示名（姓名，否则邮箱）；查不到为 null。 */
+  submittedBy: string | null;
+  /** 提交时间（ISO）；取最近一次提交审批事件，事件缺失时退回版本创建时间。 */
+  submittedAt: string;
+  canAct: boolean;
+  /** 策略所属团队；个人策略为 null。 */
+  teamId: string | null;
+  /** 团队策略里除作者外没有任何 owner/admin，四眼原则下无人能审批（界面提示任命管理员）。 */
+  noEligibleReviewer: boolean;
+}
+
+interface SubmitEvent {
+  userId: string | null;
+  createdAt: Date;
+}
+
+/**
+ * 每个待审批版本最近一次「提交审批」安全事件，按 policyId:version 索引。
+ * 只查待审批的 (policyId, version)，并用 DISTINCT ON 每版只取最新一条：
+ * 结果行数不超过待审批版本数，不随历史提交事件增长。
+ */
+async function loadSubmitEvents(
+  pending: ReadonlyArray<{ policyId: string; version: number }>,
+): Promise<Map<string, SubmitEvent>> {
+  const versionExpr = sql<string>`${securityEvents.details}->>'version'`;
+  const pairs = sql.join(
+    pending.map((v) => sql`(${v.policyId}, ${String(v.version)})`),
+    sql`, `,
+  );
+  const events = await db
+    .selectDistinctOn([securityEvents.policyId, versionExpr], {
+      policyId: securityEvents.policyId,
+      version: versionExpr,
+      userId: securityEvents.userId,
+      createdAt: securityEvents.createdAt,
+    })
+    .from(securityEvents)
+    .where(
+      and(
+        eq(securityEvents.eventType, 'APPROVAL_DECISION'),
+        sql`${securityEvents.details}->>'action' = 'SUBMIT_FOR_APPROVAL'`,
+        sql`(${securityEvents.policyId}, ${versionExpr}) IN (${pairs})`,
+      ),
+    )
+    .orderBy(securityEvents.policyId, versionExpr, desc(securityEvents.createdAt))
+    .limit(pending.length);
+  return new Map(events.map((e) => [`${e.policyId}:${e.version}`, { userId: e.userId, createdAt: e.createdAt }]));
+}
+
+async function loadDisplayNames(ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const rows = await db.query.users.findMany({
+    where: inArray(users.id, ids),
+    columns: { id: true, name: true, email: true },
+  });
+  return new Map(rows.map((u) => [u.id, u.name || u.email || u.id]));
+}
+
+/** 用户在各团队的角色，只保留能审批团队策略版本的 owner/admin。 */
+async function loadReviewerTeamRoles(userId: string): Promise<Map<string, TeamRole>> {
+  const memberships = await db.query.teamMembers.findMany({
+    where: and(eq(teamMembers.userId, userId), inArray(teamMembers.role, ['owner', 'admin'])),
+    columns: { teamId: true, role: true },
+  });
+  return new Map(memberships.map((m) => [m.teamId, m.role as TeamRole]));
+}
+
+/** 各团队全部 owner/admin 的用户 id，用于判断待审批版本是否还有合格审批人。 */
+async function loadTeamReviewerIds(teamIds: string[]): Promise<Map<string, string[]>> {
+  const byTeam = new Map<string, string[]>();
+  if (teamIds.length === 0) return byTeam;
+  const rows = await db.query.teamMembers.findMany({
+    where: and(inArray(teamMembers.teamId, teamIds), inArray(teamMembers.role, [...TEAM_REVIEWER_ROLES])),
+    columns: { teamId: true, userId: true },
+  });
+  for (const r of rows) byTeam.set(r.teamId, [...(byTeam.get(r.teamId) ?? []), r.userId]);
+  return byTeam;
+}
+
+export async function listPendingVersionApprovals(userId: string): Promise<PendingVersionApproval[]> {
+  const teamRoles = await loadReviewerTeamRoles(userId);
+  const reviewerTeams = [...teamRoles.keys()];
+  const owned = await db.query.policies.findMany({
+    where: and(
+      reviewerTeams.length > 0
+        ? or(eq(policies.userId, userId), inArray(policies.teamId, reviewerTeams))
+        : eq(policies.userId, userId),
+      isNull(policies.deletedAt),
+    ),
+    columns: { id: true, name: true, userId: true, teamId: true },
+  });
+  if (owned.length === 0) return [];
+
+  const pending = await db.query.policyVersions.findMany({
+    where: and(
+      inArray(policyVersions.policyId, owned.map((p) => p.id)),
+      eq(policyVersions.status, 'PENDING_APPROVAL'),
+    ),
+    columns: { id: true, policyId: true, version: true, createdBy: true, createdAt: true },
+  });
+  if (pending.length === 0) return [];
+
+  const events = await loadSubmitEvents(pending);
+  const submitterOf = (v: (typeof pending)[number]) => events.get(`${v.policyId}:${v.version}`)?.userId ?? v.createdBy;
+  const submitterIds = [...new Set(pending.map(submitterOf).filter((id): id is string => !!id))];
+  const policyById = new Map(owned.map((p) => [p.id, p]));
+  const pendingTeamIds = [
+    ...new Set(pending.map((v) => policyById.get(v.policyId)?.teamId).filter((id): id is string => !!id)),
+  ];
+  const [names, reviewersByTeam] = await Promise.all([
+    loadDisplayNames(submitterIds),
+    loadTeamReviewerIds(pendingTeamIds),
+  ]);
+
+  return pending
+    .map((v) => {
+      const submitter = submitterOf(v);
+      const policy = policyById.get(v.policyId);
+      const verdict = decideVersionApproval({
+        policyOwnerId: policy?.userId ?? '',
+        policyTeamId: policy?.teamId ?? null,
+        reviewerId: userId,
+        reviewerTeamRole: policy?.teamId ? (teamRoles.get(policy.teamId) ?? null) : null,
+        versionAuthorId: v.createdBy,
+      });
+      return {
+        versionId: v.id,
+        policyId: v.policyId,
+        policyName: policy?.name ?? v.policyId,
+        version: v.version,
+        submittedBy: submitter ? (names.get(submitter) ?? null) : null,
+        submittedAt: (events.get(`${v.policyId}:${v.version}`)?.createdAt ?? v.createdAt).toISOString(),
+        canAct: verdict.allowed,
+        teamId: policy?.teamId ?? null,
+        noEligibleReviewer: lacksEligibleReviewer(
+          policy?.teamId ?? null,
+          policy?.teamId ? (reviewersByTeam.get(policy.teamId) ?? []) : [],
+          v.createdBy,
+        ),
+      };
+    })
+    .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
+}

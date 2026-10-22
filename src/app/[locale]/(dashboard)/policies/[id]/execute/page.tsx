@@ -4,6 +4,9 @@ import { db, policies } from '@/lib/prisma';
 import { eq, and } from 'drizzle-orm';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { ExecutePolicyContent } from './execute-policy-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('pageTitles', 'policyExecute');
 
 interface PageProps {
   params: Promise<{ id: string; locale: string }>;

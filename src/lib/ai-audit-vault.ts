@@ -11,6 +11,32 @@
 import { sql } from 'drizzle-orm';
 import { db } from '@/lib/prisma';
 
+/** 每个 isolate 只报一次「密钥未配置」，避免每笔用量记录刷屏。 */
+let missingSecretReported = false;
+
+/** 测试用：重置「已报告」标记。 */
+export function resetAuditVaultWarningForTests(): void {
+  missingSecretReported = false;
+}
+
+/**
+ * 审计密钥是否可用（存在且 ≥16 字符，与 encryptionSecret 同一判定）。
+ * 不可用时打一次 error 日志：调用方传 null 明文时不会走到加密，若不在这里自检，
+ * 生产缺密钥会一直无人察觉，直到 GDPR 导出才暴露。
+ */
+function auditSecretConfigured(): boolean {
+  const secret = process.env.AI_AUDIT_ENCRYPTION_SECRET;
+  const ok = !!secret && secret.length >= 16;
+  if (!ok && !missingSecretReported) {
+    missingSecretReported = true;
+    console.error(
+      '[ai-audit-vault] AI_AUDIT_ENCRYPTION_SECRET missing or too short (>=16 chars): ' +
+        'AI prompt/completion audit records cannot be encrypted and the GDPR export omits their original text',
+    );
+  }
+  return ok;
+}
+
 function encryptionSecret(): string {
   const secret = process.env.AI_AUDIT_ENCRYPTION_SECRET;
   if (!secret || secret.length < 16) {
@@ -31,6 +57,8 @@ function encryptionSecret(): string {
  * 注意：返回 SQL 表达式而非字符串，drizzle 会原样插入。
  */
 export function encryptForAudit(plaintext: string | null | undefined) {
+  // 先做配置自检（只记日志，不改变下面的加密/抛错行为）。
+  auditSecretConfigured();
   if (plaintext == null) return null;
   const secret = encryptionSecret();
   return sql`pgp_sym_encrypt(${plaintext}, ${secret})`;

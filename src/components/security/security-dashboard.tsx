@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useLocale } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import type { SecurityEventType, EventSeverity } from '@/lib/prisma';
+import { securityEventDisplayType } from '@/lib/security-event-display';
 
 interface SecurityStats {
   total: number;
@@ -41,29 +42,34 @@ const SEVERITY_CONFIG: Record<EventSeverity, { label: string; color: string; bgC
   CRITICAL: { label: '严重', color: 'text-red-900    dark:text-red-200',    bgColor: 'bg-red-200    dark:bg-red-900/40' },
 };
 
-const EVENT_TYPE_LABELS: Record<string, string> = {
-  SIGNATURE_INVALID: '签名无效',
-  NONCE_REUSED: 'Nonce 重放',
-  TIMESTAMP_EXPIRED: '时间戳过期',
-  HASH_MISMATCH: '哈希不匹配',
-  UNAUTHORIZED_APPROVAL: '未授权审批',
-  SELF_APPROVAL_ATTEMPT: '自审批尝试',
-  POLICY_EXECUTED: '策略执行',
-  APPROVAL_DECISION: '审批决策',
-  VERSION_CREATED: '版本创建',
-  VERSION_NOT_FOUND: '版本不存在',
-  DEPRECATED_VERSION_EXECUTED: '执行已废弃版本',
-  VERSION_SET_DEFAULT: '设置默认版本',
-  VERSION_DEPRECATED: '版本被废弃',
-  VERSION_ARCHIVED: '版本被归档',
-};
-
 type TimeRange = '1h' | '24h' | '7d' | '30d';
 
 export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
   // 事件时间按当前 locale 格式化（原硬编码 'zh-CN'，德语/印地语用户看到中文格式）。
   // ★本组件其余文案仍是硬编码中文（约 40 处），属独立的 i18n 工作，不在本次范围。
   const locale = useLocale();
+  const tType = useTranslations('security.eventTypes');
+  // 事件类型 → 本地化标签。键写成字面量，便于 check:message-keys 静态核对；
+  // 未知类型（新枚举值尚未补文案）回落显示原始 id。
+  const eventTypeLabels: Record<string, string> = {
+    SIGNATURE_INVALID: tType('SIGNATURE_INVALID'),
+    NONCE_REUSED: tType('NONCE_REUSED'),
+    TIMESTAMP_EXPIRED: tType('TIMESTAMP_EXPIRED'),
+    HASH_MISMATCH: tType('HASH_MISMATCH'),
+    UNAUTHORIZED_APPROVAL: tType('UNAUTHORIZED_APPROVAL'),
+    SELF_APPROVAL_ATTEMPT: tType('SELF_APPROVAL_ATTEMPT'),
+    POLICY_EXECUTED: tType('POLICY_EXECUTED'),
+    POLICY_EXECUTION_FAILED: tType('POLICY_EXECUTION_FAILED'),
+    APPROVAL_SUBMITTED: tType('APPROVAL_SUBMITTED'),
+    APPROVAL_DECISION: tType('APPROVAL_DECISION'),
+    VERSION_CREATED: tType('VERSION_CREATED'),
+    VERSION_NOT_FOUND: tType('VERSION_NOT_FOUND'),
+    DEPRECATED_VERSION_EXECUTED: tType('DEPRECATED_VERSION_EXECUTED'),
+    VERSION_SET_DEFAULT: tType('VERSION_SET_DEFAULT'),
+    VERSION_DEPRECATED: tType('VERSION_DEPRECATED'),
+    VERSION_ARCHIVED: tType('VERSION_ARCHIVED'),
+  };
+  const eventTypeLabel = (type: string) => eventTypeLabels[type] ?? type;
   const [stats, setStats] = useState<SecurityStats | null>(null);
   const [events, setEvents] = useState<SecurityEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -279,7 +285,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
                   className="flex items-center justify-between p-2 bg-bg-subtle dark:bg-gray-700 rounded"
                 >
                   <span className="text-sm text-fg dark:text-gray-300 truncate">
-                    {EVENT_TYPE_LABELS[type] || type}
+                    {eventTypeLabel(type)}
                   </span>
                   <span className="ml-2 text-sm font-medium text-fg dark:text-white">
                     {count}
@@ -326,7 +332,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
                         {SEVERITY_CONFIG[event.severity].label}
                       </span>
                       <span className="text-sm font-medium text-fg dark:text-white">
-                        {EVENT_TYPE_LABELS[event.eventType] || event.eventType}
+                        {eventTypeLabel(securityEventDisplayType(event.eventType, event.details))}
                       </span>
                     </div>
                     <div className="mt-1 text-sm text-fg-muted dark:text-fg-subtle">

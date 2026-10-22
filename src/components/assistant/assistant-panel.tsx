@@ -13,6 +13,7 @@ import {
 } from '@/lib/docs/dashboard-docs-seeds';
 import { buildCommands, type Command } from '@/components/dashboard/command-palette-commands';
 import { getAssistantAnswerProvider } from '@/lib/assistant/provider';
+import { parseAnswerLinks } from '@/lib/assistant/answer-links';
 
 /**
  * 站内助手面板（全站驻留）。
@@ -223,7 +224,7 @@ export function AssistantPanel() {
                   这一段完全不渲染 —— 纯离线模式下 DOM 与之前一致。 */}
               {(turn.answer || turn.answering) && (
                 <p className="whitespace-pre-wrap px-1 text-sm text-fg">
-                  {turn.answer}
+                  {turn.answer && <AnswerText answer={turn.answer} />}
                   {turn.answering && (
                     <span className="ml-0.5 inline-block animate-pulse" aria-hidden>
                       ▍
@@ -304,5 +305,36 @@ export function AssistantPanel() {
         />
       </form>
     </aside>
+  );
+}
+
+/**
+ * 答复正文：把模型引用的 `[标题](href)` 渲染成真正的链接。
+ *
+ * <p>站内链接走 next/link（客户端路由，面板与问答记录不丢，理由同检索结果列表）；
+ * 站外链接新标签页打开并带 rel=noopener noreferrer。href 白名单见 answer-links.ts——
+ * javascript: 等不安全地址不会生成链接。流式过程中尚未闭合的链接暂按原文显示，闭合后即变为链接。
+ */
+function AnswerText({ answer }: { answer: string }) {
+  const className =
+    'text-primary underline underline-offset-2 hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-primary';
+  return (
+    <>
+      {parseAnswerLinks(answer).map((seg, i) => {
+        if (seg.kind === 'text') return <span key={i}>{seg.text}</span>;
+        if (seg.internal) {
+          return (
+            <Link key={i} href={seg.href} className={className}>
+              {seg.text}
+            </Link>
+          );
+        }
+        return (
+          <a key={i} href={seg.href} target="_blank" rel="noopener noreferrer" className={className}>
+            {seg.text}
+          </a>
+        );
+      })}
+    </>
   );
 }

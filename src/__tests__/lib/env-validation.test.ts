@@ -33,6 +33,7 @@ function makeFullSaasProductionEnv(): NodeJS.ProcessEnv {
     NEXT_PUBLIC_STRIPE_PRO_YEARLY_EUR_PRICE_ID: 'price_pro_eur_y',
     NEXT_PUBLIC_MIXPANEL_TOKEN: 'mp-token',
     RESEND_API_KEY: 're_key',
+    AI_AUDIT_ENCRYPTION_SECRET: 'audit-secret-0123456789',
   } as NodeJS.ProcessEnv;
 }
 
@@ -121,6 +122,22 @@ describe('env-validation — SaaS mode', () => {
     expect(
       result.missing.some((m) => m.includes('ASTER_PLAN_GATE_HMAC_KEY')),
     ).toBe(true);
+  });
+
+  it('★production 缺 AI_AUDIT_ENCRYPTION_SECRET → missing（GDPR 导出依赖）', () => {
+    const env = makeFullSaasProductionEnv();
+    delete env.AI_AUDIT_ENCRYPTION_SECRET;
+    const result = checkEnv(env, 'saas');
+    expect(result.ok).toBe(false);
+    expect(result.missing.some((m) => m.startsWith('AI_AUDIT_ENCRYPTION_SECRET'))).toBe(true);
+  });
+
+  it('development 缺 AI_AUDIT_ENCRYPTION_SECRET → 只 warn，不打断本地开发', () => {
+    const env = { ...makeFullSaasProductionEnv(), NODE_ENV: 'development' } as NodeJS.ProcessEnv;
+    delete env.AI_AUDIT_ENCRYPTION_SECRET;
+    const result = checkEnv(env, 'saas');
+    expect(result.ok).toBe(true);
+    expect(result.warnings.some((m) => m.startsWith('AI_AUDIT_ENCRYPTION_SECRET'))).toBe(true);
   });
 
   it('production 缺 Mixpanel token → missing', () => {

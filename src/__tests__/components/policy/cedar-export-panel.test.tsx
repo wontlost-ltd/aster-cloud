@@ -11,6 +11,7 @@ const labels = {
   notExportable: 'This policy cannot be exported to Cedar',
   failed: 'Export failed',
   noExecutableVersion: 'Approve a version before exporting to Cedar',
+  versionsLink: 'Version history',
   schemaNote: 'Schema covers only what the rule mentions',
 };
 
@@ -41,7 +42,7 @@ afterEach(() => {
 });
 
 function renderPanel() {
-  render(<CedarExportPanel policyId="p1" labels={labels} />);
+  render(<CedarExportPanel policyId="p1" labels={labels} hasExecutableVersion versionsHref="/zh/policies/p1/versions" />);
   fireEvent.click(screen.getByRole('button', { name: 'Export to Cedar' }));
 }
 
@@ -127,6 +128,28 @@ describe('CedarExportPanel', () => {
     renderPanel();
 
     expect(await screen.findByText('Cedar export is busy, retry shortly')).toBeDefined();
+  });
+
+  it('no approved version at render time: button disabled, hint explains approval and links to versions; no request', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    render(<CedarExportPanel policyId="p1" labels={labels} hasExecutableVersion={false} versionsHref="/zh/policies/p1/versions" />);
+
+    const button = screen.getByRole('button', { name: 'Export to Cedar' });
+    expect(button.hasAttribute('disabled')).toBe(true);
+    const hint = screen.getByText('Approve a version before exporting to Cedar');
+    expect(button.getAttribute('aria-describedby')).toBe(hint.id);
+    expect(screen.getByRole('link', { name: /Version history/ }).getAttribute('href')).toBe('/zh/policies/p1/versions');
+    fireEvent.click(button);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('other non-2xx (500): shows the generic failed label as an alert', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(500, { error: 'boom' })));
+
+    renderPanel();
+
+    expect((await screen.findByRole('alert')).textContent).toBe('Export failed');
   });
 
   it('502 upstream failure: shows the failed label', async () => {

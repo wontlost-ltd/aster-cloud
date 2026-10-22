@@ -60,6 +60,7 @@ import {
   formatPrice,
   getProPrice,
   PLANS,
+  PLAN_FEATURE_MESSAGE_VALUES,
 } from '@/lib/plans';
 
 type Props = {
@@ -619,7 +620,7 @@ function PricingCard({
           {features.map((featureKey) => (
             <li key={featureKey} className="flex items-start gap-2">
               <Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
-              <span>{t(`billing.plans.features.${featureKey}`)}</span>
+              <span>{t(`billing.plans.features.${featureKey}`, PLAN_FEATURE_MESSAGE_VALUES)}</span>
             </li>
           ))}
         </ul>
