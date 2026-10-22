@@ -92,6 +92,28 @@ describe('DataContent AI 工作台导出', () => {
     fireEvent.click(screen.getByRole('button', { name: (S.downloadCard as Record<string, string>).action }));
     await vi.waitFor(() => expect(createObjectURL).toHaveBeenCalled());
     expect(screen.queryByText(S.workspaceExportUnavailable as string)).toBeNull();
+    expect(screen.queryByText(S.auditContentUnavailable as string)).toBeNull();
+  });
+
+  it('★审计原文无法解密（review I2）→ 文件照常下载，提示原文部分缺失，工作台提示不受影响', async () => {
+    const createObjectURL = vi.fn(() => 'blob:x');
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ records: [], auditContent: { error: 'unavailable' }, aiWorkspace: { conversations: [] } }),
+            { status: 200 },
+          ),
+      ),
+    );
+    renderZh();
+    fireEvent.click(screen.getByRole('button', { name: (S.downloadCard as Record<string, string>).action }));
+    expect(await screen.findByText(S.auditContentUnavailable as string)).toBeTruthy();
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(screen.queryByText(S.workspaceExportUnavailable as string)).toBeNull();
+    expect(screen.queryByText(S.downloadUnavailable as string)).toBeNull();
   });
 });
 

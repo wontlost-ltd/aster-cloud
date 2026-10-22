@@ -31,7 +31,7 @@ function auditSecretConfigured(): boolean {
     missingSecretReported = true;
     console.error(
       '[ai-audit-vault] AI_AUDIT_ENCRYPTION_SECRET missing or too short (>=16 chars): ' +
-        'AI prompt/completion audit records cannot be encrypted and the GDPR export is unavailable',
+        'AI prompt/completion audit records cannot be encrypted and the GDPR export omits their original text',
     );
   }
   return ok;

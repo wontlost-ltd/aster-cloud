@@ -176,6 +176,17 @@ const ENV_CHECKS: readonly EnvCheck[] = [
       'Resend 邮件服务（on-prem 客户自行接 SMTP / 复制邀请链接代替）',
   },
 
+  // ── SaaS-only：AI 调用内容审计 ───────────────────────────────────
+  // 加密落库 prompt/completion，并在 GDPR 第 15 条导出时解密（lib/ai-audit-vault.ts、
+  // api/user/ai-data-export）。缺失时导出只能给出未加密字段，原文部分标为 unavailable。
+  // on-prem 的 staging/Helm 外部密钥清单尚未包含此项，先只在 SaaS 强校验。
+  {
+    key: 'AI_AUDIT_ENCRYPTION_SECRET',
+    required: 'production-only',
+    requiredIn: ['saas'],
+    description: 'AI 审计原文加密主密钥（≥16 字符，入库后不可轮换，否则旧记录无法解密）',
+  },
+
   // ── On-Prem-only：License + SSO ─────────────────────────────────
   // 占位字段；PR-8 的 /admin/license 与 /admin/sso 页面会真正消费
   {

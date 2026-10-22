@@ -128,6 +128,9 @@ AI_WORKSPACE_ENABLED_FOR = "784d38c4-f433-4369-b4dc-ab0f4f0cc2b9"
 # 编辑器 / AI 客户端会读 NEXT_PUBLIC_ASTER_POLICY_API_URL 作为运行时 baseUrl
 # wrangler secret put NEXT_PUBLIC_ASTER_POLICY_API_URL
 #
+# AI 调用内容审计（必须配置；GDPR 第 15 条导出靠它解密 prompt / completion 原文）：
+# wrangler secret put AI_AUDIT_ENCRYPTION_SECRET  # ≥16 字符，`openssl rand -hex 32`；入库后不可轮换
+#
 # Cron 鉴权（worker.js scheduled() 派发 + 外部 curl 调用都用）：
 # wrangler secret put CRON_SECRET  # `openssl rand -hex 24`
 #

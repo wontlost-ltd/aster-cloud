@@ -56,12 +56,15 @@ export function DataContent() {
   const [downloadError, setDownloadError] = useState<{ requestId: string | null } | null>(null);
   // 下载成功但未能包含 AI 工作台数据（F23）：文件照常下载，同时常驻提示。
   const [workspaceExportMissing, setWorkspaceExportMissing] = useState(false);
+  // 下载成功但审计原文无法解密（密钥缺失或被轮换）：其余记录照常下载，同时常驻提示。
+  const [auditContentMissing, setAuditContentMissing] = useState(false);
   const [eraseNotice, setEraseNotice] = useState<EraseNotice | null>(null);
 
   const downloadJson = async () => {
     setIsDownloading(true);
     setDownloadError(null);
     setWorkspaceExportMissing(false);
+    setAuditContentMissing(false);
     try {
       // GDPR Article 15 export endpoint. The sibling /ai-data path
       // is DELETE-only — GET against it returns 405.
@@ -80,12 +83,16 @@ export function DataContent() {
       const text = await res.text();
       const parsed = (() => {
         try {
-          return JSON.parse(text) as { aiWorkspace?: { error?: unknown } };
+          return JSON.parse(text) as {
+            aiWorkspace?: { error?: unknown };
+            auditContent?: { error?: unknown };
+          };
         } catch {
           return null;
         }
       })();
       setWorkspaceExportMissing(typeof parsed?.aiWorkspace?.error === 'string');
+      setAuditContentMissing(typeof parsed?.auditContent?.error === 'string');
       const blob = new Blob([text], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -167,6 +174,11 @@ export function DataContent() {
                     </span>
                   )}
                 </AlertDescription>
+              </Alert>
+            )}
+            {auditContentMissing && (
+              <Alert variant="warning" className="mt-4">
+                <AlertDescription>{t('auditContentUnavailable')}</AlertDescription>
               </Alert>
             )}
             {workspaceExportMissing && (
