@@ -268,7 +268,7 @@ aster-api 侧为租户 `team1` 部署 `guard.customer.decide` 示例策略。
 
    ```
    401
-   {"reason":"membership_revoked","error":"unauthorized","message":"Invalid or revoked API key. See https://aster-lang.cloud/billing/api-keys"}
+   {"reason":"membership_revoked","error":"unauthorized","message":"Invalid or revoked API key. See https://aster-lang.cloud/settings/api-keys"}
    aster-api 日志：apikey verify rejected: path=/api/v1/guard/decisions reason=membership_revoked
    ```
 
