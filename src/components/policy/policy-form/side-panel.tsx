@@ -37,6 +37,10 @@ import {
   type SupportedLocale,
 } from '@/data/policy-examples';
 import { cn } from '@/components/ui';
+import { useIsMobile } from './use-is-mobile';
+
+/** 侧栏容器可见的视口条件，与 index.tsx 中 `lg:flex` 一致。 */
+const PANEL_VISIBLE_QUERY = '(min-width: 1024px)';
 
 /**
  * Side panel — tabbed container for AI, syntax reference, and
@@ -146,8 +150,10 @@ export function SidePanel({
   const [aiOpened, setAiOpened] = useState(tab === 'ai');
   if (tab === 'ai' && !aiOpened) setAiOpened(true);
   // 「AI」tab 本身就是 AI 入口，且其输入框/发送按钮贴在视口右下角，正好落在悬浮助手按钮下面：
-  // 打开期间让出悬浮按钮，切走或关闭侧栏即恢复。
-  useSuppressAssistantLauncher(tab === 'ai');
+  // 打开期间让出悬浮按钮，切走或关闭侧栏即恢复。侧栏容器只在 lg 及以上显示（index.tsx 的
+  // `hidden lg:flex`），md–lg 之间或窗口缩窄后面板虽挂载却不可见，此时不能让出按钮。
+  const panelVisible = useIsMobile(PANEL_VISIBLE_QUERY);
+  useSuppressAssistantLauncher(tab === 'ai' && panelVisible);
   const errorCount =
     compileDiagnostics?.filter((d) => d.severity === 'error').length ?? 0;
 
