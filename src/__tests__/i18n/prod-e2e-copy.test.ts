@@ -73,6 +73,13 @@ describe('生产 E2E 文案：四语完整', () => {
   });
 });
 
+describe('zh 笔误覆盖', () => {
+  it('sox.selfApprovalNotAllowed 不再出现「请请」', () => {
+    const v = get(merged('zh'), 'policies.versions.sox.selfApprovalNotAllowed');
+    expect(v).toBe('不能批准自己创建的版本，请其他团队成员审批。');
+  });
+});
+
 describe('F25b 术语', () => {
   it('hi 导航统一用「AI」，不再出现「एआई」', () => {
     const hi = merged('hi');

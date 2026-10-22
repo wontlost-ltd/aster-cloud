@@ -1408,6 +1408,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         awaitingOthers: '等待他人审批',
         approvalCount: '{count} 条审批记录',
         selfApproveNote: '你正在审批自己提交的版本。个人策略没有第二位审批人，因此允许自审；本次决定会在审计日志中标记为自审。',
+        // 覆盖包内 zh 文案的笔误「请请」；待 aster-lang-locales 上游修正后可删除本条覆盖。
+        sox: { selfApprovalNotAllowed: '不能批准自己创建的版本，请其他团队成员审批。' },
       },
       logs: {
         filtersTitle: '筛选',
