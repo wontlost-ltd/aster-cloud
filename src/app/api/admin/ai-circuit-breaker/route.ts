@@ -1,7 +1,7 @@
 /**
  * 管理员手动控制 AI 熔断器
  *
- * POST { action: "trip" }     → 手动熔断（停 Free + Trial，至今日 UTC 结束或手动解除）
+ * POST { action: "trip" }     → 手动熔断（停 Free + Trial，含之后才注册/降级进来的用户，至今日 UTC 结束或手动解除）
  * POST { action: "release" }  → 立即解除全局熔断（自动与手动熔断一并解除）
  * GET                          → 查看当前状态（与管理员概览卡片同一来源 getCircuitStatus）
  *
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
     const body = (await req.json()) as { action: string };
     const client = extractClientInfo(req);
     if (body.action === 'release') {
-      const result = await releaseCircuit();
+      const result = await releaseCircuit(check.userId);
       console.warn(`[ai-circuit] manual release by ${check.userId}, released ${result.released} users`);
       await logAuditEvent({
         userId: check.userId,
@@ -90,7 +90,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, released: result.released });
     }
     if (body.action === 'trip') {
-      const result = await tripCircuitManually();
+      const result = await tripCircuitManually(check.userId);
       console.warn(`[ai-circuit] manual trip by ${check.userId}, affected ${result.affected} users`);
       await logAuditEvent({
         userId: check.userId,

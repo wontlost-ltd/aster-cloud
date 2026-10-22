@@ -2,8 +2,12 @@ import { describe, it, expect, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { SQL } from 'drizzle-orm';
 
-const { mockExecute } = vi.hoisted(() => ({ mockExecute: vi.fn() }));
+const { mockExecute, settings } = vi.hoisted(() => ({
+  mockExecute: vi.fn(),
+  settings: { getSetting: vi.fn(async (): Promise<unknown> => undefined), setSetting: vi.fn(async () => {}) },
+}));
 vi.mock('@/lib/prisma', () => ({ db: { execute: mockExecute } }));
+vi.mock('@/lib/platform-settings', () => settings);
 
 import { todayPlatformCostCents } from '@/lib/ai-circuit-breaker';
 
@@ -51,7 +55,7 @@ describe('tripCircuitManually / releaseCircuit', () => {
     const { tripCircuitManually } = await import('@/lib/ai-circuit-breaker');
     mockExecute.mockReset();
     mockExecute.mockResolvedValue([{ id: 'u1' }, { id: 'u2' }]);
-    expect(await tripCircuitManually()).toEqual({ affected: 2 });
+    expect(await tripCircuitManually('admin-1')).toEqual({ affected: 2 });
     const q = new PgDialect().sqlToQuery(mockExecute.mock.calls[0][0] as SQL);
     expect(q.sql).toContain('UPDATE "User"');
     expect(q.params).toEqual(
@@ -59,13 +63,48 @@ describe('tripCircuitManually / releaseCircuit', () => {
     );
   });
 
-  it('解除按同一前缀清除，因此同时撤销自动与手动熔断', async () => {
-    const { releaseCircuit } = await import('@/lib/ai-circuit-breaker');
+  it('★手动熔断记下持续到今日 UTC 结束的状态，覆盖之后才进入 Free/Trial 的用户（review I5）', async () => {
+    const { tripCircuitManually, MANUAL_TRIP_SETTING_KEY } = await import('@/lib/ai-circuit-breaker');
+    settings.setSetting.mockClear();
+    mockExecute.mockReset();
+    mockExecute.mockResolvedValue([]);
+    await tripCircuitManually('admin-1');
+    const end = new Date();
+    end.setUTCHours(23, 59, 59, 999);
+    expect(settings.setSetting).toHaveBeenCalledWith(MANUAL_TRIP_SETTING_KEY, { until: end.toISOString() }, 'admin-1');
+  });
+
+  it('解除按同一前缀清除，因此同时撤销自动与手动熔断，并清掉手动熔断状态', async () => {
+    const { releaseCircuit, MANUAL_TRIP_SETTING_KEY } = await import('@/lib/ai-circuit-breaker');
+    settings.setSetting.mockClear();
     mockExecute.mockReset();
     mockExecute.mockResolvedValue([{ id: 'u1' }]);
-    expect(await releaseCircuit()).toEqual({ released: 1 });
+    expect(await releaseCircuit('admin-1')).toEqual({ released: 1 });
     const q = new PgDialect().sqlToQuery(mockExecute.mock.calls[0][0] as SQL);
     expect(q.params).toContain('全局成本熔断%');
+    expect(settings.setSetting).toHaveBeenCalledWith(MANUAL_TRIP_SETTING_KEY, { until: null }, 'admin-1');
+  });
+});
+
+describe('activeManualTripUntil / getManualTripUntil（review I5）', () => {
+  const now = new Date('2026-10-23T10:00:00Z');
+
+  it('到期时间在未来 → 生效；已过期、已解除或值非法 → 未熔断', async () => {
+    const { activeManualTripUntil } = await import('@/lib/ai-circuit-breaker');
+    expect(activeManualTripUntil({ until: '2026-10-23T23:59:59.999Z' }, now)?.toISOString()).toBe(
+      '2026-10-23T23:59:59.999Z',
+    );
+    expect(activeManualTripUntil({ until: '2026-10-22T23:59:59.999Z' }, now)).toBeNull();
+    expect(activeManualTripUntil({ until: null }, now)).toBeNull();
+    expect(activeManualTripUntil(undefined, now)).toBeNull();
+    expect(activeManualTripUntil({ until: 'garbage' }, now)).toBeNull();
+  });
+
+  it('从 PlatformSetting 读取手动熔断状态', async () => {
+    const { getManualTripUntil, MANUAL_TRIP_SETTING_KEY } = await import('@/lib/ai-circuit-breaker');
+    settings.getSetting.mockResolvedValueOnce({ until: '2026-10-23T23:59:59.999Z' });
+    expect((await getManualTripUntil(now))?.toISOString()).toBe('2026-10-23T23:59:59.999Z');
+    expect(settings.getSetting).toHaveBeenLastCalledWith(MANUAL_TRIP_SETTING_KEY);
   });
 });
 
@@ -98,5 +137,17 @@ describe('getCircuitStatus', () => {
     const status = await getCircuitStatus();
     expect(status.state).toBe('closed');
     expect(status.bannedUsers).toBe(0);
+  });
+
+  it('★手动熔断生效但此刻没有命中任何用户 → 仍显示已熔断（可解除）', async () => {
+    const { getCircuitStatus } = await import('@/lib/ai-circuit-breaker');
+    const now = new Date('2026-10-23T10:00:00Z');
+    settings.getSetting.mockResolvedValueOnce({ until: '2026-10-23T23:59:59.999Z' });
+    mockExecute.mockReset();
+    mockExecute.mockImplementation(async (query: SQL) =>
+      new PgDialect().sqlToQuery(query).sql.includes('AiUsageRecord') ? [{ cents: 0 }] : [],
+    );
+    const status = await getCircuitStatus(now);
+    expect(status).toMatchObject({ state: 'free_trial_stopped', banState: 'free_trial_stopped', manual: true, bannedUsers: 0 });
   });
 });

@@ -1,14 +1,18 @@
 // 全局 AI 成本熔断器
 //
 // 当平台日 LLM 成本超阈值时自动停所有 Free 用户的 AI（保留 Pro/Enterprise）。
-// 管理员通过 admin UI 解锁。
+// 管理员通过 admin UI 解锁，也可手动熔断。
 //
 // 状态存储：Postgres（不依赖 Redis 持久化）。
+//   - 熔断落到每个用户的 aiBannedUntil（checkAiQuota 自然拒绝）；
+//   - 手动熔断另在 PlatformSetting 记一条到期时间，让熔断后才注册 / 降级进 Free、Trial 的用户
+//     同样被拦（AI 配额门直接读它），cron 也据此持续补打 ban，直到解除或 UTC 当日结束。
 // 触发：cron 每 10 分钟扫一次今日累计成本。
 
 import { db } from '@/lib/prisma';
 import { sql } from 'drizzle-orm';
 import { BILLABLE_STATUS_SQL } from '@/lib/ai-quota';
+import { getSetting, setSetting } from '@/lib/platform-settings';
 
 /**
  * 阈值（生产环境通过 env 覆盖，留 escape hatch）
@@ -34,6 +38,22 @@ const CIRCUIT_BAN_REASON_PREFIX = '全局成本熔断';
 
 /** 手动熔断在原因里的标记，用于在状态里区分「管理员手动」与「成本自动」。 */
 const MANUAL_MARKER = 'manual';
+
+/**
+ * 手动熔断状态在 PlatformSetting 中的键，值为 `{ until: ISO 时间 | null }`。
+ * 不放进 PLATFORM_SETTING_KEYS：那是通用管理开关列表，手动熔断只能经熔断器接口（带审计）改。
+ */
+export const MANUAL_TRIP_SETTING_KEY = 'ai_circuit.manual_trip';
+
+/** 手动熔断停用的套餐（与最高档自动熔断一致）。 */
+export const MANUAL_TRIP_PLANS: readonly string[] = ['free', 'trial'];
+
+/** 今日 UTC 结束时刻。 */
+function endOfUtcDay(now: Date = new Date()): Date {
+  const end = new Date(now);
+  end.setUTCHours(23, 59, 59, 999);
+  return end;
+}
 
 /**
  * 算今日（UTC）累计平台成本（不含 BYOK）
@@ -76,9 +96,7 @@ export async function applyCircuit(
 ): Promise<{ affected: number }> {
   if (state === 'closed') return { affected: 0 };
 
-  const endOfDay = new Date();
-  endOfDay.setUTCHours(23, 59, 59, 999);
-  const endOfDayIso = endOfDay.toISOString();
+  const endOfDayIso = endOfUtcDay().toISOString();
 
   const plansToBan = state === 'free_stopped' ? ['free'] : ['free', 'trial'];
   const plansList = sql.join(
@@ -99,9 +117,11 @@ export async function applyCircuit(
 }
 
 /**
- * 管理员手动解除熔断（清除自动熔断打的 ban）
+ * 管理员手动解除熔断：清除自动与手动熔断打的 ban，并清掉手动熔断状态，
+ * 否则 AI 配额门与 cron 会按仍生效的手动熔断继续拦截。
  */
-export async function releaseCircuit(): Promise<{ released: number }> {
+export async function releaseCircuit(adminId: string): Promise<{ released: number }> {
+  await setSetting(MANUAL_TRIP_SETTING_KEY, { until: null }, adminId);
   const result = await db.execute(sql`
     UPDATE "User"
     SET "aiBannedUntil" = NULL,
@@ -118,12 +138,33 @@ function banReason(state: CircuitState, manual: boolean): string {
   return `${CIRCUIT_BAN_REASON_PREFIX}（${state}${manual ? `，${MANUAL_MARKER}` : ''}）`;
 }
 
+/** 手动熔断对用户展示的原因（与写入 aiBanReason 的文本一致）。 */
+export const MANUAL_TRIP_BAN_REASON = banReason('free_trial_stopped', true);
+
 /**
- * 管理员手动熔断：复用 applyCircuit 的 ban 机制，按最高档（停 Free + Trial）执行，
- * 持续到今日 UTC 结束；releaseCircuit 按同一前缀解除。付费套餐不受影响（与自动熔断一致）。
+ * 管理员手动熔断：按最高档（停 Free + Trial）执行，持续到今日 UTC 结束或 releaseCircuit。
+ * 先记下手动熔断状态（覆盖之后才进入 Free/Trial 的用户，cron 据此补打 ban），
+ * 再复用 applyCircuit 给现有用户打 ban。付费套餐不受影响（与自动熔断一致）。
  */
-export async function tripCircuitManually(): Promise<{ affected: number }> {
+export async function tripCircuitManually(adminId: string): Promise<{ affected: number }> {
+  await setSetting(MANUAL_TRIP_SETTING_KEY, { until: endOfUtcDay().toISOString() }, adminId);
   return applyCircuit('free_trial_stopped', { manual: true });
+}
+
+/** 由存储值推出仍生效的手动熔断到期时间（纯函数，便于测试）；未熔断、已过期或值非法返回 null。 */
+export function activeManualTripUntil(value: unknown, now: Date = new Date()): Date | null {
+  const until = (value as { until?: unknown } | null | undefined)?.until;
+  if (typeof until !== 'string') return null;
+  const at = new Date(until);
+  return Number.isNaN(at.getTime()) || at <= now ? null : at;
+}
+
+/**
+ * 当前生效的手动熔断到期时间；没有则 null。读走 PlatformSetting 的进程内缓存（≤60s 传播），
+ * 读库失败时按「未熔断」处理，不因设置表故障停掉全部免费用户的 AI。
+ */
+export async function getManualTripUntil(now: Date = new Date()): Promise<Date | null> {
+  return activeManualTripUntil(await getSetting<unknown>(MANUAL_TRIP_SETTING_KEY), now);
 }
 
 /** 由当前生效的熔断 ban 原因推出的状态（纯函数，便于测试）。 */
@@ -158,9 +199,9 @@ export interface CircuitStatus {
   state: CircuitState;
   /** 仅按今日成本判定的状态（cron 自动熔断的依据）。 */
   costState: CircuitState;
-  /** 当前实际生效的熔断 ban 推出的状态。 */
+  /** 当前实际生效的熔断（用户 ban 与手动熔断状态）推出的状态。 */
   banState: CircuitState;
-  /** 生效的 ban 中是否有管理员手动熔断。 */
+  /** 是否有生效的管理员手动熔断。 */
   manual: boolean;
   /** 当前被熔断 ban 拦住的用户数。 */
   bannedUsers: number;
@@ -172,8 +213,9 @@ export interface CircuitStatus {
  * 「成本已超阈值、cron 尚未执行」的窗口，故两者取更严重者。
  */
 export async function getCircuitStatus(now: Date = new Date()): Promise<CircuitStatus> {
-  const [todayCents, banRows] = await Promise.all([
+  const [todayCents, manualUntil, banRows] = await Promise.all([
     todayPlatformCostCents(),
+    getManualTripUntil(now),
     db.execute(sql`
       SELECT "aiBanReason" AS reason, count(*)::int AS users
       FROM "User"
@@ -184,13 +226,15 @@ export async function getCircuitStatus(now: Date = new Date()): Promise<CircuitS
   ]);
   const rows = banRows as unknown as Array<{ reason: string | null; users: number }>;
   const costState = evaluateCircuit(todayCents);
-  const { state: banState, manual } = stateFromBanReasons(rows.map((r) => r.reason));
+  const fromBans = stateFromBanReasons(rows.map((r) => r.reason));
+  // 手动熔断即使此刻没有命中任何用户（例如还没有 Free 用户），也是生效中的熔断。
+  const banState = manualUntil ? moreSevere(fromBans.state, 'free_trial_stopped') : fromBans.state;
   return {
     todayCents,
     state: moreSevere(costState, banState),
     costState,
     banState,
-    manual,
+    manual: fromBans.manual || manualUntil !== null,
     bannedUsers: rows.reduce((sum, r) => sum + r.users, 0),
   };
 }

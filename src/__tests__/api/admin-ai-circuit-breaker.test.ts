@@ -76,6 +76,7 @@ describe('POST', () => {
     const res = await POST(post({ action: 'trip' }));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, affected: 5 });
+    expect(tripCircuitManually).toHaveBeenCalledWith('admin-1');
     expect(logAuditEvent).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 'admin-1', action: 'ai-circuit.trip', resource: 'ai-circuit-breaker' }),
     );
@@ -86,6 +87,7 @@ describe('POST', () => {
     vi.mocked(releaseCircuit).mockResolvedValueOnce({ released: 5 });
     const res = await POST(post({ action: 'release' }));
     expect(await res.json()).toEqual({ ok: true, released: 5 });
+    expect(releaseCircuit).toHaveBeenCalledWith('admin-1');
     expect(logAuditEvent).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'ai-circuit.release', metadata: { released: 5 } }),
     );
