@@ -254,7 +254,8 @@ export function VersionsContent({
             <Breadcrumbs
               items={[
                 { label: labels.policiesLink, href: '/policies' },
-                { label: policyName, href: `/policies/${policyId}` },
+                // 策略详情与编辑页只对所有者开放：审阅人（团队 owner/admin）看到纯文本，避免点进 404
+                { label: policyName, href: isOwner ? `/policies/${policyId}` : undefined },
                 { label: t('breadcrumb') },
               ]}
             />
@@ -262,9 +263,11 @@ export function VersionsContent({
           title={t('title')}
           subtitle={t('subtitle')}
           action={
-            <Link href={`/policies/${policyId}/edit`}>
-              <Button variant="primary">{t('newVersion')}</Button>
-            </Link>
+            isOwner ? (
+              <Link href={`/policies/${policyId}/edit`}>
+                <Button variant="primary">{t('newVersion')}</Button>
+              </Link>
+            ) : undefined
           }
         />
 
@@ -279,9 +282,11 @@ export function VersionsContent({
             title={t('noVersions')}
             description={t('noVersionsBody')}
             action={
-              <Link href={`/policies/${policyId}/edit`}>
-                <Button variant="primary">{t('newVersion')}</Button>
-              </Link>
+              isOwner ? (
+                <Link href={`/policies/${policyId}/edit`}>
+                  <Button variant="primary">{t('newVersion')}</Button>
+                </Link>
+              ) : undefined
             }
           />
         ) : (

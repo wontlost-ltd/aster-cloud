@@ -23,11 +23,15 @@ vi.mock('@/lib/api', () => ({
 vi.mock('@/components/ui', () => {
   type Col = { key: string; cell: (row: unknown) => React.ReactNode };
   return {
-    Breadcrumbs: () => null,
+    Breadcrumbs: ({ items }: { items: Array<{ label: string; href?: string }> }) => (
+      <nav>{items.map((i) => (i.href ? <a key={i.label} href={i.href}>{i.label}</a> : <span key={i.label}>{i.label}</span>))}</nav>
+    ),
     Button: ({ children }: { children: React.ReactNode }) => <button type="button">{children}</button>,
     Container: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
     Stack: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-    PageHeader: () => null,
+    PageHeader: ({ breadcrumbs, action }: { breadcrumbs?: React.ReactNode; action?: React.ReactNode }) => (
+      <header>{breadcrumbs}{action}</header>
+    ),
     EmptyState: () => null,
     Badge: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
     Textarea: (p: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea {...p} />,
@@ -93,6 +97,18 @@ describe('VersionsContent 审批操作', () => {
     expect(hint.textContent).toBe('policies.versions.noEligibleReviewer');
     expect(hint.getAttribute('href')).toContain('/teams/team1/members');
     expect(screen.queryByText('policies.versions.awaitingOthers')).toBeNull();
+  });
+
+  it('团队审阅人（非所有者）：策略名面包屑为纯文本，不显示「新建版本」（都是所有者专属页面）', () => {
+    renderAs('admin1', { policyOwnerId: 'author', policyTeamId: 'team1', reviewerTeamRole: 'admin' });
+    expect(screen.getByText('loan').tagName).toBe('SPAN');
+    expect(screen.queryByRole('button', { name: 'policies.versions.newVersion' })).toBeNull();
+  });
+
+  it('策略所有者：策略名面包屑可点击，显示「新建版本」', () => {
+    renderAs('author', { policyOwnerId: 'author', policyTeamId: 'team1', reviewerTeamRole: 'owner' });
+    expect(screen.getByRole('link', { name: 'loan' }).getAttribute('href')).toBe('/policies/p1');
+    expect(screen.getByRole('button', { name: 'policies.versions.newVersion' })).toBeTruthy();
   });
 
   it('团队普通成员：不能审批', () => {
