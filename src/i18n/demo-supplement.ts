@@ -401,6 +401,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
+      createTeam: {
+        nameInvalid: 'Team name must be 2–50 characters.',
+        slugInvalid: 'Team URL must be 2–50 characters: lowercase letters, digits and single hyphens, not starting or ending with a hyphen.',
+      },
       members: {
         businessRolesLabel: 'Business roles:',
         businessRolesNone: 'None',
@@ -1151,6 +1156,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
+      createTeam: {
+        nameInvalid: '团队名称需为 2–50 个字符。',
+        slugInvalid: '团队 URL 需为 2–50 个字符，仅可使用小写字母、数字和单个连字符，且不能以连字符开头或结尾。',
+      },
       members: {
         businessRolesLabel: '业务角色：',
         businessRolesNone: '无',
@@ -1896,6 +1906,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
+      createTeam: {
+        nameInvalid: 'Der Teamname muss 2–50 Zeichen lang sein.',
+        slugInvalid: 'Die Team-URL muss 2–50 Zeichen lang sein: Kleinbuchstaben, Ziffern und einzelne Bindestriche, ohne Bindestrich am Anfang oder Ende.',
+      },
       members: {
         businessRolesLabel: 'Geschäftsrollen:',
         businessRolesNone: 'Keine',
@@ -2639,6 +2654,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
+      createTeam: {
+        nameInvalid: 'टीम का नाम 2–50 अक्षरों का होना चाहिए।',
+        slugInvalid: 'टीम URL 2–50 अक्षरों का होना चाहिए: केवल छोटे अक्षर, अंक और एकल हाइफ़न, और हाइफ़न से शुरू या समाप्त नहीं होना चाहिए।',
+      },
       members: {
         businessRolesLabel: 'व्यावसायिक भूमिकाएँ:',
         businessRolesNone: 'कोई नहीं',
