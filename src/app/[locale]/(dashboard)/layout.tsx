@@ -128,6 +128,7 @@ export default async function DashboardLayout({
     signOut: tSettings('signOut'),
     signingOut: tSettings('signingOut'),
     help: t('userMenu.help'),
+    about: t('about.title'),
   };
 
   const aboutLabels = {
