@@ -7,6 +7,9 @@ import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
 import { resolveRetention } from '@/lib/retention/execution-retention';
 import { PolicyDetailContent } from './policy-detail-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('pageTitles', 'policyDetail');
 
 // 活跃版本保存时落库的治理档案 id（ADR 0046 §6）；未声明档案或旧版本为 null
 async function loadActiveProfile(policyId: string, version: number): Promise<string | null> {

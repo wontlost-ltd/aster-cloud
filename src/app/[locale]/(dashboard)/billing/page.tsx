@@ -38,6 +38,9 @@ import {
   Stack,
   cn,
 } from '@/components/ui';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('dashboardNav', 'billing');
 
 export default async function BillingOverviewPage() {
   // On-prem 没有 Stripe — overview 同样不存在。
@@ -132,7 +135,7 @@ export default async function BillingOverviewPage() {
             </p>
           </OverviewCard>
 
-          <OverviewCard title="Trial">
+          <OverviewCard title={tOv('trialCardTitle')}>
             {trialDaysLeft !== null && trialDaysLeft > 0 ? (
               <p className="font-display text-2xl font-semibold tracking-tight text-fg">
                 {tpl('trialDaysLeft', { days: trialDaysLeft })}

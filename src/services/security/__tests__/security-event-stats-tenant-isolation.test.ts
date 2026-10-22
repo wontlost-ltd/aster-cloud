@@ -22,12 +22,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // db.select({...}).from(t).where(cond).groupBy(col)——即 where 的返回值既要能被
 // await（thenable），又要能继续 .groupBy()。桩必须复刻这个形状，否则测试根本
 // 跑不到真实 SQL 构造路径（假信心）。
-const { mockSelect, capturedWhere } = vi.hoisted(() => {
+const { mockSelect, capturedWhere, groupByRows } = vi.hoisted(() => {
   const capturedWhere: unknown[] = [];
+  // 依次分给各 groupBy 查询的返回行（按 severity、按 type）；未设置则为空。
+  const groupByRows: unknown[][] = [];
   const makeResult = () => {
     const rows: unknown[] = [];
     const thenable = {
-      groupBy: () => Promise.resolve(rows),
+      groupBy: () => Promise.resolve(groupByRows.shift() ?? rows),
       then: (res: (v: unknown) => unknown) => Promise.resolve(rows).then(res),
     };
     return thenable;
@@ -40,7 +42,7 @@ const { mockSelect, capturedWhere } = vi.hoisted(() => {
       },
     }),
   }));
-  return { mockSelect, capturedWhere };
+  return { mockSelect, capturedWhere, groupByRows };
 });
 
 vi.mock('@/lib/prisma', () => ({
@@ -51,6 +53,7 @@ vi.mock('@/lib/prisma', () => ({
     policyId: 'se.policyId',
     severity: 'se.severity',
     eventType: 'se.eventType',
+    details: 'se.details',
   },
 }));
 
@@ -88,6 +91,7 @@ function findUserIdPredicates(node: unknown): Array<{ col: unknown; val: unknown
 describe('getSecurityEventStats — 租户隔离', () => {
   beforeEach(() => {
     capturedWhere.length = 0;
+    groupByRows.length = 0;
     vi.clearAllMocks();
   });
 
@@ -133,5 +137,29 @@ describe('getSecurityEventStats — 租户隔离', () => {
         expect(p.val).toBe(USER);
       }
     }
+  });
+
+  it('类型分布按展示类型聚合：提交审批与审批决策分开计数（F10）', async () => {
+    const { getSecurityEventStats } = await import('../security-event-service');
+    groupByRows.push(
+      [{ severity: 'INFO', count: 5 }],
+      [
+        { eventType: 'APPROVAL_DECISION', action: 'SUBMIT_FOR_APPROVAL', failed: false, count: 2 },
+        { eventType: 'APPROVAL_DECISION', action: null, failed: false, count: 3 },
+        { eventType: 'POLICY_EXECUTED', action: null, failed: true, count: 1 },
+        { eventType: 'POLICY_EXECUTED', action: null, failed: null, count: 4 },
+      ],
+    );
+    const stats = await getSecurityEventStats({
+      userId: USER,
+      startDate: new Date('2026-01-01'),
+      endDate: new Date('2026-12-31'),
+    });
+    expect(stats.byType).toEqual({
+      APPROVAL_SUBMITTED: 2,
+      APPROVAL_DECISION: 3,
+      POLICY_EXECUTION_FAILED: 1,
+      POLICY_EXECUTED: 4,
+    });
   });
 });

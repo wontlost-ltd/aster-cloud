@@ -2,6 +2,9 @@ import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { TrashContent } from './trash-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('policies.trash', 'title');
 
 export default async function PolicyTrashPage({
   params,

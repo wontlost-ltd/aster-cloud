@@ -9,16 +9,15 @@ import { isAdminFromSession } from '@/lib/admin-auth';
 import { CAN_SSO } from '@/lib/deployment-mode';
 import { introspectSsoConfig } from '@/lib/sso';
 import { SsoConfigContent } from './sso-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('admin.nav', 'sso');
 
 type Props = {
   params: Promise<{ locale: string }>;
 };
 
 export const dynamic = 'force-dynamic';
-
-export const metadata = {
-  title: 'Single sign-on',
-};
 
 export default async function SsoPage({ params }: Props) {
   if (!CAN_SSO) {

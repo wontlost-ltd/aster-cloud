@@ -5,6 +5,9 @@ import { db, aiKeyBindings } from '@/lib/prisma';
 import { eq } from 'drizzle-orm';
 import { byokTokensUsedThisMonth } from '@/lib/ai-quota';
 import { AiKeysContent } from './ai-keys-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('settings.aiKeysPage', 'title');
 
 export default async function AiKeysPage() {
   const session = await getSession();

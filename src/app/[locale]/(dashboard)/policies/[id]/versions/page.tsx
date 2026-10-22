@@ -4,6 +4,9 @@ import { getTranslations } from 'next-intl/server';
 import { db, policies } from '@/lib/prisma';
 import { and, eq, isNull } from 'drizzle-orm';
 import { VersionsContent } from './versions-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('policies.versions', 'title');
 
 interface RouteParams {
   params: Promise<{ locale: string; id: string }>;

@@ -4,6 +4,8 @@
 //   - licenseId + reason 是最小必填；notes/customerRef 保持内部支持上下文
 //   - 真正 POST 前用 modal 二次确认，避免误撤销导致客户部署进入 read-only
 //   - dryRun 走同一 payload，只改变 dryRun=true，便于 ops 预检 API 行为
+//   - 打开确认框前先用 dryRun 预检 knownLicense：ID 不在已签发记录中时（可能是离线签发，
+//     也可能是手误）在确认框与演练结果里醒目提示，但不阻止撤销
 
 'use client';
 
@@ -44,6 +46,9 @@ export function NewRevocationForm() {
     'idle' | 'loading' | 'success' | 'error'
   >('idle');
   const [message, setMessage] = useState('');
+  // 预检 / 演练得到的 knownLicense：false = 不在已签发记录中；null = 未知（预检失败或尚未检查）。
+  const [knownLicense, setKnownLicense] = useState<boolean | null>(null);
+  const [checking, setChecking] = useState(false);
   // codex 审查 Major-1：focus trap + Escape + open 时聚焦到 Cancel 按钮
   const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
   const submitButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -100,10 +105,36 @@ export function NewRevocationForm() {
     };
   }
 
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
+  function postRevoke(payload: SubmitPayload) {
+    return fetch('/api/admin/license-revoke', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const payload = buildPayload();
     if (!payload) return;
+    // 预检：同一 payload 以 dryRun 发出，只为拿到 knownLicense，不产生任何写入。
+    // 预检失败不阻断流程（knownLicense 保持未知），真正的错误由确认后的请求报告。
+    setChecking(true);
+    setKnownLicense(null);
+    try {
+      const response = await postRevoke({ ...payload, dryRun: true });
+      const body = (await response.json().catch(() => ({}))) as { knownLicense?: unknown };
+      if (response.ok && typeof body.knownLicense === 'boolean') {
+        setKnownLicense(body.knownLicense);
+      }
+    } catch {
+      // 网络失败：保持未知
+    } finally {
+      setChecking(false);
+    }
     setPendingPayload(payload);
   }
 
@@ -112,20 +143,15 @@ export function NewRevocationForm() {
     setSubmitState('loading');
     setMessage('');
     try {
-      const response = await fetch('/api/admin/license-revoke', {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(pendingPayload),
-      });
+      const response = await postRevoke(pendingPayload);
       const body = (await response.json().catch(() => ({}))) as {
         licenseId?: string;
         publishedVersion?: number | string;
+        knownLicense?: boolean;
         error?: string;
       };
       if (!response.ok) throw new Error(body.error ?? response.statusText);
+      if (typeof body.knownLicense === 'boolean') setKnownLicense(body.knownLicense);
 
       setSubmitState('success');
       setMessage(
@@ -176,7 +202,11 @@ export function NewRevocationForm() {
             <input
               id="license-id"
               value={licenseId}
-              onChange={(event) => setLicenseId(event.target.value)}
+              onChange={(event) => {
+                setLicenseId(event.target.value);
+                // 换了 ID，上一次的核对结果不再适用。
+                setKnownLicense(null);
+              }}
               placeholder={t('newForm.licenseIdPlaceholder')}
               aria-invalid={licenseError ? true : undefined}
               aria-describedby={licenseError ? 'license-id-error' : undefined}
@@ -257,17 +287,23 @@ export function NewRevocationForm() {
           <button
             ref={submitButtonRef}
             type="submit"
-            disabled={submitState === 'loading'}
+            disabled={submitState === 'loading' || checking}
             className="rounded bg-red-700 px-3 py-2 text-sm font-semibold text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-red-600/40"
           >
-            {submitState === 'loading'
-              ? t('newForm.submitting')
-              : t('newForm.submit')}
+            {checking
+              ? t('newForm.checking')
+              : submitState === 'loading'
+                ? t('newForm.submitting')
+                : t('newForm.submit')}
           </button>
           <p aria-live="polite" className="min-h-5 text-sm text-fg-muted">
             {message}
           </p>
         </div>
+        {/* 演练 / 撤销完成后仍保留「未知许可证」提示，避免只在一闪而过的文案里出现。 */}
+        {submitState === 'success' && knownLicense === false && (
+          <UnknownLicenseWarning text={t('newForm.unknownLicenseWarning')} />
+        )}
       </form>
 
       {pendingPayload && (
@@ -301,6 +337,9 @@ export function NewRevocationForm() {
                 reason: t(`newForm.reasonOptions.${pendingPayload.reason}`),
               })}
             </p>
+            {knownLicense === false && (
+              <UnknownLicenseWarning text={t('newForm.unknownLicenseWarning')} />
+            )}
             {pendingPayload.dryRun && (
               <p className="mt-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-200">
                 {t('newForm.dryRunNotice')}
@@ -329,5 +368,17 @@ export function NewRevocationForm() {
         </div>
       )}
     </section>
+  );
+}
+
+/** ID 不在已签发记录中的醒目提示（不阻止撤销：离线签发的许可证本就不在记录里）。 */
+function UnknownLicenseWarning({ text }: { text: string }) {
+  return (
+    <p
+      role="alert"
+      className="mt-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200"
+    >
+      {text}
+    </p>
   );
 }

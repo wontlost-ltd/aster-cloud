@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { Container, PageHeader, Breadcrumbs } from '@/components/ui';
+import { formatDate } from '@/lib/format';
 
 interface RiskRow {
   id: string;
@@ -19,13 +20,23 @@ interface RiskRow {
 
 type SortKey = 'riskTier' | 'createdAt' | 'priorPurgeCount';
 
-const TIER_LABELS: Record<number, string> = {
-  0: 'trusted',
-  1: 'normal',
-  2: 'elevated',
-  3: 'high',
-  4: 'hard',
-};
+
+/**
+ * 风险等级的本地化显示（「等级 1（常规）」）。此前是写死的英文 trusted/normal/…，
+ * 卡片还加了 uppercase，zh 页面上显示成 "TIER 1 (NORMAL)"。
+ * 键写成字面量，便于 check:message-keys 静态核对；未知等级只显示数字。
+ */
+function useTierLabel(): (tier: number) => string {
+  const t = useTranslations('admin.riskTier');
+  const names: Record<number, string> = {
+    0: t('tiers.trusted'),
+    1: t('tiers.normal'),
+    2: t('tiers.elevated'),
+    3: t('tiers.high'),
+    4: t('tiers.hard'),
+  };
+  return (tier) => (names[tier] ? t('tierCard', { tier, label: names[tier] }) : String(tier));
+}
 
 const TIER_COLORS: Record<number, string> = {
   0: 'bg-bg-muted text-fg',
@@ -37,6 +48,9 @@ const TIER_COLORS: Record<number, string> = {
 
 export function RiskTierAdminContent() {
   const t = useTranslations('admin.riskTier');
+  const tNav = useTranslations('dashboardNav');
+  const tierLabel = useTierLabel();
+  const locale = useLocale();
   const [rows, setRows] = useState<RiskRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -102,7 +116,7 @@ export function RiskTierAdminContent() {
         breadcrumbs={
           <Breadcrumbs
             items={[
-              { label: 'Admin' },
+              { label: tNav('groupAdmin') },
               { label: t('title') },
             ]}
           />
@@ -116,8 +130,8 @@ export function RiskTierAdminContent() {
             key={tier}
             className={`rounded-lg border border-border p-4 dark:border-gray-700 ${TIER_COLORS[tier]}`}
           >
-            <p className="text-xs uppercase tracking-wider">
-              tier {tier} ({TIER_LABELS[tier]})
+            <p className="text-xs tracking-wider">
+              {tierLabel(tier)}
             </p>
             <p className="mt-1 text-2xl font-semibold tabular-nums">
               {distribution[tier] ?? 0}
@@ -140,7 +154,7 @@ export function RiskTierAdminContent() {
           >
             {[1, 2, 3, 4].map((v) => (
               <option key={v} value={v}>
-                ≥ {v} ({TIER_LABELS[v]})
+                ≥ {tierLabel(v)}
               </option>
             ))}
           </select>
@@ -211,7 +225,7 @@ export function RiskTierAdminContent() {
                 <tr key={r.id} className={r.deletedAt ? 'bg-bg-subtle/50 dark:bg-gray-900/40' : ''}>
                   <td className="px-3 py-2">
                     <span className={`inline-flex rounded px-2 py-0.5 text-xs ${TIER_COLORS[r.riskTier]}`}>
-                      {r.riskTier} {TIER_LABELS[r.riskTier]}
+                      {tierLabel(r.riskTier)}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-sm">
@@ -221,7 +235,7 @@ export function RiskTierAdminContent() {
                     )}
                     {r.deletedAt && (
                       <div className="mt-0.5 text-xs text-red-600">
-                        {t('table.tombstoned')}: {new Date(r.deletedAt).toLocaleDateString()}
+                        {t('table.tombstoned')}: {formatDate(r.deletedAt, locale)}
                       </div>
                     )}
                   </td>
@@ -230,7 +244,7 @@ export function RiskTierAdminContent() {
                   <td className="px-3 py-2 text-right text-sm tabular-nums">{r.reactivationCount}</td>
                   <td className="px-3 py-2 text-xs font-mono">{r.riskTierReason ?? '—'}</td>
                   <td className="px-3 py-2 text-xs text-fg-muted">
-                    {new Date(r.createdAt).toLocaleDateString()}
+                    {formatDate(r.createdAt, locale)}
                   </td>
                   <td className="px-3 py-2 text-right">
                     <button
@@ -271,6 +285,7 @@ function OverrideModal({
   onDone: () => void;
 }) {
   const t = useTranslations('admin.riskTier.override');
+  const tierLabel = useTierLabel();
   const [newTier, setNewTier] = useState<number>(0);
   const [ticketId, setTicketId] = useState('');
   const [note, setNote] = useState('');
@@ -329,7 +344,7 @@ function OverrideModal({
         </p>
         <p className="mt-1 text-xs text-fg-muted">
           {t('currentTier')}: <span className={`rounded px-1 ${TIER_COLORS[row.riskTier]}`}>
-            {row.riskTier} {TIER_LABELS[row.riskTier]}
+            {tierLabel(row.riskTier)}
           </span>
         </p>
 
@@ -343,7 +358,7 @@ function OverrideModal({
             >
               {[0, 1, 2, 3, 4].map((v) => (
                 <option key={v} value={v}>
-                  {v} {TIER_LABELS[v]}
+                  {tierLabel(v)}
                 </option>
               ))}
             </select>

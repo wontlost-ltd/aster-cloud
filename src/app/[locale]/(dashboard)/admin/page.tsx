@@ -16,6 +16,8 @@ import { desc, gte, sql } from 'drizzle-orm';
 import { db, users, auditLogs } from '@/lib/prisma';
 import { Link } from '@/i18n/navigation';
 import { Container, PageHeader } from '@/components/ui';
+import { formatDate } from '@/lib/format';
+import { adminEventLabel } from '@/lib/admin-event-labels';
 import { FeatureFlagsCard } from '@/components/admin/feature-flags-card';
 import { RunnerParityCard } from '@/components/admin/runner-parity-card';
 import { PlatformLanguageCard } from '@/components/admin/platform-language-card';
@@ -27,11 +29,10 @@ import {
   CAN_SSO,
   IS_SAAS,
 } from '@/lib/deployment-mode';
-import {
-  todayPlatformCostCents,
-  evaluateCircuit,
-  type CircuitState,
-} from '@/lib/ai-circuit-breaker';
+import { getCircuitStatus, type CircuitState } from '@/lib/ai-circuit-breaker';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('admin.overview', 'title');
 
 type Props = {
   params: Promise<{ locale: string }>;
@@ -62,10 +63,11 @@ async function loadPulse(): Promise<PulseSignals> {
   const [circuit, riskCount, audit] = await Promise.all([
     (async () => {
       try {
-        const cents = await todayPlatformCostCents();
+        // 与熔断器页同一状态来源（含手动熔断），避免两处口径不一致。
+        const status = await getCircuitStatus();
         return {
-          state: evaluateCircuit(cents),
-          todayUsd: (cents / 100).toFixed(2),
+          state: status.state,
+          todayUsd: (status.todayCents / 100).toFixed(2),
         } as const;
       } catch {
         return { state: 'error' as const, todayUsd: null };
@@ -186,6 +188,7 @@ export default async function AdminOverviewPage({ params }: Props) {
 
   const t = await getTranslations('admin.overview');
   const tPulse = await getTranslations('admin.pulse');
+  const tEvents = await getTranslations('admin.pulse.audit.events');
   const cards = CARDS.filter((c) => c.show);
   const pulse = await loadPulse();
 
@@ -230,7 +233,12 @@ export default async function AdminOverviewPage({ params }: Props) {
             />
           )}
           <PulseAuditCard
-            rows={pulse.recentAudit.rows}
+            rows={pulse.recentAudit.rows.map((r) => ({
+              ...r,
+              // 原始 id 对管理员不友好：映射为本地化事件名，日期用全站统一的 formatDate。
+              label: adminEventLabel(r.action, (key) => tEvents(key)),
+              date: formatDate(r.createdAt, locale),
+            }))}
             errored={pulse.recentAudit.error}
             labels={{
               title: tPulse('audit.title'),
@@ -412,7 +420,7 @@ function PulseAuditCard({
   errored,
   labels,
 }: {
-  rows: PulseSignals['recentAudit']['rows'];
+  rows: Array<PulseSignals['recentAudit']['rows'][number] & { label: string; date: string }>;
   errored: boolean;
   labels: { title: string; empty: string; error: string };
 }) {
@@ -435,10 +443,10 @@ function PulseAuditCard({
       <ul className="space-y-1 text-xs">
         {rows.slice(0, 3).map((r) => (
           <li key={r.id} className="flex items-baseline justify-between gap-2">
-            <span className="truncate font-mono text-fg">{r.action}</span>
-            <span className="shrink-0 text-fg-subtle">
-              {new Date(r.createdAt).toLocaleDateString()}
+            <span className="truncate text-fg" title={r.action}>
+              {r.label}
             </span>
+            <span className="shrink-0 text-fg-subtle">{r.date}</span>
           </li>
         ))}
       </ul>

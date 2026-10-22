@@ -13,6 +13,7 @@ import {
   Select,
 } from '@/components/ui';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
+import { isByokKeyExpired } from '@/lib/byok-expiry';
 
 interface BYOKBinding {
   id: string;
@@ -640,13 +641,19 @@ export function AiKeysContent({ initialBindings, locale }: AiKeysContentProps) {
                       )}
                     </td>
                     <td className="py-3">
-                      {b.active ? (
-                        <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                          {t('statusActive')}
-                        </span>
-                      ) : (
+                      {/* 已过失效日期的 key 推理层会跳过（byok-envelope 同一判定），
+                          这里必须同样显示为已失效，不能因 active=true 仍标「活跃」。 */}
+                      {!b.active ? (
                         <span className="rounded bg-bg-muted px-2 py-0.5 text-xs font-medium text-fg-muted">
                           {t('statusDisabled')}
+                        </span>
+                      ) : isByokKeyExpired(b.expiresAt) ? (
+                        <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                          {t('statusExpired')}
+                        </span>
+                      ) : (
+                        <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                          {t('statusActive')}
                         </span>
                       )}
                       {b.lastError && (

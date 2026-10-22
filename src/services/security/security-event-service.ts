@@ -8,6 +8,7 @@
 import { db, securityEvents } from '@/lib/prisma';
 import { eq, and, gte, lte, inArray, lt, desc, sql } from 'drizzle-orm';
 import type { InferSelectModel } from 'drizzle-orm';
+import { securityEventDisplayType } from '@/lib/security-event-display';
 
 type SecurityEvent = InferSelectModel<typeof securityEvents>;
 type SecurityEventType = SecurityEvent['eventType'];
@@ -194,6 +195,8 @@ export async function getSecurityEventStats(options: {
   }
 
   const whereClause = and(...conditions);
+  const actionExpr = sql<string | null>`(${securityEvents.details}->>'action')`;
+  const failedExpr = sql<boolean>`((${securityEvents.details}->>'success') = 'false' OR (${securityEvents.details}->>'error') IS NOT NULL)`;
 
   const [totalResult, bySeverityData, byTypeData] = await Promise.all([
     db.select({ count: sql<number>`count(*)::int` })
@@ -206,13 +209,17 @@ export async function getSecurityEventStats(options: {
       .from(securityEvents)
       .where(whereClause)
       .groupBy(securityEvents.severity),
+    // 按展示类型分布：除 eventType 外还要按 details 里决定细分的字段分组
+    // （见 lib/security-event-display.ts），否则「提交审批」会被并进「审批决策」。
     db.select({
       eventType: securityEvents.eventType,
+      action: actionExpr,
+      failed: failedExpr,
       count: sql<number>`count(*)::int`,
     })
       .from(securityEvents)
       .where(whereClause)
-      .groupBy(securityEvents.eventType),
+      .groupBy(securityEvents.eventType, actionExpr, failedExpr),
   ]);
 
   const total = totalResult[0]?.count || 0;
@@ -230,7 +237,11 @@ export async function getSecurityEventStats(options: {
 
   const byType: Record<string, number> = {};
   for (const item of byTypeData) {
-    byType[item.eventType] = item.count;
+    const type = securityEventDisplayType(item.eventType, {
+      action: item.action,
+      success: item.failed ? false : undefined,
+    });
+    byType[type] = (byType[type] ?? 0) + item.count;
   }
 
   const errorCount = bySeverity.ERROR + bySeverity.CRITICAL;

@@ -10,15 +10,19 @@
  *   6. 触发 Slack 通知（可选）
  *
  * dryRun=true 时只校验，不实际写入。
+ *
+ * 响应带 knownLicense：该 ID 是否在已签发记录（IssuedLicense）中。离线签发的许可证不在
+ * 记录里，所以 false 不拒绝撤销，只供界面提示管理员核对 ID（防止手误撤错/撤空）。
  */
 
 import { NextResponse } from 'next/server';
-import { desc } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { requireAdmin } from '@/lib/admin-auth';
 import { IS_SAAS } from '@/lib/deployment-mode';
 import {
   db,
   auditLogs,
+  issuedLicenses,
   revokedLicenses,
   revocationPublications,
 } from '@/lib/prisma';
@@ -154,6 +158,15 @@ async function postSlack(body: RevokeBody, version: bigint): Promise<void> {
   }
 }
 
+/** 该许可证是否在已签发记录中（离线签发的不在）。 */
+async function isKnownLicense(licenseId: string): Promise<boolean> {
+  const row = await db.query.issuedLicenses.findFirst({
+    where: eq(issuedLicenses.licenseId, licenseId),
+    columns: { licenseId: true },
+  });
+  return row != null;
+}
+
 export async function POST(req: Request) {
   if (!IS_SAAS) return new NextResponse(null, { status: 404 });
   const admin = await requireAdmin();
@@ -169,11 +182,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'invalid-request-body' }, { status: 400 });
   }
 
+  const knownLicense = await isKnownLicense(parsed.licenseId);
+
   if (parsed.dryRun) {
     return NextResponse.json({
       dryRun: true,
       licenseId: parsed.licenseId,
       reason: parsed.reason,
+      knownLicense,
     });
   }
 
@@ -203,6 +219,7 @@ export async function POST(req: Request) {
       notes: parsed.notes,
       customerRef: parsed.customerRef,
       publishedVersion: publication.version.toString(),
+      knownLicense,
     },
     createdAt: now,
   });
@@ -212,5 +229,6 @@ export async function POST(req: Request) {
     licenseId: parsed.licenseId,
     revokedAt: now.toISOString(),
     publishedVersion: publication.version.toString(),
+    knownLicense,
   });
 }

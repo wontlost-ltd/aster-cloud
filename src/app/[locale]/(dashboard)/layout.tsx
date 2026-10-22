@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { eq } from 'drizzle-orm';
 import { db, users } from '@/lib/prisma';
@@ -32,6 +33,13 @@ import { isAiWorkspaceEnabledFor, resolveAiWorkspaceBase } from '@/lib/ai-worksp
 import { safeEnv } from '@/lib/runtime/safe-env';
 import { AiWorkspaceProvider } from '@/components/ai-workspace-context';
 import { AssistantLauncherSafeArea } from '@/components/assistant/assistant-context';
+import { APP_TITLE_TEMPLATE } from '@/lib/page-metadata';
+
+// 应用内页面标题：各页用 localizedTitle 给出本地化页名，这里补品牌后缀。
+// 未声明标题的页面落到 default，而不是沿用根布局的营销标题。
+export const metadata: Metadata = {
+  title: { default: 'Aster Cloud', template: APP_TITLE_TEMPLATE },
+};
 
 /*
  * Dashboard shell — sidebar + slim topbar.

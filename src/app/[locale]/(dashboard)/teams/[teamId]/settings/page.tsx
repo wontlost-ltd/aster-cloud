@@ -359,7 +359,7 @@ export default function TeamSettingsPage() {
               </ul>
               <div>
                 <label htmlFor="deleteConfirm" className="block text-sm font-medium text-fg">
-                  {t('settings.typeToConfirm', { name: team.name })}
+                  {t('settings.typeToConfirm', { value: team.name })}
                 </label>
                 <input
                   type="text"

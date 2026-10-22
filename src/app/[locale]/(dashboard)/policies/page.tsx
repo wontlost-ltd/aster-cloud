@@ -16,6 +16,9 @@ import {
 import { PoliciesContent } from './policies-content';
 import type { PolicyGroup } from '@/components/policy/policy-group-tree';
 import { buildGroupTree } from '@/lib/policy-group-hierarchy';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('dashboardNav', 'policies');
 
 const POLICIES_URL_OPTS: ListUrlOptions = {
   defaultPageSize: 25,

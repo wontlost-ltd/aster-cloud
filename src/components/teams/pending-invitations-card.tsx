@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import {
   Badge,
   Card,
@@ -11,6 +11,7 @@ import {
   buttonVariants,
   cn,
 } from '@/components/ui';
+import { formatDate } from '@/lib/format';
 
 /*
  * Pending team invitations — in-app inbox card.
@@ -54,6 +55,7 @@ interface Labels {
 
 export function PendingInvitationsCard() {
   const t = useTranslations('teams.inbox');
+  const locale = useLocale();
   const router = useRouter();
   const [items, setItems] = useState<InboxItem[] | null>(null);
   const [pending, setPending] = useState<Record<string, ItemState>>({});
@@ -170,7 +172,7 @@ export function PendingInvitationsCard() {
             {items.map((item) => {
               const state = pending[item.id] ?? 'idle';
               const isBusy = state === 'accepting' || state === 'declining';
-              const expiresDate = new Date(item.expiresAt).toLocaleDateString();
+              const expiresDate = formatDate(item.expiresAt, locale);
               return (
                 <li
                   key={item.id}

@@ -13,6 +13,9 @@ import { db, licenseCache } from '@/lib/prisma';
 import { verifyLicenseKey, type RevocationState } from '@/lib/license';
 import { evaluateGracePeriod } from '@/lib/license-revocation';
 import { LicenseStatusContent, type LicenseCacheMeta } from './license-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('admin.nav', 'license');
 
 type Props = {
   params: Promise<{ locale: string }>;
@@ -60,10 +63,6 @@ export default async function LicensePage({ params }: Props) {
     />
   );
 }
-
-export const metadata = {
-  title: 'License',
-};
 
 /**
  * 把 license_cache 行翻译成 verifier 需要的 RevocationState + UI 需要的

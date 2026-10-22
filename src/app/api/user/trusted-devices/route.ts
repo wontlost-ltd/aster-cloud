@@ -12,18 +12,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { auth } from '@/auth';
-import { listTrustedDevices, revokeTrustedDevice } from '@/lib/trusted-device';
+import {
+  TRUSTED_DEVICE_COOKIE,
+  listTrustedDevices,
+  revokeTrustedDevice,
+} from '@/lib/trusted-device';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'UNAUTHENTICATED' }, { status: 401 });
   }
 
-  const devices = await listTrustedDevices(session.user.id);
+  // 带上本机的可信设备 cookie：用于标记「当前设备」并刷新它的最近使用时间。
+  // 只用于与本人设备的哈希比对，不回传给前端。
+  const devices = await listTrustedDevices(
+    session.user.id,
+    new Date(),
+    request.cookies.get(TRUSTED_DEVICE_COOKIE)?.value ?? null,
+  );
   return NextResponse.json({ devices });
 }
 

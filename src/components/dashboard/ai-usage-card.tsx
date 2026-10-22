@@ -69,7 +69,7 @@ export function AiUsageCard({ locale }: { locale: string }) {
         <h3 className="text-sm font-medium text-red-700">{t('bannedTitle')}</h3>
         <p className="mt-1 text-xs text-red-600">{data.banned.reason}</p>
         <p className="mt-2 text-xs text-fg-muted">
-          {t('bannedUntil', { date: new Date(data.banned.until).toLocaleString() })}
+          {t('bannedUntil', { date: new Date(data.banned.until).toLocaleString(locale) })}
         </p>
       </div>
     );

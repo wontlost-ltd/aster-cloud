@@ -13,6 +13,9 @@ import {
   getSetting,
 } from '@/lib/platform-settings';
 import { AssistantAdminContent } from './assistant-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('admin.assistant', 'title');
 
 type Props = {
   params: Promise<{ locale: string }>;

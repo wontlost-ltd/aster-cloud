@@ -46,6 +46,7 @@ export function RevocationContent({
   currentPublication,
 }: Props) {
   const t = useTranslations('admin.licenseRevoke');
+  const tNav = useTranslations('dashboardNav');
 
   return (
     <Container size="xl" className="py-6 sm:py-10">
@@ -53,7 +54,7 @@ export function RevocationContent({
         title={t('title')}
         subtitle={t('subtitle')}
         breadcrumbs={
-          <Breadcrumbs items={[{ label: 'Admin' }, { label: t('title') }]} />
+          <Breadcrumbs items={[{ label: tNav('groupAdmin') }, { label: t('title') }]} />
         }
         className="mb-6"
       />

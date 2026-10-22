@@ -30,6 +30,9 @@ export type AuditAction =
   | 'ai-key.reset-quota'
   | 'ai-key.reorder'
   | 'ai-key.delete'
+  // 管理员手动熔断 / 解除 AI 成本熔断器（admin-only，F18）。
+  | 'ai-circuit.trip'
+  | 'ai-circuit.release'
   | 'user.delete'
   | 'settings.update'
   | 'payment.succeeded'

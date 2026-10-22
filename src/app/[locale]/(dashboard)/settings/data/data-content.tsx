@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
 import {
+  Alert,
+  AlertDescription,
   Breadcrumbs,
   Button,
   Card,
@@ -30,19 +32,30 @@ import {
 export function DataContent() {
   const t = useTranslations('settings.dataPage');
   const tSettings = useTranslations('settings');
+  const tCommon = useTranslations('common');
   const [confirmErase, setConfirmErase] = useState(false);
   const [isErasing, setIsErasing] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  // 导出失败用按钮下方的常驻提示，而不是几秒即逝的 toast（生产上用户反馈「点了没反应」）。
+  // 只显示本地化文案 + requestId（便于客服关联日志），不渲染服务端原文。
+  const [downloadError, setDownloadError] = useState<{ requestId: string | null } | null>(null);
 
   const downloadJson = async () => {
     setIsDownloading(true);
+    setDownloadError(null);
     try {
       // GDPR Article 15 export endpoint. The sibling /ai-data path
       // is DELETE-only — GET against it returns 405.
       const res = await fetch('/api/user/ai-data-export');
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        toast.error(t('downloadFailure', { error: extractErrorMessage(data) || res.status }));
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: { requestId?: unknown } | string;
+        };
+        const requestId =
+          (typeof data.error === 'object' && typeof data.error?.requestId === 'string'
+            ? data.error.requestId
+            : null) ?? res.headers.get('x-request-id');
+        setDownloadError({ requestId });
         return;
       }
       const blob = await res.blob();
@@ -55,12 +68,9 @@ export function DataContent() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-    } catch (err) {
-      toast.error(
-        t('downloadFailure', {
-          error: err instanceof Error ? err.message : String(err),
-        }),
-      );
+    } catch {
+      // 网络层失败（离线等）：同样给本地化提示，不展示异常原文。
+      setDownloadError({ requestId: null });
     } finally {
       setIsDownloading(false);
     }
@@ -116,6 +126,18 @@ export function DataContent() {
             >
               {t('downloadCard.action')}
             </Button>
+            {downloadError && (
+              <Alert variant="danger" className="mt-4">
+                <AlertDescription>
+                  {t('downloadUnavailable')}
+                  {downloadError.requestId && (
+                    <span className="mt-1 block font-mono text-xs opacity-80">
+                      {tCommon('errorId')}: {downloadError.requestId}
+                    </span>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
           </CardBody>
         </Card>
 

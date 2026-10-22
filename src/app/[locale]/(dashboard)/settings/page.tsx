@@ -23,6 +23,8 @@ import { Link } from '@/i18n/navigation';
 import { defaultLocale } from '@/i18n/config';
 import { getSession } from '@/lib/auth';
 import { loadBusinessRoles } from '@/lib/business-roles';
+import { getSetting, PLATFORM_SETTING_KEYS } from '@/lib/platform-settings';
+import { assistantSettingsHintKey } from '@/lib/assistant/settings-hint';
 import {
   buttonVariants,
   Card,
@@ -44,6 +46,9 @@ import { TrustedDevicesPanel } from '@/components/settings/trusted-devices-panel
 import { EmailVerificationPanel } from '@/components/settings/email-verification-panel';
 import { ChangePasswordPanel } from '@/components/settings/change-password-panel';
 import { BusinessRolesPanel } from '@/components/settings/business-roles-panel';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('dashboardNav', 'settings');
 
 const LOCALE_DETECTION_COOKIE = 'aster-locale-detection';
 
@@ -61,6 +66,11 @@ export default async function SettingsPage({ params }: PageProps) {
   const t = await getTranslations('settings');
   // 助手文案是顶层命名空间（面板/设置共用同一套），故单独绑一个 translator。
   const tAssistant = await getTranslations('assistant');
+  // 助手说明要与管理员的「启用助手回答」开关一致（开启时回答可能由 AI 生成）。
+  // getSetting 带 60s 进程内缓存，读失败回落默认值，不会拖慢或打断设置页。
+  const assistantHintKey = assistantSettingsHintKey(
+    await getSetting(PLATFORM_SETTING_KEYS.ASSISTANT_ENABLED),
+  );
 
   // Seed the toggle's initial state on the server so it doesn't flip
   // after hydration. Cookie absent ⇒ feature off (matches prior client
@@ -184,7 +194,7 @@ export default async function SettingsPage({ params }: PageProps) {
               <Stack direction="row" justify="between" align="center" gap={4}>
                 <Stack gap={1}>
                   <p className="text-sm font-medium text-fg">{tAssistant('title')}</p>
-                  <p className="text-sm text-fg-muted">{tAssistant('settingsHint')}</p>
+                  <p className="text-sm text-fg-muted">{tAssistant(assistantHintKey)}</p>
                 </Stack>
                 <AssistantToggle
                   ariaLabel={tAssistant('settingsLabel')}
@@ -317,6 +327,7 @@ export default async function SettingsPage({ params }: PageProps) {
             description: t('trustedDevices.description'),
             empty: t('trustedDevices.empty'),
             unknownDevice: t('trustedDevices.unknownDevice'),
+            currentDevice: t('trustedDevices.currentDevice'),
             lastUsed: t('trustedDevices.lastUsed'),
             never: t('trustedDevices.never'),
             expires: t('trustedDevices.expires'),

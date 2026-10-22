@@ -2,6 +2,9 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { isGuardApprovalStatus, listUserApprovals } from '@/lib/approvals-inbox';
 import { ApprovalsContent } from './approvals-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('dashboardNav', 'approvals');
 
 interface PageProps {
   params: Promise<{ locale: string }>;

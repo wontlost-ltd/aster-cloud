@@ -5,6 +5,9 @@ import {
   getVocabularyAdminOverview,
 } from '@/lib/domain-vocabulary-admin';
 import { VocabularyAdminContent } from './admin-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('admin.vocab', 'title');
 
 type Props = {
   params: Promise<{ locale: string }>;

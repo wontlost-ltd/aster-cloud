@@ -3,6 +3,9 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { SecurityDashboard } from '@/components/security';
 import { Container, PageHeader } from '@/components/ui';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('dashboardNav', 'security');
 
 export default async function SecurityPage() {
   const session = await getSession();

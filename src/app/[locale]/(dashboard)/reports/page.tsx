@@ -5,6 +5,9 @@ import { and, eq, isNull, asc } from 'drizzle-orm';
 import { listEvidenceExports } from '@/lib/evidence';
 import { summarizeStoredExport } from '@/services/evidence/stored';
 import { ReportsContent } from './reports-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('dashboardNav', 'reports');
 
 interface PageProps {
   params: Promise<{ locale: string }>;

@@ -14,6 +14,9 @@ import { getPolicyFreezeStatus } from '@/lib/policy-freeze';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { isAdminFromSession } from '@/lib/admin-auth';
 import { DashboardContent } from './dashboard-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('dashboardNav', 'dashboard');
 
 // 服务端数据获取
 async function getDashboardData(userId: string) {

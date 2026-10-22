@@ -403,6 +403,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
+      createTeam: {
+        nameInvalid: 'Team name must be 2–50 characters.',
+        slugInvalid: 'Team URL must be 2–50 characters: lowercase letters, digits and single hyphens, not starting or ending with a hyphen.',
+      },
       members: {
         businessRolesLabel: 'Business roles:',
         businessRolesNone: 'None',
@@ -416,6 +421,21 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     settings: {
+      // GDPR 导出失败的本地化提示（F24），不显示服务端原文。
+      dataPage: {
+        downloadUnavailable: 'We couldn\'t prepare your AI data export right now. The problem has been logged; please try again later or contact support.',
+      },
+      // AI 熔断器手动熔断控件（F18）。
+      aiCircuitBreakerPage: {
+        trip: 'Trip circuit manually',
+        tripHint: 'Stops new AI calls for Free and Trial plans until the end of the UTC day or until you release it. Paid plans are not affected. Use it when a provider incident is driving cost before the automatic thresholds are reached.',
+        tripConfirmTitle: 'Trip the circuit manually?',
+        tripConfirmBody: 'Free and Trial users will be unable to make new AI calls until the end of the UTC day or until the circuit is released. This action is audited.',
+        tripConfirmAction: 'Trip circuit',
+        tripSuccess: 'Circuit tripped.',
+        tripFailure: 'Could not trip the circuit: {error}',
+        manualNote: 'Tripped manually by an administrator',
+      },
       // AI 行内补全开关（设置页）
       aiCompletion: {
         title: 'AI inline completion',
@@ -464,6 +484,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         alreadyEnabled: 'Authenticator is already enabled. Turn it off first to set up a new device.',
       },
       trustedDevices: {
+        // 设备列表里标记发起请求的这台设备（F22）。
+        currentDevice: 'This device',
         title: 'Trusted devices',
         description: 'Devices where you ticked “Remember this device”. They skip the email code for 30 days — remove any you no longer control.',
         empty: 'No trusted devices. You will be asked for a code each time you sign in.',
@@ -486,6 +508,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         errorPlanNoApiAccess: 'The team owner’s plan does not include API access.',
       },
       aiKeysPage: {
+        // 失效日期已过的 key（F13）：推理层会跳过，状态必须如实显示。
+        statusExpired: 'Expired',
         // AI Key 行内编辑 + 重置额度（本地补充，ui-messages 包尚无这些 key）。
         edit: 'Edit',
         editSave: 'Save',
@@ -534,6 +558,89 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: 'Open AI keys settings',
     },
     admin: {
+      // 许可证撤销：ID 不在已签发记录中的提示（Q2，不阻止撤销）。
+      licenseRevoke: {
+        newForm: {
+          checking: 'Checking…',
+          unknownLicenseWarning: 'This license is not in the issued-license records (it may have been issued offline). Double-check the ID before revoking.',
+        },
+      },
+      // 风险等级处理台的等级名称（F19：此前写死英文）。
+      riskTier: {
+        tierCard: 'Tier {tier} ({label})',
+        tiers: {
+          trusted: 'trusted',
+          normal: 'normal',
+          elevated: 'elevated',
+          high: 'high',
+          hard: 'hard',
+        },
+      },
+      // 管理员概览「最近管理事件」的事件名（F17）：键由 lib/admin-event-labels.ts 从 action id 推导。
+      pulse: {
+        audit: {
+          events: {
+            policyCreate: 'Policy created',
+            policyUpdate: 'Policy updated',
+            policyDelete: 'Policy deleted',
+            policyExecute: 'Policy executed',
+            policyPublish: 'Policy published',
+            policyArchive: 'Policy archived',
+            policyShared: 'Policy shared',
+            policyShareReaffirmed: 'Policy share confirmed',
+            policySharePermissionChanged: 'Policy share permission changed',
+            policyShareRevoked: 'Policy share revoked',
+            teamCreate: 'Team created',
+            teamMemberAdd: 'Team member added',
+            teamMemberRemove: 'Team member removed',
+            teamTransfer: 'Team ownership transferred',
+            subscriptionUpgrade: 'Subscription upgraded',
+            subscriptionDowngrade: 'Subscription downgraded',
+            subscriptionCancelled: 'Subscription cancelled',
+            subscriptionAutoDowngraded: 'Subscription downgraded automatically',
+            subscriptionTrialWillEnd: 'Trial ending soon',
+            subscriptionSeatsReconciled: 'Subscription seats reconciled',
+            paymentSucceeded: 'Payment succeeded',
+            paymentFailed: 'Payment failed',
+            paymentFailedTrialDowngrade: 'Payment failed, trial downgraded',
+            paymentDisputeCreated: 'Payment dispute opened',
+            apiKeyCreate: 'API key created',
+            apiKeyRevoke: 'API key revoked',
+            aiKeyCreate: 'AI key added',
+            aiKeyUpdate: 'AI key updated',
+            aiKeyResetQuota: 'AI key quota reset',
+            aiKeyReorder: 'AI key priority changed',
+            aiKeyDelete: 'AI key removed',
+            aiCircuitTrip: 'AI circuit breaker tripped manually',
+            aiCircuitRelease: 'AI circuit breaker released',
+            userDelete: 'Account deleted',
+            userRiskTierOverridden: 'Risk tier overridden',
+            userRiskTierRaised: 'Risk tier raised',
+            userRiskTierDecayed: 'Risk tier lowered over time',
+            userHardPurged: 'Account permanently purged',
+            settingsUpdate: 'Settings updated',
+            lexiconTermAdd: 'Vocabulary term added',
+            lexiconTermModify: 'Vocabulary term changed',
+            lexiconTermDelete: 'Vocabulary term deleted',
+            lexiconTermRestore: 'Vocabulary term restored',
+            lexiconAvailabilityEnable: 'Language enabled',
+            lexiconAvailabilityDisable: 'Language disabled',
+            byokAllowlistAdd: 'AI provider host allowed',
+            byokAllowlistRemove: 'AI provider host removed',
+            licenseRevoked: 'License revoked',
+            licenseRevocationUndone: 'License revocation undone',
+            licenseRevocationRepublished: 'Revocation list republished',
+            ruleRegressionFreeze: 'Regression baseline frozen',
+            ruleRegressionRun: 'Regression check run',
+            ruleRegressionApproveDrift: 'Regression drift approved',
+            ruleRegressionRevokeApproval: 'Regression approval revoked',
+            ruleRegressionApproveTransition: 'Toolchain upgrade approved',
+            ruleRegressionRevokeTransition: 'Toolchain upgrade approval revoked',
+            ahaFirstPolicyPublished: 'First policy published',
+            docsJump: 'Opened app from docs',
+          },
+        },
+      },
       structuralAliasGrants: {
         title: 'Structural keyword aliases',
         description: 'Grant selected users permission to alias Module, Rule, If, Otherwise, Match, When, and Return.',
@@ -545,6 +652,53 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
+    // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
+    // 细分出的展示类型，见 lib/security-event-display.ts。
+    security: {
+      eventTypes: {
+        SIGNATURE_INVALID: 'Invalid signature',
+        NONCE_REUSED: 'Nonce replay',
+        TIMESTAMP_EXPIRED: 'Timestamp expired',
+        HASH_MISMATCH: 'Hash mismatch',
+        UNAUTHORIZED_APPROVAL: 'Unauthorized approval',
+        SELF_APPROVAL_ATTEMPT: 'Self-approval attempt',
+        POLICY_EXECUTED: 'Policy executed',
+        POLICY_EXECUTION_FAILED: 'Policy execution failed',
+        APPROVAL_SUBMITTED: 'Submitted for approval',
+        APPROVAL_DECISION: 'Approval decision',
+        VERSION_CREATED: 'Version created',
+        VERSION_NOT_FOUND: 'Version not found',
+        DEPRECATED_VERSION_EXECUTED: 'Deprecated version executed',
+        VERSION_SET_DEFAULT: 'Default version set',
+        VERSION_DEPRECATED: 'Version deprecated',
+        VERSION_ARCHIVED: 'Version archived',
+      },
+    },
+    // 页面 <title>（F19）：界面上没有现成文案可复用的页面名，见 lib/page-metadata.ts。
+    pageTitles: {
+      policyDetail: 'Policy details',
+      policyEdit: 'Edit policy',
+      policyExecute: 'Run policy',
+      billingPlans: 'Plans',
+    },
+    // 套餐文案（F20）：不写具体模型名（实际模型取决于平台默认 / 用户 BYOK）；语言列表由
+    // PLAN_FEATURE_MESSAGE_VALUES 按已配置 locales 注入。trialCardTitle 替换写死的 "Trial"。
+    billing: {
+      plans: {
+        features: {
+          aiDrafts20: '20 AI drafts / month',
+          aiDrafts500: '500 AI drafts / seat / month',
+          allLanguagePacks: 'All language packs ({languages})',
+        },
+      },
+      overview: {
+        trialCardTitle: 'Trial',
+      },
+    },
+    // 设置页助手说明（F21）：管理员开启「助手回答」时使用，见 lib/assistant/settings-hint.ts。
+    assistant: {
+      settingsHintAiAnswers: 'A site-wide helper for finding docs and pages. Answers are based only on this site\'s documentation and may be generated by AI; it does not search the web.',
+    },
     common: { cancel: 'Cancel' },
     policies: {
       // 策略详情页治理档案徽标（ADR 0046 §6）。
@@ -1159,6 +1313,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
+      createTeam: {
+        nameInvalid: '团队名称需为 2–50 个字符。',
+        slugInvalid: '团队 URL 需为 2–50 个字符，仅可使用小写字母、数字和单个连字符，且不能以连字符开头或结尾。',
+      },
       members: {
         businessRolesLabel: '业务角色：',
         businessRolesNone: '无',
@@ -1172,6 +1331,21 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     settings: {
+      // GDPR 导出失败的本地化提示（F24），不显示服务端原文。
+      dataPage: {
+        downloadUnavailable: '暂时无法导出你的 AI 数据。问题已记录，请稍后重试或联系支持团队。',
+      },
+      // AI 熔断器手动熔断控件（F18）。
+      aiCircuitBreakerPage: {
+        trip: '手动熔断',
+        tripHint: '立即停止 Free 与 Trial 套餐的新 AI 调用，持续到今日 UTC 结束或手动解除；付费套餐不受影响。用于上游故障正在推高成本、尚未触及自动阈值的情况。',
+        tripConfirmTitle: '确认手动熔断？',
+        tripConfirmBody: 'Free 与 Trial 用户将无法发起新的 AI 调用，直到今日 UTC 结束或解除熔断。此操作会写入审计日志。',
+        tripConfirmAction: '熔断',
+        tripSuccess: '已手动熔断。',
+        tripFailure: '熔断失败：{error}',
+        manualNote: '由管理员手动熔断',
+      },
       // AI 行内补全开关（设置页）
       aiCompletion: {
         title: 'AI 行内补全',
@@ -1220,6 +1394,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         alreadyEnabled: '验证器已启用。要换设备请先关闭，再重新设置。',
       },
       trustedDevices: {
+        // 设备列表里标记发起请求的这台设备（F22）。
+        currentDevice: '当前设备',
         title: '已信任的设备',
         description: '您勾选过「记住该设备」的设备。它们在 30 天内免验证码——请移除您已不再掌控的设备。',
         empty: '暂无已信任设备。每次登录都会要求输入验证码。',
@@ -1241,6 +1417,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         errorPlanNoApiAccess: '团队 owner 的套餐不含 API 访问。',
       },
       aiKeysPage: {
+        // 失效日期已过的 key（F13）：推理层会跳过，状态必须如实显示。
+        statusExpired: '已失效',
         edit: '编辑',
         editSave: '保存',
         editCancel: '取消',
@@ -1287,6 +1465,89 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: '前往 AI 密钥设置',
     },
     admin: {
+      // 许可证撤销：ID 不在已签发记录中的提示（Q2，不阻止撤销）。
+      licenseRevoke: {
+        newForm: {
+          checking: '核对中…',
+          unknownLicenseWarning: '该许可证不在已签发记录中（可能为离线签发）—— 请核对 ID。',
+        },
+      },
+      // 风险等级处理台的等级名称（F19：此前写死英文）。
+      riskTier: {
+        tierCard: '等级 {tier}（{label}）',
+        tiers: {
+          trusted: '可信',
+          normal: '常规',
+          elevated: '偏高',
+          high: '高',
+          hard: '严格',
+        },
+      },
+      // 管理员概览「最近管理事件」的事件名（F17）：键由 lib/admin-event-labels.ts 从 action id 推导。
+      pulse: {
+        audit: {
+          events: {
+            policyCreate: '创建策略',
+            policyUpdate: '更新策略',
+            policyDelete: '删除策略',
+            policyExecute: '执行策略',
+            policyPublish: '发布策略',
+            policyArchive: '归档策略',
+            policyShared: '共享策略',
+            policyShareReaffirmed: '确认策略共享',
+            policySharePermissionChanged: '变更策略共享权限',
+            policyShareRevoked: '撤销策略共享',
+            teamCreate: '创建团队',
+            teamMemberAdd: '添加团队成员',
+            teamMemberRemove: '移除团队成员',
+            teamTransfer: '转移团队所有权',
+            subscriptionUpgrade: '升级订阅',
+            subscriptionDowngrade: '降级订阅',
+            subscriptionCancelled: '取消订阅',
+            subscriptionAutoDowngraded: '订阅自动降级',
+            subscriptionTrialWillEnd: '试用即将结束',
+            subscriptionSeatsReconciled: '订阅席位对账',
+            paymentSucceeded: '付款成功',
+            paymentFailed: '付款失败',
+            paymentFailedTrialDowngrade: '付款失败，试用降级',
+            paymentDisputeCreated: '付款争议',
+            apiKeyCreate: '创建 API 密钥',
+            apiKeyRevoke: '撤销 API 密钥',
+            aiKeyCreate: '添加 AI 密钥',
+            aiKeyUpdate: '更新 AI 密钥',
+            aiKeyResetQuota: '重置 AI 密钥额度',
+            aiKeyReorder: '调整 AI 密钥优先级',
+            aiKeyDelete: '删除 AI 密钥',
+            aiCircuitTrip: '手动熔断 AI',
+            aiCircuitRelease: '解除 AI 熔断',
+            userDelete: '删除账户',
+            userRiskTierOverridden: '手动覆盖风险等级',
+            userRiskTierRaised: '风险等级上调',
+            userRiskTierDecayed: '风险等级自动回落',
+            userHardPurged: '账户永久清除',
+            settingsUpdate: '更新设置',
+            lexiconTermAdd: '添加词汇',
+            lexiconTermModify: '修改词汇',
+            lexiconTermDelete: '删除词汇',
+            lexiconTermRestore: '恢复词汇',
+            lexiconAvailabilityEnable: '启用语言',
+            lexiconAvailabilityDisable: '停用语言',
+            byokAllowlistAdd: '添加 AI 提供商白名单',
+            byokAllowlistRemove: '移除 AI 提供商白名单',
+            licenseRevoked: '撤销许可证',
+            licenseRevocationUndone: '撤回许可证撤销',
+            licenseRevocationRepublished: '重新发布撤销列表',
+            ruleRegressionFreeze: '冻结回归基线',
+            ruleRegressionRun: '运行回归检查',
+            ruleRegressionApproveDrift: '批准回归偏差',
+            ruleRegressionRevokeApproval: '撤销回归批准',
+            ruleRegressionApproveTransition: '批准工具链升级',
+            ruleRegressionRevokeTransition: '撤销工具链升级批准',
+            ahaFirstPolicyPublished: '首次发布策略',
+            docsJump: '从文档跳转到应用',
+          },
+        },
+      },
       structuralAliasGrants: {
         title: '结构词别名授权',
         description: '为指定用户开启 Module、Rule、If、Otherwise、Match、When、Return 的别名权限。',
@@ -1298,6 +1559,53 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
+    // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
+    // 细分出的展示类型，见 lib/security-event-display.ts。
+    security: {
+      eventTypes: {
+        SIGNATURE_INVALID: '签名无效',
+        NONCE_REUSED: 'Nonce 重放',
+        TIMESTAMP_EXPIRED: '时间戳过期',
+        HASH_MISMATCH: '哈希不匹配',
+        UNAUTHORIZED_APPROVAL: '未授权审批',
+        SELF_APPROVAL_ATTEMPT: '自审批尝试',
+        POLICY_EXECUTED: '策略执行',
+        POLICY_EXECUTION_FAILED: '策略执行失败',
+        APPROVAL_SUBMITTED: '提交审批',
+        APPROVAL_DECISION: '审批决策',
+        VERSION_CREATED: '版本创建',
+        VERSION_NOT_FOUND: '版本不存在',
+        DEPRECATED_VERSION_EXECUTED: '执行已废弃版本',
+        VERSION_SET_DEFAULT: '设置默认版本',
+        VERSION_DEPRECATED: '版本被废弃',
+        VERSION_ARCHIVED: '版本被归档',
+      },
+    },
+    // 页面 <title>（F19）：界面上没有现成文案可复用的页面名，见 lib/page-metadata.ts。
+    pageTitles: {
+      policyDetail: '策略详情',
+      policyEdit: '编辑策略',
+      policyExecute: '执行策略',
+      billingPlans: '套餐',
+    },
+    // 套餐文案（F20）：不写具体模型名（实际模型取决于平台默认 / 用户 BYOK）；语言列表由
+    // PLAN_FEATURE_MESSAGE_VALUES 按已配置 locales 注入。trialCardTitle 替换写死的 "Trial"。
+    billing: {
+      plans: {
+        features: {
+          aiDrafts20: '每月 20 次 AI 草稿',
+          aiDrafts500: '每席每月 500 次 AI 草稿',
+          allLanguagePacks: '全语言包（{languages}）',
+        },
+      },
+      overview: {
+        trialCardTitle: '试用',
+      },
+    },
+    // 设置页助手说明（F21）：管理员开启「助手回答」时使用，见 lib/assistant/settings-hint.ts。
+    assistant: {
+      settingsHintAiAnswers: '全站辅助工具，帮你查找文档与页面。回答只依据本站文档，可能由 AI 生成——不联网检索。',
+    },
     common: { cancel: '取消' },
     policies: {
       // 策略详情页治理档案徽标（ADR 0046 §6）。
@@ -1910,6 +2218,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
+      createTeam: {
+        nameInvalid: 'Der Teamname muss 2–50 Zeichen lang sein.',
+        slugInvalid: 'Die Team-URL muss 2–50 Zeichen lang sein: Kleinbuchstaben, Ziffern und einzelne Bindestriche, ohne Bindestrich am Anfang oder Ende.',
+      },
       members: {
         businessRolesLabel: 'Geschäftsrollen:',
         businessRolesNone: 'Keine',
@@ -1923,6 +2236,21 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     settings: {
+      // GDPR 导出失败的本地化提示（F24），不显示服务端原文。
+      dataPage: {
+        downloadUnavailable: 'Ihr KI-Datenexport kann gerade nicht erstellt werden. Das Problem wurde protokolliert; bitte versuchen Sie es später erneut oder wenden Sie sich an den Support.',
+      },
+      // AI 熔断器手动熔断控件（F18）。
+      aiCircuitBreakerPage: {
+        trip: 'Manuell auslösen',
+        tripHint: 'Stoppt neue KI-Aufrufe für die Tarife Free und Trial bis zum Ende des UTC-Tages oder bis zur Freigabe. Bezahlte Tarife sind nicht betroffen. Für Anbieterstörungen, die Kosten verursachen, bevor die automatischen Schwellen erreicht sind.',
+        tripConfirmTitle: 'Schutzschalter manuell auslösen?',
+        tripConfirmBody: 'Free- und Trial-Nutzer können bis zum Ende des UTC-Tages oder bis zur Freigabe keine neuen KI-Aufrufe starten. Diese Aktion wird protokolliert.',
+        tripConfirmAction: 'Auslösen',
+        tripSuccess: 'Schutzschalter ausgelöst.',
+        tripFailure: 'Auslösen fehlgeschlagen: {error}',
+        manualNote: 'Manuell von einem Administrator ausgelöst',
+      },
       // AI 行内补全开关（设置页）
       aiCompletion: {
         title: 'KI-Inline-Vervollständigung',
@@ -1971,6 +2299,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         alreadyEnabled: 'Authenticator ist bereits aktiviert. Deaktivieren Sie ihn zuerst, um ein neues Gerät einzurichten.',
       },
       trustedDevices: {
+        // 设备列表里标记发起请求的这台设备（F22）。
+        currentDevice: 'Dieses Gerät',
         title: 'Vertrauenswürdige Geräte',
         description: 'Geräte, für die Sie „Diesem Gerät vertrauen“ aktiviert haben. Sie überspringen den E-Mail-Code 30 Tage lang — entfernen Sie Geräte, die Sie nicht mehr kontrollieren.',
         empty: 'Keine vertrauenswürdigen Geräte. Bei jeder Anmeldung wird ein Code abgefragt.',
@@ -1992,6 +2322,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         errorPlanNoApiAccess: 'Der Tarif des Team-Owners enthält keinen API-Zugang.',
       },
       aiKeysPage: {
+        // 失效日期已过的 key（F13）：推理层会跳过，状态必须如实显示。
+        statusExpired: 'Abgelaufen',
         edit: 'Bearbeiten',
         editSave: 'Speichern',
         editCancel: 'Abbrechen',
@@ -2038,6 +2370,89 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: 'KI-Schlüssel-Einstellungen öffnen',
     },
     admin: {
+      // 许可证撤销：ID 不在已签发记录中的提示（Q2，不阻止撤销）。
+      licenseRevoke: {
+        newForm: {
+          checking: 'Wird geprüft…',
+          unknownLicenseWarning: 'Diese Lizenz ist nicht in den Aufzeichnungen ausgestellter Lizenzen (möglicherweise offline ausgestellt). Prüfen Sie die ID vor dem Widerruf.',
+        },
+      },
+      // 风险等级处理台的等级名称（F19：此前写死英文）。
+      riskTier: {
+        tierCard: 'Stufe {tier} ({label})',
+        tiers: {
+          trusted: 'vertrauenswürdig',
+          normal: 'normal',
+          elevated: 'erhöht',
+          high: 'hoch',
+          hard: 'streng',
+        },
+      },
+      // 管理员概览「最近管理事件」的事件名（F17）：键由 lib/admin-event-labels.ts 从 action id 推导。
+      pulse: {
+        audit: {
+          events: {
+            policyCreate: 'Policy erstellt',
+            policyUpdate: 'Policy aktualisiert',
+            policyDelete: 'Policy gelöscht',
+            policyExecute: 'Policy ausgeführt',
+            policyPublish: 'Policy veröffentlicht',
+            policyArchive: 'Policy archiviert',
+            policyShared: 'Policy geteilt',
+            policyShareReaffirmed: 'Policy-Freigabe bestätigt',
+            policySharePermissionChanged: 'Freigabeberechtigung geändert',
+            policyShareRevoked: 'Policy-Freigabe widerrufen',
+            teamCreate: 'Team erstellt',
+            teamMemberAdd: 'Teammitglied hinzugefügt',
+            teamMemberRemove: 'Teammitglied entfernt',
+            teamTransfer: 'Teambesitz übertragen',
+            subscriptionUpgrade: 'Abonnement hochgestuft',
+            subscriptionDowngrade: 'Abonnement herabgestuft',
+            subscriptionCancelled: 'Abonnement gekündigt',
+            subscriptionAutoDowngraded: 'Abonnement automatisch herabgestuft',
+            subscriptionTrialWillEnd: 'Testphase endet bald',
+            subscriptionSeatsReconciled: 'Abonnementplätze abgeglichen',
+            paymentSucceeded: 'Zahlung erfolgreich',
+            paymentFailed: 'Zahlung fehlgeschlagen',
+            paymentFailedTrialDowngrade: 'Zahlung fehlgeschlagen, Testphase herabgestuft',
+            paymentDisputeCreated: 'Zahlungsstreit eröffnet',
+            apiKeyCreate: 'API-Schlüssel erstellt',
+            apiKeyRevoke: 'API-Schlüssel widerrufen',
+            aiKeyCreate: 'KI-Schlüssel hinzugefügt',
+            aiKeyUpdate: 'KI-Schlüssel aktualisiert',
+            aiKeyResetQuota: 'KI-Schlüssel-Kontingent zurückgesetzt',
+            aiKeyReorder: 'KI-Schlüssel-Priorität geändert',
+            aiKeyDelete: 'KI-Schlüssel entfernt',
+            aiCircuitTrip: 'KI-Schutzschalter manuell ausgelöst',
+            aiCircuitRelease: 'KI-Schutzschalter zurückgesetzt',
+            userDelete: 'Konto gelöscht',
+            userRiskTierOverridden: 'Risikostufe manuell überschrieben',
+            userRiskTierRaised: 'Risikostufe erhöht',
+            userRiskTierDecayed: 'Risikostufe automatisch gesenkt',
+            userHardPurged: 'Konto endgültig gelöscht',
+            settingsUpdate: 'Einstellungen aktualisiert',
+            lexiconTermAdd: 'Begriff hinzugefügt',
+            lexiconTermModify: 'Begriff geändert',
+            lexiconTermDelete: 'Begriff gelöscht',
+            lexiconTermRestore: 'Begriff wiederhergestellt',
+            lexiconAvailabilityEnable: 'Sprache aktiviert',
+            lexiconAvailabilityDisable: 'Sprache deaktiviert',
+            byokAllowlistAdd: 'KI-Anbieter-Host zugelassen',
+            byokAllowlistRemove: 'KI-Anbieter-Host entfernt',
+            licenseRevoked: 'Lizenz widerrufen',
+            licenseRevocationUndone: 'Lizenzwiderruf zurückgenommen',
+            licenseRevocationRepublished: 'Widerrufsliste neu veröffentlicht',
+            ruleRegressionFreeze: 'Regressions-Baseline eingefroren',
+            ruleRegressionRun: 'Regressionsprüfung ausgeführt',
+            ruleRegressionApproveDrift: 'Regressionsabweichung genehmigt',
+            ruleRegressionRevokeApproval: 'Regressionsgenehmigung widerrufen',
+            ruleRegressionApproveTransition: 'Toolchain-Upgrade genehmigt',
+            ruleRegressionRevokeTransition: 'Toolchain-Upgrade-Genehmigung widerrufen',
+            ahaFirstPolicyPublished: 'Erste Policy veröffentlicht',
+            docsJump: 'Aus der Dokumentation zur App gewechselt',
+          },
+        },
+      },
       structuralAliasGrants: {
         title: 'Aliase für Strukturwörter',
         description: 'Erlauben Sie ausgewählten Nutzern Aliase für Module, Rule, If, Otherwise, Match, When und Return.',
@@ -2049,6 +2464,53 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
+    // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
+    // 细分出的展示类型，见 lib/security-event-display.ts。
+    security: {
+      eventTypes: {
+        SIGNATURE_INVALID: 'Ungültige Signatur',
+        NONCE_REUSED: 'Nonce-Wiederverwendung',
+        TIMESTAMP_EXPIRED: 'Zeitstempel abgelaufen',
+        HASH_MISMATCH: 'Hash-Abweichung',
+        UNAUTHORIZED_APPROVAL: 'Unberechtigte Freigabe',
+        SELF_APPROVAL_ATTEMPT: 'Versuch der Selbstfreigabe',
+        POLICY_EXECUTED: 'Policy ausgeführt',
+        POLICY_EXECUTION_FAILED: 'Policy-Ausführung fehlgeschlagen',
+        APPROVAL_SUBMITTED: 'Zur Freigabe eingereicht',
+        APPROVAL_DECISION: 'Freigabeentscheidung',
+        VERSION_CREATED: 'Version erstellt',
+        VERSION_NOT_FOUND: 'Version nicht gefunden',
+        DEPRECATED_VERSION_EXECUTED: 'Veraltete Version ausgeführt',
+        VERSION_SET_DEFAULT: 'Standardversion festgelegt',
+        VERSION_DEPRECATED: 'Version als veraltet markiert',
+        VERSION_ARCHIVED: 'Version archiviert',
+      },
+    },
+    // 页面 <title>（F19）：界面上没有现成文案可复用的页面名，见 lib/page-metadata.ts。
+    pageTitles: {
+      policyDetail: 'Policy-Details',
+      policyEdit: 'Policy bearbeiten',
+      policyExecute: 'Policy ausführen',
+      billingPlans: 'Tarife',
+    },
+    // 套餐文案（F20）：不写具体模型名（实际模型取决于平台默认 / 用户 BYOK）；语言列表由
+    // PLAN_FEATURE_MESSAGE_VALUES 按已配置 locales 注入。trialCardTitle 替换写死的 "Trial"。
+    billing: {
+      plans: {
+        features: {
+          aiDrafts20: '20 KI-Entwürfe / Monat',
+          aiDrafts500: '500 KI-Entwürfe / Sitz / Monat',
+          allLanguagePacks: 'Alle Sprachpakete ({languages})',
+        },
+      },
+      overview: {
+        trialCardTitle: 'Testphase',
+      },
+    },
+    // 设置页助手说明（F21）：管理员开启「助手回答」时使用，见 lib/assistant/settings-hint.ts。
+    assistant: {
+      settingsHintAiAnswers: 'Ein seitenweites Hilfswerkzeug zum Finden von Dokumentation und Seiten. Antworten stützen sich nur auf die Dokumentation dieser Website und können KI-generiert sein; es wird nicht im Web gesucht.',
+    },
     common: { cancel: 'Abbrechen' },
     policies: {
       // 策略详情页治理档案徽标（ADR 0046 §6）。
@@ -2659,6 +3121,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
+      createTeam: {
+        nameInvalid: 'टीम का नाम 2–50 अक्षरों का होना चाहिए।',
+        slugInvalid: 'टीम URL 2–50 अक्षरों का होना चाहिए: केवल छोटे अक्षर, अंक और एकल हाइफ़न, और हाइफ़न से शुरू या समाप्त नहीं होना चाहिए।',
+      },
       members: {
         businessRolesLabel: 'व्यावसायिक भूमिकाएँ:',
         businessRolesNone: 'कोई नहीं',
@@ -2672,6 +3139,21 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     settings: {
+      // GDPR 导出失败的本地化提示（F24），不显示服务端原文。
+      dataPage: {
+        downloadUnavailable: 'अभी आपका AI डेटा निर्यात तैयार नहीं किया जा सका। समस्या दर्ज कर ली गई है; कृपया बाद में पुनः प्रयास करें या सहायता से संपर्क करें।',
+      },
+      // AI 熔断器手动熔断控件（F18）。
+      aiCircuitBreakerPage: {
+        trip: 'मैन्युअल रूप से सर्किट ट्रिप करें',
+        tripHint: 'Free और Trial प्लान के नए AI कॉल UTC दिन के अंत तक या रिलीज़ करने तक रोक देता है। सशुल्क प्लान प्रभावित नहीं होते। तब उपयोग करें जब प्रदाता की खराबी स्वचालित सीमा तक पहुँचने से पहले लागत बढ़ा रही हो।',
+        tripConfirmTitle: 'सर्किट मैन्युअल रूप से ट्रिप करें?',
+        tripConfirmBody: 'Free और Trial उपयोगकर्ता UTC दिन के अंत तक या सर्किट रिलीज़ होने तक नए AI कॉल नहीं कर पाएँगे। यह क्रिया ऑडिट लॉग में दर्ज होती है।',
+        tripConfirmAction: 'ट्रिप करें',
+        tripSuccess: 'सर्किट ट्रिप किया गया।',
+        tripFailure: 'सर्किट ट्रिप नहीं हो सका: {error}',
+        manualNote: 'व्यवस्थापक द्वारा मैन्युअल रूप से ट्रिप किया गया',
+      },
       // AI 行内补全开关（设置页）
       aiCompletion: {
         title: 'AI इनलाइन पूर्णता',
@@ -2720,6 +3202,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         alreadyEnabled: 'प्रमाणक पहले से सक्षम है। नया डिवाइस सेट करने के लिए पहले इसे बंद करें।',
       },
       trustedDevices: {
+        // 设备列表里标记发起请求的这台设备（F22）。
+        currentDevice: 'यह डिवाइस',
         title: 'विश्वसनीय डिवाइस',
         description: 'वे डिवाइस जिन पर आपने “इस डिवाइस को याद रखें” चुना था। वे 30 दिनों तक ईमेल कोड छोड़ देते हैं — जिन पर अब आपका नियंत्रण नहीं, उन्हें हटाएँ।',
         empty: 'कोई विश्वसनीय डिवाइस नहीं। हर साइन-इन पर कोड माँगा जाएगा।',
@@ -2741,6 +3225,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         errorPlanNoApiAccess: 'टीम owner के प्लान में API एक्सेस शामिल नहीं है।',
       },
       aiKeysPage: {
+        // 失效日期已过的 key（F13）：推理层会跳过，状态必须如实显示。
+        statusExpired: 'समाप्त',
         edit: 'संपादित करें',
         editSave: 'सहेजें',
         editCancel: 'रद्द करें',
@@ -2787,6 +3273,89 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: 'AI कुंजी सेटिंग्स खोलें',
     },
     admin: {
+      // 许可证撤销：ID 不在已签发记录中的提示（Q2，不阻止撤销）。
+      licenseRevoke: {
+        newForm: {
+          checking: 'जाँच हो रही है…',
+          unknownLicenseWarning: 'यह लाइसेंस जारी किए गए लाइसेंस रिकॉर्ड में नहीं है (संभवतः ऑफ़लाइन जारी किया गया)। रद्द करने से पहले ID की जाँच करें।',
+        },
+      },
+      // 风险等级处理台的等级名称（F19：此前写死英文）。
+      riskTier: {
+        tierCard: 'स्तर {tier} ({label})',
+        tiers: {
+          trusted: 'विश्वसनीय',
+          normal: 'सामान्य',
+          elevated: 'बढ़ा हुआ',
+          high: 'उच्च',
+          hard: 'कठोर',
+        },
+      },
+      // 管理员概览「最近管理事件」的事件名（F17）：键由 lib/admin-event-labels.ts 从 action id 推导。
+      pulse: {
+        audit: {
+          events: {
+            policyCreate: 'नीति बनाई गई',
+            policyUpdate: 'नीति अपडेट की गई',
+            policyDelete: 'नीति हटाई गई',
+            policyExecute: 'नीति निष्पादित',
+            policyPublish: 'नीति प्रकाशित',
+            policyArchive: 'नीति संग्रहीत',
+            policyShared: 'नीति साझा की गई',
+            policyShareReaffirmed: 'नीति साझाकरण की पुष्टि',
+            policySharePermissionChanged: 'साझाकरण अनुमति बदली गई',
+            policyShareRevoked: 'नीति साझाकरण रद्द',
+            teamCreate: 'टीम बनाई गई',
+            teamMemberAdd: 'टीम सदस्य जोड़ा गया',
+            teamMemberRemove: 'टीम सदस्य हटाया गया',
+            teamTransfer: 'टीम स्वामित्व स्थानांतरित',
+            subscriptionUpgrade: 'सदस्यता अपग्रेड',
+            subscriptionDowngrade: 'सदस्यता डाउनग्रेड',
+            subscriptionCancelled: 'सदस्यता रद्द',
+            subscriptionAutoDowngraded: 'सदस्यता स्वतः डाउनग्रेड',
+            subscriptionTrialWillEnd: 'परीक्षण जल्द समाप्त होगा',
+            subscriptionSeatsReconciled: 'सदस्यता सीटों का मिलान',
+            paymentSucceeded: 'भुगतान सफल',
+            paymentFailed: 'भुगतान विफल',
+            paymentFailedTrialDowngrade: 'भुगतान विफल, परीक्षण डाउनग्रेड',
+            paymentDisputeCreated: 'भुगतान विवाद खोला गया',
+            apiKeyCreate: 'API कुंजी बनाई गई',
+            apiKeyRevoke: 'API कुंजी रद्द',
+            aiKeyCreate: 'AI कुंजी जोड़ी गई',
+            aiKeyUpdate: 'AI कुंजी अपडेट की गई',
+            aiKeyResetQuota: 'AI कुंजी कोटा रीसेट',
+            aiKeyReorder: 'AI कुंजी प्राथमिकता बदली गई',
+            aiKeyDelete: 'AI कुंजी हटाई गई',
+            aiCircuitTrip: 'AI सर्किट ब्रेकर मैन्युअल रूप से ट्रिप',
+            aiCircuitRelease: 'AI सर्किट ब्रेकर रिलीज़',
+            userDelete: 'खाता हटाया गया',
+            userRiskTierOverridden: 'जोखिम स्तर ओवरराइड',
+            userRiskTierRaised: 'जोखिम स्तर बढ़ाया गया',
+            userRiskTierDecayed: 'जोखिम स्तर स्वतः घटा',
+            userHardPurged: 'खाता स्थायी रूप से हटाया गया',
+            settingsUpdate: 'सेटिंग्स अपडेट',
+            lexiconTermAdd: 'शब्द जोड़ा गया',
+            lexiconTermModify: 'शब्द बदला गया',
+            lexiconTermDelete: 'शब्द हटाया गया',
+            lexiconTermRestore: 'शब्द पुनर्स्थापित',
+            lexiconAvailabilityEnable: 'भाषा सक्षम',
+            lexiconAvailabilityDisable: 'भाषा अक्षम',
+            byokAllowlistAdd: 'AI प्रदाता होस्ट अनुमत',
+            byokAllowlistRemove: 'AI प्रदाता होस्ट हटाया गया',
+            licenseRevoked: 'लाइसेंस रद्द',
+            licenseRevocationUndone: 'लाइसेंस रद्दीकरण वापस लिया गया',
+            licenseRevocationRepublished: 'रद्दीकरण सूची पुनः प्रकाशित',
+            ruleRegressionFreeze: 'रिग्रेशन बेसलाइन फ़्रीज़',
+            ruleRegressionRun: 'रिग्रेशन जाँच चलाई गई',
+            ruleRegressionApproveDrift: 'रिग्रेशन विचलन स्वीकृत',
+            ruleRegressionRevokeApproval: 'रिग्रेशन अनुमोदन रद्द',
+            ruleRegressionApproveTransition: 'टूलचेन अपग्रेड स्वीकृत',
+            ruleRegressionRevokeTransition: 'टूलचेन अपग्रेड अनुमोदन रद्द',
+            ahaFirstPolicyPublished: 'पहली नीति प्रकाशित',
+            docsJump: 'दस्तावेज़ से ऐप खोला गया',
+          },
+        },
+      },
       structuralAliasGrants: {
         title: 'संरचना कीवर्ड उपनाम',
         description: 'चयनित उपयोगकर्ताओं को Module, Rule, If, Otherwise, Match, When और Return के उपनाम की अनुमति दें।',
@@ -2798,6 +3367,53 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
+    // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
+    // 细分出的展示类型，见 lib/security-event-display.ts。
+    security: {
+      eventTypes: {
+        SIGNATURE_INVALID: 'अमान्य हस्ताक्षर',
+        NONCE_REUSED: 'Nonce पुनः उपयोग',
+        TIMESTAMP_EXPIRED: 'टाइमस्टैम्प समाप्त',
+        HASH_MISMATCH: 'हैश मेल नहीं खाता',
+        UNAUTHORIZED_APPROVAL: 'अनधिकृत अनुमोदन',
+        SELF_APPROVAL_ATTEMPT: 'स्व-अनुमोदन का प्रयास',
+        POLICY_EXECUTED: 'नीति निष्पादित',
+        POLICY_EXECUTION_FAILED: 'नीति निष्पादन विफल',
+        APPROVAL_SUBMITTED: 'अनुमोदन के लिए जमा किया गया',
+        APPROVAL_DECISION: 'अनुमोदन निर्णय',
+        VERSION_CREATED: 'संस्करण बनाया गया',
+        VERSION_NOT_FOUND: 'संस्करण नहीं मिला',
+        DEPRECATED_VERSION_EXECUTED: 'अप्रचलित संस्करण निष्पादित',
+        VERSION_SET_DEFAULT: 'डिफ़ॉल्ट संस्करण सेट किया गया',
+        VERSION_DEPRECATED: 'संस्करण अप्रचलित किया गया',
+        VERSION_ARCHIVED: 'संस्करण संग्रहीत',
+      },
+    },
+    // 页面 <title>（F19）：界面上没有现成文案可复用的页面名，见 lib/page-metadata.ts。
+    pageTitles: {
+      policyDetail: 'नीति विवरण',
+      policyEdit: 'नीति संपादित करें',
+      policyExecute: 'नीति चलाएँ',
+      billingPlans: 'प्लान',
+    },
+    // 套餐文案（F20）：不写具体模型名（实际模型取决于平台默认 / 用户 BYOK）；语言列表由
+    // PLAN_FEATURE_MESSAGE_VALUES 按已配置 locales 注入。trialCardTitle 替换写死的 "Trial"。
+    billing: {
+      plans: {
+        features: {
+          aiDrafts20: '20 AI ड्राफ़्ट / माह',
+          aiDrafts500: '500 AI ड्राफ़्ट / सीट / माह',
+          allLanguagePacks: 'सभी भाषा पैक ({languages})',
+        },
+      },
+      overview: {
+        trialCardTitle: 'परीक्षण',
+      },
+    },
+    // 设置页助手说明（F21）：管理员开启「助手回答」时使用，见 lib/assistant/settings-hint.ts。
+    assistant: {
+      settingsHintAiAnswers: 'दस्तावेज़ और पेज खोजने के लिए साइट-व्यापी सहायक। उत्तर केवल इस साइट के दस्तावेज़ों पर आधारित होते हैं और AI द्वारा जनरेट किए जा सकते हैं; यह वेब पर खोज नहीं करता।',
+    },
     common: { cancel: 'रद्द करें' },
     policies: {
       // 策略详情页治理档案徽标（ADR 0046 §6）。

@@ -1,6 +1,9 @@
 import { notFound } from 'next/navigation';
 import { isAdminFromSession } from '@/lib/admin-auth';
 import { CircuitBreakerContent } from './circuit-breaker-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('admin.nav', 'aiBreaker');
 
 /**
  * /admin/ai-circuit-breaker — admin-only manual override for the
