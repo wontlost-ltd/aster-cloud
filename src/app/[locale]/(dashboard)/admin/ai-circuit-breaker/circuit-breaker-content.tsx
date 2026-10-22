@@ -20,13 +20,20 @@ import {
 } from '@/components/ui';
 import { Activity, RefreshCw } from 'lucide-react';
 import { useApi } from '@/lib/api';
+import { extractErrorMessage } from '@/lib/api/error-envelope';
 
-type CircuitState = 'OPEN' | 'CLOSED_FREE' | 'CLOSED_TRIAL' | 'CLOSED_ALL';
+// 与 lib/ai-circuit-breaker 的 CircuitState 一致（API 原样返回）。此前页面期望的是
+// 'OPEN' | 'CLOSED_*' 一套从未存在过的取值，导致「当前状态」永远落到 '—'。
+type CircuitState = 'closed' | 'free_stopped' | 'free_trial_stopped';
 
 interface CircuitStatus {
   today_cents: number;
   today_usd: string;
   state: CircuitState;
+  /** 当前生效的熔断 ban 推出的状态；'closed' 表示没有可解除的熔断。 */
+  ban_state: CircuitState;
+  /** 生效的熔断里是否有管理员手动熔断。 */
+  manual: boolean;
   thresholds: {
     free_stop_usd: number;
     trial_stop_usd: number;
@@ -36,17 +43,22 @@ interface CircuitStatus {
 /**
  * Admin console for the LLM circuit breaker.
  *
- * Backend exposes GET (status) + POST { action: 'release' } at
+ * Backend exposes GET (status) + POST { action: 'trip' | 'release' } at
  * /api/admin/ai-circuit-breaker. This page surfaces:
  *
  *   - Today's platform spend as a stat card so the admin sees how
  *     close the auto-trip thresholds are.
- *   - Current circuit state as a badge (OPEN / CLOSED_FREE /
- *     CLOSED_TRIAL / CLOSED_ALL) with localized labels.
+ *   - Current circuit state as a badge (closed / free_stopped /
+ *     free_trial_stopped) read from the same source as the admin
+ *     overview card, with localized labels.
  *   - Thresholds the auto-tripper compares against.
+ *   - Manual Trip button (gated by ConfirmDialog): stops Free + Trial
+ *     AI calls until end of the UTC day, for provider incidents where
+ *     cost has not yet crossed the auto thresholds.
  *   - Manual Release button (gated by ConfirmDialog) that POSTs
  *     to /release the circuit, used when an incident is over but
- *     the auto-trip cooldown hasn't elapsed yet.
+ *     the auto-trip cooldown hasn't elapsed yet. Release undoes both
+ *     automatic and manual trips.
  *
  * useApi caches the status for 30 s; an explicit "Refresh" button
  * re-fetches without waiting.
@@ -59,42 +71,46 @@ export function CircuitBreakerContent() {
     { refreshInterval: 30_000 },
   );
   const [confirmRelease, setConfirmRelease] = useState(false);
-  const [isReleasing, setIsReleasing] = useState(false);
+  const [confirmTrip, setConfirmTrip] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'trip' | 'release' | null>(null);
 
   const stateLabel = (() => {
     switch (data?.state) {
-      case 'OPEN':
+      case 'closed':
         return t('stateOpen');
-      case 'CLOSED_FREE':
+      case 'free_stopped':
         return t('stateClosedFree');
-      case 'CLOSED_TRIAL':
+      case 'free_trial_stopped':
         return t('stateClosedTrial');
-      case 'CLOSED_ALL':
-        return t('stateClosedAll');
       default:
         return '—';
     }
   })();
-  const stateVariant = data?.state === 'OPEN' ? 'success' : 'danger';
+  const stateVariant = data?.state === 'closed' ? 'success' : 'danger';
 
-  const release = async () => {
-    setIsReleasing(true);
+  // 手动熔断与解除共用一条 POST；失败只显示本地化前缀 + 服务端错误码，不渲染异常文本。
+  const post = async (action: 'trip' | 'release') => {
+    setPendingAction(action);
     try {
       const res = await fetch('/api/admin/ai-circuit-breaker', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'release' }),
+        body: JSON.stringify({ action }),
       });
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      const body = (await res.json().catch(() => ({}))) as { error?: unknown };
       if (!res.ok) {
-        toast.error(t('releaseFailure', { error: body.error || res.status }));
+        const error = extractErrorMessage(body) || res.status;
+        toast.error(
+          action === 'trip' ? t('tripFailure', { error }) : t('releaseFailure', { error }),
+        );
         return;
       }
-      toast.success(t('releaseSuccess'));
+      toast.success(action === 'trip' ? t('tripSuccess') : t('releaseSuccess'));
+      setConfirmTrip(false);
       setConfirmRelease(false);
       mutate();
     } finally {
-      setIsReleasing(false);
+      setPendingAction(null);
     }
   };
 
@@ -150,13 +166,16 @@ export function CircuitBreakerContent() {
             label={t('todaySpend')}
             value={data ? t('spendUsd', { usd: data.today_usd }) : '—'}
             icon={<Activity className="size-5" />}
-            tone={data?.state !== 'OPEN' ? 'danger' : 'primary'}
+            tone={data && data.state !== 'closed' ? 'danger' : 'primary'}
           />
           <Card>
             <CardHeader>
               <CardTitle className="text-base">{t('currentState')}</CardTitle>
               <CardDescription>
                 <Badge variant={stateVariant}>{stateLabel}</Badge>
+                {data?.manual && (
+                  <span className="ml-2 text-xs text-fg-muted">{t('manualNote')}</span>
+                )}
               </CardDescription>
             </CardHeader>
           </Card>
@@ -184,16 +203,33 @@ export function CircuitBreakerContent() {
 
         <Card className="border-danger/40">
           <CardHeader>
+            <CardTitle className="text-base text-danger">{t('trip')}</CardTitle>
+            <CardDescription>{t('tripHint')}</CardDescription>
+          </CardHeader>
+          <CardBody>
+            <Button
+              variant="destructive"
+              onClick={() => setConfirmTrip(true)}
+              disabled={!data || data.ban_state === 'free_trial_stopped'}
+            >
+              {t('trip')}
+            </Button>
+          </CardBody>
+        </Card>
+
+        <Card className="border-danger/40">
+          <CardHeader>
             <CardTitle className="text-base text-danger">
               {t('release')}
             </CardTitle>
             <CardDescription>{t('releaseConfirmBody')}</CardDescription>
           </CardHeader>
           <CardBody>
+            {/* 只有存在生效的熔断 ban 时才有东西可解除。 */}
             <Button
               variant="destructive"
               onClick={() => setConfirmRelease(true)}
-              disabled={!data || data.state === 'OPEN'}
+              disabled={!data || data.ban_state === 'closed'}
             >
               {t('release')}
             </Button>
@@ -202,15 +238,26 @@ export function CircuitBreakerContent() {
       </Stack>
 
       <ConfirmDialog
+        isOpen={confirmTrip}
+        title={t('tripConfirmTitle')}
+        description={t('tripConfirmBody')}
+        confirmLabel={t('tripConfirmAction')}
+        cancelLabel={t('releaseConfirmCancel')}
+        variant="danger"
+        isLoading={pendingAction === 'trip'}
+        onConfirm={() => post('trip')}
+        onCancel={() => pendingAction === null && setConfirmTrip(false)}
+      />
+      <ConfirmDialog
         isOpen={confirmRelease}
         title={t('releaseConfirmTitle')}
         description={t('releaseConfirmBody')}
         confirmLabel={t('releaseConfirmAction')}
         cancelLabel={t('releaseConfirmCancel')}
         variant="danger"
-        isLoading={isReleasing}
-        onConfirm={release}
-        onCancel={() => !isReleasing && setConfirmRelease(false)}
+        isLoading={pendingAction === 'release'}
+        onConfirm={() => post('release')}
+        onCancel={() => pendingAction === null && setConfirmRelease(false)}
       />
       {/* tCommon kept for future use; suppress unused lint */}
       <span hidden>{tCommon('loading')}</span>

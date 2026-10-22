@@ -29,11 +29,7 @@ import {
   CAN_SSO,
   IS_SAAS,
 } from '@/lib/deployment-mode';
-import {
-  todayPlatformCostCents,
-  evaluateCircuit,
-  type CircuitState,
-} from '@/lib/ai-circuit-breaker';
+import { getCircuitStatus, type CircuitState } from '@/lib/ai-circuit-breaker';
 
 type Props = {
   params: Promise<{ locale: string }>;
@@ -64,10 +60,11 @@ async function loadPulse(): Promise<PulseSignals> {
   const [circuit, riskCount, audit] = await Promise.all([
     (async () => {
       try {
-        const cents = await todayPlatformCostCents();
+        // 与熔断器页同一状态来源（含手动熔断），避免两处口径不一致。
+        const status = await getCircuitStatus();
         return {
-          state: evaluateCircuit(cents),
-          todayUsd: (cents / 100).toFixed(2),
+          state: status.state,
+          todayUsd: (status.todayCents / 100).toFixed(2),
         } as const;
       } catch {
         return { state: 'error' as const, todayUsd: null };

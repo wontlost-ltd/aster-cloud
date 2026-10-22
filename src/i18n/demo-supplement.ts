@@ -419,6 +419,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     settings: {
+      // AI 熔断器手动熔断控件（F18）。
+      aiCircuitBreakerPage: {
+        trip: 'Trip circuit manually',
+        tripHint: 'Stops new AI calls for Free and Trial plans until the end of the UTC day or until you release it. Paid plans are not affected. Use it when a provider incident is driving cost before the automatic thresholds are reached.',
+        tripConfirmTitle: 'Trip the circuit manually?',
+        tripConfirmBody: 'Free and Trial users will be unable to make new AI calls until the end of the UTC day or until the circuit is released. This action is audited.',
+        tripConfirmAction: 'Trip circuit',
+        tripSuccess: 'Circuit tripped.',
+        tripFailure: 'Could not trip the circuit: {error}',
+        manualNote: 'Tripped manually by an administrator',
+      },
       // AI 行内补全开关（设置页）
       aiCompletion: {
         title: 'AI inline completion',
@@ -1265,6 +1276,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     settings: {
+      // AI 熔断器手动熔断控件（F18）。
+      aiCircuitBreakerPage: {
+        trip: '手动熔断',
+        tripHint: '立即停止 Free 与 Trial 套餐的新 AI 调用，持续到今日 UTC 结束或手动解除；付费套餐不受影响。用于上游故障正在推高成本、尚未触及自动阈值的情况。',
+        tripConfirmTitle: '确认手动熔断？',
+        tripConfirmBody: 'Free 与 Trial 用户将无法发起新的 AI 调用，直到今日 UTC 结束或解除熔断。此操作会写入审计日志。',
+        tripConfirmAction: '熔断',
+        tripSuccess: '已手动熔断。',
+        tripFailure: '熔断失败：{error}',
+        manualNote: '由管理员手动熔断',
+      },
       // AI 行内补全开关（设置页）
       aiCompletion: {
         title: 'AI 行内补全',
@@ -2106,6 +2128,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     settings: {
+      // AI 熔断器手动熔断控件（F18）。
+      aiCircuitBreakerPage: {
+        trip: 'Manuell auslösen',
+        tripHint: 'Stoppt neue KI-Aufrufe für die Tarife Free und Trial bis zum Ende des UTC-Tages oder bis zur Freigabe. Bezahlte Tarife sind nicht betroffen. Für Anbieterstörungen, die Kosten verursachen, bevor die automatischen Schwellen erreicht sind.',
+        tripConfirmTitle: 'Schutzschalter manuell auslösen?',
+        tripConfirmBody: 'Free- und Trial-Nutzer können bis zum Ende des UTC-Tages oder bis zur Freigabe keine neuen KI-Aufrufe starten. Diese Aktion wird protokolliert.',
+        tripConfirmAction: 'Auslösen',
+        tripSuccess: 'Schutzschalter ausgelöst.',
+        tripFailure: 'Auslösen fehlgeschlagen: {error}',
+        manualNote: 'Manuell von einem Administrator ausgelöst',
+      },
       // AI 行内补全开关（设置页）
       aiCompletion: {
         title: 'KI-Inline-Vervollständigung',
@@ -2945,6 +2978,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     settings: {
+      // AI 熔断器手动熔断控件（F18）。
+      aiCircuitBreakerPage: {
+        trip: 'मैन्युअल रूप से सर्किट ट्रिप करें',
+        tripHint: 'Free और Trial प्लान के नए AI कॉल UTC दिन के अंत तक या रिलीज़ करने तक रोक देता है। सशुल्क प्लान प्रभावित नहीं होते। तब उपयोग करें जब प्रदाता की खराबी स्वचालित सीमा तक पहुँचने से पहले लागत बढ़ा रही हो।',
+        tripConfirmTitle: 'सर्किट मैन्युअल रूप से ट्रिप करें?',
+        tripConfirmBody: 'Free और Trial उपयोगकर्ता UTC दिन के अंत तक या सर्किट रिलीज़ होने तक नए AI कॉल नहीं कर पाएँगे। यह क्रिया ऑडिट लॉग में दर्ज होती है।',
+        tripConfirmAction: 'ट्रिप करें',
+        tripSuccess: 'सर्किट ट्रिप किया गया।',
+        tripFailure: 'सर्किट ट्रिप नहीं हो सका: {error}',
+        manualNote: 'व्यवस्थापक द्वारा मैन्युअल रूप से ट्रिप किया गया',
+      },
       // AI 行内补全开关（设置页）
       aiCompletion: {
         title: 'AI इनलाइन पूर्णता',
