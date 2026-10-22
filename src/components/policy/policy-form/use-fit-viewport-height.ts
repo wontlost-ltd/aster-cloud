@@ -25,11 +25,11 @@ export function fitViewportHeight(
 
 /**
  * 让元素高度恰好填满「首屏剩余高度」：按元素在文档中的实际顶边计算，而不是按固定的
- * 「100vh − 估算头部高度」。头部高度随副标题换行、错误横幅等变化，估算值曾让编辑器侧栏
- * 底边超出视口（907px / 887px），输入提示行被裁掉。
+ * 「100vh − 估算头部高度」，因为头部高度会随副标题换行、横幅出现等变化。
  *
  * <p>测量前返回 null，调用方继续用 CSS 兜底高度（SSR 与首帧一致，不产生 hydration 差异）。
- * deps 变化（如错误横幅出现）时重新测量。
+ * 窗口尺寸变化、页面内容尺寸变化（上方任何横幅出现/消失、字体加载后换行）都会重新测量；
+ * deps 供调用方在上述机制覆盖不到时显式触发。
  */
 export function useFitViewportHeight(
   ref: RefObject<HTMLElement | null>,
@@ -49,7 +49,16 @@ export function useFitViewportHeight(
     };
     measure();
     window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
+    // 上方内容变化会改变页面整体尺寸：观察 body 即可覆盖任意横幅与换行。自身高度变化也会触发，
+    // 但顶边不变、算出的高度相同，setState 同值不会重渲染，不会循环。
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(document.body);
+    // 网络字体加载完成后标题可能换行，顶边随之移动。
+    void document.fonts?.ready.then(measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+      observer?.disconnect();
+    };
     // deps 由调用方传入，用于布局上方内容变化时重新测量。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ref, min, max, reserve, ...deps]);

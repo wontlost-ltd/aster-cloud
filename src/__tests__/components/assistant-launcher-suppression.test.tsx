@@ -14,7 +14,13 @@ import {
   AssistantProvider,
   useAssistant,
   useSuppressAssistantLauncher,
+  useSuppressLauncherSafeArea,
 } from '@/components/assistant/assistant-context';
+
+function SafeAreaSuppressor() {
+  useSuppressLauncherSafeArea(true);
+  return null;
+}
 
 /**
  * F1/F25：悬浮助手按钮曾盖住编辑器 AI 面板的「发送」与仪表盘底部的「查看全部」。
@@ -112,5 +118,24 @@ describe('悬浮助手按钮让位', () => {
     }
     render(<Bare />);
     expect(screen.getByText('ok')).toBeTruthy();
+  });
+
+  it('★视口自适应页面取消安全区：按钮照常显示，但页面末尾不再多出一段滚动；卸载后恢复', () => {
+    function Page({ fitted }: { fitted: boolean }) {
+      return fitted ? <SafeAreaSuppressor /> : null;
+    }
+    const toggle: { set?: (v: boolean) => void } = {};
+    function Host() {
+      const [fitted, setFitted] = useState(true);
+      useEffect(() => {
+        toggle.set = setFitted;
+      }, []);
+      return <Page fitted={fitted} />;
+    }
+    renderAll(<Host />);
+    expect(launcher()).not.toBeNull();
+    expect(safeArea()).toBeNull();
+    act(() => toggle.set!(false));
+    expect(safeArea()).not.toBeNull();
   });
 });

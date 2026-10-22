@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useRef } from 'react';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import {
@@ -61,5 +61,41 @@ describe('useFitViewportHeight', () => {
     const { rerender } = render(<Probe top={212} />);
     rerender(<Probe top={260} />);
     expect(screen.getByTestId('box').getAttribute('data-h')).toBe('563');
+  });
+
+  it('★页面内容尺寸变化（上方横幅、字体换行）时不需 deps 也会重新测量', () => {
+    let notify: (() => void) | null = null;
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(cb: () => void) {
+          notify = cb;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    Object.defineProperty(window, 'innerHeight', { value: 887, configurable: true });
+    let top = 212;
+    function Free() {
+      const ref = useRef<HTMLDivElement>(null);
+      const h = useFitViewportHeight(ref, OPTS);
+      return (
+        <div
+          ref={(el) => {
+            ref.current = el;
+            if (el) el.getBoundingClientRect = () => ({ top } as DOMRect);
+          }}
+          data-testid="free"
+          data-h={h ?? 'none'}
+        />
+      );
+    }
+    render(<Free />);
+    expect(screen.getByTestId('free').getAttribute('data-h')).toBe('611');
+    top = 260;
+    act(() => notify!());
+    expect(screen.getByTestId('free').getAttribute('data-h')).toBe('563');
+    vi.unstubAllGlobals();
   });
 });

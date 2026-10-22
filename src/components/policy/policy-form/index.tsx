@@ -79,6 +79,7 @@ import { useUnsavedWarning } from './use-unsaved-warning';
 import { usePolicyShortcuts } from './use-policy-shortcuts';
 import { useIsMobile } from './use-is-mobile';
 import { useFitViewportHeight } from './use-fit-viewport-height';
+import { useSuppressLauncherSafeArea } from '@/components/assistant/assistant-context';
 import { EditorPalette } from './editor-palette';
 import { EditorRail } from './editor-rail';
 import { CNLSyntaxConverterDialog } from '@/components/policy/cnl-syntax-converter-dialog';
@@ -257,14 +258,12 @@ export function PolicyForm({
     setSidePanelOpen(true);
   }, []);
 
-  // 工作区高度按实际顶边填满首屏；错误横幅出现/消失会推移顶边，需重新测量。
+  // 工作区高度按实际顶边填满首屏（上方横幅、换行等变化由 hook 自动重测）。
   // reserve = 状态栏（约 30px）+ 间距 12px + 底部留白，保证状态栏同在视口内。
   const workbenchRef = useRef<HTMLDivElement>(null);
-  const workbenchHeight = useFitViewportHeight(
-    workbenchRef,
-    { min: 560, max: 900, reserve: 64 },
-    [serverError !== null],
-  );
+  const workbenchHeight = useFitViewportHeight(workbenchRef, { min: 560, max: 900, reserve: 64 });
+  // 编辑器已按视口填满首屏、状态栏自行给悬浮按钮让位：不再在页面末尾追加按钮安全区，避免整页多滚一段。
+  useSuppressLauncherSafeArea(true);
   const previousErrorCountRef = useRef(0);
   useEffect(() => {
     if (compileErrorCount > 0 && previousErrorCountRef.current === 0) {
