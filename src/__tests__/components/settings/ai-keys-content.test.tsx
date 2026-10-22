@@ -304,4 +304,21 @@ describe('AiKeysContent 失效状态（F13）', () => {
     expect(screen.getAllByText('Expired')).toHaveLength(1);
     expect(screen.getAllByText('Active')).toHaveLength(1);
   });
+
+  it('★首帧（SSR / 水合前）按服务端渲染时刻判定，与服务端输出一致', async () => {
+    const { renderToString } = await import('react-dom/server');
+    const binding = {
+      ...baseBinding, id: 'edge', provider: 'openai', keyHint: '1023', expiresAt: '2026-10-23T00:00:00.000Z',
+      model: null, availableModels: null, modelsCheckedAt: null,
+    };
+    const Wrapper = wrapper;
+    // 服务端在失效时刻之前渲染：即使执行此测试的时钟已过失效时刻，首帧也必须显示 Active
+    const html = renderToString(
+      <Wrapper>
+        <AiKeysContent locale="en" initialBindings={[binding]} renderedAt={Date.parse('2026-10-22T23:59:59Z')} />
+      </Wrapper>,
+    );
+    expect(html).toContain('Active');
+    expect(html).not.toContain('Expired');
+  });
 });

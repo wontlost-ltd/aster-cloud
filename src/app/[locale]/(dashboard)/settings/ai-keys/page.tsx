@@ -61,5 +61,8 @@ export default async function AiKeysPage() {
     modelsCheckedAt: b.modelsCheckedAt?.toISOString() ?? null,
   }));
 
-  return <AiKeysContent initialBindings={initialBindings} locale={locale} />;
+  // Server Component 每请求只渲染一次，Date.now() 在此渲染安全（非客户端重渲染）
+  // eslint-disable-next-line react-hooks/purity
+  const renderedAt = Date.now();
+  return <AiKeysContent initialBindings={initialBindings} locale={locale} renderedAt={renderedAt} />;
 }
