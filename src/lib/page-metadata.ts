@@ -1,8 +1,8 @@
 /**
  * 应用内页面的本地化 <title>（F19）。
  *
- * 根布局给全站一个营销标题（"Aster Cloud — Replay any credit decision"），登录后的页面
- * 此前都沿用它，浏览器标签页无法区分；少数 admin 页写死了英文标题。约定：
+ * 根布局给全站一个营销标题（"Aster Cloud — Replay any credit decision"）；登录后的页面
+ * 需要各自的本地化标题，浏览器标签页才能区分。约定：
  * - (dashboard) 布局声明模板 `%s · Aster Cloud`；
  * - 页面用 localizedTitle(命名空间, 键) 生成 generateMetadata，复用界面上已有的导航/标题文案；
  * - 含客户端页面的整段路由（如 /teams/*）用 localizedSectionTitle 放在该段的 layout 上，

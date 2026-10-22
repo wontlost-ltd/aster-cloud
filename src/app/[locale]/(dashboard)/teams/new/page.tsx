@@ -20,7 +20,7 @@ export default function NewTeamPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   // 字段级校验错误：表单用 noValidate 关掉浏览器原生气泡（只有英文/系统语言），
-  // 改为与服务端同一套规则（lib/validation）在提交时校验并显示本地化文案。
+  // 提交时按与服务端同一套规则（lib/validation）校验并显示本地化文案。
   const [nameError, setNameError] = useState('');
   const [slugError, setSlugError] = useState('');
   // 名称里没有可用 ASCII 时 slug 的兜底后缀：整个表单生命周期内固定，避免每次键入都变。

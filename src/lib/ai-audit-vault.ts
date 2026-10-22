@@ -21,8 +21,8 @@ export function resetAuditVaultWarningForTests(): void {
 
 /**
  * 审计密钥是否可用（存在且 ≥16 字符，与 encryptionSecret 同一判定）。
- * 不可用时打一次 error 日志：此前调用方传 null 明文时根本不读密钥，
- * 生产缺密钥可以长期无人察觉（直到 GDPR 导出 500 才暴露）。
+ * 不可用时打一次 error 日志：调用方传 null 明文时不会走到加密，若不在这里自检，
+ * 生产缺密钥会一直无人察觉，直到 GDPR 导出才暴露。
  */
 function auditSecretConfigured(): boolean {
   const secret = process.env.AI_AUDIT_ENCRYPTION_SECRET;

@@ -22,8 +22,7 @@ import { Activity, RefreshCw } from 'lucide-react';
 import { useApi } from '@/lib/api';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
 
-// 与 lib/ai-circuit-breaker 的 CircuitState 一致（API 原样返回）。此前页面期望的是
-// 'OPEN' | 'CLOSED_*' 一套从未存在过的取值，导致「当前状态」永远落到 '—'。
+// 与 lib/ai-circuit-breaker 的 CircuitState 一致（API 原样返回），状态徽标按这三个取值映射文案。
 type CircuitState = 'closed' | 'free_stopped' | 'free_trial_stopped';
 
 interface CircuitStatus {
@@ -41,27 +40,18 @@ interface CircuitStatus {
 }
 
 /**
- * Admin console for the LLM circuit breaker.
+ * AI 熔断器管理页。
  *
- * Backend exposes GET (status) + POST { action: 'trip' | 'release' } at
- * /api/admin/ai-circuit-breaker. This page surfaces:
+ * 后端为 /api/admin/ai-circuit-breaker：GET 取状态，POST { action: 'trip' | 'release' } 熔断或解除。
+ * 页面展示：
+ *   - 今日平台成本（统计卡），便于判断离自动熔断阈值还有多远；
+ *   - 当前熔断状态徽标（closed / free_stopped / free_trial_stopped），与管理员概览卡片同源、本地化显示；
+ *   - 自动熔断所比较的阈值；
+ *   - 手动熔断（确认框把关）：停止 Free 与 Trial 的 AI 调用（含之后才进入这两个套餐的用户），
+ *     持续到 UTC 当日结束或解除，用于成本尚未触及阈值的上游故障；
+ *   - 解除（确认框把关）：同时撤销自动与手动熔断，用于故障结束但当日熔断尚未到期的情况。
  *
- *   - Today's platform spend as a stat card so the admin sees how
- *     close the auto-trip thresholds are.
- *   - Current circuit state as a badge (closed / free_stopped /
- *     free_trial_stopped) read from the same source as the admin
- *     overview card, with localized labels.
- *   - Thresholds the auto-tripper compares against.
- *   - Manual Trip button (gated by ConfirmDialog): stops Free + Trial
- *     AI calls until end of the UTC day, for provider incidents where
- *     cost has not yet crossed the auto thresholds.
- *   - Manual Release button (gated by ConfirmDialog) that POSTs
- *     to /release the circuit, used when an incident is over but
- *     the auto-trip cooldown hasn't elapsed yet. Release undoes both
- *     automatic and manual trips.
- *
- * useApi caches the status for 30 s; an explicit "Refresh" button
- * re-fetches without waiting.
+ * 状态每 30 秒自动刷新，「刷新」按钮可立即重新拉取。
  */
 export function CircuitBreakerContent() {
   const t = useTranslations('settings.aiCircuitBreakerPage');

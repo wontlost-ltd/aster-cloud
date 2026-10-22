@@ -262,7 +262,7 @@ export function PolicyForm({
   // reserve = 状态栏（约 30px）+ 间距 12px + 底部留白，保证状态栏同在视口内。
   const workbenchRef = useRef<HTMLDivElement>(null);
   const workbenchHeight = useFitViewportHeight(workbenchRef, { min: 560, max: 900, reserve: 64 });
-  // 编辑器已按视口填满首屏、状态栏自行给悬浮按钮让位：不再在页面末尾追加按钮安全区，避免整页多滚一段。
+  // 编辑器已按视口填满首屏、状态栏自行给悬浮按钮让位：页面末尾不需要按钮安全区，否则整页会多滚一段。
   useSuppressLauncherSafeArea(true);
   const previousErrorCountRef = useRef(0);
   useEffect(() => {

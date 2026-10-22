@@ -15,12 +15,10 @@ interface RouteParams {
 }
 
 /**
- * Versions list — server shell.
+ * 版本列表的服务端外壳。
  *
- * Resolves the policy id and read access (owner, or a team owner/admin who
- * reviews the team policy's versions); client component hydrates
- * the versions table from /api/v1/policies/[id]/versions via SWR so
- * approval state changes refresh without a full page reload.
+ * 解析策略 id 与读权限（所有者，或审阅该团队策略版本的团队 owner/admin），并带上审阅上下文；
+ * 客户端组件经 SWR 从 /api/v1/policies/[id]/versions 拉取版本表，审批状态变化无需整页刷新。
  */
 export default async function VersionsPage({ params }: RouteParams) {
   const { locale, id } = await params;

@@ -196,9 +196,8 @@ export async function revokeAllTrustedDevices(userId: string): Promise<number> {
  * 列出用户的有效可信设备，供设置页展示。★不返回 tokenHash。
  *
  * 传入当前请求携带的 token（cookie）时：标记哪一台是「当前设备」，并按
- * LAST_USED_TOUCH_INTERVAL_MS 节流刷新它的 lastUsedAt。此前 lastUsedAt 只在
- * 「凭可信设备跳过二次验证」那一刻写入，而 session 有效期内不会再登录，
- * 正在使用的设备因此长期显示「从未」。
+ * LAST_USED_TOUCH_INTERVAL_MS 节流刷新它的 lastUsedAt。session 有效期内不会再走登录，
+ * 只在登录时写入会让正在使用的设备一直显示「从未」。
  */
 export async function listTrustedDevices(
   userId: string,

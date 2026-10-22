@@ -22,8 +22,7 @@ type SortKey = 'riskTier' | 'createdAt' | 'priorPurgeCount';
 
 
 /**
- * 风险等级的本地化显示（「等级 1（常规）」）。此前是写死的英文 trusted/normal/…，
- * 卡片还加了 uppercase，zh 页面上显示成 "TIER 1 (NORMAL)"。
+ * 风险等级的本地化显示（「等级 1（常规）」），不做大小写变换，各语种按文案原样显示。
  * 键写成字面量，便于 check:message-keys 静态核对；未知等级只显示数字。
  */
 function useTierLabel(): (tier: number) => string {

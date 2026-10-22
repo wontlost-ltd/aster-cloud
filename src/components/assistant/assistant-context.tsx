@@ -253,7 +253,7 @@ export function isAssistantLauncherVisible(state: AssistantState | null): boolea
  * active 为 true 期间让出右下角悬浮按钮（卸载或 active 变 false 时自动恢复）。
  *
  * <p>用于本身就是 AI 入口、且内容贴到视口右下角的区域（策略编辑器「AI」tab）：
- * 两个 AI 入口叠在一起只会让用户点错——曾经点「发送」却打开了站内助手。
+ * 两个 AI 入口叠在一起容易点错——想点「发送」却打开了站内助手。
  */
 export function useSuppressAssistantLauncher(active: boolean): void {
   const suppress = useAssistant()?.suppressLauncher;

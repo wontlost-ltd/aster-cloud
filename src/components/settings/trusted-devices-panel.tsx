@@ -118,7 +118,7 @@ export function TrustedDevicesPanel({ labels: t }: { labels: TrustedDevicesLabel
     }
   };
 
-  // 与全站其余页面同一个日期格式（lib/format），不再用浏览器默认 locale。
+  // 与全站其余页面同一个日期格式（lib/format，按界面语言），不依赖浏览器默认 locale。
   const fmt = (iso: string | null) => (iso ? formatDate(iso, locale) : t.never);
 
   return (

@@ -134,7 +134,7 @@ export function UserDropdown({
           >
             {userMenuLabels.settings}
           </Link>
-          {/* 「帮助」进文档站；版本信息另作「关于」项，二者不再混为一谈 */}
+          {/* 「帮助」进文档站；版本信息单独放在「关于」项，两者各司其职 */}
           <Link
             href="/docs"
             className="block px-4 py-2 text-sm text-fg hover:bg-bg-subtle"

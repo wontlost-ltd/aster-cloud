@@ -80,8 +80,8 @@ export type PlanCapabilities = {
 
 /**
  * 套餐功能文案的插值参数（t('billing.plans.features.{key}', PLAN_FEATURE_MESSAGE_VALUES)）。
- * 「全语言包」列出的语种由已配置的 locales 推导，不在文案里写死——此前写死 en / zh / de，
- * 启用 hi 后就过时了。所有渲染套餐功能的地方都必须传入这组参数。
+ * 「全语言包」列出的语种由已配置的 locales 推导，不在文案里写死，增减语种时自动保持一致。
+ * 所有渲染套餐功能的地方都必须传入这组参数。
  */
 export const PLAN_FEATURE_MESSAGE_VALUES = { languages: locales.join(' / ') } as const;
 

@@ -9,7 +9,7 @@ import { getPolicyFreezeStatus } from '@/lib/policy-freeze';
 export async function getDashboardData(userId: string) {
   const [stats, policiesData, freezeStatus] = await Promise.all([
     getUsageStats(userId),
-    // 「常用策略」只列未删除的策略：已软删的进回收站，不再出现在首页
+    // 「常用策略」只列未删除的策略：已软删的在回收站里，不出现在首页
     db.query.policies.findMany({
       where: and(eq(policies.userId, userId), isNull(policies.deletedAt)),
       orderBy: desc(policies.updatedAt),
@@ -18,10 +18,8 @@ export async function getDashboardData(userId: string) {
     getPolicyFreezeStatus(userId),
   ]);
 
-  // Aggregate execution counts in a single GROUP BY query instead of
-  // one count(*) per policy. The previous N+1 loop made TTFB scale
-  // linearly with the number of policies; over Hyperdrive each round
-  // trip is its own network hop.
+  // 用一条 GROUP BY 汇总各策略的执行次数，而不是每个策略各查一次 count(*)：
+  // 经 Hyperdrive 每次往返都是一次网络开销，逐个查询会让首字节时间随策略数线性增长。
   const policyIds = policiesData.map((p) => p.id);
   const countRows = policyIds.length
     ? await db
