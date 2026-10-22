@@ -31,6 +31,7 @@ import { defaultLocale } from '@/i18n/config';
 import { isAiWorkspaceEnabledFor, resolveAiWorkspaceBase } from '@/lib/ai-workspace';
 import { safeEnv } from '@/lib/runtime/safe-env';
 import { AiWorkspaceProvider } from '@/components/ai-workspace-context';
+import { AssistantLauncherSafeArea } from '@/components/assistant/assistant-context';
 
 /*
  * Dashboard shell — sidebar + slim topbar.
@@ -312,6 +313,8 @@ export default async function DashboardLayout({
         */}
         <main id="dashboard-main" tabIndex={-1} className="min-w-0 focus:outline-none">
           <AiWorkspaceProvider value={aiWorkspace}>{children}</AiWorkspaceProvider>
+          {/* 右下角悬浮助手按钮的底部安全区：任何页面滚到底都不会有内容压在按钮下面 */}
+          <AssistantLauncherSafeArea />
         </main>
       </div>
       {/* 登录后「文档」overlay：覆盖在 dashboard 上的三栏阅读面板（不跳转）。

@@ -5,6 +5,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   useSyncExternalStore,
@@ -71,6 +72,13 @@ interface AssistantState {
    */
   patchTurn: (id: string, patch: Partial<AssistantTurn>) => void;
   clearTurns: () => void;
+  /**
+   * 悬浮按钮是否被页面临时让出（如策略编辑器「AI」tab 打开时，那里本身就是 AI 入口）。
+   * 只影响悬浮按钮，不改变开关、不关闭已展开的面板。
+   */
+  launcherSuppressed: boolean;
+  /** 申请让出悬浮按钮，返回释放函数；多个申请方按计数叠加，全部释放后恢复。 */
+  suppressLauncher: () => () => void;
 }
 
 const AssistantContext = createContext<AssistantState | null>(null);
@@ -156,6 +164,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const hydrating = !useHasMounted();
   const [open, setOpen] = useState(false);
   const [turns, setTurns] = useState<AssistantTurn[]>([]);
+  // 计数而非布尔：两个页面区域同时申请时，一方释放不应让按钮提前回来。
+  const [suppressCount, setSuppressCount] = useState(0);
 
   const setEnabled = useCallback((v: boolean) => {
     writeEnabled(v);
@@ -173,9 +183,33 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
 
   const clearTurns = useCallback(() => setTurns([]), []);
 
+  const suppressLauncher = useCallback(() => {
+    setSuppressCount((n) => n + 1);
+    let released = false;
+    return () => {
+      // 释放函数可能被重复调用（effect 清理 + 手动），只减一次。
+      if (released) return;
+      released = true;
+      setSuppressCount((n) => n - 1);
+    };
+  }, []);
+  const launcherSuppressed = suppressCount > 0;
+
   const value = useMemo<AssistantState>(
-    () => ({ enabled, hydrating, setEnabled, open, setOpen, turns, addTurn, patchTurn, clearTurns }),
-    [enabled, hydrating, setEnabled, open, turns, addTurn, patchTurn, clearTurns],
+    () => ({
+      enabled,
+      hydrating,
+      setEnabled,
+      open,
+      setOpen,
+      turns,
+      addTurn,
+      patchTurn,
+      clearTurns,
+      launcherSuppressed,
+      suppressLauncher,
+    }),
+    [enabled, hydrating, setEnabled, open, turns, addTurn, patchTurn, clearTurns, launcherSuppressed, suppressLauncher],
   );
 
   return <AssistantContext.Provider value={value}>{children}</AssistantContext.Provider>;
@@ -198,5 +232,31 @@ export function useAssistant(): AssistantState | null {
  * 也按此给按钮让位。两处共用这一个判断，避免各写一份条件后漂移。
  */
 export function isAssistantLauncherVisible(state: AssistantState | null): boolean {
-  return state !== null && !state.hydrating && state.enabled && !state.open;
+  return state !== null && !state.hydrating && state.enabled && !state.open && !state.launcherSuppressed;
+}
+
+/**
+ * active 为 true 期间让出右下角悬浮按钮（卸载或 active 变 false 时自动恢复）。
+ *
+ * <p>用于本身就是 AI 入口、且内容贴到视口右下角的区域（策略编辑器「AI」tab）：
+ * 两个 AI 入口叠在一起只会让用户点错——曾经点「发送」却打开了站内助手。
+ */
+export function useSuppressAssistantLauncher(active: boolean): void {
+  const suppress = useAssistant()?.suppressLauncher;
+  useEffect(() => {
+    if (!active || !suppress) return;
+    return suppress();
+  }, [active, suppress]);
+}
+
+/**
+ * 页面底部安全区：悬浮按钮显示时在内容末尾留出按钮占位高度，
+ * 保证滚到底时最后一行内容（如仪表盘「查看全部」）不会压在按钮下面。
+ *
+ * <p>高度 = 按钮 48px + 底边距 16px + 16px 间隙 = 5rem，与按钮的 fixed 定位同源。
+ */
+export function AssistantLauncherSafeArea() {
+  const visible = isAssistantLauncherVisible(useAssistant());
+  if (!visible) return null;
+  return <div aria-hidden data-testid="assistant-launcher-safe-area" className="h-20" />;
 }

@@ -21,6 +21,7 @@ vi.mock('@/components/policy/policy-alias-panel', () => ({ PolicyAliasPanel: () 
 
 import { SidePanel, type SidePanelTab } from '@/components/policy/policy-form/side-panel';
 import type { AiWorkspaceConfig } from '@/components/ai-workspace-context';
+import { AssistantProvider, useAssistant } from '@/components/assistant/assistant-context';
 
 const messages = deepMergeMessages(zhBase as Record<string, unknown>, DEMO_SUPPLEMENT.zh);
 const noop = () => {};
@@ -108,5 +109,28 @@ describe('SidePanel AI tab 与 AI 工作台', () => {
     expect(screen.getByTestId('legacy-ai')).toBeTruthy();
     rerender(panel(null, 'p1', 'problems'));
     expect(screen.queryByTestId('legacy-ai')).toBeNull();
+  });
+});
+
+describe('SidePanel AI tab 让出悬浮助手按钮（F1）', () => {
+  function Probe() {
+    const s = useAssistant();
+    return <span data-testid="suppressed">{String(s?.launcherSuppressed)}</span>;
+  }
+  const withAssistant = (tab: SidePanelTab) => (
+    <AssistantProvider>
+      <Probe />
+      {panel(ENABLED, 'p1', tab)}
+    </AssistantProvider>
+  );
+
+  it('★AI tab 打开时让出，切到其他 tab 或卸载侧栏后恢复', () => {
+    const { rerender, unmount } = render(withAssistant('ai'));
+    expect(screen.getByTestId('suppressed').textContent).toBe('true');
+    rerender(withAssistant('problems'));
+    expect(screen.getByTestId('suppressed').textContent).toBe('false');
+    rerender(withAssistant('ai'));
+    expect(screen.getByTestId('suppressed').textContent).toBe('true');
+    unmount();
   });
 });
