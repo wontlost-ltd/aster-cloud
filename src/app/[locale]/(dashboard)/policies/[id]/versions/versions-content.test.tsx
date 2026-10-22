@@ -122,6 +122,12 @@ describe('VersionsContent 审批操作', () => {
     expect(screen.getByTestId('self-approve-note').textContent).toBe('policies.versions.selfApproveNote');
   });
 
+  it('个人策略所有者驳回自己的提交：不显示自审说明（说明只针对批准）', () => {
+    renderAs('author', { policyOwnerId: 'author', policyTeamId: null, reviewerTeamRole: null });
+    fireEvent.click(screen.getByRole('button', { name: 'policies.versions.actions.reject' }));
+    expect(screen.queryByTestId('self-approve-note')).toBeNull();
+  });
+
   it('审批被拒且错误码在 error 字段：toast 显示本地化的四眼提示', async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: 'segregation_of_duties', message: 'x' }), { status: 403 }));
     renderAs('admin1', { policyOwnerId: 'author', policyTeamId: 'team1', reviewerTeamRole: 'admin' });

@@ -146,7 +146,7 @@ export function VersionsContent({
     }
   };
 
-  /** 当前用户批准/驳回该版本是否属于个人策略的自审（确认框据此给出说明）。 */
+  /** 当前用户批准该版本是否属于个人策略的自审（确认框据此给出说明）。 */
   const isSelfApprove = (version: number): boolean => {
     const row = versions?.find((v) => v.version === version);
     if (!row) return false;
@@ -413,7 +413,8 @@ export function VersionsContent({
           description={
             <Stack gap={3}>
               <p>{dialogConfig.body}</p>
-              {(pending.kind === 'approve' || pending.kind === 'reject') && isSelfApprove(pending.version) && (
+              {/* 自审说明只针对批准（会在审计中记为自审）；驳回不显示 */}
+              {pending.kind === 'approve' && isSelfApprove(pending.version) && (
                 <p className="rounded-md bg-bg-subtle px-3 py-2 text-xs text-fg-muted" data-testid="self-approve-note">
                   {t('selfApproveNote')}
                 </p>

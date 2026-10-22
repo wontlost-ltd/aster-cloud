@@ -204,8 +204,9 @@ export function PolicyVersionList({
   );
   const canApprove = useCallback((version: PolicyVersionInfo) => approvalFor(version)?.allowed === true, [approvalFor]);
   const selfApproveVersion = actionDialog.version ? approvalFor(actionDialog.version) : null;
+  // 说明文案讲的是「记为自审」，只适用于批准；驳回自己的提交不需要这段说明
   const showSelfApproveNote =
-    (actionDialog.type === 'approve' || actionDialog.type === 'reject') &&
+    actionDialog.type === 'approve' &&
     selfApproveVersion?.allowed === true &&
     selfApproveVersion.selfApproved;
 
