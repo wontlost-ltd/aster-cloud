@@ -17,6 +17,7 @@ import {
   getDecryptedBYOKKeyById,
 } from '@/lib/ai-key-vault';
 import { byokTokensUsedThisMonth } from '@/lib/ai-quota';
+import { isByokKeyExpired } from '@/lib/byok-expiry';
 
 /** Phase 2 支持的 BYOK provider（与 aster-api LlmRuntimeOptionsResolver allowlist 一致）。 */
 const SUPPORTED_BYOK_PROVIDERS = new Set(['openai', 'anthropic']);
@@ -75,7 +76,7 @@ export async function resolveByokEnvelope(userId: string): Promise<ByokEnvelope 
     // provider 不支持（vertex 非简单 API-key 模型，Phase 2 排除）→ 跳过看下一个。
     if (!SUPPORTED_BYOK_PROVIDERS.has(provider)) continue;
     // 已过期 → 跳过。
-    if (c.expiresAt && c.expiresAt.getTime() <= now) continue;
+    if (isByokKeyExpired(c.expiresAt, now)) continue;
     // 已超本月额度 → 跳过（口径见上）。
     if (c.tokenQuota != null && usedThisMonth >= c.tokenQuota) continue;
 

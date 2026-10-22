@@ -489,6 +489,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         errorPlanNoApiAccess: 'The team owner’s plan does not include API access.',
       },
       aiKeysPage: {
+        // 失效日期已过的 key（F13）：推理层会跳过，状态必须如实显示。
+        statusExpired: 'Expired',
         // AI Key 行内编辑 + 重置额度（本地补充，ui-messages 包尚无这些 key）。
         edit: 'Edit',
         editSave: 'Save',
@@ -1265,6 +1267,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         errorPlanNoApiAccess: '团队 owner 的套餐不含 API 访问。',
       },
       aiKeysPage: {
+        // 失效日期已过的 key（F13）：推理层会跳过，状态必须如实显示。
+        statusExpired: '已失效',
         edit: '编辑',
         editSave: '保存',
         editCancel: '取消',
@@ -2037,6 +2041,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         errorPlanNoApiAccess: 'Der Tarif des Team-Owners enthält keinen API-Zugang.',
       },
       aiKeysPage: {
+        // 失效日期已过的 key（F13）：推理层会跳过，状态必须如实显示。
+        statusExpired: 'Abgelaufen',
         edit: 'Bearbeiten',
         editSave: 'Speichern',
         editCancel: 'Abbrechen',
@@ -2807,6 +2813,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         errorPlanNoApiAccess: 'टीम owner के प्लान में API एक्सेस शामिल नहीं है।',
       },
       aiKeysPage: {
+        // 失效日期已过的 key（F13）：推理层会跳过，状态必须如实显示。
+        statusExpired: 'समाप्त',
         edit: 'संपादित करें',
         editSave: 'सहेजें',
         editCancel: 'रद्द करें',

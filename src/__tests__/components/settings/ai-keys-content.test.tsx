@@ -270,3 +270,38 @@ describe('AiKeysContent 模型字段', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(/could not be verified.*rejected the key or is unavailable/);
   });
 });
+
+describe('AiKeysContent 失效状态（F13）', () => {
+  it('★失效日期已过的 key 显示 Expired，而不是 Active', () => {
+    render(
+      <AiKeysContent
+        locale="en"
+        initialBindings={[
+          {
+            ...baseBinding,
+            id: 'old',
+            provider: 'openai',
+            keyHint: '0801',
+            expiresAt: '2026-08-01T00:00:00.000Z',
+            model: null,
+            availableModels: null,
+            modelsCheckedAt: null,
+          },
+          {
+            ...baseBinding,
+            id: 'fresh',
+            provider: 'anthropic',
+            keyHint: '9999',
+            expiresAt: '2999-01-01T00:00:00.000Z',
+            model: null,
+            availableModels: null,
+            modelsCheckedAt: null,
+          },
+        ]}
+      />,
+      { wrapper },
+    );
+    expect(screen.getAllByText('Expired')).toHaveLength(1);
+    expect(screen.getAllByText('Active')).toHaveLength(1);
+  });
+});
