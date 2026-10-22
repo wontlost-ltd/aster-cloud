@@ -68,6 +68,7 @@ export function generateSlug(name: string, fallbackSuffix: string): string {
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '') // 去掉拉丁字母的附加符号
     .toLowerCase()
+    .replace(/ß/g, 'ss') // ß 没有 NFKD 分解，按德语惯例写作 ss（"Straße" → "strasse"）
     .replace(/[^a-z0-9]+/g, '-') // 非 ASCII 字母数字一律视为分隔符
     .replace(/-{2,}/g, '-') // 合并连续连字符
     .substring(0, 50)
@@ -76,7 +77,12 @@ export function generateSlug(name: string, fallbackSuffix: string): string {
   return `${SLUG_FALLBACK_PREFIX}-${fallbackSuffix}`;
 }
 
-/** 生成 slug 兜底用的短随机后缀（6 位小写字母数字）。 */
+/**
+ * 生成 slug 兜底用的短随机后缀（6 位小写十六进制）。
+ * 用 getRandomValues 而不是 randomUUID：后者只在安全上下文（https / localhost）存在，
+ * 内网纯 http 或按 IP 访问的私有部署会在 /teams/new 渲染时直接报错。
+ */
 export function randomSlugSuffix(): string {
-  return globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 6);
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(3));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }

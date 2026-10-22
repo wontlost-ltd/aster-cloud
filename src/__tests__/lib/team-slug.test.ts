@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { generateSlug, randomSlugSuffix, validateSlug } from '@/lib/validation';
 
 /**
@@ -28,6 +28,10 @@ describe('generateSlug', () => {
     expect(generateSlug('A 团队', SUFFIX)).toBe('team-abc123');
   });
 
+  it('ß 按德语惯例写作 ss，而不是被当成分隔符', () => {
+    expect(generateSlug('Straße', 'abc123')).toBe('strasse');
+  });
+
   it('截断到 50 字符后不留尾部连字符', () => {
     const slug = generateSlug(`${'a'.repeat(49)} b`, SUFFIX);
     expect(slug).toBe('a'.repeat(49));
@@ -44,5 +48,15 @@ describe('generateSlug', () => {
 describe('randomSlugSuffix', () => {
   it('是 6 位小写字母数字', () => {
     expect(randomSlugSuffix()).toMatch(/^[a-z0-9]{6}$/);
+  });
+
+  it('★非安全上下文（无 crypto.randomUUID，如内网 http）也能生成', () => {
+    const original = globalThis.crypto;
+    vi.stubGlobal('crypto', { getRandomValues: original.getRandomValues.bind(original) });
+    try {
+      expect(randomSlugSuffix()).toMatch(/^[a-z0-9]{6}$/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
