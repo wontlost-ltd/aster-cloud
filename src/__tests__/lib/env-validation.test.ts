@@ -124,12 +124,13 @@ describe('env-validation — SaaS mode', () => {
     ).toBe(true);
   });
 
-  it('★production 缺 AI_AUDIT_ENCRYPTION_SECRET → missing（GDPR 导出依赖）', () => {
+  it('★production 缺 AI_AUDIT_ENCRYPTION_SECRET → 只 warn，不拦整站启动（导出自行降级）', () => {
     const env = makeFullSaasProductionEnv();
     delete env.AI_AUDIT_ENCRYPTION_SECRET;
     const result = checkEnv(env, 'saas');
-    expect(result.ok).toBe(false);
-    expect(result.missing.some((m) => m.startsWith('AI_AUDIT_ENCRYPTION_SECRET'))).toBe(true);
+    expect(result.ok).toBe(true);
+    expect(result.missing.some((m) => m.startsWith('AI_AUDIT_ENCRYPTION_SECRET'))).toBe(false);
+    expect(result.warnings.some((m) => m.startsWith('AI_AUDIT_ENCRYPTION_SECRET'))).toBe(true);
   });
 
   it('development 缺 AI_AUDIT_ENCRYPTION_SECRET → 只 warn，不打断本地开发', () => {
