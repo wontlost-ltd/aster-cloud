@@ -419,6 +419,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     settings: {
+      // GDPR 导出失败的本地化提示（F24），不显示服务端原文。
+      dataPage: {
+        downloadUnavailable: 'We couldn\'t prepare your AI data export right now. The problem has been logged; please try again later or contact support.',
+      },
       // AI 熔断器手动熔断控件（F18）。
       aiCircuitBreakerPage: {
         trip: 'Trip circuit manually',
@@ -1319,6 +1323,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     settings: {
+      // GDPR 导出失败的本地化提示（F24），不显示服务端原文。
+      dataPage: {
+        downloadUnavailable: '暂时无法导出你的 AI 数据。问题已记录，请稍后重试或联系支持团队。',
+      },
       // AI 熔断器手动熔断控件（F18）。
       aiCircuitBreakerPage: {
         trip: '手动熔断',
@@ -2214,6 +2222,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     settings: {
+      // GDPR 导出失败的本地化提示（F24），不显示服务端原文。
+      dataPage: {
+        downloadUnavailable: 'Ihr KI-Datenexport kann gerade nicht erstellt werden. Das Problem wurde protokolliert; bitte versuchen Sie es später erneut oder wenden Sie sich an den Support.',
+      },
       // AI 熔断器手动熔断控件（F18）。
       aiCircuitBreakerPage: {
         trip: 'Manuell auslösen',
@@ -3107,6 +3119,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     settings: {
+      // GDPR 导出失败的本地化提示（F24），不显示服务端原文。
+      dataPage: {
+        downloadUnavailable: 'अभी आपका AI डेटा निर्यात तैयार नहीं किया जा सका। समस्या दर्ज कर ली गई है; कृपया बाद में पुनः प्रयास करें या सहायता से संपर्क करें।',
+      },
       // AI 熔断器手动熔断控件（F18）。
       aiCircuitBreakerPage: {
         trip: 'मैन्युअल रूप से सर्किट ट्रिप करें',
