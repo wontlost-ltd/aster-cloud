@@ -1,8 +1,8 @@
-// UserDropdown 的「帮助 → 关于」路径 + AboutDialog 组件测试。
+// UserDropdown 的「帮助」「关于」两项 + AboutDialog 组件测试。
 //
 // 覆盖：
-//   - 下拉里出现「帮助」项（新增）
-//   - 点「帮助」→ 关闭下拉 + 打开弹框，五行版本齐全
+//   - 「帮助」是指向 /docs 的链接，不再打开版本弹框（生产 E2E F27）
+//   - 点「关于」→ 关闭下拉 + 打开弹框，五行版本齐全
 //   - 后端版本为 null → 显示「不可用」而非空白/崩溃
 //   - a11y：role=dialog / aria-modal / aria-labelledby 指向标题
 //   - Esc 关闭、点关闭按钮关闭、点遮罩关闭；点内容不关闭（防误关）
@@ -28,6 +28,7 @@ const LABELS = {
   signOut: '退出登录',
   signingOut: '退出中…',
   help: '帮助',
+  about: '关于 Aster Cloud',
 };
 
 const ABOUT_LABELS = {
@@ -51,7 +52,7 @@ const VERSIONS = {
 
 afterEach(() => cleanup());
 
-describe('UserDropdown → 帮助 → 关于弹框', () => {
+describe('UserDropdown → 帮助 / 关于', () => {
   function openMenu() {
     render(
       <UserDropdown
@@ -65,14 +66,18 @@ describe('UserDropdown → 帮助 → 关于弹框', () => {
     fireEvent.click(screen.getByRole('button', { name: '用户菜单' }));
   }
 
-  it('下拉里出现「帮助」项', () => {
+  it('「帮助」是指向文档站的链接，不打开版本弹框', () => {
     openMenu();
-    expect(screen.getByRole('button', { name: '帮助' })).toBeTruthy();
+    const help = screen.getByRole('link', { name: '帮助' });
+    expect(help.getAttribute('href')).toBe('/docs');
+    expect(screen.queryByRole('button', { name: '帮助' })).toBeNull();
+    fireEvent.click(help);
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('点「帮助」打开弹框并关闭下拉，五行版本齐全', () => {
+  it('点「关于」打开弹框并关闭下拉，五行版本齐全', () => {
     openMenu();
-    fireEvent.click(screen.getByRole('button', { name: '帮助' }));
+    fireEvent.click(screen.getByRole('button', { name: '关于 Aster Cloud' }));
 
     const dialog = screen.getByRole('dialog');
     expect(dialog).toBeTruthy();

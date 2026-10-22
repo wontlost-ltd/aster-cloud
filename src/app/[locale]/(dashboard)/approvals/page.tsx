@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { isGuardApprovalStatus, listUserApprovals } from '@/lib/approvals-inbox';
+import { listPendingVersionApprovals } from '@/lib/version-approvals-inbox';
 import { ApprovalsContent } from './approvals-content';
 import { localizedTitle } from '@/lib/page-metadata';
 
@@ -21,7 +22,11 @@ export default async function ApprovalsPage({ params, searchParams }: PageProps)
 
   // ?status= 非法值回退到待审批（ADR 0042 §5.2 默认 PENDING）
   const status = isGuardApprovalStatus(rawStatus) ? rawStatus : 'PENDING';
-  const initial = await listUserApprovals(session.user.id, status);
+  // 两类审批互不依赖，并行加载：Action-Guard（aster-api）与策略版本（本库）
+  const [initial, versionApprovals] = await Promise.all([
+    listUserApprovals(session.user.id, status),
+    listPendingVersionApprovals(session.user.id),
+  ]);
 
   return (
     <ApprovalsContent
@@ -29,6 +34,7 @@ export default async function ApprovalsPage({ params, searchParams }: PageProps)
       initialStatus={status}
       initialItems={initial.items}
       initialUnavailable={initial.unavailableTenants}
+      versionApprovals={versionApprovals}
       highlightDecisionId={decisionId ?? null}
     />
   );

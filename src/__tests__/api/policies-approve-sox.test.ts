@@ -24,7 +24,11 @@ vi.mock('@/services/policy/version-manager', async () => {
   const actual = await vi.importActual<typeof import('@/services/policy/version-manager')>(
     '@/services/policy/version-manager',
   );
-  return { approveVersion: vi.fn(), PolicyAccessDeniedError: actual.PolicyAccessDeniedError };
+  return {
+    approveVersion: vi.fn(),
+    PolicyAccessDeniedError: actual.PolicyAccessDeniedError,
+    SegregationOfDutiesError: actual.SegregationOfDutiesError,
+  };
 });
 vi.mock('@/lib/prisma', () => ({
   db: {
@@ -178,5 +182,17 @@ describe('POST /api/v1/policies/[id]/versions/[version]/approve — SOX 守护',
     const data = await res.json();
     expect(data.error).toBe('invite_reviewer_required');
     expect(data.cta?.href).toBe('/teams/new');
+  });
+
+  it('服务层判定团队策略作者自审（SegregationOfDutiesError）→ 403 segregation_of_duties', async () => {
+    const { SegregationOfDutiesError } = await vi.importActual<typeof import('@/services/policy/version-manager')>(
+      '@/services/policy/version-manager',
+    );
+    setupMocks({ user: { plan: 'free', priceLockedAt: null, legacyTier: null }, versionAuthor: 'u1' });
+    mockApprove.mockRejectedValueOnce(new SegregationOfDutiesError());
+
+    const res = await POST(makeRequest(), { params });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe('segregation_of_duties');
   });
 });

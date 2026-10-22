@@ -21,6 +21,10 @@ import {
 import { GitBranch, MoreVertical } from 'lucide-react';
 import { Link } from '@/i18n/navigation';
 import { useApi } from '@/lib/api';
+import {
+  decideVersionApproval,
+  type VersionReviewContext,
+} from '@/services/policy/version-approval-rules';
 
 /**
  * Version management + approval workflow UI.
@@ -38,9 +42,9 @@ import { useApi } from '@/lib/api';
  *     invite_reviewer_required) surface as targeted toasts so
  *     reviewers understand why their click was rejected.
  *
- * Self-approval guard is enforced both client-side (action menu
- * hides Approve when the version's createdBy === current user) and
- * server-side (the backend's 403 still wins if the client is stale).
+ * 审批权限与服务端 approveVersion 用同一判定（decideVersionApproval）：
+ * 团队策略由团队 owner/admin 审批且作者不能自审；个人策略所有者可自审，
+ * 确认框里说明这是记录在案的自审。客户端只决定显示哪些操作，服务端 403 仍是最终裁决。
  */
 
 type VersionStatus =
@@ -85,6 +89,8 @@ interface VersionsContentProps {
   policyName: string;
   locale: string;
   currentUserId: string;
+  /** 审阅判定上下文（服务端按策略与当前用户的团队角色算好） */
+  review: Omit<VersionReviewContext, 'reviewerId'>;
   labels: { backToPolicy: string; policiesLink: string };
 }
 
@@ -93,6 +99,7 @@ export function VersionsContent({
   policyName,
   locale,
   currentUserId,
+  review,
   labels,
 }: VersionsContentProps) {
   const t = useTranslations('policies.versions');
@@ -111,27 +118,36 @@ export function VersionsContent({
   // backend ignores it for setDefault.
   const [dialogInput, setDialogInput] = useState('');
 
-  /** Build the per-row action set, respecting the version's state +
-   *  self-approval rule. */
+  // 提交、设默认、弃用、归档仍只属于策略所有者；批准/驳回按审批规则判定
+  const isOwner = review.policyOwnerId === currentUserId;
+  const approvalFor = (v: VersionRow) =>
+    decideVersionApproval({ ...review, reviewerId: currentUserId, versionAuthorId: v.createdBy });
+
   const allowedActions = (v: VersionRow): ActionKind[] => {
-    const isSelf = v.createdBy === currentUserId;
     switch (v.status) {
       case 'DRAFT':
-        return isSelf ? ['submit'] : ['submit'];
+        return isOwner ? ['submit'] : [];
       case 'PENDING_APPROVAL':
-        // Cannot approve own version (SOX); reject by anyone with role
-        // is fine — server has final say.
-        return isSelf ? ['reject'] : ['approve', 'reject'];
+        return approvalFor(v).allowed ? ['approve', 'reject'] : [];
       case 'APPROVED':
+        if (!isOwner) return [];
         return v.isDefault
           ? ['deprecate', 'archive']
           : ['setDefault', 'deprecate', 'archive'];
       case 'REJECTED':
       case 'DEPRECATED':
-        return ['archive'];
+        return isOwner ? ['archive'] : [];
       case 'ARCHIVED':
         return [];
     }
+  };
+
+  /** 当前用户批准/驳回该版本是否属于个人策略的自审（确认框据此给出说明）。 */
+  const isSelfApprove = (version: number): boolean => {
+    const row = versions?.find((v) => v.version === version);
+    if (!row) return false;
+    const verdict = approvalFor(row);
+    return verdict.allowed && verdict.selfApproved;
   };
 
   // One mutation hook per verb; each closes over its path template.
@@ -169,11 +185,12 @@ export function VersionsContent({
       | { error?: string; code?: string }
       | null;
     if (!res.ok) {
-      // Backend returns code='segregation_of_duties' or
-      // 'invite_reviewer_required' for SOX violations on /approve.
-      if (data?.code === 'segregation_of_duties') {
+      // 审批路由把错误码放在 error 字段（segregation_of_duties / invite_reviewer_required），
+      // 个别入口用 code；两处都读，保证 SOX 提示显示本地化文案而不是原始错误码。
+      const errorCode = data?.code ?? data?.error;
+      if (errorCode === 'segregation_of_duties') {
         toast.error(t('sox.selfApprovalNotAllowed'));
-      } else if (data?.code === 'invite_reviewer_required') {
+      } else if (errorCode === 'invite_reviewer_required') {
         toast.error(t('sox.inviteReviewerRequired'));
       } else {
         toast.error(data?.error || tCommon('somethingWrong'));
@@ -323,7 +340,12 @@ export function VersionsContent({
                 className: 'text-right',
                 cell: (v) => {
                   const actions = allowedActions(v);
-                  if (actions.length === 0) return null;
+                  if (actions.length === 0) {
+                    // 待审批但当前用户不能审批（作者本人或无审阅权）：说明在等谁，而不是留空
+                    return v.status === 'PENDING_APPROVAL' ? (
+                      <span className="text-xs text-warning">{t('awaitingOthers')}</span>
+                    ) : null;
+                  }
                   return (
                     <Dropdown
                       align="right"
@@ -369,6 +391,11 @@ export function VersionsContent({
           description={
             <Stack gap={3}>
               <p>{dialogConfig.body}</p>
+              {(pending.kind === 'approve' || pending.kind === 'reject') && isSelfApprove(pending.version) && (
+                <p className="rounded-md bg-bg-subtle px-3 py-2 text-xs text-fg-muted" data-testid="self-approve-note">
+                  {t('selfApproveNote')}
+                </p>
+              )}
               {dialogConfig.inputLabel && (
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-fg">

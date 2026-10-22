@@ -9,6 +9,7 @@ import { auth } from '@/auth';
 
 import {
   PolicyAccessDeniedError,
+  SegregationOfDutiesError,
   approveVersion,
 } from '@/services/policy/version-manager';
 
@@ -52,6 +53,9 @@ export async function POST(
     // 非所有者与「策略不存在」返回同一 404，避免泄露该 policyId 是否存在
     if (error instanceof PolicyAccessDeniedError) {
       return NextResponse.json({ error: '策略不存在' }, { status: 404 });
+    }
+    if (error instanceof SegregationOfDutiesError) {
+      return NextResponse.json({ error: 'segregation_of_duties', message: error.message }, { status: 403 });
     }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : '拒绝失败' },

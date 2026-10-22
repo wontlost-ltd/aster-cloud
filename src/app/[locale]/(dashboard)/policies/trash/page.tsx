@@ -18,6 +18,7 @@ export default async function PolicyTrashPage({
   }
 
   const t = await getTranslations('policies');
+  const tCommon = await getTranslations('common');
 
   const translations = {
     trash: {
@@ -29,7 +30,8 @@ export default async function PolicyTrashPage({
       confirmEmptyTrash: t('trash.confirmEmptyTrash'),
       restore: t('trash.restore'),
       permanentDelete: t('trash.permanentDelete'),
-      confirmPermanentDelete: t('trash.confirmPermanentDelete'),
+      // 保留 {name} 占位符，由客户端按被删除的策略名替换
+      confirmPermanentDelete: t.raw('trash.confirmPermanentDeleteNamed') as string,
       deletedAt: t('trash.deletedAt'),
       expiresAt: t('trash.expiresAt'),
       reason: t('trash.reason'),
@@ -42,6 +44,7 @@ export default async function PolicyTrashPage({
       actionError: t('trash.actionError'),
       itemCount: t('trash.itemCount'),
       daysRemaining: t('trash.daysRemaining'),
+      loading: tCommon('loading'),
     },
   };
 

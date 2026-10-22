@@ -6,6 +6,7 @@ import { getTranslations } from 'next-intl/server';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
 import { resolveRetention } from '@/lib/retention/execution-retention';
+import { loadVersionReviewContext } from '@/services/policy/version-manager';
 import { PolicyDetailContent } from './policy-detail-content';
 import { localizedTitle } from '@/lib/page-metadata';
 
@@ -18,6 +19,16 @@ async function loadActiveProfile(policyId: string, version: number): Promise<str
     columns: { profile: true },
   });
   return activeVersion?.profile ?? null;
+}
+
+// 是否存在批准版本：与 findDefaultExecutableVersion 同一口径（只有 APPROVED 版本可执行/可导出），
+// 这里只需判存在，故只取 id。
+async function hasApprovedVersion(policyId: string): Promise<boolean> {
+  const approved = await db.query.policyVersions.findFirst({
+    where: and(eq(policyVersions.policyId, policyId), eq(policyVersions.status, 'APPROVED')),
+    columns: { id: true },
+  });
+  return approved !== undefined;
 }
 
 // 服务端数据获取
@@ -108,7 +119,12 @@ export default async function PolicyDetailPage({
   //   必然空窗、而选项还在那里——那套窗口实际只适用于留存期最长的企业级用户。
   const retentionDays = resolveRetention(planUser?.plan).executionDays;
 
-  const profile = await loadActiveProfile(id, policy.version);
+  const [profile, hasExecutableVersion, review] = await Promise.all([
+    loadActiveProfile(id, policy.version),
+    hasApprovedVersion(id),
+    // 版本面板的批准/驳回按审批规则显示（团队策略按当前用户的团队角色）
+    loadVersionReviewContext(id, session.user.id),
+  ]);
 
   const t = await getTranslations('policies');
 
@@ -142,6 +158,7 @@ export default async function PolicyDetailPage({
       notExportable: t('cedarExport.notExportable'),
       failed: t('cedarExport.failed'),
       noExecutableVersion: t('cedarExport.noExecutableVersion'),
+      versionsLink: t('detail.versionHistory'),
       schemaNote: t('cedarExport.schemaNote'),
     },
     deleteDialog: {
@@ -170,6 +187,12 @@ export default async function PolicyDetailPage({
       retentionDays={retentionDays}
       policy={{ ...policy, isFrozen: freeze.isFrozen }}
       profile={profile}
+      hasExecutableVersion={hasExecutableVersion}
+      review={review ? {
+        policyOwnerId: review.policyOwnerId,
+        policyTeamId: review.policyTeamId,
+        reviewerTeamRole: review.reviewerTeamRole,
+      } : undefined}
       translations={translations}
       locale={locale}
     />

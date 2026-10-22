@@ -1,6 +1,7 @@
 /*
  * 审批收件箱客户端（ADR 0042 §5.2）：按 canAct 区分可审/只读、空列表、?decisionId= 高亮，
  * 驳回本地要求理由，api 403 role_mismatch 带 verifiedRoles 提示，成功后按当前 tab 重新拉取。
+ * 策略版本审批分区（生产 E2E Q1）：列出策略名/版本/提交人/提交时间，链接到既有版本页，作者本人只读。
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
@@ -25,6 +26,7 @@ vi.mock('@/components/ui', () => ({
 
 import { ApprovalsContent } from './approvals-content';
 import type { InboxItem } from '@/lib/approvals-inbox';
+import type { PendingVersionApproval } from '@/lib/version-approvals-inbox';
 
 const fetchMock = vi.fn();
 beforeEach(() => vi.stubGlobal('fetch', fetchMock));
@@ -42,12 +44,49 @@ function item(id: string, over: Partial<InboxItem> = {}): InboxItem {
   };
 }
 
-function renderWith(items: InboxItem[], highlightDecisionId: string | null = null) {
+function renderWith(items: InboxItem[], highlightDecisionId: string | null = null, versionApprovals: PendingVersionApproval[] = []) {
   return render(
     <ApprovalsContent locale="en" initialStatus="PENDING" initialItems={items} initialUnavailable={[]}
-      highlightDecisionId={highlightDecisionId} />,
+      versionApprovals={versionApprovals} highlightDecisionId={highlightDecisionId} />,
   );
 }
+
+function versionItem(over: Partial<PendingVersionApproval> = {}): PendingVersionApproval {
+  return {
+    versionId: 'v1', policyId: 'p1', policyName: 'loan-evaluation', version: 2, submittedBy: 'Sam',
+    submittedAt: '2026-10-22T08:30:00Z', canAct: true, ...over,
+  };
+}
+
+describe('ApprovalsContent — 策略版本审批分区', () => {
+  it('分区标题可见；空时显示空态，不影响 Action-Guard 列表', () => {
+    renderWith([item('a1')]);
+    expect(screen.getByRole('heading', { name: 'versions.title' })).toBeTruthy();
+    expect(screen.getByText('versions.empty')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'guardTitle' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'approve' })).toBeTruthy();
+  });
+
+  it('可审条目：显示策略名、版本、提交人、提交时间，并链接到既有版本页审批', () => {
+    const { container } = renderWith([], null, [versionItem()]);
+    const row = container.querySelector('[data-version-id="v1"]') as HTMLElement;
+    expect(row.textContent).toContain('loan-evaluation');
+    expect(row.textContent).toContain('v2');
+    expect(row.textContent).toContain('Sam');
+    expect(row.textContent).toContain('UTC');
+    const link = screen.getByRole('link', { name: /versions\.review/ });
+    expect(link.getAttribute('href')).toBe('/policies/p1/versions');
+    expect(screen.queryByText('versions.awaitingOthers')).toBeNull();
+  });
+
+  it('作者本人的提交：只读，标注等待他人审批，链接文案为查看', () => {
+    renderWith([], null, [versionItem({ canAct: false, submittedBy: null })]);
+    expect(screen.getByText('versions.awaitingOthers')).toBeTruthy();
+    expect(screen.getByText('versions.unknownUser')).toBeTruthy();
+    expect(screen.getByRole('link', { name: /versions\.view/ })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /versions\.review/ })).toBeNull();
+  });
+});
 
 describe('ApprovalsContent', () => {
   it('可审身份：渲染批准/驳回按钮', () => {

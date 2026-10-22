@@ -30,6 +30,9 @@ import { cleanup, render, screen } from '@testing-library/react';
  * "面板到底有没有被渲染、拿到的 policyId 是什么"，与写法无关。
  */
 
+// ConfirmDialog 包装的按钮缺省文案取自 next-intl（common 命名空间），这里给最小桩
+vi.mock('next-intl', () => ({ useTranslations: () => (key: string) => key }));
+
 /** 把复核面板换成探针，只回报它收到的 policyId。 */
 vi.mock('@/components/policy/policy-review-panel', () => ({
   PolicyReviewPanel: ({ policyId }: { policyId: string }) => (

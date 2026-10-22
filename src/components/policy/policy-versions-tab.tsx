@@ -7,6 +7,8 @@ import { PolicyVersionList, type PolicyVersionInfo } from './policy-version-list
 import { VersionDetailPanel } from './version-detail-panel';
 import { VersionComparePanel } from './version-compare-panel';
 import { usePolicyVersions } from '@/hooks/use-policy-versions';
+import { toast } from '@/components/ui';
+import type { VersionReviewContext } from '@/services/policy/version-approval-rules';
 
 interface PolicyVersionsTabProps {
   policyId: string;
@@ -14,11 +16,13 @@ interface PolicyVersionsTabProps {
   whatIfEntitled?: boolean;
   /** 执行日志留存天数（#396），透传给 What-If 面板裁剪窗口 */
   retentionDays?: number | null;
+  /** 审阅判定上下文（服务端算好），决定批准/驳回是否可见及是否属于自审 */
+  review?: Omit<VersionReviewContext, 'reviewerId'>;
 }
 
 type ViewMode = 'list' | 'detail' | 'compare';
 
-export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionDays = null }: PolicyVersionsTabProps) {
+export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionDays = null, review }: PolicyVersionsTabProps) {
   const { data: session } = useSession();
   const t = useTranslations('policies.versions');
   const tCommon = useTranslations('common');
@@ -102,6 +106,11 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
       const result = await approve(ver.version, comment);
       if (result.ok) return;
 
+      // 四眼原则拒绝（团队策略作者自审）：与版本页同一本地化提示，不能静默失败
+      if (result.errorCode === 'segregation_of_duties') {
+        toast.error(t('sox.selfApprovalNotAllowed'));
+        return;
+      }
       if (result.errorCode === 'invite_reviewer_required') {
         setInviteModal({
           open: true,
@@ -112,7 +121,7 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
         });
       }
     },
-    [versions, approve]
+    [versions, approve, t]
   );
 
   const closeInviteModal = useCallback(() => setInviteModal({ open: false }), []);
@@ -165,6 +174,7 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
             versions={versions as PolicyVersionInfo[]}
             loading={loading}
             currentUserId={session?.user?.id}
+            review={review}
             onViewSource={handleViewSource}
             onSetDefault={handleSetDefault}
             onDeprecate={handleDeprecate}

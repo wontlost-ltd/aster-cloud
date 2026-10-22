@@ -115,7 +115,7 @@ export default async function BillingPlansPage() {
     currentPlan: t('currentPlan'),
     trialEndsTemplate: t.raw('trialEnds'),
     executionsThisMonth: t('executionsThisMonth'),
-    apiCallsThisMonth: t('apiCallsThisMonth'),
+    apiCallsThisMonth: t('restApiCallsThisMonth'),
     savedPolicies: t('savedPolicies'),
     monthly: t('monthly'),
     yearly: t('yearly'),

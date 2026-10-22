@@ -254,6 +254,20 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 审批收件箱（ADR 0042 §5.2）。
     approvals: {
+      // 策略版本审批分区（生产 E2E Q1）与 Action-Guard 分区标题。
+      guardTitle: 'Action approvals',
+      versions: {
+        title: 'Policy version approvals',
+        subtitle: 'Versions submitted for approval on your policies and on team policies you administer. Team policies need an owner or admin other than the author; on personal policies you may approve your own submission.',
+        empty: 'No policy versions are waiting for approval.',
+        thVersion: 'Version',
+        thSubmitter: 'Submitted by',
+        thSubmitted: 'Submitted',
+        review: 'Review',
+        view: 'View',
+        awaitingOthers: 'Waiting for another approver',
+        unknownUser: 'Unknown',
+      },
       title: 'Approvals',
       subtitle: 'Actions that need a human decision across all your workspaces. You can decide only where your verified business role matches.',
       status: {
@@ -330,6 +344,21 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     //   漏改了这个入口，于是仪表盘仍在向外部用户承诺三套合规框架。
     //   在信贷风控领域「我们支持 SOC2」是有法律分量的说法，故按实际能力改写。
     dashboard: {
+      // 两个独立计量：cloud 自身 /api/v1 REST 调用（UsageRecord api_call）与 aster-api 的 Policy 执行 API（ApiCallRecord），分开命名免得看似矛盾。
+      stats: { restApiCalls: 'Cloud REST API calls' },
+      // 首页 AHA 卡片（原为硬编码英文）。
+      aha: {
+        achievedTitle: '🎉 First policy published',
+        hoursAfterSignup: '{hours} hours after signup',
+        achieved: 'Achieved',
+        insideWindow: '✨ Inside the {hours}h AHA window — way to go!',
+        publishFirstTitle: 'Publish your first policy',
+        publishFirstBody: 'Ready to ship your first rule? It only takes a few minutes.',
+        createPolicy: 'Create policy →',
+        challengeTitle: 'AHA Moment Challenge',
+        challengeBody: 'Publish your first policy within {hours}h of signup',
+        hoursRemaining: '⏰ {hours}h remaining',
+      },
       quickActions: {
         generateReport: 'Export evidence',
         generateReportDesc: 'Decision records with audit hashes',
@@ -694,6 +723,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 套餐文案（F20）：不写具体模型名（实际模型取决于平台默认 / 用户 BYOK）；语言列表由
     // PLAN_FEATURE_MESSAGE_VALUES 按已配置 locales 注入。trialCardTitle 替换写死的 "Trial"。
     billing: {
+      restApiCallsThisMonth: 'Cloud REST API calls this month',
+      policyApiCallsThisMonth: 'Policy Execution API calls this month',
       plans: {
         features: {
           aiDrafts20: '20 AI drafts / month',
@@ -743,6 +774,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     common: { cancel: 'Cancel' },
     policies: {
+      // 回收站永久删除确认：点名被删除的策略（{name} 由客户端替换）。
+      trash: { confirmPermanentDeleteNamed: 'Permanently delete "{name}"? This action cannot be undone.' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
       detail: { profile: 'Profile' },
       // 导出为 Cedar（ADR 0047 §6）。
@@ -778,8 +811,24 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       versions: {
         awaitingOthers: 'Waiting for another approver',
         approvalCount: '{count} approval records',
+        // 个人策略所有者审批自己提交的版本时的说明（审计里记为自审）。
+        selfApproveNote: 'You are reviewing your own submission. Personal policies have no second reviewer, so this is allowed; the decision is recorded in the audit log as a self-approval.',
       },
       logs: {
+        // 筛选区标题、相对时间「刚刚」、加载与空态提示（原为硬编码英文）。
+        filtersTitle: 'Filters',
+        justNow: 'Just now',
+        loadingLogs: 'Loading execution logs…',
+        noLogsHint: 'Execute the policy to see logs here',
+        // runner-parity 影子校验徽章。
+        parity: {
+          tooltip: 'Runner replay parity (shadow check)',
+          match: 'parity ✓',
+          divergent: 'parity ✗',
+          unavailable: 'parity —',
+          error: 'parity error',
+          indeterminate: 'parity ?',
+        },
         // 执行日志里 indeterminate（值输出）行的中性状态标签。
         computed: 'Computed',
         // Verdict 待处置态（ADR 0041 §4）：需人工批准 / 已升级，非失败。
@@ -1214,6 +1263,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 审批收件箱（ADR 0042 §5.2）。
     approvals: {
+      guardTitle: '动作审批',
+      versions: {
+        title: '策略版本审批',
+        subtitle: '你名下策略及你担任 owner/admin 的团队策略中已提交审批的版本。团队策略须由作者以外的团队 owner/admin 审批；个人策略可由你审批自己的提交。',
+        empty: '没有等待审批的策略版本。',
+        thVersion: '版本',
+        thSubmitter: '提交人',
+        thSubmitted: '提交时间',
+        review: '去审批',
+        view: '查看',
+        awaitingOthers: '等待他人审批',
+        unknownUser: '未知',
+      },
       title: '审批',
       subtitle: '汇总你所在全部工作区中需要人工决定的动作。只有已验证业务角色匹配时才能审批。',
       status: {
@@ -1280,6 +1342,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 见 en 段注释：入口原文承诺 GDPR/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
+      stats: { restApiCalls: 'Cloud REST API 调用' },
+      aha: {
+        achievedTitle: '🎉 已发布首个策略',
+        hoursAfterSignup: '注册后 {hours} 小时',
+        achieved: '已达成',
+        insideWindow: '✨ 在 {hours} 小时 AHA 窗口内完成——干得漂亮！',
+        publishFirstTitle: '发布你的第一个策略',
+        publishFirstBody: '准备好上线第一条规则了吗？只需几分钟。',
+        createPolicy: '创建策略 →',
+        challengeTitle: 'AHA 时刻挑战',
+        challengeBody: '注册后 {hours} 小时内发布你的第一个策略',
+        hoursRemaining: '⏰ 还剩 {hours} 小时',
+      },
       quickActions: {
         generateReport: '导出证据',
         generateReportDesc: '决策记录与审计哈希',
@@ -1640,6 +1715,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 套餐文案（F20）：不写具体模型名（实际模型取决于平台默认 / 用户 BYOK）；语言列表由
     // PLAN_FEATURE_MESSAGE_VALUES 按已配置 locales 注入。trialCardTitle 替换写死的 "Trial"。
     billing: {
+      restApiCallsThisMonth: '本月 Cloud REST API 调用次数',
+      policyApiCallsThisMonth: '本月 Policy 执行 API 调用次数',
       plans: {
         features: {
           aiDrafts20: '每月 20 次 AI 草稿',
@@ -1689,6 +1766,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     common: { cancel: '取消' },
     policies: {
+      trash: { confirmPermanentDeleteNamed: '确定要永久删除策略「{name}」吗？此操作无法撤销。' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
       detail: { profile: '治理档案' },
       // 导出为 Cedar（ADR 0047 §6）。
@@ -1722,8 +1800,23 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       versions: {
         awaitingOthers: '等待他人审批',
         approvalCount: '{count} 条审批记录',
+        selfApproveNote: '你正在审批自己提交的版本。个人策略没有第二位审批人，因此允许自审；本次决定会在审计日志中标记为自审。',
+        // 覆盖包内 zh 文案的笔误「请请」；待 aster-lang-locales 上游修正后可删除本条覆盖。
+        sox: { selfApprovalNotAllowed: '不能批准自己创建的版本，请其他团队成员审批。' },
       },
       logs: {
+        filtersTitle: '筛选',
+        justNow: '刚刚',
+        loadingLogs: '正在加载执行日志…',
+        noLogsHint: '执行该策略后，日志会显示在这里',
+        parity: {
+          tooltip: '执行器回放一致性（影子校验）',
+          match: '一致 ✓',
+          divergent: '不一致 ✗',
+          unavailable: '未校验 —',
+          error: '校验出错',
+          indeterminate: '无法判定 ?',
+        },
         computed: '已计算',
         require_approval: '需人工批准',
         escalate: '已升级',
@@ -2157,6 +2250,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 审批收件箱（ADR 0042 §5.2）。
     approvals: {
+      guardTitle: 'Aktionsfreigaben',
+      versions: {
+        title: 'Freigaben von Richtlinienversionen',
+        subtitle: 'Zur Freigabe eingereichte Versionen Ihrer Richtlinien und der Teamrichtlinien, die Sie verwalten. Teamrichtlinien müssen von einem Owner oder Admin freigegeben werden, der nicht der Autor ist; bei persönlichen Richtlinien dürfen Sie Ihre eigene Einreichung freigeben.',
+        empty: 'Keine Richtlinienversionen warten auf Freigabe.',
+        thVersion: 'Version',
+        thSubmitter: 'Eingereicht von',
+        thSubmitted: 'Eingereicht am',
+        review: 'Prüfen',
+        view: 'Ansehen',
+        awaitingOthers: 'Wartet auf eine andere freigebende Person',
+        unknownUser: 'Unbekannt',
+      },
       title: 'Freigaben',
       subtitle: 'Aktionen, die eine menschliche Entscheidung brauchen – über alle Ihre Arbeitsbereiche. Entscheiden können Sie nur, wenn Ihre verifizierte Geschäftsrolle passt.',
       status: {
@@ -2224,6 +2330,24 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 见 en 段注释：入口原文承诺 DSGVO/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
+      stats: { restApiCalls: 'Cloud-REST-API-Aufrufe' },
+      aha: {
+        achievedTitle: '🎉 Erste Richtlinie veröffentlicht',
+        hoursAfterSignup: '{hours} Stunden nach der Registrierung',
+        achieved: 'Erreicht',
+        insideWindow: '✨ Innerhalb des {hours}-Stunden-AHA-Fensters – super!',
+        publishFirstTitle: 'Veröffentlichen Sie Ihre erste Richtlinie',
+        publishFirstBody: 'Bereit, Ihre erste Regel live zu schalten? Das dauert nur wenige Minuten.',
+        createPolicy: 'Richtlinie erstellen →',
+        challengeTitle: 'AHA-Moment-Challenge',
+        challengeBody: 'Veröffentlichen Sie Ihre erste Richtlinie innerhalb von {hours} Stunden nach der Registrierung',
+        hoursRemaining: '⏰ noch {hours} Std.',
+      },
+      // 包内 de 未翻译 Policy Execution API，本地覆盖。
+      apiUsage: {
+        title: 'Policy-Ausführungs-API',
+        lockedHint: 'Die Policy-Ausführungs-API ist im Free-Plan nicht enthalten. Auf Pro/Team upgraden oder 14-Tage-Trial starten.',
+      },
       quickActions: {
         generateReport: 'Nachweise exportieren',
         generateReportDesc: 'Entscheidungsdaten mit Audit-Hashes',
@@ -2584,6 +2708,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 套餐文案（F20）：不写具体模型名（实际模型取决于平台默认 / 用户 BYOK）；语言列表由
     // PLAN_FEATURE_MESSAGE_VALUES 按已配置 locales 注入。trialCardTitle 替换写死的 "Trial"。
     billing: {
+      restApiCallsThisMonth: 'Cloud-REST-API-Aufrufe diesen Monat',
+      policyApiCallsThisMonth: 'Policy-Ausführungs-API-Aufrufe diesen Monat',
       plans: {
         features: {
           aiDrafts20: '20 KI-Entwürfe / Monat',
@@ -2633,6 +2759,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     common: { cancel: 'Abbrechen' },
     policies: {
+      trash: { confirmPermanentDeleteNamed: 'Richtlinie „{name}“ endgültig löschen? Diese Aktion kann nicht rückgängig gemacht werden.' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
       detail: { profile: 'Profil' },
       // 导出为 Cedar（ADR 0047 §6）。
@@ -2666,8 +2793,21 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       versions: {
         awaitingOthers: 'Wartet auf andere Prüfer',
         approvalCount: '{count} Freigabeeinträge',
+        selfApproveNote: 'Sie prüfen Ihre eigene Einreichung. Persönliche Richtlinien haben keine zweite prüfende Person, daher ist das erlaubt; die Entscheidung wird im Audit-Protokoll als Selbstfreigabe vermerkt.',
       },
       logs: {
+        filtersTitle: 'Filter',
+        justNow: 'Gerade eben',
+        loadingLogs: 'Ausführungsprotokolle werden geladen…',
+        noLogsHint: 'Führen Sie die Richtlinie aus, um hier Protokolle zu sehen',
+        parity: {
+          tooltip: 'Runner-Replay-Parität (Schattenprüfung)',
+          match: 'Parität ✓',
+          divergent: 'Parität ✗',
+          unavailable: 'Parität —',
+          error: 'Paritätsfehler',
+          indeterminate: 'Parität ?',
+        },
         computed: 'Berechnet',
         require_approval: 'Freigabe nötig',
         escalate: 'Eskaliert',
@@ -3089,7 +3229,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       toggleAriaLabel: 'इस टीम के लिए {language} टॉगल करें',
       saveFailed: 'अपडेट नहीं हो सका — कृपया पुनः प्रयास करें',
     },
-    dashboardNav: { reports: 'साक्ष्य', approvals: 'अनुमोदन', aiWorkspace: 'एआई कार्यक्षेत्र', commandPalette: { aiWorkspace: 'एआई कार्यक्षेत्र खोलें' } },
+    dashboardNav: { reports: 'साक्ष्य', approvals: 'अनुमोदन', aiWorkspace: 'AI कार्यक्षेत्र', commandPalette: { aiWorkspace: 'AI कार्यक्षेत्र खोलें' } },
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
     notifications: {
       guardApprovalRequested: 'अनुमोदन आवश्यक: {policyName}',
@@ -3099,6 +3239,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 审批收件箱（ADR 0042 §5.2）。
     approvals: {
+      guardTitle: 'कार्रवाई अनुमोदन',
+      versions: {
+        title: 'नीति संस्करण अनुमोदन',
+        subtitle: 'आपकी नीतियों और जिन टीमों के आप owner/admin हैं उनकी नीतियों के वे संस्करण जो अनुमोदन के लिए जमा किए गए हैं। टीम नीतियों को लेखक के अलावा किसी टीम owner/admin का अनुमोदन चाहिए; व्यक्तिगत नीतियों में आप अपना जमा किया गया संस्करण स्वयं अनुमोदित कर सकते हैं।',
+        empty: 'कोई नीति संस्करण अनुमोदन की प्रतीक्षा में नहीं है।',
+        thVersion: 'संस्करण',
+        thSubmitter: 'जमाकर्ता',
+        thSubmitted: 'जमा करने का समय',
+        review: 'समीक्षा करें',
+        view: 'देखें',
+        awaitingOthers: 'किसी अन्य अनुमोदक की प्रतीक्षा',
+        unknownUser: 'अज्ञात',
+      },
       title: 'अनुमोदन',
       subtitle: 'आपके सभी वर्कस्पेस में वे कार्रवाइयाँ जिन पर मानवीय निर्णय चाहिए। आप केवल वहीं निर्णय ले सकते हैं जहाँ आपकी सत्यापित व्यावसायिक भूमिका मेल खाती है।',
       status: {
@@ -3166,6 +3319,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 见 en 段注释：入口原文承诺 GDPR/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
+      stats: { restApiCalls: 'Cloud REST API कॉल' },
+      aha: {
+        achievedTitle: '🎉 पहली नीति प्रकाशित',
+        hoursAfterSignup: 'साइन अप के {hours} घंटे बाद',
+        achieved: 'प्राप्त किया',
+        insideWindow: '✨ {hours} घंटे की AHA अवधि के भीतर — शानदार!',
+        publishFirstTitle: 'अपनी पहली नीति प्रकाशित करें',
+        publishFirstBody: 'अपना पहला नियम शुरू करने के लिए तैयार हैं? इसमें बस कुछ मिनट लगते हैं।',
+        createPolicy: 'नीति बनाएँ →',
+        challengeTitle: 'AHA क्षण चुनौती',
+        challengeBody: 'साइन अप के {hours} घंटे के भीतर अपनी पहली नीति प्रकाशित करें',
+        hoursRemaining: '⏰ {hours} घंटे शेष',
+      },
       quickActions: {
         generateReport: 'साक्ष्य निर्यात करें',
         generateReportDesc: 'ऑडिट हैश सहित निर्णय रिकॉर्ड',
@@ -3526,6 +3692,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 套餐文案（F20）：不写具体模型名（实际模型取决于平台默认 / 用户 BYOK）；语言列表由
     // PLAN_FEATURE_MESSAGE_VALUES 按已配置 locales 注入。trialCardTitle 替换写死的 "Trial"。
     billing: {
+      restApiCallsThisMonth: 'इस माह Cloud REST API कॉल',
+      policyApiCallsThisMonth: 'इस माह नीति निष्पादन API कॉल',
       plans: {
         features: {
           aiDrafts20: '20 AI ड्राफ़्ट / माह',
@@ -3575,17 +3743,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     common: { cancel: 'रद्द करें' },
     policies: {
+      trash: { confirmPermanentDeleteNamed: 'नीति "{name}" को स्थायी रूप से हटाएँ? यह क्रिया पूर्ववत नहीं की जा सकती।' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
       detail: { profile: 'Profile' },
       // 导出为 Cedar（ADR 0047 §6）。
       cedarExport: {
-        button: 'Export to Cedar',
-        exporting: 'Exporting…',
-        verified: 'Verified against Cedar on {count} probes',
-        notExportable: 'This policy cannot be exported to Cedar',
-        failed: 'Export failed',
-        noExecutableVersion: 'Approve a version before exporting to Cedar',
-        schemaNote: 'The exported schema declares only the actions and the context keys (with their types) this rule mentions. A gateway that validates requests against the schema rejects anything outside it — stricter than Aster, never looser.',
+        button: 'Cedar में निर्यात करें',
+        exporting: 'निर्यात हो रहा है…',
+        verified: '{count} जाँचों पर Cedar से सत्यापित',
+        notExportable: 'इस नीति को Cedar में निर्यात नहीं किया जा सकता',
+        failed: 'निर्यात विफल रहा',
+        noExecutableVersion: 'Cedar में निर्यात करने से पहले किसी संस्करण को स्वीकृत करें',
+        schemaNote: 'निर्यात किया गया स्कीमा केवल वे actions और context कुंजियाँ (उनके प्रकारों सहित) घोषित करता है जिनका यह नियम उल्लेख करता है। जो गेटवे अनुरोधों को स्कीमा से सत्यापित करता है, वह इसके बाहर की हर चीज़ अस्वीकार करता है — Aster से अधिक सख़्त, कभी ढीला नहीं।',
       },
       execute: {
         computed: 'परिकलित',
@@ -3608,8 +3777,21 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       versions: {
         awaitingOthers: 'किसी अन्य अनुमोदक की प्रतीक्षा',
         approvalCount: '{count} अनुमोदन रिकॉर्ड',
+        selfApproveNote: 'आप अपना ही जमा किया गया संस्करण जाँच रहे हैं। व्यक्तिगत नीतियों में कोई दूसरा समीक्षक नहीं होता, इसलिए इसकी अनुमति है; यह निर्णय ऑडिट लॉग में स्व-अनुमोदन के रूप में दर्ज होगा।',
       },
       logs: {
+        filtersTitle: 'फ़िल्टर',
+        justNow: 'अभी-अभी',
+        loadingLogs: 'निष्पादन लॉग लोड हो रहे हैं…',
+        noLogsHint: 'यहाँ लॉग देखने के लिए नीति निष्पादित करें',
+        parity: {
+          tooltip: 'रनर रीप्ले समानता (छाया जाँच)',
+          match: 'समानता ✓',
+          divergent: 'समानता ✗',
+          unavailable: 'समानता —',
+          error: 'समानता त्रुटि',
+          indeterminate: 'समानता ?',
+        },
         computed: 'परिकलित',
         require_approval: 'अनुमोदन आवश्यक',
         escalate: 'एस्केलेट किया गया',

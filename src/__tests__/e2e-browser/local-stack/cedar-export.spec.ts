@@ -129,15 +129,14 @@ test('不可导出策略（Text.length）：列出 E721 诊断且不下载文件
   expect(downloads).toHaveLength(0);
 });
 
-test('无可执行版本（仅草稿）：提示先批准且不下载文件', async ({ page }) => {
+test('无可执行版本（仅草稿）：按钮禁用并就地说明需先批准，不下载文件', async ({ page }) => {
   test.setTimeout(120_000);
   const id = await createPolicy(page, `e2e-cedar-draft-${Date.now()}`, SAMPLE_SOURCE, false);
   await page.goto(`/en/policies/${id}`);
 
   const downloads: Download[] = [];
   page.on('download', (d) => downloads.push(d));
-  await page.getByRole('button', { name: 'Export to Cedar' }).click();
-
-  await expect(page.getByText('Approve a version before exporting to Cedar')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole('button', { name: 'Export to Cedar' })).toBeDisabled({ timeout: 60_000 });
+  await expect(page.getByText('Approve a version before exporting to Cedar')).toBeVisible();
   expect(downloads).toHaveLength(0);
 });

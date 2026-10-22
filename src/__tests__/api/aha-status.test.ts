@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   usersFindFirst: vi.fn(),
   auditLogsFindFirst: vi.fn(),
+  policiesFindFirst: vi.fn(),
 }));
 
 vi.mock('@/lib/auth', () => ({ getSession: mocks.getSession }));
@@ -19,10 +20,12 @@ vi.mock('@/lib/prisma', () => ({
     query: {
       users: { findFirst: mocks.usersFindFirst },
       auditLogs: { findFirst: mocks.auditLogsFindFirst },
+      policies: { findFirst: mocks.policiesFindFirst },
     },
   },
   users: {},
   auditLogs: { userId: {}, action: {} },
+  policies: { userId: {}, deletedAt: {} },
 }));
 
 import { GET } from '@/app/api/user/aha-status/route';
@@ -31,6 +34,8 @@ beforeEach(() => {
   mocks.getSession.mockReset();
   mocks.usersFindFirst.mockReset();
   mocks.auditLogsFindFirst.mockReset();
+  mocks.policiesFindFirst.mockReset();
+  mocks.policiesFindFirst.mockResolvedValue(undefined);
 });
 
 describe('GET /api/user/aha-status', () => {
@@ -87,6 +92,19 @@ describe('GET /api/user/aha-status', () => {
     expect(data.achieved).toBe(false);
     expect(data.expired).toBe(true);
     expect(data.hoursRemaining).toBe(0);
+    expect(data.hasPolicies).toBe(false);
+  });
+
+  it('未达成但已有未删除策略 → hasPolicies=true（卡片据此隐藏「创建首个策略」引导）', async () => {
+    mocks.getSession.mockResolvedValueOnce({ user: { id: 'u-busy' } });
+    mocks.usersFindFirst.mockResolvedValueOnce({ createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000) });
+    mocks.auditLogsFindFirst.mockResolvedValueOnce(undefined);
+    mocks.policiesFindFirst.mockResolvedValueOnce({ id: 'p-1' });
+
+    const res = await GET();
+    const data = await res.json();
+    expect(data.achieved).toBe(false);
+    expect(data.hasPolicies).toBe(true);
   });
 
   it('returns 404 when user record is missing', async () => {

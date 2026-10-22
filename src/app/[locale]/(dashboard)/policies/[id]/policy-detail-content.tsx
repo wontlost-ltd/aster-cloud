@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ConfirmDialog, Container, PageHeader, Breadcrumbs } from '@/components/ui';
 import { PolicyVersionsTab } from '@/components/policy/policy-versions-tab';
+import type { VersionReviewContext } from '@/services/policy/version-approval-rules';
 import { PolicyReviewPanel } from '@/components/policy/policy-review-panel';
 import { ShareWithTeamsCard } from '@/components/policy/share-with-teams-card';
 import { PolicyAnalyticsSection } from '@/components/policy/policy-analytics-section';
@@ -84,6 +85,10 @@ interface PolicyDetailContentProps {
   policy: Policy;
   /** 活跃版本落库的治理档案 id（ADR 0046 §6）。 */
   profile?: string | null;
+  /** 是否已有批准版本（决定「导出为 Cedar」可用与否）；缺省按可用处理，由导出路由的 409 兜底。 */
+  hasExecutableVersion?: boolean;
+  /** 版本审批判定上下文（见 version-approval-rules） */
+  review?: Omit<VersionReviewContext, 'reviewerId'>;
   translations: Translations;
   locale: string;
 }
@@ -93,6 +98,8 @@ export function PolicyDetailContent({
   retentionDays = null,
   policy,
   profile = null,
+  hasExecutableVersion = true,
+  review,
   translations: t,
   locale,
 }: PolicyDetailContentProps) {
@@ -193,7 +200,12 @@ export function PolicyDetailContent({
       </div>
 
       {/* 导出为 Cedar（ADR 0047 §6）：导出 secure-execute 会执行的版本，只读操作，冻结策略同样可导出 */}
-      <CedarExportPanel policyId={policy.id} labels={t.cedarExport} />
+      <CedarExportPanel
+        policyId={policy.id}
+        labels={t.cedarExport}
+        hasExecutableVersion={hasExecutableVersion}
+        versionsHref={`/${locale}/policies/${policy.id}/versions`}
+      />
 
       {error && (
         <div className="mb-4 rounded-md bg-red-50 p-4">
@@ -314,7 +326,7 @@ export function PolicyDetailContent({
       <PolicyReviewPanel policyId={policy.id} />
 
       {/* Version Management with Approval Workflow */}
-      <PolicyVersionsTab policyId={policy.id} whatIfEntitled={whatIfEntitled} retentionDays={retentionDays} />
+      <PolicyVersionsTab policyId={policy.id} whatIfEntitled={whatIfEntitled} retentionDays={retentionDays} review={review} />
 
       {/* 决策分析（Phase 1 条件漏斗 + Phase 4 What-if）。
           自带 i18n，故不走 translations prop——避免详情页把每个新面板的

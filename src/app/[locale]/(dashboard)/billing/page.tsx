@@ -18,6 +18,7 @@ import { eq, sql, and } from 'drizzle-orm';
 import { Link } from '@/i18n/navigation';
 import { getSession } from '@/lib/auth';
 import { getUsageStats } from '@/lib/usage';
+import { countOwnerPoolUsage, currentPeriodMonth } from '@/lib/api-quota-pool';
 import { CAN_BILLING } from '@/lib/deployment-mode';
 import {
   formatPrice,
@@ -59,7 +60,10 @@ export default async function BillingOverviewPage() {
   const currency = getCurrencyForLocale(locale) as CurrencyCode;
   const userId = session.user.id;
 
-  const usageStats = await getUsageStats(userId);
+  const [usageStats, policyApiCalls] = await Promise.all([
+    getUsageStats(userId),
+    loadPolicyApiCalls(userId),
+  ]);
   const planType = (usageStats.plan || 'free') as PlanType;
   const planDef = PLANS[planType];
 
@@ -174,8 +178,17 @@ export default async function BillingOverviewPage() {
                 used={usageStats.usage.executions}
                 limit={usageStats.usage.executionsLimit}
               />
+              {/* 两个独立计量各自成行并分别命名：cloud REST 调用（UsageRecord）与 Policy 执行 API（ApiCallRecord 配额池），
+                  二者共用套餐的 apiCalls 上限值但分别计数，混用「API 调用」一个名字会看似互相矛盾 */}
+              {policyApiCalls !== null && (
+                <UsageRow
+                  label={t('policyApiCallsThisMonth')}
+                  used={policyApiCalls}
+                  limit={usageStats.usage.apiCallsLimit}
+                />
+              )}
               <UsageRow
-                label={t('apiCallsThisMonth')}
+                label={t('restApiCallsThisMonth')}
                 used={usageStats.usage.apiCalls}
                 limit={usageStats.usage.apiCallsLimit}
               />
@@ -278,6 +291,19 @@ function OverviewCard({
       </CardBody>
     </Card>
   );
+}
+
+/**
+ * 本月 Policy 执行 API 调用量（owner 配额池，与 dashboard 用量卡片、aster-api 限流同一口径）。
+ * 查询失败（如 ApiCallRecord 迁移未落地）返回 null，概览页隐藏该行而不是整页报错。
+ */
+async function loadPolicyApiCalls(userId: string): Promise<number | null> {
+  try {
+    return await countOwnerPoolUsage(userId, currentPeriodMonth());
+  } catch (error) {
+    console.error('[billing] policy api usage unavailable', error);
+    return null;
+  }
 }
 
 function UsageRow({

@@ -9,6 +9,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { ApiKeysContent } from '@/app/[locale]/(dashboard)/settings/api-keys/api-keys-content';
 
+// ConfirmDialog 包装的按钮缺省文案取自 next-intl（common 命名空间），这里给最小桩
+vi.mock('next-intl', () => ({ useTranslations: () => (key: string) => key }));
+
 // 测试翻译对象：各键取互不相同的值，保证按文案定位元素不产生歧义
 const T = {
   breadcrumb: 'API keys crumb',

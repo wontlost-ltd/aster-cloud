@@ -58,8 +58,6 @@ export {
   DataTable,
   StatCard,
   EmptyState,
-  // Overlays
-  ConfirmDialog,
 } from '@aster-cloud/ui';
 
 export type {
@@ -87,7 +85,6 @@ export type {
   StatCardProps,
   StatCardTone,
   EmptyStateProps,
-  ConfirmDialogProps,
   ConfirmDialogVariant,
 } from '@aster-cloud/ui';
 
@@ -105,3 +102,6 @@ export {
 // migrate to @aster-cloud/ui once the design system release lands.
 // See src/components/ui/pagination.tsx for the rationale.
 export { Pagination, type PaginationProps } from './pagination';
+
+// ConfirmDialog 的按钮缺省文案需走 next-intl，故同样包一层（见 ./confirm-dialog）。
+export { ConfirmDialog, type ConfirmDialogProps } from './confirm-dialog';

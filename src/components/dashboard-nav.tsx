@@ -21,6 +21,7 @@ interface DashboardNavClientProps {
     signOut: string;
     signingOut: string;
     help: string;
+    about: string;
   };
   mobileMenuLabels: {
     openMenu: string;
@@ -73,6 +74,7 @@ export function UserDropdown({
     signOut: string;
     signingOut: string;
     help: string;
+    about: string;
   };
   aboutLabels: AboutDialogLabels;
   versions: AboutVersions;
@@ -132,6 +134,14 @@ export function UserDropdown({
           >
             {userMenuLabels.settings}
           </Link>
+          {/* 「帮助」进文档站；版本信息另作「关于」项，二者不再混为一谈 */}
+          <Link
+            href="/docs"
+            className="block px-4 py-2 text-sm text-fg hover:bg-bg-subtle"
+            onClick={() => setIsOpen(false)}
+          >
+            {userMenuLabels.help}
+          </Link>
           <button
             type="button"
             className="block w-full text-left px-4 py-2 text-sm text-fg hover:bg-bg-subtle"
@@ -140,7 +150,7 @@ export function UserDropdown({
               setIsAboutOpen(true);
             }}
           >
-            {userMenuLabels.help}
+            {userMenuLabels.about}
           </button>
           <button
             type="button"

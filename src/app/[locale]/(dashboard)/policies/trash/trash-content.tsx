@@ -43,6 +43,7 @@ interface Translations {
     actionError: string;
     itemCount: string;
     daysRemaining: string;
+    loading: string;
   };
 }
 
@@ -233,7 +234,7 @@ export function TrashContent({ translations: t, locale }: TrashContentProps) {
       {/* Trash List */}
       <div className="bg-bg shadow rounded-lg overflow-hidden">
         {loading ? (
-          <div className="p-8 text-center text-fg-muted">Loading...</div>
+          <div className="p-8 text-center text-fg-muted">{t.trash.loading}</div>
         ) : items.length === 0 ? (
           <div className="p-8 text-center text-fg-muted">
             <svg
@@ -322,7 +323,7 @@ export function TrashContent({ translations: t, locale }: TrashContentProps) {
         description={
           confirmDialog?.type === 'empty'
             ? t.trash.confirmEmptyTrash
-            : t.trash.confirmPermanentDelete.replace('{name}', confirmDialog?.policyName || '')
+            : t.trash.confirmPermanentDelete.replace('{name}', () => confirmDialog?.policyName || '')
         }
         confirmLabel={
           confirmDialog?.type === 'empty'
