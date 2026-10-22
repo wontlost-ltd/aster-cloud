@@ -552,6 +552,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: 'Open AI keys settings',
     },
     admin: {
+      // 许可证撤销：ID 不在已签发记录中的提示（Q2，不阻止撤销）。
+      licenseRevoke: {
+        newForm: {
+          checking: 'Checking…',
+          unknownLicenseWarning: 'This license is not in the issued-license records (it may have been issued offline). Double-check the ID before revoking.',
+        },
+      },
       // 风险等级处理台的等级名称（F19：此前写死英文）。
       riskTier: {
         tierCard: 'Tier {tier} ({label})',
@@ -1424,6 +1431,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: '前往 AI 密钥设置',
     },
     admin: {
+      // 许可证撤销：ID 不在已签发记录中的提示（Q2，不阻止撤销）。
+      licenseRevoke: {
+        newForm: {
+          checking: '核对中…',
+          unknownLicenseWarning: '该许可证不在已签发记录中（可能为离线签发）—— 请核对 ID。',
+        },
+      },
       // 风险等级处理台的等级名称（F19：此前写死英文）。
       riskTier: {
         tierCard: '等级 {tier}（{label}）',
@@ -2294,6 +2308,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: 'KI-Schlüssel-Einstellungen öffnen',
     },
     admin: {
+      // 许可证撤销：ID 不在已签发记录中的提示（Q2，不阻止撤销）。
+      licenseRevoke: {
+        newForm: {
+          checking: 'Wird geprüft…',
+          unknownLicenseWarning: 'Diese Lizenz ist nicht in den Aufzeichnungen ausgestellter Lizenzen (möglicherweise offline ausgestellt). Prüfen Sie die ID vor dem Widerruf.',
+        },
+      },
       // 风险等级处理台的等级名称（F19：此前写死英文）。
       riskTier: {
         tierCard: 'Stufe {tier} ({label})',
@@ -3162,6 +3183,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: 'AI कुंजी सेटिंग्स खोलें',
     },
     admin: {
+      // 许可证撤销：ID 不在已签发记录中的提示（Q2，不阻止撤销）。
+      licenseRevoke: {
+        newForm: {
+          checking: 'जाँच हो रही है…',
+          unknownLicenseWarning: 'यह लाइसेंस जारी किए गए लाइसेंस रिकॉर्ड में नहीं है (संभवतः ऑफ़लाइन जारी किया गया)। रद्द करने से पहले ID की जाँच करें।',
+        },
+      },
       // 风险等级处理台的等级名称（F19：此前写死英文）。
       riskTier: {
         tierCard: 'स्तर {tier} ({label})',
