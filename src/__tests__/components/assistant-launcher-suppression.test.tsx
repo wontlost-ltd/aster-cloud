@@ -38,7 +38,9 @@ function Controls() {
 const toggles: { setA?: (v: boolean) => void; setB?: (v: boolean) => void } = {};
 function Suppressor({ name, initial }: { name: 'setA' | 'setB'; initial: boolean }) {
   const [active, setActive] = useState(initial);
-  toggles[name] = setActive;
+  useEffect(() => {
+    toggles[name] = setActive;
+  }, [name]);
   useSuppressAssistantLauncher(active);
   return null;
 }
