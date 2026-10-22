@@ -20,7 +20,11 @@ vi.mock('@/services/policy/version-manager', async () => {
   const actual = await vi.importActual<typeof import('@/services/policy/version-manager')>(
     '@/services/policy/version-manager',
   );
-  return { approveVersion: vi.fn(), PolicyAccessDeniedError: actual.PolicyAccessDeniedError };
+  return {
+    approveVersion: vi.fn(),
+    PolicyAccessDeniedError: actual.PolicyAccessDeniedError,
+    SegregationOfDutiesError: actual.SegregationOfDutiesError,
+  };
 });
 vi.mock('@/lib/prisma', () => ({
   db: {

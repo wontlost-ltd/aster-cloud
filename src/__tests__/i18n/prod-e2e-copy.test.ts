@@ -49,6 +49,8 @@ const KEYS = [
   'approvals.versions.thVersion', 'approvals.versions.thSubmitter', 'approvals.versions.thSubmitted',
   'approvals.versions.review', 'approvals.versions.view', 'approvals.versions.awaitingOthers',
   'approvals.versions.unknownUser', 'approvals.thPolicy', 'approvals.thActions',
+  // 版本审批权限裁决：个人策略自审说明
+  'policies.versions.selfApproveNote', 'policies.versions.awaitingOthers',
 ];
 
 describe('生产 E2E 文案：四语完整', () => {

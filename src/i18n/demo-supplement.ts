@@ -253,7 +253,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       guardTitle: 'Action approvals',
       versions: {
         title: 'Policy version approvals',
-        subtitle: 'Versions submitted for approval on policies you own. A version cannot be approved by its own author.',
+        subtitle: 'Versions submitted for approval on your policies and on team policies you administer. Team policies need an owner or admin other than the author; on personal policies you may approve your own submission.',
         empty: 'No policy versions are waiting for approval.',
         thVersion: 'Version',
         thSubmitter: 'Submitted by',
@@ -615,6 +615,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       versions: {
         awaitingOthers: 'Waiting for another approver',
         approvalCount: '{count} approval records',
+        // 个人策略所有者审批自己提交的版本时的说明（审计里记为自审）。
+        selfApproveNote: 'You are reviewing your own submission. Personal policies have no second reviewer, so this is allowed; the decision is recorded in the audit log as a self-approval.',
       },
       logs: {
         // 筛选区标题、相对时间「刚刚」、加载与空态提示（原为硬编码英文）。
@@ -1062,7 +1064,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       guardTitle: '动作审批',
       versions: {
         title: '策略版本审批',
-        subtitle: '你名下策略中已提交审批的版本。版本作者不能审批自己创建的版本。',
+        subtitle: '你名下策略及你担任 owner/admin 的团队策略中已提交审批的版本。团队策略须由作者以外的团队 owner/admin 审批；个人策略可由你审批自己的提交。',
         empty: '没有等待审批的策略版本。',
         thVersion: '版本',
         thSubmitter: '提交人',
@@ -1405,6 +1407,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       versions: {
         awaitingOthers: '等待他人审批',
         approvalCount: '{count} 条审批记录',
+        selfApproveNote: '你正在审批自己提交的版本。个人策略没有第二位审批人，因此允许自审；本次决定会在审计日志中标记为自审。',
       },
       logs: {
         filtersTitle: '筛选',
@@ -1849,7 +1852,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       guardTitle: 'Aktionsfreigaben',
       versions: {
         title: 'Freigaben von Richtlinienversionen',
-        subtitle: 'Zur Freigabe eingereichte Versionen Ihrer Richtlinien. Der Autor einer Version kann sie nicht selbst freigeben.',
+        subtitle: 'Zur Freigabe eingereichte Versionen Ihrer Richtlinien und der Teamrichtlinien, die Sie verwalten. Teamrichtlinien müssen von einem Owner oder Admin freigegeben werden, der nicht der Autor ist; bei persönlichen Richtlinien dürfen Sie Ihre eigene Einreichung freigeben.',
         empty: 'Keine Richtlinienversionen warten auf Freigabe.',
         thVersion: 'Version',
         thSubmitter: 'Eingereicht von',
@@ -2198,6 +2201,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       versions: {
         awaitingOthers: 'Wartet auf andere Prüfer',
         approvalCount: '{count} Freigabeeinträge',
+        selfApproveNote: 'Sie prüfen Ihre eigene Einreichung. Persönliche Richtlinien haben keine zweite prüfende Person, daher ist das erlaubt; die Entscheidung wird im Audit-Protokoll als Selbstfreigabe vermerkt.',
       },
       logs: {
         filtersTitle: 'Filter',
@@ -2640,7 +2644,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       guardTitle: 'कार्रवाई अनुमोदन',
       versions: {
         title: 'नीति संस्करण अनुमोदन',
-        subtitle: 'आपकी नीतियों के वे संस्करण जो अनुमोदन के लिए जमा किए गए हैं। कोई संस्करण उसके अपने लेखक द्वारा अनुमोदित नहीं किया जा सकता।',
+        subtitle: 'आपकी नीतियों और जिन टीमों के आप owner/admin हैं उनकी नीतियों के वे संस्करण जो अनुमोदन के लिए जमा किए गए हैं। टीम नीतियों को लेखक के अलावा किसी टीम owner/admin का अनुमोदन चाहिए; व्यक्तिगत नीतियों में आप अपना जमा किया गया संस्करण स्वयं अनुमोदित कर सकते हैं।',
         empty: 'कोई नीति संस्करण अनुमोदन की प्रतीक्षा में नहीं है।',
         thVersion: 'संस्करण',
         thSubmitter: 'जमाकर्ता',
@@ -2984,6 +2988,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       versions: {
         awaitingOthers: 'किसी अन्य अनुमोदक की प्रतीक्षा',
         approvalCount: '{count} अनुमोदन रिकॉर्ड',
+        selfApproveNote: 'आप अपना ही जमा किया गया संस्करण जाँच रहे हैं। व्यक्तिगत नीतियों में कोई दूसरा समीक्षक नहीं होता, इसलिए इसकी अनुमति है; यह निर्णय ऑडिट लॉग में स्व-अनुमोदन के रूप में दर्ज होगा।',
       },
       logs: {
         filtersTitle: 'फ़िल्टर',

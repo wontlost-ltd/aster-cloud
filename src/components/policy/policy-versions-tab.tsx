@@ -7,6 +7,7 @@ import { PolicyVersionList, type PolicyVersionInfo } from './policy-version-list
 import { VersionDetailPanel } from './version-detail-panel';
 import { VersionComparePanel } from './version-compare-panel';
 import { usePolicyVersions } from '@/hooks/use-policy-versions';
+import type { VersionReviewContext } from '@/services/policy/version-approval-rules';
 
 interface PolicyVersionsTabProps {
   policyId: string;
@@ -14,11 +15,13 @@ interface PolicyVersionsTabProps {
   whatIfEntitled?: boolean;
   /** 执行日志留存天数（#396），透传给 What-If 面板裁剪窗口 */
   retentionDays?: number | null;
+  /** 审阅判定上下文（服务端算好），决定批准/驳回是否可见及是否属于自审 */
+  review?: Omit<VersionReviewContext, 'reviewerId'>;
 }
 
 type ViewMode = 'list' | 'detail' | 'compare';
 
-export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionDays = null }: PolicyVersionsTabProps) {
+export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionDays = null, review }: PolicyVersionsTabProps) {
   const { data: session } = useSession();
   const t = useTranslations('policies.versions');
   const tCommon = useTranslations('common');
@@ -165,6 +168,7 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
             versions={versions as PolicyVersionInfo[]}
             loading={loading}
             currentUserId={session?.user?.id}
+            review={review}
             onViewSource={handleViewSource}
             onSetDefault={handleSetDefault}
             onDeprecate={handleDeprecate}

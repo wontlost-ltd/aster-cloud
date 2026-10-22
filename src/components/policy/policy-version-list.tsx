@@ -5,6 +5,7 @@ import { useTranslations, useLocale } from 'next-intl';
 import type { PolicyVersionStatus } from '@/lib/prisma';
 import { VersionStatusBadge } from './version-status-badge';
 import { ConfirmDialog } from '@/components/ui';
+import { decideVersionApproval, type VersionReviewContext } from '@/services/policy/version-approval-rules';
 
 interface PolicyVersionInfo {
   id: string;
@@ -26,6 +27,8 @@ interface PolicyVersionListProps {
   versions: PolicyVersionInfo[];
   loading?: boolean;
   currentUserId?: string;
+  /** 审阅判定上下文（不含审阅人）；缺省时不显示批准/驳回（fail-closed） */
+  review?: Omit<VersionReviewContext, 'reviewerId'>;
   onSetDefault?: (version: number) => Promise<void>;
   onDeprecate?: (version: number, reason?: string) => Promise<void>;
   onArchive?: (version: number, reason?: string) => Promise<void>;
@@ -47,6 +50,7 @@ export function PolicyVersionList({
   versions,
   loading = false,
   currentUserId,
+  review,
   onSetDefault,
   onDeprecate,
   onArchive,
@@ -190,13 +194,20 @@ export function PolicyVersionList({
 
   const dialogConfig = getDialogConfig();
 
-  // Check if user can approve (four-eyes principle: creator cannot approve)
-  const canApprove = useCallback(
-    (version: PolicyVersionInfo) => {
-      return currentUserId && version.createdBy !== currentUserId;
-    },
-    [currentUserId]
+  // 与服务端 approveVersion 同一判定：团队策略由团队 owner/admin 审批且作者不能自审，个人策略所有者可自审
+  const approvalFor = useCallback(
+    (version: PolicyVersionInfo) =>
+      currentUserId && review
+        ? decideVersionApproval({ ...review, reviewerId: currentUserId, versionAuthorId: version.createdBy })
+        : null,
+    [currentUserId, review]
   );
+  const canApprove = useCallback((version: PolicyVersionInfo) => approvalFor(version)?.allowed === true, [approvalFor]);
+  const selfApproveVersion = actionDialog.version ? approvalFor(actionDialog.version) : null;
+  const showSelfApproveNote =
+    (actionDialog.type === 'approve' || actionDialog.type === 'reject') &&
+    selfApproveVersion?.allowed === true &&
+    selfApproveVersion.selfApproved;
 
   if (loading) {
     return (
@@ -358,6 +369,11 @@ export function PolicyVersionList({
           dialogConfig.showComment ? (
             <div className="space-y-3">
               <p>{dialogConfig.description}</p>
+              {showSelfApproveNote && (
+                <p className="rounded-md bg-bg-subtle px-3 py-2 text-xs text-fg-muted" data-testid="self-approve-note">
+                  {t('selfApproveNote')}
+                </p>
+              )}
               <textarea
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}

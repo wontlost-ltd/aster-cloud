@@ -61,11 +61,15 @@ const POLICY = 'policy-victim';
 describe('版本操作归属校验（跨租户 IDOR 修复）', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // 关键：归属查询按 (id, userId, deletedAt IS NULL) 过滤。
-    // 攻击者查不到 → findFirst 返回 undefined。
+    // 两种查询口径：
+    //  · 所有者专属操作（submit/set-default/…）按 (id, userId, deletedAt IS NULL) 过滤，攻击者查不到；
+    //  · 审阅类操作（approve/reject、版本详情）按 (id, deletedAt IS NULL) 取出所有者与团队，
+    //    再由 version-approval-rules 判定审阅权。这里是个人策略，所有者是 OWNER。
     mockPolicyFindFirst.mockImplementation((args: { where?: { args?: unknown[] } }) => {
       const conds = JSON.stringify(args?.where ?? {});
-      return conds.includes(OWNER) ? Promise.resolve({ id: POLICY }) : Promise.resolve(undefined);
+      return conds.includes(ATTACKER)
+        ? Promise.resolve(undefined)
+        : Promise.resolve({ id: POLICY, userId: OWNER, teamId: null });
     });
     // 版本存在且处于可操作状态——证明拒绝来自归属校验而非状态不匹配
     mockVersionFindFirst.mockResolvedValue({
@@ -123,13 +127,22 @@ describe('版本操作归属校验（跨租户 IDOR 修复）', () => {
     expect(mockVersionFindFirst).toHaveBeenCalled();
   });
 
-  it('归属查询必须同时含 userId 与 deletedAt 守卫（软删策略不可操作）', async () => {
+  it('读访问的策略查询必须含 deletedAt 守卫（软删策略不可读）', async () => {
     const { getVersionDetail } = await import('../version-manager');
 
     await getVersionDetail({ policyId: POLICY, version: 1, userId: OWNER });
 
     const where = JSON.stringify(mockPolicyFindFirst.mock.calls[0]?.[0]?.where ?? {});
-    expect(where).toContain(OWNER);
+    expect(where).toContain(POLICY);
     expect(where).toContain('deletedAt');
+  });
+
+  it('策略已软删（查不到）→ 所有者读版本详情同样被拒', async () => {
+    mockPolicyFindFirst.mockResolvedValue(undefined);
+    const { getVersionDetail, PolicyAccessDeniedError } = await import('../version-manager');
+
+    await expect(getVersionDetail({ policyId: POLICY, version: 1, userId: OWNER }))
+      .rejects.toBeInstanceOf(PolicyAccessDeniedError);
+    expect(mockVersionFindFirst).not.toHaveBeenCalled();
   });
 });

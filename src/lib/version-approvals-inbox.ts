@@ -2,17 +2,18 @@
  * 审批收件箱里的「策略版本审批」（生产 E2E Q1）。
  *
  * 收件箱原本只聚合 Action-Guard 审批；版本提交审批（「提交审批」→「等待他人审批」）此前只能在
- * 各策略的版本页里看到。这里按与 approveVersion 完全相同的规则列出待审批版本：
- *   - 范围 = 用户名下未删除的策略（同 assertPolicyOwnership，非所有者本就无权操作）；
- *   - canAct = 不是版本作者（四眼原则，isSelfApproval）。作者自己的提交照样列出，但只读，
- *     标注「等待他人审批」，让提交人在收件箱里也能看到自己的提交。
+ * 各策略的版本页里看到。这里按与 approveVersion 完全相同的规则（decideVersionApproval）列出待审批版本：
+ *   - 范围 = 用户名下未删除的策略 ∪ 用户担任 owner/admin 的团队的未删除策略；
+ *   - canAct = 审批规则允许：团队策略的团队 owner/admin 且不是作者；个人策略的所有者（可自审）。
+ *     不能审批的（如团队策略的作者本人）照样列出但只读，标注「等待他人审批」。
  * 审批动作本身不在这里：条目链接到既有的版本页，由那里的批准/驳回走 approveVersion。
  */
 import 'server-only';
 
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { db, policies, policyVersions, securityEvents, users } from '@/lib/prisma';
-import { isSelfApproval } from '@/services/policy/version-approval-rules';
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { db, policies, policyVersions, securityEvents, teamMembers, users } from '@/lib/prisma';
+import type { TeamRole } from '@/lib/team-permissions';
+import { decideVersionApproval } from '@/services/policy/version-approval-rules';
 
 export interface PendingVersionApproval {
   versionId: string;
@@ -59,10 +60,26 @@ async function loadDisplayNames(ids: string[]): Promise<Map<string, string>> {
   return new Map(rows.map((u) => [u.id, u.name || u.email || u.id]));
 }
 
+/** 用户在各团队的角色，只保留能审批团队策略版本的 owner/admin。 */
+async function loadReviewerTeamRoles(userId: string): Promise<Map<string, TeamRole>> {
+  const memberships = await db.query.teamMembers.findMany({
+    where: and(eq(teamMembers.userId, userId), inArray(teamMembers.role, ['owner', 'admin'])),
+    columns: { teamId: true, role: true },
+  });
+  return new Map(memberships.map((m) => [m.teamId, m.role as TeamRole]));
+}
+
 export async function listPendingVersionApprovals(userId: string): Promise<PendingVersionApproval[]> {
+  const teamRoles = await loadReviewerTeamRoles(userId);
+  const reviewerTeams = [...teamRoles.keys()];
   const owned = await db.query.policies.findMany({
-    where: and(eq(policies.userId, userId), isNull(policies.deletedAt)),
-    columns: { id: true, name: true },
+    where: and(
+      reviewerTeams.length > 0
+        ? or(eq(policies.userId, userId), inArray(policies.teamId, reviewerTeams))
+        : eq(policies.userId, userId),
+      isNull(policies.deletedAt),
+    ),
+    columns: { id: true, name: true, userId: true, teamId: true },
   });
   if (owned.length === 0) return [];
 
@@ -79,19 +96,27 @@ export async function listPendingVersionApprovals(userId: string): Promise<Pendi
   const submitterOf = (v: (typeof pending)[number]) => events.get(`${v.policyId}:${v.version}`)?.userId ?? v.createdBy;
   const submitterIds = [...new Set(pending.map(submitterOf).filter((id): id is string => !!id))];
   const names = await loadDisplayNames(submitterIds);
-  const policyName = new Map(owned.map((p) => [p.id, p.name]));
+  const policyById = new Map(owned.map((p) => [p.id, p]));
 
   return pending
     .map((v) => {
       const submitter = submitterOf(v);
+      const policy = policyById.get(v.policyId);
+      const verdict = decideVersionApproval({
+        policyOwnerId: policy?.userId ?? '',
+        policyTeamId: policy?.teamId ?? null,
+        reviewerId: userId,
+        reviewerTeamRole: policy?.teamId ? (teamRoles.get(policy.teamId) ?? null) : null,
+        versionAuthorId: v.createdBy,
+      });
       return {
         versionId: v.id,
         policyId: v.policyId,
-        policyName: policyName.get(v.policyId) ?? v.policyId,
+        policyName: policy?.name ?? v.policyId,
         version: v.version,
         submittedBy: submitter ? (names.get(submitter) ?? null) : null,
         submittedAt: (events.get(`${v.policyId}:${v.version}`)?.createdAt ?? v.createdAt).toISOString(),
-        canAct: !isSelfApproval(v.createdBy, userId),
+        canAct: verdict.allowed,
       };
     })
     .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));

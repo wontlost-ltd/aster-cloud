@@ -6,6 +6,7 @@ import { getTranslations } from 'next-intl/server';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
 import { resolveRetention } from '@/lib/retention/execution-retention';
+import { loadVersionReviewContext } from '@/services/policy/version-manager';
 import { PolicyDetailContent } from './policy-detail-content';
 
 // 活跃版本保存时落库的治理档案 id（ADR 0046 §6）；未声明档案或旧版本为 null
@@ -115,9 +116,11 @@ export default async function PolicyDetailPage({
   //   必然空窗、而选项还在那里——那套窗口实际只适用于留存期最长的企业级用户。
   const retentionDays = resolveRetention(planUser?.plan).executionDays;
 
-  const [profile, hasExecutableVersion] = await Promise.all([
+  const [profile, hasExecutableVersion, review] = await Promise.all([
     loadActiveProfile(id, policy.version),
     hasApprovedVersion(id),
+    // 版本面板的批准/驳回按审批规则显示（团队策略按当前用户的团队角色）
+    loadVersionReviewContext(id, session.user.id),
   ]);
 
   const t = await getTranslations('policies');
@@ -182,6 +185,11 @@ export default async function PolicyDetailPage({
       policy={{ ...policy, isFrozen: freeze.isFrozen }}
       profile={profile}
       hasExecutableVersion={hasExecutableVersion}
+      review={review ? {
+        policyOwnerId: review.policyOwnerId,
+        policyTeamId: review.policyTeamId,
+        reviewerTeamRole: review.reviewerTeamRole,
+      } : undefined}
       translations={translations}
       locale={locale}
     />
