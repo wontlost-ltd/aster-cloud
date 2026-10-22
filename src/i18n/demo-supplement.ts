@@ -545,6 +545,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
     common: { cancel: 'Cancel' },
     policies: {
+      // 回收站永久删除确认：点名被删除的策略（{name} 由客户端替换）。
+      trash: { confirmPermanentDeleteNamed: 'Permanently delete "{name}"? This action cannot be undone.' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
       detail: { profile: 'Profile' },
       // 导出为 Cedar（ADR 0047 §6）。
@@ -1306,6 +1308,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
     common: { cancel: '取消' },
     policies: {
+      trash: { confirmPermanentDeleteNamed: '确定要永久删除策略「{name}」吗？此操作无法撤销。' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
       detail: { profile: '治理档案' },
       // 导出为 Cedar（ADR 0047 §6）。
@@ -2063,6 +2066,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
     common: { cancel: 'Abbrechen' },
     policies: {
+      trash: { confirmPermanentDeleteNamed: 'Richtlinie „{name}“ endgültig löschen? Diese Aktion kann nicht rückgängig gemacht werden.' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
       detail: { profile: 'Profil' },
       // 导出为 Cedar（ADR 0047 §6）。
@@ -2818,6 +2822,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 通用取消（版本列表确认框等；hi 语言包缺此键）。
     common: { cancel: 'रद्द करें' },
     policies: {
+      trash: { confirmPermanentDeleteNamed: 'नीति "{name}" को स्थायी रूप से हटाएँ? यह क्रिया पूर्ववत नहीं की जा सकती।' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
       detail: { profile: 'Profile' },
       // 导出为 Cedar（ADR 0047 §6）。
