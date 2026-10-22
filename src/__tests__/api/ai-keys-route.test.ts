@@ -305,6 +305,21 @@ describe('DELETE /api/user/ai-keys — 按 id 撤销', () => {
 describe('POST /api/user/ai-keys — 多 key 新增', () => {
   const goodKey = 'sk-'.padEnd(24, 'x');
 
+  it('★写入失败时日志只含 requestId 与错误码，不含明文 key / 主密钥（I1）', async () => {
+    const err = new Error(`Failed query: insert ...\nparams: ${goodKey},master-secret-0123456789`, {
+      cause: Object.assign(new Error('pgcrypto failure'), { code: '39000' }),
+    });
+    vi.mocked(saveBYOKKey).mockRejectedValueOnce(err);
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const r = await POST(postReq({ provider: 'openai', apiKey: goodKey }));
+    const logged = JSON.stringify(spy.mock.calls);
+    spy.mockRestore();
+    expect(r.status).toBe(500);
+    expect(logged).not.toContain(goodKey);
+    expect(logged).not.toContain('master-secret');
+    expect(logged).toContain('39000');
+  });
+
   it('新增 → ai-key.create + 返回 id，审计不含明文 key', async () => {
     vi.mocked(saveBYOKKey).mockResolvedValue({ id: 'new-binding-1' });
     const r = await POST(postReq({ provider: 'openai', apiKey: goodKey }));

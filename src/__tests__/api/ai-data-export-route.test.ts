@@ -50,6 +50,25 @@ describe('GET /api/user/ai-data-export', () => {
     expect(errorSpy).toHaveBeenCalled();
   });
 
+  it('★查询失败日志不含密钥与错误原文，只记 requestId 与错误码（I1）', async () => {
+    const secret = 'test-audit-secret-min-16-chars';
+    process.env.AI_AUDIT_ENCRYPTION_SECRET = secret;
+    const err = new Error(`Failed query: SELECT ...\nparams: ${secret},u1`, {
+      cause: Object.assign(new Error('Wrong key or corrupt data'), { code: '39000' }),
+    });
+    err.name = 'DrizzleQueryError';
+    execute.mockRejectedValueOnce(err);
+    const res = await GET();
+    const logged = errorSpy.mock.calls.flat().map((a) => (typeof a === 'string' ? a : JSON.stringify(a)));
+    expect(logged.join(' ')).not.toContain(secret);
+    expect(logged.join(' ')).not.toContain('Failed query');
+    expect(errorSpy.mock.calls[0]).toEqual([
+      '[ai-data-export] export query failed',
+      res.headers.get('x-request-id'),
+      '39000',
+    ]);
+  });
+
   it('正常导出', async () => {
     process.env.AI_AUDIT_ENCRYPTION_SECRET = 'test-audit-secret-min-16-chars';
     execute.mockResolvedValueOnce([{ id: 'r1', prompt: 'p' }]);

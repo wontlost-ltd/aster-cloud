@@ -12,7 +12,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { db } from '@/lib/prisma';
 import { sql } from 'drizzle-orm';
-import { errorEnvelope } from '@/lib/api/error-envelope';
+import { errorEnvelope, safeErrorCode } from '@/lib/api/error-envelope';
 import { exportAiWorkspaceData } from '@/lib/ai-workspace-gdpr';
 
 export const runtime = 'nodejs';
@@ -76,7 +76,13 @@ export async function GET() {
       code: 'audit_export_failed',
       message: 'AI data export failed.',
     });
-    console.error('[ai-data-export] export query failed', env.headers.get('x-request-id'), err);
+    // 查询把审计密钥作为绑定参数传入，驱动错误（DrizzleQueryError 的 message 含 params）会带出密钥：
+    // 只记 requestId 与错误名/数据库错误码，绝不记录 err 本身或 err.message。
+    console.error(
+      '[ai-data-export] export query failed',
+      env.headers.get('x-request-id'),
+      safeErrorCode(err),
+    );
     return env;
   }
 
