@@ -161,6 +161,18 @@ describe('POST /api/llm/assistant', () => {
     expect(long.endsWith(NO_RESULTS_UI_NOTE)).toBe(true);
   });
 
+  it('★AI 工作台调用：resultsUi=false，让 aster-api 去掉「查看下方搜索结果」那句（F15）', async () => {
+    settings({ extra: '' });
+    await POST(req({ query: 'q', resultsUi: true }, WORKSPACE));
+    expect((await forwardedBody()).resultsUi).toBe(false);
+  });
+
+  it('浏览器会话调用：不发 resultsUi（沿用 aster-api 默认），客户端自带的值也被丢弃', async () => {
+    settings({ extra: '' });
+    await POST(req({ query: 'q', resultsUi: false }));
+    expect(await forwardedBody()).not.toHaveProperty('resultsUi');
+  });
+
   it('浏览器会话调用：不追加说明，链接保持站内相对路径', async () => {
     settings({ extra: '' });
     await POST(req({ query: 'API 密钥', locale: 'zh', groundingHits: [] }));

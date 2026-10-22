@@ -79,6 +79,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     ...fields,
     ...(groundingHits !== undefined ? { groundingHits } : {}),
     adminInstructions: composeInstructions(instructions, fromWorkspace ? NO_RESULTS_UI_NOTE : null),
+    // 工作台界面没有「答案下方的搜索结果」列表：让 aster-api 从系统提示中去掉引导查看搜索结果的那句。
+    // 浏览器调用方由服务端决定（不发此字段，aster-api 默认 true），不采信客户端自带的值；
+    // 旧版 aster-api 忽略未知字段，可先于其发布。
+    resultsUi: fromWorkspace ? false : undefined,
   };
 
   // 用改写后的 body 构造新请求交给共享代理（它会再叠加 BYOK envelope）。
