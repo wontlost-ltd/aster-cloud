@@ -325,6 +325,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     //   漏改了这个入口，于是仪表盘仍在向外部用户承诺三套合规框架。
     //   在信贷风控领域「我们支持 SOC2」是有法律分量的说法，故按实际能力改写。
     dashboard: {
+      // 首页 AHA 卡片（原为硬编码英文）。
+      aha: {
+        achievedTitle: '🎉 First policy published',
+        hoursAfterSignup: '{hours} hours after signup',
+        achieved: 'Achieved',
+        insideWindow: '✨ Inside the {hours}h AHA window — way to go!',
+        publishFirstTitle: 'Publish your first policy',
+        publishFirstBody: 'Ready to ship your first rule? It only takes a few minutes.',
+        createPolicy: 'Create policy →',
+        challengeTitle: 'AHA Moment Challenge',
+        challengeBody: 'Publish your first policy within {hours}h of signup',
+        hoursRemaining: '⏰ {hours}h remaining',
+      },
       quickActions: {
         generateReport: 'Export evidence',
         generateReportDesc: 'Decision records with audit hashes',
@@ -1092,6 +1105,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 见 en 段注释：入口原文承诺 GDPR/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
+      aha: {
+        achievedTitle: '🎉 已发布首个策略',
+        hoursAfterSignup: '注册后 {hours} 小时',
+        achieved: '已达成',
+        insideWindow: '✨ 在 {hours} 小时 AHA 窗口内完成——干得漂亮！',
+        publishFirstTitle: '发布你的第一个策略',
+        publishFirstBody: '准备好上线第一条规则了吗？只需几分钟。',
+        createPolicy: '创建策略 →',
+        challengeTitle: 'AHA 时刻挑战',
+        challengeBody: '注册后 {hours} 小时内发布你的第一个策略',
+        hoursRemaining: '⏰ 还剩 {hours} 小时',
+      },
       quickActions: {
         generateReport: '导出证据',
         generateReportDesc: '决策记录与审计哈希',
@@ -1850,6 +1875,23 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 见 en 段注释：入口原文承诺 DSGVO/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
+      aha: {
+        achievedTitle: '🎉 Erste Richtlinie veröffentlicht',
+        hoursAfterSignup: '{hours} Stunden nach der Registrierung',
+        achieved: 'Erreicht',
+        insideWindow: '✨ Innerhalb des {hours}-Stunden-AHA-Fensters – super!',
+        publishFirstTitle: 'Veröffentlichen Sie Ihre erste Richtlinie',
+        publishFirstBody: 'Bereit, Ihre erste Regel live zu schalten? Das dauert nur wenige Minuten.',
+        createPolicy: 'Richtlinie erstellen →',
+        challengeTitle: 'AHA-Moment-Challenge',
+        challengeBody: 'Veröffentlichen Sie Ihre erste Richtlinie innerhalb von {hours} Stunden nach der Registrierung',
+        hoursRemaining: '⏰ noch {hours} Std.',
+      },
+      // 包内 de 未翻译 Policy Execution API，本地覆盖。
+      apiUsage: {
+        title: 'Policy-Ausführungs-API',
+        lockedHint: 'Die Policy-Ausführungs-API ist im Free-Plan nicht enthalten. Auf Pro/Team upgraden oder 14-Tage-Trial starten.',
+      },
       quickActions: {
         generateReport: 'Nachweise exportieren',
         generateReportDesc: 'Entscheidungsdaten mit Audit-Hashes',
@@ -2529,7 +2571,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       toggleAriaLabel: 'इस टीम के लिए {language} टॉगल करें',
       saveFailed: 'अपडेट नहीं हो सका — कृपया पुनः प्रयास करें',
     },
-    dashboardNav: { reports: 'साक्ष्य', approvals: 'अनुमोदन', aiWorkspace: 'एआई कार्यक्षेत्र', commandPalette: { aiWorkspace: 'एआई कार्यक्षेत्र खोलें' } },
+    dashboardNav: { reports: 'साक्ष्य', approvals: 'अनुमोदन', aiWorkspace: 'AI कार्यक्षेत्र', commandPalette: { aiWorkspace: 'AI कार्यक्षेत्र खोलें' } },
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
     notifications: {
       guardApprovalRequested: 'अनुमोदन आवश्यक: {policyName}',
@@ -2606,6 +2648,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 见 en 段注释：入口原文承诺 GDPR/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
+      aha: {
+        achievedTitle: '🎉 पहली नीति प्रकाशित',
+        hoursAfterSignup: 'साइन अप के {hours} घंटे बाद',
+        achieved: 'प्राप्त किया',
+        insideWindow: '✨ {hours} घंटे की AHA अवधि के भीतर — शानदार!',
+        publishFirstTitle: 'अपनी पहली नीति प्रकाशित करें',
+        publishFirstBody: 'अपना पहला नियम शुरू करने के लिए तैयार हैं? इसमें बस कुछ मिनट लगते हैं।',
+        createPolicy: 'नीति बनाएँ →',
+        challengeTitle: 'AHA क्षण चुनौती',
+        challengeBody: 'साइन अप के {hours} घंटे के भीतर अपनी पहली नीति प्रकाशित करें',
+        hoursRemaining: '⏰ {hours} घंटे शेष',
+      },
       quickActions: {
         generateReport: 'साक्ष्य निर्यात करें',
         generateReportDesc: 'ऑडिट हैश सहित निर्णय रिकॉर्ड',
