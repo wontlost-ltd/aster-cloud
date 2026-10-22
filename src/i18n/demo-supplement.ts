@@ -582,6 +582,20 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         approvalCount: '{count} approval records',
       },
       logs: {
+        // 筛选区标题、相对时间「刚刚」、加载与空态提示（原为硬编码英文）。
+        filtersTitle: 'Filters',
+        justNow: 'Just now',
+        loadingLogs: 'Loading execution logs…',
+        noLogsHint: 'Execute the policy to see logs here',
+        // runner-parity 影子校验徽章。
+        parity: {
+          tooltip: 'Runner replay parity (shadow check)',
+          match: 'parity ✓',
+          divergent: 'parity ✗',
+          unavailable: 'parity —',
+          error: 'parity error',
+          indeterminate: 'parity ?',
+        },
         // 执行日志里 indeterminate（值输出）行的中性状态标签。
         computed: 'Computed',
         // Verdict 待处置态（ADR 0041 §4）：需人工批准 / 已升级，非失败。
@@ -1327,6 +1341,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         approvalCount: '{count} 条审批记录',
       },
       logs: {
+        filtersTitle: '筛选',
+        justNow: '刚刚',
+        loadingLogs: '正在加载执行日志…',
+        noLogsHint: '执行该策略后，日志会显示在这里',
+        parity: {
+          tooltip: '执行器回放一致性（影子校验）',
+          match: '一致 ✓',
+          divergent: '不一致 ✗',
+          unavailable: '未校验 —',
+          error: '校验出错',
+          indeterminate: '无法判定 ?',
+        },
         computed: '已计算',
         require_approval: '需人工批准',
         escalate: '已升级',
@@ -2072,6 +2098,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         approvalCount: '{count} Freigabeeinträge',
       },
       logs: {
+        filtersTitle: 'Filter',
+        justNow: 'Gerade eben',
+        loadingLogs: 'Ausführungsprotokolle werden geladen…',
+        noLogsHint: 'Führen Sie die Richtlinie aus, um hier Protokolle zu sehen',
+        parity: {
+          tooltip: 'Runner-Replay-Parität (Schattenprüfung)',
+          match: 'Parität ✓',
+          divergent: 'Parität ✗',
+          unavailable: 'Parität —',
+          error: 'Paritätsfehler',
+          indeterminate: 'Parität ?',
+        },
         computed: 'Berechnet',
         require_approval: 'Freigabe nötig',
         escalate: 'Eskaliert',
@@ -2815,6 +2853,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         approvalCount: '{count} अनुमोदन रिकॉर्ड',
       },
       logs: {
+        filtersTitle: 'फ़िल्टर',
+        justNow: 'अभी-अभी',
+        loadingLogs: 'निष्पादन लॉग लोड हो रहे हैं…',
+        noLogsHint: 'यहाँ लॉग देखने के लिए नीति निष्पादित करें',
+        parity: {
+          tooltip: 'रनर रीप्ले समानता (छाया जाँच)',
+          match: 'समानता ✓',
+          divergent: 'समानता ✗',
+          unavailable: 'समानता —',
+          error: 'समानता त्रुटि',
+          indeterminate: 'समानता ?',
+        },
         computed: 'परिकलित',
         require_approval: 'अनुमोदन आवश्यक',
         escalate: 'एस्केलेट किया गया',

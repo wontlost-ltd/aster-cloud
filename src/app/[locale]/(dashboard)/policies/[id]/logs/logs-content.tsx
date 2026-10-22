@@ -151,6 +151,12 @@ interface Translations {
     rateNote: string;
     recentActivity: string;
     loadError: string;
+    /** 筛选区标题（`filter` 是「状态」筛选项本身的标签）。 */
+    filtersTitle: string;
+    /** 相对时间：不足一分钟。 */
+    justNow: string;
+    loadingLogs: string;
+    noLogsHint: string;
     /** 待审批行「查看审批」链接文案。 */
     viewApproval: string;
     /** guard 登记失败行「重新登记」按钮文案。 */
@@ -552,7 +558,7 @@ export function LogsContent({
             <svg className="h-5 w-5 text-fg-subtle mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
             </svg>
-            <h3 className="text-sm font-semibold text-fg">{t.logs.filter}</h3>
+            <h3 className="text-sm font-semibold text-fg">{t.logs.filtersTitle}</h3>
           </div>
           {hasActiveFilters && (
             <button
@@ -569,7 +575,7 @@ export function LogsContent({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
           <div>
             <label className="block text-xs font-semibold text-fg-muted uppercase tracking-wide mb-2">
-              Status
+              {t.logs.filter}
             </label>
             <select
               value={successFilter}
@@ -649,7 +655,7 @@ export function LogsContent({
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
               </svg>
             </div>
-            <p className="text-sm text-fg-muted">Loading execution logs...</p>
+            <p className="text-sm text-fg-muted">{t.logs.loadingLogs}</p>
           </div>
         ) : logs.length === 0 ? (
           <div className="p-12 text-center">
@@ -659,7 +665,7 @@ export function LogsContent({
               </svg>
             </div>
             <h3 className="text-sm font-medium text-fg mb-1">{t.logs.noLogs}</h3>
-            <p className="text-sm text-fg-muted">Execute the policy to see logs here</p>
+            <p className="text-sm text-fg-muted">{t.logs.noLogsHint}</p>
           </div>
         ) : (
           <div className="divide-y divide-border">
@@ -733,7 +739,7 @@ export function LogsContent({
 
                       {/* Timestamp */}
                       <div className="text-sm text-fg-subtle" title={formatCreatedAtUtc(log.createdAt, locale)}>
-                        {mounted ? formatRelativeTime(log.createdAt, locale) : formatCreatedAtUtc(log.createdAt, locale)}
+                        {mounted ? formatRelativeTime(log.createdAt, locale, t.logs.justNow) : formatCreatedAtUtc(log.createdAt, locale)}
                       </div>
 
                       {/* Expand/Collapse Button */}
@@ -869,16 +875,20 @@ function formatCreatedAtUtc(iso: string, locale: string): string {
   return `${new Intl.DateTimeFormat(locale, CREATED_AT_FORMAT).format(new Date(iso))} UTC`;
 }
 
-/** 相对时间（仅挂载后调用）：7 天以上回落为本地日期。 */
-function formatRelativeTime(iso: string, locale: string): string {
+/**
+ * 相对时间（仅挂载后调用）：不足一分钟用本地化的「刚刚」，分钟/小时/天交给 Intl.RelativeTimeFormat
+ * 按界面语言格式化，7 天以上回落为本地日期。
+ */
+export function formatRelativeTime(iso: string, locale: string, justNow: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
 
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
+  if (diffMins < 1) return justNow;
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'always', style: 'narrow' });
+  if (diffMins < 60) return rtf.format(-diffMins, 'minute');
+  if (diffHours < 24) return rtf.format(-diffHours, 'hour');
+  if (diffDays < 7) return rtf.format(-diffDays, 'day');
   return formatDate(iso, locale);
 }
