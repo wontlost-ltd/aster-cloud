@@ -13,7 +13,9 @@ import {
   PageHeader,
   Textarea,
 } from '@/components/ui';
+import { Link } from '@/i18n/navigation';
 import type { InboxItem } from '@/lib/approvals-inbox';
+import type { PendingVersionApproval } from '@/lib/version-approvals-inbox';
 import type { GuardApprovalStatus } from '@/services/policy/guard-types';
 
 // 与服务端 GUARD_APPROVAL_STATUSES 同序；客户端组件不能引入 server-only 模块，故在此重列
@@ -32,6 +34,8 @@ interface Props {
   initialStatus: GuardApprovalStatus;
   initialItems: InboxItem[];
   initialUnavailable: string[];
+  /** 待审批的策略版本（与 Action-Guard 审批分区展示，不随状态 tab 切换） */
+  versionApprovals: PendingVersionApproval[];
   highlightDecisionId: string | null;
 }
 
@@ -177,7 +181,58 @@ function DecisionDialog({
   );
 }
 
-export function ApprovalsContent({ locale, initialStatus, initialItems, initialUnavailable, highlightDecisionId }: Props) {
+/**
+ * 策略版本审批分区。只负责「找得到」：批准/驳回仍在版本页完成（approveVersion），这里不重复审批逻辑。
+ * 作者本人的提交只读，标注等待他人审批（四眼原则）。
+ */
+function VersionApprovalsSection({ items, locale, t }: { items: PendingVersionApproval[]; locale: string; t: T }) {
+  return (
+    <section aria-labelledby="version-approvals-title" className="mb-8">
+      <h2 id="version-approvals-title" className="text-lg font-semibold text-fg">{t('versions.title')}</h2>
+      <p className="mt-1 mb-3 text-sm text-fg-muted">{t('versions.subtitle')}</p>
+      {items.length === 0 ? (
+        <p className="rounded-lg border border-border px-4 py-6 text-sm text-fg-muted">{t('versions.empty')}</p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-xs uppercase text-fg-muted">
+                <th className="px-4 py-2 text-left">{t('thPolicy')}</th>
+                <th className="px-4 py-2 text-left">{t('versions.thVersion')}</th>
+                <th className="px-4 py-2 text-left">{t('versions.thSubmitter')}</th>
+                <th className="px-4 py-2 text-left">{t('versions.thSubmitted')}</th>
+                <th className="px-4 py-2 text-left">{t('thActions')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.versionId} data-version-id={item.versionId} className="border-b border-border">
+                  <td className="px-4 py-3 font-medium text-fg">{item.policyName}</td>
+                  <td className="px-4 py-3">v{item.version}</td>
+                  <td className="px-4 py-3">{item.submittedBy ?? t('versions.unknownUser')}</td>
+                  <td className="px-4 py-3 text-fg-muted">{formatCreatedAt(item.submittedAt, locale)}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      {!item.canAct && <Badge variant="neutral">{t('versions.awaitingOthers')}</Badge>}
+                      <Link href={`/policies/${item.policyId}/versions`}
+                        className="text-sm font-medium text-primary hover:text-primary-hover">
+                        {t(item.canAct ? 'versions.review' : 'versions.view')} →
+                      </Link>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+export function ApprovalsContent({
+  locale, initialStatus, initialItems, initialUnavailable, versionApprovals, highlightDecisionId,
+}: Props) {
   const t = useTranslations('approvals');
   const [status, setStatus] = useState<GuardApprovalStatus>(initialStatus);
   const [items, setItems] = useState<InboxItem[]>(initialItems);
@@ -223,6 +278,9 @@ export function ApprovalsContent({ locale, initialStatus, initialItems, initialU
         className="mb-6"
       />
 
+      <VersionApprovalsSection items={versionApprovals} locale={locale} t={t} />
+
+      <h2 className="mb-3 text-lg font-semibold text-fg">{t('guardTitle')}</h2>
       <div role="tablist" className="mb-4 flex flex-wrap gap-2">
         {STATUSES.map((s) => (
           <Button key={s} role="tab" aria-selected={s === status} size="sm"

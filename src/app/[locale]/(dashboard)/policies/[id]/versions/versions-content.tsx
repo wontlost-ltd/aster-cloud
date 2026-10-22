@@ -21,6 +21,7 @@ import {
 import { GitBranch, MoreVertical } from 'lucide-react';
 import { Link } from '@/i18n/navigation';
 import { useApi } from '@/lib/api';
+import { isSelfApproval } from '@/services/policy/version-approval-rules';
 
 /**
  * Version management + approval workflow UI.
@@ -114,7 +115,7 @@ export function VersionsContent({
   /** Build the per-row action set, respecting the version's state +
    *  self-approval rule. */
   const allowedActions = (v: VersionRow): ActionKind[] => {
-    const isSelf = v.createdBy === currentUserId;
+    const isSelf = isSelfApproval(v.createdBy, currentUserId);
     switch (v.status) {
       case 'DRAFT':
         return isSelf ? ['submit'] : ['submit'];

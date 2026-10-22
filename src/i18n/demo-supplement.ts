@@ -249,6 +249,20 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 审批收件箱（ADR 0042 §5.2）。
     approvals: {
+      // 策略版本审批分区（生产 E2E Q1）与 Action-Guard 分区标题。
+      guardTitle: 'Action approvals',
+      versions: {
+        title: 'Policy version approvals',
+        subtitle: 'Versions submitted for approval on policies you own. A version cannot be approved by its own author.',
+        empty: 'No policy versions are waiting for approval.',
+        thVersion: 'Version',
+        thSubmitter: 'Submitted by',
+        thSubmitted: 'Submitted',
+        review: 'Review',
+        view: 'View',
+        awaitingOthers: 'Waiting for another approver',
+        unknownUser: 'Unknown',
+      },
       title: 'Approvals',
       subtitle: 'Actions that need a human decision across all your workspaces. You can decide only where your verified business role matches.',
       status: {
@@ -1045,6 +1059,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 审批收件箱（ADR 0042 §5.2）。
     approvals: {
+      guardTitle: '动作审批',
+      versions: {
+        title: '策略版本审批',
+        subtitle: '你名下策略中已提交审批的版本。版本作者不能审批自己创建的版本。',
+        empty: '没有等待审批的策略版本。',
+        thVersion: '版本',
+        thSubmitter: '提交人',
+        thSubmitted: '提交时间',
+        review: '去审批',
+        view: '查看',
+        awaitingOthers: '等待他人审批',
+        unknownUser: '未知',
+      },
       title: '审批',
       subtitle: '汇总你所在全部工作区中需要人工决定的动作。只有已验证业务角色匹配时才能审批。',
       status: {
@@ -1819,6 +1846,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 审批收件箱（ADR 0042 §5.2）。
     approvals: {
+      guardTitle: 'Aktionsfreigaben',
+      versions: {
+        title: 'Freigaben von Richtlinienversionen',
+        subtitle: 'Zur Freigabe eingereichte Versionen Ihrer Richtlinien. Der Autor einer Version kann sie nicht selbst freigeben.',
+        empty: 'Keine Richtlinienversionen warten auf Freigabe.',
+        thVersion: 'Version',
+        thSubmitter: 'Eingereicht von',
+        thSubmitted: 'Eingereicht am',
+        review: 'Prüfen',
+        view: 'Ansehen',
+        awaitingOthers: 'Wartet auf eine andere freigebende Person',
+        unknownUser: 'Unbekannt',
+      },
       title: 'Freigaben',
       subtitle: 'Aktionen, die eine menschliche Entscheidung brauchen – über alle Ihre Arbeitsbereiche. Entscheiden können Sie nur, wenn Ihre verifizierte Geschäftsrolle passt.',
       status: {
@@ -2597,6 +2637,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 审批收件箱（ADR 0042 §5.2）。
     approvals: {
+      guardTitle: 'कार्रवाई अनुमोदन',
+      versions: {
+        title: 'नीति संस्करण अनुमोदन',
+        subtitle: 'आपकी नीतियों के वे संस्करण जो अनुमोदन के लिए जमा किए गए हैं। कोई संस्करण उसके अपने लेखक द्वारा अनुमोदित नहीं किया जा सकता।',
+        empty: 'कोई नीति संस्करण अनुमोदन की प्रतीक्षा में नहीं है।',
+        thVersion: 'संस्करण',
+        thSubmitter: 'जमाकर्ता',
+        thSubmitted: 'जमा करने का समय',
+        review: 'समीक्षा करें',
+        view: 'देखें',
+        awaitingOthers: 'किसी अन्य अनुमोदक की प्रतीक्षा',
+        unknownUser: 'अज्ञात',
+      },
       title: 'अनुमोदन',
       subtitle: 'आपके सभी वर्कस्पेस में वे कार्रवाइयाँ जिन पर मानवीय निर्णय चाहिए। आप केवल वहीं निर्णय ले सकते हैं जहाँ आपकी सत्यापित व्यावसायिक भूमिका मेल खाती है।',
       status: {

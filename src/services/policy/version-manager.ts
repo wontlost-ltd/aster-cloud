@@ -27,6 +27,7 @@ import {
   type ReservedSets,
 } from '@/lib/policy-alias';
 import { declaresProfile } from '@/lib/policy-profile-declaration';
+import { isSelfApproval } from './version-approval-rules';
 
 type PolicyVersion = InferSelectModel<typeof policyVersions>;
 type PolicyVersionStatus = PolicyVersion['status'];
@@ -483,7 +484,7 @@ export async function approveVersion(params: {
   }
 
   // 四眼原则：创建者不能审批自己的版本
-  if (targetVersion.createdBy === approverId) {
+  if (isSelfApproval(targetVersion.createdBy, approverId)) {
     await logSecurityEvent({
       eventType: 'SELF_APPROVAL_ATTEMPT',
       severity: 'WARNING',

@@ -44,6 +44,11 @@ const KEYS = [
   'dashboard.aha.challengeTitle', 'dashboard.aha.challengeBody', 'dashboard.aha.hoursRemaining',
   // F26 两个 API 计量分别命名
   'dashboard.stats.restApiCalls', 'billing.restApiCallsThisMonth', 'billing.policyApiCallsThisMonth',
+  // Q1 审批收件箱的策略版本分区
+  'approvals.guardTitle', 'approvals.versions.title', 'approvals.versions.subtitle', 'approvals.versions.empty',
+  'approvals.versions.thVersion', 'approvals.versions.thSubmitter', 'approvals.versions.thSubmitted',
+  'approvals.versions.review', 'approvals.versions.view', 'approvals.versions.awaitingOthers',
+  'approvals.versions.unknownUser', 'approvals.thPolicy', 'approvals.thActions',
 ];
 
 describe('生产 E2E 文案：四语完整', () => {
