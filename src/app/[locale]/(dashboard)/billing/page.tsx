@@ -192,6 +192,12 @@ export default async function BillingOverviewPage() {
                 used={usageStats.usage.apiCalls}
                 limit={usageStats.usage.apiCallsLimit}
               />
+              {/* 两行上限数值相同，容易读成「共用一个额度」或「被重复计了两次」：说明是两份独立额度 */}
+              {policyApiCalls !== null && (
+                <p className="text-xs text-fg-muted" data-testid="api-meters-separate">
+                  {t('apiMetersSeparate')}
+                </p>
+              )}
               <UsageRow
                 label={t('savedPolicies')}
                 used={usageStats.usage.policies}

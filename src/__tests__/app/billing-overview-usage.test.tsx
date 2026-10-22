@@ -62,6 +62,8 @@ describe('账单概览 API 用量', () => {
 
     expect(h.calls).toEqual([['u1', '2026-10']]);
     expect(html).toContain('billing.policyApiCallsThisMonth');
+    // 两行上限相同：说明是两份独立额度（review minor）
+    expect(html).toContain('billing.apiMetersSeparate');
     expect(html).toContain('47 / 5,000');
     expect(html).toContain('billing.restApiCallsThisMonth');
     expect(html).toContain('0 / 5,000');
@@ -75,6 +77,7 @@ describe('账单概览 API 用量', () => {
     const html = await render();
 
     expect(html).not.toContain('billing.policyApiCallsThisMonth');
+    expect(html).not.toContain('billing.apiMetersSeparate');
     expect(html).toContain('billing.restApiCallsThisMonth');
     expect(spy).toHaveBeenCalledWith('[billing] policy api usage unavailable', expect.any(Error));
     spy.mockRestore();

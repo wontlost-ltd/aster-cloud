@@ -729,6 +729,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     billing: {
       restApiCallsThisMonth: 'Cloud REST API calls this month',
       policyApiCallsThisMonth: 'Policy Execution API calls this month',
+      // 两项 API 计量各自独立计数的说明（review minor）。
+      apiMetersSeparate: 'These two API meters are counted separately, and each has its own monthly allowance of the same size; calls on one do not use up the other.',
       plans: {
         features: {
           aiDrafts20: '20 AI drafts / month',
@@ -1729,6 +1731,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     billing: {
       restApiCallsThisMonth: '本月 Cloud REST API 调用次数',
       policyApiCallsThisMonth: '本月 Policy 执行 API 调用次数',
+      // 两项 API 计量各自独立计数的说明（review minor）。
+      apiMetersSeparate: '以上两项 API 计量分别计数，各自享有同样大小的月度额度，互不占用。',
       plans: {
         features: {
           aiDrafts20: '每月 20 次 AI 草稿',
@@ -2732,6 +2736,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     billing: {
       restApiCallsThisMonth: 'Cloud-REST-API-Aufrufe diesen Monat',
       policyApiCallsThisMonth: 'Policy-Ausführungs-API-Aufrufe diesen Monat',
+      // 两项 API 计量各自独立计数的说明（review minor）。
+      apiMetersSeparate: 'Diese beiden API-Zähler werden getrennt gezählt und haben jeweils ein eigenes, gleich großes Monatskontingent; Aufrufe des einen verbrauchen nichts vom anderen.',
       plans: {
         features: {
           aiDrafts20: '20 KI-Entwürfe / Monat',
@@ -3724,6 +3730,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     billing: {
       restApiCallsThisMonth: 'इस माह Cloud REST API कॉल',
       policyApiCallsThisMonth: 'इस माह नीति निष्पादन API कॉल',
+      // 两项 API 计量各自独立计数的说明（review minor）。
+      apiMetersSeparate: 'ये दोनों API मीटर अलग-अलग गिने जाते हैं और प्रत्येक का अपना समान आकार का मासिक कोटा है; एक के कॉल दूसरे का कोटा नहीं घटाते।',
       plans: {
         features: {
           aiDrafts20: '20 AI ड्राफ़्ट / माह',
