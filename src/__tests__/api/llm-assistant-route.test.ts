@@ -49,7 +49,10 @@ beforeEach(() => {
   proxyLlmSse.mockReset().mockResolvedValue(new Response('ok'));
   getSetting.mockReset();
 });
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.clearAllMocks();
+  vi.unstubAllEnvs();
+});
 
 describe('POST /api/llm/assistant', () => {
   it('管理员附加指令被注入请求体', async () => {
@@ -140,10 +143,19 @@ describe('POST /api/llm/assistant', () => {
   it('★AI 工作台调用：追加「没有检索结果列表」说明，站内链接为绝对地址', async () => {
     settings({ extra: '' });
     const { NO_RESULTS_UI_NOTE } = await import('@/lib/assistant/server-grounding');
+    // 未配置公开站点（本地开发）时退回请求来源
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', '');
     await POST(req({ query: 'API 密钥', locale: 'zh-CN', groundingHits: [] }, WORKSPACE));
     const b = await forwardedBody();
     expect(b.adminInstructions).toBe(NO_RESULTS_UI_NOTE);
     expect(b.groundingHits[0].href).toBe('https://x.test/zh/docs/getting-started/api-keys');
+  });
+
+  it('★AI 工作台调用：绝对链接用配置的公开站点，而不是请求 Host（如 workers.dev）', async () => {
+    settings({ extra: '' });
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://aster-lang.cloud/');
+    await POST(req({ query: 'API 密钥', locale: 'zh-CN', groundingHits: [] }, WORKSPACE));
+    expect((await forwardedBody()).groundingHits[0].href).toBe('https://aster-lang.cloud/zh/docs/getting-started/api-keys');
   });
 
   it('AI 工作台调用 + 管理员指令：两者都保留，总长不超上限', async () => {

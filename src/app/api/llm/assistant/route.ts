@@ -23,6 +23,22 @@ import {
 import { errorEnvelope } from '@/lib/api/error-envelope';
 import { AI_WORKSPACE_CALLER } from '@/lib/llm-caller';
 import { NO_RESULTS_UI_NOTE, retrieveServerGrounding } from '@/lib/assistant/server-grounding';
+import { safeEnv } from '@/lib/runtime/safe-env';
+
+/**
+ * 给工作台的站内链接要指向对外公开的站点：取配置的 NEXT_PUBLIC_APP_URL（生产必填），
+ * 不跟随请求 Host——工作台若经 workers.dev 或内部路由调用，链接也不能指向那些地址。
+ * 只有未配置（本地开发）或配置非法时才退回请求来源。
+ */
+function publicOrigin(requestOrigin: string): string {
+  const configured = safeEnv('NEXT_PUBLIC_APP_URL');
+  if (!configured) return requestOrigin;
+  try {
+    return new URL(configured).origin;
+  } catch {
+    return requestOrigin;
+  }
+}
 
 /** 合并管理员指令与调用方说明，总长不超过 aster-api 的上限（超限会被 400 拒绝）。 */
 function composeInstructions(admin: string, note: string | null): string | null {
@@ -72,7 +88,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const groundingHits =
     !hasHits && typeof fields.query === 'string' && fields.query.trim()
       ? retrieveServerGrounding(fields.query, fields.locale, {
-          absoluteOrigin: fromWorkspace ? req.nextUrl.origin : undefined,
+          absoluteOrigin: fromWorkspace ? publicOrigin(req.nextUrl.origin) : undefined,
         })
       : fields.groundingHits;
   const patched = {
