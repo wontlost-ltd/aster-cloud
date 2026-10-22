@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 
 vi.mock('next-intl', () => ({ useTranslations: () => (k: string) => k }));
+const themeState = vi.hoisted(() => ({ resolvedTheme: 'light' as string | undefined }));
+vi.mock('next-themes', () => ({ useTheme: () => ({ resolvedTheme: themeState.resolvedTheme }) }));
 
 import { AiWorkspacePanel } from '@/components/policy/ai-workspace-panel';
 
@@ -48,13 +50,14 @@ const applyMsg = (over: object = {}) => ({
 
 afterEach(() => {
   vi.useRealTimers();
+  themeState.resolvedTheme = 'light';
 });
 
 describe('AiWorkspacePanel', () => {
   it('iframe 指向交接路由并允许剪贴板写入', () => {
     const { iframe } = setup();
     expect(iframe.getAttribute('src')).toBe(
-      `/api/ai-workspace/handoff?next=${encodeURIComponent('/panel?policyId=p1')}&locale=zh`,
+      `/api/ai-workspace/handoff?next=${encodeURIComponent('/panel?policyId=p1')}&locale=zh&theme=light`,
     );
     expect(iframe.getAttribute('allow')).toBe('clipboard-write');
   });
@@ -154,5 +157,31 @@ describe('AiWorkspacePanel', () => {
     Object.defineProperty(iframe, 'contentWindow', { value: { postMessage }, configurable: true });
     rerender(view(fakeEditor()));
     expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it('★暗色主题：交接地址带 theme=dark（F29）', () => {
+    themeState.resolvedTheme = 'dark';
+    const { iframe } = setup();
+    expect(new URLSearchParams(iframe.getAttribute('src')!.split('?')[1]).get('theme')).toBe('dark');
+  });
+
+  it('主题切换：iframe src 随之更新（重新交接以新主题加载）', () => {
+    const view = render(
+      <AiWorkspacePanel base={BASE} policyId="p1" editor={null} cnlLocale="zh" uiLocale="zh" onApplyContent={vi.fn()} />,
+    );
+    expect(view.container.querySelector('iframe')!.getAttribute('src')).toContain('theme=light');
+    themeState.resolvedTheme = 'dark';
+    view.rerender(
+      <AiWorkspacePanel base={BASE} policyId="p1" editor={null} cnlLocale="zh" uiLocale="zh" onApplyContent={vi.fn()} />,
+    );
+    expect(view.container.querySelector('iframe')!.getAttribute('src')).toContain('theme=dark');
+  });
+
+  it('主题尚未解析时不加载 iframe（避免按错误主题加载后再重载）', () => {
+    themeState.resolvedTheme = undefined;
+    const view = render(
+      <AiWorkspacePanel base={BASE} policyId="p1" editor={null} cnlLocale="zh" uiLocale="zh" onApplyContent={vi.fn()} />,
+    );
+    expect(view.container.querySelector('iframe')).toBeNull();
   });
 });

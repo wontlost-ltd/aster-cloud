@@ -30,3 +30,28 @@ export function isAiWorkspaceEnabledFor(userId: string, base?: string | null, en
   const list = (enabledFor ?? '').split(',').map((s) => s.trim()).filter(Boolean);
   return list.includes('all') || list.includes(userId);
 }
+
+/** 工作台支持的主题；cloud 只传解析后的 dark/light，不传 system。 */
+export type AiWorkspaceTheme = 'dark' | 'light';
+
+/** 把 next-themes 的 resolvedTheme 收窄为工作台主题；未解析或未知值返回 null。 */
+export function toWorkspaceTheme(value: string | null | undefined): AiWorkspaceTheme | null {
+  return value === 'dark' || value === 'light' ? value : null;
+}
+
+/**
+ * 编辑器 iframe 的交接地址：cloud 交接路由签发令牌后 302 到工作台 /handoff，
+ * 并把 theme 原样转交（工作台据此选择暗色/亮色）。
+ */
+export function aiWorkspaceHandoffSrc({
+  next,
+  locale,
+  theme,
+}: {
+  next: string;
+  locale: string;
+  theme: AiWorkspaceTheme;
+}): string {
+  const params = new URLSearchParams({ next, locale, theme });
+  return `/api/ai-workspace/handoff?${params.toString()}`;
+}
