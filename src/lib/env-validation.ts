@@ -42,8 +42,11 @@ type EnvCheck = {
    * 配任一即可。错误信息列出别名组：`AUTH_SECRET | NEXTAUTH_SECRET`。
    */
   key: string | ReadonlyArray<string>;
-  /** always = 两种 NODE_ENV 都必填；production-only = 仅生产校验，dev 仅 warn。 */
-  required: 'always' | 'production-only';
+  /**
+   * always = 两种 NODE_ENV 都必填；production-only = 仅生产校验，dev 仅 warn；
+   * recommended = 任何环境都只 warn——缺失时功能自行降级、不应拦下整站启动。
+   */
+  required: 'always' | 'production-only' | 'recommended';
   /**
    * 限定哪种部署模式才校验。省略 = 两种模式都校验。
    * 用于把 Stripe（saas only）与 LICENSE_KEY（on-prem only）等隔离。
@@ -179,10 +182,11 @@ const ENV_CHECKS: readonly EnvCheck[] = [
   // ── SaaS-only：AI 调用内容审计 ───────────────────────────────────
   // 加密落库 prompt/completion，并在 GDPR 第 15 条导出时解密（lib/ai-audit-vault.ts、
   // api/user/ai-data-export）。缺失时导出只能给出未加密字段，原文部分标为 unavailable。
-  // on-prem 的 staging/Helm 外部密钥清单尚未包含此项，先只在 SaaS 强校验。
+  // 缺失时 GDPR 导出只降级为「审计原文暂不可用」，不能因此让整站 500，故只 warn。
+  // on-prem 的 staging/Helm 外部密钥清单尚未包含此项，先只在 SaaS 提示。
   {
     key: 'AI_AUDIT_ENCRYPTION_SECRET',
-    required: 'production-only',
+    required: 'recommended',
     requiredIn: ['saas'],
     description: 'AI 审计原文加密主密钥（≥16 字符，入库后不可轮换，否则旧记录无法解密）',
   },
@@ -247,7 +251,7 @@ export interface ValidationResult {
   ok: boolean;
   /** 必填但缺失，必须 throw / 拦发布。 */
   missing: string[];
-  /** dev 模式下 production-only 未配 — 仅 warn 提示。 */
+  /** dev 模式下 production-only 未配、或任何模式下 recommended 未配 — 仅 warn 提示。 */
   warnings: string[];
   /** 校验时使用的部署模式（错误信息里展示，避免歧义）。 */
   mode: DeploymentMode;
@@ -290,6 +294,8 @@ export function checkEnv(
     const friendlyMsg = `${keys.join(' | ')} (${check.description})`;
     if (check.required === 'always') {
       missing.push(friendlyMsg);
+    } else if (check.required === 'recommended') {
+      warnings.push(friendlyMsg);
     } else if (check.required === 'production-only') {
       if (isProduction) {
         missing.push(friendlyMsg);
