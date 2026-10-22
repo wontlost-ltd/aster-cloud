@@ -16,7 +16,7 @@ let fetchMock: ReturnType<typeof vi.fn>;
 
 function workspaceConfigured() {
   vi.stubEnv('NEXT_PUBLIC_AI_WORKSPACE_URL', 'https://ai.aster-lang.cloud');
-  vi.stubEnv('AI_WORKSPACE_GDPR_HMAC_KEY', 'gdpr-test-key');
+  vi.stubEnv('AI_WORKSPACE_GDPR_HMAC_KEY', 'gdpr-test-key-0123456789abcdef0123456789');
 }
 
 beforeEach(() => {
@@ -51,7 +51,7 @@ describe('DELETE /api/user/ai-data', () => {
     fetchMock.mockImplementation(async () => {
       order.push('workspace');
       return new Response(
-        JSON.stringify({ userId: 'u1', persisted: true, deletedConversations: 3, deletedAudit: 41, tenantHold: false, held: ['policy:p-9'] }),
+        JSON.stringify({ userId: 'u1', persisted: true, deletedConversations: 3, deletedAudit: 41, tenantHold: false, held: ['policy:p-9'], invalidatedSessions: 1 }),
         { status: 200 },
       );
     });
@@ -60,7 +60,9 @@ describe('DELETE /api/user/ai-data', () => {
     const body = await res.json();
     expect(order).toEqual(['cloud', 'workspace']);
     expect(fetchMock.mock.calls[0][0]).toBe('https://ai.aster-lang.cloud/internal/gdpr/erase');
-    expect(body.aiWorkspace).toEqual({ deletedConversations: 3, deletedAudit: 41, tenantHold: false, held: ['policy:p-9'] });
+    expect(body.aiWorkspace).toEqual({
+      deletedConversations: 3, deletedAudit: 41, tenantHold: false, held: ['policy:p-9'], invalidatedSessions: 1,
+    });
   });
 
   it('用户级法律保留（tenantHold）原样返回', async () => {

@@ -148,7 +148,8 @@ AI_WORKSPACE_ENABLED_FOR = "784d38c4-f433-4369-b4dc-ab0f4f0cc2b9"
 # wrangler secret put AI_WORKSPACE_HANDOFF_PRIVATE_KEY  # Ed25519 私钥，base64 PKCS#8 DER
 # wrangler secret put AI_WORKSPACE_HMAC_KEY             # `openssl rand -hex 32`
 # wrangler secret put AI_WORKSPACE_GDPR_HMAC_KEY        # GDPR 导出/抹除签名（F23），与工作台 AIW_GDPR_HMAC_KEY 同值，
-#                                                       # 须与 AI_WORKSPACE_HMAC_KEY 不同；工作台地址已配置而缺此密钥时，
+#                                                       # ≥32 字节（`openssl rand -hex 32`），须与 AI_WORKSPACE_HMAC_KEY 不同；
+#                                                       # 过短或相同按未配置处理；工作台地址已配置而缺此密钥时，
 #                                                       # 「你的 AI 数据」会提示工作台数据未能导出 / 删除。
 # NEXT_PUBLIC_AI_WORKSPACE_URL / AI_WORKSPACE_ENABLED_FOR 为公开配置，启用时再写入 [vars]。
 #

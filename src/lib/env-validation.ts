@@ -234,7 +234,7 @@ const ENV_CHECKS: readonly EnvCheck[] = [
   //
   //   AI_WORKSPACE_GDPR_HMAC_KEY
   //     —— cloud → 工作台 GDPR 导出 / 抹除端点的签名密钥（F23，见 lib/ai-workspace-gdpr.ts），
-  //        与工作台 AIW_GDPR_HMAC_KEY 同值、与 AI_WORKSPACE_HMAC_KEY 不同。工作台地址未配置时
+  //        与工作台 AIW_GDPR_HMAC_KEY 同值、至少 32 字节、与 AI_WORKSPACE_HMAC_KEY 不同（过短或相同按未配置处理）。工作台地址未配置时
   //        不调用；地址已配置而缺此密钥时，导出 / 清除照常完成 cloud 部分并提示工作台部分失败，
   //        不影响启动，因此不放入强校验。
   //

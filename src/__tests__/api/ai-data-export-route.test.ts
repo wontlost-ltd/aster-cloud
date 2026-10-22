@@ -62,7 +62,7 @@ describe('GET /api/user/ai-data-export', () => {
   it('★降级时仍合并工作台数据（F23）', async () => {
     delete process.env.AI_AUDIT_ENCRYPTION_SECRET;
     vi.stubEnv('NEXT_PUBLIC_AI_WORKSPACE_URL', 'https://ai.aster-lang.cloud');
-    vi.stubEnv('AI_WORKSPACE_GDPR_HMAC_KEY', 'gdpr-test-key');
+    vi.stubEnv('AI_WORKSPACE_GDPR_HMAC_KEY', 'gdpr-test-key-0123456789abcdef0123456789');
     execute.mockResolvedValueOnce([]);
     const payload = { userId: 'u1', persisted: true, conversations: [], audit: [] };
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 })));
@@ -124,13 +124,15 @@ describe('GET /api/user/ai-data-export', () => {
   it('★工作台已部署 → 合并工作台导出到 aiWorkspace（F23）', async () => {
     process.env.AI_AUDIT_ENCRYPTION_SECRET = 'test-audit-secret-min-16-chars';
     vi.stubEnv('NEXT_PUBLIC_AI_WORKSPACE_URL', 'https://ai.aster-lang.cloud');
-    vi.stubEnv('AI_WORKSPACE_GDPR_HMAC_KEY', 'gdpr-test-key');
+    vi.stubEnv('AI_WORKSPACE_GDPR_HMAC_KEY', 'gdpr-test-key-0123456789abcdef0123456789');
     execute.mockResolvedValueOnce([{ id: 'r1' }]);
     const payload = {
       userId: 'u1',
       persisted: true,
       conversations: [{ threadId: 'policy:p-1', title: 't', messages: [] }],
+      conversationsTruncated: false,
       audit: [],
+      auditTruncated: true,
     };
     const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify(payload), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
@@ -145,7 +147,7 @@ describe('GET /api/user/ai-data-export', () => {
   it('★工作台调用失败 → 仍返回 cloud 数据，aiWorkspace 为 unavailable（F23）', async () => {
     process.env.AI_AUDIT_ENCRYPTION_SECRET = 'test-audit-secret-min-16-chars';
     vi.stubEnv('NEXT_PUBLIC_AI_WORKSPACE_URL', 'https://ai.aster-lang.cloud');
-    vi.stubEnv('AI_WORKSPACE_GDPR_HMAC_KEY', 'gdpr-test-key');
+    vi.stubEnv('AI_WORKSPACE_GDPR_HMAC_KEY', 'gdpr-test-key-0123456789abcdef0123456789');
     execute.mockResolvedValueOnce([{ id: 'r1' }]);
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":"storage_unavailable"}', { status: 503 })));
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
