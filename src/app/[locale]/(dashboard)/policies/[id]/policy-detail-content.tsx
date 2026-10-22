@@ -84,6 +84,8 @@ interface PolicyDetailContentProps {
   policy: Policy;
   /** 活跃版本落库的治理档案 id（ADR 0046 §6）。 */
   profile?: string | null;
+  /** 是否已有批准版本（决定「导出为 Cedar」可用与否）；缺省按可用处理，由导出路由的 409 兜底。 */
+  hasExecutableVersion?: boolean;
   translations: Translations;
   locale: string;
 }
@@ -93,6 +95,7 @@ export function PolicyDetailContent({
   retentionDays = null,
   policy,
   profile = null,
+  hasExecutableVersion = true,
   translations: t,
   locale,
 }: PolicyDetailContentProps) {
@@ -193,7 +196,12 @@ export function PolicyDetailContent({
       </div>
 
       {/* 导出为 Cedar（ADR 0047 §6）：导出 secure-execute 会执行的版本，只读操作，冻结策略同样可导出 */}
-      <CedarExportPanel policyId={policy.id} labels={t.cedarExport} />
+      <CedarExportPanel
+        policyId={policy.id}
+        labels={t.cedarExport}
+        hasExecutableVersion={hasExecutableVersion}
+        versionsHref={`/${locale}/policies/${policy.id}/versions`}
+      />
 
       {error && (
         <div className="mb-4 rounded-md bg-red-50 p-4">

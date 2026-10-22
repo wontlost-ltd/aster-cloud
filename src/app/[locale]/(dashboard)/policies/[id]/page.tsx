@@ -17,6 +17,16 @@ async function loadActiveProfile(policyId: string, version: number): Promise<str
   return activeVersion?.profile ?? null;
 }
 
+// 是否存在批准版本：与 findDefaultExecutableVersion 同一口径（只有 APPROVED 版本可执行/可导出），
+// 这里只需判存在，故只取 id。
+async function hasApprovedVersion(policyId: string): Promise<boolean> {
+  const approved = await db.query.policyVersions.findFirst({
+    where: and(eq(policyVersions.policyId, policyId), eq(policyVersions.status, 'APPROVED')),
+    columns: { id: true },
+  });
+  return approved !== undefined;
+}
+
 // 服务端数据获取
 async function getPolicyData(userId: string, policyId: string) {
   const policy = await db.query.policies.findFirst({
@@ -105,7 +115,10 @@ export default async function PolicyDetailPage({
   //   必然空窗、而选项还在那里——那套窗口实际只适用于留存期最长的企业级用户。
   const retentionDays = resolveRetention(planUser?.plan).executionDays;
 
-  const profile = await loadActiveProfile(id, policy.version);
+  const [profile, hasExecutableVersion] = await Promise.all([
+    loadActiveProfile(id, policy.version),
+    hasApprovedVersion(id),
+  ]);
 
   const t = await getTranslations('policies');
 
@@ -139,6 +152,7 @@ export default async function PolicyDetailPage({
       notExportable: t('cedarExport.notExportable'),
       failed: t('cedarExport.failed'),
       noExecutableVersion: t('cedarExport.noExecutableVersion'),
+      versionsLink: t('detail.versionHistory'),
       schemaNote: t('cedarExport.schemaNote'),
     },
     deleteDialog: {
@@ -167,6 +181,7 @@ export default async function PolicyDetailPage({
       retentionDays={retentionDays}
       policy={{ ...policy, isFrozen: freeze.isFrozen }}
       profile={profile}
+      hasExecutableVersion={hasExecutableVersion}
       translations={translations}
       locale={locale}
     />

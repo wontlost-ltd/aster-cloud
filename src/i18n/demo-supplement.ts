@@ -2822,13 +2822,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       detail: { profile: 'Profile' },
       // 导出为 Cedar（ADR 0047 §6）。
       cedarExport: {
-        button: 'Export to Cedar',
-        exporting: 'Exporting…',
-        verified: 'Verified against Cedar on {count} probes',
-        notExportable: 'This policy cannot be exported to Cedar',
-        failed: 'Export failed',
-        noExecutableVersion: 'Approve a version before exporting to Cedar',
-        schemaNote: 'The exported schema declares only the actions and the context keys (with their types) this rule mentions. A gateway that validates requests against the schema rejects anything outside it — stricter than Aster, never looser.',
+        button: 'Cedar में निर्यात करें',
+        exporting: 'निर्यात हो रहा है…',
+        verified: '{count} जाँचों पर Cedar से सत्यापित',
+        notExportable: 'इस नीति को Cedar में निर्यात नहीं किया जा सकता',
+        failed: 'निर्यात विफल रहा',
+        noExecutableVersion: 'Cedar में निर्यात करने से पहले किसी संस्करण को स्वीकृत करें',
+        schemaNote: 'निर्यात किया गया स्कीमा केवल वे actions और context कुंजियाँ (उनके प्रकारों सहित) घोषित करता है जिनका यह नियम उल्लेख करता है। जो गेटवे अनुरोधों को स्कीमा से सत्यापित करता है, वह इसके बाहर की हर चीज़ अस्वीकार करता है — Aster से अधिक सख़्त, कभी ढीला नहीं।',
       },
       execute: {
         computed: 'परिकलित',
