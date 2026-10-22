@@ -44,6 +44,9 @@ import { TrustedDevicesPanel } from '@/components/settings/trusted-devices-panel
 import { EmailVerificationPanel } from '@/components/settings/email-verification-panel';
 import { ChangePasswordPanel } from '@/components/settings/change-password-panel';
 import { BusinessRolesPanel } from '@/components/settings/business-roles-panel';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('dashboardNav', 'settings');
 
 const LOCALE_DETECTION_COOKIE = 'aster-locale-detection';
 

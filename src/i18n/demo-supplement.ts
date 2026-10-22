@@ -552,6 +552,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: 'Open AI keys settings',
     },
     admin: {
+      // 风险等级处理台的等级名称（F19：此前写死英文）。
+      riskTier: {
+        tierCard: 'Tier {tier} ({label})',
+        tiers: {
+          trusted: 'trusted',
+          normal: 'normal',
+          elevated: 'elevated',
+          high: 'high',
+          hard: 'hard',
+        },
+      },
       // 管理员概览「最近管理事件」的事件名（F17）：键由 lib/admin-event-labels.ts 从 action id 推导。
       pulse: {
         audit: {
@@ -649,6 +660,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         VERSION_DEPRECATED: 'Version deprecated',
         VERSION_ARCHIVED: 'Version archived',
       },
+    },
+    // 页面 <title>（F19）：界面上没有现成文案可复用的页面名，见 lib/page-metadata.ts。
+    pageTitles: {
+      policyDetail: 'Policy details',
+      policyEdit: 'Edit policy',
+      policyExecute: 'Run policy',
+      billingPlans: 'Plans',
     },
     common: { cancel: 'Cancel' },
     policies: {
@@ -1406,6 +1424,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: '前往 AI 密钥设置',
     },
     admin: {
+      // 风险等级处理台的等级名称（F19：此前写死英文）。
+      riskTier: {
+        tierCard: '等级 {tier}（{label}）',
+        tiers: {
+          trusted: '可信',
+          normal: '常规',
+          elevated: '偏高',
+          high: '高',
+          hard: '严格',
+        },
+      },
       // 管理员概览「最近管理事件」的事件名（F17）：键由 lib/admin-event-labels.ts 从 action id 推导。
       pulse: {
         audit: {
@@ -1503,6 +1532,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         VERSION_DEPRECATED: '版本被废弃',
         VERSION_ARCHIVED: '版本被归档',
       },
+    },
+    // 页面 <title>（F19）：界面上没有现成文案可复用的页面名，见 lib/page-metadata.ts。
+    pageTitles: {
+      policyDetail: '策略详情',
+      policyEdit: '编辑策略',
+      policyExecute: '执行策略',
+      billingPlans: '套餐',
     },
     common: { cancel: '取消' },
     policies: {
@@ -2258,6 +2294,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: 'KI-Schlüssel-Einstellungen öffnen',
     },
     admin: {
+      // 风险等级处理台的等级名称（F19：此前写死英文）。
+      riskTier: {
+        tierCard: 'Stufe {tier} ({label})',
+        tiers: {
+          trusted: 'vertrauenswürdig',
+          normal: 'normal',
+          elevated: 'erhöht',
+          high: 'hoch',
+          hard: 'streng',
+        },
+      },
       // 管理员概览「最近管理事件」的事件名（F17）：键由 lib/admin-event-labels.ts 从 action id 推导。
       pulse: {
         audit: {
@@ -2355,6 +2402,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         VERSION_DEPRECATED: 'Version als veraltet markiert',
         VERSION_ARCHIVED: 'Version archiviert',
       },
+    },
+    // 页面 <title>（F19）：界面上没有现成文案可复用的页面名，见 lib/page-metadata.ts。
+    pageTitles: {
+      policyDetail: 'Policy-Details',
+      policyEdit: 'Policy bearbeiten',
+      policyExecute: 'Policy ausführen',
+      billingPlans: 'Tarife',
     },
     common: { cancel: 'Abbrechen' },
     policies: {
@@ -3108,6 +3162,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: 'AI कुंजी सेटिंग्स खोलें',
     },
     admin: {
+      // 风险等级处理台的等级名称（F19：此前写死英文）。
+      riskTier: {
+        tierCard: 'स्तर {tier} ({label})',
+        tiers: {
+          trusted: 'विश्वसनीय',
+          normal: 'सामान्य',
+          elevated: 'बढ़ा हुआ',
+          high: 'उच्च',
+          hard: 'कठोर',
+        },
+      },
       // 管理员概览「最近管理事件」的事件名（F17）：键由 lib/admin-event-labels.ts 从 action id 推导。
       pulse: {
         audit: {
@@ -3205,6 +3270,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         VERSION_DEPRECATED: 'संस्करण अप्रचलित किया गया',
         VERSION_ARCHIVED: 'संस्करण संग्रहीत',
       },
+    },
+    // 页面 <title>（F19）：界面上没有现成文案可复用的页面名，见 lib/page-metadata.ts。
+    pageTitles: {
+      policyDetail: 'नीति विवरण',
+      policyEdit: 'नीति संपादित करें',
+      policyExecute: 'नीति चलाएँ',
+      billingPlans: 'प्लान',
     },
     common: { cancel: 'रद्द करें' },
     policies: {

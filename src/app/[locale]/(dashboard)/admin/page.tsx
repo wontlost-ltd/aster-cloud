@@ -30,6 +30,9 @@ import {
   IS_SAAS,
 } from '@/lib/deployment-mode';
 import { getCircuitStatus, type CircuitState } from '@/lib/ai-circuit-breaker';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('admin.overview', 'title');
 
 type Props = {
   params: Promise<{ locale: string }>;

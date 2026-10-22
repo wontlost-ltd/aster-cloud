@@ -9,6 +9,9 @@ import {
   type ListUrlOptions,
 } from '@/lib/list-search-params';
 import { VocabulariesContent, type SerializableTermLink } from './vocabularies-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('dashboardNav', 'domainVocabularies');
 
 const VOCAB_URL_OPTS: ListUrlOptions = {
   defaultPageSize: 50,

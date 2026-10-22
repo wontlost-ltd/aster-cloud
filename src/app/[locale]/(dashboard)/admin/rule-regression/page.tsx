@@ -10,6 +10,9 @@ import { setRequestLocale } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { isAdminFromSession } from '@/lib/admin-auth';
 import { RuleRegressionContent } from './rule-regression-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('ruleRegression', 'title');
 
 type Props = {
   params: Promise<{ locale: string }>;

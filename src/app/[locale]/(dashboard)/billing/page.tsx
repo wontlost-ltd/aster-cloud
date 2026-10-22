@@ -38,6 +38,9 @@ import {
   Stack,
   cn,
 } from '@/components/ui';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('dashboardNav', 'billing');
 
 export default async function BillingOverviewPage() {
   // On-prem 没有 Stripe — overview 同样不存在。

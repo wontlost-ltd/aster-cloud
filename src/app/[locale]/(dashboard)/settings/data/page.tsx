@@ -1,6 +1,9 @@
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { DataContent } from './data-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('settings.dataPage', 'title');
 
 /**
  * /settings/data — GDPR access + erasure page.

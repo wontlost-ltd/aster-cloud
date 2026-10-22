@@ -14,6 +14,9 @@ import { getUsageStats } from '@/lib/usage';
 import { CAN_BILLING } from '@/lib/deployment-mode';
 import { getCurrencyForLocale, PLANS, PlanType, CurrencyCode } from '@/lib/plans';
 import { PlansContent } from './plans-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+export const generateMetadata = localizedTitle('pageTitles', 'billingPlans');
 
 // FAQ item keys organized by category — preserved verbatim from
 // the pre-split /billing/page.tsx so existing copy + question order
