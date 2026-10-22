@@ -12,7 +12,13 @@ import { notFound, redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { getUsageStats } from '@/lib/usage';
 import { CAN_BILLING } from '@/lib/deployment-mode';
-import { getCurrencyForLocale, PLANS, PlanType, CurrencyCode } from '@/lib/plans';
+import {
+  getCurrencyForLocale,
+  PLANS,
+  PLAN_FEATURE_MESSAGE_VALUES,
+  PlanType,
+  CurrencyCode,
+} from '@/lib/plans';
 import { PlansContent } from './plans-content';
 import { localizedTitle } from '@/lib/page-metadata';
 
@@ -89,7 +95,7 @@ export default async function BillingPlansPage() {
     }
   }
   for (const featureKey of allFeatureKeys) {
-    planFeatures[featureKey] = t(`plans.features.${featureKey}`);
+    planFeatures[featureKey] = t(`plans.features.${featureKey}`, PLAN_FEATURE_MESSAGE_VALUES);
   }
 
   const faqItems: Record<string, { question: string; answer: string }> = {};

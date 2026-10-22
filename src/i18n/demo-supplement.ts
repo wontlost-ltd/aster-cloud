@@ -675,6 +675,20 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       policyExecute: 'Run policy',
       billingPlans: 'Plans',
     },
+    // 套餐文案（F20）：不写具体模型名（实际模型取决于平台默认 / 用户 BYOK）；语言列表由
+    // PLAN_FEATURE_MESSAGE_VALUES 按已配置 locales 注入。trialCardTitle 替换写死的 "Trial"。
+    billing: {
+      plans: {
+        features: {
+          aiDrafts20: '20 AI drafts / month',
+          aiDrafts500: '500 AI drafts / seat / month',
+          allLanguagePacks: 'All language packs ({languages})',
+        },
+      },
+      overview: {
+        trialCardTitle: 'Trial',
+      },
+    },
     common: { cancel: 'Cancel' },
     policies: {
       // 策略详情页治理档案徽标（ADR 0046 §6）。
@@ -1554,6 +1568,20 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       policyExecute: '执行策略',
       billingPlans: '套餐',
     },
+    // 套餐文案（F20）：不写具体模型名（实际模型取决于平台默认 / 用户 BYOK）；语言列表由
+    // PLAN_FEATURE_MESSAGE_VALUES 按已配置 locales 注入。trialCardTitle 替换写死的 "Trial"。
+    billing: {
+      plans: {
+        features: {
+          aiDrafts20: '每月 20 次 AI 草稿',
+          aiDrafts500: '每席每月 500 次 AI 草稿',
+          allLanguagePacks: '全语言包（{languages}）',
+        },
+      },
+      overview: {
+        trialCardTitle: '试用',
+      },
+    },
     common: { cancel: '取消' },
     policies: {
       // 策略详情页治理档案徽标（ADR 0046 §6）。
@@ -2431,6 +2459,20 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       policyExecute: 'Policy ausführen',
       billingPlans: 'Tarife',
     },
+    // 套餐文案（F20）：不写具体模型名（实际模型取决于平台默认 / 用户 BYOK）；语言列表由
+    // PLAN_FEATURE_MESSAGE_VALUES 按已配置 locales 注入。trialCardTitle 替换写死的 "Trial"。
+    billing: {
+      plans: {
+        features: {
+          aiDrafts20: '20 KI-Entwürfe / Monat',
+          aiDrafts500: '500 KI-Entwürfe / Sitz / Monat',
+          allLanguagePacks: 'Alle Sprachpakete ({languages})',
+        },
+      },
+      overview: {
+        trialCardTitle: 'Testphase',
+      },
+    },
     common: { cancel: 'Abbrechen' },
     policies: {
       // 策略详情页治理档案徽标（ADR 0046 §6）。
@@ -3305,6 +3347,20 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       policyEdit: 'नीति संपादित करें',
       policyExecute: 'नीति चलाएँ',
       billingPlans: 'प्लान',
+    },
+    // 套餐文案（F20）：不写具体模型名（实际模型取决于平台默认 / 用户 BYOK）；语言列表由
+    // PLAN_FEATURE_MESSAGE_VALUES 按已配置 locales 注入。trialCardTitle 替换写死的 "Trial"。
+    billing: {
+      plans: {
+        features: {
+          aiDrafts20: '20 AI ड्राफ़्ट / माह',
+          aiDrafts500: '500 AI ड्राफ़्ट / सीट / माह',
+          allLanguagePacks: 'सभी भाषा पैक ({languages})',
+        },
+      },
+      overview: {
+        trialCardTitle: 'परीक्षण',
+      },
     },
     common: { cancel: 'रद्द करें' },
     policies: {
