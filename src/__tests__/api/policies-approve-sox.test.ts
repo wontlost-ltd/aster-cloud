@@ -6,6 +6,7 @@
 //   4. Pro 他审多 seat → 200 approved
 //   5. Enterprise 自审单 seat → 403 invite_reviewer_required
 //   6. Pro 自审无 owner team → 403 引导 /teams/new
+//   7. SOX 套餐下个人策略自审 → 403 move_to_team_required（邀请队友无法审批个人策略，须移入团队）
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -13,6 +14,7 @@ const prismaMocks = vi.hoisted(() => ({
   usersFindFirst: vi.fn(),
   teamsFindFirst: vi.fn(),
   policyVersionsFindFirst: vi.fn(),
+  policiesFindFirst: vi.fn(),
   selectChain: vi.fn(),
 }));
 
@@ -36,12 +38,14 @@ vi.mock('@/lib/prisma', () => ({
       users: { findFirst: prismaMocks.usersFindFirst },
       teams: { findFirst: prismaMocks.teamsFindFirst },
       policyVersions: { findFirst: prismaMocks.policyVersionsFindFirst },
+      policies: { findFirst: prismaMocks.policiesFindFirst },
     },
     select: prismaMocks.selectChain,
   },
   users: {},
   teams: {},
   teamMembers: {},
+  policies: {},
   policyVersions: {},
 }));
 
@@ -90,6 +94,9 @@ describe('POST /api/v1/policies/[id]/versions/[version]/approve — SOX 守护',
     prismaMocks.usersFindFirst.mockReset();
     prismaMocks.teamsFindFirst.mockReset();
     prismaMocks.policyVersionsFindFirst.mockReset();
+    // 默认团队策略：既有场景描述的是团队策略的 seats 分支；个人策略另有用例（review I4）
+    prismaMocks.policiesFindFirst.mockReset();
+    prismaMocks.policiesFindFirst.mockResolvedValue({ teamId: 't1' });
     prismaMocks.selectChain.mockReset();
     mockApprove.mockReset();
     mockAuth.mockReset();
@@ -194,5 +201,32 @@ describe('POST /api/v1/policies/[id]/versions/[version]/approve — SOX 守护',
     const res = await POST(makeRequest(), { params });
     expect(res.status).toBe(403);
     expect((await res.json()).error).toBe('segregation_of_duties');
+  });
+
+  it.each([1, 3])('★Pro 个人策略自审（%i seat）→ 403 move_to_team_required，引导移入团队（review I4）', async (seats) => {
+    setupMocks({
+      user: { plan: 'pro', priceLockedAt: null, legacyTier: null },
+      versionAuthor: 'u1',
+      team: { id: 't1' },
+      seatCount: seats,
+    });
+    prismaMocks.policiesFindFirst.mockResolvedValueOnce({ teamId: null });
+
+    const res = await POST(makeRequest(), { params });
+    expect(res.status).toBe(403);
+    const data = await res.json();
+    expect(data.error).toBe('move_to_team_required');
+    expect(data.cta?.href).toBe('/teams');
+    expect(mockApprove).not.toHaveBeenCalled();
+  });
+
+  it('策略不存在 → 不拦截，交由 approveVersion 判定（404 不泄露存在性）', async () => {
+    setupMocks({ user: { plan: 'pro', priceLockedAt: null, legacyTier: null }, versionAuthor: 'u1' });
+    prismaMocks.policiesFindFirst.mockResolvedValueOnce(undefined);
+    mockApprove.mockResolvedValueOnce(undefined);
+
+    const res = await POST(makeRequest(), { params });
+    expect(mockApprove).toHaveBeenCalled();
+    expect(res.status).toBe(200);
   });
 });

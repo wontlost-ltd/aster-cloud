@@ -111,6 +111,10 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
         toast.error(t('sox.selfApprovalNotAllowed'));
         return;
       }
+      if (result.errorCode === 'move_to_team_required') {
+        toast.error(t('sox.moveToTeamRequired'));
+        return;
+      }
       if (result.errorCode === 'invite_reviewer_required') {
         setInviteModal({
           open: true,

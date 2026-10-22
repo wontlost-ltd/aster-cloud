@@ -44,6 +44,16 @@ describe('PolicyVersionsTab 批准失败提示', () => {
     expect(h.approve).toHaveBeenCalledWith(2, undefined);
   });
 
+  it('★move_to_team_required → 本地化「移入团队」提示，不弹邀请队友弹窗（review I4）', async () => {
+    h.approve.mockResolvedValue({ ok: false, errorCode: 'move_to_team_required', message: 'raw' });
+    render(<PolicyVersionsTab policyId="p1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'approve-v1' }));
+
+    await waitFor(() => expect(h.toastError).toHaveBeenCalledWith('policies.versions.sox.moveToTeamRequired'));
+    expect(screen.queryByText('raw')).toBeNull();
+  });
+
   it('批准成功不弹错误', async () => {
     h.approve.mockResolvedValue({ ok: true });
     render(<PolicyVersionsTab policyId="p1" />);

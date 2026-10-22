@@ -5,15 +5,17 @@
  *
  * PM v1.1 SOX 守护（二级）：
  * - 当 plan.approvalRequired = true 且 author === approver：
- *   - team 活跃 seats <= 1 → 403 invite_reviewer_required（引导邀请）
- *   - team 活跃 seats >= 2 → 403 segregation_of_duties（自审 SOX 违规）
+ *   - 个人策略 → 403 move_to_team_required：个人策略只有所有者能审阅，邀请队友也无法审批，
+ *     唯一出路是把策略移入团队，由团队其他 owner/admin 审批
+ *   - 团队策略、team 活跃 seats <= 1 → 403 invite_reviewer_required（引导邀请）
+ *   - 团队策略、team 活跃 seats >= 2 → 403 segregation_of_duties（自审 SOX 违规）
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { and, eq, sql } from 'drizzle-orm';
 
-import { db, users, teams, teamMembers, policyVersions } from '@/lib/prisma';
+import { db, users, teams, teamMembers, policies, policyVersions } from '@/lib/prisma';
 import {
   PolicyAccessDeniedError,
   SegregationOfDutiesError,
@@ -98,6 +100,22 @@ async function checkSoxGuard(
     columns: { createdBy: true },
   });
   if (!target || target.createdBy !== approverId) return null;
+
+  const policy = await db.query.policies.findFirst({
+    where: eq(policies.id, policyId),
+    columns: { teamId: true },
+  });
+  if (!policy) return null;
+  if (!policy.teamId) {
+    return NextResponse.json(
+      {
+        error: 'move_to_team_required',
+        message: 'Approval requires a separate reviewer. Move this policy into a team so another team owner or admin can approve it.',
+        cta: { label: 'Teams', href: '/teams' },
+      },
+      { status: 403 }
+    );
+  }
 
   const ownedTeam = await db.query.teams.findFirst({
     where: eq(teams.ownerId, approverId),

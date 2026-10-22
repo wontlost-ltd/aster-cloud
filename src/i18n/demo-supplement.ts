@@ -817,6 +817,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         approvalCount: '{count} approval records',
         // 个人策略所有者审批自己提交的版本时的说明（审计里记为自审）。
         selfApproveNote: 'You are reviewing your own submission. Personal policies have no second reviewer, so this is allowed; the decision is recorded in the audit log as a self-approval.',
+        // SOX 套餐下个人策略无法由他人审批：引导移入团队（review I4）。
+        sox: { moveToTeamRequired: 'Your plan requires approval by someone other than the author, and only you can review a personal policy. Move this policy into a team so another team owner or admin can approve it.' },
         // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
         noEligibleReviewer: 'No other team owner or admin can approve this — make a member an admin in team settings',
       },
@@ -1814,7 +1816,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
         noEligibleReviewer: '团队中没有其他所有者或管理员可审批——请在团队设置中将一位成员设为管理员',
         // 覆盖包内 zh 文案的笔误「请请」；待 aster-lang-locales 上游修正后可删除本条覆盖。
-        sox: { selfApprovalNotAllowed: '不能批准自己创建的版本，请其他团队成员审批。' },
+        sox: {
+          selfApprovalNotAllowed: '不能批准自己创建的版本，请其他团队成员审批。',
+          // SOX 套餐下个人策略无法由他人审批：引导移入团队（review I4）。
+          moveToTeamRequired: '你的套餐要求由作者以外的人审批，而个人策略只有你本人能审批。请把该策略移到团队中，由团队的其他所有者或管理员审批。',
+        },
       },
       logs: {
         filtersTitle: '筛选',
@@ -2810,6 +2816,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         awaitingOthers: 'Wartet auf andere Prüfer',
         approvalCount: '{count} Freigabeeinträge',
         selfApproveNote: 'Sie prüfen Ihre eigene Einreichung. Persönliche Richtlinien haben keine zweite prüfende Person, daher ist das erlaubt; die Entscheidung wird im Audit-Protokoll als Selbstfreigabe vermerkt.',
+        // SOX 套餐下个人策略无法由他人审批：引导移入团队（review I4）。
+        sox: { moveToTeamRequired: 'Ihr Tarif verlangt eine Freigabe durch eine andere Person als die Autorin bzw. den Autor, und eine persönliche Richtlinie können nur Sie prüfen. Verschieben Sie diese Richtlinie in ein Team, damit eine andere Inhaberin, ein anderer Inhaber oder ein Admin des Teams sie freigeben kann.' },
         // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
         noEligibleReviewer: 'Im Team gibt es keine andere Inhaberin, keinen anderen Inhaber und keinen Admin, die freigeben können – machen Sie in den Teameinstellungen ein Mitglied zum Admin',
       },
@@ -3800,6 +3808,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         awaitingOthers: 'किसी अन्य अनुमोदक की प्रतीक्षा',
         approvalCount: '{count} अनुमोदन रिकॉर्ड',
         selfApproveNote: 'आप अपना ही जमा किया गया संस्करण जाँच रहे हैं। व्यक्तिगत नीतियों में कोई दूसरा समीक्षक नहीं होता, इसलिए इसकी अनुमति है; यह निर्णय ऑडिट लॉग में स्व-अनुमोदन के रूप में दर्ज होगा।',
+        // SOX 套餐下个人策略无法由他人审批：引导移入团队（review I4）。
+        sox: { moveToTeamRequired: 'आपकी योजना में लेखक के अलावा किसी अन्य व्यक्ति का अनुमोदन आवश्यक है, और व्यक्तिगत नीति की समीक्षा केवल आप कर सकते हैं। इस नीति को किसी टीम में ले जाएँ ताकि टीम का कोई अन्य स्वामी या व्यवस्थापक इसे अनुमोदित कर सके।' },
         // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
         noEligibleReviewer: 'टीम में अनुमोदन के लिए कोई अन्य स्वामी या व्यवस्थापक नहीं है — टीम सेटिंग्स में किसी सदस्य को व्यवस्थापक बनाएँ',
       },
