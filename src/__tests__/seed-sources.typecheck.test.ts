@@ -33,10 +33,10 @@ describe('种子策略源码必须通过编译与类型检查', () => {
     await expect(assertSeedCompiles(bad, 'en-US', 'bad')).rejects.toThrow(/E012/);
   });
 
-  // 已安装引擎是否已把未标类型的 context 推断为 Map（aster-lang-ts feat/context-map-inference）：
+  // 已安装引擎是否把无类型字段的成员访问当动态值（aster-lang-ts#227，1.0.36 起）：
   // 旧引擎下 guard 形态仍是 E011，依赖升级后本用例自动生效。
   const guard = 'Module g.\nDefine GuardRequest has principal_id, action, context, agent_model.\n@id("G-1")\nRule decide given req as GuardRequest, produce Verdict:\n  Let large be req.context.amount at least 10000.\n  If large:\n    Return Verdict.escalate("large").\n  Return Verdict.allow().\n';
-  it('guard 形态（未标类型 context 的点访问）在支持 Map 推断的引擎下通过', async (ctx) => {
+  it('guard 形态（无类型 context 的点访问）在含 #227 的引擎下通过', async (ctx) => {
     const probe = await seedCompileProblems('Module p.\nDefine R has context.\nRule r given req as R, produce Int:\n  Return req.context.n.\n', 'en-US');
     if (probe.length > 0) ctx.skip();
     expect(await seedCompileProblems(guard, 'en-US')).toEqual([]);
