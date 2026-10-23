@@ -14,16 +14,18 @@ describe('ai-workspace config', () => {
     expect(resolveAiWorkspaceBase('not a url')).toBeNull();
     expect(aiWorkspaceOrigin('')).toBeNull();
   });
-  it.runIf(IS_SAAS_BUILD)('灰度：all 对所有人开启；名单只对列出的用户开启；地址缺失一律关闭', () => {
+  it.runIf(IS_SAAS_BUILD)('管理员、数据库授权和兼容名单可开启工作台', () => {
     const base = 'https://ai.aster-lang.cloud';
-    expect(isAiWorkspaceEnabledFor('u1', base, 'all')).toBe(true);
-    expect(isAiWorkspaceEnabledFor('u1', base, 'u2, u1')).toBe(true);
-    expect(isAiWorkspaceEnabledFor('u3', base, 'u2,u1')).toBe(false);
-    expect(isAiWorkspaceEnabledFor('u1', base, '')).toBe(false);
-    expect(isAiWorkspaceEnabledFor('u1', null, 'all')).toBe(false);
+    expect(isAiWorkspaceEnabledFor({ id: 'admin', isAdmin: true, aiWorkspaceEnabled: false }, base)).toBe(true);
+    expect(isAiWorkspaceEnabledFor({ id: 'u1', isAdmin: false, aiWorkspaceEnabled: true }, base)).toBe(true);
+    expect(isAiWorkspaceEnabledFor({ id: 'u1', isAdmin: false, aiWorkspaceEnabled: false }, base, 'all')).toBe(true);
+    expect(isAiWorkspaceEnabledFor({ id: 'u1', isAdmin: false, aiWorkspaceEnabled: false }, base, 'u2, u1')).toBe(true);
+    expect(isAiWorkspaceEnabledFor({ id: 'u3', isAdmin: false, aiWorkspaceEnabled: false }, base, 'u2,u1')).toBe(false);
+    expect(isAiWorkspaceEnabledFor({ id: 'u1', isAdmin: false, aiWorkspaceEnabled: false }, base, '')).toBe(false);
+    expect(isAiWorkspaceEnabledFor({ id: 'admin', isAdmin: true, aiWorkspaceEnabled: false }, null, 'all')).toBe(false);
   });
   it.runIf(!IS_SAAS_BUILD)('非 SaaS 部署：即便 all 也一律关闭', () => {
-    expect(isAiWorkspaceEnabledFor('u1', 'https://ai.aster-lang.cloud', 'all')).toBe(false);
+    expect(isAiWorkspaceEnabledFor({ id: 'admin', isAdmin: true, aiWorkspaceEnabled: true }, 'https://ai.aster-lang.cloud', 'all')).toBe(false);
   });
   it('next 只允许工作台根路径与带 policyId 的侧栏', () => {
     expect(AI_WORKSPACE_NEXT_PATTERN.test('/')).toBe(true);

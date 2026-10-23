@@ -24,11 +24,16 @@ export function aiWorkspaceOrigin(configured?: string): string | null {
   return base ? new URL(base).origin : null;
 }
 
-/** 灰度开关：地址缺失或非 SaaS 一律关闭；'all' 全量；否则按用户 id 名单。 */
-export function isAiWorkspaceEnabledFor(userId: string, base?: string | null, enabledFor?: string): boolean {
+/** 工作台准入：管理员与数据库授权优先，环境名单仅作迁移期回退。 */
+export function isAiWorkspaceEnabledFor(
+  user: { id: string; isAdmin: boolean; aiWorkspaceEnabled: boolean },
+  base?: string | null,
+  enabledFor?: string,
+): boolean {
   if (!IS_SAAS || !base) return false;
+  if (user.isAdmin || user.aiWorkspaceEnabled) return true;
   const list = (enabledFor ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-  return list.includes('all') || list.includes(userId);
+  return list.includes('all') || list.includes(user.id);
 }
 
 /** 工作台支持的主题；cloud 只传解析后的 dark/light，不传 system。 */

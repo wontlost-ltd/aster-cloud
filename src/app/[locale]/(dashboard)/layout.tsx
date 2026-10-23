@@ -104,6 +104,17 @@ export default async function DashboardLayout({
     runAfterResponse(() => touchTrustedDeviceLastUsed(userId, trustedDeviceToken));
   }
 
+  let userSummary: { isAdmin: boolean; aiWorkspaceEnabled: boolean; mustChangePassword: boolean } | null = null;
+  if (userId) {
+    userSummary = (await db.query.users.findFirst({
+      where: eq(users.id, userId),
+      columns: { isAdmin: true, aiWorkspaceEnabled: true, mustChangePassword: true },
+    })) ?? null;
+    if (userSummary?.mustChangePassword) {
+      redirect(`/${locale}/onboarding/change-password`);
+    }
+  }
+
   // AI 工作台入口（ADR 0049）：仅服务端判定该用户已灰度开启时才产出交接地址；
   // 该地址是 API 路由，不带 locale 前缀，由侧栏/命令面板以整页导航打开。
   // 同一判定经 AiWorkspaceProvider 下发给策略编辑器，决定「AI」tab 是否嵌入工作台面板。
@@ -111,28 +122,16 @@ export default async function DashboardLayout({
   const aiWorkspace =
     userId &&
     aiWorkspaceBase &&
-    isAiWorkspaceEnabledFor(userId, aiWorkspaceBase, safeEnv('AI_WORKSPACE_ENABLED_FOR'))
+    isAiWorkspaceEnabledFor(
+      { id: userId, isAdmin: userSummary?.isAdmin ?? false, aiWorkspaceEnabled: userSummary?.aiWorkspaceEnabled ?? false },
+      aiWorkspaceBase,
+      safeEnv('AI_WORKSPACE_ENABLED_FOR'),
+    )
       ? { base: aiWorkspaceBase, enabled: true }
       : null;
   const aiWorkspaceHref = aiWorkspace
     ? `/api/ai-workspace/handoff?next=%2F&locale=${locale}`
     : undefined;
-
-  // Force password rotation on first login for accounts provisioned
-  // with a temporary password (admin bootstrap, future invitations).
-  // The flag lives on the User row; we check it here so the gate
-  // covers every dashboard surface in one place. The change-password
-  // page sits OUTSIDE this layout (under (auth)) so the user can
-  // reach it while still flagged.
-  if (userId) {
-    const row = await db.query.users.findFirst({
-      where: eq(users.id, userId),
-      columns: { mustChangePassword: true },
-    });
-    if (row?.mustChangePassword) {
-      redirect(`/${locale}/onboarding/change-password`);
-    }
-  }
 
   const [admin, role, allowedLocales] = await Promise.all([
     isAdminFromSession(),
@@ -206,6 +205,7 @@ export default async function DashboardLayout({
           adminOverview: tAdminOverview('title'),
           aiBreaker: tAdminCircuit('title'),
           riskTier: tAdminRisk('title'),
+          aiWorkspaceAccess: tAdminNav('aiWorkspaceAccess'),
           license: tAdminNav('license'),
           licenseRevoke: tAdminNav('licenseRevoke'),
           issuedLicenses: tAdminNav('issuedLicenses'),

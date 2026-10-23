@@ -400,6 +400,13 @@
       "when": 1790000000000,
       "tag": "0055_ai_key_binding_model",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1792792051486,
+      "tag": "0056_user_ai_workspace_enabled",
+      "breakpoints": true
     }
   ]
 }

@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const mocks = vi.hoisted(() => ({ auth: vi.fn(), role: vi.fn() }));
+const mocks = vi.hoisted(() => ({ auth: vi.fn(), role: vi.fn(), findUser: vi.fn() }));
 vi.mock('@/auth', () => ({ auth: mocks.auth }));
 vi.mock('@/lib/effective-role', () => ({ getEffectiveRole: mocks.role }));
+vi.mock('@/lib/prisma', () => ({
+  db: { query: { users: { findFirst: mocks.findUser } } },
+}));
 
 // 工作台仅 SaaS 开放；on-prem project 下路由对已登录且 next 合法的请求恒为 404
 const IS_SAAS_BUILD = (process.env.DEPLOYMENT_MODE ?? '') === 'saas';
@@ -22,6 +25,7 @@ describe('GET /api/ai-workspace/handoff', () => {
     vi.stubEnv('AI_WORKSPACE_HANDOFF_PRIVATE_KEY', await privateKey());
     mocks.auth.mockResolvedValue({ user: { id: 'u1', name: 'Ann', email: 'a@x.io' } });
     mocks.role.mockResolvedValue('owner');
+    mocks.findUser.mockResolvedValue({ id: 'u1', isAdmin: false, aiWorkspaceEnabled: false });
   });
 
   it.runIf(IS_SAAS_BUILD)('已登录：302 到工作台 /handoff，带令牌与 next', async () => {
