@@ -289,6 +289,13 @@ routes:
     auth: admin
     locales: all
 
+  - path: /admin/ai-workspace-access
+    status: canonical-here
+    owner: admin
+    source: src/app/[locale]/(dashboard)/admin/ai-workspace-access/page.tsx
+    auth: admin
+    locales: all
+
   - path: /admin/ai-circuit-breaker
     status: canonical-here
     owner: admin
