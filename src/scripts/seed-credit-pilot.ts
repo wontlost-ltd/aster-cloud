@@ -28,6 +28,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import * as schema from '@/db/schema';
 import { creditPilotSource, creditPilotSugarSource, CREDIT_PILOT } from '@/config/credit-pilot-source';
 import { createApiKey, refreshTeamKeySnapshots } from '@/lib/api-keys';
+import { assertSeedCompiles } from '@/lib/seed-compile-gate';
 
 type Db = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -148,6 +149,8 @@ async function upsertPolicy(db: Db): Promise<void> {
 }
 
 async function upsertVersion(db: Db, spec: (typeof VERSIONS)[number]): Promise<void> {
+  // 直接写 policyVersions 绕过了 REST 保存门：先用同一份引擎做编译 + 类型检查
+  assertSeedCompiles(spec.content, 'en-US', `${CREDIT_PILOT.policyId}@v${spec.version}`);
   const existing = await db.query.policyVersions.findFirst({ where: eq(schema.policyVersions.id, spec.id) });
   const values = {
     policyId: CREDIT_PILOT.policyId,
