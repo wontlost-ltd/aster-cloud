@@ -446,6 +446,9 @@ export const users = pgTable(
      */
     isAdmin: boolean('isAdmin').default(false).notNull(),
 
+    /** 管理员可为普通用户单独开启 AI 工作台。 */
+    aiWorkspaceEnabled: boolean('aiWorkspaceEnabled').default(false).notNull(),
+
     /** 个人租户的业务角色（ADR 0042 §2.1）；团队租户读 TeamMember.businessRoles。 */
     businessRoles: text('businessRoles').array().notNull().default([]),
 

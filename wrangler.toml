@@ -96,7 +96,7 @@ AUTH_TRUST_HOST = "true"
 # 不擅自改成 noreply@ —— 该地址未经投递验证，换了可能再次被拒。
 RESEND_FROM_EMAIL = "ryan.pang@wontlost.com"
 # AI 工作台（ADR 0049）：服务端运行时经 safeEnv 读取。先只对站长开启灰度，
-# 验收后把 AI_WORKSPACE_ENABLED_FOR 改为 "all"；删掉这两行即回到旧 AI 面板。
+# 名单仅作兼容回退，授权以数据库为准。
 NEXT_PUBLIC_AI_WORKSPACE_URL = "https://ai.aster-lang.cloud"
 AI_WORKSPACE_ENABLED_FOR = "784d38c4-f433-4369-b4dc-ab0f4f0cc2b9"
 

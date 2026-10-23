@@ -601,6 +601,22 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: 'Open AI keys settings',
     },
     admin: {
+      nav: { aiWorkspaceAccess: 'AI workspace access' },
+      overview: { aiWorkspaceAccessCard: 'AI workspace access' },
+      aiWorkspaceAccess: {
+        title: 'AI workspace access',
+        subtitle: 'Manage AI workspace access per user. Administrators always have access.',
+        adminDefault: 'Administrators are always enabled; the saved switch only controls explicit user access.',
+        search: 'Search by email',
+        email: 'Email',
+        name: 'Name',
+        administrator: 'Administrator',
+        enabled: 'Enabled',
+        loadError: 'Could not load users.',
+        saveError: 'Could not save access.',
+        empty: 'No users found.',
+        toggle: 'Toggle AI workspace access for {email}',
+      },
       // 许可证撤销：ID 不在已签发记录中的提示（Q2，不阻止撤销）。
       licenseRevoke: {
         newForm: {
@@ -668,6 +684,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
             lexiconTermRestore: 'Vocabulary term restored',
             lexiconAvailabilityEnable: 'Language enabled',
             lexiconAvailabilityDisable: 'Language disabled',
+            aiWorkspaceAccessGrant: 'AI workspace access granted',
+            aiWorkspaceAccessRevoke: 'AI workspace access revoked',
             byokAllowlistAdd: 'AI provider host allowed',
             byokAllowlistRemove: 'AI provider host removed',
             licenseRevoked: 'License revoked',
@@ -1601,6 +1619,22 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: '前往 AI 密钥设置',
     },
     admin: {
+      nav: { aiWorkspaceAccess: 'AI 工作台授权' },
+      overview: { aiWorkspaceAccessCard: 'AI 工作台授权' },
+      aiWorkspaceAccess: {
+        title: 'AI 工作台授权',
+        subtitle: '按用户管理 AI 工作台访问权限。管理员始终可以访问。',
+        adminDefault: '管理员默认启用；开关仅管理用户的显式授权。',
+        search: '按邮箱搜索',
+        email: '邮箱',
+        name: '名称',
+        administrator: '管理员',
+        enabled: '已启用',
+        loadError: '无法加载用户。',
+        saveError: '无法保存授权。',
+        empty: '没有找到用户。',
+        toggle: '切换 {email} 的 AI 工作台授权',
+      },
       // 许可证撤销：ID 不在已签发记录中的提示（Q2，不阻止撤销）。
       licenseRevoke: {
         newForm: {
@@ -1668,6 +1702,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
             lexiconTermRestore: '恢复词汇',
             lexiconAvailabilityEnable: '启用语言',
             lexiconAvailabilityDisable: '停用语言',
+            aiWorkspaceAccessGrant: '已授予 AI 工作台访问权限',
+            aiWorkspaceAccessRevoke: '已撤销 AI 工作台访问权限',
             byokAllowlistAdd: '添加 AI 提供商白名单',
             byokAllowlistRemove: '移除 AI 提供商白名单',
             licenseRevoked: '撤销许可证',
@@ -2604,6 +2640,22 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: 'KI-Schlüssel-Einstellungen öffnen',
     },
     admin: {
+      nav: { aiWorkspaceAccess: 'Zugriff auf den KI-Arbeitsbereich' },
+      overview: { aiWorkspaceAccessCard: 'Zugriff auf den KI-Arbeitsbereich' },
+      aiWorkspaceAccess: {
+        title: 'Zugriff auf den KI-Arbeitsbereich',
+        subtitle: 'Verwalten Sie den Zugriff auf den KI-Arbeitsbereich pro Benutzer. Administratoren haben immer Zugriff.',
+        adminDefault: 'Administratoren sind standardmäßig aktiviert; der Schalter verwaltet nur die ausdrückliche Benutzerfreigabe.',
+        search: 'Nach E-Mail suchen',
+        email: 'E-Mail',
+        name: 'Name',
+        administrator: 'Administrator',
+        enabled: 'Aktiviert',
+        loadError: 'Benutzer konnten nicht geladen werden.',
+        saveError: 'Zugriff konnte nicht gespeichert werden.',
+        empty: 'Keine Benutzer gefunden.',
+        toggle: 'Zugriff auf den KI-Arbeitsbereich für {email} umschalten',
+      },
       // 许可证撤销：ID 不在已签发记录中的提示（Q2，不阻止撤销）。
       licenseRevoke: {
         newForm: {
@@ -2671,6 +2723,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
             lexiconTermRestore: 'Begriff wiederhergestellt',
             lexiconAvailabilityEnable: 'Sprache aktiviert',
             lexiconAvailabilityDisable: 'Sprache deaktiviert',
+            aiWorkspaceAccessGrant: 'Zugriff auf den KI-Arbeitsbereich gewährt',
+            aiWorkspaceAccessRevoke: 'Zugriff auf den KI-Arbeitsbereich widerrufen',
             byokAllowlistAdd: 'KI-Anbieter-Host zugelassen',
             byokAllowlistRemove: 'KI-Anbieter-Host entfernt',
             licenseRevoked: 'Lizenz widerrufen',
@@ -3596,6 +3650,22 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: 'AI कुंजी सेटिंग्स खोलें',
     },
     admin: {
+      nav: { aiWorkspaceAccess: 'AI कार्यक्षेत्र पहुँच' },
+      overview: { aiWorkspaceAccessCard: 'AI कार्यक्षेत्र पहुँच' },
+      aiWorkspaceAccess: {
+        title: 'AI कार्यक्षेत्र पहुँच',
+        subtitle: 'प्रति उपयोगकर्ता AI कार्यक्षेत्र की पहुँच प्रबंधित करें। प्रशासकों के पास हमेशा पहुँच होती है।',
+        adminDefault: 'प्रशासक हमेशा सक्षम रहते हैं; स्विच केवल उपयोगकर्ता की स्पष्ट अनुमति नियंत्रित करता है।',
+        search: 'ईमेल से खोजें',
+        email: 'ईमेल',
+        name: 'नाम',
+        administrator: 'प्रशासक',
+        enabled: 'सक्षम',
+        loadError: 'उपयोगकर्ता लोड नहीं हो सके।',
+        saveError: 'पहुँच सहेजी नहीं जा सकी।',
+        empty: 'कोई उपयोगकर्ता नहीं मिला।',
+        toggle: '{email} के लिए AI कार्यक्षेत्र पहुँच टॉगल करें',
+      },
       // 许可证撤销：ID 不在已签发记录中的提示（Q2，不阻止撤销）。
       licenseRevoke: {
         newForm: {
@@ -3663,6 +3733,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
             lexiconTermRestore: 'शब्द पुनर्स्थापित',
             lexiconAvailabilityEnable: 'भाषा सक्षम',
             lexiconAvailabilityDisable: 'भाषा अक्षम',
+            aiWorkspaceAccessGrant: 'AI कार्यक्षेत्र पहुँच दी गई',
+            aiWorkspaceAccessRevoke: 'AI कार्यक्षेत्र पहुँच वापस ली गई',
             byokAllowlistAdd: 'AI प्रदाता होस्ट अनुमत',
             byokAllowlistRemove: 'AI प्रदाता होस्ट हटाया गया',
             licenseRevoked: 'लाइसेंस रद्द',

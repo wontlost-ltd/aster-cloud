@@ -9,6 +9,9 @@ import {
 } from '@/lib/ai-workspace';
 import { signHandoffToken } from '@/lib/ai-workspace-handoff';
 import { safeEnv } from '@/lib/runtime/safe-env';
+import { db } from '@/lib/prisma';
+import { users } from '@/db/schema';
+import { eq } from 'drizzle-orm';
 
 const LOCALES = new Set(['en', 'zh', 'de', 'hi']);
 
@@ -31,7 +34,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     login.searchParams.set('callbackUrl', req.nextUrl.toString());
     return NextResponse.redirect(login, 302);
   }
-  if (!base || !isAiWorkspaceEnabledFor(userId, base, safeEnv('AI_WORKSPACE_ENABLED_FOR'))) {
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: { id: true, isAdmin: true, aiWorkspaceEnabled: true },
+  });
+  if (!base || !user || !isAiWorkspaceEnabledFor(user, base, safeEnv('AI_WORKSPACE_ENABLED_FOR'))) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
   const privateKey = safeEnv('AI_WORKSPACE_HANDOFF_PRIVATE_KEY');

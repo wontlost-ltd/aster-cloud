@@ -119,6 +119,7 @@ type OverviewCard = {
     | 'aiBreakerCard'
     | 'assistantCard'
     | 'riskTierCard'
+    | 'aiWorkspaceAccessCard'
     | 'licenseCard'
     | 'licenseRevokeCard'
     | 'issuedLicensesCard'
@@ -139,6 +140,12 @@ const CARDS: ReadonlyArray<OverviewCard> = [
   {
     href: '/admin/ai-circuit-breaker',
     cardKey: 'aiBreakerCard',
+    show: true,
+    comingSoon: false,
+  },
+  {
+    href: '/admin/ai-workspace-access',
+    cardKey: 'aiWorkspaceAccessCard',
     show: true,
     comingSoon: false,
   },
