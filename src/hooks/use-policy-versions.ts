@@ -51,12 +51,10 @@ interface UsePolicyVersionsOptions {
  * Approve 失败时的结构化错误码
  * - invite_reviewer_required：单 seat 用户需先邀请 reviewer
  * - segregation_of_duties：多 seat 自审 SOX 违规
- * - move_to_team_required：SOX 套餐下个人策略只有所有者能审阅，须移入团队由他人审批
  */
 export type ApproveErrorCode =
   | 'invite_reviewer_required'
   | 'segregation_of_duties'
-  | 'move_to_team_required'
   | 'other';
 
 export interface ApproveResult {
@@ -331,8 +329,7 @@ export function usePolicyVersions({
         const code = (data?.error ?? '') as string;
         const errorCode: ApproveErrorCode =
           code === 'invite_reviewer_required' ||
-          code === 'segregation_of_duties' ||
-          code === 'move_to_team_required'
+          code === 'segregation_of_duties'
             ? code
             : 'other';
         setError(data?.message || data?.error || '批准失败');

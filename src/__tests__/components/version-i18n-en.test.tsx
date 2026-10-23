@@ -46,11 +46,9 @@ describe('版本 UI 文案 key 四语齐备', () => {
       const compare = sup[locale].policies.versionCompare ?? {};
       const missing = Object.keys(sup.en.policies.versionCompare).filter((k) => !(k in compare));
       expect(missing, `${locale} versionCompare 缺 key`).toEqual([]);
-      // sox 在 zh 还覆盖包内笔误（待上游修正），键集合不同，单独核对补充的 moveToTeamRequired
+      // sox 仅 zh 覆盖包内笔误（待上游修正），其余语种不补充该组，故比较时排除。
       const ownKeys = (l: string) => Object.keys(sup[l].policies.versions ?? {}).filter((k) => k !== 'sox');
       expect(ownKeys(locale)).toEqual(ownKeys('en'));
-      const sox = (sup[locale].policies.versions?.sox ?? {}) as Record<string, unknown>;
-      expect(sox.moveToTeamRequired, `${locale} sox.moveToTeamRequired`).toBeTruthy();
     }
   });
 });

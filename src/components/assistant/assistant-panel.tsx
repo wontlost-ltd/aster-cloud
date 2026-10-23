@@ -171,7 +171,11 @@ export function AssistantPanel() {
   // （hydrating 期间不渲染，避免"先闪出来又消失"）。
   if (!state || state.hydrating || !state.enabled) return null;
 
-  if (isAssistantLauncherVisible(state)) {
+  // 收起状态只有两种画面：显示悬浮按钮，或（按钮被页面区域让出时）什么都不渲染。
+  // 抽屉只在 open 为 true 时出现——否则 AI tab 让出按钮的那一刻抽屉会自己弹出来，
+  // 而 Close 把 open 置为 false 对它毫无作用。
+  if (!state.open) {
+    if (!isAssistantLauncherVisible(state)) return null;
     return (
       <button
         type="button"

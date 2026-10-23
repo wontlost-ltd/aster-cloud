@@ -189,13 +189,11 @@ export function VersionsContent({
       | { error?: string; code?: string }
       | null;
     if (!res.ok) {
-      // 审批路由把错误码放在 error 字段（segregation_of_duties / invite_reviewer_required /
-      // move_to_team_required），个别入口用 code；两处都读，保证 SOX 提示显示本地化文案而不是原始错误码。
+      // 审批路由把错误码放在 error 字段（segregation_of_duties / invite_reviewer_required），
+      // 个别入口用 code；两处都读，保证 SOX 提示显示本地化文案而不是原始错误码。
       const errorCode = data?.code ?? data?.error;
       if (errorCode === 'segregation_of_duties') {
         toast.error(t('sox.selfApprovalNotAllowed'));
-      } else if (errorCode === 'move_to_team_required') {
-        toast.error(t('sox.moveToTeamRequired'));
       } else if (errorCode === 'invite_reviewer_required') {
         toast.error(t('sox.inviteReviewerRequired'));
       } else {
