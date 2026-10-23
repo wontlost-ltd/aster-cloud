@@ -23,6 +23,8 @@ import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq } from 'drizzle-orm';
 import * as schema from '@/db/schema';
+import { assertSeedCompiles } from '@/lib/seed-compile-gate';
+import { TEMPLATES, type TemplateSpec } from '@/scripts/usability-templates';
 
 type Db = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -31,65 +33,7 @@ const TENANT_NAME = 'Usability Test 2026 W3';
 const OWNER_ID = 'ut-pilot';
 const ACCOUNT_IDS = ['ut-p1', 'ut-p2', 'ut-p3', 'ut-p4', 'ut-p5', 'ut-pilot'] as const;
 
-interface TemplateSpec {
-  id: string;
-  name: string;
-  description: string;
-  content: string;
-}
 
-const TEMPLATES: TemplateSpec[] = [
-  {
-    id: 'tpl-blank-loan',
-    name: '空白贷款模板',
-    description: '仅含模块声明的最小起点（任务 1 用）',
-    content: '模块 aster.finance.loan。\n',
-  },
-  {
-    id: 'tpl-half-loan',
-    name: '半成品贷款模板',
-    description: '含违约判断与默认通过，缺负债、金额与分数分支',
-    content: `模块 aster.finance.loan。
-
-定义 Applicant 包含
-  creditScore 作为 整数，
-  monthlyIncome 作为 Decimal，
-  monthlyDebt 作为 Decimal，
-  requestedAmount 作为 Decimal，
-  activeDefaults 作为 整数。
-
-规则 evaluateLoanEligibility 给定 applicant 作为 Applicant 产出 Verdict：
-  如果 applicant.activeDefaults 至少 1：
-    返回 Verdict.deny("active_default")。
-  返回 Verdict.allow()。
-`,
-  },
-  {
-    id: 'tpl-complete-loan',
-    name: '完整贷款模板',
-    description: 'Verdict 四态完整版（任务 3 修改基线）',
-    content: `模块 aster.finance.loan。
-
-定义 Applicant 包含
-  creditScore 作为 整数，
-  monthlyIncome 作为 Decimal，
-  monthlyDebt 作为 Decimal，
-  requestedAmount 作为 Decimal，
-  activeDefaults 作为 整数。
-
-规则 evaluateLoanEligibility 给定 applicant 作为 Applicant 产出 Verdict：
-  如果 applicant.activeDefaults 至少 1：
-    返回 Verdict.deny("active_default")。
-  如果 applicant.monthlyDebt 大于 applicant.monthlyIncome 乘以 0.45m：
-    返回 Verdict.deny("dti_exceeds_limit")。
-  如果 applicant.requestedAmount 至少 50000m：
-    返回 Verdict.require_approval("Credit Officer", "large_exposure")。
-  如果 applicant.creditScore 至少 620 并且 applicant.creditScore 至多 679：
-    返回 Verdict.escalate("borderline_credit_score")。
-  返回 Verdict.allow()。
-`,
-  },
-];
 
 async function upsertUser(db: Db, id: string, passwordHash: string): Promise<void> {
   const existing = await db.query.users.findFirst({ where: eq(schema.users.id, id) });
@@ -197,6 +141,8 @@ async function main(): Promise<void> {
 
   console.log('[seed-usability] 创建', TEMPLATES.length, '个模板策略');
   for (const tpl of TEMPLATES) {
+    // 模板直接写库，先过与编辑器同一份引擎的编译 + 类型检查（模板为中文词法）
+    await assertSeedCompiles(tpl.content, 'zh-CN', tpl.id);
     await upsertTemplate(db, tpl);
   }
 
