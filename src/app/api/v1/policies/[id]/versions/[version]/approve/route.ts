@@ -4,11 +4,11 @@
  * POST /api/v1/policies/{id}/versions/{version}/approve
  *
  * PM v1.1 SOX 守护（二级）：
- * - 当 plan.approvalRequired = true 且 author === approver：
- *   - 个人策略 → 403 move_to_team_required：个人策略只有所有者能审阅，邀请队友也无法审批，
- *     唯一出路是把策略移入团队，由团队其他 owner/admin 审批
- *   - 团队策略、team 活跃 seats <= 1 → 403 invite_reviewer_required（引导邀请）
- *   - 团队策略、team 活跃 seats >= 2 → 403 segregation_of_duties（自审 SOX 违规）
+ * - 个人策略（无 teamId）：不受套餐约束，所有者可以审批自己的提交；approveVersion 会把该决定
+ *   以 selfApproved 标记写入审计事件，供审计与报表区分。
+ * - 团队策略且 plan.approvalRequired = true 且 author === approver：
+ *   - team 活跃 seats <= 1 → 403 invite_reviewer_required（引导邀请）
+ *   - team 活跃 seats >= 2 → 403 segregation_of_duties（自审 SOX 违规）
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -106,16 +106,8 @@ async function checkSoxGuard(
     columns: { teamId: true },
   });
   if (!policy) return null;
-  if (!policy.teamId) {
-    return NextResponse.json(
-      {
-        error: 'move_to_team_required',
-        message: 'Approval requires a separate reviewer. Move this policy into a team so another team owner or admin can approve it.',
-        cta: { label: 'Teams', href: '/teams' },
-      },
-      { status: 403 }
-    );
-  }
+  // 个人策略没有第二个审阅人：四眼原则只对团队策略生效，个人策略由所有者自审并在审计里标记。
+  if (!policy.teamId) return null;
 
   const ownedTeam = await db.query.teams.findFirst({
     where: eq(teams.ownerId, approverId),
