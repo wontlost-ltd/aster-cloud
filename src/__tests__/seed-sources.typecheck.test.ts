@@ -12,32 +12,33 @@ const PILOT: Record<PilotLocale, 'en-US' | 'zh-CN' | 'de-DE'> = { en: 'en-US', z
 describe('种子策略源码必须通过编译与类型检查', () => {
   for (const locale of ['en', 'zh', 'de'] as PilotLocale[]) {
     for (const threshold of [50000, 80000] as const) {
-      it(`信贷试点 ${locale} / ${threshold}`, () => {
-        expect(seedCompileProblems(creditPilotSource(locale, threshold), PILOT[locale])).toEqual([]);
+      it(`信贷试点 ${locale} / ${threshold}`, async () => {
+        expect(await seedCompileProblems(creditPilotSource(locale, threshold), PILOT[locale])).toEqual([]);
       });
     }
-    it(`信贷试点语法糖版 ${locale}`, () => {
-      expect(seedCompileProblems(creditPilotSugarSource(locale), PILOT[locale])).toEqual([]);
+    it(`信贷试点语法糖版 ${locale}`, async () => {
+      expect(await seedCompileProblems(creditPilotSugarSource(locale), PILOT[locale])).toEqual([]);
     });
   }
 
   for (const tpl of TEMPLATES) {
-    it(`可用性模板 ${tpl.id}`, () => {
-      expect(seedCompileProblems(tpl.content, 'zh-CN')).toEqual([]);
+    it(`可用性模板 ${tpl.id}`, async () => {
+      expect(await seedCompileProblems(tpl.content, 'zh-CN')).toEqual([]);
     });
   }
 
-  it('未标类型字段被赋枚举值的源码被拒绝（E012）', () => {
+  it('未标类型字段被赋枚举值的源码被拒绝（E012）', async () => {
     const bad = 'Module m.\nDefine S as one of A, B.\nDefine D has status, reason.\nRule r given x as Int, produce D:\n  Return D with status set to A, reason set to "x".\n';
-    expect(seedCompileProblems(bad, 'en-US').map((p) => p.code)).toContain('E012');
-    expect(() => assertSeedCompiles(bad, 'en-US', 'bad')).toThrow(/E012/);
+    expect((await seedCompileProblems(bad, 'en-US')).map((p) => p.code)).toContain('E012');
+    await expect(assertSeedCompiles(bad, 'en-US', 'bad')).rejects.toThrow(/E012/);
   });
 
   // 已安装引擎是否已把未标类型的 context 推断为 Map（aster-lang-ts feat/context-map-inference）：
   // 旧引擎下 guard 形态仍是 E011，依赖升级后本用例自动生效。
   const guard = 'Module g.\nDefine GuardRequest has principal_id, action, context, agent_model.\n@id("G-1")\nRule decide given req as GuardRequest, produce Verdict:\n  Let large be req.context.amount at least 10000.\n  If large:\n    Return Verdict.escalate("large").\n  Return Verdict.allow().\n';
-  const engineInfersContextMap = seedCompileProblems('Module p.\nDefine R has context.\nRule r given req as R, produce Int:\n  Return req.context.n.\n', 'en-US').length === 0;
-  it.skipIf(!engineInfersContextMap)('guard 形态（未标类型 context 的点访问）通过', () => {
-    expect(seedCompileProblems(guard, 'en-US')).toEqual([]);
+  it('guard 形态（未标类型 context 的点访问）在支持 Map 推断的引擎下通过', async (ctx) => {
+    const probe = await seedCompileProblems('Module p.\nDefine R has context.\nRule r given req as R, produce Int:\n  Return req.context.n.\n', 'en-US');
+    if (probe.length > 0) ctx.skip();
+    expect(await seedCompileProblems(guard, 'en-US')).toEqual([]);
   });
 });

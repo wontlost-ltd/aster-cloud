@@ -5,11 +5,17 @@
  * 这里用与编辑器同一份 aster-lang-ts 做编译 + 类型检查（两侧检查器已按 parity 门对齐），
  * 任一 error 级诊断都让种子脚本在写库前失败，避免清库重建后把类型不正确的策略再灌一遍。
  */
-import { compileAndTypecheck, EN_US, ZH_CN, DE_DE, type Lexicon } from '@aster-cloud/aster-lang-ts/browser';
-
 export type SeedLocale = 'en-US' | 'zh-CN' | 'de-DE';
 
-const LEXICONS: Record<SeedLocale, Lexicon> = { 'en-US': EN_US, 'zh-CN': ZH_CN, 'de-DE': DE_DE };
+type Engine = typeof import('@aster-cloud/aster-lang-ts/browser');
+
+// 包的 ./browser 子路径只有 ESM 导出；种子脚本经 tsx 以 CJS 运行，静态 import 会被 require 条件拒绝，
+// 故用动态 import（CJS 与 ESM 都可用），并缓存一次。
+let enginePromise: Promise<Engine> | null = null;
+function engine(): Promise<Engine> {
+  enginePromise ??= import('@aster-cloud/aster-lang-ts/browser');
+  return enginePromise;
+}
 
 export interface SeedCompileProblem {
   readonly code: string;
@@ -18,8 +24,10 @@ export interface SeedCompileProblem {
 }
 
 /** 返回 error 级问题列表；空数组表示源码可编译且类型检查通过。 */
-export function seedCompileProblems(source: string, locale: SeedLocale): SeedCompileProblem[] {
-  const result = compileAndTypecheck(source, { lexicon: LEXICONS[locale] });
+export async function seedCompileProblems(source: string, locale: SeedLocale): Promise<SeedCompileProblem[]> {
+  const { compileAndTypecheck, EN_US, ZH_CN, DE_DE } = await engine();
+  const lexicons = { 'en-US': EN_US, 'zh-CN': ZH_CN, 'de-DE': DE_DE } as const;
+  const result = compileAndTypecheck(source, { lexicon: lexicons[locale] });
   const problems: SeedCompileProblem[] = [];
   for (const err of result.parseErrors ?? []) {
     const e = err as { message?: string; span?: { start?: { line?: number } } } | string;
@@ -37,8 +45,8 @@ export function seedCompileProblems(source: string, locale: SeedLocale): SeedCom
 }
 
 /** 种子写库前调用：有 error 级问题则抛错并列出全部诊断。 */
-export function assertSeedCompiles(source: string, locale: SeedLocale, label: string): void {
-  const problems = seedCompileProblems(source, locale);
+export async function assertSeedCompiles(source: string, locale: SeedLocale, label: string): Promise<void> {
+  const problems = await seedCompileProblems(source, locale);
   if (problems.length === 0) return;
   const lines = problems.map((p) => `  ${p.code}${p.line ? ` L${p.line}` : ''}: ${p.message}`).join('\n');
   throw new Error(`[seed] 策略 "${label}" 未通过编译/类型检查，拒绝写库：\n${lines}`);

@@ -142,7 +142,7 @@ async function main(): Promise<void> {
   console.log('[seed-usability] 创建', TEMPLATES.length, '个模板策略');
   for (const tpl of TEMPLATES) {
     // 模板直接写库，先过与编辑器同一份引擎的编译 + 类型检查（模板为中文词法）
-    assertSeedCompiles(tpl.content, 'zh-CN', tpl.id);
+    await assertSeedCompiles(tpl.content, 'zh-CN', tpl.id);
     await upsertTemplate(db, tpl);
   }
 
