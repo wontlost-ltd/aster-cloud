@@ -137,13 +137,4 @@ describe('VersionsContent 审批操作', () => {
     await waitFor(() => expect(h.toastError).toHaveBeenCalledWith('policies.versions.sox.selfApprovalNotAllowed'));
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/policies/p1/versions/2/approve', expect.objectContaining({ method: 'POST' }));
   });
-
-  it('★SOX 套餐下个人策略自审被拒（move_to_team_required）：toast 提示移入团队而不是邀请队友（review I4）', async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: 'move_to_team_required', message: 'x' }), { status: 403 }));
-    renderAs('author', { policyOwnerId: 'author', policyTeamId: null, reviewerTeamRole: null });
-    fireEvent.click(screen.getByRole('button', { name: 'policies.versions.actions.approve' }));
-    fireEvent.click(screen.getByRole('button', { name: 'policies.versions.approveDialog.confirm' }));
-
-    await waitFor(() => expect(h.toastError).toHaveBeenCalledWith('policies.versions.sox.moveToTeamRequired'));
-  });
 });

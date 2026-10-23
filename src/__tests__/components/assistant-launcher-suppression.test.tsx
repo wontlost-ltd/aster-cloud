@@ -111,6 +111,28 @@ describe('悬浮助手按钮让位', () => {
     expect(handle.current!.enabled).toBe(true);
   });
 
+  it('★让出期间面板不会自己展开（生产 G1）：收起态什么都不渲染，展开后 Close 能真正收起', () => {
+    renderAll(<Suppressor name="setA" initial />);
+    // 以前这里会直接落到抽屉分支：按钮被让出 = 抽屉自动弹出，盖住编辑器 AI 面板的「发送」。
+    expect(screen.queryByRole('complementary')).toBeNull();
+    expect(launcher()).toBeNull();
+
+    act(() => handle.current!.setOpen(true));
+    expect(screen.getByRole('complementary')).toBeTruthy();
+
+    act(() => screen.getByRole('button', { name: 'close' }).click());
+    expect(screen.queryByRole('complementary')).toBeNull();
+    expect(launcher()).toBeNull();
+
+    // Escape 走同一条收起路径，让出期间同样不能留下抽屉或按钮
+    act(() => handle.current!.setOpen(true));
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(screen.queryByRole('complementary')).toBeNull();
+    expect(launcher()).toBeNull();
+  });
+
   it('Provider 之外调用 hook 不抛错', () => {
     function Bare() {
       useSuppressAssistantLauncher(true);

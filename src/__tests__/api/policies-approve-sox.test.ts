@@ -6,7 +6,7 @@
 //   4. Pro 他审多 seat → 200 approved
 //   5. Enterprise 自审单 seat → 403 invite_reviewer_required
 //   6. Pro 自审无 owner team → 403 引导 /teams/new
-//   7. SOX 套餐下个人策略自审 → 403 move_to_team_required（邀请队友无法审批个人策略，须移入团队）
+//   7. 个人策略（无 teamId）自审 → 200，不受套餐约束，交由 approveVersion 以 selfApproved 入审计
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -203,21 +203,22 @@ describe('POST /api/v1/policies/[id]/versions/[version]/approve — SOX 守护',
     expect((await res.json()).error).toBe('segregation_of_duties');
   });
 
-  it.each([1, 3])('★Pro 个人策略自审（%i seat）→ 403 move_to_team_required，引导移入团队（review I4）', async (seats) => {
+  it.each(['pro', 'enterprise'] as const)('★%s 个人策略自审 → 200，不受套餐 SOX 约束，交由 approveVersion 标记自审', async (plan) => {
     setupMocks({
-      user: { plan: 'pro', priceLockedAt: null, legacyTier: null },
+      user: { plan, priceLockedAt: null, legacyTier: null },
       versionAuthor: 'u1',
       team: { id: 't1' },
-      seatCount: seats,
+      seatCount: 1,
     });
     prismaMocks.policiesFindFirst.mockResolvedValueOnce({ teamId: null });
+    mockApprove.mockResolvedValueOnce(undefined);
 
     const res = await POST(makeRequest(), { params });
-    expect(res.status).toBe(403);
-    const data = await res.json();
-    expect(data.error).toBe('move_to_team_required');
-    expect(data.cta?.href).toBe('/teams');
-    expect(mockApprove).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect((await res.json()).success).toBe(true);
+    expect(mockApprove).toHaveBeenCalledWith(
+      expect.objectContaining({ policyId: 'p1', version: 1, approverId: 'u1', decision: 'APPROVED' }),
+    );
   });
 
   it('策略不存在 → 不拦截，交由 approveVersion 判定（404 不泄露存在性）', async () => {
