@@ -367,6 +367,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Documentation
 
+- Refresh unreleased *(changelog)*
 - Note unpublished registry package and pooled evidence *(credit-pilot)*
 - 收据核验示例改用 Bearer 认证并说明 ASTER_API 基地址（ADR 0044 §5） *(guides)*
 - 信贷试点指南三语——跑通步骤、Article 14 对照解读、独立核验（ADR 0044 §5） *(guides)*
