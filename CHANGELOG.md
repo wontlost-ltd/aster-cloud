@@ -6,6 +6,8 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- 重验页加范围/模式选择与发起前影响预估（ADR 0050 rev 6） (#556) *(admin)*
+- 发起策略重验写审计，并把管理员 id 带给 api 落 triggered_by (#554) *(admin)*
 - 会话纪元 dbEpoch（uncached 读、fail-closed 撤销、admin 单调 bump 与审计）；admin 重验代理与页面（ADR 0050 Task 8） *(auth)*
 - AI 工作台入口改为数据库授权，管理员默认启用并可授予他人 *(admin)*
 - 种子脚本写库前过编译 + 类型检查门禁，并以测试覆盖全部种子源码 *(seed)*
@@ -367,6 +369,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Documentation
 
+- Refresh unreleased (#549) *(changelog)*
 - Refresh unreleased *(changelog)*
 - Note unpublished registry package and pooled evidence *(credit-pilot)*
 - 收据核验示例改用 Bearer 认证并说明 ASTER_API 基地址（ADR 0044 §5） *(guides)*
@@ -684,6 +687,15 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- 合并冲突收尾——审批错误就地提示、缓存失效容错、i18n 命名空间与测试更新
+- API 错误文案英文化并带 code、保存失败回传诊断、安全页与发布说明本地化 (#561) *(i18n)*
+- 提交说明保存、词汇恢复入口、通知/命令面板/toast/移动端等细节 (#571 #572 #573) *(ux)*
+- 模板 E104、API 用法示例、重验范围说明、安全事件、Hindi 文档回退、注册文案、回收站计数 (#560 #564 #565 #566 #567 #568 #569)
+- 可执行版本解析与审批约束、编辑后缓存失效、决策与执行状态分离、结构参数表单 (#558 #559 #562 #563) *(execute)*
+- 会话纪元撤销无纪元旧令牌并校验用户存在；Settings 套餐读库 (#557 #570) *(auth)*
+- 共享开关关闭时不再请求 shared-with-me，消除控制台 404 (#553) *(policies)*
+- 管理员概览卡文案改为 title/description/cta 对象，补策略重验入口 (#552) *(i18n)*
+- 策略重验启动确认改用设计系统 ConfirmDialog (#550) *(admin)*
 - 重验代理签名只覆盖路径，不含查询串 *(admin)*
 - 门禁改为动态加载 ESM 入口，tsx(CJS) 运行的种子脚本可用 *(seed)*
 - 个人策略允许自审；助手抽屉只在打开时渲染 *(approvals,assistant)*
