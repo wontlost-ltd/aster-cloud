@@ -13,7 +13,7 @@ async function proxy(req: NextRequest, context: { params: Promise<{ path: string
   if (admin instanceof NextResponse) return admin;
   const { path } = await context.params;
   const suffix = path.join('/');
-  if (!(suffix === 'runs' || /^runs\/[A-Za-z0-9_-]+$/.test(suffix) || suffix === 'invalid')) {
+  if (!(suffix === 'runs' || /^runs\/[A-Za-z0-9_-]+$/.test(suffix) || suffix === 'invalid' || suffix === 'preview')) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
   // 签名只覆盖路径，不含查询串（api 侧 AdminHmacVerifier 用的是 @Path 常量）；查询串只拼到实际请求 URL。
