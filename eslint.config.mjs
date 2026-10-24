@@ -72,6 +72,7 @@ const eslintConfig = [
       // 非 root 表的列。源由 c6f8f5a：api/teams GET 500 事件。规则
       // 详见 eslint-rules/no-cross-table-orderby.js。
       "deployment-mode/no-cross-table-orderby": "error",
+      "deployment-mode/no-stale-safe-column-read": "error",
     },
   },
   {

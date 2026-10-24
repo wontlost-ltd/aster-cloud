@@ -155,3 +155,4 @@ AI_WORKSPACE_ENABLED_FOR = "784d38c4-f433-4369-b4dc-ab0f4f0cc2b9"
 #
 # 遥测保留天数（J1 — 默认 365）：
 # wrangler secret put TELEMETRY_RETENTION_DAYS
+# 本地 pnpm deploy 仅为 break-glass；生产自动发布唯一走 GitHub Actions deploy-worker。

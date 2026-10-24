@@ -118,6 +118,8 @@ jobs:
         run: |
           bash scripts/ci/open-image-pin-pr-merge.test.sh
           bash scripts/ci/open-image-pin-pr-flow.test.sh
+          bash scripts/ci/deploy-worker-workflow.test.sh
+
       # ★版本对得上不代表跑得起来：aster-lang-ts 的 vscode-languageserver 是可选 peer，
       #   pnpm 不装。这里按 Dockerfile.lsp 同一方式安装并完成一次真实 initialize 握手。
       - name: LSP server starts from lsp-package.json
@@ -926,3 +928,24 @@ jobs:
           done
           echo "::error title=migration not verified::等 ArgoCD sync 到含本次 migrate digest 的 revision 超时 → 迁移状态未知,需人工确认。详见 #187。"
           exit 1
+
+  migration-split:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: 检查迁移与代码拆分
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          pr_json="$(gh pr view "$PR_NUMBER" --repo "$GH_REPO" --json files,labels,body)"
+          export PR_FILES="$(jq -r '.files[].path' <<< "$pr_json")"
+          export PR_LABELS="$(jq -r '.labels[].name' <<< "$pr_json" | paste -sd, -)"
+          export PR_BODY="$(jq -r '.body' <<< "$pr_json")"
+          node scripts/ci/check-migration-split.mjs

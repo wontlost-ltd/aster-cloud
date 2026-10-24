@@ -10,7 +10,7 @@
     "start": "next start",
     "start:lsp": "node --import tsx server.ts",
     "preview": "wrangler dev",
-    "deploy": "node scripts/docs-migration/build-docs-index.mjs && next build --webpack && node scripts/docs-pii-scan.mjs && npx opennextjs-cloudflare build --skipNextBuild && wrangler deploy",
+    "deploy": "node scripts/docs-migration/build-docs-index.mjs && next build --webpack && node scripts/docs-pii-scan.mjs && npx opennextjs-cloudflare build --skipNextBuild && wrangler deploy --message github-actions-run-${DEPLOY_RUN_ID:-local}",
     "lint": "eslint",
     "test": "vitest",
     "test:run": "vitest run",
