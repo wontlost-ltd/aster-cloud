@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { revokeApiKey } from '@/lib/api-keys';
+import { logSecurityAdminAction } from '@/services/security/security-event-service';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -21,6 +22,8 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     if (!revoked) {
       return NextResponse.json({ error: 'API key not found' }, { status: 404 });
     }
+
+    await logSecurityAdminAction(session.user.id, 'API_KEY_REVOKED', { keyId: id });
 
     return NextResponse.json({ success: true });
   } catch (error) {

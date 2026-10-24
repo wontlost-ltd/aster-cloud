@@ -2,7 +2,7 @@
 // 策略执行日志服务：查询、分页、统计
 
 import { db, executions } from '@/lib/prisma';
-import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
+import { eq, and, or, isNull, gte, lte, desc, sql } from 'drizzle-orm';
 import type { InferSelectModel } from 'drizzle-orm';
 import type { ExecutionMetadata } from '@/lib/guard-register';
 import type { AgentIdentity, PolicyReplayMetadata, PolicyTraceSkeleton } from '@/services/policy/policy-api';
@@ -297,13 +297,6 @@ export function buildEvidenceColumns(
 type ExecutionSource = InferSelectModel<typeof executions>['source'];
 type ExecutionDecision = InferSelectModel<typeof executions>['decision'];
 
-/** 非放行但也不算失败的决策态（统计口径用）。 */
-const NON_FAILURE_DECISIONS: ReadonlySet<ExecutionDecision> = new Set<ExecutionDecision>([
-  'indeterminate',
-  'require_approval',
-  'escalate',
-]);
-
 export interface ExecutionLogItem {
   id: string;
   policyId: string;
@@ -349,6 +342,8 @@ export interface ExecutionStats {
   totalExecutions: number;
   successCount: number;
   failureCount: number;
+  /** 引擎错误单独统计，不计入拒绝数和通过率。 */
+  errorCount: number;
   /** 无决策（值/计算输出，如 greet 返回文本）的执行数——不计入失败。 */
   indeterminateCount: number;
   /** 需人工批准（Verdict REQUIRE_APPROVAL）的执行数——待处置，不计入失败。 */
@@ -372,24 +367,22 @@ export interface ExecutionStats {
 }
 
 /**
- * 按决策口径派生统计（纯函数，便于单测）：
- * - 通过 = approved（success=true）；
- * - 失败 = 拒绝 + 错误 = 总数 - 通过 - 无决策 - 待处置；按余数计算，因此 decision 为 null 的
- *   历史行若 success=false 也落入「失败」（success=true 的 null 行计入通过）；
- * - 通过率分母只含已定论的决策（通过 + 失败），待处置（require_approval/escalate）
- *   尚无结论、无决策（indeterminate）是值输出，二者都不参与，避免把待审批行算成 0%。
+ * 按决策口径派生统计（纯函数，便于单测）：拒绝计入 failureCount，错误单独计数；
+ * 通过率只以 approved 与 denied 为分母。旧记录缺 decision 时才按 success 兼容推定。
  */
 export function deriveDecisionStats(counts: {
   totalExecutions: number;
   successCount: number;
+  deniedCount?: number;
+  errorCount?: number;
   indeterminateCount: number;
   pendingCount: number;
-}): { failureCount: number; pendingCount: number; successRate: number } {
-  const { totalExecutions, successCount, indeterminateCount, pendingCount } = counts;
-  const failureCount = Math.max(0, totalExecutions - successCount - indeterminateCount - pendingCount);
-  const settled = successCount + failureCount;
-  const successRate = settled > 0 ? (successCount / settled) * 100 : 0;
-  return { failureCount, pendingCount, successRate };
+}): { failureCount: number; errorCount: number; pendingCount: number; successRate: number } {
+  const errorCount = counts.errorCount ?? 0;
+  const failureCount = counts.deniedCount ?? Math.max(0, counts.totalExecutions - counts.successCount - counts.indeterminateCount - counts.pendingCount - errorCount);
+  const settled = counts.successCount + failureCount;
+  const successRate = settled > 0 ? (counts.successCount / settled) * 100 : 0;
+  return { failureCount, errorCount, pendingCount: counts.pendingCount, successRate };
 }
 
 /**
@@ -518,7 +511,10 @@ export async function getExecutionStats(
   if (policyId) conditions.push(eq(executions.policyId, policyId));
 
   const whereClause = and(...conditions);
-  const whereWithSuccess = and(...conditions, eq(executions.success, true));
+  const whereWithSuccess = and(...conditions, or(
+    eq(executions.decision, 'approved'),
+    and(isNull(executions.decision), eq(executions.success, true)),
+  ));
   // 非失败的非放行态：indeterminate（值/计算输出，无 allow/deny 语义）与待人工处置
   // （require_approval/escalate）。三者一次查询分桶计数，**均不计入失败**。
   const nonFailureCounts = db
@@ -526,6 +522,8 @@ export async function getExecutionStats(
       indeterminate: sql<number>`count(*) filter (where ${executions.decision} = 'indeterminate')::int`,
       requireApproval: sql<number>`count(*) filter (where ${executions.decision} = 'require_approval')::int`,
       escalate: sql<number>`count(*) filter (where ${executions.decision} = 'escalate')::int`,
+      denied: sql<number>`count(*) filter (where ${executions.decision} = 'denied' OR (${executions.decision} IS NULL AND ${executions.success} = false))::int`,
+      error: sql<number>`count(*) filter (where ${executions.decision} = 'error')::int`,
     })
     .from(executions)
     .where(whereClause);
@@ -563,12 +561,16 @@ export async function getExecutionStats(
   const indeterminateCount = nonFailureResult[0]?.indeterminate || 0;
   const requireApprovalCount = nonFailureResult[0]?.requireApproval || 0;
   const escalateCount = nonFailureResult[0]?.escalate || 0;
+  const deniedCount = nonFailureResult[0]?.denied || 0;
+  const errorCount = nonFailureResult[0]?.error || 0;
   // Filter out executions with deleted policies
   const executionData = executionsList.filter(e => !e.policy.deletedAt);
 
-  const { failureCount, pendingCount, successRate } = deriveDecisionStats({
+  const { failureCount, errorCount: derivedErrorCount, pendingCount, successRate } = deriveDecisionStats({
     totalExecutions,
     successCount,
+    deniedCount,
+    errorCount,
     indeterminateCount,
     pendingCount: requireApprovalCount + escalateCount,
   });
@@ -602,10 +604,9 @@ export async function getExecutionStats(
     const dateStr = exec.createdAt.toISOString().slice(0, 10);
     if (trendMap.has(dateStr)) {
       const trend = trendMap.get(dateStr)!;
-      if (exec.success) {
+      if (exec.decision === 'approved' || (exec.decision === null && exec.success)) {
         trend.successCount++;
-      } else if (!NON_FAILURE_DECISIONS.has(exec.decision)) {
-        // 无决策（值输出）与待人工处置不计入失败趋势；真实拒绝/错误才算失败。
+      } else if (exec.decision === 'denied' || (exec.decision === null && !exec.success)) {
         trend.failureCount++;
       }
     }
@@ -622,6 +623,7 @@ export async function getExecutionStats(
     totalExecutions,
     successCount,
     failureCount,
+    errorCount: Math.max(errorCount, derivedErrorCount),
     indeterminateCount,
     requireApprovalCount,
     escalateCount,

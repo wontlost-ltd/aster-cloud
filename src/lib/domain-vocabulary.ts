@@ -124,6 +124,8 @@ export interface TermLink {
   source: string;
   createdAt: Date;
   updatedAt: Date;
+  deletedAt?: Date | null;
+  archivedAt?: Date | null;
 }
 
 export interface ListResult {
@@ -140,6 +142,7 @@ export interface ListOptions {
   locale?: string;
   kind?: string;
   includeDeleted?: boolean;
+  deletedOnly?: boolean;
   page?: number;
   pageSize?: number;
   /**
@@ -200,6 +203,8 @@ interface JoinedTermRow {
   source: string;
   createdAt: Date;
   updatedAt: Date;
+  deletedAt: Date | null;
+  archivedAt: Date | null;
 }
 
 function mapJoinedRow(row: JoinedTermRow): TermLink {
@@ -218,6 +223,8 @@ function mapJoinedRow(row: JoinedTermRow): TermLink {
     source: row.source,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    deletedAt: row.deletedAt,
+    archivedAt: row.archivedAt,
   };
 }
 
@@ -237,6 +244,8 @@ function selectTermLinkFields() {
     source: domainTerms.source,
     createdAt: userDomainTerms.createdAt,
     updatedAt: userDomainTerms.updatedAt,
+    deletedAt: userDomainTerms.deletedAt,
+    archivedAt: userDomainTerms.archivedAt,
   };
 }
 
@@ -376,7 +385,9 @@ export async function listUserVocabularyTerms(
   const page = normalizePage(opts.page);
   const pageSize = normalizePageSize(opts.pageSize);
   const conditions: SQL[] = [eq(userDomainTerms.userId, userId)];
-  if (!opts.includeDeleted) conditions.push(activeLinkPredicate());
+  if (opts.deletedOnly) {
+    conditions.push(isNotNull(userDomainTerms.deletedAt), isNull(userDomainTerms.archivedAt), sql`${userDomainTerms.deletedAt} >= now() - interval '90 days'`);
+  } else if (!opts.includeDeleted) conditions.push(activeLinkPredicate());
   if (opts.domain) conditions.push(eq(userDomainTerms.domain, opts.domain));
   if (opts.locale) conditions.push(eq(userDomainTerms.locale, opts.locale));
   if (opts.kind) conditions.push(eq(userDomainTerms.kind, opts.kind));

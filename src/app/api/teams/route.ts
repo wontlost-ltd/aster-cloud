@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db, teams, teamMembers, policies } from '@/lib/prisma';
+import { logSecurityAdminAction } from '@/services/security/security-event-service';
 import { eq, and, isNull, desc, sql } from 'drizzle-orm';
 import { hasFeatureAccess } from '@/lib/usage';
 import { validateTeamName, validateSlug } from '@/lib/validation';
@@ -12,7 +13,7 @@ export async function GET() {
   try {
     const session = await getSession();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
 
     // R32 hotfix：原 `orderBy: desc(teams.updatedAt)` 在 db.query.teamMembers
@@ -96,14 +97,14 @@ export async function POST(req: Request) {
   try {
     const session = await getSession();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
 
     // 检查团队功能访问权限
     const hasAccess = await hasFeatureAccess(session.user.id, 'teamFeatures');
     if (!hasAccess) {
       return NextResponse.json(
-        { error: '团队功能需要 Team 或 Enterprise 订阅', upgrade: true },
+        { error: 'Team features require a Team or Enterprise subscription.', code: 'team_plan_required', upgrade: true },
         { status: 403 }
       );
     }
@@ -127,7 +128,7 @@ export async function POST(req: Request) {
       where: eq(teams.slug, slug),
     });
     if (existingTeam) {
-      return NextResponse.json({ error: '此 slug 已被使用' }, { status: 400 });
+      return NextResponse.json({ error: 'This slug is already in use.', code: 'team_slug_conflict' }, { status: 400 });
     }
 
     // 创建团队和所有者成员关系（使用事务）
@@ -168,6 +169,8 @@ export async function POST(req: Request) {
     if (!team) {
       throw new Error('Failed to create team');
     }
+
+    await logSecurityAdminAction(session.user.id, 'TEAM_CREATED', { teamId, teamName: team.name });
 
     return NextResponse.json(
       {

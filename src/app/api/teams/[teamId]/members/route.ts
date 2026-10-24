@@ -11,7 +11,7 @@ export async function GET(req: Request, { params }: RouteParams) {
   try {
     const session = await getSession();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
 
     const { teamId } = await params;
@@ -83,6 +83,6 @@ export async function GET(req: Request, { params }: RouteParams) {
     });
   } catch (error) {
     console.error('Error listing team members:', error);
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error.', code: 'internal_server_error' }, { status: 500 });
   }
 }

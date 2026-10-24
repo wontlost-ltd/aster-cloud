@@ -54,7 +54,7 @@ interface Preview {
     escalate: number;
     unknown: number;
   };
-  coverage: { verifiable: number; legacy: number };
+  coverage: { verifiable: number; legacy: number; failedNoHashes: number };
   exceedsLimit: boolean;
   limit: number;
 }
@@ -305,10 +305,11 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
                       {t('previewCoverage', {
                         verifiable: preview.coverage.verifiable,
                         legacy: preview.coverage.legacy,
+                        failed: preview.coverage.failedNoHashes,
                       })}
                     </p>
                     {/* 全部都是无哈希 legacy → 明确警告导出会全 null（除非勾「仅可验证」，此时导出为空）。 */}
-                    {preview.coverage.verifiable === 0 && (
+                    {preview.coverage.verifiable === 0 && preview.coverage.failedNoHashes === 0 && (
                       <Alert variant="warning" className="mt-2">
                         {t('previewAllLegacy')}
                       </Alert>

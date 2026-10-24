@@ -143,7 +143,7 @@ export async function POST(req: Request, { params }: RouteParams) {
 
     const email = body?.email?.trim().toLowerCase();
     if (!email || !email.includes('@')) {
-      return NextResponse.json({ error: '需要有效的邮箱地址' }, { status: 400 });
+      return NextResponse.json({ error: 'A valid email address is required.', code: 'invalid_email' }, { status: 400 });
     }
 
     const subjectKind = (body?.subjectKind ?? 'domain_expert') as ReviewerSubjectKind;
@@ -151,7 +151,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       // ★不接受 'verifier' —— 那是**机器**的身份，人不得冒用，
       //   机器也不得借这条路径给自己发证书（ADR §3）。
       return NextResponse.json(
-        { error: `subjectKind 必须是 ${REVIEWER_SUBJECT_KINDS.join(' 或 ')}` },
+        { error: `subjectKind must be one of ${REVIEWER_SUBJECT_KINDS.join(' or ')}.`, code: 'invalid_reviewer_subject_kind' },
         { status: 400 },
       );
     }
@@ -170,7 +170,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         ),
       });
       if (already) {
-        return NextResponse.json({ error: '此用户已是本策略的复核人' }, { status: 400 });
+        return NextResponse.json({ error: 'This user is already a reviewer for this policy.', code: 'already_policy_reviewer' }, { status: 400 });
       }
       await db.insert(policyReviewers).values({
         id: globalThis.crypto.randomUUID(),
@@ -191,7 +191,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       ),
     });
     if (dupInvite && dupInvite.expiresAt > new Date()) {
-      return NextResponse.json({ error: '此邮箱已有待处理的邀请' }, { status: 400 });
+      return NextResponse.json({ error: 'A pending invitation already exists for this email address.', code: 'invitation_already_pending' }, { status: 400 });
     }
 
     const token = randomBytes(32).toString('hex');
@@ -228,7 +228,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
 
     const userId = new URL(req.url).searchParams.get('userId');
     if (!userId) {
-      return NextResponse.json({ error: '需要 userId' }, { status: 400 });
+      return NextResponse.json({ error: 'userId is required.', code: 'user_id_required' }, { status: 400 });
     }
 
     // ★撤销的是**未来**的复核资格。已产出的 Proof **不受影响**——

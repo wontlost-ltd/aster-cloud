@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { restorePolicy, permanentDeletePolicy } from '@/lib/policy-lifecycle';
+import { invalidatePolicyCache } from '@/lib/cache';
+import { logSecurityAdminAction } from '@/services/security/security-event-service';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -21,6 +23,12 @@ export async function POST(req: Request, { params }: RouteParams) {
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 404 });
     }
+
+    // 响应前完成缓存失效；KV 故障只记录，不把已成功的写操作报成失败。
+    await invalidatePolicyCache(result.policyId ?? id).catch((err) => console.warn('[Cache] Failed to invalidate policy cache:', err));
+    await logSecurityAdminAction(session.user.id, 'POLICY_RESTORED', {
+      policyId: result.policyId,
+    });
 
     return NextResponse.json({
       success: true,
@@ -52,6 +60,8 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 404 });
     }
+
+    await logSecurityAdminAction(session.user.id, 'POLICY_PERMANENTLY_DELETED', { policyId: id });
 
     return NextResponse.json({
       success: true,

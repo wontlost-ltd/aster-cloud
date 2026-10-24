@@ -468,7 +468,7 @@ describe('复核结论写入 — 身份与区间的真实性', () => {
 
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({
-      error: expect.stringContaining('机器不得代签'),
+      error: expect.stringContaining('automated agents cannot sign'),
     });
     expect(mockInsertValues, '机器身份绝不能落进 Proof').not.toHaveBeenCalled();
   });

@@ -166,6 +166,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       failureUnknown: 'Unclassified failure.',
     },
     docs: {
+      fallbackBanner: { title: 'Language notice', body: 'This page is currently available in English.' },
       sidebar: {
         // 入门：创建 API 密钥（助手检索的常见问题）
         gettingStarted: { apiKeys: 'Create an API key' },
@@ -183,6 +184,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noResults: 'No results',
       },
     },
+    common: { notFoundTitle: 'Page not found', cancel: 'Cancel' },
     guardianShowcase: {
       eyebrow: 'AI governance',
       title: 'Every AI action, checked before it runs',
@@ -244,13 +246,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       saveFailed: 'Could not update — please try again',
     },
     // 侧栏/导航「Reports」改标「Evidence」（URL 仍 /reports；deepMerge 覆盖包内字符串）。
-    dashboardNav: { reports: 'Evidence', approvals: 'Approvals', aiWorkspace: 'AI workspace', commandPalette: { aiWorkspace: 'Open AI workspace' } },
+    domainVocabularies: {
+      stats: { archived: 'Deleted (restorable)' },
+      actions: { recentlyDeleted: 'Recently deleted', restore: 'Restore', noRecentlyDeleted: 'No terms were deleted in the last 90 days.', deletedRecoverable: 'Deleted (restorable)', activeTerms: 'Active terms', termAdded: 'Term added', termUpdated: 'Term updated', termDeleted: 'Term deleted', termRestored: 'Term restored', loadMore: 'Load more', loadingMore: 'Loading…' },
+    },
+    dashboardNav: { reports: 'Evidence', approvals: 'Approvals', domainVocabularies: 'Domain vocabularies', aiWorkspace: 'AI workspace', commandPalette: { aiWorkspace: 'Open AI workspace', domainVocabularies: 'Open domain vocabularies', groupAdmin: 'Admin' } },
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
     notifications: {
       guardApprovalRequested: 'Approval needed: {policyName}',
       guardApprovalDecided: 'Your request for {policyName} was {outcome}',
       guardOutcomeApproved: 'approved',
       guardOutcomeRejected: 'rejected',
+      openApprovals: 'Open approvals',
     },
     // 审批收件箱（ADR 0042 §5.2）。
     approvals: {
@@ -317,7 +324,14 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 二次验证（issue #400）——走本地补充层，不需要 ui-messages 跨仓发版。
     auth: {
+      signup: {
+        title: 'Create your account',
+        subtitle: 'New accounts may include a Pro trial; see Billing after sign-up.',
+        trialIncludes: 'Available plans:',
+        planSummary: { free: 'Free: {policies} policies, {evaluations} evaluations per month', pro: 'Pro: {policies} policies, {evaluations} evaluations per month' },
+      },
       login: {
+        startTrial: 'Create an account',
         showPassword: 'Show password',
         hidePassword: 'Hide password',
         capsLockOn: 'Caps Lock is on. Passwords are case-sensitive, so this is a common cause of failed sign-ins.',
@@ -382,7 +396,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       exporting: 'Exporting…',
       previewCount: '{count} executions in range',
       previewEmpty: 'No executions in this range — nothing to export.',
-      previewCoverage: '{verifiable} verifiable (with hashes) · {legacy} legacy (no hashes)',
+      previewCoverage: '{verifiable} verifiable (with hashes) · {legacy} legacy (no hashes) · {failed} failed executions (no hashes)',
       previewAllLegacy: 'All executions in this range predate hash capture — the export will have empty hash/provenance fields. Tick “verifiable only” to skip them, or export as-is with a documented coverage gap.',
       verifiableOnly: 'Verifiable only',
       verifiableOnlyHint: 'Exclude executions without canonical hashes (recorded before hash capture was enabled).',
@@ -437,6 +451,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      errorCodes: { invalid_email: 'Enter a valid email address.', invalid_role: 'The selected role is not valid.', already_team_member: 'This person is already a team member.', invitation_already_pending: 'An invitation is already pending for this email.', unauthorized: 'You are not authorized to invite team members.' },
       // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
       createTeam: {
         nameInvalid: 'Team name must be 2–50 characters.',
@@ -549,6 +564,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         scopeColumn: 'Scope',
         errorNotMember: 'You are not a member of this team.',
         errorPlanNoApiAccess: 'The team owner’s plan does not include API access.',
+        examples: {
+          listPoliciesDesc: 'This cloud endpoint requires a signed-in cloud session cookie; API keys are not accepted here.',
+          getPolicyIdDesc: 'Find POLICY_ID in the policy detail page URL. Use the Rule name as functionName.',
+          executePolicyDesc: 'Send input to the cloud policy execute endpoint. functionName must match a Rule name.',
+        },
       },
       aiKeysPage: {
         // 失效日期已过的 key（F13）：推理层会跳过，状态必须如实显示。
@@ -648,6 +668,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         modeEnforceBadge: 'Enforce',
         triggeredBy: 'Started by',
         verdictKind: 'Verdict',
+        scopeExplanation: 'This page revalidates policy versions in the policy API service. Policies authored on aster-lang.cloud pass a server-side type-check gate on every save and are compiled with the current toolchain when executed.',
         verdictAdvisory: 'Advisory',
         verdictBinding: 'Binding',
         confirmEnforce: 'Scope {scope}: {total} policy versions will be re-typechecked (about {minutes} min at the current pace). Invalid versions become blocked as they are found. Continue?',
@@ -766,6 +787,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
     // 细分出的展示类型，见 lib/security-event-display.ts。
     security: {
+      dashboard: { title: 'Security monitoring', retry: 'Retry', loadFailed: 'Could not load security data.', unknownError: 'Unknown error.', timeRange: { '1h': '1 hour', '24h': '24 hours', '7d': '7 days', '30d': '30 days' }, totalEvents: 'Total events', errorRate: 'Error rate', errorsAndCritical: 'Errors / critical', eventTypeBreakdown: 'Event type breakdown', recentEvents: 'Recent events', allSeverities: 'All severities', noEvents: 'No events recorded.', policy: 'Policy', requestId: 'Request ID', viewDetails: 'View details', severity: { INFO: 'Info', WARNING: 'Warning', ERROR: 'Error', CRITICAL: 'Critical' } },
       eventTypes: {
         SIGNATURE_INVALID: 'Invalid signature',
         NONCE_REUSED: 'Nonce replay',
@@ -783,6 +805,15 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         VERSION_SET_DEFAULT: 'Default version set',
         VERSION_DEPRECATED: 'Version deprecated',
         VERSION_ARCHIVED: 'Version archived',
+        API_KEY_CREATED: 'API key created',
+        API_KEY_REVOKED: 'API key revoked',
+        TEAM_CREATED: 'Team created',
+        TEAM_DELETED: 'Team deleted',
+        TEAM_OWNERSHIP_TRANSFERRED: 'Team ownership transferred',
+        TEAM_MEMBER_REMOVED: 'Team member removed',
+        POLICY_TRASHED: 'Policy moved to trash',
+        POLICY_RESTORED: 'Policy restored',
+        POLICY_PERMANENTLY_DELETED: 'Policy permanently deleted',
       },
     },
     // 页面 <title>（F19）：界面上没有现成文案可复用的页面名，见 lib/page-metadata.ts。
@@ -844,9 +875,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 设置页助手说明（F21）：管理员开启「助手回答」时使用，见 lib/assistant/settings-hint.ts。
     assistant: {
-      settingsHintAiAnswers: 'A site-wide helper for finding docs and pages. Answers are based only on this site\'s documentation and may be generated by AI; it does not search the web.',
+      settingsHintAiAnswers: 'A site-wide helper. Answers may be generated by AI from this site\'s documentation; it does not access the internet or read your data.',
+      introNote: 'A site-wide helper. Answers may be generated by AI from this site\'s documentation; it does not access the internet or read your data.',
     },
-    common: { cancel: 'Cancel' },
     policies: {
       // 回收站永久删除确认：点名被删除的策略（{name} 由客户端替换）。
       trash: { confirmPermanentDeleteNamed: 'Permanently delete "{name}"? This action cannot be undone.' },
@@ -866,6 +897,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         // 值/计算输出策略（如 greet 返回文本）：执行成功但无 allow/deny 语义。
         computed: 'Computed',
         noDecision: 'No decision (value output)',
+        completed: 'Completed',
+        error: 'Error',
         // Verdict 待处置态（ADR 0041 §4）。
         require_approval: 'Needs approval',
         escalate: 'Escalated',
@@ -883,7 +916,24 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       // 版本列表补充（其余按钮文案复用包内 policies.versions.actions.*）。
       versions: {
+        executionRule: 'Execution uses the default version when set; otherwise the highest approved version. If no version has ever been approved, it uses the latest saved content.',
+        submitFailed: 'Version submission failed',
+        releaseNotePlaceholder: 'Add a release note (optional)',
+        versionApproved: 'Version {version} approved',
+        versionSubmitted: 'Version {version} submitted for approval',
+        versionRejected: 'Version {version} rejected',
+        versionDefaulted: 'Version {version} set as default',
+        versionDeprecated: 'Version {version} deprecated',
+        versionArchived: 'Version {version} archived',
         awaitingOthers: 'Waiting for another approver',
+        initialVersion: 'Initial version',
+        editedVersion: 'Edited version',
+        approvalErrorCodes: {
+          invite_reviewer_cta: 'Invite a teammate',
+          segregation_of_duties: 'A different team member must approve this version.',
+          invite_reviewer_required: 'Approval requires a separate reviewer. Invite a teammate to your workspace.',
+          other: 'Could not approve this version.',
+        },
         approvalCount: '{count} approval records',
         // 个人策略所有者审批自己提交的版本时的说明（审计里记为自审）。
         selfApproveNote: 'You are reviewing your own submission. Personal policies have no second reviewer, so this is allowed; the decision is recorded in the audit log as a self-approval.',
@@ -891,6 +941,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noEligibleReviewer: 'No other team owner or admin can approve this — make a member an admin in team settings',
       },
       logs: {
+        approved: 'Approved',
+        denied: 'Rejected',
+        error: 'Execution error',
+        successRate: 'Approval rate',
         // 筛选区标题、相对时间「刚刚」、加载与空态提示（原为硬编码英文）。
         filtersTitle: 'Filters',
         justNow: 'Just now',
@@ -916,9 +970,20 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         guardError: 'Approval registration failed',
         // 统计卡：待处置数量与通过率口径说明。
         pendingLabel: 'Pending',
-        rateNote: 'Rate counts settled decisions only (approved vs. denied/error); pending and value-only runs are excluded.',
+        rateNote: 'Approval rate = approved / (approved + rejected). Execution errors are counted separately.',
       },
       form: {
+        nameRequired: 'Name is required.',
+        parseErrorsBeforeSaving: 'Fix parse errors before saving.',
+        checkingSyntax: 'Checking syntax. Wait before saving.',
+        templateReplaced: 'Editor content replaced with template.',
+        keepEditing: 'Keep editing',
+        templateReplaceTitle: 'Replace current content with this template?',
+        templateReplaceDescription: 'The current editor content will be cleared and replaced. This cannot be undone.',
+        replace: 'Replace',
+        saveFailedWithDiagnostics: 'Saving failed: {count} error(s) — first: L{line} {message}',
+        saveDiagnosticFallback: 'Compilation failed.',
+        saveErrorCodes: { compile_error: 'The policy has compilation errors.', compile_unavailable: 'Compilation is temporarily unavailable. Try again later.', policy_frozen: 'This policy is frozen.', unauthorized: 'You are not authorized to save this policy.' },
         // AI 行内补全开关（状态栏）
         statusAiCompletionOn: 'AI completion: on',
         statusAiCompletionOff: 'AI completion: off',
@@ -1252,6 +1317,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       failureUnknown: '未归类的失败。',
     },
     docs: {
+      fallbackBanner: { title: '语言提示', body: '此页面目前仅提供英文版本。' },
       sidebar: {
         // 入门：创建 API 密钥（助手检索的常见问题）
         gettingStarted: { apiKeys: '创建 API 密钥' },
@@ -1269,6 +1335,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noResults: '无结果',
       },
     },
+    common: { notFoundTitle: '页面未找到', cancel: '取消' },
     guardianShowcase: {
       eyebrow: 'AI 治理',
       title: '每一次 AI 操作，执行前先过一道检查',
@@ -1329,13 +1396,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       toggleAriaLabel: '为本团队开关{language}',
       saveFailed: '更新失败——请重试',
     },
-    dashboardNav: { reports: '证据', approvals: '审批', aiWorkspace: 'AI 工作台', commandPalette: { aiWorkspace: '打开 AI 工作台' } },
+    domainVocabularies: {
+      stats: { archived: '已删除（可恢复）' },
+      actions: { recentlyDeleted: '最近删除', restore: '恢复', noRecentlyDeleted: '最近 90 天没有已删除词汇。', deletedRecoverable: '已删除（可恢复）', activeTerms: '现有词汇', termAdded: '词汇已新增', termUpdated: '词汇已更新', termDeleted: '词汇已删除', termRestored: '词汇已恢复', loadMore: '加载更多', loadingMore: '正在加载…' },
+    },
+    dashboardNav: { reports: '证据', approvals: '审批', domainVocabularies: '领域词汇', aiWorkspace: 'AI 工作台', commandPalette: { aiWorkspace: '打开 AI 工作台', domainVocabularies: '打开领域词汇', groupAdmin: '管理' } },
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
     notifications: {
       guardApprovalRequested: '待审批：{policyName}',
       guardApprovalDecided: '你对 {policyName} 的请求已{outcome}',
       guardOutcomeApproved: '批准',
       guardOutcomeRejected: '驳回',
+      openApprovals: '打开审批',
     },
     // 审批收件箱（ADR 0042 §5.2）。
     approvals: {
@@ -1400,7 +1472,14 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     auth: {
+      signup: {
+        title: '创建账户',
+        subtitle: '新账户可能包含 Pro 试用；注册后请在“账单”页面查看。',
+        trialIncludes: '可用套餐：',
+        planSummary: { free: 'Free：{policies} 个策略，每月 {evaluations} 次评估', pro: 'Pro：{policies} 个策略，每月 {evaluations} 次评估' },
+      },
       login: {
+        startTrial: '创建账户',
         showPassword: '显示密码',
         hidePassword: '隐藏密码',
         capsLockOn: 'Caps Lock 已开启。密码区分大小写，这是登录失败最常见的原因之一。',
@@ -1453,7 +1532,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       exporting: '导出中…',
       previewCount: '范围内 {count} 次执行',
       previewEmpty: '该范围内没有执行——无可导出。',
-      previewCoverage: '{verifiable} 条可验证（有哈希）· {legacy} 条早期记录（无哈希）',
+      previewCoverage: '{verifiable} 条可验证（有哈希）· {legacy} 条早期记录（无哈希）· {failed} 条失败执行（无哈希）',
       previewAllLegacy: '该范围内的执行都早于哈希采集接线——导出的哈希/溯源字段将为空。勾选「仅可验证」可跳过它们，或按现状导出（会明确标注覆盖缺口）。',
       verifiableOnly: '仅可验证',
       verifiableOnlyHint: '排除没有 canonical 哈希的执行（哈希采集接线前记录的旧执行）。',
@@ -1508,6 +1587,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      errorCodes: { invalid_email: '请输入有效的邮箱地址。', invalid_role: '所选角色无效。', already_team_member: '此用户已是团队成员。', invitation_already_pending: '此邮箱已有待处理邀请。', unauthorized: '你无权邀请团队成员。' },
       // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
       createTeam: {
         nameInvalid: '团队名称需为 2–50 个字符。',
@@ -1619,6 +1699,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         scopeColumn: '作用域',
         errorNotMember: '你不是该团队成员。',
         errorPlanNoApiAccess: '团队 owner 的套餐不含 API 访问。',
+        examples: {
+          listPoliciesDesc: '该云端接口需要已登录的云端会话 Cookie；此处不接受 API key。',
+          getPolicyIdDesc: '在策略详情页 URL 中查看 POLICY_ID。functionName 使用 Rule 名称。',
+          executePolicyDesc: '将 input 发送到云端策略执行接口。functionName 必须与 Rule 名称一致。',
+        },
       },
       aiKeysPage: {
         // 失效日期已过的 key（F13）：推理层会跳过，状态必须如实显示。
@@ -1715,6 +1800,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         modeEnforceBadge: '立即生效',
         triggeredBy: '发起者',
         verdictKind: '判定类型',
+        scopeExplanation: '本页重验的是 policy API 服务中的策略版本。在 aster-lang.cloud 编写的策略每次保存时都会通过服务端类型检查门禁，执行时使用当前工具链编译。',
         verdictAdvisory: '参考',
         verdictBinding: '生效',
         confirmEnforce: '范围 {scope}：将重新类型检查 {total} 个策略版本（按当前节奏约 {minutes} 分钟）。无效版本会在发现时立即被拦截。继续？',
@@ -1833,6 +1919,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
     // 细分出的展示类型，见 lib/security-event-display.ts。
     security: {
+      dashboard: { title: '安全监控', retry: '重试', loadFailed: '无法加载安全数据。', unknownError: '未知错误。', timeRange: { '1h': '1 小时', '24h': '24 小时', '7d': '7 天', '30d': '30 天' }, totalEvents: '事件总数', errorRate: '错误率', errorsAndCritical: '错误 / 严重', eventTypeBreakdown: '事件类型分布', recentEvents: '最近事件', allSeverities: '所有级别', noEvents: '暂无事件记录。', policy: '策略', requestId: '请求 ID', viewDetails: '查看详情', severity: { INFO: '信息', WARNING: '警告', ERROR: '错误', CRITICAL: '严重' } },
       eventTypes: {
         SIGNATURE_INVALID: '签名无效',
         NONCE_REUSED: 'Nonce 重放',
@@ -1850,6 +1937,15 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         VERSION_SET_DEFAULT: '设置默认版本',
         VERSION_DEPRECATED: '版本被废弃',
         VERSION_ARCHIVED: '版本被归档',
+        API_KEY_CREATED: 'API 密钥已创建',
+        API_KEY_REVOKED: 'API 密钥已吊销',
+        TEAM_CREATED: '团队已创建',
+        TEAM_DELETED: '团队已删除',
+        TEAM_OWNERSHIP_TRANSFERRED: '团队所有权已转让',
+        TEAM_MEMBER_REMOVED: '团队成员已移除',
+        POLICY_TRASHED: '策略已移入回收站',
+        POLICY_RESTORED: '策略已恢复',
+        POLICY_PERMANENTLY_DELETED: '策略已永久删除',
       },
     },
     // 页面 <title>（F19）：界面上没有现成文案可复用的页面名，见 lib/page-metadata.ts。
@@ -1911,9 +2007,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 设置页助手说明（F21）：管理员开启「助手回答」时使用，见 lib/assistant/settings-hint.ts。
     assistant: {
-      settingsHintAiAnswers: '全站辅助工具，帮你查找文档与页面。回答只依据本站文档，可能由 AI 生成——不联网检索。',
+      settingsHintAiAnswers: '全站助手。答案可能由 AI 根据本站文档生成；不联网，也不读取你的数据。',
+      introNote: '全站助手。答案可能由 AI 根据本站文档生成；不联网，也不读取你的数据。',
     },
-    common: { cancel: '取消' },
     policies: {
       trash: { confirmPermanentDeleteNamed: '确定要永久删除策略「{name}」吗？此操作无法撤销。' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
@@ -1931,6 +2027,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       execute: {
         computed: '已计算',
         noDecision: '无决策（值输出）',
+        completed: '已完成',
+        error: '执行错误',
         require_approval: '需人工批准',
         escalate: '已升级',
       },
@@ -1947,7 +2045,24 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       // 版本列表补充（其余按钮文案复用包内 policies.versions.actions.*）。
       versions: {
+        executionRule: '执行时优先使用设为默认的版本；否则使用版本号最高的已批准版本。若从未有版本获批，则使用最新保存的内容。',
+        submitFailed: '提交审批失败',
+        releaseNotePlaceholder: '填写发布说明（可选）',
+        versionApproved: '版本 {version} 已批准',
+        versionSubmitted: '版本 {version} 已提交审批',
+        versionRejected: '版本 {version} 已驳回',
+        versionDefaulted: '版本 {version} 已设为默认',
+        versionDeprecated: '版本 {version} 已弃用',
+        versionArchived: '版本 {version} 已归档',
         awaitingOthers: '等待他人审批',
+        initialVersion: '初始版本',
+        editedVersion: '编辑后的版本',
+        approvalErrorCodes: {
+          invite_reviewer_cta: '邀请团队成员',
+          segregation_of_duties: '此版本必须由其他团队成员审批。',
+          invite_reviewer_required: '审批需要另一位复核人。请邀请团队成员加入工作区。',
+          other: '无法批准此版本。',
+        },
         approvalCount: '{count} 条审批记录',
         selfApproveNote: '你正在审批自己提交的版本。个人策略没有第二位审批人，因此允许自审；本次决定会在审计日志中标记为自审。',
         // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
@@ -1958,10 +2073,15 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         },
       },
       logs: {
+        approved: '已批准',
+        denied: '已拒绝',
+        error: '执行错误',
+        successRate: '通过率',
         filtersTitle: '筛选',
         justNow: '刚刚',
         loadingLogs: '正在加载执行日志…',
         noLogsHint: '执行该策略后，日志会显示在这里',
+        rateNote: '通过率 = 已批准 /（已批准 + 已拒绝）。执行错误单独统计。',
         parity: {
           tooltip: '执行器回放一致性（影子校验）',
           match: '一致 ✓',
@@ -1978,9 +2098,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         guardError: '审批登记失败',
         // 统计卡：待处置数量与通过率口径说明。
         pendingLabel: '待处置',
-        rateNote: '通过率仅统计已定论的决策（通过 vs 拒绝/错误）；待处置与值输出不计入。',
       },
       form: {
+        nameRequired: '请填写策略名称。',
+        parseErrorsBeforeSaving: '请先修复解析错误再保存。',
+        checkingSyntax: '正在检查语法，请稍候再保存。',
+        templateReplaced: '已用模板替换编辑器内容。',
+        keepEditing: '继续编辑',
+        templateReplaceTitle: '用此模板替换当前内容？',
+        templateReplaceDescription: '编辑器当前内容将被清空并替换为模板。此操作无法撤销。',
+        replace: '替换',
+        saveFailedWithDiagnostics: '保存失败：{count} 个错误 — 首条：第 {line} 行 {message}',
+        saveDiagnosticFallback: '编译失败。',
+        saveErrorCodes: { compile_error: '策略存在编译错误。', compile_unavailable: '编译服务暂时不可用，请稍后重试。', policy_frozen: '此策略已冻结。', unauthorized: '你无权保存此策略。' },
         // AI 行内补全开关（状态栏）
         statusAiCompletionOn: 'AI 补全：开',
         statusAiCompletionOff: 'AI 补全：关',
@@ -2316,6 +2446,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       failureUnknown: 'Nicht klassifizierter Fehler.',
     },
     docs: {
+      fallbackBanner: { title: 'Sprachhinweis', body: 'Diese Seite ist derzeit auf Englisch verfügbar.' },
       sidebar: {
         // 入门：创建 API 密钥（助手检索的常见问题）
         gettingStarted: { apiKeys: 'API-Schlüssel erstellen' },
@@ -2333,6 +2464,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noResults: 'Keine Treffer',
       },
     },
+    common: { notFoundTitle: 'Seite nicht gefunden', cancel: 'Abbrechen' },
     guardianShowcase: {
       eyebrow: 'KI-Governance',
       title: 'Jede KI-Aktion wird geprüft, bevor sie läuft',
@@ -2393,13 +2525,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       toggleAriaLabel: '{language} für dieses Team umschalten',
       saveFailed: 'Aktualisierung fehlgeschlagen — bitte erneut versuchen',
     },
-    dashboardNav: { reports: 'Nachweise', approvals: 'Freigaben', aiWorkspace: 'KI-Arbeitsbereich', commandPalette: { aiWorkspace: 'KI-Arbeitsbereich öffnen' } },
+    domainVocabularies: {
+      stats: { archived: 'Gelöscht (wiederherstellbar)' },
+      actions: { recentlyDeleted: 'Kürzlich gelöscht', restore: 'Wiederherstellen', noRecentlyDeleted: 'In den letzten 90 Tagen wurden keine Begriffe gelöscht.', deletedRecoverable: 'Gelöscht (wiederherstellbar)', activeTerms: 'Aktive Begriffe', termAdded: 'Begriff hinzugefügt', termUpdated: 'Begriff aktualisiert', termDeleted: 'Begriff gelöscht', termRestored: 'Begriff wiederhergestellt', loadMore: 'Weitere laden', loadingMore: 'Wird geladen…' },
+    },
+    dashboardNav: { reports: 'Nachweise', approvals: 'Freigaben', domainVocabularies: 'Fachvokabular', aiWorkspace: 'KI-Arbeitsbereich', commandPalette: { aiWorkspace: 'KI-Arbeitsbereich öffnen', domainVocabularies: 'Fachvokabular öffnen', groupAdmin: 'Administration' } },
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
     notifications: {
       guardApprovalRequested: 'Freigabe erforderlich: {policyName}',
       guardApprovalDecided: 'Ihre Anfrage für {policyName} wurde {outcome}',
       guardOutcomeApproved: 'freigegeben',
       guardOutcomeRejected: 'abgelehnt',
+      openApprovals: 'Freigaben öffnen',
     },
     // 审批收件箱（ADR 0042 §5.2）。
     approvals: {
@@ -2464,7 +2601,14 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     auth: {
+      signup: {
+        title: 'Konto erstellen',
+        subtitle: 'Neue Konten können eine Pro-Testphase enthalten. Die Details finden Sie nach der Anmeldung unter „Abrechnung“.',
+        trialIncludes: 'Verfügbare Tarife:',
+        planSummary: { free: 'Free: {policies} Richtlinien, {evaluations} Auswertungen pro Monat', pro: 'Pro: {policies} Richtlinien, {evaluations} Auswertungen pro Monat' },
+      },
       login: {
+        startTrial: 'Konto erstellen',
         showPassword: 'Passwort anzeigen',
         hidePassword: 'Passwort verbergen',
         capsLockOn: 'Feststelltaste ist aktiv. Passwörter unterscheiden Groß- und Kleinschreibung — eine häufige Ursache für fehlgeschlagene Anmeldungen.',
@@ -2523,7 +2667,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       exporting: 'Exportiere…',
       previewCount: '{count} Ausführungen im Zeitraum',
       previewEmpty: 'Keine Ausführungen in diesem Zeitraum — nichts zu exportieren.',
-      previewCoverage: '{verifiable} verifizierbar (mit Hashes) · {legacy} Altdaten (ohne Hashes)',
+      previewCoverage: '{verifiable} verifizierbar (mit Hashes) · {legacy} Altdaten (ohne Hashes) · {failed} fehlgeschlagene Ausführungen (ohne Hashes)',
       previewAllLegacy: 'Alle Ausführungen in diesem Zeitraum liegen vor der Hash-Erfassung — der Export hat leere Hash-/Provenienz-Felder. Aktivieren Sie „Nur verifizierbar“, um sie zu überspringen, oder exportieren Sie wie vorliegend mit dokumentierter Abdeckungslücke.',
       verifiableOnly: 'Nur verifizierbar',
       verifiableOnlyHint: 'Ausführungen ohne kanonische Hashes ausschließen (vor Aktivierung der Hash-Erfassung erfasst).',
@@ -2578,6 +2722,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      errorCodes: { invalid_email: 'Geben Sie eine gültige E-Mail-Adresse ein.', invalid_role: 'Die ausgewählte Rolle ist ungültig.', already_team_member: 'Diese Person ist bereits Teammitglied.', invitation_already_pending: 'Für diese E-Mail-Adresse liegt bereits eine Einladung vor.', unauthorized: 'Sie dürfen keine Teammitglieder einladen.' },
       // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
       createTeam: {
         nameInvalid: 'Der Teamname muss 2–50 Zeichen lang sein.',
@@ -2689,6 +2834,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         scopeColumn: 'Geltungsbereich',
         errorNotMember: 'Du bist kein Mitglied dieses Teams.',
         errorPlanNoApiAccess: 'Der Tarif des Team-Owners enthält keinen API-Zugang.',
+        examples: {
+          listPoliciesDesc: 'Dieser Cloud-Endpunkt benötigt ein Cookie einer angemeldeten Cloud-Sitzung; API-Schlüssel werden hier nicht akzeptiert.',
+          getPolicyIdDesc: 'Die POLICY_ID finden Sie in der URL der Richtliniendetailseite. functionName entspricht dem Rule-Namen.',
+          executePolicyDesc: 'Senden Sie input an den Cloud-Endpunkt zur Richtlinienausführung. functionName muss einem Rule-Namen entsprechen.',
+        },
       },
       aiKeysPage: {
         // 失效日期已过的 key（F13）：推理层会跳过，状态必须如实显示。
@@ -2785,6 +2935,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         modeEnforceBadge: 'Sofort wirksam',
         triggeredBy: 'Gestartet von',
         verdictKind: 'Urteil',
+        scopeExplanation: 'Diese Seite prüft Richtlinienversionen im Policy-API-Dienst erneut. Auf aster-lang.cloud verfasste Richtlinien bestehen bei jedem Speichern die serverseitige Typprüfung und werden bei der Ausführung mit der aktuellen Toolchain kompiliert.',
         verdictAdvisory: 'Hinweis',
         verdictBinding: 'Wirksam',
         confirmEnforce: 'Umfang {scope}: {total} Richtlinienversionen werden erneut typgeprüft (etwa {minutes} Min. im aktuellen Tempo). Ungültige Versionen werden blockiert, sobald sie gefunden werden. Fortfahren?',
@@ -2903,6 +3054,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
     // 细分出的展示类型，见 lib/security-event-display.ts。
     security: {
+      dashboard: { title: 'Sicherheitsüberwachung', retry: 'Erneut versuchen', loadFailed: 'Sicherheitsdaten konnten nicht geladen werden.', unknownError: 'Unbekannter Fehler.', timeRange: { '1h': '1 Stunde', '24h': '24 Stunden', '7d': '7 Tage', '30d': '30 Tage' }, totalEvents: 'Ereignisse gesamt', errorRate: 'Fehlerrate', errorsAndCritical: 'Fehler / kritisch', eventTypeBreakdown: 'Ereignisse nach Typ', recentEvents: 'Letzte Ereignisse', allSeverities: 'Alle Schweregrade', noEvents: 'Keine Ereignisse erfasst.', policy: 'Policy', requestId: 'Anfrage-ID', viewDetails: 'Details anzeigen', severity: { INFO: 'Info', WARNING: 'Warnung', ERROR: 'Fehler', CRITICAL: 'Kritisch' } },
       eventTypes: {
         SIGNATURE_INVALID: 'Ungültige Signatur',
         NONCE_REUSED: 'Nonce-Wiederverwendung',
@@ -2920,6 +3072,15 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         VERSION_SET_DEFAULT: 'Standardversion festgelegt',
         VERSION_DEPRECATED: 'Version als veraltet markiert',
         VERSION_ARCHIVED: 'Version archiviert',
+        API_KEY_CREATED: 'API-Schlüssel erstellt',
+        API_KEY_REVOKED: 'API-Schlüssel widerrufen',
+        TEAM_CREATED: 'Team erstellt',
+        TEAM_DELETED: 'Team gelöscht',
+        TEAM_OWNERSHIP_TRANSFERRED: 'Teambesitz übertragen',
+        TEAM_MEMBER_REMOVED: 'Teammitglied entfernt',
+        POLICY_TRASHED: 'Policy in den Papierkorb verschoben',
+        POLICY_RESTORED: 'Policy wiederhergestellt',
+        POLICY_PERMANENTLY_DELETED: 'Policy endgültig gelöscht',
       },
     },
     // 页面 <title>（F19）：界面上没有现成文案可复用的页面名，见 lib/page-metadata.ts。
@@ -2981,9 +3142,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 设置页助手说明（F21）：管理员开启「助手回答」时使用，见 lib/assistant/settings-hint.ts。
     assistant: {
-      settingsHintAiAnswers: 'Ein seitenweites Hilfswerkzeug zum Finden von Dokumentation und Seiten. Antworten stützen sich nur auf die Dokumentation dieser Website und können KI-generiert sein; es wird nicht im Web gesucht.',
+      settingsHintAiAnswers: 'Ein Assistent für die ganze Website. Antworten können von KI anhand der Dokumentation dieser Website erstellt werden; er greift nicht auf das Internet oder Ihre Daten zu.',
+      introNote: 'Ein Assistent für die ganze Website. Antworten können von KI anhand der Dokumentation dieser Website erstellt werden; er greift nicht auf das Internet oder Ihre Daten zu.',
     },
-    common: { cancel: 'Abbrechen' },
     policies: {
       trash: { confirmPermanentDeleteNamed: 'Richtlinie „{name}“ endgültig löschen? Diese Aktion kann nicht rückgängig gemacht werden.' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
@@ -3001,6 +3162,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       execute: {
         computed: 'Berechnet',
         noDecision: 'Keine Entscheidung (Wertausgabe)',
+        completed: 'Abgeschlossen',
+        error: 'Ausführungsfehler',
         require_approval: 'Freigabe nötig',
         escalate: 'Eskaliert',
       },
@@ -3017,17 +3180,39 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       // 版本列表补充（其余按钮文案复用包内 policies.versions.actions.*）。
       versions: {
+        executionRule: 'Bei der Ausführung gilt die als Standard festgelegte Version; andernfalls die höchste freigegebene Version. Wurde noch nie eine Version freigegeben, wird der zuletzt gespeicherte Inhalt verwendet.',
+        submitFailed: 'Version konnte nicht zur Prüfung eingereicht werden',
+        releaseNotePlaceholder: 'Versionshinweis hinzufügen (optional)',
+        versionApproved: 'Version {version} freigegeben',
+        versionSubmitted: 'Version {version} zur Freigabe eingereicht',
+        versionRejected: 'Version {version} abgelehnt',
+        versionDefaulted: 'Version {version} als Standard festgelegt',
+        versionDeprecated: 'Version {version} eingestellt',
+        versionArchived: 'Version {version} archiviert',
         awaitingOthers: 'Wartet auf andere Prüfer',
+        initialVersion: 'Anfangsversion',
+        editedVersion: 'Bearbeitete Version',
+        approvalErrorCodes: {
+          invite_reviewer_cta: 'Teammitglied einladen',
+          segregation_of_duties: 'Ein anderes Teammitglied muss diese Version freigeben.',
+          invite_reviewer_required: 'Für die Freigabe ist eine zweite prüfende Person erforderlich. Laden Sie ein Teammitglied ein.',
+          other: 'Diese Version konnte nicht freigegeben werden.',
+        },
         approvalCount: '{count} Freigabeeinträge',
         selfApproveNote: 'Sie prüfen Ihre eigene Einreichung. Persönliche Richtlinien haben keine zweite prüfende Person, daher ist das erlaubt; die Entscheidung wird im Audit-Protokoll als Selbstfreigabe vermerkt.',
         // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
         noEligibleReviewer: 'Im Team gibt es keine andere Inhaberin, keinen anderen Inhaber und keinen Admin, die freigeben können – machen Sie in den Teameinstellungen ein Mitglied zum Admin',
       },
       logs: {
+        approved: 'Freigegeben',
+        denied: 'Abgelehnt',
+        error: 'Ausführungsfehler',
+        successRate: 'Freigabequote',
         filtersTitle: 'Filter',
         justNow: 'Gerade eben',
         loadingLogs: 'Ausführungsprotokolle werden geladen…',
         noLogsHint: 'Führen Sie die Richtlinie aus, um hier Protokolle zu sehen',
+        rateNote: 'Freigabequote = freigegeben / (freigegeben + abgelehnt). Ausführungsfehler werden separat gezählt.',
         parity: {
           tooltip: 'Runner-Replay-Parität (Schattenprüfung)',
           match: 'Parität ✓',
@@ -3044,18 +3229,28 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         guardError: 'Freigabe-Registrierung fehlgeschlagen',
         // 统计卡：待处置数量与通过率口径说明。
         pendingLabel: 'Ausstehend',
-        rateNote: 'Die Quote zählt nur abgeschlossene Entscheidungen (genehmigt vs. abgelehnt/Fehler); ausstehende und reine Wertausgaben sind ausgenommen.',
       },
       form: {
+        nameRequired: 'Ein Name ist erforderlich.',
+        parseErrorsBeforeSaving: 'Beheben Sie zuerst die Syntaxfehler.',
+        checkingSyntax: 'Syntax wird geprüft. Warten Sie vor dem Speichern.',
+        templateReplaced: 'Der Editorinhalt wurde durch die Vorlage ersetzt.',
+        keepEditing: 'Weiter bearbeiten',
+        templateReplaceTitle: 'Aktuellen Inhalt durch diese Vorlage ersetzen?',
+        templateReplaceDescription: 'Der aktuelle Editorinhalt wird gelöscht und ersetzt. Dies kann nicht rückgängig gemacht werden.',
+        replace: 'Ersetzen',
+        saveFailedWithDiagnostics: 'Speichern fehlgeschlagen: {count} Fehler — erster Fehler: Z.{line} {message}',
+        saveDiagnosticFallback: 'Kompilierung fehlgeschlagen.',
+        saveErrorCodes: { compile_error: 'Die Policy enthält Kompilierungsfehler.', compile_unavailable: 'Die Kompilierung ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.', policy_frozen: 'Diese Policy ist eingefroren.', unauthorized: 'Sie dürfen diese Policy nicht speichern.' },
         // AI 行内补全开关（状态栏）
         statusAiCompletionOn: 'KI-Vervollständigung: an',
         statusAiCompletionOff: 'KI-Vervollständigung: aus',
         statusAiCompletionLabel: 'KI-Inline-Vervollständigung',
         statusAiCompletionHint: 'Schlägt beim Tippen den nächsten Code vor; jede Pause verbraucht KI-Kontingent. Zum Umschalten klicken.',
         // 决策预览没有可展示内容时的说明（编译中 / 编译通过但无模块摘要等）
-        decisionEmpty: 'Noch nichts in der Vorschau. Hier erscheinen Kompilierfehler und Warnungen sowie – sobald die Policy kompiliert – Modul, Funktionen und Typen. Schreibe eine Policy, die mit einer Module-Deklaration beginnt, dann erscheint das Ergebnis hier.',
+        decisionEmpty: 'Noch nichts in der Vorschau. Hier erscheinen Kompilierfehler und Warnungen sowie – sobald die Policy kompiliert – Modul, Funktionen und Typen. Schreiben Sie eine Policy, die mit einer Module-Deklaration beginnt, dann erscheint das Ergebnis hier.',
         // 手机宽度下编辑器降级为只读视图时的提示
-        mobileReadOnlyNotice: 'Auf kleinen Bildschirmen nur lesbar. Der Policy-Editor braucht einen breiteren Bildschirm (mindestens 768 px): Öffne diese Seite auf einem Tablet oder Desktop, um zu bearbeiten und zu speichern.',
+        mobileReadOnlyNotice: 'Auf kleinen Bildschirmen nur lesbar. Der Policy-Editor braucht einen breiteren Bildschirm (mindestens 768 px): Öffnen Sie diese Seite auf einem Tablet oder Desktop, um zu bearbeiten und zu speichern.',
         aliases: {
           title: 'Keyword-Aliase',
           hint: 'Mehrwort-Phrasen kommagetrennt für Policy-Keywords hinzufügen.',
@@ -3126,7 +3321,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     pokerPage: {
       seo: {
         title: 'Poker-Showdown — Aster Lang',
-        description: 'Eine Poker-Vokabular-Regel entscheidet am selbst gebenden Tisch über das Siegerblatt. Die echte Engine läuft in deinem Browser; der Gewinner erhält den Pokal.',
+        description: 'Eine Poker-Vokabular-Regel entscheidet am selbst gebenden Tisch über das Siegerblatt. Die echte Engine läuft in Ihrem Browser; der Gewinner erhält den Pokal.',
       },
       eyebrow: 'Spaß-Demo',
       title: 'Poker-Showdown-Engine 🃏',
@@ -3167,7 +3362,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     poemDemoPage: {
       seo: {
         title: 'Der Quelltext ist ein Gedicht · „Du bist mein, ich bin dein" — Aster Lang',
-        description: 'Ein mittelalterliches Liebeslied (um 1180) ist zugleich eine Entscheidungsregel: die vier Voraussetzungen des Gedichts (mein / dein / im Herzen / Schlüssel verloren) sind boolesche Eingaben, und die Engine leitet daraus per let-Bindung und wenn/sonst das Urteil ab — „für immer" oder „nicht auf ewig". Ändere eine Voraussetzung, und das Urteil kippt.',
+        description: 'Ein mittelalterliches Liebeslied (um 1180) ist zugleich eine Entscheidungsregel: die vier Voraussetzungen des Gedichts (mein / dein / im Herzen / Schlüssel verloren) sind boolesche Eingaben, und die Engine leitet daraus per let-Bindung und wenn/sonst das Urteil ab — „für immer" oder „nicht auf ewig". Ändern Sie eine Voraussetzung, und das Urteil kippt.',
       },
       eyebrow: 'Spaß-Demo',
       title: 'Der Quelltext ist ein Gedicht 📜',
@@ -3189,13 +3384,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         verdictLabel: 'Urteil (echter Rückgabewert von evaluate):',
         true: 'wahr',
         false: 'falsch',
-        note: 'Dies läuft in deinem Browser auf derselben TypeScript-Engine wie die Kredit- und Poker-Demos: das Urteil wird aus den Voraussetzungen des Gedichts berechnet — kein vorgefertigter Text. (Umlaute ü/ö/ä/ß sind als ue/oe/ae/ss geschrieben, Zeilenkommata sind entfernt, damit der Vers als Quelltext kompiliert.)',
+        note: 'Dies läuft in Ihrem Browser auf derselben TypeScript-Engine wie die Kredit- und Poker-Demos: das Urteil wird aus den Voraussetzungen des Gedichts berechnet — kein vorgefertigter Text. (Umlaute ü/ö/ä/ß sind als ue/oe/ae/ss geschrieben, Zeilenkommata sind entfernt, damit der Vers als Quelltext kompiliert.)',
         canonicalizeLabel: 'Kanonisierter Quelltext',
         evaluateLabel: 'Rückgabe der Regel',
       },
       cta: {
         title: 'Aster ist ein echter Compiler, keine Vorlage.',
-        subtitle: 'Wenn ein Gedicht kompilieren und entscheiden kann, können es deine Regeln — in deinen eigenen Worten — erst recht.',
+        subtitle: 'Wenn ein Gedicht kompilieren und entscheiden kann, können es Ihre Regeln — in Ihren eigenen Worten — erst recht.',
       },
     },
     ruleRegression: {
@@ -3380,6 +3575,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       failureUnknown: 'अवर्गीकृत विफलता।',
     },
     docs: {
+      fallbackBanner: { title: 'भाषा सूचना', body: 'यह पृष्ठ अभी अंग्रेज़ी में उपलब्ध है।' },
       sidebar: {
         // 入门：创建 API 密钥（助手检索的常见问题）
         gettingStarted: { apiKeys: 'API कुंजी बनाएँ' },
@@ -3397,6 +3593,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noResults: 'कोई परिणाम नहीं',
       },
     },
+    common: { notFoundTitle: 'पृष्ठ नहीं मिला', cancel: 'रद्द करें' },
     guardianShowcase: {
       eyebrow: 'AI गवर्नेंस',
       title: 'हर AI कार्रवाई चलने से पहले जाँची जाती है',
@@ -3457,13 +3654,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       toggleAriaLabel: 'इस टीम के लिए {language} टॉगल करें',
       saveFailed: 'अपडेट नहीं हो सका — कृपया पुनः प्रयास करें',
     },
-    dashboardNav: { reports: 'साक्ष्य', approvals: 'अनुमोदन', aiWorkspace: 'AI कार्यक्षेत्र', commandPalette: { aiWorkspace: 'AI कार्यक्षेत्र खोलें' } },
+    domainVocabularies: {
+      stats: { archived: 'हटाए गए (पुनर्स्थापित किए जा सकते हैं)' },
+      actions: { recentlyDeleted: 'हाल ही में हटाए गए', restore: 'पुनर्स्थापित करें', noRecentlyDeleted: 'पिछले 90 दिनों में कोई शब्दावली हटाई नहीं गई।', deletedRecoverable: 'हटाए गए (पुनर्स्थापित किए जा सकते हैं)', activeTerms: 'सक्रिय शब्दावलियाँ', termAdded: 'शब्दावली जोड़ी गई', termUpdated: 'शब्दावली अपडेट की गई', termDeleted: 'शब्दावली हटाई गई', termRestored: 'शब्दावली पुनर्स्थापित की गई', loadMore: 'और लोड करें', loadingMore: 'लोड हो रहा है…' },
+    },
+    dashboardNav: { reports: 'साक्ष्य', approvals: 'अनुमोदन', domainVocabularies: 'डोमेन शब्दावली', aiWorkspace: 'AI कार्यक्षेत्र', commandPalette: { aiWorkspace: 'AI कार्यक्षेत्र खोलें', domainVocabularies: 'डोमेन शब्दावली खोलें', groupAdmin: 'व्यवस्थापन' } },
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
     notifications: {
       guardApprovalRequested: 'अनुमोदन आवश्यक: {policyName}',
       guardApprovalDecided: '{policyName} के लिए आपका अनुरोध {outcome}',
       guardOutcomeApproved: 'स्वीकृत हुआ',
       guardOutcomeRejected: 'अस्वीकृत हुआ',
+      openApprovals: 'अनुमोदन खोलें',
     },
     // 审批收件箱（ADR 0042 §5.2）。
     approvals: {
@@ -3528,7 +3730,14 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
     },
     auth: {
+      signup: {
+        title: 'अपना खाता बनाएँ',
+        subtitle: 'नए खातों में Pro परीक्षण शामिल हो सकता है; साइन अप के बाद Billing देखें।',
+        trialIncludes: 'उपलब्ध प्लान:',
+        planSummary: { free: 'Free: {policies} नीतियाँ, {evaluations} मूल्यांकन प्रति माह', pro: 'Pro: {policies} नीतियाँ, {evaluations} मूल्यांकन प्रति माह' },
+      },
       login: {
+        startTrial: 'खाता बनाएँ',
         showPassword: 'पासवर्ड दिखाएँ',
         hidePassword: 'पासवर्ड छिपाएँ',
         capsLockOn: 'Caps Lock चालू है। पासवर्ड में बड़े-छोटे अक्षरों का अंतर होता है — यह साइन-इन विफल होने का एक सामान्य कारण है।',
@@ -3582,7 +3791,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       exporting: 'निर्यात हो रहा…',
       previewCount: 'सीमा में {count} निष्पादन',
       previewEmpty: 'इस सीमा में कोई निष्पादन नहीं — निर्यात के लिए कुछ नहीं।',
-      previewCoverage: '{verifiable} सत्यापन-योग्य (हैश सहित) · {legacy} पुराने (हैश रहित)',
+      previewCoverage: '{verifiable} सत्यापन-योग्य (हैश सहित) · {legacy} पुराने (हैश रहित) · {failed} विफल निष्पादन (हैश रहित)',
       previewAllLegacy: 'इस सीमा के सभी निष्पादन हैश कैप्चर से पहले के हैं — निर्यात में हैश/प्रोवेनेंस फ़ील्ड खाली होंगे। उन्हें छोड़ने के लिए «केवल सत्यापन-योग्य» चुनें, या दर्ज कवरेज-कमी के साथ जैसा है वैसा निर्यात करें।',
       verifiableOnly: 'केवल सत्यापन-योग्य',
       verifiableOnlyHint: 'कैनोनिकल हैश रहित निष्पादन बाहर रखें (हैश कैप्चर सक्षम होने से पहले दर्ज)।',
@@ -3637,6 +3846,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      errorCodes: { invalid_email: 'मान्य ईमेल पता दर्ज करें।', invalid_role: 'चुनी गई भूमिका मान्य नहीं है।', already_team_member: 'यह व्यक्ति पहले से टीम का सदस्य है।', invitation_already_pending: 'इस ईमेल के लिए आमंत्रण पहले से लंबित है।', unauthorized: 'आपको टीम सदस्यों को आमंत्रित करने की अनुमति नहीं है।' },
       // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
       createTeam: {
         nameInvalid: 'टीम का नाम 2–50 अक्षरों का होना चाहिए।',
@@ -3748,6 +3958,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         scopeColumn: 'दायरा',
         errorNotMember: 'आप इस टीम के सदस्य नहीं हैं।',
         errorPlanNoApiAccess: 'टीम owner के प्लान में API एक्सेस शामिल नहीं है।',
+        examples: {
+          listPoliciesDesc: 'इस क्लाउड एंडपॉइंट के लिए साइन-इन क्लाउड सत्र कुकी आवश्यक है; यहाँ API कुंजी स्वीकार नहीं होती।',
+          getPolicyIdDesc: 'POLICY_ID नीति विवरण पृष्ठ के URL में देखें। functionName के लिए Rule का नाम दें।',
+          executePolicyDesc: 'input को क्लाउड नीति निष्पादन एंडपॉइंट पर भेजें। functionName का Rule के नाम से मेल खाना चाहिए।',
+        },
       },
       aiKeysPage: {
         // 失效日期已过的 key（F13）：推理层会跳过，状态必须如实显示。
@@ -3844,6 +4059,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         modeEnforceBadge: 'तुरंत लागू',
         triggeredBy: 'शुरू किया',
         verdictKind: 'निर्णय',
+        scopeExplanation: 'यह पृष्ठ policy API सेवा में नीति संस्करणों का पुनः सत्यापन करता है। aster-lang.cloud पर लिखी नीतियाँ हर बार सहेजने पर सर्वर-साइड प्रकार-जाँच द्वार से गुजरती हैं और चलाते समय वर्तमान टूलचेन से संकलित होती हैं।',
         verdictAdvisory: 'सलाह',
         verdictBinding: 'लागू',
         confirmEnforce: 'दायरा {scope}: {total} नीति संस्करणों की दोबारा प्रकार-जाँच होगी (वर्तमान गति से लगभग {minutes} मिनट)। अमान्य संस्करण मिलते ही रोक दिए जाएँगे। जारी रखें?',
@@ -3962,6 +4178,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
     // 细分出的展示类型，见 lib/security-event-display.ts。
     security: {
+      dashboard: { title: 'सुरक्षा निगरानी', retry: 'फिर कोशिश करें', loadFailed: 'सुरक्षा डेटा लोड नहीं हो सका।', unknownError: 'अज्ञात त्रुटि।', timeRange: { '1h': '1 घंटा', '24h': '24 घंटे', '7d': '7 दिन', '30d': '30 दिन' }, totalEvents: 'कुल घटनाएँ', errorRate: 'त्रुटि दर', errorsAndCritical: 'त्रुटियाँ / गंभीर', eventTypeBreakdown: 'घटना प्रकार का विभाजन', recentEvents: 'हाल की घटनाएँ', allSeverities: 'सभी स्तर', noEvents: 'कोई घटना दर्ज नहीं है।', policy: 'नीति', requestId: 'अनुरोध ID', viewDetails: 'विवरण देखें', severity: { INFO: 'जानकारी', WARNING: 'चेतावनी', ERROR: 'त्रुटि', CRITICAL: 'गंभीर' } },
       eventTypes: {
         SIGNATURE_INVALID: 'अमान्य हस्ताक्षर',
         NONCE_REUSED: 'Nonce पुनः उपयोग',
@@ -3979,6 +4196,15 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         VERSION_SET_DEFAULT: 'डिफ़ॉल्ट संस्करण सेट किया गया',
         VERSION_DEPRECATED: 'संस्करण अप्रचलित किया गया',
         VERSION_ARCHIVED: 'संस्करण संग्रहीत',
+        API_KEY_CREATED: 'API कुंजी बनाई गई',
+        API_KEY_REVOKED: 'API कुंजी निरस्त की गई',
+        TEAM_CREATED: 'टीम बनाई गई',
+        TEAM_DELETED: 'टीम हटाई गई',
+        TEAM_OWNERSHIP_TRANSFERRED: 'टीम का स्वामित्व स्थानांतरित किया गया',
+        TEAM_MEMBER_REMOVED: 'टीम सदस्य हटाया गया',
+        POLICY_TRASHED: 'नीति ट्रैश में भेजी गई',
+        POLICY_RESTORED: 'नीति पुनर्स्थापित की गई',
+        POLICY_PERMANENTLY_DELETED: 'नीति स्थायी रूप से हटाई गई',
       },
     },
     // 页面 <title>（F19）：界面上没有现成文案可复用的页面名，见 lib/page-metadata.ts。
@@ -4040,9 +4266,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 设置页助手说明（F21）：管理员开启「助手回答」时使用，见 lib/assistant/settings-hint.ts。
     assistant: {
-      settingsHintAiAnswers: 'दस्तावेज़ और पेज खोजने के लिए साइट-व्यापी सहायक। उत्तर केवल इस साइट के दस्तावेज़ों पर आधारित होते हैं और AI द्वारा जनरेट किए जा सकते हैं; यह वेब पर खोज नहीं करता।',
+      settingsHintAiAnswers: 'पूरी साइट का सहायक। उत्तर इस साइट के दस्तावेज़ों के आधार पर AI द्वारा बनाए जा सकते हैं; यह इंटरनेट से नहीं जुड़ता और आपका डेटा नहीं पढ़ता।',
+      introNote: 'पूरी साइट का सहायक। उत्तर इस साइट के दस्तावेज़ों के आधार पर AI द्वारा बनाए जा सकते हैं; यह इंटरनेट से नहीं जुड़ता और आपका डेटा नहीं पढ़ता।',
     },
-    common: { cancel: 'रद्द करें' },
     policies: {
       trash: { confirmPermanentDeleteNamed: 'नीति "{name}" को स्थायी रूप से हटाएँ? यह क्रिया पूर्ववत नहीं की जा सकती।' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
@@ -4060,6 +4286,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       execute: {
         computed: 'परिकलित',
         noDecision: 'कोई निर्णय नहीं (मान आउटपुट)',
+        completed: 'पूरा हुआ',
+        error: 'निष्पादन त्रुटि',
         require_approval: 'अनुमोदन आवश्यक',
         escalate: 'एस्केलेट किया गया',
       },
@@ -4076,17 +4304,39 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       // 版本列表补充（其余按钮文案复用包内 policies.versions.actions.*）。
       versions: {
+        executionRule: 'निष्पादन में डिफ़ॉल्ट संस्करण को प्राथमिकता मिलती है; अन्यथा सबसे बड़ा स्वीकृत संस्करण चलता है। यदि कभी कोई संस्करण स्वीकृत नहीं हुआ, तो नवीनतम सहेजी गई सामग्री चलती है।',
+        submitFailed: 'संस्करण सबमिट नहीं हो सका',
+        releaseNotePlaceholder: 'रिलीज़ नोट जोड़ें (वैकल्पिक)',
+        versionApproved: 'संस्करण {version} स्वीकृत',
+        versionSubmitted: 'संस्करण {version} अनुमोदन के लिए सबमिट किया गया',
+        versionRejected: 'संस्करण {version} अस्वीकृत',
+        versionDefaulted: 'संस्करण {version} डिफ़ॉल्ट के रूप में सेट',
+        versionDeprecated: 'संस्करण {version} अप्रचलित',
+        versionArchived: 'संस्करण {version} संग्रहीत',
         awaitingOthers: 'किसी अन्य अनुमोदक की प्रतीक्षा',
+        initialVersion: 'प्रारंभिक संस्करण',
+        editedVersion: 'संपादित संस्करण',
+        approvalErrorCodes: {
+          invite_reviewer_cta: 'टीम के सदस्य को आमंत्रित करें',
+          segregation_of_duties: 'इस संस्करण को टीम के किसी अन्य सदस्य से अनुमोदित कराएँ।',
+          invite_reviewer_required: 'अनुमोदन के लिए अलग समीक्षक आवश्यक है। अपने कार्यक्षेत्र में किसी सदस्य को आमंत्रित करें।',
+          other: 'इस संस्करण को अनुमोदित नहीं किया जा सका।',
+        },
         approvalCount: '{count} अनुमोदन रिकॉर्ड',
         selfApproveNote: 'आप अपना ही जमा किया गया संस्करण जाँच रहे हैं। व्यक्तिगत नीतियों में कोई दूसरा समीक्षक नहीं होता, इसलिए इसकी अनुमति है; यह निर्णय ऑडिट लॉग में स्व-अनुमोदन के रूप में दर्ज होगा।',
         // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
         noEligibleReviewer: 'टीम में अनुमोदन के लिए कोई अन्य स्वामी या व्यवस्थापक नहीं है — टीम सेटिंग्स में किसी सदस्य को व्यवस्थापक बनाएँ',
       },
       logs: {
+        approved: 'स्वीकृत',
+        denied: 'अस्वीकृत',
+        error: 'निष्पादन त्रुटि',
+        successRate: 'स्वीकृति दर',
         filtersTitle: 'फ़िल्टर',
         justNow: 'अभी-अभी',
         loadingLogs: 'निष्पादन लॉग लोड हो रहे हैं…',
         noLogsHint: 'यहाँ लॉग देखने के लिए नीति निष्पादित करें',
+        rateNote: 'स्वीकृति दर = स्वीकृत / (स्वीकृत + अस्वीकृत)। निष्पादन त्रुटियाँ अलग गिनी जाती हैं।',
         parity: {
           tooltip: 'रनर रीप्ले समानता (छाया जाँच)',
           match: 'समानता ✓',
@@ -4103,9 +4353,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         guardError: 'अनुमोदन पंजीकरण विफल',
         // 统计卡：待处置数量与通过率口径说明。
         pendingLabel: 'लंबित',
-        rateNote: 'दर केवल तय निर्णयों (स्वीकृत बनाम अस्वीकृत/त्रुटि) को गिनती है; लंबित और केवल-मान रन शामिल नहीं हैं।',
       },
       form: {
+        nameRequired: 'नाम आवश्यक है।',
+        parseErrorsBeforeSaving: 'सहेजने से पहले पार्स त्रुटियाँ ठीक करें।',
+        checkingSyntax: 'वाक्य-विन्यास जाँचा जा रहा है। सहेजने से पहले प्रतीक्षा करें।',
+        templateReplaced: 'संपादक की सामग्री टेम्पलेट से बदल दी गई।',
+        keepEditing: 'संपादन जारी रखें',
+        templateReplaceTitle: 'क्या वर्तमान सामग्री को इस टेम्पलेट से बदलें?',
+        templateReplaceDescription: 'संपादक की वर्तमान सामग्री हटाकर बदल दी जाएगी। इसे पूर्ववत नहीं किया जा सकता।',
+        replace: 'बदलें',
+        saveFailedWithDiagnostics: 'सहेजना विफल: {count} त्रुटियाँ — पहली: पंक्ति {line} {message}',
+        saveDiagnosticFallback: 'कम्पाइलेशन विफल रहा।',
+        saveErrorCodes: { compile_error: 'नीति में कम्पाइलेशन त्रुटियाँ हैं।', compile_unavailable: 'कम्पाइलेशन अस्थायी रूप से उपलब्ध नहीं है। बाद में फिर कोशिश करें।', policy_frozen: 'यह नीति फ़्रीज़ है।', unauthorized: 'आपको यह नीति सहेजने की अनुमति नहीं है।' },
         // AI 行内补全开关（状态栏）
         statusAiCompletionOn: 'AI पूर्णता: चालू',
         statusAiCompletionOff: 'AI पूर्णता: बंद',

@@ -57,6 +57,17 @@ const confirmDialog = () => fireEvent.click(screen.getByRole('button', { name: '
 const dialog = () => screen.findByRole('dialog');
 
 describe('RevalidationContent 发起流程', () => {
+  it('显示重验范围说明，包括估算对象为零时', async () => {
+    window.localStorage.setItem('aster.admin.revalidation.recentRunId', 'r0');
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).includes('/runs/r0')) return new Response(JSON.stringify({ runId: 'r0', status: 'done', checked: 0, total: 0 }), { status: 200 });
+      return new Response(JSON.stringify({ items: [] }), { status: 200 });
+    });
+    render(<RevalidationContent />);
+    expect(await screen.findByText('scopeExplanation')).toBeTruthy();
+    expect(screen.getByText(/progress: 0\/0/)).toBeTruthy();
+  });
+
   it('点启动先取预估、开对话框，不弹原生 confirm，也不发 POST', async () => {
     render(<RevalidationContent />);
     clickStart();

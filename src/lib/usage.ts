@@ -1,5 +1,5 @@
 import { db, users, usageRecords, policies } from '@/lib/prisma';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, isNull } from 'drizzle-orm';
 import {
   PLANS,
   getPlanConfig,
@@ -148,7 +148,7 @@ export async function getUsageStats(userId: string) {
     }),
     db.select({ count: sql<number>`count(*)::int` })
       .from(policies)
-      .where(eq(policies.userId, userId)),
+      .where(and(eq(policies.userId, userId), isNull(policies.deletedAt))),
   ]);
 
   const policyCount = policyCountResult[0]?.count || 0;

@@ -11,7 +11,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
   try {
     const session = await getSession();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
 
     const { teamId, invitationId } = await params;
@@ -32,7 +32,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     });
 
     if (!invitation) {
-      return NextResponse.json({ error: '邀请不存在' }, { status: 404 });
+      return NextResponse.json({ error: 'Invitation not found.', code: 'invitation_not_found' }, { status: 404 });
     }
 
     // 删除邀请
@@ -41,6 +41,6 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error revoking invitation:', error);
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error.', code: 'internal_server_error' }, { status: 500 });
   }
 }

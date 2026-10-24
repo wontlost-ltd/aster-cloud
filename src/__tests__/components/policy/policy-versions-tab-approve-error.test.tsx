@@ -10,7 +10,7 @@ const h = vi.hoisted(() => ({ approve: vi.fn(), toastError: vi.fn() }));
 vi.mock('next-intl', () => ({
   useTranslations: (ns: string) => (key: string) => `${ns}.${key}`,
 }));
-vi.mock('@/components/ui', () => ({ toast: { error: h.toastError } }));
+vi.mock('@/components/ui', () => ({ toast: { error: h.toastError, success: vi.fn() } }));
 vi.mock('@/hooks/use-policy-versions', () => ({
   usePolicyVersions: () => ({
     versions: [{ id: 'v1', version: 2, status: 'PENDING_APPROVAL', createdBy: 'author' }],
@@ -40,8 +40,17 @@ describe('PolicyVersionsTab 批准失败提示', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'approve-v1' }));
 
-    await waitFor(() => expect(h.toastError).toHaveBeenCalledWith('policies.versions.sox.selfApprovalNotAllowed'));
+    await waitFor(() => expect(h.toastError).toHaveBeenCalledWith('policies.versions.approvalErrorCodes.segregation_of_duties'));
     expect(h.approve).toHaveBeenCalledWith(2, undefined);
+  });
+
+  it('未知错误码回退显示服务端 message', async () => {
+    h.approve.mockResolvedValue({ ok: false, errorCode: 'other', message: 'Approval conflict' });
+    render(<PolicyVersionsTab policyId="p1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'approve-v1' }));
+
+    await waitFor(() => expect(h.toastError).toHaveBeenCalledWith('Approval conflict'));
   });
 
   it('批准成功不弹错误', async () => {

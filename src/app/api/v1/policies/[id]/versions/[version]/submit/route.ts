@@ -18,30 +18,33 @@ export async function POST(
 ) {
   const session = await auth();
   if (!session?.user?.id) {
-    return NextResponse.json({ error: '未授权' }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
   }
 
   const { id: policyId, version: versionStr } = await params;
   const version = parseInt(versionStr, 10);
   if (isNaN(version)) {
-    return NextResponse.json({ error: '无效的版本号' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid version number.', code: 'invalid_version' }, { status: 400 });
   }
 
   try {
+    const body = await request.json().catch(() => ({})) as { releaseNote?: unknown };
+    const releaseNote = typeof body.releaseNote === 'string' ? body.releaseNote.trim() : '';
     await submitForApproval({
       policyId,
       version,
       userId: session.user.id,
+      releaseNote: releaseNote || undefined,
     });
 
     return NextResponse.json({ success: true });
   } catch (error) {
     // 非所有者与「策略不存在」返回同一 404，避免泄露该 policyId 是否存在
     if (error instanceof PolicyAccessDeniedError) {
-      return NextResponse.json({ error: '策略不存在' }, { status: 404 });
+      return NextResponse.json({ error: 'Policy not found.', code: 'policy_not_found' }, { status: 404 });
     }
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : '提交审批失败' },
+      { error: error instanceof Error ? error.message : 'Could not submit version for approval.' },
       { status: 400 }
     );
   }

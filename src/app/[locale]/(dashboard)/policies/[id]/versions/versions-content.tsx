@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Breadcrumbs,
-  Button,
   ConfirmDialog,
   Container,
   DataTable,
@@ -201,7 +200,11 @@ export function VersionsContent({
       }
       return;
     }
-    toast.success(t(`actions.${kind}`));
+    const successKey = {
+      submit: 'versionSubmitted', approve: 'versionApproved', reject: 'versionRejected',
+      setDefault: 'versionDefaulted', deprecate: 'versionDeprecated', archive: 'versionArchived',
+    }[kind];
+    toast.success(t(`versions.${successKey}`, { version }));
     setPending(null);
     setDialogInput('');
     await refresh();
@@ -262,12 +265,14 @@ export function VersionsContent({
           subtitle={t('subtitle')}
           action={
             isOwner ? (
-              <Link href={`/policies/${policyId}/edit`}>
-                <Button variant="primary">{t('newVersion')}</Button>
-              </Link>
+                <Link href={`/policies/${policyId}/edit`} className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary/90">
+                  {t('newVersion')}
+                </Link>
             ) : undefined
           }
         />
+
+        <p className="-mt-3 text-sm text-fg-muted">{t('executionRule')}</p>
 
         {error ? (
           <EmptyState
@@ -281,8 +286,8 @@ export function VersionsContent({
             description={t('noVersionsBody')}
             action={
               isOwner ? (
-                <Link href={`/policies/${policyId}/edit`}>
-                  <Button variant="primary">{t('newVersion')}</Button>
+                <Link href={`/policies/${policyId}/edit`} className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary/90">
+                  {t('newVersion')}
                 </Link>
               ) : undefined
             }

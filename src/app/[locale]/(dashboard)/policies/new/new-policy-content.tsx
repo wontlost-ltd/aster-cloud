@@ -69,6 +69,8 @@ export function NewPolicyContent({
       if (!res.ok) {
         return {
           message: data.message || extractErrorMessage(data) || t('form.failedToCreate'),
+          code: data.code ?? data.error?.code ?? data.error,
+          diagnostics: data.diagnostics,
           upgrade: !!data.upgrade,
         };
       }

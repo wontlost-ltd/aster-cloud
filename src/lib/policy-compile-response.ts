@@ -10,14 +10,24 @@ import type { PolicyCompileError } from '@/services/policy/version-manager';
  */
 export function compileGateErrorResponse(error: PolicyCompileError): NextResponse {
   const retryAfter = error.retryAfterSeconds;
+  const diagnostics = error.diagnostics;
   if (retryAfter !== undefined) {
     return NextResponse.json(
-      { error: 'compile_unavailable', message: error.message },
+      {
+        error: 'compile_unavailable',
+        code: 'compile_unavailable',
+        message: error.message,
+      },
       { status: 503, headers: { 'Retry-After': String(retryAfter) } },
     );
   }
   return NextResponse.json(
-    { error: 'compile_error', message: error.message },
+    {
+      error: 'compile_error',
+      code: 'compile_error',
+      message: error.message,
+      diagnostics: diagnostics ?? [],
+    },
     { status: 400 },
   );
 }

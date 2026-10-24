@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { buildCommands } from '@/components/dashboard/command-palette-commands';
+import { buildCommands, buildPolicyCommands } from '@/components/dashboard/command-palette-commands';
 
 vi.mock('next/navigation', () => ({ usePathname: () => '/zh/dashboard', useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('@/i18n/navigation', () => ({
@@ -59,5 +59,23 @@ describe('命令面板 AI 工作台入口', () => {
   });
   it('未提供时不出现', () => {
     expect(buildCommands(base).some((c) => c.id === 'ai-workspace')).toBe(false);
+  });
+
+  it('包含领域词汇入口，并只追加调用方提供的管理员页面', () => {
+    const commands = buildCommands({
+      ...base,
+      adminCommands: [{ id: 'admin-risk', label: 'Risk tier', href: '/admin/risk-tier' }],
+    });
+    expect(commands.find((command) => command.id === 'domain-vocabularies')?.href).toBe('/zh/domain-vocabularies');
+    expect(commands.find((command) => command.id === 'admin-risk')).toMatchObject({ href: '/zh/admin/risk-tier', group: 'admin' });
+    expect(buildCommands(base).some((command) => command.group === 'admin')).toBe(false);
+  });
+
+  it('策略名称搜索仅返回匹配项、最多八条，并保留当前 locale 前缀', () => {
+    const policies = Array.from({ length: 10 }, (_, index) => ({ id: `p${index}`, name: `Loan ${index}` }));
+    const commands = buildPolicyCommands(policies, 'loan', '/zh');
+    expect(commands).toHaveLength(8);
+    expect(commands[0].href).toBe('/zh/policies/p0');
+    expect(buildPolicyCommands(policies, 'absent', '/zh')).toEqual([]);
   });
 });

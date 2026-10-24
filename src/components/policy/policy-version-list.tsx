@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import type { PolicyVersionStatus } from '@/lib/prisma';
 import { VersionStatusBadge } from './version-status-badge';
-import { ConfirmDialog } from '@/components/ui';
+import { ConfirmDialog, toast } from '@/components/ui';
 import { decideVersionApproval, type VersionReviewContext } from '@/services/policy/version-approval-rules';
 
 interface PolicyVersionInfo {
@@ -32,7 +32,7 @@ interface PolicyVersionListProps {
   onSetDefault?: (version: number) => Promise<void>;
   onDeprecate?: (version: number, reason?: string) => Promise<void>;
   onArchive?: (version: number, reason?: string) => Promise<void>;
-  onSubmitForApproval?: (versionId: string) => Promise<void>;
+  onSubmitForApproval?: (versionId: string, releaseNote?: string) => Promise<void>;
   onApprove?: (versionId: string, comment?: string) => Promise<void>;
   onReject?: (versionId: string, comment?: string) => Promise<void>;
   onViewSource?: (version: number) => void;
@@ -97,7 +97,7 @@ export function PolicyVersionList({
           await onArchive?.(actionDialog.version.version, comment || undefined);
           break;
         case 'submit':
-          await onSubmitForApproval?.(actionDialog.version.id);
+          await onSubmitForApproval?.(actionDialog.version.id, comment.trim() || undefined);
           break;
         case 'approve':
           await onApprove?.(actionDialog.version.id, comment || undefined);
@@ -107,14 +107,15 @@ export function PolicyVersionList({
           break;
       }
       closeActionDialog();
-    } catch (error) {
-      console.error('Action failed:', error);
+    } catch {
+      toast.error(tCommon('somethingWrong'));
     } finally {
       setActionLoading(false);
     }
   }, [
     actionDialog,
     comment,
+    tCommon,
     onSetDefault,
     onDeprecate,
     onArchive,
@@ -160,7 +161,8 @@ export function PolicyVersionList({
           description: t('submitDialogBody', { n }),
           confirmLabel: t('submitForApproval'),
           variant: 'info' as const,
-          showComment: false,
+          showComment: true,
+          commentPlaceholder: t('releaseNotePlaceholder'),
         };
       case 'approve':
         return {
@@ -247,11 +249,13 @@ export function PolicyVersionList({
                   <VersionStatusBadge status={version.status} isDefault={version.isDefault} />
                 </div>
 
-                {version.releaseNote && (
-                  <p className="mt-1 text-sm text-fg-muted dark:text-fg-subtle">
-                    {version.releaseNote}
-                  </p>
-                )}
+                <p className="mt-1 text-sm text-fg-muted dark:text-fg-subtle">
+                  {!version.releaseNote || version.releaseNote === 'Initial version' || version.releaseNote === 'Edited version'
+                    ? version.version === 1
+                      ? t('initialVersion')
+                      : t('editedVersion')
+                    : version.releaseNote}
+                </p>
 
                 <div className="mt-2 flex items-center gap-4 text-xs text-fg-muted dark:text-fg-muted">
                   <span>

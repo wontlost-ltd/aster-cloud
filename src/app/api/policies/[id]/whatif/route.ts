@@ -51,7 +51,7 @@ export async function GET(
 ): Promise<Response> {
   const session = await getSession();
   if (!session?.user?.id) {
-    return errorEnvelope({ code: 'UNAUTHORIZED', message: '未登录', status: 401 });
+    return errorEnvelope({ code: 'UNAUTHORIZED', message: 'Not authenticated.', status: 401 });
   }
   const { id } = await params;
 
@@ -64,7 +64,7 @@ export async function GET(
     .limit(1);
   if (owned.length === 0) {
     // 404 而非 403：不泄露「该 id 存在但不属于你」
-    return errorEnvelope({ code: 'NOT_FOUND', message: '策略不存在', status: 404 });
+    return errorEnvelope({ code: 'NOT_FOUND', message: 'Policy not found.', status: 404 });
   }
 
   return errorEnvelope({

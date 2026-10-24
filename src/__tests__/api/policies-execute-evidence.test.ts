@@ -60,11 +60,13 @@ vi.mock('@/lib/prisma', () => ({
     query: {
       users: { findFirst: vi.fn() },
       policies: { findMany: vi.fn().mockResolvedValue([{ id: 'p1' }]) },
+      policyVersions: { findMany: vi.fn().mockResolvedValue([]) },
     },
     insert: mockInsert,
     execute: mockDbExecute,
   },
   policies: { id: {}, userId: {}, updatedAt: {} },
+  policyVersions: { policyId: {} },
   executions: { id: {} },
   users: { id: {} },
   usageRecords: { userId: {}, type: {}, period: {}, count: {} },

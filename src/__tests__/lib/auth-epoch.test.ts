@@ -1,30 +1,79 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { getSettingUncached, authConfiguration } = vi.hoisted(() => ({ getSettingUncached: vi.fn(), authConfiguration: { current: null as unknown } }));
-vi.mock('next-auth', () => ({ default: (config: unknown) => { authConfiguration.current = config; return { handlers: {}, auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }; } }));
-vi.mock('@/lib/platform-settings', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/lib/platform-settings')>()),
-  getSettingUncached,
+const h = vi.hoisted(() => ({
+  select: vi.fn(),
+  from: vi.fn(),
+  leftJoin: vi.fn(),
+  where: vi.fn(),
+  authConfiguration: { current: null as unknown },
 }));
-vi.mock('@/lib/prisma', () => ({ getDb: vi.fn(), db: {}, users: {} }));
+
+vi.mock('next-auth', () => ({ default: (config: unknown) => {
+  h.authConfiguration.current = config;
+  return { handlers: {}, auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() };
+} }));
+vi.mock('@/lib/prisma', () => ({
+  getDb: () => ({ select: h.select }),
+  db: {},
+  users: { id: 'users.id' },
+  platformSettings: { key: 'platformSettings.key', value: 'platformSettings.value' },
+}));
 
 import '@/auth';
-import { PLATFORM_SETTING_KEYS } from '@/lib/platform-settings';
+
+const jwt = (h.authConfiguration.current as {
+  callbacks: { jwt: (args: never) => Promise<unknown> };
+}).callbacks.jwt;
 
 describe('auth JWT database epoch', () => {
-  const jwt = (authConfiguration.current as { callbacks: { jwt: (args: never) => Promise<unknown> } }).callbacks.jwt;
-  it('保留纪元一致的会话', async () => {
-    getSettingUncached.mockResolvedValue(4);
-    const result = await jwt({ token: { dbEpoch: 4 }, trigger: 'signIn' } as never);
-    expect(result).toMatchObject({ dbEpoch: 4 });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    h.select.mockReturnValue({ from: h.from });
+    h.from.mockReturnValue({ leftJoin: h.leftJoin });
+    h.leftJoin.mockReturnValue({ where: h.where });
+    h.where.mockResolvedValue([{
+      epoch: 4,
+      plan: 'pro',
+      trialEndsAt: null,
+      isAdmin: false,
+    }]);
   });
-  it.each([
-    ['纪元落后', async () => getSettingUncached.mockResolvedValue(5)],
-    ['读取失败', async () => getSettingUncached.mockRejectedValue(new Error('db unavailable'))],
-  ])('%s 时撤销会话', async (_label, setup) => {
-    await setup();
-    const result = await jwt({ token: { dbEpoch: 4 }, trigger: 'signIn' } as never);
+
+  it('纪元一致时放行并同步用户数据', async () => {
+    const result = await jwt({ token: { id: 'user-1', dbEpoch: 4, plan: 'free' } } as never);
+    expect(result).toMatchObject({ dbEpoch: 4, plan: 'pro', isAdmin: false });
+    expect(h.select).toHaveBeenCalledTimes(1);
+  });
+
+  it('缺少纪元且当前纪元大于零时撤销会话', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = await jwt({ token: { id: 'user-1' } } as never);
     expect(result).toBeNull();
-    expect(getSettingUncached).toHaveBeenCalledWith(PLATFORM_SETTING_KEYS.AUTH_DB_EPOCH);
+    expect(warn).toHaveBeenCalledWith('[auth] legacy session revoked after epoch bump');
+    warn.mockRestore();
+  });
+
+  it('缺少纪元且当前纪元为零时放行并补零', async () => {
+    h.where.mockResolvedValue([{ epoch: 0, plan: 'free', trialEndsAt: null, isAdmin: false }]);
+    const result = await jwt({ token: { id: 'user-1' } } as never);
+    expect(result).toMatchObject({ dbEpoch: 0, plan: 'free' });
+  });
+
+  it('用户行不存在时撤销会话并记录警告', async () => {
+    h.where.mockResolvedValue([]);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = await jwt({ token: { id: 'deleted-user', dbEpoch: 4 } } as never);
+    expect(result).toBeNull();
+    expect(warn).toHaveBeenCalledWith('[auth] session user missing; revoking session');
+    warn.mockRestore();
+  });
+
+  it('数据库查询失败时撤销会话', async () => {
+    h.where.mockRejectedValue(new Error('db unavailable'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = await jwt({ token: { id: 'user-1', dbEpoch: 4 } } as never);
+    expect(result).toBeNull();
+    expect(warn).toHaveBeenCalledWith('[auth] session identity check failed; revoking session');
+    warn.mockRestore();
   });
 });

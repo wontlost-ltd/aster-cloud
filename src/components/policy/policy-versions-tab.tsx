@@ -88,14 +88,15 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
 
   // 这些 API 现在需要 version number 而不是 versionId
   const handleSubmitForApproval = useCallback(
-    async (versionId: string) => {
+    async (versionId: string, releaseNote?: string) => {
       // 从 versions 中找到对应的 version number
       const ver = (versions as PolicyVersionInfo[]).find((v) => v.id === versionId);
       if (ver) {
-        await submitForApproval(ver.version);
+        if (!(await submitForApproval(ver.version, releaseNote))) throw new Error(t('submitFailed'));
+        toast.success(t('versionSubmitted', { version: ver.version }));
       }
     },
-    [versions, submitForApproval]
+    [versions, submitForApproval, t]
   );
 
   const handleApprove = useCallback(
@@ -104,22 +105,25 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
       if (!ver) return;
 
       const result = await approve(ver.version, comment);
-      if (result.ok) return;
+      if (result.ok) {
+        toast.success(t('versionApproved', { version: ver.version }));
+        return;
+      }
 
-      // 四眼原则拒绝（团队策略作者自审）：与版本页同一本地化提示，不能静默失败
+      // 审批被拒在此处就地提示并结束（不再抛出），版本列表的通用失败 toast 不会重复弹出。
       if (result.errorCode === 'segregation_of_duties') {
-        toast.error(t('sox.selfApprovalNotAllowed'));
+        toast.error(t('approvalErrorCodes.segregation_of_duties'));
         return;
       }
       if (result.errorCode === 'invite_reviewer_required') {
         setInviteModal({
           open: true,
-          message:
-            result.message ??
-            'Approval requires a separate reviewer. Invite a teammate to your workspace.',
-          cta: result.cta ?? { label: 'Invite a teammate', href: '/teams/new' },
+          message: t('approvalErrorCodes.invite_reviewer_required'),
+          cta: { label: t('approvalErrorCodes.invite_reviewer_cta'), href: result.cta?.href ?? '/teams/new' },
         });
+        return;
       }
+      toast.error(result.message ?? t('approvalErrorCodes.other'));
     },
     [versions, approve, t]
   );
@@ -130,10 +134,11 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
     async (versionId: string, comment?: string) => {
       const ver = (versions as PolicyVersionInfo[]).find((v) => v.id === versionId);
       if (ver && comment) {
-        await reject(ver.version, comment);
+        if (!(await reject(ver.version, comment))) throw new Error(t('submitFailed'));
+        toast.success(t('versionRejected', { version: ver.version }));
       }
     },
-    [versions, reject]
+    [versions, reject, t]
   );
 
   if (error) {

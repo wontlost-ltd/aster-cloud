@@ -194,18 +194,20 @@ export async function getEvidencePreview(q: EvidenceQuery): Promise<EvidencePrev
   const tally: DecisionTally = { ...EMPTY_TALLY };
   let count = 0;
   let withHash = 0;
+  let failedNoHashes = 0;
   for (const r of rows) {
     const key: keyof DecisionTally = (r.decision as EvidenceDecision | null) ?? 'unknown';
     tally[key] += r.count;
     count += r.count;
     withHash += r.withHash;
+    if (r.decision === 'error') failedNoHashes += r.count - r.withHash;
   }
 
   return {
     count,
     decisionTally: tally,
     // 哈希覆盖率：verifiable=有 canonical 哈希（真证据）；legacy=无（早于 ADR 0030 采集）。
-    coverage: { verifiable: withHash, legacy: count - withHash },
+    coverage: { verifiable: withHash, legacy: count - withHash - failedNoHashes, failedNoHashes },
     exceedsLimit: count > EVIDENCE_EXPORT_ROW_LIMIT,
     limit: EVIDENCE_EXPORT_ROW_LIMIT,
   };

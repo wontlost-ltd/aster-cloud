@@ -5,6 +5,7 @@ import { eq, and } from 'drizzle-orm';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
 import { refreshTeamKeySnapshots } from '@/lib/api-keys';
 import { invalidatePlanCache } from '@/lib/plan-gate-client';
+import { logSecurityAdminAction } from '@/services/security/security-event-service';
 
 type RouteParams = { params: Promise<{ teamId: string }> };
 
@@ -13,7 +14,7 @@ export async function POST(req: Request, { params }: RouteParams) {
   try {
     const session = await getSession();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
 
     const { teamId } = await params;
@@ -31,7 +32,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     const { newOwnerId } = await req.json();
 
     if (!newOwnerId || typeof newOwnerId !== 'string') {
-      return NextResponse.json({ error: '请指定新的所有者' }, { status: 400 });
+      return NextResponse.json({ error: 'Specify the new owner.', code: 'new_owner_required' }, { status: 400 });
     }
 
     // 检查新所有者是否为团队成员
@@ -40,12 +41,12 @@ export async function POST(req: Request, { params }: RouteParams) {
     });
 
     if (!newOwnerMembership) {
-      return NextResponse.json({ error: '新所有者必须是团队成员' }, { status: 400 });
+      return NextResponse.json({ error: 'The new owner must be a team member.', code: 'new_owner_not_member' }, { status: 400 });
     }
 
     // 不能转让给自己
     if (newOwnerId === session.user.id) {
-      return NextResponse.json({ error: '无法将所有权转让给自己' }, { status: 400 });
+      return NextResponse.json({ error: 'Ownership cannot be transferred to yourself.', code: 'cannot_transfer_to_self' }, { status: 400 });
     }
 
     // 使用事务更新所有权
@@ -73,14 +74,19 @@ export async function POST(req: Request, { params }: RouteParams) {
     await invalidatePlanCache(teamId).catch((err) =>
       console.warn('[teams] invalidatePlanCache after ownership transfer failed:', err)
     );
+    await logSecurityAdminAction(session.user.id, 'TEAM_OWNERSHIP_TRANSFERRED', {
+      teamId,
+      newOwnerId,
+    });
 
     return NextResponse.json({
       success: true,
-      message: '所有权转让成功',
+      message: 'Ownership transferred successfully.',
+      code: 'ownership_transferred',
       newOwnerId,
     });
   } catch (error) {
     console.error('Error transferring team ownership:', error);
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error.', code: 'internal_server_error' }, { status: 500 });
   }
 }

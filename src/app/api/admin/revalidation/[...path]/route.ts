@@ -34,7 +34,7 @@ async function proxy(req: NextRequest, context: { params: Promise<{ path: string
     if (isStart && upstream.ok) await auditStart(req, admin.userId, requested ?? {}, text);
     return new NextResponse(text, { status: upstream.status, headers: { 'Content-Type': upstream.headers.get('content-type') || 'application/json' } });
   } catch {
-    return NextResponse.json({ error: 'upstream_unavailable', message: '无法连接后端重验服务。' }, { status: 502 });
+    return NextResponse.json({ error: 'upstream_unavailable', message: 'Could not connect to the upstream revalidation service.' }, { status: 502 });
   }
 }
 

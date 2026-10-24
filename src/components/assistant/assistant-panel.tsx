@@ -50,6 +50,7 @@ export function AssistantPanel() {
         labels: {
           dashboard: tNav('dashboard'),
           policies: tNav('policies'),
+          domainVocabularies: tNav('domainVocabularies'),
           reports: tNav('reports'),
           approvals: tNav('approvals'),
           teams: tNav('teams'),
@@ -102,6 +103,7 @@ export function AssistantPanel() {
       create: tCmd('groupCreate'),
       settings: tCmd('groupSettings'),
       docs: tCmd('groupDocs'),
+      admin: tCmd('groupAdmin'),
     }),
     [tCmd],
   );
@@ -216,7 +218,7 @@ export function AssistantPanel() {
         {state.turns.length === 0 ? (
           <div className="space-y-2">
             <p className="text-sm text-fg-muted">{t('intro')}</p>
-            {/* 明确告知边界：不联网、不生成、不读数据——避免用户误当成 AI 客服 */}
+            {/* 说明站内文档检索与可选 AI 应答的真实边界。 */}
             <p className="text-xs text-fg-subtle">{t('introNote')}</p>
           </div>
         ) : (

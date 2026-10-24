@@ -78,6 +78,21 @@ export async function logSecurityEvent(
   }
 }
 
+/** 记录不会改变主流程结果的管理操作。 */
+export async function logSecurityAdminAction(
+  userId: string,
+  action: string,
+  details: Record<string, unknown> = {},
+): Promise<void> {
+  // 持久化枚举没有通用管理动作类型；复用现有值并用 details.action 区分页面标签，避免改动数据库枚举。
+  await logSecurityEvent({
+    eventType: 'VERSION_CREATED',
+    severity: 'INFO',
+    userId,
+    details: { ...details, action },
+  });
+}
+
 /**
  * 批量记录安全事件
  *

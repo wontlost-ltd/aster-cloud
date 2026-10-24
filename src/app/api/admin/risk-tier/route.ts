@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
   }
   if (body.userId === adminUserId) {
     return NextResponse.json(
-      { error: 'cannot_override_self', message: 'admin 不能修改自己的 riskTier' },
+      { error: 'cannot_override_self', message: 'An admin cannot change their own riskTier.' },
       { status: 400 },
     );
   }

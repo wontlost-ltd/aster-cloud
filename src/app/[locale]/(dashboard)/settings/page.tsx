@@ -22,6 +22,8 @@ import { getTranslations } from 'next-intl/server';
 import { Link } from '@/i18n/navigation';
 import { defaultLocale } from '@/i18n/config';
 import { getSession } from '@/lib/auth';
+import { getUsageStats } from '@/lib/usage';
+import { getDisplayPlan, type PlanType } from '@/lib/plans';
 import { loadBusinessRoles } from '@/lib/business-roles';
 import { getSetting, PLATFORM_SETTING_KEYS } from '@/lib/platform-settings';
 import { assistantSettingsHintKey } from '@/lib/assistant/settings-hint';
@@ -84,10 +86,8 @@ export default async function SettingsPage({ params }: PageProps) {
 
   const profileName = session.user.name || t('profile.notSet');
   const profileEmail = session.user.email || t('profile.notSet');
-  // session.user.plan is a custom field stitched on by the NextAuth
-  // callback; fall back to "Free" when the trial/seed user hasn't been
-  // assigned a plan yet.
-  const profilePlan = (session.user as { plan?: string }).plan || 'Free';
+  const usageStats = await getUsageStats(session.user.id);
+  const profilePlan = getDisplayPlan({ plan: usageStats.plan as PlanType });
   // 个人租户的业务角色（ADR 0042 §2.1）：服务端预取，避免面板首屏闪「无」
   const businessRoles = await loadBusinessRoles(session.user.id, session.user.id);
 

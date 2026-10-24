@@ -327,9 +327,14 @@ Rule calculateBase given driver, vehicle, produce:
 Rule calculateRisk given driver, produce:
   Let base be 100.
   If driver.accidents greater than 0
-    Let base be base plus driver.accidents times 20.
+    Let withAccidents be base plus driver.accidents times 20.
+    If driver.violations greater than 0
+      Let withBoth be withAccidents plus driver.violations times 10.
+      Return withBoth.
+    Return withAccidents.
   If driver.violations greater than 0
-    Let base be base plus driver.violations times 10.
+    Let withViolations be base plus driver.violations times 10.
+    Return withViolations.
   Return base.
 `;
 
@@ -374,9 +379,14 @@ const AUTO_SOURCE_ZH = `模块 保险.汽车。
 规则 计算风险 给定 驾驶员，产出：
   令 基数 定义为 100。
   如果 驾驶员.事故数 大于 0
-    令 基数 定义为 基数 加上 驾驶员.事故数 乘以 20。
+    令 含事故风险 定义为 基数 加上 驾驶员.事故数 乘以 20。
+    如果 驾驶员.违章数 大于 0
+      令 含事故与违章风险 定义为 含事故风险 加上 驾驶员.违章数 乘以 10。
+      返回 含事故与违章风险。
+    返回 含事故风险。
   如果 驾驶员.违章数 大于 0
-    令 基数 定义为 基数 加上 驾驶员.违章数 乘以 10。
+    令 含违章风险 定义为 基数 加上 驾驶员.违章数 乘以 10。
+    返回 含违章风险。
   返回 基数。
 `;
 
@@ -421,9 +431,14 @@ Regel basisBerechnen gegeben fahrer, fahrzeug, liefert:
 Regel risikoBerechnen gegeben fahrer, liefert:
   sei basis gleich 100.
   wenn fahrer.unfaelle groesser als 0
-    sei basis gleich basis plus fahrer.unfaelle mal 20.
+    sei mitUnfaellen gleich basis plus fahrer.unfaelle mal 20.
+    wenn fahrer.verstoesse groesser als 0
+      sei mitUnfaellenUndVerstoessen gleich mitUnfaellen plus fahrer.verstoesse mal 10.
+      gib zurueck mitUnfaellenUndVerstoessen.
+    gib zurueck mitUnfaellen.
   wenn fahrer.verstoesse groesser als 0
-    sei basis gleich basis plus fahrer.verstoesse mal 10.
+    sei mitVerstoessen gleich basis plus fahrer.verstoesse mal 10.
+    gib zurueck mitVerstoessen.
   gib zurueck basis.
 `;
 

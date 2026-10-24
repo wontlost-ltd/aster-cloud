@@ -78,6 +78,8 @@ export function EditPolicyContent({
         const data = await res.json();
         return {
           message: data.message || extractErrorMessage(data) || t.form.failedToUpdate,
+          code: data.code ?? data.error?.code ?? data.error,
+          diagnostics: data.diagnostics,
           upgrade: !!(data.upgrade || data.frozen),
         };
       }

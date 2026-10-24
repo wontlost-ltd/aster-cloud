@@ -40,7 +40,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
 
     const { id } = await params;
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const allowed = readable
       && (readable.userId === session.user.id || readable.isPublic || (reviewer && canReviewPolicyVersions(reviewer)));
     if (!allowed) {
-      return NextResponse.json({ error: '策略不存在' }, { status: 404 });
+      return NextResponse.json({ error: 'Policy not found.', code: 'policy_not_found' }, { status: 404 });
     }
 
     const executableOnly =
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   } catch (error) {
     console.error('[Versions GET] Error:', error);
     return NextResponse.json(
-      { error: '获取版本列表失败' },
+      { error: 'Could not load versions.', code: 'version_list_failed' },
       { status: 500 }
     );
   }
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
 
     const { id } = await params;
@@ -108,12 +108,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       columns: { id: true },
     });
     if (!owned) {
-      return NextResponse.json({ error: '策略不存在' }, { status: 404 });
+      return NextResponse.json({ error: 'Policy not found.', code: 'policy_not_found' }, { status: 404 });
     }
     const freeze = await isPolicyFrozen(session.user.id, id);
     if (freeze.isFrozen) {
       return NextResponse.json(
-        { error: '策略已冻结', frozen: true },
+        { error: 'Policy is frozen.', code: 'policy_frozen', frozen: true },
         { status: 403 },
       );
     }
@@ -123,14 +123,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       body = await request.json();
     } catch {
       return NextResponse.json(
-        { error: '无效的 JSON 请求体' },
+        { error: 'Request body must be valid JSON.', code: 'invalid_json' },
         { status: 400 }
       );
     }
 
     if (!body || typeof body !== 'object') {
       return NextResponse.json(
-        { error: '请求体必须是有效对象' },
+        { error: 'Request body must be a valid object.', code: 'invalid_request_body' },
         { status: 400 }
       );
     }
@@ -144,7 +144,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     if (!source || typeof source !== 'string') {
       return NextResponse.json(
-        { error: '缺少 source 字段' },
+        { error: 'source is required.', code: 'source_required' },
         { status: 400 }
       );
     }
@@ -188,7 +188,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
     console.error('[Versions POST] Error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : '创建版本失败' },
+      { error: error instanceof Error ? error.message : 'Could not create version.' },
       { status: 500 }
     );
   }

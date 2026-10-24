@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { logSecurityAdminAction } from '@/services/security/security-event-service';
 import { getSession } from '@/lib/auth';
 import { db, policies, policyVersions, executions, policyGroups } from '@/lib/prisma';
 import { eq, and, isNull, desc, sql } from 'drizzle-orm';
@@ -291,7 +292,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
           policyId: id,
           source: versionSource,
           createdBy: session.user.id,
-          releaseNote: 'Edited version',
+          releaseNote: undefined,
           locale: compileLocale,
           aliasSet: aliasSetInput,
           aliasReserved,
@@ -309,10 +310,9 @@ export async function PUT(req: Request, { params }: RouteParams) {
       return updated;
     });
 
-    // 失效策略缓存（异步，不阻塞响应）
-    invalidatePolicyCache(id).catch(err =>
-      console.warn('[Cache] Failed to invalidate policy cache:', err)
-    );
+    // 响应前完成失效；KV 故障由缓存服务记录，不阻断策略更新。
+    // 响应前完成缓存失效；KV 故障只记录，不把已成功的写操作报成失败。
+    await invalidatePolicyCache(id).catch((err) => console.warn('[Cache] Failed to invalidate policy cache:', err));
 
     return NextResponse.json(policy);
   } catch (error) {
@@ -351,10 +351,11 @@ export async function DELETE(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: result.error }, { status: 404 });
     }
 
-    // 失效策略缓存（异步，不阻塞响应）
-    invalidatePolicyCache(id).catch(err =>
-      console.warn('[Cache] Failed to invalidate policy cache:', err)
-    );
+    await logSecurityAdminAction(session.user.id, 'POLICY_TRASHED', { policyId: id });
+
+    // 响应前完成失效；KV 故障由缓存服务记录，不阻断策略删除。
+    // 响应前完成缓存失效；KV 故障只记录，不把已成功的写操作报成失败。
+    await invalidatePolicyCache(id).catch((err) => console.warn('[Cache] Failed to invalidate policy cache:', err));
 
     return NextResponse.json({
       success: true,

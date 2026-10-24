@@ -35,20 +35,20 @@ interface SecurityDashboardProps {
 // R32 P0 fix：每个 severity 都补 dark: variant。原本只有 light-mode 配色，
 // dark mode 下 yellow-700 on zinc-950 ≈ 2.5:1，WCAG fail；类似 blue/red 都不达标。
 // dark token 用 *-300 → *-400 范围保证 ≥ 4.5:1 contrast。
-const SEVERITY_CONFIG: Record<EventSeverity, { label: string; color: string; bgColor: string }> = {
-  INFO:     { label: '信息', color: 'text-blue-700   dark:text-blue-300',   bgColor: 'bg-blue-100   dark:bg-blue-950/40' },
-  WARNING:  { label: '警告', color: 'text-yellow-800 dark:text-yellow-300', bgColor: 'bg-yellow-100 dark:bg-yellow-950/40' },
-  ERROR:    { label: '错误', color: 'text-red-700    dark:text-red-300',    bgColor: 'bg-red-100    dark:bg-red-950/40' },
-  CRITICAL: { label: '严重', color: 'text-red-900    dark:text-red-200',    bgColor: 'bg-red-200    dark:bg-red-900/40' },
+const SEVERITY_CONFIG: Record<EventSeverity, { color: string; bgColor: string }> = {
+  INFO:     { color: 'text-blue-700   dark:text-blue-300',   bgColor: 'bg-blue-100   dark:bg-blue-950/40' },
+  WARNING:  { color: 'text-yellow-800 dark:text-yellow-300', bgColor: 'bg-yellow-100 dark:bg-yellow-950/40' },
+  ERROR:    { color: 'text-red-700    dark:text-red-300',    bgColor: 'bg-red-100    dark:bg-red-950/40' },
+  CRITICAL: { color: 'text-red-900    dark:text-red-200',    bgColor: 'bg-red-200    dark:bg-red-900/40' },
 };
 
 type TimeRange = '1h' | '24h' | '7d' | '30d';
 
 export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
   // 事件时间按当前 locale 格式化（原硬编码 'zh-CN'，德语/印地语用户看到中文格式）。
-  // ★本组件其余文案仍是硬编码中文（约 40 处），属独立的 i18n 工作，不在本次范围。
   const locale = useLocale();
   const tType = useTranslations('security.eventTypes');
+  const t = useTranslations('security.dashboard');
   // 事件类型 → 本地化标签。键写成字面量，便于 check:message-keys 静态核对；
   // 未知类型（新枚举值尚未补文案）回落显示原始 id。
   const eventTypeLabels: Record<string, string> = {
@@ -120,7 +120,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
       ]);
 
       if (!statsRes.ok || !eventsRes.ok) {
-        throw new Error('获取安全数据失败');
+        throw new Error(t('loadFailed'));
       }
 
       const [statsData, eventsData] = await Promise.all([
@@ -131,11 +131,11 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
       setStats(statsData);
       setEvents(eventsData.events);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '未知错误');
+      setError(err instanceof Error ? err.message : t('unknownError'));
     } finally {
       setLoading(false);
     }
-  }, [timeRange, policyId, getTimeRangeParams]);
+  }, [timeRange, policyId, getTimeRangeParams, t]);
 
   useEffect(() => {
     // 挂载/依赖变化时异步拉取安全数据，并起 30 秒轮询定时器。
@@ -174,7 +174,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
           onClick={fetchData}
           className="mt-4 text-primary dark:text-primary hover:underline"
         >
-          重试
+          {t('retry')}
         </button>
       </div>
     );
@@ -185,7 +185,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold text-fg dark:text-white">
-          安全监控
+          {t('title')}
         </h2>
         <div className="flex items-center gap-4">
           {/* Time Range Selector */}
@@ -200,7 +200,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
                     : 'bg-bg dark:bg-gray-800 text-fg dark:text-gray-300 border-border-strong dark:border-gray-600 hover:bg-bg-subtle dark:hover:bg-gray-700'
                 }`}
               >
-                {range === '1h' ? '1小时' : range === '24h' ? '24小时' : range === '7d' ? '7天' : '30天'}
+                {t(`timeRange.${range}`)}
               </button>
             ))}
           </div>
@@ -232,7 +232,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Total Events */}
           <div className="bg-bg dark:bg-gray-800 rounded-lg shadow p-4">
-            <dt className="text-sm font-medium text-fg-muted dark:text-fg-subtle">总事件数</dt>
+            <dt className="text-sm font-medium text-fg-muted dark:text-fg-subtle">{t('totalEvents')}</dt>
             <dd className="mt-1 text-3xl font-semibold text-fg dark:text-white">
               {stats.total.toLocaleString()}
             </dd>
@@ -240,7 +240,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
 
           {/* Error Rate */}
           <div className="bg-bg dark:bg-gray-800 rounded-lg shadow p-4">
-            <dt className="text-sm font-medium text-fg-muted dark:text-fg-subtle">错误率</dt>
+            <dt className="text-sm font-medium text-fg-muted dark:text-fg-subtle">{t('errorRate')}</dt>
             {/* R32 P0 fix：原 *-600 在 dark mode 下 contrast 不达标。
                 统一 *-700/*-300 模式（light/dark）以满足 WCAG AA。 */}
             <dd className={`mt-1 text-3xl font-semibold ${
@@ -256,7 +256,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
 
           {/* Warnings */}
           <div className="bg-bg dark:bg-gray-800 rounded-lg shadow p-4">
-            <dt className="text-sm font-medium text-fg-muted dark:text-fg-subtle">警告</dt>
+            <dt className="text-sm font-medium text-fg-muted dark:text-fg-subtle">{t('severity.WARNING')}</dt>
             <dd className="mt-1 text-3xl font-semibold text-yellow-700 dark:text-yellow-300">
               {stats.bySeverity.WARNING.toLocaleString()}
             </dd>
@@ -264,7 +264,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
 
           {/* Errors + Critical */}
           <div className="bg-bg dark:bg-gray-800 rounded-lg shadow p-4">
-            <dt className="text-sm font-medium text-fg-muted dark:text-fg-subtle">错误/严重</dt>
+            <dt className="text-sm font-medium text-fg-muted dark:text-fg-subtle">{t('errorsAndCritical')}</dt>
             <dd className="mt-1 text-3xl font-semibold text-red-700 dark:text-red-300">
               {(stats.bySeverity.ERROR + stats.bySeverity.CRITICAL).toLocaleString()}
             </dd>
@@ -275,7 +275,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
       {/* Event Type Breakdown */}
       {stats && Object.keys(stats.byType).length > 0 && (
         <div className="bg-bg dark:bg-gray-800 rounded-lg shadow p-4">
-          <h3 className="text-lg font-medium text-fg dark:text-white mb-4">事件类型分布</h3>
+          <h3 className="text-lg font-medium text-fg dark:text-white mb-4">{t('eventTypeBreakdown')}</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {Object.entries(stats.byType)
               .sort((a, b) => b[1] - a[1])
@@ -299,24 +299,23 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
       {/* Recent Events */}
       <div className="bg-bg dark:bg-gray-800 rounded-lg shadow">
         <div className="px-4 py-3 border-b border-border dark:border-gray-700 flex items-center justify-between">
-          <h3 className="text-lg font-medium text-fg dark:text-white">最近事件</h3>
+          <h3 className="text-lg font-medium text-fg dark:text-white">{t('recentEvents')}</h3>
           {/* Severity Filter */}
           <select
             value={selectedSeverity}
             onChange={(e) => setSelectedSeverity(e.target.value as EventSeverity | 'ALL')}
             className="text-sm border border-border-strong dark:border-gray-600 rounded-md px-2 py-1 bg-bg dark:bg-gray-700 text-fg dark:text-white"
           >
-            <option value="ALL">全部级别</option>
-            <option value="INFO">信息</option>
-            <option value="WARNING">警告</option>
-            <option value="ERROR">错误</option>
-            <option value="CRITICAL">严重</option>
+            <option value="ALL">{t('allSeverities')}</option>
+            {(Object.keys(SEVERITY_CONFIG) as EventSeverity[]).map((severity) => (
+              <option key={severity} value={severity}>{t(`severity.${severity}`)}</option>
+            ))}
           </select>
         </div>
         <div className="divide-y divide-border dark:divide-gray-700 max-h-96 overflow-y-auto">
           {filteredEvents.length === 0 ? (
             <div className="p-8 text-center text-fg-muted dark:text-fg-subtle">
-              暂无事件记录
+              {t('noEvents')}
             </div>
           ) : (
             filteredEvents.map((event) => (
@@ -329,7 +328,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
                           SEVERITY_CONFIG[event.severity].bgColor
                         } ${SEVERITY_CONFIG[event.severity].color}`}
                       >
-                        {SEVERITY_CONFIG[event.severity].label}
+                        {t(`severity.${event.severity}`)}
                       </span>
                       <span className="text-sm font-medium text-fg dark:text-white">
                         {eventTypeLabel(securityEventDisplayType(event.eventType, event.details))}
@@ -337,20 +336,20 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
                     </div>
                     <div className="mt-1 text-sm text-fg-muted dark:text-fg-subtle">
                       {event.policyId && (
-                        <span className="mr-3">策略: {event.policyId.slice(0, 8)}...</span>
+                        <span className="mr-3">{t('policy')}: {event.policyId.slice(0, 8)}...</span>
                       )}
                       {event.ipAddress && (
                         <span className="mr-3">IP: {event.ipAddress}</span>
                       )}
                       {event.requestId && (
-                        <span>请求ID: {event.requestId.slice(0, 8)}...</span>
+                        <span>{t('requestId')}: {event.requestId.slice(0, 8)}...</span>
                       )}
                     </div>
                     {/* Event Details */}
                     {Object.keys(event.details).length > 0 && (
                       <details className="mt-2">
                         <summary className="text-xs text-primary dark:text-primary cursor-pointer">
-                          查看详情
+                          {t('viewDetails')}
                         </summary>
                         <pre className="mt-1 text-xs bg-bg-muted dark:bg-gray-900 p-2 rounded overflow-x-auto">
                           {JSON.stringify(event.details, null, 2)}

@@ -12,12 +12,13 @@ import {
   canRemoveMember,
   TeamRole,
 } from '@/lib/team-permissions';
+import { logSecurityAdminAction } from '@/services/security/security-event-service';
 
 type RouteParams = { params: Promise<{ teamId: string; memberId: string }> };
 
 const VALID_ROLES = ['admin', 'member', 'viewer'];
 type MemberUpdate = { role?: TeamRole; businessRoles?: string[] };
-type ParsedUpdate = { ok: true; set: MemberUpdate } | { ok: false; error: string };
+type ParsedUpdate = { ok: true; set: MemberUpdate } | { ok: false; error: string; code?: string };
 
 /**
  * 解析成员更新体：`role` 与 `businessRoles`（ADR 0042 §2.1）至少给一个；只校验形状，
@@ -25,17 +26,17 @@ type ParsedUpdate = { ok: true; set: MemberUpdate } | { ok: false; error: string
  */
 function parseMemberUpdate(body: unknown): ParsedUpdate {
   const { role, businessRoles } = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
-  if (role === undefined && businessRoles === undefined) return { ok: false, error: '无效的角色' };
+  if (role === undefined && businessRoles === undefined) return { ok: false, error: 'Invalid role.', code: 'invalid_role' };
   const set: MemberUpdate = {};
   if (role !== undefined) {
-    if (typeof role !== 'string' || !VALID_ROLES.includes(role)) return { ok: false, error: '无效的角色' };
+    if (typeof role !== 'string' || !VALID_ROLES.includes(role)) return { ok: false, error: 'Invalid role.', code: 'invalid_role' };
     set.role = role as TeamRole;
   }
   if (businessRoles !== undefined) {
     try {
       set.businessRoles = normalizeBusinessRoles(businessRoles);
     } catch (err) {
-      if (err instanceof BusinessRoleError) return { ok: false, error: err.message };
+      if (err instanceof BusinessRoleError) return { ok: false, error: err.message, code: 'invalid_business_role' };
       throw err;
     }
   }
@@ -47,7 +48,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
   try {
     const session = await getSession();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
 
     const { teamId, memberId } = await params;
@@ -74,12 +75,12 @@ export async function PUT(req: Request, { params }: RouteParams) {
     const targetMember = await db.query.teamMembers.findFirst({ where: inTeam });
 
     if (!targetMember) {
-      return NextResponse.json({ error: '成员不存在' }, { status: 404 });
+      return NextResponse.json({ error: 'Member not found.', code: 'member_not_found' }, { status: 404 });
     }
 
     const parsed = parseMemberUpdate(await req.json().catch(() => null));
     if (!parsed.ok) {
-      return NextResponse.json({ error: parsed.error }, { status: 400 });
+      return NextResponse.json({ error: parsed.error, ...(parsed.code ? { code: parsed.code } : {}) }, { status: 400 });
     }
 
     // 检查角色变更权限；只改业务角色时不涉及成员层级，owner 行也可被授予业务角色
@@ -127,7 +128,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
     });
   } catch (error) {
     console.error('Error updating member role:', error);
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error.', code: 'internal_server_error' }, { status: 500 });
   }
 }
 
@@ -136,7 +137,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
   try {
     const session = await getSession();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
 
     const { teamId, memberId } = await params;
@@ -145,7 +146,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     const access = await checkTeamAccess(session.user.id, teamId);
     if (!access.allowed) {
       // 对未授权用户统一返回 404，防止枚举攻击
-      return NextResponse.json({ error: '成员不存在' }, { status: 404 });
+      return NextResponse.json({ error: 'Member not found.', code: 'member_not_found' }, { status: 404 });
     }
 
     // 获取目标成员
@@ -154,7 +155,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     });
 
     if (!targetMember) {
-      return NextResponse.json({ error: '成员不存在' }, { status: 404 });
+      return NextResponse.json({ error: 'Member not found.', code: 'member_not_found' }, { status: 404 });
     }
 
     const isSelf = targetMember.userId === session.user.id;
@@ -184,10 +185,15 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     await revokeTeamKeys(teamId, targetMember.userId).catch((err) =>
       console.warn('[teams] revokeTeamKeys after member removal failed:', err)
     );
+    await logSecurityAdminAction(session.user.id, 'TEAM_MEMBER_REMOVED', {
+      teamId,
+      memberId,
+      removedUserId: targetMember.userId,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error removing member:', error);
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error.', code: 'internal_server_error' }, { status: 500 });
   }
 }

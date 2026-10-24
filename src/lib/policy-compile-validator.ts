@@ -21,6 +21,25 @@ function retryAfterOf(err: PolicyApiError): number {
 /** aster-api 编译端点内部故障码（ADR 0046 §4）：编译没做成，不是源码错误。 */
 const COMPILE_INTERNAL_ERROR_CODE = 'COMPILE_INTERNAL_ERROR';
 
+function compileDiagnosticsFrom(error: PolicyApiError) {
+  const diagnostics = error.details?.diagnostics;
+  if (!Array.isArray(diagnostics)) return [];
+  return diagnostics
+    .filter((diagnostic): diagnostic is Record<string, unknown> =>
+      typeof diagnostic === 'object' && diagnostic !== null,
+    )
+    .filter((diagnostic) => diagnostic.severity === 'error')
+    .map((diagnostic) => ({
+      severity: 'error' as const,
+      code: typeof diagnostic.code === 'string' ? diagnostic.code : 'compile_error',
+      message: typeof diagnostic.message === 'string'
+        ? diagnostic.message
+        : 'Policy source could not be compiled.',
+      startLine: typeof diagnostic.startLine === 'number' ? diagnostic.startLine : 1,
+      startColumn: typeof diagnostic.startColumn === 'number' ? diagnostic.startColumn : 1,
+    }));
+}
+
 // 源码错误 = 不带内部故障码的 error 诊断
 function hasSourceError(diagnostics: PolicyCompileResponse['diagnostics']): boolean {
   return (diagnostics ?? []).some(
@@ -79,7 +98,8 @@ export function makeCompileValidator(userId: string): CompileValidator {
         err.code !== 'TIMEOUT'
       ) {
         throw new PolicyCompileError(
-          err.message || '策略无法编译，无法保存，请检查源码或别名后重试。',
+          err.message || 'Policy could not be compiled. Check the source or aliases and try again.',
+          compileDiagnosticsFrom(err),
         );
       }
       throw err;

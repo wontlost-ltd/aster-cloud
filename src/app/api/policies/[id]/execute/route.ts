@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { db, policies, executions, users, usageRecords } from '@/lib/prisma';
+import { db, policies, policyVersions, executions, users, usageRecords } from '@/lib/prisma';
 import { eq, sql, desc, asc } from 'drizzle-orm';
 import { PLANS, PlanType } from '@/lib/plans';
 import { upgradeResponse } from '@/lib/plan-quota';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
 import { executePolicyUnified, getPrimaryError, deriveExecutionDecision, deriveExecutionOutcome, detectCNLLocale } from '@/services/policy/cnl-executor';
 import { getCachedPolicyMeta, cachePolicyMeta, type CachedPolicyMeta } from '@/lib/cache';
+import { hydrateExecutableVersion, isCachedVersionCurrent, resolveExecutableVersion, type ExecutableVersionCandidate } from '@/services/policy/executable-version';
 import { buildReplayColumns, buildEvidenceColumns } from '@/lib/policy-execution-log';
 import { policyTenantId } from '@/lib/policy-tenant';
 import { needsGuardDecision, registerGuardAfterInsert, registerGuardDecisionWith } from '@/lib/guard-register';
@@ -87,6 +88,13 @@ export async function POST(req: Request, { params }: RouteParams) {
     const userId = session.user.id;
     const period = getCurrentPeriod();
 
+    const versionRows = await db.query.policyVersions.findMany({
+      where: eq(policyVersions.policyId, id),
+      columns: {
+        id: true, version: true, status: true, isDefault: true,
+      },
+    });
+
     // 阶段2：尝试从 KV 缓存获取策略元数据
     const t2 = Date.now();
     let policy: CachedPolicyMeta | null = null;
@@ -94,9 +102,19 @@ export async function POST(req: Request, { params }: RouteParams) {
 
     const cachedPolicy = await getCachedPolicyMeta(id);
     if (cachedPolicy) {
+      const fallbackVersion: ExecutableVersionCandidate = {
+        id: cachedPolicy.versionRowId ?? '', version: cachedPolicy.version ?? 0,
+        content: cachedPolicy.content, aliasSet: cachedPolicy.aliasSet ?? null,
+        status: 'DRAFT', isDefault: false,
+        sourceToolchainId: cachedPolicy.sourceToolchainId ?? null,
+        vocabularySnapshotIds: cachedPolicy.vocabSnapshotIds,
+      };
+      const executableVersion = resolveExecutableVersion(versionRows, fallbackVersion);
+      if (isCachedVersionCurrent(cachedPolicy.version, executableVersion.version)) {
       policy = cachedPolicy;
       cacheHit = true;
       timings.cacheHit = Date.now() - t2;
+      }
     }
 
     // 获取用户数据、使用量和团队成员状态
@@ -165,19 +183,43 @@ export async function POST(req: Request, { params }: RouteParams) {
     // 如果缓存未命中，从数据库结果构建策略对象
     let cacheWritePromise: Promise<void> | null = null;
     if (!cacheHit && row?.policy_id) {
+      const fallbackVersion: ExecutableVersionCandidate = {
+        id: row.policy_version_row_id ?? '', version: row.policy_version ?? 0,
+        content: row.policy_content!, aliasSet: row.policy_alias_set ?? null,
+        status: 'DRAFT', isDefault: false,
+        sourceToolchainId: row.policy_source_toolchain_id ?? null,
+        vocabularySnapshotIds: row.policy_vocab_snapshot_ids,
+      };
+      const selectedVersion = resolveExecutableVersion(versionRows, fallbackVersion);
+      const executableVersion = await hydrateExecutableVersion(
+        selectedVersion,
+        fallbackVersion,
+        async (version) => {
+          const [versionRow] = await db.query.policyVersions.findMany({
+            where: sql`${policyVersions.policyId} = ${id} AND ${policyVersions.version} = ${version}`,
+            columns: {
+              id: true, version: true, content: true, aliasSet: true, status: true,
+              isDefault: true, sourceToolchainId: true, vocabularySnapshotIds: true,
+            },
+            limit: 1,
+          });
+          return versionRow ?? null;
+        },
+      );
+      if (!executableVersion) throw new Error('Executable policy version not found');
       policy = {
         id: row.policy_id,
         name: row.policy_name!,
-        content: row.policy_content!,
+        content: executableVersion.content!,
         userId: row.policy_user_id!,
         teamId: row.policy_team_id,
         isPublic: row.policy_is_public ?? false,
-        aliasSet: row.policy_alias_set ?? null,
+        aliasSet: executableVersion.aliasSet,
         // 回放地基（ADR 0030）：随缓存持久化，使 cache-hit 执行也能落版本引用。
-        versionRowId: row.policy_version_row_id ?? null,
-        version: row.policy_version ?? null,
-        sourceToolchainId: row.policy_source_toolchain_id ?? null,
-        vocabSnapshotIds: row.policy_vocab_snapshot_ids ?? null,
+        versionRowId: executableVersion.id || null,
+        version: executableVersion.version || null,
+        sourceToolchainId: executableVersion.sourceToolchainId ?? null,
+        vocabSnapshotIds: executableVersion.vocabularySnapshotIds ?? null,
       };
       // 保存缓存写入 Promise，稍后通过 waitUntil 执行
       cacheWritePromise = cachePolicyMeta(id, policy).catch(err =>

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mockUser, type MockUser } from '@/__tests__/helpers/mock-user';
 
 // Use vi.hoisted to define mocks that need to be referenced inside vi.mock factories
@@ -49,10 +49,10 @@ vi.mock('@/lib/prisma', () => ({
   },
   users: { id: {}, plan: {}, trialEndsAt: {} },
   usageRecords: { id: {}, userId: {}, type: {}, count: {}, period: {} },
-  policies: { id: {}, userId: {} },
+  policies: { id: {}, userId: {}, deletedAt: {} },
 }));
 
-import { db } from '@/lib/prisma';
+import { db, policies } from '@/lib/prisma';
 import {
   checkUsageLimit,
   recordUsage,
@@ -67,6 +67,15 @@ function setupSelectCount(count: number) {
   const mockWhere = vi.fn().mockResolvedValue([{ count }]);
   const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
   mockSelect.mockReturnValue({ from: mockFrom });
+  return mockWhere;
+}
+
+function containsSqlNode(value: unknown, target: unknown): boolean {
+  if (value === target) return true;
+  if (Array.isArray(value)) return value.some((part) => containsSqlNode(part, target));
+  if (!value || typeof value !== 'object') return false;
+  const chunks = (value as { queryChunks?: unknown[] }).queryChunks;
+  return Array.isArray(chunks) && chunks.some((part) => containsSqlNode(part, target));
 }
 
 // mockUser 已从 helpers 模块 import（顶部）
@@ -95,6 +104,8 @@ describe('Usage Tracking', () => {
     mockUpdateSet.mockReturnValue({ where: mockUpdateWhere });
     mockUpdate.mockReturnValue({ set: mockUpdateSet });
   });
+
+  afterEach(() => vi.restoreAllMocks());
 
   describe('checkUsageLimit', () => {
     it('should return not allowed when user is not found', async () => {
@@ -231,6 +242,15 @@ describe('Usage Tracking', () => {
   });
 
   describe('getUsageStats', () => {
+    it('counts active policies only and excludes policies in the recycle bin', async () => {
+      vi.mocked(db.query.users.findFirst).mockResolvedValue(mockUser({ plan: 'pro' }));
+      vi.mocked(db.query.usageRecords.findMany).mockResolvedValue([]);
+      const mockWhere = setupSelectCount(4);
+      await getUsageStats('user-1');
+
+      expect(containsSqlNode(mockWhere.mock.calls[0]?.[0], policies.deletedAt)).toBe(true);
+    });
+
     it('should return usage stats with plan limits and current usage', async () => {
       vi.mocked(db.query.users.findFirst).mockResolvedValue(mockUser({ plan: 'pro' }));
       vi.mocked(db.query.usageRecords.findMany).mockResolvedValue([
