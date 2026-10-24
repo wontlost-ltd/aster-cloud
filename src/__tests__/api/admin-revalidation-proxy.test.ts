@@ -94,6 +94,17 @@ describe('重验管理代理', () => {
     fetchMock.mockRestore();
   });
 
+  it('preview 在白名单内：签名只覆盖路径，查询串拼到上游 URL，不审计', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('{"total":12}', { status: 200, headers: { 'content-type': 'application/json' } }));
+    const response = await GET(new NextRequest('https://cloud.test/api/admin/revalidation/preview?scope=tenant&tenantId=t1'), { params: Promise.resolve({ path: ['preview'] }) });
+    expect(response.status).toBe(200);
+    expect(signHeaders).toHaveBeenLastCalledWith('GET', '/api/v1/admin/revalidation/preview', null);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/admin/revalidation/preview?scope=tenant&tenantId=t1');
+    expect(logAuditEvent).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
   it('只读请求不写审计、不改写请求体', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(new Response('{"runId":41}', { status: 200 }));
