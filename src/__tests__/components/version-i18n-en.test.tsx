@@ -5,6 +5,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import enBase from '@aster-cloud/ui-messages/en-US.json';
+import deBase from '@aster-cloud/ui-messages/de-DE.json';
+import zhBase from '@aster-cloud/ui-messages/zh-CN.json';
+import hiBase from '@aster-cloud/ui-messages-hi/hi-IN.json';
 import { IntlClientProvider } from '@/i18n/intl-client-provider';
 import { DEMO_SUPPLEMENT } from '@/i18n/demo-supplement';
 import { deepMergeMessages } from '@/i18n/request';
@@ -28,6 +31,19 @@ afterEach(() => {
 function withEn(ui: React.ReactElement) {
   return render(
     <IntlClientProvider locale="en" messages={messages as never}>
+      {ui}
+    </IntlClientProvider>,
+  );
+}
+
+function withLocale(locale: 'en' | 'zh' | 'de' | 'hi', ui: React.ReactElement) {
+  const baseByLocale = { en: enBase, zh: zhBase, de: deBase, hi: hiBase };
+  const messages = deepMergeMessages(
+    baseByLocale[locale] as Record<string, unknown>,
+    DEMO_SUPPLEMENT[locale],
+  );
+  return render(
+    <IntlClientProvider locale={locale} messages={messages as never}>
       {ui}
     </IntlClientProvider>,
   );
@@ -87,5 +103,22 @@ describe('版本 UI 英文渲染', () => {
     // 文案缺失时 next-intl 会回显原始 key（如 policies.versions.actions.archive）
     expect(container.textContent).not.toMatch(/policies\.|common\./);
     expect(CJK.test(container.textContent ?? '')).toBe(false);
+  });
+
+  it.each([
+    ['en', 'Initial version', 'Edited version'],
+    ['zh', '初始版本', '编辑后的版本'],
+    ['de', 'Anfangsversion', 'Bearbeitete Version'],
+    ['hi', 'प्रारंभिक संस्करण', 'संपादित संस्करण'],
+  ] as const)('%s：空 release note 与历史英文字面量按版本号本地化', (locale, initialLabel, editedLabel) => {
+    const versions = [
+      { ...base, id: 'v1', version: 1, status: 'APPROVED', isDefault: true, releaseNote: null },
+      { ...base, id: 'v2', version: 2, status: 'APPROVED', isDefault: false, releaseNote: 'Edited version' },
+      { ...base, id: 'v3', version: 3, status: 'APPROVED', isDefault: false, releaseNote: null },
+    ];
+    withLocale(locale, <PolicyVersionList versions={versions as never} />);
+    expect(screen.getByText(initialLabel)).toBeTruthy();
+    expect(screen.getAllByText(editedLabel)).toHaveLength(2);
+    cleanup();
   });
 });

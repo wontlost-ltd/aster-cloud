@@ -29,7 +29,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json(
-        { success: false, error: '未授权', requestId },
+        { success: false, error: 'Unauthorized', code: 'unauthorized', requestId },
         { status: 401 }
       );
     }
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       body = await request.json();
     } catch {
       return NextResponse.json(
-        { success: false, error: '无效的 JSON 请求体', requestId },
+        { success: false, error: 'Request body must be valid JSON.', code: 'invalid_json', requestId },
         { status: 400 }
       );
     }
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // 3. 验证请求体字段
     if (!body || typeof body !== 'object') {
       return NextResponse.json(
-        { success: false, error: '请求体必须是有效对象', requestId },
+        { success: false, error: 'Request body must be a valid object.', code: 'invalid_request_body', requestId },
         { status: 400 }
       );
     }
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json(
         {
           success: false,
-          error: '缺少必填字段: hash, timestamp, nonce, signature',
+          error: 'Required fields are missing: hash, timestamp, nonce, and signature.', code: 'required_fields_missing',
           requestId,
         },
         { status: 400 }
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // 验证 input 是对象
     if (input !== undefined && (typeof input !== 'object' || input === null)) {
       return NextResponse.json(
-        { success: false, error: 'input 必须是有效对象', requestId },
+        { success: false, error: 'input must be a valid object.', code: 'invalid_input', requestId },
         { status: 400 }
       );
     }
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // 验证 version 是数字（如果提供）
     if (version !== undefined && typeof version !== 'number') {
       return NextResponse.json(
-        { success: false, error: 'version 必须是数字', requestId },
+        { success: false, error: 'version must be a number.', code: 'invalid_version', requestId },
         { status: 400 }
       );
     }
@@ -154,7 +154,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // 刻意不泄露「该 policyId 是否存在」，避免被用来枚举他人策略 ID。
     if (error instanceof PolicyAccessDeniedError) {
       return NextResponse.json(
-        { success: false, error: '策略不存在', requestId },
+        { success: false, error: 'Policy not found.', code: 'policy_not_found', requestId },
         { status: 404 }
       );
     }
@@ -162,7 +162,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json(
       {
         success: false,
-        error: '服务器内部错误',
+        error: 'Internal server error.', code: 'internal_server_error',
         requestId,
       },
       { status: 500 }

@@ -437,6 +437,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      errorCodes: { invalid_email: 'Enter a valid email address.', invalid_role: 'The selected role is not valid.', already_team_member: 'This person is already a team member.', invitation_already_pending: 'An invitation is already pending for this email.', unauthorized: 'You are not authorized to invite team members.' },
       // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
       createTeam: {
         nameInvalid: 'Team name must be 2–50 characters.',
@@ -766,6 +767,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
     // 细分出的展示类型，见 lib/security-event-display.ts。
     security: {
+      dashboard: { title: 'Security monitoring', retry: 'Retry', loadFailed: 'Could not load security data.', unknownError: 'Unknown error.', timeRange: { '1h': '1 hour', '24h': '24 hours', '7d': '7 days', '30d': '30 days' }, totalEvents: 'Total events', errorRate: 'Error rate', errorsAndCritical: 'Errors / critical', eventTypeBreakdown: 'Event type breakdown', recentEvents: 'Recent events', allSeverities: 'All severities', noEvents: 'No events recorded.', policy: 'Policy', requestId: 'Request ID', viewDetails: 'View details', severity: { INFO: 'Info', WARNING: 'Warning', ERROR: 'Error', CRITICAL: 'Critical' } },
       eventTypes: {
         SIGNATURE_INVALID: 'Invalid signature',
         NONCE_REUSED: 'Nonce replay',
@@ -884,6 +886,14 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       // 版本列表补充（其余按钮文案复用包内 policies.versions.actions.*）。
       versions: {
         awaitingOthers: 'Waiting for another approver',
+        initialVersion: 'Initial version',
+        editedVersion: 'Edited version',
+        approvalErrorCodes: {
+          invite_reviewer_cta: 'Invite a teammate',
+          segregation_of_duties: 'A different team member must approve this version.',
+          invite_reviewer_required: 'Approval requires a separate reviewer. Invite a teammate to your workspace.',
+          other: 'Could not approve this version.',
+        },
         approvalCount: '{count} approval records',
         // 个人策略所有者审批自己提交的版本时的说明（审计里记为自审）。
         selfApproveNote: 'You are reviewing your own submission. Personal policies have no second reviewer, so this is allowed; the decision is recorded in the audit log as a self-approval.',
@@ -919,6 +929,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         rateNote: 'Rate counts settled decisions only (approved vs. denied/error); pending and value-only runs are excluded.',
       },
       form: {
+        nameRequired: 'Name is required.',
+        parseErrorsBeforeSaving: 'Fix parse errors before saving.',
+        checkingSyntax: 'Checking syntax. Wait before saving.',
+        templateReplaced: 'Editor content replaced with template.',
+        keepEditing: 'Keep editing',
+        templateReplaceTitle: 'Replace current content with this template?',
+        templateReplaceDescription: 'The current editor content will be cleared and replaced. This cannot be undone.',
+        replace: 'Replace',
+        saveFailedWithDiagnostics: 'Saving failed: {count} error(s) — first: L{line} {message}',
+        saveDiagnosticFallback: 'Compilation failed.',
+        saveErrorCodes: { compile_error: 'The policy has compilation errors.', compile_unavailable: 'Compilation is temporarily unavailable. Try again later.', policy_frozen: 'This policy is frozen.', unauthorized: 'You are not authorized to save this policy.' },
         // AI 行内补全开关（状态栏）
         statusAiCompletionOn: 'AI completion: on',
         statusAiCompletionOff: 'AI completion: off',
@@ -1508,6 +1529,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      errorCodes: { invalid_email: '请输入有效的邮箱地址。', invalid_role: '所选角色无效。', already_team_member: '此用户已是团队成员。', invitation_already_pending: '此邮箱已有待处理邀请。', unauthorized: '你无权邀请团队成员。' },
       // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
       createTeam: {
         nameInvalid: '团队名称需为 2–50 个字符。',
@@ -1833,6 +1855,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
     // 细分出的展示类型，见 lib/security-event-display.ts。
     security: {
+      dashboard: { title: '安全监控', retry: '重试', loadFailed: '无法加载安全数据。', unknownError: '未知错误。', timeRange: { '1h': '1 小时', '24h': '24 小时', '7d': '7 天', '30d': '30 天' }, totalEvents: '事件总数', errorRate: '错误率', errorsAndCritical: '错误 / 严重', eventTypeBreakdown: '事件类型分布', recentEvents: '最近事件', allSeverities: '所有级别', noEvents: '暂无事件记录。', policy: '策略', requestId: '请求 ID', viewDetails: '查看详情', severity: { INFO: '信息', WARNING: '警告', ERROR: '错误', CRITICAL: '严重' } },
       eventTypes: {
         SIGNATURE_INVALID: '签名无效',
         NONCE_REUSED: 'Nonce 重放',
@@ -1948,6 +1971,14 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       // 版本列表补充（其余按钮文案复用包内 policies.versions.actions.*）。
       versions: {
         awaitingOthers: '等待他人审批',
+        initialVersion: '初始版本',
+        editedVersion: '编辑后的版本',
+        approvalErrorCodes: {
+          invite_reviewer_cta: '邀请团队成员',
+          segregation_of_duties: '此版本必须由其他团队成员审批。',
+          invite_reviewer_required: '审批需要另一位复核人。请邀请团队成员加入工作区。',
+          other: '无法批准此版本。',
+        },
         approvalCount: '{count} 条审批记录',
         selfApproveNote: '你正在审批自己提交的版本。个人策略没有第二位审批人，因此允许自审；本次决定会在审计日志中标记为自审。',
         // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
@@ -1981,6 +2012,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         rateNote: '通过率仅统计已定论的决策（通过 vs 拒绝/错误）；待处置与值输出不计入。',
       },
       form: {
+        nameRequired: '请填写策略名称。',
+        parseErrorsBeforeSaving: '请先修复解析错误再保存。',
+        checkingSyntax: '正在检查语法，请稍候再保存。',
+        templateReplaced: '已用模板替换编辑器内容。',
+        keepEditing: '继续编辑',
+        templateReplaceTitle: '用此模板替换当前内容？',
+        templateReplaceDescription: '编辑器当前内容将被清空并替换为模板。此操作无法撤销。',
+        replace: '替换',
+        saveFailedWithDiagnostics: '保存失败：{count} 个错误 — 首条：第 {line} 行 {message}',
+        saveDiagnosticFallback: '编译失败。',
+        saveErrorCodes: { compile_error: '策略存在编译错误。', compile_unavailable: '编译服务暂时不可用，请稍后重试。', policy_frozen: '此策略已冻结。', unauthorized: '你无权保存此策略。' },
         // AI 行内补全开关（状态栏）
         statusAiCompletionOn: 'AI 补全：开',
         statusAiCompletionOff: 'AI 补全：关',
@@ -2578,6 +2620,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      errorCodes: { invalid_email: 'Geben Sie eine gültige E-Mail-Adresse ein.', invalid_role: 'Die ausgewählte Rolle ist ungültig.', already_team_member: 'Diese Person ist bereits Teammitglied.', invitation_already_pending: 'Für diese E-Mail-Adresse liegt bereits eine Einladung vor.', unauthorized: 'Sie dürfen keine Teammitglieder einladen.' },
       // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
       createTeam: {
         nameInvalid: 'Der Teamname muss 2–50 Zeichen lang sein.',
@@ -2903,6 +2946,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
     // 细分出的展示类型，见 lib/security-event-display.ts。
     security: {
+      dashboard: { title: 'Sicherheitsüberwachung', retry: 'Erneut versuchen', loadFailed: 'Sicherheitsdaten konnten nicht geladen werden.', unknownError: 'Unbekannter Fehler.', timeRange: { '1h': '1 Stunde', '24h': '24 Stunden', '7d': '7 Tage', '30d': '30 Tage' }, totalEvents: 'Ereignisse gesamt', errorRate: 'Fehlerrate', errorsAndCritical: 'Fehler / kritisch', eventTypeBreakdown: 'Ereignisse nach Typ', recentEvents: 'Letzte Ereignisse', allSeverities: 'Alle Schweregrade', noEvents: 'Keine Ereignisse erfasst.', policy: 'Policy', requestId: 'Anfrage-ID', viewDetails: 'Details anzeigen', severity: { INFO: 'Info', WARNING: 'Warnung', ERROR: 'Fehler', CRITICAL: 'Kritisch' } },
       eventTypes: {
         SIGNATURE_INVALID: 'Ungültige Signatur',
         NONCE_REUSED: 'Nonce-Wiederverwendung',
@@ -3018,6 +3062,14 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       // 版本列表补充（其余按钮文案复用包内 policies.versions.actions.*）。
       versions: {
         awaitingOthers: 'Wartet auf andere Prüfer',
+        initialVersion: 'Anfangsversion',
+        editedVersion: 'Bearbeitete Version',
+        approvalErrorCodes: {
+          invite_reviewer_cta: 'Teammitglied einladen',
+          segregation_of_duties: 'Ein anderes Teammitglied muss diese Version freigeben.',
+          invite_reviewer_required: 'Für die Freigabe ist eine zweite prüfende Person erforderlich. Laden Sie ein Teammitglied ein.',
+          other: 'Diese Version konnte nicht freigegeben werden.',
+        },
         approvalCount: '{count} Freigabeeinträge',
         selfApproveNote: 'Sie prüfen Ihre eigene Einreichung. Persönliche Richtlinien haben keine zweite prüfende Person, daher ist das erlaubt; die Entscheidung wird im Audit-Protokoll als Selbstfreigabe vermerkt.',
         // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
@@ -3047,6 +3099,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         rateNote: 'Die Quote zählt nur abgeschlossene Entscheidungen (genehmigt vs. abgelehnt/Fehler); ausstehende und reine Wertausgaben sind ausgenommen.',
       },
       form: {
+        nameRequired: 'Ein Name ist erforderlich.',
+        parseErrorsBeforeSaving: 'Beheben Sie zuerst die Syntaxfehler.',
+        checkingSyntax: 'Syntax wird geprüft. Warten Sie vor dem Speichern.',
+        templateReplaced: 'Der Editorinhalt wurde durch die Vorlage ersetzt.',
+        keepEditing: 'Weiter bearbeiten',
+        templateReplaceTitle: 'Aktuellen Inhalt durch diese Vorlage ersetzen?',
+        templateReplaceDescription: 'Der aktuelle Editorinhalt wird gelöscht und ersetzt. Dies kann nicht rückgängig gemacht werden.',
+        replace: 'Ersetzen',
+        saveFailedWithDiagnostics: 'Speichern fehlgeschlagen: {count} Fehler — erster Fehler: Z.{line} {message}',
+        saveDiagnosticFallback: 'Kompilierung fehlgeschlagen.',
+        saveErrorCodes: { compile_error: 'Die Policy enthält Kompilierungsfehler.', compile_unavailable: 'Die Kompilierung ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.', policy_frozen: 'Diese Policy ist eingefroren.', unauthorized: 'Sie dürfen diese Policy nicht speichern.' },
         // AI 行内补全开关（状态栏）
         statusAiCompletionOn: 'KI-Vervollständigung: an',
         statusAiCompletionOff: 'KI-Vervollständigung: aus',
@@ -3637,6 +3700,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      errorCodes: { invalid_email: 'मान्य ईमेल पता दर्ज करें।', invalid_role: 'चुनी गई भूमिका मान्य नहीं है।', already_team_member: 'यह व्यक्ति पहले से टीम का सदस्य है।', invitation_already_pending: 'इस ईमेल के लिए आमंत्रण पहले से लंबित है।', unauthorized: 'आपको टीम सदस्यों को आमंत्रित करने की अनुमति नहीं है।' },
       // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
       createTeam: {
         nameInvalid: 'टीम का नाम 2–50 अक्षरों का होना चाहिए।',
@@ -3962,6 +4026,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
     // 细分出的展示类型，见 lib/security-event-display.ts。
     security: {
+      dashboard: { title: 'सुरक्षा निगरानी', retry: 'फिर कोशिश करें', loadFailed: 'सुरक्षा डेटा लोड नहीं हो सका।', unknownError: 'अज्ञात त्रुटि।', timeRange: { '1h': '1 घंटा', '24h': '24 घंटे', '7d': '7 दिन', '30d': '30 दिन' }, totalEvents: 'कुल घटनाएँ', errorRate: 'त्रुटि दर', errorsAndCritical: 'त्रुटियाँ / गंभीर', eventTypeBreakdown: 'घटना प्रकार का विभाजन', recentEvents: 'हाल की घटनाएँ', allSeverities: 'सभी स्तर', noEvents: 'कोई घटना दर्ज नहीं है।', policy: 'नीति', requestId: 'अनुरोध ID', viewDetails: 'विवरण देखें', severity: { INFO: 'जानकारी', WARNING: 'चेतावनी', ERROR: 'त्रुटि', CRITICAL: 'गंभीर' } },
       eventTypes: {
         SIGNATURE_INVALID: 'अमान्य हस्ताक्षर',
         NONCE_REUSED: 'Nonce पुनः उपयोग',
@@ -4077,6 +4142,14 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       // 版本列表补充（其余按钮文案复用包内 policies.versions.actions.*）。
       versions: {
         awaitingOthers: 'किसी अन्य अनुमोदक की प्रतीक्षा',
+        initialVersion: 'प्रारंभिक संस्करण',
+        editedVersion: 'संपादित संस्करण',
+        approvalErrorCodes: {
+          invite_reviewer_cta: 'टीम के सदस्य को आमंत्रित करें',
+          segregation_of_duties: 'इस संस्करण को टीम के किसी अन्य सदस्य से अनुमोदित कराएँ।',
+          invite_reviewer_required: 'अनुमोदन के लिए अलग समीक्षक आवश्यक है। अपने कार्यक्षेत्र में किसी सदस्य को आमंत्रित करें।',
+          other: 'इस संस्करण को अनुमोदित नहीं किया जा सका।',
+        },
         approvalCount: '{count} अनुमोदन रिकॉर्ड',
         selfApproveNote: 'आप अपना ही जमा किया गया संस्करण जाँच रहे हैं। व्यक्तिगत नीतियों में कोई दूसरा समीक्षक नहीं होता, इसलिए इसकी अनुमति है; यह निर्णय ऑडिट लॉग में स्व-अनुमोदन के रूप में दर्ज होगा।',
         // 团队里除作者外没有 owner/admin 时的提示（review I3），链接到团队成员管理。
@@ -4106,6 +4179,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         rateNote: 'दर केवल तय निर्णयों (स्वीकृत बनाम अस्वीकृत/त्रुटि) को गिनती है; लंबित और केवल-मान रन शामिल नहीं हैं।',
       },
       form: {
+        nameRequired: 'नाम आवश्यक है।',
+        parseErrorsBeforeSaving: 'सहेजने से पहले पार्स त्रुटियाँ ठीक करें।',
+        checkingSyntax: 'वाक्य-विन्यास जाँचा जा रहा है। सहेजने से पहले प्रतीक्षा करें।',
+        templateReplaced: 'संपादक की सामग्री टेम्पलेट से बदल दी गई।',
+        keepEditing: 'संपादन जारी रखें',
+        templateReplaceTitle: 'क्या वर्तमान सामग्री को इस टेम्पलेट से बदलें?',
+        templateReplaceDescription: 'संपादक की वर्तमान सामग्री हटाकर बदल दी जाएगी। इसे पूर्ववत नहीं किया जा सकता।',
+        replace: 'बदलें',
+        saveFailedWithDiagnostics: 'सहेजना विफल: {count} त्रुटियाँ — पहली: पंक्ति {line} {message}',
+        saveDiagnosticFallback: 'कम्पाइलेशन विफल रहा।',
+        saveErrorCodes: { compile_error: 'नीति में कम्पाइलेशन त्रुटियाँ हैं।', compile_unavailable: 'कम्पाइलेशन अस्थायी रूप से उपलब्ध नहीं है। बाद में फिर कोशिश करें।', policy_frozen: 'यह नीति फ़्रीज़ है।', unauthorized: 'आपको यह नीति सहेजने की अनुमति नहीं है।' },
         // AI 行内补全开关（状态栏）
         statusAiCompletionOn: 'AI पूर्णता: चालू',
         statusAiCompletionOff: 'AI पूर्णता: बंद',

@@ -108,18 +108,18 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
 
       // 四眼原则拒绝（团队策略作者自审）：与版本页同一本地化提示，不能静默失败
       if (result.errorCode === 'segregation_of_duties') {
-        toast.error(t('sox.selfApprovalNotAllowed'));
+        toast.error(t('approvalErrorCodes.segregation_of_duties'));
         return;
       }
       if (result.errorCode === 'invite_reviewer_required') {
         setInviteModal({
           open: true,
-          message:
-            result.message ??
-            'Approval requires a separate reviewer. Invite a teammate to your workspace.',
-          cta: result.cta ?? { label: 'Invite a teammate', href: '/teams/new' },
+          message: t('approvalErrorCodes.invite_reviewer_required'),
+          cta: { label: t('approvalErrorCodes.invite_reviewer_cta'), href: result.cta?.href ?? '/teams/new' },
         });
+        return;
       }
+      toast.error(result.message ?? t('approvalErrorCodes.other'));
     },
     [versions, approve, t]
   );

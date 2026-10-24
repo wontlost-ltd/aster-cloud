@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   try {
     const session = await getSession();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
 
     const body = (await req.json().catch(() => null)) as {
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
       (!invitationId || typeof invitationId !== 'string')
     ) {
       return NextResponse.json(
-        { error: '需要 token 或 invitationId' },
+        { error: 'token or invitationId is required.', code: 'invitation_identifier_required' },
         { status: 400 },
       );
     }
@@ -56,13 +56,13 @@ export async function POST(req: Request) {
         : eq(policyReviewInvitations.id, invitationId!),
     });
     if (!invitation) {
-      return NextResponse.json({ error: '邀请不存在' }, { status: 404 });
+      return NextResponse.json({ error: 'Invitation not found.', code: 'invitation_not_found' }, { status: 404 });
     }
     if (invitation.acceptedAt) {
-      return NextResponse.json({ error: '此邀请已被接受' }, { status: 400 });
+      return NextResponse.json({ error: 'This invitation has already been accepted.', code: 'invitation_already_accepted' }, { status: 400 });
     }
     if (invitation.expiresAt < new Date()) {
-      return NextResponse.json({ error: '邀请已过期' }, { status: 400 });
+      return NextResponse.json({ error: 'Invitation has expired.', code: 'invitation_expired' }, { status: 400 });
     }
 
     // ★★安全门：session 邮箱必须匹配邀请邮箱。
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
       // ★403 而非 404：邀请确实存在，只是不属于当前登录者。
       //   此处不泄露邀请的目标邮箱。
       return NextResponse.json(
-        { error: '此邀请不属于当前登录账号' },
+        { error: 'This invitation does not belong to the signed-in account.', code: 'invitation_account_mismatch' },
         { status: 403 },
       );
     }

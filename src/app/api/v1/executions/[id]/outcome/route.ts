@@ -53,22 +53,22 @@ function parseDecimalValue(
   let text: string;
   if (typeof raw === 'number') {
     // 只挡 NaN/Infinity；位数与范围统一交给下面的字符串校验，避免两套口径。
-    if (!Number.isFinite(raw)) return { ok: false, message: 'value 必须是有限数值' };
+    if (!Number.isFinite(raw)) return { ok: false, message: 'value must be a finite number.' };
     text = String(raw);
     // JS number 用 String() 可能产出指数记法（如 1e21），转成十进制再校验
     if (!DECIMAL_RE.test(text)) {
-      return { ok: false, message: 'value 超出可精确表示的范围，请改用字符串形式' };
+      return { ok: false, message: 'value exceeds the exact numeric range; provide it as a string.' };
     }
   } else if (typeof raw === 'string') {
     text = raw.trim();
-    if (text === '') return { ok: false, message: 'value 不能是空字符串' };
+    if (text === '') return { ok: false, message: 'value must not be an empty string.' };
   } else {
     // boolean / 数组 / 对象一律拒绝——Number() 会把它们静默变成 0 或 1
-    return { ok: false, message: 'value 必须是数值或十进制字符串' };
+    return { ok: false, message: 'value must be a number or decimal string.' };
   }
 
   if (!DECIMAL_RE.test(text)) {
-    return { ok: false, message: 'value 必须是十进制数值（不支持指数记法）' };
+    return { ok: false, message: 'value must be a decimal number (exponent notation is not supported).' };
   }
 
   const negative = text.startsWith('-');
@@ -76,12 +76,12 @@ function parseDecimalValue(
   const [intPart, fracPart = ''] = digits.split('.');
 
   if (fracPart.length > VALUE_SCALE) {
-    return { ok: false, message: `value 最多保留 ${VALUE_SCALE} 位小数` };
+    return { ok: false, message: `value may have at most ${VALUE_SCALE} decimal places.` };
   }
   // 去前导零后再数位数，"0000123" 不算超长
   const significantInt = intPart.replace(/^0+/, '');
   if (significantInt.length > VALUE_INT_DIGITS) {
-    return { ok: false, message: `value 整数部分最多 ${VALUE_INT_DIGITS} 位` };
+    return { ok: false, message: `value may have at most ${VALUE_INT_DIGITS} integer digits.` };
   }
 
   // 规范化：去掉前导零和多余符号，保留原始小数位（不四舍五入、不补零，
@@ -116,7 +116,7 @@ async function resolveCaller(
 
   const session = await getSession();
   if (!session?.user?.id) {
-    return { ok: false, message: '未登录，且未提供 API Key' };
+    return { ok: false, message: 'Not authenticated and no API key was provided.' };
   }
   return { ok: true, userId: session.user.id, via: 'session' };
 }
@@ -138,21 +138,21 @@ export async function POST(
   try {
     body = await request.json();
   } catch {
-    return errorEnvelope({ code: 'INVALID_JSON', message: '请求体不是合法 JSON', status: 400 });
+    return errorEnvelope({ code: 'INVALID_JSON', message: 'Request body must be valid JSON.', status: 400 });
   }
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    return errorEnvelope({ code: 'INVALID_JSON', message: '请求体必须是 JSON 对象', status: 400 });
+    return errorEnvelope({ code: 'INVALID_JSON', message: 'Request body must be a JSON object.', status: 400 });
   }
   const b = body as Record<string, unknown>;
 
   const outcome = typeof b.outcome === 'string' ? b.outcome.trim() : '';
   if (!outcome) {
-    return errorEnvelope({ code: 'INVALID_OUTCOME', message: 'outcome 不能为空', status: 400 });
+    return errorEnvelope({ code: 'INVALID_OUTCOME', message: 'outcome is required.', status: 400 });
   }
   if (outcome.length > MAX_OUTCOME_LEN) {
     return errorEnvelope({
       code: 'INVALID_OUTCOME',
-      message: `outcome 超过 ${MAX_OUTCOME_LEN} 字符`,
+      message: `outcome exceeds the ${MAX_OUTCOME_LEN}-character limit.`,
       status: 400,
     });
   }
@@ -189,7 +189,7 @@ export async function POST(
     if (typeof b.occurredAt !== 'string') {
       return errorEnvelope({
         code: 'INVALID_DATE',
-        message: 'occurredAt 必须是 ISO 8601 字符串',
+        message: 'occurredAt must be an ISO 8601 string.',
         status: 400,
       });
     }
@@ -199,13 +199,13 @@ export async function POST(
     if (!shape) {
       return errorEnvelope({
         code: 'INVALID_DATE',
-        message: 'occurredAt 必须是 ISO 8601 日期（如 2026-03-14T08:00:00Z）',
+        message: 'occurredAt must be a valid ISO 8601 date, such as 2026-03-14T08:00:00Z.',
         status: 400,
       });
     }
     const d = new Date(raw);
     if (Number.isNaN(d.getTime())) {
-      return errorEnvelope({ code: 'INVALID_DATE', message: 'occurredAt 不是合法时间', status: 400 });
+      return errorEnvelope({ code: 'INVALID_DATE', message: 'occurredAt is not a valid time.', status: 400 });
     }
     // ★形状对 + Date 能解析，**仍然不够**：JS 会把不存在的日期静默归一，
     //   2026-02-30 → 2026-03-02，既不报错也不是调用方的本意，
@@ -224,7 +224,7 @@ export async function POST(
     ) {
       return errorEnvelope({
         code: 'INVALID_DATE',
-        message: `occurredAt 不是存在的日历日期：${raw}`,
+        message: `occurredAt is not a real calendar date: ${raw}.`,
         status: 400,
       });
     }
@@ -242,7 +242,7 @@ export async function POST(
     .limit(1);
   if (rows.length === 0) {
     // 404 而非 403：不泄露「该执行存在但不属于你」
-    return errorEnvelope({ code: 'NOT_FOUND', message: '执行记录不存在', status: 404 });
+    return errorEnvelope({ code: 'NOT_FOUND', message: 'Execution not found.', status: 404 });
   }
 
   const written = await db
@@ -303,6 +303,6 @@ export async function POST(
     applied,
     ...(applied
       ? {}
-      : { reason: 'STALE_OCCURRED_AT', message: '已存在业务时间更新的结局，本次回传未生效' }),
+      : { reason: 'STALE_OCCURRED_AT', message: 'A later outcome already exists; this update was not applied.' }),
   });
 }

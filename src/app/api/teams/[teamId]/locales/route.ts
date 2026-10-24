@@ -20,7 +20,7 @@ export async function GET(_req: Request, { params }: RouteParams) {
   try {
     const session = await getSession();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
     const { teamId } = await params;
 
@@ -39,7 +39,7 @@ export async function GET(_req: Request, { params }: RouteParams) {
     });
   } catch (error) {
     console.error('Error reading team locales:', error);
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error.', code: 'internal_server_error' }, { status: 500 });
   }
 }
 
@@ -54,7 +54,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
   try {
     const session = await getSession();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
     const { teamId } = await params;
 
@@ -70,7 +70,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
     const body = (await req.json()) as { enabled?: unknown };
     if (!Array.isArray(body.enabled) || !body.enabled.every((l) => typeof l === 'string')) {
       return NextResponse.json(
-        { error: 'enabled 必须是 locale 字符串数组' },
+        { error: 'enabled must be an array of locale strings.', code: 'invalid_locale_list' },
         { status: 400 },
       );
     }
@@ -78,7 +78,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
     const unknown = body.enabled.filter((l) => !(locales as readonly string[]).includes(l));
     if (unknown.length > 0) {
       return NextResponse.json(
-        { error: `不支持的语言: ${unknown.join(', ')}` },
+        { error: `Unsupported locales: ${unknown.join(', ')}.`, code: 'unsupported_locales' },
         { status: 400 },
       );
     }
@@ -88,6 +88,6 @@ export async function PUT(req: Request, { params }: RouteParams) {
     return NextResponse.json({ enabled, defaultLocale });
   } catch (error) {
     console.error('Error updating team locales:', error);
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error.', code: 'internal_server_error' }, { status: 500 });
   }
 }

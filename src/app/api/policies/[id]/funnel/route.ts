@@ -32,7 +32,7 @@ export async function GET(
 ): Promise<Response> {
   const session = await getSession();
   if (!session?.user?.id) {
-    return errorEnvelope({ code: 'UNAUTHORIZED', message: '未登录', status: 401 });
+    return errorEnvelope({ code: 'UNAUTHORIZED', message: 'Not authenticated.', status: 401 });
   }
   const { id } = await params;
   const url = new URL(request.url);
@@ -47,7 +47,7 @@ export async function GET(
     .limit(1);
   if (owned.length === 0) {
     // 404 而非 403：不泄露「该 id 存在但不属于你」。
-    return errorEnvelope({ code: 'NOT_FOUND', message: '策略不存在', status: 404 });
+    return errorEnvelope({ code: 'NOT_FOUND', message: 'Policy not found.', status: 404 });
   }
 
   const limit = Math.min(
@@ -67,7 +67,7 @@ export async function GET(
     if (raw !== null && Number.isNaN(new Date(raw).getTime())) {
       return errorEnvelope({
         code: 'INVALID_PARAM',
-        message: `${name} 不是合法时间`,
+        message: `${name} must be a valid time.`,
         status: 400,
       });
     }
@@ -79,7 +79,7 @@ export async function GET(
   if (version !== null && (!/^\d+$/.test(version) || Number(version) > PG_INT4_MAX)) {
     return errorEnvelope({
       code: 'INVALID_PARAM',
-      message: `version 必须是 0..${PG_INT4_MAX} 的整数`,
+      message: `version must be an integer from 0 to ${PG_INT4_MAX}.`,
       status: 400,
     });
   }

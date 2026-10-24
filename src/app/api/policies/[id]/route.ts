@@ -291,7 +291,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
           policyId: id,
           source: versionSource,
           createdBy: session.user.id,
-          releaseNote: 'Edited version',
+          releaseNote: undefined,
           locale: compileLocale,
           aliasSet: aliasSetInput,
           aliasReserved,

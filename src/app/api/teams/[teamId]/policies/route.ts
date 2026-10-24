@@ -15,7 +15,7 @@ export async function GET(req: Request, { params }: RouteParams) {
   try {
     const session = await getSession();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
 
     const { teamId } = await params;
@@ -75,7 +75,7 @@ export async function GET(req: Request, { params }: RouteParams) {
     });
   } catch (error) {
     console.error('Error listing team policies:', error);
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error.', code: 'internal_server_error' }, { status: 500 });
   }
 }
 
@@ -84,7 +84,7 @@ export async function POST(req: Request, { params }: RouteParams) {
   try {
     const session = await getSession();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
 
     const { teamId } = await params;
@@ -110,7 +110,7 @@ export async function POST(req: Request, { params }: RouteParams) {
 
       if (!existingPolicy || existingPolicy.teamId !== null) {
         return NextResponse.json(
-          { error: '策略不存在或已分配给其他团队' },
+          { error: 'Policy not found or already assigned to another team.', code: 'policy_unavailable' },
           { status: 404 }
         );
       }
@@ -118,7 +118,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       // 安全检查：只允许策略所有者本人导入自己的策略到团队
       // 防止未经授权泄露他人策略内容
       if (existingPolicy.userId !== session.user.id) {
-        return NextResponse.json({ error: '只能导入自己的策略' }, { status: 403 });
+        return NextResponse.json({ error: 'Only your own policies can be imported.', code: 'policy_owner_required' }, { status: 403 });
       }
 
       // 分配策略到团队
@@ -141,11 +141,11 @@ export async function POST(req: Request, { params }: RouteParams) {
 
     // 否则，创建新的团队策略
     if (!name || typeof name !== 'string' || name.length < 1) {
-      return NextResponse.json({ error: '策略名称不能为空' }, { status: 400 });
+      return NextResponse.json({ error: 'Policy name is required.', code: 'policy_name_required' }, { status: 400 });
     }
 
     if (!content || typeof content !== 'string') {
-      return NextResponse.json({ error: '策略内容不能为空' }, { status: 400 });
+      return NextResponse.json({ error: 'Policy content is required.', code: 'policy_content_required' }, { status: 400 });
     }
 
     // ★编译门禁：与 /api/policies 和 /api/v1/.../versions 保持一致。
@@ -192,6 +192,6 @@ export async function POST(req: Request, { params }: RouteParams) {
       return compileGateErrorResponse(error);
     }
     console.error('Error creating team policy:', error);
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error.', code: 'internal_server_error' }, { status: 500 });
   }
 }
