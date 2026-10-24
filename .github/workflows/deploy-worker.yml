@@ -120,21 +120,26 @@ jobs:
       - name: Verify deployment landed
         if: success()
         env:
+          DEPLOY_RUN_ID: ${{ github.run_id }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          out="$(npx wrangler deployments list --name aster-cloud 2>&1 | head -20 || true)"
-          echo "$out"
+          # wrangler 按时间正序列出全部部署，不能截断取首条；取所有顶层 Created 的最大时间，
+          # 并要求本次 run 的部署 message 出现在列表里（证明这条部署来自本 workflow）。
+          out="$(npx wrangler deployments list --name aster-cloud 2>&1 || true)"
+          printf '%s\n' "$out" | tail -40
           echo "### Worker 部署结果" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "$out" >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "$out" | tail -40 >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           echo "CI run id: ${{ github.event.workflow_run.id || 'workflow_dispatch' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "head_sha: ${{ github.event.workflow_run.head_sha || github.sha }}" >> "$GITHUB_STEP_SUMMARY"
           started_at="$(cat "$RUNNER_TEMP/deploy-worker-started-at")"
-          latest_time="$(printf '%s\n' "$out" | sed -nE 's/.*([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+-]+Z?).*/\1/p' | head -1)"
-          [ -n "$latest_time" ] || { echo "::error::无法从 wrangler deployments list 解析最新部署时间"; exit 1; }
           started_epoch="$(date -u -d "$started_at" +%s)"
-          latest_epoch="$(date -u -d "$latest_time" +%s)"
+          latest_epoch="$(printf '%s\n' "$out" | sed -nE 's/^Created:[[:space:]]+([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z).*/\1/p' \
+            | while read -r t; do date -u -d "$t" +%s; done | sort -n | tail -1)"
+          [ -n "$latest_epoch" ] || { echo "::error::无法从 wrangler deployments list 解析部署时间"; exit 1; }
           [ "$latest_epoch" -gt "$started_epoch" ] || { echo "::error::最新 Worker 部署时间未晚于本 job 开始时间"; exit 1; }
+          printf '%s\n' "$out" | grep -q "github-actions-run-${DEPLOY_RUN_ID}" \
+            || { echo "::error::部署列表中找不到本次 run 的 message github-actions-run-${DEPLOY_RUN_ID}"; exit 1; }
