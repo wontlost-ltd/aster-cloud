@@ -36,4 +36,13 @@ describe('重验管理代理', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     fetchMock.mockRestore();
   });
+
+  it('签名只覆盖路径，不含查询串', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } }));
+    await GET(new NextRequest('https://cloud.test/api/admin/revalidation/invalid?page=0&size=5'), { params: Promise.resolve({ path: ['invalid'] }) });
+    expect(signHeaders).toHaveBeenLastCalledWith('GET', '/api/v1/admin/revalidation/invalid', null);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/admin/revalidation/invalid?page=0&size=5');
+    fetchMock.mockRestore();
+  });
 });
