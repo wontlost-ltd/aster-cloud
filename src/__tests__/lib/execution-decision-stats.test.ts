@@ -6,10 +6,11 @@ import { deriveDecisionStats } from '@/lib/policy-execution-log';
 describe('deriveDecisionStats', () => {
   it('每种决策各一行：通过=approved，失败=denied+error，待处置单列', () => {
     // approved×1, denied×1, error×1, require_approval×1, escalate×1, indeterminate×1
-    const r = deriveDecisionStats({ totalExecutions: 6, successCount: 1, indeterminateCount: 1, pendingCount: 2 });
-    expect(r.failureCount).toBe(2);
+    const r = deriveDecisionStats({ totalExecutions: 6, successCount: 1, deniedCount: 1, errorCount: 1, indeterminateCount: 1, pendingCount: 2 });
+    expect(r.failureCount).toBe(1);
+    expect(r.errorCount).toBe(1);
     expect(r.pendingCount).toBe(2);
-    expect(r.successRate).toBeCloseTo(100 / 3);
+    expect(r.successRate).toBe(50);
   });
 
   it('★全是待审批行 ⇒ 失败 0、通过率 0 但不把待处置算失败', () => {
@@ -26,6 +27,6 @@ describe('deriveDecisionStats', () => {
 
   it('空数据 ⇒ 0，不出现 NaN', () => {
     const r = deriveDecisionStats({ totalExecutions: 0, successCount: 0, indeterminateCount: 0, pendingCount: 0 });
-    expect(r).toEqual({ failureCount: 0, pendingCount: 0, successRate: 0 });
+    expect(r).toEqual({ failureCount: 0, errorCount: 0, pendingCount: 0, successRate: 0 });
   });
 });

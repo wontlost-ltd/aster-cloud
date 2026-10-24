@@ -20,6 +20,7 @@ const h = vi.hoisted(() => {
     mockUpdateWhere,
     mockUpdate: vi.fn().mockReturnValue({ set: mockUpdateSet }),
     teamMemberFind: vi.fn(),
+    mockVersionFind: vi.fn(),
     sharingEnabled: vi.fn(),
     mockDbExecute: vi.fn(),
     mockGetSession: vi.fn(),
@@ -70,6 +71,7 @@ vi.mock('@/lib/prisma', () => ({
     query: {
       users: { findFirst: vi.fn().mockResolvedValue({ plan: 'pro', trialEndsAt: null }) },
       policies: { findMany: vi.fn().mockResolvedValue([{ id: 'p1' }]) },
+      policyVersions: { findMany: (...a: unknown[]) => h.mockVersionFind(...a) },
       teamMembers: { findFirst: (...a: unknown[]) => h.teamMemberFind(...a) },
     },
     insert: h.mockInsert,
@@ -77,6 +79,7 @@ vi.mock('@/lib/prisma', () => ({
     execute: h.mockDbExecute,
   },
   policies: { id: {}, userId: {}, updatedAt: {} },
+  policyVersions: { policyId: {} },
   executions: { id: {} },
   teamMembers: { teamId: {}, userId: {} },
   users: { id: {} },
@@ -139,6 +142,7 @@ describe.each(routes)('POST $name execute — ADR 0042 guard 登记', ({ post, p
     h.mockAuthApi.mockResolvedValue({ success: true, userId: 'user-1', apiKeyId: 'k1' });
     h.createClient.mockResolvedValue({ guardFromEvidence: h.guardFromEvidence });
     h.mockDbExecute.mockResolvedValue([policyRow]);
+    h.mockVersionFind.mockResolvedValue([]);
   });
 
   it('REQUIRE_APPROVAL：以执行者在策略租户的身份开决策，metadata 记 id，并发待审批通知', async () => {
@@ -177,6 +181,23 @@ describe.each(routes)('POST $name execute — ADR 0042 guard 登记', ({ post, p
     expect(insertedValues().metadata).toBeNull();
     expect(h.mockUpdate).not.toHaveBeenCalled();
     expect(h.notifyApprovalRequested).not.toHaveBeenCalled();
+  });
+
+  it('executes the selected default version for both route variants', async () => {
+    // 当前策略行是第 3 版，确保默认第 1 版走单版本内容读取路径。
+    h.mockDbExecute.mockResolvedValueOnce([{ ...policyRow, policy_version: 3 }]);
+    h.mockVersionFind.mockResolvedValue([
+      { id: 'pv-default', version: 1, content: 'default source', aliasSet: '{"K":["alias"]}', status: 'APPROVED', isDefault: true, sourceToolchainId: 'toolchain-1', vocabularySnapshotIds: [] },
+      { id: 'pv-draft', version: 2, content: 'draft source', aliasSet: null, status: 'DRAFT', isDefault: false, sourceToolchainId: null, vocabularySnapshotIds: [] },
+    ]);
+    h.mockExecute.mockResolvedValue(execResult({}));
+
+    const res = await post(request(path, { input: { action: 'customer.delete' } }), params);
+
+    expect(res.status).toBe(200);
+    expect(h.mockExecute).toHaveBeenCalledWith(expect.objectContaining({
+      policy: expect.objectContaining({ content: 'default source', versionRowId: 'pv-default', version: 1 }),
+    }));
   });
 
   it('guard 409：执行照常 200 落库，metadata 记 guardError', async () => {

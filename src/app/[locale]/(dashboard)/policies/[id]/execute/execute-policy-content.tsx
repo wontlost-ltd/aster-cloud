@@ -31,6 +31,8 @@ import { extractErrorMessage } from '@/lib/api/error-envelope';
 import { chooseDefaultRule, reconcileSelectedRule, extractRuleSymbols } from '@/lib/aster/rules';
 // P0-R2 (codex review Low #9): import 必须在顶部
 import { detectCNLLanguage, isHighConfidence } from '@/lib/cnl-language-detector';
+import { inferParameterStructs, inferredFieldDefault } from './infer-parameter-structs';
+import { executionStatus } from './execution-status';
 
 // Policy locale 直接采用 BCP-47 标准（与 quickDetectLanguage 返回值对齐）。
 // P0-R Medium #8 修复：之前定义本地三元 type 'zh'|'de'|'en' + 三元映射，
@@ -249,11 +251,24 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
       inputRuleRef.current = (data.success && data.functionName) || functionName || '';
 
       if (data.success && data.parameters && data.parameters.length > 0) {
-        setSchema(data);
+        const parameters = inferParameterStructs(data.parameters, content);
+        const inferredNames = new Set(data.parameters
+          .filter((parameter, index) => parameters[index]?.typeKind === 'struct' && parameter.typeKind !== 'struct')
+          .map((parameter) => parameter.name));
+        const schemaWithInferredParameters = { ...data, parameters };
+        setSchema(schemaWithInferredParameters);
         // 初始化表单值（使用自动生成的示例数据，传入 lexicon 启用本地化）
-        setFormValues(initFormValuesWithSampleData(data.parameters, lexicon));
+        const sampleValues = initFormValuesWithSampleData(parameters, lexicon);
+        for (const parameter of parameters) {
+          if (!inferredNames.has(parameter.name)) continue;
+          sampleValues[parameter.name] = Object.fromEntries(
+            (parameter.fields ?? []).map((field) => [field.name, inferredFieldDefault(field)]),
+          );
+        }
+        setFormValues(sampleValues);
         // 同时更新 JSON 输入区域
-        const sampleInput = generateInputValues(data.parameters, lexicon);
+        const sampleInput = generateInputValues(parameters, lexicon);
+        for (const name of inferredNames) sampleInput[name] = sampleValues[name];
         setInput(JSON.stringify(sampleInput, null, 2));
       } else if (!data.success && data.error) {
         // Schema extraction failed - display error and use default empty JSON
@@ -878,26 +893,18 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
 
             {result && (
               <div className="space-y-4">
-                {/* Status —— indeterminate（值/计算输出策略，执行成功但无 allow/deny 语义）
-                    显示中性「已计算」而非红色「失败」，避免把正常运行的值输出策略误标为失败。 */}
+                {/* 执行状态只表达引擎是否完成；准入结果在下方 Decision 行展示。 */}
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-fg-muted">{t('status')}</span>
-                  {result.success ? (
+                  {executionStatus(
+                    Boolean(result.output?.metadata?.engineError) || (!result.output && Boolean(result.error)),
+                  ) === 'completed' ? (
                     <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-sm font-medium text-green-800">
-                      {t('success')}
-                    </span>
-                  ) : pendingOutcomeKey(result.output?.metadata?.outcome) ? (
-                    // 需人工批准 / 升级：待处置，琥珀色而非红色「失败」。
-                    <span className={PENDING_BADGE_CLASS}>
-                      {t(pendingOutcomeKey(result.output?.metadata?.outcome)!)}
-                    </span>
-                  ) : result.output?.metadata?.decision === 'indeterminate' ? (
-                    <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-sm font-medium text-blue-800">
-                      {t('computed')}
+                      {t('completed')}
                     </span>
                   ) : (
                     <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-sm font-medium text-red-800">
-                      {t('failed')}
+                      {t('error')}
                     </span>
                   )}
                 </div>

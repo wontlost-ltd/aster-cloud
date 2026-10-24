@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { authenticateApiRequest } from '@/lib/api-keys';
-import { db, policies, executions, users, usageRecords } from '@/lib/prisma';
+import { db, policies, policyVersions, executions, users, usageRecords } from '@/lib/prisma';
 import { eq, sql, desc, asc } from 'drizzle-orm';
 import { PLANS, PlanType } from '@/lib/plans';
 import { upgradeResponse } from '@/lib/plan-quota';
@@ -11,6 +11,7 @@ import { policyTenantId } from '@/lib/policy-tenant';
 import { needsGuardDecision, registerGuardAfterInsert, registerGuardDecisionWith } from '@/lib/guard-register';
 import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
 import { parseAgentIdentity } from '@/services/policy/policy-api';
+import { hydrateExecutableVersion, resolveExecutableVersion, type ExecutableVersionCandidate } from '@/services/policy/executable-version';
 import { maybeRunParityForExecution, RUNNER_LAUNCHER_HMAC_ROLE } from '@/services/policy/runner-parity-from-execution';
 
 interface RouteParams {
@@ -66,6 +67,13 @@ export async function POST(req: Request, { params }: RouteParams) {
     }
 
     const { userId, apiKeyId } = auth;
+
+    const versionRows = await db.query.policyVersions.findMany({
+      where: eq(policyVersions.policyId, id),
+      columns: {
+        id: true, version: true, status: true, isDefault: true,
+      },
+    });
 
     if (bodyResult === null || typeof bodyResult !== 'object' || Array.isArray(bodyResult)) {
       return NextResponse.json({ error: 'Request body must be a valid object' }, { status: 400 });
@@ -127,7 +135,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     const row = rows[0];
 
     // 解构查询结果
-    const policy = row?.policy_id ? {
+    let policy = row?.policy_id ? {
       id: row.policy_id,
       name: row.policy_name!,
       content: row.policy_content!,
@@ -141,6 +149,45 @@ export async function POST(req: Request, { params }: RouteParams) {
       sourceToolchainId: row.policy_source_toolchain_id ?? null,
       vocabSnapshotIds: row.policy_vocab_snapshot_ids ?? null,
     } : null;
+
+    if (policy) {
+      const fallbackVersion: ExecutableVersionCandidate = {
+        id: policy.versionRowId ?? '',
+        version: policy.version ?? 0,
+        content: policy.content,
+        aliasSet: policy.aliasSet ?? null,
+        status: 'DRAFT',
+        isDefault: false,
+        sourceToolchainId: policy.sourceToolchainId ?? null,
+        vocabularySnapshotIds: policy.vocabSnapshotIds,
+      };
+      const selectedVersion = resolveExecutableVersion(versionRows, fallbackVersion);
+      const executableVersion = await hydrateExecutableVersion(
+        selectedVersion,
+        fallbackVersion,
+        async (version) => {
+          const [versionRow] = await db.query.policyVersions.findMany({
+            where: sql`${policyVersions.policyId} = ${id} AND ${policyVersions.version} = ${version}`,
+            columns: {
+              id: true, version: true, content: true, aliasSet: true, status: true,
+              isDefault: true, sourceToolchainId: true, vocabularySnapshotIds: true,
+            },
+            limit: 1,
+          });
+          return versionRow ?? null;
+        },
+      );
+      if (!executableVersion) throw new Error('Executable policy version not found');
+      policy = {
+        ...policy,
+        content: executableVersion.content!,
+        aliasSet: executableVersion.aliasSet ?? null,
+        versionRowId: executableVersion.id || null,
+        version: executableVersion.version || null,
+        sourceToolchainId: executableVersion.sourceToolchainId ?? null,
+        vocabSnapshotIds: executableVersion.vocabularySnapshotIds ?? null,
+      };
+    }
 
     const userData = row ? {
       plan: row.user_plan,

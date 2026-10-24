@@ -21,11 +21,11 @@ interface CloudflareEnv {
 
 // 缓存键前缀
 const CACHE_PREFIX = {
-  // v3：CachedPolicyMeta 加 version（人类可读版本号，落 Execution.policyVersion）。bump key 前缀
-  // 使旧形状（缺 version）条目失效——否则 cache-hit 执行落不出 policyVersion，证据包版本号仍 null。
+  // v4：缓存内容来源由活跃版本改为审批规则解析出的可执行版本。
+  // 使旧条目失效，避免审批前缓存的源码绕过版本门控。
   // v2 曾加回放地基字段（versionRowId/sourceToolchainId/vocabSnapshotIds，ADR 0030）。旧条目自然
   // TTL 过期（≤1h）。
-  POLICY: 'policy:v3:',
+  POLICY: 'policy:v4:',
   POLICY_CONTENT: 'policy-content:',
   USER: 'user:',
   SESSION: 'session:',
@@ -120,7 +120,7 @@ export interface CachedPolicyMeta {
    * 回放地基（ADR 0030 附录 A）——活跃 PolicyVersion 的不可变引用字段，缓存以便 cache-hit
    * 的执行也能落 Execution.policyVersionRowId/sourceToolchainId/vocabSnapshotRef。缺这些则
    * cache-hit 执行的回放行缺版本引用，按版本聚合漂移会漏一批。与 content/aliasSet 同源。
-   * （POLICY 缓存 key 已 bump 到 v2 使旧形状条目失效，见 CACHE_PREFIX.POLICY。）
+   * （POLICY 缓存 key 已 bump 到 v4，见 CACHE_PREFIX.POLICY。）
    */
   versionRowId?: string | null;
   /** 人类可读版本号（Policy.version）——落 Execution.policyVersion，证据包显示「第几版」。 */

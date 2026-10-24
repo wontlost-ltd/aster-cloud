@@ -309,10 +309,8 @@ export async function PUT(req: Request, { params }: RouteParams) {
       return updated;
     });
 
-    // 失效策略缓存（异步，不阻塞响应）
-    invalidatePolicyCache(id).catch(err =>
-      console.warn('[Cache] Failed to invalidate policy cache:', err)
-    );
+    // 响应前完成失效；KV 故障由缓存服务记录，不阻断策略更新。
+    await invalidatePolicyCache(id);
 
     return NextResponse.json(policy);
   } catch (error) {
@@ -351,10 +349,8 @@ export async function DELETE(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: result.error }, { status: 404 });
     }
 
-    // 失效策略缓存（异步，不阻塞响应）
-    invalidatePolicyCache(id).catch(err =>
-      console.warn('[Cache] Failed to invalidate policy cache:', err)
-    );
+    // 响应前完成失效；KV 故障由缓存服务记录，不阻断策略删除。
+    await invalidatePolicyCache(id);
 
     return NextResponse.json({
       success: true,

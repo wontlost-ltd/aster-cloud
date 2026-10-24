@@ -507,12 +507,12 @@ export async function submitForApproval(params: {
     details: { version, action: 'SUBMIT_FOR_APPROVAL' },
   });
 
+  await invalidateAfterVersionChange(policyId);
+
 }
 
 /**
  * 审批版本
-  // ★写完必须失效执行缓存：命中缓存的执行路径不查库（见 invalidateAfterVersionChange）
-  await invalidateAfterVersionChange(policyId);
  */
 export async function approveVersion(params: {
   policyId: string;
@@ -613,12 +613,12 @@ export async function approveVersion(params: {
     });
   }
 
+  await invalidateAfterVersionChange(policyId);
+
 }
 
 /**
  * 设置默认执行版本（原子操作）
-  // ★写完必须失效执行缓存：命中缓存的执行路径不查库（见 invalidateAfterVersionChange）
-  await invalidateAfterVersionChange(policyId);
  */
 export async function setDefaultVersion(params: {
   policyId: string;
@@ -664,12 +664,12 @@ export async function setDefaultVersion(params: {
     details: { version },
   });
 
+  await invalidateAfterVersionChange(policyId);
+
 }
 
 /**
  * 废弃版本（仍可执行，但有警告）
-  // ★写完必须失效执行缓存：命中缓存的执行路径不查库（见 invalidateAfterVersionChange）
-  await invalidateAfterVersionChange(policyId);
  */
 export async function deprecateVersion(params: {
   policyId: string;
@@ -714,12 +714,12 @@ export async function deprecateVersion(params: {
     details: { version, reason },
   });
 
+  await invalidateAfterVersionChange(policyId);
+
 }
 
 /**
  * 归档版本（不可执行）
-  // ★写完必须失效执行缓存：命中缓存的执行路径不查库（见 invalidateAfterVersionChange）
-  await invalidateAfterVersionChange(policyId);
  */
 export async function archiveVersion(params: {
   policyId: string;
@@ -764,12 +764,12 @@ export async function archiveVersion(params: {
     details: { version, reason },
   });
 
+  await invalidateAfterVersionChange(policyId);
+
 }
 
 /**
  * 获取策略的所有版本
-  // ★写完必须失效执行缓存：命中缓存的执行路径不查库（见 invalidateAfterVersionChange）
-  await invalidateAfterVersionChange(policyId);
  */
 export async function listVersions(policyId: string) {
   const versions = await db.query.policyVersions.findMany({
