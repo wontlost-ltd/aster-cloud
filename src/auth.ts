@@ -10,7 +10,7 @@ import Google from 'next-auth/providers/google';
 import Credentials from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { eq } from 'drizzle-orm';
-import { getDb, users } from '@/lib/prisma';
+import { getDb, platformSettings, users } from '@/lib/prisma';
 import { DrizzleAdapter } from '@/db/adapter';
 import { IS_SAAS } from '@/lib/deployment-mode';
 import { sendWelcomeEmail } from '@/lib/resend';
@@ -175,25 +175,61 @@ export const authConfig: NextAuthConfig = {
 
   // Callbacks
   callbacks: {
-    async jwt({ token, user, trigger }) {
+    async jwt({ token, user }) {
       if (user) {
         token.dbEpoch = await getSettingUncached<number>(PLATFORM_SETTING_KEYS.AUTH_DB_EPOCH) ?? 0;
       } else {
-        let currentEpoch: number;
-        try {
-          currentEpoch = await getSettingUncached<number>(PLATFORM_SETTING_KEYS.AUTH_DB_EPOCH) ?? 0;
-        } catch {
-          console.warn('[auth] session epoch check failed; revoking session');
+        if (!token.id) {
+          console.warn('[auth] session user id missing; revoking session');
           return null;
         }
+
+        let dbUser: {
+          epoch: number | null;
+          plan: string;
+          trialEndsAt: Date | null;
+          isAdmin: boolean;
+        } | undefined;
+        try {
+          const rows = await getDb()
+            .select({
+              epoch: platformSettings.value,
+              plan: users.plan,
+              trialEndsAt: users.trialEndsAt,
+              isAdmin: users.isAdmin,
+            })
+            .from(users)
+            .leftJoin(
+              platformSettings,
+              eq(platformSettings.key, PLATFORM_SETTING_KEYS.AUTH_DB_EPOCH),
+            )
+            .where(eq(users.id, token.id as string));
+          dbUser = rows[0] as typeof dbUser;
+        } catch {
+          console.warn('[auth] session identity check failed; revoking session');
+          return null;
+        }
+
+        if (!dbUser) {
+          console.warn('[auth] session user missing; revoking session');
+          return null;
+        }
+
+        const currentEpoch = dbUser.epoch ?? 0;
         if (token.dbEpoch === undefined) {
-          // 本功能上线前签发的 token 没有纪元字段：补上当前纪元而不是把所有人登出；
-          // 之后任何一次 bump 都会让它失效。
-          token.dbEpoch = currentEpoch;
+          if (currentEpoch !== 0) {
+            console.warn('[auth] legacy session revoked after epoch bump');
+            return null;
+          }
+          token.dbEpoch = 0;
         } else if (token.dbEpoch !== currentEpoch) {
           console.warn('[auth] session epoch mismatch; revoking session');
           return null;
         }
+
+        token.plan = dbUser.plan;
+        token.trialEndsAt = dbUser.trialEndsAt?.toISOString();
+        token.isAdmin = dbUser.isAdmin === true;
       }
       if (user) {
         token.id = user.id;
@@ -217,21 +253,7 @@ export const authConfig: NextAuthConfig = {
         }
       }
 
-      // Refresh plan data periodically
-      if (trigger === 'update' && token.id) {
-        const db = getDb();
-        const dbUser = await db.query.users.findFirst({
-          where: eq(users.id, token.id as string),
-          columns: { plan: true, trialEndsAt: true, isAdmin: true },
-        });
-
-        if (dbUser) {
-          token.plan = dbUser.plan;
-          token.trialEndsAt = dbUser.trialEndsAt?.toISOString();
-          token.isAdmin = dbUser.isAdmin === true;
-        }
-      }
-
+      // JWT 的非登录回合每次都会从用户行同步套餐、试用期与管理员状态。
       return token;
     },
 
