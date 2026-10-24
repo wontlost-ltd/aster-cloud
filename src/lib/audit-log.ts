@@ -33,6 +33,7 @@ export type AuditAction =
   // 管理员手动熔断 / 解除 AI 成本熔断器（admin-only，F18）。
   | 'ai-circuit.trip'
   | 'ai-circuit.release'
+  | 'policy.revalidation.started'
   | 'user.delete'
   | 'settings.update'
   | 'payment.succeeded'
