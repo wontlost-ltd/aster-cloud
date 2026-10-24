@@ -370,6 +370,8 @@ interface PoliciesContentProps {
   freezeInfo: FreezeInfo;
   translations: Translations;
   locale: string;
+  /** 平台开关 policy_sharing.enabled（服务端读取）；关着时不渲染、不请求共享区块。 */
+  sharingEnabled: boolean;
   pagination: {
     page: number;
     pageSize: number;
@@ -385,6 +387,7 @@ export function PoliciesContent({
   freezeInfo: initialFreezeInfo,
   translations: t,
   locale,
+  sharingEnabled,
   pagination,
 }: PoliciesContentProps) {
   // 延迟挂载 DndContext，避免 @dnd-kit aria 属性导致的 hydration mismatch (#418)
@@ -1009,10 +1012,8 @@ export function PoliciesContent({
           onPageSizeChange={(next) => navigate({ pageSize: next })}
         />
 
-        {/* Policies shared with caller's teams. Self-gates: returns
-            nothing when sharing is off or the caller has no inbound
-            shares. */}
-        <SharedWithMeSection locale={locale} />
+        {/* 共享给我所在团队的策略：开关关着时整段不挂载；开着但无共享时自行不渲染。 */}
+        {sharingEnabled && <SharedWithMeSection locale={locale} />}
       </div>
 
       {/* 拖拽覆盖层 */}
