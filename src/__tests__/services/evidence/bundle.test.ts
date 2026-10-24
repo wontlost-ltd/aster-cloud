@@ -157,6 +157,21 @@ describe('buildManifest', () => {
     expect(m.policy).toEqual({ scope: 'all' });
     expect(m.totals.count).toBe(0);
   });
+
+  it('manifest 保留导出时当前版本，并将执行版本最大值写入 policy.version', () => {
+    const m = buildManifest({
+      policy,
+      range,
+      entries: [entry({ id: 'a', policyVersion: 2 }), entry({ id: 'b', policyVersion: 5 })],
+      generatedAt: gen,
+    });
+    expect(m.policy).toMatchObject({ version: 5 });
+    expect(m.currentPolicyVersion).toBe(3);
+
+    const empty = buildManifest({ policy, range, entries: [], generatedAt: gen });
+    expect(empty.policy).toMatchObject({ version: null });
+    expect(empty.currentPolicyVersion).toBe(3);
+  });
 });
 
 describe('serializeBundle', () => {

@@ -116,6 +116,7 @@ export interface EvidenceManifest {
   policy:
     | { id: string; name: string; version: number | null; policyVersionRowId: string | null }
     | { scope: 'all' };
+  currentPolicyVersion?: number | null;
   range: { start: string | null; end: string | null };
   totals: { count: number };
   decisionTally: DecisionTally;
@@ -431,7 +432,7 @@ export interface EvidencePreview {
    * 哈希覆盖率：verifiable=有 canonical 哈希的条数（真可验证证据）；legacy=无哈希（早于 ADR 0030
    * 哈希采集接线的历史执行，导出会是 null 字段）。让用户看清这批里多少条真有证据。
    */
-  coverage: { verifiable: number; legacy: number };
+  coverage: { verifiable: number; legacy: number; failedNoHashes: number };
   /** 是否超过导出行数上限（超则不允许导出，提示用户缩小范围）。 */
   exceedsLimit: boolean;
   limit: number;

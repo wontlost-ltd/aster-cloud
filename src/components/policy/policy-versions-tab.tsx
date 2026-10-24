@@ -88,14 +88,15 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
 
   // 这些 API 现在需要 version number 而不是 versionId
   const handleSubmitForApproval = useCallback(
-    async (versionId: string) => {
+    async (versionId: string, releaseNote?: string) => {
       // 从 versions 中找到对应的 version number
       const ver = (versions as PolicyVersionInfo[]).find((v) => v.id === versionId);
       if (ver) {
-        await submitForApproval(ver.version);
+        if (!(await submitForApproval(ver.version, releaseNote))) throw new Error(t('versions.submitFailed'));
+        toast.success(t('versions.versionSubmitted', { version: ver.version }));
       }
     },
-    [versions, submitForApproval]
+    [versions, submitForApproval, t]
   );
 
   const handleApprove = useCallback(
@@ -104,12 +105,14 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
       if (!ver) return;
 
       const result = await approve(ver.version, comment);
-      if (result.ok) return;
+      if (result.ok) {
+        toast.success(t('versions.versionApproved', { version: ver.version }));
+        return;
+      }
 
       // 四眼原则拒绝（团队策略作者自审）：与版本页同一本地化提示，不能静默失败
       if (result.errorCode === 'segregation_of_duties') {
-        toast.error(t('sox.selfApprovalNotAllowed'));
-        return;
+        throw new Error(t('sox.selfApprovalNotAllowed'));
       }
       if (result.errorCode === 'invite_reviewer_required') {
         setInviteModal({
@@ -119,7 +122,9 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
             'Approval requires a separate reviewer. Invite a teammate to your workspace.',
           cta: result.cta ?? { label: 'Invite a teammate', href: '/teams/new' },
         });
+        throw new Error(t('sox.inviteReviewerRequired'));
       }
+      throw new Error(result.message ?? t('versions.submitFailed'));
     },
     [versions, approve, t]
   );
@@ -130,10 +135,11 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
     async (versionId: string, comment?: string) => {
       const ver = (versions as PolicyVersionInfo[]).find((v) => v.id === versionId);
       if (ver && comment) {
-        await reject(ver.version, comment);
+        if (!(await reject(ver.version, comment))) throw new Error(t('versions.submitFailed'));
+        toast.success(t('versions.versionRejected', { version: ver.version }));
       }
     },
-    [versions, reject]
+    [versions, reject, t]
   );
 
   if (error) {

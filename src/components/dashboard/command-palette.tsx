@@ -39,7 +39,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { cn } from '@/components/ui';
-import type { Command, CommandIcon } from './command-palette-commands';
+import { buildPolicyCommands, type Command, type CommandIcon } from './command-palette-commands';
 
 // Map icon id (string, RSC-serializable) → Lucide component. Kept on
 // the client side so Server Components don't have to send forwardRef
@@ -81,6 +81,7 @@ export interface CommandPaletteProps {
     groupSettings: string;
     /** Header for docs entries seeded from the build-time search index. */
     groupDocs: string;
+    groupAdmin: string;
     hintOpen: string;          // e.g. "Press ⌘K to open"
   };
 }
@@ -92,6 +93,23 @@ export function CommandPalette({ commands, labels }: CommandPaletteProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
+  const [policyCommands, setPolicyCommands] = useState<Command[]>([]);
+  const routePrefix = commands.find((command) => command.id === 'dashboard')?.href.replace(/\/dashboard$/, '') ?? '';
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!open || !q) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      fetch('/api/policies', { signal: controller.signal })
+        .then((response) => response.ok ? response.json() : null)
+        .then((data: { policies?: Array<{ id: string; name: string }> } | null) => {
+          setPolicyCommands(buildPolicyCommands(data?.policies ?? [], q, routePrefix));
+        })
+        .catch(() => { if (!controller.signal.aborted) setPolicyCommands([]); });
+    }, 200);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [open, query, routePrefix]);
 
   /* ---- Open / close mechanics ---- */
 
@@ -183,15 +201,16 @@ export function CommandPalette({ commands, labels }: CommandPaletteProps) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const availableCommands = [...commands, ...policyCommands];
     if (!q) return commands;
-    return commands.filter((c) => {
+    return availableCommands.filter((c) => {
       const haystack = [c.label, c.hint, ...(c.keywords ?? [])]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
       return haystack.includes(q);
     });
-  }, [commands, query]);
+  }, [commands, policyCommands, query]);
 
   // Reset active index whenever the result set shrinks under it.
   useEffect(() => {
@@ -229,6 +248,7 @@ export function CommandPalette({ commands, labels }: CommandPaletteProps) {
       create: [],
       settings: [],
       docs: [],
+      admin: [],
     };
     for (const c of filtered) groups[c.group].push(c);
     return groups;
@@ -298,6 +318,7 @@ export function CommandPalette({ commands, labels }: CommandPaletteProps) {
                     create:   labels.groupCreate,
                     settings: labels.groupSettings,
                     docs:     labels.groupDocs,
+                    admin:    labels.groupAdmin,
                   }[group];
                   return (
                     <div key={group} className="py-1">
@@ -376,4 +397,3 @@ export function CommandPalette({ commands, labels }: CommandPaletteProps) {
     </>
   );
 }
-

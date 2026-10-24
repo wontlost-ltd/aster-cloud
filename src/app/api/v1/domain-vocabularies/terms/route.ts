@@ -110,12 +110,14 @@ export async function GET(req: Request) {
 
     const url = new URL(req.url);
     const includeDeleted = url.searchParams.get('includeDeleted') === 'true';
+    const deletedOnly = url.searchParams.get('deletedOnly') === 'true';
     const result = await listUserVocabularyTerms(session.user.id, {
       domain: url.searchParams.get('domain') ?? undefined,
       locale: url.searchParams.get('locale') ?? undefined,
       kind: url.searchParams.get('kind') ?? undefined,
       q: url.searchParams.get('q') ?? undefined,
       includeDeleted,
+      deletedOnly,
       page: parsePositiveInt(url.searchParams.get('page'), 1),
       pageSize: parsePositiveInt(url.searchParams.get('pageSize'), 50),
     });

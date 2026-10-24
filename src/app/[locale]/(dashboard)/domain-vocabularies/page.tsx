@@ -63,7 +63,8 @@ export default async function DomainVocabulariesPage({
 
   let initialTerms: SerializableTermLink[] = [];
   let total = 0;
-  let archivedCount = 0;
+  let initialDeletedTerms: SerializableTermLink[] = [];
+  let initialDeletedCount = 0;
   let resolvedPage = urlState.page;
 
   if (ctx.allowed) {
@@ -78,7 +79,9 @@ export default async function DomainVocabulariesPage({
       });
       initialTerms = result.items.map(serialize);
       total = result.total;
-      archivedCount = result.archivedCount;
+      const deleted = await listUserVocabularyTerms(userId, { page: 1, pageSize: 200, deletedOnly: true });
+      initialDeletedTerms = deleted.items.map(serialize);
+      initialDeletedCount = deleted.total;
       resolvedPage = result.page;
     } catch (err) {
       console.error('[domain-vocabularies page] list failed', err);
@@ -110,9 +113,11 @@ export default async function DomainVocabulariesPage({
 
   return (
     <VocabulariesContent
+      key={JSON.stringify(initialDeletedTerms)}
       initialTerms={initialTerms}
       initialTotal={total}
-      initialArchivedCount={archivedCount}
+      initialDeletedTerms={initialDeletedTerms}
+      initialDeletedCount={initialDeletedCount}
       initialPage={resolvedPage}
       initialPageSize={urlState.pageSize}
       initialFilters={{
@@ -138,5 +143,7 @@ function serialize(link: TermLink): SerializableTermLink {
     ...link,
     createdAt: link.createdAt.toISOString(),
     updatedAt: link.updatedAt.toISOString(),
+    deletedAt: link.deletedAt?.toISOString() ?? null,
+    archivedAt: link.archivedAt?.toISOString() ?? null,
   };
 }

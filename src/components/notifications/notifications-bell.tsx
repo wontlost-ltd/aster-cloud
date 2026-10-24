@@ -48,7 +48,7 @@ function useLabels() {
   return {
     label: t('label'),
     empty: t('empty'),
-    viewAll: t('viewAll'),
+    viewAll: t('openApprovals'),
     invitationReceived: t.raw('invitationReceived') as string,
     invitationAccepted: t.raw('invitationAccepted') as string,
     policyShared: t.raw('policyShared') as string,
@@ -320,15 +320,11 @@ export function NotificationsBell() {
               </ul>
             )}
           </div>
-          <div className="border-t border-border px-3 py-2 text-right">
-            <Link
-              href="/teams"
-              onClick={() => setOpen(false)}
-              className="text-xs font-medium text-primary hover:underline focus-visible:underline focus-visible:outline-none"
-            >
+          {items?.length ? <div className="border-t border-border px-3 py-2 text-right">
+            <Link href="/approvals" onClick={() => setOpen(false)} className="text-xs font-medium text-primary hover:underline focus-visible:underline focus-visible:outline-none">
               {labels.viewAll} →
             </Link>
-          </div>
+          </div> : null}
         </div>
       )}
     </div>

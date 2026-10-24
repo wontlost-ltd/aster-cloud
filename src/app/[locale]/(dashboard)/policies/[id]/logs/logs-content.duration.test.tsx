@@ -15,9 +15,16 @@ vi.mock('@/components/ui', () => ({
   PageHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
-import { LogsContent, formatDuration } from './logs-content';
+import { LogsContent, formatDuration, sourceFilterToQuery } from './logs-content';
 
 afterEach(cleanup);
+
+describe('logs source filter mapping', () => {
+  it('Web matches the persisted dashboard source', () => {
+    expect(sourceFilterToQuery('WEB')).toBe('dashboard');
+    expect(sourceFilterToQuery('API')).toBe('API');
+  });
+});
 
 const translations = {
   logs: {
@@ -67,6 +74,8 @@ describe('LogsContent 时长与统计', () => {
     expect(container.textContent).not.toContain('NaN');
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText('42ms')).toBeTruthy();
+    // 窄屏下每一行都必须可换行，不得撑出卡片宽度。
+    for (const row of screen.getAllByTestId('execution-log-row')) expect(row.querySelector('.flex-wrap')).not.toBeNull();
     expect(screen.getByTestId('logs-rate-note').textContent).toContain('Pending: 4');
     expect(screen.getByTestId('logs-rate-note').textContent).toContain('Computed: 1');
   });

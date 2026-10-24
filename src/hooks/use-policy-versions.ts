@@ -89,7 +89,7 @@ interface UsePolicyVersionsResult {
   /** 归档版本 */
   archive: (version: number, reason?: string) => Promise<boolean>;
   /** 提交审批 */
-  submitForApproval: (version: number) => Promise<boolean>;
+  submitForApproval: (version: number, releaseNote?: string) => Promise<boolean>;
   /** 批准版本（返回结构化结果，便于 UI 区分 SOX 错误） */
   approve: (version: number, comment?: string) => Promise<ApproveResult>;
   /** 拒绝版本 */
@@ -278,13 +278,17 @@ export function usePolicyVersions({
 
   // 提交审批
   const submitForApproval = useCallback(
-    async (version: number): Promise<boolean> => {
+    async (version: number, releaseNote?: string): Promise<boolean> => {
       setError(null);
 
       try {
         const response = await fetch(
           `/api/v1/policies/${policyId}/versions/${version}/submit`,
-          { method: 'POST' }
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ releaseNote }),
+          }
         );
 
         const data = await response.json();

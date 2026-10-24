@@ -263,6 +263,7 @@ export default async function DashboardLayout({
                   labels: {
                     dashboard:   t('dashboard'),
                     policies:    t('policies'),
+                    domainVocabularies: t('domainVocabularies'),
                     newPolicy:   tCmd('newPolicy'),
                     reports:     t('reports'),
                     approvals:   t('approvals'),
@@ -284,6 +285,19 @@ export default async function DashboardLayout({
                   // from any dashboard surface and jump into the
                   // matching reference.
                   docsSeeds: buildDocsSeeds(locale),
+                  adminCommands: admin ? [
+                    { id: 'admin-overview', label: tAdminOverview('title'), href: '/admin' },
+                    { id: 'admin-ai-circuit', label: tAdminCircuit('title'), href: '/admin/ai-circuit-breaker' },
+                    ...(CAN_RISKTIER ? [{ id: 'admin-risk-tier', label: tAdminRisk('title'), href: '/admin/risk-tier' }] : []),
+                    { id: 'admin-revalidation', label: tAdminNav('revalidation'), href: '/admin/revalidation' },
+                    { id: 'admin-ai-workspace-access', label: tAdminNav('aiWorkspaceAccess'), href: '/admin/ai-workspace-access' },
+                    ...(CAN_LICENSE ? [{ id: 'admin-license', label: tAdminNav('license'), href: '/admin/license' }] : []),
+                    ...(IS_SAAS ? [
+                      { id: 'admin-license-revoke', label: tAdminNav('licenseRevoke'), href: '/admin/license-revoke' },
+                      { id: 'admin-issued-licenses', label: tAdminNav('issuedLicenses'), href: '/admin/issued-licenses' },
+                    ] : []),
+                    ...(CAN_SSO ? [{ id: 'admin-sso', label: tAdminNav('sso'), href: '/admin/sso' }] : []),
+                  ] : [],
                 })}
                 labels={{
                   placeholder:    tCmd('placeholder'),
@@ -292,6 +306,7 @@ export default async function DashboardLayout({
                   groupCreate:    tCmd('groupCreate'),
                   groupSettings:  tCmd('groupSettings'),
                   groupDocs:      tCmd('groupDocs'),
+                  groupAdmin:     tCmd('groupAdmin'),
                   hintOpen:       tCmd('hintOpen'),
                 }}
               />

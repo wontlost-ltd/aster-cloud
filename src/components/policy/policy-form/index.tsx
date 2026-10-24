@@ -52,6 +52,7 @@ import dynamic from 'next/dynamic';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
 import type { editor } from 'monaco-editor';
+import { nextTemplateName } from './template-name';
 // `next/link` (not the next-intl variant) because every caller of
 // this component passes locale-prefixed paths via `cancelHref` /
 // `detailHrefFor`, and the in-component `<Link href={`/${uiLocale}/billing`} />`
@@ -187,6 +188,7 @@ export function PolicyForm({
   const [name, setName] = useState(initial.name);
   const [description, setDescription] = useState(initial.description);
   const [content, setContent] = useState(initial.content);
+  const autoTemplateName = useRef<string | null>(null);
   const [isPublic, setIsPublic] = useState(initial.isPublic);
   const [groupId, setGroupId] = useState<string | null>(initial.groupId);
   const [aliasSet, setAliasSet] = useState<Record<string, string[]>>(
@@ -323,17 +325,12 @@ export function PolicyForm({
       // setContent 是编辑器内容的唯一真相源（Monaco 受控于 value），直接整体
       // 替换即清空并写入模板；无需先手动清空。
       setContent(body);
-      setName((prev) => prev || tpl.id);
-      // 文案本仓内联三语（替换语义，非「插入到光标」）。
-      toast.success(
-        uiLocale.startsWith('zh')
-          ? '已用模板替换编辑器内容。'
-          : uiLocale.startsWith('de')
-            ? 'Editorinhalt durch Vorlage ersetzt.'
-            : 'Editor content replaced with template.',
-      );
+      const previousAutoName = autoTemplateName.current;
+      setName((prev) => nextTemplateName(prev, previousAutoName, tpl.id));
+      autoTemplateName.current = tpl.id;
+      toast.success(t('templateReplaced'));
     },
-    [cnlLocale, uiLocale],
+    [cnlLocale, t],
   );
 
   /** 侧栏「模板」tab 点击入口：编辑器有内容先弹确认（防误抹未保存草稿），
@@ -727,6 +724,7 @@ export function PolicyForm({
                 groupId={groupId}
                 isPublic={isPublic}
                 onNameChange={(v) => {
+                  autoTemplateName.current = null;
                   setName(v);
                   if (nameError && v.trim().length > 0) setNameError(null);
                 }}

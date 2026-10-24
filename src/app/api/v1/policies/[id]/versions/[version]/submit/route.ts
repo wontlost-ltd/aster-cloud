@@ -28,10 +28,13 @@ export async function POST(
   }
 
   try {
+    const body = await request.json().catch(() => ({})) as { releaseNote?: unknown };
+    const releaseNote = typeof body.releaseNote === 'string' ? body.releaseNote.trim() : '';
     await submitForApproval({
       policyId,
       version,
       userId: session.user.id,
+      releaseNote: releaseNote || undefined,
     });
 
     return NextResponse.json({ success: true });
