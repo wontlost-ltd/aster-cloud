@@ -68,7 +68,7 @@ export async function GET() {
     });
   } catch {
     return NextResponse.json(
-      { error: 'upstream_unavailable', message: '无法连接后端 allowlist 服务。' },
+      { error: 'upstream_unavailable', message: 'Could not connect to the upstream allowlist service.' },
       { status: 502 },
     );
   }
@@ -91,13 +91,13 @@ export async function POST(req: NextRequest) {
   const host = typeof bodyJson?.host === 'string' ? bodyJson.host.trim() : '';
   if (action !== 'add' && action !== 'remove') {
     return NextResponse.json(
-      { error: 'invalid_action', message: 'action 必须是 add 或 remove' },
+      { error: 'invalid_action', message: 'action must be add or remove.' },
       { status: 400 },
     );
   }
   if (!host) {
     return NextResponse.json(
-      { error: 'host_required', message: 'host 不能为空' },
+      { error: 'host_required', message: 'host is required.' },
       { status: 400 },
     );
   }
@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
     // 签名密钥缺失 / 网络错误：502 + 审计（不泄内部细节，同 lexicon admin）。
     await audit(admin.userId, action, host, 'upstream_unavailable');
     return NextResponse.json(
-      { error: 'upstream_unavailable', message: '无法连接后端 allowlist 服务，请稍后重试。' },
+      { error: 'upstream_unavailable', message: 'Could not connect to the upstream allowlist service. Try again later.' },
       { status: 502 },
     );
   }

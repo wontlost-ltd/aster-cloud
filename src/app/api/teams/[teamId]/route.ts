@@ -14,7 +14,7 @@ export async function GET(req: Request, { params }: RouteParams) {
   try {
     const session = await getSession();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
 
     const { teamId } = await params;
@@ -30,7 +30,7 @@ export async function GET(req: Request, { params }: RouteParams) {
     });
 
     if (!team) {
-      return NextResponse.json({ error: '团队不存在' }, { status: 404 });
+      return NextResponse.json({ error: 'Team not found.', code: 'team_not_found' }, { status: 404 });
     }
 
     // 获取用户角色
@@ -68,7 +68,7 @@ export async function GET(req: Request, { params }: RouteParams) {
     });
   } catch (error) {
     console.error('Error getting team:', error);
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error.', code: 'internal_server_error' }, { status: 500 });
   }
 }
 
@@ -77,7 +77,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
   try {
     const session = await getSession();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
 
     const { teamId } = await params;
@@ -116,13 +116,13 @@ export async function PUT(req: Request, { params }: RouteParams) {
         where: and(eq(teams.slug, slug), not(eq(teams.id, teamId))),
       });
       if (existingTeam) {
-        return NextResponse.json({ error: '此 slug 已被使用' }, { status: 400 });
+        return NextResponse.json({ error: 'This slug is already in use.', code: 'team_slug_conflict' }, { status: 400 });
       }
       updateData.slug = slug;
     }
 
     if (Object.keys(updateData).length === 0) {
-      return NextResponse.json({ error: '没有提供要更新的字段' }, { status: 400 });
+      return NextResponse.json({ error: 'No fields were provided to update.', code: 'update_fields_required' }, { status: 400 });
     }
 
     const [team] = await db
@@ -145,7 +145,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
     });
   } catch (error) {
     console.error('Error updating team:', error);
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error.', code: 'internal_server_error' }, { status: 500 });
   }
 }
 
@@ -154,7 +154,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
   try {
     const session = await getSession();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
 
     const { teamId } = await params;
@@ -200,6 +200,6 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting team:', error);
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error.', code: 'internal_server_error' }, { status: 500 });
   }
 }

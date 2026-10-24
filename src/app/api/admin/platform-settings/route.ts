@@ -78,10 +78,10 @@ export async function POST(req: Request) {
     if (body.key === PLATFORM_SETTING_KEYS.AUTH_DB_EPOCH) {
       const oldEpoch = await getSettingUncached<number>(body.key);
       if (!Number.isInteger(body.value) || (body.value as number) <= 0 || (body.value as number) <= oldEpoch) {
-        return NextResponse.json({ error: 'auth.dbEpoch 须为大于当前值的正整数' }, { status: 400 });
+        return NextResponse.json({ error: 'auth.dbEpoch must be a positive integer greater than the current value.', code: 'invalid_db_epoch' }, { status: 400 });
       }
       if (body.confirm !== 'logout-all') {
-        return NextResponse.json({ error: '须确认 logout-all' }, { status: 400 });
+        return NextResponse.json({ error: 'Confirm logout-all to continue.', code: 'logout_all_confirmation_required' }, { status: 400 });
       }
       await setSetting(body.key, body.value, check.userId);
       await db.insert(auditLogs).values({
@@ -95,7 +95,7 @@ export async function POST(req: Request) {
     if (body.key === PLATFORM_SETTING_KEYS.RUNNER_PARITY_MODE) {
       if (typeof body.value !== 'string' || !(RUNNER_PARITY_MODES as readonly string[]).includes(body.value)) {
         return NextResponse.json(
-          { error: `runner_parity.mode 须为 ${RUNNER_PARITY_MODES.join('|')} 之一` },
+          { error: `runner_parity.mode must be one of ${RUNNER_PARITY_MODES.join('|')}.`, code: 'invalid_runner_parity_mode' },
           { status: 400 },
         );
       }
@@ -103,7 +103,7 @@ export async function POST(req: Request) {
     if (body.key === PLATFORM_SETTING_KEYS.RUNNER_PARITY_SAMPLE_PCT) {
       if (typeof body.value !== 'number' || !Number.isInteger(body.value) || body.value < 0 || body.value > 100) {
         return NextResponse.json(
-          { error: 'runner_parity.sample_pct 须为 0-100 的整数' },
+          { error: 'runner_parity.sample_pct must be an integer from 0 to 100.', code: 'invalid_runner_parity_sample_pct' },
           { status: 400 },
         );
       }

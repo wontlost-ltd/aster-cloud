@@ -36,7 +36,7 @@ export async function GET(req: Request, { params }: RouteParams) {
   try {
     const session = await getSession();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
 
     const { teamId } = await params;
@@ -68,7 +68,7 @@ export async function GET(req: Request, { params }: RouteParams) {
     });
   } catch (error) {
     console.error('Error listing invitations:', error);
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error.', code: 'internal_server_error' }, { status: 500 });
   }
 }
 
@@ -77,7 +77,7 @@ export async function POST(req: Request, { params }: RouteParams) {
   try {
     const session = await getSession();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
 
     const { teamId } = await params;
@@ -102,13 +102,13 @@ export async function POST(req: Request, { params }: RouteParams) {
 
     // 验证邮箱
     if (!email || typeof email !== 'string' || !email.includes('@')) {
-      return NextResponse.json({ error: '无效的邮箱地址' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid email address.', code: 'invalid_email' }, { status: 400 });
     }
 
     // 验证角色
     const validRoles = ['admin', 'member', 'viewer'];
     if (!role || !validRoles.includes(role)) {
-      return NextResponse.json({ error: '无效的角色' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid role.', code: 'invalid_role' }, { status: 400 });
     }
 
     // 检查邀请角色权限
@@ -161,7 +161,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       });
 
       if (existingMember) {
-        return NextResponse.json({ error: '此用户已是团队成员' }, { status: 400 });
+        return NextResponse.json({ error: 'This user is already a team member.', code: 'already_team_member' }, { status: 400 });
       }
     }
 
@@ -175,7 +175,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     });
 
     if (existingInvitation) {
-      return NextResponse.json({ error: '此邮箱已有待处理的邀请' }, { status: 400 });
+      return NextResponse.json({ error: 'A pending invitation already exists for this email address.', code: 'invitation_already_pending' }, { status: 400 });
     }
 
     // 获取团队和邀请者信息
@@ -249,6 +249,6 @@ export async function POST(req: Request, { params }: RouteParams) {
     );
   } catch (error) {
     console.error('Error creating invitation:', error);
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error.', code: 'internal_server_error' }, { status: 500 });
   }
 }

@@ -87,6 +87,7 @@ import { CNLSyntaxConverterDialog } from '@/components/policy/cnl-syntax-convert
 import { type PolicyExample, getExampleSource } from '@/data/policy-examples';
 import { extractReservedAliasSets, getLexicon } from '@/lib/aster-lexicon';
 import { validateUserAliases } from '@/lib/policy-alias-shared';
+import { localizedErrorMessage } from '@/lib/api/localized-error-message';
 
 // 类型-only 导入（不拉入 Monaco 重包；运行时组件仍走下方 dynamic）。
 import type { EditorCompileState } from '@/components/policy/monaco-policy-editor';
@@ -125,6 +126,16 @@ export interface PolicySaveResult {
 
 export interface PolicySaveError {
   message: string;
+  code?: string;
+  diagnostics?: Array<{
+    severity?: 'error' | 'warning' | 'info' | 'hint';
+    code?: string;
+    message?: string;
+    startLine?: number;
+    startColumn?: number;
+    endLine?: number;
+    endColumn?: number;
+  }>;
   /** Backend signalled the user should upgrade their plan. */
   upgrade?: boolean;
 }
@@ -414,9 +425,7 @@ export function PolicyForm({
   /** Validate; return true if save can proceed. */
   const validate = useCallback((): boolean => {
     if (name.trim().length === 0) {
-      setNameError(
-        uiLocale.startsWith('zh') ? '请填写策略名称' : 'Name is required',
-      );
+      setNameError(t('nameRequired'));
       openSidePanel('settings');
       return false;
     }
@@ -437,28 +446,20 @@ export function PolicyForm({
     // idle=空策略/未编译允许保存（空策略合法）。
     if (compileErrorCount > 0) {
       openSidePanel('problems');
-      toast.error(
-        uiLocale.startsWith('zh')
-          ? '策略存在解析错误，请先修复再保存'
-          : 'Fix parse errors before saving',
-      );
+      toast.error(t('parseErrorsBeforeSaving'));
       return false;
     }
     // pending=编译中（非空源码，debounce 未跑完）：此刻 compileErrorCount 可能
     // 还是旧值（0），直接保存会漏过刚引入的错误。非空内容编译未定论前不放行，
     // 提示稍候。空源码走 idle 分支不受影响。
     if (compile.state === 'pending' && content.trim().length > 0) {
-      toast.error(
-        uiLocale.startsWith('zh')
-          ? '正在检查语法，请稍候再保存'
-          : 'Checking syntax, please wait before saving',
-      );
+      toast.error(t('checkingSyntax'));
       return false;
     }
     return true;
   }, [
     name,
-    uiLocale,
+    t,
     aliasSet,
     reservedSets,
     allowStructuralAliases,
@@ -479,7 +480,27 @@ export function PolicyForm({
         const result = await onSave(fields);
         if ('message' in result) {
           setServerError(result);
-          toast.error(t('saveFailed'), { description: result.message });
+          const diagnostics = (result.diagnostics ?? []).filter(
+            (diagnostic) => diagnostic.severity === 'error',
+          );
+          if (diagnostics.length > 0) {
+            openSidePanel('problems');
+            const first = diagnostics[0];
+            toast.error(t('saveFailedWithDiagnostics', {
+              count: diagnostics.length,
+              line: first.startLine ?? 1,
+              message: first.message ?? t('saveDiagnosticFallback'),
+            }));
+          } else {
+            toast.error(t('saveFailed'), {
+              description: localizedErrorMessage(result.code, {
+                compile_error: t('saveErrorCodes.compile_error'),
+                compile_unavailable: t('saveErrorCodes.compile_unavailable'),
+                policy_frozen: t('saveErrorCodes.policy_frozen'),
+                unauthorized: t('saveErrorCodes.unauthorized'),
+              }, result.message),
+            });
+          }
           return;
         }
         toast.success(t('saveSuccess'));
@@ -493,7 +514,7 @@ export function PolicyForm({
         setIsSaving(false);
       }
     },
-    [validate, isSaving, onSave, fields, clearDraft, t],
+    [validate, isSaving, onSave, fields, clearDraft, t, openSidePanel],
   );
 
   const onSaveOnly = useCallback(
@@ -602,9 +623,7 @@ export function PolicyForm({
                   disabled={isSaving || compileErrorCount > 0}
                   title={
                     compileErrorCount > 0
-                      ? uiLocale.startsWith('zh')
-                        ? '策略存在解析错误，请先修复再保存'
-                        : 'Fix parse errors before saving'
+                      ? t('parseErrorsBeforeSaving')
                       : undefined
                   }
                   className={cn(
@@ -644,7 +663,12 @@ export function PolicyForm({
             role="alert"
             className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-2 text-sm text-danger"
           >
-            {serverError.message}
+            {localizedErrorMessage(serverError.code, {
+              compile_error: t('saveErrorCodes.compile_error'),
+              compile_unavailable: t('saveErrorCodes.compile_unavailable'),
+              policy_frozen: t('saveErrorCodes.policy_frozen'),
+              unauthorized: t('saveErrorCodes.unauthorized'),
+            }, serverError.message)}
             {serverError.upgrade && CLIENT_CAPABILITIES.billing && (
               <Link
                 href={`/${uiLocale}/billing`}
@@ -743,8 +767,19 @@ export function PolicyForm({
                   requestTemplateReplace(tpl);
                 }}
                 onClose={() => setSidePanelOpen(false)}
-                compileState={compile.state}
-                compileDiagnostics={compile.diagnostics}
+                compileState={serverError?.diagnostics?.length ? 'error' : compile.state}
+                compileDiagnostics={[
+                  ...compile.diagnostics,
+                  ...(serverError?.diagnostics ?? []).map((diagnostic) => ({
+                    severity: 'error' as const,
+                    code: diagnostic.code,
+                    message: diagnostic.message ?? t('saveDiagnosticFallback'),
+                    startLine: diagnostic.startLine ?? 1,
+                    startColumn: diagnostic.startColumn ?? 1,
+                    endLine: diagnostic.endLine ?? diagnostic.startLine ?? 1,
+                    endColumn: diagnostic.endColumn ?? diagnostic.startColumn ?? 1,
+                  })),
+                ]}
                 compileModule={compile.module}
                 onJumpToLine={(line, column) => {
                   const ed = editorInstanceRef.current;
@@ -812,7 +847,7 @@ export function PolicyForm({
           title={t('unsavedLeaveWarning')}
           description=""
           confirmLabel={tCommon('cancel')}
-          cancelLabel={uiLocale.startsWith('zh') ? '继续编辑' : 'Keep editing'}
+          cancelLabel={t('keepEditing')}
           variant="warning"
           onCancel={() => setCancelConfirmOpen(false)}
           onConfirm={() => {
@@ -824,31 +859,12 @@ export function PolicyForm({
         />
 
         {/* ----- Template overwrite confirmation ----- */}
-        {/* 模板整体替换编辑器内容前的确认（仅编辑器非空时触发）。文案本仓内联
-            三语，避免为一处确认走 ui-messages 跨仓发版。 */}
+        {/* 模板覆盖已有内容前先确认，避免误删未保存的编辑。 */}
         <ConfirmDialog
           isOpen={pendingTemplate !== null}
-          title={
-            uiLocale.startsWith('zh')
-              ? '用模板替换当前内容？'
-              : uiLocale.startsWith('de')
-                ? 'Inhalt durch Vorlage ersetzen?'
-                : 'Replace current content with template?'
-          }
-          description={
-            uiLocale.startsWith('zh')
-              ? '编辑器当前内容将被清空并替换为该模板。此操作无法撤销。'
-              : uiLocale.startsWith('de')
-                ? 'Der aktuelle Editorinhalt wird gelöscht und durch die Vorlage ersetzt. Dies kann nicht rückgängig gemacht werden.'
-                : 'The current editor content will be cleared and replaced by this template. This cannot be undone.'
-          }
-          confirmLabel={
-            uiLocale.startsWith('zh')
-              ? '替换'
-              : uiLocale.startsWith('de')
-                ? 'Ersetzen'
-                : 'Replace'
-          }
+          title={t('templateReplaceTitle')}
+          description={t('templateReplaceDescription')}
+          confirmLabel={t('replace')}
           cancelLabel={tCommon('cancel')}
           variant="warning"
           onCancel={() => setPendingTemplate(null)}

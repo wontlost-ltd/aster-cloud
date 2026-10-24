@@ -44,7 +44,7 @@ type VersionDbClient = Pick<typeof db, 'query' | 'insert' | 'transaction'>;
  * 刻意不用 403，避免把「该 policyId 存在」这一事实泄露给非所有者（枚举探测）。
  */
 export class PolicyAccessDeniedError extends Error {
-  constructor(message = '策略不存在') {
+  constructor(message = 'Policy not found.') {
     super(message);
     this.name = 'PolicyAccessDeniedError';
   }
@@ -87,7 +87,7 @@ export async function assertPolicyOwnership(policyId: string, userId: string): P
  * 403 { error: 'segregation_of_duties' }，与 checkSoxGuard 的错误码一致。
  */
 export class SegregationOfDutiesError extends Error {
-  constructor(message = '不能审批自己创建的版本（四眼原则）') {
+  constructor(message = 'A policy author cannot approve their own version.') {
     super(message);
     this.name = 'SegregationOfDutiesError';
   }
@@ -139,10 +139,15 @@ export async function assertVersionReadAccess(policyId: string, userId: string):
 export class PolicyCompileError extends Error {
   /** 有值表示「编译检查暂不可用、可稍后重试」，路由据此返回 503 + Retry-After。 */
   readonly retryAfterSeconds?: number;
+  readonly diagnostics?: CompileDiagnostic[];
 
-  constructor(message = '策略存在解析错误，无法保存，请先修复后再试。') {
+  constructor(
+    message = 'Policy source could not be compiled.',
+    diagnostics?: CompileDiagnostic[],
+  ) {
     super(message);
     this.name = 'PolicyCompileError';
+    this.diagnostics = diagnostics;
   }
 }
 
@@ -156,7 +161,7 @@ export class PolicyCompileUnavailableError extends PolicyCompileError {
 
   constructor(
     retryAfterSeconds: number,
-    message = '策略编译检查暂时繁忙，暂无法保存，请稍后重试。',
+    message = 'Policy compilation is temporarily unavailable. Try again later.',
   ) {
     super(message);
     this.name = 'PolicyCompileUnavailableError';
@@ -172,6 +177,8 @@ export interface CompileDiagnostic {
   severity: 'error' | 'warning' | 'info' | 'hint';
   code?: string;
   message?: string;
+  startLine?: number;
+  startColumn?: number;
 }
 
 /** 治理档案的阻断码（ADR 0046 §4）：档案未知 / 规则缺少档案要求的控制点。 */
@@ -185,15 +192,25 @@ const GOV_CHECK_UNAVAILABLE_CODE = 'E707';
  * （按暂不可用拒绝，路由映射 503）> 通用解析错误。
  */
 function compileErrorFor(errors: readonly CompileDiagnostic[]): PolicyCompileError {
+  const diagnostics = errors.map((diagnostic) => ({
+    ...diagnostic,
+    code: diagnostic.code ?? 'compile_error',
+    message: diagnostic.message ?? 'Policy source could not be compiled.',
+    startLine: diagnostic.startLine ?? 1,
+    startColumn: diagnostic.startColumn ?? 1,
+  }));
   const profileError = errors.find((d) => d.code && PROFILE_ERROR_CODES.has(d.code));
   if (profileError) {
-    const detail = profileError.message ? `：${profileError.message}` : '。';
-    return new PolicyCompileError(`策略违反所声明的治理档案，无法保存${detail}`);
+    const detail = profileError.message ? `: ${profileError.message}` : '.';
+    return new PolicyCompileError(
+      `Policy violates its declared governance profile and cannot be saved${detail}`,
+      diagnostics,
+    );
   }
   if (errors.some((d) => d.code === GOV_CHECK_UNAVAILABLE_CODE)) {
     return new PolicyCompileUnavailableError(DEFAULT_COMPILE_RETRY_AFTER_SECONDS);
   }
-  return new PolicyCompileError();
+  return new PolicyCompileError(undefined, diagnostics);
 }
 
 /**

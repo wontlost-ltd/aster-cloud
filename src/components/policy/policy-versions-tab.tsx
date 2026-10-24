@@ -117,10 +117,8 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
       if (result.errorCode === 'invite_reviewer_required') {
         setInviteModal({
           open: true,
-          message:
-            result.message ??
-            'Approval requires a separate reviewer. Invite a teammate to your workspace.',
-          cta: result.cta ?? { label: 'Invite a teammate', href: '/teams/new' },
+          message: t('approvalErrorCodes.invite_reviewer_required'),
+          cta: { label: t('approvalErrorCodes.invite_reviewer_cta'), href: result.cta?.href ?? '/teams/new' },
         });
         throw new Error(t('sox.inviteReviewerRequired'));
       }

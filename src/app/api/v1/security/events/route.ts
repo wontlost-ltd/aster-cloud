@@ -20,7 +20,7 @@ function clampInt(raw: string | null, fallback: number, min: number, max: number
 export async function GET(request: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
-    return NextResponse.json({ error: '未授权' }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
   }
 
   const { searchParams } = new URL(request.url);
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('[Security Events API] Query failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : '查询安全事件失败' },
+      { error: error instanceof Error ? error.message : 'Could not load security events.' },
       { status: 500 }
     );
   }

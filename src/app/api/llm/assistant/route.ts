@@ -58,7 +58,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     // 浏览器端把非 2xx 一律当降级信号，会保留检索结果并提示。
     return errorEnvelope({
       code: 'ASSISTANT_DISABLED',
-      message: '站内助手已被管理员关闭',
+      message: 'The in-app assistant has been disabled by an administrator.',
       status: 503,
     });
   }
@@ -75,10 +75,10 @@ export async function POST(req: NextRequest): Promise<Response> {
   try {
     body = JSON.parse(rawBody);
   } catch {
-    return errorEnvelope({ code: 'INVALID_JSON', message: '请求体不是合法 JSON', status: 400 });
+    return errorEnvelope({ code: 'INVALID_JSON', message: 'Request body must be valid JSON.', status: 400 });
   }
   if (body === null || typeof body !== 'object' || Array.isArray(body)) {
-    return errorEnvelope({ code: 'INVALID_JSON', message: '请求体必须是 JSON 对象', status: 400 });
+    return errorEnvelope({ code: 'INVALID_JSON', message: 'Request body must be a JSON object.', status: 400 });
   }
   const fields = body as Record<string, unknown>;
   // 仅凭请求头判断调用方界面形态：签名由下游 proxyLlmSse 校验，伪造头的请求在那里被 401，

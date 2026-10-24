@@ -42,6 +42,24 @@ describe('makeCompileValidator — 异常分类', () => {
     await expect(v(input)).rejects.toBeInstanceOf(PolicyCompileError);
   });
 
+  it('上游 4xx 含错误诊断时保留 code、message 和起始位置', async () => {
+    const diagnostics = [{
+      severity: 'error',
+      code: 'E001',
+      message: 'Unexpected token',
+      startLine: 3,
+      startColumn: 8,
+    }];
+    mockCompile.mockRejectedValue(new PolicyApiError(
+      'compile failed', 400, 'INVALID_SOURCE', undefined, { diagnostics },
+    ));
+
+    const caught = await makeCompileValidator('u1')(input).catch((error: unknown) => error);
+
+    expect(caught).toBeInstanceOf(PolicyCompileError);
+    expect((caught as PolicyCompileError).diagnostics).toMatchObject(diagnostics);
+  });
+
   it('上游 5xx → 原样上抛（由 createVersion fail-open）', async () => {
     const err = new PolicyApiError('server error', 503);
     mockCompile.mockRejectedValue(err);

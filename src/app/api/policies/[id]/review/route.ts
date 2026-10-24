@@ -225,7 +225,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     const reviewer = await loadReviewer(session.user.id, id);
     if (!reviewer) {
       return NextResponse.json(
-        { error: '你不是本策略的复核人，无法提交复核结论' },
+        { error: 'You are not a reviewer for this policy and cannot submit a review decision.', code: 'not_policy_reviewer' },
         { status: 403 },
       );
     }
@@ -250,7 +250,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     if (!nodeId || !contentHash || typeof text !== 'string'
         || typeof start !== 'number' || typeof end !== 'number') {
       return NextResponse.json(
-        { error: '需要 nodeId / contentHash / text / span' },
+        { error: 'nodeId, contentHash, text, and span are required.', code: 'review_fields_required' },
         { status: 400 },
       );
     }
@@ -258,17 +258,17 @@ export async function POST(req: Request, { params }: RouteParams) {
       // ★contentHash 是时效性判据：内容一变，旧 proof 即算作
       //   CONTENT_CHANGED。格式不对说明调用方没拿到真实指纹。
       return NextResponse.json(
-        { error: 'contentHash 必须是 64 位十六进制 SHA-256' },
+        { error: 'contentHash must be a 64-character hexadecimal SHA-256 value.', code: 'invalid_content_hash' },
         { status: 400 },
       );
     }
     if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start) {
-      return NextResponse.json({ error: 'span 非法' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid span.', code: 'invalid_review_span' }, { status: 400 });
     }
     if (text.length !== end - start) {
       // 区间宽度与文本长度必须自洽，否则 span 指向的根本不是这段文本。
       return NextResponse.json(
-        { error: `text 长度 ${text.length} 与 span 宽度 ${end - start} 不符` },
+        { error: `text length ${text.length} does not match span width ${end - start}.`, code: 'review_text_span_mismatch' },
         { status: 400 },
       );
     }
@@ -276,7 +276,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     const verdict = body?.verdict as HumanVerdict | undefined;
     if (!verdict || !HUMAN_VERDICTS.includes(verdict)) {
       return NextResponse.json(
-        { error: `verdict 必须是 ${HUMAN_VERDICTS.join(' 或 ')}` },
+        { error: `verdict must be one of ${HUMAN_VERDICTS.join(' or ')}.`, code: 'invalid_review_verdict' },
         { status: 400 },
       );
     }
@@ -285,7 +285,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     const reason = body?.reason?.trim();
     if (!reason) {
       return NextResponse.json(
-        { error: '复核理由不得为空：没有理由的批准等于没有复核' },
+        { error: 'A review reason is required. An approval without a reason is not a review.', code: 'review_reason_required' },
         { status: 400 },
       );
     }
@@ -301,7 +301,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     const subjectKind = reviewer.subjectKind as ReviewerSubjectKind;
     if (!REVIEWER_SUBJECT_KINDS.includes(subjectKind)) {
       return NextResponse.json(
-        { error: `subjectKind 必须是 ${REVIEWER_SUBJECT_KINDS.join(' 或 ')}——机器不得代签` },
+        { error: `subjectKind must be one of ${REVIEWER_SUBJECT_KINDS.join(' or ')}; automated agents cannot sign on behalf of a reviewer.`, code: 'invalid_reviewer_subject_kind' },
         { status: 400 },
       );
     }

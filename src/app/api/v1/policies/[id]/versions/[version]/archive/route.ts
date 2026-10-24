@@ -20,14 +20,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
 
     const { id, version: versionStr } = await params;
     const version = parseInt(versionStr, 10);
 
     if (isNaN(version)) {
-      return NextResponse.json({ error: '无效的版本号' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid version number.', code: 'invalid_version' }, { status: 400 });
     }
 
     // 解析可选的 reason 字段
@@ -52,11 +52,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   } catch (error) {
     // 非所有者与「策略不存在」返回同一 404，避免泄露该 policyId 是否存在
     if (error instanceof PolicyAccessDeniedError) {
-      return NextResponse.json({ error: '策略不存在' }, { status: 404 });
+      return NextResponse.json({ error: 'Policy not found.', code: 'policy_not_found' }, { status: 404 });
     }
     console.error('[Archive] Error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : '归档版本失败' },
+      { error: error instanceof Error ? error.message : 'Could not archive version.' },
       { status: 400 }
     );
   }

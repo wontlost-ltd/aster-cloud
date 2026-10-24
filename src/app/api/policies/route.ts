@@ -284,7 +284,7 @@ export async function POST(req: Request) {
         policyId: createdPolicy.id,
         source: content,
         createdBy: session.user.id,
-        releaseNote: 'Initial version',
+        releaseNote: undefined,
         locale: compileLocale,
         aliasSet: aliasSetInput,
         aliasReserved,

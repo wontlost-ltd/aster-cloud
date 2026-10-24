@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   try {
     const session = await getSession();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: '未授权' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
     }
 
     const body = (await req.json()) as {
@@ -56,14 +56,14 @@ export async function POST(req: Request) {
     });
 
     if (!invitation) {
-      return NextResponse.json({ error: '邀请不存在或已失效' }, { status: 404 });
+      return NextResponse.json({ error: 'Invitation not found or no longer valid.', code: 'invitation_not_found' }, { status: 404 });
     }
 
     // 检查邀请是否过期
     if (invitation.expiresAt < new Date()) {
       // 删除过期邀请
       await db.delete(teamInvitations).where(eq(teamInvitations.id, invitation.id));
-      return NextResponse.json({ error: '邀请已过期' }, { status: 400 });
+      return NextResponse.json({ error: 'Invitation has expired.', code: 'invitation_expired' }, { status: 400 });
     }
 
     // 获取当前用户的邮箱
@@ -77,7 +77,7 @@ export async function POST(req: Request) {
       !currentUser?.email ||
       currentUser.email.toLowerCase() !== invitation.email.toLowerCase()
     ) {
-      return NextResponse.json({ error: '此邀请仅限指定邮箱使用' }, { status: 403 });
+      return NextResponse.json({ error: 'This invitation is restricted to the specified email address.', code: 'invitation_email_mismatch' }, { status: 403 });
     }
 
     // 检查用户是否已是成员
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
     if (existingMember) {
       // 删除邀请
       await db.delete(teamInvitations).where(eq(teamInvitations.id, invitation.id));
-      return NextResponse.json({ error: '你已是此团队的成员' }, { status: 400 });
+      return NextResponse.json({ error: 'You are already a member of this team.', code: 'already_team_member' }, { status: 400 });
     }
 
     // 使用事务创建成员并删除邀请
@@ -177,7 +177,7 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error('Error accepting invitation:', error);
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error.', code: 'internal_server_error' }, { status: 500 });
   }
 }
 

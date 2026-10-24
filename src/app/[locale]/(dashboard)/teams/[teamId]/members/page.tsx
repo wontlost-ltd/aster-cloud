@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { formatDate } from '@/lib/format';
 import { ConfirmDialog, Container, PageHeader, Breadcrumbs, Input, Label, Select } from '@/components/ui';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
+import { localizedErrorMessage } from '@/lib/api/localized-error-message';
 import {
   BusinessRolesEditor,
   businessRolesSaveError,
@@ -175,7 +176,19 @@ export default function TeamMembersPage() {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(extractErrorMessage(data) || 'Failed to send invitation');
+        const code = data.code ?? data.error?.code ?? data.error;
+        const inviteErrorCopy: Record<string, string> = {
+          invalid_email: t('errorCodes.invalid_email'),
+          invalid_role: t('errorCodes.invalid_role'),
+          already_team_member: t('errorCodes.already_team_member'),
+          invitation_already_pending: t('errorCodes.invitation_already_pending'),
+          unauthorized: t('errorCodes.unauthorized'),
+        };
+        throw new Error(localizedErrorMessage(
+          code,
+          inviteErrorCopy,
+          extractErrorMessage(data) ?? t('members.inviteFailed'),
+        ));
       }
 
       setInvitations((prev) => [...prev, data]);

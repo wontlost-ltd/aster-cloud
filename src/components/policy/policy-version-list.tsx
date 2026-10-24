@@ -249,11 +249,13 @@ export function PolicyVersionList({
                   <VersionStatusBadge status={version.status} isDefault={version.isDefault} />
                 </div>
 
-                {version.releaseNote && (
-                  <p className="mt-1 text-sm text-fg-muted dark:text-fg-subtle">
-                    {version.releaseNote}
-                  </p>
-                )}
+                <p className="mt-1 text-sm text-fg-muted dark:text-fg-subtle">
+                  {!version.releaseNote || version.releaseNote === 'Initial version' || version.releaseNote === 'Edited version'
+                    ? version.version === 1
+                      ? t('initialVersion')
+                      : t('editedVersion')
+                    : version.releaseNote}
+                </p>
 
                 <div className="mt-2 flex items-center gap-4 text-xs text-fg-muted dark:text-fg-muted">
                   <span>
