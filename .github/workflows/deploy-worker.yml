@@ -1,5 +1,8 @@
 name: Deploy Worker
 
+# 生产 Worker 的唯一自动发布路径。Cloudflare Workers Builds 对 main 的自动构建必须关闭，
+# 运维前置及证据见 k3s 仓 docs/runbooks/release-evidence.md；本地 pnpm deploy 仅为 break-glass。
+
 # 把 Cloudflare Worker 的部署从「dashboard 里的 Git 集成」搬进 CI。
 #
 # ★为什么必须搬（2026-07-30 实测事故）：本仓从 aster-cloud org 转到 wontlost-ltd 后，
@@ -42,12 +45,10 @@ name: Deploy Worker
 #   与 aster-api deploy.yml 顶部记录的同类死角一致。
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
-    paths-ignore:
-      # 仅忽略确定不进构建产物的路径（文档/AI 工作区）。其余一律触发。
-      - '**.md'
-      - '.claude/**'
   # 手动补部署（如本次转仓后需要把积压的提交推上线）
   workflow_dispatch:
 
@@ -65,12 +66,13 @@ jobs:
     # ★门控：仅当显式设 vars.ENABLE_CI_WORKER_DEPLOY=true 才部署。
     #   目的是杜绝与 Cloudflare Git 集成的双路部署（见文件头说明）。
     #   未设时本 job 直接 skip——不是失败，因为"没启用"是当前的预期状态。
-    if: ${{ vars.ENABLE_CI_WORKER_DEPLOY == 'true' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') && vars.ENABLE_CI_WORKER_DEPLOY == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
 
       - uses: pnpm/action-setup@v6
@@ -80,6 +82,16 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - name: 发布前置核对
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          CI_RUN_ID: ${{ github.event.workflow_run.id || 'workflow_dispatch' }}
+          CI_CONCLUSION: ${{ github.event.workflow_run.conclusion || 'manual dispatch' }}
+        run: |
+          set -euo pipefail
+          printf 'head_sha=%s\nCI run id=%s\n结论=%s\n' "$HEAD_SHA" "$CI_RUN_ID" "$CI_CONCLUSION"
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$RUNNER_TEMP/deploy-worker-started-at"
 
       # fail-loud 前置：缺凭据时立刻停，而不是让 wrangler 报难懂的 401/404。
       - name: Assert deploy credentials present
@@ -100,6 +112,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           NODE_ENV: production
+          DEPLOY_RUN_ID: ${{ github.run_id }}
         run: pnpm run deploy
 
       # 部署后核实线上版本确实变了。只看 wrangler 退出码不够——曾有"命令成功但
@@ -117,3 +130,11 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           echo "$out" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "CI run id: ${{ github.event.workflow_run.id || 'workflow_dispatch' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "head_sha: ${{ github.event.workflow_run.head_sha || github.sha }}" >> "$GITHUB_STEP_SUMMARY"
+          started_at="$(cat "$RUNNER_TEMP/deploy-worker-started-at")"
+          latest_time="$(printf '%s\n' "$out" | sed -nE 's/.*([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+-]+Z?).*/\1/p' | head -1)"
+          [ -n "$latest_time" ] || { echo "::error::无法从 wrangler deployments list 解析最新部署时间"; exit 1; }
+          started_epoch="$(date -u -d "$started_at" +%s)"
+          latest_epoch="$(date -u -d "$latest_time" +%s)"
+          [ "$latest_epoch" -gt "$started_epoch" ] || { echo "::error::最新 Worker 部署时间未晚于本 job 开始时间"; exit 1; }
