@@ -41,6 +41,7 @@ const translations = {
     input: 'Input', output: 'Output', error: 'Error', showMore: 'More', showLess: 'Less',
     page: 'Page', of: 'of', previous: 'Prev', next: 'Next', stats: 'Stats',
     totalExecutions: 'Total', successRate: 'Rate', avgDuration: 'Avg', recentActivity: 'Recent',
+    pendingLabel: 'Pending', rateNote: 'Settled decisions only', otherDecisionStates: 'Other states',
     loadError: 'Load error',
   },
 } as unknown as Parameters<typeof LogsContent>[0]['translations'];

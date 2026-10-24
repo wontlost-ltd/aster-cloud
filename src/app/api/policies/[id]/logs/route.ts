@@ -43,9 +43,12 @@ export async function GET(req: Request, { params }: RouteParams) {
     // 解析查询参数：非法值回落默认值或忽略该过滤条件，不把 NaN / Invalid Date / 非法枚举交给查询层
     const page = parsePositiveInt(searchParams.get('page'), 1);
     const pageSize = parsePositiveInt(searchParams.get('pageSize'), 20, MAX_PAGE_SIZE);
-    const success = searchParams.get('success');
+    const legacySuccess = searchParams.get('success');
     // 按准入决策过滤（可选）：取值以 executionDecisionEnum 为准（含 require_approval/escalate）。
-    const decision = parseEnumParam(searchParams.get('decision'), executionDecisionEnum.enumValues);
+    const requestedDecision = searchParams.get('decision');
+    const decision = requestedDecision === 'success' ? 'approved'
+      : requestedDecision === 'failed' ? undefined
+        : parseEnumParam(requestedDecision, executionDecisionEnum.enumValues);
     const source = parseEnumParam(searchParams.get('source'), executionSourceEnum.enumValues);
     const startDate = parseDateParam(searchParams.get('startDate'));
     const endDate = parseDateParam(searchParams.get('endDate'));
@@ -68,7 +71,9 @@ export async function GET(req: Request, { params }: RouteParams) {
     const result = await queryExecutionLogs({
       userId: session.user.id,
       policyId: id,
-      success: success ? success === 'true' : undefined,
+      legacyFailed: requestedDecision === 'failed' || legacySuccess === 'false',
+      legacyError: requestedDecision === 'error',
+      legacyApproved: requestedDecision === 'success' || legacySuccess === 'true',
       decision,
       source,
       startDate,

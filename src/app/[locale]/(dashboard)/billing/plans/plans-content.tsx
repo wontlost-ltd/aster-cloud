@@ -21,13 +21,6 @@ import { extractErrorMessage } from '@/lib/api/error-envelope';
 const DISPLAY_PLANS: PlanType[] = ['free', 'pro', 'enterprise'];
 const AVAILABLE_CURRENCIES: CurrencyCode[] = ['USD', 'CNY', 'EUR'];
 
-// Currency display names
-const CURRENCY_NAMES: Record<CurrencyCode, string> = {
-  USD: 'US Dollar ($)',
-  CNY: '人民币 (¥)',
-  EUR: 'Euro (€)',
-};
-
 interface Usage {
   executions: number;
   executionsLimit: number;
@@ -38,6 +31,7 @@ interface Usage {
 }
 
 interface Translations {
+  currencies: Record<CurrencyCode, string>;
   title: string;
   subtitle: string;
   subscriptionActivated: string;
@@ -321,7 +315,7 @@ function BillingContentInner({
           >
             {AVAILABLE_CURRENCIES.map((curr) => (
               <option key={curr} value={curr}>
-                {CURRENCY_NAMES[curr]}
+                {t.currencies[curr]}
               </option>
             ))}
           </select>

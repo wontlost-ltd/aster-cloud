@@ -497,6 +497,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     return NextResponse.json({
       executionId,
       success: executionResult.allowed,
+      decision,
       output: executionResult,
       error: primaryError,
       durationMs,

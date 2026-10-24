@@ -115,17 +115,19 @@ function extract(file) {
   for (const name of ambiguous) binding.delete(name);
 
   const keys = [];
+  const dynamicPrefixes = [];
   let unbound = 0;
   // 任意 `xxx('literal')` 里 xxx 是已绑定的 t-变量才算
   for (const m of src.matchAll(/\b(\w+)\(\s*['"]([A-Za-z][\w.]*)['"]/g)) {
     const [, fn, key] = m;
     if (binding.has(fn)) keys.push(`${binding.get(fn)}.${key}`);
   }
+  dynamicPrefixes.push(...extractDynamicPrefixes(src, binding));
   // 有 useTranslations 但没有可信绑定（未解析出，或全被歧义剔除）→ 如实计数
   if (/useTranslations\(/.test(src) && binding.size === 0) unbound = 1;
   else if (ambiguous.size > 0) unbound = 1; // 部分歧义：该文件未被完整覆盖
 
-  return { unbound, keys, hasT: binding.size > 0 };
+  return { unbound, keys, dynamicPrefixes, hasT: binding.size > 0 };
 }
 
 /** 去掉 // 行注释与块注释，避免注释里的示例代码被当成真实调用。 */
@@ -145,6 +147,26 @@ function hasLeaf(tree, path) {
   return typeof cur === 'string';
 }
 
+/** 动态键前缀必须指向消息树中的对象节点。 */
+export function hasPath(tree, path) {
+  let cur = tree;
+  for (const part of path.split('.')) {
+    if (typeof cur !== 'object' || cur === null || !(part in cur)) return false;
+    cur = cur[part];
+  }
+  return typeof cur === 'object' && cur !== null;
+}
+
+/** 收集 t(`静态前缀.${变量}`) 的前缀完整路径。 */
+export function extractDynamicPrefixes(src, binding) {
+  const prefixes = [];
+  for (const match of src.matchAll(/\b(\w+)\(\s*`([A-Za-z][\w.]*)\.\$\{/g)) {
+    const [, fn, prefix] = match;
+    if (binding.has(fn)) prefixes.push(`${binding.get(fn)}.${prefix}`);
+  }
+  return prefixes;
+}
+
 /** 从 `start`（开引号位置）跳到匹配的未转义闭引号之后；未闭合则返回文本末尾。 */
 function skipString(text, start) {
   const quote = text[start];
@@ -159,7 +181,7 @@ function skipString(text, start) {
  * 逐字符扫描：字符串字面量整体跳过（值里的 `{`、`,`、`:` 不参与结构判定），
  * `name: {` 入栈，`}` 出栈，`name: '值'` 记为叶子。
  */
-function collectInlineKeys(text, base, out) {
+function collectInlineKeys(text, base, out, includeObjectNodes = false) {
   const path = [...base];
   const opened = [];
   let i = text.indexOf('{') + 1;
@@ -170,6 +192,8 @@ function collectInlineKeys(text, base, out) {
     if (obj) {
       opened.push(obj[1]);
       path.push(obj[1]);
+      // 记录对象节点本身，供模板字符串的动态子键前缀做存在性校验。
+      if (includeObjectNodes) out.add(`${path.join('.')}.__object__`);
       i += obj[0].length;
     } else if (leaf) {
       out.add([...path, leaf[1]].join('.'));
@@ -192,7 +216,7 @@ function collectInlineKeys(text, base, out) {
  * 不求值 TS、也不解析成对象——只需要「这个路径存在吗」。用括号配平找到
  * `en: {` 的范围，再按 `key:` 的缩进层级还原路径。值是什么无关紧要。
  */
-export function parseSupplementKeys(src) {
+export function parseSupplementKeys(src, includeObjectNodes = false) {
   const start = src.indexOf('\n  en: {');
   if (start < 0) return new Set();
   let depth = 0;
@@ -225,7 +249,7 @@ export function parseSupplementKeys(src) {
     const inline = line.match(/^\s*([A-Za-z_]\w*)\s*:\s*(\{.*\})\s*,?\s*$/);
     if (inline) {
       const base = [...stack.slice(1).map((f) => f.name), inline[1]];
-      collectInlineKeys(inline[2], base, out);
+      collectInlineKeys(inline[2], base, out, includeObjectNodes);
       continue;
     }
     // ★值可能被 prettier 折到下一行：
@@ -252,15 +276,16 @@ function main() {
   const source = existsSync(SOURCE) ? JSON.parse(readFileSync(SOURCE, 'utf-8')) : null;
 
   const supplement = existsSync(SUPPLEMENT)
-    ? parseSupplementKeys(readFileSync(SUPPLEMENT, 'utf-8'))
+    ? parseSupplementKeys(readFileSync(SUPPLEMENT, 'utf-8'), true)
     : new Set();
 
   const missing = new Map(); // key -> Set<file>
   let unboundFiles = 0;
   let scanned = 0;
+  const dynamicMissing = new Map();
 
   for (const file of sourceFiles(join(PROJECT_ROOT, 'src'))) {
-    const { unbound, keys, hasT } = extract(file);
+    const { unbound, keys, dynamicPrefixes, hasT } = extract(file);
     unboundFiles += unbound;
     if (!hasT) continue;
     scanned++;
@@ -270,7 +295,18 @@ function main() {
         missing.get(key).add(relative(PROJECT_ROOT, file));
       }
     }
+    for (const prefix of dynamicPrefixes) {
+      const packagePath = hasPath(pkg, prefix);
+      const sourcePath = source && hasPath(source, prefix);
+      const supplementPath = [...supplement].some((key) => key === `${prefix}.__object__` || key.startsWith(`${prefix}.`));
+      if (!packagePath && !sourcePath && !supplementPath) {
+        if (!dynamicMissing.has(`${prefix}.*`)) dynamicMissing.set(`${prefix}.*`, new Set());
+        dynamicMissing.get(`${prefix}.*`).add(relative(PROJECT_ROOT, file));
+      }
+    }
   }
+
+  for (const [key, files] of dynamicMissing) missing.set(key, files);
 
   const found = [...missing.keys()].sort();
 

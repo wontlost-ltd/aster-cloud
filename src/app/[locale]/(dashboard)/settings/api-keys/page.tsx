@@ -86,6 +86,7 @@ export default async function ApiKeysPage() {
       listPoliciesDesc: t('examples.listPoliciesDesc'),
       responseExample: t('examples.responseExample'),
       responseExampleDesc: t('examples.responseExampleDesc'),
+      decisionDescription: t.raw('examples.decisionDescription' as never) as string,
       errorHandling: t('examples.errorHandling'),
       errorHandlingDesc: t('examples.errorHandlingDesc'),
       error401: t('examples.error401'),

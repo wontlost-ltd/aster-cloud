@@ -321,6 +321,9 @@ export interface ExecutionLogQuery {
   userId: string;
   policyId?: string;
   success?: boolean;
+  legacyFailed?: boolean;
+  legacyError?: boolean;
+  legacyApproved?: boolean;
   /** 按准入决策过滤（可选）。 */
   decision?: ExecutionDecision;
   source?: ExecutionSource;
@@ -389,13 +392,26 @@ export function deriveDecisionStats(counts: {
  * 查询执行日志（分页）
  */
 export async function queryExecutionLogs(query: ExecutionLogQuery): Promise<ExecutionLogResult> {
-  const { userId, policyId, success, decision, source, startDate, endDate, page = 1, pageSize = 20 } = query;
+  const { userId, policyId, success, decision, legacyFailed, legacyError, legacyApproved, source, startDate, endDate, page = 1, pageSize = 20 } = query;
 
-  // Build where conditions
+  // Build where conditions（or() 的参数恒非空，返回值不会是 undefined）
   const conditions = [eq(executions.userId, userId)];
   if (policyId) conditions.push(eq(executions.policyId, policyId));
-  if (success !== undefined) conditions.push(eq(executions.success, success));
-  if (decision) conditions.push(eq(executions.decision, decision));
+  if (legacyFailed) conditions.push(or(
+    eq(executions.decision, 'denied'),
+    eq(executions.decision, 'error'),
+    and(isNull(executions.decision), eq(executions.success, false)),
+  )!);
+  else if (legacyError) conditions.push(or(
+    eq(executions.decision, 'error'),
+    and(isNull(executions.decision), eq(executions.success, false)),
+  )!);
+  else if (legacyApproved) conditions.push(or(
+    eq(executions.decision, 'approved'),
+    and(isNull(executions.decision), eq(executions.success, true)),
+  )!);
+  else if (decision) conditions.push(eq(executions.decision, decision));
+  else if (success !== undefined) conditions.push(eq(executions.success, success));
   if (source) conditions.push(eq(executions.source, source));
   if (startDate) conditions.push(gte(executions.createdAt, startDate));
   if (endDate) conditions.push(lte(executions.createdAt, endDate));
@@ -522,8 +538,8 @@ export async function getExecutionStats(
       indeterminate: sql<number>`count(*) filter (where ${executions.decision} = 'indeterminate')::int`,
       requireApproval: sql<number>`count(*) filter (where ${executions.decision} = 'require_approval')::int`,
       escalate: sql<number>`count(*) filter (where ${executions.decision} = 'escalate')::int`,
-      denied: sql<number>`count(*) filter (where ${executions.decision} = 'denied' OR (${executions.decision} IS NULL AND ${executions.success} = false))::int`,
-      error: sql<number>`count(*) filter (where ${executions.decision} = 'error')::int`,
+      denied: sql<number>`count(*) filter (where ${executions.decision} = 'denied')::int`,
+      error: sql<number>`count(*) filter (where ${executions.decision} = 'error' OR (${executions.decision} IS NULL AND ${executions.success} = false))::int`,
     })
     .from(executions)
     .where(whereClause);

@@ -75,6 +75,7 @@ describe('命令面板 AI 工作台入口', () => {
     const policies = Array.from({ length: 10 }, (_, index) => ({ id: `p${index}`, name: `Loan ${index}` }));
     const commands = buildPolicyCommands(policies, 'loan', '/zh');
     expect(commands).toHaveLength(8);
+    expect(commands[0].group).toBe('policies');
     expect(commands[0].href).toBe('/zh/policies/p0');
     expect(buildPolicyCommands(policies, 'absent', '/zh')).toEqual([]);
   });

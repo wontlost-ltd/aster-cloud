@@ -8,7 +8,7 @@ import { Breadcrumbs, Container, PageHeader } from '@/components/ui';
 import { toClientLog } from './log-mapping';
 import { decisionLabelKey } from './decision-label';
 
-type ExecutionSource = 'WEB' | 'API' | 'CLI' | 'dashboard' | 'api' | 'playground';
+type ExecutionSource = 'WEB' | 'API' | 'CLI' | 'dashboard' | 'api' | 'cli' | 'playground';
 
 interface ExecutionLog {
   id: string;
@@ -161,6 +161,7 @@ interface Translations {
     pendingLabel: string;
     /** 通过率口径说明：仅统计已定论决策。 */
     rateNote: string;
+    otherDecisionStates: string;
     recentActivity: string;
     loadError: string;
     /** 筛选区标题（`filter` 是「状态」筛选项本身的标签）。 */
@@ -226,6 +227,16 @@ const sourceConfig: Record<ExecutionSource, { bg: string; text: string; ring: st
     icon: (
       <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    ),
+  },
+  cli: {
+    bg: 'bg-bg-muted',
+    text: 'text-fg',
+    ring: 'ring-gray-600/20',
+    icon: (
+      <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9h3m-3 3h3m-3 3h3m5-9v12m-8 0h11a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
       </svg>
     ),
   },
@@ -298,7 +309,8 @@ const GUARD_PILL = 'inline-flex items-center rounded-full px-2.5 py-1 text-xs fo
 const NON_RETRYABLE_GUARD_ERRORS = new Set(['no_evidence']);
 
 export function sourceFilterToQuery(value: string): string {
-  return value === 'WEB' ? 'dashboard' : value;
+  if (value === 'WEB') return 'dashboard';
+  return value.toLowerCase();
 }
 
 /** 状态徽章旁的 guard 入口：有决策 id → 收件箱链接；有可重试的 guardError → 重新登记按钮；其余不渲染。 */
@@ -400,7 +412,7 @@ export function LogsContent({
         pageSize: '20',
       });
 
-      if (successFilter) params.append('success', successFilter);
+      if (successFilter) params.append('decision', successFilter);
       if (sourceFilter) params.append('source', sourceFilterToQuery(sourceFilter));
       if (startDate) params.append('startDate', startDate);
       if (endDate) params.append('endDate', endDate);
@@ -465,8 +477,10 @@ export function LogsContent({
       case 'dashboard':
         return t.logs.web;
       case 'API':
+      case 'api':
         return t.logs.api;
       case 'CLI':
+      case 'cli':
         return t.logs.cli;
       default:
         return source;
@@ -528,8 +542,8 @@ export function LogsContent({
                 {stats.successCount} / {stats.successCount + stats.failureCount}
               </p>
               <p className="mt-1 text-xs text-emerald-200" data-testid="logs-rate-note">
-                {t.logs.pendingLabel}: {(stats.pendingCount ?? 0).toLocaleString(locale)} · {t.logs.computed}:{' '}
-                {(stats.indeterminateCount ?? 0).toLocaleString(locale)} · {t.logs.rateNote}
+                {t.logs.error}: {(stats.errorCount ?? 0).toLocaleString(locale)} · {t.logs.pendingLabel}: {(stats.pendingCount ?? 0).toLocaleString(locale)} · {t.logs.computed}:{' '}
+                {(stats.indeterminateCount ?? 0).toLocaleString(locale)} · {t.logs.rateNote} · {t.logs.otherDecisionStates}
               </p>
             </div>
           </div>
@@ -604,8 +618,12 @@ export function LogsContent({
               className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none hover:border-gray-400 sm:text-sm cursor-pointer"
             >
               <option value="">{t.logs.all}</option>
-              <option value="true">{t.logs.success}</option>
-              <option value="false">{t.logs.failed}</option>
+              <option value="approved">{t.logs.approved}</option>
+              <option value="denied">{t.logs.denied}</option>
+              <option value="error">{t.logs.error}</option>
+              <option value="indeterminate">{t.logs.computed}</option>
+              <option value="require_approval">{t.logs.require_approval}</option>
+              <option value="escalate">{t.logs.escalate}</option>
             </select>
           </div>
           <div>

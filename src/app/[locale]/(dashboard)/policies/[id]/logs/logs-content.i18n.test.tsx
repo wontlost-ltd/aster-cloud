@@ -50,7 +50,7 @@ describe('LogsContent 筛选区与空态文案', () => {
       title: 'Logs', noLogs: '暂无执行日志', all: '全部', success: '成功', failed: '失败',
       filter: '状态', filtersTitle: '筛选', source: '来源', from: '从', to: '至',
       web: '网页', api: 'API', cli: '命令行', successRate: 'Rate', avgDuration: 'Avg', totalExecutions: 'Total',
-      pendingLabel: 'Pending', rateNote: 'note', loadError: 'Load error',
+      pendingLabel: 'Pending', rateNote: 'note', otherDecisionStates: 'Other states', error: 'Execution error', loadError: 'Load error',
       justNow: '刚刚', loadingLogs: '正在加载执行日志…', noLogsHint: '执行该策略后，日志会显示在这里',
     },
   } as unknown as Parameters<typeof LogsContent>[0]['translations'];

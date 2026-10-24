@@ -107,6 +107,7 @@ export function VersionsContent({
 }: VersionsContentProps) {
   const t = useTranslations('policies.versions');
   const tCommon = useTranslations('common');
+  const releaseNoteLabel = (version: VersionRow) => version.releaseNote || t(version.version === 1 ? 'initialVersion' : 'editedVersion');
   const listKey = `/api/v1/policies/${policyId}/versions`;
   // Backend wraps the array as { versions: [...] } — destructure here
   // rather than handing a wrong-shape `data` to DataTable, which would
@@ -200,11 +201,11 @@ export function VersionsContent({
       }
       return;
     }
-    const successKey = {
+    const successKeys = {
       submit: 'versionSubmitted', approve: 'versionApproved', reject: 'versionRejected',
       setDefault: 'versionDefaulted', deprecate: 'versionDeprecated', archive: 'versionArchived',
-    }[kind];
-    toast.success(t(`versions.${successKey}`, { version }));
+    } as const;
+    toast.success(t(successKeys[kind], { version }));
     setPending(null);
     setDialogInput('');
     await refresh();
@@ -330,13 +331,7 @@ export function VersionsContent({
                 key: 'releaseNote',
                 header: t('table.releaseNote'),
                 cell: (v) =>
-                  v.releaseNote ? (
-                    <span className="block max-w-xs truncate text-sm text-fg-muted">
-                      {v.releaseNote}
-                    </span>
-                  ) : (
-                    <span className="text-fg-subtle">—</span>
-                  ),
+                  <span className="block max-w-xs truncate text-sm text-fg-muted">{releaseNoteLabel(v)}</span>,
               },
               {
                 key: 'createdAt',

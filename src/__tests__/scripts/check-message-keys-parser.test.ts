@@ -7,13 +7,27 @@
  * 导致门禁把实际存在的 dashboardNav.approvals 误报为缺失。
  */
 import { describe, it, expect } from 'vitest';
-import { parseSupplementKeys } from '../../../scripts/check-message-keys.mjs';
+import { extractDynamicPrefixes, hasPath, parseSupplementKeys } from '../../../scripts/check-message-keys.mjs';
 
 const wrap = (inner: string) => `export const X = {\n  en: {\n${inner}\n  },\n  zh: {\n    other: { ignored: 'x' },\n  },\n};\n`;
 
 const keys = (inner: string): string[] => [...(parseSupplementKeys(wrap(inner)) as Set<string>)].sort();
 
 describe('parseSupplementKeys', () => {
+  it('提取模板翻译键的命名空间与静态前缀，并检查消息树节点', () => {
+    const prefixes = extractDynamicPrefixes(
+      "const t = useTranslations('policies.versions'); t(`versions.${key}`);",
+      new Map([['t', 'policies.versions']]),
+    );
+    expect(prefixes).toEqual(['policies.versions.versions']);
+    expect(hasPath({ policies: { versions: { versionApproved: 'ok' } } }, 'policies.versions')).toBe(true);
+    expect(hasPath({ policies: { versions: { versionApproved: 'ok' } } }, prefixes[0])).toBe(false);
+  });
+
+  it('仅接受绑定到 useTranslations 的模板调用', () => {
+    expect(extractDynamicPrefixes("t(`logs.${key}`)", new Map())).toEqual([]);
+  });
+
   it('解析多行嵌套对象', () => {
     expect(
       keys(`    approvals: {\n      title: 'Approvals',\n      empty: "None",\n    },`),

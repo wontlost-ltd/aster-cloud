@@ -22,7 +22,7 @@ afterEach(cleanup);
 describe('logs source filter mapping', () => {
   it('Web matches the persisted dashboard source', () => {
     expect(sourceFilterToQuery('WEB')).toBe('dashboard');
-    expect(sourceFilterToQuery('API')).toBe('API');
+    expect(sourceFilterToQuery('API')).toBe('api');
   });
 });
 
@@ -32,7 +32,7 @@ const translations = {
     computed: 'Computed', require_approval: 'Needs approval', escalate: 'Escalated',
     web: 'Web', api: 'API', cli: 'CLI', duration: 'Duration', version: 'Version',
     successRate: 'Rate', avgDuration: 'Avg', totalExecutions: 'Total',
-    pendingLabel: 'Pending', rateNote: 'Settled decisions only', loadError: 'Load error',
+    pendingLabel: 'Pending', rateNote: 'Settled decisions only', otherDecisionStates: 'Other states', error: 'Execution error', loadError: 'Load error',
   },
 } as unknown as Parameters<typeof LogsContent>[0]['translations'];
 
