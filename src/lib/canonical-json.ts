@@ -164,7 +164,9 @@ function canonicalDecimal(raw: string | number, path: string): string {
   let pointPos = intPart.length + exp; // 小数点在 digits 中的位置（从左数）。
 
   // 展开后总位数上限（防 1e4096 类构造出超长串）。
-  const expandedLen = Math.max(digits.length, pointPos, digits.length - pointPos) + Math.abs(pointPos);
+  const expandedLen = pointPos <= 0
+    ? (1 - pointPos) + digits.length
+    : Math.max(pointPos, digits.length);
   if (expandedLen > MAX_DECIMAL_DIGITS) {
     throw new CanonicalJsonError('DECIMAL_TOO_LARGE', `Decimal 展开位数超限(${expandedLen} > ${MAX_DECIMAL_DIGITS})`, path);
   }

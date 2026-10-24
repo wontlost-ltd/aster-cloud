@@ -207,6 +207,20 @@ describe('canonicalJson — 非 JSON 值拒绝', () => {
 
 describe('canonicalJson — Decimal 资源上限（防 DoS，Codex L1#3）', () => {
   const ctx = decimalTypeContext(['x']);
+  it('按真实展开位数接受边界内指数，并拒绝越界指数', () => {
+    for (const input of ['1e2000', '1e3000', '1e4095', '1e-3000', '1e-4095']) {
+      expect(() => canonicalJson({ x: input }, ctx), input).not.toThrow();
+    }
+    for (const input of ['1e4096', '1e-4096']) {
+      try {
+        canonicalJson({ x: input }, ctx);
+        throw new Error(`${input} 应被拒绝`);
+      } catch (error) {
+        expect(error).toBeInstanceOf(CanonicalJsonError);
+        expect((error as CanonicalJsonError).reason).toBe('DECIMAL_TOO_LARGE');
+      }
+    }
+  });
   it('大指数被拒绝（DECIMAL_TOO_LARGE），非非受控异常', () => {
     try {
       canonicalJson({ x: '1e1000000000' }, ctx);
