@@ -285,6 +285,10 @@ const GUARD_PILL = 'inline-flex items-center rounded-full px-2.5 py-1 text-xs fo
 /** 重试永远不会成功的登记错误：无证据锚（no_evidence）的行不给重新登记按钮。 */
 const NON_RETRYABLE_GUARD_ERRORS = new Set(['no_evidence']);
 
+export function sourceFilterToQuery(value: string): string {
+  return value === 'WEB' ? 'dashboard' : value;
+}
+
 /** 状态徽章旁的 guard 入口：有决策 id → 收件箱链接；有可重试的 guardError → 重新登记按钮；其余不渲染。 */
 function GuardAction({
   log,
@@ -385,7 +389,7 @@ export function LogsContent({
       });
 
       if (successFilter) params.append('success', successFilter);
-      if (sourceFilter) params.append('source', sourceFilter);
+      if (sourceFilter) params.append('source', sourceFilterToQuery(sourceFilter));
       if (startDate) params.append('startDate', startDate);
       if (endDate) params.append('endDate', endDate);
 
@@ -446,6 +450,7 @@ export function LogsContent({
   const getSourceLabel = (source: string) => {
     switch (source) {
       case 'WEB':
+      case 'dashboard':
         return t.logs.web;
       case 'API':
         return t.logs.api;
@@ -672,12 +677,13 @@ export function LogsContent({
             {logs.map((log) => (
               <div
                 key={log.id}
+                data-testid="execution-log-row"
                 className={`transition-colors ${expandedLog === log.id ? 'bg-bg-subtle' : 'hover:bg-bg-subtle/50'}`}
               >
                 {/* Log Header */}
                 <div className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
                       {/* Status Icon + Badge —— 由 logStatus 统一分类：indeterminate 中性蓝「已计算」、
                           require_approval/escalate 琥珀色待处置、success(=allowed) 绿、真实拒绝/错误红。 */}
                       <div
@@ -728,7 +734,7 @@ export function LogsContent({
                       )}
                     </div>
 
-                    <div className="flex items-center gap-4">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-4">
                       {/* Duration */}
                       <div className="flex items-center text-sm text-fg-muted">
                         <svg className="h-4 w-4 mr-1 text-fg-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor">

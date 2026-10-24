@@ -43,7 +43,7 @@ export interface Command {
   /** Route (locale prefix added by router.push call site). */
   href: string;
   /** Section header in the rendered list. */
-  group: 'navigate' | 'create' | 'settings' | 'docs';
+  group: 'navigate' | 'create' | 'settings' | 'docs' | 'admin';
   /** Optional list of extra search keywords (e.g. translations of the label
    *  in other languages so a 中文 user can still search "policy"). */
   keywords?: string[];
@@ -73,6 +73,25 @@ export type DocsCommandSeed = {
   href: string;
 };
 
+export function buildPolicyCommands(
+  policies: ReadonlyArray<{ id: string; name: string }>,
+  query: string,
+  routePrefix: string,
+): Command[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [];
+  return policies
+    .filter((policy) => policy.name.toLowerCase().includes(needle))
+    .slice(0, 8)
+    .map<Command>((policy) => ({
+      id: `policy-${policy.id}`,
+      label: policy.name,
+      href: `${routePrefix}/policies/${policy.id}`,
+      icon: 'file-text',
+      group: 'navigate',
+    }));
+}
+
 export interface BuildCommandsArgs {
   /** Locale prefix already applied to hrefs ('' for default, '/zh' etc). */
   routePrefix: string;
@@ -90,6 +109,7 @@ export interface BuildCommandsArgs {
     apiKeys: string;
     aiKeys: string;
     aiAssistant: string;
+    domainVocabularies: string;
   };
   /** Optional viewer-only flag to hide create commands when role is viewer. */
   canCreate?: boolean;
@@ -105,15 +125,17 @@ export interface BuildCommandsArgs {
   docsSeeds?: ReadonlyArray<DocsCommandSeed>;
   /** AI 工作台入口；仅当服务端判定已开启时传入（href 已含 locale，不再加前缀）。 */
   aiWorkspace?: { label: string; href: string };
+  adminCommands?: ReadonlyArray<{ id: string; label: string; href: string }>;
 }
 
 export function buildCommands({
-  routePrefix, labels, canCreate = true, showBilling = true, docsSeeds = [], aiWorkspace,
+  routePrefix, labels, canCreate = true, showBilling = true, docsSeeds = [], aiWorkspace, adminCommands = [],
 }: BuildCommandsArgs): Command[] {
   const p = routePrefix;
   const cmds: Command[] = [
     { id: 'dashboard',  group: 'navigate', icon: 'home',         label: labels.dashboard, href: `${p}/dashboard`,         keywords: ['仪表盘', 'übersicht'] },
     { id: 'policies',   group: 'navigate', icon: 'file-text',    label: labels.policies,  href: `${p}/policies`,          keywords: ['policy', '策略', 'richtlinien'] },
+    { id: 'domain-vocabularies', group: 'navigate', icon: 'book-text', label: labels.domainVocabularies, href: `${p}/domain-vocabularies`, keywords: ['vocabulary', 'terms', '词汇', 'Fachbegriffe'] },
     { id: 'reports',    group: 'navigate', icon: 'file-text',    label: labels.reports,   href: `${p}/reports`,           keywords: ['report', '报告', 'berichte'] },
     { id: 'approvals',  group: 'navigate', icon: 'clipboard-check', label: labels.approvals, href: `${p}/approvals`,       keywords: ['approval', 'approve', '审批', 'genehmigung', 'अनुमोदन'] },
     { id: 'teams',      group: 'navigate', icon: 'users',        label: labels.teams,     href: `${p}/teams`,             keywords: ['team', '团队'] },
@@ -133,6 +155,7 @@ export function buildCommands({
     { id: 'api-keys',  group: 'settings', icon: 'key-round', label: labels.apiKeys,  href: `${p}/settings/api-keys`, keywords: ['api', 'token', '密钥'] },
     { id: 'ai-keys',   group: 'settings', icon: 'sparkles',  label: labels.aiKeys,   href: `${p}/settings/ai-keys`,  keywords: ['byok', 'openai', 'ai 密钥'] },
 
+    ...adminCommands.map<Command>((command) => ({ ...command, group: 'admin', icon: 'shield-check', href: `${p}${command.href}` })),
     // Docs surface — bound entries from the build-time search index.
     // The dashboard layout slices the most relevant N pages from the
     // active locale's index and passes them in so the user can type

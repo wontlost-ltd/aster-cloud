@@ -110,6 +110,16 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('evidence-export 数据层（�
     expect(p.exceedsLimit).toBe(false);
   });
 
+  it('把无哈希 error 决策标为失败执行，而非 legacy', async () => {
+    await seedExecution({
+      id: 'failed-no-hash', decision: 'error', canonicalInputHash: null,
+      canonicalOutputHash: null, traceHash: null,
+      createdAt: new Date('2026-07-04T00:00:00Z'),
+    });
+    const preview = await getEvidencePreview({ userId: U, policyId: POL });
+    expect(preview.coverage).toEqual({ verifiable: 0, legacy: 0, failedNoHashes: 1 });
+  });
+
   it('★legacy 行缺哈希/decision → 导出不崩，manifest 计缺口', async () => {
     await seedExecution({
       id: 'legacy',
@@ -192,7 +202,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('evidence-export 数据层（�
     await seedExecution({ id: 'legacy', canonicalInputHash: null, createdAt: new Date('2026-06-01T00:00:00Z') });
     const p = await getEvidencePreview({ userId: U, policyId: POL });
     expect(p.count).toBe(3);
-    expect(p.coverage).toEqual({ verifiable: 2, legacy: 1 });
+    expect(p.coverage).toEqual({ verifiable: 2, legacy: 1, failedNoHashes: 0 });
   });
 
   it('★verifiableOnly 过滤掉无哈希 legacy 行', async () => {

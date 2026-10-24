@@ -129,6 +129,19 @@ describe('GET /api/v1/domain-vocabularies/terms', () => {
     }));
   });
 
+  it('passes the deleted-only 90-day view through the session-authenticated list route', async () => {
+    vi.mocked(listUserVocabularyTerms).mockResolvedValue({
+      items: [], total: 0, page: 2, pageSize: 200, archivedCount: 0,
+    });
+    const res = await listTerms(new Request('http://localhost/api/v1/domain-vocabularies/terms?deletedOnly=true&page=2&pageSize=200'));
+    expect(res.status).toBe(200);
+    expect(vi.mocked(listUserVocabularyTerms)).toHaveBeenCalledWith('user-1', expect.objectContaining({
+      deletedOnly: true,
+      page: 2,
+      pageSize: 200,
+    }));
+  });
+
   it('maps service failure to a 500 envelope', async () => {
     vi.mocked(listUserVocabularyTerms).mockRejectedValue(new Error('boom'));
 

@@ -88,7 +88,7 @@ describe('POST /api/reports — dryRun 预览', () => {
   it('dryRun → 返回 preview，不生成导出', async () => {
     vi.mocked(getEvidencePreview).mockResolvedValue({
       count: 5, decisionTally: { approved: 5, denied: 0, indeterminate: 0, error: 0, require_approval: 0, escalate: 0, unknown: 0 },
-      coverage: { verifiable: 5, legacy: 0 }, exceedsLimit: false, limit: 50000,
+      coverage: { verifiable: 5, legacy: 0, failedNoHashes: 0 }, exceedsLimit: false, limit: 50000,
     });
     const r = await POST(post({ dryRun: true }));
     expect(r.status).toBe(200);

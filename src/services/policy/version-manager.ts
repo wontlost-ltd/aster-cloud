@@ -478,8 +478,9 @@ export async function submitForApproval(params: {
   policyId: string;
   version: number;
   userId: string;
+  releaseNote?: string;
 }): Promise<void> {
-  const { policyId, version, userId } = params;
+  const { policyId, version, userId, releaseNote } = params;
 
   await assertPolicyOwnership(policyId, userId);
 
@@ -496,7 +497,7 @@ export async function submitForApproval(params: {
   }
 
   await db.update(policyVersions)
-    .set({ status: 'PENDING_APPROVAL' })
+    .set({ status: 'PENDING_APPROVAL', ...(releaseNote ? { releaseNote } : {}) })
     .where(eq(policyVersions.id, targetVersion.id));
 
   await logSecurityEvent({

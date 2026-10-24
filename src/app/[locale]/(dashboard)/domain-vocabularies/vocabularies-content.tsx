@@ -60,6 +60,8 @@ export interface SerializableTermLink {
   source: string;
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string | null;
+  archivedAt?: string | null;
 }
 
 export interface VocabularyQuota {
@@ -83,7 +85,8 @@ export interface VocabFilters {
 interface VocabulariesContentProps {
   initialTerms: SerializableTermLink[];
   initialTotal: number;
-  initialArchivedCount: number;
+  initialDeletedTerms: SerializableTermLink[];
+  initialDeletedCount: number;
   initialPage: number;
   initialPageSize: number;
   initialFilters: VocabFilters;
@@ -116,7 +119,8 @@ function isKnownKind(value: string): value is Kind {
 export function VocabulariesContent({
   initialTerms,
   initialTotal,
-  initialArchivedCount,
+  initialDeletedTerms,
+  initialDeletedCount,
   initialPage,
   initialPageSize,
   initialFilters,
@@ -141,6 +145,9 @@ export function VocabulariesContent({
   const [editing, setEditing] = useState<SerializableTermLink | null>(null);
   const [deleting, setDeleting] = useState<SerializableTermLink | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showDeleted, setShowDeleted] = useState(false);
+  const [loadingDeletedPage, setLoadingDeletedPage] = useState(false);
+  const [deletedTerms, setDeletedTerms] = useState(initialDeletedTerms);
 
   const [bulkOpen, setBulkOpen] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
@@ -253,7 +260,7 @@ export function VocabulariesContent({
         setDialogOpen(false);
         setEditing(null);
         refreshRsc();
-        toast.success(editing ? t('dialog.editTitle') : t('dialog.createTitle'));
+        toast.success(editing ? t('actions.termUpdated') : t('actions.termAdded'));
       } catch (err) {
         const message = err instanceof Error ? err.message : t('dialog.errorGeneric');
         toast.error(message);
@@ -284,13 +291,34 @@ export function VocabulariesContent({
       }
       setDeleting(null);
       refreshRsc();
-      toast.success(t('actions.delete'));
+      toast.success(t('actions.termDeleted'));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t('dialog.errorGeneric'));
     } finally {
       setBusy(false);
     }
   }, [deleting, errorMessage, refreshRsc, t]);
+
+  const handleRestore = useCallback(async (term: SerializableTermLink) => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/v1/domain-vocabularies/terms/${term.id}/restore`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
+      });
+      if (!res.ok) {
+        const env = (await res.json().catch(() => ({}))) as ErrorEnvelope;
+        throw new Error(errorMessage(env.error?.code, env.error?.message));
+      }
+      refreshRsc();
+      setDeletedTerms((current) => current.filter((item) => item.id !== term.id));
+      toast.success(t('actions.termRestored'));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('dialog.errorGeneric'));
+    } finally {
+      setBusy(false);
+    }
+  }, [errorMessage, refreshRsc, t]);
 
   // Pro-gate. Full lock-screen carries the upgrade CTA + a downgrade
   // narrative when applicable so the user can tell why the page is
@@ -493,7 +521,12 @@ export function VocabulariesContent({
           }
         />
         <StatCard label={t('stats.visible')} value={String(initialTerms.length)} />
-        <StatCard label={t('stats.archived')} value={String(initialArchivedCount)} />
+      <StatCard label={t('actions.deletedRecoverable')} value={String(initialDeletedCount)} />
+      </div>
+
+      <div className="mt-5 flex gap-2">
+        <Button variant={!showDeleted ? 'primary' : 'outline'} onClick={() => setShowDeleted(false)}>{t('actions.activeTerms')}</Button>
+        <Button variant={showDeleted ? 'primary' : 'outline'} onClick={() => setShowDeleted(true)}>{t('actions.recentlyDeleted')}</Button>
       </div>
 
       <div className="mt-6 flex flex-wrap items-end gap-3">
@@ -549,7 +582,28 @@ export function VocabulariesContent({
       </div>
 
       <div className="mt-6">
-        <DataTable
+        {showDeleted ? (
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-left text-sm"><thead><tr><th className="p-3">{t('table.canonical')}</th><th className="p-3">{t('table.localized')}</th><th className="p-3">{t('table.domain')}</th><th className="p-3">{t('table.actions')}</th></tr></thead>
+              <tbody>{deletedTerms.map((term) => <tr key={term.id} className="border-t border-border"><td className="p-3 font-mono">{term.canonical}</td><td className="p-3">{term.localized}</td><td className="p-3">{term.domain}</td><td className="p-3"><Button size="sm" disabled={busy} onClick={() => handleRestore(term)}>{t('actions.restore')}</Button></td></tr>)}</tbody>
+            </table>
+            {deletedTerms.length === 0 ? <p className="p-6 text-center text-sm text-fg-muted">{t('actions.noRecentlyDeleted')}</p> : null}
+            {deletedTerms.length < initialDeletedCount ? <div className="p-3 text-center"><Button variant="outline" disabled={loadingDeletedPage} onClick={async () => {
+              setLoadingDeletedPage(true);
+              try {
+                const page = Math.floor(deletedTerms.length / 200) + 1;
+                const res = await fetch(`/api/v1/domain-vocabularies/terms?deletedOnly=true&page=${page}&pageSize=200`, { credentials: 'same-origin' });
+                if (!res.ok) throw new Error(t('dialog.errorGeneric'));
+                const result = await res.json() as { items: SerializableTermLink[] };
+                setDeletedTerms((current) => [...current, ...result.items]);
+              } catch (err) {
+                toast.error(err instanceof Error ? err.message : t('dialog.errorGeneric'));
+              } finally {
+                setLoadingDeletedPage(false);
+              }
+            }}>{loadingDeletedPage ? t('actions.loadingMore') : t('actions.loadMore')}</Button></div> : null}
+          </div>
+        ) : <DataTable
           columns={columns}
           rows={initialTerms}
           getRowKey={(row) => row.id}
@@ -571,7 +625,7 @@ export function VocabulariesContent({
               }
             />
           }
-        />
+        />}
       </div>
 
       <Pagination

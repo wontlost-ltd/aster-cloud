@@ -57,6 +57,13 @@ afterEach(() => {
 });
 
 describe('AiKeysContent 模型字段', () => {
+  it('月度 token 配额保留最小值且没有无效的最大值', () => {
+    render(<AiKeysContent initialBindings={[]} locale="en" />, { wrapper });
+    const quota = screen.getByLabelText('Monthly token quota') as HTMLInputElement;
+    expect(quota.min).toBe('1');
+    expect(quota.max).toBe('');
+  });
+
   it('表单含「模型（可选）」输入', () => {
     render(<AiKeysContent initialBindings={[]} locale="en" />, { wrapper });
     expect(screen.getByLabelText('Model (optional)')).toBeDefined();

@@ -202,6 +202,7 @@ export interface BuildManifestInput {
 }
 
 export function buildManifest(input: BuildManifestInput): EvidenceManifest {
+  const policy = input.policy;
   const sorted = sortEntries(input.entries);
   const legacyRowsWithoutHashes = sorted.filter(
     (e) => e.canonicalInputHash == null && e.canonicalOutputHash == null,
@@ -210,7 +211,11 @@ export function buildManifest(input: BuildManifestInput): EvidenceManifest {
     kind: 'evidence-export',
     schemaVersion: '5',
     generatedAt: input.generatedAt.toISOString(),
-    policy: input.policy,
+    policy: 'scope' in policy ? policy : {
+      ...policy,
+      version: sorted.reduce<number | null>((max, entry) => entry.policyVersion === null ? max : max === null ? entry.policyVersion : Math.max(max, entry.policyVersion), null),
+    },
+    ...('scope' in policy ? {} : { currentPolicyVersion: policy.version }),
     range: {
       start: input.range.start ? input.range.start.toISOString() : null,
       end: input.range.end ? input.range.end.toISOString() : null,
