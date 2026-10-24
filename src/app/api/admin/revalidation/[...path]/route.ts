@@ -15,10 +15,12 @@ async function proxy(req: NextRequest, context: { params: Promise<{ path: string
   if (!(suffix === 'runs' || /^runs\/[A-Za-z0-9_-]+$/.test(suffix) || suffix === 'invalid')) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
-  const upstreamPath = `/api/v1/admin/revalidation/${suffix}${req.nextUrl.search}`;
+  // 签名只覆盖路径，不含查询串（api 侧 AdminHmacVerifier 用的是 @Path 常量）；查询串只拼到实际请求 URL。
+  const signPath = `/api/v1/admin/revalidation/${suffix}`;
+  const upstreamPath = `${signPath}${req.nextUrl.search}`;
   const body = req.method === 'POST' ? await req.text() : null;
   try {
-    const headers: Record<string, string> = { ...await signByokAllowlistHeaders(req.method, upstreamPath, body) };
+    const headers: Record<string, string> = { ...await signByokAllowlistHeaders(req.method, signPath, body) };
     if (body) headers['Content-Type'] = 'application/json';
     const upstream = await fetch(`${API_BASE}${upstreamPath}`, { method: req.method, headers, body: body || undefined, cache: 'no-store' });
     return new NextResponse(await upstream.text(), { status: upstream.status, headers: { 'Content-Type': upstream.headers.get('content-type') || 'application/json' } });
