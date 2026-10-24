@@ -35,6 +35,7 @@
     "check:message-keys": "node scripts/check-message-keys.mjs",
     "check:lsp-pin": "node scripts/check-lsp-pin.mjs",
     "check:lsp-runtime": "node scripts/check-lsp-runtime.mjs",
+    "ops:check-source-hash": "tsx scripts/ops/check-policy-source-hash.mjs",
     "check:env-production": "node scripts/check-env-production.mjs",
     "check:glossary": "tsx scripts/check-glossary.ts",
     "check:glossary:strict": "tsx scripts/check-glossary.ts --strict",
