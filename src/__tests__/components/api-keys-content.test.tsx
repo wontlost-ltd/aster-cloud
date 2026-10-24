@@ -72,6 +72,17 @@ afterEach(() => {
 });
 
 describe('ApiKeysContent — 作用域', () => {
+  it('示例使用云端策略执行与版本端点，并展示 v1 响应字段', () => {
+    const { container } = render(<ApiKeysContent initialApiKeys={[]} teams={[]} translations={T} locale="en" />);
+    const content = container.textContent ?? '';
+    expect(content).toContain('https://aster-lang.cloud/api/v1/policies/YOUR_POLICY_ID/execute');
+    expect(content).toContain('https://aster-lang.cloud/api/v1/policies/YOUR_POLICY_ID/versions');
+    expect(content).toContain('Cookie: YOUR_CLOUD_SESSION_COOKIE');
+    expect(content).toContain('functionName');
+    expect(content).toContain('matchedRules');
+    expect(content).not.toContain('policy.aster-lang.dev/api/v1/policies/evaluate');
+  });
+
   it('选择团队作用域后 POST 体带 teamId，列表显示团队名', async () => {
     global.fetch = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => ({ key: 'ak_x', id: 'k9' }) })

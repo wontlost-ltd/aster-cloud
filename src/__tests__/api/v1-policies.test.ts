@@ -461,6 +461,34 @@ describe('V1 Policies API - Drizzle Migration', () => {
       expect(body.meta.durationMs).toBeTypeOf('number');
     });
 
+    it('passes an optional Rule name from functionName to the policy executor', async () => {
+      const response = await POST(
+        makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', {
+          ...validBody,
+          functionName: 'evaluateLoanEligibility',
+        }),
+        mockParams
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockExecutePolicyUnified).toHaveBeenCalledWith(
+        expect.objectContaining({ functionName: 'evaluateLoanEligibility' }),
+      );
+    });
+
+    it('rejects a malformed optional functionName before execution', async () => {
+      const response = await POST(
+        makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', {
+          ...validBody,
+          functionName: '   ',
+        }),
+        mockParams
+      );
+
+      expect(response.status).toBe(400);
+      expect(mockExecutePolicyUnified).not.toHaveBeenCalled();
+    });
+
     it('ADR 0041：落库 outcome/decision/ruleId/controls/evidenceCorrelationId，agent 透传并标 declared', async () => {
       mockExecutePolicyUnified.mockResolvedValue(mockExecutionResult({
         allowed: false,

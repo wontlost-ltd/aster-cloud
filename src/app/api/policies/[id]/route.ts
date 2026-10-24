@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { logSecurityAdminAction } from '@/services/security/security-event-service';
 import { getSession } from '@/lib/auth';
 import { db, policies, policyVersions, executions, policyGroups } from '@/lib/prisma';
 import { eq, and, isNull, desc, sql } from 'drizzle-orm';
@@ -348,6 +349,8 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 404 });
     }
+
+    await logSecurityAdminAction(session.user.id, 'POLICY_TRASHED', { policyId: id });
 
     // 响应前完成失效；KV 故障由缓存服务记录，不阻断策略删除。
     await invalidatePolicyCache(id);

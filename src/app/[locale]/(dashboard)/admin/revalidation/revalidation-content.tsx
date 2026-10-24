@@ -87,6 +87,7 @@ export function RevalidationContent() {
   return <Container size="xl" className="py-6 sm:py-10">
     <PageHeader title={t('title')} />
     <section className="my-6 rounded-lg border p-4">
+      <p className="mb-3 rounded-md bg-info-subtle p-3 text-sm text-fg-muted">{t('scopeExplanation')}</p>
       {(run?.toolchainId || invalid[0]?.toolchainId) && <p>{t('toolchain')}: {run?.toolchainId ?? invalid[0]?.toolchainId}</p>}
       <p>{t('recentRun')}: {run?.status ?? t('noRun')}　{t('progress')}: {run?.checked ?? 0}/{run?.total ?? 0}　{t('needsRepair')}: {invalidCount}
         {run?.mode && <>　{t('modeLabel')}: {run.mode === 'report' ? t('modeReportBadge') : t('modeEnforceBadge')}</>}

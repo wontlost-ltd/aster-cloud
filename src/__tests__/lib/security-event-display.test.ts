@@ -33,4 +33,15 @@ describe('securityEventDisplayType', () => {
     expect(securityEventDisplayType('VERSION_CREATED', null)).toBe('VERSION_CREATED');
     expect(securityEventDisplayType('NONCE_REUSED', undefined)).toBe('NONCE_REUSED');
   });
+
+  it('管理操作按 details.action 显示具体事件类型', () => {
+    const actions = [
+      'API_KEY_CREATED', 'API_KEY_REVOKED', 'TEAM_CREATED', 'TEAM_DELETED',
+      'TEAM_OWNERSHIP_TRANSFERRED', 'TEAM_MEMBER_REMOVED', 'POLICY_TRASHED',
+      'POLICY_RESTORED', 'POLICY_PERMANENTLY_DELETED',
+    ];
+    for (const action of actions) {
+      expect(securityEventDisplayType('VERSION_CREATED', { action })).toBe(action);
+    }
+  });
 });

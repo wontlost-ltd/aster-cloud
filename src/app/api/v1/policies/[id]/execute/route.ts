@@ -79,7 +79,11 @@ export async function POST(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'Request body must be a valid object' }, { status: 400 });
     }
 
-    const { input, agent: rawAgent } = bodyResult as { input?: unknown; agent?: unknown };
+    const { input, functionName: rawFunctionName, agent: rawAgent } = bodyResult as {
+      input?: unknown;
+      functionName?: unknown;
+      agent?: unknown;
+    };
     if (!input || typeof input !== 'object' || Array.isArray(input)) {
       return NextResponse.json({ error: 'Input must be a valid object' }, { status: 400 });
     }
@@ -91,6 +95,10 @@ export async function POST(req: Request, { params }: RouteParams) {
     }
 
     const validatedInput = input as Record<string, unknown>;
+    if (rawFunctionName != null && (typeof rawFunctionName !== 'string' || !rawFunctionName.trim())) {
+      return NextResponse.json({ error: 'Invalid functionName' }, { status: 400 });
+    }
+    const functionName = typeof rawFunctionName === 'string' ? rawFunctionName.trim() : undefined;
     const period = getCurrentPeriod();
 
     // 阶段2：单个统一 SQL 查询获取所有数据
@@ -301,6 +309,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       input: validatedInput,
       userId,
       tenantId: policyTenantId(policy),
+      ...(functionName ? { functionName } : {}),
       aliasSet: parsedAliasSet,
       // 回放地基（ADR 0030）：已认证 execute 走 HMAC 内部调用 → 开 replayCapture 取权威 hash。
       replayCapture: true,

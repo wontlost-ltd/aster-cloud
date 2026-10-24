@@ -5,6 +5,7 @@ import { createApiKey, listApiKeys } from '@/lib/api-keys';
 import { hasFeatureAccess } from '@/lib/usage';
 import { checkTeamAccess } from '@/lib/team-permissions';
 import { db, teams } from '@/lib/prisma';
+import { logSecurityAdminAction } from '@/services/security/security-event-service';
 
 // GET /api/api-keys - List user's API keys
 export async function GET() {
@@ -58,7 +59,9 @@ export async function POST(req: Request) {
       if (!(await hasFeatureAccess(team.ownerId, 'apiAccess'))) {
         return NextResponse.json({ error: 'plan_no_api_access', upgrade: true }, { status: 403 });
       }
-      return NextResponse.json(await createApiKey(session.user.id, name, teamId), { status: 201 });
+      const apiKey = await createApiKey(session.user.id, name, teamId);
+      await logSecurityAdminAction(session.user.id, 'API_KEY_CREATED', { keyId: apiKey.id, teamId });
+      return NextResponse.json(apiKey, { status: 201 });
     }
 
     // 个人 key：套餐门槛看本人，错误体与状态码保持不变
@@ -74,6 +77,7 @@ export async function POST(req: Request) {
     }
 
     const apiKey = await createApiKey(session.user.id, name, null);
+    await logSecurityAdminAction(session.user.id, 'API_KEY_CREATED', { keyId: apiKey.id });
 
     return NextResponse.json(apiKey, { status: 201 });
   } catch (error) {

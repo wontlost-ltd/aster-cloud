@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db, teams, teamMembers, policies } from '@/lib/prisma';
+import { logSecurityAdminAction } from '@/services/security/security-event-service';
 import { eq, and, isNull, desc, sql } from 'drizzle-orm';
 import { hasFeatureAccess } from '@/lib/usage';
 import { validateTeamName, validateSlug } from '@/lib/validation';
@@ -168,6 +169,8 @@ export async function POST(req: Request) {
     if (!team) {
       throw new Error('Failed to create team');
     }
+
+    await logSecurityAdminAction(session.user.id, 'TEAM_CREATED', { teamId, teamName: team.name });
 
     return NextResponse.json(
       {
