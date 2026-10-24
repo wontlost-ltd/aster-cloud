@@ -73,6 +73,7 @@ interface Translations {
     listPoliciesDesc: string;
     responseExample: string;
     responseExampleDesc: string;
+    decisionDescription: string;
     errorHandling: string;
     errorHandlingDesc: string;
     error401: string;
@@ -492,12 +493,13 @@ else:
               <Stack gap={3}>
                 <Stack gap={1}>
                   <h3 className="text-sm font-semibold text-fg">{t.examples.responseExample}</h3>
-                  <p className="text-xs text-fg-muted">{t.examples.responseExampleDesc}</p>
+                  <p className="text-xs text-fg-muted">{t.examples.responseExampleDesc} {t.examples.decisionDescription}</p>
                 </Stack>
                 <CodeBlock
                   code={`{
   "success": true,
   "data": {
+    "decision": "approved",
     "allowed": true,
     "approved": true,
     "matchedRules": ["evaluateLoanEligibility"],

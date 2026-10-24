@@ -37,6 +37,7 @@ const translations = {
     version: 'Version', input: 'Input', output: 'Output', error: 'Error', showMore: 'More', showLess: 'Less',
     page: 'Page', of: 'of', previous: 'Prev', next: 'Next', stats: 'Stats', totalExecutions: 'Total',
     successRate: 'Rate', avgDuration: 'Avg', recentActivity: 'Recent', loadError: 'Load error',
+    pendingLabel: 'Pending', rateNote: 'Settled decisions only', otherDecisionStates: 'Other states',
     viewApproval: 'Pending approval · View', registerGuard: 'Register again', guardError: 'Registration failed',
   },
 } as unknown as Parameters<typeof LogsContent>[0]['translations'];

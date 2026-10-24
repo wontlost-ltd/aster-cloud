@@ -40,7 +40,7 @@ beforeEach(() => {
   mockRecent.mockResolvedValue([]);
 });
 
-const queryArgs = () => mockQueryLogs.mock.calls[0][0];
+const queryArgs = () => mockQueryLogs.mock.calls.at(-1)![0];
 
 describe('GET /api/policies/[id]/logs — 分页参数', () => {
   it('★page / pageSize 非数字时回落默认值，不传 NaN', async () => {
@@ -77,6 +77,24 @@ describe('GET /api/policies/[id]/logs — 过滤参数', () => {
     expect(args.startDate.toISOString()).toBe('2026-01-02T00:00:00.000Z');
     expect(args.source).toBe('api');
     expect(args.decision).toBe('denied');
+  });
+
+  it('旧 success / failed 参数映射到兼容分桶，显式 decision 过滤保持精确', async () => {
+    await call('?success=true');
+    expect(queryArgs()).toMatchObject({ legacyApproved: true, legacyFailed: false });
+    await call('?success=false');
+    expect(queryArgs()).toMatchObject({ legacyFailed: true, legacyApproved: false });
+    await call('?decision=failed');
+    expect(queryArgs()).toMatchObject({ legacyFailed: true });
+    await call('?decision=error');
+    expect(queryArgs()).toMatchObject({ decision: 'error', legacyError: true });
+    await call('?decision=approved');
+    expect(queryArgs()).toMatchObject({ decision: 'approved' });
+  });
+
+  it('CLI 来源可传入执行日志查询层', async () => {
+    await call('?source=cli');
+    expect(queryArgs()).toMatchObject({ source: 'cli' });
   });
 });
 

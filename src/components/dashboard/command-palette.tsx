@@ -77,6 +77,7 @@ export interface CommandPaletteProps {
     placeholder: string;       // e.g. "Search or jump to…"
     noResults: string;         // e.g. "No matches"
     groupNavigate: string;
+    groupPolicies: string;
     groupCreate: string;
     groupSettings: string;
     /** Header for docs entries seeded from the build-time search index. */
@@ -245,6 +246,7 @@ export function CommandPalette({ commands, labels }: CommandPaletteProps) {
   const grouped = useMemo(() => {
     const groups: Record<Command['group'], Command[]> = {
       navigate: [],
+      policies: [],
       create: [],
       settings: [],
       docs: [],
@@ -310,11 +312,12 @@ export function CommandPalette({ commands, labels }: CommandPaletteProps) {
               </p>
             ) : (
               <>
-                {(['navigate', 'create', 'settings', 'docs'] as const).map((group) => {
+                {(['navigate', 'policies', 'create', 'settings', 'docs'] as const).map((group) => {
                   const items = grouped[group];
                   if (items.length === 0) return null;
                   const groupLabel = {
                     navigate: labels.groupNavigate,
+                    policies: labels.groupPolicies,
                     create:   labels.groupCreate,
                     settings: labels.groupSettings,
                     docs:     labels.groupDocs,

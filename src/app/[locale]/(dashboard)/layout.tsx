@@ -303,6 +303,7 @@ export default async function DashboardLayout({
                   placeholder:    tCmd('placeholder'),
                   noResults:      tCmd('noResults'),
                   groupNavigate:  tCmd('groupNavigate'),
+                  groupPolicies:  tCmd.raw('groupPolicies' as never) as string,
                   groupCreate:    tCmd('groupCreate'),
                   groupSettings:  tCmd('groupSettings'),
                   groupDocs:      tCmd('groupDocs'),

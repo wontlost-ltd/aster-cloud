@@ -424,7 +424,7 @@ export async function POST(req: Request, { params }: RouteParams) {
 
     return NextResponse.json({
       success: executionResult.allowed,
-      data: executionResult,
+      data: { ...executionResult, decision },
       error: primaryError,
       meta: {
         policyId: id,

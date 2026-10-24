@@ -108,6 +108,11 @@ export default async function BillingPlansPage() {
   }
 
   const translations = {
+    currencies: {
+      USD: t.raw('currencies.USD' as never) as string,
+      CNY: t.raw('currencies.CNY' as never) as string,
+      EUR: t.raw('currencies.EUR' as never) as string,
+    },
     title: t('title'),
     subtitle: t('subtitle'),
     subscriptionActivated: t('subscriptionActivated'),

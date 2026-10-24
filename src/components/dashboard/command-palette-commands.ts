@@ -43,7 +43,7 @@ export interface Command {
   /** Route (locale prefix added by router.push call site). */
   href: string;
   /** Section header in the rendered list. */
-  group: 'navigate' | 'create' | 'settings' | 'docs' | 'admin';
+  group: 'navigate' | 'policies' | 'create' | 'settings' | 'docs' | 'admin';
   /** Optional list of extra search keywords (e.g. translations of the label
    *  in other languages so a 中文 user can still search "policy"). */
   keywords?: string[];
@@ -88,7 +88,7 @@ export function buildPolicyCommands(
       label: policy.name,
       href: `${routePrefix}/policies/${policy.id}`,
       icon: 'file-text',
-      group: 'navigate',
+      group: 'policies',
     }));
 }
 
@@ -134,7 +134,7 @@ export function buildCommands({
   const p = routePrefix;
   const cmds: Command[] = [
     { id: 'dashboard',  group: 'navigate', icon: 'home',         label: labels.dashboard, href: `${p}/dashboard`,         keywords: ['仪表盘', 'übersicht'] },
-    { id: 'policies',   group: 'navigate', icon: 'file-text',    label: labels.policies,  href: `${p}/policies`,          keywords: ['policy', '策略', 'richtlinien'] },
+    { id: 'policies',   group: 'policies', icon: 'file-text',    label: labels.policies,  href: `${p}/policies`,          keywords: ['policy', '策略', 'richtlinien'] },
     { id: 'domain-vocabularies', group: 'navigate', icon: 'book-text', label: labels.domainVocabularies, href: `${p}/domain-vocabularies`, keywords: ['vocabulary', 'terms', '词汇', 'Fachbegriffe'] },
     { id: 'reports',    group: 'navigate', icon: 'file-text',    label: labels.reports,   href: `${p}/reports`,           keywords: ['report', '报告', 'berichte'] },
     { id: 'approvals',  group: 'navigate', icon: 'clipboard-check', label: labels.approvals, href: `${p}/approvals`,       keywords: ['approval', 'approve', '审批', 'genehmigung', 'अनुमोदन'] },

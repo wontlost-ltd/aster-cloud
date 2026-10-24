@@ -455,6 +455,7 @@ describe('V1 Policies API - Drizzle Migration', () => {
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
+      expect(body.data.decision).toBe('approved');
       expect(body.data).toBeDefined();
       expect(body.meta.policyId).toBe('p1');
       expect(body.meta.policyName).toBe('Test Policy');

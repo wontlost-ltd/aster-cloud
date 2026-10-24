@@ -53,6 +53,7 @@ const T = {
     listPoliciesDesc: 'List policy versions',
     responseExample: 'Response example',
     responseExampleDesc: 'Response shape',
+    decisionDescription: 'success reports execution; decision reports business outcome.',
     errorHandling: 'Error handling',
     errorHandlingDesc: 'Error codes',
     error401: 'Unauthorized',

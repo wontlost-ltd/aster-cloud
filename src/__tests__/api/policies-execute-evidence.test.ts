@@ -119,6 +119,7 @@ describe('POST /api/policies/[id]/execute — ADR 0041 证据列', () => {
     const res = await POST(request({ input: { a: 1 } }), params);
 
     expect(res.status).toBe(200);
+    expect(await res.clone().json()).toMatchObject({ decision: 'require_approval', success: false });
     expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
       agent: { provider: 'aster-cloud', model: 'dashboard' },
     }));

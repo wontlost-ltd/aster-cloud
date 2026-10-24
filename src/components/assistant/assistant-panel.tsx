@@ -101,6 +101,7 @@ export function AssistantPanel() {
     () => ({
       navigate: tCmd('groupNavigate'),
       create: tCmd('groupCreate'),
+      policies: tCmd('groupPolicies'),
       settings: tCmd('groupSettings'),
       docs: tCmd('groupDocs'),
       admin: tCmd('groupAdmin'),

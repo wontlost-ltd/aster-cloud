@@ -11,6 +11,7 @@ describe('deriveDecisionStats', () => {
     expect(r.errorCount).toBe(1);
     expect(r.pendingCount).toBe(2);
     expect(r.successRate).toBe(50);
+    expect(r.failureCount + r.errorCount + r.pendingCount + 1 + 1).toBe(6);
   });
 
   it('★全是待审批行 ⇒ 失败 0、通过率 0 但不把待处置算失败', () => {
@@ -28,5 +29,11 @@ describe('deriveDecisionStats', () => {
   it('空数据 ⇒ 0，不出现 NaN', () => {
     const r = deriveDecisionStats({ totalExecutions: 0, successCount: 0, indeterminateCount: 0, pendingCount: 0 });
     expect(r).toEqual({ failureCount: 0, errorCount: 0, pendingCount: 0, successRate: 0 });
+  });
+
+  it('无决策的失败按执行错误计数，不计入拒绝或通过率分母', () => {
+    const r = deriveDecisionStats({ totalExecutions: 2, successCount: 1, deniedCount: 0, errorCount: 1, indeterminateCount: 0, pendingCount: 0 });
+    expect(r).toEqual({ failureCount: 0, errorCount: 1, pendingCount: 0, successRate: 100 });
+    expect(r.failureCount + r.errorCount + r.pendingCount + 1).toBe(2);
   });
 });

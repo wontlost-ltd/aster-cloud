@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import type { SecurityEventType, EventSeverity } from '@/lib/prisma';
 import { securityEventDisplayType } from '@/lib/security-event-display';
+import { formatSecurityCount, formatSecurityPercentage } from '@/lib/security-number-format';
 
 interface SecurityStats {
   total: number;
@@ -49,6 +50,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
   const locale = useLocale();
   const tType = useTranslations('security.eventTypes');
   const t = useTranslations('security.dashboard');
+  const tNewEventType = (key: string) => tType(key as never) as string;
   // 事件类型 → 本地化标签。键写成字面量，便于 check:message-keys 静态核对；
   // 未知类型（新枚举值尚未补文案）回落显示原始 id。
   const eventTypeLabels: Record<string, string> = {
@@ -68,6 +70,15 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
     VERSION_SET_DEFAULT: tType('VERSION_SET_DEFAULT'),
     VERSION_DEPRECATED: tType('VERSION_DEPRECATED'),
     VERSION_ARCHIVED: tType('VERSION_ARCHIVED'),
+    API_KEY_CREATED: tNewEventType('API_KEY_CREATED'),
+    API_KEY_REVOKED: tNewEventType('API_KEY_REVOKED'),
+    TEAM_CREATED: tNewEventType('TEAM_CREATED'),
+    TEAM_DELETED: tNewEventType('TEAM_DELETED'),
+    TEAM_OWNERSHIP_TRANSFERRED: tNewEventType('TEAM_OWNERSHIP_TRANSFERRED'),
+    TEAM_MEMBER_REMOVED: tNewEventType('TEAM_MEMBER_REMOVED'),
+    POLICY_TRASHED: tNewEventType('POLICY_TRASHED'),
+    POLICY_RESTORED: tNewEventType('POLICY_RESTORED'),
+    POLICY_PERMANENTLY_DELETED: tNewEventType('POLICY_PERMANENTLY_DELETED'),
   };
   const eventTypeLabel = (type: string) => eventTypeLabels[type] ?? type;
   const [stats, setStats] = useState<SecurityStats | null>(null);
@@ -234,7 +245,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
           <div className="bg-bg dark:bg-gray-800 rounded-lg shadow p-4">
             <dt className="text-sm font-medium text-fg-muted dark:text-fg-subtle">{t('totalEvents')}</dt>
             <dd className="mt-1 text-3xl font-semibold text-fg dark:text-white">
-              {stats.total.toLocaleString()}
+              {formatSecurityCount(stats.total, locale)}
             </dd>
           </div>
 
@@ -250,7 +261,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
                   ? 'text-yellow-700 dark:text-yellow-300'
                   : 'text-green-700 dark:text-green-300'
             }`}>
-              {(stats.errorRate * 100).toFixed(1)}%
+              {formatSecurityPercentage(stats.errorRate, locale)}
             </dd>
           </div>
 
@@ -258,7 +269,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
           <div className="bg-bg dark:bg-gray-800 rounded-lg shadow p-4">
             <dt className="text-sm font-medium text-fg-muted dark:text-fg-subtle">{t('severity.WARNING')}</dt>
             <dd className="mt-1 text-3xl font-semibold text-yellow-700 dark:text-yellow-300">
-              {stats.bySeverity.WARNING.toLocaleString()}
+              {formatSecurityCount(stats.bySeverity.WARNING, locale)}
             </dd>
           </div>
 
@@ -266,7 +277,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
           <div className="bg-bg dark:bg-gray-800 rounded-lg shadow p-4">
             <dt className="text-sm font-medium text-fg-muted dark:text-fg-subtle">{t('errorsAndCritical')}</dt>
             <dd className="mt-1 text-3xl font-semibold text-red-700 dark:text-red-300">
-              {(stats.bySeverity.ERROR + stats.bySeverity.CRITICAL).toLocaleString()}
+              {formatSecurityCount(stats.bySeverity.ERROR + stats.bySeverity.CRITICAL, locale)}
             </dd>
           </div>
         </div>
@@ -288,7 +299,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
                     {eventTypeLabel(type)}
                   </span>
                   <span className="ml-2 text-sm font-medium text-fg dark:text-white">
-                    {count}
+                    {formatSecurityCount(count, locale)}
                   </span>
                 </div>
               ))}
