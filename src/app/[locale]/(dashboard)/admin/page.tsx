@@ -120,6 +120,7 @@ type OverviewCard = {
     | 'assistantCard'
     | 'riskTierCard'
     | 'aiWorkspaceAccessCard'
+    | 'revalidationCard'
     | 'licenseCard'
     | 'licenseRevokeCard'
     | 'issuedLicensesCard'
@@ -146,6 +147,12 @@ const CARDS: ReadonlyArray<OverviewCard> = [
   {
     href: '/admin/ai-workspace-access',
     cardKey: 'aiWorkspaceAccessCard',
+    show: true,
+    comingSoon: false,
+  },
+  {
+    href: '/admin/revalidation',
+    cardKey: 'revalidationCard',
     show: true,
     comingSoon: false,
   },

@@ -602,7 +602,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     admin: {
       nav: { aiWorkspaceAccess: 'AI workspace access', revalidation: 'Policy revalidation' },
-      overview: { aiWorkspaceAccessCard: 'AI workspace access', revalidationCard: 'Policy revalidation' },
+      // 概览卡与其它 *Card 同构（title/description/cta），页面按 `${cardKey}.title` 动态取键。
+      overview: {
+        aiWorkspaceAccessCard: {
+          title: 'AI workspace access',
+          description: 'Grant or revoke AI workspace access per user. Administrators always have access.',
+          cta: 'Manage access',
+        },
+        revalidationCard: {
+          title: 'Policy revalidation',
+          description: 'Re-typecheck every policy version against the current toolchain and list versions that need repair.',
+          cta: 'Open revalidation',
+        },
+      },
       revalidation: {
         title: 'Policy revalidation',
         confirmStart: 'Confirm starting a full policy revalidation?',
@@ -1638,7 +1650,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     admin: {
       nav: { aiWorkspaceAccess: 'AI 工作台授权', revalidation: '策略重验' },
-      overview: { aiWorkspaceAccessCard: 'AI 工作台授权', revalidationCard: '策略重验' },
+      overview: {
+        aiWorkspaceAccessCard: {
+          title: 'AI 工作台授权',
+          description: '按用户授予或撤销 AI 工作台访问权限。管理员始终可以访问。',
+          cta: '管理授权',
+        },
+        revalidationCard: {
+          title: '策略重验',
+          description: '用当前工具链重新类型检查全部策略版本，列出需要修复的版本。',
+          cta: '打开策略重验',
+        },
+      },
       revalidation: {
         title: '策略重验',
         confirmStart: '确认启动全量策略重验？',
@@ -2677,7 +2700,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     admin: {
       nav: { aiWorkspaceAccess: 'Zugriff auf den KI-Arbeitsbereich', revalidation: 'Richtlinien erneut prüfen' },
-      overview: { aiWorkspaceAccessCard: 'Zugriff auf den KI-Arbeitsbereich', revalidationCard: 'Richtlinien erneut prüfen' },
+      overview: {
+        aiWorkspaceAccessCard: {
+          title: 'Zugriff auf den KI-Arbeitsbereich',
+          description: 'Zugriff auf den KI-Arbeitsbereich pro Benutzer erteilen oder entziehen. Administratoren haben immer Zugriff.',
+          cta: 'Zugriff verwalten',
+        },
+        revalidationCard: {
+          title: 'Richtlinien erneut prüfen',
+          description: 'Alle Richtlinienversionen mit der aktuellen Toolchain erneut auf Typkorrektheit prüfen und die Versionen auflisten, die repariert werden müssen.',
+          cta: 'Erneute Prüfung öffnen',
+        },
+      },
       revalidation: {
         title: 'Richtlinien erneut prüfen',
         confirmStart: 'Vollständige Richtlinienprüfung starten?',
@@ -3705,7 +3739,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     admin: {
       nav: { aiWorkspaceAccess: 'AI कार्यक्षेत्र पहुँच', revalidation: 'नीति पुनःसत्यापन' },
-      overview: { aiWorkspaceAccessCard: 'AI कार्यक्षेत्र पहुँच', revalidationCard: 'नीति पुनःसत्यापन' },
+      overview: {
+        aiWorkspaceAccessCard: {
+          title: 'AI कार्यक्षेत्र पहुँच',
+          description: 'प्रति उपयोगकर्ता AI कार्यक्षेत्र की पहुँच दें या हटाएँ। प्रशासकों के पास हमेशा पहुँच होती है।',
+          cta: 'पहुँच प्रबंधित करें',
+        },
+        revalidationCard: {
+          title: 'नीति पुनःसत्यापन',
+          description: 'वर्तमान टूलचेन से सभी नीति संस्करणों की दोबारा जाँच करें और उन संस्करणों की सूची देखें जिन्हें सुधारना है।',
+          cta: 'पुनःसत्यापन खोलें',
+        },
+      },
       revalidation: {
         title: 'नीति पुनःसत्यापन',
         confirmStart: 'क्या पूर्ण नीति पुनःसत्यापन शुरू करें?',
