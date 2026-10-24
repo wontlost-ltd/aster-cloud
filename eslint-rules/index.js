@@ -27,5 +27,6 @@ module.exports = {
     'require-license-write-gate': require('./require-license-write-gate'),
     'no-static-saas-only-import': require('./no-static-saas-only-import'),
     'no-cross-table-orderby': require('./no-cross-table-orderby'),
+    'no-stale-safe-column-read': require('./no-stale-safe-column-read'),
   },
 };
