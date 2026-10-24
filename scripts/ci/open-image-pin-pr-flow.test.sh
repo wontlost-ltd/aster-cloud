@@ -99,6 +99,22 @@ calls() { cat "$FAKE_STATE/calls.log"; }
 line_of() { { grep -n -- "$1" "$FAKE_STATE/calls.log" || true; } | head -1 | cut -d: -f1; }
 branch_head() { git --git-dir="$ROOT/k3s.git" rev-parse "refs/heads/$BRANCH"; }
 
+make_k3s_behind_branch() {
+  make_k3s "$OLD_DIGEST"
+  local stale="$ROOT/stale" main_work="$ROOT/main-advance"
+  git clone -q "$ROOT/k3s.git" "$stale"
+  git -C "$stale" checkout -q -b "$BRANCH"
+  echo stale > "$stale/STALE"
+  git -C "$stale" add STALE
+  git -C "$stale" -c user.name=t -c user.email=t@t commit -qm 'stale bot branch'
+  git -C "$stale" push -q origin "$BRANCH"
+  git clone -q "$ROOT/k3s.git" "$main_work"
+  echo main > "$main_work/MAIN-ADVANCE"
+  git -C "$main_work" add MAIN-ADVANCE
+  git -C "$main_work" -c user.name=t -c user.email=t@t commit -qm 'advance main'
+  git -C "$main_work" push -q origin main
+}
+
 # 断言：先查 check-runs 再合并，合并锁定分支 head，且不用 --auto。
 assert_verified_merge() {
   local api merge head
@@ -121,6 +137,19 @@ make_k3s "$OLD_DIGEST"; run_script "" success
 assert_verified_merge
 [[ "$(git --git-dir="$ROOT/k3s.git" show "refs/heads/$BRANCH:apps/aster-lang/cloud/kustomization.yaml" | yq '.images[0].digest')" == "$NEW_DIGEST" ]] \
   && pass "分支上已写入新 digest" || fail "分支内容不对"
+
+echo "=== F. k3s 裸仓库中 bot 分支落后 main 一个提交：从 main 重建并更新 PR ==="
+make_k3s_behind_branch
+main_before="$(git --git-dir="$ROOT/k3s.git" rev-parse main)"
+run_script 696 success
+[[ "$(cat "$FAKE_STATE/rc")" == 0 ]] && pass "返回 0" || fail "返回 $(cat "$FAKE_STATE/rc")：$(tail -5 "$FAKE_STATE/stdout")"
+grep -q '^pr edit 696 ' "$FAKE_STATE/calls.log" && pass "更新既有 PR 描述" || fail "既有 PR 未更新"
+[[ "$(git --git-dir="$ROOT/k3s.git" show "refs/heads/$BRANCH:MAIN-ADVANCE")" == main ]] \
+  && pass "bot 分支从最新 main 重建并保留 main 提交" || fail "bot 分支未以 main 为基"
+[[ "$(git --git-dir="$ROOT/k3s.git" show "refs/heads/$BRANCH:apps/aster-lang/cloud/kustomization.yaml" | yq '.images[0].digest')" == "$NEW_DIGEST" ]] \
+  && pass "重建后推送本次 image pin" || fail "未推送新的 digest"
+[[ "$(git --git-dir="$ROOT/k3s.git" rev-parse "refs/heads/$BRANCH^")" == "$main_before" ]] \
+  && pass "推送分支以 main 当前提交为父提交" || fail "分支基线不是 main 当前提交"
 
 echo "=== B. 有改动、复用 open PR：更新描述 → 验签 → 合并 ==="
 make_k3s "$OLD_DIGEST"; run_script 696 success
