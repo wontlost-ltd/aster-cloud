@@ -78,7 +78,6 @@ export const eventSeverityEnum = pgEnum('EventSeverity', [
 export const executionSourceEnum = pgEnum('ExecutionSource', [
   'dashboard',
   'api',
-  'cli',
   'playground',
 ]);
 
