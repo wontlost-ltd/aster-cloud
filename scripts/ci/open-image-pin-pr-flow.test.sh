@@ -64,12 +64,33 @@ case "$1 $2" in
   "pr create") echo 700 > "$state/open_pr"; echo "https://example.test/pull/700" ;;
   "pr edit")   : ;;
   "pr view")   git --git-dir="$FAKE_BARE" rev-parse "refs/heads/$FAKE_BRANCH" ;;
+  "pr close") [[ "${CLOSE_FAILS:-0}" == 1 ]] && { echo "GraphQL: fail" >&2; exit 1; }; : ;;
   "pr merge")
     # 可选注入：前 N 次合并模拟规则集尚未登记 required check（aster-cloud#546）
     [[ -f "$state/merge_fail_times" ]] || echo "${MERGE_FAIL_TIMES:-0}" > "$state/merge_fail_times"
     if (( $(cat "$state/merge_fail_times") > 0 )); then
       echo $(( $(cat "$state/merge_fail_times") - 1 )) > "$state/merge_fail_times"
       echo 'GraphQL: Required status check "verify-image-pin" is expected. (mergePullRequest)' >&2; exit 1
+    fi
+    # 可选注入：前 N 次合并时 main 被另一个 pin PR 推进（线性历史规则集判本 PR BEHIND）。
+    # MERGE_BEHIND_WITH_DIGEST=1 时推进 main 的提交把本 digest 写进去，但 sourceSha/runId 是另一个 run 的
+    #（真实竞态：同源码重跑得到同 digest、不同 runId）。
+    [[ -f "$state/merge_behind_times" ]] || echo "${MERGE_BEHIND_TIMES:-0}" > "$state/merge_behind_times"
+    if (( $(cat "$state/merge_behind_times") > 0 )); then
+      echo $(( $(cat "$state/merge_behind_times") - 1 )) > "$state/merge_behind_times"
+      adv="$(mktemp -d)"; git clone -q "$FAKE_BARE" "$adv"
+      if [[ "${MERGE_BEHIND_WITH_DIGEST:-0}" == 1 ]]; then
+        D="$DIGEST" yq -i '.images[0].digest = strenv(D) | .images[0].sourceSha = "other-run" | .images[0].runId = "99"' \
+          "$adv/apps/aster-lang/cloud/image-lock.yaml"
+        D="$DIGEST" yq -i '.images[0].digest = strenv(D)' "$adv/apps/aster-lang/cloud/kustomization.yaml"
+        git -C "$adv" add -A
+        git -C "$adv" -c user.name=t -c user.email=t@t commit -qm 'another run pinned the same digest first'
+      else
+        echo race > "$adv/RACE"; git -C "$adv" add RACE
+        git -C "$adv" -c user.name=t -c user.email=t@t commit -qm 'another pin PR merged first'
+      fi
+      git -C "$adv" push -q origin main; rm -rf "$adv"
+      echo 'X Pull request wontlost-ltd/k3s#841 is not mergeable: the head branch is not up to date with the base branch.' >&2; exit 1
     fi
     : ;;
   api\ *)
@@ -198,6 +219,42 @@ make_k3s "$OLD_DIGEST"
 MERGE_FAIL_TIMES=2 MERGE_RETRY_SECONDS=0 run_script "" success && pass "脚本成功" || fail "脚本失败"
 [[ "$(grep -c '^pr merge' "$FAKE_STATE/calls.log")" == "3" ]] && pass "合并重试了两次后成功" \
   || fail "合并调用次数异常：$(grep -c '^pr merge' "$FAKE_STATE/calls.log")"
+echo "=== H. 等验签期间另一个 pin PR 先合入 main：首次合并报 BEHIND，从新 main 重建、重新验签后合并 ==="
+make_k3s "$OLD_DIGEST"
+MERGE_BEHIND_TIMES=1 run_script "" success
+[[ "$(cat "$FAKE_STATE/rc")" == 0 ]] && pass "返回 0" || fail "返回 $(cat "$FAKE_STATE/rc")：$(tail -5 "$FAKE_STATE/stdout")"
+head_after="$(branch_head)"; main_after="$(git --git-dir="$ROOT/k3s.git" rev-parse main)"
+[[ "$(git --git-dir="$ROOT/k3s.git" rev-parse "${head_after}^")" == "$main_after" ]] \
+  && pass "重建后的分支以推进后的 main 为父提交" || fail "分支未重建到新 main"
+[[ "$(git --git-dir="$ROOT/k3s.git" show "refs/heads/$BRANCH:apps/aster-lang/cloud/kustomization.yaml" | yq '.images[0].digest')" == "$NEW_DIGEST" ]] \
+  && pass "重建后仍写入本次 digest" || fail "重建后 digest 丢失"
+[[ "$(grep -c '^pr merge' "$FAKE_STATE/calls.log")" == "2" ]] && pass "合并调用两次（BEHIND 一次 + 成功一次）" \
+  || fail "合并调用次数异常：$(grep -c '^pr merge' "$FAKE_STATE/calls.log")"
+grep -q -- "^pr merge .*--match-head-commit ${head_after}" "$FAKE_STATE/calls.log" && pass "第二次合并锁定新 head" \
+  || fail "第二次合并未锁定新 head：$(grep '^pr merge' "$FAKE_STATE/calls.log")"
+last_api="$(grep -n 'check-runs' "$FAKE_STATE/calls.log" | tail -1 | cut -d: -f1)"; last_merge="$(grep -n '^pr merge' "$FAKE_STATE/calls.log" | tail -1 | cut -d: -f1)"
+grep -q -- "commits/${head_after}/check-runs" "$FAKE_STATE/calls.log" && [[ "$last_api" -lt "$last_merge" ]] \
+  && pass "重建后对新 head 重新等验签再合并" || fail "重建后未重新验签：$(calls | tr '\n' '|')"
+[[ -z "$(line_of '^pr close')" ]] && pass "未关闭 PR" || fail "不应关闭 PR"
+
+echo "=== I. BEHIND 且推进后的 main 已含本 digest（另一 run 的 sourceSha/runId）：关闭 PR，视为成功 ==="
+make_k3s "$OLD_DIGEST"
+MERGE_BEHIND_TIMES=1 MERGE_BEHIND_WITH_DIGEST=1 run_script "" success
+[[ "$(cat "$FAKE_STATE/rc")" == 0 ]] && pass "返回 0" || fail "返回 $(cat "$FAKE_STATE/rc")：$(tail -5 "$FAKE_STATE/stdout")"
+[[ "$(git --git-dir="$ROOT/k3s.git" show "main:apps/aster-lang/cloud/image-lock.yaml" | yq '.images[0].runId')" == "99" ]] \
+  && pass "未因元数据差异再推提交（main 仍是另一 run 的 runId）" || fail "元数据差异被当成需要再 pin"
+[[ -n "$(line_of '^pr close 700')" ]] && pass "关闭了已无意义的 PR" || fail "未关闭 PR：$(calls | tr '\n' '|')"
+[[ "$(grep -c '^pr merge' "$FAKE_STATE/calls.log")" == "1" ]] && pass "未再尝试合并" || fail "多余的合并调用"
+[[ "$(git --git-dir="$ROOT/k3s.git" show "main:apps/aster-lang/cloud/kustomization.yaml" | yq '.images[0].digest')" == "$NEW_DIGEST" ]] \
+  && pass "main 已是本 digest" || fail "main digest 不对"
+grep -q 'wait_required=true' "$FAKE_STATE/out" && pass "下游仍等待迁移应用" || fail "wait_required 输出不对：$(cat "$FAKE_STATE/out")"
+
+echo "=== J. BEHIND、main 已含本 digest 但关闭 PR 失败：脚本失败（不让下游等一个仍 OPEN 的 PR）==="
+make_k3s "$OLD_DIGEST"
+MERGE_BEHIND_TIMES=1 MERGE_BEHIND_WITH_DIGEST=1 CLOSE_FAILS=1 run_script "" success
+[[ "$(cat "$FAKE_STATE/rc")" != 0 ]] && pass "返回非 0" || fail "关闭失败不应成功"
+grep -q "关闭 PR #700 失败" "$FAKE_STATE/stdout" && pass "报出关闭失败原因" || fail "缺少错误信息：$(tail -3 "$FAKE_STATE/stdout")"
+
 echo "=== E. 有改动、验签失败：不合并，脚本失败 ==="
 make_k3s "$OLD_DIGEST"; run_script "" failure
 [[ "$(cat "$FAKE_STATE/rc")" != 0 ]] && pass "返回非 0" || fail "验签失败时不应成功"
