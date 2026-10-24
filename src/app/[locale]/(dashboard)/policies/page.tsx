@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { getTranslations } from 'next-intl/server';
 import { getPolicyFreezeStatus } from '@/lib/policy-freeze';
+import { isPolicySharingEnabled } from '@/lib/platform-settings';
 import {
   listPolicyGroupsWithCounts,
   listUserPolicies,
@@ -63,9 +64,12 @@ export default async function PoliciesPage({
   // Sidebar + freeze status are independent of the policies pagination
   // state — load them in parallel with the page slice so a heavy
   // execution-count query doesn't gate the sidebar render.
-  const [groupsRaw, freezeStatus] = await Promise.all([
+  // 共享开关在服务端读一次并下发：关着时客户端不再去请求 shared-with-me（该路由对关闭态
+  // 有意回 404，会在浏览器控制台留下 404 噪音）。
+  const [groupsRaw, freezeStatus, sharingEnabled] = await Promise.all([
     listPolicyGroupsWithCounts(userId),
     getPolicyFreezeStatus(userId),
+    isPolicySharingEnabled(),
   ]);
 
   // ★文件夹式导航（2026-07-15）：选中某组时，右侧只显示**直属该组**的策略（不再把子分组
@@ -191,6 +195,7 @@ export default async function PoliciesPage({
       freezeInfo={freezeInfo}
       translations={translations}
       locale={locale}
+      sharingEnabled={sharingEnabled}
       pagination={{
         page,
         pageSize,

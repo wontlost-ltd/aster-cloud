@@ -9,11 +9,11 @@ import { formatDate } from '@/lib/format';
 /*
  * "Shared with my teams" section on /policies.
  *
- * Self-gates: calls GET /api/policies/shared-with-me on mount. A 404
- * means the platform admin has disabled sharing; an empty list means
- * nothing is shared with the caller's teams. In both cases the
- * section renders nothing — we don't want a permanent empty box on
- * the policies page.
+ * Mounted only when the server-side policy_sharing.enabled gate is on
+ * (see policies/page.tsx), so the mount-time GET /api/policies/shared-with-me
+ * is not fired on the common "sharing off" path. A 404 (flag flipped off
+ * between render and fetch) or an empty list renders nothing — we don't
+ * want a permanent empty box on the policies page.
  *
  * Read-only: clicking a row opens /policies/:id. Revoke lives on the
  * owning team's policy detail (the policy owner controls who can
