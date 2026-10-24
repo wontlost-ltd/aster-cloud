@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { restorePolicy, permanentDeletePolicy } from '@/lib/policy-lifecycle';
+import { invalidatePolicyCache } from '@/lib/cache';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -21,6 +22,8 @@ export async function POST(req: Request, { params }: RouteParams) {
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 404 });
     }
+
+    await invalidatePolicyCache(id);
 
     return NextResponse.json({
       success: true,

@@ -6,6 +6,7 @@ import { formatDate } from '@/lib/format';
 import { Link } from '@/i18n/navigation';
 import { Breadcrumbs, Container, PageHeader } from '@/components/ui';
 import { toClientLog } from './log-mapping';
+import { decisionLabelKey } from './decision-label';
 
 type ExecutionSource = 'WEB' | 'API' | 'CLI' | 'dashboard' | 'api' | 'playground';
 
@@ -31,6 +32,7 @@ interface Stats {
   totalExecutions: number;
   successCount: number;
   failureCount: number;
+  errorCount?: number;
   /** 无决策（值/计算输出）执行数——不计入失败。可选（后端新增字段）。 */
   indeterminateCount?: number;
   /** 待人工处置（require_approval + escalate）执行数——不计入失败，也不参与通过率。 */
@@ -88,6 +90,8 @@ const LOG_STATUS_STYLES: Record<LogStatus, { icon: string; badge: string; path: 
 function logStatus(log: Pick<ExecutionLog, 'decision' | 'success'>): LogStatus {
   if (log.decision === 'indeterminate') return 'computed';
   if (log.decision === 'require_approval' || log.decision === 'escalate') return 'pending';
+  if (log.decision === 'error') return 'failed';
+  if (log.decision === 'denied') return 'failed';
   return log.success ? 'success' : 'failed';
 }
 
@@ -100,9 +104,15 @@ export function logDetailPanel(log: Pick<ExecutionLog, 'decision' | 'success'>):
 }
 
 function logStatusLabel(log: ExecutionLog, t: Translations): string {
-  if (log.decision === 'require_approval' || log.decision === 'escalate') return t.logs[log.decision];
-  if (log.decision === 'indeterminate') return t.logs.computed;
-  return log.success ? t.logs.success : t.logs.failed;
+  const label = decisionLabelKey(log.decision, log.success);
+  if (label === 'indeterminate') return t.logs.computed;
+  if (label === 'approved') return t.logs.approved;
+  if (label === 'denied') return t.logs.denied;
+  if (label === 'error') return t.logs.error;
+  if (label === 'indeterminate') return t.logs.computed;
+  if (label === 'require_approval') return t.logs.require_approval;
+  if (label === 'escalate') return t.logs.escalate;
+  return t.logs.failed;
 }
 
 interface Translations {
@@ -114,6 +124,8 @@ interface Translations {
     all: string;
     success: string;
     failed: string;
+    approved: string;
+    denied: string;
     /** 值/计算输出（indeterminate）中性状态标签。 */
     computed: string;
     /** Verdict 需人工批准（require_approval）待处置标签。 */
@@ -528,8 +540,9 @@ export function LogsContent({
                   </svg>
                 </div>
               </div>
-              <p className="mt-4 text-sm font-medium text-rose-100">{t.logs.failed}</p>
+              <p className="mt-4 text-sm font-medium text-rose-100">{t.logs.denied}</p>
               <p className="mt-1 text-3xl font-bold text-white">{stats.failureCount.toLocaleString(locale)}</p>
+              <p className="mt-1 text-xs text-rose-100">{t.logs.error}: {(stats.errorCount ?? 0).toLocaleString(locale)}</p>
             </div>
           </div>
 

@@ -269,6 +269,8 @@ export function VersionsContent({
           }
         />
 
+        <p className="-mt-3 text-sm text-fg-muted">{t('executionRule')}</p>
+
         {error ? (
           <EmptyState
             title={tCommon('somethingWrong')}

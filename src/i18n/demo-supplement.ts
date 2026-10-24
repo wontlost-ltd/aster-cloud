@@ -866,6 +866,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         // 值/计算输出策略（如 greet 返回文本）：执行成功但无 allow/deny 语义。
         computed: 'Computed',
         noDecision: 'No decision (value output)',
+        completed: 'Completed',
+        error: 'Error',
         // Verdict 待处置态（ADR 0041 §4）。
         require_approval: 'Needs approval',
         escalate: 'Escalated',
@@ -883,6 +885,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       // 版本列表补充（其余按钮文案复用包内 policies.versions.actions.*）。
       versions: {
+        executionRule: 'Execution uses the default version when set; otherwise the highest approved version. If no version has ever been approved, it uses the latest saved content.',
         awaitingOthers: 'Waiting for another approver',
         approvalCount: '{count} approval records',
         // 个人策略所有者审批自己提交的版本时的说明（审计里记为自审）。
@@ -891,6 +894,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noEligibleReviewer: 'No other team owner or admin can approve this — make a member an admin in team settings',
       },
       logs: {
+        approved: 'Approved',
+        denied: 'Rejected',
+        error: 'Execution error',
+        successRate: 'Approval rate',
         // 筛选区标题、相对时间「刚刚」、加载与空态提示（原为硬编码英文）。
         filtersTitle: 'Filters',
         justNow: 'Just now',
@@ -916,7 +923,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         guardError: 'Approval registration failed',
         // 统计卡：待处置数量与通过率口径说明。
         pendingLabel: 'Pending',
-        rateNote: 'Rate counts settled decisions only (approved vs. denied/error); pending and value-only runs are excluded.',
+        rateNote: 'Approval rate = approved / (approved + rejected). Execution errors are counted separately.',
       },
       form: {
         // AI 行内补全开关（状态栏）
@@ -1931,6 +1938,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       execute: {
         computed: '已计算',
         noDecision: '无决策（值输出）',
+        completed: '已完成',
+        error: '执行错误',
         require_approval: '需人工批准',
         escalate: '已升级',
       },
@@ -1947,6 +1956,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       // 版本列表补充（其余按钮文案复用包内 policies.versions.actions.*）。
       versions: {
+        executionRule: '执行时优先使用设为默认的版本；否则使用版本号最高的已批准版本。若从未有版本获批，则使用最新保存的内容。',
         awaitingOthers: '等待他人审批',
         approvalCount: '{count} 条审批记录',
         selfApproveNote: '你正在审批自己提交的版本。个人策略没有第二位审批人，因此允许自审；本次决定会在审计日志中标记为自审。',
@@ -1958,10 +1968,15 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         },
       },
       logs: {
+        approved: '已批准',
+        denied: '已拒绝',
+        error: '执行错误',
+        successRate: '通过率',
         filtersTitle: '筛选',
         justNow: '刚刚',
         loadingLogs: '正在加载执行日志…',
         noLogsHint: '执行该策略后，日志会显示在这里',
+        rateNote: '通过率 = 已批准 /（已批准 + 已拒绝）。执行错误单独统计。',
         parity: {
           tooltip: '执行器回放一致性（影子校验）',
           match: '一致 ✓',
@@ -1978,7 +1993,6 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         guardError: '审批登记失败',
         // 统计卡：待处置数量与通过率口径说明。
         pendingLabel: '待处置',
-        rateNote: '通过率仅统计已定论的决策（通过 vs 拒绝/错误）；待处置与值输出不计入。',
       },
       form: {
         // AI 行内补全开关（状态栏）
@@ -3001,6 +3015,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       execute: {
         computed: 'Berechnet',
         noDecision: 'Keine Entscheidung (Wertausgabe)',
+        completed: 'Abgeschlossen',
+        error: 'Ausführungsfehler',
         require_approval: 'Freigabe nötig',
         escalate: 'Eskaliert',
       },
@@ -3017,6 +3033,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       // 版本列表补充（其余按钮文案复用包内 policies.versions.actions.*）。
       versions: {
+        executionRule: 'Bei der Ausführung gilt die als Standard festgelegte Version; andernfalls die höchste freigegebene Version. Wurde noch nie eine Version freigegeben, wird der zuletzt gespeicherte Inhalt verwendet.',
         awaitingOthers: 'Wartet auf andere Prüfer',
         approvalCount: '{count} Freigabeeinträge',
         selfApproveNote: 'Sie prüfen Ihre eigene Einreichung. Persönliche Richtlinien haben keine zweite prüfende Person, daher ist das erlaubt; die Entscheidung wird im Audit-Protokoll als Selbstfreigabe vermerkt.',
@@ -3024,10 +3041,15 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noEligibleReviewer: 'Im Team gibt es keine andere Inhaberin, keinen anderen Inhaber und keinen Admin, die freigeben können – machen Sie in den Teameinstellungen ein Mitglied zum Admin',
       },
       logs: {
+        approved: 'Freigegeben',
+        denied: 'Abgelehnt',
+        error: 'Ausführungsfehler',
+        successRate: 'Freigabequote',
         filtersTitle: 'Filter',
         justNow: 'Gerade eben',
         loadingLogs: 'Ausführungsprotokolle werden geladen…',
         noLogsHint: 'Führen Sie die Richtlinie aus, um hier Protokolle zu sehen',
+        rateNote: 'Freigabequote = freigegeben / (freigegeben + abgelehnt). Ausführungsfehler werden separat gezählt.',
         parity: {
           tooltip: 'Runner-Replay-Parität (Schattenprüfung)',
           match: 'Parität ✓',
@@ -3044,7 +3066,6 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         guardError: 'Freigabe-Registrierung fehlgeschlagen',
         // 统计卡：待处置数量与通过率口径说明。
         pendingLabel: 'Ausstehend',
-        rateNote: 'Die Quote zählt nur abgeschlossene Entscheidungen (genehmigt vs. abgelehnt/Fehler); ausstehende und reine Wertausgaben sind ausgenommen.',
       },
       form: {
         // AI 行内补全开关（状态栏）
@@ -4060,6 +4081,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       execute: {
         computed: 'परिकलित',
         noDecision: 'कोई निर्णय नहीं (मान आउटपुट)',
+        completed: 'पूरा हुआ',
+        error: 'निष्पादन त्रुटि',
         require_approval: 'अनुमोदन आवश्यक',
         escalate: 'एस्केलेट किया गया',
       },
@@ -4076,6 +4099,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       // 版本列表补充（其余按钮文案复用包内 policies.versions.actions.*）。
       versions: {
+        executionRule: 'निष्पादन में डिफ़ॉल्ट संस्करण को प्राथमिकता मिलती है; अन्यथा सबसे बड़ा स्वीकृत संस्करण चलता है। यदि कभी कोई संस्करण स्वीकृत नहीं हुआ, तो नवीनतम सहेजी गई सामग्री चलती है।',
         awaitingOthers: 'किसी अन्य अनुमोदक की प्रतीक्षा',
         approvalCount: '{count} अनुमोदन रिकॉर्ड',
         selfApproveNote: 'आप अपना ही जमा किया गया संस्करण जाँच रहे हैं। व्यक्तिगत नीतियों में कोई दूसरा समीक्षक नहीं होता, इसलिए इसकी अनुमति है; यह निर्णय ऑडिट लॉग में स्व-अनुमोदन के रूप में दर्ज होगा।',
@@ -4083,10 +4107,15 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noEligibleReviewer: 'टीम में अनुमोदन के लिए कोई अन्य स्वामी या व्यवस्थापक नहीं है — टीम सेटिंग्स में किसी सदस्य को व्यवस्थापक बनाएँ',
       },
       logs: {
+        approved: 'स्वीकृत',
+        denied: 'अस्वीकृत',
+        error: 'निष्पादन त्रुटि',
+        successRate: 'स्वीकृति दर',
         filtersTitle: 'फ़िल्टर',
         justNow: 'अभी-अभी',
         loadingLogs: 'निष्पादन लॉग लोड हो रहे हैं…',
         noLogsHint: 'यहाँ लॉग देखने के लिए नीति निष्पादित करें',
+        rateNote: 'स्वीकृति दर = स्वीकृत / (स्वीकृत + अस्वीकृत)। निष्पादन त्रुटियाँ अलग गिनी जाती हैं।',
         parity: {
           tooltip: 'रनर रीप्ले समानता (छाया जाँच)',
           match: 'समानता ✓',
@@ -4103,7 +4132,6 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         guardError: 'अनुमोदन पंजीकरण विफल',
         // 统计卡：待处置数量与通过率口径说明。
         pendingLabel: 'लंबित',
-        rateNote: 'दर केवल तय निर्णयों (स्वीकृत बनाम अस्वीकृत/त्रुटि) को गिनती है; लंबित और केवल-मान रन शामिल नहीं हैं।',
       },
       form: {
         // AI 行内补全开关（状态栏）

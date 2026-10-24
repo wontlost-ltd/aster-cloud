@@ -90,6 +90,7 @@ vi.mock('@opennextjs/cloudflare', () => ({
 vi.mock('@/lib/prisma', () => ({
   db: {
     query: {
+      policyVersions: { findMany: vi.fn().mockResolvedValue([]) },
       policies: {
         findMany: vi.fn(),
         findFirst: vi.fn(),
@@ -106,6 +107,7 @@ vi.mock('@/lib/prisma', () => ({
     select: mockDbSelect,
   },
   policies: { id: {}, userId: {}, deletedAt: {}, updatedAt: {} },
+  policyVersions: { policyId: {} },
   executions: { policyId: {}, userId: {} },
   users: { id: {}, plan: {}, trialEndsAt: {} },
   teamMembers: { userId: {}, teamId: {} },
