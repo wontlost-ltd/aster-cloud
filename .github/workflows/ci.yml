@@ -877,12 +877,24 @@ jobs:
           [ -n "$ARGOCD_AUTH_TOKEN" ] || { echo "::error title=migration not verified::ARGOCD_AUTH_TOKEN 未配置（Production env）→ 无法确认迁移已应用。详见 #187。"; exit 1; }
           [ -n "$PR" ] || { echo "::error::wait_required=true 但 pr_number 空（脚本输出异常）"; exit 1; }
 
+          # 读 k3s 某 revision 的 kustomization 里 migrate 镜像 digest（抗并发：判 digest-contains，非 merge-sha equality）。
+          migrate_digest_at() {
+            GH_TOKEN="$K3S_TOKEN" gh api \
+              "repos/wontlost-ltd/k3s/contents/apps/aster-lang/cloud/kustomization.yaml?ref=$1" \
+              --jq '.content' | base64 -d \
+              | python3 -c 'import sys,yaml;d=yaml.safe_load(sys.stdin);print(next((i["digest"] for i in d.get("images",[]) if i.get("name")=="docker.io/wontlost/aster-cloud-migrate"),""))'
+          }
+
           # 1) 等**本次** PR 合并（按明确 pr_number,非历史反推）。脚本在 verify-image-pin 通过后才合并。
+          #    PR 被脚本关闭只有一种情况：等验签期间另一 run 已把同一 digest 合入 main（BEHIND 重建后无 diff）；
+          #    此时 main 已含本 digest，照样进入 ArgoCD 校验；其它关闭仍是致命。
           for i in $(seq 1 80); do   # ~20min
             state="$(GH_TOKEN="$K3S_TOKEN" gh pr view "$PR" -R wontlost-ltd/k3s --json state --jq .state)"
             case "$state" in
               MERGED) echo "PR #$PR 已合并"; break ;;
-              CLOSED) echo "::error title=migration not applied::image-pin PR #$PR 已关闭未合并 → 迁移未上线。"; exit 1 ;;
+              CLOSED)
+                if [ "$(migrate_digest_at main)" = "$DIGEST" ]; then echo "PR #$PR 已关闭，但 k3s main 已含本 digest（被并发 run 抢先合入）→ 继续"; break; fi
+                echo "::error title=migration not applied::image-pin PR #$PR 已关闭未合并 → 迁移未上线。"; exit 1 ;;
             esac
             [ "$i" = 80 ] && { echo "::error title=migration not applied::等 PR #$PR 合并超时（verify-image-pin 未过？）→ 迁移未上线。详见 #187。"; exit 1; }
             sleep 15
@@ -917,10 +929,7 @@ jobs:
             # rev 形状校验（40-hex）——异常 revision 不进 GitHub contents API（Codex 建议）。
             if [ "$sync_status" = "Synced" ] && [ "$health" = "Healthy" ] && [[ "$rev" =~ ^[0-9a-f]{40}$ ]]; then
               # 校验该 revision 的 kustomization migrate digest == 本次 digest（抗并发,非 merge-sha equality）。
-              deployed="$(GH_TOKEN="$K3S_TOKEN" gh api \
-                "repos/wontlost-ltd/k3s/contents/apps/aster-lang/cloud/kustomization.yaml?ref=${rev}" \
-                --jq '.content' | base64 -d \
-                | python3 -c 'import sys,yaml;d=yaml.safe_load(sys.stdin);print(next((i["digest"] for i in d.get("images",[]) if i.get("name")=="docker.io/wontlost/aster-cloud-migrate"),""))')"
+              deployed="$(migrate_digest_at "$rev")"
               if [ "$deployed" = "$DIGEST" ]; then echo "✅ 迁移已应用：ArgoCD synced rev=${rev:0:8} migrate digest==${DIGEST} Healthy"; exit 0; fi
               echo "  (已 Synced/Healthy 但 rev 的 migrate digest=${deployed} != ${DIGEST}, 继续等更新 revision)"
             fi

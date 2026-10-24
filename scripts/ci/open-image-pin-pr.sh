@@ -77,19 +77,78 @@ wait_for_verification() {
   done
 }
 
+# main 是否已把本镜像 pin 到本 digest：以两处 digest 为准，不看 sourceSha/runId 等运行元数据
+#（另一 run 重跑同一源码会得到同 digest、不同 runId；元数据差异不构成需要再发一个 PR 的理由）。
+main_has_digest() {
+  [[ "$(IMAGE="$IMAGE" yq '.images[] | select(.image == strenv(IMAGE)) | .digest' "$LOCK_PATH")" == "$DIGEST" ]] \
+    && [[ "$(IMAGE="$IMAGE" yq '.images[] | select(.name == strenv(IMAGE)) | .digest' "$KUSTOMIZATION_PATH")" == "$DIGEST" ]]
+}
+
+# ── 从最新 origin/main 重建固定分支并推送：双写本 entry（image-lock 验签真相 + kustomization 部署真相）──
+# 输出新 head sha；若最新 main 已含本 digest 则输出空串且不推送。
+# 用 --force-with-lease 以远端实际 SHA 作基线（防同 App 并发 run 互相覆盖）。
+# 需要已 cd 进 k3s clone，且 IMAGE/BRANCH/DIGEST/SOURCE_SHA/RUN_ID/LOCK_PATH/KUSTOMIZATION_PATH 已设。
+rebuild_branch_on_main() {
+  local remote_sha
+  git_c fetch -q --depth=1 origin main
+  git checkout -q -B "$BRANCH" origin/main
+  if main_has_digest; then echo ""; return 0; fi
+  DIGEST="$DIGEST" SOURCE_SHA="$SOURCE_SHA" RUN_ID="$RUN_ID" IMAGE="$IMAGE" yq -i '
+    (.images[] | select(.image == strenv(IMAGE))).digest    = strenv(DIGEST)  |
+    (.images[] | select(.image == strenv(IMAGE))).sourceSha = strenv(SOURCE_SHA) |
+    (.images[] | select(.image == strenv(IMAGE))).runId     = strenv(RUN_ID)
+  ' "$LOCK_PATH"
+  # kustomization：只改本镜像的 digest（部署真相），k3s verify 校验 == image-lock digest。
+  DIGEST="$DIGEST" IMAGE="$IMAGE" yq -i '
+    (.images[] | select(.name == strenv(IMAGE))).digest = strenv(DIGEST)
+  ' "$KUSTOMIZATION_PATH"
+  git config user.name  "aster-image-pin[bot]"
+  git config user.email "301590099+aster-image-pin[bot]@users.noreply.github.com"
+  git add "$LOCK_PATH" "$KUSTOMIZATION_PATH"
+  git commit -q -m "chore(image-pin): ${IMAGE##*/} → ${DIGEST} (sha ${SOURCE_SHA})"
+  remote_sha="$(git_c ls-remote --heads origin "$BRANCH" | cut -f1 || true)"
+  if [[ -n "$remote_sha" ]]; then
+    git_c push -q --force-with-lease="${BRANCH}:${remote_sha}" origin "$BRANCH"
+  else
+    git_c push -q origin "$BRANCH"
+  fi
+  git rev-parse HEAD
+}
+
 # 验签通过后按本 run 锁定的 head 直接合并；head 被他人改动时 --match-head-commit 拒绝合并。
 MERGE_RETRY_ATTEMPTS="${MERGE_RETRY_ATTEMPTS:-8}"
 MERGE_RETRY_SECONDS="${MERGE_RETRY_SECONDS:-15}"
-# ★verify-image-pin 的 check-run 已 completed success，GitHub 规则集对 head 的 required-status 评估却可能滞后几秒到几十秒，
-#   此时 `gh pr merge` 报 "Required status check \"verify-image-pin\" is expected"（aster-cloud#546，一天三次）。
-#   只对这一种可识别的瞬态错误重试；其它错误原样失败。
+BEHIND_REBUILD_ATTEMPTS="${BEHIND_REBUILD_ATTEMPTS:-3}"
+# ★两种可识别的瞬态拒绝，分别处理；其它错误原样失败：
+#   1. verify-image-pin 的 check-run 已 completed success，规则集对 head 的 required-status 评估却滞后几秒到几十秒
+#      → "Required status check \"verify-image-pin\" is expected"（aster-cloud#546）：原地重试。
+#   2. 等验签期间另一个 pin PR（同仓其它镜像）先合入 main，规则集要求线性历史，本 PR 变 BEHIND
+#      → "the head branch is not up to date with the base branch"：从最新 main 重建分支、重新等验签再合并。
+#      若重建后无 diff（main 已含本 digest），PR 已无意义，关闭并视为成功。
 merge_when_verified() {
-  local pr="$1" sha="$2" attempt err_file
+  local pr="$1" sha="$2" attempt rebuilds=0 err_file
   wait_for_verification "$sha" || return 1
   err_file="$(mktemp)"
   for (( attempt = 1; attempt <= MERGE_RETRY_ATTEMPTS; attempt++ )); do
     if gh pr merge "$pr" -R "$K3S_REPO" --squash --delete-branch --match-head-commit "$sha" 2>"$err_file"; then
       rm -f "$err_file"; return 0
+    fi
+    if grep -qiE 'not up to date with the base branch' "$err_file"; then
+      if (( ++rebuilds > BEHIND_REBUILD_ATTEMPTS )); then
+        echo "::error::分支落后 main，重建 ${BEHIND_REBUILD_ATTEMPTS} 次后仍无法合并：$(tr '\n' ' ' < "$err_file")" >&2
+        rm -f "$err_file"; return 1
+      fi
+      echo "::notice::PR #${pr} 落后 main（第 ${rebuilds}/${BEHIND_REBUILD_ATTEMPTS} 次），从最新 main 重建分支后重新验签"
+      sha="$(rebuild_branch_on_main)"
+      if [[ -z "$sha" ]]; then
+        echo "最新 main 已含本 digest → 关闭 PR #${pr}，无需合并"
+        # 关闭失败必须 fail-loud：下游 Wait 步只对「已 CLOSED 且 main 含本 digest」放行，PR 仍 OPEN 会等到超时。
+        gh pr close "$pr" -R "$K3S_REPO" --delete-branch --comment "main 已包含本 digest，由源仓 CI 自动关闭。" \
+          || { echo "::error::main 已含本 digest 但关闭 PR #${pr} 失败 → 需人工关闭" >&2; rm -f "$err_file"; return 1; }
+        rm -f "$err_file"; return 0
+      fi
+      wait_for_verification "$sha" || { rm -f "$err_file"; return 1; }
+      attempt=0; continue
     fi
     if ! grep -qiE 'status check .* is expected' "$err_file"; then
       cat "$err_file" >&2; rm -f "$err_file"; return 1
@@ -150,24 +209,15 @@ count="$(IMAGE="$IMAGE" yq '.images | map(select(.image == strenv(IMAGE))) | len
 kcount="$(IMAGE="$IMAGE" yq '.images | map(select(.name == strenv(IMAGE))) | length' "$KUSTOMIZATION_PATH")"
 [[ "$kcount" == "1" ]] || { echo "::error::kustomization 中 ${IMAGE} 的 images entry 数=${kcount} (需恰好 1)"; exit 1; }
 
-# ── 从最新 origin/main 重建固定分支，双写本 entry（image-lock 验签真相 + kustomization 部署真相）──
-git checkout -B "$BRANCH" origin/main
-DIGEST="$DIGEST" SOURCE_SHA="$SOURCE_SHA" RUN_ID="$RUN_ID" IMAGE="$IMAGE" yq -i '
-  (.images[] | select(.image == strenv(IMAGE))).digest    = strenv(DIGEST)  |
-  (.images[] | select(.image == strenv(IMAGE))).sourceSha = strenv(SOURCE_SHA) |
-  (.images[] | select(.image == strenv(IMAGE))).runId     = strenv(RUN_ID)
-' "$LOCK_PATH"
-# kustomization：只改本镜像的 digest（部署真相），k3s verify 校验 == image-lock digest。
-DIGEST="$DIGEST" IMAGE="$IMAGE" yq -i '
-  (.images[] | select(.name == strenv(IMAGE))).digest = strenv(DIGEST)
-' "$KUSTOMIZATION_PATH"
+# ── 从最新 origin/main 重建固定分支并推送；空串 = main 已是本 digest ──
+head_sha="$(rebuild_branch_on_main)"
 
 open_pr_number() {
   gh pr list -R "$K3S_REPO" --head "$BRANCH" --base main --state open \
     --json number --jq '.[0].number // empty'
 }
 
-if git diff --quiet -- "$LOCK_PATH" "$KUSTOMIZATION_PATH"; then
+if [[ -z "$head_sha" ]]; then
   # 无变更：main 已是本 digest。若恰有 open PR 则在验签通过后合并，否则干净退出（不 create）。
   pr="$(open_pr_number)"
   if [[ -n "$pr" ]]; then
@@ -182,21 +232,7 @@ if git diff --quiet -- "$LOCK_PATH" "$KUSTOMIZATION_PATH"; then
   exit 0
 fi
 
-git config user.name  "aster-image-pin[bot]"
-git config user.email "301590099+aster-image-pin[bot]@users.noreply.github.com"
-git add "$LOCK_PATH" "$KUSTOMIZATION_PATH"
-git commit -m "chore(image-pin): ${IMAGE##*/} → ${DIGEST} (sha ${SOURCE_SHA})"
-
-# ── force-with-lease 用远端实际 SHA 作基线（防同 App 并发 run 互相覆盖）──
-remote_sha="$(git_c ls-remote --heads origin "$BRANCH" | cut -f1 || true)"
-if [[ -n "$remote_sha" ]]; then
-  git_c push --force-with-lease="${BRANCH}:${remote_sha}" origin "$BRANCH"
-else
-  git_c push origin "$BRANCH"
-fi
-
 # ── 只查 open PR 决定复用/创建；create/merge 用 --match-head-commit 锁定本 run 的 head ──
-head_sha="$(git rev-parse HEAD)"
 pr_body=$'自动开启（源仓 CI）。\n\nimage: '"${IMAGE}"$'\ndigest: '"${DIGEST}"$'\nsourceSha: '"${SOURCE_SHA}"$'\nrunId: '"${RUN_ID}"$'\n\n本 PR 由源仓 CI 在 verify-image-pin 通过后合并。stale/红：等待最新源仓 CI 重开，或对 latest main 手动 rerun（不允许旧 SHA 绕过 freshness）。'
 pr="$(open_pr_number)"
 if [[ -z "$pr" ]]; then
