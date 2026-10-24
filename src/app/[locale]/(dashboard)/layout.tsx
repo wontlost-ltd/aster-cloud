@@ -205,6 +205,7 @@ export default async function DashboardLayout({
           adminOverview: tAdminOverview('title'),
           aiBreaker: tAdminCircuit('title'),
           riskTier: tAdminRisk('title'),
+          revalidation: tAdminNav('revalidation'),
           aiWorkspaceAccess: tAdminNav('aiWorkspaceAccess'),
           license: tAdminNav('license'),
           licenseRevoke: tAdminNav('licenseRevoke'),

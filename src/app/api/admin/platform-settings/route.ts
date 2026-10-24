@@ -18,7 +18,9 @@ import {
   RUNNER_PARITY_MODES,
   getSetting,
   setSetting,
+  getSettingUncached,
 } from '@/lib/platform-settings';
+import { db, auditLogs } from '@/lib/prisma';
 import { errorEnvelope } from '@/lib/api/error-envelope';
 
 export async function GET() {
@@ -61,7 +63,7 @@ export async function POST(req: Request) {
     const check = await requireAdmin();
     if (check instanceof NextResponse) return check;
 
-    const body = (await req.json()) as { key?: string; value?: unknown };
+    const body = (await req.json()) as { key?: string; value?: unknown; confirm?: string };
     if (!body.key || typeof body.key !== 'string') {
       return NextResponse.json({ error: 'key is required' }, { status: 400 });
     }
@@ -72,6 +74,22 @@ export async function POST(req: Request) {
         { error: `Unknown setting key: ${body.key}` },
         { status: 400 },
       );
+    }
+    if (body.key === PLATFORM_SETTING_KEYS.AUTH_DB_EPOCH) {
+      const oldEpoch = await getSettingUncached<number>(body.key);
+      if (!Number.isInteger(body.value) || (body.value as number) <= 0 || (body.value as number) <= oldEpoch) {
+        return NextResponse.json({ error: 'auth.dbEpoch 须为大于当前值的正整数' }, { status: 400 });
+      }
+      if (body.confirm !== 'logout-all') {
+        return NextResponse.json({ error: '须确认 logout-all' }, { status: 400 });
+      }
+      await setSetting(body.key, body.value, check.userId);
+      await db.insert(auditLogs).values({
+        id: crypto.randomUUID(), userId: check.userId, action: 'auth.db_epoch.bump',
+        resource: 'platform-setting', resourceId: body.key,
+        metadata: { oldEpoch, newEpoch: body.value, operatorId: check.userId },
+      });
+      return NextResponse.json({ ok: true });
     }
     // 值级校验（写侧 fail-fast，给管理员清晰 400；读侧 getRunnerParityConfig 也 fail-closed 兜底）。
     if (body.key === PLATFORM_SETTING_KEYS.RUNNER_PARITY_MODE) {

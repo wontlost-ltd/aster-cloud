@@ -17,6 +17,7 @@ import { sendWelcomeEmail } from '@/lib/resend';
 import { checkAccountLockout, recordFailedAttempt, resetFailedAttempts } from '@/lib/account-lockout';
 import { markDenial } from '@/lib/auth-denial';
 import type { NextAuthConfig } from 'next-auth';
+import { getSettingUncached, PLATFORM_SETTING_KEYS } from '@/lib/platform-settings';
 
 // Password utilities
 export async function hashPassword(password: string): Promise<string> {
@@ -31,7 +32,7 @@ export async function verifyPassword(password: string, hashedPassword: string): 
  * Auth.js v5 配置
  * 在 Cloudflare Workers 中，环境变量在运行时可用
  */
-const config: NextAuthConfig = {
+export const authConfig: NextAuthConfig = {
   // 使用自定义 Drizzle adapter
   adapter: DrizzleAdapter(getDb),
 
@@ -175,6 +176,25 @@ const config: NextAuthConfig = {
   // Callbacks
   callbacks: {
     async jwt({ token, user, trigger }) {
+      if (user) {
+        token.dbEpoch = await getSettingUncached<number>(PLATFORM_SETTING_KEYS.AUTH_DB_EPOCH) ?? 0;
+      } else {
+        let currentEpoch: number;
+        try {
+          currentEpoch = await getSettingUncached<number>(PLATFORM_SETTING_KEYS.AUTH_DB_EPOCH) ?? 0;
+        } catch {
+          console.warn('[auth] session epoch check failed; revoking session');
+          return null;
+        }
+        if (token.dbEpoch === undefined) {
+          // 本功能上线前签发的 token 没有纪元字段：补上当前纪元而不是把所有人登出；
+          // 之后任何一次 bump 都会让它失效。
+          token.dbEpoch = currentEpoch;
+        } else if (token.dbEpoch !== currentEpoch) {
+          console.warn('[auth] session epoch mismatch; revoking session');
+          return null;
+        }
+      }
       if (user) {
         token.id = user.id;
 
@@ -427,7 +447,7 @@ const config: NextAuthConfig = {
 };
 
 // 导出 auth 函数和 handlers
-export const { handlers, auth, signIn, signOut } = NextAuth(config);
+export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
 
 // 兼容性导出 - getSession 现在使用 auth()
 export async function getSession() {

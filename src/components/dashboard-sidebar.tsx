@@ -316,6 +316,7 @@ interface DashboardSidebarProps {
     adminOverview: string;
     aiBreaker: string;
     riskTier: string;
+    revalidation: string;
     aiWorkspaceAccess: string;
     license: string;
     licenseRevoke: string;
@@ -440,6 +441,7 @@ export function DashboardSidebar({
         { href: '/admin',                   label: labels.adminOverview, icon: ShieldCheck, match: 'exact' },
         { href: '/admin/ai-circuit-breaker', label: labels.aiBreaker,    icon: Zap },
         { href: '/admin/ai-workspace-access', label: labels.aiWorkspaceAccess, icon: Bot },
+        { href: '/admin/revalidation', label: labels.revalidation, icon: AlertTriangle },
         ...(adminCapabilities.riskTier
           ? [{ href: '/admin/risk-tier', label: labels.riskTier, icon: AlertTriangle } as SidebarItem]
           : []),

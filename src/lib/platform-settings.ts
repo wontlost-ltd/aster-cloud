@@ -35,6 +35,7 @@ export const PLATFORM_SETTING_KEYS = {
   // ★只能追加，不能覆盖"只依据站内条目作答"等硬约束（在 aster-api 侧强制，
   //   见 PromptComposer.buildAssistantContext 与其测试）。
   ASSISTANT_EXTRA_INSTRUCTIONS: 'assistant.extra_instructions',
+  AUTH_DB_EPOCH: 'auth.dbEpoch',
 } as const;
 
 /** 管理员附加指令长度上限，与 aster-api AssistantRequest 的 @Size 对齐。 */
@@ -57,6 +58,7 @@ const DEFAULTS: Record<string, unknown> = {
   [PLATFORM_SETTING_KEYS.ASSISTANT_ENABLED]: true,
   // 默认空串 = 不附加任何指令，prompt 与未配置时逐字节一致。
   [PLATFORM_SETTING_KEYS.ASSISTANT_EXTRA_INSTRUCTIONS]: '',
+  [PLATFORM_SETTING_KEYS.AUTH_DB_EPOCH]: 0,
 };
 
 const CACHE_TTL_MS = 60_000;
@@ -92,6 +94,12 @@ export async function getSetting<T = unknown>(key: string): Promise<T> {
     // because the DB hiccupped.
     return DEFAULTS[key] as T;
   }
+}
+
+/** 直接读取数据库中的设置，供撤销类判断绕过 isolate 缓存。 */
+export async function getSettingUncached<T = unknown>(key: string): Promise<T> {
+  const row = await db.query.platformSettings.findFirst({ where: eq(platformSettings.key, key) });
+  return (row ? row.value : DEFAULTS[key]) as T;
 }
 
 /**

@@ -347,6 +347,14 @@
       "locales": "all"
     },
     {
+      "path": "/admin/revalidation",
+      "status": "canonical-here",
+      "owner": "admin",
+      "source": "src/app/[locale]/(dashboard)/admin/revalidation/page.tsx",
+      "auth": "admin",
+      "locales": "all"
+    },
+    {
       "path": "/admin/rule-regression",
       "status": "canonical-here",
       "owner": "admin",
