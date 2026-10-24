@@ -237,7 +237,7 @@ describe('SOX guard — adversarial inputs', () => {
       expect(res.status).toBe(400);
       const data = await res.json();
       expect(data.error).toBe('approve_failed');
-      expect(data.message).toBe('批准失败');
+      expect(data.message).toBe('Could not approve version.');
     });
   });
 

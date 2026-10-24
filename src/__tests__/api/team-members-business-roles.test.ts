@@ -85,7 +85,7 @@ describe('PUT 成员业务角色（ADR 0042 §2.1）', () => {
     seed('admin', { id: 'm2', teamId: 't1', userId: 'u2', role: 'member', businessRoles: [] });
     const res = await PUT(put({ businessRoles: ['数据保护官'] }), params);
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: 'invalid_business_role' });
+    expect(await res.json()).toEqual({ error: 'invalid_business_role', code: 'invalid_business_role' });
     expect(m.update).not.toHaveBeenCalled();
   });
 

@@ -102,13 +102,13 @@ describe('VersionsContent 审批操作', () => {
   it('团队审阅人（非所有者）：策略名面包屑为纯文本，不显示「新建版本」（都是所有者专属页面）', () => {
     renderAs('admin1', { policyOwnerId: 'author', policyTeamId: 'team1', reviewerTeamRole: 'admin' });
     expect(screen.getByText('loan').tagName).toBe('SPAN');
-    expect(screen.queryByRole('button', { name: 'policies.versions.newVersion' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'policies.versions.newVersion' })).toBeNull();
   });
 
   it('策略所有者：策略名面包屑可点击，显示「新建版本」', () => {
     renderAs('author', { policyOwnerId: 'author', policyTeamId: 'team1', reviewerTeamRole: 'owner' });
     expect(screen.getByRole('link', { name: 'loan' }).getAttribute('href')).toBe('/policies/p1');
-    expect(screen.getByRole('button', { name: 'policies.versions.newVersion' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'policies.versions.newVersion' })).toBeTruthy();
   });
 
   it('团队普通成员：不能审批', () => {

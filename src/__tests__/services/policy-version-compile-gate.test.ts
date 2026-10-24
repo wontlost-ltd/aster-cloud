@@ -194,7 +194,7 @@ describe('assertCompilable — 治理档案诊断（ADR 0046 §4）', () => {
     expect(caught).toBeInstanceOf(PolicyCompileError);
     const message = (caught as Error).message;
     expect(message).not.toContain('解析错误');
-    expect(message).toContain('治理档案');
+    expect(message).toContain('governance profile');
     expect(message).toContain('rule r lacks EU_AI_ACT control');
     expect(message).not.toContain('second');
   });
@@ -237,7 +237,7 @@ describe('assertCompilable — 治理档案诊断（ADR 0046 §4）', () => {
     expect((caught as PolicyCompileUnavailableError).retryAfterSeconds).toBe(
       DEFAULT_COMPILE_RETRY_AFTER_SECONDS,
     );
-    expect((caught as Error).message).not.toContain('治理档案');
+    expect((caught as Error).message).not.toContain('governance profile');
   });
 
   it('E707 与 E705/E706 并存 → 档案违规优先，抛 400 语义的 PolicyCompileError', async () => {
@@ -254,7 +254,7 @@ describe('assertCompilable — 治理档案诊断（ADR 0046 §4）', () => {
     expect(caught).toBeInstanceOf(PolicyCompileError);
     expect(caught).not.toBeInstanceOf(PolicyCompileUnavailableError);
     expect((caught as PolicyCompileError).retryAfterSeconds).toBeUndefined();
-    expect((caught as Error).message).toContain('治理档案');
+    expect((caught as Error).message).toContain('governance profile');
     expect((caught as Error).message).toContain('rule r lacks @id');
   });
 

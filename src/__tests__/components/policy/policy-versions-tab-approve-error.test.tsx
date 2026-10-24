@@ -10,7 +10,7 @@ const h = vi.hoisted(() => ({ approve: vi.fn(), toastError: vi.fn() }));
 vi.mock('next-intl', () => ({
   useTranslations: (ns: string) => (key: string) => `${ns}.${key}`,
 }));
-vi.mock('@/components/ui', () => ({ toast: { error: h.toastError } }));
+vi.mock('@/components/ui', () => ({ toast: { error: h.toastError, success: vi.fn() } }));
 vi.mock('@/hooks/use-policy-versions', () => ({
   usePolicyVersions: () => ({
     versions: [{ id: 'v1', version: 2, status: 'PENDING_APPROVAL', createdBy: 'author' }],

@@ -311,7 +311,8 @@ export async function PUT(req: Request, { params }: RouteParams) {
     });
 
     // 响应前完成失效；KV 故障由缓存服务记录，不阻断策略更新。
-    await invalidatePolicyCache(id);
+    // 响应前完成缓存失效；KV 故障只记录，不把已成功的写操作报成失败。
+    await invalidatePolicyCache(id).catch((err) => console.warn('[Cache] Failed to invalidate policy cache:', err));
 
     return NextResponse.json(policy);
   } catch (error) {
@@ -353,7 +354,8 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     await logSecurityAdminAction(session.user.id, 'POLICY_TRASHED', { policyId: id });
 
     // 响应前完成失效；KV 故障由缓存服务记录，不阻断策略删除。
-    await invalidatePolicyCache(id);
+    // 响应前完成缓存失效；KV 故障只记录，不把已成功的写操作报成失败。
+    await invalidatePolicyCache(id).catch((err) => console.warn('[Cache] Failed to invalidate policy cache:', err));
 
     return NextResponse.json({
       success: true,

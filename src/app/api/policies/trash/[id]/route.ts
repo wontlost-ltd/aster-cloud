@@ -24,7 +24,8 @@ export async function POST(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: result.error }, { status: 404 });
     }
 
-    await invalidatePolicyCache(result.policyId ?? id);
+    // 响应前完成缓存失效；KV 故障只记录，不把已成功的写操作报成失败。
+    await invalidatePolicyCache(result.policyId ?? id).catch((err) => console.warn('[Cache] Failed to invalidate policy cache:', err));
     await logSecurityAdminAction(session.user.id, 'POLICY_RESTORED', {
       policyId: result.policyId,
     });
