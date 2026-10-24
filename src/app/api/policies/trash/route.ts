@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { getTrashItems, getTrashStats, emptyTrash } from '@/lib/policy-lifecycle';
+import { logSecurityAdminAction } from '@/services/security/security-event-service';
 
 // GET /api/policies/trash - List all policies in trash
 export async function GET() {
@@ -37,6 +38,13 @@ export async function DELETE() {
 
     if (result.errors.length > 0) {
       console.error('Empty trash errors:', result.errors);
+    }
+
+    if (result.deletedCount > 0) {
+      await logSecurityAdminAction(session.user.id, 'POLICY_PERMANENTLY_DELETED', {
+        deletedCount: result.deletedCount,
+        source: 'EMPTY_TRASH',
+      });
     }
 
     return NextResponse.json({

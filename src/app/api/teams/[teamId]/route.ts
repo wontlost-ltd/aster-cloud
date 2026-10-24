@@ -5,6 +5,7 @@ import { eq, and, isNull, not, sql } from 'drizzle-orm';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
 import { validateTeamName, validateSlug } from '@/lib/validation';
 import { revokeTeamKeys } from '@/lib/api-keys';
+import { logSecurityAdminAction } from '@/services/security/security-event-service';
 
 type RouteParams = { params: Promise<{ teamId: string }> };
 
@@ -194,6 +195,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     await revokeTeamKeys(teamId).catch((err) =>
       console.warn('[teams] revokeTeamKeys after team deletion failed:', err)
     );
+    await logSecurityAdminAction(session.user.id, 'TEAM_DELETED', { teamId });
 
     return NextResponse.json({ success: true });
   } catch (error) {

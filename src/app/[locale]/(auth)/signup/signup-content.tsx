@@ -34,6 +34,7 @@ import {
   Wordmark,
 } from '@/components/ui';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
+import { getSignupPlanSummary } from '@/lib/signup-plan-summary';
 
 export function SignupContent() {
   const t = useTranslations('auth.signup');
@@ -81,12 +82,10 @@ export function SignupContent() {
     }
   };
 
-  const trialFeatures = [
-    t('trialFeatures.executions'),
-    t('trialFeatures.pii'),
-    t('trialFeatures.compliance'),
-    t('trialFeatures.api'),
-    t('trialFeatures.support'),
+  const planSummary = getSignupPlanSummary();
+  const planFeatures = [
+    t('planSummary.free', planSummary.free),
+    t('planSummary.pro', planSummary.pro),
   ];
 
   return (
@@ -107,9 +106,7 @@ export function SignupContent() {
             </Stack>
           </Stack>
 
-          {/* Trial benefits — primary-subtle card so it reads as a value
-              summary, not an alert. The dashed-look approach (border with
-              alpha) was tried and felt scrappy; tinted-card is cleaner. */}
+          {/* 当前能力直接来自套餐配置，试用权益由账号实际状态决定。 */}
           <Card className="bg-primary-subtle border-primary/20">
             <CardBody className="py-5">
               <Stack gap={3}>
@@ -117,7 +114,7 @@ export function SignupContent() {
                   {t('trialIncludes')}
                 </p>
                 <ul className="space-y-2">
-                  {trialFeatures.map((feature) => (
+                  {planFeatures.map((feature) => (
                     <li key={feature} className="flex items-start gap-2 text-sm text-fg">
                       <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
                       <span>{feature}</span>

@@ -407,43 +407,41 @@ export function ApiKeysContent({
                   label="cURL"
                   copyLabel={t.copy}
                   copy={copyToClipboard}
-                  code={`curl -X POST https://policy.aster-lang.dev/api/v1/policies/evaluate \\
+                  code={`curl -X POST https://aster-lang.cloud/api/v1/policies/YOUR_POLICY_ID/execute \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "policyModule": "aster.finance.loan",
-    "policyFunction": "evaluateLoanEligibility",
-    "context": [{
+    "functionName": "evaluateLoanEligibility",
+    "input": {
       "creditScore": 750,
       "income": 85000,
       "loanAmount": 250000
-    }]
+    }
   }'`}
                 />
                 <CodeBlock
                   label="JavaScript / Node.js"
                   copyLabel={t.copy}
                   copy={copyToClipboard}
-                  code={`const response = await fetch('https://policy.aster-lang.dev/api/v1/policies/evaluate', {
+                  code={`const response = await fetch('https://aster-lang.cloud/api/v1/policies/YOUR_POLICY_ID/execute', {
   method: 'POST',
   headers: {
     'Authorization': 'Bearer YOUR_API_KEY',
     'Content-Type': 'application/json',
   },
   body: JSON.stringify({
-    policyModule: 'aster.finance.loan',
-    policyFunction: 'evaluateLoanEligibility',
-    context: [{
+    functionName: 'evaluateLoanEligibility',
+    input: {
       creditScore: 750,
       income: 85000,
       loanAmount: 250000,
-    }],
+    },
   }),
 });
 
-const { result, executionTimeMs, error } = await response.json();
-if (error) console.error(error);
-else console.log('Decision:', result, 'in', executionTimeMs, 'ms');`}
+const result = await response.json();
+if (!response.ok || !result.data) console.error(result.error);
+else console.log(result.data.allowed, result.data.deniedReasons, result.data);`}
                 />
                 <CodeBlock
                   label="Python"
@@ -452,27 +450,26 @@ else console.log('Decision:', result, 'in', executionTimeMs, 'ms');`}
                   code={`import requests
 
 response = requests.post(
-    'https://policy.aster-lang.dev/api/v1/policies/evaluate',
+    'https://aster-lang.cloud/api/v1/policies/YOUR_POLICY_ID/execute',
     headers={
         'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json',
     },
     json={
-        'policyModule': 'aster.finance.loan',
-        'policyFunction': 'evaluateLoanEligibility',
-        'context': [{
+        'functionName': 'evaluateLoanEligibility',
+        'input': {
             'creditScore': 750,
             'income': 85000,
             'loanAmount': 250000,
-        }],
+        },
     },
 )
 
 data = response.json()
-if data.get('error'):
-    print('Error:', data['error'])
+if not response.ok or not data.get('data'):
+    print(data.get('error'))
 else:
-    print('Decision:', data['result'], 'in', data['executionTimeMs'], 'ms')`}
+    print(data['data']['allowed'], data['data']['deniedReasons'], data['data'])`}
                 />
               </Stack>
 
@@ -486,8 +483,8 @@ else:
                   label="cURL"
                   copyLabel={t.copy}
                   copy={copyToClipboard}
-                  code={`curl -X GET https://policy.aster-lang.dev/api/v1/policies/YOUR_POLICY_ID/versions \\
-  -H "Authorization: Bearer YOUR_API_KEY"`}
+                  code={`curl -X GET https://aster-lang.cloud/api/v1/policies/YOUR_POLICY_ID/versions \\
+  -H "Cookie: YOUR_CLOUD_SESSION_COOKIE"`}
                 />
               </Stack>
 
@@ -499,13 +496,14 @@ else:
                 </Stack>
                 <CodeBlock
                   code={`{
-  "result": {
+  "success": true,
+  "data": {
+    "allowed": true,
     "approved": true,
-    "interestRate": 0.0625,
-    "reasons": ["credit_score_check", "income_verification"]
-  },
-  "executionTimeMs": 12,
-  "error": null
+    "matchedRules": ["evaluateLoanEligibility"],
+    "deniedReasons": [],
+    "metadata": {}
+  }
 }`}
                 />
               </Stack>
@@ -516,14 +514,14 @@ else:
                   <h3 className="text-sm font-semibold text-fg">{t.examples.errorHandling}</h3>
                   <p className="text-xs text-fg-muted">{t.examples.errorHandlingDesc}</p>
                 </Stack>
-                <Alert variant="warning" hideIcon className="text-xs">
+                <div className="rounded-md border border-warning/30 bg-warning-subtle p-3 text-xs text-fg">
                   <Stack gap={1}>
                     <ErrorRow code="401" text={t.examples.error401} />
                     <ErrorRow code="403" text={t.examples.error403} />
                     <ErrorRow code="404" text={t.examples.error404} />
                     <ErrorRow code="429" text={t.examples.error429} />
                   </Stack>
-                </Alert>
+                </div>
               </Stack>
             </Stack>
           </CardBody>

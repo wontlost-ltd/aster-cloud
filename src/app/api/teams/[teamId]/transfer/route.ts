@@ -5,6 +5,7 @@ import { eq, and } from 'drizzle-orm';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
 import { refreshTeamKeySnapshots } from '@/lib/api-keys';
 import { invalidatePlanCache } from '@/lib/plan-gate-client';
+import { logSecurityAdminAction } from '@/services/security/security-event-service';
 
 type RouteParams = { params: Promise<{ teamId: string }> };
 
@@ -73,6 +74,10 @@ export async function POST(req: Request, { params }: RouteParams) {
     await invalidatePlanCache(teamId).catch((err) =>
       console.warn('[teams] invalidatePlanCache after ownership transfer failed:', err)
     );
+    await logSecurityAdminAction(session.user.id, 'TEAM_OWNERSHIP_TRANSFERRED', {
+      teamId,
+      newOwnerId,
+    });
 
     return NextResponse.json({
       success: true,

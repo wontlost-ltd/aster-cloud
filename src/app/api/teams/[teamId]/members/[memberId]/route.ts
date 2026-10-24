@@ -12,6 +12,7 @@ import {
   canRemoveMember,
   TeamRole,
 } from '@/lib/team-permissions';
+import { logSecurityAdminAction } from '@/services/security/security-event-service';
 
 type RouteParams = { params: Promise<{ teamId: string; memberId: string }> };
 
@@ -184,6 +185,11 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     await revokeTeamKeys(teamId, targetMember.userId).catch((err) =>
       console.warn('[teams] revokeTeamKeys after member removal failed:', err)
     );
+    await logSecurityAdminAction(session.user.id, 'TEAM_MEMBER_REMOVED', {
+      teamId,
+      memberId,
+      removedUserId: targetMember.userId,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

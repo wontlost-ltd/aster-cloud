@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { restorePolicy, permanentDeletePolicy } from '@/lib/policy-lifecycle';
+import { logSecurityAdminAction } from '@/services/security/security-event-service';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -21,6 +22,10 @@ export async function POST(req: Request, { params }: RouteParams) {
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 404 });
     }
+
+    await logSecurityAdminAction(session.user.id, 'POLICY_RESTORED', {
+      policyId: result.policyId,
+    });
 
     return NextResponse.json({
       success: true,
@@ -52,6 +57,8 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 404 });
     }
+
+    await logSecurityAdminAction(session.user.id, 'POLICY_PERMANENTLY_DELETED', { policyId: id });
 
     return NextResponse.json({
       success: true,

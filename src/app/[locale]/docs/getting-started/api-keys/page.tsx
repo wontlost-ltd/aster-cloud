@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import { setRequestLocale } from 'next-intl/server';
-import { notFound } from 'next/navigation';
 import EnContent, { frontmatter as enFrontmatter } from './en.mdx';
 import ZhContent, { frontmatter as zhFrontmatter } from './zh.mdx';
 import DeContent, { frontmatter as deFrontmatter } from './de.mdx';
 import { DocsTrustFooter } from '@/components/docs/DocsTrustFooter';
+import { DocsLocaleContent } from '@/components/docs/DocsLocaleContent';
 
 /**
  * 文档路由包装（结构与 scripts/docs-migration/generate-page-wrappers.mjs 生成的一致）。
@@ -46,7 +46,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   // 英文副本（fallback）页面的 SEO：canonical 指向英文原页并设 noindex，
   // 避免搜索引擎在本地化 URL 下收录重复的英文内容。`fallback: true` 由
   // scripts/docs-migration/mark-fallbacks.mjs 维护。
-  const isFallback = fm.fallback === true;
+  const isFallback = fm.fallback === true || locale === 'hi';
   const canonical = isFallback
     ? localizedDocsUrl('en')
     : localizedDocsUrl(locale);
@@ -76,8 +76,11 @@ export default async function Page({ params }: Props) {
   const footer = (
     <DocsTrustFooter frontmatter={fm} routeSlug={ROUTE_SLUG} locale={locale} />
   );
-  if (locale === 'zh') return <><ZhContent />{footer}</>;
-  if (locale === 'de') return <><DeContent />{footer}</>;
-  if (locale === 'en') return <><EnContent />{footer}</>;
-  notFound();
+  return (
+    <DocsLocaleContent
+      locale={locale}
+      contents={{ en: <EnContent />, zh: <ZhContent />, de: <DeContent /> }}
+      footer={footer}
+    />
+  );
 }
