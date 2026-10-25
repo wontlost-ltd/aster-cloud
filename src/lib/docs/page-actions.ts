@@ -9,7 +9,9 @@
  * Capability gating:
  *   Actions with a `capability` field are only rendered when the
  *   client probe (`useDocsSession()`) reports the matching boolean.
- *   Anonymous users see the subset of actions with `capability: 'public'`.
+ *   探针（/api/docs/session-state）是能力的唯一权威：匿名访客同样按探针返回的
+ *   capabilities 过滤（匿名 canUsePlayground=true），所以匿名可见 `public` 动作
+ *   与「在 Playground 试用」；编辑器入口会把匿名用户带去登录并保留 template 回跳。
  *
  * Why a flat registry instead of frontmatter:
  *   - Compile-time TypeScript exhaustiveness — `RouteSlug` is the
@@ -23,6 +25,7 @@
  */
 
 import { docsSidebar } from '@/lib/docs/sidebar';
+import type { DocsSessionAuth } from '@/lib/docs/use-docs-session';
 
 /**
  * Union of every docs slug declared in `sidebar.ts`. TypeScript will
@@ -290,6 +293,29 @@ export function getPageActions(slug: string): PageActionSet | null {
     return PAGE_ACTIONS[slug as RouteSlug];
   }
   return null;
+}
+
+/**
+ * 按会话探针结果筛选可渲染的动作。
+ *
+ * 探针仍在进行（probing）时不渲染任何动作，避免先显示后消失；探针落定后，
+ * 匿名与已登录一视同仁地读取探针返回的 capabilities——服务端是能力的唯一权威，
+ * 客户端不得再额外把匿名访客降级为「仅 public」，否则会与探针契约不一致。
+ */
+export function pickAvailableActions(
+  set: PageActionSet,
+  session: DocsSessionAuth,
+): { primary: PageAction | null; secondary: PageAction[] } {
+  if (session.status === 'probing') {
+    return { primary: null, secondary: [] };
+  }
+  const { capabilities } = session;
+  const isAllowed = (a: PageAction): boolean =>
+    a.capability === 'public' || capabilities[a.capability] === true;
+  return {
+    primary: isAllowed(set.primary) ? set.primary : null,
+    secondary: (set.secondary ?? []).filter(isAllowed),
+  };
 }
 
 /**

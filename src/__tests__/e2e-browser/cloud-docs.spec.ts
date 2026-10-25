@@ -172,11 +172,38 @@ test.describe('Cloud docs - SEO heads', () => {
       'https://aster-lang.cloud/zh/docs/api/policies/evaluate',
     );
 
+    // 访问 /zh 会写入 NEXT_LOCALE=zh，而 middleware 对带该 cookie 的无前缀路径
+    // 会 307 到 /zh/...（用户语言偏好，有意为之）。这里要验证的是「无前缀 URL 的
+    // canonical」，因此先清掉 cookie，模拟不带 cookie 的爬虫/新访客。
+    await page.context().clearCookies();
     await page.goto('/docs/api/policies/evaluate');
+    await expect(page).toHaveURL(/\/docs\/api\/policies\/evaluate$/);
     const enCanonical = page.locator('link[rel="canonical"]');
     await expect(enCanonical).toHaveAttribute(
       'href',
       'https://aster-lang.cloud/docs/api/policies/evaluate',
+    );
+  });
+
+  test('canonical follows the URL locale, never the NEXT_LOCALE cookie', async ({ page, baseURL }) => {
+    // SEO 护栏：canonical 只能由 URL 中的 locale 决定。cookie 指向 zh 时访问 /de 页，
+    // canonical 仍须是 /de URL；访问无前缀页时被重定向到 /zh，canonical 也与最终 URL 一致。
+    await page.context().addCookies([
+      { name: 'NEXT_LOCALE', value: 'zh', url: baseURL ?? 'https://aster-lang.cloud' },
+    ]);
+    // 注意顺序：访问带前缀的 /de 页会把 NEXT_LOCALE 改写为 de，所以先测无前缀重定向。
+    await page.goto('/docs/api/policies/evaluate');
+    await expect(page).toHaveURL(/\/zh\/docs\/api\/policies\/evaluate$/);
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+      'href',
+      'https://aster-lang.cloud/zh/docs/api/policies/evaluate',
+    );
+
+    await page.goto('/de/docs/api/policies/evaluate');
+    await expect(page).toHaveURL(/\/de\/docs\/api\/policies\/evaluate$/);
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+      'href',
+      'https://aster-lang.cloud/de/docs/api/policies/evaluate',
     );
   });
 
@@ -281,7 +308,9 @@ test.describe('Cloud docs - session-aware chrome', () => {
     const res = await request.get('/api/docs/session-state');
     expect(res.status()).toBe(200);
     expect(res.headers()['cache-control']).toBe('private, no-store, max-age=0');
-    expect(res.headers()['vary']).toBe('Cookie');
+    // Next 会在 Vary 里追加 rsc / next-router-* 等路由头，只要求其中包含 Cookie。
+    const vary = (res.headers()['vary'] ?? '').split(',').map((v) => v.trim().toLowerCase());
+    expect(vary).toContain('cookie');
     const body = await res.json();
     // PII guard — body never contains email/userId/tenant.
     expect(body).not.toHaveProperty('email');
@@ -303,9 +332,21 @@ test.describe('Cloud docs - session-aware chrome', () => {
       const html = await res.text();
       // Allow MDX sample domains (example.com, acme.com, etc.).
       const matches = html.match(/\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}\b/g) ?? [];
+      // 页面会内联 UI 文案目录（@aster-cloud/ui-messages），其中包含公司公开联系邮箱
+      // （隐私政策 / DPO / 客服）以及德语示例占位（kollege@beispiel.com）。它们是有意
+      // 公开的固定地址，不是用户 PII；按完整地址精确放行，避免整域放宽。
+      const companyContacts = [
+        'privacy@aster-lang.cloud',
+        'dpo@aster-lang.cloud',
+        'support@aster-lang.cloud',
+      ];
+      const sampleDomains = [
+        'example.com', 'example.org', 'acme.com', 'acme-corp.com',
+        'aster-lang.dev', 'localhost', 'beispiel.com',
+      ];
       const offending = matches.filter((m) => {
+        if (companyContacts.includes(m.toLowerCase())) return false;
         const domain = m.split('@')[1]?.toLowerCase() ?? '';
-        const sampleDomains = ['example.com', 'example.org', 'acme.com', 'acme-corp.com', 'aster-lang.dev', 'localhost'];
         return !sampleDomains.some((d) => domain === d || domain.endsWith(`.${d}`));
       });
       expect(offending, `unexpected emails on ${path}: ${offending.join(', ')}`).toEqual([]);
@@ -339,13 +380,24 @@ test.describe('Cloud docs - page actions', () => {
     await expect(page.getByRole('link', { name: /Open in Editor/i })).not.toBeVisible();
   });
 
-  test('docs/jump endpoint responds 400 on malformed body without leaking anything', async ({ request }) => {
+  test('docs/jump endpoint responds 400 on malformed body without leaking anything', async ({ request, baseURL }) => {
+    // 浏览器同源点击会带 Origin；middleware 的 CSRF 网关先于 body 校验执行，
+    // 所以必须带上站点自身的 Origin，才能真正覆盖 body 形状校验分支。
+    const origin = new URL(baseURL ?? 'https://aster-lang.cloud').origin;
     const res = await request.post('/api/docs/jump', {
       data: { slug: 'x' }, // missing fields
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Origin: origin },
     });
     expect(res.status()).toBe(400);
     expect(res.headers()['cache-control']).toBe('private, no-store, max-age=0');
+  });
+
+  test('docs/jump endpoint rejects cross-site POSTs (no Origin) with 403', async ({ request }) => {
+    const res = await request.post('/api/docs/jump', {
+      data: { slug: 'x' },
+      headers: { 'Content-Type': 'application/json' },
+    });
+    expect(res.status()).toBe(403);
   });
 });
 

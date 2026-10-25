@@ -9,13 +9,13 @@
  *
  * Hidden when:
  *   - the route has no registered actions (returns null silently),
- *   - the registered primary is auth-gated and the user is anonymous
- *     and no anonymous-safe secondary is available either.
+ *   - 探针返回的 capabilities 既不允许主动作、也不允许任何次要动作。
  *
  * Capability filtering:
  *   - `public` actions always render.
  *   - All other actions only render when the matching capability
- *     bool is true.
+ *     bool is true —— 匿名与已登录都以探针 capabilities 为准
+ *     （见 page-actions.ts 的 pickAvailableActions）。
  *   - During `probing` the bar renders a height-reserved skeleton
  *     pill so the H1 doesn't shift down when the probe resolves and
  *     actions materialize.
@@ -49,8 +49,8 @@ import { cn } from '@aster-cloud/ui';
 import { useDocsSession } from '@/lib/docs/use-docs-session';
 import {
   getPageActions,
+  pickAvailableActions,
   type PageAction,
-  type PageActionSet,
 } from '@/lib/docs/page-actions';
 import { track, Events } from '@/lib/mixpanel';
 
@@ -64,25 +64,6 @@ function resolveSlug(pathname: string): string | null {
   const stripped = pathname.replace(/^\/[a-z]{2}(?=\/)/, '');
   const m = stripped.match(/^\/docs\/(.+?)\/?$/);
   return m ? m[1] : null;
-}
-
-function pickAvailableActions(
-  set: PageActionSet,
-  session: ReturnType<typeof useDocsSession>,
-): { primary: PageAction | null; secondary: PageAction[] } {
-  if (session.status === 'probing') {
-    return { primary: null, secondary: [] };
-  }
-  const capabilities = session.status === 'authenticated' ? session.capabilities : null;
-  const isAllowed = (a: PageAction): boolean => {
-    if (a.capability === 'public') return true;
-    if (!capabilities) return false;
-    return capabilities[a.capability] === true;
-  };
-  return {
-    primary: isAllowed(set.primary) ? set.primary : null,
-    secondary: (set.secondary ?? []).filter(isAllowed),
-  };
 }
 
 /**
