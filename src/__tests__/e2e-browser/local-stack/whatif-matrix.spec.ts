@@ -2,7 +2,9 @@
  * ADR 0043 What-If 四态转移矩阵：v1（require_approval）→ v2（escalate）。
  *
  * 窗口内的执行数随栈上其他用例与时间变化，不写死：以本次批次给出的可回放总数为基线断言。
- * 夹具策略 v1 恒为需审批、v2 恒为升级，故每条可比执行都落在「Needs approval → Escalate」一格。
+ * 夹具策略只对 delete_customer_record 分支：v1 需审批、v2 升级；其余动作两版都放行。
+ * 故断言（1）矩阵各格之和等于可比执行数；（2）至少有一条「Needs approval → Escalate」；
+ * （3）除 Allow → Allow 外不出现其他转移。
  */
 import { test, expect, type Page } from '@playwright/test';
 import { NOT_LOCAL, NOT_LOCAL_REASON, stateFor } from './helpers';
@@ -44,5 +46,13 @@ test('v1→v2 回放后展示 Needs approval → Escalate 转移，计数与回�
 
   const row = page.getByRole('row').filter({ hasText: 'Needs approval → Escalate' });
   await expect(row).toBeVisible();
-  await expect(row.getByRole('cell').last()).toHaveText(String(sampled - incomparable));
+
+  // 读出矩阵所有数据行：「From → To」与计数
+  const cells = await page.getByRole('row').filter({ hasText: '→' }).evaluateAll(rows =>
+    rows.map(r => Array.from(r.querySelectorAll('td')).map(td => td.textContent?.trim() ?? '')));
+  const transitions = new Map(cells.filter(c => c.length >= 2).map(c => [c[0]!, Number(c[c.length - 1])]));
+  expect(transitions.get('Needs approval → Escalate') ?? 0).toBeGreaterThan(0);
+  expect([...transitions.keys()].filter(k => k !== 'Needs approval → Escalate' && k !== 'Allow → Allow')).toEqual([]);
+  const total = [...transitions.values()].reduce((a, b) => a + b, 0);
+  expect(total, '矩阵各格之和应等于可比执行数').toBe(sampled - incomparable);
 });

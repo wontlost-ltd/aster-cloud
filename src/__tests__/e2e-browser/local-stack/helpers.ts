@@ -58,3 +58,42 @@ export async function seedPendingGuardApproval(apiKey: string): Promise<string> 
   }
   return body.decisionId;
 }
+
+// aster-cloud 根地址（v1 执行端点所在），即被测栈
+export const BASE_CLOUD = process.env.BASE_CLOUD || 'http://localhost:3100';
+
+/**
+ * 经 aster-cloud 的 v1 执行端点执行 pol-adr0041-team（delete_customer_record，需 DPO 审批），
+ * 返回这条执行在日志里关联的 guard decisionId。
+ *
+ * <p>★执行日志页列的是 **aster-cloud 的执行记录**；只走 aster-api guard 端点补的决策没有对应执行行，
+ * 日志页永远不会出现它。故日志用例必须经 cloud 执行补数据。cloud 响应不回传 decisionId，
+ * 以唯一 principal_id 从 `Execution.metadata.guardDecisionId` 取回。
+ */
+export async function seedPendingCloudExecution(apiKey: string): Promise<string> {
+  const principal = `e2e-${randomUUID()}`;
+  const res = await fetch(`${BASE_CLOUD}/api/v1/policies/pol-adr0041-team/execute`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      input: {
+        req: {
+          principal_id: principal, principal_type: 'agent', principal_roles: [],
+          action: 'delete_customer_record', resource_type: 'customer', resource_id: 'C-E2E-1',
+          context: {}, agent_model: '',
+        },
+      },
+    }),
+  });
+  const body = (await res.json().catch(() => ({}))) as { data?: { metadata?: { outcome?: string } } };
+  if (body.data?.metadata?.outcome !== 'REQUIRE_APPROVAL') {
+    throw new Error(`补待审批执行失败：HTTP ${res.status} ${JSON.stringify(body).slice(0, 300)}`);
+  }
+  const decisionId = psql('aster_cloud',
+    `select metadata->>'guardDecisionId' from "Execution" where "policyId"='pol-adr0041-team' `
+    + `and input->'req'->>'principal_id'='${principal}' order by "createdAt" desc limit 1`);
+  if (!/^[0-9a-f-]{36}$/.test(decisionId)) {
+    throw new Error(`执行已记录但未关联 guard decisionId：${JSON.stringify(decisionId)}`);
+  }
+  return decisionId;
+}
