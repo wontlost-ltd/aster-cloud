@@ -151,7 +151,8 @@ export function VocabularyDialog({
 
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) {
-      setError(t('errorGeneric'));
+      // 校验失败不是「保存失败请重试」：缺 Parent struct（kind=field 必填）时直接说明原因（#590）。
+      setError(errors.parentCanonical ? t('parentCanonicalHelp') : t('errorGeneric'));
       return null;
     }
     return v;
@@ -299,7 +300,7 @@ export function VocabularyDialog({
 
           <Field
             id="vd-parent"
-            label={t('parentCanonical')}
+            label={kind === 'field' ? withoutOptionalSuffix(t('parentCanonical')) : t('parentCanonical')}
             help={t('parentCanonicalHelp')}
             error={fieldErrors.parentCanonical}
             required={kind === 'field'}
@@ -392,4 +393,12 @@ function Field({ id, label, help, error, required, children }: FieldProps) {
       ) : null}
     </div>
   );
+}
+
+/**
+ * 去掉标签末尾的「(optional)」类括注（各语言均为末尾括注：en/de「(optional)」、zh「（可选）」）。
+ * kind=field 时 Parent struct 必填，标签不能再写「optional」（#590：此前显示「Parent struct (optional)*」）。
+ */
+export function withoutOptionalSuffix(label: string): string {
+  return label.replace(/\s*[（(][^（()）]*[)）]\s*$/u, '');
 }
