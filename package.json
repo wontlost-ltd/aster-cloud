@@ -55,7 +55,7 @@
     "docs:external-index": "node scripts/docs-migration/fetch-external-docs-index.mjs"
   },
   "dependencies": {
-    "@aster-cloud/aster-lang-ts": "1.0.36",
+    "@aster-cloud/aster-lang-ts": "1.0.37",
     "@aster-cloud/tokens": "^0.2.1",
     "@aster-cloud/ui": "^0.3.1",
     "@aster-cloud/ui-messages": "1.0.24",
