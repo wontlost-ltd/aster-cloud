@@ -1,11 +1,12 @@
 /**
  * ADR 0042 §5.4 执行日志 → 审批入口：待审批行带「Pending approval · View」链接。
  *
- * 待审批 24 小时过期，用例不依赖栈里手工维护的数据：beforeAll 经 aster-api 以 team1 成员的 key
- * 执行 guard.customer/decide（即 pol-adr0041-team），自补一条新的待审批执行，日志页因此必有待审批行。
+ * 待审批 24 小时过期，用例不依赖栈里手工维护的数据：beforeAll 以 team1 成员的 key 经 aster-cloud
+ * v1 执行端点执行 pol-adr0041-team，自补一条新的待审批执行，日志页因此必有对应的待审批行。
+ * （只经 aster-api guard 端点补的决策没有 cloud 执行记录，日志页不会列出它。）
  */
 import { test, expect } from '@playwright/test';
-import { NOT_LOCAL, NOT_LOCAL_REASON, seedPendingGuardApproval, stateFor } from './helpers';
+import { NOT_LOCAL, NOT_LOCAL_REASON, seedPendingCloudExecution, stateFor } from './helpers';
 
 const GUARD_API_KEY = process.env.E2E_GUARD_API_KEY ?? '';
 
@@ -18,7 +19,7 @@ test.use({ storageState: stateFor('m-free') });
 let seededId = '';
 
 test.beforeAll(async () => {
-  seededId = await seedPendingGuardApproval(GUARD_API_KEY);
+  seededId = await seedPendingCloudExecution(GUARD_API_KEY);
 });
 
 test('待审批执行行链接到 /approvals?decisionId=', async ({ page }) => {
