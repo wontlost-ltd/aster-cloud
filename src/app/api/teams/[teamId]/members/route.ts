@@ -30,7 +30,7 @@ export async function GET(req: Request, { params }: RouteParams) {
       TeamPermission.MEMBER_VIEW
     );
     if (!permission.allowed) {
-      return NextResponse.json({ error: permission.error }, { status: permission.status });
+      return NextResponse.json({ error: permission.error, code: permission.code }, { status: permission.status });
     }
 
     // 并行查询成员列表和总数

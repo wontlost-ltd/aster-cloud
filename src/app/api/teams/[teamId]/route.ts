@@ -22,7 +22,7 @@ export async function GET(req: Request, { params }: RouteParams) {
     // 检查访问权限
     const permission = await checkTeamPermission(session.user.id, teamId, TeamPermission.TEAM_VIEW);
     if (!permission.allowed) {
-      return NextResponse.json({ error: permission.error }, { status: permission.status });
+      return NextResponse.json({ error: permission.error, code: permission.code }, { status: permission.status });
     }
 
     const team = await db.query.teams.findFirst({
@@ -89,7 +89,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
       TeamPermission.TEAM_UPDATE
     );
     if (!permission.allowed) {
-      return NextResponse.json({ error: permission.error }, { status: permission.status });
+      return NextResponse.json({ error: permission.error, code: permission.code }, { status: permission.status });
     }
 
     const { name, slug } = await req.json();
@@ -166,7 +166,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
       TeamPermission.TEAM_DELETE
     );
     if (!permission.allowed) {
-      return NextResponse.json({ error: permission.error }, { status: permission.status });
+      return NextResponse.json({ error: permission.error, code: permission.code }, { status: permission.status });
     }
 
     // 删除团队（手动级联删除关联记录）

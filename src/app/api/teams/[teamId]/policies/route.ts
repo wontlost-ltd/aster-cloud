@@ -27,7 +27,7 @@ export async function GET(req: Request, { params }: RouteParams) {
       TeamPermission.POLICY_VIEW
     );
     if (!permission.allowed) {
-      return NextResponse.json({ error: permission.error }, { status: permission.status });
+      return NextResponse.json({ error: permission.error, code: permission.code }, { status: permission.status });
     }
 
     const teamPolicies = await db.query.policies.findMany({
@@ -96,7 +96,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       TeamPermission.POLICY_CREATE
     );
     if (!permission.allowed) {
-      return NextResponse.json({ error: permission.error }, { status: permission.status });
+      return NextResponse.json({ error: permission.error, code: permission.code }, { status: permission.status });
     }
 
     const { policyId, name, content, description } = await req.json();

@@ -48,7 +48,7 @@ export async function GET(req: Request, { params }: RouteParams) {
       TeamPermission.INVITATION_VIEW
     );
     if (!permission.allowed) {
-      return NextResponse.json({ error: permission.error }, { status: permission.status });
+      return NextResponse.json({ error: permission.error, code: permission.code }, { status: permission.status });
     }
 
     // 获取未过期的邀请
@@ -89,13 +89,13 @@ export async function POST(req: Request, { params }: RouteParams) {
       TeamPermission.INVITATION_CREATE
     );
     if (!permission.allowed) {
-      return NextResponse.json({ error: permission.error }, { status: permission.status });
+      return NextResponse.json({ error: permission.error, code: permission.code }, { status: permission.status });
     }
 
     // 获取操作者的角色
     const access = await checkTeamAccess(session.user.id, teamId);
     if (!access.allowed) {
-      return NextResponse.json({ error: access.error }, { status: access.status });
+      return NextResponse.json({ error: access.error, code: access.code }, { status: access.status });
     }
 
     const { email, role } = await req.json();
@@ -114,7 +114,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     // 检查邀请角色权限
     const inviteCheck = canInviteWithRole(access.role, role as TeamRole);
     if (!inviteCheck.allowed) {
-      return NextResponse.json({ error: inviteCheck.error }, { status: inviteCheck.status });
+      return NextResponse.json({ error: inviteCheck.error, code: inviteCheck.code }, { status: inviteCheck.status });
     }
 
     // PM v1.1：plan gate 检查 maxTeamMembers

@@ -200,7 +200,7 @@ describe('API Keys API', () => {
     });
 
     it('POST 带 teamId：非成员 403 not_a_member', async () => {
-      mockCheckTeamAccess.mockResolvedValue({ allowed: false, error: 'x', status: 403 });
+      mockCheckTeamAccess.mockResolvedValue({ allowed: false, error: 'x', code: 'not_team_member', status: 403 });
       const res = await POST(createPostRequest({ name: 'k', teamId: 't1' }));
       expect(res.status).toBe(403);
       expect(await res.json()).toEqual({ error: 'not_a_member' });

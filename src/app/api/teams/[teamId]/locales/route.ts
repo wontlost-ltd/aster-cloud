@@ -27,7 +27,7 @@ export async function GET(_req: Request, { params }: RouteParams) {
     // 读取需 TEAM_VIEW；写入才需 TEAM_UPDATE_LOCALES。
     const permission = await checkTeamPermission(session.user.id, teamId, TeamPermission.TEAM_VIEW);
     if (!permission.allowed) {
-      return NextResponse.json({ error: permission.error }, { status: permission.status });
+      return NextResponse.json({ error: permission.error, code: permission.code }, { status: permission.status });
     }
 
     const enabled = await getTeamEnabledLocales(teamId);
@@ -64,7 +64,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
       TeamPermission.TEAM_UPDATE_LOCALES,
     );
     if (!permission.allowed) {
-      return NextResponse.json({ error: permission.error }, { status: permission.status });
+      return NextResponse.json({ error: permission.error, code: permission.code }, { status: permission.status });
     }
 
     const body = (await req.json()) as { enabled?: unknown };

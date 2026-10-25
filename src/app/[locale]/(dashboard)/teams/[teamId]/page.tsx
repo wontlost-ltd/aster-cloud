@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Link } from '@/i18n/navigation';
 import { useTranslations } from 'next-intl';
+import { canViewInvitations, teamLoadError } from './team-fetch';
 import { Breadcrumbs, Container, PageHeader } from '@/components/ui';
-import { extractErrorMessage } from '@/lib/api/error-envelope';
 
 interface Team {
   id: string;
@@ -56,21 +56,24 @@ export default function TeamDashboardPage() {
   const fetchTeamData = useCallback(async () => {
     try {
       // 并行获取所有数据
-      const [teamRes, membersRes, policiesRes, invitationsRes] = await Promise.all([
+      const [teamRes, membersRes, policiesRes] = await Promise.all([
         fetch(`/api/teams/${teamId}`),
         fetch(`/api/teams/${teamId}/members`),
         fetch(`/api/teams/${teamId}/policies`),
-        fetch(`/api/teams/${teamId}/invitations`),
       ]);
 
       if (!teamRes.ok) {
-        const data = await teamRes.json();
-        throw new Error(extractErrorMessage(data) || 'Failed to fetch team');
+        const data = await teamRes.json().catch(() => null);
+        throw new Error(teamLoadError(teamRes.status, data, t));
       }
 
       const teamData = await teamRes.json();
       setTeam(teamData.team);
       setUserRole(teamData.role);
+      // 邀请列表按角色决定是否请求（见 team-fetch.ts）
+      const invitationsRes = canViewInvitations(teamData.role)
+        ? await fetch(`/api/teams/${teamId}/invitations`)
+        : null;
 
       if (membersRes.ok) {
         const membersData = await membersRes.json();
@@ -82,7 +85,7 @@ export default function TeamDashboardPage() {
         setPolicies(policiesData.policies);
       }
 
-      if (invitationsRes.ok) {
+      if (invitationsRes?.ok) {
         const invitationsData = await invitationsRes.json();
         setPendingInvitations(invitationsData.invitations);
       }

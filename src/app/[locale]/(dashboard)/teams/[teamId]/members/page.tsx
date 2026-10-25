@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
+import { canViewInvitations, teamLoadError } from '../team-fetch';
 import { formatDate } from '@/lib/format';
 import { ConfirmDialog, Container, PageHeader, Breadcrumbs, Input, Label, Select } from '@/components/ui';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
@@ -85,16 +86,15 @@ export default function TeamMembersPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [teamRes, membersRes, invitationsRes] = await Promise.all([
+      const [teamRes, membersRes] = await Promise.all([
         fetch(`/api/teams/${teamId}`),
         fetch(`/api/teams/${teamId}/members?limit=100`),
-        fetch(`/api/teams/${teamId}/invitations`),
       ]);
 
       // 检查团队请求
       if (!teamRes.ok) {
-        const data = await teamRes.json();
-        throw new Error(extractErrorMessage(data) || 'Failed to fetch team');
+        const data = await teamRes.json().catch(() => null);
+        throw new Error(teamLoadError(teamRes.status, data, t));
       }
 
       const teamData = await teamRes.json();
@@ -115,13 +115,16 @@ export default function TeamMembersPage() {
         setTotalMembers(membersData.pagination.total);
       }
 
-      // 检查邀请列表请求
-      if (!invitationsRes.ok) {
-        const data = await invitationsRes.json();
-        throw new Error(extractErrorMessage(data) || t('members.invitationsLoadFailed'));
+      // 邀请列表仅对有 INVITATION_VIEW 的角色请求；无权限时不请求、也不让整页失败（#588）
+      if (canViewInvitations(teamData.role)) {
+        const invitationsRes = await fetch(`/api/teams/${teamId}/invitations`);
+        if (!invitationsRes.ok) {
+          const data = await invitationsRes.json().catch(() => null);
+          throw new Error(extractErrorMessage(data) || t('members.invitationsLoadFailed'));
+        }
+        const invitationsData = await invitationsRes.json();
+        setInvitations(invitationsData.invitations);
       }
-      const invitationsData = await invitationsRes.json();
-      setInvitations(invitationsData.invitations);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('failedToLoad'));
     } finally {

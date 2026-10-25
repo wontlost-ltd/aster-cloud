@@ -23,7 +23,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
       TeamPermission.INVITATION_REVOKE
     );
     if (!permission.allowed) {
-      return NextResponse.json({ error: permission.error }, { status: permission.status });
+      return NextResponse.json({ error: permission.error, code: permission.code }, { status: permission.status });
     }
 
     // 获取邀请

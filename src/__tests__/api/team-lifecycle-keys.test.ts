@@ -178,7 +178,7 @@ describe('团队生命周期 → 团队 key 钩子（ADR 0015 §5）', () => {
   });
 
   it('权限不足时不触发钩子', async () => {
-    vi.mocked(checkTeamPermission).mockResolvedValue({ allowed: false, error: 'forbidden', status: 403 });
+    vi.mocked(checkTeamPermission).mockResolvedValue({ allowed: false, error: 'forbidden', code: 'insufficient_team_role', status: 403 });
     const { DELETE } = await import('@/app/api/teams/[teamId]/route');
     const { POST } = await import('@/app/api/teams/[teamId]/transfer/route');
     const delRes = await DELETE(new Request('http://cloud.test/x', { method: 'DELETE' }), params({ teamId: 't1' }));
