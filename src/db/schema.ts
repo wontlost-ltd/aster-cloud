@@ -488,9 +488,10 @@ export const users = pgTable(
     byokQuotaResetAt: timestamp('byokQuotaResetAt', { mode: 'date' }),
 
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    // updatedAt 一律带 $onUpdate：Drizzle 在 update 未显式写该列时自动刷新。此前只有 defaultNow()，
-    // 编辑后 updatedAt 停留在创建时间（#586：策略列表排序与「Updated」日期因此失真）。
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
+    // ★刻意不加 $onUpdate：users.updatedAt 是「用户活动」信号（telemetry payload-builder 按它圈定
+    //   统计期内用户、risk-tier-decay 用它判断是否足够久未活动），只能由明确的活动写入显式设置。
+    //   其它表的 updatedAt 是「最后修改时间」，带 $onUpdate（#586）。
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
   },
   (table) => [
     index('User_email_idx').on(table.email),
@@ -1758,10 +1759,11 @@ export const licenseCache = pgTable(
     // 最近一次 telemetry 上传记录（G）：{ payload, attemptedAt, outcome, ingestId? }
     // 让 admin/license 页面有"我们上次发了什么"的透明视图。null = 未启用 / 未上传过。
     lastTelemetryUpload: jsonb('last_telemetry_upload'),
+    // ★刻意不加 $onUpdate：license-runtime-gate 把 updatedAt 当作最近一次验签成功的见证时间，
+    //   任意字段更新都刷新它会错误延长离线宽限期；只由验签成功路径显式写入。
     updatedAt: timestamp('updated_at', { mode: 'date', withTimezone: true })
       .defaultNow()
-      .notNull()
-      .$onUpdate(() => new Date()),
+      .notNull(),
   },
   (table) => [check('LicenseCache_id_current_check', sql`${table.id} = 'current'`)]
 );

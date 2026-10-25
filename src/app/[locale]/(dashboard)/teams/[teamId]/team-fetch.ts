@@ -1,12 +1,16 @@
 import { extractErrorMessage } from '@/lib/api/error-envelope';
-import { TeamPermission, hasPermission, type TeamRole } from '@/lib/team-permission-matrix';
+import { ROLE_HIERARCHY, TeamPermission, hasPermission, type TeamRole } from '@/lib/team-permission-matrix';
 
 /**
  * 只有具备 INVITATION_VIEW 的角色才请求邀请列表（#588：普通成员也请求，必然 403；
  * 成员页还因此整页报错、看不到成员列表）。
  */
 export function canViewInvitations(role: string | null | undefined): boolean {
-  return !!role && hasPermission(role as TeamRole, TeamPermission.INVITATION_VIEW);
+  return isTeamRole(role) && hasPermission(role, TeamPermission.INVITATION_VIEW);
+}
+
+function isTeamRole(role: unknown): role is TeamRole {
+  return typeof role === 'string' && (ROLE_HIERARCHY as readonly string[]).includes(role);
 }
 
 /**
