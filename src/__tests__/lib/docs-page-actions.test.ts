@@ -10,9 +10,11 @@ import {
   PAGE_ACTIONS,
   canonicalTarget,
   getPageActions,
+  pickAvailableActions,
   resolveAuditedAction,
   type RouteSlug,
 } from '@/lib/docs/page-actions';
+import type { DocsSessionAuth } from '@/lib/docs/use-docs-session';
 
 // Compile-time assertion: `RouteSlug` must be a precise literal
 // union, not `string`. We test this by asking whether `string` is
@@ -115,5 +117,65 @@ describe('resolveAuditedAction (server-side registry binding)', () => {
         target: '/policies/wrong',
       }),
     ).toBeNull();
+  });
+});
+
+describe('pickAvailableActions', () => {
+  const anonymous: DocsSessionAuth = {
+    status: 'anonymous',
+    capabilities: {
+      canUsePlayground: true,
+      canEditPolicies: false,
+      canViewAudit: false,
+      hasActiveTeam: false,
+    },
+  };
+
+  it('probing 阶段不渲染任何动作', () => {
+    const set = getPageActions('getting-started/quickstart')!;
+    expect(pickAvailableActions(set, { status: 'probing' })).toEqual({
+      primary: null,
+      secondary: [],
+    });
+  });
+
+  it('匿名访客按探针 capabilities 看到「在 Playground 试用」主动作（quickstart）', () => {
+    const set = getPageActions('getting-started/quickstart')!;
+    const { primary, secondary } = pickAvailableActions(set, anonymous);
+    expect(primary?.labelKey).toBe('docs.actions.tryInPlayground');
+    // public 次要动作（API Keys）同样保留
+    expect(secondary.map((a) => a.id)).toEqual(['go_to_api_keys']);
+  });
+
+  it('匿名访客在 policies/evaluate 看到 Playground，但看不到需编辑权限的 Open in Editor', () => {
+    const set = getPageActions('api/policies/evaluate')!;
+    const { primary, secondary } = pickAvailableActions(set, anonymous);
+    expect(primary?.labelKey).toBe('docs.actions.tryInPlayground');
+    expect(secondary.some((a) => a.labelKey === 'docs.actions.openInEditor')).toBe(false);
+  });
+
+  it('探针收回 canUsePlayground 时匿名访客不再看到 Playground 主动作', () => {
+    const set = getPageActions('api/policies/evaluate')!;
+    const { primary } = pickAvailableActions(set, {
+      ...anonymous,
+      capabilities: { ...anonymous.capabilities, canUsePlayground: false },
+    });
+    expect(primary).toBeNull();
+  });
+
+  it('已登录且具备编辑权限时渲染 Open in Editor', () => {
+    const set = getPageActions('api/policies/evaluate')!;
+    const { primary, secondary } = pickAvailableActions(set, {
+      status: 'authenticated',
+      subjectHash: '0123456789abcdef',
+      capabilities: {
+        canUsePlayground: true,
+        canEditPolicies: true,
+        canViewAudit: true,
+        hasActiveTeam: true,
+      },
+    });
+    expect(primary?.labelKey).toBe('docs.actions.tryInPlayground');
+    expect(secondary.map((a) => a.labelKey)).toContain('docs.actions.openInEditor');
   });
 });
