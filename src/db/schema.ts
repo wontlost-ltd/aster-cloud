@@ -488,7 +488,9 @@ export const users = pgTable(
     byokQuotaResetAt: timestamp('byokQuotaResetAt', { mode: 'date' }),
 
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    // updatedAt 一律带 $onUpdate：Drizzle 在 update 未显式写该列时自动刷新。此前只有 defaultNow()，
+    // 编辑后 updatedAt 停留在创建时间（#586：策略列表排序与「Updated」日期因此失真）。
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
   (table) => [
     index('User_email_idx').on(table.email),
@@ -566,7 +568,7 @@ export const policyGroups = pgTable(
     teamId: text('teamId'),
     isSystem: boolean('isSystem').default(false).notNull(),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
   (table) => [
     index('PolicyGroup_parentId_idx').on(table.parentId),
@@ -598,7 +600,7 @@ export const policies = pgTable(
     deletedBy: text('deletedBy'),
     deleteReason: text('deleteReason'),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
   (table) => [
     index('Policy_userId_idx').on(table.userId),
@@ -1219,7 +1221,7 @@ export const usageRecords = pgTable(
     count: integer('count').default(1).notNull(),
     period: text('period').notNull(),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex('UsageRecord_userId_type_period_key').on(
@@ -1248,7 +1250,7 @@ export const teams = pgTable(
     // 编译支持 ∩ 后端可用 ∩ 此白名单（null 时跳过第三项交集）。
     enabledLocales: jsonb('enabledLocales').$type<string[]>(),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
   (table) => [
     index('Team_ownerId_idx').on(table.ownerId),
@@ -1317,7 +1319,7 @@ export const platformSettings = pgTable(
   {
     key: text('key').primaryKey().notNull(),
     value: json('value').notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
     updatedBy: text('updatedBy'),
   },
 );
@@ -1494,7 +1496,7 @@ export const demoPolicies = pgTable(
     defaultInput: json('defaultInput'),
     piiFields: json('piiFields'),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
   (table) => [index('DemoPolicy_sessionId_idx').on(table.sessionId)]
 );
@@ -1695,7 +1697,7 @@ export const aiKeyBindings = pgTable(
     /** 上次查询模型列表的时间；查询失败不清空旧列表，只写 lastError。 */
     modelsCheckedAt: timestamp('modelsCheckedAt', { mode: 'date' }),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
   (table) => [
     // 多 key：去掉 (userId,provider) 唯一约束（一个 provider 现在可有多个 key）。
@@ -1758,7 +1760,8 @@ export const licenseCache = pgTable(
     lastTelemetryUpload: jsonb('last_telemetry_upload'),
     updatedAt: timestamp('updated_at', { mode: 'date', withTimezone: true })
       .defaultNow()
-      .notNull(),
+      .notNull()
+      .$onUpdate(() => new Date()),
   },
   (table) => [check('LicenseCache_id_current_check', sql`${table.id} = 'current'`)]
 );
@@ -2355,7 +2358,8 @@ export const domainTerms = pgTable(
       .notNull(),
     updatedAt: timestamp('updatedAt', { mode: 'date', withTimezone: true })
       .defaultNow()
-      .notNull(),
+      .notNull()
+      .$onUpdate(() => new Date()),
     deprecatedAt: timestamp('deprecatedAt', { mode: 'date', withTimezone: true }),
     deprecatedReason: text('deprecatedReason'),
   },
@@ -2454,7 +2458,8 @@ export const userDomainTerms = pgTable(
       .notNull(),
     updatedAt: timestamp('updatedAt', { mode: 'date', withTimezone: true })
       .defaultNow()
-      .notNull(),
+      .notNull()
+      .$onUpdate(() => new Date()),
     deletedAt: timestamp('deletedAt', { mode: 'date', withTimezone: true }),
     deletedBy: text('deletedBy'),
     deletedReason: text('deletedReason'),
@@ -2595,7 +2600,8 @@ export const lexiconBulkJobs = pgTable(
       .notNull(),
     updatedAt: timestamp('updatedAt', { mode: 'date', withTimezone: true })
       .defaultNow()
-      .notNull(),
+      .notNull()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     check(
