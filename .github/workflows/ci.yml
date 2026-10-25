@@ -209,12 +209,23 @@ jobs:
 
       # Drizzle drift 检查独立于 next build，前移到 build:next **之前**（Codex 审 Medium）：
       # 否则 drift 失败会在已产出/上传 standalone artifact 之后才 fail，白占存储。
+      #
+      # ★此前该步骤是失败开放的空检查（#597）：build job 没有 DATABASE_URL，drizzle.config.ts
+      #   在加载时直接抛错，`2>/dev/null || true` 把错误吞掉，generate 根本没跑；且
+      #   `git diff` 看不到 generate 新建的未跟踪 .sql/快照文件。现在：
+      #   ① 给占位 DATABASE_URL——generate 只比对 schema.ts 与最新快照，不连库；
+      #   ② generate 失败即失败，不再吞错；
+      #   ③ 用 `git status --porcelain` 同时捕获已跟踪改动与未跟踪新文件。
       - name: Check Drizzle schema drift
+        env:
+          DATABASE_URL: postgresql://drift-check:unused@127.0.0.1:1/drift_check
         run: |
-          pnpm db:generate 2>/dev/null || true
-          if [ -n "$(git diff --name-only drizzle/)" ]; then
-            echo "::error::Drizzle schema drift detected. Run 'pnpm db:generate' and commit the migration files."
-            git diff drizzle/
+          pnpm db:generate
+          if [ -n "$(git status --porcelain -- drizzle/)" ]; then
+            echo "::error::Drizzle schema drift detected: schema.ts 与 drizzle/meta 最新快照不一致。本地跑 'pnpm db:generate' 并提交迁移与快照。"
+            git status --porcelain -- drizzle/
+            git diff -- drizzle/
+            for f in $(git ls-files --others --exclude-standard -- drizzle/); do echo "=== $f"; head -c 4000 "$f"; echo; done
             exit 1
           fi
 
