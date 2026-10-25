@@ -75,59 +75,98 @@ function sourceFiles(dir, out = []) {
   return out;
 }
 
+function extract(file) {
+  return extractFromSource(readFileSync(file, 'utf-8'));
+}
+
 /**
- * 抽出一个文件里的 (namespace, key) 组合。
+ * 解析 `useTranslations(…)` / `getTranslations(…)` 的参数得到命名空间。
+ *   ()                                  → ''（根命名空间，键即完整路径）
+ *   ('ns')                              → 'ns'
+ *   ({ locale, namespace: 'ns' })       → 'ns'
+ *   ({ locale })                        → ''
+ * 其余形态（变量、模板字符串）返回 null：无法静态确定，宁可不查。
+ */
+function parseNamespaceArg(args) {
+  const a = args.trim();
+  if (a === '') return '';
+  const literal = a.match(/^['"]([^'"]+)['"]$/);
+  if (literal) return literal[1];
+  if (a.startsWith('{') && a.endsWith('}')) {
+    const ns = a.match(/\bnamespace\s*:\s*['"]([^'"]+)['"]/);
+    if (ns) return ns[1];
+    return /\bnamespace\b/.test(a) ? null : '';
+  }
+  return null;
+}
+
+/**
+ * 从源码文本抽出 (namespace, key) 组合；纯函数，供测试直接调用。
  *
  * ★按**变量名**绑定命名空间，而非「一个文件一个命名空间」：
  *     const t = useTranslations('settings.aiKeysPage');
  *     const tSettings = useTranslations('settings');
- * 这种双命名空间文件很常见（实测 31 个）。若整体跳过，会漏掉其中数百次
- * `t()` 调用；若强行归到第一个命名空间，又会产生**假缺失**（比漏报更糟：
- * 会让人去补根本不该存在的键）。按变量名绑定两者都避免。
+ * 服务端组件的 `await getTranslations('ns')` / `getTranslations({ locale, namespace })`
+ * 与无参 `useTranslations()`（根命名空间，键写完整路径）同样纳入——此前三者都被跳过，
+ * 整类页面（服务端页、docs 组件）的键从未被核对。
+ *
+ * ★同一文件里**同名变量绑不同命名空间**是真实存在的：
+ *     export function A() { const t = useTranslations('admin.riskTier'); … }
+ *     function B()        { const t = useTranslations('admin.riskTier.override'); … }
+ *   正则无作用域概念。处置：每个调用归属到**它之前最近的一次同名声明**——
+ *   组件按顺序书写时这正是其所在作用域的绑定。调用出现在该名任何声明之前
+ *   （例如提升的辅助函数）且该名绑定不唯一时，无法判定 → 不查并计入 unbound。
  *
  * 无法归属的调用（如 `useTranslations()` 结果被解构或转手）计入 `unbound`
  * 并上报，让「查不了多少」显式可见，而不是悄悄少查。
  */
-function extract(file) {
+export function extractFromSource(raw) {
   // ★先剥注释：正则会匹配到注释里的 `t('settings')`（实测 teams/[teamId]/page.tsx
   //   有一句注释在解释历史修复，被误报成缺键）。误报比漏报更糟——它会让人去补
-  //   一个根本不该存在的键。字符串字面量里的 `//` 不会被误剥，因为这里只在
-  //   行首/代码位出现的注释起始处截断，且键名本身不含 `//`。
-  const src = stripComments(readFileSync(file, 'utf-8'));
+  //   一个根本不该存在的键。
+  const src = stripComments(raw);
 
-  // 变量名 → 命名空间。
-  // ★同一文件里**同名变量绑不同命名空间**是真实存在的（实测 4 个文件）：
-  //     export function A() { const t = useTranslations('admin.riskTier'); … }
-  //     function B()        { const t = useTranslations('admin.riskTier.override'); … }
-  //   两个组件各自作用域里都叫 t。正则无作用域概念，后者会覆盖前者，
-  //   于是 A 的 20 个键被误判成缺 `admin.riskTier.override.*`——**假缺失**。
-  //   实测这正是初版报出 20 个 admin.riskTier 缺键的全部原因。
-  //   处置：同名绑不同 ns 时把该名**标为歧义并弃用**，宁可少查也不误报。
-  const binding = new Map();
-  const ambiguous = new Set();
+  // 变量名 → 按出现位置排序的声明列表 [{ index, ns }]
+  const decls = new Map();
+  let unresolvedDecl = false;
   for (const m of src.matchAll(
-    /(?:const|let|var)\s+(\w+)\s*=\s*useTranslations\(\s*['"]([^'"]+)['"]\s*\)/g,
+    /(?:const|let|var)\s+(\w+)\s*=\s*(?:await\s+)?(?:useTranslations|getTranslations)\(([^)]*)\)/g,
   )) {
-    const [, name, ns] = m;
-    if (binding.has(name) && binding.get(name) !== ns) ambiguous.add(name);
-    binding.set(name, ns);
+    const ns = parseNamespaceArg(m[2]);
+    if (ns === null) { unresolvedDecl = true; continue; }
+    if (!decls.has(m[1])) decls.set(m[1], []);
+    decls.get(m[1]).push({ index: m.index, ns });
   }
-  for (const name of ambiguous) binding.delete(name);
+
+  // 调用位置 → 命名空间；undefined 表示该名不是 t-变量，null 表示是但无法判定。
+  const resolve = (fn, index) => {
+    const list = decls.get(fn);
+    if (!list) return undefined;
+    let hit = null;
+    for (const d of list) if (d.index < index) hit = d;
+    if (hit) return hit.ns;
+    return new Set(list.map((d) => d.ns)).size === 1 ? list[0].ns : null;
+  };
 
   const keys = [];
-  const dynamicPrefixes = [];
-  let unbound = 0;
-  // 任意 `xxx('literal')` 里 xxx 是已绑定的 t-变量才算
-  for (const m of src.matchAll(/\b(\w+)\(\s*['"]([A-Za-z][\w.]*)['"]/g)) {
-    const [, fn, key] = m;
-    if (binding.has(fn)) keys.push(`${binding.get(fn)}.${key}`);
+  let unresolvedCall = false;
+  // 任意 `xxx('literal')` 里 xxx 是已绑定的 t-变量才算；排除 `obj.t(` 这类成员调用。
+  for (const m of src.matchAll(/(?<![.\w$])(\w+)\(\s*['"]([A-Za-z][\w.]*)['"]/g)) {
+    const ns = resolve(m[1], m.index);
+    if (ns === undefined) continue;
+    if (ns === null) { unresolvedCall = true; continue; }
+    keys.push(joinKey(ns, m[2]));
   }
-  dynamicPrefixes.push(...extractDynamicPrefixes(src, binding));
-  // 有 useTranslations 但没有可信绑定（未解析出，或全被歧义剔除）→ 如实计数
-  if (/useTranslations\(/.test(src) && binding.size === 0) unbound = 1;
-  else if (ambiguous.size > 0) unbound = 1; // 部分歧义：该文件未被完整覆盖
+  const dynamicPrefixes = extractDynamicPrefixes(src, resolve);
 
-  return { unbound, keys, dynamicPrefixes, hasT: binding.size > 0 };
+  const usesTranslations = /\b(?:useTranslations|getTranslations)\(/.test(src);
+  const unbound = usesTranslations && (decls.size === 0 || unresolvedDecl || unresolvedCall) ? 1 : 0;
+  return { unbound, keys, dynamicPrefixes, hasT: decls.size > 0 };
+}
+
+/** 命名空间与相对键拼成完整路径；根命名空间时键本身即完整路径。 */
+function joinKey(ns, key) {
+  return ns ? `${ns}.${key}` : key;
 }
 
 /** 去掉 // 行注释与块注释，避免注释里的示例代码被当成真实调用。 */
@@ -157,12 +196,18 @@ export function hasPath(tree, path) {
   return typeof cur === 'object' && cur !== null;
 }
 
-/** 收集 t(`静态前缀.${变量}`) 的前缀完整路径。 */
+/**
+ * 收集 t(`静态前缀.${变量}`) 的前缀完整路径。
+ * `binding` 可以是「变量名 → 命名空间」的 Map，也可以是 `(fn, index) => ns` 解析函数
+ * （按调用位置取最近声明，见 extractFromSource）。
+ */
 export function extractDynamicPrefixes(src, binding) {
+  const resolve = typeof binding === 'function' ? binding : (fn) => binding.get(fn);
   const prefixes = [];
-  for (const match of src.matchAll(/\b(\w+)\(\s*`([A-Za-z][\w.]*)\.\$\{/g)) {
+  for (const match of src.matchAll(/(?<![.\w$])(\w+)\(\s*`([A-Za-z][\w.]*)\.\$\{/g)) {
     const [, fn, prefix] = match;
-    if (binding.has(fn)) prefixes.push(`${binding.get(fn)}.${prefix}`);
+    const ns = resolve(fn, match.index);
+    if (ns !== undefined && ns !== null) prefixes.push(joinKey(ns, prefix));
   }
   return prefixes;
 }
@@ -265,10 +310,16 @@ export function parseSupplementKeys(src, includeObjectNodes = false) {
   }
   return out;
 }
-function main() {
+/**
+ * 扫描 `src/` 全部源文件，返回不存在于「npm 包 ∪ cloud 本地补充层」的键。
+ * CLI 与单元测试共用这一份逻辑（测试直接断言 missing 为空）。
+ *
+ * @returns {{ missing: Map<string, Set<string>>, scanned: number, unboundFiles: number,
+ *             pkg: object, source: object | null }}
+ */
+export function scanMissingKeys() {
   if (!existsSync(PACKAGE)) {
-    console.error(`✗ 找不到已安装的文案包: ${PACKAGE}\n  先跑 pnpm install。`);
-    process.exit(1);
+    throw new Error(`找不到已安装的文案包: ${PACKAGE}（先跑 pnpm install）`);
   }
   const pkg = JSON.parse(readFileSync(PACKAGE, 'utf-8'));
   // 真相源仅在并列 checkout 兄弟仓时可得（CI 的 aster-cloud job 不 checkout 它）。
@@ -307,6 +358,18 @@ function main() {
   }
 
   for (const [key, files] of dynamicMissing) missing.set(key, files);
+  return { missing, scanned, unboundFiles, pkg, source };
+}
+
+function main() {
+  let result;
+  try {
+    result = scanMissingKeys();
+  } catch (err) {
+    console.error(`✗ ${err.message}`);
+    process.exit(1);
+  }
+  const { missing, scanned, unboundFiles, source } = result;
 
   const found = [...missing.keys()].sort();
 
@@ -329,7 +392,7 @@ function main() {
   const fixed = [...baseline].filter((k) => !missing.has(k)).sort();
 
   console.log(
-    `扫描 ${scanned} 个含 useTranslations 的文件` +
+    `扫描 ${scanned} 个含 useTranslations/getTranslations 的文件` +
       (unboundFiles > 0 ? `（${unboundFiles} 个无法解析绑定，未查）` : '（全部可解析绑定）'),
   );
   // 把缺失分成「等发版」与「真缺文案」——两者的处置完全不同。

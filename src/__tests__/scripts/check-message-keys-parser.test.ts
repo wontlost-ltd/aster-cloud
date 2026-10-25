@@ -7,7 +7,7 @@
  * 导致门禁把实际存在的 dashboardNav.approvals 误报为缺失。
  */
 import { describe, it, expect } from 'vitest';
-import { extractDynamicPrefixes, hasPath, parseSupplementKeys } from '../../../scripts/check-message-keys.mjs';
+import { extractDynamicPrefixes, extractFromSource, hasPath, parseSupplementKeys } from '../../../scripts/check-message-keys.mjs';
 
 const wrap = (inner: string) => `export const X = {\n  en: {\n${inner}\n  },\n  zh: {\n    other: { ignored: 'x' },\n  },\n};\n`;
 
@@ -70,5 +70,48 @@ describe('parseSupplementKeys', () => {
 
   it('非字面量值（三元）只登记其键，值内字符串里的 `foo: "bar"` 不成为键', () => {
     expect(keys(`    a: { x: cond ? 'foo: "bar"' : 'z', y: 'Y' },`)).toEqual(['a.y']);
+  });
+});
+
+describe('extractFromSource（命名空间绑定）', () => {
+  it('服务端 await getTranslations(ns) 的键纳入核对', () => {
+    const r = extractFromSource("const t = await getTranslations('billing'); t('title');");
+    expect(r.keys).toEqual(['billing.title']);
+    expect(r.unbound).toBe(0);
+  });
+
+  it('getTranslations({ locale, namespace }) 取 namespace 字段', () => {
+    const r = extractFromSource("const t = await getTranslations({ locale, namespace: 'pricingPage.seo' }); t('title');");
+    expect(r.keys).toEqual(['pricingPage.seo.title']);
+  });
+
+  it('无参 useTranslations() 视为根命名空间，键即完整路径', () => {
+    const r = extractFromSource("const t = useTranslations(); t('docs.nav.home');");
+    expect(r.keys).toEqual(['docs.nav.home']);
+  });
+
+  it('同名 t 绑定不同命名空间时按最近的前置声明归属，而非整体弃查', () => {
+    const r = extractFromSource(
+      "function A() { const t = useTranslations('a'); t('x'); }\n" +
+        "function B() { const t = useTranslations('b'); t('y'); }",
+    );
+    expect(r.keys).toEqual(['a.x', 'b.y']);
+    expect(r.unbound).toBe(0);
+  });
+
+  it('成员调用 obj.t() 与未绑定函数不计入', () => {
+    const r = extractFromSource("const t = useTranslations('a'); i18n.t('x'); other('y'); t('z');");
+    expect(r.keys).toEqual(['a.z']);
+  });
+
+  it('命名空间是变量时无法静态确定：不猜，计入 unbound', () => {
+    const r = extractFromSource('const t = useTranslations(ns); t(\'x\');');
+    expect(r.keys).toEqual([]);
+    expect(r.unbound).toBe(1);
+  });
+
+  it('注释里的 t() 示例不被当成调用', () => {
+    const r = extractFromSource("const t = useTranslations('a');\n// t('ghost')\nt('real');");
+    expect(r.keys).toEqual(['a.real']);
   });
 });
