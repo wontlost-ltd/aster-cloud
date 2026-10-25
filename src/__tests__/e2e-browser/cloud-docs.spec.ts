@@ -180,7 +180,7 @@ test.describe('Cloud docs - SEO heads', () => {
     );
   });
 
-  test('hreflang alternates emit correct hrefs (real translation page)', async ({ page }) => {
+  test('hreflang alternates emit correct hrefs (zh policies/evaluate translation)', async ({ page }) => {
     // policies/evaluate is now a real Chinese translation. The page
     // still emits reciprocal hreflang alternates pointing to the
     // /en, /zh, /de URLs.
@@ -200,7 +200,7 @@ test.describe('Cloud docs - SEO heads', () => {
     }
   });
 
-  test('hreflang alternates emit correct hrefs (real translation page)', async ({ page }) => {
+  test('hreflang alternates emit correct hrefs (en getting-started/overview)', async ({ page }) => {
     await page.goto('/docs/getting-started/overview');
     const expectations = {
       en: 'https://aster-lang.cloud/docs/getting-started/overview',

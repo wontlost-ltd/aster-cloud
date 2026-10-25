@@ -1,5 +1,9 @@
 import { test, expect, request as playwrightRequest } from '@playwright/test';
 
+// 本 spec 只对生产站点对（aster-lang.dev ↔ aster-lang.cloud）有意义：它断言真实 dev 站点的跳转/页面，
+// 指向本地 aster-cloud 栈（BASE_CLOUD=http://localhost:…）时必然失败，故本地跳过（#592）。
+test.skip(/localhost|127\.0\.0\.1/.test(process.env.BASE_CLOUD ?? ''), 'production-only: asserts the live aster-lang.dev site');
+
 /**
  * Cross-site redirect E2E — aster-lang.dev legacy URLs must 308 to
  * aster-lang.cloud/docs/* equivalents. These specs hit the real DNS
