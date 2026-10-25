@@ -13,7 +13,7 @@ interface InvitationInfo {
   email: string;
 }
 
-export default function AcceptInvitePage() {
+export function AcceptInviteContent() {
   const t = useTranslations('teams');
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -92,12 +92,10 @@ export default function AcceptInvitePage() {
                 />
               </svg>
             </div>
+            {/* 缺 token 只是链接无效，并非过期（#589）——不再附「This invitation has expired」 */}
             <h3 className="mt-4 text-lg font-medium text-fg">
               {t('acceptInvite.invalid')}
             </h3>
-            <p className="mt-2 text-sm text-fg-muted">
-              {t('acceptInvite.expired')}
-            </p>
             <div className="mt-6">
               <Link
                 href="/teams"
