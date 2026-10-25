@@ -296,7 +296,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       const t4 = Date.now();
       const permCheck = await checkTeamPermission(userId, policy.teamId, TeamPermission.POLICY_EXECUTE);
       if (!permCheck.allowed) {
-        return NextResponse.json({ error: permCheck.error }, { status: permCheck.status });
+        return NextResponse.json({ error: permCheck.error, code: permCheck.code }, { status: permCheck.status });
       }
       timings.permChecks = Date.now() - t4;
     }

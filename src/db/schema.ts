@@ -488,6 +488,9 @@ export const users = pgTable(
     byokQuotaResetAt: timestamp('byokQuotaResetAt', { mode: 'date' }),
 
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    // ★刻意不加 $onUpdate：users.updatedAt 是「用户活动」信号（telemetry payload-builder 按它圈定
+    //   统计期内用户、risk-tier-decay 用它判断是否足够久未活动），只能由明确的活动写入显式设置。
+    //   其它表的 updatedAt 是「最后修改时间」，带 $onUpdate（#586）。
     updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
   },
   (table) => [
@@ -566,7 +569,7 @@ export const policyGroups = pgTable(
     teamId: text('teamId'),
     isSystem: boolean('isSystem').default(false).notNull(),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
   (table) => [
     index('PolicyGroup_parentId_idx').on(table.parentId),
@@ -598,7 +601,7 @@ export const policies = pgTable(
     deletedBy: text('deletedBy'),
     deleteReason: text('deleteReason'),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
   (table) => [
     index('Policy_userId_idx').on(table.userId),
@@ -1219,7 +1222,7 @@ export const usageRecords = pgTable(
     count: integer('count').default(1).notNull(),
     period: text('period').notNull(),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex('UsageRecord_userId_type_period_key').on(
@@ -1248,7 +1251,7 @@ export const teams = pgTable(
     // 编译支持 ∩ 后端可用 ∩ 此白名单（null 时跳过第三项交集）。
     enabledLocales: jsonb('enabledLocales').$type<string[]>(),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
   (table) => [
     index('Team_ownerId_idx').on(table.ownerId),
@@ -1317,7 +1320,7 @@ export const platformSettings = pgTable(
   {
     key: text('key').primaryKey().notNull(),
     value: json('value').notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
     updatedBy: text('updatedBy'),
   },
 );
@@ -1494,7 +1497,7 @@ export const demoPolicies = pgTable(
     defaultInput: json('defaultInput'),
     piiFields: json('piiFields'),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
   (table) => [index('DemoPolicy_sessionId_idx').on(table.sessionId)]
 );
@@ -1695,7 +1698,7 @@ export const aiKeyBindings = pgTable(
     /** 上次查询模型列表的时间；查询失败不清空旧列表，只写 lastError。 */
     modelsCheckedAt: timestamp('modelsCheckedAt', { mode: 'date' }),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
   (table) => [
     // 多 key：去掉 (userId,provider) 唯一约束（一个 provider 现在可有多个 key）。
@@ -1756,6 +1759,8 @@ export const licenseCache = pgTable(
     // 最近一次 telemetry 上传记录（G）：{ payload, attemptedAt, outcome, ingestId? }
     // 让 admin/license 页面有"我们上次发了什么"的透明视图。null = 未启用 / 未上传过。
     lastTelemetryUpload: jsonb('last_telemetry_upload'),
+    // ★刻意不加 $onUpdate：license-runtime-gate 把 updatedAt 当作最近一次验签成功的见证时间，
+    //   任意字段更新都刷新它会错误延长离线宽限期；只由验签成功路径显式写入。
     updatedAt: timestamp('updated_at', { mode: 'date', withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -2355,7 +2360,8 @@ export const domainTerms = pgTable(
       .notNull(),
     updatedAt: timestamp('updatedAt', { mode: 'date', withTimezone: true })
       .defaultNow()
-      .notNull(),
+      .notNull()
+      .$onUpdate(() => new Date()),
     deprecatedAt: timestamp('deprecatedAt', { mode: 'date', withTimezone: true }),
     deprecatedReason: text('deprecatedReason'),
   },
@@ -2454,7 +2460,8 @@ export const userDomainTerms = pgTable(
       .notNull(),
     updatedAt: timestamp('updatedAt', { mode: 'date', withTimezone: true })
       .defaultNow()
-      .notNull(),
+      .notNull()
+      .$onUpdate(() => new Date()),
     deletedAt: timestamp('deletedAt', { mode: 'date', withTimezone: true }),
     deletedBy: text('deletedBy'),
     deletedReason: text('deletedReason'),
@@ -2595,7 +2602,8 @@ export const lexiconBulkJobs = pgTable(
       .notNull(),
     updatedAt: timestamp('updatedAt', { mode: 'date', withTimezone: true })
       .defaultNow()
-      .notNull(),
+      .notNull()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     check(

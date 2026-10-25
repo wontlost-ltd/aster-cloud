@@ -1,7 +1,17 @@
 import { getTranslations } from 'next-intl/server';
+import { redirect } from 'next/navigation';
+import { getSession } from '@/lib/auth';
 import { OnboardingContent } from './onboarding-content';
 
-export default async function OnboardingPage() {
+export default async function OnboardingPage({ params }: { params: Promise<{ locale: string }> }) {
+  // 引导流程只对已登录用户有意义（注册后经 callbackUrl / Auth.js newUser 进入）；未登录直接访问时
+  // 先去登录（#589：此前未登录也能看到并提交整个向导，提交时才失败）。
+  const { locale } = await params;
+  const session = await getSession();
+  if (!session?.user?.id) {
+    redirect(`/${locale}/login?callbackUrl=${encodeURIComponent(`/${locale}/onboarding`)}`);
+  }
+
   const t = await getTranslations('auth.onboarding');
   const tNav = await getTranslations('nav');
 

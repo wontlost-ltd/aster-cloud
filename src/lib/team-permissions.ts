@@ -1,64 +1,21 @@
 import { db, teamMembers } from '@/lib/prisma';
 import { eq, and } from 'drizzle-orm';
+import {
+  getRoleLevel,
+  hasPermission,
+  type TeamPermissionType,
+  type TeamRole,
+} from './team-permission-matrix';
 
-// 权限定义
-export const TeamPermission = {
-  TEAM_VIEW: 'team.view',
-  TEAM_UPDATE: 'team.update',
-  TEAM_DELETE: 'team.delete',
-  TEAM_TRANSFER: 'team.transfer',
-  // 设置团队向用户开放的 UI 语言白名单（owner/admin）。
-  TEAM_UPDATE_LOCALES: 'team.updateLocales',
-  MEMBER_VIEW: 'member.view',
-  MEMBER_INVITE: 'member.invite',
-  MEMBER_REMOVE: 'member.remove',
-  MEMBER_UPDATE_ROLE: 'member.updateRole',
-  POLICY_VIEW: 'policy.view',
-  POLICY_CREATE: 'policy.create',
-  POLICY_UPDATE: 'policy.update',
-  POLICY_DELETE: 'policy.delete',
-  POLICY_EXECUTE: 'policy.execute',
-  INVITATION_VIEW: 'invitation.view',
-  INVITATION_CREATE: 'invitation.create',
-  INVITATION_REVOKE: 'invitation.revoke',
-} as const;
-
-export type TeamPermissionType = (typeof TeamPermission)[keyof typeof TeamPermission];
-
-// 角色-权限矩阵
-const ROLE_PERMISSIONS: Record<string, TeamPermissionType[]> = {
-  owner: Object.values(TeamPermission),
-  admin: [
-    TeamPermission.TEAM_VIEW,
-    TeamPermission.TEAM_UPDATE,
-    TeamPermission.TEAM_UPDATE_LOCALES,
-    TeamPermission.MEMBER_VIEW,
-    TeamPermission.MEMBER_INVITE,
-    TeamPermission.MEMBER_REMOVE,
-    TeamPermission.MEMBER_UPDATE_ROLE,
-    TeamPermission.POLICY_VIEW,
-    TeamPermission.POLICY_CREATE,
-    TeamPermission.POLICY_UPDATE,
-    TeamPermission.POLICY_DELETE,
-    TeamPermission.POLICY_EXECUTE,
-    TeamPermission.INVITATION_VIEW,
-    TeamPermission.INVITATION_CREATE,
-    TeamPermission.INVITATION_REVOKE,
-  ],
-  member: [
-    TeamPermission.TEAM_VIEW,
-    TeamPermission.MEMBER_VIEW,
-    TeamPermission.POLICY_VIEW,
-    TeamPermission.POLICY_CREATE,
-    TeamPermission.POLICY_UPDATE,
-    TeamPermission.POLICY_EXECUTE,
-  ],
-  viewer: [TeamPermission.TEAM_VIEW, TeamPermission.MEMBER_VIEW, TeamPermission.POLICY_VIEW],
-};
-
-// 角色层级（用于比较）
-const ROLE_HIERARCHY = ['viewer', 'member', 'admin', 'owner'] as const;
-export type TeamRole = (typeof ROLE_HIERARCHY)[number];
+export {
+  ROLE_HIERARCHY,
+  ROLE_PERMISSIONS,
+  TeamPermission,
+  getRoleLevel,
+  hasPermission,
+  type TeamPermissionType,
+  type TeamRole,
+} from './team-permission-matrix';
 
 /**
  * 单用户租户（当前 tenantId === userId）下，API key 持有者对自己租户的角色。
@@ -70,13 +27,28 @@ export type TeamRole = (typeof ROLE_HIERARCHY)[number];
 export const SOLO_TENANT_ROLE: TeamRole = 'owner';
 
 // 结果类型（判别联合模式）
-export type TeamAccessResult =
-  | { allowed: true; role: TeamRole; teamId: string }
-  | { allowed: false; error: string; status: number };
+/**
+ * 拒绝原因码：前端据此本地化，API 的 `error` 文案为英文兜底（#588：此前文案硬编码中文，
+ * 英文界面上原样显示「你不是此团队的成员」）。
+ */
+export type TeamPermissionErrorCode =
+  | 'not_team_member'
+  | 'insufficient_team_role'
+  | 'cannot_modify_owner'
+  | 'cannot_promote_to_owner'
+  | 'admin_cannot_modify_admin'
+  | 'cannot_assign_equal_or_higher_role'
+  | 'owner_cannot_leave'
+  | 'cannot_remove_owner'
+  | 'admin_cannot_remove_admin'
+  | 'cannot_invite_as_owner'
+  | 'cannot_invite_equal_or_higher_role';
 
-export type PermissionCheckResult =
-  | { allowed: true }
-  | { allowed: false; error: string; status: number };
+type Denied = { allowed: false; error: string; code: TeamPermissionErrorCode; status: number };
+
+export type TeamAccessResult = { allowed: true; role: TeamRole; teamId: string } | Denied;
+
+export type PermissionCheckResult = { allowed: true } | Denied;
 
 // 获取用户在团队中的角色
 export async function getTeamMemberRole(userId: string, teamId: string): Promise<TeamRole | null> {
@@ -94,23 +66,13 @@ export async function checkTeamAccess(userId: string, teamId: string): Promise<T
   if (!role) {
     return {
       allowed: false,
-      error: '你不是此团队的成员',
+      error: 'You are not a member of this team.',
+      code: 'not_team_member',
       status: 403,
     };
   }
 
   return { allowed: true, role, teamId };
-}
-
-// 检查角色是否拥有指定权限
-export function hasPermission(role: TeamRole, permission: TeamPermissionType): boolean {
-  const permissions = ROLE_PERMISSIONS[role] ?? [];
-  return permissions.includes(permission);
-}
-
-// 获取角色层级
-export function getRoleLevel(role: TeamRole): number {
-  return ROLE_HIERARCHY.indexOf(role);
 }
 
 // 综合检查：团队访问权限 + 具体权限
@@ -128,7 +90,8 @@ export async function checkTeamPermission(
   if (!hasPermission(access.role, permission)) {
     return {
       allowed: false,
-      error: `权限不足：${permission} 需要更高的角色`,
+      error: `Insufficient team role: ${permission} requires a higher role.`,
+      code: 'insufficient_team_role',
       status: 403,
     };
   }
@@ -146,7 +109,8 @@ export function canChangeRole(
   if (targetCurrentRole === 'owner') {
     return {
       allowed: false,
-      error: '无法修改所有者角色。请使用所有权转让功能。',
+      error: 'The owner role cannot be changed. Use ownership transfer instead.',
+      code: 'cannot_modify_owner',
       status: 403,
     };
   }
@@ -155,7 +119,8 @@ export function canChangeRole(
   if (targetNewRole === 'owner') {
     return {
       allowed: false,
-      error: '无法提升为所有者。请使用所有权转让功能。',
+      error: 'Members cannot be promoted to owner. Use ownership transfer instead.',
+      code: 'cannot_promote_to_owner',
       status: 403,
     };
   }
@@ -164,7 +129,8 @@ export function canChangeRole(
   if (actorRole === 'admin' && targetCurrentRole === 'admin') {
     return {
       allowed: false,
-      error: '管理员无法修改其他管理员的角色',
+      error: 'Admins cannot change the role of other admins.',
+      code: 'admin_cannot_modify_admin',
       status: 403,
     };
   }
@@ -176,7 +142,8 @@ export function canChangeRole(
   if (actorRole !== 'owner' && newLevel >= actorLevel) {
     return {
       allowed: false,
-      error: '无法分配等于或高于自己的角色',
+      error: 'You cannot assign a role equal to or higher than your own.',
+      code: 'cannot_assign_equal_or_higher_role',
       status: 403,
     };
   }
@@ -194,7 +161,8 @@ export function canRemoveMember(
   if (isSelf && targetRole === 'owner') {
     return {
       allowed: false,
-      error: '所有者无法离开团队。请先转让所有权。',
+      error: 'The owner cannot leave the team. Transfer ownership first.',
+      code: 'owner_cannot_leave',
       status: 403,
     };
   }
@@ -203,7 +171,8 @@ export function canRemoveMember(
   if (targetRole === 'owner') {
     return {
       allowed: false,
-      error: '无法移除团队所有者',
+      error: 'The team owner cannot be removed.',
+      code: 'cannot_remove_owner',
       status: 403,
     };
   }
@@ -212,7 +181,8 @@ export function canRemoveMember(
   if (actorRole === 'admin' && targetRole === 'admin' && !isSelf) {
     return {
       allowed: false,
-      error: '管理员无法移除其他管理员',
+      error: 'Admins cannot remove other admins.',
+      code: 'admin_cannot_remove_admin',
       status: 403,
     };
   }
@@ -229,7 +199,8 @@ export function canInviteWithRole(
   if (inviteeRole === 'owner') {
     return {
       allowed: false,
-      error: '无法邀请用户成为所有者',
+      error: 'Users cannot be invited as owner.',
+      code: 'cannot_invite_as_owner',
       status: 403,
     };
   }
@@ -241,7 +212,8 @@ export function canInviteWithRole(
   if (inviterRole !== 'owner' && inviteeLevel >= inviterLevel) {
     return {
       allowed: false,
-      error: '无法邀请用户为等于或高于自己的角色',
+      error: 'You cannot invite someone with a role equal to or higher than your own.',
+      code: 'cannot_invite_equal_or_higher_role',
       status: 403,
     };
   }

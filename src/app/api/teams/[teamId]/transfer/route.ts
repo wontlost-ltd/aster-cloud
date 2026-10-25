@@ -26,7 +26,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       TeamPermission.TEAM_TRANSFER
     );
     if (!permission.allowed) {
-      return NextResponse.json({ error: permission.error }, { status: permission.status });
+      return NextResponse.json({ error: permission.error, code: permission.code }, { status: permission.status });
     }
 
     const { newOwnerId } = await req.json();

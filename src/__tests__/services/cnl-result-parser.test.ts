@@ -130,6 +130,26 @@ describe('parseApprovalFromResult — 决策字段识别', () => {
     });
   });
 
+  // #587：数值结果此前在 decision 模式一律 approved:true（0 也批准），执行页还把数值列为命中规则。
+  describe('数值结果 mode 语义（与裸文本同口径）', () => {
+    it.each([10, 0, -1, 3.5])('decision 模式：%s → indeterminate（不批准、不计为拒绝）', (n) => {
+      const r = parseApprovalFromResult(n, 'decision');
+      expect(r.approved).toBe(false);
+      expect(r.indeterminate).toBe(true);
+      expect(r.message).toBe(String(n));
+    });
+
+    it('默认 mode（decision）下 0 不再被判批准', () => {
+      expect(parseApprovalFromResult(0).approved).toBe(false);
+    });
+
+    it('value 模式：数值是成功的计算输出', () => {
+      const r = parseApprovalFromResult(10, 'value');
+      expect(r.approved).toBe(true);
+      expect(r.indeterminate).toBeFalsy();
+    });
+  });
+
   // 决策路径 vs 计算路径的 mode 语义（合规安全边界）。
   // 生产 bug：greet → "Hello, John Smith!" 被 decision 路径误判拒绝（塞进
   // deniedReasons+error，success:false）。修复=三值：明确批准/拒绝关键字照常，

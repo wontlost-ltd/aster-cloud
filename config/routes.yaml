@@ -462,6 +462,13 @@ routes:
     source: src/app/[locale]/docs/getting-started/page.tsx
     locales: all
 
+  - path: /docs/guides
+    status: canonical-here
+    owner: docs
+    source: src/app/[locale]/docs/guides/page.tsx
+    locales: all
+    notes: Section-parent redirect to the first guide (#591); keeps the breadcrumb's "Guides" crumb from 404ing.
+
   - path: /docs/guides/credit-pilot
     status: canonical-here
     owner: docs

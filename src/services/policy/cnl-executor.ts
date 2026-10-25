@@ -402,9 +402,15 @@ export function parseApprovalFromResult(
     return { approved: result, message: result ? 'Approved' : 'Denied' };
   }
 
-  // 数值：非零视为成功（计算类策略返回数值结果）
+  // 数值：没有 allow/deny 语义，与裸文本同口径（#587）。
+  // - value 模式（preview / 计算输出）：成功的计算结果。
+  // - decision 模式（准入决策）：indeterminate——既不批准也不伪造拒绝。此前一律 approved:true，
+  //   连 0 也被判批准（fail-open），执行页还把数值当作「命中规则」展示。要表达批准/拒绝须返回
+  //   Verdict 或含批准字段的结构化对象。
   if (typeof result === 'number') {
-    return { approved: true, message: String(result) };
+    return mode === 'value'
+      ? { approved: true, message: String(result) }
+      : { approved: false, indeterminate: true, message: String(result) };
   }
 
   // 对象格式：支持多语言字段名和通用结果格式

@@ -223,7 +223,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     if (!isOwner && policy.teamId) {
       const permCheck = await checkTeamPermission(userId, policy.teamId, TeamPermission.POLICY_EXECUTE);
       if (!permCheck.allowed) {
-        return NextResponse.json({ error: permCheck.error }, { status: permCheck.status });
+        return NextResponse.json({ error: permCheck.error, code: permCheck.code }, { status: permCheck.status });
       }
     }
 

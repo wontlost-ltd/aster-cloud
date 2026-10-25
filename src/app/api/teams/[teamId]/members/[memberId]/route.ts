@@ -60,13 +60,13 @@ export async function PUT(req: Request, { params }: RouteParams) {
       TeamPermission.MEMBER_UPDATE_ROLE
     );
     if (!permission.allowed) {
-      return NextResponse.json({ error: permission.error }, { status: permission.status });
+      return NextResponse.json({ error: permission.error, code: permission.code }, { status: permission.status });
     }
 
     // 获取操作者的角色
     const access = await checkTeamAccess(session.user.id, teamId);
     if (!access.allowed) {
-      return NextResponse.json({ error: access.error }, { status: access.status });
+      return NextResponse.json({ error: access.error, code: access.code }, { status: access.status });
     }
 
     // 目标成员的查询、写入与回读都同时绑定 memberId 与 teamId：跨团队猜 memberId 一律 404，
@@ -87,7 +87,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
     if (parsed.set.role) {
       const changeCheck = canChangeRole(access.role, targetMember.role as TeamRole, parsed.set.role);
       if (!changeCheck.allowed) {
-        return NextResponse.json({ error: changeCheck.error }, { status: changeCheck.status });
+        return NextResponse.json({ error: changeCheck.error, code: changeCheck.code }, { status: changeCheck.status });
       }
     }
 
@@ -168,14 +168,14 @@ export async function DELETE(req: Request, { params }: RouteParams) {
         TeamPermission.MEMBER_REMOVE
       );
       if (!permission.allowed) {
-        return NextResponse.json({ error: permission.error }, { status: permission.status });
+        return NextResponse.json({ error: permission.error, code: permission.code }, { status: permission.status });
       }
     }
 
     // 检查是否可以移除
     const removeCheck = canRemoveMember(access.role, targetMember.role as TeamRole, isSelf);
     if (!removeCheck.allowed) {
-      return NextResponse.json({ error: removeCheck.error }, { status: removeCheck.status });
+      return NextResponse.json({ error: removeCheck.error, code: removeCheck.code }, { status: removeCheck.status });
     }
 
     // 移除成员

@@ -661,6 +661,7 @@ describe('V1 Policies API - Drizzle Migration', () => {
       mockCheckTeamPermission.mockResolvedValue({
         allowed: false,
         error: 'Insufficient permissions',
+        code: 'insufficient_team_role',
         status: 403,
       });
 
