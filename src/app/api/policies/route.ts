@@ -12,7 +12,12 @@ import {
   PolicyCompileError,
 } from '@/services/policy/version-manager';
 import { makeCompileValidator } from '@/lib/policy-compile-validator';
-import { aliasInvalidResponse, compileGateErrorResponse } from '@/lib/policy-compile-response';
+import {
+  aliasInvalidResponse,
+  compileGateErrorResponse,
+  structuralGrantRequiredResponse,
+} from '@/lib/policy-compile-response';
+import { hasStructuralAliases } from '@/lib/policy-alias-shared';
 import {
   buildAliasReservedForUser,
   getStructuralAliasGrant,
@@ -260,6 +265,10 @@ export async function POST(req: Request) {
       ? locale
       : 'en-US';
     const allowStructural = await getStructuralAliasGrant(session.user.id);
+    // 未授权（或授权已撤销）却提交结构词别名：在编译门禁前直接拒绝，给出稳定码。
+    if (!allowStructural && hasStructuralAliases(aliasSetInput)) {
+      return structuralGrantRequiredResponse();
+    }
     const aliasReserved = aliasSetInput
       ? await buildAliasReservedForUser(session.user.id, compileLocale)
       : undefined;

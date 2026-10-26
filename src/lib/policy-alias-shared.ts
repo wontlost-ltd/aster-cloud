@@ -275,6 +275,13 @@ export function formatAliasIssueZh(issue: AliasIssue): string {
   }
 }
 
+/** 别名集是否含结构词 kind（需要有效的结构词授权才能用于新版本）。 */
+export function hasStructuralAliases(aliasSet: AliasSet | null | undefined): boolean {
+  return Object.entries(aliasSet ?? {}).some(
+    ([kind, aliases]) => STRUCTURAL_KINDS.has(kind) && (aliases ?? []).length > 0,
+  );
+}
+
 /**
  * 解析别名输入框原文：按逗号切分、逐段归一、去空。
  * 只在需要别名数组时调用（保存/失焦）；输入框自身保留原文，否则逐字输入的空格/逗号会被吞掉。

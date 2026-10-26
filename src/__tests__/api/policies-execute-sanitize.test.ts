@@ -114,7 +114,13 @@ describe('POST /api/policies/[id]/execute — 执行失败脱敏（#609）', () 
 
   it('引擎失败：响应与落库只含通用说明 + execution_failed，原文进日志', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mockExecute.mockResolvedValue({ ...execResult({ engineError: true, denyCount: 1 }), deniedReasons: [RAW] });
+    mockExecute.mockResolvedValue({
+      ...execResult({ engineError: true, denyCount: 1 }),
+      deniedReasons: [RAW],
+      diagnostics: [
+        { code: 'RUNTIME', message: 'java.lang.IllegalStateException: boom\n\tat io.aster.X.run(X.java:12)' },
+      ],
+    });
 
     const res = await POST(request({ input: { fahrer: { age: 21 } } }), params);
     const body = await res.json();
@@ -122,6 +128,7 @@ describe('POST /api/policies/[id]/execute — 执行失败脱敏（#609）', () 
     expect(res.status).toBe(200);
     expect(body.errorCode).toBe('execution_failed');
     expect(body.error).not.toContain('java.lang');
+    expect(body.diagnostics).toEqual([{ code: 'RUNTIME', message: body.error }]);
     expect(JSON.stringify(body)).not.toMatch(/java\.lang|Polyglot|无法访问/);
     expect(mockInsert).toHaveBeenCalledWith(executions);
     const persisted = mockValuesInsert.mock.calls.find(
@@ -156,6 +163,8 @@ describe('POST /api/policies/[id]/execute — 执行失败脱敏（#609）', () 
     expect(res.status).toBe(500);
     expect(body.code).toBe('execution_failed');
     expect(body.message).not.toContain('java.lang');
+    expect(body).not.toHaveProperty('debug');
+    expect(JSON.stringify(body)).not.toContain('IllegalStateException');
     log.mockRestore();
   });
 });

@@ -560,13 +560,26 @@ describe('Policies API - Drizzle Migration', () => {
       );
     });
 
-    it('#609：别名校验失败 → 400 + 稳定码 alias_invalid（前端据此本地化）', async () => {
-      mockCreateVersion.mockRejectedValueOnce(
-        new Error('用户自定义别名校验失败: 不允许为结构词 IF 自定义别名'),
-      );
+    it('#604：未授权提交结构词别名 → 400 alias_invalid，不调编译门禁', async () => {
+      mockGetStructuralAliasGrant.mockResolvedValue(false);
       const response = await POST(makeRequest('http://localhost/api/policies', 'POST', {
         ...validBody,
         aliasSet: { IF: ['provided that'] },
+      }));
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body).toMatchObject({ code: 'alias_invalid', reason: 'structural_grant_required' });
+      expect(mockAssertCompilable).not.toHaveBeenCalled();
+    });
+
+    it('#609：别名校验失败 → 400 + 稳定码 alias_invalid（前端据此本地化）', async () => {
+      mockCreateVersion.mockRejectedValueOnce(
+        new Error('用户自定义别名校验失败: 别名 \'multiplied by\' 在多个 kind 间重复定义'),
+      );
+      const response = await POST(makeRequest('http://localhost/api/policies', 'POST', {
+        ...validBody,
+        aliasSet: { TIMES: ['multiplied by'], MODULO: ['multiplied by'] },
       }));
       const body = await response.json();
 
@@ -880,7 +893,7 @@ describe('Policies API - Drizzle Migration', () => {
       );
     });
 
-    it('#604：仅改源码、沿用已冻结别名时按已授权编译（不因撤销授权而被门禁拒绝）', async () => {
+    it('#604：授权已撤销时改源码（建新版本）沿用的结构词别名 → 400 alias_invalid，不编译不落库', async () => {
       vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue({
         aliasSet: '{"IF":["provided that"]}',
       } as never);
@@ -890,12 +903,45 @@ describe('Policies API - Drizzle Migration', () => {
         makeRequest('http://localhost/api/policies/p1', 'PUT', { content: 'Module Changed.' }),
         mockParams,
       );
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body).toMatchObject({ code: 'alias_invalid', reason: 'structural_grant_required' });
+      expect(mockAssertCompilable).not.toHaveBeenCalled();
+      expect(mockCreateVersion).not.toHaveBeenCalled();
+    });
+
+    it('#604：授权已撤销但源码与别名都不变（不建新版本）→ 正常保存其它字段', async () => {
+      vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue({
+        aliasSet: '{"IF":["provided that"]}',
+      } as never);
+      mockGetStructuralAliasGrant.mockResolvedValue(false);
+
+      const response = await PUT(
+        makeRequest('http://localhost/api/policies/p1', 'PUT', { name: 'Renamed', content: 'Module X.' }),
+        mockParams,
+      );
 
       expect(response.status).toBe(200);
-      expect(mockGetStructuralAliasGrant).not.toHaveBeenCalled();
+      expect(mockCreateVersion).not.toHaveBeenCalled();
+      expect(mockAssertCompilable).not.toHaveBeenCalled();
+    });
+
+    it('#604：授权有效时改源码，沿用的结构词别名按授权编译', async () => {
+      vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue({
+        aliasSet: '{"IF":["provided that"]}',
+      } as never);
+      mockGetStructuralAliasGrant.mockResolvedValue(true);
+
+      const response = await PUT(
+        makeRequest('http://localhost/api/policies/p1', 'PUT', { content: 'Module Changed.' }),
+        mockParams,
+      );
+
+      expect(response.status).toBe(200);
       expect(mockAssertCompilable).toHaveBeenCalledWith(
         expect.any(Function),
-        expect.objectContaining({ allowStructural: true }),
+        expect.objectContaining({ aliasSet: { IF: ['provided that'] }, allowStructural: true }),
       );
     });
 

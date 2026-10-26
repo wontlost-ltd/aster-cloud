@@ -10,9 +10,14 @@ import {
   PolicyCompileError,
 } from '@/services/policy/version-manager';
 import { makeCompileValidator } from '@/lib/policy-compile-validator';
-import { aliasInvalidResponse, compileGateErrorResponse } from '@/lib/policy-compile-response';
+import {
+  aliasInvalidResponse,
+  compileGateErrorResponse,
+  structuralGrantRequiredResponse,
+} from '@/lib/policy-compile-response';
 import { getStructuralAliasGrant, buildAliasReservedForUser } from '@/lib/structural-alias-grants';
 import { canonicalAliasJson } from '@/lib/policy-alias';
+import { hasStructuralAliases } from '@/lib/policy-alias-shared';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { softDeletePolicy } from '@/lib/policy-lifecycle';
 import { invalidatePolicyCache } from '@/lib/cache';
@@ -261,15 +266,16 @@ export async function PUT(req: Request, { params }: RouteParams) {
       updateData.piiFields = piiResult?.detectedTypes;
     }
 
-    // allowStructural 来源：
-    //   - 别名有变（aliasChanged）→ 按当前 per-user 授权权威判定（新引入的别名须现授权）。
-    //   - 别名沿用活跃版本（!aliasChanged，如 content-only 编辑）→ 视为已授权：这些别名在
-    //     原版本创建时已授权+校验+冻结，授权撤销不得阻断对已有策略的后续（非别名）编辑，
-    //     与执行端「冻结即信任」同口径。避免撤销授权后合法用户改不了源码。
-    // 两项读取放在事务外：事务内经全局 db 读要第二条连接，池满时与事务互等。
-    const allowStructural = aliasChanged
+    // allowStructural 来源：只要建新版本就按当前 per-user 授权权威判定。新版本是新的编译
+    // 输入（源码或别名有变），含结构词别名时必须在保存时持有有效授权；授权撤销后不能再基于
+    // 旧的结构词别名产出新版本。不建新版本时什么都不编译、不落库，也就不需要授权。
+    // 读取放在事务外：事务内经全局 db 读要第二条连接，池满时与事务互等。
+    const allowStructural = newVersion
       ? await getStructuralAliasGrant(session.user.id)
-      : true;
+      : false;
+    if (newVersion && !allowStructural && hasStructuralAliases(aliasSetInput)) {
+      return structuralGrantRequiredResponse();
+    }
     // 只有新建版本（源码变更）才编译校验；在事务外 preflight（避免事务内网络调用）。
     // 用与 createVersion 一致的 aliasSetInput（effective 别名）编译，避免语义分裂。
     // 有 error 诊断抛 PolicyCompileError → 下方 catch 转 400（检查不可用时 503）。

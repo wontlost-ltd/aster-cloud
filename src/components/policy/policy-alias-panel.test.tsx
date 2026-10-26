@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useState } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { PolicyAliasPanel } from './policy-alias-panel';
 import { extractReservedAliasSets, getLexicon } from '@/lib/aster-lexicon';
 
@@ -159,5 +159,41 @@ describe('PolicyAliasPanel', () => {
     }
     expect(screen.getByLabelText('Aliases for kinds.times')).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByLabelText('Aliases for kinds.modulo')).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('#601：编辑中外部重置/恢复 aliasSet 时输入框同步外部值', () => {
+    let setExternal: (next: Record<string, string[]>) => void = () => {};
+    function Harness() {
+      const [aliasSet, setAliasSet] = useState<Record<string, string[]>>({});
+      setExternal = setAliasSet;
+      return (
+        <PolicyAliasPanel
+          aliasSet={aliasSet}
+          locale="en-US"
+          reservedSets={reservedSets}
+          allowStructural={false}
+          onChange={setAliasSet}
+          expanded
+          onExpandedChange={vi.fn()}
+        />
+      );
+    }
+    render(<Harness />);
+    const input = screen.getByLabelText('Aliases for kinds.times') as HTMLInputElement;
+    input.focus();
+    fireEvent.change(input, { target: { value: 'multiplied ' } });
+    expect(input.value).toBe('multiplied ');
+
+    // 仍处于聚焦状态时外部恢复草稿。
+    act(() => setExternal({ TIMES: ['scaled by'] }));
+    expect(input.value).toBe('scaled by');
+
+    // 外部清空。
+    act(() => setExternal({}));
+    expect(input.value).toBe('');
+
+    // 之后继续逐字输入仍保留原文。
+    fireEvent.change(input, { target: { value: 'times by ' } });
+    expect(input.value).toBe('times by ');
   });
 });

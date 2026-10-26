@@ -522,7 +522,6 @@ export async function POST(req: Request, { params }: RouteParams) {
       error: 'Internal server error',
       code: EXECUTION_FAILED_CODE,
       message: EXECUTION_FAILED_MESSAGE,
-      debug: process.env.NODE_ENV !== 'production' ? String(error) : undefined,
     }, { status: 500 });
   }
 }

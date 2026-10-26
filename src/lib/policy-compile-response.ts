@@ -28,6 +28,22 @@ export function aliasInvalidResponse(error: unknown): NextResponse | null {
 }
 
 /**
+ * 新版本含结构词别名但当前没有有效授权（未授予或已撤销）→ 400 alias_invalid。
+ * reason 供 API 调用方区分；界面按 code 本地化。
+ */
+export function structuralGrantRequiredResponse(): NextResponse {
+  return NextResponse.json(
+    {
+      error: 'Invalid aliasSet',
+      code: ALIAS_INVALID_CODE,
+      reason: 'structural_grant_required',
+      message: 'Structural keyword aliases require an active admin grant.',
+    },
+    { status: 400 },
+  );
+}
+
+/**
  * 把保存前编译门禁的拒绝映射为 HTTP 响应，供所有保存入口共用。
  * - 带 retryAfterSeconds（编译检查暂不可用，如上游限流）→ 503 compile_unavailable + Retry-After。
  * - 其余（源码有阻断诊断或上游判定输入非法）→ 400 compile_error。

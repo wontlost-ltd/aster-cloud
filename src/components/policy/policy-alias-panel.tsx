@@ -158,7 +158,10 @@ function AliasKindRow({
   const issueMessage = useAliasIssueMessage();
   // 编辑中保留输入原文：规范化后的 value 会吞掉末尾空格/逗号，导致无法逐字输入多词别名。
   // 每次输入仍即时解析回传（保存不依赖失焦）；失焦后回到规范化展示。
-  const [draft, setDraft] = useState<string | null>(null);
+  // draft 记下原文及其解析结果；外部改了 aliasSet（恢复草稿、重置）使 value 与本行上次回传的
+  // 结果不一致时，原文作废，直接显示外部值。
+  const [draft, setDraft] = useState<{ raw: string; emitted: string } | null>(null);
+  const shown = draft && draft.emitted === value ? draft.raw : value;
   const inputId = `policy-alias-${meta.kind}`;
   const errorId = `${inputId}-error`;
   const invalid = issues.length > 0;
@@ -183,11 +186,12 @@ function AliasKindRow({
         </Label>
         <Input
           id={inputId}
-          value={draft ?? value}
+          value={shown}
           disabled={locked}
           onChange={(event) => {
-            setDraft(event.target.value);
-            onChange(meta.kind, event.target.value);
+            const raw = event.target.value;
+            setDraft({ raw, emitted: parseAliasInput(raw).join(', ') });
+            onChange(meta.kind, raw);
           }}
           onBlur={() => setDraft(null)}
           placeholder={t('placeholder')}
