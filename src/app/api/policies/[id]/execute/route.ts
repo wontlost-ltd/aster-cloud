@@ -20,6 +20,7 @@ import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
 import {
   ambiguousInputFieldBody,
   loadVersionExecutionVocabulary,
+  localizedResultField,
   prepareExecutionInput,
 } from '@/lib/execution-input';
 import { needsGuardDecision, registerGuardAfterInsert, registerGuardDecisionWith } from '@/lib/guard-register';
@@ -32,13 +33,6 @@ const DASHBOARD_AGENT: AgentIdentity = { provider: 'aster-cloud', model: 'dashbo
 
 interface RouteParams {
   params: Promise<{ id: string }>;
-}
-
-/** 结果本地化后与原值不同时才返回 localizedResult（新增可选字段，旧客户端忽略即可）。 */
-function localizedResultField(result: unknown, localize: (value: unknown) => unknown): { localizedResult?: unknown } {
-  if (result === undefined || result === null) return {};
-  const localized = localize(result);
-  return JSON.stringify(localized) === JSON.stringify(result) ? {} : { localizedResult: localized };
 }
 
 // 获取当前周期字符串（YYYY-MM）

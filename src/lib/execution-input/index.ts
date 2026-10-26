@@ -125,6 +125,16 @@ export function prepareExecutionInput(params: PrepareExecutionInputParams): Prep
   };
 }
 
+/**
+ * 结果本地化后与原值不同时才返回 localizedResult（新增可选字段，旧客户端忽略即可）。
+ * 本地化按返回类型递归进行：枚举值（字符串或运行时枚举对象）、结构字段名、列表元素都会还原。
+ */
+export function localizedResultField(result: unknown, localize: (value: unknown) => unknown): { localizedResult?: unknown } {
+  if (result === undefined || result === null) return {};
+  const localized = localize(result);
+  return JSON.stringify(localized) === JSON.stringify(result) ? {} : { localizedResult: localized };
+}
+
 /** 歧义输入的 400 响应体（dashboard / v1 共用；secure-execute 另加其 errorCode 口径）。 */
 export function ambiguousInputFieldBody(ambiguous: AmbiguousInputField) {
   return {

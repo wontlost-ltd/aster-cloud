@@ -5,7 +5,7 @@ import { CheckCircle2, AlertCircle, Loader2, XCircle } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Button, Card, CardBody, toast } from '@/components/ui';
 import { normalizeRowErrors } from './bulk-result';
-import { BulkRowErrors } from './bulk-row-errors';
+import { BulkRowErrors, BulkSkippedReasons } from './bulk-row-errors';
 
 interface BulkRollup {
   added?: number;
@@ -167,6 +167,7 @@ export function BulkJobProgress({ jobId, onClear, onTerminal }: BulkJobProgressP
   const Icon = statusIcon(job.status);
   const tone = statusTone(job.status);
   const isFinished = isTerminal(job.status);
+  const rowErrors = normalizeRowErrors(job.errors);
 
   return (
     <Card aria-live="polite" aria-busy={!isFinished}>
@@ -236,7 +237,12 @@ export function BulkJobProgress({ jobId, onClear, onTerminal }: BulkJobProgressP
           </dl>
         ) : null}
 
-        {isFinished ? <BulkRowErrors errors={normalizeRowErrors(job.errors)} /> : null}
+        {isFinished ? (
+          <>
+            <BulkSkippedReasons errors={rowErrors} skipped={rollup.skipped ?? rowErrors.length} />
+            <BulkRowErrors errors={rowErrors} />
+          </>
+        ) : null}
       </CardBody>
     </Card>
   );

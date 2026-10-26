@@ -22,9 +22,10 @@ import {
   type BulkRollupView,
   type BulkRowErrorView,
 } from './bulk-result';
-import { BulkRowErrors } from './bulk-row-errors';
+import { BulkRowErrors, BulkSkippedReasons, skippedReasonTexts } from './bulk-row-errors';
 import { KIND_OPTIONS, type Kind } from './constants';
 import { useFocusTrap } from './use-focus-trap';
+import { useVocabularyErrors } from './use-vocabulary-errors';
 
 interface BulkUploadDialogProps {
   isOpen: boolean;
@@ -93,6 +94,7 @@ export function BulkUploadDialog({
   onImported,
 }: BulkUploadDialogProps) {
   const t = useTranslations('domainVocabularies.bulk');
+  const vocabularyErrors = useVocabularyErrors();
   const titleId = useId();
   const formRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -175,9 +177,8 @@ export function BulkUploadDialog({
         const body = (await res.json().catch(() => ({}))) as {
           error?: { message?: string; code?: string };
         };
-        throw new Error(
-          body.error?.message ?? t('errorGeneric'),
-        );
+        // 整批被拒（行数超限、空批等）：按错误码本地化，不显示服务端原文（#634）
+        throw new Error(vocabularyErrors.envelope(body.error?.code, body.error?.message, t('errorGeneric')));
       }
       if (mode === 'async') {
         const data = (await res.json()) as { jobId?: string };
@@ -205,11 +206,16 @@ export function BulkUploadDialog({
       onClose();
       return;
     }
-    // 总数取服务端 rowCount，与「已导入 + 未导入」同一口径（#629）
+    // 总数取服务端 rowCount，与「已导入 + 未导入」同一口径（#629）；未导入的按原因分组附在后面（#636），
+    // 避免把「已在你的词汇中」误读成导入失败或 reused。
     const counts = { imported: summary.imported, failed: summary.failed, total: summary.total };
-    if (summary.tone === 'partial') toast.warning(t('syncPartial', counts));
-    else toast.error(t('syncNoneImported', counts));
-    setSyncResult({ summary, errors: normalizeRowErrors(data.errors) });
+    const errors = normalizeRowErrors(data.errors);
+    const reasons = skippedReasonTexts(errors, summary.failed, t).join(', ');
+    const headline = t(summary.tone === 'partial' ? 'syncPartial' : 'syncNoneImported', counts);
+    const message = reasons ? `${headline} (${reasons})` : headline;
+    if (summary.tone === 'partial') toast.warning(message);
+    else toast.error(message);
+    setSyncResult({ summary, errors });
   };
 
   const handleFile = async (file: File) => {
@@ -401,7 +407,10 @@ export function BulkUploadDialog({
                       total: totalRows,
                     })}
                   </p>
-                  <BulkRowErrors errors={syncResult.errors} />
+                  <div className="space-y-3">
+                    <BulkSkippedReasons errors={syncResult.errors} skipped={syncResult.summary.failed} />
+                    <BulkRowErrors errors={syncResult.errors} />
+                  </div>
                 </AlertDescription>
               </Alert>
             </div>

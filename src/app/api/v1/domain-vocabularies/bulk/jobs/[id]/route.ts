@@ -1,7 +1,7 @@
 /**
  * /api/v1/domain-vocabularies/bulk/jobs/[id] (B11)
  *
- * GET    — read job progress + rollup + errors
+ * GET    — read job progress + rollup + errors（rollup 口径同同步导入，见 domain-vocabulary.ts BulkRollup）
  * DELETE — cancel the job (queued or running). Workers honour the flip at
  *          chunk boundaries.
  */

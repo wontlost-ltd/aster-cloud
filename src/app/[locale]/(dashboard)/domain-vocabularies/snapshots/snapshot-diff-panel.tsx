@@ -40,10 +40,6 @@ interface DiffResponse {
   unchangedIds: string[];
 }
 
-interface ErrorEnvelope {
-  error?: { code?: string; message?: string };
-}
-
 interface SnapshotDiffPanelProps {
   snapshot: DiffSnapshotMeta;
   onClose: () => void;
@@ -85,8 +81,8 @@ export function SnapshotDiffPanel({
           { credentials: 'same-origin' },
         );
         if (!res.ok) {
-          const env = (await res.json().catch(() => ({}))) as ErrorEnvelope;
-          throw new Error(env.error?.message ?? t('loadFailed'));
+          // 不显示服务端原文（#634）：加载失败只有一种用户可理解的说法
+          throw new Error(t('loadFailed'));
         }
         const data = (await res.json()) as DiffResponse;
         if (!cancelled) setDiff(data);

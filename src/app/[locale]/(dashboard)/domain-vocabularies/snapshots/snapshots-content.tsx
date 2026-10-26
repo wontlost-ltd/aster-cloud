@@ -19,6 +19,7 @@ import {
   type DataTableColumn,
 } from '@/components/ui';
 import { buildListUrl, type ListUrlOptions } from '@/lib/list-search-params';
+import { useVocabularyErrors } from '../use-vocabulary-errors';
 import { SnapshotDiffPanel } from './snapshot-diff-panel';
 
 export interface SerializableSnapshot {
@@ -74,6 +75,7 @@ export function SnapshotsContent({
   initialQuery,
 }: SnapshotsContentProps) {
   const t = useTranslations('domainVocabularies.snapshotsView');
+  const vocabularyErrors = useVocabularyErrors();
   const tNav = useTranslations('dashboardNav');
   const locale = useLocale();
   const router = useRouter();
@@ -163,7 +165,8 @@ export function SnapshotsContent({
       );
       if (!res.ok) {
         const env = (await res.json().catch(() => ({}))) as ErrorEnvelope;
-        throw new Error(env.error?.message ?? t('rollbackFailed'));
+        // 按错误码本地化，不显示服务端原文（#634）
+        throw new Error(vocabularyErrors.envelope(env.error?.code, env.error?.message, t('rollbackFailed')));
       }
       const data = (await res.json()) as {
         added: number;
@@ -185,7 +188,7 @@ export function SnapshotsContent({
     } finally {
       setRollingBack(false);
     }
-  }, [rollbackTarget, refreshRsc, t]);
+  }, [rollbackTarget, refreshRsc, t, vocabularyErrors]);
 
   const columns: DataTableColumn<SerializableSnapshot>[] = [
     {

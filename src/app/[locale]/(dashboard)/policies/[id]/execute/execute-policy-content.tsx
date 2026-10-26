@@ -6,7 +6,6 @@ import { useTranslations } from 'next-intl';
 import { CLIENT_CAPABILITIES } from '@/hooks/use-deployment-mode';
 import {
   extractSchema,
-  generateFieldValue,
   generateInputValues,
   EN_US,
   ZH_CN,
@@ -33,6 +32,17 @@ import { chooseDefaultRule, reconcileSelectedRule, extractRuleSymbols } from '@/
 import { detectCNLLanguage, isHighConfidence } from '@/lib/cnl-language-detector';
 import { inferParameterStructs, inferredFieldDefault } from './infer-parameter-structs';
 import { executionStatus } from './execution-status';
+import {
+  formatResultValue,
+  isPlainObject,
+  normalizeNumberFields,
+  numberFieldValue,
+  numberKind,
+  parseFormValues,
+  parseJsonInput,
+  withFormField,
+  type FormValues,
+} from './execute-input';
 
 // Policy locale 直接采用 BCP-47 标准（与 quickDetectLanguage 返回值对齐）。
 // P0-R Medium #8 修复：之前定义本地三元 type 'zh'|'de'|'en' + 三元映射，
@@ -86,10 +96,9 @@ function pendingOutcomeKey(outcome: string | undefined): 'require_approval' | 'e
 
 const PENDING_BADGE_CLASS = 'inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-sm font-medium text-amber-800';
 
-/** 某个 Rule 上次留下的输入：JSON 与表单两种输入方式各一份。 */
+/** 某个 Rule 上次留下的输入（JSON 文本；表单只是它的视图，不另存）。 */
 interface RuleDraft {
   input: string;
-  formValues: Record<string, Record<string, unknown>>;
 }
 
 interface ExecutionDiagnostic {
@@ -118,9 +127,9 @@ interface ExecutePolicyContentProps {
   locale: string;
 }
 
-// 从表单值构建命名上下文
+// 从表单值构建命名上下文：只提交 schema 里的参数
 function buildNamedContext(
-  formValues: Record<string, Record<string, unknown>>,
+  formValues: FormValues,
   parameters: ParameterInfo[]
 ): Record<string, unknown> {
   const context: Record<string, unknown> = {};
@@ -136,39 +145,6 @@ function buildNamedContext(
 // 扩展字段信息（包含枚举变体，兼容未发布的 FieldInfo 类型）
 type FieldInfoWithEnum = FieldInfo & { enumVariants?: string[] };
 type ParameterInfoWithEnum = ParameterInfo & { enumVariants?: string[] };
-
-// 初始化表单值（带自动生成的示例数据）
-function initFormValuesWithSampleData(
-  parameters: ParameterInfo[],
-  lexicon?: Lexicon,
-): Record<string, Record<string, unknown>> {
-  const values: Record<string, Record<string, unknown>> = {};
-  for (const param of parameters) {
-    const p = param as ParameterInfoWithEnum;
-    if (p.typeKind === 'struct' && p.fields) {
-      const structValue: Record<string, unknown> = {};
-      for (const field of p.fields) {
-        const f = field as FieldInfoWithEnum;
-        if (f.typeKind === 'enum' && f.enumVariants && f.enumVariants.length > 0) {
-          structValue[f.name] = f.enumVariants[0];
-        } else {
-          structValue[f.name] = generateFieldValue(f.name, f.type, f.typeKind, lexicon);
-        }
-      }
-      values[p.name] = structValue;
-    } else if (p.typeKind === 'enum' && p.enumVariants && p.enumVariants.length > 0) {
-      values[p.name] = p.enumVariants[0] as unknown as Record<string, unknown>;
-    } else {
-      values[p.name] = generateFieldValue(
-        p.name,
-        p.type,
-        p.typeKind,
-        lexicon,
-      ) as Record<string, unknown>;
-    }
-  }
-  return values;
-}
 
 export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentProps) {
   const t = useTranslations('policies.execute');
@@ -199,7 +175,11 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
   const [schema, setSchema] = useState<PolicySchema | null>(null);
   const [schemaLoading, setSchemaLoading] = useState(false);
   const [schemaError, setSchemaError] = useState<SchemaError | null>(null);
-  const [formValues, setFormValues] = useState<Record<string, Record<string, unknown>>>({});
+  // 表单值不是独立状态：始终由 JSON 文本解析得到（单一状态源）。
+  // 只在表单模式解析：JSON 模式下逐键输入大段 JSON 不重复解析。
+  const formValues = useMemo(() => (inputMode === 'form' ? parseFormValues(input) : null), [inputMode, input]);
+  // 上次执行被拦下的数字字段（控件 id），改动该字段后移除。
+  const [invalidNumberFields, setInvalidNumberFields] = useState<string[]>([]);
   // 策略源码：用于提取规则符号（ruleSymbols）和按 locale 选词典。
   const [policyContent, setPolicyContent] = useState('');
   // schema 提取的输入（源码 + 检测到的语言 + 冻结别名），与所选 Rule 一起决定参数表。
@@ -210,7 +190,7 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
   } | null>(null);
   // 最近一次提取 schema 所用的 Rule：effect 据此跳过与首次加载重复的提取。
   const schemaRuleRef = useRef<string | null>(null);
-  // 每个函数上次留下的输入（JSON 与表单两份）。切走时存、切回时恢复，否则用户手改的输入
+  // 每个函数上次留下的输入。切走时存、切回时恢复，否则用户手改的输入
   // 会被新 Rule 的示例覆盖且无法找回。只按函数名区分、不跨函数复用，恢复的输入一定是该函数的参数形状。
   const ruleDraftsRef = useRef(new Map<string, RuleDraft>());
   // 当前输入实际对应的函数（schema 提取所用的那个），草稿以它为键。
@@ -261,37 +241,30 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
           .map((parameter) => parameter.name));
         const schemaWithInferredParameters = { ...data, parameters };
         setSchema(schemaWithInferredParameters);
-        // 初始化表单值（使用自动生成的示例数据，传入 lexicon 启用本地化）
-        const sampleValues = initFormValuesWithSampleData(parameters, lexicon);
+        // 示例输入（传入 lexicon 生成本地化示例值）；从源码推断出结构的参数用推断字段的默认值。
+        const sampleInput = generateInputValues(parameters, lexicon);
         for (const parameter of parameters) {
           if (!inferredNames.has(parameter.name)) continue;
-          sampleValues[parameter.name] = Object.fromEntries(
+          sampleInput[parameter.name] = Object.fromEntries(
             (parameter.fields ?? []).map((field) => [field.name, inferredFieldDefault(field)]),
           );
         }
-        setFormValues(sampleValues);
-        // 同时更新 JSON 输入区域
-        const sampleInput = generateInputValues(parameters, lexicon);
-        for (const name of inferredNames) sampleInput[name] = sampleValues[name];
         setInput(JSON.stringify(sampleInput, null, 2));
       } else if (!data.success && data.error) {
         // Schema extraction failed - display error and use default empty JSON
         console.warn('Schema extraction failed:', data.error);
-        // ★必须清掉上一个 Rule 的参数表与表单值，否则表单模式会把旧 Rule 的参数提交给新 Rule。
+        // ★必须清掉上一个 Rule 的参数表与输入，否则表单模式会把旧 Rule 的参数提交给新 Rule。
         setSchema(null);
-        setFormValues({});
         setSchemaError({ messageKey: 'policy.schema_failed', detail: data.error });
         setInput('{}');
       } else {
-        // No parameters found - use default empty JSON（同样清掉旧 Rule 的参数表与表单值）
+        // No parameters found - use default empty JSON（同样清掉旧 Rule 的参数表与输入）
         setSchema(null);
-        setFormValues({});
         setInput('{}');
       }
     } catch (err) {
       console.error('Failed to extract schema:', err);
       setSchema(null);
-      setFormValues({});
       setSchemaError({
         messageKey: 'policy.schema_failed',
         detail: err instanceof Error ? err.message : 'Failed to extract schema',
@@ -394,7 +367,7 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
   }, [ruleSymbols]);
 
   // 用户切换 Rule 时按该 Rule 重新提取参数并生成示例（首次加载已在加载回调里按默认 Rule 提取）。
-  // 表单值与 JSON 输入是用户可编辑的 state，切换 Rule 时整体换成新 Rule 的：该 Rule 有草稿
+  // 输入是用户可编辑的 state，切换 Rule 时整体换成新 Rule 的：该 Rule 有草稿
   // （之前来过）就恢复草稿，否则用示例。参数表（schema）总是重新提取。
   useEffect(() => {
     if (!schemaSource || schemaRuleRef.current === selectedRule) return;
@@ -404,14 +377,13 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
     if (draft) {
       // 与 fetchSchema 内的示例写入同批提交，后写者生效，不会闪出示例
       setInput(draft.input);
-      setFormValues(draft.formValues);
     }
   }, [schemaSource, selectedRule, fetchSchema]);
 
   // 切换 Rule 的唯一入口（规则选择器与候选按钮共用）：先把当前输入记为它所属函数的草稿。
   // 自动校正（reconcileSelectedRule）不走这里——那时原 Rule 已不存在，没有可恢复的对象。
   const switchRule = (next: string | null) => {
-    ruleDraftsRef.current.set(inputRuleRef.current, { input, formValues });
+    ruleDraftsRef.current.set(inputRuleRef.current, { input });
     setSelectedRule(next);
   };
 
@@ -419,28 +391,16 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
   const regenerateSampleData = useCallback(() => {
     if (schema?.parameters) {
       const lexicon = LEXICON_MAP[policyLocale];
-      setFormValues(initFormValuesWithSampleData(schema.parameters, lexicon));
       const sampleInput = generateInputValues(schema.parameters, lexicon);
       setInput(JSON.stringify(sampleInput, null, 2));
     }
   }, [schema, policyLocale]);
 
-  // 更新表单字段值
+  // 表单编辑直接写回 JSON 文本（单一状态源），切到 JSON 视图或执行时看到的就是表单里的值。
   const updateFormField = (paramName: string, fieldName: string | null, value: unknown) => {
-    setFormValues(prev => {
-      const newValues = { ...prev };
-      if (fieldName === null) {
-        // 直接更新参数值（非结构体类型）
-        newValues[paramName] = value as Record<string, unknown>;
-      } else {
-        // 更新结构体字段
-        newValues[paramName] = {
-          ...prev[paramName],
-          [fieldName]: value,
-        };
-      }
-      return newValues;
-    });
+    const id = fieldName ? `${paramName}-${fieldName}` : paramName;
+    setInvalidNumberFields((current) => (current.includes(id) ? current.filter((f) => f !== id) : current));
+    setInput((prev) => withFormField(prev, paramName, fieldName, value));
   };
 
   // ENTRY_AMBIGUOUS 的候选按钮：只选中该 Rule，不立即执行。
@@ -467,30 +427,46 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
       ? t('ambiguousInputSpelling', { field: data.policyField ?? data.field ?? '', candidates: data.candidates.join(', ') })
       : t('ambiguousInputField', { field: data.policyField ?? data.field ?? '' });
 
+  /**
+   * 执行前确定提交的输入（#635）：JSON 不可解析 → 提示并阻止；合法但不是对象的 JSON（数组、字符串、
+   * 数字、null）表单展示不了，原样提交，绝不替换。表单模式下数字字段在这里定案：能解析为数字就
+   * 提交数字（并写回 JSON 文本），否则阻止执行并标出字段。
+   */
+  const prepareRequestInput = (): { input: unknown } | null => {
+    const parsed = parseJsonInput(input);
+    if (!parsed.ok) {
+      setError(t('invalidJson'));
+      return null;
+    }
+    if (inputMode !== 'form' || !schema?.parameters || !isPlainObject(parsed.value)) return { input: parsed.value };
+    const named = buildNamedContext(parsed.value, schema.parameters);
+    const normalized = normalizeNumberFields(named, schema.parameters);
+    if (!normalized.ok) {
+      setInvalidNumberFields(normalized.invalid.map((f) => f.id));
+      setError(t('invalidNumberField', { field: normalized.invalid[0]!.label }));
+      return null;
+    }
+    setInvalidNumberFields([]);
+    if (normalized.values !== named) setInput(JSON.stringify({ ...parsed.value, ...normalized.values }, null, 2));
+    return { input: normalized.values };
+  };
+
   const handleExecute = async () => {
     const functionName = selectedRule;
-    setIsLoading(true);
     setError('');
+    const prepared = prepareRequestInput();
+    if (!prepared) return;
+    setIsLoading(true);
     setResult(null);
     setExecutionDiagnostics([]);
 
     try {
-      let parsedInput: unknown;
-
-      if (inputMode === 'form' && schema?.parameters) {
-        // 从表单构建命名上下文
-        parsedInput = buildNamedContext(formValues, schema.parameters);
-      } else {
-        // JSON 模式：解析输入
-        parsedInput = JSON.parse(input);
-      }
-
       // 使用已保存的策略：通过 policyId 执行
       const res = await fetch(`/api/policies/${policyId}/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          input: parsedInput,
+          input: prepared.input,
           ...(functionName ? { functionName } : {}),
         }),
       });
@@ -578,37 +554,30 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
       );
     }
 
-    if (['int', 'integer', 'long', '整数', '长整数', 'ganzzahl', 'langzahl'].some(t => typeName.toLowerCase().includes(t))) {
+    const numeric = numberKind(typeName);
+    if (numeric) {
+      const invalid = invalidNumberFields.includes(id);
       return (
         <div key={id}>
           <label htmlFor={id} className="block text-sm font-semibold text-fg mb-2">
             {label} <span className="text-xs font-normal text-fg-subtle bg-bg-muted px-2 py-0.5 rounded">({typeName})</span>
           </label>
+          {/* 文本框 + 数字键盘而非 type=number：原生 spinbutton 在无 min/max 时会暴露虚假的
+              aria-valuemin/valuemax=0，且数值范围由引擎校验，这里不设上下限。输入中途的文本原样保留，
+              执行前统一收口为数字（prepareRequestInput）。 */}
           <input
-            type="number"
+            type="text"
+            inputMode={numeric === 'integer' ? 'numeric' : 'decimal'}
             id={id}
-            value={value as number ?? 0}
-            onChange={(e) => updateFormField(paramName, fieldName, parseInt(e.target.value, 10) || 0)}
-            className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none hover:border-gray-400 sm:text-sm"
+            value={String(value ?? '')}
+            aria-invalid={invalid || undefined}
+            aria-describedby={invalid ? `${id}-error` : undefined}
+            onChange={(e) => updateFormField(paramName, fieldName, numberFieldValue(e.target.value, numeric === 'integer'))}
+            className={`block w-full rounded-lg border ${invalid ? 'border-danger' : 'border-border-strong'} bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none hover:border-gray-400 sm:text-sm`}
           />
-        </div>
-      );
-    }
-
-    if (['double', 'float', 'decimal', '小数', '浮点数', 'dezimal'].some(t => typeName.toLowerCase().includes(t))) {
-      return (
-        <div key={id}>
-          <label htmlFor={id} className="block text-sm font-semibold text-fg mb-2">
-            {label} <span className="text-xs font-normal text-fg-subtle bg-bg-muted px-2 py-0.5 rounded">({typeName})</span>
-          </label>
-          <input
-            type="number"
-            step="0.01"
-            id={id}
-            value={value as number ?? 0}
-            onChange={(e) => updateFormField(paramName, fieldName, parseFloat(e.target.value) || 0)}
-            className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none hover:border-gray-400 sm:text-sm"
-          />
+          {invalid && (
+            <p id={`${id}-error`} className="mt-1 text-xs text-danger">{t('invalidNumberField', { field: label })}</p>
+          )}
         </div>
       );
     }
@@ -631,8 +600,8 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
   };
 
   // 渲染参数表单
-  const renderParameterForm = (param: ParameterInfo) => {
-    const paramValue = formValues[param.name];
+  const renderParameterForm = (param: ParameterInfo, values: FormValues) => {
+    const paramValue = values[param.name];
 
     if (param.typeKind === 'struct' && param.fields && param.fields.length > 0) {
       // 结构体类型：渲染字段组
@@ -798,7 +767,9 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
                     {FUNCTION_LABEL[policyLocale] ?? 'Function'}: <span className="font-mono text-fg">{schema.functionName}</span>
                   </div>
                 )}
-                {schema.parameters.map((param) => renderParameterForm(param))}
+                {formValues
+                  ? schema.parameters.map((param) => renderParameterForm(param, formValues))
+                  : <p role="alert" className="text-sm text-danger">{t('invalidJson')}</p>}
               </div>
             )}
 
@@ -975,9 +946,8 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
                       <span className="text-sm font-medium text-fg">{t('result')}</span>
                       <pre className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-bg-subtle px-3 py-2 text-sm text-fg">
                         {/* 服务端把结果里的规范名还原为策略语言（localizedResult）时优先展示它。 */}
-                        {typeof (result.localizedResult ?? result.output.result) === 'string'
-                          ? String(result.localizedResult ?? result.output.result)
-                          : JSON.stringify(result.localizedResult ?? result.output.result, null, 2)}
+                        {/* 枚举值对象只展示成员名。 */}
+                        {formatResultValue(result.localizedResult ?? result.output.result)}
                       </pre>
                     </div>
                   )}
