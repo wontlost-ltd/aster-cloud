@@ -80,6 +80,7 @@ export type LexiconOp =
   | 'bulk.async_enqueue'
   | 'bulk.async_chunk'
   | 'snapshot.create'
+  | 'snapshot.release'
   | 'snapshot.rollback';
 
 export type LexiconOpStatus = 'success' | 'error' | 'partial';

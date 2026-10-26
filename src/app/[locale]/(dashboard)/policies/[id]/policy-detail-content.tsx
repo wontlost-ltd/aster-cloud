@@ -89,6 +89,11 @@ interface PolicyDetailContentProps {
   hasExecutableVersion?: boolean;
   /** 版本审批判定上下文（见 version-approval-rules） */
   review?: Omit<VersionReviewContext, 'reviewerId'>;
+  /**
+   * 平台「策略共享」开关（policy_sharing.enabled），由 server component 读出下发。
+   * 关闭时不挂载共享卡片：其 GET /shares 对关闭态有意回 404，挂载就会在控制台留下 404 噪音。
+   */
+  sharingEnabled?: boolean;
   translations: Translations;
   locale: string;
 }
@@ -100,6 +105,7 @@ export function PolicyDetailContent({
   profile = null,
   hasExecutableVersion = true,
   review,
+  sharingEnabled = false,
   translations: t,
   locale,
 }: PolicyDetailContentProps) {
@@ -311,14 +317,14 @@ export function PolicyDetailContent({
         </div>
       </div>
 
-      {/* Share with teams — self-hides when the platform admin
-          disables the policy_sharing.enabled flag, or when the
-          caller isn't the policy owner. See
-          src/components/policy/share-with-teams-card.tsx for the
-          gating model. */}
-      <div className="mt-6">
-        <ShareWithTeamsCard policyId={policy.id} />
-      </div>
+      {/* 与团队共享：平台开关关闭时整块不挂载（不发 GET /shares，避免 404）；
+          开启后卡片仍按 /shares 的返回自隐藏（非 owner 等），见
+          src/components/policy/share-with-teams-card.tsx。 */}
+      {sharingEnabled && (
+        <div className="mt-6">
+          <ShareWithTeamsCard policyId={policy.id} />
+        </div>
+      )}
 
       {/* 人工复核（ADR 0037 §14/§15）。自带 i18n 与自隐藏：
           无权查看时 return null，不渲染"你没有权限"的空壳。

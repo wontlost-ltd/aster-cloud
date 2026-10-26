@@ -72,7 +72,8 @@ export type SidePanelTab =
 
 export interface SidePanelProps {
   editor: editor.IStandaloneCodeEditor | null;
-  cnlLocale: SupportedLocale;
+  /** 策略的 CNL 语言（规范标签，可能是 hi-IN 等模板/语法参考未覆盖的语言）。 */
+  cnlLocale: string;
   uiLocale: string;
   name: string;
   description: string;
@@ -265,7 +266,7 @@ export function SidePanel({
         {tab === 'syntax' && (
           <div className="p-3">
             <CNLSyntaxReferencePanel
-              locale={cnlLocale}
+              locale={normalizeLocale(cnlLocale)}
               uiLocale={uiLocale}
               defaultExpanded
               compact
@@ -280,7 +281,7 @@ export function SidePanel({
             <div className="rounded-xl border border-border bg-bg shadow-sm">
               <TemplatesTab
                 uiLocale={uiLocale}
-                cnlLocale={cnlLocale}
+                cnlLocale={normalizeLocale(cnlLocale)}
                 // Picking a template fully delegates to the parent's
                 // template handler — which in PR-3 inserts at cursor
                 // rather than wiping the form body. We deliberately

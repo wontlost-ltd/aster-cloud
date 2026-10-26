@@ -4,6 +4,7 @@
 import { db, policies, policyRecycleBins } from '@/lib/prisma';
 import { eq, isNotNull, isNull, not, and, desc, asc, lte, sql } from 'drizzle-orm';
 import { bypassQueryCache } from '@/db/fresh-read';
+import { releaseSnapshotRefsForPolicy, reportSnapshotRelease } from '@/lib/domain-vocabulary-snapshot';
 // 回收站保留天数
 const RECYCLE_BIN_RETENTION_DAYS = 30;
 
@@ -38,12 +39,24 @@ export interface TrashItem {
  * 外键 PolicyRecycleBin.policyId → Policy.id 已带 ON DELETE CASCADE（迁移 0058），
  * 这里仍显式先删回收站行：纵深防御，不把回收站一致性押在单一机制上；
  * 同时让已成孤儿的回收站行（Policy 早已不在）也能被清理掉，而不是永远残留。
+ *
+ * 词汇快照引用（#628）：`DELETE … RETURNING` 取策略行锁（与审批事务的 FOR UPDATE 同一把），
+ * 只有真正删掉策略行的事务才释放其版本的快照引用，并发/重复删除不会重复释放。
+ * 版本行不随策略删除（无外键），作为历史证据保留，但不再计入引用（约定见
+ * domain-vocabulary-snapshot 的「快照引用的归属与并发约定」）。
+ * 永久删除、过期清理、清空回收站三条路径都经由这里。
  */
 async function purgePolicy(policyId: string): Promise<void> {
-  await db.transaction(async (tx) => {
+  const release = await db.transaction(async (tx) => {
     await tx.delete(policyRecycleBins).where(eq(policyRecycleBins.policyId, policyId));
-    await tx.delete(policies).where(eq(policies.id, policyId));
+    const removed = await tx
+      .delete(policies)
+      .where(eq(policies.id, policyId))
+      .returning({ id: policies.id });
+    return removed.length > 0 ? releaseSnapshotRefsForPolicy(policyId, tx) : null;
   });
+  // 计数异常的告警与指标在提交后上报：回滚的删除不应留下「已释放」的痕迹
+  if (release) reportSnapshotRelease(policyId, release);
 }
 
 /**

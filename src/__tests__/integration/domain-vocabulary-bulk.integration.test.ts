@@ -127,6 +127,41 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('bulk import / version / worker
     expect(await activeCanonicalCount()).toBe(3);
   });
 
+  it('同步与异步对同一输入给出同口径计数：processed = rowCount = added + reused + skipped（#629）', async () => {
+    await bulkAddUserVocabularyTerms(USER, [row('Driver')]);
+    const input = [row('Policyholder'), row('9bad'), row('Driver'), row('premium')];
+
+    const sync = await bulkAddUserVocabularyTerms(USER, input);
+    const syncJob = await db.query.lexiconBulkJobs.findFirst({ where: eq(lexiconBulkJobs.id, sync.jobId) });
+
+    // 异步用另一组词条，避免同步刚导入的行全部变成重复
+    const asyncInput = [row('Insurer'), row('9bad'), row('Driver'), row('deductible')];
+    const jobId = crypto.randomUUID();
+    const job = {
+      id: jobId,
+      userId: USER,
+      rowCount: asyncInput.length,
+      processed: 0,
+      rollup: {},
+      errors: [],
+      inputJson: asyncInput,
+      claimedBy: 'worker-629',
+    };
+    await db.insert(lexiconBulkJobs).values({ ...job, status: 'running', mode: 'async', claimedAt: new Date() });
+    await processBulkJobChunk(job);
+    const asyncJob = await db.query.lexiconBulkJobs.findFirst({ where: eq(lexiconBulkJobs.id, jobId) });
+
+    for (const persisted of [syncJob, asyncJob]) {
+      const r = persisted!.rollup as { added: number; reused: number; skipped: number; errorCount: number };
+      expect(persisted).toMatchObject({ status: 'completed', rowCount: 4, processed: 4 });
+      expect(r.added + r.reused + r.skipped).toBe(4);
+      expect(r.errorCount).toBe(r.skipped);
+      expect(persisted!.errors as unknown[]).toHaveLength(r.errorCount);
+    }
+    expect(sync).toMatchObject({ rowCount: 4, processed: 4 });
+    expect(syncJob!.rollup).toEqual(asyncJob!.rollup);
+  });
+
   async function version(): Promise<number> {
     return Number(await getUserVocabularyVersion(USER));
   }

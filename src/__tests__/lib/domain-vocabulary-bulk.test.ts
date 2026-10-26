@@ -113,6 +113,18 @@ function makeInsertChain(returning: unknown[]) {
   };
 }
 
+/**
+ * 计数口径（#629）：每行恰好是 added / reused / skipped 之一，skipped 与行级错误一一对应；
+ * 同步导入返回时所有行都已处理。
+ */
+function expectConsistentCounts(result: Awaited<ReturnType<typeof bulkAddUserVocabularyTerms>>) {
+  const { added, reused, skipped, errorCount } = result.rollup;
+  expect(result.processed).toBe(result.rowCount);
+  expect(added + reused + skipped).toBe(result.rowCount);
+  expect(errorCount).toBe(skipped);
+  expect(result.errors).toHaveLength(errorCount);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   selectQueue.length = 0;
@@ -184,6 +196,7 @@ describe('bulkAddUserVocabularyTerms', () => {
     expect(result.processed).toBe(2);
     expect(result.rollup).toMatchObject({ added: 1, reused: 1, skipped: 0, errorCount: 0 });
     expect(result.errors).toEqual([]);
+    expectConsistentCounts(result);
   });
 
   it('skips trailing rows that would exceed the plan quota', async () => {
@@ -208,6 +221,7 @@ describe('bulkAddUserVocabularyTerms', () => {
       [1, 'quota_exceeded'],
       [2, 'quota_exceeded'],
     ]);
+    expectConsistentCounts(result);
     // 超配额的行不应顺手建全局词条。
     expect(termInsert.values.mock.calls[0][0]).toHaveLength(1);
   });
@@ -227,6 +241,9 @@ describe('bulkAddUserVocabularyTerms', () => {
     expect(result.rollup.errorCount).toBe(1);
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]).toMatchObject({ row: 0, code: 'validation_failed' });
+    // 校验失败的行也计入 processed（#629：此前同步路径漏算，出现 processed < skipped）
+    expect(result.processed).toBe(2);
+    expectConsistentCounts(result);
   });
 
   it('一行重复不拖垮整个 chunk：其余行照常导入，重复行报 duplicate_link（#606）', async () => {
@@ -261,6 +278,7 @@ describe('bulkAddUserVocabularyTerms', () => {
       [3, 'validation_failed'],
       [4, 'duplicate_link'],
     ]);
+    expectConsistentCounts(result);
     // 重复行不会被送去插入，唯一约束根本不会触发。
     expect(linkInsert.values.mock.calls[0][0]).toHaveLength(2);
   });
@@ -287,6 +305,7 @@ describe('bulkAddUserVocabularyTerms', () => {
     expect(result.errors).toEqual([
       { row: 0, code: 'row_failed', message: 'This row could not be saved. Please retry.' },
     ]);
+    expectConsistentCounts(result);
   });
 
   it('整 chunk 失败时只返回通用消息（#606）', async () => {
@@ -302,6 +321,7 @@ describe('bulkAddUserVocabularyTerms', () => {
     expect(result.errors).toEqual([
       { row: 0, code: 'chunk_failed', message: 'This batch could not be saved. Please retry.' },
     ]);
+    expectConsistentCounts(result);
   });
 
   it('domain / locale 格式不合法的行报 validation_failed，合法 locale 规范大小写（#612）', async () => {
@@ -326,5 +346,33 @@ describe('bulkAddUserVocabularyTerms', () => {
     expect(result.errors[0].message).toMatch(/domain/);
     expect(result.errors[1].message).toMatch(/BCP-47/);
     expect(termInsert.values).toHaveBeenCalledWith([expect.objectContaining({ locale: 'en-US' })]);
+    expectConsistentCounts(result);
+  });
+
+  it('生产复现（#629）：有效 + 非法 domain + 非法 locale + 重复 → 计数自洽，持久化的任务行同口径', async () => {
+    const driver = { ...baseRow, canonical: 'Driver', localized: 'Driver' };
+    queueSelect([{ count: 0 }]);
+    queueSelect([{ id: 'term-driver', dedupKey: key(driver) }]);
+    queueSelect([{ termId: 'term-driver' }]); // Driver 已在用户词汇里
+    const jobInsert = makeInsertChain([]);
+    hoisted.insert
+      .mockReturnValueOnce(makeInsertChain([{ id: 'term-l', dedupKey: key(baseRow) }]).chain)
+      .mockReturnValueOnce(makeInsertChain([{ termId: 'term-l' }]).chain)
+      .mockReturnValueOnce(jobInsert.chain); // job row
+
+    const result = await bulkAddUserVocabularyTerms('user-1', [
+      baseRow,
+      { ...baseRow, domain: 'E2E 1027' },
+      { ...baseRow, locale: 'xx_INVALID!!' },
+      driver,
+    ]);
+
+    // 修复前：rowCount 4、processed 2、skipped 3
+    expect(result).toMatchObject({ rowCount: 4, processed: 4 });
+    expect(result.rollup).toMatchObject({ added: 1, reused: 0, skipped: 3, errorCount: 3 });
+    expectConsistentCounts(result);
+    expect(jobInsert.values).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'sync', rowCount: 4, processed: 4 }),
+    );
   });
 });

@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { PolicyForm } from '@/components/policy/policy-form';
+import { PolicyForm, type PolicySaveContext } from '@/components/policy/policy-form';
 import type { PolicyDraftFields } from '@/components/policy/policy-form/use-policy-draft';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
 import { getSnippetTemplate } from '@/lib/playground/snippet-templates';
@@ -59,11 +59,12 @@ export function NewPolicyContent({
   }, [searchParams]);
 
   const handleSave = useCallback(
-    async (fields: PolicyDraftFields) => {
+    async (fields: PolicyDraftFields, { locale: cnlLocale }: PolicySaveContext) => {
+      // locale 是策略的 CNL 语言（按源码识别），不是界面语言：德语界面写英文策略应按 en-US 编译与记录（#627）
       const res = await fetch('/api/policies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...fields, teamId, locale }),
+        body: JSON.stringify({ ...fields, teamId, locale: cnlLocale }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -76,7 +77,7 @@ export function NewPolicyContent({
       }
       return { id: data.id as string };
     },
-    [t, teamId, locale],
+    [t, teamId],
   );
 
   return (

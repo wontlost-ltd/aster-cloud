@@ -70,6 +70,7 @@ import {
 } from '@/components/ui';
 import { ConfirmDialog } from '@/components/ui';
 import { normalizeLocale } from '@/data/policy-examples';
+import { detectLocaleMismatch, resolveEditorCnlLocale } from './policy-cnl-locale';
 
 import { SidePanel, type SidePanelTab } from './side-panel';
 import { useAiWorkspace } from '@/components/ai-workspace-context';
@@ -141,9 +142,20 @@ export interface PolicySaveError {
   upgrade?: boolean;
 }
 
+/** 保存时随字段一起提交的上下文。 */
+export interface PolicySaveContext {
+  /** 策略的 CNL 语言（规范标签），作为保存请求的 locale 提交，见 policy-cnl-locale。 */
+  locale: string;
+}
+
 export interface PolicyFormProps {
   mode: PolicyFormMode;
   uiLocale: string;
+  /**
+   * 已记录的策略 CNL 语言（编辑时由服务端按活跃版本解析）；新建为 null/缺省。
+   * 编辑器展示与保存都用策略语言而非界面语言，判定见 policy-cnl-locale。
+   */
+  policyCnlLocale?: string | null;
   /** Existing policy id when editing; null for create. */
   policyId: string | null;
   /** Seed values for the form. */
@@ -154,6 +166,7 @@ export interface PolicyFormProps {
   /** Persist the policy. Must throw / return error on failure. */
   onSave: (
     fields: PolicyDraftFields,
+    context: PolicySaveContext,
   ) => Promise<PolicySaveResult | PolicySaveError>;
   /** Where to navigate on Cancel. */
   cancelHref: string;
@@ -172,6 +185,7 @@ export interface PolicyFormProps {
 export function PolicyForm({
   mode,
   uiLocale,
+  policyCnlLocale = null,
   policyId,
   initial,
   title,
@@ -186,7 +200,6 @@ export function PolicyForm({
   const t = useTranslations('policies.form');
   const tCommon = useTranslations('common');
   const aliasIssueMessage = useAliasIssueMessage();
-  const cnlLocale = normalizeLocale(uiLocale);
   // dashboard layout 下发的 AI 工作台开关；null 时「AI」tab 保持原面板。
   const aiWorkspace = useAiWorkspace();
   // Mobile users (< md) are here to review, not to author CNL —
@@ -207,6 +220,17 @@ export function PolicyForm({
   const [aliasSet, setAliasSet] = useState<Record<string, string[]>>(
     initial.aliasSet ?? {},
   );
+  // 策略的 CNL 语言（#627）：状态栏、别名规范拼写、编辑器词法与保存 locale 共用，不跟随界面语言，
+  // 且与执行端同一判定（见 policy-cnl-locale）。chosenCnlLocale 是用户显式切换或语言转换后的选择。
+  // 模板与语法参考只有 en/zh/de 三套，按 exampleLocale 取。
+  const [chosenCnlLocale, setChosenCnlLocale] = useState<string | null>(null);
+  const cnlLocale = useMemo(
+    () => resolveEditorCnlLocale({ chosen: chosenCnlLocale, resolved: policyCnlLocale, content, uiLocale }),
+    [chosenCnlLocale, policyCnlLocale, content, uiLocale],
+  );
+  const exampleLocale = normalizeLocale(cnlLocale);
+  // 源码看起来是另一种语言：只提示、由用户决定是否切换，不静默改变编译/执行所用的语言。
+  const mismatchedLocale = useMemo(() => detectLocaleMismatch(cnlLocale, content), [cnlLocale, content]);
   const fields: PolicyDraftFields = useMemo(
     () => ({
       name,
@@ -322,19 +346,19 @@ export function PolicyForm({
    *  clobber whatever the user already typed. */
   const insertTemplateAtCursor = useCallback(
     (tpl: PolicyExample) => {
-      const body = getExampleSource(tpl, cnlLocale);
+      const body = getExampleSource(tpl, exampleLocale);
       insertAtCursor(body);
       setName((prev) => prev || tpl.id);
       toast.success(t('templateInsertedAtCursor'));
     },
-    [cnlLocale, insertAtCursor, t],
+    [exampleLocale, insertAtCursor, t],
   );
 
   /** 用模板内容整体替换编辑器（清空后写入），非插入到光标。设默认名称仅在
    *  名称为空时，避免覆盖用户已填内容。侧栏「模板」tab 走此路径。 */
   const applyTemplateReplace = useCallback(
     (tpl: PolicyExample) => {
-      const body = getExampleSource(tpl, cnlLocale);
+      const body = getExampleSource(tpl, exampleLocale);
       // setContent 是编辑器内容的唯一真相源（Monaco 受控于 value），直接整体
       // 替换即清空并写入模板；无需先手动清空。
       setContent(body);
@@ -343,7 +367,7 @@ export function PolicyForm({
       autoTemplateName.current = tpl.id;
       toast.success(t('templateReplaced'));
     },
-    [cnlLocale, t],
+    [exampleLocale, t],
   );
 
   /** 侧栏「模板」tab 点击入口：编辑器有内容先弹确认（防误抹未保存草稿），
@@ -484,7 +508,7 @@ export function PolicyForm({
       setIsSaving(true);
       setServerError(null);
       try {
-        const result = await onSave(fields);
+        const result = await onSave(fields, { locale: cnlLocale });
         if ('message' in result) {
           setServerError(result);
           const diagnostics = (result.diagnostics ?? []).filter(
@@ -526,7 +550,7 @@ export function PolicyForm({
         setIsSaving(false);
       }
     },
-    [validate, isSaving, onSave, fields, clearDraft, t, openSidePanel],
+    [validate, isSaving, onSave, fields, cnlLocale, clearDraft, t, openSidePanel],
   );
 
   const onSaveOnly = useCallback(
@@ -666,6 +690,29 @@ export function PolicyForm({
             className="rounded-lg border border-border bg-bg-muted px-4 py-2 text-sm text-fg-muted"
           >
             {t('mobileReadOnlyNotice')}
+          </div>
+        )}
+
+        {/* ----- 策略语言与源码不一致提示（#627） ----- */}
+        {mismatchedLocale && (
+          <div
+            role="status"
+            data-testid="policy-locale-mismatch"
+            className="flex flex-wrap items-center gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-2 text-sm text-fg"
+          >
+            <span>
+              {t('localeMismatch', {
+                current: cnlLocale.toUpperCase(),
+                detected: mismatchedLocale.toUpperCase(),
+              })}
+            </span>
+            <button
+              type="button"
+              onClick={() => setChosenCnlLocale(mismatchedLocale)}
+              className="rounded border border-border bg-bg px-2 py-0.5 text-xs font-medium hover:bg-bg-muted focus-visible:outline-none focus-visible:shadow-ring"
+            >
+              {t('localeMismatchSwitch', { locale: mismatchedLocale.toUpperCase() })}
+            </button>
           </div>
         )}
 
@@ -848,10 +895,11 @@ export function PolicyForm({
           isOpen={converterOpen}
           onClose={() => setConverterOpen(false)}
           content={content}
-          currentLocale={cnlLocale}
+          currentLocale={exampleLocale}
           uiLocale={uiLocale}
-          onApply={(converted) => {
+          onApply={(converted, newLocale) => {
             setContent(converted);
+            setChosenCnlLocale(newLocale);
           }}
         />
 

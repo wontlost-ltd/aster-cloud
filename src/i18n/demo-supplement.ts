@@ -985,6 +985,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       form: {
         nameRequired: 'Name is required.',
+        // 策略语言与源码识别结果不一致时的提示与显式切换按钮（#627）
+        localeMismatch: 'This policy is compiled and executed as {current}, but its source looks like {detected}.',
+        localeMismatchSwitch: 'Switch policy language to {locale}',
         parseErrorsBeforeSaving: 'Fix parse errors before saving.',
         checkingSyntax: 'Checking syntax. Wait before saving.',
         templateReplaced: 'Editor content replaced with template.',
@@ -2125,6 +2128,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       form: {
         nameRequired: '请填写策略名称。',
+        localeMismatch: '该策略按 {current} 编译和执行，但源码看起来是 {detected}。',
+        localeMismatchSwitch: '将策略语言切换为 {locale}',
         parseErrorsBeforeSaving: '请先修复解析错误再保存。',
         checkingSyntax: '正在检查语法，请稍候再保存。',
         templateReplaced: '已用模板替换编辑器内容。',
@@ -3275,6 +3280,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       form: {
         nameRequired: 'Ein Name ist erforderlich.',
+        localeMismatch: 'Diese Policy wird als {current} kompiliert und ausgeführt, der Quelltext sieht jedoch nach {detected} aus.',
+        localeMismatchSwitch: 'Policy-Sprache auf {locale} umstellen',
         parseErrorsBeforeSaving: 'Beheben Sie zuerst die Syntaxfehler.',
         checkingSyntax: 'Syntax wird geprüft. Warten Sie vor dem Speichern.',
         templateReplaced: 'Der Editorinhalt wurde durch die Vorlage ersetzt.',
@@ -4413,6 +4420,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       form: {
         nameRequired: 'नाम आवश्यक है।',
+        localeMismatch: 'यह नीति {current} के रूप में संकलित और निष्पादित होती है, लेकिन इसका स्रोत {detected} जैसा दिखता है।',
+        localeMismatchSwitch: 'नीति की भाषा {locale} पर बदलें',
         parseErrorsBeforeSaving: 'सहेजने से पहले पार्स त्रुटियाँ ठीक करें।',
         checkingSyntax: 'वाक्य-विन्यास जाँचा जा रहा है। सहेजने से पहले प्रतीक्षा करें।',
         templateReplaced: 'संपादक की सामग्री टेम्पलेट से बदल दी गई।',

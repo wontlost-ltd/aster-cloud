@@ -20,6 +20,7 @@ import { invalidatePolicyCache } from '@/lib/cache';
 import {
   auditVocabularyFreeze,
   freezeVocabularyForApproval,
+  lockPolicyForSnapshotRefs,
   type SnapshotRef,
   type SnapshotTx,
 } from '@/lib/domain-vocabulary-snapshot';
@@ -582,6 +583,20 @@ export async function submitForApproval(params: {
 /**
  * 审批版本
  */
+function notPendingError(version: number): Error {
+  return new Error(`版本 v${version} 不存在或不在待审批状态`);
+}
+
+/** 在审批事务内 FOR UPDATE 锁住版本行，返回它是否仍处于待审批状态。 */
+async function lockPendingVersion(tx: SnapshotTx, versionId: string): Promise<boolean> {
+  const rows = await tx
+    .select({ status: policyVersions.status })
+    .from(policyVersions)
+    .where(eq(policyVersions.id, versionId))
+    .for('update');
+  return rows[0]?.status === 'PENDING_APPROVAL';
+}
+
 export async function approveVersion(params: {
   policyId: string;
   version: number;
@@ -607,7 +622,7 @@ export async function approveVersion(params: {
   });
 
   if (!targetVersion) {
-    throw new Error(`版本 v${version} 不存在或不在待审批状态`);
+    throw notPendingError(version);
   }
 
   // 团队策略：四眼原则，作者不能审批；个人策略：所有者可审批自己的提交（标记 selfApproved）
@@ -640,6 +655,16 @@ export async function approveVersion(params: {
   // 词汇冻结（含快照 refCount 递增）、审批记录、状态更新在同一事务内：冻结失败则整个审批
   // 失败（不留下「已批准但缺词汇」的版本），审批写入失败则冻结一并回滚（refCount 不多计）。
   const vocabularySnapshotIds = await db.transaction(async (tx) => {
+    // 先锁策略行（与 purgePolicy 的 DELETE 同一把锁，#628）：策略若已在此期间被删除或软删，
+    // 不再审批，避免给孤儿版本加快照引用；锁住后并发的永久删除会等本事务提交再读引用并释放。
+    if (!(await lockPolicyForSnapshotRefs(tx, policyId))) {
+      throw new PolicyAccessDeniedError();
+    }
+    // 事务外读到的「待审批」可能已过时：同一版本被并发审批时两边都会读到 PENDING_APPROVAL。
+    // 锁住版本行后复核状态，后到者按「不在待审批状态」失败，快照引用只加一次。
+    if (!(await lockPendingVersion(tx, targetVersion.id))) {
+      throw notPendingError(version);
+    }
     const refs = decision === 'APPROVED' ? await freezeApprovalVocabulary(targetVersion, tx) : undefined;
     await tx.insert(policyApprovals).values({
       id: crypto.randomUUID(),
