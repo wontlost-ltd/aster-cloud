@@ -142,6 +142,6 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('草稿按作者现行词汇执
 
   it('草稿里两个同义词并存 → 歧义', async () => {
     const result = await mapForVersion(2, { person: { alter: 1, lebensalter: 2 } });
-    expect(result).toMatchObject({ ok: false, ambiguous: { field: 'person.lebensalter', canonical: 'age' } });
+    expect(result).toMatchObject({ ok: false, ambiguous: { field: 'person.lebensalter', fields: ['person.alter', 'person.lebensalter'], policyName: 'alter' } });
   });
 });

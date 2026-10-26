@@ -5,6 +5,7 @@
 // 替身（helpers/ts-engine），它与 aster-api 一样按收到的词汇规范化源码再用收到的 context 求值。
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { assembleDomainVocabularyFromLinks } from '@/lib/domain-vocabulary-assemble';
+import { computeSourceEnvelope } from '@/lib/policy-alias';
 import { evaluateWithTsEngine } from '../helpers/ts-engine';
 
 const { mockDbExecute, mockGetSession, mockEvaluateSource, mockFindVersions, mockLoadFrozen, mockLoadLive, mockInsertValues } = vi.hoisted(() => ({
@@ -91,11 +92,11 @@ Rule check given person as Driver, produce Int:
   Return 0.
 `;
 
-function deVocab(fieldLocalized = 'alter') {
+function deVocab(fieldLocalized = 'alter', aliases: string[] = []) {
   return assembleDomainVocabularyFromLinks(
     [
       { domainTermId: 't-driver', domain: 'e2e1027', locale: 'de', kind: 'struct', canonical: 'Driver', localized: 'Fahrer' },
-      { domainTermId: 't-age', domain: 'e2e1027', locale: 'de', kind: 'field', canonical: 'age', localized: fieldLocalized, parentCanonical: 'Driver' },
+      { domainTermId: 't-age', domain: 'e2e1027', locale: 'de', kind: 'field', canonical: 'age', localized: fieldLocalized, parentCanonical: 'Driver', aliases },
     ],
     { domain: 'e2e1027', locale: 'de-DE' },
   ) as unknown as Record<string, unknown>;
@@ -103,18 +104,25 @@ function deVocab(fieldLocalized = 'alter') {
 
 const FROZEN_REFS = [{ snapshotId: 'snap-de', domain: 'e2e1027', locale: 'de' }];
 
-function policyRow(content: string, opts: { aliasSet?: string | null; vocabRefs?: unknown } = {}) {
+function policyRow(
+  content: string,
+  opts: { aliasSet?: string | null; vocabRefs?: unknown; teamId?: string | null; toolchainId?: string | null } = {},
+) {
   return {
     policy_id: 'p1', policy_name: 'e2e1027-vocab-de', policy_content: content,
-    policy_alias_set: opts.aliasSet ?? null, policy_user_id: 'owner-1', policy_team_id: null, policy_is_public: false,
-    policy_version_row_id: 'pv-1', policy_version: 1, policy_source_toolchain_id: null,
-    policy_vocab_snapshot_ids: opts.vocabRefs ?? FROZEN_REFS,
-    user_plan: 'pro', user_trial_ends_at: null, usage_count: 0, is_team_member: false,
+    policy_alias_set: opts.aliasSet ?? null, policy_user_id: 'owner-1', policy_team_id: opts.teamId ?? null, policy_is_public: false,
+    policy_version_row_id: 'pv-1', policy_version: 1, policy_source_toolchain_id: opts.toolchainId ?? null,
+    policy_vocab_snapshot_ids: 'vocabRefs' in opts ? opts.vocabRefs : FROZEN_REFS,
+    user_plan: 'pro', user_trial_ends_at: null, usage_count: 0, is_team_member: Boolean(opts.teamId),
   };
 }
 
-function versions(status: string) {
-  return [{ id: 'pv-1', version: 1, status, isDefault: false, createdBy: 'author-1' }];
+function versions(status: string, extra: { createdBy?: string | null; sourceEnvelopeSha256?: string | null } = {}) {
+  return [{
+    id: 'pv-1', version: 1, status, isDefault: false,
+    createdBy: extra.createdBy === undefined ? 'author-1' : extra.createdBy,
+    sourceEnvelopeSha256: extra.sourceEnvelopeSha256 ?? null,
+  }];
 }
 
 async function execute(input: unknown) {
@@ -202,7 +210,52 @@ describe('POST /api/policies/[id]/execute — 策略语言输入（#626）', () 
 
     expect(body.output.result).toBe(42);
     expect(mockLoadLive).not.toHaveBeenCalled();
-    expect(mockLoadFrozen).toHaveBeenCalledWith(FROZEN_REFS, { source: DE_POLICY, locale: 'de-DE' });
+    // 无 envelope 时取冻结快照引用的唯一 locale（与 secure-execute 同一解析器）。
+    expect(mockLoadFrozen).toHaveBeenCalledWith(FROZEN_REFS, { source: DE_POLICY, locale: 'de' });
+  });
+
+  it('locale 与 secure-execute 同一解析器：版本记录的编译 locale 优先于源码识别', async () => {
+    // 源码看起来是德语，但版本保存时按 en-US 编译（envelope 记录）：三条路径都应按 en-US 执行。
+    const envelope = computeSourceEnvelope(DE_POLICY, null, 'en-US', 'tc-1');
+    mockFindVersions.mockResolvedValue(versions('APPROVED', { sourceEnvelopeSha256: envelope }));
+    mockDbExecute.mockResolvedValue([policyRow(DE_POLICY, { toolchainId: 'tc-1' })]);
+    mockEvaluateSource.mockResolvedValue({ result: 0, executionTimeMs: 1, error: null });
+
+    await execute({ person: { alter: 21 } });
+
+    expect(mockLoadFrozen).toHaveBeenCalledWith(FROZEN_REFS, { source: DE_POLICY, locale: 'en-US' });
+    expect(mockEvaluateSource.mock.calls[0]![2].locale).toBe('en-US');
+  });
+});
+
+describe('POST /api/policies/[id]/execute — 团队策略的草稿词汇归属（与审批冻结同口径）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetSession.mockResolvedValue({ user: { id: 'member-9' } });
+    mockEvaluateSource.mockImplementation(evaluateWithTsEngine);
+    mockLoadFrozen.mockResolvedValue(undefined);
+    mockDbExecute.mockResolvedValue([policyRow(DE_POLICY, { vocabRefs: null, teamId: 'team-1' })]);
+  });
+
+  it('版本作者（createdBy）≠ 策略所有者 / 执行者：取版本作者的现行词汇', async () => {
+    mockFindVersions.mockResolvedValue(versions('DRAFT', { createdBy: 'member-2' }));
+    mockLoadLive.mockResolvedValue(deVocab());
+
+    const { body } = await execute({ person: { alter: 21 } });
+
+    expect(mockLoadLive).toHaveBeenCalledTimes(1);
+    expect(mockLoadLive).toHaveBeenCalledWith('member-2', { source: DE_POLICY, locale: 'de-DE' });
+    expect(body.output.result).toBe(42);
+  });
+
+  it('版本没有作者时不带词汇（审批冻结此时同样不冻结任何词汇），不回退到所有者', async () => {
+    mockFindVersions.mockResolvedValue(versions('DRAFT', { createdBy: null }));
+    mockLoadLive.mockResolvedValue(deVocab());
+
+    await execute({ person: { alter: 21 } });
+
+    expect(mockLoadLive).not.toHaveBeenCalled();
+    expect(mockEvaluateSource.mock.calls[0]![2].vocabulary).toBeUndefined();
   });
 });
 
@@ -231,13 +284,16 @@ describe('POST /api/policies/[id]/execute — 草稿按作者现行词汇执行�
 
   it('编辑词条后下一次执行立即按新词汇映射', async () => {
     mockLoadLive.mockResolvedValueOnce(deVocab());
-    expect((await execute({ person: { alter: 21 } })).body.output.result).toBe(42);
+    const before = await execute({ person: { lebensalter: 21 } });
+    // 还没有这个同义词：键原样透传，引擎找不到字段。
+    expect(mockEvaluateSource.mock.calls[0]![1]).toEqual({ person: { lebensalter: 21 } });
+    expect(before.body.output.result).not.toBe(42);
 
-    // 作者把 age 的本地化名改成 jahre：源码里的 alter 不再是词条，jahre 才是。
-    mockLoadLive.mockResolvedValue(deVocab('jahre'));
-    const second = await execute({ person: { jahre: 21 } });
+    // 作者给 age 加同义词 lebensalter：下一次执行立即生效。
+    mockLoadLive.mockResolvedValue(deVocab('alter', ['lebensalter']));
+    const after = await execute({ person: { lebensalter: 21 } });
     expect(mockEvaluateSource.mock.calls[1]![1]).toEqual({ person: { age: 21 } });
-    expect(second.body.output.result).not.toBe(42);
+    expect(after.body.output.result).toBe(42);
     expect(mockLoadLive).toHaveBeenCalledTimes(2);
   });
 

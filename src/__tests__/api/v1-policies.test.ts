@@ -131,6 +131,7 @@ import { getPolicyFreezeStatus, getBatchPolicyFreezeStatus } from '@/lib/policy-
 import { checkUsageLimit } from '@/lib/usage';
 import { executePolicyUnified, getPrimaryError } from '@/services/policy/cnl-executor';
 import { checkTeamPermission } from '@/lib/team-permissions';
+import { computeSourceEnvelope } from '@/lib/policy-alias';
 
 const mockAuthenticateApiRequest = vi.mocked(authenticateApiRequest);
 const mockGetPolicyFreezeStatus = vi.mocked(getPolicyFreezeStatus);
@@ -630,9 +631,10 @@ describe('V1 Policies API - Drizzle Migration', () => {
       );
 
       expect(response.status).toBe(200);
+      // locale 与 secure-execute 同一解析器：无 envelope 时取冻结快照引用的唯一 locale。
       expect(mockLoadExecutionVocabulary).toHaveBeenCalledWith(refs, {
         source: 'Module X. Rule greet given name: has name.',
-        locale: 'en-US',
+        locale: 'de',
       });
       expect(mockExecutePolicyUnified).toHaveBeenCalledWith(expect.objectContaining({ vocabulary }));
     });
@@ -694,6 +696,22 @@ Regel bewerten gegeben person als Fahrer liefert Ganzzahl:
         expect(response.status).toBe(400);
         expect(await response.json()).toMatchObject({ code: 'ambiguous_input_field', field: 'person.age' });
         expect(mockExecutePolicyUnified).not.toHaveBeenCalled();
+      });
+
+      it('locale 与 secure-execute 同一解析器：版本记录的编译 locale 优先于源码识别', async () => {
+        const envelope = computeSourceEnvelope(DE_SOURCE, null, 'en-US', 'tc-1');
+        setupExecuteRow({
+          policy_content: DE_SOURCE, policy_version: 1, policy_source_toolchain_id: 'tc-1',
+          policy_vocab_snapshot_ids: [{ snapshotId: 's', domain: 'e2e1027', locale: 'de' }],
+        });
+        vi.mocked(db.query.policyVersions.findMany).mockResolvedValueOnce(
+          [{ ...approved[0], sourceEnvelopeSha256: envelope }] as never,
+        );
+
+        await run({ person: { alter: 21 } });
+
+        expect(mockLoadExecutionVocabulary).toHaveBeenCalledWith(expect.anything(), { source: DE_SOURCE, locale: 'en-US' });
+        expect(mockExecutePolicyUnified).toHaveBeenCalledWith(expect.objectContaining({ locale: 'en-US' }));
       });
 
       it('草稿用作者现行词汇映射并透传', async () => {

@@ -24,7 +24,13 @@ import { checkAndRecordNonce } from './nonce-service';
 import { logSecurityEvent } from './security-event-service';
 import { assertPolicyOwnership } from '../policy/version-manager';
 import { createPolicyApiClient } from '../policy/policy-api';
-import { loadVersionExecutionVocabulary, prepareExecutionInput, type AmbiguousInputField } from '@/lib/execution-input';
+import {
+  ambiguousInputFieldMessage,
+  inputMappingAudit,
+  loadVersionExecutionVocabulary,
+  prepareExecutionInput,
+  type AmbiguousInputField,
+} from '@/lib/execution-input';
 import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
 import { safeEnv } from '@/lib/runtime/safe-env';
 
@@ -288,7 +294,7 @@ export async function executeSecurely(
     const vocabulary = await loadVersionExecutionVocabulary({
       status: targetVersion.status,
       vocabularySnapshotIds: targetVersion.vocabularySnapshotIds,
-      authorId: targetVersion.createdBy ?? targetVersion.policy.userId,
+      authorId: targetVersion.createdBy,
       source: sourceCode,
       locale,
     });
@@ -315,14 +321,15 @@ export async function executeSecurely(
       aliasSet,
     });
     if (!prepared.ok) {
-      const [first, second] = prepared.ambiguous.fields;
       return {
         success: false,
-        error: `输入字段 "${first}" 与 "${second}" 指向同一个策略字段 "${prepared.ambiguous.policyName}"，只能提供其一`,
+        error: ambiguousInputFieldMessage(prepared.ambiguous),
         errorCode: 'AMBIGUOUS_INPUT_FIELD',
         ambiguous: prepared.ambiguous,
       };
     }
+
+    const mappingAudit = inputMappingAudit(request.input, prepared.renames);
 
     const apiClient = createPolicyApiClient(tenantId, userId);
     const response = await apiClient.evaluateSource(
@@ -346,6 +353,8 @@ export async function executeSecurely(
         isDeprecated,
         executionTimeMs,
         success: !response.error,
+        // #626 审计（新增字段）：签名覆盖原始输入，引擎执行映射后的输入；记录原始输入哈希与改写位置。
+        ...(mappingAudit ? { inputMapping: mappingAudit } : {}),
       },
     });
 

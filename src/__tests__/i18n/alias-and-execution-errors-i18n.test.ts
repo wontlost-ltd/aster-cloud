@@ -30,6 +30,7 @@ const KEYS = [
   'policies.form.saveErrorCodes.alias_invalid',
   'policies.execute.engineErrorDetail',
   'policies.execute.ambiguousInputField',
+  'policies.execute.ambiguousInputSpelling',
   ...VOCAB_REASONS.map((r) => `domainVocabularies.errors.validation.${r}`),
 ];
 

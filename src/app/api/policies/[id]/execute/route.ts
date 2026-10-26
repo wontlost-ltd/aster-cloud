@@ -5,7 +5,7 @@ import { eq, sql, desc, asc } from 'drizzle-orm';
 import { PLANS, PlanType } from '@/lib/plans';
 import { upgradeResponse } from '@/lib/plan-quota';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
-import { executePolicyUnified, getPrimaryError, deriveExecutionDecision, deriveExecutionOutcome, detectCNLLocale } from '@/services/policy/cnl-executor';
+import { executePolicyUnified, getPrimaryError, deriveExecutionDecision, deriveExecutionOutcome } from '@/services/policy/cnl-executor';
 import { getCachedPolicyMeta, cachePolicyMeta, type CachedPolicyMeta } from '@/lib/cache';
 import { hydrateExecutableVersion, isCachedVersionCurrent, resolveExecutableVersion, type ExecutableVersionCandidate } from '@/services/policy/executable-version';
 import { buildReplayColumns, buildEvidenceColumns } from '@/lib/policy-execution-log';
@@ -16,6 +16,7 @@ import {
   executionErrorCode,
   sanitizeExecutionResult,
 } from '@/lib/execution-error';
+import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
 import {
   ambiguousInputFieldBody,
   loadVersionExecutionVocabulary,
@@ -109,7 +110,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     const versionRows = await db.query.policyVersions.findMany({
       where: eq(policyVersions.policyId, id),
       columns: {
-        id: true, version: true, status: true, isDefault: true, createdBy: true,
+        id: true, version: true, status: true, isDefault: true, createdBy: true, sourceEnvelopeSha256: true,
       },
     });
 
@@ -390,12 +391,20 @@ export async function POST(req: Request, { params }: RouteParams) {
       }
     }
     // 领域词汇（ADR 0014 线C，#626）：已审批版本用冻结快照，草稿用作者现行词汇（作用域内），best-effort。
-    const policyLocale = detectCNLLocale(policy.content);
+    // 版本语言与 secure-execute 同一解析器：记录的编译 locale → 快照 locale → 源码识别。
     const executedVersionRow = versionRows.find((row) => row.version === policy.version);
+    const policyLocale = resolveStoredVersionLocale({
+      source: policy.content,
+      aliasSet: policy.aliasSet ?? null,
+      sourceEnvelopeSha256: executedVersionRow?.sourceEnvelopeSha256 ?? null,
+      sourceToolchainId: policy.sourceToolchainId ?? null,
+      vocabularySnapshotIds: policy.vocabSnapshotIds,
+    });
     const vocabulary = await loadVersionExecutionVocabulary({
       status: executedVersionRow?.status,
       vocabularySnapshotIds: policy.vocabSnapshotIds,
-      authorId: executedVersionRow?.createdBy ?? policy.userId,
+      // 与审批冻结同口径：取版本作者（团队策略里可不是所有者）。
+      authorId: executedVersionRow?.createdBy,
       source: policy.content,
       locale: policyLocale,
     });
@@ -421,6 +430,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       functionName: prepared.functionName,
       aliasSet: parsedAliasSet,
       vocabulary,
+      locale: policyLocale,
       // 回放地基（ADR 0030）：dashboard execute 走 HMAC 内部调用 → 开 replayCapture 取权威 hash。
       replayCapture: true,
       agent: DASHBOARD_AGENT,

@@ -461,6 +461,12 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
   // 规则选择器此时已显示 ambiguousHint。候选面板只作为前后端判断不一致时的兜底。
   const mustChooseRule = ruleSymbols.length > 1 && !selectedRule;
 
+  // 输入歧义：写法在词汇里撞名（带 candidates）或同一字段写了两次；都按策略语言提示。
+  const ambiguousInputMessage = (data: { field?: string; policyField?: string; candidates?: string[] }) =>
+    data.candidates
+      ? t('ambiguousInputSpelling', { field: data.policyField ?? data.field ?? '', candidates: data.candidates.join(', ') })
+      : t('ambiguousInputField', { field: data.policyField ?? data.field ?? '' });
+
   const handleExecute = async () => {
     const functionName = selectedRule;
     setIsLoading(true);
@@ -497,8 +503,7 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
         const errorMessage = data.code === 'execution_failed'
           ? t('engineErrorDetail')
           : data.code === 'ambiguous_input_field'
-            // 同一对象里既写了策略语言字段名又写了规范名（或两个同义词）：按策略语言提示。
-            ? t('ambiguousInputField', { field: data.policyField ?? data.field ?? '' })
+            ? ambiguousInputMessage(data)
             : data.message || extractErrorMessage(data) || t('executionFailed');
         setError(errorMessage);
         // 保存是否需要升级的标志

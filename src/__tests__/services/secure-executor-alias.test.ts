@@ -51,6 +51,8 @@ import { executeSecurely } from '@/services/security/secure-executor';
 import { db } from '@/lib/prisma';
 import { loadExecutionVocabulary } from '@/lib/domain-vocabulary-snapshot';
 import { computeSourceEnvelope } from '@/lib/policy-alias';
+import { logSecurityEvent } from '@/services/security/security-event-service';
+import { createHash } from 'node:crypto';
 
 function version(overrides: Record<string, unknown> = {}) {
   return {
@@ -204,6 +206,21 @@ Regel bewerten gegeben person als Fahrer liefert Ganzzahl:
 
       expect(mockEvaluateSource.mock.calls[0]?.[1]).toEqual({ person: { age: 21 } });
       expect(mockEvaluateSource.mock.calls[1]?.[1]).toEqual({ person: { age: 21 } });
+    });
+
+    it('审计：签名的原始输入哈希与改写位置记入执行事件；无改写时不记', async () => {
+      await executeSecurely(withInput({ person: { alter: 21 } }));
+      await executeSecurely(withInput({ person: { age: 21 } }));
+
+      const executed = vi.mocked(logSecurityEvent).mock.calls
+        .map(([event]) => event as { eventType: string; details?: Record<string, unknown> })
+        .filter((e) => e.eventType === 'POLICY_EXECUTED');
+      const expectedHash = `sha256:${createHash('sha256').update(JSON.stringify({ person: { alter: 21 } })).digest('hex')}`;
+      expect(executed[0]!.details!.inputMapping).toEqual({
+        originalInputSha256: expectedHash,
+        renames: [{ path: 'person.alter', from: 'alter', to: 'age' }],
+      });
+      expect(executed[1]!.details!.inputMapping).toBeUndefined();
     });
 
     it('两者并存 → AMBIGUOUS_INPUT_FIELD，不调用引擎', async () => {

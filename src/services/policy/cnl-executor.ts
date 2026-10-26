@@ -214,6 +214,11 @@ export interface ExecutePolicyOptions {
   replayCapture?: boolean;
   /** 调用方 agent 身份（ADR 0041 §4）：透传给 aster-api evaluate-source 请求体 `agent`。 */
   agent?: AgentIdentity;
+  /**
+   * 版本的 CNL 语言（resolveStoredVersionLocale：记录的编译 locale → 快照 locale → 源码识别）。
+   * 缺省时按源码识别（旧口径）。
+   */
+  locale?: string;
 }
 
 /**
@@ -226,12 +231,12 @@ export interface ExecutePolicyOptions {
 export async function executePolicyUnified(
   options: ExecutePolicyOptions
 ): Promise<PolicyExecutionResult> {
-  const { policy, input, userId, tenantId, functionName, aliasSet, vocabulary, replayCapture, agent } = options;
+  const { policy, input, userId, tenantId, functionName, aliasSet, vocabulary, replayCapture, agent, locale } = options;
   const policyContent = policy.content || '';
   const useAsterEngine = isAsterCNL(policyContent);
 
   if (useAsterEngine) {
-    return executeWithAsterEngine(policy, policyContent, input, userId, tenantId, functionName, aliasSet, vocabulary, replayCapture, agent);
+    return executeWithAsterEngine(policy, policyContent, input, userId, tenantId, functionName, aliasSet, vocabulary, replayCapture, agent, locale);
   } else {
     return executeWithSimpleEngine(policy, policyContent, input, userId);
   }
@@ -253,9 +258,10 @@ async function executeWithAsterEngine(
   aliasSet?: Record<string, string[]> | null,
   vocabulary?: Record<string, unknown>,
   replayCapture?: boolean,
-  agent?: AgentIdentity
+  agent?: AgentIdentity,
+  resolvedLocale?: string,
 ): Promise<PolicyExecutionResult> {
-  const locale = detectCNLLocale(policyContent) as CNLLocale;
+  const locale = (resolvedLocale ?? detectCNLLocale(policyContent)) as CNLLocale;
   const effectiveTenantId = tenantId || policy.teamId || policy.userId;
   const apiClient = createPolicyApiClient(effectiveTenantId, userId);
 

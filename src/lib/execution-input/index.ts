@@ -11,19 +11,22 @@
  *    同一对象内两个键指向同一字段时返回 400 ambiguous_input_field，不猜测。
  */
 
+import { createHash } from 'node:crypto';
 import { loadExecutionVocabulary, loadLiveVocabularyForPolicy } from '@/lib/domain-vocabulary-snapshot';
 import {
+  buildMappingModel,
   buildVocabularyNameIndex,
-  canonicalName,
+  engineName,
   localizeExecutionOutput,
   mapExecutionInput,
   mapFunctionName,
   type AmbiguousInputField,
+  type InputRename,
 } from './mapper';
 import { extractPolicyInputTypes } from './policy-types';
 
-export { buildVocabularyNameIndex, mapExecutionInput, localizeExecutionOutput, mapFunctionName } from './mapper';
-export type { AmbiguousInputField, PolicyInputTypes, VocabularyNameIndex } from './mapper';
+export { buildMappingModel, buildVocabularyNameIndex, mapExecutionInput, localizeExecutionOutput, mapFunctionName } from './mapper';
+export type { AmbiguousInputField, InputRename, MappingModel, PolicyInputTypes, VocabularyNameIndex } from './mapper';
 
 /** 同一对象内本地化键与规范键（或两个同义词）同时出现时的稳定错误码。 */
 export const AMBIGUOUS_INPUT_FIELD_CODE = 'ambiguous_input_field';
@@ -43,7 +46,10 @@ export interface ExecutionVocabularyTarget {
   status: string | null | undefined;
   /** 被执行版本的 vocabularySnapshotIds（冻结快照引用）。 */
   vocabularySnapshotIds: unknown;
-  /** 草稿执行时取谁的现行词汇：版本作者，缺省为策略所有者。 */
+  /**
+   * 草稿执行时取谁的现行词汇：版本作者（PolicyVersion.createdBy），与审批冻结取词汇的口径一致
+   * （团队策略里作者可不是所有者）；作者为空时审批也不冻结任何词汇，这里同样不带词汇。
+   */
   authorId: string | null | undefined;
   source: string;
   locale: string;
@@ -87,6 +93,8 @@ export type PreparedExecutionInput =
       /** 交给引擎的规范输入（也是 Execution.input 落库值：回放 / parity / guard 用它）。 */
       input: unknown;
       functionName: string | undefined;
+      /** 映射改写了哪些位置（审计用；无改写时为空）。 */
+      renames: readonly InputRename[];
       /** 把结果里的规范名还原为策略语言（界面展示用）。 */
       localizeOutput: (value: unknown) => unknown;
     }
@@ -96,31 +104,54 @@ export type PreparedExecutionInput =
 export function prepareExecutionInput(params: PrepareExecutionInputParams): PreparedExecutionInput {
   const index = buildVocabularyNameIndex(params.vocabulary);
   if (!index) {
-    return { ok: true, input: params.input, functionName: params.functionName, localizeOutput: (v) => v };
+    return { ok: true, input: params.input, functionName: params.functionName, renames: [], localizeOutput: (v) => v };
   }
   const types = extractPolicyInputTypes(
-    params.source, params.locale, params.aliasSet, params.functionName, (name) => canonicalName(index, name),
+    params.source, params.locale, params.aliasSet, params.functionName, (name) => engineName(index, name),
   );
-  const mapped = mapExecutionInput(params.input, index, types);
+  const model = buildMappingModel(index, types);
+  const mapped = mapExecutionInput(params.input, model);
   if (!mapped.ok) return mapped;
   return {
     ok: true,
     input: mapped.input,
     functionName: mapFunctionName(params.functionName, index),
-    localizeOutput: (value) => localizeExecutionOutput(value, index, types),
+    renames: mapped.renames,
+    localizeOutput: (value) => localizeExecutionOutput(value, model),
   };
 }
 
 /** 歧义输入的 400 响应体（dashboard / v1 共用；secure-execute 另加其 errorCode 口径）。 */
 export function ambiguousInputFieldBody(ambiguous: AmbiguousInputField) {
-  const [first, second] = ambiguous.fields;
   return {
-    error:
-      `Input fields "${first}" and "${second}" both refer to the policy field "${ambiguous.policyName}". ` +
-      'Send only one of them.',
+    error: ambiguousInputFieldMessage(ambiguous),
     code: AMBIGUOUS_INPUT_FIELD_CODE,
     field: ambiguous.field,
     fields: ambiguous.fields,
     policyField: ambiguous.policyName,
+    ...(ambiguous.candidates ? { candidates: ambiguous.candidates } : {}),
+  };
+}
+
+/** 歧义的英文说明（界面按 code 本地化）。 */
+export function ambiguousInputFieldMessage(ambiguous: AmbiguousInputField): string {
+  if (ambiguous.candidates) {
+    return `Input field "${ambiguous.field}" matches several policy fields (${ambiguous.candidates.join(', ')}) ` +
+      'in this policy\'s vocabulary. Use the canonical field name instead.';
+  }
+  const [first, second] = ambiguous.fields;
+  return `Input fields "${first}" and "${second}" both refer to the policy field "${ambiguous.policyName}". ` +
+    'Send only one of them.';
+}
+
+/**
+ * secure-execute 审计：签名覆盖的是原始输入，引擎执行的是映射后的输入。记录原始输入的哈希与
+ * 改写过的位置，使签名内容与执行内容可追溯。无改写时返回 null。
+ */
+export function inputMappingAudit(originalInput: unknown, renames: readonly InputRename[]) {
+  if (renames.length === 0) return null;
+  return {
+    originalInputSha256: `sha256:${createHash('sha256').update(JSON.stringify(originalInput) ?? '').digest('hex')}`,
+    renames,
   };
 }
