@@ -93,20 +93,23 @@ beforeEach(() => {
   hoisted.update.mockImplementation(() => ({ set: hoisted.updateSet }));
   hoisted.updateSet.mockImplementation(() => ({ where: hoisted.updateWhere }));
   hoisted.updateWhere.mockResolvedValue(undefined);
-  hoisted.transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
-    fn({
-      execute: vi.fn().mockResolvedValue(undefined),
-      insert: hoisted.insert,
-      update: hoisted.update,
-      select: hoisted.selectChain,
-      query: {
-        userVocabularySnapshots: { findFirst: hoisted.findFirstSnapshot },
-        userDomainTerms: { findFirst: hoisted.findFirstUdt },
-        domainTerms: { findFirst: hoisted.findFirstDt },
-      },
-    }),
-  );
+  hoisted.transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(makeTx()));
 });
+
+/** 审批事务句柄替身：冻结的全部读写都应走它。 */
+function makeTx() {
+  return {
+    execute: vi.fn().mockResolvedValue(undefined),
+    insert: hoisted.insert,
+    update: hoisted.update,
+    select: hoisted.selectChain,
+    query: {
+      userVocabularySnapshots: { findFirst: hoisted.findFirstSnapshot },
+      userDomainTerms: { findFirst: hoisted.findFirstUdt },
+      domainTerms: { findFirst: hoisted.findFirstDt },
+    },
+  } as unknown as Parameters<typeof createSnapshotsForOwner>[2];
+}
 
 function termRow(
   termId: string,
@@ -149,15 +152,17 @@ describe('createSnapshotsForOwner', () => {
     const refs = await createSnapshotsForOwner(
       { ownerType: 'user', ownerId: 'user-1' },
       { source: 'Rule r given credit as Credit, produce Int: Return 1.', locale: 'en-US' },
+      makeTx(),
     );
 
     expect(refs).toEqual([]);
-    expect(hoisted.transaction).not.toHaveBeenCalled();
+    expect(hoisted.insert).not.toHaveBeenCalled();
+    expect(hoisted.update).not.toHaveBeenCalled();
   });
 
   it('inserts one snapshot per (domain, locale) group the policy uses', async () => {
     queueSelect([LOAN_EN, LOAN_ZH, APPLICANT_EN]);
-    // Two in-scope groups → two inner transactions → next-version max query each.
+    // Two in-scope groups → next-version max query each, all on the caller's tx.
     queueSelect([{ max: null }]);
     queueSelect([{ max: null }]);
     hoisted.findFirstSnapshot.mockResolvedValue(undefined);
@@ -165,6 +170,7 @@ describe('createSnapshotsForOwner', () => {
     const refs = await createSnapshotsForOwner(
       { ownerType: 'user', ownerId: 'user-1' },
       { source: 'Define Credit has amount. Define Candidate has score.', locale: 'en-US' },
+      makeTx(),
     );
 
     expect(refs.map((r) => `${r.domain}|${r.locale}`).sort()).toEqual([
@@ -181,6 +187,7 @@ describe('createSnapshotsForOwner', () => {
     const refs = await createSnapshotsForOwner(
       { ownerType: 'user', ownerId: 'user-1' },
       { source: 'Define Credit has amount.', locale: 'en-US' },
+      makeTx(),
     );
 
     expect(refs[0].snapshotId).toBe('snap-existing');
@@ -196,10 +203,9 @@ describe('freezeVocabularyForApproval (#610)', () => {
     hoisted.findFirstSnapshot.mockResolvedValue(undefined);
 
     const refs = await freezeVocabularyForApproval({
-      policyVersionId: 'pv-1',
       policyAuthorId: 'user-1',
       policy: { source: DE_POLICY, locale: 'de-DE' },
-    });
+    }, makeTx());
 
     expect(refs.map((r) => `${r.domain}|${r.locale}`)).toEqual(['e2e1026|de']);
     expect(hoisted.insert).toHaveBeenCalledTimes(1);
@@ -211,41 +217,65 @@ describe('freezeVocabularyForApproval (#610)', () => {
     queueSelect(PROD_ROWS);
 
     const refs = await freezeVocabularyForApproval({
-      policyVersionId: 'pv-2',
       policyAuthorId: 'user-1',
       policy: { source: 'Rule r given age as Int, produce Int: Return age multiplied by 3.', locale: 'en-US' },
-    });
+    }, makeTx());
 
     expect(refs).toEqual([]);
-    expect(hoisted.transaction).not.toHaveBeenCalled();
+    expect(hoisted.insert).not.toHaveBeenCalled();
+    expect(hoisted.update).not.toHaveBeenCalled();
   });
 
   it('terms mentioned only in comments or strings do not pull their group into scope', async () => {
     queueSelect(PROD_ROWS);
 
     const refs = await freezeVocabularyForApproval({
-      policyVersionId: 'pv-3',
       policyAuthorId: 'user-1',
       policy: {
         source: 'Modul x.\n\n// Fahrer und alter\nRegel r gegeben p als Ganzzahl liefert Text:\n  gib zurück "Fahrer".\n',
         locale: 'de-DE',
       },
-    });
+    }, makeTx());
 
     expect(refs).toEqual([]);
   });
 
   it('propagates freeze failures instead of returning empty refs', async () => {
     queueSelect(PROD_ROWS);
-    hoisted.transaction.mockRejectedValueOnce(new Error('db down'));
+    const tx = makeTx() as unknown as { execute: ReturnType<typeof vi.fn> };
+    tx.execute.mockRejectedValueOnce(new Error('db down'));
 
     await expect(
       freezeVocabularyForApproval({
-        policyVersionId: 'pv-4',
         policyAuthorId: 'user-1',
         policy: { source: DE_POLICY, locale: 'de-DE' },
-      }),
+      }, tx as unknown as Parameters<typeof freezeVocabularyForApproval>[1]),
     ).rejects.toThrow('db down');
+  });
+
+  it('runs every read/write on the approval transaction, never opening its own', async () => {
+    queueSelect(PROD_ROWS);
+    queueSelect([{ max: null }]);
+    hoisted.findFirstSnapshot.mockResolvedValue(undefined);
+
+    await freezeVocabularyForApproval({
+      policyAuthorId: 'user-1',
+      policy: { source: DE_POLICY, locale: 'de-DE' },
+    }, makeTx());
+
+    expect(hoisted.transaction).not.toHaveBeenCalled();
+  });
+
+  it('never uses the lenient strip fallback: non-lexable source fails the freeze', async () => {
+    queueSelect(PROD_ROWS);
+
+    await expect(
+      freezeVocabularyForApproval({
+        policyAuthorId: 'user-1',
+        policy: { source: 'Regel r gegeben p als Fahrer liefert Text:\n  gib zurück "alter\n', locale: 'de-DE' },
+      }, makeTx()),
+    ).rejects.toThrow();
+    expect(hoisted.insert).not.toHaveBeenCalled();
   });
 });
 

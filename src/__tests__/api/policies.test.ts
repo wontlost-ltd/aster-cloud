@@ -511,6 +511,28 @@ describe('Policies API - Drizzle Migration', () => {
       );
     });
 
+    it('不受支持的 locale（如 fr-FR）→ 400 unsupported_locale，不编译不落库', async () => {
+      const response = await POST(makeRequest('http://localhost/api/policies', 'POST', {
+        ...validBody,
+        locale: 'fr-FR',
+      }));
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ code: 'unsupported_locale' });
+      expect(mockAssertCompilable).not.toHaveBeenCalled();
+      expect(mockCreateVersion).not.toHaveBeenCalled();
+    });
+
+    it('短码 locale（de）规范为 de-DE 后编译并落库', async () => {
+      const response = await POST(makeRequest('http://localhost/api/policies', 'POST', {
+        ...validBody,
+        locale: 'de',
+      }));
+
+      expect(response.status).toBe(201);
+      expect(mockCreateVersion).toHaveBeenCalledWith(expect.objectContaining({ locale: 'de-DE' }));
+    });
+
     it('should pass aliasSet into createVersion with server-built reserved sets', async () => {
       const aliasSet = { TIMES: ['multiplied by'] };
       const response = await POST(makeRequest('http://localhost/api/policies', 'POST', {

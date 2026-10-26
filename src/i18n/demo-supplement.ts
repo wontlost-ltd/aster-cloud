@@ -989,7 +989,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         replace: 'Replace',
         saveFailedWithDiagnostics: 'Saving failed: {count} error(s) — first: L{line} {message}',
         saveDiagnosticFallback: 'Compilation failed.',
-        saveErrorCodes: { compile_error: 'The policy has compilation errors.', compile_unavailable: 'Compilation is temporarily unavailable. Try again later.', policy_frozen: 'This policy is frozen.', unauthorized: 'You are not authorized to save this policy.' },
+        saveErrorCodes: { compile_error: 'The policy has compilation errors.', compile_unavailable: 'Compilation is temporarily unavailable. Try again later.', policy_frozen: 'This policy is frozen.', unauthorized: 'You are not authorized to save this policy.', unsupported_locale: 'This policy language is not supported. Use English, Chinese, German or Hindi.' },
         // AI 行内补全开关（状态栏）
         statusAiCompletionOn: 'AI completion: on',
         statusAiCompletionOff: 'AI completion: off',
@@ -2122,7 +2122,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         replace: '替换',
         saveFailedWithDiagnostics: '保存失败：{count} 个错误 — 首条：第 {line} 行 {message}',
         saveDiagnosticFallback: '编译失败。',
-        saveErrorCodes: { compile_error: '策略存在编译错误。', compile_unavailable: '编译服务暂时不可用，请稍后重试。', policy_frozen: '此策略已冻结。', unauthorized: '你无权保存此策略。' },
+        saveErrorCodes: { compile_error: '策略存在编译错误。', compile_unavailable: '编译服务暂时不可用，请稍后重试。', policy_frozen: '此策略已冻结。', unauthorized: '你无权保存此策略。', unsupported_locale: '不支持该策略语言，请使用英语、中文、德语或印地语。' },
         // AI 行内补全开关（状态栏）
         statusAiCompletionOn: 'AI 补全：开',
         statusAiCompletionOff: 'AI 补全：关',
@@ -3266,7 +3266,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         replace: 'Ersetzen',
         saveFailedWithDiagnostics: 'Speichern fehlgeschlagen: {count} Fehler — erster Fehler: Z.{line} {message}',
         saveDiagnosticFallback: 'Kompilierung fehlgeschlagen.',
-        saveErrorCodes: { compile_error: 'Die Policy enthält Kompilierungsfehler.', compile_unavailable: 'Die Kompilierung ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.', policy_frozen: 'Diese Policy ist eingefroren.', unauthorized: 'Sie dürfen diese Policy nicht speichern.' },
+        saveErrorCodes: { compile_error: 'Die Policy enthält Kompilierungsfehler.', compile_unavailable: 'Die Kompilierung ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.', policy_frozen: 'Diese Policy ist eingefroren.', unauthorized: 'Sie dürfen diese Policy nicht speichern.', unsupported_locale: 'Diese Policy-Sprache wird nicht unterstützt. Verwenden Sie Englisch, Chinesisch, Deutsch oder Hindi.' },
         // AI 行内补全开关（状态栏）
         statusAiCompletionOn: 'KI-Vervollständigung: an',
         statusAiCompletionOff: 'KI-Vervollständigung: aus',
@@ -4396,7 +4396,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         replace: 'बदलें',
         saveFailedWithDiagnostics: 'सहेजना विफल: {count} त्रुटियाँ — पहली: पंक्ति {line} {message}',
         saveDiagnosticFallback: 'कम्पाइलेशन विफल रहा।',
-        saveErrorCodes: { compile_error: 'नीति में कम्पाइलेशन त्रुटियाँ हैं।', compile_unavailable: 'कम्पाइलेशन अस्थायी रूप से उपलब्ध नहीं है। बाद में फिर कोशिश करें।', policy_frozen: 'यह नीति फ़्रीज़ है।', unauthorized: 'आपको यह नीति सहेजने की अनुमति नहीं है।' },
+        saveErrorCodes: { compile_error: 'नीति में कम्पाइलेशन त्रुटियाँ हैं।', compile_unavailable: 'कम्पाइलेशन अस्थायी रूप से उपलब्ध नहीं है। बाद में फिर कोशिश करें।', policy_frozen: 'यह नीति फ़्रीज़ है।', unauthorized: 'आपको यह नीति सहेजने की अनुमति नहीं है।', unsupported_locale: 'यह नीति भाषा समर्थित नहीं है। अंग्रेज़ी, चीनी, जर्मन या हिंदी का उपयोग करें।' },
         // AI 行内补全开关（状态栏）
         statusAiCompletionOn: 'AI पूर्णता: चालू',
         statusAiCompletionOff: 'AI पूर्णता: बंद',

@@ -16,6 +16,7 @@ import { canonicalAliasJson } from '@/lib/policy-alias';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { softDeletePolicy } from '@/lib/policy-lifecycle';
 import { invalidatePolicyCache } from '@/lib/cache';
+import { parseCompileLocale } from '@/lib/cnl-locale';
 
 
 interface RouteParams {
@@ -194,7 +195,9 @@ export async function PUT(req: Request, { params }: RouteParams) {
       Object.keys(aliasSet as Record<string, unknown>).length > 0
         ? (aliasSet as Record<string, string[]>)
         : null;
-    const compileLocale = typeof locale === 'string' && locale.trim() ? locale : 'en-US';
+    const parsedLocale = parseCompileLocale(locale);
+    if (!parsedLocale.ok) return NextResponse.json(parsedLocale.error, { status: 400 });
+    const compileLocale = parsedLocale.locale;
 
     // 取活跃版本冻结的别名（canonical JSON）：字段缺省时作保留值 + content-only 变更时
     // 沿用它进新版本 + 判断 aliasChanged 的对照基线。仅在有版本编译输入变动时才需要，

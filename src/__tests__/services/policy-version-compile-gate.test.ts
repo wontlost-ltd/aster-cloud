@@ -117,6 +117,15 @@ describe('createVersion — 源码可编译性门禁', () => {
     expect(mockInsertReturning).not.toHaveBeenCalled();
   });
 
+  it('不受支持的 locale → 拒绝建版本（envelope 只记录受支持 locale 的不变量）', async () => {
+    const validateCompilable: CompileValidator = vi.fn().mockResolvedValue({ diagnostics: [] });
+    await expect(
+      createVersion({ ...baseParams, locale: 'en-GB', validateCompilable }),
+    ).rejects.toThrow('Unsupported policy locale');
+    expect(validateCompilable).not.toHaveBeenCalled();
+    expect(mockInsertReturning).not.toHaveBeenCalled();
+  });
+
   it('未提供 validateCompilable → 不校验（向后兼容），正常落库', async () => {
     const r = await createVersion(baseParams);
     expect(r.version).toBe(1);

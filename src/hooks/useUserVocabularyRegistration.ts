@@ -118,8 +118,10 @@ function resolveEditorVocabulary(
   source: string,
   locale: string,
 ): DomainVocabulary | null {
+  // 编辑中途源码可能无法词法分析，编辑器用 lenient 退化剥离（服务端路径一律严格）。
   const vocabulary = resolvePolicyVocabularyFromRows(rows, { source, locale }, {
     id: USER_VOCABULARY_DOMAIN,
+    lenient: true,
   });
   return vocabulary && validateVocabulary(vocabulary).valid ? vocabulary : null;
 }

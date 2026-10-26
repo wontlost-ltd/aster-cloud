@@ -13,8 +13,32 @@ const h = vi.hoisted(() => ({
   logSecurityEvent: vi.fn(),
   recordAha: vi.fn(),
   snapshot: vi.fn(),
+  audit: vi.fn(),
   invalidateCache: vi.fn(),
+  /** 已提交的事务写入（模拟回滚：事务回调抛错时其写入不进入此列表）。 */
+  committed: [] as string[],
 }));
+
+/**
+ * 事务替身：写入先暂存在 tx.staged，回调成功才「提交」到 h.committed；回调抛错即丢弃，
+ * 模拟数据库回滚。
+ */
+async function fakeTransaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T> {
+  const staged: string[] = [];
+  const tx = {
+    staged,
+    insert: () => ({ values: async (v: unknown) => { await h.insertValues(v); staged.push('approval'); } }),
+    update: () => ({
+      set: (v: unknown) => {
+        h.updateSet(v);
+        return { where: async () => { staged.push('status'); } };
+      },
+    }),
+  };
+  const result = await fn(tx);
+  h.committed.push(...staged);
+  return result;
+}
 
 vi.mock('@/lib/prisma', () => ({
   db: {
@@ -22,8 +46,7 @@ vi.mock('@/lib/prisma', () => ({
       policies: { findFirst: h.policiesFindFirst },
       policyVersions: { findFirst: h.versionsFindFirst },
     },
-    insert: () => ({ values: h.insertValues }),
-    update: () => ({ set: (v: unknown) => { h.updateSet(v); return { where: async () => undefined }; } }),
+    transaction: (fn: (tx: unknown) => Promise<unknown>) => fakeTransaction(fn),
   },
   policies: { id: {}, deletedAt: {}, userId: {} },
   policyVersions: { id: {}, policyId: {}, version: {}, status: {} },
@@ -32,7 +55,10 @@ vi.mock('@/lib/prisma', () => ({
 vi.mock('@/lib/team-permissions', () => ({ getTeamMemberRole: h.getTeamMemberRole }));
 vi.mock('@/services/security/security-event-service', () => ({ logSecurityEvent: h.logSecurityEvent }));
 vi.mock('@/lib/metrics/aha-detection', () => ({ recordAhaMomentIfFirst: h.recordAha }));
-vi.mock('@/lib/domain-vocabulary-snapshot', () => ({ freezeVocabularyForApproval: h.snapshot }));
+vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
+  freezeVocabularyForApproval: h.snapshot,
+  auditVocabularyFreeze: h.audit,
+}));
 vi.mock('@/lib/cache', () => ({ invalidatePolicyCache: h.invalidateCache }));
 
 import {
@@ -63,6 +89,8 @@ beforeEach(() => {
   h.recordAha.mockResolvedValue(true);
   h.insertValues.mockResolvedValue(undefined);
   h.snapshot.mockResolvedValue([]);
+  h.audit.mockResolvedValue(undefined);
+  h.committed.length = 0;
   h.invalidateCache.mockResolvedValue(undefined);
 });
 
@@ -146,11 +174,11 @@ describe('approveVersion — 词汇快照（#610）', () => {
 
     await approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' });
 
-    expect(h.snapshot).toHaveBeenCalledWith({
-      policyVersionId: 'v1',
-      policyAuthorId: 'owner',
-      policy: { source: GERMAN_SOURCE, locale: 'de-DE' },
-    });
+    expect(h.snapshot).toHaveBeenCalledWith(
+      { policyAuthorId: 'owner', policy: { source: GERMAN_SOURCE, locale: 'de-DE' } },
+      expect.objectContaining({ staged: expect.any(Array) }),
+    );
+    expect(h.audit).toHaveBeenCalledWith({ policyAuthorId: 'owner', policyVersionId: 'v1', refs });
     expect(h.updateSet).toHaveBeenCalledWith({ status: 'APPROVED', vocabularySnapshotIds: refs });
   });
 
@@ -163,6 +191,34 @@ describe('approveVersion — 词汇快照（#610）', () => {
     expect(h.insertValues).not.toHaveBeenCalled();
     expect(h.updateSet).not.toHaveBeenCalled();
     expect(h.invalidateCache).not.toHaveBeenCalled();
+  });
+
+  it('冻结后审批写入失败 → 冻结的 refCount 递增随事务回滚，审计不记录', async () => {
+    setup({ userId: 'owner', teamId: null }, 'owner');
+    // 冻结在审批事务内递增 refCount（写入经由同一个 tx）。
+    h.snapshot.mockImplementation(async (_params: unknown, tx: { staged: string[] }) => {
+      tx.staged.push('refCount+1');
+      return [{ snapshotId: 's1', domain: 'e2e1026', locale: 'de' }];
+    });
+    h.insertValues.mockRejectedValueOnce(new Error('approval insert failed'));
+
+    await expect(approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' }))
+      .rejects.toThrow('approval insert failed');
+    expect(h.committed).toEqual([]);
+    expect(h.audit).not.toHaveBeenCalled();
+    expect(h.invalidateCache).not.toHaveBeenCalled();
+  });
+
+  it('成功时冻结、审批记录、状态更新一并提交', async () => {
+    setup({ userId: 'owner', teamId: null }, 'owner');
+    h.snapshot.mockImplementation(async (_params: unknown, tx: { staged: string[] }) => {
+      tx.staged.push('refCount+1');
+      return [];
+    });
+
+    await approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' });
+
+    expect(h.committed).toEqual(['refCount+1', 'approval', 'status']);
   });
 
   it('驳回不冻结词汇，也不改写快照引用', async () => {

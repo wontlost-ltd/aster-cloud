@@ -10,9 +10,16 @@
 
 import { computeSourceEnvelope } from '@/lib/policy-alias';
 import { detectCNLLocale } from '@/services/policy/cnl-executor';
+import { CNL_LOCALES } from '@/lib/cnl-locale';
 
-/** 保存入口可能写入 envelope 的 locale 拼写（编辑器传完整标签，API 调用方可能传短码）。 */
-const RECORDED_LOCALE_CANDIDATES = ['en-US', 'zh-CN', 'de-DE', 'hi-IN', 'en', 'zh', 'de', 'hi'];
+/**
+ * envelope 可能记录的 locale：新版本只会是受支持的规范标签（保存入口校验 + createVersion
+ * 不变量）；旧版本保存时未校验，补上常见短码。
+ */
+const RECORDED_LOCALE_CANDIDATES = [
+  ...CNL_LOCALES,
+  ...CNL_LOCALES.map((locale) => locale.split('-')[0]!),
+];
 
 export interface StoredVersionLocaleInput {
   source: string;
@@ -43,9 +50,11 @@ function uniqueSnapshotLocale(refs: unknown): string | undefined {
 
 /** 已存版本的 CNL 语言（优先级见文件头）。 */
 export function resolveStoredVersionLocale(version: StoredVersionLocaleInput): string {
-  return (
-    recordedCompileLocale(version) ??
-    uniqueSnapshotLocale(version.vocabularySnapshotIds) ??
-    detectCNLLocale(version.source)
-  );
+  const recorded = recordedCompileLocale(version);
+  if (recorded) return recorded;
+  if (version.sourceEnvelopeSha256) {
+    // 有 envelope 却反推不出：旧版本保存时用了不受支持的 locale，只能走兜底链。
+    console.warn('[policy-version-locale] recorded compile locale not recoverable; falling back');
+  }
+  return uniqueSnapshotLocale(version.vocabularySnapshotIds) ?? detectCNLLocale(version.source);
 }

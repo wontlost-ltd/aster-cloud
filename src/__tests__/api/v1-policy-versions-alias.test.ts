@@ -93,6 +93,18 @@ describe('POST /api/v1/policies/[id]/versions — aliasSet 支持', () => {
     expect(buildAliasReservedForUser).not.toHaveBeenCalled();
   });
 
+  it('不受支持的 locale（en-GB）→ 400 unsupported_locale，不建版本', async () => {
+    const r = await POST(req({ source: 'Module X.', locale: 'en-GB' }), params);
+    expect(r.status).toBe(400);
+    expect(await r.json()).toMatchObject({ code: 'unsupported_locale' });
+    expect(createVersion).not.toHaveBeenCalled();
+  });
+
+  it('短码 locale 规范化：zh → zh-CN', async () => {
+    await POST(req({ source: 'Module X.', locale: 'zh' }), params);
+    expect(createVersion).toHaveBeenCalledWith(expect.objectContaining({ locale: 'zh-CN' }));
+  });
+
   it('未授权 → 401', async () => {
     vi.mocked(auth).mockResolvedValue(null as never);
     const r = await POST(req({ source: 'Module X.' }), params);

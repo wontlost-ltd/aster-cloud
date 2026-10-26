@@ -1,7 +1,7 @@
 /**
  * 已存版本 CNL 语言解析优先级：envelope 记录的编译 locale → 快照引用唯一 locale → 源码识别。
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { computeSourceEnvelope } from '@/lib/policy-alias';
 import { recordedCompileLocale, resolveStoredVersionLocale } from '@/lib/policy-version-locale';
 
@@ -42,5 +42,13 @@ describe('resolveStoredVersionLocale', () => {
     expect(resolveStoredVersionLocale(stored({ vocabularySnapshotIds: [{ locale: 'de' }, { locale: 'de' }] }))).toBe('de');
     expect(resolveStoredVersionLocale(stored({ vocabularySnapshotIds: [{ locale: 'de' }, { locale: 'en' }] }))).toBe('de-DE');
     expect(resolveStoredVersionLocale(stored({ source: 'Module x.\n' }))).toBe('en-US');
+  });
+
+  it('warns when an envelope exists but its locale is not recoverable (legacy unsupported locale)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const envelope = computeSourceEnvelope(DE_SOURCE, null, 'en-GB', 'tc-1');
+    expect(resolveStoredVersionLocale(stored({ sourceEnvelopeSha256: envelope }))).toBe('de-DE');
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 });

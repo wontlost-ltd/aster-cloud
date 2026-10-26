@@ -57,7 +57,7 @@ function escapeRegExp(text: string): string {
 }
 
 /**
- * 退化路径：源码无法词法分析（编辑中途常见，如字符串未闭合）时，按 CNL 语法去掉
+ * 退化路径（仅编辑器 lenient 模式可达，见 ScopeOptions）：源码无法词法分析时，按 CNL 语法去掉
  * 行注释（`#`、`//`）与字符串字面量（ASCII 引号及该语言的引号对；未闭合的截到行尾），
  * 其余原样保留。
  */
@@ -91,20 +91,36 @@ function skippedEnd(source: string, start: number, close: string | undefined): n
 }
 
 /**
- * 源码中「作为代码出现」的文本：优先用引擎词法分析器，只保留标识符 token（注释与字符串
- * 字面量是独立 token，自然被排除）；词法分析失败时退化为 stripCommentsAndStrings。
- * 标识符以空格连接，单词边界与源码一致，CJK 子串匹配也不会跨越两个标识符。
+ * 作用域判定选项。
+ *
+ * `lenient` 只给编辑器用：编辑中途的源码常常无法词法分析（如字符串未闭合），此时退化为
+ * stripCommentsAndStrings。服务端路径（保存编译门禁、审批冻结、执行加载）一律严格：
+ * 能落库/审批/执行的源码必然可词法分析，词法分析失败直接抛错（由各路径既有的错误处理
+ * 兜底），绝不用启发式剥离来决定冻结或执行用哪些词汇。
  */
-export function codeText(source: string, locale: string): string {
+export interface ScopeOptions {
+  lenient?: boolean;
+}
+
+/**
+ * 源码中「作为代码出现」的文本：用引擎词法分析器只保留标识符 token（注释与字符串
+ * 字面量是独立 token，自然被排除），标识符以空格连接——单词边界与源码一致，CJK 子串
+ * 匹配也不会跨越两个标识符。词法分析失败时：lenient 退化为 stripCommentsAndStrings，
+ * 否则抛出。
+ */
+export function codeText(source: string, locale: string, opts: ScopeOptions = {}): string {
   const lexicon = getLexicon(locale);
+  let tokens: ReturnType<typeof lex>;
   try {
-    return lex(source, lexicon)
-      .filter((token) => token.kind === TokenKind.IDENT || token.kind === TokenKind.TYPE_IDENT)
-      .map((token) => String(token.value))
-      .join(' ');
-  } catch {
+    tokens = lex(source, lexicon);
+  } catch (err) {
+    if (!opts.lenient) throw err;
     return stripCommentsAndStrings(source, lexicon);
   }
+  return tokens
+    .filter((token) => token.kind === TokenKind.IDENT || token.kind === TokenKind.TYPE_IDENT)
+    .map((token) => String(token.value))
+    .join(' ');
 }
 
 /**
@@ -147,8 +163,9 @@ export interface PolicyVocabularyContext {
  */
 export function policyScopeMatcher(
   policy: PolicyVocabularyContext,
+  opts: ScopeOptions = {},
 ): (vocabulary: DomainVocabulary) => boolean {
-  const code = codeText(policy.source, policy.locale);
+  const code = codeText(policy.source, policy.locale, opts);
   return (vocabulary) =>
     isLocaleCompatible(vocabulary.locale, policy.locale) && isVocabularyUsedBy(code, vocabulary);
 }
@@ -157,8 +174,9 @@ export function policyScopeMatcher(
 export function selectVocabulariesForPolicy(
   vocabularies: readonly DomainVocabulary[],
   policy: PolicyVocabularyContext,
+  opts: ScopeOptions = {},
 ): DomainVocabulary[] {
-  return vocabularies.filter(policyScopeMatcher(policy));
+  return vocabularies.filter(policyScopeMatcher(policy, opts));
 }
 
 /** 按 (domain, locale) 分组词条行，key 形如 `domain|locale`。 */
@@ -230,8 +248,8 @@ export function mergeVocabularies(
 export function resolvePolicyVocabularyFromRows(
   rows: readonly TermLikeRow[],
   policy: PolicyVocabularyContext,
-  opts: { id?: string } = {},
+  opts: ScopeOptions & { id?: string } = {},
 ): DomainVocabulary | null {
-  const selected = selectVocabulariesForPolicy(assembleVocabularyGroups(rows), policy);
-  return mergeVocabularies(selected, { ...opts, locale: policy.locale });
+  const selected = selectVocabulariesForPolicy(assembleVocabularyGroups(rows), policy, opts);
+  return mergeVocabularies(selected, { id: opts.id, locale: policy.locale });
 }

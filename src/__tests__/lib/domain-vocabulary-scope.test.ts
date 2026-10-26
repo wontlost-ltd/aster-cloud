@@ -98,12 +98,26 @@ describe('isVocabularyUsedBy', () => {
     expect(used(source, vocab('驾驶员'), 'zh-CN')).toBe(false);
   });
 
-  it('falls back to stripping comments/strings when the source does not lex (mid-edit)', () => {
+  it('lenient (editor only) falls back to stripping comments/strings when the source does not lex', () => {
     const source = 'Regel r gegeben p als Fahrer liefert Text:\n  gib zurück "alter\n  // alter\n';
-    const code = codeText(source, 'de-DE');
+    const code = codeText(source, 'de-DE', { lenient: true });
     expect(code).toContain('Fahrer');
     expect(isVocabularyUsedBy(code, vocab('alter'))).toBe(false);
     expect(isVocabularyUsedBy(code, vocab('Fahrer'))).toBe(true);
+  });
+});
+
+describe('strict mode (compile gate / approval / execution)', () => {
+  const broken = 'Regel r gegeben p als Fahrer liefert Text:\n  gib zurück "alter\n';
+
+  it('codeText throws instead of using the strip fallback', () => {
+    expect(() => codeText(broken, 'de-DE')).toThrow();
+  });
+
+  it('resolvePolicyVocabularyFromRows (compile gate path) throws on non-lexable source', () => {
+    expect(() => resolvePolicyVocabularyFromRows(PROD_ROWS, { source: broken, locale: 'de-DE' })).toThrow();
+    expect(resolvePolicyVocabularyFromRows(PROD_ROWS, { source: broken, locale: 'de-DE' }, { lenient: true }))
+      .not.toBeNull();
   });
 });
 

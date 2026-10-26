@@ -17,8 +17,14 @@ import { computeChainedHash, computeSourceHash } from '../security/policy-securi
 import { logSecurityEvent } from '../security/security-event-service';
 import { recordAhaMomentIfFirst } from '@/lib/metrics/aha-detection';
 import { invalidatePolicyCache } from '@/lib/cache';
-import { freezeVocabularyForApproval, type SnapshotRef } from '@/lib/domain-vocabulary-snapshot';
+import {
+  auditVocabularyFreeze,
+  freezeVocabularyForApproval,
+  type SnapshotRef,
+  type SnapshotTx,
+} from '@/lib/domain-vocabulary-snapshot';
 import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
+import { CNL_LOCALES, DEFAULT_CNL_LOCALE } from '@/lib/cnl-locale';
 import {
   canonicalAliasJson,
   cloudToolchainId,
@@ -103,11 +109,12 @@ export class VocabularyFreezeError extends Error {
 }
 
 /**
- * 冻结待批准版本作用域内的作者词汇（B12 / #610），返回快照引用。
- * 作用域按版本源码与其记录的编译 locale 计算；失败抛 VocabularyFreezeError。
+ * 在审批事务内冻结待批准版本作用域内的作者词汇（B12 / #610），返回快照引用。
+ * 作用域按版本源码与其记录的编译 locale 计算；失败抛 VocabularyFreezeError（事务回滚）。
  */
 async function freezeApprovalVocabulary(
   version: InferSelectModel<typeof policyVersions>,
+  tx: SnapshotTx,
 ): Promise<SnapshotRef[]> {
   if (!version.createdBy) return [];
   const source = version.source ?? version.content;
@@ -119,11 +126,10 @@ async function freezeApprovalVocabulary(
     vocabularySnapshotIds: null,
   });
   try {
-    return await freezeVocabularyForApproval({
-      policyVersionId: version.id,
-      policyAuthorId: version.createdBy,
-      policy: { source, locale },
-    });
+    return await freezeVocabularyForApproval(
+      { policyAuthorId: version.createdBy, policy: { source, locale } },
+      tx,
+    );
   } catch (err) {
     console.error('[vocabulary-snapshot] freeze failed, approval aborted:', err);
     throw new VocabularyFreezeError();
@@ -382,7 +388,12 @@ export async function createVersion(
 ): Promise<CreateVersionResult> {
   const { policyId, source, createdBy, releaseNote } = params;
   const client = params.dbClient ?? db;
-  const locale = params.locale ?? 'en-US';
+  const locale = params.locale ?? DEFAULT_CNL_LOCALE;
+  // 不变量：envelope 只记录受支持的规范 locale（保存入口已用 parseCompileLocale 校验），
+  // 以便执行与审批能从 envelope 精确反推版本的编译语言（policy-version-locale）。
+  if (!CNL_LOCALES.includes(locale)) {
+    throw new Error(`Unsupported policy locale: ${locale}`);
+  }
 
   // ADR 0022 方案 D：校验 + 冻结别名 + 算 source envelope（防替换篡改）。
   let aliasSetJson: string | null = null;
@@ -610,19 +621,6 @@ export async function approveVersion(params: {
     throw new SegregationOfDutiesError();
   }
 
-  // 批准前先冻结词汇：失败则整个审批失败，不留下「已批准但缺词汇」的版本。
-  const vocabularySnapshotIds =
-    decision === 'APPROVED' ? await freezeApprovalVocabulary(targetVersion) : undefined;
-
-  // 创建审批记录
-  await db.insert(policyApprovals).values({
-    id: crypto.randomUUID(),
-    versionId: targetVersion.id,
-    approverId,
-    decision,
-    comment,
-  });
-
   // 更新版本状态
   let newStatus: PolicyVersionStatus;
   switch (decision) {
@@ -637,9 +635,30 @@ export async function approveVersion(params: {
       break;
   }
 
-  await db.update(policyVersions)
-    .set({ status: newStatus, ...(vocabularySnapshotIds ? { vocabularySnapshotIds } : {}) })
-    .where(eq(policyVersions.id, targetVersion.id));
+  // 词汇冻结（含快照 refCount 递增）、审批记录、状态更新在同一事务内：冻结失败则整个审批
+  // 失败（不留下「已批准但缺词汇」的版本），审批写入失败则冻结一并回滚（refCount 不多计）。
+  const vocabularySnapshotIds = await db.transaction(async (tx) => {
+    const refs = decision === 'APPROVED' ? await freezeApprovalVocabulary(targetVersion, tx) : undefined;
+    await tx.insert(policyApprovals).values({
+      id: crypto.randomUUID(),
+      versionId: targetVersion.id,
+      approverId,
+      decision,
+      comment,
+    });
+    await tx.update(policyVersions)
+      .set({ status: newStatus, ...(refs ? { vocabularySnapshotIds: refs } : {}) })
+      .where(eq(policyVersions.id, targetVersion.id));
+    return refs;
+  });
+
+  if (vocabularySnapshotIds && targetVersion.createdBy) {
+    await auditVocabularyFreeze({
+      policyAuthorId: targetVersion.createdBy,
+      policyVersionId: targetVersion.id,
+      refs: vocabularySnapshotIds,
+    }).catch((err) => console.error('[vocabulary-snapshot] audit failed (non-blocking):', err));
+  }
 
   await logSecurityEvent({
     eventType: 'APPROVAL_DECISION',

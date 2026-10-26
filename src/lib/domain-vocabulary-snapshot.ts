@@ -95,10 +95,14 @@ function toTermLikeRow(r: JoinedTermRow): TermLikeRow {
   };
 }
 
+/** drizzle 事务句柄：审批把冻结与审批写入放在同一事务里。 */
+export type SnapshotTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 async function loadActiveLinksGroupedByDomainLocale(
   scope: OwnerScope,
+  exec: Pick<SnapshotTx, 'select'> = db,
 ): Promise<Map<string, JoinedTermRow[]>> {
-  const rows = await db
+  const rows = await exec
     .select({
       termId: userDomainTerms.termId,
       domain: userDomainTerms.domain,
@@ -177,76 +181,83 @@ async function nextSnapshotVersion(
  * domain-vocabulary-scope: same CNL language + referenced by the source).
  * Returns the snapshot refs that should be persisted on the PolicyVersion row.
  *
+ * 所有读写都在调用方传入的事务 `tx` 上执行：审批把冻结（含 refCount 递增）与审批记录、
+ * 状态更新放进同一事务，任何后续失败都会一并回滚，不留下多计的 refCount。
+ *
  * Returns an empty array when the policy uses none of the user's vocab —
  * unrelated domains are never frozen into (or ref-counted by) the version.
  */
 export async function createSnapshotsForOwner(
   scope: OwnerScope,
   policy: PolicyVocabularyContext,
+  tx: SnapshotTx,
 ): Promise<SnapshotRef[]> {
-  const groups = await loadActiveLinksGroupedByDomainLocale(scope);
-  const candidates = [...groups.entries()].map(([key, rows]) => {
-    const [domain, locale] = key.split('|');
-    const vocabJson = assembleDomainVocabularyFromLinks(rows.map(toTermLikeRow), { domain, locale });
-    return { domain, locale, rows, vocabJson };
-  });
-  const inScope = candidates.filter((c) => policyScopeMatcher(policy)(c.vocabJson));
+  const groups = await loadActiveLinksGroupedByDomainLocale(scope, tx);
+  const inScope = policyScopeMatcher(policy);
   const refs: SnapshotRef[] = [];
 
-  for (const { domain, locale, rows, vocabJson } of inScope) {
-    const termIds = rows.map((r) => r.termId);
-    const contentHash = hashContent(termIds);
-
-    // Use a SERIALIZABLE-style serialization via the per-user advisory
-    // lock so two concurrent approvals can't both observe `version = N`
-    // and unique-violate. The unique index on
-    // (ownerType, ownerId, domain, locale, contentHash) still gives us
-    // dedup; the lock just prevents the `version` race.
-    const ref = await db.transaction(async (tx) => {
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${`vocab-snap:${scope.ownerId}:${domain}:${locale}`}))`,
-      );
-      const existing = await tx.query.userVocabularySnapshots.findFirst({
-        where: and(
-          eq(userVocabularySnapshots.ownerType, scope.ownerType),
-          eq(userVocabularySnapshots.ownerId, scope.ownerId),
-          eq(userVocabularySnapshots.domain, domain),
-          eq(userVocabularySnapshots.locale, locale),
-          eq(userVocabularySnapshots.contentHash, contentHash),
-        ),
-        columns: { id: true },
-      });
-      if (existing) {
-        await tx
-          .update(userVocabularySnapshots)
-          .set({ refCount: sql`${userVocabularySnapshots.refCount} + 1` })
-          .where(eq(userVocabularySnapshots.id, existing.id));
-        return { snapshotId: existing.id, domain, locale, dedupHit: true };
-      }
-      // Lock is held + tx is passed so the version read shares the txn.
-      const version = await nextSnapshotVersion(tx, scope, domain, locale);
-      const id = crypto.randomUUID();
-      await tx.insert(userVocabularySnapshots).values({
-        id,
-        ownerType: scope.ownerType,
-        ownerId: scope.ownerId,
-        domain,
-        locale,
-        version,
-        vocabularyJson: vocabJson,
-        termIds,
-        contentHash,
-        refCount: 1,
-      });
-      return { snapshotId: id, domain, locale, dedupHit: false };
-    });
-
-    refs.push({ snapshotId: ref.snapshotId, domain: ref.domain, locale: ref.locale });
+  for (const [key, rows] of groups) {
+    const [domain, locale] = key.split('|') as [string, string];
+    const vocabJson = assembleDomainVocabularyFromLinks(rows.map(toTermLikeRow), { domain, locale });
+    if (!inScope(vocabJson)) continue;
+    const ref = await upsertSnapshot(tx, scope, { domain, locale, vocabJson, termIds: rows.map((r) => r.termId) });
+    refs.push({ snapshotId: ref.snapshotId, domain, locale });
     recordSnapshotCreate({ dedupHit: ref.dedupHit });
     recordLexiconOp('snapshot.create', 'success');
   }
 
   return refs;
+}
+
+/**
+ * 按内容哈希去重写入一个 (domain, locale) 快照：已存在则 refCount + 1，否则插入新版本。
+ * Per-(owner, domain, locale) advisory lock serializes concurrent approvals so two
+ * callers can't both observe `version = N` and unique-violate; the unique index on
+ * (ownerType, ownerId, domain, locale, contentHash) still gives us dedup.
+ */
+async function upsertSnapshot(
+  tx: SnapshotTx,
+  scope: OwnerScope,
+  group: { domain: string; locale: string; vocabJson: DomainVocabulary; termIds: string[] },
+): Promise<{ snapshotId: string; dedupHit: boolean }> {
+  const { domain, locale, vocabJson, termIds } = group;
+  const contentHash = hashContent(termIds);
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext(${`vocab-snap:${scope.ownerId}:${domain}:${locale}`}))`,
+  );
+  const existing = await tx.query.userVocabularySnapshots.findFirst({
+    where: and(
+      eq(userVocabularySnapshots.ownerType, scope.ownerType),
+      eq(userVocabularySnapshots.ownerId, scope.ownerId),
+      eq(userVocabularySnapshots.domain, domain),
+      eq(userVocabularySnapshots.locale, locale),
+      eq(userVocabularySnapshots.contentHash, contentHash),
+    ),
+    columns: { id: true },
+  });
+  if (existing) {
+    await tx
+      .update(userVocabularySnapshots)
+      .set({ refCount: sql`${userVocabularySnapshots.refCount} + 1` })
+      .where(eq(userVocabularySnapshots.id, existing.id));
+    return { snapshotId: existing.id, dedupHit: true };
+  }
+  // Lock is held + tx is passed so the version read shares the txn.
+  const version = await nextSnapshotVersion(tx, scope, domain, locale);
+  const id = crypto.randomUUID();
+  await tx.insert(userVocabularySnapshots).values({
+    id,
+    ownerType: scope.ownerType,
+    ownerId: scope.ownerId,
+    domain,
+    locale,
+    version,
+    vocabularyJson: vocabJson,
+    termIds,
+    contentHash,
+    refCount: 1,
+  });
+  return { snapshotId: id, dedupHit: false };
 }
 
 /**
@@ -312,31 +323,38 @@ export async function loadLiveVocabularyForPolicy(
 
 /**
  * 审批时冻结被审批版本作用域内的作者词汇（#610），返回应写入
- * PolicyVersion.vocabularySnapshotIds 的引用，由调用方与状态变更一并落库。
- *
- * <p>失败直接抛出，不再静默返回空引用：否则版本会被批准却在执行时缺词汇、也无法复现
- * 审批时的术语。作用域为空时不写任何快照、返回 []。
+ * PolicyVersion.vocabularySnapshotIds 的引用。必须在审批事务 `tx` 内调用，引用由调用方
+ * 与状态变更在同一事务中落库；失败直接抛出（事务整体回滚）。作用域为空时不写任何快照。
  */
-export async function freezeVocabularyForApproval(params: {
-  policyVersionId: string;
-  policyAuthorId: string;
-  /** 被审批版本的源码与 CNL 语言。 */
-  policy: PolicyVocabularyContext;
-}): Promise<SnapshotRef[]> {
-  const refs = await createSnapshotsForOwner(
+export async function freezeVocabularyForApproval(
+  params: {
+    policyAuthorId: string;
+    /** 被审批版本的源码与 CNL 语言。 */
+    policy: PolicyVocabularyContext;
+  },
+  tx: SnapshotTx,
+): Promise<SnapshotRef[]> {
+  return createSnapshotsForOwner(
     { ownerType: 'user', ownerId: params.policyAuthorId },
     params.policy,
+    tx,
   );
-  if (refs.length > 0) {
-    await logAuditEvent({
-      userId: params.policyAuthorId,
-      action: 'lexicon.term.add',
-      resource: 'vocabulary-snapshot',
-      resourceId: params.policyVersionId,
-      metadata: { action: 'created_on_publish', snapshotCount: refs.length },
-    });
-  }
-  return refs;
+}
+
+/** 审批事务提交后记录冻结审计（事务回滚时不应留下「已冻结」的审计）。 */
+export async function auditVocabularyFreeze(params: {
+  policyAuthorId: string;
+  policyVersionId: string;
+  refs: readonly SnapshotRef[];
+}): Promise<void> {
+  if (params.refs.length === 0) return;
+  await logAuditEvent({
+    userId: params.policyAuthorId,
+    action: 'lexicon.term.add',
+    resource: 'vocabulary-snapshot',
+    resourceId: params.policyVersionId,
+    metadata: { action: 'created_on_publish', snapshotCount: params.refs.length },
+  });
 }
 
 export interface RollbackResult {
