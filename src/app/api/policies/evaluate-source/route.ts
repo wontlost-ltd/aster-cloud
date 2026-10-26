@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { hasInternalDetail, publicErrorText, sanitizeDiagnostics } from '@/lib/execution-error';
 import { getSession } from '@/lib/auth';
 import { createPolicyApiClient, PolicyApiError, PolicyEvaluateResponse } from '@/services/policy/policy-api';
 import {
@@ -122,14 +123,18 @@ export async function POST(req: Request) {
     };
 
     // 如果 error 存在则表示失败
+    // 预览场景保留作者可据以修改源码的错误（如 CNL 语法错误）；带 Java 异常/内部路径的原文只进日志。
     if (apiResponse.error) {
+      if (hasInternalDetail(apiResponse.error)) {
+        console.error('[evaluate-source] engine error', { error: apiResponse.error });
+      }
       return NextResponse.json(
         {
           success: false,
-          error: apiResponse.error,
+          error: publicErrorText(apiResponse.error),
           executionTimeMs: apiResponse.executionTimeMs,
           executedFunction: apiResponse.executedFunction,
-          diagnostics: apiResponse.diagnostics,
+          diagnostics: sanitizeDiagnostics(apiResponse.diagnostics),
         },
         { status: 400, headers: rateLimitHeaders }
       );
@@ -163,7 +168,7 @@ export async function POST(req: Request) {
         result: apiResponse.result,
         durationMs: apiResponse.executionTimeMs || 0,
         executedFunction: apiResponse.executedFunction,
-        diagnostics: apiResponse.diagnostics,
+        diagnostics: sanitizeDiagnostics(apiResponse.diagnostics),
       },
       { headers: rateLimitHeaders }
     );
@@ -172,8 +177,8 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Internal server error',
-        diagnostics: error instanceof PolicyApiError ? error.diagnostics : undefined,
+        error: error instanceof Error ? publicErrorText(error.message) : 'Internal server error',
+        diagnostics: error instanceof PolicyApiError ? sanitizeDiagnostics(error.diagnostics) : undefined,
       },
       { status: error instanceof PolicyApiError ? error.statusCode : 500 }
     );

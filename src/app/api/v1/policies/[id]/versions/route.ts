@@ -17,7 +17,7 @@ import {
 } from '@/services/policy/version-manager';
 import { canReviewPolicyVersions } from '@/services/policy/version-approval-rules';
 import { makeCompileValidator } from '@/lib/policy-compile-validator';
-import { compileGateErrorResponse } from '@/lib/policy-compile-response';
+import { aliasInvalidResponse, compileGateErrorResponse } from '@/lib/policy-compile-response';
 import {
   getStructuralAliasGrant,
   buildAliasReservedForUser,
@@ -186,6 +186,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (error instanceof PolicyCompileError) {
       return compileGateErrorResponse(error);
     }
+    const aliasInvalid = aliasInvalidResponse(error);
+    if (aliasInvalid) return aliasInvalid;
     console.error('[Versions POST] Error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Could not create version.' },

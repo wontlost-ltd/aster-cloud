@@ -95,7 +95,29 @@ describe('createVersion — 源码可编译性门禁', () => {
       source: 'Module X.',
       locale: 'en-US',
       aliasSet,
+      allowStructural: false,
     });
+  });
+
+  it('结构词授权透传给编译校验器（#604：已授权的结构词别名不得被门禁按未授权拒绝）', async () => {
+    const validateCompilable = vi
+      .fn()
+      .mockResolvedValue({ diagnostics: [] }) as unknown as CompileValidator;
+    const aliasSet = { IF: ['provided that'] };
+    await createVersion({
+      ...baseParams,
+      aliasSet,
+      aliasReserved: {
+        canonicalKeywordsLower: new Set<string>(),
+        baseAliasesLower: new Set<string>(),
+        vocabularyTermsLower: new Set<string>(),
+      },
+      allowStructuralAliases: true,
+      validateCompilable,
+    });
+    expect(validateCompilable).toHaveBeenCalledWith(
+      expect.objectContaining({ aliasSet, allowStructural: true }),
+    );
   });
 
   it('校验器自身抛异常（编译服务不可达）→ fail-open 放行落库', async () => {
