@@ -29,6 +29,7 @@ import {
   users,
 } from '@/lib/prisma';
 import { logAuditEvent } from '@/lib/audit-log';
+import { isUndefinedTable } from '@/lib/pg-errors';
 import { assembleDomainVocabularyFromLinks } from '@/lib/domain-vocabulary-validation';
 
 const RETENTION_DAYS = 90;
@@ -370,7 +371,17 @@ export async function purgeUserVocabulary(userId: string): Promise<PurgeOutcome>
     // 4. UserVocabularyVersion：保留用户的 DSAR 清理也要抹掉版本行（复审 P2）。
     //    必须放在第 1 步删词条之后——那一步的 DELETE 触发器会为仍存在的用户
     //    upsert 版本行，先删就会被它重新建出来。
-    await tx.delete(userVocabularyVersions).where(eq(userVocabularyVersions.userId, userId));
+    //    迁移窗口容错：0059 尚未应用时表不存在（42P01）。放进保存点里执行，
+    //    出错只回滚保存点；直接在外层事务里吞掉异常会让整个事务进入 aborted 状态，
+    //    COMMIT 被 Postgres 静默改成 ROLLBACK，前面三步清理全部丢失。
+    //    表不存在即无版本行可删，跳过即可；其他错误照常抛出回滚整个清理。
+    try {
+      await tx.transaction(async (sp) => {
+        await sp.delete(userVocabularyVersions).where(eq(userVocabularyVersions.userId, userId));
+      });
+    } catch (error) {
+      if (!isUndefinedTable(error)) throw error;
+    }
 
     return { snapshotsDeleted, bulkJobsDeleted, idempotencyDeleted };
   });

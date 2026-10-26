@@ -48,7 +48,7 @@ import {
   type NormalizedTermInput,
   type TermKind,
 } from '@/lib/domain-vocabulary-validation';
-import { isUniqueViolation } from '@/lib/pg-errors';
+import { isUndefinedTable, isUniqueViolation } from '@/lib/pg-errors';
 
 function createHashSync(value: string): string {
   return nodeCreateHash('sha256').update(value).digest('hex');
@@ -452,11 +452,37 @@ export async function countActiveUserVocabularyTerms(userId: string): Promise<nu
  * ★必须绕过 Hyperdrive 查询缓存：轮询本身就是「写后读」，缓存 60s 会让失效迟到。
  */
 export async function getUserVocabularyVersion(userId: string): Promise<string> {
+  try {
+    const [row] = await db
+      .select({ version: userVocabularyVersions.version })
+      .from(userVocabularyVersions)
+      .where(and(eq(userVocabularyVersions.userId, userId), bypassQueryCache()));
+    return String(row?.version ?? 0);
+  } catch (error) {
+    if (!isUndefinedTable(error)) throw error;
+    return getUserVocabularyFingerprint(userId);
+  }
+}
+
+/**
+ * 迁移窗口内的版本替身：UserVocabularyVersion 尚未建表（Worker 先于迁移 Job 部署，SQLSTATE 42P01）。
+ *
+ * 不返回常量：常量虽然不报错，但窗口内词汇变化会完全感知不到。改为对该用户全部链接行
+ * （含软删 / 归档）取「行数 + 最近一次增改删 / 归档时间」作指纹——新增、修改、软删、恢复、归档
+ * 都会推进时间戳，物理删除会改变行数。客户端只比较相等，不要求单调。
+ *
+ * 带 `fp:` 前缀，迁移落地后切回纯数字版本时客户端会多刷新一次（无害），且绝不会与真实版本号相撞。
+ * 走 UserDomainTerm 的 userId 前缀索引，用户词条有配额上限，代价可控；同样绕过 Hyperdrive 缓存。
+ */
+async function getUserVocabularyFingerprint(userId: string): Promise<string> {
   const [row] = await db
-    .select({ version: userVocabularyVersions.version })
-    .from(userVocabularyVersions)
-    .where(and(eq(userVocabularyVersions.userId, userId), bypassQueryCache()));
-  return String(row?.version ?? 0);
+    .select({
+      count: sql<number>`count(*)::int`,
+      lastChange: sql<string | null>`(floor(extract(epoch from greatest(max(${userDomainTerms.updatedAt}), max(${userDomainTerms.deletedAt}), max(${userDomainTerms.archivedAt}))) * 1000))::bigint::text`,
+    })
+    .from(userDomainTerms)
+    .where(and(eq(userDomainTerms.userId, userId), bypassQueryCache()));
+  return `fp:${row?.count ?? 0}:${row?.lastChange ?? 0}`;
 }
 
 /**

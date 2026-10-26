@@ -77,6 +77,13 @@ describe('GET /version', () => {
     expect(getUserVocabularyVersion).toHaveBeenCalledWith('user-1');
   });
 
+  it('迁移窗口内的指纹版本原样返回 200（不是 500）', async () => {
+    vi.mocked(getUserVocabularyVersion).mockResolvedValue('fp:3:1761480000000');
+    const res = await getVersion();
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ version: 'fp:3:1761480000000' });
+  });
+
   it('查询失败返回 500 且不泄露内部错误', async () => {
     vi.mocked(getUserVocabularyVersion).mockRejectedValue(new Error('connection refused 10.0.0.1'));
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
