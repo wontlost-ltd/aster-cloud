@@ -905,6 +905,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         // 执行前输入类型提取失败（#638）、服务端拒绝非对象输入、表单无法展示非对象输入（#634）。
         inputTypeExtractionFailed: 'This policy version\'s input types could not be read, so the input could not be matched to the policy vocabulary. The policy was not run. Check that the policy compiles, then try again.',
         invalidInputObject: 'The input must be a JSON object with one key per rule parameter.',
+        entryRuleRequired: 'This policy has several rules and none is marked @entry. Choose the rule to run.',
         nonObjectInputInForm: 'The JSON input is valid but is not an object, so the form cannot show it. It will be sent as is; switch to JSON mode to edit it.',
         // 表单模式数字字段无法解析为数字时阻止执行（#635）。
         invalidNumberField: '{field} must be a number.',
@@ -2060,6 +2061,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         // 执行前输入类型提取失败（#638）、服务端拒绝非对象输入、表单无法展示非对象输入（#634）。
         inputTypeExtractionFailed: '无法读取该策略版本的输入类型，因此无法按策略词汇匹配输入，策略未执行。请确认策略可以编译后重试。',
         invalidInputObject: '输入必须是 JSON 对象，每个规则参数对应一个键。',
+        entryRuleRequired: '该策略有多条规则且没有标记 @entry，请选择要执行的规则。',
         nonObjectInputInForm: 'JSON 输入有效，但不是对象，表单无法显示。它将按原样提交；如需编辑请切换到 JSON 模式。',
         // 表单模式数字字段无法解析为数字时阻止执行（#635）。
         invalidNumberField: '{field} 必须是数字。',
@@ -3225,6 +3227,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         // 执行前输入类型提取失败（#638）、服务端拒绝非对象输入、表单无法展示非对象输入（#634）。
         inputTypeExtractionFailed: 'Die Eingabetypen dieser Policy-Version konnten nicht gelesen werden, daher ließ sich die Eingabe nicht dem Vokabular der Policy zuordnen. Die Policy wurde nicht ausgeführt. Prüfen Sie, ob die Policy kompiliert, und versuchen Sie es erneut.',
         invalidInputObject: 'Die Eingabe muss ein JSON-Objekt mit einem Schlüssel pro Regelparameter sein.',
+        entryRuleRequired: 'Diese Policy hat mehrere Regeln und keine ist mit @entry markiert. Wählen Sie die auszuführende Regel.',
         nonObjectInputInForm: 'Die JSON-Eingabe ist gültig, aber kein Objekt, daher kann das Formular sie nicht anzeigen. Sie wird unverändert gesendet; wechseln Sie zum JSON-Modus, um sie zu bearbeiten.',
         // 表单模式数字字段无法解析为数字时阻止执行（#635）。
         invalidNumberField: '{field} muss eine Zahl sein.',
@@ -4373,6 +4376,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         // 执行前输入类型提取失败（#638）、服务端拒绝非对象输入、表单无法展示非对象输入（#634）。
         inputTypeExtractionFailed: 'इस नीति संस्करण के इनपुट प्रकार पढ़े नहीं जा सके, इसलिए इनपुट को नीति शब्दावली से मिलाया नहीं जा सका। नीति नहीं चलाई गई। जाँचें कि नीति कंपाइल होती है, फिर पुनः प्रयास करें।',
         invalidInputObject: 'इनपुट एक JSON ऑब्जेक्ट होना चाहिए, जिसमें नियम के हर पैरामीटर के लिए एक कुंजी हो।',
+        entryRuleRequired: 'इस नीति में कई नियम हैं और किसी पर @entry चिह्न नहीं है। चलाने के लिए नियम चुनें।',
         nonObjectInputInForm: 'JSON इनपुट मान्य है, पर ऑब्जेक्ट नहीं है, इसलिए फ़ॉर्म इसे नहीं दिखा सकता। इसे जैसा है वैसा भेजा जाएगा; संपादित करने के लिए JSON मोड पर जाएँ।',
         // 表单模式数字字段无法解析为数字时阻止执行（#635）。
         invalidNumberField: '{field} एक संख्या होनी चाहिए।',

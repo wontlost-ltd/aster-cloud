@@ -134,7 +134,7 @@ export function recordSnapshotCreate(opts: { dedupHit: boolean }): void {
 }
 
 /** 记录一次执行前输入类型提取的结果（#638）。 */
-export function recordInputTypeExtraction(outcome: 'ok' | 'failed'): void {
+export function recordInputTypeExtraction(outcome: 'ok' | 'extraction_failed' | 'entry_ambiguous'): void {
   inputTypeExtractionTotal.inc({ outcome });
 }
 

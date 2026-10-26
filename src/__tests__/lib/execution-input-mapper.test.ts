@@ -17,6 +17,12 @@ import {
 } from '@/lib/execution-input/mapper';
 import { extractPolicyInputTypes } from '@/lib/execution-input/policy-types';
 
+/** 只取成功时的类型（失败返回 null），便于沿用按类型断言的用例。 */
+function extractTypes(...args: Parameters<typeof extractPolicyInputTypes>) {
+  const result = extractPolicyInputTypes(...args);
+  return result.ok ? result.types : null;
+}
+
 function row(kind: string, canonical: string, localized: string, parent: string | null = null, aliases: string[] = []): TermLikeRow {
   return { domainTermId: `${kind}-${canonical}-${localized}`, domain: 'e2e1027', locale: 'de', kind, canonical, localized, parentCanonical: parent, aliases };
 }
@@ -51,7 +57,7 @@ Regel bewerten gegeben person als Fahrer liefert Ganzzahl:
     gib zurück 42.
   gib zurück 0.
 `;
-const TYPES = extractPolicyInputTypes({ source: DE_POLICY, locale: 'de-DE', aliasSet: null }, undefined)!;
+const TYPES = extractTypes({ source: DE_POLICY, locale: 'de-DE', aliasSet: null }, undefined)!;
 const MODEL = buildMappingModel(INDEX, TYPES);
 
 const T = (name: string): PolicyTypeNode => ({ kind: 'TypeName', name });
@@ -73,11 +79,11 @@ describe('extractPolicyInputTypes', () => {
   });
 
   it('源码无法解析时返回 null', () => {
-    expect(extractPolicyInputTypes({ source: 'Modul x.\n\nRegel kaputt gegeben', locale: 'de-DE', aliasSet: null }, undefined)).toBeNull();
+    expect(extractTypes({ source: 'Modul x.\n\nRegel kaputt gegeben', locale: 'de-DE', aliasSet: null }, undefined)).toBeNull();
   });
 
   it('同一版本重复提取命中缓存（返回同一组声明）', () => {
-    const again = extractPolicyInputTypes({ source: DE_POLICY, locale: 'de-DE', aliasSet: null }, 'evaluate', (n) => (n === 'bewerten' ? 'evaluate' : n));
+    const again = extractTypes({ source: DE_POLICY, locale: 'de-DE', aliasSet: null }, 'evaluate', (n) => (n === 'bewerten' ? 'evaluate' : n));
     expect(again!.decls).toBe(TYPES.decls);
     expect(again!.params.map((p) => p.name)).toEqual(['person']);
   });

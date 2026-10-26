@@ -26,6 +26,7 @@ import { assertPolicyOwnership } from '../policy/version-manager';
 import { createPolicyApiClient } from '../policy/policy-api';
 import {
   ambiguousInputFieldMessage,
+  ENTRY_RULE_REQUIRED_MESSAGE,
   INPUT_TYPE_EXTRACTION_FAILED_MESSAGE,
   inputMappingAudit,
   loadVersionExecutionVocabulary,
@@ -61,6 +62,8 @@ export interface SecureExecuteResult {
   expectedHash?: string;
   /** errorCode=AMBIGUOUS_INPUT_FIELD 时：冲突字段（#626）。 */
   ambiguous?: AmbiguousInputField;
+  /** errorCode=ENTRY_RULE_REQUIRED 时：可选的 Rule（#638 复审）。 */
+  entryRules?: readonly string[];
 }
 
 export type SecurityErrorCode =
@@ -74,6 +77,7 @@ export type SecurityErrorCode =
   | 'VERSION_NOT_EXECUTABLE'
   | 'AMBIGUOUS_INPUT_FIELD'
   | 'INPUT_TYPE_EXTRACTION_FAILED'
+  | 'ENTRY_RULE_REQUIRED'
   | 'EXECUTION_FAILED';
 
 const SIGNING_SECRET = safeEnv('POLICY_SIGNING_SECRET') || '';
@@ -324,6 +328,9 @@ export async function executeSecurely(
     });
     if (!prepared.ok && prepared.reason === 'type_extraction_failed') {
       return { success: false, error: INPUT_TYPE_EXTRACTION_FAILED_MESSAGE, errorCode: 'INPUT_TYPE_EXTRACTION_FAILED' };
+    }
+    if (!prepared.ok && prepared.reason === 'entry_ambiguous') {
+      return { success: false, error: ENTRY_RULE_REQUIRED_MESSAGE, errorCode: 'ENTRY_RULE_REQUIRED', entryRules: prepared.rules };
     }
     if (!prepared.ok) {
       return {

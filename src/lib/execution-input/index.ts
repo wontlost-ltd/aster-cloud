@@ -38,6 +38,12 @@ export const AMBIGUOUS_INPUT_FIELD_CODE = 'ambiguous_input_field';
  */
 export const INPUT_TYPE_EXTRACTION_FAILED_CODE = 'input_type_extraction_failed';
 
+/**
+ * 带词汇的版本未指定 Rule、且无法唯一确定入口（多个 Rule、无 @entry）时的稳定错误码：
+ * 不知道引擎会执行哪条，就无法按它的参数类型映射输入（执行端同样会拒绝）。
+ */
+export const ENTRY_RULE_REQUIRED_CODE = 'entry_rule_required';
+
 /** 冻结快照生效的版本状态；其余状态按作者现行词汇执行。 */
 const FROZEN_VOCABULARY_STATUSES: ReadonlySet<string> = new Set(['APPROVED', 'DEPRECATED']);
 
@@ -110,7 +116,8 @@ export type PreparedExecutionInput =
       localizeOutput: (value: unknown) => unknown;
     }
   | { ok: false; reason: 'ambiguous'; ambiguous: AmbiguousInputField }
-  | { ok: false; reason: 'type_extraction_failed' };
+  | { ok: false; reason: 'type_extraction_failed' }
+  | { ok: false; reason: 'entry_ambiguous'; rules: readonly string[] };
 
 /**
  * 执行前映射输入与函数名。无词汇时零开销（不编译源码）。
@@ -121,18 +128,21 @@ export function prepareExecutionInput(params: PrepareExecutionInputParams): Prep
   if (!index) {
     return { ok: true, input: params.input, functionName: params.functionName, renames: [], localizeOutput: (v) => v };
   }
-  const types = extractPolicyInputTypes(
+  const extracted = extractPolicyInputTypes(
     { source: params.source, locale: params.locale, aliasSet: params.aliasSet, vocabulary: params.vocabulary, index },
     params.functionName,
     (name) => engineName(index, name),
   );
-  recordInputTypeExtraction(types ? 'ok' : 'failed');
-  if (!types) {
+  recordInputTypeExtraction(extracted.ok ? 'ok' : extracted.reason);
+  if (!extracted.ok) {
     console.warn('[execution-input] input types unavailable; refusing to execute on unmapped input', {
-      locale: params.locale, functionName: params.functionName,
+      locale: params.locale, functionName: params.functionName, reason: extracted.reason,
     });
-    return { ok: false, reason: 'type_extraction_failed' };
+    return extracted.reason === 'entry_ambiguous'
+      ? { ok: false, reason: 'entry_ambiguous', rules: extracted.rules }
+      : { ok: false, reason: 'type_extraction_failed' };
   }
+  const types = extracted.types;
   const model = buildMappingModel(index, types);
   const mapped = mapExecutionInput(params.input, model);
   if (!mapped.ok) return { ok: false, reason: 'ambiguous', ambiguous: mapped.ambiguous };
@@ -172,6 +182,10 @@ export const INPUT_TYPE_EXTRACTION_FAILED_MESSAGE =
   'The input types of this policy version could not be read, so the input cannot be matched to the ' +
   'policy vocabulary. The policy was not executed. Check that the policy source compiles, then try again.';
 
+/** 未指定 Rule 且入口不唯一时的英文说明（界面按 code 本地化）。 */
+export const ENTRY_RULE_REQUIRED_MESSAGE =
+  'This policy has several rules and none is marked @entry. Specify which rule to run (functionName).';
+
 /**
  * 准备失败时 dashboard / v1 共用的响应：歧义 400，类型提取失败 422。
  * secure-execute 另有自己的 errorCode 口径，不走这里。
@@ -180,6 +194,9 @@ export function preparedInputErrorResponse(
   failure: Extract<PreparedExecutionInput, { ok: false }>,
 ): { body: Record<string, unknown>; status: number } {
   if (failure.reason === 'ambiguous') return { body: ambiguousInputFieldBody(failure.ambiguous), status: 400 };
+  if (failure.reason === 'entry_ambiguous') {
+    return { body: { error: ENTRY_RULE_REQUIRED_MESSAGE, code: ENTRY_RULE_REQUIRED_CODE, rules: failure.rules }, status: 422 };
+  }
   return { body: { error: INPUT_TYPE_EXTRACTION_FAILED_MESSAGE, code: INPUT_TYPE_EXTRACTION_FAILED_CODE }, status: 422 };
 }
 

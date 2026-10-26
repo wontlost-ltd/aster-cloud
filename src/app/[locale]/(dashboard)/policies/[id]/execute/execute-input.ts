@@ -35,6 +35,7 @@ export const EXECUTE_ERROR_KEYS: Readonly<Record<string, string>> = {
   execution_failed: 'engineErrorDetail',
   invalid_input_object: 'invalidInputObject',
   input_type_extraction_failed: 'inputTypeExtractionFailed',
+  entry_rule_required: 'entryRuleRequired',
 };
 
 /** 解析 JSON 文本（任意 JSON 值）；不可解析时 ok=false。 */

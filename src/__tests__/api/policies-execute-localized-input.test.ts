@@ -341,6 +341,29 @@ describe('POST /api/policies/[id]/execute — 类型提取与执行同一词汇�
     warn.mockRestore();
   });
 
+  it('未指定 Rule、只有一条 Rule：按这条 Rule 的参数映射输入', async () => {
+    mockDbExecute.mockResolvedValue([policyRow(POLICY_638_HEAD)]);
+    mockEvaluateSource.mockResolvedValue({ result: 'High', executionTimeMs: 1, error: null });
+
+    const { status } = await execute({ person: { alter: 35, niveau: 'Hoch' } });
+
+    expect(status).toBe(200);
+    expect(mockEvaluateSource.mock.calls[0]![1]).toEqual({ person: { age: 35, rank: 'High' } });
+  });
+
+  it('未指定 Rule、多条 Rule 且无 @entry：422 entry_rule_required 并列出可选 Rule，不按空参数映射执行', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockDbExecute.mockResolvedValue([policyRow(POLICY_638)]);
+
+    const { status, body } = await execute({ person: { alter: 35, niveau: 'Hoch' } });
+
+    expect(status).toBe(422);
+    expect(body).toMatchObject({ code: 'entry_rule_required', rules: ['einstufen', 'bauen'] });
+    expect(mockEvaluateSource).not.toHaveBeenCalled();
+    expect(mockInsertValues).not.toHaveBeenCalled();
+    vi.mocked(console.warn).mockRestore();
+  });
+
   it('无词汇的策略不做类型提取，源码无法解析也照常交给引擎（行为不变）', async () => {
     mockLoadFrozen.mockResolvedValue(undefined);
     mockDbExecute.mockResolvedValue([policyRow('Modul kaputt.\n\nRegel gegeben Fahrer liefert:\n  gib zurück 1.\n')]);

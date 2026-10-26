@@ -37,6 +37,7 @@ describe('EXECUTE_ERROR_KEYS', () => {
       execution_failed: 'engineErrorDetail',
       invalid_input_object: 'invalidInputObject',
       input_type_extraction_failed: 'inputTypeExtractionFailed',
+      entry_rule_required: 'entryRuleRequired',
     });
   });
 });

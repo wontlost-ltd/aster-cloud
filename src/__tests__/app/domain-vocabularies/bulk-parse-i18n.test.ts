@@ -105,7 +105,7 @@ describe('批量导入解析错误按问题码本地化（#634）', () => {
 });
 
 describe('执行页错误与表单提示（#634 #638）', () => {
-  const KEYS = ['invalidInputObject', 'inputTypeExtractionFailed', 'nonObjectInputInForm'];
+  const KEYS = ['invalidInputObject', 'inputTypeExtractionFailed', 'entryRuleRequired', 'nonObjectInputInForm'];
   for (const locale of Object.keys(PKG) as Loc[]) {
     it(`[${locale}] 有本地化文案`, () => {
       const t = translator(locale, 'policies.execute');

@@ -38,6 +38,7 @@ interface CoreDecl {
   variants?: string[];
   params?: Array<{ name: string; type: PolicyTypeNode }>;
   ret?: PolicyTypeNode;
+  annotations?: Array<{ name?: string }>;
 }
 
 interface CompiledTypes {
@@ -149,30 +150,65 @@ function compileDecls(source: string, target: CanonicalizeTarget): DeclResult {
   return { decls };
 }
 
+/*
+ * 签名回退是临时措施：TS 解析器与执行端（aster-api）对部分函数体写法不一致（如构造表达式
+ * `mit f = v`，见 aster-cloud/aster-lang-ts#244）。该问题修复、两个解析器对齐后应删除这段回退，
+ * 只保留完整编译。
+ *
+ * 函数体定位完全依据引擎词法器产出的 INDENT / DEDENT / COLON / NEWLINE token（字符串字面量是
+ * STRING token，其中的 Rule / Regel / 规则 不会被当作关键词）。Rule 头以第一个「: 换行」结束，
+ * 两种合法形状：
+ *   - 单行签名，或跨行签名且函数体比续行更深：「: 换行」后紧跟 INDENT，函数体到与之配对的 DEDENT；
+ *   - 跨行签名（续行已缩进一层）且函数体与续行同一缩进：函数体到闭合签名缩进块的 DEDENT。
+ */
+
 type Token = { kind: string; value: unknown; start: unknown; end: unknown };
 
-function lowerOf(token: Token | undefined): string {
-  return typeof token?.value === 'string' ? token.value.toLowerCase() : '';
+/** 可能是关键词的 token 种类（翻译后的关键词可能是 IDENT / TYPE_IDENT / KEYWORD）。 */
+const WORD_KINDS: ReadonlySet<string> = new Set([TokenKind.IDENT, TokenKind.TYPE_IDENT, TokenKind.KEYWORD]);
+
+function isRuleKeyword(token: Token): boolean {
+  return WORD_KINDS.has(token.kind) && typeof token.value === 'string' && token.value.toLowerCase() === KW.RULE;
 }
 
-/** 从 INDENT 下标找配对的 DEDENT 下标；没有则返回 -1。 */
-function matchingDedent(tokens: readonly Token[], indentAt: number): number {
+function depthDelta(token: Token): number {
+  if (token.kind === TokenKind.INDENT) return 1;
+  return token.kind === TokenKind.DEDENT ? -1 : 0;
+}
+
+/** 从 from 起（相对缩进 0）找第一个使缩进低于起点的 DEDENT 下标；没有则返回 -1。 */
+function closingDedent(tokens: readonly Token[], from: number): number {
   let depth = 0;
-  for (let i = indentAt; i < tokens.length; i++) {
-    if (tokens[i]!.kind === TokenKind.INDENT) depth++;
-    if (tokens[i]!.kind === TokenKind.DEDENT && --depth === 0) return i;
+  for (let i = from; i < tokens.length; i++) {
+    if (tokens[i]!.kind === TokenKind.DEDENT && depth === 0) return i;
+    depth += depthDelta(tokens[i]!);
   }
   return -1;
 }
 
-/** Rule 头之后第一个「: 换行 缩进」的 INDENT 下标；遇到下一条顶层声明前没找到则返回 -1。 */
-function bodyIndentAfter(tokens: readonly Token[], ruleAt: number): number {
-  for (let i = ruleAt + 1; i + 2 < tokens.length; i++) {
-    if (tokens[i]!.kind === TokenKind.INDENT || lowerOf(tokens[i]) === KW.RULE) return -1;
-    const opensBody = tokens[i]!.kind === TokenKind.COLON && tokens[i + 1]!.kind === TokenKind.NEWLINE;
-    if (opensBody && tokens[i + 2]!.kind === TokenKind.INDENT) return i + 2;
+/** 函数体区间：start 为第一个函数体 token，end 为闭合函数体的 DEDENT（保留）。 */
+type BodySpan = { readonly start: number; readonly end: number };
+
+function spanAfterHeader(tokens: readonly Token[], bodyAt: number, headerDepth: number): BodySpan | null {
+  if (tokens[bodyAt]?.kind === TokenKind.INDENT) {
+    const end = closingDedent(tokens, bodyAt + 1);
+    return end < 0 ? null : { start: bodyAt + 1, end };
   }
-  return -1;
+  if (headerDepth === 0) return null;
+  const end = closingDedent(tokens, bodyAt);
+  return end < 0 ? null : { start: bodyAt, end };
+}
+
+/** Rule 头（ruleAt 起）之后的函数体区间；签名没有以「: 换行」结束时返回 null。 */
+function bodySpan(tokens: readonly Token[], ruleAt: number): BodySpan | null {
+  let depth = 0;
+  for (let i = ruleAt + 1; i + 1 < tokens.length; i++) {
+    const token = tokens[i]!;
+    if (token.kind === TokenKind.COLON && tokens[i + 1]!.kind === TokenKind.NEWLINE) return spanAfterHeader(tokens, i + 2, depth);
+    depth += depthDelta(token);
+    if (depth < 0) return null;
+  }
+  return null;
 }
 
 /** 占位函数体 `Return 0.`：不做类型检查，任何返回类型都能解析。 */
@@ -187,26 +223,25 @@ function stubBody(at: Token): Token[] {
 }
 
 /**
- * 把每个顶层 Rule 的函数体换成占位语句（保留 INDENT / DEDENT），只留下声明与签名。
- * 只处理顶层（缩进深度 0）的 Rule；签名跨行等认不出的形状保持原样。
+ * 把每个顶层 Rule 的函数体换成占位语句（保留缩进结构），只留下声明与签名。
+ * 被替换的区间缩进成对，不影响外层深度；认不出的形状保持原样（随后解析照常报错）。
  */
-function stubFunctionBodies(tokens: readonly Token[]): Token[] {
+export function stubFunctionBodies(tokens: readonly Token[]): Token[] {
   const out: Token[] = [];
   let depth = 0;
   let i = 0;
   while (i < tokens.length) {
-    const token = tokens[i]!;
-    const indentAt = depth === 0 && lowerOf(token) === KW.RULE ? bodyIndentAfter(tokens, i) : -1;
-    const dedentAt = indentAt >= 0 ? matchingDedent(tokens, indentAt) : -1;
-    if (dedentAt < 0) {
-      if (token.kind === TokenKind.INDENT) depth++;
-      if (token.kind === TokenKind.DEDENT) depth--;
-      out.push(token);
+    const span = depth === 0 && isRuleKeyword(tokens[i]!) ? bodySpan(tokens, i) : null;
+    if (!span) {
+      depth += depthDelta(tokens[i]!);
+      out.push(tokens[i]!);
       i++;
       continue;
     }
-    out.push(...tokens.slice(i, indentAt + 1), ...stubBody(tokens[indentAt]!), tokens[dedentAt]!);
-    i = dedentAt + 1;
+    const header = tokens.slice(i, span.start);
+    depth += header.reduce((sum, token) => sum + depthDelta(token), 0);
+    out.push(...header, ...stubBody(tokens[span.end]!));
+    i = span.end;
   }
   return out;
 }
@@ -323,31 +358,56 @@ function cachedCompile(input: PolicyTypeSource): CompiledTypes | null {
   return compiled;
 }
 
-/** 入口函数：指定了函数名就按规范化后的名字找（作者写法与规范名都能命中），否则取第一个函数。 */
-function pickFunction(funcs: readonly CoreDecl[], functionName: string | undefined, normalize: NameNormalizer) {
-  if (!functionName) return funcs[0];
-  const wanted = normalize(functionName).toLowerCase();
-  return funcs.find((f) => normalize(f.name).toLowerCase() === wanted);
+type EntryChoice = { func: CoreDecl | undefined } | { ambiguous: readonly string[] };
+
+function isEntryAnnotated(func: CoreDecl): boolean {
+  return (func.annotations ?? []).some((a) => a?.name === 'entry');
 }
+
+/**
+ * 入口函数，与执行端（aster-api EntryPointSelector）同一规则：
+ *   - 指定了函数名：按规范化后的名字找（作者写法与规范名都能命中）；找不到时由引擎报「函数不存在」；
+ *   - 未指定：第一个带 @entry 注解的 Rule → 唯一的 Rule → 多个 Rule 时无法确定（引擎同样拒绝执行）。
+ */
+function pickFunction(funcs: readonly CoreDecl[], functionName: string | undefined, normalize: NameNormalizer): EntryChoice {
+  if (functionName) {
+    const wanted = normalize(functionName).toLowerCase();
+    return { func: funcs.find((f) => normalize(f.name).toLowerCase() === wanted) };
+  }
+  const entry = funcs.find(isEntryAnnotated);
+  if (entry || funcs.length <= 1) return { func: entry ?? funcs[0] };
+  return { ambiguous: funcs.map((f) => f.name) };
+}
+
+export type PolicyTypesResult =
+  | { readonly ok: true; readonly types: PolicyInputTypes }
+  /** 源码连签名都解析不了。 */
+  | { readonly ok: false; readonly reason: 'extraction_failed' }
+  /** 未指定函数名且有多个 Rule、没有 @entry：不知道引擎会执行哪条（策略写法的 Rule 名）。 */
+  | { readonly ok: false; readonly reason: 'entry_ambiguous'; readonly rules: readonly string[] };
 
 /**
  * @param input 版本源码、CNL 语言、冻结别名与执行词汇
  * @param functionName 请求指定的 Rule（策略语言写法或规范名）
  * @param normalize 名字规范化（按执行词汇），用于匹配函数名
- * @returns 提取不到（源码连签名都解析不了）时返回 null
  */
 export function extractPolicyInputTypes(
   input: PolicyTypeSource,
   functionName: string | undefined,
   normalize: NameNormalizer = (name) => name,
-): PolicyInputTypes | null {
+): PolicyTypesResult {
   const compiled = cachedCompile(input);
-  if (!compiled) return null;
-  const func = pickFunction(compiled.funcs, functionName, normalize);
+  if (!compiled) return { ok: false, reason: 'extraction_failed' };
+  const choice = pickFunction(compiled.funcs, functionName, normalize);
+  if ('ambiguous' in choice) return { ok: false, reason: 'entry_ambiguous', rules: choice.ambiguous };
+  const func = choice.func;
   return {
-    params: func?.params ?? [],
-    ...(func?.ret ? { result: func.ret } : {}),
-    decls: compiled.decls,
+    ok: true,
+    types: {
+      params: func?.params ?? [],
+      ...(func?.ret ? { result: func.ret } : {}),
+      decls: compiled.decls,
+    },
   };
 }
 
