@@ -115,13 +115,17 @@ beforeEach(() => {
     return makeChain(next);
   });
   hoisted.transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
-    return fn({
+    // 嵌套 tx.transaction 即 SAVEPOINT：mock 里直接复用同一个 tx 执行回调，
+    // 失败时把异常原样抛给 landBulkRow，模拟「只回滚本行」。
+    const tx: Record<string, unknown> = {
       execute: vi.fn().mockResolvedValue(undefined),
       insert: hoisted.insert,
       update: hoisted.update,
       select: hoisted.select,
       query: { domainTerms: { findFirst: hoisted.findFirst } },
-    });
+    };
+    tx.transaction = vi.fn(async (inner: (sp: unknown) => unknown) => inner(tx));
+    return fn(tx);
   });
 });
 
@@ -232,5 +236,103 @@ describe('bulkAddUserVocabularyTerms', () => {
     expect(result.rollup.errorCount).toBe(1);
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]).toMatchObject({ row: 0, code: 'validation_failed' });
+  });
+
+  it('一行重复不拖垮整个 chunk：其余行照常导入，重复行报 duplicate_link（#606）', async () => {
+    queueSelect([{ count: 0 }]);
+    // 行 0 Policyholder：新词条 + 新链接
+    // 行 1 Driver：词条已存在（复用），链接 ON CONFLICT DO NOTHING → 空结果 = 已有该词
+    // 行 2 premium：新词条 + 新链接
+    hoisted.insert
+      .mockReturnValueOnce(makeInsertChain([{ id: 'term-ph' }]).chain)
+      .mockReturnValueOnce(makeInsertChain([{ id: 'link-ph' }]).chain)
+      .mockReturnValueOnce(makeInsertChain([]).chain)
+      .mockReturnValueOnce(makeInsertChain([]).chain)
+      .mockReturnValueOnce(makeInsertChain([{ id: 'term-pr' }]).chain)
+      .mockReturnValueOnce(makeInsertChain([{ id: 'link-pr' }]).chain)
+      .mockReturnValueOnce(makeInsertChain([]).chain); // job row
+    hoisted.findFirst.mockResolvedValueOnce({ id: 'term-driver' });
+
+    const result = await bulkAddUserVocabularyTerms('user-1', [
+      { ...baseRow, canonical: 'Policyholder', localized: 'Policyholder' },
+      { ...baseRow, canonical: 'Driver', localized: 'Driver' },
+      { ...baseRow, canonical: 'premium', localized: 'premium' },
+      { ...baseRow, canonical: '9bad', localized: '9bad' },
+    ]);
+
+    expect(result.rollup).toMatchObject({ added: 2, reused: 0, skipped: 2, errorCount: 2 });
+    const byRow = new Map(result.errors.map((e) => [e.row, e.code]));
+    expect(byRow.get(1)).toBe('duplicate_link');
+    expect(byRow.get(3)).toBe('validation_failed');
+    expect(result.errors.some((e) => e.code === 'chunk_failed')).toBe(false);
+  });
+
+  it('意外的行级数据库错误只影响该行，且不向前端泄露数据库原文（#606）', async () => {
+    queueSelect([{ count: 0 }]);
+    const pgError = Object.assign(new Error('duplicate key value violates unique constraint "X"'), {
+      code: '40P01',
+    });
+    const failing = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoNothing: vi.fn().mockReturnValue({
+          returning: vi.fn().mockRejectedValue(pgError),
+        }),
+      }),
+    };
+    hoisted.insert
+      .mockReturnValueOnce(failing)
+      .mockReturnValueOnce(makeInsertChain([{ id: 'term-2' }]).chain)
+      .mockReturnValueOnce(makeInsertChain([{ id: 'link-2' }]).chain)
+      .mockReturnValueOnce(makeInsertChain([]).chain); // job row
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await bulkAddUserVocabularyTerms('user-1', [
+      baseRow,
+      { ...baseRow, canonical: 'Lender', localized: 'Lender' },
+    ]);
+
+    expect(result.rollup.added).toBe(1);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({ row: 0, code: 'row_failed' });
+    expect(result.errors[0].message).not.toMatch(/constraint|duplicate key/);
+    consoleSpy.mockRestore();
+  });
+
+  it('整 chunk 失败时只返回通用消息（#606）', async () => {
+    hoisted.transaction.mockRejectedValueOnce(
+      new Error('duplicate key value violates unique constraint "UserDomainTerm_active_unique"'),
+    );
+    hoisted.insert.mockReturnValueOnce(makeInsertChain([]).chain); // job row
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await bulkAddUserVocabularyTerms('user-1', [baseRow]);
+
+    expect(result.errors).toEqual([
+      { row: 0, code: 'chunk_failed', message: 'This batch could not be saved. Please retry.' },
+    ]);
+    consoleSpy.mockRestore();
+  });
+
+  it('domain / locale 格式不合法的行报 validation_failed，合法 locale 规范大小写（#612）', async () => {
+    queueSelect([{ count: 0 }]);
+    const termInsert = makeInsertChain([{ id: 'term-1' }]);
+    hoisted.insert
+      .mockReturnValueOnce(termInsert.chain)
+      .mockReturnValueOnce(makeInsertChain([{ id: 'link-1' }]).chain)
+      .mockReturnValueOnce(makeInsertChain([]).chain); // job row
+
+    const result = await bulkAddUserVocabularyTerms('user-1', [
+      { ...baseRow, domain: 'E2E 1026' },
+      { ...baseRow, locale: 'xx_INVALID!!' },
+      { ...baseRow, locale: 'en-us' },
+    ]);
+
+    expect(result.errors.map((e) => [e.row, e.code])).toEqual([
+      [0, 'validation_failed'],
+      [1, 'validation_failed'],
+    ]);
+    expect(result.errors[0].message).toMatch(/domain/);
+    expect(result.errors[1].message).toMatch(/BCP-47/);
+    expect(termInsert.values).toHaveBeenCalledWith(expect.objectContaining({ locale: 'en-US' }));
   });
 });

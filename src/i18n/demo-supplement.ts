@@ -250,6 +250,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       subtitle: 'Manage the Structs, fields, functions, and Enum values in your policies.',
       stats: { visible: 'Visible', archived: 'Deleted (restorable)' },
       actions: { recentlyDeleted: 'Recently deleted', restore: 'Restore', noRecentlyDeleted: 'No terms were deleted in the last 90 days.', deletedRecoverable: 'Deleted (restorable)', activeTerms: 'Active terms', termAdded: 'Term added', termUpdated: 'Term updated', termDeleted: 'Term deleted', termRestored: 'Term restored', loadMore: 'Load more', loadingMore: 'Loading…' },
+      // 批量导入结果（#607）与 domain/locale 格式校验（#612）。
+      dialog: { domainInvalid: 'Domain must be a lowercase identifier, e.g. finance or finance.loan (letters, digits, "_" or "-").', localeInvalid: 'Locale must be a BCP-47 tag, e.g. en, zh-CN, de.' },
+      bulk: { domainInvalid: 'domain must be a lowercase identifier, e.g. finance or finance.loan', localeInvalid: 'locale must be a BCP-47 tag, e.g. en, zh-CN, de', syncPartial: 'Imported {imported} of {total} rows; {failed} not imported.', syncNoneImported: 'No rows were imported; {failed} of {total} failed.', resultErrorsTitle: 'Rows not imported', rowLabel: 'Row {row}', done: 'Done', rowErrors: { duplicate_link: 'You already have this term.', validation_failed: 'Invalid row', quota_exceeded: 'Plan quota reached', row_failed: 'This row could not be saved. Please retry.', chunk_failed: 'This batch could not be saved. Please retry.' } },
     },
     settings: {
       // GDPR 导出失败的本地化提示（F24），不显示服务端原文。
@@ -1406,6 +1409,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       subtitle: '管理策略中的 Struct、字段、函数和枚举值。',
       stats: { visible: '可见', archived: '已删除（可恢复）' },
       actions: { recentlyDeleted: '最近删除', restore: '恢复', noRecentlyDeleted: '最近 90 天没有已删除词汇。', deletedRecoverable: '已删除（可恢复）', activeTerms: '现有词汇', termAdded: '词汇已新增', termUpdated: '词汇已更新', termDeleted: '词汇已删除', termRestored: '词汇已恢复', loadMore: '加载更多', loadingMore: '正在加载…' },
+      // 批量导入结果（#607）与 domain/locale 格式校验（#612）。
+      dialog: { domainInvalid: '领域需为小写标识符，例如 finance 或 finance.loan（可用字母、数字、“_”或“-”）。', localeInvalid: '语言需为 BCP-47 标签，例如 en、zh-CN、de。' },
+      bulk: { domainInvalid: 'domain 需为小写标识符，例如 finance 或 finance.loan', localeInvalid: 'locale 需为 BCP-47 标签，例如 en、zh-CN、de', syncPartial: '已导入 {imported}/{total} 行，{failed} 行未导入。', syncNoneImported: '没有导入任何行，{total} 行中 {failed} 行失败。', resultErrorsTitle: '未导入的行', rowLabel: '第 {row} 行', done: '完成', rowErrors: { duplicate_link: '你已经有这个词条了。', validation_failed: '该行数据无效', quota_exceeded: '已达到套餐配额', row_failed: '该行未能保存，请重试。', chunk_failed: '这一批未能保存，请重试。' } },
     },
     settings: {
       // GDPR 导出失败的本地化提示（F24），不显示服务端原文。
@@ -2542,11 +2548,14 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       newTerm: 'Begriff hinzufügen',
       empty: { description: 'Fügen Sie den ersten Begriff hinzu, um das eingebaute Vokabular zu erweitern.' },
       needsUpgrade: { description: 'Wechseln Sie zu Pro, um eigene Structs / Felder / Funktionen / Enum-Werte zu verwalten.', trialEndedTitle: 'Ihre Pro-Testphase ist abgelaufen', featureCatalog: 'Verwalten Sie Structs / Felder / Funktionen / Enum-Werte pro Sprache', contactAdmin: 'Bitten Sie Ihren Administrator um ein Plan-Upgrade' },
-      bulk: { description: 'Fügen Sie CSV (mit Header-Zeile) oder ein JSON-Array ein. Aliase werden in CSV mit | getrennt (z. B. amount|amt) oder als JSON-Array.', tooManySync: 'Wechseln Sie zu Async — das Limit von {syncLimit} Zeilen wird überschritten.' },
+      // 批量导入结果（#607）与 domain/locale 格式校验（#612）。
+      dialog: { domainInvalid: 'Die Domain muss ein kleingeschriebener Identifier sein, z. B. finance oder finance.loan (Buchstaben, Ziffern, „_“ oder „-“).', localeInvalid: 'Die Sprache muss ein BCP-47-Tag sein, z. B. en, zh-CN, de.' },
+      bulk: { description: 'Fügen Sie CSV (mit Header-Zeile) oder ein JSON-Array ein. Aliase werden in CSV mit | getrennt (z. B. amount|amt) oder als JSON-Array.', tooManySync: 'Wechseln Sie zu Async — das Limit von {syncLimit} Zeilen wird überschritten.', domainInvalid: 'domain muss ein kleingeschriebener Identifier sein, z. B. finance oder finance.loan', localeInvalid: 'locale muss ein BCP-47-Tag sein, z. B. en, zh-CN, de', syncPartial: '{imported} von {total} Zeilen importiert; {failed} nicht importiert.', syncNoneImported: 'Keine Zeile importiert; {failed} von {total} fehlgeschlagen.', resultErrorsTitle: 'Nicht importierte Zeilen', rowLabel: 'Zeile {row}', done: 'Fertig', rowErrors: { duplicate_link: 'Dieser Begriff ist bereits vorhanden.', validation_failed: 'Ungültige Zeile', quota_exceeded: 'Kontingent des Plans erreicht', row_failed: 'Diese Zeile konnte nicht gespeichert werden. Bitte erneut versuchen.', chunk_failed: 'Dieser Stapel konnte nicht gespeichert werden. Bitte erneut versuchen.' } },
       snapshotsView: { diff: { removedNotice: '{n} Ihrer aktuellen Begriffe würden beim Rollback soft-gelöscht. Innerhalb von 90 Tagen wiederherstellbar.', loading: 'Snapshot wird geladen…' } },
       jobProgress: { loading: 'Auftrag wird geladen…' },
       errors: { quota_exceeded: 'Sie haben das Vokabular-Kontingent Ihres Plans erreicht.', validation_failed: 'Bitte überprüfen Sie die markierten Felder.' },
-      stats: { archived: 'Gelöscht (wiederherstellbar)' },
+      // de/hi 覆盖了 stats 却漏了 visible，统计卡回退成英文（#615）。
+      stats: { visible: 'Sichtbar', archived: 'Gelöscht (wiederherstellbar)' },
       actions: { recentlyDeleted: 'Kürzlich gelöscht', restore: 'Wiederherstellen', noRecentlyDeleted: 'In den letzten 90 Tagen wurden keine Begriffe gelöscht.', deletedRecoverable: 'Gelöscht (wiederherstellbar)', activeTerms: 'Aktive Begriffe', termAdded: 'Begriff hinzugefügt', termUpdated: 'Begriff aktualisiert', termDeleted: 'Begriff gelöscht', termRestored: 'Begriff wiederhergestellt', loadMore: 'Weitere laden', loadingMore: 'Wird geladen…' },
     },
     settings: {
@@ -3681,8 +3690,12 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     domainVocabularies: {
       subtitle: 'अपनी नीतियों के Structs, फ़ील्ड, फ़ंक्शन और Enum मान प्रबंधित करें।',
-      stats: { archived: 'हटाए गए (पुनर्स्थापित किए जा सकते हैं)' },
+      // de/hi 覆盖了 stats 却漏了 visible，统计卡回退成英文（#615）。
+      stats: { visible: 'दृश्यमान', archived: 'हटाए गए (पुनर्स्थापित किए जा सकते हैं)' },
       actions: { recentlyDeleted: 'हाल ही में हटाए गए', restore: 'पुनर्स्थापित करें', noRecentlyDeleted: 'पिछले 90 दिनों में कोई शब्दावली हटाई नहीं गई।', deletedRecoverable: 'हटाए गए (पुनर्स्थापित किए जा सकते हैं)', activeTerms: 'सक्रिय शब्दावलियाँ', termAdded: 'शब्दावली जोड़ी गई', termUpdated: 'शब्दावली अपडेट की गई', termDeleted: 'शब्दावली हटाई गई', termRestored: 'शब्दावली पुनर्स्थापित की गई', loadMore: 'और लोड करें', loadingMore: 'लोड हो रहा है…' },
+      // 批量导入结果（#607）与 domain/locale 格式校验（#612）。
+      dialog: { domainInvalid: 'डोमेन छोटे अक्षरों वाला पहचानकर्ता होना चाहिए, जैसे finance या finance.loan (अक्षर, अंक, "_" या "-")।', localeInvalid: 'लोकेल BCP-47 टैग होना चाहिए, जैसे en, zh-CN, de।' },
+      bulk: { domainInvalid: 'domain छोटे अक्षरों वाला पहचानकर्ता होना चाहिए, जैसे finance या finance.loan', localeInvalid: 'locale BCP-47 टैग होना चाहिए, जैसे en, zh-CN, de', syncPartial: '{total} में से {imported} पंक्तियाँ आयात हुईं; {failed} आयात नहीं हुईं।', syncNoneImported: 'कोई पंक्ति आयात नहीं हुई; {total} में से {failed} विफल रहीं।', resultErrorsTitle: 'आयात न हुई पंक्तियाँ', rowLabel: 'पंक्ति {row}', done: 'हो गया', rowErrors: { duplicate_link: 'यह शब्द आपके पास पहले से है।', validation_failed: 'अमान्य पंक्ति', quota_exceeded: 'प्लान का कोटा पूरा हो गया', row_failed: 'यह पंक्ति सहेजी नहीं जा सकी। कृपया पुनः प्रयास करें।', chunk_failed: 'यह बैच सहेजा नहीं जा सका। कृपया पुनः प्रयास करें।' } },
     },
     settings: {
       // GDPR 导出失败的本地化提示（F24），不显示服务端原文。

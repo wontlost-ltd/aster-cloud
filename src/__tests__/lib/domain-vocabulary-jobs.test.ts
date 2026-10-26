@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const hoisted = vi.hoisted(() => ({
   findFirst: vi.fn(),
+  findMany: vi.fn(),
   insertValues: vi.fn().mockResolvedValue(undefined),
   insert: vi.fn(() => ({ values: hoisted.insertValues })),
   updateReturning: vi.fn(),
@@ -29,7 +30,7 @@ vi.mock('@/lib/prisma', () => {
       update: hoisted.update,
       execute: hoisted.execute,
       query: {
-        lexiconBulkJobs: { findFirst: hoisted.findFirst },
+        lexiconBulkJobs: { findFirst: hoisted.findFirst, findMany: hoisted.findMany },
       },
     },
     lexiconBulkJobs: tableProxy,
@@ -51,6 +52,7 @@ import {
   cancelBulkJob,
   enqueueBulkJob,
   getBulkJob,
+  listBulkJobs,
   processQueuedBulkJobs,
 } from '@/lib/domain-vocabulary-jobs';
 import { getLexiconQuota } from '@/lib/usage';
@@ -209,5 +211,37 @@ describe('processQueuedBulkJobs', () => {
     expect(summary.claimed).toBe(1);
     expect(summary.failed).toBe(1);
     expect(hoisted.update).toHaveBeenCalled();
+  });
+});
+
+describe('listBulkJobs（#605）', () => {
+  const row = {
+    id: 'job-1',
+    userId: 'user-1',
+    status: 'queued',
+    mode: 'async',
+    rowCount: 3,
+    processed: 0,
+    rollup: null,
+    errors: null,
+    createdAt: new Date('2026-10-26T00:00:00Z'),
+    updatedAt: new Date('2026-10-26T00:00:00Z'),
+    completedAt: null,
+  };
+
+  it('不读取 inputJson，并把空 rollup/errors 规范成空值', async () => {
+    hoisted.findMany.mockResolvedValue([row]);
+    const jobs = await listBulkJobs('user-1', { activeOnly: true, limit: 1 });
+    expect(jobs).toEqual([{ ...row, rollup: {}, errors: [] }]);
+    const args = hoisted.findMany.mock.calls[0][0];
+    expect(args.columns).toEqual({ inputJson: false });
+    expect(args.limit).toBe(1);
+  });
+
+  it('limit 截在 1..50', async () => {
+    hoisted.findMany.mockResolvedValue([]);
+    await listBulkJobs('user-1', { limit: 999 });
+    await listBulkJobs('user-1', { limit: 0 });
+    expect(hoisted.findMany.mock.calls.map((c) => c[0].limit)).toEqual([50, 1]);
   });
 });

@@ -18,7 +18,7 @@
  * only one gets a row back.
  */
 
-import { and, eq, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import { db, lexiconBulkJobs } from '@/lib/prisma';
 import { logAuditEvent } from '@/lib/audit-log';
 import { getLexiconQuota } from '@/lib/usage';
@@ -124,7 +124,36 @@ export async function getBulkJob(userId: string, jobId: string): Promise<JobView
   return mapJob(row);
 }
 
-function mapJob(row: typeof lexiconBulkJobs.$inferSelect): JobView {
+/** 列表默认/最大条数：只服务于「刷新后找回任务」和近期导入回顾，不做深分页。 */
+export const BULK_JOB_LIST_DEFAULT_LIMIT = 20;
+export const BULK_JOB_LIST_MAX_LIMIT = 50;
+
+/**
+ * 列出调用者最近的批量导入任务（#605：刷新页面后仍能找回 queued/running 的任务）。
+ *
+ * - 按 createdAt 倒序；`activeOnly` 只返回 queued/running。
+ * - 不读取 inputJson（最大 4 MiB），列表只需要进度与汇总。
+ */
+export async function listBulkJobs(
+  userId: string,
+  opts: { activeOnly?: boolean; limit?: number } = {},
+): Promise<JobView[]> {
+  const limit = Math.min(
+    BULK_JOB_LIST_MAX_LIMIT,
+    Math.max(1, opts.limit ?? BULK_JOB_LIST_DEFAULT_LIMIT),
+  );
+  const conditions = [eq(lexiconBulkJobs.userId, userId)];
+  if (opts.activeOnly) conditions.push(inArray(lexiconBulkJobs.status, ['queued', 'running']));
+  const rows = await db.query.lexiconBulkJobs.findMany({
+    where: and(...conditions),
+    columns: { inputJson: false },
+    orderBy: [desc(lexiconBulkJobs.createdAt)],
+    limit,
+  });
+  return rows.map(mapJob);
+}
+
+function mapJob(row: Omit<typeof lexiconBulkJobs.$inferSelect, 'inputJson'>): JobView {
   return {
     id: row.id,
     userId: row.userId,

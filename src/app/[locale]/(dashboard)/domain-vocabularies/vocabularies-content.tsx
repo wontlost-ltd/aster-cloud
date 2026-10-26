@@ -84,7 +84,12 @@ export interface VocabFilters {
 
 interface VocabulariesContentProps {
   initialTerms: SerializableTermLink[];
+  /** 当前筛选条件下的总数，只用于分页。 */
   initialTotal: number;
+  /** 不受筛选影响的活跃词条总数，用于配额卡（#616）。 */
+  activeCount: number;
+  /** 服务端查到的最近一个 queued/running 异步任务，刷新后继续展示进度（#605）。 */
+  initialActiveJobId: string | null;
   initialDeletedTerms: SerializableTermLink[];
   initialDeletedCount: number;
   initialPage: number;
@@ -119,6 +124,8 @@ function isKnownKind(value: string): value is Kind {
 export function VocabulariesContent({
   initialTerms,
   initialTotal,
+  activeCount,
+  initialActiveJobId,
   initialDeletedTerms,
   initialDeletedCount,
   initialPage,
@@ -150,7 +157,7 @@ export function VocabulariesContent({
   const [deletedTerms, setDeletedTerms] = useState(initialDeletedTerms);
 
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [activeJobId, setActiveJobId] = useState<string | null>(initialActiveJobId);
 
   const currentUrlState = useMemo(
     () => ({
@@ -197,8 +204,10 @@ export function VocabulariesContent({
     [debouncedSearchTimer, navigate],
   );
 
+  // ★必须固定 timeZone（#611）：服务端按 UTC 渲染、浏览器按本地时区渲染，跨日窗口内
+  //   会得到不同日期，触发 hydration #418。与 src/lib/format.ts 一致，按 UTC 日历日显示。
   const dateFormatter = useMemo(
-    () => new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }),
+    () => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }),
     [locale],
   );
 
@@ -423,17 +432,18 @@ export function VocabulariesContent({
     },
   ];
 
+  // 配额按全部活跃词条计算，不能用筛选后的 initialTotal（#616）。
   const isUnlimited = quota.maxTerms === -1;
   const quotaLabel = isUnlimited
     ? t('quota.unlimited')
-    : t('quota.used', { used: initialTotal, total: quota.maxTerms });
+    : t('quota.used', { used: activeCount, total: quota.maxTerms });
   const remaining = isUnlimited
     ? null
-    : Math.max(0, quota.maxTerms - initialTotal);
-  const atLimit = !isUnlimited && initialTotal >= quota.maxTerms;
+    : Math.max(0, quota.maxTerms - activeCount);
+  const atLimit = !isUnlimited && activeCount >= quota.maxTerms;
   const quotaTone = pickQuotaTone(
     isUnlimited,
-    initialTotal,
+    activeCount,
     quota.maxTerms,
     atLimit,
   );
@@ -628,7 +638,8 @@ export function VocabulariesContent({
         />}
       </div>
 
-      <Pagination
+      {/* 「最近删除」视图自带「加载更多」，分页器的 total 是活跃词条数，不能在该视图显示（#616）。 */}
+      {showDeleted ? null : <Pagination
         page={initialPage}
         pageSize={initialPageSize}
         total={initialTotal}
@@ -642,7 +653,7 @@ export function VocabulariesContent({
           )
         }
         onPageSizeChange={(next) => navigate({ pageSize: next })}
-      />
+      />}
 
       <VocabularyDialog
         isOpen={dialogOpen}
@@ -663,6 +674,7 @@ export function VocabulariesContent({
         bulkAsyncAllowed={quota.bulkAsync}
         onClose={() => setBulkOpen(false)}
         onEnqueued={(jobId) => setActiveJobId(jobId)}
+        onImported={refreshRsc}
       />
 
       <ConfirmDialog

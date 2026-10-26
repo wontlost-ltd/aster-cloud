@@ -29,7 +29,6 @@ import {
 } from '@/lib/prisma';
 import { escapeLikePattern } from '@/lib/sql-escape';
 import { logAuditEvent } from '@/lib/audit-log';
-import { publishVocabularyInvalidate } from '@/lib/domain-vocabulary-events';
 import {
   observeBulkJobDuration,
   observeLexiconOpDuration,
@@ -38,6 +37,7 @@ import {
 } from '@/lib/lexicon-metrics';
 import { getLexiconQuota } from '@/lib/usage';
 import {
+  applyVocabularyScopeFormat,
   assembleDomainVocabularyFromLinks,
   computeDedupKey,
   normalizeTermInput,
@@ -62,34 +62,18 @@ function truncateForAudit(value: string | null | undefined, max = 256): string |
  * Errors are surfaced unchanged so the caller's existing error handling is
  * preserved; we only tag the op outcome.
  *
- * `invalidate` is called on success with the userId + optional scope so the
- * SSE publisher can broadcast a refetch hint to connected clients.
+ * 编辑器侧的失效感知不再靠进程内推送（#608），而是轮询
+ * {@link getUserVocabularyVersion}，所以这里不需要任何发布动作。
  */
 async function withOpMetrics<T>(
   op: import('@/lib/lexicon-metrics').LexiconOp,
   run: () => Promise<T>,
-  invalidate?: (result: T) => {
-    userId: string;
-    domain?: string;
-    locale?: string;
-    cause: import('@/lib/domain-vocabulary-events').InvalidateEvent['cause'];
-  },
 ): Promise<T> {
   const startedAt = Date.now();
   try {
     const result = await run();
     recordLexiconOp(op, 'success');
     observeLexiconOpDuration(op, (Date.now() - startedAt) / 1000);
-    if (invalidate) {
-      const scope = invalidate(result);
-      publishVocabularyInvalidate({
-        ownerType: 'user',
-        ownerId: scope.userId,
-        domain: scope.domain,
-        locale: scope.locale,
-        cause: scope.cause,
-      });
-    }
     return result;
   } catch (err) {
     recordLexiconOp(op, 'error');
@@ -283,6 +267,14 @@ function validateInput(input: TermInput): NormalizedTermInput {
   if (!normalized.domain || !normalized.locale) {
     throw new VocabularyError('validation_failed', 'domain and locale are required');
   }
+  const formatted = applyVocabularyScopeFormat(normalized);
+  if (!formatted.ok) {
+    throw new VocabularyError('validation_failed', formatted.message);
+  }
+  return validateNormalized(formatted.value);
+}
+
+function validateNormalized(normalized: NormalizedTermInput): NormalizedTermInput {
   // 字段必须挂在父结构体下,否则后续的 lexicon 索引会出现孤立 field。
   // 上游 validateVocabulary 只把缺 parent 当成 warning,所以在 service
   // 层强制拒绝,保证 REST API、bulk 路径、未来 SDK 调用都遵守同一契约。
@@ -453,6 +445,42 @@ export async function listUserVocabularyTerms(
   };
 }
 
+/** 用户全部活跃词条数（不受列表筛选影响），配额卡用（#616）。 */
+export async function countActiveUserVocabularyTerms(userId: string): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(userDomainTerms)
+    .where(and(eq(userDomainTerms.userId, userId), activeLinkPredicate()));
+  return row?.count ?? 0;
+}
+
+/**
+ * 用户词汇的「版本号」（#608）：活跃链接的条数 + 最大 updatedAt。
+ *
+ * Workers 上请求分散在多个 isolate，进程内 EventEmitter 推送永远到不了订阅方；
+ * 改由客户端定期轮询这个值，变了就重新拉词汇。版本完全由数据推导，无需额外写入：
+ * 新增 / 修改 / 恢复都会推高 max(updatedAt)，删除 / 归档会让条数下降，
+ * 两者同时发生时新增那行的 updatedAt 也必然更大，因此任何可见变化都会改变版本。
+ * 查询走 `UserDomainTerm_user_domain_idx`（同为活跃行部分索引），按 domain/locale
+ * 收窄时也命中前缀。
+ */
+export async function getUserVocabularyVersion(
+  userId: string,
+  scope: { domain?: string; locale?: string } = {},
+): Promise<string> {
+  const conditions: SQL[] = [eq(userDomainTerms.userId, userId), activeLinkPredicate()];
+  if (scope.domain) conditions.push(eq(userDomainTerms.domain, scope.domain));
+  if (scope.locale) conditions.push(eq(userDomainTerms.locale, scope.locale));
+  const [row] = await db
+    .select({
+      count: sql<number>`count(*)::int`,
+      latest: sql<string | null>`(extract(epoch from max(${userDomainTerms.updatedAt})) * 1000)::bigint::text`,
+    })
+    .from(userDomainTerms)
+    .where(and(...conditions));
+  return `${row?.count ?? 0}-${row?.latest ?? 0}`;
+}
+
 /**
  * Compute a stable advisory-lock key for a user. We take a 64-bit slice of a
  * SHA-256 over the userId so the lock space is well-distributed and so the
@@ -482,12 +510,6 @@ export async function addUserVocabularyTerm(
   return withOpMetrics(
     'term.add',
     () => addUserVocabularyTermInner(userId, input),
-    (result) => ({
-      userId,
-      domain: result.link.domain,
-      locale: result.link.locale,
-      cause: 'term.add',
-    }),
   );
 }
 
@@ -594,12 +616,6 @@ export async function modifyUserVocabularyTerm(
   return withOpMetrics(
     'term.modify',
     () => modifyUserVocabularyTermInner(userId, linkId, input),
-    (result) => ({
-      userId,
-      domain: result.link.domain,
-      locale: result.link.locale,
-      cause: 'term.modify',
-    }),
   );
 }
 
@@ -680,7 +696,6 @@ export async function softDeleteUserVocabularyTerm(
   return withOpMetrics(
     'term.delete',
     () => softDeleteUserVocabularyTermInner(userId, linkId, reason),
-    () => ({ userId, cause: 'term.delete' }),
   );
 }
 
@@ -749,12 +764,6 @@ export async function restoreUserVocabularyTerm(
   return withOpMetrics(
     'term.restore',
     () => restoreUserVocabularyTermInner(userId, linkId),
-    (result) => ({
-      userId,
-      domain: result.link.domain,
-      locale: result.link.locale,
-      cause: 'term.restore',
-    }),
   );
 }
 
@@ -898,6 +907,67 @@ export interface BulkResult {
   errors: BulkRowError[];
 }
 
+const BULK_CHUNK_FAILED_MESSAGE = 'This batch could not be saved. Please retry.';
+const BULK_ROW_FAILED_MESSAGE = 'This row could not be saved. Please retry.';
+
+export type BulkRowLanding =
+  | { ok: true; created: boolean }
+  | { ok: false; code: string; message: string };
+
+/**
+ * 在独立 SAVEPOINT 里落一行批量导入（同步与异步 worker 共用，#606）。
+ *
+ * - 已有同一活跃链接：靠 `ON CONFLICT DO NOTHING`（不指定目标，覆盖部分唯一索引
+ *   `UserDomainTerm_active_unique`）得到空结果 → `duplicate_link`，不抛错，外层事务不受影响。
+ * - 其他意外错误：只回滚到本行的 SAVEPOINT，外层事务仍可继续处理后续行；
+ *   原始错误只写日志，回给调用方的是不含数据库细节的通用消息。
+ */
+export async function landBulkRow(
+  tx: Tx,
+  userId: string,
+  normalized: NormalizedTermInput,
+): Promise<BulkRowLanding> {
+  try {
+    return await tx.transaction(async (sp) => {
+      const upserted = await upsertDomainTerm(sp, normalized);
+      const inserted = await sp
+        .insert(userDomainTerms)
+        .values({
+          id: crypto.randomUUID(),
+          userId,
+          termId: upserted.term.id,
+          ownerType: 'user',
+          domain: normalized.domain,
+          locale: normalized.locale,
+          kind: normalized.kind,
+        })
+        .onConflictDoNothing()
+        .returning({ id: userDomainTerms.id });
+      if (inserted.length === 0) {
+        return {
+          ok: false,
+          code: 'duplicate_link',
+          message: 'You already have this term in your vocabulary',
+        } as const;
+      }
+      return { ok: true, created: upserted.created } as const;
+    });
+  } catch (err) {
+    if (err instanceof VocabularyError) {
+      return { ok: false, code: err.code, message: err.message };
+    }
+    if (isUniqueViolation(err)) {
+      return {
+        ok: false,
+        code: 'duplicate_link',
+        message: 'You already have this term in your vocabulary',
+      };
+    }
+    console.error('[landBulkRow] row failed', err);
+    return { ok: false, code: 'row_failed', message: BULK_ROW_FAILED_MESSAGE };
+  }
+}
+
 function emptyRollup(): BulkRollup {
   return { added: 0, reused: 0, modified: 0, skipped: 0, errorCount: 0 };
 }
@@ -952,13 +1022,6 @@ export async function bulkAddUserVocabularyTerms(
         ? 'error'
         : 'partial';
     recordLexiconOp('bulk.sync', status);
-    if (result.rollup.added + result.rollup.reused > 0) {
-      publishVocabularyInvalidate({
-        ownerType: 'user',
-        ownerId: userId,
-        cause: 'bulk.sync',
-      });
-    }
     return result;
   } catch (err) {
     recordLexiconOp('bulk.sync', 'error');
@@ -1062,65 +1125,27 @@ async function bulkAddUserVocabularyTermsInner(
             localRollup.errorCount += 1;
             continue;
           }
-          try {
-            const upserted = await upsertDomainTerm(tx, normalized);
-            try {
-              const inserted = await tx
-                .insert(userDomainTerms)
-                .values({
-                  id: crypto.randomUUID(),
-                  userId,
-                  termId: upserted.term.id,
-                  ownerType: 'user',
-                  domain: normalized.domain,
-                  locale: normalized.locale,
-                  kind: normalized.kind,
-                })
-                .returning({ id: userDomainTerms.id });
-              if (inserted.length === 0) {
-                localErrors.push({
-                  row,
-                  code: 'link_create_failed',
-                  message: 'Could not create vocabulary link',
-                });
-                localRollup.skipped += 1;
-                localRollup.errorCount += 1;
-                continue;
-              }
-              if (upserted.created) localRollup.added += 1;
-              else localRollup.reused += 1;
-              remainingQuota -= 1;
-            } catch (linkErr) {
-              if (isUniqueViolation(linkErr)) {
-                localErrors.push({
-                  row,
-                  code: 'duplicate_link',
-                  message: 'You already have this term in your vocabulary',
-                });
-                localRollup.skipped += 1;
-                localRollup.errorCount += 1;
-                continue;
-              }
-              throw linkErr;
-            }
-          } catch (rowErr) {
-            const code = rowErr instanceof VocabularyError ? rowErr.code : 'row_failed';
-            const message = rowErr instanceof Error ? rowErr.message : String(rowErr);
-            localErrors.push({ row, code, message });
+          const landed = await landBulkRow(tx, userId, normalized);
+          if (!landed.ok) {
+            localErrors.push({ row, code: landed.code, message: landed.message });
             localRollup.skipped += 1;
             localRollup.errorCount += 1;
+            continue;
           }
+          if (landed.created) localRollup.added += 1;
+          else localRollup.reused += 1;
+          remainingQuota -= 1;
         }
         return { rollup: localRollup, errors: localErrors };
       });
       chunkResult = result.rollup;
       chunkErrors = result.errors;
     } catch (chunkErr) {
-      // Whole-chunk rollback (txn-level): mark every row in this chunk as
-      // a chunk failure so the caller sees deterministic counts.
-      const message = chunkErr instanceof Error ? chunkErr.message : String(chunkErr);
+      // 整个 chunk 回滚（加锁/计数等非行级语句失败）：每行记 chunk_failed，计数保持确定。
+      // 原始数据库报错只进日志，不回给前端（#606：曾把 PG 约束名原样泄露）。
+      console.error('[bulkAddUserVocabularyTerms] chunk failed', chunkErr);
       for (const { row } of chunk) {
-        errors.push({ row, code: 'chunk_failed', message });
+        errors.push({ row, code: 'chunk_failed', message: BULK_CHUNK_FAILED_MESSAGE });
       }
       rollup.skipped += chunk.length;
       rollup.errorCount += chunk.length;

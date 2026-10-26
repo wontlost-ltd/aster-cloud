@@ -11,6 +11,18 @@ import {
   Textarea,
   toast,
 } from '@/components/ui';
+import {
+  checkVocabularyScope,
+  type VocabularyFormatIssue,
+} from '@/lib/domain-vocabulary-format';
+import {
+  normalizeRowErrors,
+  summarizeBulkOutcome,
+  type BulkOutcomeSummary,
+  type BulkRollupView,
+  type BulkRowErrorView,
+} from './bulk-result';
+import { BulkRowErrors } from './bulk-row-errors';
 import { KIND_OPTIONS, type Kind } from './constants';
 import { useFocusTrap } from './use-focus-trap';
 
@@ -20,6 +32,19 @@ interface BulkUploadDialogProps {
   bulkAsyncAllowed: boolean;
   onClose: () => void;
   onEnqueued: (jobId: string) => void;
+  /** 同步导入至少落了一行时回调，父组件据此刷新列表。 */
+  onImported?: () => void;
+}
+
+/** 同步导入的响应体（/bulk）。 */
+interface SyncBulkResponse {
+  rollup?: BulkRollupView;
+  errors?: unknown[];
+}
+
+interface SyncResultView {
+  summary: BulkOutcomeSummary;
+  errors: BulkRowErrorView[];
 }
 
 /** Pre-validated row shape. Matches the /bulk{,/jobs} endpoint contract. */
@@ -37,6 +62,8 @@ interface ParsedRow {
 interface ParseFinding {
   row: number;
   message: string;
+  /** domain/locale 格式问题（#612），渲染时换成本地化文案。 */
+  issue?: VocabularyFormatIssue;
 }
 
 interface ParseOutcome {
@@ -62,6 +89,7 @@ export function BulkUploadDialog({
   bulkAsyncAllowed,
   onClose,
   onEnqueued,
+  onImported,
 }: BulkUploadDialogProps) {
   const t = useTranslations('domainVocabularies.bulk');
   const titleId = useId();
@@ -72,6 +100,7 @@ export function BulkUploadDialog({
   const [mode, setMode] = useState<'sync' | 'async'>('sync');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [syncResult, setSyncResult] = useState<SyncResultView | null>(null);
   // The idempotency key is fixed per dialog session so a double-click /
   // network retry collapses to one job rather than creating duplicates.
   const idempotencyKeyRef = useRef<string>('');
@@ -83,6 +112,7 @@ export function BulkUploadDialog({
     setRaw('');
     setMode('sync');
     setSubmitError('');
+    setSyncResult(null);
     setSubmitting(false);
     idempotencyKeyRef.current = crypto.randomUUID();
     // Drop focus into the file picker button after first paint so a
@@ -105,6 +135,7 @@ export function BulkUploadDialog({
   const overAsync = totalRows > ASYNC_LIMIT;
   const canSubmit =
     !submitting &&
+    !syncResult &&
     totalRows > 0 &&
     outcome.errors.length === 0 &&
     !overAsync &&
@@ -147,14 +178,14 @@ export function BulkUploadDialog({
           body.error?.message ?? t('errorGeneric'),
         );
       }
-      const data = (await res.json()) as { jobId?: string };
       if (mode === 'async') {
+        const data = (await res.json()) as { jobId?: string };
         toast.success(t('asyncEnqueued'));
         if (data.jobId) onEnqueued(data.jobId);
-      } else {
-        toast.success(t('syncCompleted', { count: totalRows }));
+        onClose();
+        return;
       }
-      onClose();
+      handleSyncResult((await res.json()) as SyncBulkResponse);
     } catch (err) {
       const message = err instanceof Error ? err.message : t('errorGeneric');
       setSubmitError(message);
@@ -162,6 +193,21 @@ export function BulkUploadDialog({
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // 同步结果以服务端 rollup 为准（#607）：全部成功才关窗；有失败行时留在弹窗里列出原因。
+  const handleSyncResult = (data: SyncBulkResponse) => {
+    const summary = summarizeBulkOutcome(data.rollup, data.errors);
+    if (summary.imported > 0) onImported?.();
+    if (summary.tone === 'success') {
+      toast.success(t('syncCompleted', { count: summary.imported }));
+      onClose();
+      return;
+    }
+    const counts = { imported: summary.imported, failed: summary.failed, total: totalRows };
+    if (summary.tone === 'partial') toast.warning(t('syncPartial', counts));
+    else toast.error(t('syncNoneImported', counts));
+    setSyncResult({ summary, errors: normalizeRowErrors(data.errors) });
   };
 
   const handleFile = async (file: File) => {
@@ -301,7 +347,7 @@ export function BulkUploadDialog({
                   <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs">
                     {outcome.errors.slice(0, 5).map((err, i) => (
                       <li key={i}>
-                        #{err.row}: {err.message}
+                        #{err.row}: {err.issue ? t(err.issue === 'domain_format' ? 'domainInvalid' : 'localeInvalid') : err.message}
                       </li>
                     ))}
                     {outcome.errors.length > 5 ? (
@@ -341,6 +387,24 @@ export function BulkUploadDialog({
             </fieldset>
           ) : null}
 
+          {syncResult ? (
+            <div className="mt-4">
+              <Alert variant={syncResult.summary.tone === 'partial' ? 'warning' : 'danger'}>
+                <AlertCircle className="h-4 w-4" aria-hidden="true" />
+                <AlertDescription>
+                  <p className="mb-2 font-medium">
+                    {t(syncResult.summary.tone === 'partial' ? 'syncPartial' : 'syncNoneImported', {
+                      imported: syncResult.summary.imported,
+                      failed: syncResult.summary.failed,
+                      total: totalRows,
+                    })}
+                  </p>
+                  <BulkRowErrors errors={syncResult.errors} />
+                </AlertDescription>
+              </Alert>
+            </div>
+          ) : null}
+
           {submitError ? (
             <div className="mt-4">
               <Alert variant="danger">
@@ -361,14 +425,20 @@ export function BulkUploadDialog({
           >
             {t('cancel')}
           </Button>
-          <Button
-            type="button"
-            variant="primary"
-            disabled={!canSubmit}
-            onClick={handleSubmit}
-          >
-            {submitting ? t('submitting') : t('submit')}
-          </Button>
+          {syncResult ? (
+            <Button type="button" variant="primary" onClick={onClose}>
+              {t('done')}
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="primary"
+              disabled={!canSubmit}
+              onClick={handleSubmit}
+            >
+              {submitting ? t('submitting') : t('submit')}
+            </Button>
+          )}
         </footer>
       </div>
     </div>
@@ -452,7 +522,7 @@ function parseJson(text: string): ParseOutcome {
     }
     const parsed = coerceRow(entry as Record<string, unknown>);
     if ('error' in parsed) {
-      errors.push({ row: index + 1, message: parsed.error });
+      errors.push({ row: index + 1, message: parsed.error, issue: parsed.issue });
     } else {
       rows.push(parsed.row);
     }
@@ -501,7 +571,7 @@ function parseCsv(text: string): ParseOutcome {
     }
     const parsed = coerceRow(record);
     if ('error' in parsed) {
-      errors.push({ row: i + 1, message: parsed.error });
+      errors.push({ row: i + 1, message: parsed.error, issue: parsed.issue });
     } else {
       rows.push(parsed.row);
     }
@@ -558,7 +628,7 @@ function tokenizeCsv(text: string): string[][] {
   return rows;
 }
 
-type CoerceResult = { row: ParsedRow } | { error: string };
+type CoerceResult = { row: ParsedRow } | { error: string; issue?: VocabularyFormatIssue };
 
 function coerceRow(record: Record<string, unknown>): CoerceResult {
   const required = (key: string): string | undefined => {
@@ -583,6 +653,8 @@ function coerceRow(record: Record<string, unknown>): CoerceResult {
   if (!locale) return { error: 'locale is required' };
   if (!canonical) return { error: 'canonical is required' };
   if (!localized) return { error: 'localized is required' };
+  const [issue] = checkVocabularyScope({ domain, locale }).issues;
+  if (issue) return { error: issue, issue };
 
   const kind = kindRaw as Kind;
   const parentCanonical = optionalString('parentCanonical');

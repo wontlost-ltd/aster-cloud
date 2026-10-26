@@ -13,23 +13,23 @@
 import { and, eq, sql } from 'drizzle-orm';
 import {
   db,
-  domainTerms,
   lexiconBulkJobs,
   userDomainTerms,
 } from '@/lib/prisma';
 import { logAuditEvent } from '@/lib/audit-log';
 import { getLexiconQuota } from '@/lib/usage';
 import {
-  computeDedupKey,
+  applyVocabularyScopeFormat,
   normalizeTermInput,
   assembleDomainVocabularyFromLinks,
   validateDomainVocabulary,
+  type NormalizedTermInput,
   type TermKind,
 } from '@/lib/domain-vocabulary-validation';
 import {
+  landBulkRow,
   VocabularyError,
 } from '@/lib/domain-vocabulary';
-import { isUniqueViolation } from '@/lib/pg-errors';
 
 const CHUNK_SIZE = 250;
 
@@ -107,6 +107,59 @@ function tryNormalize(raw: unknown): { ok: true; value: RowInput } | { ok: false
   };
 }
 
+const QUOTA_EXCEEDED = {
+  ok: false,
+  code: 'quota_exceeded',
+  message: 'Plan quota reached while processing async chunk',
+} as const;
+
+type PreparedRow =
+  | { ok: true; value: NormalizedTermInput }
+  | { ok: false; code: 'validation_failed'; message: string };
+
+function invalid(message: string): PreparedRow {
+  return { ok: false, code: 'validation_failed', message };
+}
+
+/**
+ * 行级校验（与同步路径同一口径）：结构 → 必填 → domain/locale 格式（#612）→
+ * 上游词汇校验。全部是纯函数，不触碰数据库。
+ */
+function prepareRow(raw: unknown): PreparedRow {
+  const parsed = tryNormalize(raw);
+  if (!parsed.ok) return invalid(parsed.error);
+  const normalized = normalizeTermInput(parsed.value);
+  if (!normalized.canonical || !normalized.localized) {
+    return invalid('canonical and localized are required');
+  }
+  const formatted = applyVocabularyScopeFormat(normalized);
+  if (!formatted.ok) return invalid(formatted.message);
+  const value = formatted.value;
+  if (value.kind === 'field' && !value.parentCanonical) {
+    return invalid('parentCanonical is required for kind=field');
+  }
+  const validation = validateDomainVocabulary(
+    assembleDomainVocabularyFromLinks(
+      [
+        {
+          domainTermId: 'preview',
+          domain: value.domain,
+          locale: value.locale,
+          kind: value.kind,
+          canonical: value.canonical,
+          localized: value.localized,
+          parentCanonical: value.parentCanonical,
+          aliases: value.aliases,
+          description: value.description,
+        },
+      ],
+      { domain: value.domain, locale: value.locale },
+    ),
+  );
+  if (!validation.valid) return invalid(validation.errors.join('; '));
+  return { ok: true, value };
+}
+
 interface ChunkOutcome {
   processedDelta: number;
   rollupDelta: RollupShape;
@@ -159,153 +212,21 @@ export async function processBulkJobChunk(job: {
   await db.transaction(async (tx) => {
     for (let i = 0; i < chunk.length; i += 1) {
       const absoluteIndex = startIndex + i;
-      const parsed = tryNormalize(chunk[i]);
-      if (!parsed.ok) {
-        errorsDelta.push({
-          row: absoluteIndex,
-          code: 'validation_failed',
-          message: parsed.error,
-        });
+      const prepared = prepareRow(chunk[i]);
+      const landed = !prepared.ok
+        ? prepared
+        : remainingQuota <= 0
+          ? QUOTA_EXCEEDED
+          : await landBulkRow(tx, job.userId, prepared.value);
+      if (!landed.ok) {
+        errorsDelta.push({ row: absoluteIndex, code: landed.code, message: landed.message });
         rollupDelta.skipped += 1;
         rollupDelta.errorCount += 1;
         continue;
       }
-      const normalized = normalizeTermInput(parsed.value);
-      if (!normalized.canonical || !normalized.localized) {
-        errorsDelta.push({
-          row: absoluteIndex,
-          code: 'validation_failed',
-          message: 'canonical and localized are required',
-        });
-        rollupDelta.skipped += 1;
-        rollupDelta.errorCount += 1;
-        continue;
-      }
-      const validation = validateDomainVocabulary(
-        assembleDomainVocabularyFromLinks(
-          [
-            {
-              domainTermId: 'preview',
-              domain: normalized.domain,
-              locale: normalized.locale,
-              kind: normalized.kind,
-              canonical: normalized.canonical,
-              localized: normalized.localized,
-              parentCanonical: normalized.parentCanonical,
-              aliases: normalized.aliases,
-              description: normalized.description,
-            },
-          ],
-          { domain: normalized.domain, locale: normalized.locale },
-        ),
-      );
-      if (!validation.valid) {
-        errorsDelta.push({
-          row: absoluteIndex,
-          code: 'validation_failed',
-          message: validation.errors.join('; '),
-        });
-        rollupDelta.skipped += 1;
-        rollupDelta.errorCount += 1;
-        continue;
-      }
-      if (remainingQuota <= 0) {
-        errorsDelta.push({
-          row: absoluteIndex,
-          code: 'quota_exceeded',
-          message: 'Plan quota reached while processing async chunk',
-        });
-        rollupDelta.skipped += 1;
-        rollupDelta.errorCount += 1;
-        continue;
-      }
-
-      const dedupKey = computeDedupKey(normalized);
-      const upserted = await tx
-        .insert(domainTerms)
-        .values({
-          id: crypto.randomUUID(),
-          domain: normalized.domain,
-          locale: normalized.locale,
-          kind: normalized.kind,
-          canonical: normalized.canonical,
-          canonicalNorm: normalized.canonicalNorm,
-          localized: normalized.localized,
-          localizedNorm: normalized.localizedNorm,
-          parentCanonical: normalized.parentCanonical ?? null,
-          parentCanonicalNorm: normalized.parentCanonicalNorm || null,
-          description: normalized.description ?? null,
-          aliases: normalized.aliases,
-          source: 'user',
-          status: 'active',
-          dedupKey,
-        })
-        .onConflictDoNothing({ target: domainTerms.dedupKey })
-        .returning({ id: domainTerms.id });
-
-      let termId: string;
-      let created: boolean;
-      if (upserted[0]) {
-        termId = upserted[0].id;
-        created = true;
-      } else {
-        const existing = await tx.query.domainTerms.findFirst({
-          where: eq(domainTerms.dedupKey, dedupKey),
-          columns: { id: true },
-        });
-        if (!existing) {
-          errorsDelta.push({
-            row: absoluteIndex,
-            code: 'dedup_race_lost',
-            message: 'Domain term upsert raced and could not be re-read',
-          });
-          rollupDelta.skipped += 1;
-          rollupDelta.errorCount += 1;
-          continue;
-        }
-        termId = existing.id;
-        created = false;
-      }
-
-      try {
-        const linkInsert = await tx
-          .insert(userDomainTerms)
-          .values({
-            id: crypto.randomUUID(),
-            userId: job.userId,
-            termId,
-            ownerType: 'user',
-            domain: normalized.domain,
-            locale: normalized.locale,
-            kind: normalized.kind,
-          })
-          .returning({ id: userDomainTerms.id });
-        if (linkInsert.length === 0) {
-          errorsDelta.push({
-            row: absoluteIndex,
-            code: 'link_create_failed',
-            message: 'Could not create vocabulary link',
-          });
-          rollupDelta.skipped += 1;
-          rollupDelta.errorCount += 1;
-          continue;
-        }
-        if (created) rollupDelta.added += 1;
-        else rollupDelta.reused += 1;
-        remainingQuota -= 1;
-      } catch (linkErr) {
-        if (isUniqueViolation(linkErr)) {
-          errorsDelta.push({
-            row: absoluteIndex,
-            code: 'duplicate_link',
-            message: 'You already have this term in your vocabulary',
-          });
-          rollupDelta.skipped += 1;
-          rollupDelta.errorCount += 1;
-          continue;
-        }
-        throw linkErr;
-      }
+      if (landed.created) rollupDelta.added += 1;
+      else rollupDelta.reused += 1;
+      remainingQuota -= 1;
     }
   });
 

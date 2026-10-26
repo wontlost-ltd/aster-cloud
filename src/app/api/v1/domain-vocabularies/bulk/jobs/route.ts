@@ -1,8 +1,10 @@
 /**
  * POST /api/v1/domain-vocabularies/bulk/jobs (B11)
  *
- * Enqueue an async bulk import. Returns the jobId immediately; clients
- * poll GET /bulk/jobs/[id] for progress.
+ * POST — Enqueue an async bulk import. Returns the jobId immediately; clients
+ *        poll GET /bulk/jobs/[id] for progress.
+ * GET  — 列出调用者最近的批量任务（#605）。`?status=active` 只返回 queued/running，
+ *        `?limit=` 默认 20、上限 50。刷新页面后前端靠它找回仍在排队/运行的任务。
  */
 
 import { NextResponse } from 'next/server';
@@ -17,7 +19,12 @@ import {
   BULK_ASYNC_MAX_ROWS,
   VocabularyError,
 } from '@/lib/domain-vocabulary';
-import { enqueueBulkJob } from '@/lib/domain-vocabulary-jobs';
+import {
+  BULK_JOB_LIST_DEFAULT_LIMIT,
+  enqueueBulkJob,
+  listBulkJobs,
+} from '@/lib/domain-vocabulary-jobs';
+import { parsePositiveInt } from '@/lib/api/query-params';
 import {
   RateLimitPresets,
   checkRateLimit,
@@ -36,6 +43,28 @@ function vocabErrorToEnvelope(error: VocabularyError): NextResponse {
       return errorEnvelope({ status: 400, code: error.code, message: error.message });
     default:
       return errorEnvelope({ status: 500, code: error.code, message: error.message });
+  }
+}
+
+export async function GET(req: Request) {
+  try {
+    const session = await getSession();
+    if (!session?.user?.id) {
+      return errorEnvelope({ status: 401, code: 'unauthorized', message: 'Sign in required' });
+    }
+    const params = new URL(req.url).searchParams;
+    const jobs = await listBulkJobs(session.user.id, {
+      activeOnly: params.get('status') === 'active',
+      limit: parsePositiveInt(params.get('limit'), BULK_JOB_LIST_DEFAULT_LIMIT),
+    });
+    return NextResponse.json({ jobs });
+  } catch (error) {
+    console.error('[domain-vocabularies bulk/jobs GET]', error);
+    return errorEnvelope({
+      status: 500,
+      code: 'service_unavailable',
+      message: 'Could not load bulk jobs. Please retry.',
+    });
   }
 }
 

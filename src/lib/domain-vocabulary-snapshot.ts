@@ -21,7 +21,6 @@ import {
   userVocabularySnapshots,
 } from '@/lib/prisma';
 import { logAuditEvent } from '@/lib/audit-log';
-import { publishVocabularyInvalidate } from '@/lib/domain-vocabulary-events';
 import {
   observeLexiconOpDuration,
   recordLexiconOp,
@@ -344,13 +343,6 @@ export async function rollbackToSnapshot(
     const result = await rollbackToSnapshotInner(userId, snapshotId);
     recordLexiconOp('snapshot.rollback', 'success');
     observeLexiconOpDuration('snapshot.rollback', (Date.now() - startedAt) / 1000);
-    publishVocabularyInvalidate({
-      ownerType: 'user',
-      ownerId: userId,
-      domain: result.domain,
-      locale: result.locale,
-      cause: 'rollback',
-    });
     return result;
   } catch (err) {
     recordLexiconOp('snapshot.rollback', 'error');

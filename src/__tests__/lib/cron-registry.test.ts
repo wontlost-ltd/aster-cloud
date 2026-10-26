@@ -107,3 +107,19 @@ describe('window-start math (UTC)', () => {
     expect(a.toISOString()).toBe(b.toISOString());
   });
 });
+
+describe('domain-vocabulary-bulk-worker（#605）', () => {
+  it('已登记为每分钟一次的 cron，路由指向异步批量 worker', () => {
+    const job = getCronByJobName('domain-vocabulary-bulk-worker');
+    expect(job?.cron).toBe('* * * * *');
+    expect(job?.routePath).toBe('/api/cron/domain-vocabulary-bulk-worker');
+    expect(getCronByExpression('* * * * *')?.jobName).toBe('domain-vocabulary-bulk-worker');
+  });
+
+  it('窗口取当前分钟起点', () => {
+    const now = new Date('2026-10-26T09:41:37.512Z');
+    expect(currentWindowStart('domain-vocabulary-bulk-worker', now).toISOString()).toBe(
+      '2026-10-26T09:41:00.000Z',
+    );
+  });
+});

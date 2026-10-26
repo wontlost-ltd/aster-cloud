@@ -1,104 +1,112 @@
 /**
- * useDomainVocabularyInvalidate — subscribe to vocabulary SSE invalidates.
+ * useDomainVocabularyInvalidate —— 感知用户词汇变化，返回一个递增的 tick。
  *
- * Opens an EventSource against /api/v1/domain-vocabularies/stream and bumps
- * an integer every time an `invalidate` event arrives. Components can key
- * downstream effects (Monaco re-registration, query cache invalidation) on
- * the returned value to trigger a refetch.
+ * 组件把 tick 放进依赖（Monaco 重新注册、重新拉词汇），tick 变化即刷新。
  *
- * The connection is single-flight per hook instance and reconnects with a
- * bounded exponential backoff on error. Heartbeats from the server side
- * keep proxies from idling the connection out.
+ * 实现是轮询 GET /api/v1/domain-vocabularies/version（#608）：
+ * 原先的 SSE 依赖进程内 EventEmitter，在 Cloudflare Workers 多 isolate 下
+ * 发布与订阅不在同一 isolate，事件永远收不到。版本号由数据库推导，任何
+ * isolate 都能给出一致结果。
+ *
+ * 轮询策略：
+ * - 页面可见时每 {@link POLL_INTERVAL_MS} 一次；隐藏时暂停，重新可见/获得焦点时立即补一次。
+ * - 首次拿到的版本只作基线，不触发 tick。
+ * - 失败按指数退避，401（未登录）直接停止。
  */
 
 import { useEffect, useState } from 'react';
 
 interface UseInvalidateOptions {
-  /** Skip subscribing (e.g., feature-flagged off or anonymous). */
+  /** Skip polling (e.g., feature-flagged off or anonymous). */
   enabled?: boolean;
-  /**
-   * Optional filter — only bump `tick` when the event's (domain, locale)
-   * matches. When omitted, every invalidate counts.
-   */
+  /** 只关心某个 (domain, locale) 时传入，服务端按范围计算版本。 */
   match?: { domain?: string; locale?: string };
-  /** Override the stream URL (mostly for tests). */
+  /** Override the version URL (mostly for tests). */
   url?: string;
 }
 
-interface InvalidatePayload {
-  ownerType: string;
-  ownerId: string;
-  domain?: string;
-  locale?: string;
-}
-
-const DEFAULT_URL = '/api/v1/domain-vocabularies/stream';
-const BASE_BACKOFF_MS = 1000;
-const MAX_BACKOFF_MS = 30_000;
+const DEFAULT_URL = '/api/v1/domain-vocabularies/version';
+export const POLL_INTERVAL_MS = 20_000;
+const MAX_BACKOFF_MS = 120_000;
 
 export function useDomainVocabularyInvalidate(
   options: UseInvalidateOptions = {},
 ): number {
   const { enabled = true, match, url = DEFAULT_URL } = options;
+  const domain = match?.domain;
+  const locale = match?.locale;
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return;
+    const endpoint = buildVersionUrl(url, domain, locale);
     let cancelled = false;
-    let es: EventSource | null = null;
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
-    let backoff = BASE_BACKOFF_MS;
+    let stopped = false;
+    let baseline: string | null = null;
+    let delay = POLL_INTERVAL_MS;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
-    const connect = () => {
-      es = new EventSource(url, { withCredentials: true });
-      es.addEventListener('connected', () => {
-        // Successful handshake — reset backoff so a later transient drop
-        // re-tries fast rather than starting at the long-cooldown value.
-        backoff = BASE_BACKOFF_MS;
-      });
-      es.addEventListener('invalidate', (e: MessageEvent<string>) => {
-        try {
-          const payload = JSON.parse(e.data) as InvalidatePayload;
-          if (matches(payload, match)) {
-            setTick((n) => n + 1);
-          }
-        } catch {
-          // Malformed payload — keep listening; ignore this event.
-        }
-      });
-      es.onerror = () => {
-        // Either initial-connect failure or a mid-stream drop. EventSource
-        // will silently retry on its own, but we control backoff explicitly
-        // to keep server load bounded under partial-network outages.
-        if (cancelled) return;
-        es?.close();
-        es = null;
-        retryTimer = setTimeout(connect, backoff);
-        backoff = Math.min(MAX_BACKOFF_MS, backoff * 2);
-      };
+    const schedule = (ms: number) => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void poll(), ms);
     };
 
-    connect();
+    const poll = async () => {
+      if (cancelled || stopped) return;
+      if (document.visibilityState === 'hidden') return;
+      const version = await fetchVersion(endpoint);
+      if (cancelled) return;
+      if (version === UNAUTHORIZED) {
+        stopped = true;
+        return;
+      }
+      if (version === null) {
+        delay = Math.min(MAX_BACKOFF_MS, delay * 2);
+      } else {
+        delay = POLL_INTERVAL_MS;
+        if (baseline !== null && version !== baseline) setTick((n) => n + 1);
+        baseline = version;
+      }
+      schedule(delay);
+    };
+
+    const wake = () => {
+      if (document.visibilityState === 'visible') void poll();
+    };
+
+    void poll();
+    document.addEventListener('visibilitychange', wake);
+    window.addEventListener('focus', wake);
     return () => {
       cancelled = true;
-      es?.close();
-      es = null;
-      if (retryTimer) clearTimeout(retryTimer);
+      if (timer) clearTimeout(timer);
+      document.removeEventListener('visibilitychange', wake);
+      window.removeEventListener('focus', wake);
     };
-    // Match is intentionally destructured into primitives so the effect
-    // doesn't re-subscribe when an unstable object identity changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, url, match?.domain, match?.locale]);
+  }, [enabled, url, domain, locale]);
 
   return tick;
 }
 
-function matches(
-  payload: InvalidatePayload,
-  filter: UseInvalidateOptions['match'],
-): boolean {
-  if (!filter) return true;
-  if (filter.domain && payload.domain !== filter.domain) return false;
-  if (filter.locale && payload.locale !== filter.locale) return false;
-  return true;
+const UNAUTHORIZED = Symbol('unauthorized');
+
+/** 拉一次版本号；网络/服务端错误返回 null，未登录返回 UNAUTHORIZED。 */
+async function fetchVersion(endpoint: string): Promise<string | null | typeof UNAUTHORIZED> {
+  try {
+    const res = await fetch(endpoint, { credentials: 'same-origin', cache: 'no-store' });
+    if (res.status === 401) return UNAUTHORIZED;
+    if (!res.ok) return null;
+    const body = (await res.json()) as { version?: unknown };
+    return typeof body.version === 'string' ? body.version : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildVersionUrl(base: string, domain?: string, locale?: string): string {
+  const params = new URLSearchParams();
+  if (domain) params.set('domain', domain);
+  if (locale) params.set('locale', locale);
+  const query = params.toString();
+  return query ? `${base}?${query}` : base;
 }
