@@ -217,6 +217,8 @@ describe('makeCompileValidator — 结构词授权透传（#604）', () => {
       locale: 'en-US',
       aliasSet,
       allowStructural: true,
+      // 结构词授权与作用域内领域词汇（#602）并行透传；本用例无作用域词汇。
+      vocabulary: null,
     });
   });
 
