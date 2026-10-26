@@ -312,6 +312,26 @@ describe('输出本地化与函数名', () => {
     expect(localizeExecutionOutput(enumValue('Tier', 'GOLD'), null)).toEqual(enumValue('Tier', 'GOLD'));
   });
 
+  it('枚举值对象只认自身 _enum 标签：声明为枚举的字段里标签认不出时整个对象原样（两个方向都不猜）', () => {
+    // 规则：运行时标签与声明类型矛盾时不按声明类型改写成员名，也不报歧义。
+    const model = buildMappingModel(INDEX, { ...TYPES, result: T('Fahrer') });
+    expect(localizeExecutionOutput({ age: 3, tier: enumValue('Unknown', 'GOLD') }, model))
+      .toEqual({ alter: 3, stufe: enumValue('Unknown', 'GOLD') });
+    expect(mapped({ person: { alter: 3, stufe: enumValue('Unknown', 'Gold') } }))
+      .toEqual({ person: { age: 3, tier: enumValue('Unknown', 'Gold') } });
+  });
+
+  it('普通业务对象即使有 value / variant 键，没有 _enum 标签、也不是枚举类型时两个方向都不动', () => {
+    const business = { value: 'GOLD', variant: 'SILVER', note: 'x' };
+    const model = buildMappingModel(INDEX, { ...TYPES, result: T('Fahrer') });
+    // notiz 是 Text 字段；顶层结果类型未知时同理
+    expect(localizeExecutionOutput({ age: 3, notiz: business }, model)).toEqual({ alter: 3, notiz: business });
+    expect(localizeExecutionOutput(business, MODEL)).toEqual(business);
+    expect(mapped({ person: { alter: 3, notiz: { value: 'Gold', variant: 'Silber' } } }))
+      .toEqual({ person: { age: 3, notiz: { value: 'Gold', variant: 'Silber' } } });
+    expect(mapped({ other: { value: 'Gold', variant: 'Silber' } })).toEqual({ other: { value: 'Gold', variant: 'Silber' } });
+  });
+
   it('输入方向：枚举值对象按同一写法表映射为引擎眼中的名字', () => {
     // 枚举名标签按引擎口径规范化：本词汇里 "stufe" 同时是字段 tier 的写法（引擎大小写不敏感、后写覆盖），
     // 所以引擎把类型名 Stufe 也读成 tier——映射与引擎保持一致。

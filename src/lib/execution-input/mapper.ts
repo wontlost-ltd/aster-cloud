@@ -10,7 +10,8 @@
  *     策略写法 / 规范名 / 该字段词条的本地化名与同义词 → 规范名；
  *   - 枚举值只在字段类型是已声明枚举、且值是其成员时映射；运行时枚举对象
  *     （`{__type:'?', _enum, value, variant, args}`）同样只改 `_enum` / `value` / `variant`，
- *     其类型以 `_enum` 标签指向的已声明枚举为准（类型未知处也认这个显式标签）；
+ *     其类型只以自身 `_enum` 标签为准：标签指向已声明枚举才改写（类型未知处也认这个显式标签），
+ *     认不出的标签整个对象原样透传，不按声明类型去猜；没有 `_enum` 标签的对象不算枚举值；
  *   - 类型未知（未知参数、未知字段、Text/Int 等、类型提取失败）、Map 的键：一律原样；
  *   - 同一对象内两个键指向同一字段 → 歧义；某个写法在该结构内同时对应多个字段（大小写折叠后
  *     撞名，或规范名等于另一字段的本地化名）→ 该写法不可映射，输入用到它时同样按歧义报错；
@@ -386,9 +387,13 @@ function isEnumObject(value: unknown): value is Record<string, unknown> {
     && ENUM_MEMBER_KEYS.some((key) => typeof value[key] === 'string');
 }
 
-/** 枚举值对象只改写枚举名标签与成员名，其余键（`__type`、`args` 等）原样。 */
-function walkEnumObject(ctx: WalkContext, value: Record<string, unknown>, declared: EnumModel | undefined, path: string): Walked {
-  const resolved = resolveTag(ctx, value, ENUM_TAG_KEY, ctx.model.enums, declared, path);
+/**
+ * 枚举值对象只改写枚举名标签与成员名，其余键（`__type`、`args` 等）原样。
+ * 类型只认对象自带的 `_enum` 标签（不传声明类型）：标签认不出时整个对象原样透传——
+ * 运行时标签与声明类型矛盾时不猜测。
+ */
+function walkEnumObject(ctx: WalkContext, value: Record<string, unknown>, path: string): Walked {
+  const resolved = resolveTag(ctx, value, ENUM_TAG_KEY, ctx.model.enums, undefined, path);
   if (!resolved.ok) return resolved;
   if (resolved.model?.kind !== 'Enum') return PASS(value);
   const variants = resolved.model.variants;
@@ -430,17 +435,10 @@ function walkMap(ctx: WalkContext, value: Record<string, unknown>, valType: Poli
   return PASS(Object.fromEntries(entries));
 }
 
-/** 声明类型是已声明枚举时取其模型。 */
-function declaredEnum(ctx: WalkContext, type: PolicyTypeNode | undefined): EnumModel | undefined {
-  if (type?.kind !== 'TypeName' || !('name' in type)) return undefined;
-  const decl = ctx.model.byName.get(type.name);
-  return decl?.kind === 'Enum' ? decl : undefined;
-}
-
 /** 按类型递归映射一个值；类型未知或与值形状不符时原样返回。 */
 function walkValue(ctx: WalkContext, value: unknown, rawType: PolicyTypeNode | undefined, path: string): Walked {
   const type = unwrapType(rawType);
-  if (isEnumObject(value)) return walkEnumObject(ctx, value, declaredEnum(ctx, type), path);
+  if (isEnumObject(value)) return walkEnumObject(ctx, value, path);
   if (!type) return PASS(value);
   if (type.kind === 'List' && Array.isArray(value)) return walkArray(ctx, value, (type as { type: PolicyTypeNode }).type, path);
   if (type.kind === 'Map' && isPlainObject(value)) return walkMap(ctx, value, (type as { val: PolicyTypeNode }).val, path);

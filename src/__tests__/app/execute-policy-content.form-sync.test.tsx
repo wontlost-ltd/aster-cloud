@@ -120,6 +120,81 @@ describe('ExecutePolicyContent — 表单与 JSON 是同一份输入（#635）',
   });
 });
 
+describe('ExecutePolicyContent — 表单模式执行不替换输入（#635）', () => {
+  const executeCalls = () => fetchMock.mock.calls.filter(([u]) => String(u).includes('/execute'));
+
+  for (const [label, text, expected] of [
+    ['数组', '[{"alter":3},2]', [{ alter: 3 }, 2]],
+    ['null', 'null', null],
+    ['字符串', '"hallo"', 'hallo'],
+  ] as const) {
+    it(`合法但不是对象的 JSON（${label}）切到表单后执行，原样提交`, async () => {
+      await renderPage();
+      fireEvent.change(jsonInput(), { target: { value: text } });
+      showForm();
+      expect(screen.getByRole('alert')).toHaveTextContent('policies.execute.invalidJson');
+      execute();
+      await waitFor(() => expect(lastExecuteBody()).toBeDefined(), WAIT);
+      expect(lastExecuteBody().input).toEqual(expected);
+    });
+  }
+
+  it('不可解析的 JSON：提示无效 JSON，不发执行请求', async () => {
+    await renderPage();
+    fireEvent.change(jsonInput(), { target: { value: '{"person":' } });
+    showForm();
+    execute();
+    await waitFor(() => expect(screen.getAllByText('policies.execute.invalidJson').length).toBeGreaterThan(1), WAIT);
+    expect(executeCalls()).toHaveLength(0);
+  });
+});
+
+describe('ExecutePolicyContent — 数字字段执行前收口（#635）', () => {
+  const executeCalls = () => fetchMock.mock.calls.filter(([u]) => String(u).includes('/execute'));
+
+  for (const [text, expected] of [['1.', 1], ['1e3', 1000]] as const) {
+    it(`整数字段 "${text}" 能解析为数字：提交数字并写回 JSON`, async () => {
+      await renderPage();
+      showForm();
+      fireEvent.change(field('person-alter'), { target: { value: text } });
+      expect(field('person-alter').value).toBe(text);
+      execute();
+      await waitFor(() => expect(lastExecuteBody()).toBeDefined(), WAIT);
+      expect(lastExecuteBody().input.person.alter).toBe(expected);
+      showJson();
+      expect(JSON.parse(jsonInput().value).person.alter).toBe(expected);
+    });
+  }
+
+  it('小数字段 "2.5e-1" 提交 0.25', async () => {
+    await renderPage();
+    showForm();
+    fireEvent.change(field('faktor'), { target: { value: '2.5e-1' } });
+    execute();
+    await waitFor(() => expect(lastExecuteBody()).toBeDefined(), WAIT);
+    expect(lastExecuteBody().input.faktor).toBe(0.25);
+  });
+
+  for (const [id, text] of [['person-alter', '-'], ['person-alter', 'abc'], ['person-alter', '1.5'], ['faktor', '-']] as const) {
+    it(`${id} 为 "${text}"：阻止执行，标出字段并给出本地化提示；改动后提示消失`, async () => {
+      await renderPage();
+      showForm();
+      fireEvent.change(field(id), { target: { value: text } });
+      execute();
+      await waitFor(() => expect(field(id)).toHaveAttribute('aria-invalid', 'true'), WAIT);
+      expect(executeCalls()).toHaveLength(0);
+      expect(document.getElementById(`${id}-error`)).toHaveTextContent('policies.execute.invalidNumberField');
+      expect(field(id)).toHaveAttribute('aria-describedby', `${id}-error`);
+      // 输入中途的文本保留
+      expect(field(id).value).toBe(text);
+
+      fireEvent.change(field(id), { target: { value: '7' } });
+      expect(field(id)).not.toHaveAttribute('aria-invalid');
+      expect(document.getElementById(`${id}-error`)).toBeNull();
+    });
+  }
+});
+
 describe('ExecutePolicyContent — 数字输入（#635）', () => {
   it('不暴露虚假的 aria-valuemin / aria-valuemax，用数字键盘的文本框', async () => {
     await renderPage();

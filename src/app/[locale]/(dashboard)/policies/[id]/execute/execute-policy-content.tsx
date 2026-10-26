@@ -35,8 +35,11 @@ import { executionStatus } from './execution-status';
 import {
   formatResultValue,
   isPlainObject,
+  normalizeNumberFields,
   numberFieldValue,
+  numberKind,
   parseFormValues,
+  parseJsonInput,
   withFormField,
   type FormValues,
 } from './execute-input';
@@ -173,7 +176,10 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
   const [schemaLoading, setSchemaLoading] = useState(false);
   const [schemaError, setSchemaError] = useState<SchemaError | null>(null);
   // 表单值不是独立状态：始终由 JSON 文本解析得到（单一状态源）。
-  const formValues = useMemo(() => parseFormValues(input), [input]);
+  // 只在表单模式解析：JSON 模式下逐键输入大段 JSON 不重复解析。
+  const formValues = useMemo(() => (inputMode === 'form' ? parseFormValues(input) : null), [inputMode, input]);
+  // 上次执行被拦下的数字字段（控件 id），改动该字段后移除。
+  const [invalidNumberFields, setInvalidNumberFields] = useState<string[]>([]);
   // 策略源码：用于提取规则符号（ruleSymbols）和按 locale 选词典。
   const [policyContent, setPolicyContent] = useState('');
   // schema 提取的输入（源码 + 检测到的语言 + 冻结别名），与所选 Rule 一起决定参数表。
@@ -392,6 +398,8 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
 
   // 表单编辑直接写回 JSON 文本（单一状态源），切到 JSON 视图或执行时看到的就是表单里的值。
   const updateFormField = (paramName: string, fieldName: string | null, value: unknown) => {
+    const id = fieldName ? `${paramName}-${fieldName}` : paramName;
+    setInvalidNumberFields((current) => (current.includes(id) ? current.filter((f) => f !== id) : current));
     setInput((prev) => withFormField(prev, paramName, fieldName, value));
   };
 
@@ -419,26 +427,46 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
       ? t('ambiguousInputSpelling', { field: data.policyField ?? data.field ?? '', candidates: data.candidates.join(', ') })
       : t('ambiguousInputField', { field: data.policyField ?? data.field ?? '' });
 
+  /**
+   * 执行前确定提交的输入（#635）：JSON 不可解析 → 提示并阻止；合法但不是对象的 JSON（数组、字符串、
+   * 数字、null）表单展示不了，原样提交，绝不替换。表单模式下数字字段在这里定案：能解析为数字就
+   * 提交数字（并写回 JSON 文本），否则阻止执行并标出字段。
+   */
+  const prepareRequestInput = (): { input: unknown } | null => {
+    const parsed = parseJsonInput(input);
+    if (!parsed.ok) {
+      setError(t('invalidJson'));
+      return null;
+    }
+    if (inputMode !== 'form' || !schema?.parameters || !isPlainObject(parsed.value)) return { input: parsed.value };
+    const named = buildNamedContext(parsed.value, schema.parameters);
+    const normalized = normalizeNumberFields(named, schema.parameters);
+    if (!normalized.ok) {
+      setInvalidNumberFields(normalized.invalid.map((f) => f.id));
+      setError(t('invalidNumberField', { field: normalized.invalid[0]!.label }));
+      return null;
+    }
+    setInvalidNumberFields([]);
+    if (normalized.values !== named) setInput(JSON.stringify({ ...parsed.value, ...normalized.values }, null, 2));
+    return { input: normalized.values };
+  };
+
   const handleExecute = async () => {
     const functionName = selectedRule;
-    setIsLoading(true);
     setError('');
+    const prepared = prepareRequestInput();
+    if (!prepared) return;
+    setIsLoading(true);
     setResult(null);
     setExecutionDiagnostics([]);
 
     try {
-      // 两种模式共用同一份 JSON 文本；表单模式只提交 schema 里的参数。
-      const parsed: unknown = JSON.parse(input);
-      const parsedInput = inputMode === 'form' && schema?.parameters
-        ? buildNamedContext(isPlainObject(parsed) ? parsed : {}, schema.parameters)
-        : parsed;
-
       // 使用已保存的策略：通过 policyId 执行
       const res = await fetch(`/api/policies/${policyId}/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          input: parsedInput,
+          input: prepared.input,
           ...(functionName ? { functionName } : {}),
         }),
       });
@@ -526,40 +554,30 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
       );
     }
 
-    if (['int', 'integer', 'long', '整数', '长整数', 'ganzzahl', 'langzahl'].some(t => typeName.toLowerCase().includes(t))) {
+    const numeric = numberKind(typeName);
+    if (numeric) {
+      const invalid = invalidNumberFields.includes(id);
       return (
         <div key={id}>
           <label htmlFor={id} className="block text-sm font-semibold text-fg mb-2">
             {label} <span className="text-xs font-normal text-fg-subtle bg-bg-muted px-2 py-0.5 rounded">({typeName})</span>
           </label>
           {/* 文本框 + 数字键盘而非 type=number：原生 spinbutton 在无 min/max 时会暴露虚假的
-              aria-valuemin/valuemax=0，且整数范围由引擎校验，这里不设上下限。 */}
+              aria-valuemin/valuemax=0，且数值范围由引擎校验，这里不设上下限。输入中途的文本原样保留，
+              执行前统一收口为数字（prepareRequestInput）。 */}
           <input
             type="text"
-            inputMode="numeric"
+            inputMode={numeric === 'integer' ? 'numeric' : 'decimal'}
             id={id}
             value={String(value ?? '')}
-            onChange={(e) => updateFormField(paramName, fieldName, numberFieldValue(e.target.value, true))}
-            className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none hover:border-gray-400 sm:text-sm"
+            aria-invalid={invalid || undefined}
+            aria-describedby={invalid ? `${id}-error` : undefined}
+            onChange={(e) => updateFormField(paramName, fieldName, numberFieldValue(e.target.value, numeric === 'integer'))}
+            className={`block w-full rounded-lg border ${invalid ? 'border-danger' : 'border-border-strong'} bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none hover:border-gray-400 sm:text-sm`}
           />
-        </div>
-      );
-    }
-
-    if (['double', 'float', 'decimal', '小数', '浮点数', 'dezimal'].some(t => typeName.toLowerCase().includes(t))) {
-      return (
-        <div key={id}>
-          <label htmlFor={id} className="block text-sm font-semibold text-fg mb-2">
-            {label} <span className="text-xs font-normal text-fg-subtle bg-bg-muted px-2 py-0.5 rounded">({typeName})</span>
-          </label>
-          <input
-            type="text"
-            inputMode="decimal"
-            id={id}
-            value={String(value ?? '')}
-            onChange={(e) => updateFormField(paramName, fieldName, numberFieldValue(e.target.value, false))}
-            className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none hover:border-gray-400 sm:text-sm"
-          />
+          {invalid && (
+            <p id={`${id}-error`} className="mt-1 text-xs text-danger">{t('invalidNumberField', { field: label })}</p>
+          )}
         </div>
       );
     }
