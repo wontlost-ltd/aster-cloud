@@ -1,6 +1,8 @@
 /**
  * Snapshot service tests for B12. Focused on:
- *   - createSnapshotsForOwner returns one ref per (domain, locale) group
+ *   - createSnapshotsForOwner returns one ref per (domain, locale) group the policy uses
+ *   - approval freezes only the policy's own domain/locale (#610)
+ *   - loadVocabularyForExecution only merges in-scope snapshots
  *   - dedup hits bump refCount instead of inserting a new row
  *   - rollback reactivates missing termIds and soft-deletes extras
  */
@@ -16,6 +18,7 @@ const hoisted = vi.hoisted(() => ({
   updateSet: vi.fn(() => ({ where: hoisted.updateWhere })),
   update: vi.fn(() => ({ set: hoisted.updateSet })),
   findFirstSnapshot: vi.fn(),
+  findManySnapshots: vi.fn(),
   findFirstUdt: vi.fn(),
   findFirstDt: vi.fn(),
 }));
@@ -29,7 +32,10 @@ vi.mock('@/lib/prisma', () => {
       insert: hoisted.insert,
       update: hoisted.update,
       query: {
-        userVocabularySnapshots: { findFirst: hoisted.findFirstSnapshot },
+        userVocabularySnapshots: {
+          findFirst: hoisted.findFirstSnapshot,
+          findMany: hoisted.findManySnapshots,
+        },
         userDomainTerms: { findFirst: hoisted.findFirstUdt },
         domainTerms: { findFirst: hoisted.findFirstDt },
       },
@@ -47,8 +53,11 @@ vi.mock('@/lib/audit-log', () => ({
 
 import {
   createSnapshotsForOwner,
+  loadVocabularyForExecution,
   rollbackToSnapshot,
+  freezeVocabularyForApproval,
 } from '@/lib/domain-vocabulary-snapshot';
+import { assembleDomainVocabularyFromLinks } from '@/lib/domain-vocabulary-assemble';
 import { VocabularyError } from '@/lib/domain-vocabulary';
 
 interface ThenChain {
@@ -84,91 +93,226 @@ beforeEach(() => {
   hoisted.update.mockImplementation(() => ({ set: hoisted.updateSet }));
   hoisted.updateSet.mockImplementation(() => ({ where: hoisted.updateWhere }));
   hoisted.updateWhere.mockResolvedValue(undefined);
-  hoisted.transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
-    fn({
-      execute: vi.fn().mockResolvedValue(undefined),
-      insert: hoisted.insert,
-      update: hoisted.update,
-      select: hoisted.selectChain,
-      query: {
-        userVocabularySnapshots: { findFirst: hoisted.findFirstSnapshot },
-        userDomainTerms: { findFirst: hoisted.findFirstUdt },
-        domainTerms: { findFirst: hoisted.findFirstDt },
-      },
-    }),
-  );
+  hoisted.transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(makeTx()));
 });
+
+/** 审批事务句柄替身：冻结的全部读写都应走它。 */
+function makeTx() {
+  return {
+    execute: vi.fn().mockResolvedValue(undefined),
+    insert: hoisted.insert,
+    update: hoisted.update,
+    select: hoisted.selectChain,
+    query: {
+      userVocabularySnapshots: { findFirst: hoisted.findFirstSnapshot },
+      userDomainTerms: { findFirst: hoisted.findFirstUdt },
+      domainTerms: { findFirst: hoisted.findFirstDt },
+    },
+  } as unknown as Parameters<typeof createSnapshotsForOwner>[2];
+}
+
+function termRow(
+  termId: string,
+  domain: string,
+  locale: string,
+  kind: string,
+  canonical: string,
+  localized: string,
+  parentCanonical: string | null = null,
+) {
+  return { termId, domain, locale, kind, canonical, localized, parentCanonical, aliases: [], description: null };
+}
+
+const LOAN_EN = termRow('term-a', 'finance.loan', 'en-US', 'struct', 'Loan', 'Credit');
+const LOAN_ZH = termRow('term-b', 'finance.loan', 'zh-CN', 'struct', 'Loan', '贷款');
+const APPLICANT_EN = termRow('term-c', 'hr', 'en-US', 'struct', 'Applicant', 'Candidate');
+
+// 生产复现数据（2026-10-26 e2e）：德语策略只用 e2e1026/de 的 Fahrer/alter。
+const PROD_ROWS = [
+  termRow('t-driver', 'e2e1026', 'de', 'struct', 'Driver', 'Fahrer'),
+  termRow('t-age', 'e2e1026', 'de', 'field', 'age', 'alter', 'Driver'),
+  termRow('t-bad', 'e2e1026', 'xx_INVALID!!', 'struct', 'Licensed', 'lizenziert'),
+  termRow('t-upper', 'E2E 1026', 'de', 'struct', 'Vehicle', 'Fahrzeug'),
+  termRow('t-app', 'e2etest', 'en', 'struct', 'Applicant', 'Antragsteller'),
+];
+const DE_POLICY = `Modul e2e1026.vocab.
+
+Definiere Fahrer hat alter als Ganzzahl.
+
+Regel bewerten gegeben fahrer als Fahrer liefert Ganzzahl:
+  wenn fahrer.alter mindestens 18:
+    gib zurück 42.
+  gib zurück 0.
+`;
 
 describe('createSnapshotsForOwner', () => {
   it('returns no refs when the user has no active vocab', async () => {
     queueSelect([]); // active link join → empty
 
-    const refs = await createSnapshotsForOwner({ ownerType: 'user', ownerId: 'user-1' });
+    const refs = await createSnapshotsForOwner(
+      { ownerType: 'user', ownerId: 'user-1' },
+      { source: 'Rule r given credit as Credit, produce Int: Return 1.', locale: 'en-US' },
+      makeTx(),
+    );
 
     expect(refs).toEqual([]);
-    expect(hoisted.transaction).not.toHaveBeenCalled();
+    expect(hoisted.insert).not.toHaveBeenCalled();
+    expect(hoisted.update).not.toHaveBeenCalled();
   });
 
-  it('inserts one snapshot per (domain, locale) group on first publish', async () => {
-    queueSelect([
-      {
-        termId: 'term-a',
-        domain: 'finance.loan',
-        locale: 'en-US',
-        kind: 'struct',
-        canonical: 'Loan',
-        localized: 'Loan',
-        parentCanonical: null,
-        aliases: [],
-        description: null,
-      },
-      {
-        termId: 'term-b',
-        domain: 'finance.loan',
-        locale: 'zh-CN',
-        kind: 'struct',
-        canonical: 'Loan',
-        localized: '贷款',
-        parentCanonical: null,
-        aliases: [],
-        description: null,
-      },
-    ]);
-    // Two groups → two inner transactions → for each, queue:
-    //   1) existing-snapshot lookup → undefined
-    //   2) next-version max query → []
+  it('inserts one snapshot per (domain, locale) group the policy uses', async () => {
+    queueSelect([LOAN_EN, LOAN_ZH, APPLICANT_EN]);
+    // Two in-scope groups → next-version max query each, all on the caller's tx.
     queueSelect([{ max: null }]);
     queueSelect([{ max: null }]);
     hoisted.findFirstSnapshot.mockResolvedValue(undefined);
 
-    const refs = await createSnapshotsForOwner({ ownerType: 'user', ownerId: 'user-1' });
+    const refs = await createSnapshotsForOwner(
+      { ownerType: 'user', ownerId: 'user-1' },
+      { source: 'Define Credit has amount. Define Candidate has score.', locale: 'en-US' },
+      makeTx(),
+    );
 
-    expect(refs).toHaveLength(2);
-    expect(refs.map((r) => r.locale).sort()).toEqual(['en-US', 'zh-CN']);
-    expect(hoisted.insert).toHaveBeenCalled();
+    expect(refs.map((r) => `${r.domain}|${r.locale}`).sort()).toEqual([
+      'finance.loan|en-US',
+      'hr|en-US',
+    ]);
+    expect(hoisted.insert).toHaveBeenCalledTimes(2);
   });
 
   it('bumps refCount on dedup hit instead of inserting again', async () => {
-    queueSelect([
-      {
-        termId: 'term-a',
-        domain: 'finance.loan',
-        locale: 'en-US',
-        kind: 'struct',
-        canonical: 'Loan',
-        localized: 'Loan',
-        parentCanonical: null,
-        aliases: [],
-        description: null,
-      },
-    ]);
+    queueSelect([LOAN_EN]);
     hoisted.findFirstSnapshot.mockResolvedValueOnce({ id: 'snap-existing' });
 
-    const refs = await createSnapshotsForOwner({ ownerType: 'user', ownerId: 'user-1' });
+    const refs = await createSnapshotsForOwner(
+      { ownerType: 'user', ownerId: 'user-1' },
+      { source: 'Define Credit has amount.', locale: 'en-US' },
+      makeTx(),
+    );
 
     expect(refs[0].snapshotId).toBe('snap-existing');
     expect(hoisted.update).toHaveBeenCalled();
     expect(hoisted.insert).not.toHaveBeenCalled();
+  });
+});
+
+describe('freezeVocabularyForApproval (#610)', () => {
+  it('approving a de policy freezes only its own domain/locale', async () => {
+    queueSelect(PROD_ROWS);
+    queueSelect([{ max: null }]);
+    hoisted.findFirstSnapshot.mockResolvedValue(undefined);
+
+    const refs = await freezeVocabularyForApproval({
+      policyAuthorId: 'user-1',
+      policy: { source: DE_POLICY, locale: 'de-DE' },
+    }, makeTx());
+
+    expect(refs.map((r) => `${r.domain}|${r.locale}`)).toEqual(['e2e1026|de']);
+    expect(hoisted.insert).toHaveBeenCalledTimes(1);
+    const inserted = hoisted.insertValues.mock.calls[0]![0] as { termIds: string[] };
+    expect(inserted.termIds).toEqual(['t-driver', 't-age']);
+  });
+
+  it('approving a policy that uses no vocabulary freezes nothing and bumps no refCount', async () => {
+    queueSelect(PROD_ROWS);
+
+    const refs = await freezeVocabularyForApproval({
+      policyAuthorId: 'user-1',
+      policy: { source: 'Rule r given age as Int, produce Int: Return age multiplied by 3.', locale: 'en-US' },
+    }, makeTx());
+
+    expect(refs).toEqual([]);
+    expect(hoisted.insert).not.toHaveBeenCalled();
+    expect(hoisted.update).not.toHaveBeenCalled();
+  });
+
+  it('terms mentioned only in comments or strings do not pull their group into scope', async () => {
+    queueSelect(PROD_ROWS);
+
+    const refs = await freezeVocabularyForApproval({
+      policyAuthorId: 'user-1',
+      policy: {
+        source: 'Modul x.\n\n// Fahrer und alter\nRegel r gegeben p als Ganzzahl liefert Text:\n  gib zurück "Fahrer".\n',
+        locale: 'de-DE',
+      },
+    }, makeTx());
+
+    expect(refs).toEqual([]);
+  });
+
+  it('propagates freeze failures instead of returning empty refs', async () => {
+    queueSelect(PROD_ROWS);
+    const tx = makeTx() as unknown as { execute: ReturnType<typeof vi.fn> };
+    tx.execute.mockRejectedValueOnce(new Error('db down'));
+
+    await expect(
+      freezeVocabularyForApproval({
+        policyAuthorId: 'user-1',
+        policy: { source: DE_POLICY, locale: 'de-DE' },
+      }, tx as unknown as Parameters<typeof freezeVocabularyForApproval>[1]),
+    ).rejects.toThrow('db down');
+  });
+
+  it('runs every read/write on the approval transaction, never opening its own', async () => {
+    queueSelect(PROD_ROWS);
+    queueSelect([{ max: null }]);
+    hoisted.findFirstSnapshot.mockResolvedValue(undefined);
+
+    await freezeVocabularyForApproval({
+      policyAuthorId: 'user-1',
+      policy: { source: DE_POLICY, locale: 'de-DE' },
+    }, makeTx());
+
+    expect(hoisted.transaction).not.toHaveBeenCalled();
+  });
+
+  it('never uses the lenient strip fallback: non-lexable source fails the freeze', async () => {
+    queueSelect(PROD_ROWS);
+
+    await expect(
+      freezeVocabularyForApproval({
+        policyAuthorId: 'user-1',
+        policy: { source: 'Regel r gegeben p als Fahrer liefert Text:\n  gib zurück "alter\n', locale: 'de-DE' },
+      }, makeTx()),
+    ).rejects.toThrow();
+    expect(hoisted.insert).not.toHaveBeenCalled();
+  });
+});
+
+describe('loadVocabularyForExecution', () => {
+  const snapshotJson = (rows: ReturnType<typeof termRow>[], domain: string, locale: string) =>
+    assembleDomainVocabularyFromLinks(
+      rows.map((r) => ({ ...r, domainTermId: r.termId })),
+      { domain, locale },
+    );
+
+  it('returns null without refs', async () => {
+    expect(await loadVocabularyForExecution([], { source: DE_POLICY, locale: 'de-DE' })).toBeNull();
+    expect(hoisted.findManySnapshots).not.toHaveBeenCalled();
+  });
+
+  it('ignores unrelated snapshots frozen by legacy approvals and aligns locale', async () => {
+    hoisted.findManySnapshots.mockResolvedValue([
+      { vocabularyJson: snapshotJson(PROD_ROWS.slice(0, 2), 'e2e1026', 'de') },
+      { vocabularyJson: snapshotJson([PROD_ROWS[4]!], 'e2etest', 'en') },
+      { vocabularyJson: snapshotJson([PROD_ROWS[3]!], 'E2E 1026', 'de') },
+    ]);
+
+    const vocab = await loadVocabularyForExecution(
+      [
+        { snapshotId: 's1', domain: 'e2e1026', locale: 'de' },
+        { snapshotId: 's2', domain: 'e2etest', locale: 'en' },
+        { snapshotId: 's3', domain: 'E2E 1026', locale: 'de' },
+      ],
+      { source: DE_POLICY, locale: 'de-DE' },
+    );
+
+    expect(vocab).not.toBeNull();
+    expect(vocab!.locale).toBe('de-DE');
+    expect(vocab!.structs.map((m) => m.canonical)).toEqual(['Driver']);
+    expect(vocab!.fields.map((m) => `${m.parent}.${m.canonical}=${m.localized}`)).toEqual([
+      'Driver.age=alter',
+    ]);
   });
 });
 

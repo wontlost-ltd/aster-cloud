@@ -991,7 +991,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         replace: 'Replace',
         saveFailedWithDiagnostics: 'Saving failed: {count} error(s) — first: L{line} {message}',
         saveDiagnosticFallback: 'Compilation failed.',
-        saveErrorCodes: { compile_error: 'The policy has compilation errors.', compile_unavailable: 'Compilation is temporarily unavailable. Try again later.', policy_frozen: 'This policy is frozen.', unauthorized: 'You are not authorized to save this policy.', alias_invalid: 'The keyword aliases are not valid. Fix them in the Keyword aliases panel and save again.' },
+        saveErrorCodes: { compile_error: 'The policy has compilation errors.', compile_unavailable: 'Compilation is temporarily unavailable. Try again later.', policy_frozen: 'This policy is frozen.', unauthorized: 'You are not authorized to save this policy.', alias_invalid: 'The keyword aliases are not valid. Fix them in the Keyword aliases panel and save again.', unsupported_locale: 'This policy language is not supported. Use English, Chinese, German or Hindi.' },
         aliasesInvalidBeforeSaving: 'Fix the keyword alias errors before saving.',
         // AI 行内补全开关（状态栏）
         statusAiCompletionOn: 'AI completion: on',
@@ -2128,7 +2128,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         replace: '替换',
         saveFailedWithDiagnostics: '保存失败：{count} 个错误 — 首条：第 {line} 行 {message}',
         saveDiagnosticFallback: '编译失败。',
-        saveErrorCodes: { compile_error: '策略存在编译错误。', compile_unavailable: '编译服务暂时不可用，请稍后重试。', policy_frozen: '此策略已冻结。', unauthorized: '你无权保存此策略。', alias_invalid: '关键词别名无效。请在“关键词别名”面板中修正后重新保存。' },
+        saveErrorCodes: { compile_error: '策略存在编译错误。', compile_unavailable: '编译服务暂时不可用，请稍后重试。', policy_frozen: '此策略已冻结。', unauthorized: '你无权保存此策略。', alias_invalid: '关键词别名无效。请在“关键词别名”面板中修正后重新保存。', unsupported_locale: '不支持该策略语言，请使用英语、中文、德语或印地语。' },
         aliasesInvalidBeforeSaving: '请先修正关键词别名错误再保存。',
         // AI 行内补全开关（状态栏）
         statusAiCompletionOn: 'AI 补全：开',
@@ -3275,7 +3275,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         replace: 'Ersetzen',
         saveFailedWithDiagnostics: 'Speichern fehlgeschlagen: {count} Fehler — erster Fehler: Z.{line} {message}',
         saveDiagnosticFallback: 'Kompilierung fehlgeschlagen.',
-        saveErrorCodes: { compile_error: 'Die Policy enthält Kompilierungsfehler.', compile_unavailable: 'Die Kompilierung ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.', policy_frozen: 'Diese Policy ist eingefroren.', unauthorized: 'Sie dürfen diese Policy nicht speichern.', alias_invalid: 'Die Keyword-Aliase sind ungültig. Korrigieren Sie sie im Bereich „Keyword-Aliase“ und speichern Sie erneut.' },
+        saveErrorCodes: { compile_error: 'Die Policy enthält Kompilierungsfehler.', compile_unavailable: 'Die Kompilierung ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.', policy_frozen: 'Diese Policy ist eingefroren.', unauthorized: 'Sie dürfen diese Policy nicht speichern.', alias_invalid: 'Die Keyword-Aliase sind ungültig. Korrigieren Sie sie im Bereich „Keyword-Aliase“ und speichern Sie erneut.', unsupported_locale: 'Diese Policy-Sprache wird nicht unterstützt. Verwenden Sie Englisch, Chinesisch, Deutsch oder Hindi.' },
         aliasesInvalidBeforeSaving: 'Beheben Sie vor dem Speichern die Fehler bei den Keyword-Aliasen.',
         // AI 行内补全开关（状态栏）
         statusAiCompletionOn: 'KI-Vervollständigung: an',
@@ -4409,7 +4409,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         replace: 'बदलें',
         saveFailedWithDiagnostics: 'सहेजना विफल: {count} त्रुटियाँ — पहली: पंक्ति {line} {message}',
         saveDiagnosticFallback: 'कम्पाइलेशन विफल रहा।',
-        saveErrorCodes: { compile_error: 'नीति में कम्पाइलेशन त्रुटियाँ हैं।', compile_unavailable: 'कम्पाइलेशन अस्थायी रूप से उपलब्ध नहीं है। बाद में फिर कोशिश करें।', policy_frozen: 'यह नीति फ़्रीज़ है।', unauthorized: 'आपको यह नीति सहेजने की अनुमति नहीं है।', alias_invalid: 'कीवर्ड उपनाम मान्य नहीं हैं। उन्हें "कीवर्ड उपनाम" पैनल में ठीक करें और फिर से सहेजें।' },
+        saveErrorCodes: { compile_error: 'नीति में कम्पाइलेशन त्रुटियाँ हैं।', compile_unavailable: 'कम्पाइलेशन अस्थायी रूप से उपलब्ध नहीं है। बाद में फिर कोशिश करें।', policy_frozen: 'यह नीति फ़्रीज़ है।', unauthorized: 'आपको यह नीति सहेजने की अनुमति नहीं है।', alias_invalid: 'कीवर्ड उपनाम मान्य नहीं हैं। उन्हें "कीवर्ड उपनाम" पैनल में ठीक करें और फिर से सहेजें।', unsupported_locale: 'यह नीति भाषा समर्थित नहीं है। अंग्रेज़ी, चीनी, जर्मन या हिंदी का उपयोग करें।' },
         aliasesInvalidBeforeSaving: 'सहेजने से पहले कीवर्ड उपनाम की त्रुटियाँ ठीक करें।',
         // AI 行内补全开关（状态栏）
         statusAiCompletionOn: 'AI पूर्णता: चालू',

@@ -128,7 +128,7 @@ vi.mock('next-intl', () => ({ useTranslations: () => (k: string) => k }));
  * ★不自造形状——DomainVocabulary 有 structs 等被真实代码迭代的字段，
  *   随手编一个 `{terms: []}` 会以 "structs is not iterable" 炸在无关的地方。 */
 vi.mock('@/hooks/useUserVocabularyRegistration', () => ({
-  useUserVocabularyRegistration: () => ({ vocabulary: undefined, epoch: 1 }),
+  useUserVocabularyRegistration: () => ({ vocabulary: undefined, domain: undefined, registrationKey: '' }),
 }));
 vi.mock('@/hooks/useDomainVocabularyInvalidate', () => ({
   useDomainVocabularyInvalidate: () => 0,
