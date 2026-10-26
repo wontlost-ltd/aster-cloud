@@ -11,7 +11,7 @@ import { buildReplayColumns, buildEvidenceColumns } from '@/lib/policy-execution
 import { policyTenantId } from '@/lib/policy-tenant';
 import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
 import {
-  ambiguousInputFieldBody,
+  preparedInputErrorResponse,
   loadVersionExecutionVocabulary,
   prepareExecutionInput,
 } from '@/lib/execution-input';
@@ -92,7 +92,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       agent?: unknown;
     };
     if (!input || typeof input !== 'object' || Array.isArray(input)) {
-      return NextResponse.json({ error: 'Input must be a valid object' }, { status: 400 });
+      return NextResponse.json({ error: 'Input must be a valid object', code: 'invalid_input_object' }, { status: 400 });
     }
     // 调用方自报 agent（ADR 0041 §4）：缺省或 null 均视为未声明（与 aster-api 语义一致）；
     // 一旦给出非 null 值就必须形状合法，否则 400。
@@ -337,7 +337,8 @@ export async function POST(req: Request, { params }: RouteParams) {
       aliasSet: parsedAliasSet,
     });
     if (!prepared.ok) {
-      return NextResponse.json(ambiguousInputFieldBody(prepared.ambiguous), { status: 400 });
+      const failure = preparedInputErrorResponse(prepared);
+      return NextResponse.json(failure.body, { status: failure.status });
     }
     // 引擎实际评估的输入：执行记录、guard 登记、parity 都用它，保证与回放 hash 同源。
     const engineInput = prepared.input as Record<string, unknown>;

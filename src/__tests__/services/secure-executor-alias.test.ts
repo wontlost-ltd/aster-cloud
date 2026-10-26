@@ -92,6 +92,8 @@ describe('executeSecurely — 别名透传 + 哈希口径（C1 secure-execute）
   beforeEach(() => {
     vi.clearAllMocks();
     mockEvaluateSource.mockResolvedValue({ result: { allowed: true }, error: undefined });
+    // clearAllMocks 不清实现：显式回到「无冻结词汇」，避免上一组用例的词汇串到本组。
+    vi.mocked(loadExecutionVocabulary).mockResolvedValue(undefined);
   });
 
   it('冻结别名解析后透传 evaluateSource（envelope 哈希匹配）', async () => {
@@ -222,6 +224,19 @@ Regel bewerten gegeben person als Fahrer liefert Ganzzahl:
       });
       const canonicalHash = `sha256:${createHash('sha256').update(JSON.stringify({ person: { age: 21 } })).digest('hex')}`;
       expect(executed[1]!.details!.inputMapping).toEqual({ originalInputSha256: canonicalHash, renames: [] });
+    });
+
+    it('带词汇但源码连签名都解析不了 → INPUT_TYPE_EXTRACTION_FAILED，不在未映射的输入上执行（#638）', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue(
+        version({ source: 'Modul kaputt.\n\nRegel gegeben Fahrer liefert:\n  gib zurück 1.\n', aliasSet: null }) as never,
+      );
+
+      const r = await executeSecurely(withInput({ person: { alter: 21 } }));
+
+      expect(r).toMatchObject({ success: false, errorCode: 'INPUT_TYPE_EXTRACTION_FAILED' });
+      expect(mockEvaluateSource).not.toHaveBeenCalled();
+      warn.mockRestore();
     });
 
     it('两者并存 → AMBIGUOUS_INPUT_FIELD，不调用引擎', async () => {

@@ -114,7 +114,7 @@ const TERM_ARRAYS: ReadonlyArray<[string, IdentifierKind]> = [
 ];
 
 /** 只保留 canonical/localized 为字符串的条目，kind 以所在数组为准（快照 JSON 可能缺 kind）。 */
-function mappingsOf(value: unknown, kind: IdentifierKind): IdentifierMapping[] {
+export function mappingsOf(value: unknown, kind: IdentifierKind): IdentifierMapping[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter((m): m is IdentifierMapping =>

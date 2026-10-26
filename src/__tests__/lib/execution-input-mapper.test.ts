@@ -51,7 +51,7 @@ Regel bewerten gegeben person als Fahrer liefert Ganzzahl:
     gib zurück 42.
   gib zurück 0.
 `;
-const TYPES = extractPolicyInputTypes(DE_POLICY, 'de-DE', null, undefined)!;
+const TYPES = extractPolicyInputTypes({ source: DE_POLICY, locale: 'de-DE', aliasSet: null }, undefined)!;
 const MODEL = buildMappingModel(INDEX, TYPES);
 
 const T = (name: string): PolicyTypeNode => ({ kind: 'TypeName', name });
@@ -73,11 +73,11 @@ describe('extractPolicyInputTypes', () => {
   });
 
   it('源码无法解析时返回 null', () => {
-    expect(extractPolicyInputTypes('Modul x.\n\nRegel kaputt gegeben', 'de-DE', null, undefined)).toBeNull();
+    expect(extractPolicyInputTypes({ source: 'Modul x.\n\nRegel kaputt gegeben', locale: 'de-DE', aliasSet: null }, undefined)).toBeNull();
   });
 
   it('同一版本重复提取命中缓存（返回同一组声明）', () => {
-    const again = extractPolicyInputTypes(DE_POLICY, 'de-DE', null, 'evaluate', (n) => (n === 'bewerten' ? 'evaluate' : n));
+    const again = extractPolicyInputTypes({ source: DE_POLICY, locale: 'de-DE', aliasSet: null }, 'evaluate', (n) => (n === 'bewerten' ? 'evaluate' : n));
     expect(again!.decls).toBe(TYPES.decls);
     expect(again!.params.map((p) => p.name)).toEqual(['person']);
   });

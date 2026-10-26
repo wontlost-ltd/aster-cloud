@@ -26,6 +26,7 @@ import { assertPolicyOwnership } from '../policy/version-manager';
 import { createPolicyApiClient } from '../policy/policy-api';
 import {
   ambiguousInputFieldMessage,
+  INPUT_TYPE_EXTRACTION_FAILED_MESSAGE,
   inputMappingAudit,
   loadVersionExecutionVocabulary,
   prepareExecutionInput,
@@ -72,6 +73,7 @@ export type SecurityErrorCode =
   | 'NO_APPROVED_VERSION'
   | 'VERSION_NOT_EXECUTABLE'
   | 'AMBIGUOUS_INPUT_FIELD'
+  | 'INPUT_TYPE_EXTRACTION_FAILED'
   | 'EXECUTION_FAILED';
 
 const SIGNING_SECRET = safeEnv('POLICY_SIGNING_SECRET') || '';
@@ -320,6 +322,9 @@ export async function executeSecurely(
       locale,
       aliasSet,
     });
+    if (!prepared.ok && prepared.reason === 'type_extraction_failed') {
+      return { success: false, error: INPUT_TYPE_EXTRACTION_FAILED_MESSAGE, errorCode: 'INPUT_TYPE_EXTRACTION_FAILED' };
+    }
     if (!prepared.ok) {
       return {
         success: false,

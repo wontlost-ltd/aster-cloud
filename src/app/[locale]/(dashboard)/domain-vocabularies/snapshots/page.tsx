@@ -9,6 +9,10 @@ import {
   type ListUrlOptions,
 } from '@/lib/list-search-params';
 import { SnapshotsContent, type SerializableSnapshot } from './snapshots-content';
+import { localizedTitle } from '@/lib/page-metadata';
+
+// 与其它应用内页面一致：标签页标题复用页面大标题（#640）。
+export const generateMetadata = localizedTitle('domainVocabularies.snapshotsView', 'title');
 
 const SNAPSHOTS_URL_OPTS: ListUrlOptions = {
   defaultPageSize: 25,

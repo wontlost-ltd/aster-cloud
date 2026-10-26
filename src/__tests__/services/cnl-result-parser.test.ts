@@ -333,3 +333,22 @@ describe('Verdict 内置值（ADR 0039）', () => {
     expect(parseApprovalFromResult({ __type: 'Verdict', outcome: 'DENY', reason: 'x' }, 'value')).toEqual({ approved: false, outcome: 'DENY', message: 'x' });
   });
 });
+
+// #633：枚举值对象与成员名字符串是同一个值，判定口径必须一致——都按成员名字符串处理。
+describe('枚举值：对象与字符串同一口径（#633）', () => {
+  const enumValue = (member: string) => ({ __type: '?', _enum: 'Level', value: member, variant: member, args: [] });
+
+  it.each(['decision', 'value'] as const)('%s 模式：枚举对象与成员名字符串得到相同判定', (mode) => {
+    for (const member of ['High', 'Low', 'Hoch', 'abgelehnt']) {
+      expect(parseApprovalFromResult(enumValue(member), mode)).toEqual(parseApprovalFromResult(member, mode));
+    }
+  });
+
+  it('decision 模式：普通枚举成员无决策语义 → indeterminate，不因对象带 value 键而判批准', () => {
+    expect(parseApprovalFromResult(enumValue('High'), 'decision')).toEqual({ approved: false, indeterminate: true, message: 'High' });
+  });
+
+  it('只有 value、没有 _enum 标签的业务对象仍按原有值字段规则处理', () => {
+    expect(parseApprovalFromResult({ value: 3 }, 'decision')).toEqual({ approved: true, message: 'Result: 3' });
+  });
+});

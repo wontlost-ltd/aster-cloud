@@ -12,10 +12,6 @@ import {
   toast,
 } from '@/components/ui';
 import {
-  checkVocabularyScope,
-  type VocabularyFormatIssue,
-} from '@/lib/domain-vocabulary-format';
-import {
   normalizeRowErrors,
   summarizeBulkOutcome,
   type BulkOutcomeSummary,
@@ -23,7 +19,7 @@ import {
   type BulkRowErrorView,
 } from './bulk-result';
 import { BulkRowErrors, BulkSkippedReasons, skippedReasonTexts } from './bulk-row-errors';
-import { KIND_OPTIONS, type Kind } from './constants';
+import { parseBulkInput, parseFindingText, type ParseOutcome } from './bulk-parse';
 import { useFocusTrap } from './use-focus-trap';
 import { useVocabularyErrors } from './use-vocabulary-errors';
 
@@ -47,30 +43,6 @@ interface SyncBulkResponse {
 interface SyncResultView {
   summary: BulkOutcomeSummary;
   errors: BulkRowErrorView[];
-}
-
-/** Pre-validated row shape. Matches the /bulk{,/jobs} endpoint contract. */
-interface ParsedRow {
-  domain: string;
-  locale: string;
-  kind: Kind;
-  canonical: string;
-  localized: string;
-  parentCanonical?: string;
-  description?: string;
-  aliases?: string[];
-}
-
-interface ParseFinding {
-  row: number;
-  message: string;
-  /** domain/locale 格式问题（#612），渲染时换成本地化文案。 */
-  issue?: VocabularyFormatIssue;
-}
-
-interface ParseOutcome {
-  rows: ParsedRow[];
-  errors: ParseFinding[];
 }
 
 const SYNC_LIMIT = 500;
@@ -131,7 +103,7 @@ export function BulkUploadDialog({
   }, [submitting, onClose]);
   useFocusTrap(formRef, isOpen, onEscape);
 
-  const outcome = useMemo<ParseOutcome>(() => parseInput(raw), [raw]);
+  const outcome = useMemo<ParseOutcome>(() => parseBulkInput(raw), [raw]);
   const preview = outcome.rows.slice(0, PREVIEW_ROWS);
   const totalRows = outcome.rows.length;
   const overSync = totalRows > SYNC_LIMIT;
@@ -355,7 +327,7 @@ export function BulkUploadDialog({
                   <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs">
                     {outcome.errors.slice(0, 5).map((err, i) => (
                       <li key={i}>
-                        #{err.row}: {err.issue ? t(err.issue === 'domain_format' ? 'domainInvalid' : 'localeInvalid') : err.message}
+                        {parseFindingText(err, t)}
                       </li>
                     ))}
                     {outcome.errors.length > 5 ? (
@@ -500,193 +472,4 @@ function ModeOption({
       </span>
     </label>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Parsing
-// ---------------------------------------------------------------------------
-
-function parseInput(raw: string): ParseOutcome {
-  const trimmed = raw.trim();
-  if (!trimmed) return { rows: [], errors: [] };
-  // JSON path: leading '[' or '{'.
-  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
-    return parseJson(trimmed);
-  }
-  return parseCsv(trimmed);
-}
-
-function parseJson(text: string): ParseOutcome {
-  const errors: ParseFinding[] = [];
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch {
-    return { rows: [], errors: [{ row: 0, message: 'Invalid JSON syntax' }] };
-  }
-  const array = Array.isArray(value) ? value : [value];
-  const rows: ParsedRow[] = [];
-  array.forEach((entry, index) => {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-      errors.push({ row: index + 1, message: 'Row is not an object' });
-      return;
-    }
-    const parsed = coerceRow(entry as Record<string, unknown>);
-    if ('error' in parsed) {
-      errors.push({ row: index + 1, message: parsed.error, issue: parsed.issue });
-    } else {
-      rows.push(parsed.row);
-    }
-  });
-  return { rows, errors };
-}
-
-function parseCsv(text: string): ParseOutcome {
-  const errors: ParseFinding[] = [];
-  // Single-pass tokenizer. Emits rows on unquoted '\n' only, so quoted
-  // multi-line cells (`"foo\nbar"`) survive intact — the naive
-  // text.split('\n') approach loses them, which the previous reviewer
-  // flagged as a data-loss bug.
-  const allRows = tokenizeCsv(text);
-  // Drop trailing fully-empty rows (common after a final newline).
-  while (allRows.length > 0 && allRows[allRows.length - 1].every((c) => c === '')) {
-    allRows.pop();
-  }
-  if (allRows.length < 2) {
-    return {
-      rows: [],
-      errors: [{ row: 0, message: 'CSV needs a header row and at least one row' }],
-    };
-  }
-  const header = allRows[0].map((h) => h.trim());
-  const rows: ParsedRow[] = [];
-  for (let i = 1; i < allRows.length; i++) {
-    const cells = allRows[i];
-    if (cells.length !== header.length) {
-      errors.push({
-        row: i + 1,
-        message: `expected ${header.length} columns, got ${cells.length}`,
-      });
-      continue;
-    }
-    const record: Record<string, unknown> = {};
-    header.forEach((key, idx) => {
-      record[key] = cells[idx];
-    });
-    // CSV aliases column accepts pipe-delimited values to avoid escaping commas.
-    if (typeof record.aliases === 'string' && record.aliases) {
-      record.aliases = (record.aliases as string)
-        .split('|')
-        .map((s) => s.trim())
-        .filter(Boolean);
-    }
-    const parsed = coerceRow(record);
-    if ('error' in parsed) {
-      errors.push({ row: i + 1, message: parsed.error, issue: parsed.issue });
-    } else {
-      rows.push(parsed.row);
-    }
-  }
-  return { rows, errors };
-}
-
-/**
- * Tokenize a CSV blob into rows of cells.
- *
- * Quoted cells survive embedded newlines (RFC-4180-ish); `""` inside a
- * quoted cell is the escape for a literal quote. Carriage returns are
- * silently dropped so CRLF and LF inputs parse identically.
- */
-function tokenizeCsv(text: string): string[][] {
-  const rows: string[][] = [];
-  let cells: string[] = [];
-  let current = '';
-  let inQuotes = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') {
-          current += '"';
-          i++;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        current += c;
-      }
-      continue;
-    }
-    if (c === '"') {
-      inQuotes = true;
-    } else if (c === ',') {
-      cells.push(current);
-      current = '';
-    } else if (c === '\n') {
-      cells.push(current);
-      rows.push(cells);
-      cells = [];
-      current = '';
-    } else if (c !== '\r') {
-      current += c;
-    }
-  }
-  // Flush trailing cell + row (no trailing newline).
-  if (current.length > 0 || cells.length > 0) {
-    cells.push(current);
-    rows.push(cells);
-  }
-  return rows;
-}
-
-type CoerceResult = { row: ParsedRow } | { error: string; issue?: VocabularyFormatIssue };
-
-function coerceRow(record: Record<string, unknown>): CoerceResult {
-  const required = (key: string): string | undefined => {
-    const v = record[key];
-    if (typeof v !== 'string' || v.trim() === '') return undefined;
-    return v.trim();
-  };
-  const optionalString = (key: string): string | undefined => {
-    const v = record[key];
-    return typeof v === 'string' && v.trim() ? v.trim() : undefined;
-  };
-  const kindRaw = required('kind');
-  if (!kindRaw) return { error: 'kind is required' };
-  if (!(KIND_OPTIONS as readonly string[]).includes(kindRaw)) {
-    return { error: `kind must be one of ${KIND_OPTIONS.join(', ')}` };
-  }
-  const domain = required('domain');
-  const locale = required('locale');
-  const canonical = required('canonical');
-  const localized = required('localized');
-  if (!domain) return { error: 'domain is required' };
-  if (!locale) return { error: 'locale is required' };
-  if (!canonical) return { error: 'canonical is required' };
-  if (!localized) return { error: 'localized is required' };
-  const [issue] = checkVocabularyScope({ domain, locale }).issues;
-  if (issue) return { error: issue, issue };
-
-  const kind = kindRaw as Kind;
-  const parentCanonical = optionalString('parentCanonical');
-  if (kind === 'field' && !parentCanonical) {
-    return { error: 'parentCanonical is required for kind=field' };
-  }
-
-  const aliases = Array.isArray(record.aliases)
-    ? (record.aliases.filter((v) => typeof v === 'string' && v.length > 0) as string[])
-    : undefined;
-
-  const row: ParsedRow = {
-    domain,
-    locale,
-    kind,
-    canonical,
-    localized,
-  };
-  if (parentCanonical) row.parentCanonical = parentCanonical;
-  const description = optionalString('description');
-  if (description) row.description = description;
-  if (aliases && aliases.length > 0) row.aliases = aliases;
-  return { row };
 }

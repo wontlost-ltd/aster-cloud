@@ -21,6 +21,22 @@ export function parseFormValues(input: string): FormValues | null {
   }
 }
 
+/**
+ * 表单模式展示不了当前输入时的提示键（policies.execute 命名空间，#634）：
+ * 不可解析 → invalidJson；合法但不是对象（数组、字符串、数字、null）→ nonObjectInputInForm
+ * （原样提交，不是错误）。
+ */
+export function formUnavailableKey(input: string): 'invalidJson' | 'nonObjectInputInForm' {
+  return parseJsonInput(input).ok ? 'nonObjectInputInForm' : 'invalidJson';
+}
+
+/** 执行接口的稳定错误码 → policies.execute 下的文案键（#634、#638）；歧义另有带参数的文案。 */
+export const EXECUTE_ERROR_KEYS: Readonly<Record<string, string>> = {
+  execution_failed: 'engineErrorDetail',
+  invalid_input_object: 'invalidInputObject',
+  input_type_extraction_failed: 'inputTypeExtractionFailed',
+};
+
 /** 解析 JSON 文本（任意 JSON 值）；不可解析时 ok=false。 */
 export function parseJsonInput(text: string): { ok: true; value: unknown } | { ok: false } {
   try {
@@ -49,11 +65,29 @@ export function numberFieldValue(text: string, integer: boolean): number | strin
   return pattern.test(text.trim()) ? Number(text) : text;
 }
 
-/** 执行结果的展示文本：字符串原样；运行时枚举值对象（`{_enum, value, variant}`）只显示成员名；其余格式化为 JSON。 */
+/** 运行时枚举值对象（`{_enum, value, variant}`）的成员名；不是枚举值对象时返回 undefined。 */
+function enumMember(value: unknown): string | undefined {
+  if (!isPlainObject(value) || typeof value._enum !== 'string') return undefined;
+  const member = value.variant ?? value.value;
+  return typeof member === 'string' ? member : undefined;
+}
+
+/** 把结果里（含结构 / 列表内嵌套的）运行时枚举值对象替换为成员名，其余原样。 */
+export function displayResultValue(value: unknown): unknown {
+  const member = enumMember(value);
+  if (member !== undefined) return member;
+  if (Array.isArray(value)) return value.map(displayResultValue);
+  if (!isPlainObject(value)) return value;
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, displayResultValue(child)]));
+}
+
+/**
+ * 执行结果的展示文本（#633）：字符串原样；枚举值对象只显示成员名；结构 / 列表格式化为 JSON，
+ * 其中嵌套的枚举值对象同样显示为成员名（调用方传入已本地化的结果时即为策略语言的成员名）。
+ */
 export function formatResultValue(value: unknown): string {
-  if (typeof value === 'string') return value;
-  const member = isPlainObject(value) && typeof value._enum === 'string' ? value.variant ?? value.value : undefined;
-  return typeof member === 'string' ? member : JSON.stringify(value, null, 2);
+  const display = displayResultValue(value);
+  return typeof display === 'string' ? display : JSON.stringify(display, null, 2);
 }
 
 /** 表单字段的数字类别：按类型名识别（与表单渲染同一口径）；非数字类型为 null。 */

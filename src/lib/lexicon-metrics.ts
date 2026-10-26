@@ -68,6 +68,14 @@ const snapshotDedupRatio = new Gauge({
   registers: [registry],
 });
 
+// #638：带词汇的执行前提取输入类型的结果；failed 表示执行被拒（422），需要排查源码与解析器差异。
+const inputTypeExtractionTotal = new Counter({
+  name: 'aster_lexicon_input_type_extraction_total',
+  help: 'Execution-time input type extraction outcomes for policies executed with a vocabulary.',
+  labelNames: ['outcome'] as const,
+  registers: [registry],
+});
+
 let snapshotCreateAttempts = 0;
 let snapshotCreateHits = 0;
 
@@ -123,6 +131,11 @@ export function recordSnapshotCreate(opts: { dedupHit: boolean }): void {
   const ratio =
     snapshotCreateAttempts > 0 ? snapshotCreateHits / snapshotCreateAttempts : 0;
   snapshotDedupRatio.set(Number.isFinite(ratio) ? ratio : 0);
+}
+
+/** 记录一次执行前输入类型提取的结果（#638）。 */
+export function recordInputTypeExtraction(outcome: 'ok' | 'failed'): void {
+  inputTypeExtractionTotal.inc({ outcome });
 }
 
 /** Setter for the term-total gauge by source. Caller derives the count. */

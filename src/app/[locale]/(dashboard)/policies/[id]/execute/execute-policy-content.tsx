@@ -33,7 +33,9 @@ import { detectCNLLanguage, isHighConfidence } from '@/lib/cnl-language-detector
 import { inferParameterStructs, inferredFieldDefault } from './infer-parameter-structs';
 import { executionStatus } from './execution-status';
 import {
+  EXECUTE_ERROR_KEYS,
   formatResultValue,
+  formUnavailableKey,
   isPlainObject,
   normalizeNumberFields,
   numberFieldValue,
@@ -476,10 +478,12 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
 
       if (!res.ok) {
         // 优先显示详细消息，支持冻结和配额超限场景
-        const errorMessage = data.code === 'execution_failed'
-          ? t('engineErrorDetail')
-          : data.code === 'ambiguous_input_field'
-            ? ambiguousInputMessage(data)
+        // 有稳定错误码的按码本地化，不显示服务端英文原文（#634、#638）。
+        const codeKey = typeof data.code === 'string' ? EXECUTE_ERROR_KEYS[data.code] : undefined;
+        const errorMessage = data.code === 'ambiguous_input_field'
+          ? ambiguousInputMessage(data)
+          : codeKey
+            ? t(codeKey)
             : data.message || extractErrorMessage(data) || t('executionFailed');
         setError(errorMessage);
         // 保存是否需要升级的标志
@@ -769,7 +773,9 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
                 )}
                 {formValues
                   ? schema.parameters.map((param) => renderParameterForm(param, formValues))
-                  : <p role="alert" className="text-sm text-danger">{t('invalidJson')}</p>}
+                  : formUnavailableKey(input) === 'invalidJson'
+                    ? <p role="alert" className="text-sm text-danger">{t('invalidJson')}</p>
+                    : <p role="status" className="text-sm text-fg-muted">{t('nonObjectInputInForm')}</p>}
               </div>
             )}
 

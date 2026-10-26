@@ -18,7 +18,7 @@ import {
 } from '@/lib/execution-error';
 import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
 import {
-  ambiguousInputFieldBody,
+  preparedInputErrorResponse,
   loadVersionExecutionVocabulary,
   localizedResultField,
   prepareExecutionInput,
@@ -91,7 +91,7 @@ export async function POST(req: Request, { params }: RouteParams) {
 
     const { input, functionName } = bodyResult as { input?: unknown; functionName?: unknown };
     if (!input || typeof input !== 'object' || Array.isArray(input)) {
-      return NextResponse.json({ error: 'Input must be a valid object' }, { status: 400 });
+      return NextResponse.json({ error: 'Input must be a valid object', code: 'invalid_input_object' }, { status: 400 });
     }
     if (functionName !== undefined && typeof functionName !== 'string') {
       return NextResponse.json({ error: 'functionName must be a string' }, { status: 400 });
@@ -412,7 +412,8 @@ export async function POST(req: Request, { params }: RouteParams) {
       aliasSet: parsedAliasSet,
     });
     if (!prepared.ok) {
-      return NextResponse.json(ambiguousInputFieldBody(prepared.ambiguous), { status: 400 });
+      const failure = preparedInputErrorResponse(prepared);
+      return NextResponse.json(failure.body, { status: failure.status });
     }
     // 引擎实际评估的输入：执行记录、guard 登记、parity 都用它，保证与回放 hash 同源。
     const engineInput = prepared.input as Record<string, unknown>;

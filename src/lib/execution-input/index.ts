@@ -24,12 +24,19 @@ import {
   type InputRename,
 } from './mapper';
 import { extractPolicyInputTypes } from './policy-types';
+import { recordInputTypeExtraction } from '@/lib/lexicon-metrics';
 
 export { buildMappingModel, buildVocabularyNameIndex, mapExecutionInput, localizeExecutionOutput, mapFunctionName } from './mapper';
 export type { AmbiguousInputField, InputRename, MappingModel, PolicyInputTypes, VocabularyNameIndex } from './mapper';
 
 /** 同一对象内本地化键与规范键（或两个同义词）同时出现时的稳定错误码。 */
 export const AMBIGUOUS_INPUT_FIELD_CODE = 'ambiguous_input_field';
+
+/**
+ * 带词汇的版本取不到输入类型时的稳定错误码（#638）：此时无法把策略语言的输入映射为规范名，
+ * 在未映射的输入上执行只会让每条规则都失败，所以拒绝执行（422）而不是静默透传。
+ */
+export const INPUT_TYPE_EXTRACTION_FAILED_CODE = 'input_type_extraction_failed';
 
 /** 冻结快照生效的版本状态；其余状态按作者现行词汇执行。 */
 const FROZEN_VOCABULARY_STATUSES: ReadonlySet<string> = new Set(['APPROVED', 'DEPRECATED']);
@@ -102,20 +109,33 @@ export type PreparedExecutionInput =
       /** 把结果里的规范名还原为策略语言（界面展示用）。 */
       localizeOutput: (value: unknown) => unknown;
     }
-  | { ok: false; ambiguous: AmbiguousInputField };
+  | { ok: false; reason: 'ambiguous'; ambiguous: AmbiguousInputField }
+  | { ok: false; reason: 'type_extraction_failed' };
 
-/** 执行前映射输入与函数名。无词汇时零开销（不编译源码）。 */
+/**
+ * 执行前映射输入与函数名。无词汇时零开销（不编译源码）。
+ * 类型提取与执行同一份词汇、同一 locale；提取失败时记日志 + 指标并返回 type_extraction_failed。
+ */
 export function prepareExecutionInput(params: PrepareExecutionInputParams): PreparedExecutionInput {
   const index = buildVocabularyNameIndex(params.vocabulary);
   if (!index) {
     return { ok: true, input: params.input, functionName: params.functionName, renames: [], localizeOutput: (v) => v };
   }
   const types = extractPolicyInputTypes(
-    params.source, params.locale, params.aliasSet, params.functionName, (name) => engineName(index, name),
+    { source: params.source, locale: params.locale, aliasSet: params.aliasSet, vocabulary: params.vocabulary, index },
+    params.functionName,
+    (name) => engineName(index, name),
   );
+  recordInputTypeExtraction(types ? 'ok' : 'failed');
+  if (!types) {
+    console.warn('[execution-input] input types unavailable; refusing to execute on unmapped input', {
+      locale: params.locale, functionName: params.functionName,
+    });
+    return { ok: false, reason: 'type_extraction_failed' };
+  }
   const model = buildMappingModel(index, types);
   const mapped = mapExecutionInput(params.input, model);
-  if (!mapped.ok) return mapped;
+  if (!mapped.ok) return { ok: false, reason: 'ambiguous', ambiguous: mapped.ambiguous };
   return {
     ok: true,
     input: mapped.input,
@@ -145,6 +165,22 @@ export function ambiguousInputFieldBody(ambiguous: AmbiguousInputField) {
     policyField: ambiguous.policyName,
     ...(ambiguous.candidates ? { candidates: ambiguous.candidates } : {}),
   };
+}
+
+/** 类型提取失败的英文说明（界面按 code 本地化）。 */
+export const INPUT_TYPE_EXTRACTION_FAILED_MESSAGE =
+  'The input types of this policy version could not be read, so the input cannot be matched to the ' +
+  'policy vocabulary. The policy was not executed. Check that the policy source compiles, then try again.';
+
+/**
+ * 准备失败时 dashboard / v1 共用的响应：歧义 400，类型提取失败 422。
+ * secure-execute 另有自己的 errorCode 口径，不走这里。
+ */
+export function preparedInputErrorResponse(
+  failure: Extract<PreparedExecutionInput, { ok: false }>,
+): { body: Record<string, unknown>; status: number } {
+  if (failure.reason === 'ambiguous') return { body: ambiguousInputFieldBody(failure.ambiguous), status: 400 };
+  return { body: { error: INPUT_TYPE_EXTRACTION_FAILED_MESSAGE, code: INPUT_TYPE_EXTRACTION_FAILED_CODE }, status: 422 };
 }
 
 /** 歧义的英文说明（界面按 code 本地化）。 */

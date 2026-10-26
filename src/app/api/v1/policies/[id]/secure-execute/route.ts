@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 
 import { executeSecurely } from '@/services/security/secure-executor';
-import { AMBIGUOUS_INPUT_FIELD_CODE } from '@/lib/execution-input';
+import { AMBIGUOUS_INPUT_FIELD_CODE, INPUT_TYPE_EXTRACTION_FAILED_CODE } from '@/lib/execution-input';
 import { PolicyAccessDeniedError } from '@/services/policy/version-manager';
 import type { SignedRequest } from '@/services/security/policy-security';
 import { v4 as uuidv4 } from 'uuid';
@@ -132,7 +132,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         ? 401
         : result.errorCode === 'HASH_MISMATCH'
           ? 409
-          : 400;
+          : result.errorCode === 'INPUT_TYPE_EXTRACTION_FAILED'
+            ? 422
+            : 400;
 
     return NextResponse.json(
       {
@@ -155,6 +157,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               policyField: result.ambiguous.policyName,
             }
           : {}),
+        // #638：输入类型提取失败时给出与 execute 端点相同的稳定码。
+        ...(result.errorCode === 'INPUT_TYPE_EXTRACTION_FAILED' ? { code: INPUT_TYPE_EXTRACTION_FAILED_CODE } : {}),
         requestId,
       },
       { status }

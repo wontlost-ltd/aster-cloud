@@ -617,7 +617,9 @@ describe('V1 Policies API - Drizzle Migration', () => {
     it('#602(v1)：按版本冻结快照加载作用域内词汇并透传给执行端', async () => {
       const refs = [{ snapshotId: 's-de', domain: 'e2e1026', locale: 'de' }];
       const vocabulary = { id: 'e2e1026', locale: 'de-DE', fields: [{ canonical: 'age', localized: 'alter' }] };
-      setupExecuteRow({ policy_vocab_snapshot_ids: refs, policy_version: 1 });
+      // 带词汇执行前要按同一 locale 提取类型（#638），源码须是该 locale 下可解析的德语。
+      const source = 'Modul x.\n\nDefiniere Fahrer hat alter als Ganzzahl.\n';
+      setupExecuteRow({ policy_vocab_snapshot_ids: refs, policy_version: 1, policy_content: source });
       // 已审批版本走冻结快照（草稿走作者现行词汇，见 #626 用例）。
       vi.mocked(db.query.policyVersions.findMany).mockResolvedValueOnce([
         { id: 'pv-1', version: 1, status: 'APPROVED', isDefault: false, createdBy: 'user-1' },
@@ -632,10 +634,7 @@ describe('V1 Policies API - Drizzle Migration', () => {
 
       expect(response.status).toBe(200);
       // locale 与 secure-execute 同一解析器：无 envelope 时取冻结快照引用的唯一 locale。
-      expect(mockLoadExecutionVocabulary).toHaveBeenCalledWith(refs, {
-        source: 'Module X. Rule greet given name: has name.',
-        locale: 'de',
-      });
+      expect(mockLoadExecutionVocabulary).toHaveBeenCalledWith(refs, { source, locale: 'de' });
       expect(mockExecutePolicyUnified).toHaveBeenCalledWith(expect.objectContaining({ vocabulary }));
     });
 

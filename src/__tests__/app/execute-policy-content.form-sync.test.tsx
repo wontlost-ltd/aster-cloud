@@ -42,6 +42,7 @@ const SOURCE = 'Modul demo.\n\nRegel einstufen gegeben person als Fahrer, faktor
 
 const fetchMock = vi.fn();
 let executeResponse: unknown = {};
+let executeOk = true;
 
 beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
@@ -51,10 +52,11 @@ beforeEach(() => {
       return Promise.resolve({ ok: true, json: async () => ({ name: 'Demo', content: SOURCE }) });
     }
     if (url.includes('/api/policies/p1/execute')) {
-      return Promise.resolve({ ok: true, json: async () => executeResponse });
+      return Promise.resolve({ ok: executeOk, json: async () => executeResponse });
     }
     return Promise.reject(new Error(`Unexpected fetch: ${url}`));
   });
+  executeOk = true;
   executeResponse = {
     executionId: 'e1', success: true, durationMs: 1,
     output: { matchedRules: [], actions: [], approved: true, metadata: {} },
@@ -132,7 +134,9 @@ describe('ExecutePolicyContent — 表单模式执行不替换输入（#635）',
       await renderPage();
       fireEvent.change(jsonInput(), { target: { value: text } });
       showForm();
-      expect(screen.getByRole('alert')).toHaveTextContent('policies.execute.invalidJson');
+      // 合法 JSON 不是错误：表单只提示「无法以表单展示、将原样提交」，不说「无效 JSON」（#634）。
+      expect(screen.getByRole('status')).toHaveTextContent('policies.execute.nonObjectInputInForm');
+      expect(screen.queryByText('policies.execute.invalidJson')).toBeNull();
       execute();
       await waitFor(() => expect(lastExecuteBody()).toBeDefined(), WAIT);
       expect(lastExecuteBody().input).toEqual(expected);
@@ -241,5 +245,40 @@ describe('ExecutePolicyContent — 枚举结果展示（#633）', () => {
     await waitFor(() => expect(screen.getByText('Hoch')).toBeInTheDocument(), WAIT);
     // 结果区只显示成员名，不显示枚举对象的 JSON
     expect(screen.getByText('Hoch').tagName).toBe('PRE');
+  });
+});
+
+describe('ExecutePolicyContent — 结构结果里的枚举（#633）', () => {
+  it('结构结果里嵌套的枚举值对象显示为策略语言的成员名，不显示原始枚举 JSON', async () => {
+    const enumValue = (name: string, member: string) => ({ __type: '?', _enum: name, value: member, variant: member, args: [] });
+    executeResponse = {
+      executionId: 'e3', success: true, durationMs: 1,
+      output: {
+        matchedRules: [], actions: [], approved: false, metadata: { decision: 'indeterminate' },
+        result: { __type: 'Driver', age: 35, rank: enumValue('Level', 'Low') },
+      },
+      localizedResult: { __type: 'Fahrer', alter: 35, niveau: enumValue('Stufe', 'Niedrig') },
+    };
+    await renderPage();
+    execute();
+    await waitFor(() => expect(screen.getByText(/"niveau": "Niedrig"/)).toBeInTheDocument(), WAIT);
+    const shown = screen.getByText(/"niveau": "Niedrig"/);
+    expect(shown.tagName).toBe('PRE');
+    expect(shown.textContent).toContain('"alter": 35');
+    expect(shown.textContent).not.toContain('_enum');
+  });
+});
+
+describe('ExecutePolicyContent — 执行错误按错误码本地化（#634 #638）', () => {
+  it.each([
+    ['invalid_input_object', 'Input must be a valid object', 'policies.execute.invalidInputObject'],
+    ['input_type_extraction_failed', 'The input types of this policy version could not be read', 'policies.execute.inputTypeExtractionFailed'],
+  ])('%s：显示本地化文案而不是服务端英文原文', async (code, serverText, expected) => {
+    executeOk = false;
+    executeResponse = { error: serverText, code };
+    await renderPage();
+    execute();
+    await waitFor(() => expect(screen.getByText(expected)).toBeInTheDocument(), WAIT);
+    expect(screen.queryByText(new RegExp(serverText))).toBeNull();
   });
 });

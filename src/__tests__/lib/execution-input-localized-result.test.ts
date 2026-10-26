@@ -17,12 +17,13 @@ function row(kind: string, canonical: string, localized: string, parent: string 
   return { domainTermId: `${kind}-${canonical}`, domain: 'e2e1028', locale: 'de', kind, canonical, localized, parentCanonical: parent, aliases: [] };
 }
 
-// 与生产复测同一套词汇：struct Driver↔Fahrer、Level↔Stufe，字段 level↔niveau，枚举值 High↔Hoch / Low↔Niedrig。
+// 与生产复测同一套词汇：struct Driver↔Fahrer、Level↔Stufe，字段 rank↔niveau，枚举值 High↔Hoch / Low↔Niedrig
+// （字段规范名用 rank，避开与 Level 只差大小写的组合，见 aster-lang-ts#243）。
 const VOCAB = assembleDomainVocabularyFromLinks([
   row('struct', 'Driver', 'Fahrer'),
   row('struct', 'Level', 'Stufe'),
   row('field', 'age', 'alter', 'Driver'),
-  row('field', 'level', 'niveau', 'Driver'),
+  row('field', 'rank', 'niveau', 'Driver'),
   row('enum_value', 'High', 'Hoch', 'Level'),
   row('enum_value', 'Low', 'Niedrig', 'Level'),
 ], { domain: 'e2e1028', locale: 'de-DE' }) as unknown as Record<string, unknown>;
@@ -61,9 +62,9 @@ describe('localizedResultField（#633）', () => {
   });
 
   it('返回含枚举的结构：字段名与枚举值一并还原', () => {
-    expect(localizerFor('echo')({ age: 21, level: enumValue('Level', 'Low') }))
+    expect(localizerFor('echo')({ age: 21, rank: enumValue('Level', 'Low') }))
       .toEqual({ localizedResult: { alter: 21, niveau: enumValue('Stufe', 'Niedrig') } });
-    expect(localizerFor('echo')({ age: 21, level: 'Low' }))
+    expect(localizerFor('echo')({ age: 21, rank: 'Low' }))
       .toEqual({ localizedResult: { alter: 21, niveau: 'Niedrig' } });
   });
 
