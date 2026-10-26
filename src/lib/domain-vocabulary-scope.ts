@@ -5,20 +5,23 @@
  * 且在编辑器 / 保存编译门禁 / 审批冻结 / 执行四处都能独立算出同一结果的依据是**源码本身**：
  *   1. 语言：词条的 locale 与策略 CNL 语言（由源码关键词识别，如 de-DE）主语言相同。
  *      词条 locale 是用户自由填写的（常见 `de`），所以按主语言子标签比较，而不是全串相等。
- *   2. 用途：该 (domain, locale) 分组里至少一个本地化名或别名以完整单词出现在源码中。
+ *   2. 用途：该 (domain, locale) 分组里至少一个本地化名或别名以完整单词出现在源码的
+ *      **代码部分**（注释与字符串字面量不算引用）。
  *
  * 未被源码引用的分组对规范化结果没有任何影响（规范化只翻译源码里出现的词），
  * 因此按用途筛选既不改变执行语义，又能让审批只冻结真正相关的分组（#610），
  * 并避免无关领域的同名词串扰。
  *
- * 设计约束（与 domain-vocabulary-assemble 相同）：只依赖 aster-lang-ts 的纯类型，
- * 禁止引入 node:* / 数据库，编辑器端会直接导入本模块。
+ * 设计约束：只依赖 aster-lang-ts 的浏览器入口与纯类型，禁止引入 node:* / 数据库，
+ * 编辑器端会直接导入本模块。
  */
 
 import type {
   DomainVocabulary,
   IdentifierMapping,
 } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
+import { lex, TokenKind } from '@aster-cloud/aster-lang-ts/browser';
+import { getLexicon, type Lexicon } from '@/lib/aster-lexicon';
 import {
   assembleDomainVocabularyFromLinks,
   type TermLikeRow,
@@ -30,7 +33,13 @@ import {
  */
 export const USER_VOCABULARY_DOMAIN = 'user-vocabulary';
 
-const CJK_PATTERN = /[぀-ヿ㐀-鿿豈-﫿]/u;
+/**
+ * 词条列表接口的单页上限。服务端分页（domain-vocabulary.ts）与编辑器全量拉取共用，
+ * 保证两端按同一口径读完全部活跃词条。
+ */
+export const VOCABULARY_LIST_MAX_PAGE_SIZE = 200;
+
+const CJK_PATTERN = /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]/u;
 
 /** 取 BCP-47 主语言子标签（`de-DE`、`de_AT`、`DE` → `de`）。 */
 export function localeLanguage(locale: string | null | undefined): string {
@@ -48,15 +57,66 @@ function escapeRegExp(text: string): string {
 }
 
 /**
- * 判断一个词形是否以完整单词出现在源码中（大小写不敏感）。
- * 中日文没有词间空格，退化为子串匹配。
+ * 退化路径：源码无法词法分析（编辑中途常见，如字符串未闭合）时，按 CNL 语法去掉
+ * 行注释（`#`、`//`）与字符串字面量（ASCII 引号及该语言的引号对；未闭合的截到行尾），
+ * 其余原样保留。
  */
-function containsTerm(source: string, form: string): boolean {
+export function stripCommentsAndStrings(source: string, lexicon: Lexicon): string {
+  const quotes = new Map<string, string>([['"', '"']]);
+  quotes.set(lexicon.punctuation.stringQuotes.open, lexicon.punctuation.stringQuotes.close);
+  let out = '';
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i]!;
+    const isComment = ch === '#' || (ch === '/' && source[i + 1] === '/');
+    const close = quotes.get(ch);
+    if (isComment || close !== undefined) {
+      out += ' ';
+      i = skippedEnd(source, i, isComment ? undefined : close);
+    } else {
+      out += ch;
+      i++;
+    }
+  }
+  return out;
+}
+
+/** 注释/字符串从 start 起跳过到哪里：注释到行尾；字符串到闭合引号之后，未闭合则到行尾。 */
+function skippedEnd(source: string, start: number, close: string | undefined): number {
+  const newline = source.indexOf('\n', start + 1);
+  const lineEnd = newline === -1 ? source.length : newline;
+  if (close === undefined) return lineEnd;
+  const end = source.indexOf(close, start + 1);
+  return end === -1 || end > lineEnd ? lineEnd : end + 1;
+}
+
+/**
+ * 源码中「作为代码出现」的文本：优先用引擎词法分析器，只保留标识符 token（注释与字符串
+ * 字面量是独立 token，自然被排除）；词法分析失败时退化为 stripCommentsAndStrings。
+ * 标识符以空格连接，单词边界与源码一致，CJK 子串匹配也不会跨越两个标识符。
+ */
+export function codeText(source: string, locale: string): string {
+  const lexicon = getLexicon(locale);
+  try {
+    return lex(source, lexicon)
+      .filter((token) => token.kind === TokenKind.IDENT || token.kind === TokenKind.TYPE_IDENT)
+      .map((token) => String(token.value))
+      .join(' ');
+  } catch {
+    return stripCommentsAndStrings(source, lexicon);
+  }
+}
+
+/**
+ * 判断一个词形是否以完整单词出现在代码文本中（大小写不敏感，与引擎术语翻译一致）。
+ * 中日文没有词间空格，退化为（单个标识符内的）子串匹配。
+ */
+function containsTerm(code: string, form: string): boolean {
   const term = form.trim();
   if (term === '') return false;
-  if (CJK_PATTERN.test(term)) return source.includes(term);
+  if (CJK_PATTERN.test(term)) return code.includes(term);
   const pattern = new RegExp(`(?<![\\p{L}\\p{N}_])${escapeRegExp(term)}(?![\\p{L}\\p{N}_])`, 'iu');
-  return pattern.test(source);
+  return pattern.test(code);
 }
 
 function mappingsOf(vocabulary: DomainVocabulary): IdentifierMapping[] {
@@ -68,10 +128,10 @@ function mappingsOf(vocabulary: DomainVocabulary): IdentifierMapping[] {
   ];
 }
 
-/** 源码是否引用了该词汇表中的任一本地化名或别名。 */
-export function isVocabularyUsedBy(source: string, vocabulary: DomainVocabulary): boolean {
+/** 代码文本（见 codeText）是否引用了该词汇表中的任一本地化名或别名。 */
+export function isVocabularyUsedBy(code: string, vocabulary: DomainVocabulary): boolean {
   return mappingsOf(vocabulary).some((mapping) =>
-    [mapping.localized, ...(mapping.aliases ?? [])].some((form) => containsTerm(source, form)),
+    [mapping.localized, ...(mapping.aliases ?? [])].some((form) => containsTerm(code, form)),
   );
 }
 
@@ -81,15 +141,16 @@ export interface PolicyVocabularyContext {
   locale: string;
 }
 
-/** 该词汇表是否属于策略的作用域（语言相同且被源码引用）。 */
-export function isVocabularyInScope(
-  vocabulary: DomainVocabulary,
+/**
+ * 构造策略作用域判定器：源码只做一次词法分析，再逐个判断候选词汇表
+ * （语言相同且被代码引用）。
+ */
+export function policyScopeMatcher(
   policy: PolicyVocabularyContext,
-): boolean {
-  return (
-    isLocaleCompatible(vocabulary.locale, policy.locale) &&
-    isVocabularyUsedBy(policy.source, vocabulary)
-  );
+): (vocabulary: DomainVocabulary) => boolean {
+  const code = codeText(policy.source, policy.locale);
+  return (vocabulary) =>
+    isLocaleCompatible(vocabulary.locale, policy.locale) && isVocabularyUsedBy(code, vocabulary);
 }
 
 /** 从候选词汇表中筛出该策略实际使用的那些。 */
@@ -97,7 +158,7 @@ export function selectVocabulariesForPolicy(
   vocabularies: readonly DomainVocabulary[],
   policy: PolicyVocabularyContext,
 ): DomainVocabulary[] {
-  return vocabularies.filter((vocabulary) => isVocabularyInScope(vocabulary, policy));
+  return vocabularies.filter(policyScopeMatcher(policy));
 }
 
 /** 按 (domain, locale) 分组词条行，key 形如 `domain|locale`。 */

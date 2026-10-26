@@ -50,6 +50,7 @@ vi.mock('@/services/policy/policy-api', () => ({
 import { executeSecurely } from '@/services/security/secure-executor';
 import { db } from '@/lib/prisma';
 import { loadExecutionVocabulary } from '@/lib/domain-vocabulary-snapshot';
+import { computeSourceEnvelope } from '@/lib/policy-alias';
 
 function version(overrides: Record<string, unknown> = {}) {
   return {
@@ -148,7 +149,7 @@ describe('executeSecurely — 别名透传 + 哈希口径（C1 secure-execute）
 
   // #602：locale 从源码识别（旧实现按快照 locale 推断，冻结多语言词汇时退回 en-US），
   // 词汇按版本冻结快照 + 策略作用域加载后透传。
-  it('德语版本：locale 取源码语言，透传作用域内冻结词汇', async () => {
+  it('德语版本（无可匹配 envelope、快照 locale 不唯一）：locale 退到源码识别，透传作用域内冻结词汇', async () => {
     const source = 'Modul x.\n\nDefiniere Fahrer hat alter als Ganzzahl.\n';
     const refs = [
       { snapshotId: 's-de', domain: 'e2e1026', locale: 'de' },
@@ -166,5 +167,37 @@ describe('executeSecurely — 别名透传 + 哈希口径（C1 secure-execute）
     const passedOpts = mockEvaluateSource.mock.calls[0]?.[2] as Record<string, unknown>;
     expect(passedOpts.locale).toBe('de-DE');
     expect(passedOpts.vocabulary).toEqual(frozen);
+  });
+
+  // #602 复审：locale 优先取版本保存时记录的编译 locale，旧版本执行口径不被源码启发式改变。
+  it('locale 优先取 envelope 记录的编译 locale（即使源码看起来是德语）', async () => {
+    const source = 'Modul x.\n\nDefiniere Fahrer hat alter als Ganzzahl.\n';
+    const envelope = computeSourceEnvelope(source, null, 'en-US', 'tc-1');
+    vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue(
+      version({
+        source, aliasSet: null, sourceToolchainId: 'tc-1', sourceEnvelopeSha256: envelope,
+        vocabularySnapshotIds: [{ snapshotId: 's-de', domain: 'e2e1026', locale: 'de' }],
+      }) as never,
+    );
+
+    await executeSecurely(opts(envelope));
+
+    const passedOpts = mockEvaluateSource.mock.calls[0]?.[2] as Record<string, unknown>;
+    expect(passedOpts.locale).toBe('en-US');
+    expect(loadExecutionVocabulary).toHaveBeenCalledWith(expect.anything(), { source, locale: 'en-US' });
+  });
+
+  it('无可匹配 envelope 时沿用快照引用的唯一 locale（旧口径）', async () => {
+    vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue(
+      version({
+        aliasSet: null, sourceEnvelopeSha256: null,
+        vocabularySnapshotIds: [{ snapshotId: 's-de', domain: 'e2e1026', locale: 'de' }],
+      }) as never,
+    );
+
+    await executeSecurely(opts('HASH_SRC'));
+
+    const passedOpts = mockEvaluateSource.mock.calls[0]?.[2] as Record<string, unknown>;
+    expect(passedOpts.locale).toBe('de');
   });
 });

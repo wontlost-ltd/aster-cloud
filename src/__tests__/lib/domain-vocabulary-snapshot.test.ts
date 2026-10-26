@@ -55,7 +55,7 @@ import {
   createSnapshotsForOwner,
   loadVocabularyForExecution,
   rollbackToSnapshot,
-  snapshotOnPolicyApprove,
+  freezeVocabularyForApproval,
 } from '@/lib/domain-vocabulary-snapshot';
 import { assembleDomainVocabularyFromLinks } from '@/lib/domain-vocabulary-assemble';
 import { VocabularyError } from '@/lib/domain-vocabulary';
@@ -189,13 +189,13 @@ describe('createSnapshotsForOwner', () => {
   });
 });
 
-describe('snapshotOnPolicyApprove (#610)', () => {
+describe('freezeVocabularyForApproval (#610)', () => {
   it('approving a de policy freezes only its own domain/locale', async () => {
     queueSelect(PROD_ROWS);
     queueSelect([{ max: null }]);
     hoisted.findFirstSnapshot.mockResolvedValue(undefined);
 
-    const refs = await snapshotOnPolicyApprove({
+    const refs = await freezeVocabularyForApproval({
       policyVersionId: 'pv-1',
       policyAuthorId: 'user-1',
       policy: { source: DE_POLICY, locale: 'de-DE' },
@@ -205,14 +205,12 @@ describe('snapshotOnPolicyApprove (#610)', () => {
     expect(hoisted.insert).toHaveBeenCalledTimes(1);
     const inserted = hoisted.insertValues.mock.calls[0]![0] as { termIds: string[] };
     expect(inserted.termIds).toEqual(['t-driver', 't-age']);
-    // 版本只记录这一个快照引用。
-    expect(hoisted.updateSet).toHaveBeenCalledWith({ vocabularySnapshotIds: refs });
   });
 
   it('approving a policy that uses no vocabulary freezes nothing and bumps no refCount', async () => {
     queueSelect(PROD_ROWS);
 
-    const refs = await snapshotOnPolicyApprove({
+    const refs = await freezeVocabularyForApproval({
       policyVersionId: 'pv-2',
       policyAuthorId: 'user-1',
       policy: { source: 'Rule r given age as Int, produce Int: Return age multiplied by 3.', locale: 'en-US' },
@@ -220,7 +218,34 @@ describe('snapshotOnPolicyApprove (#610)', () => {
 
     expect(refs).toEqual([]);
     expect(hoisted.transaction).not.toHaveBeenCalled();
-    expect(hoisted.updateSet).toHaveBeenCalledWith({ vocabularySnapshotIds: [] });
+  });
+
+  it('terms mentioned only in comments or strings do not pull their group into scope', async () => {
+    queueSelect(PROD_ROWS);
+
+    const refs = await freezeVocabularyForApproval({
+      policyVersionId: 'pv-3',
+      policyAuthorId: 'user-1',
+      policy: {
+        source: 'Modul x.\n\n// Fahrer und alter\nRegel r gegeben p als Ganzzahl liefert Text:\n  gib zurück "Fahrer".\n',
+        locale: 'de-DE',
+      },
+    });
+
+    expect(refs).toEqual([]);
+  });
+
+  it('propagates freeze failures instead of returning empty refs', async () => {
+    queueSelect(PROD_ROWS);
+    hoisted.transaction.mockRejectedValueOnce(new Error('db down'));
+
+    await expect(
+      freezeVocabularyForApproval({
+        policyVersionId: 'pv-4',
+        policyAuthorId: 'user-1',
+        policy: { source: DE_POLICY, locale: 'de-DE' },
+      }),
+    ).rejects.toThrow('db down');
   });
 });
 

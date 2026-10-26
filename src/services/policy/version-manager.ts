@@ -17,8 +17,8 @@ import { computeChainedHash, computeSourceHash } from '../security/policy-securi
 import { logSecurityEvent } from '../security/security-event-service';
 import { recordAhaMomentIfFirst } from '@/lib/metrics/aha-detection';
 import { invalidatePolicyCache } from '@/lib/cache';
-import { snapshotOnPolicyApprove } from '@/lib/domain-vocabulary-snapshot';
-import { detectCNLLocale } from './cnl-executor';
+import { freezeVocabularyForApproval, type SnapshotRef } from '@/lib/domain-vocabulary-snapshot';
+import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
 import {
   canonicalAliasJson,
   cloudToolchainId,
@@ -91,6 +91,42 @@ export class SegregationOfDutiesError extends Error {
   constructor(message = 'A policy author cannot approve their own version.') {
     super(message);
     this.name = 'SegregationOfDutiesError';
+  }
+}
+
+/** 审批时冻结版本词汇失败：审批整体失败，版本保持待审批。 */
+export class VocabularyFreezeError extends Error {
+  constructor(message = 'Could not freeze the domain vocabulary used by this version. Please retry the approval.') {
+    super(message);
+    this.name = 'VocabularyFreezeError';
+  }
+}
+
+/**
+ * 冻结待批准版本作用域内的作者词汇（B12 / #610），返回快照引用。
+ * 作用域按版本源码与其记录的编译 locale 计算；失败抛 VocabularyFreezeError。
+ */
+async function freezeApprovalVocabulary(
+  version: InferSelectModel<typeof policyVersions>,
+): Promise<SnapshotRef[]> {
+  if (!version.createdBy) return [];
+  const source = version.source ?? version.content;
+  const locale = resolveStoredVersionLocale({
+    source,
+    aliasSet: version.aliasSet,
+    sourceEnvelopeSha256: version.sourceEnvelopeSha256,
+    sourceToolchainId: version.sourceToolchainId,
+    vocabularySnapshotIds: null,
+  });
+  try {
+    return await freezeVocabularyForApproval({
+      policyVersionId: version.id,
+      policyAuthorId: version.createdBy,
+      policy: { source, locale },
+    });
+  } catch (err) {
+    console.error('[vocabulary-snapshot] freeze failed, approval aborted:', err);
+    throw new VocabularyFreezeError();
   }
 }
 
@@ -574,6 +610,10 @@ export async function approveVersion(params: {
     throw new SegregationOfDutiesError();
   }
 
+  // 批准前先冻结词汇：失败则整个审批失败，不留下「已批准但缺词汇」的版本。
+  const vocabularySnapshotIds =
+    decision === 'APPROVED' ? await freezeApprovalVocabulary(targetVersion) : undefined;
+
   // 创建审批记录
   await db.insert(policyApprovals).values({
     id: crypto.randomUUID(),
@@ -598,7 +638,7 @@ export async function approveVersion(params: {
   }
 
   await db.update(policyVersions)
-    .set({ status: newStatus })
+    .set({ status: newStatus, ...(vocabularySnapshotIds ? { vocabularySnapshotIds } : {}) })
     .where(eq(policyVersions.id, targetVersion.id));
 
   await logSecurityEvent({
@@ -619,17 +659,6 @@ export async function approveVersion(params: {
       approvedAt: new Date(),
     }).catch((err) => {
       console.error('[AHA detection] failed (non-blocking):', err);
-    });
-
-    // B12：冻结作者当前词汇中该版本实际使用的分组（同语言且被源码引用，#610），
-    // 执行时按此快照规范化。必须在缓存失效之前完成：否则审批后紧接着的执行会把
-    // 尚未写入快照引用的版本缓存下来，之后一直不带词汇执行。helper 内部吞掉异常，
-    // 快照失败不阻断审批。
-    const source = targetVersion.source ?? targetVersion.content;
-    await snapshotOnPolicyApprove({
-      policyVersionId: targetVersion.id,
-      policyAuthorId: targetVersion.createdBy,
-      policy: { source, locale: detectCNLLocale(source) },
     });
   }
 

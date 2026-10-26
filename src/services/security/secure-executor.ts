@@ -25,7 +25,7 @@ import { logSecurityEvent } from './security-event-service';
 import { assertPolicyOwnership } from '../policy/version-manager';
 import { createPolicyApiClient } from '../policy/policy-api';
 import { loadExecutionVocabulary } from '@/lib/domain-vocabulary-snapshot';
-import { detectCNLLocale } from '@/services/policy/cnl-executor';
+import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
 import { safeEnv } from '@/lib/runtime/safe-env';
 
 type Policy = InferSelectModel<typeof policies>;
@@ -272,9 +272,15 @@ export async function executeSecurely(
       throw new Error('策略源码不存在');
     }
 
-    // 执行端按 locale 选 lexicon：与 dashboard/v1 执行一致，从源码关键词识别 CNL 语言。
-    // 不能从快照引用推断——词汇快照的 locale 与策略语言无必然关系。
-    const locale = detectCNLLocale(sourceCode);
+    // 执行端按 locale 选 lexicon：优先取版本保存时记录的编译 locale（envelope），
+    // 其次沿用快照引用唯一 locale，最后才按源码识别（见 policy-version-locale）。
+    const locale = resolveStoredVersionLocale({
+      source: sourceCode,
+      aliasSet: targetVersion.aliasSet,
+      sourceEnvelopeSha256: targetVersion.sourceEnvelopeSha256,
+      sourceToolchainId: targetVersion.sourceToolchainId,
+      vocabularySnapshotIds: targetVersion.vocabularySnapshotIds,
+    });
     // ADR 0014 线C：该版本冻结的领域词汇（只取策略作用域内的快照），best-effort。
     const vocabulary = await loadExecutionVocabulary(targetVersion.vocabularySnapshotIds, {
       source: sourceCode,

@@ -11,9 +11,11 @@
  */
 import { describe, expect, it } from 'vitest';
 import { compile, evaluate } from '@aster-cloud/aster-lang-ts/browser';
-import { DE_DE, vocabularyRegistry, initBuiltinVocabularies } from '@/lib/aster-lexicon';
+import { DE_DE, ZH_CN, vocabularyRegistry, initBuiltinVocabularies } from '@/lib/aster-lexicon';
 import {
   USER_VOCABULARY_DOMAIN,
+  codeText,
+  stripCommentsAndStrings,
   isLocaleCompatible,
   isVocabularyUsedBy,
   mergeVocabularies,
@@ -64,16 +66,55 @@ describe('isLocaleCompatible', () => {
 describe('isVocabularyUsedBy', () => {
   const vocab = (localized: string, aliases?: string[]) =>
     assembleDomainVocabularyFromLinks([{ ...row('x', 'd', 'de', 'field', 'age', localized), aliases }]);
+  const used = (source: string, v: ReturnType<typeof vocab>, locale = 'de-DE') =>
+    isVocabularyUsedBy(codeText(source, locale), v);
 
   it('matches whole words only, case-insensitively', () => {
-    expect(isVocabularyUsedBy('wenn fahrer.alter mindestens 18', vocab('alter'))).toBe(true);
-    expect(isVocabularyUsedBy('Definiere X hat Alter.', vocab('alter'))).toBe(true);
-    expect(isVocabularyUsedBy('wenn fahrer.altersgrenze', vocab('alter'))).toBe(false);
+    expect(used('wenn fahrer.alter mindestens 18', vocab('alter'))).toBe(true);
+    expect(used('Definiere X hat Alter.', vocab('alter'))).toBe(true);
+    expect(used('wenn fahrer.altersgrenze mindestens 1', vocab('alter'))).toBe(false);
   });
 
-  it('matches aliases and CJK substrings', () => {
-    expect(isVocabularyUsedBy('x.lebensalter', vocab('alter', ['lebensalter']))).toBe(true);
-    expect(isVocabularyUsedBy('如果 驾驶员年龄 至少 18', vocab('驾驶员'))).toBe(true);
+  it('matches aliases and CJK identifiers', () => {
+    expect(used('wenn x.lebensalter mindestens 1', vocab('alter', ['lebensalter']))).toBe(true);
+    expect(used('定义 驾驶员 包含 年龄：整数。', vocab('驾驶员'), 'zh-CN')).toBe(true);
+  });
+
+  it('ignores terms that appear only in comments or string literals', () => {
+    const source = [
+      'Modul x.',
+      '',
+      '// alter des Fahrers',
+      '# alter',
+      'Regel r gegeben p als Ganzzahl liefert Text:',
+      '  gib zurück "zu alter".',
+      '',
+    ].join('\n');
+    expect(used(source, vocab('alter'))).toBe(false);
+  });
+
+  it('ignores CJK terms inside comments and 「」 strings', () => {
+    const source = '模块 a。\n# 驾驶员 说明\n规则 r 给定 p：整数，产出 文本：\n  返回 「驾驶员年龄过低」。\n';
+    expect(used(source, vocab('驾驶员'), 'zh-CN')).toBe(false);
+  });
+
+  it('falls back to stripping comments/strings when the source does not lex (mid-edit)', () => {
+    const source = 'Regel r gegeben p als Fahrer liefert Text:\n  gib zurück "alter\n  // alter\n';
+    const code = codeText(source, 'de-DE');
+    expect(code).toContain('Fahrer');
+    expect(isVocabularyUsedBy(code, vocab('alter'))).toBe(false);
+    expect(isVocabularyUsedBy(code, vocab('Fahrer'))).toBe(true);
+  });
+});
+
+describe('stripCommentsAndStrings', () => {
+  it('removes # and // comments to end of line', () => {
+    expect(stripCommentsAndStrings('a # b\nc // d\ne', DE_DE)).toBe('a  \nc  \ne');
+  });
+
+  it('removes closed and unterminated strings, including the lexicon quote pair', () => {
+    expect(stripCommentsAndStrings('a "b c" d "e\nf', DE_DE)).toBe('a   d  \nf');
+    expect(stripCommentsAndStrings('甲 「乙」 丙', ZH_CN)).toBe('甲   丙');
   });
 });
 

@@ -26,6 +26,7 @@ import {
 import type { TermLikeRow } from '@/lib/domain-vocabulary-assemble';
 import {
   USER_VOCABULARY_DOMAIN,
+  VOCABULARY_LIST_MAX_PAGE_SIZE,
   resolvePolicyVocabularyFromRows,
 } from '@/lib/domain-vocabulary-scope';
 import { validateVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
@@ -49,11 +50,6 @@ interface ListResponse {
   items?: TermLink[];
   total?: number;
 }
-
-/** 列表接口单页上限（domain-vocabulary.ts MAX_PAGE_SIZE）。 */
-const PAGE_SIZE = 200;
-/** 最多拉取的页数：覆盖最高档配额（5000 条）。 */
-const MAX_PAGES = 25;
 
 export interface UseUserVocabularyRegistrationOptions {
   /** 租户标识符；缺省（匿名/未登录）时跳过注册。 */
@@ -90,11 +86,17 @@ function toTermLikeRow(link: TermLink): TermLikeRow {
   };
 }
 
-/** 分页拉取用户全部活跃词条；任一页失败返回 null（保持上一次结果）。 */
+/**
+ * 分页拉取用户全部活跃词条，直到读满服务端报告的 total——与服务端编译门禁/审批冻结
+ * 读取全部活跃词条同一口径，不设额外上限。任一页失败返回 null（保持上一次结果）。
+ */
 async function fetchAllTermRows(): Promise<TermLikeRow[] | null> {
   const rows: TermLikeRow[] = [];
-  for (let page = 1; page <= MAX_PAGES; page++) {
-    const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+  for (let page = 1; ; page++) {
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: String(VOCABULARY_LIST_MAX_PAGE_SIZE),
+    });
     const res = await fetch(`/api/v1/domain-vocabularies/terms?${params.toString()}`, {
       credentials: 'include',
     });
@@ -102,9 +104,9 @@ async function fetchAllTermRows(): Promise<TermLikeRow[] | null> {
     const data = (await res.json()) as ListResponse;
     const items = data.items ?? [];
     rows.push(...items.map(toTermLikeRow));
-    if (items.length < PAGE_SIZE || rows.length >= (data.total ?? 0)) break;
+    // 空页兜底：total 与实际行数不一致（并发删除等）时也必然终止。
+    if (items.length === 0 || rows.length >= (data.total ?? 0)) return rows;
   }
-  return rows;
 }
 
 /**

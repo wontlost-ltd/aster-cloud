@@ -16,7 +16,6 @@ import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
   db,
   domainTerms,
-  policyVersions,
   userDomainTerms,
   userVocabularySnapshots,
 } from '@/lib/prisma';
@@ -34,7 +33,7 @@ import {
 import type { TermLikeRow } from '@/lib/domain-vocabulary-assemble';
 import type { DomainVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
 import {
-  isVocabularyInScope,
+  policyScopeMatcher,
   mergeVocabularies,
   resolvePolicyVocabularyFromRows,
   selectVocabulariesForPolicy,
@@ -191,7 +190,7 @@ export async function createSnapshotsForOwner(
     const vocabJson = assembleDomainVocabularyFromLinks(rows.map(toTermLikeRow), { domain, locale });
     return { domain, locale, rows, vocabJson };
   });
-  const inScope = candidates.filter((c) => isVocabularyInScope(c.vocabJson, policy));
+  const inScope = candidates.filter((c) => policyScopeMatcher(policy)(c.vocabJson));
   const refs: SnapshotRef[] = [];
 
   for (const { domain, locale, rows, vocabJson } of inScope) {
@@ -312,43 +311,32 @@ export async function loadLiveVocabularyForPolicy(
 }
 
 /**
- * Hook invoked by version-manager.approveVersion(APPROVED). Best-effort:
- * snapshot failure must not break the approval flow because policies remain
- * executable via the embedded Core IR. We log loudly so the issue surfaces.
+ * 审批时冻结被审批版本作用域内的作者词汇（#610），返回应写入
+ * PolicyVersion.vocabularySnapshotIds 的引用，由调用方与状态变更一并落库。
+ *
+ * <p>失败直接抛出，不再静默返回空引用：否则版本会被批准却在执行时缺词汇、也无法复现
+ * 审批时的术语。作用域为空时不写任何快照、返回 []。
  */
-export async function snapshotOnPolicyApprove(params: {
+export async function freezeVocabularyForApproval(params: {
   policyVersionId: string;
-  policyAuthorId: string | null;
-  /** 被审批版本的源码与 CNL 语言：只冻结它实际使用的词汇分组（#610）。 */
+  policyAuthorId: string;
+  /** 被审批版本的源码与 CNL 语言。 */
   policy: PolicyVocabularyContext;
 }): Promise<SnapshotRef[]> {
-  if (!params.policyAuthorId) return [];
-  try {
-    const refs = await createSnapshotsForOwner(
-      { ownerType: 'user', ownerId: params.policyAuthorId },
-      params.policy,
-    );
-    await db
-      .update(policyVersions)
-      .set({ vocabularySnapshotIds: refs })
-      .where(eq(policyVersions.id, params.policyVersionId));
-
+  const refs = await createSnapshotsForOwner(
+    { ownerType: 'user', ownerId: params.policyAuthorId },
+    params.policy,
+  );
+  if (refs.length > 0) {
     await logAuditEvent({
       userId: params.policyAuthorId,
       action: 'lexicon.term.add',
       resource: 'vocabulary-snapshot',
       resourceId: params.policyVersionId,
-      metadata: {
-        action: 'created_on_publish',
-        snapshotCount: refs.length,
-      },
+      metadata: { action: 'created_on_publish', snapshotCount: refs.length },
     });
-
-    return refs;
-  } catch (err) {
-    console.error('[snapshotOnPolicyApprove] non-blocking failure', err);
-    return [];
   }
+  return refs;
 }
 
 export interface RollbackResult {

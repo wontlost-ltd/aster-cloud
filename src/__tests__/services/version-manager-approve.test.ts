@@ -32,13 +32,14 @@ vi.mock('@/lib/prisma', () => ({
 vi.mock('@/lib/team-permissions', () => ({ getTeamMemberRole: h.getTeamMemberRole }));
 vi.mock('@/services/security/security-event-service', () => ({ logSecurityEvent: h.logSecurityEvent }));
 vi.mock('@/lib/metrics/aha-detection', () => ({ recordAhaMomentIfFirst: h.recordAha }));
-vi.mock('@/lib/domain-vocabulary-snapshot', () => ({ snapshotOnPolicyApprove: h.snapshot }));
+vi.mock('@/lib/domain-vocabulary-snapshot', () => ({ freezeVocabularyForApproval: h.snapshot }));
 vi.mock('@/lib/cache', () => ({ invalidatePolicyCache: h.invalidateCache }));
 
 import {
   approveVersion,
   PolicyAccessDeniedError,
   SegregationOfDutiesError,
+  VocabularyFreezeError,
 } from '@/services/policy/version-manager';
 
 function setup(policy: { userId: string; teamId: string | null }, author: string, role: string | null = null) {
@@ -47,6 +48,7 @@ function setup(policy: { userId: string; teamId: string | null }, author: string
   h.versionsFindFirst.mockResolvedValue({
     id: 'v1', policyId: 'p1', version: 2, createdBy: author, status: 'PENDING_APPROVAL',
     content: GERMAN_SOURCE, source: null,
+    aliasSet: null, sourceEnvelopeSha256: null, sourceToolchainId: null,
   });
 }
 
@@ -71,7 +73,7 @@ describe('approveVersion — 团队策略', () => {
     await approveVersion({ policyId: 'p1', version: 2, approverId: 'admin1', decision: 'APPROVED' });
 
     expect(h.getTeamMemberRole).toHaveBeenCalledWith('admin1', 'team1');
-    expect(h.updateSet).toHaveBeenCalledWith({ status: 'APPROVED' });
+    expect(h.updateSet).toHaveBeenCalledWith({ status: 'APPROVED', vocabularySnapshotIds: [] });
     expect(decisionEvent().details).toEqual({ version: 2, decision: 'APPROVED', comment: undefined });
   });
 
@@ -116,7 +118,7 @@ describe('approveVersion — 个人策略', () => {
     await approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED', comment: 'ok' });
 
     expect(h.getTeamMemberRole).not.toHaveBeenCalled();
-    expect(h.updateSet).toHaveBeenCalledWith({ status: 'APPROVED' });
+    expect(h.updateSet).toHaveBeenCalledWith({ status: 'APPROVED', vocabularySnapshotIds: [] });
     expect(decisionEvent().details).toEqual({ version: 2, decision: 'APPROVED', comment: 'ok', selfApproved: true });
     expect(h.recordAha).toHaveBeenCalledWith(expect.objectContaining({ userId: 'owner', policyVersionId: 'v1' }));
   });
@@ -137,11 +139,10 @@ describe('approveVersion — 个人策略', () => {
 });
 
 describe('approveVersion — 词汇快照（#610）', () => {
-  it('只按被审批版本的源码与语言冻结词汇，且在缓存失效前完成', async () => {
+  it('按被审批版本的源码与语言冻结词汇，引用随状态一并写入', async () => {
     setup({ userId: 'owner', teamId: null }, 'owner');
-    const order: string[] = [];
-    h.snapshot.mockImplementation(async () => { order.push('snapshot'); return []; });
-    h.invalidateCache.mockImplementation(async () => { order.push('invalidate'); });
+    const refs = [{ snapshotId: 's1', domain: 'e2e1026', locale: 'de' }];
+    h.snapshot.mockResolvedValue(refs);
 
     await approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' });
 
@@ -150,14 +151,26 @@ describe('approveVersion — 词汇快照（#610）', () => {
       policyAuthorId: 'owner',
       policy: { source: GERMAN_SOURCE, locale: 'de-DE' },
     });
-    expect(order.indexOf('snapshot')).toBeLessThan(order.indexOf('invalidate'));
+    expect(h.updateSet).toHaveBeenCalledWith({ status: 'APPROVED', vocabularySnapshotIds: refs });
   });
 
-  it('驳回不冻结词汇', async () => {
+  it('冻结失败 → 审批整体失败：不写审批记录、不改状态、不失效缓存', async () => {
+    setup({ userId: 'owner', teamId: null }, 'owner');
+    h.snapshot.mockRejectedValue(new Error('db down'));
+
+    await expect(approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' }))
+      .rejects.toBeInstanceOf(VocabularyFreezeError);
+    expect(h.insertValues).not.toHaveBeenCalled();
+    expect(h.updateSet).not.toHaveBeenCalled();
+    expect(h.invalidateCache).not.toHaveBeenCalled();
+  });
+
+  it('驳回不冻结词汇，也不改写快照引用', async () => {
     setup({ userId: 'owner', teamId: null }, 'owner');
 
     await approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'REJECTED' });
 
     expect(h.snapshot).not.toHaveBeenCalled();
+    expect(h.updateSet).toHaveBeenCalledWith({ status: 'REJECTED' });
   });
 });
