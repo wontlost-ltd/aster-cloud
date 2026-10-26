@@ -1,13 +1,19 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { db, domainTerms, structuralAliasGrants, userDomainTerms } from '@/lib/prisma';
+import { bypassQueryCache } from '@/db/fresh-read';
 import { extractReservedAliasSets, getLexicon } from '@/lib/aster-lexicon';
 import { normalizeAliasToken, type ReservedSets } from '@/lib/policy-alias-shared';
 
+/**
+ * 用户当前是否持有结构词别名授权。
+ * 授权是权限状态：管理员授予 / 撤销后编辑器与保存校验必须立即生效，故绕过 Hyperdrive 缓存（#614）。
+ */
 export async function getStructuralAliasGrant(userId: string): Promise<boolean> {
   const grant = await db.query.structuralAliasGrants.findFirst({
     where: and(
       eq(structuralAliasGrants.userId, userId),
       isNull(structuralAliasGrants.revokedAt),
+      bypassQueryCache(),
     ),
     columns: { id: true },
   });
