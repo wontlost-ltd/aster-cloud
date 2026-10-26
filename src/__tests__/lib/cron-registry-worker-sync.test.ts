@@ -46,3 +46,17 @@ describe('worker.js CRON_DISPATCH ↔ CRON_REGISTRY parity', () => {
     }
   });
 });
+
+// wrangler.toml 的 [triggers].crons 是 Cloudflare 真正调度的清单；registry 里有、
+// wrangler 里没有的 cron 永远不会触发（#605：bulk worker 就是这样一直停在 queued）。
+describe('wrangler.toml [triggers].crons ↔ CRON_REGISTRY parity', () => {
+  const toml = readFileSync(resolve(process.cwd(), 'wrangler.toml'), 'utf8');
+  const line = toml.match(/^\[triggers\]\s*\ncrons\s*=\s*\[([^\]]*)\]/m);
+
+  it('两边的 cron 表达式集合完全一致', () => {
+    expect(line, '[triggers] crons not found in wrangler.toml').toBeTruthy();
+    const crons = [...(line?.[1] ?? '').matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    expect(new Set(crons).size).toBe(crons.length);
+    expect(new Set(crons)).toEqual(new Set(CRON_REGISTRY.map((c) => c.cron)));
+  });
+});

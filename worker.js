@@ -52,6 +52,7 @@ const CRON_DISPATCH = {
   "0 4 * * *": "/api/cron/execution-retention-gc",
   "15 4 * * *": "/api/cron/two-factor-code-gc",
   "25 * * * *": "/api/cron/cleanup-nonces",
+  "* * * * *": "/api/cron/domain-vocabulary-bulk-worker",
 };
 
 async function dispatchCron(event, env, ctx) {

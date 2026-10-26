@@ -24,6 +24,7 @@ const hoisted = vi.hoisted(() => ({
   delete: vi.fn(() => ({ where: hoisted.deleteWhere })),
   execute: vi.fn(),
   transaction: vi.fn(),
+  savepoint: vi.fn(),
   findFirst: vi.fn(),
 }));
 
@@ -44,6 +45,7 @@ vi.mock('@/lib/prisma', () => {
     users: tableProxy,
     userDomainTerms: tableProxy,
     userVocabularySnapshots: tableProxy,
+    userVocabularyVersions: tableProxy,
     lexiconBulkJobs: tableProxy,
     lexiconIdempotencyKeys: tableProxy,
   };
@@ -96,8 +98,8 @@ beforeEach(() => {
   hoisted.deleteWhere.mockImplementation(() => ({ returning: hoisted.deleteReturning }));
   hoisted.deleteReturning.mockResolvedValue([]);
   hoisted.execute.mockResolvedValue({ rows: [] });
-  hoisted.transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
-    fn({
+  hoisted.transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+    const tx: Record<string, unknown> = {
       execute: vi.fn().mockResolvedValue({ rows: [] }),
       insert: hoisted.insert,
       update: hoisted.update,
@@ -106,8 +108,12 @@ beforeEach(() => {
       query: {
         userVocabularySnapshots: { findFirst: hoisted.findFirst },
       },
-    }),
-  );
+    };
+    // 嵌套 transaction = 保存点；在 mock 里直接复用同一个 tx。
+    tx.transaction = hoisted.savepoint;
+    hoisted.savepoint.mockImplementation(async (inner: (sp: unknown) => unknown) => inner(tx));
+    return fn(tx);
+  });
 });
 
 describe('archiveDowngradedUserVocabulary', () => {
@@ -152,14 +158,57 @@ describe('purgeUserVocabulary', () => {
       )
       .mockReturnValueOnce({ returning: hoisted.deleteReturning })
       .mockReturnValueOnce({ returning: hoisted.deleteReturning })
-      .mockReturnValueOnce({ returning: hoisted.deleteReturning });
+      .mockReturnValueOnce({ returning: hoisted.deleteReturning })
+      // 最后：UserVocabularyVersion（必须在删词条之后，否则 DELETE 触发器会重建它）。
+      .mockReturnValueOnce(
+        Promise.resolve(undefined) as unknown as { returning: typeof hoisted.deleteReturning },
+      );
 
     const outcome = await purgeUserVocabulary('user-1');
 
     expect(outcome.snapshotsDeleted).toBe(2);
     expect(outcome.bulkJobsDeleted).toBe(1);
     expect(outcome.idempotencyDeleted).toBe(3);
-    expect(hoisted.delete).toHaveBeenCalledTimes(4);
+    expect(hoisted.delete).toHaveBeenCalledTimes(5);
     expect(hoisted.transaction).toHaveBeenCalledTimes(1);
+    // 版本行删除放在保存点里，迁移窗口内缺表不会毁掉外层事务。
+    expect(hoisted.savepoint).toHaveBeenCalledTimes(1);
+  });
+
+  // 迁移窗口：Worker 已部署而 0059 未应用，UserVocabularyVersion 不存在。
+  function scriptPurgeWithVersionDelete(versionDeleteError: unknown) {
+    hoisted.deleteReturning
+      .mockResolvedValueOnce([{ id: 'b1' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 's1' }]);
+    hoisted.deleteWhere
+      .mockReturnValueOnce(
+        Promise.resolve(undefined) as unknown as { returning: typeof hoisted.deleteReturning },
+      )
+      .mockReturnValueOnce({ returning: hoisted.deleteReturning })
+      .mockReturnValueOnce({ returning: hoisted.deleteReturning })
+      .mockReturnValueOnce({ returning: hoisted.deleteReturning })
+      // 惰性构造 rejected promise，避免在被 await 之前就成为未处理的拒绝。
+      .mockImplementationOnce(
+        () => Promise.reject(versionDeleteError) as unknown as { returning: typeof hoisted.deleteReturning },
+      );
+  }
+
+  it('迁移窗口：版本表缺失（42P01）时跳过该步，其余清理照常提交', async () => {
+    const undefinedTable = Object.assign(new Error('Failed query: delete from "UserVocabularyVersion"'), {
+      cause: { code: '42P01' },
+    });
+    scriptPurgeWithVersionDelete(undefinedTable);
+
+    const outcome = await purgeUserVocabulary('user-1');
+
+    expect(outcome).toEqual({ snapshotsDeleted: 1, bulkJobsDeleted: 1, idempotencyDeleted: 0 });
+    expect(hoisted.savepoint).toHaveBeenCalledTimes(1);
+  });
+
+  it('版本行删除遇到 42P01 以外的错误照常抛出，整个清理回滚', async () => {
+    scriptPurgeWithVersionDelete(Object.assign(new Error('boom'), { code: '08006' }));
+
+    await expect(purgeUserVocabulary('user-1')).rejects.toThrow('boom');
   });
 });
