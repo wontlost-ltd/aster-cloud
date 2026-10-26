@@ -11,6 +11,7 @@ vi.mock('@/lib/prisma', () => {
   return {
     db: {},
     domainTerms: tableProxy,
+    policies: tableProxy,
     policyVersions: tableProxy,
     userDomainTerms: tableProxy,
     userVocabularySnapshots: tableProxy,
@@ -18,7 +19,11 @@ vi.mock('@/lib/prisma', () => {
 });
 vi.mock('@/lib/audit-log', () => ({ logAuditEvent: vi.fn() }));
 
-import { countSnapshotRefs, releaseSnapshotRefsForPolicy } from '@/lib/domain-vocabulary-snapshot';
+import {
+  countSnapshotRefs,
+  lockPolicyForSnapshotRefs,
+  releaseSnapshotRefsForPolicy,
+} from '@/lib/domain-vocabulary-snapshot';
 
 const ref = (snapshotId: string) => ({ snapshotId, domain: 'd', locale: 'de' });
 
@@ -50,12 +55,33 @@ describe('countSnapshotRefs', () => {
   });
 });
 
-/** 记录调用的假事务：select 返回给定版本行，update 记录 set/where。 */
-function fakeTx(versionRefs: unknown[]) {
+/**
+ * 记录调用的假事务：第一次 select 返回版本行（from→where），第二次返回快照当前计数
+ * （from→where→orderBy→for('update')）；update 记录 set/where。
+ */
+function fakeTx(versionRefs: unknown[], snapshotCounts: Record<string, number> = {}) {
   const updates: Array<{ set: unknown; where: unknown }> = [];
-  const selectWhere = vi.fn().mockResolvedValue(versionRefs.map((refs) => ({ refs })));
+  const lockModes: string[] = [];
+  const versionRows = versionRefs.map((refs) => ({ refs }));
+  const snapshotRows = Object.entries(snapshotCounts).map(([id, refCount]) => ({ id, refCount }));
+  let selects = 0;
   const tx = {
-    select: vi.fn(() => ({ from: vi.fn(() => ({ where: selectWhere })) })),
+    select: vi.fn(() => {
+      selects += 1;
+      if (selects === 1) return { from: () => ({ where: async () => versionRows }) };
+      return {
+        from: () => ({
+          where: () => ({
+            orderBy: () => ({
+              for: async (mode: string) => {
+                lockModes.push(mode);
+                return snapshotRows;
+              },
+            }),
+          }),
+        }),
+      };
+    }),
     update: vi.fn(() => ({
       set: (set: unknown) => ({
         where: async (where: unknown) => {
@@ -64,28 +90,84 @@ function fakeTx(versionRefs: unknown[]) {
       }),
     })),
   };
-  return { tx, updates, selectWhere };
+  return { tx, updates, lockModes };
 }
 
+const chunksOf = (u: { set: unknown }) => (u.set as { refCount: { queryChunks: unknown[] } }).refCount.queryChunks;
+
 describe('releaseSnapshotRefsForPolicy', () => {
-  it('每个被引用快照一次 UPDATE，递减量 = 引用次数，且带 0 下限', async () => {
-    const { tx, updates } = fakeTx([[ref('s1'), ref('s2')], [ref('s1')]]);
+  it('每个被引用快照一次 UPDATE，递减量 = 引用次数，带 0 下限，且先 FOR UPDATE 锁快照行', async () => {
+    const { tx, updates, lockModes } = fakeTx([[ref('s1'), ref('s2')], [ref('s1')]], { s1: 5, s2: 1 });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const n = await releaseSnapshotRefsForPolicy('p1', tx as never);
     expect(n).toBe(2);
+    expect(lockModes).toEqual(['update']);
     expect(updates).toHaveLength(2);
     // drizzle sql 片段里依次是：GREATEST(… - <times>, 0)
-    const chunks = (u: { set: unknown }) =>
-      JSON.stringify((u.set as { refCount: { queryChunks: unknown[] } }).refCount.queryChunks);
-    expect(chunks(updates[0])).toContain('GREATEST(');
-    expect(chunks(updates[0])).toContain(', 0)');
-    expect((updates[0].set as { refCount: { queryChunks: unknown[] } }).refCount.queryChunks).toContain(2);
-    expect((updates[1].set as { refCount: { queryChunks: unknown[] } }).refCount.queryChunks).toContain(1);
+    expect(JSON.stringify(chunksOf(updates[0]))).toContain('GREATEST(');
+    expect(JSON.stringify(chunksOf(updates[0]))).toContain(', 0)');
+    expect(chunksOf(updates[0])).toContain(2);
+    expect(chunksOf(updates[1])).toContain(1);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 
-  it('策略没有任何快照引用 → 不发 UPDATE', async () => {
+  it('要减的次数超过现有计数：仍夹到 0，但记告警（不变量被破坏不能静默吞掉）', async () => {
+    const { tx, updates } = fakeTx([[ref('s1')], [ref('s1')]], { s1: 1 });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await releaseSnapshotRefsForPolicy('p1', tx as never);
+    expect(updates).toHaveLength(1);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('underflow'),
+      expect.objectContaining({ policyId: 'p1', snapshotId: 's1', refCount: 1, times: 2 }),
+    );
+    warn.mockRestore();
+  });
+
+  it('引用指向已不存在的快照行：告警并跳过', async () => {
+    const { tx, updates } = fakeTx([[ref('gone')]], {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(await releaseSnapshotRefsForPolicy('p1', tx as never)).toBe(0);
+    expect(updates).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('underflow'), expect.objectContaining({ refCount: null }));
+    warn.mockRestore();
+  });
+
+  it('策略没有任何快照引用 → 不锁不改', async () => {
     const { tx, updates } = fakeTx([[], null]);
     expect(await releaseSnapshotRefsForPolicy('p1', tx as never)).toBe(0);
     expect(updates).toEqual([]);
+    expect(tx.select).toHaveBeenCalledTimes(1);
     expect(tx.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('lockPolicyForSnapshotRefs', () => {
+  function lockTx(rows: Array<{ id: string; deletedAt: Date | null }>) {
+    const modes: string[] = [];
+    const tx = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            for: async (mode: string) => {
+              modes.push(mode);
+              return rows;
+            },
+          }),
+        }),
+      }),
+    };
+    return { tx, modes };
+  }
+
+  it('策略存在且未软删 → true，并以 FOR UPDATE 加锁', async () => {
+    const { tx, modes } = lockTx([{ id: 'p1', deletedAt: null }]);
+    expect(await lockPolicyForSnapshotRefs(tx as never, 'p1')).toBe(true);
+    expect(modes).toEqual(['update']);
+  });
+
+  it('策略已删除或已软删 → false', async () => {
+    expect(await lockPolicyForSnapshotRefs(lockTx([]).tx as never, 'p1')).toBe(false);
+    expect(await lockPolicyForSnapshotRefs(lockTx([{ id: 'p1', deletedAt: new Date() }]).tx as never, 'p1')).toBe(false);
   });
 });

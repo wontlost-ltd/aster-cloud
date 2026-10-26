@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { computeSourceEnvelope } from '@/lib/policy-alias';
+import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
 
 /**
  * #627：德语界面编辑英文策略时，状态栏显示 CNL DE-DE、别名面板规范列显示德语关键词。
- * 编辑器的 CNL 语言必须是策略的语言（源码识别 / 已记录 locale），不是界面语言；
- * 保存请求提交的 locale 与之一致。
+ * 编辑器的 CNL 语言必须是策略的语言，且与执行端（resolveStoredVersionLocale）同一判定；
+ * 源码看起来是另一种语言时只提示，由用户显式切换后保存才改变 locale。
  */
 
 const h = vi.hoisted(() => ({
@@ -52,11 +54,7 @@ const GERMAN = `Modul e2e.vocab.
 Definiere Fahrer hat alter als Ganzzahl.
 `;
 
-function renderForm(opts: {
-  mode: 'create' | 'edit';
-  content: string;
-  policyCnlLocale?: string | null;
-}) {
+function renderForm(opts: { mode: 'create' | 'edit'; content: string; policyCnlLocale?: string | null }) {
   const onSave = vi.fn(async (_fields: unknown, _ctx: PolicySaveContext) => ({ id: 'p1' }));
   render(
     <PolicyForm
@@ -87,44 +85,68 @@ function statusLocale(): string {
   return (JSON.parse(match![1]) as { locale: string }).locale;
 }
 
+async function saveAndGetLocale(onSave: ReturnType<typeof renderForm>['onSave'], button = 'save'): Promise<string> {
+  fireEvent.click(screen.getByRole('button', { name: button }));
+  await waitFor(() => expect(onSave).toHaveBeenCalled());
+  return onSave.mock.calls[0][1].locale;
+}
+
 describe('PolicyForm 的 CNL 语言跟随策略而非界面语言（#627）', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('德语界面编辑英文策略：状态栏 EN-US，别名面板拿到 en-US，保存提交 en-US', async () => {
+  it('德语界面编辑英文策略：状态栏 EN-US，别名面板拿到 en-US，无提示，保存提交 en-US', async () => {
     const { onSave } = renderForm({ mode: 'edit', content: ENGLISH, policyCnlLocale: 'en-US' });
 
     expect(statusLocale()).toBe('EN-US');
     expect(panelLocale()).toBe('en-US');
-
-    fireEvent.click(screen.getByRole('button', { name: 'save' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave.mock.calls[0][1]).toEqual({ locale: 'en-US' });
+    expect(screen.queryByTestId('policy-locale-mismatch')).toBeNull();
+    expect(await saveAndGetLocale(onSave)).toBe('en-US');
   });
 
-  it('已记录 locale 被界面语言污染（de-DE）但源码明确是英文：以源码为准', () => {
-    renderForm({ mode: 'edit', content: ENGLISH, policyCnlLocale: 'de-DE' });
-    expect(statusLocale()).toBe('EN-US');
+  describe('历史版本记录为 en-US、源码看起来是德语', () => {
+    const recorded = () =>
+      resolveStoredVersionLocale({
+        source: GERMAN,
+        aliasSet: null,
+        sourceEnvelopeSha256: computeSourceEnvelope(GERMAN, null, 'en-US', 'tc-1'),
+        sourceToolchainId: 'tc-1',
+        vocabularySnapshotIds: null,
+      });
+
+    it('执行端与编辑器同为 en-US，编辑器给出切换提示；不切换时保存仍提交 en-US', async () => {
+      expect(recorded()).toBe('en-US'); // 执行（secure-execute / 审批冻结）使用的值
+      const { onSave } = renderForm({ mode: 'edit', content: GERMAN, policyCnlLocale: recorded() });
+
+      expect(statusLocale()).toBe('EN-US');
+      expect(panelLocale()).toBe('en-US');
+      expect(screen.getByTestId('policy-locale-mismatch').textContent).toContain('"detected":"DE-DE"');
+      expect(await saveAndGetLocale(onSave)).toBe('en-US');
+    });
+
+    it('用户显式切换后：显示 DE-DE、提示消失，保存提交 de-DE', async () => {
+      const { onSave } = renderForm({ mode: 'edit', content: GERMAN, policyCnlLocale: recorded() });
+
+      fireEvent.click(screen.getByRole('button', { name: 'localeMismatchSwitch:{"locale":"DE-DE"}' }));
+
+      expect(statusLocale()).toBe('DE-DE');
+      expect(panelLocale()).toBe('de-DE');
+      expect(screen.queryByTestId('policy-locale-mismatch')).toBeNull();
+      expect(await saveAndGetLocale(onSave)).toBe('de-DE');
+    });
   });
 
-  it('德语策略照常显示 DE-DE', () => {
-    renderForm({ mode: 'edit', content: GERMAN, policyCnlLocale: 'de-DE' });
-    expect(statusLocale()).toBe('DE-DE');
-  });
-
-  it('源码无法高置信识别时用已记录 locale（如 hi-IN）', () => {
+  it('识别器不认识的语言（hi-IN）按服务端解析值显示，不提示', () => {
     renderForm({ mode: 'edit', content: 'x', policyCnlLocale: 'hi-IN' });
     expect(statusLocale()).toBe('HI-IN');
     expect(panelLocale()).toBe('hi-IN');
+    expect(screen.queryByTestId('policy-locale-mismatch')).toBeNull();
   });
 
   it('新建英文策略（德语界面）：EN-US，保存提交 en-US 而非界面语言', async () => {
     const { onSave } = renderForm({ mode: 'create', content: ENGLISH });
     expect(statusLocale()).toBe('EN-US');
     expect(panelLocale()).toBe('en-US');
-
-    fireEvent.click(screen.getByRole('button', { name: 'create' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave.mock.calls[0][1]).toEqual({ locale: 'en-US' });
+    expect(await saveAndGetLocale(onSave, 'create')).toBe('en-US');
   });
 
   it('新建空策略：沿用界面语言对应的 CNL 语言', () => {

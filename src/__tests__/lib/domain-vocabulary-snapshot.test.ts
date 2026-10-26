@@ -41,6 +41,7 @@ vi.mock('@/lib/prisma', () => {
       },
     },
     domainTerms: tableProxy,
+    policies: tableProxy,
     policyVersions: tableProxy,
     userDomainTerms: tableProxy,
     userVocabularySnapshots: tableProxy,

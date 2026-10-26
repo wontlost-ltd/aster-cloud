@@ -11,6 +11,7 @@
 import { computeSourceEnvelope } from '@/lib/policy-alias';
 import { detectCNLLocale } from '@/services/policy/cnl-executor';
 import { CNL_LOCALES } from '@/lib/cnl-locale';
+import { choosePolicyLocale } from '@/lib/policy-locale-priority';
 
 /**
  * envelope 可能记录的 locale：新版本只会是受支持的规范标签（保存入口校验 + createVersion
@@ -48,13 +49,20 @@ function uniqueSnapshotLocale(refs: unknown): string | undefined {
   return locales.size === 1 ? [...locales][0] : undefined;
 }
 
-/** 已存版本的 CNL 语言（优先级见文件头）。 */
+/**
+ * 已存版本的 CNL 语言（优先级见文件头，判定顺序统一由 policy-locale-priority 提供）。
+ * 执行、审批冻结与编辑页都调用它，因此编辑器显示的语言与执行使用的语言一致（#627）。
+ */
 export function resolveStoredVersionLocale(version: StoredVersionLocaleInput): string {
   const recorded = recordedCompileLocale(version);
-  if (recorded) return recorded;
-  if (version.sourceEnvelopeSha256) {
+  if (!recorded && version.sourceEnvelopeSha256) {
     // 有 envelope 却反推不出：旧版本保存时用了不受支持的 locale，只能走兜底链。
     console.warn('[policy-version-locale] recorded compile locale not recoverable; falling back');
   }
-  return uniqueSnapshotLocale(version.vocabularySnapshotIds) ?? detectCNLLocale(version.source);
+  return choosePolicyLocale({
+    recorded,
+    snapshotLocale: uniqueSnapshotLocale(version.vocabularySnapshotIds),
+    source: version.source,
+    detect: detectCNLLocale,
+  });
 }

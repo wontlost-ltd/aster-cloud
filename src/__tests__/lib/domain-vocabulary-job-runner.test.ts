@@ -73,6 +73,30 @@ const job = (inputJson: unknown[]) => ({
   claimedBy: 'worker-a:claim-1',
 });
 
+type Outcome = Awaited<ReturnType<typeof processBulkJobChunk>>;
+
+/**
+ * #629 计数口径：本次推进的每一行恰好是 added / reused / skipped 之一，
+ * skipped 与行级错误一一对应（lost claim 时整块不生效，各项都是 0）。
+ */
+function expectDeltaInvariant(outcome: Outcome) {
+  const { added, reused, skipped, errorCount } = outcome.rollupDelta;
+  expect(added + reused + skipped).toBe(outcome.processedDelta);
+  expect(errorCount).toBe(skipped);
+  expect(outcome.errorsDelta).toHaveLength(errorCount);
+}
+
+/** 写回任务行的 processed / rollup / errors（取最近一次提交）。 */
+function persisted() {
+  const calls = hoisted.txUpdateSet.mock.calls;
+  return calls[calls.length - 1][0] as {
+    processed: number;
+    rollup: { added: number; reused: number; skipped: number; errorCount: number };
+    errors: unknown[];
+    status: string;
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   hoisted.selectQueue.length = 0;
@@ -114,6 +138,7 @@ describe('processBulkJobChunk', () => {
 
     expect(outcome).toMatchObject({ finished: true, lostClaim: false });
     expect(outcome.rollupDelta).toMatchObject({ added: 2, reused: 0, skipped: 2, errorCount: 2 });
+    expectDeltaInvariant(outcome);
     expect(outcome.errorsDelta.map((e) => [e.row, e.code])).toEqual([
       [1, 'duplicate_link'],
       [3, 'validation_failed'],
@@ -136,6 +161,7 @@ describe('processBulkJobChunk', () => {
     const outcome = await processBulkJobChunk(job([row('Vehicle')]));
 
     expect(outcome).toMatchObject({ lostClaim: true, finished: false, processedDelta: 0 });
+    expectDeltaInvariant(outcome);
     // 事务回调抛错 = 真实数据库里整个 chunk（含刚建的链接）回滚。
     await expect(hoisted.transaction.mock.results[0].value).rejects.toThrow(/claim lost/);
     expect(logAuditEvent).not.toHaveBeenCalled();
@@ -178,10 +204,56 @@ describe('processBulkJobChunk', () => {
 
     expect(outcome).toMatchObject({ processedDelta: 2, finished: false, lostClaim: false });
     expect(outcome.rollupDelta).toMatchObject({ added: 1 });
+    expectDeltaInvariant(outcome);
     // 第 1 行校验失败、位于停止点之前 → 保留；Gamma 未处理，留给下次。
     expect(outcome.errorsDelta.map((e) => [e.row, e.code])).toEqual([[1, 'validation_failed']]);
     expect(hoisted.txUpdateSet).toHaveBeenCalledWith(
       expect.objectContaining({ processed: 2, status: 'queued' }),
     );
+  });
+  it('#629 跨两次认领（超时停下 → 下次续跑）：完成时 processed = rowCount = added + reused + skipped', async () => {
+    const failing = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoNothing: vi.fn().mockReturnValue({
+          returning: vi.fn().mockRejectedValue(new Error('batch failed')),
+        }),
+      }),
+    };
+    const input = [row('Alpha'), row('Bad', { domain: 'Bad Domain' }), row('Gamma')];
+    hoisted.selectQueue.push([]);
+    hoisted.insert
+      .mockReturnValueOnce(failing)
+      .mockReturnValueOnce(insertChain([{ id: 'term-a' }]))
+      .mockReturnValueOnce(insertChain([{ id: 'link-a' }]));
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const first = await processBulkJobChunk(job(input), { deadline: 0 });
+    spy.mockRestore();
+    expectDeltaInvariant(first);
+    const afterFirst = persisted();
+
+    // 第二次认领：从 processed=2 续跑，带着第一次写回的 rollup / errors
+    hoisted.selectQueue.push([]);
+    hoisted.insert
+      .mockReturnValueOnce(insertChain([{ id: 'term-g', dedupKey: key(row('Gamma')) }]))
+      .mockReturnValueOnce(insertChain([{ termId: 'term-g' }]));
+    const second = await processBulkJobChunk({
+      ...job(input),
+      processed: afterFirst.processed,
+      rollup: afterFirst.rollup,
+      errors: afterFirst.errors,
+    });
+    expectDeltaInvariant(second);
+
+    const final = persisted();
+    expect(final).toMatchObject({ status: 'completed', processed: 3 });
+    expect(final.rollup.added + final.rollup.reused + final.rollup.skipped).toBe(3);
+    expect(final.rollup.errorCount).toBe(final.rollup.skipped);
+    expect(final.errors).toHaveLength(final.rollup.errorCount);
+  });
+
+  it('#629 chunk 事务意外失败：异常上抛、进度与计数都不写回（下次认领整块重做，不会重复计数）', async () => {
+    hoisted.transaction.mockRejectedValueOnce(new Error('connection reset'));
+    await expect(processBulkJobChunk(job([row('Vehicle')]))).rejects.toThrow('connection reset');
+    expect(hoisted.txUpdateSet).not.toHaveBeenCalled();
   });
 });

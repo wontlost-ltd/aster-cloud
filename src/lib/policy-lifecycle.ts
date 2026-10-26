@@ -40,16 +40,20 @@ export interface TrashItem {
  * 这里仍显式先删回收站行：纵深防御，不把回收站一致性押在单一机制上；
  * 同时让已成孤儿的回收站行（Policy 早已不在）也能被清理掉，而不是永远残留。
  *
- * 同一事务内先释放该策略各版本对词汇快照的引用（refCount 递减，#628），否则快照会永远显示
- * 「仍被引用」。PolicyVersion 与 Policy 之间没有外键，版本行不随策略删除（执行记录等仍引用），
- * 但策略行与回收站行在本事务里一起消失，此后任何路径都不会再对同一策略调用 purge，
- * 因此每个策略的引用只释放一次。永久删除、过期清理、清空回收站三条路径都经由这里。
+ * 词汇快照引用（#628）：`DELETE … RETURNING` 取策略行锁（与审批事务的 FOR UPDATE 同一把），
+ * 只有真正删掉策略行的事务才释放其版本的快照引用，并发/重复删除不会重复释放。
+ * 版本行不随策略删除（无外键），作为历史证据保留，但不再计入引用（约定见
+ * domain-vocabulary-snapshot 的「快照引用的归属与并发约定」）。
+ * 永久删除、过期清理、清空回收站三条路径都经由这里。
  */
 async function purgePolicy(policyId: string): Promise<void> {
   await db.transaction(async (tx) => {
-    await releaseSnapshotRefsForPolicy(policyId, tx);
     await tx.delete(policyRecycleBins).where(eq(policyRecycleBins.policyId, policyId));
-    await tx.delete(policies).where(eq(policies.id, policyId));
+    const removed = await tx
+      .delete(policies)
+      .where(eq(policies.id, policyId))
+      .returning({ id: policies.id });
+    if (removed.length > 0) await releaseSnapshotRefsForPolicy(policyId, tx);
   });
 }
 

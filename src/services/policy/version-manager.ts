@@ -20,6 +20,7 @@ import { invalidatePolicyCache } from '@/lib/cache';
 import {
   auditVocabularyFreeze,
   freezeVocabularyForApproval,
+  lockPolicyForSnapshotRefs,
   type SnapshotRef,
   type SnapshotTx,
 } from '@/lib/domain-vocabulary-snapshot';
@@ -640,6 +641,11 @@ export async function approveVersion(params: {
   // 词汇冻结（含快照 refCount 递增）、审批记录、状态更新在同一事务内：冻结失败则整个审批
   // 失败（不留下「已批准但缺词汇」的版本），审批写入失败则冻结一并回滚（refCount 不多计）。
   const vocabularySnapshotIds = await db.transaction(async (tx) => {
+    // 先锁策略行（与 purgePolicy 的 DELETE 同一把锁，#628）：策略若已在此期间被删除或软删，
+    // 不再审批，避免给孤儿版本加快照引用；锁住后并发的永久删除会等本事务提交再读引用并释放。
+    if (!(await lockPolicyForSnapshotRefs(tx, policyId))) {
+      throw new PolicyAccessDeniedError();
+    }
     const refs = decision === 'APPROVED' ? await freezeApprovalVocabulary(targetVersion, tx) : undefined;
     await tx.insert(policyApprovals).values({
       id: crypto.randomUUID(),

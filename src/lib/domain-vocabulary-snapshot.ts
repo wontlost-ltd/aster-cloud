@@ -16,6 +16,7 @@ import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
   db,
   domainTerms,
+  policies,
   policyVersions,
   userDomainTerms,
   userVocabularySnapshots,
@@ -359,11 +360,38 @@ export function countSnapshotRefs(refLists: readonly unknown[]): Array<[string, 
 }
 
 /**
- * 策略被物理删除前，释放其所有版本对词汇快照的引用（#628）：按引用次数递减 refCount，
- * 下限 0（与表上 refCount >= 0 的 CHECK 一致，历史上多减/漏增的数据也不会让删除失败）。
+ * 快照引用的归属与并发约定（#628）：
  *
- * 必须在删除策略的同一事务 `tx` 内调用：删除失败回滚时递减一并回滚，不会少计；
- * 删除成功后策略不再进入回收站清理路径，不会被重复释放。
+ * - **引用只属于仍存在的策略。** 审批把版本引用的每个快照 refCount +1；策略被物理删除时，
+ *   在同一事务内把它所有版本的引用一次性减掉。PolicyVersion 与 Policy 之间没有外键，被删策略的
+ *   版本行（含 vocabularySnapshotIds）作为历史证据原样保留、不改写，但它们**不再计入** refCount。
+ * - **审批与删除按策略行串行。** 审批事务先 {@link lockPolicyForSnapshotRefs}（Policy 行
+ *   FOR UPDATE，并确认策略仍未删除），删除事务的 `DELETE … RETURNING` 取同一把行锁。因此
+ *   释放时读到的版本引用不会漏掉并发审批刚写入的引用，策略删除后也不会再有审批给孤儿版本加引用。
+ * - **只释放一次。** 只有 `DELETE … RETURNING` 真正删掉策略行的那个事务才调用
+ *   {@link releaseSnapshotRefsForPolicy}；并发或重复的删除拿到 0 行，不再释放。
+ *   全库只有这一处会按版本引用递减 refCount，孤儿版本此后不会被任何路径重新计数或再次释放。
+ */
+
+/**
+ * 在审批事务内锁住策略行（FOR UPDATE），返回策略是否仍可审批（存在且未被软删除）。
+ * 与 purgePolicy 的 `DELETE … RETURNING` 争同一把行锁，串行化「审批加引用」与「删除放引用」。
+ */
+export async function lockPolicyForSnapshotRefs(tx: SnapshotTx, policyId: string): Promise<boolean> {
+  const rows = await tx
+    .select({ id: policies.id, deletedAt: policies.deletedAt })
+    .from(policies)
+    .where(eq(policies.id, policyId))
+    .for('update');
+  return rows.length > 0 && rows[0]!.deletedAt === null;
+}
+
+/**
+ * 释放一条**已在本事务内被删除**的策略的所有快照引用（#628）：按引用次数递减 refCount。
+ *
+ * 调用方必须先在同一事务 `tx` 里 `DELETE … RETURNING` 删掉策略行且确实删到了（约定见上）。
+ * 递减下限 0（与表上 refCount >= 0 的 CHECK 一致）；但要减的次数超过现有计数说明不变量已被
+ * 破坏（历史漏增、或绕过本约定的删除），这里记告警与指标，不静默吞掉。
  * 快照行本身不删：执行记录的 vocabSnapshotRef 仍可能指向它，是否回收只看 refCount。
  *
  * @returns 被递减的快照个数
@@ -374,13 +402,43 @@ export async function releaseSnapshotRefsForPolicy(policyId: string, tx: Snapsho
     .from(policyVersions)
     .where(eq(policyVersions.policyId, policyId));
   const counts = countSnapshotRefs(versions.map((v) => v.refs));
+  if (counts.length === 0) return 0;
+
+  // 按 id 顺序锁住快照行并读出当前计数，用于发现「要减的比现有的多」的不变量破坏。
+  const current = await tx
+    .select({ id: userVocabularySnapshots.id, refCount: userVocabularySnapshots.refCount })
+    .from(userVocabularySnapshots)
+    .where(inArray(userVocabularySnapshots.id, counts.map(([id]) => id)))
+    .orderBy(asc(userVocabularySnapshots.id))
+    .for('update');
+  const before = new Map(current.map((row) => [row.id, row.refCount]));
+
+  let released = 0;
   for (const [snapshotId, times] of counts) {
+    const refCount = before.get(snapshotId);
+    if (refCount === undefined || refCount < times) {
+      reportRefCountUnderflow({ policyId, snapshotId, refCount: refCount ?? null, times });
+    }
+    if (refCount === undefined) continue;
     await tx
       .update(userVocabularySnapshots)
       .set({ refCount: sql`GREATEST(${userVocabularySnapshots.refCount} - ${times}, 0)` })
       .where(eq(userVocabularySnapshots.id, snapshotId));
+    released += 1;
   }
-  return counts.length;
+  recordLexiconOp('snapshot.release', 'success');
+  return released;
+}
+
+/** refCount 不足以抵扣（或快照行已不存在）：说明计数漂移，记告警与指标供排查。 */
+function reportRefCountUnderflow(detail: {
+  policyId: string;
+  snapshotId: string;
+  refCount: number | null;
+  times: number;
+}): void {
+  console.warn('[vocabulary-snapshot] refCount underflow on policy purge; clamped at 0', detail);
+  recordLexiconOp('snapshot.release', 'partial');
 }
 
 /** 审批事务提交后记录冻结审计（事务回滚时不应留下「已冻结」的审计）。 */

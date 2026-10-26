@@ -54,17 +54,15 @@ export default async function EditPolicyPage({ params }: PageProps) {
       vocabularySnapshotIds: true,
     },
   });
-  // 策略的 CNL 语言（#627）：编辑器状态栏、别名规范拼写跟随策略而非界面语言。
-  // 与审批冻结、secure-execute 同一解析口径；无活跃版本行（极旧数据）时交给客户端按源码识别。
-  const policyCnlLocale = activeVersion
-    ? resolveStoredVersionLocale({
-        source: activeVersion.source ?? activeVersion.content,
-        aliasSet: activeVersion.aliasSet,
-        sourceEnvelopeSha256: activeVersion.sourceEnvelopeSha256,
-        sourceToolchainId: activeVersion.sourceToolchainId,
-        vocabularySnapshotIds: activeVersion.vocabularySnapshotIds,
-      })
-    : null;
+  // 策略的 CNL 语言（#627）：编辑器显示、编译、保存都用它，且与 secure-execute、审批冻结同一函数，
+  // 保证编辑器与执行对同一版本给出同一语言。无活跃版本行（极旧数据）时按当前源码走同一判定链。
+  const policyCnlLocale = resolveStoredVersionLocale({
+    source: activeVersion ? (activeVersion.source ?? activeVersion.content) : policyData.content,
+    aliasSet: activeVersion?.aliasSet ?? null,
+    sourceEnvelopeSha256: activeVersion?.sourceEnvelopeSha256 ?? null,
+    sourceToolchainId: activeVersion?.sourceToolchainId ?? null,
+    vocabularySnapshotIds: activeVersion?.vocabularySnapshotIds ?? null,
+  });
   let initialAliasSet: Record<string, string[]> | null = null;
   if (activeVersion?.aliasSet) {
     try {

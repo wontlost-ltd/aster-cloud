@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   logSecurityEvent: vi.fn(),
   recordAha: vi.fn(),
   snapshot: vi.fn(),
+  lockPolicy: vi.fn(),
   audit: vi.fn(),
   invalidateCache: vi.fn(),
   /** 已提交的事务写入（模拟回滚：事务回调抛错时其写入不进入此列表）。 */
@@ -58,6 +59,7 @@ vi.mock('@/lib/metrics/aha-detection', () => ({ recordAhaMomentIfFirst: h.record
 vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
   freezeVocabularyForApproval: h.snapshot,
   auditVocabularyFreeze: h.audit,
+  lockPolicyForSnapshotRefs: h.lockPolicy,
 }));
 vi.mock('@/lib/cache', () => ({ invalidatePolicyCache: h.invalidateCache }));
 
@@ -89,6 +91,7 @@ beforeEach(() => {
   h.recordAha.mockResolvedValue(true);
   h.insertValues.mockResolvedValue(undefined);
   h.snapshot.mockResolvedValue([]);
+  h.lockPolicy.mockResolvedValue(true);
   h.audit.mockResolvedValue(undefined);
   h.committed.length = 0;
   h.invalidateCache.mockResolvedValue(undefined);
@@ -219,6 +222,34 @@ describe('approveVersion — 词汇快照（#610）', () => {
     await approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' });
 
     expect(h.committed).toEqual(['refCount+1', 'approval', 'status']);
+  });
+
+  it('审批事务先锁策略行，且锁在冻结（refCount 递增）之前（#628）', async () => {
+    setup({ userId: 'owner', teamId: null }, 'owner');
+    const order: string[] = [];
+    h.lockPolicy.mockImplementation(async (tx: { staged: string[] }, policyId: string) => {
+      order.push(`lock:${policyId}:${Array.isArray(tx.staged)}`);
+      return true;
+    });
+    h.snapshot.mockImplementation(async () => {
+      order.push('freeze');
+      return [];
+    });
+
+    await approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' });
+
+    expect(order).toEqual(['lock:p1:true', 'freeze']);
+  });
+
+  it('锁住时策略已被删除/软删：拒绝审批，不冻结、不写入（#628）', async () => {
+    setup({ userId: 'owner', teamId: null }, 'owner');
+    h.lockPolicy.mockResolvedValue(false);
+
+    await expect(approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' }))
+      .rejects.toBeInstanceOf(PolicyAccessDeniedError);
+    expect(h.snapshot).not.toHaveBeenCalled();
+    expect(h.committed).toEqual([]);
+    expect(h.invalidateCache).not.toHaveBeenCalled();
   });
 
   it('驳回不冻结词汇，也不改写快照引用', async () => {

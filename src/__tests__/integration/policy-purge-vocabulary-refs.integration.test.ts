@@ -138,6 +138,40 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('策略物理删除释放词汇
     expect(await refCounts(db)).toMatchObject({ [SNAP_SHARED]: 4, [SNAP_ONLY]: 0 });
   });
 
+  it('并发重复删除：两个事务同时永久删除同一策略，引用只释放一次', async () => {
+    await seedTrashedPolicy(db, 'it-purge-race', [[SNAP_SHARED, SNAP_ONLY], [SNAP_SHARED]]);
+    const results = await Promise.all([
+      permanentDeletePolicy('it-purge-race', OWNER),
+      permanentDeletePolicy('it-purge-race', OWNER),
+      emptyTrash(OWNER),
+    ]);
+    // 谁先拿到行锁谁删；其余调用要么发现策略已不在（success=false，「不在回收站」），要么删到 0 行，都不报错
+    const [first, second, emptied] = results as [{ success: boolean }, { success: boolean }, { errors: string[] }];
+    expect(first.success || second.success || emptied.errors.length === 0).toBe(true);
+    expect(emptied.errors).toEqual([]);
+    expect(await db.select({ id: policies.id }).from(policies).where(eq(policies.id, 'it-purge-race'))).toHaveLength(0);
+    expect(await refCounts(db)).toMatchObject({ [SNAP_SHARED]: 2, [SNAP_ONLY]: 0 });
+  });
+
+  it('被删策略的版本行作为历史证据保留、引用原样不改写，且之后不会被再次释放', async () => {
+    await seedTrashedPolicy(db, 'it-purge-orphan', [[SNAP_SHARED, SNAP_ONLY]]);
+    await permanentDeletePolicy('it-purge-orphan', OWNER);
+    const after = await refCounts(db);
+
+    const [orphan] = await db
+      .select({ refs: policyVersions.vocabularySnapshotIds })
+      .from(policyVersions)
+      .where(eq(policyVersions.policyId, 'it-purge-orphan'));
+    expect(orphan.refs.map((r) => r.snapshotId)).toEqual([SNAP_SHARED, SNAP_ONLY]);
+
+    // 策略已不在：再次永久删除 / 清空 / 过期清理都碰不到它，计数不再变化
+    expect((await permanentDeletePolicy('it-purge-orphan', OWNER)).success).toBe(false);
+    expect(await emptyTrash(OWNER)).toEqual({ deletedCount: 0, errors: [] });
+    await cleanupExpiredTrashItems();
+    expect(await refCounts(db)).toEqual(after);
+    expect(after).toMatchObject({ [SNAP_SHARED]: 3, [SNAP_ONLY]: 0 });
+  });
+
   it('删除策略失败 → 事务回滚，refCount 不变、策略仍在', async () => {
     await seedTrashedPolicy(db, 'it-purge-fail', [[SNAP_SHARED, SNAP_ONLY]]);
     await db.execute(sql`

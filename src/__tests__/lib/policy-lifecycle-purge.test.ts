@@ -10,18 +10,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => {
   const deletes: Array<{ table: unknown; inTx: boolean }> = [];
+  // DELETE … RETURNING 删到的行：默认删到 1 行；置空模拟「并发删除已先删掉」
+  const removedRows = { value: [{ id: 'removed' }] as Array<{ id: string }> };
   const makeDelete = (inTx: boolean) =>
     vi.fn((table: unknown) => {
       deletes.push({ table, inTx });
-      return { where: vi.fn().mockResolvedValue(undefined) };
+      const done = Promise.resolve(undefined);
+      return {
+        where: vi.fn(() => Object.assign(done, { returning: vi.fn(async () => removedRows.value) })),
+      };
     });
   const txDelete = makeDelete(true);
   // 事务回调拿到的 tx 对象；释放函数必须收到的就是它
   const TX = { delete: txDelete };
   return {
     deletes,
+    removedRows,
     TX,
-    // 释放快照引用也记进同一条操作序列，用来校验「先释放、后删版本行」的顺序与事务归属
+    // 释放快照引用也记进同一条操作序列，用来校验「删到策略行之后才释放」的顺序与事务归属
     release: vi.fn(async (policyId: string, tx: unknown) => {
       deletes.push({ table: `release:${policyId}`, inTx: tx === TX });
       return 0;
@@ -72,14 +78,15 @@ function binRow(id: string, policy: { id: string; name: string; description: str
   };
 }
 
-// 每次 purge 必须是：一次事务内「释放快照引用 → 删回收站行 → 删策略」，且不在事务外直接删。
+// 每次 purge 必须是：一次事务内「删回收站行 → DELETE 策略 RETURNING → 删到了才释放快照引用」，
+// 且不在事务外直接删。
 function expectPurgedInTx(policyIds: string[]) {
   expect(h.transaction).toHaveBeenCalledTimes(policyIds.length);
   expect(h.dbDelete).not.toHaveBeenCalled();
   const expected = policyIds.flatMap((id) => [
-    { table: `release:${id}`, inTx: true },
     { table: policyRecycleBins, inTx: true },
     { table: policies, inTx: true },
+    { table: `release:${id}`, inTx: true },
   ]);
   expect(h.deletes).toEqual(expected);
 }
@@ -88,6 +95,7 @@ describe('policy-lifecycle 永久删除路径（#603）', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     h.deletes.length = 0;
+    h.removedRows.value = [{ id: 'removed' }];
     h.transaction.mockImplementation(async (fn: (tx: unknown) => Promise<void>) =>
       fn(h.TX),
     );
@@ -116,14 +124,22 @@ describe('policy-lifecycle 永久删除路径（#603）', () => {
     errSpy.mockRestore();
   });
 
-  it('释放快照引用失败 → 整个删除失败，不删策略（refCount 与版本行同进退）', async () => {
+  it('释放快照引用失败 → 事务失败、删除整体回滚，返回失败（refCount 与策略行同进退）', async () => {
     h.policyFindFirst.mockResolvedValue({ id: 'p1' });
     h.release.mockRejectedValueOnce(new Error('lock timeout'));
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const r = await permanentDeletePolicy('p1', 'user-1');
     expect(r).toMatchObject({ success: false, error: 'lock timeout' });
-    expect(h.txDelete).not.toHaveBeenCalled();
+    await expect(h.transaction.mock.results[0].value).rejects.toThrow('lock timeout');
     errSpy.mockRestore();
+  });
+
+  it('并发/重复删除：DELETE 没删到策略行（已被别的事务删掉）→ 不释放快照引用', async () => {
+    h.policyFindFirst.mockResolvedValue({ id: 'p1' });
+    h.removedRows.value = [];
+    const r = await permanentDeletePolicy('p1', 'user-1');
+    expect(r).toEqual({ success: true, policyId: 'p1' });
+    expect(h.release).not.toHaveBeenCalled();
   });
 
   it('cleanupExpiredTrashItems：每个过期项都在事务内连同回收站行删除', async () => {

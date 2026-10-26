@@ -41,7 +41,7 @@ interface EditPolicyContentProps {
   policy: Policy;
   translations: Translations;
   locale: string;
-  /** 已记录的策略 CNL 语言（服务端按活跃版本解析），见 policy-form/policy-cnl-locale。 */
+  /** 策略的 CNL 语言：服务端用与执行端相同的 resolveStoredVersionLocale 解析，见 policy-form/policy-cnl-locale。 */
   policyCnlLocale: string | null;
   allowStructuralAliases: boolean;
 }

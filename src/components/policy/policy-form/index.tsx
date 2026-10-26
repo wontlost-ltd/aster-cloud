@@ -70,7 +70,7 @@ import {
 } from '@/components/ui';
 import { ConfirmDialog } from '@/components/ui';
 import { normalizeLocale } from '@/data/policy-examples';
-import { resolvePolicyCnlLocale } from './policy-cnl-locale';
+import { detectLocaleMismatch, resolveEditorCnlLocale } from './policy-cnl-locale';
 
 import { SidePanel, type SidePanelTab } from './side-panel';
 import { useAiWorkspace } from '@/components/ai-workspace-context';
@@ -220,14 +220,17 @@ export function PolicyForm({
   const [aliasSet, setAliasSet] = useState<Record<string, string[]>>(
     initial.aliasSet ?? {},
   );
-  // 策略的 CNL 语言（#627）：状态栏、别名规范拼写、编辑器词法与保存 locale 共用，不跟随界面语言。
-  // 语言转换后改记为转换目标。模板与语法参考只有 en/zh/de 三套，按 exampleLocale 取。
-  const [recordedCnlLocale, setRecordedCnlLocale] = useState<string | null>(policyCnlLocale);
+  // 策略的 CNL 语言（#627）：状态栏、别名规范拼写、编辑器词法与保存 locale 共用，不跟随界面语言，
+  // 且与执行端同一判定（见 policy-cnl-locale）。chosenCnlLocale 是用户显式切换或语言转换后的选择。
+  // 模板与语法参考只有 en/zh/de 三套，按 exampleLocale 取。
+  const [chosenCnlLocale, setChosenCnlLocale] = useState<string | null>(null);
   const cnlLocale = useMemo(
-    () => resolvePolicyCnlLocale({ recorded: recordedCnlLocale, content, uiLocale }),
-    [recordedCnlLocale, content, uiLocale],
+    () => resolveEditorCnlLocale({ chosen: chosenCnlLocale, resolved: policyCnlLocale, content, uiLocale }),
+    [chosenCnlLocale, policyCnlLocale, content, uiLocale],
   );
   const exampleLocale = normalizeLocale(cnlLocale);
+  // 源码看起来是另一种语言：只提示、由用户决定是否切换，不静默改变编译/执行所用的语言。
+  const mismatchedLocale = useMemo(() => detectLocaleMismatch(cnlLocale, content), [cnlLocale, content]);
   const fields: PolicyDraftFields = useMemo(
     () => ({
       name,
@@ -690,6 +693,29 @@ export function PolicyForm({
           </div>
         )}
 
+        {/* ----- 策略语言与源码不一致提示（#627） ----- */}
+        {mismatchedLocale && (
+          <div
+            role="status"
+            data-testid="policy-locale-mismatch"
+            className="flex flex-wrap items-center gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-2 text-sm text-fg"
+          >
+            <span>
+              {t('localeMismatch', {
+                current: cnlLocale.toUpperCase(),
+                detected: mismatchedLocale.toUpperCase(),
+              })}
+            </span>
+            <button
+              type="button"
+              onClick={() => setChosenCnlLocale(mismatchedLocale)}
+              className="rounded border border-border bg-bg px-2 py-0.5 text-xs font-medium hover:bg-bg-muted focus-visible:outline-none focus-visible:shadow-ring"
+            >
+              {t('localeMismatchSwitch', { locale: mismatchedLocale.toUpperCase() })}
+            </button>
+          </div>
+        )}
+
         {/* ----- Server error banner ----- */}
         {serverError && (
           <div
@@ -873,7 +899,7 @@ export function PolicyForm({
           uiLocale={uiLocale}
           onApply={(converted, newLocale) => {
             setContent(converted);
-            setRecordedCnlLocale(newLocale);
+            setChosenCnlLocale(newLocale);
           }}
         />
 
