@@ -84,4 +84,26 @@ describe('sanitizeExecutionResult（#609）', () => {
     expect(publicErrorText('Line 2: Expected newline')).toBe('Line 2: Expected newline');
     expect(publicErrorText(RAW)).toBe(EXECUTION_FAILED_MESSAGE);
   });
+
+  it.each([
+    ['相对源码路径', 'failed in src/main/java/io/aster/Foo.java:42'],
+    ['jar 构件', 'cannot load aster-core-1.0.35.jar'],
+    ['class 文件', 'bad bytecode in Evaluator.class'],
+    ['Kotlin 源文件', 'error at Runner.kt line 3'],
+    ['Windows 路径', 'cannot open C:\\aster\\lib\\core.dll'],
+    ['全限定 Quarkus 类', 'io.quarkus.runtime.Startup failed'],
+    ['Caused by', 'Evaluation failed. Caused by: boom'],
+    ['栈帧', 'boom\n\tat Foo.bar(Unknown Source)'],
+  ])('%s 视为内部细节', (_label, text) => {
+    expect(hasInternalDetail(text)).toBe(true);
+  });
+
+  it.each([
+    'Rule validate raises ValidationException when age is missing',
+    'Line 3, column 7: Expected newline',
+    'Return age at least 18.',
+    'Unknown field alter. Available fields: age, name.',
+  ])('普通 CNL 诊断原样通过：%s', (text) => {
+    expect(hasInternalDetail(text)).toBe(false);
+  });
 });

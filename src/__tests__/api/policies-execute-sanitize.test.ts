@@ -143,6 +143,36 @@ describe('POST /api/policies/[id]/execute — 执行失败脱敏（#609）', () 
     log.mockRestore();
   });
 
+  it('诊断中的相对路径、jar、Windows 路径被替换；提到裸异常类名的 CNL 诊断原样返回', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockExecute.mockResolvedValue({
+      ...execResult({ denyCount: 1 }),
+      deniedReasons: ['Applicant is under 18'],
+      diagnostics: [
+        { code: 'D1', message: 'failed in src/main/java/io/aster/Foo.java:42' },
+        { code: 'D2', message: 'cannot load aster-core-1.0.35.jar' },
+        { code: 'D3', message: 'cannot open C:\\aster\\lib\\core.dll' },
+        { code: 'D4', message: 'Rule validate raises ValidationException when age is missing' },
+      ],
+    });
+
+    const res = await POST(request({ input: { age: 10 } }), params);
+    const body = await res.json();
+
+    expect(body.diagnostics).toEqual([
+      { code: 'D1', message: expect.not.stringMatching(/Foo\.java/) },
+      { code: 'D2', message: expect.not.stringMatching(/\.jar/) },
+      { code: 'D3', message: expect.not.stringMatching(/C:/) },
+      { code: 'D4', message: 'Rule validate raises ValidationException when age is missing' },
+    ]);
+    expect(body.error).toBe('Applicant is under 18');
+    const persisted = mockValuesInsert.mock.calls.find(
+      ([row]) => (row as { source?: string }).source === 'dashboard',
+    )?.[0] as { output?: unknown };
+    expect(JSON.stringify(persisted.output)).not.toMatch(/Foo\.java|\.jar|C:\\\\/);
+    log.mockRestore();
+  });
+
   it('正常拒绝：拒绝理由原样返回，无 errorCode', async () => {
     mockExecute.mockResolvedValue({ ...execResult({ denyCount: 1 }), deniedReasons: ['Applicant is under 18'] });
 

@@ -16,16 +16,24 @@ export const EXECUTION_FAILED_MESSAGE =
   'Policy execution failed. Check that the input fields match the policy and try again.';
 
 /**
- * 内部实现痕迹：JVM/Graal 包名或异常类、Polyglot、栈帧、源码文件路径。
- * 命中即视为不可对外展示；CNL 语法诊断（行列 + 说明）不含这些痕迹，原样保留。
+ * 内部实现痕迹（命中即不可对外展示）：
+ * - 全限定 JVM 类/包名（java.、javax.、jdk.、org.graalvm.、com.oracle.、io.aster.、io.quarkus. 等）；
+ * - 栈帧（`at a.b.C.m(...)`）与 `Caused by:`；
+ * - Polyglot；
+ * - 源码/构件路径：Unix 绝对路径、带扩展名的相对路径（src/main/java/Foo.java）、
+ *   单独的 .java/.kt/.class/.jar 等文件名、Windows 路径（C:\...）。
+ * 裸的异常类名（如诊断里提到 ValidationException）不算：CNL 诊断可能合法地提到它。
  */
 const INTERNAL_DETAIL = new RegExp(
   [
-    String.raw`\b(?:java|javax|jdk|sun|org\.graalvm|com\.oracle|io\.aster|aster)\.[\w$]+\.[\w.$]+`,
-    String.raw`\b[A-Z]\w*Exception\b`,
+    String.raw`\b(?:java|javax|jdk|sun|com\.sun|org\.graalvm|com\.oracle|io\.aster|io\.quarkus|io\.smallrye|io\.vertx|org\.jboss)\.[\w$]+(?:\.[\w$]+)*`,
+    String.raw`\bat [\w$]+(?:\.[\w$<>]+)+\(`,
+    String.raw`\bCaused by:`,
     String.raw`Polyglot`,
-    String.raw`\bat [\w.$<>]+\([\w.]*:\d+\)`,
     String.raw`(?:^|[\s(])/[\w.-]+(?:/[\w.-]+)+`,
+    String.raw`\b[\w.-]+(?:[/\\][\w.-]+)+\.(?:java|kt|kts|scala|groovy|class|jar|war|ts|js|mjs)\b`,
+    String.raw`\b[\w$-]+\.(?:java|kt|kts|scala|groovy|class|jar|war)\b`,
+    String.raw`\b[A-Za-z]:\\[^\s:]+`,
   ].join('|'),
 );
 
