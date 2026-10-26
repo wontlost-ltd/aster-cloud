@@ -8,7 +8,9 @@
  *   - 参数名（顶层键）来自源码，原样使用；
  *   - 对象只有在其类型是策略里声明的结构（或 `__type` 标签指向已知结构）时才映射字段键：
  *     策略写法 / 规范名 / 该字段词条的本地化名与同义词 → 规范名；
- *   - 枚举值只在字段类型是已声明枚举、且值是其成员时映射；
+ *   - 枚举值只在字段类型是已声明枚举、且值是其成员时映射；运行时枚举对象
+ *     （`{__type:'?', _enum, value, variant, args}`）同样只改 `_enum` / `value` / `variant`，
+ *     其类型以 `_enum` 标签指向的已声明枚举为准（类型未知处也认这个显式标签）；
  *   - 类型未知（未知参数、未知字段、Text/Int 等、类型提取失败）、Map 的键：一律原样；
  *   - 同一对象内两个键指向同一字段 → 歧义；某个写法在该结构内同时对应多个字段（大小写折叠后
  *     撞名，或规范名等于另一字段的本地化名）→ 该写法不可映射，输入用到它时同样按歧义报错；
@@ -28,6 +30,12 @@ import {
 
 /** 运行时类型标签键（Truffle/TS 运行时按它识别结构/变体）。 */
 export const TYPE_TAG_KEY = '__type';
+
+/** 运行时枚举值对象的枚举名标签键。 */
+export const ENUM_TAG_KEY = '_enum';
+
+/** 运行时枚举值对象里存放成员名的键（引擎两键同值，都要改写）。 */
+const ENUM_MEMBER_KEYS = ['value', 'variant'] as const;
 
 interface VocabTerm {
   readonly kind: IdentifierKind;
@@ -234,12 +242,16 @@ interface EnumModel {
   readonly variants: SpellingTable;
 }
 
-/** 一个版本的映射模型：按源码声明名索引的结构 / 枚举写法表，以及结构名写法表（`__type` 用）。 */
+/**
+ * 一个版本的映射模型：按源码声明名索引的结构 / 枚举写法表，
+ * 以及结构名写法表（`__type` 用）与枚举名写法表（`_enum` 用）。
+ */
 export interface MappingModel {
   readonly index: VocabularyNameIndex;
   readonly types: PolicyInputTypes;
   readonly byName: ReadonlyMap<string, StructModel | EnumModel>;
   readonly structs: SpellingTable;
+  readonly enums: SpellingTable;
 }
 
 function structModel(index: VocabularyNameIndex, decl: PolicyDataDecl): StructModel {
@@ -254,6 +266,12 @@ function enumModel(index: VocabularyNameIndex, decl: PolicyEnumDecl): EnumModel 
   return { kind: 'Enum', variants: buildTable(`enum ${decl.name}`, scopeEntries(`enum ${decl.name}`, declared, terms)) };
 }
 
+/** 类型名写法表：源码声明的结构（或枚举）名 + 词汇里的类型名词条（枚举名在词汇里也记作 struct）。 */
+function typeNameTable(index: VocabularyNameIndex, scope: string, decls: ReadonlyArray<{ name: string }>): SpellingTable {
+  const declared = decls.map((d) => ({ source: d.name, target: engineName(index, d.name), declared: true }));
+  return buildTable(scope, scopeEntries(scope, declared, scopedTerms(index, IdentifierKind.STRUCT, null)));
+}
+
 /** 建映射模型；无词汇时返回 null（输入原样）。类型取不到时传空类型：一切按未知类型原样透传。 */
 export function buildMappingModel(index: VocabularyNameIndex | null, types: PolicyInputTypes | null): MappingModel | null {
   if (!index) return null;
@@ -262,10 +280,9 @@ export function buildMappingModel(index: VocabularyNameIndex | null, types: Poli
   for (const decl of effective.decls) {
     byName.set(decl.name, decl.kind === 'Data' ? structModel(index, decl) : enumModel(index, decl));
   }
-  const dataDecls = effective.decls.filter((d): d is PolicyDataDecl => d.kind === 'Data');
-  const declaredStructs = dataDecls.map((d) => ({ source: d.name, target: engineName(index, d.name), declared: true }));
-  const structs = buildTable('struct names', scopeEntries('struct names', declaredStructs, scopedTerms(index, IdentifierKind.STRUCT, null)));
-  return { index, types: effective, byName, structs };
+  const structs = typeNameTable(index, 'struct names', effective.decls.filter((d) => d.kind === 'Data'));
+  const enums = typeNameTable(index, 'enum names', effective.decls.filter((d) => d.kind === 'Enum'));
+  return { index, types: effective, byName, structs, enums };
 }
 
 /* ---------------------------------------------------------------- 遍历 */
@@ -310,23 +327,36 @@ function rewrite(ctx: WalkContext, found: Lookup, written: string, path: string)
   return PASS(out);
 }
 
-/** 对象实际的结构：`__type` 标签指向已知结构时以它为准，否则用声明类型。 */
-function structOf(ctx: WalkContext, value: Record<string, unknown>, declared: StructModel | undefined, path: string) {
-  const tag = value[TYPE_TAG_KEY];
-  if (typeof tag !== 'string') return { ok: true as const, struct: declared, tag };
-  const tagPath = joinPath(path, TYPE_TAG_KEY);
-  const found = lookup(ctx.model.structs, tag);
-  const rewritten = rewrite(ctx, found, tag, tagPath);
+type TypeModel = StructModel | EnumModel;
+
+type TagResolution = { ok: true; model: TypeModel | undefined; tag: unknown } | { ok: false; ambiguous: AmbiguousInputField };
+
+/**
+ * 按运行时类型标签（`__type` / `_enum`）解析对象的实际类型：标签指向已声明类型时以它为准，
+ * 否则用声明类型；标签本身按方向改写。table 只含同一类声明（结构名表 / 枚举名表），查到的必是同类。
+ */
+function resolveTag(
+  ctx: WalkContext,
+  value: Record<string, unknown>,
+  tagKey: string,
+  table: SpellingTable,
+  declared: TypeModel | undefined,
+  path: string,
+): TagResolution {
+  const tag = value[tagKey];
+  if (typeof tag !== 'string') return { ok: true, model: declared, tag };
+  const found = lookup(table, tag);
+  const rewritten = rewrite(ctx, found, tag, joinPath(path, tagKey));
   if (!rewritten.ok) return rewritten;
   const tagged = found.kind === 'one' ? ctx.model.byName.get(found.slot.source) : undefined;
-  return { ok: true as const, struct: tagged?.kind === 'Data' ? tagged : declared, tag: rewritten.value };
+  return { ok: true, model: tagged ?? declared, tag: rewritten.value };
 }
 
 function walkStruct(ctx: WalkContext, value: Record<string, unknown>, declared: StructModel | undefined, path: string): Walked {
-  const resolved = structOf(ctx, value, declared, path);
+  const resolved = resolveTag(ctx, value, TYPE_TAG_KEY, ctx.model.structs, declared, path);
   if (!resolved.ok) return resolved;
-  if (!resolved.struct) return PASS(value);
-  const fields = resolved.struct.fields;
+  if (resolved.model?.kind !== 'Data') return PASS(value);
+  const fields = resolved.model.fields;
   const seen = new Map<string, string>();
   const entries: Array<[string, unknown]> = [];
   for (const [key, child] of Object.entries(value)) {
@@ -348,6 +378,29 @@ function walkStruct(ctx: WalkContext, value: Record<string, unknown>, declared: 
   }
   // Object.fromEntries 以自有属性写入，`__proto__` 之类的键不会污染原型。
   return PASS(Object.fromEntries(entries));
+}
+
+/** 运行时枚举值对象：带枚举名标签，且成员名至少在 value / variant 之一。 */
+function isEnumObject(value: unknown): value is Record<string, unknown> {
+  return isPlainObject(value) && typeof value[ENUM_TAG_KEY] === 'string'
+    && ENUM_MEMBER_KEYS.some((key) => typeof value[key] === 'string');
+}
+
+/** 枚举值对象只改写枚举名标签与成员名，其余键（`__type`、`args` 等）原样。 */
+function walkEnumObject(ctx: WalkContext, value: Record<string, unknown>, declared: EnumModel | undefined, path: string): Walked {
+  const resolved = resolveTag(ctx, value, ENUM_TAG_KEY, ctx.model.enums, declared, path);
+  if (!resolved.ok) return resolved;
+  if (resolved.model?.kind !== 'Enum') return PASS(value);
+  const variants = resolved.model.variants;
+  const out: Record<string, unknown> = { ...value, [ENUM_TAG_KEY]: resolved.tag };
+  for (const key of ENUM_MEMBER_KEYS) {
+    const member = value[key];
+    if (typeof member !== 'string') continue;
+    const rewritten = rewrite(ctx, lookup(variants, member), member, joinPath(path, key));
+    if (!rewritten.ok) return rewritten;
+    out[key] = rewritten.value;
+  }
+  return PASS(out);
 }
 
 /** 同一对象内两个键落到同一字段：输入方向报歧义；输出方向不会发生（规范键唯一）。 */
@@ -377,9 +430,17 @@ function walkMap(ctx: WalkContext, value: Record<string, unknown>, valType: Poli
   return PASS(Object.fromEntries(entries));
 }
 
+/** 声明类型是已声明枚举时取其模型。 */
+function declaredEnum(ctx: WalkContext, type: PolicyTypeNode | undefined): EnumModel | undefined {
+  if (type?.kind !== 'TypeName' || !('name' in type)) return undefined;
+  const decl = ctx.model.byName.get(type.name);
+  return decl?.kind === 'Enum' ? decl : undefined;
+}
+
 /** 按类型递归映射一个值；类型未知或与值形状不符时原样返回。 */
 function walkValue(ctx: WalkContext, value: unknown, rawType: PolicyTypeNode | undefined, path: string): Walked {
   const type = unwrapType(rawType);
+  if (isEnumObject(value)) return walkEnumObject(ctx, value, declaredEnum(ctx, type), path);
   if (!type) return PASS(value);
   if (type.kind === 'List' && Array.isArray(value)) return walkArray(ctx, value, (type as { type: PolicyTypeNode }).type, path);
   if (type.kind === 'Map' && isPlainObject(value)) return walkMap(ctx, value, (type as { val: PolicyTypeNode }).val, path);

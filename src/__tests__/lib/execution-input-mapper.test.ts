@@ -286,6 +286,39 @@ describe('输出本地化与函数名', () => {
     expect(localizeExecutionOutput({ age: 3 }, null)).toEqual({ age: 3 });
   });
 
+  // 引擎返回枚举值时是对象而不是字符串（#633）：{__type:'?', _enum, value, variant, args}
+  const enumValue = (enumName: string, member: string) =>
+    ({ __type: '?', _enum: enumName, value: member, variant: member, args: [] });
+
+  it('返回类型是枚举、结果是枚举值对象：枚举名与成员名还原为策略语言，其余键原样', () => {
+    const model = buildMappingModel(INDEX, { ...TYPES, result: T('Stufe') });
+    expect(localizeExecutionOutput(enumValue('Tier', 'GOLD'), model)).toEqual(enumValue('Stufe', 'Gold'));
+  });
+
+  it('结构 / 列表里的枚举值对象递归还原', () => {
+    const struct = buildMappingModel(INDEX, { ...TYPES, result: T('Fahrer') });
+    expect(localizeExecutionOutput({ age: 3, tier: enumValue('Tier', 'SILVER') }, struct))
+      .toEqual({ alter: 3, stufe: enumValue('Stufe', 'Silber') });
+    const list = buildMappingModel(INDEX, { ...TYPES, result: { kind: 'List', type: T('Stufe') } });
+    expect(localizeExecutionOutput([enumValue('Tier', 'GOLD'), 'SILVER'], list))
+      .toEqual([enumValue('Stufe', 'Gold'), 'Silber']);
+  });
+
+  it('返回类型未知时按显式 _enum 标签认枚举；标签不认识或成员不在枚举里时原样', () => {
+    expect(localizeExecutionOutput(enumValue('Tier', 'GOLD'), MODEL)).toEqual(enumValue('Stufe', 'Gold'));
+    expect(localizeExecutionOutput([enumValue('Tier', 'GOLD')], MODEL)).toEqual([enumValue('Tier', 'GOLD')]);
+    expect(localizeExecutionOutput(enumValue('Unknown', 'GOLD'), MODEL)).toEqual(enumValue('Unknown', 'GOLD'));
+    expect(localizeExecutionOutput(enumValue('Tier', 'BRONZE'), MODEL)).toEqual(enumValue('Stufe', 'BRONZE'));
+    expect(localizeExecutionOutput(enumValue('Tier', 'GOLD'), null)).toEqual(enumValue('Tier', 'GOLD'));
+  });
+
+  it('输入方向：枚举值对象按同一写法表映射为引擎眼中的名字', () => {
+    // 枚举名标签按引擎口径规范化：本词汇里 "stufe" 同时是字段 tier 的写法（引擎大小写不敏感、后写覆盖），
+    // 所以引擎把类型名 Stufe 也读成 tier——映射与引擎保持一致。
+    expect(mapped({ person: { alter: 3, stufe: enumValue('Stufe', 'Gold') } }))
+      .toEqual({ person: { age: 3, tier: enumValue('tier', 'GOLD') } });
+  });
+
   it('函数名按词汇规范化，规范名与未知名原样', () => {
     expect(mapFunctionName('bewerten', INDEX)).toBe('evaluate');
     expect(mapFunctionName('evaluate', INDEX)).toBe('evaluate');

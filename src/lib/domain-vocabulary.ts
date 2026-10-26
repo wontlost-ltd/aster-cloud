@@ -908,21 +908,34 @@ export interface BulkRowError {
 }
 
 /**
- * 批量导入的计数口径（同步响应与异步任务共用，#629）。
+ * 批量导入的计数口径（同步响应 /bulk 与异步任务 /bulk/jobs/{id} 共用，#629/#636）。
  *
- * 每一行恰好落入一类：新建词条并链接（added）、复用已有词条并链接（reused）、
- * 未导入（skipped，附且仅附一条行级错误：校验失败、重复、超配额、行/块写入失败等）。
+ * 每一行恰好落入一类：
+ *   - added：全局 DomainTerm 不存在 → 新建词条并链接到调用者的词汇；
+ *   - reused：全局 DomainTerm 已存在（例如别的用户建过）→ 复用它、为调用者**新建**链接。
+ *     reused 的行同样是本次新导入的，不表示「你已经有了」；
+ *   - skipped：未导入，附且仅附一条行级错误（errors[].code 即原因）：
+ *       duplicate_link   → 调用者词汇里已有这条（含同一批里的重复行），界面显示「已在你的词汇中」；
+ *       validation_failed → 行数据无效；quota_exceeded → 超出套餐配额；
+ *       row_failed / chunk_failed → 写入失败，可重试。
+ *     界面按这些原因分组展示 skipped（bulk-result.ts skippedBreakdown），不另设计数字段。
  * 因此任何时刻都有：
  *
  *   processed = added + reused + skipped，skipped = errorCount = errors.length
  *
  * 完成时 processed = rowCount。modified 为保留字段，批量导入从不修改已有词条，恒为 0。
+ * errors[].row 为 0 基行号（界面显示时 +1）；errors[].message 是英文/引擎原文，仅供排查，界面按 code 本地化。
  */
 export interface BulkRollup {
+  /** 新建全局词条并链接的行数。 */
   added: number;
+  /** 复用已有全局词条、新建链接的行数（仍是新导入）。 */
   reused: number;
+  /** 保留字段，恒为 0。 */
   modified: number;
+  /** 未导入的行数，原因见对应 errors[].code。 */
   skipped: number;
+  /** 行级错误数，恒等于 skipped。 */
   errorCount: number;
 }
 

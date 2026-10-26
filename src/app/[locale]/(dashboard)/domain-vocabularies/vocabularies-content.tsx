@@ -19,11 +19,11 @@ import {
   toast,
   type DataTableColumn,
 } from '@/components/ui';
-import { parseVocabularyValidationMessage } from '@/lib/vocabulary-validation-message';
 import { buildListUrl, type ListUrlOptions } from '@/lib/list-search-params';
 import { BulkJobProgress } from './bulk-job-progress';
 import { BulkUploadDialog } from './bulk-upload-dialog';
-import { KIND_OPTIONS, KNOWN_ERROR_CODES, type Kind } from './constants';
+import { KIND_OPTIONS, type Kind } from './constants';
+import { useVocabularyErrors } from './use-vocabulary-errors';
 import { DowngradeBanner, ProGate } from './pro-gate';
 import { VocabularyDialog, type VocabularyDialogValues } from './vocabulary-dialog';
 
@@ -34,13 +34,6 @@ const VOCAB_URL_OPTS: ListUrlOptions = {
 };
 
 type KindKey = `kinds.${Kind}`;
-type ErrorKey = `errors.${
-  | 'quota_exceeded'
-  | 'duplicate_link'
-  | 'validation_failed'
-  | 'not_found'
-  | 'plan_gate_required'
-  | 'internal_error'}`;
 
 /**
  * Serializable wire-format of a TermLink: timestamps as ISO strings so the
@@ -220,35 +213,12 @@ export function VocabulariesContent({
     [t],
   );
 
-  const validationMessage = useCallback(
-    (serverMessage: string | undefined) => {
-      // 服务端 validation_failed 原文可能是引擎中文诊断，不直接展示：识别为原因码后按当前语言渲染，
-      // 识别不了时用通用提示。
-      const detail = parseVocabularyValidationMessage(serverMessage);
-      switch (detail?.reason) {
-        case 'invalidCanonical': return t('errors.validation.invalidCanonical', detail.values);
-        case 'duplicateCanonical': return t('errors.validation.duplicateCanonical', detail.values);
-        case 'triggerConflict': return t('errors.validation.triggerConflict', detail.values);
-        case 'invalidLiteral': return t('errors.validation.invalidLiteral');
-        case 'parentRequired': return t('errors.validation.parentRequired');
-        case 'fieldRequired': return t('errors.validation.fieldRequired', detail.values);
-        default: return t('errors.validation.generic');
-      }
-    },
-    [t],
-  );
-
+  const vocabularyErrors = useVocabularyErrors();
+  // 服务端原文可能是引擎中文诊断或英文内部说明，一律按错误码本地化（#634）。
   const errorMessage = useCallback(
-    (code: string | undefined, fallback: string | undefined) => {
-      if (code === 'validation_failed') {
-        return validationMessage(fallback);
-      }
-      if (code && KNOWN_ERROR_CODES.has(code)) {
-        return t(`errors.${code}` as ErrorKey);
-      }
-      return fallback ?? t('dialog.errorGeneric');
-    },
-    [t, validationMessage],
+    (code: string | undefined, serverMessage: string | undefined) =>
+      vocabularyErrors.envelope(code, serverMessage, t('dialog.errorGeneric')),
+    [t, vocabularyErrors],
   );
 
   const refreshRsc = useCallback(() => {

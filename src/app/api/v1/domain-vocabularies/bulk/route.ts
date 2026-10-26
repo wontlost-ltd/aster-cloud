@@ -9,6 +9,10 @@
  * accounting to bulkAddUserVocabularyTerms. The service always returns a
  * BulkResult — partial failures are reported as row-level errors rather than
  * a top-level throw.
+ *
+ * 响应计数口径（added / reused / skipped 与 errors[].code 的对应关系）见
+ * src/lib/domain-vocabulary.ts 的 BulkRollup：「已在你的词汇中」的行是 skipped（duplicate_link），
+ * 不是 reused；reused 表示复用已有全局词条并为你新建链接。
  */
 
 import { NextResponse } from 'next/server';
