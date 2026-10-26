@@ -1,6 +1,11 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
-import { listUserVocabularyTerms, type TermLink } from '@/lib/domain-vocabulary';
+import {
+  countActiveUserVocabularyTerms,
+  listUserVocabularyTerms,
+  type TermLink,
+} from '@/lib/domain-vocabulary';
+import { listBulkJobs } from '@/lib/domain-vocabulary-jobs';
 import { getLexiconQuotaWithContext } from '@/lib/usage';
 import {
   buildListUrl,
@@ -63,6 +68,8 @@ export default async function DomainVocabulariesPage({
 
   let initialTerms: SerializableTermLink[] = [];
   let total = 0;
+  let activeCount = 0;
+  let initialActiveJobId: string | null = null;
   let initialDeletedTerms: SerializableTermLink[] = [];
   let initialDeletedCount = 0;
   let resolvedPage = urlState.page;
@@ -83,6 +90,13 @@ export default async function DomainVocabulariesPage({
       initialDeletedTerms = deleted.items.map(serialize);
       initialDeletedCount = deleted.total;
       resolvedPage = result.page;
+      // 配额卡用不受筛选影响的总数（#616）；无筛选/搜索时与 total 相同，省一次查询。
+      const unfiltered =
+        !urlState.q && !urlState.filters.domain && !urlState.filters.locale && !urlState.filters.kind;
+      activeCount = unfiltered ? total : await countActiveUserVocabularyTerms(userId);
+      // 刷新后找回仍在排队/运行的异步导入（#605）。
+      const [activeJob] = await listBulkJobs(userId, { activeOnly: true, limit: 1 });
+      initialActiveJobId = activeJob?.id ?? null;
     } catch (err) {
       console.error('[domain-vocabularies page] list failed', err);
     }
@@ -116,6 +130,8 @@ export default async function DomainVocabulariesPage({
       key={JSON.stringify(initialDeletedTerms)}
       initialTerms={initialTerms}
       initialTotal={total}
+      activeCount={activeCount}
+      initialActiveJobId={initialActiveJobId}
       initialDeletedTerms={initialDeletedTerms}
       initialDeletedCount={initialDeletedCount}
       initialPage={resolvedPage}

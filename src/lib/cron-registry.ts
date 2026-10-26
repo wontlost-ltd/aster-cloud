@@ -97,6 +97,12 @@ function floorToHourAtMinute(now: Date, minute: number): Date {
   return d;
 }
 
+function floorToMinute(now: Date): Date {
+  return new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), now.getUTCMinutes(), 0, 0),
+  );
+}
+
 function floorToWeekdayAtHour(now: Date, weekday: number, hour: number): Date {
   // weekday: 0=Sun, 1=Mon … Mirrors cron's "DOW" field.
   const d = new Date(
@@ -193,6 +199,18 @@ export const CRON_REGISTRY: ReadonlyArray<CronJob> = [
     // 都写一条 UsedNonce（#480），记录只需活到签名时间戳 + 6 分钟，故按小时回收。
     windowStartFor: (now) => floorToHourAtMinute(now, 25),
     healthcheckEnv: 'HEALTHCHECKS_NONCE_CLEANUP_URL',
+  },
+  {
+    jobName: 'domain-vocabulary-bulk-worker',
+    cron: '* * * * *',
+    routePath: '/api/cron/domain-vocabulary-bulk-worker',
+    // 每分钟一次：异步批量导入的队列消费者（#605——此前未登记，任务永远停在 queued）。
+    // 每个 tick 最多推进 4 个 chunk（每个 250 行）且不超过 20s 预算，1 万行上限约 10 分钟跑完。
+    // ★该路由不走 runCronOnce：认领靠 LexiconBulkJob 上的
+    // `UPDATE … FOR UPDATE SKIP LOCKED` 原子完成，每次认领带独立令牌，进度只在仍持有
+    // 认领时提交，并发 tick 天然互斥；每分钟一条租约行会让 CronJobLease 每天多出
+    // 1440 行且无人回收。
+    windowStartFor: (now) => floorToMinute(now),
   },
 ] as const;
 

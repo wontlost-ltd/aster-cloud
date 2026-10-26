@@ -12,6 +12,7 @@ import {
   Select,
   Textarea,
 } from '@/components/ui';
+import { checkVocabularyScope } from '@/lib/domain-vocabulary-format';
 import { KIND_OPTIONS, type Kind } from './constants';
 import { useFocusTrap } from './use-focus-trap';
 
@@ -149,13 +150,31 @@ export function VocabularyDialog({
       .filter(Boolean);
     if (aliases.length > 0) v.aliases = aliases;
 
+    // 与服务端同一份格式规则（#612）：只在字段非空时检查格式，空值走上面的必填提示。
+    const scope = checkVocabularyScope(v);
+    const formatIssues = scope.issues.filter((issue) =>
+      issue === 'domain_format' ? Boolean(v.domain) : Boolean(v.locale),
+    );
+    if (formatIssues.includes('domain_format')) errors.domain = true;
+    if (formatIssues.includes('locale_format')) errors.locale = true;
+
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) {
-      // 校验失败不是「保存失败请重试」：缺 Parent struct（kind=field 必填）时直接说明原因（#590）。
-      setError(errors.parentCanonical ? t('parentCanonicalHelp') : t('errorGeneric'));
+      setError(firstErrorMessage(errors, formatIssues));
       return null;
     }
-    return v;
+    return { ...v, locale: scope.locale };
+  };
+
+  // 校验失败不是「保存失败请重试」：能说明原因的直接说明（缺 Parent struct #590、格式不对 #612）。
+  const firstErrorMessage = (
+    errors: Record<string, boolean>,
+    formatIssues: string[],
+  ): string => {
+    if (errors.parentCanonical) return t('parentCanonicalHelp');
+    if (formatIssues.includes('domain_format')) return t('domainInvalid');
+    if (formatIssues.includes('locale_format')) return t('localeInvalid');
+    return t('errorGeneric');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

@@ -8,7 +8,6 @@
  *
  * These tests deliberately mock `@/lib/prisma` and `@/lib/usage`; we are not
  * exercising real Postgres. The integration value is in the wiring contract:
- *   - mutations publish SSE invalidate events
  *   - mutations record Prometheus op counters
  *   - audit log captures the right action/resource
  *   - DSAR purge cascades through the snapshot/job/idempotency tables
@@ -52,6 +51,7 @@ vi.mock('@/lib/prisma', () => {
     },
     domainTerms: tableProxy,
     userDomainTerms: tableProxy,
+    userVocabularyVersions: tableProxy,
     userVocabularySnapshots: tableProxy,
     lexiconBulkJobs: tableProxy,
     lexiconIdempotencyKeys: tableProxy,
@@ -70,15 +70,11 @@ vi.mock('@/lib/audit-log', () => ({
 
 import {
   addUserVocabularyTerm,
+  getUserVocabularyVersion,
   modifyUserVocabularyTerm,
   restoreUserVocabularyTerm,
   softDeleteUserVocabularyTerm,
 } from '@/lib/domain-vocabulary';
-import {
-  publishVocabularyInvalidate,
-  subscribeVocabularyInvalidate,
-  type InvalidateEvent,
-} from '@/lib/domain-vocabulary-events';
 import { _resetLexiconMetricsForTest, renderLexiconMetrics } from '@/lib/lexicon-metrics';
 import { getLexiconQuota } from '@/lib/usage';
 import { logAuditEvent } from '@/lib/audit-log';
@@ -172,7 +168,7 @@ beforeEach(() => {
 });
 
 describe('lexicon integration — observability wiring', () => {
-  it('add → publishes SSE invalidate + records Prometheus op + writes audit', async () => {
+  it('add → records Prometheus op + writes audit', async () => {
     queueSelect([{ count: 0 }]); // in-txn quota count
     queueSelect([joinedRow()]); // post-insert reload
 
@@ -180,11 +176,6 @@ describe('lexicon integration — observability wiring', () => {
     const linkInsert = makeInsert([{ id: 'link-1' }]);
     hoisted.insert.mockReturnValueOnce(termInsert).mockReturnValueOnce(linkInsert);
 
-    const events: InvalidateEvent[] = [];
-    const unsubscribe = subscribeVocabularyInvalidate(
-      { ownerType: 'user', ownerId: 'user-1' },
-      (ev) => events.push(ev),
-    );
 
     await addUserVocabularyTerm('user-1', {
       domain: 'finance.loan',
@@ -194,17 +185,6 @@ describe('lexicon integration — observability wiring', () => {
       localized: 'Loan',
     });
 
-    // SSE publisher defers via queueMicrotask — await a microtask before
-    // asserting.
-    await Promise.resolve();
-
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({
-      cause: 'term.add',
-      ownerId: 'user-1',
-      domain: 'finance.loan',
-      locale: 'en-US',
-    });
     expect(logAuditEvent).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'lexicon.term.add' }),
     );
@@ -212,7 +192,6 @@ describe('lexicon integration — observability wiring', () => {
     const metricsText = await renderLexiconMetrics();
     expect(metricsText).toMatch(/aster_lexicon_op_total\{op="term\.add",status="success"\} 1/);
 
-    unsubscribe();
   });
 
   it('modify and delete share the same observability contract', async () => {
@@ -243,24 +222,15 @@ describe('lexicon integration — observability wiring', () => {
     expect(metricsText).toMatch(/aster_lexicon_op_total\{op="term\.delete",status="success"\} 1/);
   });
 
-  it('restore reactivates a soft-deleted link and publishes invalidate', async () => {
+  it('restore reactivates a soft-deleted link', async () => {
     queueSelect([joinedRow()]); // includeDeleted lookup
     queueSelect([joinedRow()]); // post-update reload
 
-    const events: InvalidateEvent[] = [];
-    const unsubscribe = subscribeVocabularyInvalidate(
-      { ownerType: 'user', ownerId: 'user-1' },
-      (ev) => events.push(ev),
-    );
 
     const result = await restoreUserVocabularyTerm('user-1', 'link-1');
-    await Promise.resolve();
 
     expect(result.link.id).toBe('link-1');
-    expect(events).toHaveLength(1);
-    expect(events[0].cause).toBe('term.restore');
 
-    unsubscribe();
   });
 
   // R-blocker-1: kind=field without parentCanonical must be rejected at the
@@ -282,17 +252,12 @@ describe('lexicon integration — observability wiring', () => {
     });
   });
 
-  it('add failure (plan_gate) records error counter and does not publish SSE', async () => {
+  it('add failure (plan_gate) records error counter', async () => {
     vi.mocked(getLexiconQuota).mockResolvedValue({
       maxTerms: 0,
       bulkAsync: false,
       allowed: false,
     });
-    const events: InvalidateEvent[] = [];
-    const unsubscribe = subscribeVocabularyInvalidate(
-      { ownerType: 'user', ownerId: 'user-1' },
-      (ev) => events.push(ev),
-    );
 
     await expect(
       addUserVocabularyTerm('user-1', {
@@ -304,42 +269,20 @@ describe('lexicon integration — observability wiring', () => {
       }),
     ).rejects.toMatchObject({ code: 'plan_gate_required' });
 
-    await Promise.resolve();
-    expect(events).toHaveLength(0);
-
     const metricsText = await renderLexiconMetrics();
     expect(metricsText).toMatch(/aster_lexicon_op_total\{op="term\.add",status="error"\} 1/);
 
-    unsubscribe();
   });
 });
 
-describe('publishVocabularyInvalidate — direct callers', () => {
-  it('publishes events with stable shape', async () => {
-    const events: InvalidateEvent[] = [];
-    const unsubscribe = subscribeVocabularyInvalidate(
-      { ownerType: 'user', ownerId: 'user-1' },
-      (ev) => events.push(ev),
-    );
+describe('getUserVocabularyVersion — 跨 isolate 的失效信号（#608）', () => {
+  it('返回版本行里的单调计数', async () => {
+    queueSelect([{ version: 3 }]);
+    await expect(getUserVocabularyVersion('user-1')).resolves.toBe('3');
+  });
 
-    publishVocabularyInvalidate({
-      ownerType: 'user',
-      ownerId: 'user-1',
-      domain: 'finance.loan',
-      locale: 'en-US',
-      cause: 'rollback',
-    });
-
-    await Promise.resolve();
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({
-      type: 'invalidate',
-      cause: 'rollback',
-      domain: 'finance.loan',
-      locale: 'en-US',
-    });
-    expect(events[0].at).toBeDefined();
-    expect(new Date(events[0].at).toString()).not.toBe('Invalid Date');
-    unsubscribe();
+  it('从未写过词汇的用户返回 "0"', async () => {
+    queueSelect([]);
+    await expect(getUserVocabularyVersion('user-1')).resolves.toBe('0');
   });
 });

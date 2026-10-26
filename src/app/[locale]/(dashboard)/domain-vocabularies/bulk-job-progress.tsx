@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCircle2, AlertCircle, Loader2, XCircle } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Button, Card, CardBody, toast } from '@/components/ui';
+import { normalizeRowErrors } from './bulk-result';
+import { BulkRowErrors } from './bulk-row-errors';
 
 interface BulkRollup {
   added?: number;
@@ -42,8 +44,7 @@ const POLL_BACKOFF_FACTOR = 1.3;
 // Backoff is wall-clock-since-start, not failure-driven: each successive
 // non-terminal tick widens the gap up to POLL_INTERVAL_MAX_MS. This bounds
 // load while keeping the first few updates snappy. A network error does
-// NOT extend the interval beyond this curve — EventSource handles that
-// separately on the SSE side.
+// NOT extend the interval beyond this curve.
 
 /**
  * Polls /api/v1/domain-vocabularies/bulk/jobs/[id] until the job reaches a
@@ -234,6 +235,8 @@ export function BulkJobProgress({ jobId, onClear, onTerminal }: BulkJobProgressP
             />
           </dl>
         ) : null}
+
+        {isFinished ? <BulkRowErrors errors={normalizeRowErrors(job.errors)} /> : null}
       </CardBody>
     </Card>
   );
