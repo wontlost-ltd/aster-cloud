@@ -19,6 +19,7 @@ import {
   toast,
   type DataTableColumn,
 } from '@/components/ui';
+import { parseVocabularyValidationMessage } from '@/lib/vocabulary-validation-message';
 import { buildListUrl, type ListUrlOptions } from '@/lib/list-search-params';
 import { BulkJobProgress } from './bulk-job-progress';
 import { BulkUploadDialog } from './bulk-upload-dialog';
@@ -210,22 +211,35 @@ export function VocabulariesContent({
     [t],
   );
 
+  const validationMessage = useCallback(
+    (serverMessage: string | undefined) => {
+      // 服务端 validation_failed 原文可能是引擎中文诊断，不直接展示：识别为原因码后按当前语言渲染，
+      // 识别不了时用通用提示。
+      const detail = parseVocabularyValidationMessage(serverMessage);
+      switch (detail?.reason) {
+        case 'invalidCanonical': return t('errors.validation.invalidCanonical', detail.values);
+        case 'duplicateCanonical': return t('errors.validation.duplicateCanonical', detail.values);
+        case 'triggerConflict': return t('errors.validation.triggerConflict', detail.values);
+        case 'invalidLiteral': return t('errors.validation.invalidLiteral');
+        case 'parentRequired': return t('errors.validation.parentRequired');
+        case 'fieldRequired': return t('errors.validation.fieldRequired', detail.values);
+        default: return t('errors.validation.generic');
+      }
+    },
+    [t],
+  );
+
   const errorMessage = useCallback(
     (code: string | undefined, fallback: string | undefined) => {
-      // For validation_failed the server message ("parentCanonical is
-      // required for kind=field", "domain is required", etc.) is the
-      // actionable piece — the i18n fallback "please correct the
-      // highlighted fields" is useless when nothing is highlighted.
-      // Prefer the server text, fall back to the localized copy.
-      if (code === 'validation_failed' && fallback) {
-        return fallback;
+      if (code === 'validation_failed') {
+        return validationMessage(fallback);
       }
       if (code && KNOWN_ERROR_CODES.has(code)) {
         return t(`errors.${code}` as ErrorKey);
       }
       return fallback ?? t('dialog.errorGeneric');
     },
-    [t],
+    [t, validationMessage],
   );
 
   const refreshRsc = useCallback(() => {

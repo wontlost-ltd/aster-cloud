@@ -61,6 +61,11 @@ export interface PolicyCompileRequest {
    * 依赖别名的合法源码会被「不带 alias 的编译」误判为解析错误。
    */
   aliasSet?: Record<string, string[]> | null;
+  /**
+   * 结构词别名已获授权（服务端按 per-user entitlement 判定）。aster-api 仅对已验签的内部调用方
+   * 采信此标记；缺省按未授权编译，结构词别名会被拒。
+   */
+  allowStructural?: boolean;
 }
 
 /**
@@ -565,6 +570,8 @@ export class PolicyApiClient {
       locale: request.locale || 'en-US',
       // 仅在有别名时携带（与 evaluateSource 一致），避免空字段增大请求体。
       ...(hasAliases ? { aliasSet: request.aliasSet } : {}),
+      // 结构词授权只在有别名且已授权时携带。
+      ...(hasAliases && request.allowStructural === true ? { allowStructural: true } : {}),
     });
   }
 
