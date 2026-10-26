@@ -248,11 +248,15 @@ describe('POST /api/policies/[id]/execute — 团队策略的草稿词汇归属�
     expect(body.output.result).toBe(42);
   });
 
-  it('版本没有作者时不带词汇（审批冻结此时同样不冻结任何词汇），不回退到所有者', async () => {
+  it('版本没有作者时不带词汇（审批冻结此时同样不冻结任何词汇），不回退到所有者，并留调试日志', async () => {
     mockFindVersions.mockResolvedValue(versions('DRAFT', { createdBy: null }));
     mockLoadLive.mockResolvedValue(deVocab());
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
 
     await execute({ person: { alter: 21 } });
+
+    expect(debug).toHaveBeenCalledWith(expect.stringContaining('has no author'));
+    debug.mockRestore();
 
     expect(mockLoadLive).not.toHaveBeenCalled();
     expect(mockEvaluateSource.mock.calls[0]![2].vocabulary).toBeUndefined();

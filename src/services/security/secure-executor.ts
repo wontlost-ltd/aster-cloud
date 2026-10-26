@@ -354,7 +354,7 @@ export async function executeSecurely(
         executionTimeMs,
         success: !response.error,
         // #626 审计（新增字段）：签名覆盖原始输入，引擎执行映射后的输入；记录原始输入哈希与改写位置。
-        ...(mappingAudit ? { inputMapping: mappingAudit } : {}),
+        inputMapping: mappingAudit,
       },
     });
 

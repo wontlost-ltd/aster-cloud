@@ -66,7 +66,11 @@ export async function loadVersionExecutionVocabulary(
   if (executionVocabularySource(target.status) === 'frozen') {
     return loadExecutionVocabulary(target.vocabularySnapshotIds, policy);
   }
-  if (!target.authorId) return undefined;
+  if (!target.authorId) {
+    // 与审批冻结同口径：无作者的版本不带词汇。生产上应不存在，留日志便于观察。
+    console.debug('[vocabulary] draft version has no author; executing without vocabulary');
+    return undefined;
+  }
   try {
     const vocab = await loadLiveVocabularyForPolicy(target.authorId, policy);
     return vocab ? (vocab as unknown as Record<string, unknown>) : undefined;
@@ -145,11 +149,10 @@ export function ambiguousInputFieldMessage(ambiguous: AmbiguousInputField): stri
 }
 
 /**
- * secure-execute 审计：签名覆盖的是原始输入，引擎执行的是映射后的输入。记录原始输入的哈希与
- * 改写过的位置，使签名内容与执行内容可追溯。无改写时返回 null。
+ * secure-execute 审计：签名覆盖的是原始输入，引擎执行的是映射后的输入。每次签名执行都记录原始输入的
+ * 哈希与改写过的位置（无改写时为空数组），使签名内容与执行内容可追溯。
  */
 export function inputMappingAudit(originalInput: unknown, renames: readonly InputRename[]) {
-  if (renames.length === 0) return null;
   return {
     originalInputSha256: `sha256:${createHash('sha256').update(JSON.stringify(originalInput) ?? '').digest('hex')}`,
     renames,

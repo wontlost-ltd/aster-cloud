@@ -208,7 +208,7 @@ Regel bewerten gegeben person als Fahrer liefert Ganzzahl:
       expect(mockEvaluateSource.mock.calls[1]?.[1]).toEqual({ person: { age: 21 } });
     });
 
-    it('审计：签名的原始输入哈希与改写位置记入执行事件；无改写时不记', async () => {
+    it('审计：每次签名执行都记录原始输入哈希与改写位置（无改写时为空数组）', async () => {
       await executeSecurely(withInput({ person: { alter: 21 } }));
       await executeSecurely(withInput({ person: { age: 21 } }));
 
@@ -220,7 +220,8 @@ Regel bewerten gegeben person als Fahrer liefert Ganzzahl:
         originalInputSha256: expectedHash,
         renames: [{ path: 'person.alter', from: 'alter', to: 'age' }],
       });
-      expect(executed[1]!.details!.inputMapping).toBeUndefined();
+      const canonicalHash = `sha256:${createHash('sha256').update(JSON.stringify({ person: { age: 21 } })).digest('hex')}`;
+      expect(executed[1]!.details!.inputMapping).toEqual({ originalInputSha256: canonicalHash, renames: [] });
     });
 
     it('两者并存 → AMBIGUOUS_INPUT_FIELD，不调用引擎', async () => {

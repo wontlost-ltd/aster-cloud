@@ -83,5 +83,5 @@
   `output.result` 不同时出现，供界面展示。
 - 执行记录（`Execution.input`）保存映射后的规范输入，即引擎实际评估的输入；回放、parity、
   审批登记都以它为准。
-- `secure-execute`：签名覆盖的是原始输入。发生改写时，`POLICY_EXECUTED` 安全事件的 `details.inputMapping`
-  记录原始输入哈希 `originalInputSha256` 与改写位置 `renames`（`path` / `from` / `to`），签名内容与执行内容可追溯。
+- `secure-execute`：签名覆盖的是原始输入。每次签名执行，`POLICY_EXECUTED` 安全事件的 `details.inputMapping`
+  都记录原始输入哈希 `originalInputSha256` 与改写位置 `renames`（`path` / `from` / `to`，无改写时为空数组），签名内容与执行内容可追溯。
