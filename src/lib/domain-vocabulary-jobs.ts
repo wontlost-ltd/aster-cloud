@@ -275,7 +275,7 @@ export async function processQueuedBulkJobs(opts: {
     summary.claimed += 1;
 
     try {
-      const outcome = await processBulkJobChunk(job);
+      const outcome = await processBulkJobChunk(job, { deadline: startedAt + budgetMs });
       if (outcome.lostClaim) summary.lost += 1;
       else if (outcome.finished) summary.completed += 1;
     } catch (err) {

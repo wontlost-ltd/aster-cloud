@@ -474,6 +474,26 @@ function userQuotaLockKey(userId: string): bigint {
 }
 
 /**
+ * 在当前事务里拿用户配额锁，并在锁内重新计算剩余配额。
+ *
+ * 单条新增、同步批量、异步 worker 必须走同一把锁：锁外计数会让并发写入各自
+ * 「看见」同一个余量，最终越过套餐上限。锁随事务结束自动释放。
+ */
+export async function lockUserQuotaAndCountRemaining(
+  tx: Tx,
+  userId: string,
+  maxTerms: number,
+): Promise<number> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(${userQuotaLockKey(userId)})`);
+  if (maxTerms === -1) return Number.POSITIVE_INFINITY;
+  const [{ count }] = await tx
+    .select({ count: sql<number>`count(*)::int` })
+    .from(userDomainTerms)
+    .where(and(eq(userDomainTerms.userId, userId), activeLinkPredicate()));
+  return Math.max(0, maxTerms - (count ?? 0));
+}
+
+/**
  * Add a user-owned vocabulary link, reusing the global DomainTerm when the
  * normalized dedup key already exists.
  *
@@ -507,19 +527,12 @@ async function addUserVocabularyTermInner(
   const transactionResult = await db.transaction(async (tx) => {
     // Per-user advisory lock prevents concurrent adds from both passing the
     // quota check. The lock auto-releases at transaction end.
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(${userQuotaLockKey(userId)})`);
-
-    if (quota.maxTerms !== -1) {
-      const [{ count }] = await tx
-        .select({ count: sql<number>`count(*)::int` })
-        .from(userDomainTerms)
-        .where(and(eq(userDomainTerms.userId, userId), activeLinkPredicate()));
-      if ((count ?? 0) >= quota.maxTerms) {
-        throw new VocabularyError(
-          'quota_exceeded',
-          `Custom vocabulary term quota of ${quota.maxTerms} reached`,
-        );
-      }
+    const remaining = await lockUserQuotaAndCountRemaining(tx, userId, quota.maxTerms);
+    if (remaining <= 0) {
+      throw new VocabularyError(
+        'quota_exceeded',
+        `Custom vocabulary term quota of ${quota.maxTerms} reached`,
+      );
     }
 
     const upserted = await upsertDomainTerm(tx, normalized);
@@ -943,6 +956,11 @@ export interface BulkChunkLanding {
   reused: number;
   /** 本 chunk 的行级错误，按行号排序。 */
   errors: BulkRowError[];
+  /**
+   * 逐行退路因超出 deadline 提前停下时，第一条**未处理**行在 rows 里的下标；
+   * 全部处理完为 undefined。调用方只提交此前的进度，余下留给下一次认领。
+   */
+  stoppedAt?: number;
 }
 
 /**
@@ -962,6 +980,8 @@ export async function landBulkChunk(
   rows: readonly BulkChunkRow[],
   remainingQuota: number,
   quotaMessage: string,
+  /** 逐行退路的截止时刻（epoch ms）；批量路径只有个位数语句，不受其约束。 */
+  deadline: number = Number.POSITIVE_INFINITY,
 ): Promise<BulkChunkLanding> {
   if (rows.length === 0) return { added: 0, reused: 0, errors: [] };
   try {
@@ -970,7 +990,7 @@ export async function landBulkChunk(
     );
   } catch (err) {
     console.error('[landBulkChunk] batched path failed; falling back to per-row', err);
-    return landBulkChunkPerRow(tx, userId, rows, remainingQuota, quotaMessage);
+    return landBulkChunkPerRow(tx, userId, rows, remainingQuota, quotaMessage, deadline);
   }
 }
 
@@ -1097,17 +1117,25 @@ async function landBulkChunkBatched(
   return { added, reused, errors: errors.sort((a, b) => a.row - b.row) };
 }
 
-/** 退路：逐行 SAVEPOINT，坏行只影响自己。 */
+/**
+ * 退路：逐行 SAVEPOINT，坏行只影响自己。每行约 4 次往返，可能远慢于批量路径，
+ * 所以超过 deadline 就停下（至少处理一行，保证每次认领都有进展）。
+ */
 async function landBulkChunkPerRow(
   tx: Tx,
   userId: string,
   rows: readonly BulkChunkRow[],
   remainingQuota: number,
   quotaMessage: string,
+  deadline: number,
 ): Promise<BulkChunkLanding> {
   const result: BulkChunkLanding = { added: 0, reused: 0, errors: [] };
   let quotaLeft = remainingQuota;
-  for (const { row, normalized } of rows) {
+  for (const [index, { row, normalized }] of rows.entries()) {
+    if (index > 0 && Date.now() >= deadline) {
+      result.stoppedAt = index;
+      return result;
+    }
     if (quotaLeft <= 0) {
       result.errors.push({ row, code: 'quota_exceeded', message: quotaMessage });
       continue;
@@ -1286,21 +1314,9 @@ async function bulkAddUserVocabularyTermsInner(
     let chunkErrors: BulkRowError[] = [];
     try {
       const result = await db.transaction(async (tx) => {
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(${userQuotaLockKey(userId)})`);
         const localRollup = emptyRollup();
         const localErrors: BulkRowError[] = [];
-
-        // In-lock quota count. We compute remaining capacity once at the
-        // top of each chunk and decrement as we land rows; concurrent
-        // mutations cannot land for this user while we hold the lock.
-        let remainingQuota = Number.POSITIVE_INFINITY;
-        if (quota.maxTerms !== -1) {
-          const [{ count: currentActive }] = await tx
-            .select({ count: sql<number>`count(*)::int` })
-            .from(userDomainTerms)
-            .where(and(eq(userDomainTerms.userId, userId), activeLinkPredicate()));
-          remainingQuota = Math.max(0, quota.maxTerms - (currentActive ?? 0));
-        }
+        const remainingQuota = await lockUserQuotaAndCountRemaining(tx, userId, quota.maxTerms);
 
         const landed = await landBulkChunk(
           tx,

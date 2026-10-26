@@ -11,11 +11,7 @@
  */
 
 import { and, eq, sql } from 'drizzle-orm';
-import {
-  db,
-  lexiconBulkJobs,
-  userDomainTerms,
-} from '@/lib/prisma';
+import { db, lexiconBulkJobs } from '@/lib/prisma';
 import { logAuditEvent } from '@/lib/audit-log';
 import { getLexiconQuota } from '@/lib/usage';
 import {
@@ -28,6 +24,7 @@ import {
 } from '@/lib/domain-vocabulary-validation';
 import {
   landBulkChunk,
+  lockUserQuotaAndCountRemaining,
   VocabularyError,
   type BulkChunkRow,
 } from '@/lib/domain-vocabulary';
@@ -200,21 +197,16 @@ interface ClaimedJob {
   claimedBy: string | null;
 }
 
-async function remainingQuotaFor(userId: string, maxTerms: number): Promise<number> {
-  if (maxTerms === -1) return Number.POSITIVE_INFINITY;
-  const [{ count }] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(userDomainTerms)
-    .where(
-      and(
-        eq(userDomainTerms.userId, userId),
-        sql`${userDomainTerms.deletedAt} IS NULL AND ${userDomainTerms.archivedAt} IS NULL`,
-      ),
-    );
-  return Math.max(0, maxTerms - (count ?? 0));
-}
 
-export async function processBulkJobChunk(job: ClaimedJob): Promise<ChunkOutcome> {
+/**
+ * 处理一个 chunk。`deadline`（epoch ms）只约束逐行退路：批量路径整块只需个位数语句；
+ * 退路每行约 4 次往返，超时就只提交已处理的行，余下留给下一次认领。
+ * 两条路径的最坏耗时都远小于超时回收阈值（5 分钟），回收不会与正常处理重叠。
+ */
+export async function processBulkJobChunk(
+  job: ClaimedJob,
+  opts: { deadline?: number } = {},
+): Promise<ChunkOutcome> {
   const claimToken = job.claimedBy ?? '';
   const inputRows = parseInput(job.inputJson);
   const startIndex = job.processed;
@@ -232,8 +224,6 @@ export async function processBulkJobChunk(job: ClaimedJob): Promise<ChunkOutcome
     await markJobFailed(job.id, claimToken, 'Custom domain vocabulary requires an eligible plan');
     throw new VocabularyError('plan_gate_required', 'Plan no longer allows custom vocabulary');
   }
-  const remainingQuota = await remainingQuotaFor(job.userId, quota.maxTerms);
-
   // 行级校验（纯内存）先做，失败行直接记错误；合法行整块交给 landBulkChunk。
   const valid: BulkChunkRow[] = [];
   chunk.forEach((raw, i) => {
@@ -242,13 +232,31 @@ export async function processBulkJobChunk(job: ClaimedJob): Promise<ChunkOutcome
     else errorsDelta.push({ row: startIndex + i, code: prepared.code, message: prepared.message });
   });
 
-  const processedNow = startIndex + chunk.length;
-  const finished = processedNow >= job.rowCount;
+  let processedNow = startIndex + chunk.length;
+  let finished = processedNow >= job.rowCount;
   let mergedRollup: RollupShape = emptyRollup();
 
   try {
     await db.transaction(async (tx) => {
-      const landed = await landBulkChunk(tx, job.userId, valid, remainingQuota, QUOTA_MESSAGE);
+      // 与单条新增、同步批量同一把用户配额锁，并在锁内计数（复审 P1）：
+      // 锁外计数会让并发写入看见同一个余量而越过套餐上限。
+      const remainingQuota = await lockUserQuotaAndCountRemaining(tx, job.userId, quota.maxTerms);
+      const landed = await landBulkChunk(
+        tx,
+        job.userId,
+        valid,
+        remainingQuota,
+        QUOTA_MESSAGE,
+        opts.deadline,
+      );
+      if (landed.stoppedAt !== undefined) {
+        // 逐行退路超时提前停下：进度只推进到第一条未处理的行，之后行的校验错误也留到下次。
+        processedNow = valid[landed.stoppedAt].row;
+        finished = false;
+        const kept = errorsDelta.filter((e) => e.row < processedNow);
+        errorsDelta.length = 0;
+        errorsDelta.push(...kept);
+      }
       errorsDelta.push(...landed.errors);
       errorsDelta.sort((a, b) => a.row - b.row);
       rollupDelta.added = landed.added;
@@ -290,7 +298,7 @@ export async function processBulkJobChunk(job: ClaimedJob): Promise<ChunkOutcome
     });
   }
 
-  return { processedDelta: chunk.length, rollupDelta, errorsDelta, finished, lostClaim: false };
+  return { processedDelta: processedNow - startIndex, rollupDelta, errorsDelta, finished, lostClaim: false };
 }
 
 function mergeRollupAtomic(prior: unknown, delta: RollupShape): RollupShape {

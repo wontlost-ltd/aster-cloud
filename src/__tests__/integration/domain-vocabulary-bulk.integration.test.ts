@@ -16,6 +16,7 @@ vi.mock('@/lib/usage', () => ({
 vi.mock('@/lib/audit-log', () => ({ logAuditEvent: vi.fn().mockResolvedValue(undefined) }));
 
 import {
+  addUserVocabularyTerm,
   bulkAddUserVocabularyTerms,
   countActiveUserVocabularyTerms,
   getUserVocabularyVersion,
@@ -26,6 +27,8 @@ import {
 } from '@/lib/domain-vocabulary';
 import { processBulkJobChunk } from '@/lib/domain-vocabulary-job-runner';
 import { cancelBulkJob, processQueuedBulkJobs } from '@/lib/domain-vocabulary-jobs';
+import { purgeUserVocabulary } from '@/lib/domain-vocabulary-retention';
+import { getLexiconQuota } from '@/lib/usage';
 
 const USER = 'vocab-bulk-it-user';
 // 全局 DomainTerm 不随用户删除而清理；每个用例用独立 domain，「新增 vs 复用」才可断言。
@@ -273,5 +276,48 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('bulk import / version / worker
     expect(job).toMatchObject({ status: 'completed', processed: 2 });
     expect(job.rollup).toMatchObject({ added: 2, errorCount: 0 });
     expect(await activeCanonicalCount()).toBe(2);
+  });
+
+  it('语句级触发器：一次写 250 行的批量导入只让版本 +1（复审 P2）', async () => {
+    const before = await version();
+    const rows = Array.from({ length: 250 }, (_, i) => row(`Bulk${i}`));
+    const result = await bulkAddUserVocabularyTerms(USER, rows);
+    expect(result.rollup.added).toBe(250);
+    expect(await version()).toBe(before + 1);
+  });
+
+  it('DSAR 清理（保留用户）同时删除版本行（复审 P2）', async () => {
+    await bulkAddUserVocabularyTerms(USER, [row('Driver')]);
+    expect(await version()).toBeGreaterThan(0);
+    await purgeUserVocabulary(USER);
+    const rows = await db
+      .select()
+      .from(userVocabularyVersions)
+      .where(eq(userVocabularyVersions.userId, USER));
+    expect(rows).toEqual([]);
+    expect(await activeCanonicalCount()).toBe(0);
+  });
+
+  it('异步 chunk 与单条新增、同步批量并发时不会越过配额（复审 P1）', async () => {
+    const MAX = 5;
+    vi.mocked(getLexiconQuota).mockResolvedValue({ maxTerms: MAX, bulkAsync: true, allowed: true });
+    try {
+      for (let round = 0; round < 3; round += 1) {
+        await db.delete(userDomainTerms).where(eq(userDomainTerms.userId, USER));
+        const asyncRows = Array.from({ length: MAX }, (_, i) => row(`Async${round}x${i}`));
+        const jobId = await insertRunningJob(asyncRows, `worker-${round}`, new Date());
+        const job = await loadJob(jobId);
+
+        await Promise.allSettled([
+          processBulkJobChunk(job),
+          bulkAddUserVocabularyTerms(USER, [row(`Sync${round}a`), row(`Sync${round}b`), row(`Sync${round}c`)]),
+          ...[0, 1, 2].map((i) => addUserVocabularyTerm(USER, row(`Single${round}x${i}`))),
+        ]);
+
+        expect(await countActiveUserVocabularyTerms(USER)).toBe(MAX);
+      }
+    } finally {
+      vi.mocked(getLexiconQuota).mockResolvedValue({ maxTerms: 5000, bulkAsync: true, allowed: true });
+    }
   });
 });

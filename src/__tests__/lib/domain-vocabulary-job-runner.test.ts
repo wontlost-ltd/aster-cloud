@@ -12,6 +12,7 @@ const hoisted = vi.hoisted(() => ({
   transaction: vi.fn(),
   txUpdateSet: vi.fn(),
   txUpdateReturning: vi.fn(),
+  execute: vi.fn(),
   selectQueue: [] as unknown[],
 }));
 
@@ -78,11 +79,13 @@ beforeEach(() => {
   vi.mocked(getLexiconQuota).mockResolvedValue({ maxTerms: -1, bulkAsync: true, allowed: true });
   hoisted.select.mockImplementation(() => selectChain(hoisted.selectQueue.shift() ?? []));
   hoisted.txUpdateReturning.mockResolvedValue([{ id: 'job-1' }]);
+  hoisted.execute.mockResolvedValue(undefined);
   hoisted.txUpdateSet.mockReturnValue({
     where: vi.fn().mockReturnValue({ returning: hoisted.txUpdateReturning }),
   });
   hoisted.transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
     const tx: Record<string, unknown> = {
+      execute: hoisted.execute,
       insert: hoisted.insert,
       select: hoisted.select,
       update: vi.fn(() => ({ set: hoisted.txUpdateSet })),
@@ -136,5 +139,49 @@ describe('processBulkJobChunk', () => {
     // 事务回调抛错 = 真实数据库里整个 chunk（含刚建的链接）回滚。
     await expect(hoisted.transaction.mock.results[0].value).rejects.toThrow(/claim lost/);
     expect(logAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it('配额锁在 chunk 事务内获取（与单条新增、同步批量同一把锁）', async () => {
+    hoisted.selectQueue.push([]);
+    hoisted.insert
+      .mockReturnValueOnce(insertChain([{ id: 'term-1', dedupKey: key(row('Vehicle')) }]))
+      .mockReturnValueOnce(insertChain([{ termId: 'term-1' }]));
+
+    await processBulkJobChunk(job([row('Vehicle')]));
+
+    expect(hoisted.execute).toHaveBeenCalledTimes(1);
+    const { PgDialect } = await import('drizzle-orm/pg-core');
+    const lockSql = new PgDialect().sqlToQuery(hoisted.execute.mock.calls[0][0]).sql;
+    expect(lockSql).toContain('pg_advisory_xact_lock');
+  });
+
+  it('批量路径失败转逐行退路且超出 deadline：只提交已处理的行，余下留给下次', async () => {
+    const failing = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoNothing: vi.fn().mockReturnValue({
+          returning: vi.fn().mockRejectedValue(new Error('batch failed')),
+        }),
+      }),
+    };
+    hoisted.selectQueue.push([]);
+    hoisted.insert
+      .mockReturnValueOnce(failing) // 批量补建词条失败 → 退回逐行
+      .mockReturnValueOnce(insertChain([{ id: 'term-a' }])) // 第 0 行词条
+      .mockReturnValueOnce(insertChain([{ id: 'link-a' }])); // 第 0 行链接
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const outcome = await processBulkJobChunk(
+      job([row('Alpha'), row('Bad', { domain: 'Bad Domain' }), row('Gamma')]),
+      { deadline: 0 }, // 早已过期：处理完第一行就停
+    );
+    spy.mockRestore();
+
+    expect(outcome).toMatchObject({ processedDelta: 2, finished: false, lostClaim: false });
+    expect(outcome.rollupDelta).toMatchObject({ added: 1 });
+    // 第 1 行校验失败、位于停止点之前 → 保留；Gamma 未处理，留给下次。
+    expect(outcome.errorsDelta.map((e) => [e.row, e.code])).toEqual([[1, 'validation_failed']]);
+    expect(hoisted.txUpdateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ processed: 2, status: 'queued' }),
+    );
   });
 });

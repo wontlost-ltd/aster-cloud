@@ -25,6 +25,7 @@ import {
   lexiconIdempotencyKeys,
   userDomainTerms,
   userVocabularySnapshots,
+  userVocabularyVersions,
   users,
 } from '@/lib/prisma';
 import { logAuditEvent } from '@/lib/audit-log';
@@ -365,6 +366,11 @@ export async function purgeUserVocabulary(userId: string): Promise<PurgeOutcome>
         )
         .returning({ id: userVocabularySnapshots.id })
     ).length;
+
+    // 4. UserVocabularyVersion：保留用户的 DSAR 清理也要抹掉版本行（复审 P2）。
+    //    必须放在第 1 步删词条之后——那一步的 DELETE 触发器会为仍存在的用户
+    //    upsert 版本行，先删就会被它重新建出来。
+    await tx.delete(userVocabularyVersions).where(eq(userVocabularyVersions.userId, userId));
 
     return { snapshotsDeleted, bulkJobsDeleted, idempotencyDeleted };
   });

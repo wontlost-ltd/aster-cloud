@@ -44,6 +44,7 @@ vi.mock('@/lib/prisma', () => {
     users: tableProxy,
     userDomainTerms: tableProxy,
     userVocabularySnapshots: tableProxy,
+    userVocabularyVersions: tableProxy,
     lexiconBulkJobs: tableProxy,
     lexiconIdempotencyKeys: tableProxy,
   };
@@ -152,14 +153,18 @@ describe('purgeUserVocabulary', () => {
       )
       .mockReturnValueOnce({ returning: hoisted.deleteReturning })
       .mockReturnValueOnce({ returning: hoisted.deleteReturning })
-      .mockReturnValueOnce({ returning: hoisted.deleteReturning });
+      .mockReturnValueOnce({ returning: hoisted.deleteReturning })
+      // 最后：UserVocabularyVersion（必须在删词条之后，否则 DELETE 触发器会重建它）。
+      .mockReturnValueOnce(
+        Promise.resolve(undefined) as unknown as { returning: typeof hoisted.deleteReturning },
+      );
 
     const outcome = await purgeUserVocabulary('user-1');
 
     expect(outcome.snapshotsDeleted).toBe(2);
     expect(outcome.bulkJobsDeleted).toBe(1);
     expect(outcome.idempotencyDeleted).toBe(3);
-    expect(hoisted.delete).toHaveBeenCalledTimes(4);
+    expect(hoisted.delete).toHaveBeenCalledTimes(5);
     expect(hoisted.transaction).toHaveBeenCalledTimes(1);
   });
 });
