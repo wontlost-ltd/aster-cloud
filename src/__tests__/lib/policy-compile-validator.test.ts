@@ -158,3 +158,35 @@ describe('makeCompileValidator — success:false 且无 error 诊断视为编译
     await expect(assertCompilable(makeCompileValidator('u1'), plain)).resolves.toBeNull();
   });
 });
+
+describe('makeCompileValidator — 结构词授权透传（#604）', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('allowStructural=true 时随 source/locale/aliasSet 一起传给 aster-api compile', async () => {
+    mockCompile.mockResolvedValue({ success: true, diagnostics: [] });
+    const aliasSet = { IF: ['provided that'] };
+    await makeCompileValidator('u1')({
+      source: 'Module X.',
+      locale: 'en-US',
+      aliasSet,
+      allowStructural: true,
+    });
+    expect(mockCompile).toHaveBeenCalledWith({
+      source: 'Module X.',
+      locale: 'en-US',
+      aliasSet,
+      allowStructural: true,
+    });
+  });
+
+  it('assertCompilable 原样把 allowStructural 交给校验器', async () => {
+    const validator = vi.fn().mockResolvedValue({ diagnostics: [] });
+    await assertCompilable(validator, {
+      source: 'Module X.',
+      locale: 'en-US',
+      aliasSet: { IF: ['provided that'] },
+      allowStructural: true,
+    });
+    expect(validator).toHaveBeenCalledWith(expect.objectContaining({ allowStructural: true }));
+  });
+});

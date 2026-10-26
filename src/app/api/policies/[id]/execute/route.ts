@@ -10,6 +10,12 @@ import { getCachedPolicyMeta, cachePolicyMeta, type CachedPolicyMeta } from '@/l
 import { hydrateExecutableVersion, isCachedVersionCurrent, resolveExecutableVersion, type ExecutableVersionCandidate } from '@/services/policy/executable-version';
 import { buildReplayColumns, buildEvidenceColumns } from '@/lib/policy-execution-log';
 import { policyTenantId } from '@/lib/policy-tenant';
+import {
+  EXECUTION_FAILED_CODE,
+  EXECUTION_FAILED_MESSAGE,
+  executionErrorCode,
+  sanitizeExecutionResult,
+} from '@/lib/execution-error';
 import { needsGuardDecision, registerGuardAfterInsert, registerGuardDecisionWith } from '@/lib/guard-register';
 import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
 import type { AgentIdentity } from '@/services/policy/policy-api';
@@ -371,7 +377,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         parsedAliasSet = null; // 损坏的 aliasSet 视为无别名，不阻塞执行（envelope 另有防篡改）
       }
     }
-    const executionResult = await executePolicyUnified({
+    const rawExecutionResult = await executePolicyUnified({
       policy: policy as Parameters<typeof executePolicyUnified>[0]['policy'],
       input: validatedInput,
       userId,
@@ -384,6 +390,8 @@ export async function POST(req: Request, { params }: RouteParams) {
     });
     timings.executionWait = Date.now() - t3;
     timings.executionTotal = Date.now() - t3;
+    // 引擎失败原文（中文 + Java 异常）只进服务端日志；响应与执行记录只存通用说明。
+    const executionResult = sanitizeExecutionResult(rawExecutionResult, { policyId: id, userId });
 
     const primaryError = getPrimaryError(executionResult);
     const durationMs = Date.now() - startTime;
@@ -500,6 +508,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       decision,
       output: executionResult,
       error: primaryError,
+      errorCode: executionErrorCode(executionResult),
       durationMs,
       executedFunction: executionResult.executedFunction,
       diagnostics: executionResult.diagnostics,
@@ -508,10 +517,11 @@ export async function POST(req: Request, { params }: RouteParams) {
     });
   } catch (error) {
     console.error('Error executing policy:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    // 内部异常原文只进日志，对外给稳定码 + 通用说明。
     return NextResponse.json({
       error: 'Internal server error',
-      message: errorMessage,
+      code: EXECUTION_FAILED_CODE,
+      message: EXECUTION_FAILED_MESSAGE,
       debug: process.env.NODE_ENV !== 'production' ? String(error) : undefined,
     }, { status: 500 });
   }

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { useState } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { PolicyAliasPanel } from './policy-alias-panel';
 import { extractReservedAliasSets, getLexicon } from '@/lib/aster-lexicon';
@@ -7,6 +8,10 @@ vi.mock('next-intl', () => ({
   useTranslations: () => (key: string, values?: Record<string, unknown>) => {
     if (key === 'configuredCount') return `${values?.count ?? 0} configured`;
     if (key === 'inputLabel') return `Aliases for ${values?.kind ?? ''}`;
+    // 校验文案带参数时把参数拼进去，便于断言具体是哪条问题、归到哪两个 kind。
+    if (key.startsWith('errors.') && values) {
+      return `${key}(${values.alias ?? ''}|${values.kind ?? ''}|${values.otherKind ?? ''})`;
+    }
     return key;
   },
 }));
@@ -65,7 +70,9 @@ describe('PolicyAliasPanel', () => {
         onExpandedChange={vi.fn()}
       />,
     );
-    expect(screen.getByRole('alert')).toHaveTextContent('必须是多词短语');
+    // 本地化键而非中文诊断原文（#609）。
+    expect(screen.getByRole('alert')).toHaveTextContent('errors.singleWord(multiply|kinds.times|');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('多词');
   });
 
   it('normalizes comma-separated input before emitting changes', () => {
@@ -74,5 +81,83 @@ describe('PolicyAliasPanel', () => {
       target: { value: 'Product Of, Times By' },
     });
     expect(onChange).toHaveBeenCalledWith({ TIMES: ['product of', 'times by'] });
+  });
+
+  it('#601：逐字输入多词别名时保留空格与逗号，并实时解析回传', () => {
+    const changes: Record<string, string[]>[] = [];
+    function Harness() {
+      const [aliasSet, setAliasSet] = useState<Record<string, string[]>>({});
+      return (
+        <PolicyAliasPanel
+          aliasSet={aliasSet}
+          locale="en-US"
+          reservedSets={reservedSets}
+          allowStructural={false}
+          onChange={(next) => {
+            changes.push(next);
+            setAliasSet(next);
+          }}
+          expanded
+          onExpandedChange={vi.fn()}
+        />
+      );
+    }
+    render(<Harness />);
+    const input = screen.getByLabelText('Aliases for kinds.times') as HTMLInputElement;
+    const typed = 'multiplied by, scaled by';
+    for (let i = 1; i <= typed.length; i += 1) {
+      fireEvent.change(input, { target: { value: typed.slice(0, i) } });
+      // 每一次按键后输入框都保持用户键入的原文（末尾空格/逗号不被吞掉）。
+      expect(input.value).toBe(typed.slice(0, i));
+    }
+    expect(changes.at(-1)).toEqual({ TIMES: ['multiplied by', 'scaled by'] });
+
+    // 失焦后回到规范化展示。
+    fireEvent.blur(input);
+    expect(input.value).toBe('multiplied by, scaled by');
+  });
+
+  it('#601：失焦后显示解析后的规范形', () => {
+    function Harness() {
+      const [aliasSet, setAliasSet] = useState<Record<string, string[]>>({});
+      return (
+        <PolicyAliasPanel
+          aliasSet={aliasSet}
+          locale="en-US"
+          reservedSets={reservedSets}
+          allowStructural={false}
+          onChange={setAliasSet}
+          expanded
+          onExpandedChange={vi.fn()}
+        />
+      );
+    }
+    render(<Harness />);
+    const input = screen.getByLabelText('Aliases for kinds.times') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '  Multiplied   BY ,, ' } });
+    expect(input.value).toBe('  Multiplied   BY ,, ');
+    fireEvent.blur(input);
+    expect(input.value).toBe('multiplied by');
+  });
+
+  it('#613：跨 kind 重复别名在两行都显示明确错误', () => {
+    render(
+      <PolicyAliasPanel
+        aliasSet={{ TIMES: ['multiplied by'], MODULO: ['multiplied by'] }}
+        locale="en-US"
+        reservedSets={reservedSets}
+        allowStructural={false}
+        onChange={vi.fn()}
+        expanded
+        onExpandedChange={vi.fn()}
+      />,
+    );
+    const alerts = screen.getAllByRole('alert');
+    expect(alerts).toHaveLength(2);
+    for (const alert of alerts) {
+      expect(alert).toHaveTextContent('errors.duplicate(multiplied by|kinds.modulo|kinds.times)');
+    }
+    expect(screen.getByLabelText('Aliases for kinds.times')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText('Aliases for kinds.modulo')).toHaveAttribute('aria-invalid', 'true');
   });
 });

@@ -72,9 +72,41 @@ export interface AliasValidationOptions {
 /** 别名集：kind → 别名短语数组。 */
 export type AliasSet = Readonly<Record<string, readonly string[]>>;
 
+/**
+ * 结构化校验问题：稳定 code + 参数，供 UI 按 i18n 键本地化展示（不直接显示服务端/中文原文）。
+ * kind 为问题归属的 kind；duplicate 时 otherKind 为先占用该别名的 kind，便于两行同时标错。
+ */
+export type AliasIssueCode =
+  | 'tooManyKinds'
+  | 'kindNotAllowed'
+  | 'structuralNotGranted'
+  | 'tooManyAliases'
+  | 'empty'
+  | 'tooLong'
+  | 'nonCanonical'
+  | 'singleWord'
+  | 'shadowsKeyword'
+  | 'shadowsBaseAlias'
+  | 'collidesVocabulary'
+  | 'duplicate';
+
+export interface AliasIssue {
+  readonly code: AliasIssueCode;
+  readonly kind?: string;
+  readonly alias?: string;
+  readonly otherKind?: string;
+  readonly count?: number;
+  readonly limit?: number;
+  /** nonCanonical 时的规范形。 */
+  readonly normalized?: string;
+}
+
 export interface AliasValidationResult {
   readonly valid: boolean;
+  /** 中文诊断文本（服务端日志/异常消息用，与 Java UserAliasValidator 文案对齐）。 */
   readonly errors: readonly string[];
+  /** 结构化问题（UI 本地化用），与 errors 一一对应。 */
+  readonly issues: readonly AliasIssue[];
 }
 
 export interface ReservedSets {
@@ -130,81 +162,128 @@ export function validateUserAliases(
   const allowStructural = options?.allowStructural ?? false;
 
   if (!aliasSet || Object.keys(aliasSet).length === 0) {
-    return { valid: true, errors: [] };
+    return { valid: true, errors: [], issues: [] };
   }
-  const errors: string[] = [];
-  const seen = new Set<string>();
+  const issues: AliasIssue[] = [];
+  // 归一后的别名 → 首个占用它的 kind（跨 kind 去重，并让 UI 能在两行同时标错）。
+  const seen = new Map<string, string>();
+  const kindCount = Object.keys(aliasSet).length;
   // W2：kind 总数上界（DoS 兜底），超限直接判失败不再逐条处理。
-  if (Object.keys(aliasSet).length > MAX_ALIAS_KINDS) {
-    return {
-      valid: false,
-      errors: [`别名集 kind 数量 ${Object.keys(aliasSet).length} 超过上限 ${MAX_ALIAS_KINDS}`],
-    };
+  if (kindCount > MAX_ALIAS_KINDS) {
+    return resultOf([{ code: 'tooManyKinds', count: kindCount, limit: MAX_ALIAS_KINDS }]);
   }
   for (const [kind, aliases] of Object.entries(aliasSet)) {
     // 白名单两档：运算符恒允；结构词需授权；其余高危 kind 恒拒。
-    const isOperator = OPERATOR_KINDS.has(kind);
-    const isStructural = STRUCTURAL_KINDS.has(kind);
-    if (!isOperator && !(isStructural && allowStructural)) {
-      if (isStructural) {
-        errors.push(
-          `不允许为结构词 ${kind} 自定义别名（需管理员授予结构词别名权限；审批时会显示规范化真实结构并留痕）`,
-        );
-      } else {
-        errors.push(
-          `不允许为 ${kind} 自定义别名（仅运算符/比较类，或经授权的结构词可自定义，防止误导审批的语义滥用）`,
-        );
-      }
+    const kindIssue = kindPermissionIssue(kind, allowStructural);
+    if (kindIssue) {
+      issues.push(kindIssue);
       continue;
     }
     const aliasList = aliases ?? [];
     // W2：单 kind 别名数量上界（DoS 兜底）。
     if (aliasList.length > MAX_ALIASES_PER_KIND) {
-      errors.push(`${kind} 的别名数量 ${aliasList.length} 超过上限 ${MAX_ALIASES_PER_KIND}`);
+      issues.push({ code: 'tooManyAliases', kind, count: aliasList.length, limit: MAX_ALIASES_PER_KIND });
       continue;
     }
     for (const alias of aliasList) {
-      if (!alias || !alias.trim()) {
-        errors.push(`${kind} 的别名不能为空`);
-        continue;
-      }
-      // W2：单条别名长度上界（DoS 兜底）。先于归一，避免对超长串做正则。
-      if (alias.length > MAX_ALIAS_LENGTH) {
-        errors.push(`${kind} 的别名长度 ${alias.length} 超过上限 ${MAX_ALIAS_LENGTH}`);
-        continue;
-      }
-      const norm = normalizeAliasToken(alias);
-      // 铁律 0：提交值须已是规范形（注入值即匹配值）
-      if (alias !== norm) {
-        errors.push(
-          `别名 '${alias}'（${kind}）含非规范空白/大小写；请提交规范形 '${norm}'`,
-        );
-        continue;
-      }
-      // 铁律 2：仅多词
-      if (!norm.includes(' ')) {
-        errors.push(
-          `别名 '${alias}'（${kind}）必须是多词短语；单词别名会占用标识符命名空间，破坏用户空间`,
-        );
-      }
-      // 不遮蔽规范拼写 / base 已有别名
-      if (canonicalKeywordsLower.has(norm)) {
-        errors.push(`别名 '${alias}'（${kind}）与某规范关键词同形，禁止遮蔽`);
-      } else if (baseAliasesLower.has(norm)) {
-        errors.push(`别名 '${alias}'（${kind}）与某已有官方别名同形，禁止遮蔽`);
-      }
-      // 不撞领域词汇标识符（关键词翻译先于标识符翻译 → 别名会抢赢用户字段名）
-      if (vocabularyTermsLower.has(norm)) {
-        errors.push(`别名 '${alias}'（${kind}）与领域词汇标识符同形，会让关键词抢赢用户标识符，禁止`);
-      }
-      // 跨 kind 不重复
-      if (seen.has(norm)) {
-        errors.push(`别名 '${alias}' 在多个 kind 间重复定义`);
-      }
-      seen.add(norm);
+      issues.push(...aliasIssues(kind, alias, { canonicalKeywordsLower, baseAliasesLower, vocabularyTermsLower }, seen));
     }
   }
-  return { valid: errors.length === 0, errors };
+  return resultOf(issues);
+}
+
+function resultOf(issues: AliasIssue[]): AliasValidationResult {
+  return { valid: issues.length === 0, errors: issues.map(formatAliasIssueZh), issues };
+}
+
+/** kind 白名单判定：运算符恒允；结构词需授权；其余恒拒。允许时返回 null。 */
+function kindPermissionIssue(kind: string, allowStructural: boolean): AliasIssue | null {
+  if (OPERATOR_KINDS.has(kind)) return null;
+  if (STRUCTURAL_KINDS.has(kind)) {
+    return allowStructural ? null : { code: 'structuralNotGranted', kind };
+  }
+  return { code: 'kindNotAllowed', kind };
+}
+
+/**
+ * 单条别名的全部问题。seen 记录已占用的归一别名（跨 kind 去重），本函数会写入它。
+ * 空/超长/非规范形是前置失败：命中即返回，不再做后续语义校验。
+ */
+function aliasIssues(
+  kind: string,
+  alias: string,
+  sets: Required<ReservedSets>,
+  seen: Map<string, string>,
+): AliasIssue[] {
+  if (!alias || !alias.trim()) return [{ code: 'empty', kind }];
+  // W2：单条别名长度上界（DoS 兜底）。先于归一，避免对超长串做正则。
+  if (alias.length > MAX_ALIAS_LENGTH) {
+    return [{ code: 'tooLong', kind, alias, count: alias.length, limit: MAX_ALIAS_LENGTH }];
+  }
+  const norm = normalizeAliasToken(alias);
+  // 铁律 0：提交值须已是规范形（注入值即匹配值）
+  if (alias !== norm) return [{ code: 'nonCanonical', kind, alias, normalized: norm }];
+  const out: AliasIssue[] = [];
+  // 铁律 2：仅多词
+  if (!norm.includes(' ')) out.push({ code: 'singleWord', kind, alias });
+  // 不遮蔽规范拼写 / base 已有别名
+  if (sets.canonicalKeywordsLower.has(norm)) {
+    out.push({ code: 'shadowsKeyword', kind, alias });
+  } else if (sets.baseAliasesLower.has(norm)) {
+    out.push({ code: 'shadowsBaseAlias', kind, alias });
+  }
+  // 不撞领域词汇标识符（关键词翻译先于标识符翻译 → 别名会抢赢用户字段名）
+  if (sets.vocabularyTermsLower.has(norm)) out.push({ code: 'collidesVocabulary', kind, alias });
+  // 跨 kind 不重复
+  const owner = seen.get(norm);
+  if (owner !== undefined) {
+    out.push({ code: 'duplicate', kind, alias, otherKind: owner });
+  } else {
+    seen.set(norm, kind);
+  }
+  return out;
+}
+
+/** 结构化问题 → 中文诊断文本（服务端异常/日志用，文案与 Java UserAliasValidator 对齐）。 */
+export function formatAliasIssueZh(issue: AliasIssue): string {
+  const { kind, alias } = issue;
+  switch (issue.code) {
+    case 'tooManyKinds':
+      return `别名集 kind 数量 ${issue.count} 超过上限 ${issue.limit}`;
+    case 'structuralNotGranted':
+      return `不允许为结构词 ${kind} 自定义别名（需管理员授予结构词别名权限；审批时会显示规范化真实结构并留痕）`;
+    case 'kindNotAllowed':
+      return `不允许为 ${kind} 自定义别名（仅运算符/比较类，或经授权的结构词可自定义，防止误导审批的语义滥用）`;
+    case 'tooManyAliases':
+      return `${kind} 的别名数量 ${issue.count} 超过上限 ${issue.limit}`;
+    case 'empty':
+      return `${kind} 的别名不能为空`;
+    case 'tooLong':
+      return `${kind} 的别名长度 ${issue.count} 超过上限 ${issue.limit}`;
+    case 'nonCanonical':
+      return `别名 '${alias}'（${kind}）含非规范空白/大小写；请提交规范形 '${issue.normalized}'`;
+    case 'singleWord':
+      return `别名 '${alias}'（${kind}）必须是多词短语；单词别名会占用标识符命名空间，破坏用户空间`;
+    case 'shadowsKeyword':
+      return `别名 '${alias}'（${kind}）与某规范关键词同形，禁止遮蔽`;
+    case 'shadowsBaseAlias':
+      return `别名 '${alias}'（${kind}）与某已有官方别名同形，禁止遮蔽`;
+    case 'collidesVocabulary':
+      return `别名 '${alias}'（${kind}）与领域词汇标识符同形，会让关键词抢赢用户标识符，禁止`;
+    case 'duplicate':
+      return `别名 '${alias}' 在多个 kind 间重复定义`;
+  }
+}
+
+/**
+ * 解析别名输入框原文：按逗号切分、逐段归一、去空。
+ * 只在需要别名数组时调用（保存/失焦）；输入框自身保留原文，否则逐字输入的空格/逗号会被吞掉。
+ */
+export function parseAliasInput(value: string): string[] {
+  return value
+    .split(',')
+    .map((part) => normalizeAliasToken(part))
+    .filter(Boolean);
 }
 
 /**

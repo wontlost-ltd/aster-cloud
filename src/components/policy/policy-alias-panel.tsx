@@ -1,13 +1,14 @@
 'use client';
 
 import { ChevronDown, ChevronRight, Lock } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Alert, AlertDescription, Input, Label, cn } from '@/components/ui';
 import { getLexicon } from '@/lib/aster-lexicon';
 import {
-  normalizeAliasToken,
+  parseAliasInput,
   validateUserAliases,
+  type AliasIssue,
   type ReservedSets,
 } from '@/lib/policy-alias-shared';
 import {
@@ -17,6 +18,7 @@ import {
   type AliasKindGroup,
   type AliasKindMeta,
 } from './policy-alias-types';
+import { useAliasIssueMessage } from './use-alias-issue-message';
 
 export interface PolicyAliasPanelProps {
   aliasSet: Record<string, string[]>;
@@ -26,13 +28,6 @@ export interface PolicyAliasPanelProps {
   onChange: (aliasSet: Record<string, string[]>) => void;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
-}
-
-function parseAliases(value: string): string[] {
-  return value
-    .split(',')
-    .map((part) => normalizeAliasToken(part))
-    .filter(Boolean);
 }
 
 function configuredCount(aliasSet: Record<string, string[]>): number {
@@ -59,9 +54,13 @@ export function PolicyAliasPanel({
   const panelId = 'policy-alias-panel-body';
   const lexicon = useMemo(() => getLexicon(locale), [locale]);
   const count = configuredCount(aliasSet);
+  // 整体校验一次：跨 kind 重复等问题只有看全集才能发现，按 kind 分发到对应行（两行都标错）。
+  const issues = validateUserAliases(aliasSet, reservedSets, { allowStructural }).issues;
+  const issuesFor = (kind: string) =>
+    issues.filter((issue) => issue.kind === kind || issue.otherKind === kind);
 
   const updateKind = (kind: string, raw: string) => {
-    const values = parseAliases(raw);
+    const values = parseAliasInput(raw);
     const next = { ...aliasSet };
     if (values.length > 0) {
       next[kind] = values;
@@ -126,8 +125,7 @@ export function PolicyAliasPanel({
                         lexicon.keywords[kindToSemanticToken(meta.kind)] ?? meta.kind,
                       )}
                       locked={locked}
-                      reservedSets={reservedSets}
-                      allowStructural={allowStructural}
+                      issues={issuesFor(meta.kind)}
                       onChange={updateKind}
                     />
                   ))}
@@ -146,27 +144,24 @@ function AliasKindRow({
   value,
   canonical,
   locked,
-  reservedSets,
-  allowStructural,
+  issues,
   onChange,
 }: {
   meta: AliasKindMeta;
   value: string;
   canonical: string;
   locked: boolean;
-  reservedSets: ReservedSets;
-  allowStructural: boolean;
+  issues: readonly AliasIssue[];
   onChange: (kind: string, raw: string) => void;
 }) {
   const t = useTranslations('policies.form.aliases');
+  const issueMessage = useAliasIssueMessage();
+  // 编辑中保留输入原文：规范化后的 value 会吞掉末尾空格/逗号，导致无法逐字输入多词别名。
+  // 每次输入仍即时解析回传（保存不依赖失焦）；失焦后回到规范化展示。
+  const [draft, setDraft] = useState<string | null>(null);
   const inputId = `policy-alias-${meta.kind}`;
-  const values = parseAliases(value);
-  const result = validateUserAliases(
-    values.length > 0 ? { [meta.kind]: values } : {},
-    reservedSets,
-    { allowStructural },
-  );
   const errorId = `${inputId}-error`;
+  const invalid = issues.length > 0;
 
   return (
     <div className={cn('grid gap-3 p-3 md:grid-cols-[8rem_1fr_1.4fr]', locked && 'opacity-60')}>
@@ -188,17 +183,21 @@ function AliasKindRow({
         </Label>
         <Input
           id={inputId}
-          value={value}
+          value={draft ?? value}
           disabled={locked}
-          onChange={(event) => onChange(meta.kind, event.target.value)}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            onChange(meta.kind, event.target.value);
+          }}
+          onBlur={() => setDraft(null)}
           placeholder={t('placeholder')}
-          aria-invalid={!result.valid || undefined}
-          aria-describedby={!result.valid ? errorId : undefined}
+          aria-invalid={invalid || undefined}
+          aria-describedby={invalid ? errorId : undefined}
         />
-        {!result.valid && (
+        {invalid && (
           <Alert id={errorId} role="alert" variant="danger" className="mt-2 py-2">
             <AlertDescription className="text-xs">
-              {result.errors.join('; ')}
+              {issues.map(issueMessage).join(' ')}
             </AlertDescription>
           </Alert>
         )}
