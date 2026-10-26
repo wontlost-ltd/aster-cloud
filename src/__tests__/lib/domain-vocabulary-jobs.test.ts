@@ -46,6 +46,7 @@ vi.mock('@/lib/audit-log', () => ({
 
 vi.mock('@/lib/domain-vocabulary-job-runner', () => ({
   processBulkJobChunk: vi.fn(),
+  ownedClaim: vi.fn((jobId: string, token: string) => ({ ownedClaim: [jobId, token] })),
 }));
 
 import {
@@ -56,7 +57,7 @@ import {
   processQueuedBulkJobs,
 } from '@/lib/domain-vocabulary-jobs';
 import { getLexiconQuota } from '@/lib/usage';
-import { processBulkJobChunk } from '@/lib/domain-vocabulary-job-runner';
+import { ownedClaim, processBulkJobChunk } from '@/lib/domain-vocabulary-job-runner';
 import { VocabularyError } from '@/lib/domain-vocabulary';
 
 beforeEach(() => {
@@ -187,30 +188,66 @@ describe('processQueuedBulkJobs', () => {
     expect(summary.scanned).toBe(1);
   });
 
-  it('marks a job failed if the chunk processor throws', async () => {
-    // First claimNextJob returns one row; nothing after that.
-    hoisted.execute
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'job-1',
-            userId: 'user-1',
-            rowCount: 1,
-            processed: 0,
-            rollup: {},
-            errors: [],
-            inputJson: [],
-          },
-        ],
-      })
-      .mockResolvedValue({ rows: [] });
-    vi.mocked(processBulkJobChunk).mockRejectedValueOnce(new Error('boom'));
+  const queuedRow = {
+    id: 'job-1',
+    userId: 'user-1',
+    rowCount: 1,
+    processed: 0,
+    rollup: {},
+    errors: [],
+    inputJson: [],
+  };
+
+  it('chunk 处理器抛错时只在仍持有认领时标 failed，且不把原始错误写给用户', async () => {
+    hoisted.execute.mockResolvedValueOnce({ rows: [queuedRow] }).mockResolvedValue({ rows: [] });
+    hoisted.updateReturning.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 'job-1' }]);
+    vi.mocked(processBulkJobChunk).mockRejectedValueOnce(new Error('connection to 10.0.0.1 lost'));
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const summary = await processQueuedBulkJobs({ workerId: 'worker-1', maxJobs: 2 });
+    spy.mockRestore();
 
     expect(summary.claimed).toBe(1);
     expect(summary.failed).toBe(1);
-    expect(hoisted.update).toHaveBeenCalled();
+    // 认领令牌 = workerId + 每次认领独立的 UUID；失败迁移带着它。
+    const [jobId, token] = vi.mocked(ownedClaim).mock.calls[0];
+    expect(jobId).toBe('job-1');
+    expect(token).toMatch(/^worker-1:[0-9a-f-]{36}$/);
+    expect(hoisted.updateWhere).toHaveBeenLastCalledWith({ ownedClaim: ['job-1', token] });
+    expect(JSON.stringify(hoisted.updateSet.mock.calls.at(-1))).not.toContain('10.0.0.1');
+  });
+
+  it('认领失效（处理中被取消）计入 lost，不当作失败', async () => {
+    hoisted.execute.mockResolvedValueOnce({ rows: [queuedRow] }).mockResolvedValue({ rows: [] });
+    vi.mocked(processBulkJobChunk).mockResolvedValueOnce({
+      processedDelta: 0,
+      rollupDelta: { added: 0, reused: 0, modified: 0, skipped: 0, errorCount: 0 },
+      errorsDelta: [],
+      finished: false,
+      lostClaim: true,
+    });
+
+    const summary = await processQueuedBulkJobs({ workerId: 'worker-1', maxJobs: 1 });
+
+    expect(summary).toMatchObject({ claimed: 1, lost: 1, failed: 0, completed: 0 });
+  });
+
+  it('超过时间预算后不再认领新 chunk', async () => {
+    hoisted.execute.mockResolvedValue({ rows: [queuedRow] });
+    vi.mocked(processBulkJobChunk).mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 15));
+      return {
+        processedDelta: 1,
+        rollupDelta: { added: 1, reused: 0, modified: 0, skipped: 0, errorCount: 0 },
+        errorsDelta: [],
+        finished: false,
+        lostClaim: false,
+      };
+    });
+
+    const summary = await processQueuedBulkJobs({ workerId: 'worker-1', maxJobs: 100, budgetMs: 10 });
+
+    expect(summary.claimed).toBe(1);
   });
 });
 

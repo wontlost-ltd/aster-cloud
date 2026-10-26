@@ -27,8 +27,9 @@ import {
   type TermKind,
 } from '@/lib/domain-vocabulary-validation';
 import {
-  landBulkRow,
+  landBulkChunk,
   VocabularyError,
+  type BulkChunkRow,
 } from '@/lib/domain-vocabulary';
 
 const CHUNK_SIZE = 250;
@@ -107,11 +108,7 @@ function tryNormalize(raw: unknown): { ok: true; value: RowInput } | { ok: false
   };
 }
 
-const QUOTA_EXCEEDED = {
-  ok: false,
-  code: 'quota_exceeded',
-  message: 'Plan quota reached while processing async chunk',
-} as const;
+const QUOTA_MESSAGE = 'Plan quota reached while processing async chunk';
 
 type PreparedRow =
   | { ok: true; value: NormalizedTermInput }
@@ -165,9 +162,33 @@ interface ChunkOutcome {
   rollupDelta: RollupShape;
   errorsDelta: RowError[];
   finished: boolean;
+  /** 提交时认领已失效（被取消或被回收后由别的 worker 认领），本 chunk 未生效。 */
+  lostClaim: boolean;
 }
 
-export async function processBulkJobChunk(job: {
+/**
+ * 认领所有权谓词（#605 复审）：任务仍是 running 且仍由本次认领持有。
+ *
+ * 所有由 worker 发起的状态迁移（推进进度、完成、失败）都必须带上它：
+ * - 用户在 chunk 处理中途取消 → status 已是 cancelled，迁移命中 0 行，取消不会被覆盖；
+ * - 认领超时被回收并由别的 worker 重新认领 → claimedBy 已换人，旧 worker 的提交命中 0 行。
+ */
+export function ownedClaim(jobId: string, claimToken: string) {
+  return and(
+    eq(lexiconBulkJobs.id, jobId),
+    eq(lexiconBulkJobs.status, 'running'),
+    eq(lexiconBulkJobs.claimedBy, claimToken),
+  );
+}
+
+/** 提交进度时发现认领已失效：抛出以回滚整个 chunk 事务（本 chunk 的链接一并撤销）。 */
+class LostClaimError extends Error {
+  constructor() {
+    super('bulk job claim lost before chunk commit');
+  }
+}
+
+interface ClaimedJob {
   id: string;
   userId: string;
   rowCount: number;
@@ -175,83 +196,89 @@ export async function processBulkJobChunk(job: {
   rollup: unknown;
   errors: unknown;
   inputJson: unknown;
-}): Promise<ChunkOutcome> {
+  /** claimNextJob 写入的认领令牌（LexiconBulkJob.claimedBy）。 */
+  claimedBy: string | null;
+}
+
+async function remainingQuotaFor(userId: string, maxTerms: number): Promise<number> {
+  if (maxTerms === -1) return Number.POSITIVE_INFINITY;
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(userDomainTerms)
+    .where(
+      and(
+        eq(userDomainTerms.userId, userId),
+        sql`${userDomainTerms.deletedAt} IS NULL AND ${userDomainTerms.archivedAt} IS NULL`,
+      ),
+    );
+  return Math.max(0, maxTerms - (count ?? 0));
+}
+
+export async function processBulkJobChunk(job: ClaimedJob): Promise<ChunkOutcome> {
+  const claimToken = job.claimedBy ?? '';
   const inputRows = parseInput(job.inputJson);
   const startIndex = job.processed;
-  const endIndex = Math.min(inputRows.length, startIndex + CHUNK_SIZE);
-  const chunk = inputRows.slice(startIndex, endIndex);
-
+  const chunk = inputRows.slice(startIndex, Math.min(inputRows.length, startIndex + CHUNK_SIZE));
   const rollupDelta = emptyRollup();
   const errorsDelta: RowError[] = [];
 
   if (chunk.length === 0) {
-    await markJobCompleted(job.id);
-    return { processedDelta: 0, rollupDelta, errorsDelta, finished: true };
+    const done = await markJobCompleted(job.id, claimToken);
+    return { processedDelta: 0, rollupDelta, errorsDelta, finished: done, lostClaim: !done };
   }
 
   const quota = await getLexiconQuota(job.userId);
   if (!quota.allowed) {
-    await markJobFailed(job.id, 'Custom domain vocabulary requires an eligible plan');
+    await markJobFailed(job.id, claimToken, 'Custom domain vocabulary requires an eligible plan');
     throw new VocabularyError('plan_gate_required', 'Plan no longer allows custom vocabulary');
   }
+  const remainingQuota = await remainingQuotaFor(job.userId, quota.maxTerms);
 
-  let remainingQuota = quota.maxTerms === -1 ? Number.POSITIVE_INFINITY : 0;
-  if (quota.maxTerms !== -1) {
-    const [{ count }] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(userDomainTerms)
-      .where(
-        and(
-          eq(userDomainTerms.userId, job.userId),
-          sql`${userDomainTerms.deletedAt} IS NULL AND ${userDomainTerms.archivedAt} IS NULL`,
-        ),
-      );
-    remainingQuota = Math.max(0, quota.maxTerms - (count ?? 0));
-  }
-
-  await db.transaction(async (tx) => {
-    for (let i = 0; i < chunk.length; i += 1) {
-      const absoluteIndex = startIndex + i;
-      const prepared = prepareRow(chunk[i]);
-      const landed = !prepared.ok
-        ? prepared
-        : remainingQuota <= 0
-          ? QUOTA_EXCEEDED
-          : await landBulkRow(tx, job.userId, prepared.value);
-      if (!landed.ok) {
-        errorsDelta.push({ row: absoluteIndex, code: landed.code, message: landed.message });
-        rollupDelta.skipped += 1;
-        rollupDelta.errorCount += 1;
-        continue;
-      }
-      if (landed.created) rollupDelta.added += 1;
-      else rollupDelta.reused += 1;
-      remainingQuota -= 1;
-    }
+  // 行级校验（纯内存）先做，失败行直接记错误；合法行整块交给 landBulkChunk。
+  const valid: BulkChunkRow[] = [];
+  chunk.forEach((raw, i) => {
+    const prepared = prepareRow(raw);
+    if (prepared.ok) valid.push({ row: startIndex + i, normalized: prepared.value });
+    else errorsDelta.push({ row: startIndex + i, code: prepared.code, message: prepared.message });
   });
 
   const processedNow = startIndex + chunk.length;
   const finished = processedNow >= job.rowCount;
+  let mergedRollup: RollupShape = emptyRollup();
 
-  const mergedRollup = mergeRollupAtomic(job.rollup, rollupDelta);
-  const mergedErrors = mergeErrorsAtomic(job.errors, errorsDelta);
+  try {
+    await db.transaction(async (tx) => {
+      const landed = await landBulkChunk(tx, job.userId, valid, remainingQuota, QUOTA_MESSAGE);
+      errorsDelta.push(...landed.errors);
+      errorsDelta.sort((a, b) => a.row - b.row);
+      rollupDelta.added = landed.added;
+      rollupDelta.reused = landed.reused;
+      rollupDelta.skipped = errorsDelta.length;
+      rollupDelta.errorCount = errorsDelta.length;
+      mergedRollup = mergeRollupAtomic(job.rollup, rollupDelta);
 
-  // Non-final chunks return the job to `queued` and clear the claim so the
-  // next worker tick can pick it up normally. Stale recovery should be
-  // reserved for genuine crashes, not the normal continuation path.
-  await db
-    .update(lexiconBulkJobs)
-    .set({
-      processed: processedNow,
-      rollup: mergedRollup,
-      errors: mergedErrors,
-      status: finished ? 'completed' : 'queued',
-      claimedBy: null,
-      claimedAt: null,
-      completedAt: finished ? new Date() : null,
-      updatedAt: new Date(),
-    })
-    .where(eq(lexiconBulkJobs.id, job.id));
+      // 进度与链接在同一事务里提交，且只在仍持有认领时生效（原子 UPDATE … RETURNING）。
+      // 非最后一块把任务放回 queued 并清空认领，下一次认领会刷新 claimedAt（相当于续租）。
+      const committed = await tx
+        .update(lexiconBulkJobs)
+        .set({
+          processed: processedNow,
+          rollup: mergedRollup,
+          errors: mergeErrorsAtomic(job.errors, errorsDelta),
+          status: finished ? 'completed' : 'queued',
+          claimedBy: null,
+          claimedAt: null,
+          completedAt: finished ? new Date() : null,
+          updatedAt: new Date(),
+        })
+        .where(ownedClaim(job.id, claimToken))
+        .returning({ id: lexiconBulkJobs.id });
+      if (committed.length === 0) throw new LostClaimError();
+    });
+  } catch (err) {
+    if (!(err instanceof LostClaimError)) throw err;
+    return { processedDelta: 0, rollupDelta: emptyRollup(), errorsDelta: [], finished: false, lostClaim: true };
+  }
 
   if (finished) {
     await logAuditEvent({
@@ -259,21 +286,11 @@ export async function processBulkJobChunk(job: {
       action: 'lexicon.term.add',
       resource: 'domain-term-bulk',
       resourceId: job.id,
-      metadata: {
-        mode: 'async',
-        status: 'completed',
-        rowCount: job.rowCount,
-        ...mergedRollup,
-      },
+      metadata: { mode: 'async', status: 'completed', rowCount: job.rowCount, ...mergedRollup },
     });
   }
 
-  return {
-    processedDelta: chunk.length,
-    rollupDelta,
-    errorsDelta,
-    finished,
-  };
+  return { processedDelta: chunk.length, rollupDelta, errorsDelta, finished, lostClaim: false };
 }
 
 function mergeRollupAtomic(prior: unknown, delta: RollupShape): RollupShape {
@@ -301,14 +318,16 @@ function mergeErrorsAtomic(prior: unknown, delta: RowError[]): RowError[] {
   return [...base, ...delta];
 }
 
-async function markJobCompleted(jobId: string): Promise<void> {
-  await db
+async function markJobCompleted(jobId: string, claimToken: string): Promise<boolean> {
+  const updated = await db
     .update(lexiconBulkJobs)
     .set({ status: 'completed', completedAt: new Date(), updatedAt: new Date() })
-    .where(eq(lexiconBulkJobs.id, jobId));
+    .where(ownedClaim(jobId, claimToken))
+    .returning({ id: lexiconBulkJobs.id });
+  return updated.length > 0;
 }
 
-async function markJobFailed(jobId: string, message: string): Promise<void> {
+async function markJobFailed(jobId: string, claimToken: string, message: string): Promise<void> {
   await db
     .update(lexiconBulkJobs)
     .set({
@@ -319,5 +338,5 @@ async function markJobFailed(jobId: string, message: string): Promise<void> {
         { row: -1, code: 'plan_gate_required', message },
       ])}::jsonb`,
     })
-    .where(eq(lexiconBulkJobs.id, jobId));
+    .where(ownedClaim(jobId, claimToken));
 }

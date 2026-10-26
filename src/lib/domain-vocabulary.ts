@@ -14,6 +14,7 @@ import {
   asc,
   desc,
   eq,
+  inArray,
   isNotNull,
   isNull,
   or,
@@ -25,8 +26,10 @@ import {
   domainTerms,
   lexiconBulkJobs,
   userDomainTerms,
+  userVocabularyVersions,
   type DomainTerm,
 } from '@/lib/prisma';
+import { bypassQueryCache } from '@/db/fresh-read';
 import { escapeLikePattern } from '@/lib/sql-escape';
 import { logAuditEvent } from '@/lib/audit-log';
 import {
@@ -317,23 +320,7 @@ async function upsertDomainTerm(
   const dedupKey = computeDedupKey(input);
   const inserted = await tx
     .insert(domainTerms)
-    .values({
-      id: crypto.randomUUID(),
-      domain: input.domain,
-      locale: input.locale,
-      kind: input.kind,
-      canonical: input.canonical,
-      canonicalNorm: input.canonicalNorm,
-      localized: input.localized,
-      localizedNorm: input.localizedNorm,
-      parentCanonical: input.parentCanonical ?? null,
-      parentCanonicalNorm: input.parentCanonicalNorm || null,
-      description: input.description ?? null,
-      aliases: input.aliases,
-      source: 'user',
-      status: 'active',
-      dedupKey,
-    })
+    .values(domainTermValues(input, dedupKey))
     .onConflictDoNothing({ target: domainTerms.dedupKey })
     .returning({ id: domainTerms.id });
 
@@ -455,30 +442,21 @@ export async function countActiveUserVocabularyTerms(userId: string): Promise<nu
 }
 
 /**
- * 用户词汇的「版本号」（#608）：活跃链接的条数 + 最大 updatedAt。
+ * 用户词汇的版本号（#608）。
  *
- * Workers 上请求分散在多个 isolate，进程内 EventEmitter 推送永远到不了订阅方；
- * 改由客户端定期轮询这个值，变了就重新拉词汇。版本完全由数据推导，无需额外写入：
- * 新增 / 修改 / 恢复都会推高 max(updatedAt)，删除 / 归档会让条数下降，
- * 两者同时发生时新增那行的 updatedAt 也必然更大，因此任何可见变化都会改变版本。
- * 查询走 `UserDomainTerm_user_domain_idx`（同为活跃行部分索引），按 domain/locale
- * 收窄时也命中前缀。
+ * Workers 上请求分散在多个 isolate，进程内 EventEmitter 推送到不了订阅方；改由客户端轮询
+ * 这个值，变了就重新拉词汇。版本存在 UserVocabularyVersion，由 UserDomainTerm 上的触发器
+ * 在写入所在事务内单调递增（迁移 0059），因此任何写路径的任何变化都必然改变它。
+ * 从未写过词汇的用户没有版本行，返回 "0"。
+ *
+ * ★必须绕过 Hyperdrive 查询缓存：轮询本身就是「写后读」，缓存 60s 会让失效迟到。
  */
-export async function getUserVocabularyVersion(
-  userId: string,
-  scope: { domain?: string; locale?: string } = {},
-): Promise<string> {
-  const conditions: SQL[] = [eq(userDomainTerms.userId, userId), activeLinkPredicate()];
-  if (scope.domain) conditions.push(eq(userDomainTerms.domain, scope.domain));
-  if (scope.locale) conditions.push(eq(userDomainTerms.locale, scope.locale));
+export async function getUserVocabularyVersion(userId: string): Promise<string> {
   const [row] = await db
-    .select({
-      count: sql<number>`count(*)::int`,
-      latest: sql<string | null>`(extract(epoch from max(${userDomainTerms.updatedAt})) * 1000)::bigint::text`,
-    })
-    .from(userDomainTerms)
-    .where(and(...conditions));
-  return `${row?.count ?? 0}-${row?.latest ?? 0}`;
+    .select({ version: userVocabularyVersions.version })
+    .from(userVocabularyVersions)
+    .where(and(eq(userVocabularyVersions.userId, userId), bypassQueryCache()));
+  return String(row?.version ?? 0);
 }
 
 /**
@@ -932,23 +910,11 @@ export async function landBulkRow(
       const upserted = await upsertDomainTerm(sp, normalized);
       const inserted = await sp
         .insert(userDomainTerms)
-        .values({
-          id: crypto.randomUUID(),
-          userId,
-          termId: upserted.term.id,
-          ownerType: 'user',
-          domain: normalized.domain,
-          locale: normalized.locale,
-          kind: normalized.kind,
-        })
+        .values(linkValues(userId, upserted.term.id, normalized))
         .onConflictDoNothing()
         .returning({ id: userDomainTerms.id });
       if (inserted.length === 0) {
-        return {
-          ok: false,
-          code: 'duplicate_link',
-          message: 'You already have this term in your vocabulary',
-        } as const;
+        return { ok: false, code: 'duplicate_link', message: DUPLICATE_LINK_MESSAGE } as const;
       }
       return { ok: true, created: upserted.created } as const;
     });
@@ -957,15 +923,237 @@ export async function landBulkRow(
       return { ok: false, code: err.code, message: err.message };
     }
     if (isUniqueViolation(err)) {
-      return {
-        ok: false,
-        code: 'duplicate_link',
-        message: 'You already have this term in your vocabulary',
-      };
+      return { ok: false, code: 'duplicate_link', message: DUPLICATE_LINK_MESSAGE };
     }
     console.error('[landBulkRow] row failed', err);
     return { ok: false, code: 'row_failed', message: BULK_ROW_FAILED_MESSAGE };
   }
+}
+
+const DUPLICATE_LINK_MESSAGE = 'You already have this term in your vocabulary';
+
+export interface BulkChunkRow {
+  /** 原始请求里的 0 基行号，错误按它回报。 */
+  row: number;
+  normalized: NormalizedTermInput;
+}
+
+export interface BulkChunkLanding {
+  added: number;
+  reused: number;
+  /** 本 chunk 的行级错误，按行号排序。 */
+  errors: BulkRowError[];
+}
+
+/**
+ * 落一个已校验的 chunk（同步与异步 worker 共用，#606）。
+ *
+ * 先走批量路径：约 5 条语句处理整块（查已有词条 → 查已有活跃链接 → 内存里判重/配额 →
+ * 批量补建词条 → 批量建链接），重复行在内存里判定为 duplicate_link，不会触发唯一约束。
+ * 批量路径放在一个 SAVEPOINT 里；若意外失败，只回滚该 SAVEPOINT，再退回逐行 SAVEPOINT
+ * 路径，把坏行隔离出来——外层事务始终可继续。
+ *
+ * 实测 250 行（10% 重复，本地 PG）：逐行路径约 1000 次往返，批量路径为个位数。
+ * 生产经 Hyperdrive，往返次数直接决定 chunk 耗时。
+ */
+export async function landBulkChunk(
+  tx: Tx,
+  userId: string,
+  rows: readonly BulkChunkRow[],
+  remainingQuota: number,
+  quotaMessage: string,
+): Promise<BulkChunkLanding> {
+  if (rows.length === 0) return { added: 0, reused: 0, errors: [] };
+  try {
+    return await tx.transaction((sp) =>
+      landBulkChunkBatched(sp, userId, rows, remainingQuota, quotaMessage),
+    );
+  } catch (err) {
+    console.error('[landBulkChunk] batched path failed; falling back to per-row', err);
+    return landBulkChunkPerRow(tx, userId, rows, remainingQuota, quotaMessage);
+  }
+}
+
+interface KeyedRow extends BulkChunkRow {
+  dedupKey: string;
+}
+
+/** 批量路径第 1–2 步：已存在的全局词条与该用户已有的活跃链接。 */
+async function loadExistingTermsAndLinks(
+  tx: Tx,
+  userId: string,
+  keys: string[],
+): Promise<{ termIdByKey: Map<string, string>; linkedTermIds: Set<string> }> {
+  const existing = await tx
+    .select({ id: domainTerms.id, dedupKey: domainTerms.dedupKey })
+    .from(domainTerms)
+    .where(inArray(domainTerms.dedupKey, keys));
+  const termIdByKey = new Map(existing.map((t) => [t.dedupKey, t.id]));
+  const termIds = [...termIdByKey.values()];
+  const linked = termIds.length === 0
+    ? []
+    : await tx
+        .select({ termId: userDomainTerms.termId })
+        .from(userDomainTerms)
+        .where(
+          and(
+            eq(userDomainTerms.userId, userId),
+            inArray(userDomainTerms.termId, termIds),
+            activeLinkPredicate(),
+          ),
+        );
+  return { termIdByKey, linkedTermIds: new Set(linked.map((l) => l.termId)) };
+}
+
+/** 批量路径第 4 步：补建缺失的全局词条；并发抢建输掉的再读一次。返回新建的 dedupKey。 */
+async function insertMissingTerms(
+  tx: Tx,
+  rows: KeyedRow[],
+  termIdByKey: Map<string, string>,
+): Promise<Set<string>> {
+  const missing = rows.filter((r) => !termIdByKey.has(r.dedupKey));
+  if (missing.length === 0) return new Set();
+  const inserted = await tx
+    .insert(domainTerms)
+    .values(missing.map((r) => domainTermValues(r.normalized, r.dedupKey)))
+    .onConflictDoNothing({ target: domainTerms.dedupKey })
+    .returning({ id: domainTerms.id, dedupKey: domainTerms.dedupKey });
+  inserted.forEach((t) => termIdByKey.set(t.dedupKey, t.id));
+  const raced = missing.map((r) => r.dedupKey).filter((k) => !termIdByKey.has(k));
+  if (raced.length > 0) {
+    const reread = await tx
+      .select({ id: domainTerms.id, dedupKey: domainTerms.dedupKey })
+      .from(domainTerms)
+      .where(inArray(domainTerms.dedupKey, raced));
+    reread.forEach((t) => termIdByKey.set(t.dedupKey, t.id));
+  }
+  return new Set(inserted.map((t) => t.dedupKey));
+}
+
+async function landBulkChunkBatched(
+  tx: Tx,
+  userId: string,
+  rows: readonly BulkChunkRow[],
+  remainingQuota: number,
+  quotaMessage: string,
+): Promise<BulkChunkLanding> {
+  const keyed: KeyedRow[] = rows.map((r) => ({ ...r, dedupKey: computeDedupKey(r.normalized) }));
+  const { termIdByKey, linkedTermIds } = await loadExistingTermsAndLinks(
+    tx,
+    userId,
+    [...new Set(keyed.map((r) => r.dedupKey))],
+  );
+
+  // 第 3 步（纯内存）：已有活跃链接或同批前面已出现 → 重复；超配额 → quota_exceeded。
+  const errors: BulkRowError[] = [];
+  const seen = new Set<string>();
+  const pending: KeyedRow[] = [];
+  let quotaLeft = remainingQuota;
+  for (const r of keyed) {
+    const termId = termIdByKey.get(r.dedupKey);
+    if (seen.has(r.dedupKey) || (termId !== undefined && linkedTermIds.has(termId))) {
+      errors.push({ row: r.row, code: 'duplicate_link', message: DUPLICATE_LINK_MESSAGE });
+      continue;
+    }
+    seen.add(r.dedupKey);
+    if (quotaLeft <= 0) {
+      errors.push({ row: r.row, code: 'quota_exceeded', message: quotaMessage });
+      continue;
+    }
+    quotaLeft -= 1;
+    pending.push(r);
+  }
+
+  const created = await insertMissingTerms(tx, pending, termIdByKey);
+  const linkable = pending.filter((r) => termIdByKey.has(r.dedupKey));
+  for (const r of pending.filter((p) => !termIdByKey.has(p.dedupKey))) {
+    errors.push({
+      row: r.row,
+      code: 'dedup_race_lost',
+      message: 'Domain term upsert raced and could not be re-read',
+    });
+  }
+
+  // 第 5 步：批量建链接。不带目标的 ON CONFLICT DO NOTHING 兜住与并发写入的竞争。
+  const insertedLinks = linkable.length === 0
+    ? []
+    : await tx
+        .insert(userDomainTerms)
+        .values(linkable.map((r) => linkValues(userId, termIdByKey.get(r.dedupKey)!, r.normalized)))
+        .onConflictDoNothing()
+        .returning({ termId: userDomainTerms.termId });
+  const landed = new Set(insertedLinks.map((l) => l.termId));
+  let added = 0;
+  let reused = 0;
+  for (const r of linkable) {
+    if (!landed.has(termIdByKey.get(r.dedupKey)!)) {
+      errors.push({ row: r.row, code: 'duplicate_link', message: DUPLICATE_LINK_MESSAGE });
+    } else if (created.has(r.dedupKey)) {
+      added += 1;
+    } else {
+      reused += 1;
+    }
+  }
+  return { added, reused, errors: errors.sort((a, b) => a.row - b.row) };
+}
+
+/** 退路：逐行 SAVEPOINT，坏行只影响自己。 */
+async function landBulkChunkPerRow(
+  tx: Tx,
+  userId: string,
+  rows: readonly BulkChunkRow[],
+  remainingQuota: number,
+  quotaMessage: string,
+): Promise<BulkChunkLanding> {
+  const result: BulkChunkLanding = { added: 0, reused: 0, errors: [] };
+  let quotaLeft = remainingQuota;
+  for (const { row, normalized } of rows) {
+    if (quotaLeft <= 0) {
+      result.errors.push({ row, code: 'quota_exceeded', message: quotaMessage });
+      continue;
+    }
+    const landed = await landBulkRow(tx, userId, normalized);
+    if (!landed.ok) {
+      result.errors.push({ row, code: landed.code, message: landed.message });
+      continue;
+    }
+    if (landed.created) result.added += 1;
+    else result.reused += 1;
+    quotaLeft -= 1;
+  }
+  return result;
+}
+
+function domainTermValues(input: NormalizedTermInput, dedupKey: string) {
+  return {
+    id: crypto.randomUUID(),
+    domain: input.domain,
+    locale: input.locale,
+    kind: input.kind,
+    canonical: input.canonical,
+    canonicalNorm: input.canonicalNorm,
+    localized: input.localized,
+    localizedNorm: input.localizedNorm,
+    parentCanonical: input.parentCanonical ?? null,
+    parentCanonicalNorm: input.parentCanonicalNorm || null,
+    description: input.description ?? null,
+    aliases: input.aliases,
+    source: 'user',
+    status: 'active',
+    dedupKey,
+  };
+}
+
+function linkValues(userId: string, termId: string, input: NormalizedTermInput) {
+  return {
+    id: crypto.randomUUID(),
+    userId,
+    termId,
+    ownerType: 'user',
+    domain: input.domain,
+    locale: input.locale,
+    kind: input.kind,
+  };
 }
 
 function emptyRollup(): BulkRollup {
@@ -1114,28 +1302,18 @@ async function bulkAddUserVocabularyTermsInner(
           remainingQuota = Math.max(0, quota.maxTerms - (currentActive ?? 0));
         }
 
-        for (const { row, normalized } of chunk) {
-          if (remainingQuota <= 0) {
-            localErrors.push({
-              row,
-              code: 'quota_exceeded',
-              message: `Custom vocabulary term quota of ${quota.maxTerms} reached`,
-            });
-            localRollup.skipped += 1;
-            localRollup.errorCount += 1;
-            continue;
-          }
-          const landed = await landBulkRow(tx, userId, normalized);
-          if (!landed.ok) {
-            localErrors.push({ row, code: landed.code, message: landed.message });
-            localRollup.skipped += 1;
-            localRollup.errorCount += 1;
-            continue;
-          }
-          if (landed.created) localRollup.added += 1;
-          else localRollup.reused += 1;
-          remainingQuota -= 1;
-        }
+        const landed = await landBulkChunk(
+          tx,
+          userId,
+          chunk,
+          remainingQuota,
+          `Custom vocabulary term quota of ${quota.maxTerms} reached`,
+        );
+        localRollup.added += landed.added;
+        localRollup.reused += landed.reused;
+        localRollup.skipped += landed.errors.length;
+        localRollup.errorCount += landed.errors.length;
+        localErrors.push(...landed.errors);
         return { rollup: localRollup, errors: localErrors };
       });
       chunkResult = result.rollup;
@@ -1156,6 +1334,9 @@ async function bulkAddUserVocabularyTermsInner(
     errors.push(...chunkErrors);
     processed += chunk.length;
   }
+
+  // 校验错误先于落库错误收集，这里按行号排回原始顺序，方便前端逐行展示。
+  errors.sort((a, b) => a.row - b.row);
 
   // Persist a completed job row for auditability. We swallow storage errors
   // so a flaky audit write doesn't lose the import response; structured

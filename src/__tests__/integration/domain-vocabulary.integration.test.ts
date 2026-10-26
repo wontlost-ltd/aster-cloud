@@ -51,6 +51,7 @@ vi.mock('@/lib/prisma', () => {
     },
     domainTerms: tableProxy,
     userDomainTerms: tableProxy,
+    userVocabularyVersions: tableProxy,
     userVocabularySnapshots: tableProxy,
     lexiconBulkJobs: tableProxy,
     lexiconIdempotencyKeys: tableProxy,
@@ -275,15 +276,13 @@ describe('lexicon integration — observability wiring', () => {
 });
 
 describe('getUserVocabularyVersion — 跨 isolate 的失效信号（#608）', () => {
-  it('版本由活跃条数与最大 updatedAt 推导', async () => {
-    queueSelect([{ count: 3, latest: '1793000000000' }]);
-    await expect(getUserVocabularyVersion('user-1')).resolves.toBe('3-1793000000000');
+  it('返回版本行里的单调计数', async () => {
+    queueSelect([{ version: 3 }]);
+    await expect(getUserVocabularyVersion('user-1')).resolves.toBe('3');
   });
 
-  it('空词汇返回稳定的零版本', async () => {
-    queueSelect([{ count: 0, latest: null }]);
-    await expect(
-      getUserVocabularyVersion('user-1', { domain: 'finance.loan', locale: 'en-US' }),
-    ).resolves.toBe('0-0');
+  it('从未写过词汇的用户返回 "0"', async () => {
+    queueSelect([]);
+    await expect(getUserVocabularyVersion('user-1')).resolves.toBe('0');
   });
 });

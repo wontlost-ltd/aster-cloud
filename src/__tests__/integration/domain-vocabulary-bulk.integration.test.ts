@@ -6,8 +6,8 @@
 // UserDomainTerm_active_unique），以及每行一个 SAVEPOINT。
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { and, eq, isNull } from 'drizzle-orm';
-import { db, userDomainTerms, users } from '@/lib/prisma';
+import { and, asc, eq, isNull } from 'drizzle-orm';
+import { db, lexiconBulkJobs, userDomainTerms, userVocabularyVersions, users } from '@/lib/prisma';
 import { setupTestDb, teardownTestDb } from './setup-postgres';
 
 vi.mock('@/lib/usage', () => ({
@@ -19,10 +19,13 @@ import {
   bulkAddUserVocabularyTerms,
   countActiveUserVocabularyTerms,
   getUserVocabularyVersion,
+  modifyUserVocabularyTerm,
+  restoreUserVocabularyTerm,
   softDeleteUserVocabularyTerm,
   type TermInput,
 } from '@/lib/domain-vocabulary';
 import { processBulkJobChunk } from '@/lib/domain-vocabulary-job-runner';
+import { cancelBulkJob, processQueuedBulkJobs } from '@/lib/domain-vocabulary-jobs';
 
 const USER = 'vocab-bulk-it-user';
 // 全局 DomainTerm 不随用户删除而清理；每个用例用独立 domain，「新增 vs 复用」才可断言。
@@ -43,7 +46,7 @@ async function activeCanonicalCount(): Promise<number> {
   return rows.length;
 }
 
-describe.skipIf(process.env.LICENSE_E2E !== '1')('bulk import on real Postgres（#606）', () => {
+describe.skipIf(process.env.LICENSE_E2E !== '1')('bulk import / version / worker lease on real Postgres（#605 #606 #608）', () => {
   beforeAll(async () => {
     await setupTestDb();
   }, 120_000);
@@ -90,7 +93,6 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('bulk import on real Postgres�
   it('异步 worker 同样按行处理重复', async () => {
     await bulkAddUserVocabularyTerms(USER, [row('Driver')]);
     const jobId = crypto.randomUUID();
-    const { lexiconBulkJobs } = await import('@/lib/prisma');
     await db.insert(lexiconBulkJobs).values({
       id: jobId,
       userId: USER,
@@ -101,6 +103,8 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('bulk import on real Postgres�
       rollup: {},
       errors: [],
       inputJson: [row('Driver'), row('Vehicle'), row('Accident')],
+      claimedBy: 'worker-a',
+      claimedAt: new Date(),
     });
 
     const outcome = await processBulkJobChunk({
@@ -111,6 +115,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('bulk import on real Postgres�
       rollup: {},
       errors: [],
       inputJson: [row('Driver'), row('Vehicle'), row('Accident')],
+      claimedBy: 'worker-a',
     });
 
     expect(outcome.finished).toBe(true);
@@ -119,25 +124,154 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('bulk import on real Postgres�
     expect(await activeCanonicalCount()).toBe(3);
   });
 
-  it('版本号随新增/删除变化，并可按 domain/locale 收窄（#608）', async () => {
-    const empty = await getUserVocabularyVersion(USER);
-    expect(empty).toBe('0-0');
+  async function version(): Promise<number> {
+    return Number(await getUserVocabularyVersion(USER));
+  }
 
-    await bulkAddUserVocabularyTerms(USER, [row('Driver'), row('Vehicle')]);
-    const afterAdd = await getUserVocabularyVersion(USER);
-    expect(afterAdd).toMatch(/^2-\d{13}$/);
-    expect(await getUserVocabularyVersion(USER, { domain, locale: 'de' })).toBe(afterAdd);
-    expect(await getUserVocabularyVersion(USER, { domain: 'finance' })).toBe('0-0');
-    expect(await countActiveUserVocabularyTerms(USER)).toBe(2);
-
-    const [link] = await db
+  async function activeLinkIds(): Promise<string[]> {
+    const rows = await db
       .select({ id: userDomainTerms.id })
       .from(userDomainTerms)
-      .where(eq(userDomainTerms.userId, USER))
-      .limit(1);
-    await softDeleteUserVocabularyTerm(USER, link.id);
-    const afterDelete = await getUserVocabularyVersion(USER);
-    expect(afterDelete).not.toBe(afterAdd);
-    expect(afterDelete.startsWith('1-')).toBe(true);
+      .where(and(eq(userDomainTerms.userId, USER), isNull(userDomainTerms.deletedAt)))
+      .orderBy(asc(userDomainTerms.createdAt));
+    return rows.map((r) => r.id);
+  }
+
+  it('版本号单调递增：批量、编辑非最新行、删除、恢复都会改变（#608）', async () => {
+    expect(await version()).toBe(0);
+
+    await bulkAddUserVocabularyTerms(USER, [row('Driver'), row('Vehicle')]);
+    const afterBulk = await version();
+    expect(afterBulk).toBeGreaterThan(0);
+    expect(await countActiveUserVocabularyTerms(USER)).toBe(2);
+
+    // 编辑「不是最新 updatedAt」的那一行：旧的「条数 + max(updatedAt)」方案会漏掉。
+    const [oldest] = await activeLinkIds();
+    await modifyUserVocabularyTerm(USER, oldest, { ...row('Driver'), localized: 'Fahrer' });
+    const afterEdit = await version();
+    expect(afterEdit).toBeGreaterThan(afterBulk);
+
+    await softDeleteUserVocabularyTerm(USER, oldest);
+    const afterDelete = await version();
+    expect(afterDelete).toBeGreaterThan(afterEdit);
+
+    await restoreUserVocabularyTerm(USER, oldest);
+    expect(await version()).toBeGreaterThan(afterDelete);
+  });
+
+  it('同一时刻删一条、加一条（条数与时间戳都不变）版本仍会变化（#608）', async () => {
+    await bulkAddUserVocabularyTerms(USER, [row('Driver'), row('Vehicle')]);
+    const [first, second] = await activeLinkIds();
+    const [secondRow] = await db.select().from(userDomainTerms).where(eq(userDomainTerms.id, second));
+    const before = await version();
+    const fixed = new Date('2030-01-01T00:00:00.000Z');
+    await db.transaction(async (tx) => {
+      await tx
+        .update(userDomainTerms)
+        .set({ deletedAt: fixed, updatedAt: fixed })
+        .where(eq(userDomainTerms.id, first));
+      await tx.insert(userDomainTerms).values({
+        ...secondRow,
+        id: crypto.randomUUID(),
+        termId: (await tx.select({ termId: userDomainTerms.termId }).from(userDomainTerms).where(eq(userDomainTerms.id, first)))[0].termId,
+        createdAt: fixed,
+        updatedAt: fixed,
+        deletedAt: null,
+      });
+    });
+    expect(await version()).toBe(before + 2);
+  });
+
+  it('删除用户时级联清掉版本行，不因触发器而失败', async () => {
+    await bulkAddUserVocabularyTerms(USER, [row('Driver')]);
+    expect(await version()).toBeGreaterThan(0);
+    await db.delete(users).where(eq(users.id, USER));
+    const rows = await db
+      .select()
+      .from(userVocabularyVersions)
+      .where(eq(userVocabularyVersions.userId, USER));
+    expect(rows).toEqual([]);
+  });
+
+  async function insertRunningJob(inputJson: TermInput[], claimedBy: string, claimedAt: Date) {
+    const id = crypto.randomUUID();
+    await db.insert(lexiconBulkJobs).values({
+      id,
+      userId: USER,
+      status: 'running',
+      mode: 'async',
+      rowCount: inputJson.length,
+      processed: 0,
+      rollup: {},
+      errors: [],
+      inputJson,
+      claimedBy,
+      claimedAt,
+    });
+    return id;
+  }
+
+  async function loadJob(id: string) {
+    const [job] = await db.select().from(lexiconBulkJobs).where(eq(lexiconBulkJobs.id, id));
+    return job;
+  }
+
+  it('chunk 处理中被取消：worker 提交落空、链接回滚，任务保持 cancelled（复审 P1）', async () => {
+    const id = await insertRunningJob([row('Vehicle'), row('Accident')], 'worker-a', new Date());
+    const snapshot = await loadJob(id);
+
+    await expect(cancelBulkJob(USER, id)).resolves.toEqual({ cancelled: true });
+    const outcome = await processBulkJobChunk(snapshot);
+
+    expect(outcome.lostClaim).toBe(true);
+    const after = await loadJob(id);
+    expect(after.status).toBe('cancelled');
+    expect(after.processed).toBe(0);
+    expect(await activeCanonicalCount()).toBe(0);
+  });
+
+  it('认领超时被回收后由另一 worker 完成；原 worker 迟到的提交落空（复审 P1）', async () => {
+    const stale = new Date(Date.now() - 10 * 60_000);
+    const id = await insertRunningJob([row('Vehicle'), row('Accident')], 'worker-a', stale);
+    const staleSnapshot = await loadJob(id);
+
+    const summary = await processQueuedBulkJobs({ workerId: 'worker-b', maxJobs: 4 });
+    expect(summary).toMatchObject({ recovered: 1, completed: 1 });
+    const completed = await loadJob(id);
+    expect(completed).toMatchObject({ status: 'completed', processed: 2 });
+    expect(completed.rollup).toMatchObject({ added: 2 });
+
+    const late = await processBulkJobChunk(staleSnapshot);
+    expect(late.lostClaim).toBe(true);
+    const after = await loadJob(id);
+    expect(after).toMatchObject({ status: 'completed', processed: 2 });
+    expect(after.rollup).toEqual(completed.rollup);
+    expect(await activeCanonicalCount()).toBe(2);
+  });
+
+  it('两个 worker 同时跑：同一任务只被处理一次', async () => {
+    const id = crypto.randomUUID();
+    await db.insert(lexiconBulkJobs).values({
+      id,
+      userId: USER,
+      status: 'queued',
+      mode: 'async',
+      rowCount: 2,
+      processed: 0,
+      rollup: {},
+      errors: [],
+      inputJson: [row('Vehicle'), row('Accident')],
+    });
+
+    const [a, b] = await Promise.all([
+      processQueuedBulkJobs({ workerId: 'worker-a', maxJobs: 4 }),
+      processQueuedBulkJobs({ workerId: 'worker-b', maxJobs: 4 }),
+    ]);
+
+    expect(a.completed + b.completed).toBe(1);
+    const job = await loadJob(id);
+    expect(job).toMatchObject({ status: 'completed', processed: 2 });
+    expect(job.rollup).toMatchObject({ added: 2, errorCount: 0 });
+    expect(await activeCanonicalCount()).toBe(2);
   });
 });

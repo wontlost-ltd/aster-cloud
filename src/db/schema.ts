@@ -2491,6 +2491,26 @@ export const userDomainTerms = pgTable(
 export type UserDomainTerm = InferSelectModel<typeof userDomainTerms>;
 export type NewUserDomainTerm = InferInsertModel<typeof userDomainTerms>;
 
+/**
+ * 用户词汇版本号（#608）：编辑器轮询它判断是否要重新拉词汇。
+ *
+ * 由迁移 0059 里 UserDomainTerm 上的行级触发器在**同一事务**内递增，任何写路径
+ * （单条增改删恢复、同步/异步批量、快照回滚、留存归档、DSAR 清理）都不可能漏掉，
+ * 应用代码无需显式维护。单调递增，不依赖时间戳精度。
+ */
+export const userVocabularyVersions = pgTable('UserVocabularyVersion', {
+  userId: text('userId')
+    .primaryKey()
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  version: bigint('version', { mode: 'number' }).default(0).notNull(),
+  updatedAt: timestamp('updatedAt', { mode: 'date', withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+export type UserVocabularyVersion = InferSelectModel<typeof userVocabularyVersions>;
+
 export const domainTermRelations = relations(domainTerms, ({ many }) => ({
   userDomainTerms: many(userDomainTerms),
 }));

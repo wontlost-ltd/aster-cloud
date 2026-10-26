@@ -21,13 +21,25 @@
 import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import { db, lexiconBulkJobs } from '@/lib/prisma';
 import { logAuditEvent } from '@/lib/audit-log';
+import { bypassQueryCache } from '@/db/fresh-read';
 import { getLexiconQuota } from '@/lib/usage';
 import {
   BULK_ASYNC_MAX_ROWS,
   VocabularyError,
 } from '@/lib/domain-vocabulary';
 
-const STALE_RUNNING_AGE_MS = 5 * 60_000;
+/**
+ * 每个 tick 停止认领新 chunk 的时间预算。Workers 单次请求的 CPU/墙钟都有限，
+ * 一块 250 行在批量路径下只需个位数条语句，20s 足够推进多块又远离上限。
+ */
+export const TICK_BUDGET_MS = 20_000;
+
+/**
+ * running 超过此时长视为 worker 已死、回收为 queued。必须远大于「预算 + 单块耗时」，
+ * 否则仍在处理的 chunk 会被回收；即便发生，提交时的认领校验（ownedClaim）也会让旧 worker
+ * 的提交落空，不会出现两份进度。
+ */
+export const STALE_RUNNING_AGE_MS = 5 * 60_000;
 
 export interface EnqueuedJob {
   jobId: string;
@@ -118,7 +130,8 @@ export async function enqueueBulkJob(
 /** Read a job's current state (caller is the owner; admin paths bypass this). */
 export async function getBulkJob(userId: string, jobId: string): Promise<JobView | null> {
   const row = await db.query.lexiconBulkJobs.findFirst({
-    where: and(eq(lexiconBulkJobs.id, jobId), eq(lexiconBulkJobs.userId, userId)),
+    // 进度轮询是写后读：绕过 Hyperdrive 查询缓存，否则进度会卡在 60s 前的值。
+    where: and(eq(lexiconBulkJobs.id, jobId), eq(lexiconBulkJobs.userId, userId), bypassQueryCache()),
   });
   if (!row) return null;
   return mapJob(row);
@@ -142,7 +155,8 @@ export async function listBulkJobs(
     BULK_JOB_LIST_MAX_LIMIT,
     Math.max(1, opts.limit ?? BULK_JOB_LIST_DEFAULT_LIMIT),
   );
-  const conditions = [eq(lexiconBulkJobs.userId, userId)];
+  // 刷新后找回任务同样是写后读，必须绕过 Hyperdrive 查询缓存。
+  const conditions = [eq(lexiconBulkJobs.userId, userId), bypassQueryCache()];
   if (opts.activeOnly) conditions.push(inArray(lexiconBulkJobs.status, ['queued', 'running']));
   const rows = await db.query.lexiconBulkJobs.findMany({
     where: and(...conditions),
@@ -176,12 +190,12 @@ function mapJob(row: Omit<typeof lexiconBulkJobs.$inferSelect, 'inputJson'>): Jo
  * write that decides which worker owns the row, so no extra locking is
  * required. The LIMIT 1 + ORDER BY ensures FIFO ordering across workers.
  */
-async function claimNextJob(workerId: string): Promise<typeof lexiconBulkJobs.$inferSelect | null> {
+async function claimNextJob(claimToken: string): Promise<typeof lexiconBulkJobs.$inferSelect | null> {
   const claimedAt = new Date();
   const result = await db.execute(sql`
     UPDATE "LexiconBulkJob"
        SET status = 'running',
-           "claimedBy" = ${workerId},
+           "claimedBy" = ${claimToken},
            "claimedAt" = ${claimedAt.toISOString()},
            "updatedAt" = ${claimedAt.toISOString()}
      WHERE id IN (
@@ -220,6 +234,8 @@ interface ProcessSummary {
   completed: number;
   failed: number;
   recovered: number;
+  /** 提交时认领已失效（被取消 / 被回收）的 chunk 数。 */
+  lost: number;
 }
 
 /**
@@ -231,8 +247,12 @@ interface ProcessSummary {
 export async function processQueuedBulkJobs(opts: {
   workerId: string;
   maxJobs?: number;
+  /** 超过该时长（ms）后不再认领新 chunk；默认 {@link TICK_BUDGET_MS}。 */
+  budgetMs?: number;
 }): Promise<ProcessSummary> {
   const maxJobs = Math.max(1, opts.maxJobs ?? 4);
+  const budgetMs = opts.budgetMs ?? TICK_BUDGET_MS;
+  const startedAt = Date.now();
   const recovered = await recoverStaleRunning();
   const summary: ProcessSummary = {
     scanned: 0,
@@ -240,45 +260,63 @@ export async function processQueuedBulkJobs(opts: {
     completed: 0,
     failed: 0,
     recovered,
+    lost: 0,
   };
 
   // Lazy import to dodge the cycle between this file and domain-vocabulary.ts.
-  const { processBulkJobChunk } = await import('@/lib/domain-vocabulary-job-runner');
+  const { ownedClaim, processBulkJobChunk } = await import('@/lib/domain-vocabulary-job-runner');
 
-  for (let i = 0; i < maxJobs; i += 1) {
+  for (let i = 0; i < maxJobs && Date.now() - startedAt < budgetMs; i += 1) {
     summary.scanned += 1;
-    const job = await claimNextJob(opts.workerId);
+    // 每次认领一个独立令牌：同一 tick 内连续处理同一任务的多个 chunk 也互不混淆。
+    const claimToken = `${opts.workerId}:${crypto.randomUUID()}`;
+    const job = await claimNextJob(claimToken);
     if (!job) break;
     summary.claimed += 1;
 
     try {
       const outcome = await processBulkJobChunk(job);
-      if (outcome.finished) summary.completed += 1;
+      if (outcome.lostClaim) summary.lost += 1;
+      else if (outcome.finished) summary.completed += 1;
     } catch (err) {
       summary.failed += 1;
-      const message = err instanceof Error ? err.message : String(err);
-      await db
-        .update(lexiconBulkJobs)
-        .set({
-          status: 'failed',
-          updatedAt: new Date(),
-          completedAt: new Date(),
-          errors: sql`COALESCE("errors", '[]'::jsonb) || ${JSON.stringify([
-            { row: -1, code: 'worker_crash', message },
-          ])}::jsonb`,
-        })
-        .where(eq(lexiconBulkJobs.id, job.id));
-      await logAuditEvent({
-        userId: job.userId,
-        action: 'lexicon.term.add',
-        resource: 'domain-term-bulk',
-        resourceId: job.id,
-        metadata: { mode: 'async', status: 'failed', reason: 'worker_crash' },
-      });
+      await failClaimedJob(job, claimToken, err, ownedClaim);
     }
   }
 
   return summary;
+}
+
+/**
+ * worker 崩溃时把任务标为 failed——只在仍持有认领时生效，绝不覆盖用户的取消。
+ */
+async function failClaimedJob(
+  job: { id: string; userId: string },
+  claimToken: string,
+  err: unknown,
+  ownedClaim: (jobId: string, token: string) => ReturnType<typeof and>,
+): Promise<void> {
+  console.error('[domain-vocabulary-bulk-worker] chunk failed', err);
+  const failed = await db
+    .update(lexiconBulkJobs)
+    .set({
+      status: 'failed',
+      updatedAt: new Date(),
+      completedAt: new Date(),
+      errors: sql`COALESCE("errors", '[]'::jsonb) || ${JSON.stringify([
+        { row: -1, code: 'worker_crash', message: 'The import stopped unexpectedly. Please retry.' },
+      ])}::jsonb`,
+    })
+    .where(ownedClaim(job.id, claimToken))
+    .returning({ id: lexiconBulkJobs.id });
+  if (failed.length === 0) return;
+  await logAuditEvent({
+    userId: job.userId,
+    action: 'lexicon.term.add',
+    resource: 'domain-term-bulk',
+    resourceId: job.id,
+    metadata: { mode: 'async', status: 'failed', reason: 'worker_crash' },
+  });
 }
 
 /**

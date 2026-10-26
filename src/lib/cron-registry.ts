@@ -205,10 +205,11 @@ export const CRON_REGISTRY: ReadonlyArray<CronJob> = [
     cron: '* * * * *',
     routePath: '/api/cron/domain-vocabulary-bulk-worker',
     // 每分钟一次：异步批量导入的队列消费者（#605——此前未登记，任务永远停在 queued）。
-    // 每个 tick 最多推进 4 个 chunk（每个 250 行），1 万行上限约 10 分钟跑完。
+    // 每个 tick 最多推进 4 个 chunk（每个 250 行）且不超过 20s 预算，1 万行上限约 10 分钟跑完。
     // ★该路由不走 runCronOnce：认领靠 LexiconBulkJob 上的
-    // `UPDATE … FOR UPDATE SKIP LOCKED` 原子完成，并发 tick 天然互斥；
-    // 每分钟一条租约行会让 CronJobLease 每天多出 1440 行且无人回收。
+    // `UPDATE … FOR UPDATE SKIP LOCKED` 原子完成，每次认领带独立令牌，进度只在仍持有
+    // 认领时提交，并发 tick 天然互斥；每分钟一条租约行会让 CronJobLease 每天多出
+    // 1440 行且无人回收。
     windowStartFor: (now) => floorToMinute(now),
   },
 ] as const;

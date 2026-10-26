@@ -64,25 +64,23 @@ describe('GET /bulk/jobs', () => {
 describe('GET /version', () => {
   it('未登录返回 401', async () => {
     mockSession(null);
-    const res = await getVersion(new Request('http://localhost/api/v1/domain-vocabularies/version'));
+    const res = await getVersion();
     expect(res.status).toBe(401);
   });
 
-  it('按 domain/locale 范围返回版本，且禁止缓存', async () => {
-    vi.mocked(getUserVocabularyVersion).mockResolvedValue('3-1793000000000');
-    const res = await getVersion(
-      new Request('http://localhost/api/v1/domain-vocabularies/version?domain=finance&locale=de'),
-    );
+  it('返回调用者的版本号，且禁止 HTTP 缓存', async () => {
+    vi.mocked(getUserVocabularyVersion).mockResolvedValue('42');
+    const res = await getVersion();
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('no-store');
-    await expect(res.json()).resolves.toEqual({ version: '3-1793000000000' });
-    expect(getUserVocabularyVersion).toHaveBeenCalledWith('user-1', { domain: 'finance', locale: 'de' });
+    await expect(res.json()).resolves.toEqual({ version: '42' });
+    expect(getUserVocabularyVersion).toHaveBeenCalledWith('user-1');
   });
 
   it('查询失败返回 500 且不泄露内部错误', async () => {
     vi.mocked(getUserVocabularyVersion).mockRejectedValue(new Error('connection refused 10.0.0.1'));
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const res = await getVersion(new Request('http://localhost/api/v1/domain-vocabularies/version'));
+    const res = await getVersion();
     spy.mockRestore();
     expect(res.status).toBe(500);
     expect(JSON.stringify(await res.json())).not.toContain('10.0.0.1');

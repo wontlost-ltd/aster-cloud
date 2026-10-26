@@ -1,12 +1,11 @@
 /**
  * GET /api/v1/domain-vocabularies/version（#608）
  *
- * 返回当前用户活跃词汇的版本号，`?domain=` / `?locale=` 可收窄到编辑器关心的范围。
- * 编辑器定期轮询它，版本变化即重新拉取词汇。
+ * 返回当前用户词汇的单调版本号。编辑器定期轮询它，版本变化即重新拉取词汇。
  *
  * 取代原先基于进程内 EventEmitter 的 SSE 推送：Cloudflare Workers 多 isolate 下
- * 发布方与订阅方几乎不在同一 isolate，推送永远收不到。轮询一次只是一条走部分索引的
- * 聚合查询，比维持长连接或引入 Durable Object 都便宜。
+ * 发布方与订阅方几乎不在同一 isolate，推送永远收不到。轮询一次只是一条主键查询，
+ * 比维持长连接或引入 Durable Object 都便宜。
  */
 
 import { NextResponse } from 'next/server';
@@ -17,17 +16,13 @@ import { getUserVocabularyVersion } from '@/lib/domain-vocabulary';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
     const session = await getSession();
     if (!session?.user?.id) {
       return errorEnvelope({ status: 401, code: 'unauthorized', message: 'Sign in required' });
     }
-    const params = new URL(req.url).searchParams;
-    const version = await getUserVocabularyVersion(session.user.id, {
-      domain: params.get('domain')?.trim() || undefined,
-      locale: params.get('locale')?.trim() || undefined,
-    });
+    const version = await getUserVocabularyVersion(session.user.id);
     return NextResponse.json({ version }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('[domain-vocabularies version GET]', error);
