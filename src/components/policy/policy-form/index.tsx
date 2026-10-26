@@ -716,6 +716,7 @@ export function PolicyForm({
                 value={content}
                 onChange={setContent}
                 locale={cnlLocale}
+                userVocabulary
                 height="100%"
                 placeholder={t('contentPlaceholder')}
                 aliasSet={fields.aliasSet ?? undefined}

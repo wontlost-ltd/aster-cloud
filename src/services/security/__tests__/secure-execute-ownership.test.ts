@@ -59,7 +59,7 @@ vi.mock('../security-event-service', () => ({ logSecurityEvent: mockLogSecurityE
 vi.mock('../nonce-service', () => ({ checkAndRecordNonce: vi.fn(async () => true) }));
 vi.mock('../../policy/policy-api', () => ({ createPolicyApiClient: vi.fn(() => ({})) }));
 vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
-  loadVocabularyForExecution: vi.fn(async () => null),
+  loadExecutionVocabulary: vi.fn(async () => undefined),
 }));
 vi.mock('@/lib/runtime/safe-env', () => ({ safeEnv: () => '' }));
 

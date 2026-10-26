@@ -61,6 +61,11 @@ export interface PolicyCompileRequest {
    * 依赖别名的合法源码会被「不带 alias 的编译」误判为解析错误。
    */
   aliasSet?: Record<string, string[]> | null;
+  /**
+   * 策略作用域内的用户领域词汇（ADR 0014，DomainVocabulary 的 JSON）。与执行端传同一形状，
+   * 使保存前编译与执行对用户术语的规范化一致。为空时不携带。
+   */
+  vocabulary?: Record<string, unknown> | null;
 }
 
 /**
@@ -565,6 +570,7 @@ export class PolicyApiClient {
       locale: request.locale || 'en-US',
       // 仅在有别名时携带（与 evaluateSource 一致），避免空字段增大请求体。
       ...(hasAliases ? { aliasSet: request.aliasSet } : {}),
+      ...(request.vocabulary ? { vocabulary: request.vocabulary } : {}),
     });
   }
 

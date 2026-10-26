@@ -12,6 +12,8 @@ const h = vi.hoisted(() => ({
   getTeamMemberRole: vi.fn(),
   logSecurityEvent: vi.fn(),
   recordAha: vi.fn(),
+  snapshot: vi.fn(),
+  invalidateCache: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => ({
@@ -30,8 +32,8 @@ vi.mock('@/lib/prisma', () => ({
 vi.mock('@/lib/team-permissions', () => ({ getTeamMemberRole: h.getTeamMemberRole }));
 vi.mock('@/services/security/security-event-service', () => ({ logSecurityEvent: h.logSecurityEvent }));
 vi.mock('@/lib/metrics/aha-detection', () => ({ recordAhaMomentIfFirst: h.recordAha }));
-vi.mock('@/lib/domain-vocabulary-snapshot', () => ({ snapshotOnPolicyApprove: async () => undefined }));
-vi.mock('@/lib/cache', () => ({ invalidatePolicyCache: async () => undefined }));
+vi.mock('@/lib/domain-vocabulary-snapshot', () => ({ snapshotOnPolicyApprove: h.snapshot }));
+vi.mock('@/lib/cache', () => ({ invalidatePolicyCache: h.invalidateCache }));
 
 import {
   approveVersion,
@@ -42,8 +44,13 @@ import {
 function setup(policy: { userId: string; teamId: string | null }, author: string, role: string | null = null) {
   h.policiesFindFirst.mockResolvedValue(policy);
   h.getTeamMemberRole.mockResolvedValue(role);
-  h.versionsFindFirst.mockResolvedValue({ id: 'v1', policyId: 'p1', version: 2, createdBy: author, status: 'PENDING_APPROVAL' });
+  h.versionsFindFirst.mockResolvedValue({
+    id: 'v1', policyId: 'p1', version: 2, createdBy: author, status: 'PENDING_APPROVAL',
+    content: GERMAN_SOURCE, source: null,
+  });
 }
+
+const GERMAN_SOURCE = 'Modul x.\n\nDefiniere Fahrer hat alter als Ganzzahl.\n';
 
 function decisionEvent() {
   return h.logSecurityEvent.mock.calls.map((c) => c[0]).find((e) => e.eventType === 'APPROVAL_DECISION');
@@ -53,6 +60,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.recordAha.mockResolvedValue(true);
   h.insertValues.mockResolvedValue(undefined);
+  h.snapshot.mockResolvedValue([]);
+  h.invalidateCache.mockResolvedValue(undefined);
 });
 
 describe('approveVersion — 团队策略', () => {
@@ -124,5 +133,31 @@ describe('approveVersion — 个人策略', () => {
 
     await expect(approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' }))
       .rejects.toBeInstanceOf(PolicyAccessDeniedError);
+  });
+});
+
+describe('approveVersion — 词汇快照（#610）', () => {
+  it('只按被审批版本的源码与语言冻结词汇，且在缓存失效前完成', async () => {
+    setup({ userId: 'owner', teamId: null }, 'owner');
+    const order: string[] = [];
+    h.snapshot.mockImplementation(async () => { order.push('snapshot'); return []; });
+    h.invalidateCache.mockImplementation(async () => { order.push('invalidate'); });
+
+    await approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' });
+
+    expect(h.snapshot).toHaveBeenCalledWith({
+      policyVersionId: 'v1',
+      policyAuthorId: 'owner',
+      policy: { source: GERMAN_SOURCE, locale: 'de-DE' },
+    });
+    expect(order.indexOf('snapshot')).toBeLessThan(order.indexOf('invalidate'));
+  });
+
+  it('驳回不冻结词汇', async () => {
+    setup({ userId: 'owner', teamId: null }, 'owner');
+
+    await approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'REJECTED' });
+
+    expect(h.snapshot).not.toHaveBeenCalled();
   });
 });

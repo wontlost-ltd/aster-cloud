@@ -27,6 +27,13 @@ const {
   };
 });
 
+const { mockLoadExecutionVocabulary } = vi.hoisted(() => ({
+  mockLoadExecutionVocabulary: vi.fn(async (): Promise<Record<string, unknown> | undefined> => undefined),
+}));
+vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
+  loadExecutionVocabulary: mockLoadExecutionVocabulary,
+}));
+
 vi.mock('@/lib/api-keys', () => ({
   authenticateApiRequest: vi.fn(),
 }));
@@ -582,6 +589,26 @@ describe('V1 Policies API - Drizzle Migration', () => {
       expect(mockExecutePolicyUnified).toHaveBeenCalledWith(
         expect.objectContaining({ aliasSet: { TIMES: ['multiplied by'] } }),
       );
+    });
+
+    it('#602(v1)：按版本冻结快照加载作用域内词汇并透传给执行端', async () => {
+      const refs = [{ snapshotId: 's-de', domain: 'e2e1026', locale: 'de' }];
+      const vocabulary = { id: 'e2e1026', locale: 'de-DE', fields: [{ canonical: 'age', localized: 'alter' }] };
+      setupExecuteRow({ policy_vocab_snapshot_ids: refs });
+      mockLoadExecutionVocabulary.mockResolvedValueOnce(vocabulary);
+      mockExecutePolicyUnified.mockResolvedValue(mockExecutionResult({ allowed: true }));
+
+      const response = await POST(
+        makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody),
+        mockParams,
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockLoadExecutionVocabulary).toHaveBeenCalledWith(refs, {
+        source: 'Module X. Rule greet given name: has name.',
+        locale: 'en-US',
+      });
+      expect(mockExecutePolicyUnified).toHaveBeenCalledWith(expect.objectContaining({ vocabulary }));
     });
 
     it('C1(v1)：无别名（policy_alias_set=null）时 aliasSet 传 null', async () => {

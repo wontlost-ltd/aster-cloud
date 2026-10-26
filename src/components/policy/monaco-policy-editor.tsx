@@ -43,8 +43,13 @@ interface MonacoPolicyEditorProps {
   value: string;
   onChange: (value: string) => void;
   locale?: string;
-  /** 领域标识符（如 'insurance.auto'），启用领域术语补全和高亮 */
+  /** 内置领域标识符（如 'insurance.auto'），启用领域术语补全和高亮 */
   domain?: string;
+  /**
+   * 注册当前用户的领域词汇（ADR 0014 线B）：按源码选出作用域内分组注入编译器，
+   * 与服务端编译门禁、审批冻结、执行同一规则。策略编辑场景开启。
+   */
+  userVocabulary?: boolean;
   /** 用户策略层关键词别名，kind → 多词别名。 */
   aliasSet?: Readonly<Record<string, readonly string[]>>;
   height?: string;
@@ -423,6 +428,7 @@ export function MonacoPolicyEditor({
   onChange,
   locale = 'en',
   domain,
+  userVocabulary: userVocabularyEnabled = false,
   aliasSet,
   height = '400px',
   readOnly = false,
@@ -539,14 +545,21 @@ export function MonacoPolicyEditor({
     };
   }, [tModules]);
 
-  // ADR 0014 线B：把用户自定义领域词汇 registerCustom 进引擎，让编译/翻译层
-  // 也能识别用户术语（而非仅高亮）。内部订阅 SSE 失效自动重新注册，返回组装
-  // 后的用户词汇 + 随注册递增的 epoch。
-  const { vocabulary: userVocabulary, epoch: userVocabEpoch } = useUserVocabularyRegistration({
+  // ADR 0014 线B：把策略作用域内的用户领域词汇 registerCustom 进引擎，让编译/翻译层
+  // 也能识别用户术语（而非仅高亮）。内部订阅 SSE 失效自动重新注册，返回合并后的
+  // 用户词汇、编译器应使用的 domain，以及注册内容的稳定 key。
+  const {
+    vocabulary: userVocabulary,
+    domain: userVocabularyDomain,
+    registrationKey: userVocabKey,
+  } = useUserVocabularyRegistration({
     tenantId,
-    domain,
     locale: compilerLocale,
+    source: value,
+    enabled: userVocabularyEnabled,
   });
+  // 编译器使用的 domain：有作用域内用户词汇时用其注册 id，否则回退内置领域。
+  const compilerDomain = userVocabularyDomain ?? domain;
 
   // F10: subscribe to user-vocabulary SSE invalidates so a user adding /
   // removing a term in another tab triggers a re-fetch + Monaco
@@ -557,11 +570,11 @@ export function MonacoPolicyEditor({
     match: domain ? { domain, locale: compilerLocale } : undefined,
   });
   // 高亮词汇：优先用户自定义词汇（已 registerCustom，含用户术语），缺省回退
-  // 内置。userVocabEpoch 进 deps 保证用户增删词后高亮同步刷新。
+  // 内置。userVocabKey 进 deps 保证用户增删词后高亮同步刷新。
   const vocabulary = useMemo(
     () => userVocabulary ?? (domain ? getVocabulary(domain, compilerLocale) : undefined),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [domain, compilerLocale, vocabTick, userVocabulary, userVocabEpoch],
+    [domain, compilerLocale, vocabTick, userVocabulary, userVocabKey],
   );
 
   // Local compiler for real-time validation with accurate error positions
@@ -572,12 +585,12 @@ export function MonacoPolicyEditor({
     editor: isEditorReady ? editorRef.current : null,
     monaco: isEditorReady ? monacoRef.current : null,
     locale: compilerLocale,
-    domain,
+    domain: compilerDomain,
     tenantId,
     userAliasSet: aliasSet,
-    // 用户词异步注册成功后 epoch 递增，触发重新校验（否则 diagnostics 会
+    // 用户词注册内容变化时 key 变化，触发重新校验（否则 diagnostics 会
     // 停留在「未识别用户词」的旧结果直到用户再次输入）。
-    externalInvalidationKey: `${userVocabEpoch}:${JSON.stringify(aliasSet ?? {})}`,
+    externalInvalidationKey: `${userVocabKey}:${JSON.stringify(aliasSet ?? {})}`,
     debounceDelay,
     enableValidation: true,
   });

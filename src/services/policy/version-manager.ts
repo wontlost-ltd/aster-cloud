@@ -18,6 +18,7 @@ import { logSecurityEvent } from '../security/security-event-service';
 import { recordAhaMomentIfFirst } from '@/lib/metrics/aha-detection';
 import { invalidatePolicyCache } from '@/lib/cache';
 import { snapshotOnPolicyApprove } from '@/lib/domain-vocabulary-snapshot';
+import { detectCNLLocale } from './cnl-executor';
 import {
   canonicalAliasJson,
   cloudToolchainId,
@@ -620,14 +621,15 @@ export async function approveVersion(params: {
       console.error('[AHA detection] failed (non-blocking):', err);
     });
 
-    // B12 — Snapshot the author's active vocabulary so future rollbacks can
-    // restore the exact term set this version was compiled against. The
-    // helper is itself best-effort; never block approval on snapshot IO.
-    snapshotOnPolicyApprove({
+    // B12：冻结作者当前词汇中该版本实际使用的分组（同语言且被源码引用，#610），
+    // 执行时按此快照规范化。必须在缓存失效之前完成：否则审批后紧接着的执行会把
+    // 尚未写入快照引用的版本缓存下来，之后一直不带词汇执行。helper 内部吞掉异常，
+    // 快照失败不阻断审批。
+    const source = targetVersion.source ?? targetVersion.content;
+    await snapshotOnPolicyApprove({
       policyVersionId: targetVersion.id,
       policyAuthorId: targetVersion.createdBy,
-    }).catch((err) => {
-      console.error('[vocabulary-snapshot] failed (non-blocking):', err);
+      policy: { source, locale: detectCNLLocale(source) },
     });
   }
 

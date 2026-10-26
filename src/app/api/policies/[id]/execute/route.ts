@@ -10,6 +10,7 @@ import { getCachedPolicyMeta, cachePolicyMeta, type CachedPolicyMeta } from '@/l
 import { hydrateExecutableVersion, isCachedVersionCurrent, resolveExecutableVersion, type ExecutableVersionCandidate } from '@/services/policy/executable-version';
 import { buildReplayColumns, buildEvidenceColumns } from '@/lib/policy-execution-log';
 import { policyTenantId } from '@/lib/policy-tenant';
+import { loadExecutionVocabulary } from '@/lib/domain-vocabulary-snapshot';
 import { needsGuardDecision, registerGuardAfterInsert, registerGuardDecisionWith } from '@/lib/guard-register';
 import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
 import type { AgentIdentity } from '@/services/policy/policy-api';
@@ -371,6 +372,11 @@ export async function POST(req: Request, { params }: RouteParams) {
         parsedAliasSet = null; // 损坏的 aliasSet 视为无别名，不阻塞执行（envelope 另有防篡改）
       }
     }
+    // ADR 0014 线C：执行版本冻结的领域词汇（只取策略作用域内的快照），best-effort。
+    const vocabulary = await loadExecutionVocabulary(policy.vocabSnapshotIds, {
+      source: policy.content,
+      locale: detectCNLLocale(policy.content),
+    });
     const executionResult = await executePolicyUnified({
       policy: policy as Parameters<typeof executePolicyUnified>[0]['policy'],
       input: validatedInput,
@@ -378,6 +384,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       tenantId: policyTenantId(policy),
       functionName: functionName || undefined,
       aliasSet: parsedAliasSet,
+      vocabulary,
       // 回放地基（ADR 0030）：dashboard execute 走 HMAC 内部调用 → 开 replayCapture 取权威 hash。
       replayCapture: true,
       agent: DASHBOARD_AGENT,
