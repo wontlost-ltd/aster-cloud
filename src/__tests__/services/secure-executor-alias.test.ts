@@ -169,6 +169,53 @@ describe('executeSecurely — 别名透传 + 哈希口径（C1 secure-execute）
     expect(passedOpts.vocabulary).toEqual(frozen);
   });
 
+  // #626：签名按原始输入校验后，策略语言的字段名映射为规范名再交给引擎；与 execute 端点同口径。
+  describe('#626 策略语言输入', () => {
+    const source = `Modul e2e1027.vocab.
+
+Definiere Fahrer hat alter als Ganzzahl.
+
+Regel bewerten gegeben person als Fahrer liefert Ganzzahl:
+  wenn person.alter mindestens 18:
+    gib zurück 42.
+  gib zurück 0.
+`;
+    const frozen = {
+      id: 'e2e1027', locale: 'de-DE',
+      structs: [{ canonical: 'Driver', localized: 'Fahrer', kind: 'struct' }],
+      fields: [{ canonical: 'age', localized: 'alter', kind: 'field', parent: 'Driver' }],
+      functions: [],
+    };
+    function withInput(input: unknown) {
+      const o = opts('HASH_ENV');
+      return { ...o, request: { ...o.request, input } };
+    }
+
+    beforeEach(() => {
+      vi.mocked(loadExecutionVocabulary).mockResolvedValue(frozen);
+      vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue(
+        version({ source, aliasSet: null, vocabularySnapshotIds: [{ snapshotId: 's', domain: 'e2e1027', locale: 'de' }] }) as never,
+      );
+    });
+
+    it('本地化与规范输入都以规范名交给引擎', async () => {
+      await executeSecurely(withInput({ person: { alter: 21 } }));
+      await executeSecurely(withInput({ person: { age: 21 } }));
+
+      expect(mockEvaluateSource.mock.calls[0]?.[1]).toEqual({ person: { age: 21 } });
+      expect(mockEvaluateSource.mock.calls[1]?.[1]).toEqual({ person: { age: 21 } });
+    });
+
+    it('两者并存 → AMBIGUOUS_INPUT_FIELD，不调用引擎', async () => {
+      const r = await executeSecurely(withInput({ person: { alter: 21, age: 30 } }));
+
+      expect(r.success).toBe(false);
+      expect(r.errorCode).toBe('AMBIGUOUS_INPUT_FIELD');
+      expect(r.ambiguous).toMatchObject({ field: 'person.age', policyName: 'alter' });
+      expect(mockEvaluateSource).not.toHaveBeenCalled();
+    });
+  });
+
   // #602 复审：locale 优先取版本保存时记录的编译 locale，旧版本执行口径不被源码启发式改变。
   it('locale 优先取 envelope 记录的编译 locale（即使源码看起来是德语）', async () => {
     const source = 'Modul x.\n\nDefiniere Fahrer hat alter als Ganzzahl.\n';

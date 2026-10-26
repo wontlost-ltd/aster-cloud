@@ -202,9 +202,9 @@ export interface ExecutePolicyOptions {
    */
   aliasSet?: Record<string, string[]> | null;
   /**
-   * 执行版本冻结的领域词汇（ADR 0014 线C，DomainVocabulary 的 JSON）。执行端规范化阶段
-   * 据此把用户术语（如 `alter`）翻译为规范名（`age`），使规范字段名的输入能匹配。
-   * 由调用方用 loadExecutionVocabulary 从版本的 vocabularySnapshotIds 加载传入。
+   * 执行版本的领域词汇（ADR 0014 线C，DomainVocabulary 的 JSON）。执行端规范化阶段
+   * 据此把用户术语（如 `alter`）翻译为规范名（`age`）。由调用方用 loadVersionExecutionVocabulary
+   * 加载（已审批版本 = 冻结快照，草稿 = 作者现行词汇），输入须已用同一词汇映射为规范名（#626）。
    */
   vocabulary?: Record<string, unknown>;
   /**
@@ -263,7 +263,7 @@ async function executeWithAsterEngine(
     // aliasSet：已发布版本冻结的别名快照，透传给执行端使别名源码能编译（C1）。
     // replayCapture：回放地基（ADR 0030）——已认证 execute 路径开，透传 aster-api 权威 hash。
     // agent：调用方自报身份（ADR 0041 §4），由 aster-api 写入证据。
-    // vocabulary：版本冻结的领域词汇（ADR 0014 线C），执行端据此翻译用户术语。
+    // vocabulary：版本的领域词汇（ADR 0014 线C；草稿为作者现行词汇），执行端据此翻译用户术语。
     const response = await apiClient.evaluateSource(policyContent, input, { locale, functionName, aliasSet, vocabulary, replayCapture, agent });
     return buildCNLResult(policy, response);
   } catch (error) {

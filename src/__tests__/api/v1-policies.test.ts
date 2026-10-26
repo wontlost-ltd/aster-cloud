@@ -27,11 +27,13 @@ const {
   };
 });
 
-const { mockLoadExecutionVocabulary } = vi.hoisted(() => ({
+const { mockLoadExecutionVocabulary, mockLoadLiveVocabulary } = vi.hoisted(() => ({
   mockLoadExecutionVocabulary: vi.fn(async (): Promise<Record<string, unknown> | undefined> => undefined),
+  mockLoadLiveVocabulary: vi.fn(async (): Promise<Record<string, unknown> | null> => null),
 }));
 vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
   loadExecutionVocabulary: mockLoadExecutionVocabulary,
+  loadLiveVocabularyForPolicy: mockLoadLiveVocabulary,
 }));
 
 vi.mock('@/lib/api-keys', () => ({
@@ -614,7 +616,11 @@ describe('V1 Policies API - Drizzle Migration', () => {
     it('#602(v1)：按版本冻结快照加载作用域内词汇并透传给执行端', async () => {
       const refs = [{ snapshotId: 's-de', domain: 'e2e1026', locale: 'de' }];
       const vocabulary = { id: 'e2e1026', locale: 'de-DE', fields: [{ canonical: 'age', localized: 'alter' }] };
-      setupExecuteRow({ policy_vocab_snapshot_ids: refs });
+      setupExecuteRow({ policy_vocab_snapshot_ids: refs, policy_version: 1 });
+      // 已审批版本走冻结快照（草稿走作者现行词汇，见 #626 用例）。
+      vi.mocked(db.query.policyVersions.findMany).mockResolvedValueOnce([
+        { id: 'pv-1', version: 1, status: 'APPROVED', isDefault: false, createdBy: 'user-1' },
+      ] as never);
       mockLoadExecutionVocabulary.mockResolvedValueOnce(vocabulary);
       mockExecutePolicyUnified.mockResolvedValue(mockExecutionResult({ allowed: true }));
 
@@ -629,6 +635,81 @@ describe('V1 Policies API - Drizzle Migration', () => {
         locale: 'en-US',
       });
       expect(mockExecutePolicyUnified).toHaveBeenCalledWith(expect.objectContaining({ vocabulary }));
+    });
+
+    describe('#626 策略语言输入（v1 / SDK）', () => {
+      const DE_SOURCE = `Modul e2e1027.vocab.
+
+Definiere Fahrer hat alter als Ganzzahl.
+
+Regel bewerten gegeben person als Fahrer liefert Ganzzahl:
+  wenn person.alter mindestens 18:
+    gib zurück 42.
+  gib zurück 0.
+`;
+      const deVocab = {
+        id: 'e2e1027', locale: 'de-DE', name: 'e2e1027', version: '1',
+        structs: [{ canonical: 'Driver', localized: 'Fahrer', kind: 'struct' }],
+        fields: [{ canonical: 'age', localized: 'alter', kind: 'field', parent: 'Driver' }],
+        functions: [],
+      };
+      const approved = [{ id: 'pv-1', version: 1, status: 'APPROVED', isDefault: false, createdBy: 'author-1' }];
+      const draft = [{ id: 'pv-1', version: 1, status: 'DRAFT', isDefault: false, createdBy: 'author-1' }];
+
+      function run(input: unknown) {
+        return POST(makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', { input }), mockParams);
+      }
+
+      beforeEach(() => {
+        setupExecuteRow({ policy_content: DE_SOURCE, policy_version: 1, policy_vocab_snapshot_ids: [{ snapshotId: 's', domain: 'e2e1027', locale: 'de' }] });
+      });
+
+      it('本地化输入映射为规范名后交给引擎，执行记录存规范输入', async () => {
+        vi.mocked(db.query.policyVersions.findMany).mockResolvedValueOnce(approved as never);
+        mockLoadExecutionVocabulary.mockResolvedValueOnce(deVocab);
+
+        const response = await run({ person: { alter: 21 } });
+
+        expect(response.status).toBe(200);
+        expect(mockExecutePolicyUnified).toHaveBeenCalledWith(expect.objectContaining({ input: { person: { age: 21 } } }));
+        expect(mockValuesInsert.mock.calls[0]![0]).toMatchObject({ input: { person: { age: 21 } } });
+      });
+
+      it('规范输入仍然接受', async () => {
+        vi.mocked(db.query.policyVersions.findMany).mockResolvedValueOnce(approved as never);
+        mockLoadExecutionVocabulary.mockResolvedValueOnce(deVocab);
+
+        const response = await run({ person: { age: 21 } });
+
+        expect(response.status).toBe(200);
+        expect(mockExecutePolicyUnified).toHaveBeenCalledWith(expect.objectContaining({ input: { person: { age: 21 } } }));
+      });
+
+      it('本地化键与规范键并存 → 400 ambiguous_input_field', async () => {
+        vi.mocked(db.query.policyVersions.findMany).mockResolvedValueOnce(approved as never);
+        mockLoadExecutionVocabulary.mockResolvedValueOnce(deVocab);
+
+        const response = await run({ person: { alter: 21, age: 22 } });
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({ code: 'ambiguous_input_field', field: 'person.age' });
+        expect(mockExecutePolicyUnified).not.toHaveBeenCalled();
+      });
+
+      it('草稿用作者现行词汇映射并透传', async () => {
+        vi.mocked(db.query.policyVersions.findMany).mockResolvedValueOnce(draft as never);
+        mockLoadLiveVocabulary.mockResolvedValueOnce(deVocab);
+
+        const response = await run({ person: { alter: 21 } });
+
+        expect(response.status).toBe(200);
+        // 本文件桩掉了 cnl-executor（含 locale 识别），这里只钉住「按版本作者 + 源码」取现行词汇。
+        expect(mockLoadLiveVocabulary).toHaveBeenCalledWith('author-1', expect.objectContaining({ source: DE_SOURCE }));
+        expect(mockLoadExecutionVocabulary).not.toHaveBeenCalled();
+        expect(mockExecutePolicyUnified).toHaveBeenCalledWith(
+          expect.objectContaining({ input: { person: { age: 21 } }, vocabulary: deVocab }),
+        );
+      });
     });
 
     it('C1(v1)：无别名（policy_alias_set=null）时 aliasSet 传 null', async () => {

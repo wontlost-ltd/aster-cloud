@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 
 import { executeSecurely } from '@/services/security/secure-executor';
+import { AMBIGUOUS_INPUT_FIELD_CODE } from '@/lib/execution-input';
 import { PolicyAccessDeniedError } from '@/services/policy/version-manager';
 import type { SignedRequest } from '@/services/security/policy-security';
 import { v4 as uuidv4 } from 'uuid';
@@ -145,6 +146,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         isDeprecated: result.isDeprecated,
         expectedVersion: result.expectedVersion,
         expectedHash: result.expectedHash,
+        // #626（新增可选字段）：输入歧义时给出稳定码与冲突字段路径，与 execute 端点同口径。
+        ...(result.ambiguous
+          ? {
+              code: AMBIGUOUS_INPUT_FIELD_CODE,
+              field: result.ambiguous.field,
+              fields: result.ambiguous.fields,
+              policyField: result.ambiguous.policyName,
+            }
+          : {}),
         requestId,
       },
       { status }

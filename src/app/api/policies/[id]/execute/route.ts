@@ -16,7 +16,11 @@ import {
   executionErrorCode,
   sanitizeExecutionResult,
 } from '@/lib/execution-error';
-import { loadExecutionVocabulary } from '@/lib/domain-vocabulary-snapshot';
+import {
+  ambiguousInputFieldBody,
+  loadVersionExecutionVocabulary,
+  prepareExecutionInput,
+} from '@/lib/execution-input';
 import { needsGuardDecision, registerGuardAfterInsert, registerGuardDecisionWith } from '@/lib/guard-register';
 import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
 import type { AgentIdentity } from '@/services/policy/policy-api';
@@ -27,6 +31,13 @@ const DASHBOARD_AGENT: AgentIdentity = { provider: 'aster-cloud', model: 'dashbo
 
 interface RouteParams {
   params: Promise<{ id: string }>;
+}
+
+/** 结果本地化后与原值不同时才返回 localizedResult（新增可选字段，旧客户端忽略即可）。 */
+function localizedResultField(result: unknown, localize: (value: unknown) => unknown): { localizedResult?: unknown } {
+  if (result === undefined || result === null) return {};
+  const localized = localize(result);
+  return JSON.stringify(localized) === JSON.stringify(result) ? {} : { localizedResult: localized };
 }
 
 // 获取当前周期字符串（YYYY-MM）
@@ -98,7 +109,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     const versionRows = await db.query.policyVersions.findMany({
       where: eq(policyVersions.policyId, id),
       columns: {
-        id: true, version: true, status: true, isDefault: true,
+        id: true, version: true, status: true, isDefault: true, createdBy: true,
       },
     });
 
@@ -116,7 +127,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         sourceToolchainId: cachedPolicy.sourceToolchainId ?? null,
         vocabularySnapshotIds: cachedPolicy.vocabSnapshotIds,
       };
-      const executableVersion = resolveExecutableVersion(versionRows, fallbackVersion);
+      const executableVersion = resolveExecutableVersion<ExecutableVersionCandidate>(versionRows, fallbackVersion);
       if (isCachedVersionCurrent(cachedPolicy.version, executableVersion.version)) {
       policy = cachedPolicy;
       cacheHit = true;
@@ -197,7 +208,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         sourceToolchainId: row.policy_source_toolchain_id ?? null,
         vocabularySnapshotIds: row.policy_vocab_snapshot_ids,
       };
-      const selectedVersion = resolveExecutableVersion(versionRows, fallbackVersion);
+      const selectedVersion = resolveExecutableVersion<ExecutableVersionCandidate>(versionRows, fallbackVersion);
       const executableVersion = await hydrateExecutableVersion(
         selectedVersion,
         fallbackVersion,
@@ -378,17 +389,36 @@ export async function POST(req: Request, { params }: RouteParams) {
         parsedAliasSet = null; // 损坏的 aliasSet 视为无别名，不阻塞执行（envelope 另有防篡改）
       }
     }
-    // ADR 0014 线C：执行版本冻结的领域词汇（只取策略作用域内的快照），best-effort。
-    const vocabulary = await loadExecutionVocabulary(policy.vocabSnapshotIds, {
+    // 领域词汇（ADR 0014 线C，#626）：已审批版本用冻结快照，草稿用作者现行词汇（作用域内），best-effort。
+    const policyLocale = detectCNLLocale(policy.content);
+    const executedVersionRow = versionRows.find((row) => row.version === policy.version);
+    const vocabulary = await loadVersionExecutionVocabulary({
+      status: executedVersionRow?.status,
+      vocabularySnapshotIds: policy.vocabSnapshotIds,
+      authorId: executedVersionRow?.createdBy ?? policy.userId,
       source: policy.content,
-      locale: detectCNLLocale(policy.content),
+      locale: policyLocale,
     });
+    // #626：输入按策略语言书写，执行前映射为规范名；本地化键与规范键并存时 400，不猜测。
+    const prepared = prepareExecutionInput({
+      input: validatedInput,
+      functionName: functionName || undefined,
+      vocabulary,
+      source: policy.content,
+      locale: policyLocale,
+      aliasSet: parsedAliasSet,
+    });
+    if (!prepared.ok) {
+      return NextResponse.json(ambiguousInputFieldBody(prepared.ambiguous), { status: 400 });
+    }
+    // 引擎实际评估的输入：执行记录、guard 登记、parity 都用它，保证与回放 hash 同源。
+    const engineInput = prepared.input as Record<string, unknown>;
     const rawExecutionResult = await executePolicyUnified({
       policy: policy as Parameters<typeof executePolicyUnified>[0]['policy'],
-      input: validatedInput,
+      input: engineInput,
       userId,
       tenantId: policyTenantId(policy),
-      functionName: functionName || undefined,
+      functionName: prepared.functionName,
       aliasSet: parsedAliasSet,
       vocabulary,
       // 回放地基（ADR 0030）：dashboard execute 走 HMAC 内部调用 → 开 replayCapture 取权威 hash。
@@ -414,7 +444,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       policyVersion: policy.version ?? null,
       sourceToolchainId: policy.sourceToolchainId ?? null,
       vocabSnapshotRef: policy.vocabSnapshotIds ?? null,
-      locale: detectCNLLocale(policy.content),
+      locale: policyLocale,
       aliasSetJson: replayAliasSetJson,
       functionName: executionResult.executedFunction ?? null,
     }, executionResult.metadata.traceSkeleton, executionResult.metadata.reason);
@@ -430,7 +460,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       id: executionId,
       userId,
       policyId: id,
-      input: validatedInput as object,
+      input: engineInput as object,
       output: executionResult as object,
       error: primaryError,
       durationMs,
@@ -465,8 +495,8 @@ export async function POST(req: Request, { params }: RouteParams) {
       await registerGuardAfterInsert(executionInsertPromise, executionId, () =>
         registerGuardDecisionWith(() => createPolicyApiClientForUser(policyTenantId(policy), userId), {
           policy: { id: policy.id, name: policy.name, teamId: policy.teamId, userId: policy.userId },
-          functionName: executionResult.executedFunction ?? (functionName || undefined) ?? policy.name,
-          input: validatedInput,
+          functionName: executionResult.executedFunction ?? prepared.functionName ?? policy.name,
+          input: engineInput,
           agent: DASHBOARD_AGENT,
           result: executionResult,
           requesterUserId: userId,
@@ -484,9 +514,9 @@ export async function POST(req: Request, { params }: RouteParams) {
         tenantId: policyTenantId(policy),
         actorUserId: userId,
         source: policy.content,
-        input: validatedInput as Record<string, unknown> | unknown[],
-        locale: detectCNLLocale(policy.content),
-        functionName: executionResult.executedFunction ?? functionName ?? '',
+        input: engineInput,
+        locale: policyLocale,
+        functionName: executionResult.executedFunction ?? prepared.functionName ?? '',
         aliasSet: parsedAliasSet,
         role: RUNNER_LAUNCHER_HMAC_ROLE,
         authorityReplay: executionResult.metadata.replay,
@@ -519,6 +549,8 @@ export async function POST(req: Request, { params }: RouteParams) {
       durationMs,
       executedFunction: executionResult.executedFunction,
       diagnostics: executionResult.diagnostics,
+      // #626（新增可选字段）：结果里的规范名还原为策略语言，供界面展示；无变化时省略，output 保持规范名不变。
+      ...localizedResultField(executionResult.result, prepared.localizeOutput),
       // 临时添加 timings 用于调试
       _timings: { ...timings, cacheHit },
     });

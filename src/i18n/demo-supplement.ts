@@ -902,6 +902,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         schemaNote: 'The exported schema declares only the actions and the context keys (with their types) this rule mentions. A gateway that validates requests against the schema rejects anything outside it — stricter than Aster, never looser.',
       },
       execute: {
+        ambiguousInputField: 'The input contains the policy field "{field}" twice (under its policy-language name and its canonical name, or two synonyms). Keep only one of them.',
         engineErrorDetail: 'The policy could not run with this input. Check that the input fields match the policy and try again.',
         // 值/计算输出策略（如 greet 返回文本）：执行成功但无 allow/deny 语义。
         computed: 'Computed',
@@ -2046,6 +2047,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         schemaNote: '导出的 schema 只声明本规则提到的 action 与 context 键（含类型）；按 schema 校验请求的网关会拒绝其余请求——只会比 Aster 更严，不会更松。',
       },
       execute: {
+        ambiguousInputField: '输入中策略字段「{field}」出现了两次（策略语言名与规范名同时出现，或两个同义词）。请只保留其中一个。',
         engineErrorDetail: '策略无法用这组输入运行。请检查输入字段是否与策略一致，然后重试。',
         computed: '已计算',
         noDecision: '无决策（值输出）',
@@ -3200,6 +3202,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         schemaNote: 'Das exportierte Schema deklariert nur die in dieser Regel genannten Actions und Context-Schlüssel (mit ihren Typen). Ein Gateway, das Anfragen gegen das Schema validiert, lehnt alles andere ab – strenger als Aster, nie laxer.',
       },
       execute: {
+        ambiguousInputField: 'Die Eingabe enthält das Policy-Feld „{field}“ doppelt (unter dem Namen in der Policy-Sprache und dem kanonischen Namen oder als zwei Synonyme). Behalten Sie nur eines davon.',
         engineErrorDetail: 'Die Policy konnte mit dieser Eingabe nicht ausgeführt werden. Prüfen Sie, ob die Eingabefelder zur Policy passen, und versuchen Sie es erneut.',
         computed: 'Berechnet',
         noDecision: 'Keine Entscheidung (Wertausgabe)',
@@ -4338,6 +4341,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         schemaNote: 'निर्यात किया गया स्कीमा केवल वे actions और context कुंजियाँ (उनके प्रकारों सहित) घोषित करता है जिनका यह नियम उल्लेख करता है। जो गेटवे अनुरोधों को स्कीमा से सत्यापित करता है, वह इसके बाहर की हर चीज़ अस्वीकार करता है — Aster से अधिक सख़्त, कभी ढीला नहीं।',
       },
       execute: {
+        ambiguousInputField: 'इनपुट में नीति फ़ील्ड "{field}" दो बार है (नीति-भाषा नाम और मानक नाम दोनों, या दो पर्यायवाची)। इनमें से केवल एक रखें।',
         engineErrorDetail: 'इस इनपुट के साथ नीति नहीं चल सकी। जाँचें कि इनपुट फ़ील्ड नीति से मेल खाते हैं, फिर पुनः प्रयास करें।',
         computed: 'परिकलित',
         noDecision: 'कोई निर्णय नहीं (मान आउटपुट)',

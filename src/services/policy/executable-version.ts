@@ -7,6 +7,8 @@ export interface ExecutableVersionCandidate {
   isDefault: boolean;
   sourceToolchainId?: string | null;
   vocabularySnapshotIds?: unknown;
+  /** 版本作者：草稿执行按其现行词汇（#626）。 */
+  createdBy?: string | null;
 }
 
 export interface ExecutablePolicyVersion extends ExecutableVersionCandidate {
