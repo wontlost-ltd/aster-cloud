@@ -1,0 +1,60 @@
+/**
+ * 已存版本的 CNL 语言解析（secure-execute 与审批冻结共用）。
+ *
+ * PolicyVersion 没有单独的 locale 列，但保存时的编译 locale 已写进 sourceEnvelopeSha256
+ * （content + aliasSet + locale + 工具链）。按以下优先级取语言，保证旧版本执行口径不变：
+ *   1. 版本记录的编译 locale：用候选 locale 重算 envelope，与存储值相等者即保存时所用值。
+ *   2. 冻结快照引用的 locale 唯一时取之（secure-execute 原有口径，兼容无 envelope 的旧版本）。
+ *   3. 最后才按源码关键词识别（detectCNLLocale，启发式）。
+ */
+
+import { computeSourceEnvelope } from '@/lib/policy-alias';
+import { detectCNLLocale } from '@/services/policy/cnl-executor';
+import { CNL_LOCALES } from '@/lib/cnl-locale';
+
+/**
+ * envelope 可能记录的 locale：新版本只会是受支持的规范标签（保存入口校验 + createVersion
+ * 不变量）；旧版本保存时未校验，补上常见短码。
+ */
+const RECORDED_LOCALE_CANDIDATES = [
+  ...CNL_LOCALES,
+  ...CNL_LOCALES.map((locale) => locale.split('-')[0]!),
+];
+
+export interface StoredVersionLocaleInput {
+  source: string;
+  aliasSet: string | null;
+  sourceEnvelopeSha256: string | null;
+  sourceToolchainId: string | null;
+  vocabularySnapshotIds: unknown;
+}
+
+/** 从 envelope 反推保存时的编译 locale；无 envelope 或都不匹配时返回 undefined。 */
+export function recordedCompileLocale(version: StoredVersionLocaleInput): string | undefined {
+  if (!version.sourceEnvelopeSha256) return undefined;
+  return RECORDED_LOCALE_CANDIDATES.find(
+    (locale) =>
+      computeSourceEnvelope(version.source, version.aliasSet, locale, version.sourceToolchainId) ===
+      version.sourceEnvelopeSha256,
+  );
+}
+
+/** 快照引用的 locale 唯一时返回该值，否则 undefined。 */
+function uniqueSnapshotLocale(refs: unknown): string | undefined {
+  if (!Array.isArray(refs)) return undefined;
+  const locales = new Set(
+    refs.map((ref) => (ref as { locale?: unknown }).locale).filter((l): l is string => typeof l === 'string' && l !== ''),
+  );
+  return locales.size === 1 ? [...locales][0] : undefined;
+}
+
+/** 已存版本的 CNL 语言（优先级见文件头）。 */
+export function resolveStoredVersionLocale(version: StoredVersionLocaleInput): string {
+  const recorded = recordedCompileLocale(version);
+  if (recorded) return recorded;
+  if (version.sourceEnvelopeSha256) {
+    // 有 envelope 却反推不出：旧版本保存时用了不受支持的 locale，只能走兜底链。
+    console.warn('[policy-version-locale] recorded compile locale not recoverable; falling back');
+  }
+  return uniqueSnapshotLocale(version.vocabularySnapshotIds) ?? detectCNLLocale(version.source);
+}

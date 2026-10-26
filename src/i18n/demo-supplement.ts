@@ -248,6 +248,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 侧栏/导航「Reports」改标「Evidence」（URL 仍 /reports；deepMerge 覆盖包内字符串）。
     domainVocabularies: {
       subtitle: 'Manage the Structs, fields, functions, and Enum values in your policies.',
+      errors: { validation: { generic: 'Some fields are not valid. Check the entries and try again.', invalidCanonical: 'Canonical name "{name}" must be a valid identifier: letters, digits and underscores only, not starting with a digit.', duplicateCanonical: 'Canonical name "{name}" is already used.', triggerConflict: 'The term "{trigger}" conflicts with another term.', invalidLiteral: 'Literal text must be a single line without quotes or backslashes.', parentRequired: 'Fields need a parent struct.', fieldRequired: 'A required field is missing: {field}.' } },
       stats: { visible: 'Visible', archived: 'Deleted (restorable)' },
       actions: { recentlyDeleted: 'Recently deleted', restore: 'Restore', noRecentlyDeleted: 'No terms were deleted in the last 90 days.', deletedRecoverable: 'Deleted (restorable)', activeTerms: 'Active terms', termAdded: 'Term added', termUpdated: 'Term updated', termDeleted: 'Term deleted', termRestored: 'Term restored', loadMore: 'Load more', loadingMore: 'Loading…' },
       // 批量导入结果（#607）与 domain/locale 格式校验（#612）。
@@ -901,6 +902,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         schemaNote: 'The exported schema declares only the actions and the context keys (with their types) this rule mentions. A gateway that validates requests against the schema rejects anything outside it — stricter than Aster, never looser.',
       },
       execute: {
+        engineErrorDetail: 'The policy could not run with this input. Check that the input fields match the policy and try again.',
         // 值/计算输出策略（如 greet 返回文本）：执行成功但无 allow/deny 语义。
         computed: 'Computed',
         noDecision: 'No decision (value output)',
@@ -992,7 +994,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         replace: 'Replace',
         saveFailedWithDiagnostics: 'Saving failed: {count} error(s) — first: L{line} {message}',
         saveDiagnosticFallback: 'Compilation failed.',
-        saveErrorCodes: { compile_error: 'The policy has compilation errors.', compile_unavailable: 'Compilation is temporarily unavailable. Try again later.', policy_frozen: 'This policy is frozen.', unauthorized: 'You are not authorized to save this policy.' },
+        saveErrorCodes: { compile_error: 'The policy has compilation errors.', compile_unavailable: 'Compilation is temporarily unavailable. Try again later.', policy_frozen: 'This policy is frozen.', unauthorized: 'You are not authorized to save this policy.', alias_invalid: 'The keyword aliases are not valid. Fix them in the Keyword aliases panel and save again.', unsupported_locale: 'This policy language is not supported. Use English, Chinese, German or Hindi.' },
+        aliasesInvalidBeforeSaving: 'Fix the keyword alias errors before saving.',
         // AI 行内补全开关（状态栏）
         statusAiCompletionOn: 'AI completion: on',
         statusAiCompletionOff: 'AI completion: off',
@@ -1004,6 +1007,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         mobileReadOnlyNotice: 'Read-only on small screens. The policy editor needs a wider screen (at least 768 px): open this page on a tablet or desktop to edit and save.',
         aliases: {
           title: 'Keyword aliases',
+          errors: { tooManyKinds: 'Aliases are set for {count} keywords; the limit is {limit}.', kindNotAllowed: 'Aliases cannot be defined for {kind}.', structuralNotGranted: 'Aliases for the structure keyword {kind} need admin authorization.', tooManyAliases: '{kind} has {count} aliases; the limit is {limit}.', empty: 'An alias for {kind} is empty.', tooLong: 'An alias for {kind} has {count} characters; the limit is {limit}.', nonCanonical: 'Alias "{alias}" ({kind}) has extra spaces or capital letters. Use "{normalized}".', singleWord: 'Alias "{alias}" ({kind}) must have at least two words, so it cannot be confused with a field or variable name.', shadowsKeyword: 'Alias "{alias}" ({kind}) is the same as a built-in keyword.', shadowsBaseAlias: 'Alias "{alias}" ({kind}) is the same as a built-in alias.', collidesVocabulary: 'Alias "{alias}" ({kind}) is the same as a term in your domain vocabulary.', duplicate: 'Alias "{alias}" is used for both {otherKind} and {kind}. Each alias can belong to only one keyword.' },
           hint: 'Add comma-separated multi-word phrases for policy keywords.',
           configuredCount: '{count, plural, one {# alias} other {# aliases}} configured',
           groupArithmetic: 'Arithmetic',
@@ -1407,6 +1411,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     domainVocabularies: {
       subtitle: '管理策略中的 Struct、字段、函数和枚举值。',
+      errors: { validation: { generic: '部分字段无效，请检查后重试。', invalidCanonical: '规范名称“{name}”必须是有效标识符：只能包含字母、数字和下划线，且不能以数字开头。', duplicateCanonical: '规范名称“{name}”已被使用。', triggerConflict: '词条“{trigger}”与另一条词条冲突。', invalidLiteral: '字面量文本必须是单行，且不能包含引号或反斜杠。', parentRequired: '字段必须指定父结构体。', fieldRequired: '缺少必填字段：{field}。' } },
       stats: { visible: '可见', archived: '已删除（可恢复）' },
       actions: { recentlyDeleted: '最近删除', restore: '恢复', noRecentlyDeleted: '最近 90 天没有已删除词汇。', deletedRecoverable: '已删除（可恢复）', activeTerms: '现有词汇', termAdded: '词汇已新增', termUpdated: '词汇已更新', termDeleted: '词汇已删除', termRestored: '词汇已恢复', loadMore: '加载更多', loadingMore: '正在加载…' },
       // 批量导入结果（#607）与 domain/locale 格式校验（#612）。
@@ -2041,6 +2046,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         schemaNote: '导出的 schema 只声明本规则提到的 action 与 context 键（含类型）；按 schema 校验请求的网关会拒绝其余请求——只会比 Aster 更严，不会更松。',
       },
       execute: {
+        engineErrorDetail: '策略无法用这组输入运行。请检查输入字段是否与策略一致，然后重试。',
         computed: '已计算',
         noDecision: '无决策（值输出）',
         completed: '已完成',
@@ -2128,7 +2134,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         replace: '替换',
         saveFailedWithDiagnostics: '保存失败：{count} 个错误 — 首条：第 {line} 行 {message}',
         saveDiagnosticFallback: '编译失败。',
-        saveErrorCodes: { compile_error: '策略存在编译错误。', compile_unavailable: '编译服务暂时不可用，请稍后重试。', policy_frozen: '此策略已冻结。', unauthorized: '你无权保存此策略。' },
+        saveErrorCodes: { compile_error: '策略存在编译错误。', compile_unavailable: '编译服务暂时不可用，请稍后重试。', policy_frozen: '此策略已冻结。', unauthorized: '你无权保存此策略。', alias_invalid: '关键词别名无效。请在“关键词别名”面板中修正后重新保存。', unsupported_locale: '不支持该策略语言，请使用英语、中文、德语或印地语。' },
+        aliasesInvalidBeforeSaving: '请先修正关键词别名错误再保存。',
         // AI 行内补全开关（状态栏）
         statusAiCompletionOn: 'AI 补全：开',
         statusAiCompletionOff: 'AI 补全：关',
@@ -2140,6 +2147,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         mobileReadOnlyNotice: '小屏幕下仅可查看。编辑策略需要更宽的屏幕（至少 768 像素）：请在平板或电脑上打开此页面进行编辑和保存。',
         aliases: {
           title: '关键词别名',
+          errors: { tooManyKinds: '已为 {count} 个关键词设置别名，上限为 {limit} 个。', kindNotAllowed: '不能为“{kind}”设置别名。', structuralNotGranted: '为结构关键词“{kind}”设置别名需要管理员授权。', tooManyAliases: '“{kind}”有 {count} 个别名，上限为 {limit} 个。', empty: '“{kind}”的别名不能为空。', tooLong: '“{kind}”的一个别名有 {count} 个字符，上限为 {limit} 个。', nonCanonical: '别名“{alias}”（{kind}）含多余空格或大写字母，请改为“{normalized}”。', singleWord: '别名“{alias}”（{kind}）至少要包含两个词，以免与字段名或变量名混淆。', shadowsKeyword: '别名“{alias}”（{kind}）与内置关键词相同。', shadowsBaseAlias: '别名“{alias}”（{kind}）与内置别名相同。', collidesVocabulary: '别名“{alias}”（{kind}）与你的领域词汇中的词条相同。', duplicate: '别名“{alias}”同时用于“{otherKind}”和“{kind}”，每个别名只能对应一个关键词。' },
           hint: '为策略关键词添加逗号分隔的多词短语。',
           configuredCount: '已配置 {count} 个别名',
           groupArithmetic: '算术',
@@ -2553,7 +2561,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       bulk: { description: 'Fügen Sie CSV (mit Header-Zeile) oder ein JSON-Array ein. Aliase werden in CSV mit | getrennt (z. B. amount|amt) oder als JSON-Array.', tooManySync: 'Wechseln Sie zu Async — das Limit von {syncLimit} Zeilen wird überschritten.', domainInvalid: 'domain muss ein kleingeschriebener Identifier sein, z. B. finance oder finance.loan', localeInvalid: 'locale muss ein BCP-47-Tag sein, z. B. en, zh-CN, de', syncPartial: '{imported} von {total} Zeilen importiert; {failed} nicht importiert.', syncNoneImported: 'Keine Zeile importiert; {failed} von {total} fehlgeschlagen.', resultErrorsTitle: 'Nicht importierte Zeilen', rowLabel: 'Zeile {row}', done: 'Fertig', rowErrors: { duplicate_link: 'Dieser Begriff ist bereits vorhanden.', validation_failed: 'Ungültige Zeile', quota_exceeded: 'Kontingent des Plans erreicht', row_failed: 'Diese Zeile konnte nicht gespeichert werden. Bitte erneut versuchen.', chunk_failed: 'Dieser Stapel konnte nicht gespeichert werden. Bitte erneut versuchen.' } },
       snapshotsView: { diff: { removedNotice: '{n} Ihrer aktuellen Begriffe würden beim Rollback soft-gelöscht. Innerhalb von 90 Tagen wiederherstellbar.', loading: 'Snapshot wird geladen…' } },
       jobProgress: { loading: 'Auftrag wird geladen…' },
-      errors: { quota_exceeded: 'Sie haben das Vokabular-Kontingent Ihres Plans erreicht.', validation_failed: 'Bitte überprüfen Sie die markierten Felder.' },
+      errors: { quota_exceeded: 'Sie haben das Vokabular-Kontingent Ihres Plans erreicht.', validation_failed: 'Bitte überprüfen Sie die markierten Felder.', validation: { generic: 'Einige Felder sind ungültig. Prüfen Sie die Eingaben und versuchen Sie es erneut.', invalidCanonical: 'Der kanonische Name „{name}“ muss ein gültiger Bezeichner sein: nur Buchstaben, Ziffern und Unterstriche, nicht mit einer Ziffer beginnend.', duplicateCanonical: 'Der kanonische Name „{name}“ wird bereits verwendet.', triggerConflict: 'Der Begriff „{trigger}“ steht im Konflikt mit einem anderen Begriff.', invalidLiteral: 'Literaltext muss einzeilig sein und darf keine Anführungszeichen oder Backslashes enthalten.', parentRequired: 'Felder benötigen ein übergeordnetes Struct.', fieldRequired: 'Ein Pflichtfeld fehlt: {field}.' } },
       // de/hi 覆盖了 stats 却漏了 visible，统计卡回退成英文（#615）。
       stats: { visible: 'Sichtbar', archived: 'Gelöscht (wiederherstellbar)' },
       actions: { recentlyDeleted: 'Kürzlich gelöscht', restore: 'Wiederherstellen', noRecentlyDeleted: 'In den letzten 90 Tagen wurden keine Begriffe gelöscht.', deletedRecoverable: 'Gelöscht (wiederherstellbar)', activeTerms: 'Aktive Begriffe', termAdded: 'Begriff hinzugefügt', termUpdated: 'Begriff aktualisiert', termDeleted: 'Begriff gelöscht', termRestored: 'Begriff wiederhergestellt', loadMore: 'Weitere laden', loadingMore: 'Wird geladen…' },
@@ -3192,6 +3200,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         schemaNote: 'Das exportierte Schema deklariert nur die in dieser Regel genannten Actions und Context-Schlüssel (mit ihren Typen). Ein Gateway, das Anfragen gegen das Schema validiert, lehnt alles andere ab – strenger als Aster, nie laxer.',
       },
       execute: {
+        engineErrorDetail: 'Die Policy konnte mit dieser Eingabe nicht ausgeführt werden. Prüfen Sie, ob die Eingabefelder zur Policy passen, und versuchen Sie es erneut.',
         computed: 'Berechnet',
         noDecision: 'Keine Entscheidung (Wertausgabe)',
         completed: 'Abgeschlossen',
@@ -3275,7 +3284,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         replace: 'Ersetzen',
         saveFailedWithDiagnostics: 'Speichern fehlgeschlagen: {count} Fehler — erster Fehler: Z.{line} {message}',
         saveDiagnosticFallback: 'Kompilierung fehlgeschlagen.',
-        saveErrorCodes: { compile_error: 'Die Policy enthält Kompilierungsfehler.', compile_unavailable: 'Die Kompilierung ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.', policy_frozen: 'Diese Policy ist eingefroren.', unauthorized: 'Sie dürfen diese Policy nicht speichern.' },
+        saveErrorCodes: { compile_error: 'Die Policy enthält Kompilierungsfehler.', compile_unavailable: 'Die Kompilierung ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.', policy_frozen: 'Diese Policy ist eingefroren.', unauthorized: 'Sie dürfen diese Policy nicht speichern.', alias_invalid: 'Die Keyword-Aliase sind ungültig. Korrigieren Sie sie im Bereich „Keyword-Aliase“ und speichern Sie erneut.', unsupported_locale: 'Diese Policy-Sprache wird nicht unterstützt. Verwenden Sie Englisch, Chinesisch, Deutsch oder Hindi.' },
+        aliasesInvalidBeforeSaving: 'Beheben Sie vor dem Speichern die Fehler bei den Keyword-Aliasen.',
         // AI 行内补全开关（状态栏）
         statusAiCompletionOn: 'KI-Vervollständigung: an',
         statusAiCompletionOff: 'KI-Vervollständigung: aus',
@@ -3287,6 +3297,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         mobileReadOnlyNotice: 'Auf kleinen Bildschirmen nur lesbar. Der Policy-Editor braucht einen breiteren Bildschirm (mindestens 768 px): Öffnen Sie diese Seite auf einem Tablet oder Desktop, um zu bearbeiten und zu speichern.',
         aliases: {
           title: 'Keyword-Aliase',
+          errors: { tooManyKinds: 'Für {count} Schlüsselwörter sind Aliase festgelegt; das Limit ist {limit}.', kindNotAllowed: 'Für {kind} können keine Aliase festgelegt werden.', structuralNotGranted: 'Aliase für das Strukturwort {kind} erfordern eine Freigabe durch einen Administrator.', tooManyAliases: '{kind} hat {count} Aliase; das Limit ist {limit}.', empty: 'Ein Alias für {kind} ist leer.', tooLong: 'Ein Alias für {kind} hat {count} Zeichen; das Limit ist {limit}.', nonCanonical: 'Der Alias „{alias}“ ({kind}) enthält zusätzliche Leerzeichen oder Großbuchstaben. Verwenden Sie „{normalized}“.', singleWord: 'Der Alias „{alias}“ ({kind}) muss aus mindestens zwei Wörtern bestehen, damit er nicht mit einem Feld- oder Variablennamen verwechselt wird.', shadowsKeyword: 'Der Alias „{alias}“ ({kind}) entspricht einem eingebauten Schlüsselwort.', shadowsBaseAlias: 'Der Alias „{alias}“ ({kind}) entspricht einem eingebauten Alias.', collidesVocabulary: 'Der Alias „{alias}“ ({kind}) entspricht einem Begriff in Ihrem Fachvokabular.', duplicate: 'Der Alias „{alias}“ wird für {otherKind} und {kind} verwendet. Jeder Alias darf nur zu einem Schlüsselwort gehören.' },
           hint: 'Mehrwort-Phrasen kommagetrennt für Policy-Keywords hinzufügen.',
           configuredCount: '{count, plural, one {# Alias} other {# Aliase}} konfiguriert',
           groupArithmetic: 'Arithmetik',
@@ -3690,6 +3701,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     domainVocabularies: {
       subtitle: 'अपनी नीतियों के Structs, फ़ील्ड, फ़ंक्शन और Enum मान प्रबंधित करें।',
+      errors: { validation: { generic: 'कुछ फ़ील्ड मान्य नहीं हैं। प्रविष्टियाँ जाँचें और पुनः प्रयास करें।', invalidCanonical: 'मानक नाम "{name}" एक मान्य पहचानकर्ता होना चाहिए: केवल अक्षर, अंक और अंडरस्कोर, और अंक से शुरू नहीं।', duplicateCanonical: 'मानक नाम "{name}" पहले से उपयोग में है।', triggerConflict: 'शब्द "{trigger}" किसी अन्य शब्द से टकराता है।', invalidLiteral: 'लिटरल पाठ एक ही पंक्ति में होना चाहिए और उसमें उद्धरण चिह्न या बैकस्लैश नहीं होने चाहिए।', parentRequired: 'फ़ील्ड के लिए एक पैरेंट struct आवश्यक है।', fieldRequired: 'एक आवश्यक फ़ील्ड गायब है: {field}।' } },
       // de/hi 覆盖了 stats 却漏了 visible，统计卡回退成英文（#615）。
       stats: { visible: 'दृश्यमान', archived: 'हटाए गए (पुनर्स्थापित किए जा सकते हैं)' },
       actions: { recentlyDeleted: 'हाल ही में हटाए गए', restore: 'पुनर्स्थापित करें', noRecentlyDeleted: 'पिछले 90 दिनों में कोई शब्दावली हटाई नहीं गई।', deletedRecoverable: 'हटाए गए (पुनर्स्थापित किए जा सकते हैं)', activeTerms: 'सक्रिय शब्दावलियाँ', termAdded: 'शब्दावली जोड़ी गई', termUpdated: 'शब्दावली अपडेट की गई', termDeleted: 'शब्दावली हटाई गई', termRestored: 'शब्दावली पुनर्स्थापित की गई', loadMore: 'और लोड करें', loadingMore: 'लोड हो रहा है…' },
@@ -4326,6 +4338,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         schemaNote: 'निर्यात किया गया स्कीमा केवल वे actions और context कुंजियाँ (उनके प्रकारों सहित) घोषित करता है जिनका यह नियम उल्लेख करता है। जो गेटवे अनुरोधों को स्कीमा से सत्यापित करता है, वह इसके बाहर की हर चीज़ अस्वीकार करता है — Aster से अधिक सख़्त, कभी ढीला नहीं।',
       },
       execute: {
+        engineErrorDetail: 'इस इनपुट के साथ नीति नहीं चल सकी। जाँचें कि इनपुट फ़ील्ड नीति से मेल खाते हैं, फिर पुनः प्रयास करें।',
         computed: 'परिकलित',
         noDecision: 'कोई निर्णय नहीं (मान आउटपुट)',
         completed: 'पूरा हुआ',
@@ -4409,7 +4422,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         replace: 'बदलें',
         saveFailedWithDiagnostics: 'सहेजना विफल: {count} त्रुटियाँ — पहली: पंक्ति {line} {message}',
         saveDiagnosticFallback: 'कम्पाइलेशन विफल रहा।',
-        saveErrorCodes: { compile_error: 'नीति में कम्पाइलेशन त्रुटियाँ हैं।', compile_unavailable: 'कम्पाइलेशन अस्थायी रूप से उपलब्ध नहीं है। बाद में फिर कोशिश करें।', policy_frozen: 'यह नीति फ़्रीज़ है।', unauthorized: 'आपको यह नीति सहेजने की अनुमति नहीं है।' },
+        saveErrorCodes: { compile_error: 'नीति में कम्पाइलेशन त्रुटियाँ हैं।', compile_unavailable: 'कम्पाइलेशन अस्थायी रूप से उपलब्ध नहीं है। बाद में फिर कोशिश करें।', policy_frozen: 'यह नीति फ़्रीज़ है।', unauthorized: 'आपको यह नीति सहेजने की अनुमति नहीं है।', alias_invalid: 'कीवर्ड उपनाम मान्य नहीं हैं। उन्हें "कीवर्ड उपनाम" पैनल में ठीक करें और फिर से सहेजें।', unsupported_locale: 'यह नीति भाषा समर्थित नहीं है। अंग्रेज़ी, चीनी, जर्मन या हिंदी का उपयोग करें।' },
+        aliasesInvalidBeforeSaving: 'सहेजने से पहले कीवर्ड उपनाम की त्रुटियाँ ठीक करें।',
         // AI 行内补全开关（状态栏）
         statusAiCompletionOn: 'AI पूर्णता: चालू',
         statusAiCompletionOff: 'AI पूर्णता: बंद',
@@ -4421,6 +4435,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         mobileReadOnlyNotice: 'छोटी स्क्रीन पर केवल देखा जा सकता है। Policy संपादक के लिए चौड़ी स्क्रीन (कम से कम 768 px) चाहिए: संपादित और सहेजने के लिए यह पेज टैबलेट या डेस्कटॉप पर खोलें।',
         aliases: {
           title: 'कीवर्ड उपनाम',
+          errors: { tooManyKinds: '{count} कीवर्ड के लिए उपनाम सेट हैं; सीमा {limit} है।', kindNotAllowed: '{kind} के लिए उपनाम नहीं बनाए जा सकते।', structuralNotGranted: 'संरचना कीवर्ड {kind} के लिए उपनाम बनाने हेतु व्यवस्थापक की अनुमति चाहिए।', tooManyAliases: '{kind} के {count} उपनाम हैं; सीमा {limit} है।', empty: '{kind} का एक उपनाम खाली है।', tooLong: '{kind} के एक उपनाम में {count} अक्षर हैं; सीमा {limit} है।', nonCanonical: 'उपनाम "{alias}" ({kind}) में अतिरिक्त रिक्त स्थान या बड़े अक्षर हैं। "{normalized}" का उपयोग करें।', singleWord: 'उपनाम "{alias}" ({kind}) में कम से कम दो शब्द होने चाहिए, ताकि वह किसी फ़ील्ड या वेरिएबल के नाम से न टकराए।', shadowsKeyword: 'उपनाम "{alias}" ({kind}) एक अंतर्निहित कीवर्ड के समान है।', shadowsBaseAlias: 'उपनाम "{alias}" ({kind}) एक अंतर्निहित उपनाम के समान है।', collidesVocabulary: 'उपनाम "{alias}" ({kind}) आपकी डोमेन शब्दावली के एक शब्द के समान है।', duplicate: 'उपनाम "{alias}" का उपयोग {otherKind} और {kind} दोनों के लिए हो रहा है। हर उपनाम केवल एक कीवर्ड का हो सकता है।' },
           hint: 'Policy कीवर्ड के लिए कॉमा से अलग बहु-शब्द वाक्यांश जोड़ें।',
           configuredCount: '{count} उपनाम कॉन्फ़िगर',
           groupArithmetic: 'अंकगणित',

@@ -24,7 +24,8 @@ import { checkAndRecordNonce } from './nonce-service';
 import { logSecurityEvent } from './security-event-service';
 import { assertPolicyOwnership } from '../policy/version-manager';
 import { createPolicyApiClient } from '../policy/policy-api';
-import { loadVocabularyForExecution } from '@/lib/domain-vocabulary-snapshot';
+import { loadExecutionVocabulary } from '@/lib/domain-vocabulary-snapshot';
+import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
 import { safeEnv } from '@/lib/runtime/safe-env';
 
 type Policy = InferSelectModel<typeof policies>;
@@ -271,20 +272,20 @@ export async function executeSecurely(
       throw new Error('策略源码不存在');
     }
 
-    // ADR 0014 线C：把该版本冻结的领域词汇透传到执行端，使规范化阶段能
-    // 翻译用户自定义术语。best-effort：加载失败不阻断执行（退化为仅内置）。
-    let vocabulary: Record<string, unknown> | undefined;
-    try {
-      const vocab = await loadVocabularyForExecution(targetVersion.vocabularySnapshotIds);
-      vocabulary = vocab ? (vocab as unknown as Record<string, unknown>) : undefined;
-    } catch {
-      vocabulary = undefined;
-    }
-
-    // ADR 0014 线C / 审查 P0-1：执行端按 locale 选 lexicon。策略源码 locale
-    // 未单独持久化，但每个快照引用自带 locale；当所有引用 locale 唯一时即为
-    // 该策略的 CNL 语言。非唯一或缺失时不指定（执行端默认 en-US），避免猜错。
-    const snapshotLocale = resolveSnapshotLocale(targetVersion.vocabularySnapshotIds);
+    // 执行端按 locale 选 lexicon：优先取版本保存时记录的编译 locale（envelope），
+    // 其次沿用快照引用唯一 locale，最后才按源码识别（见 policy-version-locale）。
+    const locale = resolveStoredVersionLocale({
+      source: sourceCode,
+      aliasSet: targetVersion.aliasSet,
+      sourceEnvelopeSha256: targetVersion.sourceEnvelopeSha256,
+      sourceToolchainId: targetVersion.sourceToolchainId,
+      vocabularySnapshotIds: targetVersion.vocabularySnapshotIds,
+    });
+    // ADR 0014 线C：该版本冻结的领域词汇（只取策略作用域内的快照），best-effort。
+    const vocabulary = await loadExecutionVocabulary(targetVersion.vocabularySnapshotIds, {
+      source: sourceCode,
+      locale,
+    });
 
     // C1（secure-execute）：把该版本冻结的关键词别名（canonical JSON）透传到执行端，使
     // 别名源码能规范化编译。冻结即信任——版本创建时已授权+校验+进 envelope，执行不重查
@@ -303,7 +304,7 @@ export async function executeSecurely(
       sourceCode, // 关键：使用数据库中的源码
       request.input as Record<string, unknown>,
       {
-        ...(snapshotLocale ? { locale: snapshotLocale } : {}),
+        locale,
         ...(vocabulary ? { vocabulary } : {}),
         ...(aliasSet ? { aliasSet } : {}),
       }
@@ -353,22 +354,6 @@ export async function executeSecurely(
       executionTimeMs,
     };
   }
-}
-
-/**
- * 从快照引用推断策略 CNL 语言：当所有引用的 locale 唯一时返回该 locale，
- * 否则返回 undefined（执行端回退默认 en-US）。
- *
- * 设计取舍：策略源码 locale 未单独持久化，但发布时冻结的词汇快照按
- * (domain, locale) 分组，引用里带 locale。绝大多数策略是单语言，refs 的
- * locale 一致即可可靠推断；跨语言混合（罕见）时宁可不猜也不猜错。
- */
-function resolveSnapshotLocale(
-  refs: ReadonlyArray<{ locale: string }> | null | undefined,
-): string | undefined {
-  if (!refs || refs.length === 0) return undefined;
-  const locales = new Set(refs.map((r) => r.locale).filter(Boolean));
-  return locales.size === 1 ? [...locales][0] : undefined;
 }
 
 /**

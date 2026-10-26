@@ -87,6 +87,7 @@ import { CNLSyntaxConverterDialog } from '@/components/policy/cnl-syntax-convert
 import { type PolicyExample, getExampleSource } from '@/data/policy-examples';
 import { extractReservedAliasSets, getLexicon } from '@/lib/aster-lexicon';
 import { validateUserAliases } from '@/lib/policy-alias-shared';
+import { useAliasIssueMessage } from '@/components/policy/use-alias-issue-message';
 import { localizedErrorMessage } from '@/lib/api/localized-error-message';
 
 // 类型-only 导入（不拉入 Monaco 重包；运行时组件仍走下方 dynamic）。
@@ -184,6 +185,7 @@ export function PolicyForm({
   const router = useRouter();
   const t = useTranslations('policies.form');
   const tCommon = useTranslations('common');
+  const aliasIssueMessage = useAliasIssueMessage();
   const cnlLocale = normalizeLocale(uiLocale);
   // dashboard layout 下发的 AI 工作台开关；null 时「AI」tab 保持原面板。
   const aiWorkspace = useAiWorkspace();
@@ -434,7 +436,11 @@ export function PolicyForm({
       allowStructural: allowStructuralAliases,
     });
     if (!aliasValidation.valid) {
+      // 跨 kind 重复等整体问题不能静默拦截：打开别名面板并给出首条问题的本地化说明。
       openSidePanel('aliases');
+      toast.error(t('aliasesInvalidBeforeSaving'), {
+        description: aliasIssueMessage(aliasValidation.issues[0]),
+      });
       return false;
     }
     // 有解析/编译错误的策略不允许保存——落库不可编译的源码会污染版本链，
@@ -463,6 +469,7 @@ export function PolicyForm({
     aliasSet,
     reservedSets,
     allowStructuralAliases,
+    aliasIssueMessage,
     compileErrorCount,
     compile.state,
     content,
@@ -483,7 +490,11 @@ export function PolicyForm({
           const diagnostics = (result.diagnostics ?? []).filter(
             (diagnostic) => diagnostic.severity === 'error',
           );
-          if (diagnostics.length > 0) {
+          if (result.code === 'alias_invalid') {
+            // 服务端别名校验失败（如授权已撤销）：原文是中文诊断，按错误码本地化并引导到别名面板。
+            openSidePanel('aliases');
+            toast.error(t('saveFailed'), { description: t('saveErrorCodes.alias_invalid') });
+          } else if (diagnostics.length > 0) {
             openSidePanel('problems');
             const first = diagnostics[0];
             toast.error(t('saveFailedWithDiagnostics', {
@@ -498,6 +509,7 @@ export function PolicyForm({
                 compile_unavailable: t('saveErrorCodes.compile_unavailable'),
                 policy_frozen: t('saveErrorCodes.policy_frozen'),
                 unauthorized: t('saveErrorCodes.unauthorized'),
+                unsupported_locale: t('saveErrorCodes.unsupported_locale'),
               }, result.message),
             });
           }
@@ -664,6 +676,7 @@ export function PolicyForm({
             className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-2 text-sm text-danger"
           >
             {localizedErrorMessage(serverError.code, {
+              alias_invalid: t('saveErrorCodes.alias_invalid'),
               compile_error: t('saveErrorCodes.compile_error'),
               compile_unavailable: t('saveErrorCodes.compile_unavailable'),
               policy_frozen: t('saveErrorCodes.policy_frozen'),
@@ -716,6 +729,7 @@ export function PolicyForm({
                 value={content}
                 onChange={setContent}
                 locale={cnlLocale}
+                userVocabulary
                 height="100%"
                 placeholder={t('contentPlaceholder')}
                 aliasSet={fields.aliasSet ?? undefined}

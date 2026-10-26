@@ -5,9 +5,11 @@ import { eq, sql, desc, asc } from 'drizzle-orm';
 import { PLANS, PlanType } from '@/lib/plans';
 import { upgradeResponse } from '@/lib/plan-quota';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
+import { executionErrorCode, sanitizeExecutionResult } from '@/lib/execution-error';
 import { executePolicyUnified, getPrimaryError, deriveExecutionDecision, deriveExecutionOutcome, detectCNLLocale } from '@/services/policy/cnl-executor';
 import { buildReplayColumns, buildEvidenceColumns } from '@/lib/policy-execution-log';
 import { policyTenantId } from '@/lib/policy-tenant';
+import { loadExecutionVocabulary } from '@/lib/domain-vocabulary-snapshot';
 import { needsGuardDecision, registerGuardAfterInsert, registerGuardDecisionWith } from '@/lib/guard-register';
 import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
 import { parseAgentIdentity } from '@/services/policy/policy-api';
@@ -302,7 +304,12 @@ export async function POST(req: Request, { params }: RouteParams) {
       }
     }
 
-    const executionResult = await executePolicyUnified({
+    // ADR 0014 线C：执行版本冻结的领域词汇（只取策略作用域内的快照），best-effort。
+    const vocabulary = await loadExecutionVocabulary(policy.vocabSnapshotIds, {
+      source: policy.content,
+      locale: detectCNLLocale(policy.content),
+    });
+    const rawExecutionResult = await executePolicyUnified({
       // 部分 Policy 投影（执行端只读 .content）；新增的 aliasSet:string|null 与完整 Policy
       // 行的字段类型不再充分重叠，按 TS 提示经 unknown 桥接（沿用本路径既有部分投影模式）。
       policy: policy as unknown as Parameters<typeof executePolicyUnified>[0]['policy'],
@@ -311,10 +318,13 @@ export async function POST(req: Request, { params }: RouteParams) {
       tenantId: policyTenantId(policy),
       ...(functionName ? { functionName } : {}),
       aliasSet: parsedAliasSet,
+      vocabulary,
       // 回放地基（ADR 0030）：已认证 execute 走 HMAC 内部调用 → 开 replayCapture 取权威 hash。
       replayCapture: true,
       ...(agent ? { agent } : {}),
     });
+    // 与 dashboard 执行同口径：引擎失败原文（中文 + Java 异常）只进服务端日志，API 只给稳定码 + 通用说明。
+    const executionResult = sanitizeExecutionResult(rawExecutionResult, { policyId: id, userId });
     const primaryError = getPrimaryError(executionResult);
     const durationMs = Date.now() - startTime;
 
@@ -426,6 +436,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       success: executionResult.allowed,
       data: { ...executionResult, decision },
       error: primaryError,
+      errorCode: executionErrorCode(executionResult),
       meta: {
         policyId: id,
         policyName: policy.name,

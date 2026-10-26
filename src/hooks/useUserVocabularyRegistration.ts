@@ -1,33 +1,35 @@
 /**
- * useUserVocabularyRegistration — 把当前用户的自定义领域词汇注入 aster-lang-ts
- * 引擎的 vocabularyRegistry（per-tenant custom 词汇），让编译/翻译层（而非
- * 仅高亮层）也能识别用户自定义术语。
+ * useUserVocabularyRegistration — 把当前策略作用域内的用户领域词汇注入 aster-lang-ts
+ * 引擎的 vocabularyRegistry（per-tenant custom 词汇），让编译/翻译层（而非仅高亮层）
+ * 也能识别用户自定义术语（ADR 0014 线B）。
  *
- * 背景（ADR 0014 线B）：引擎与 registry 早已支持 `registerCustom(tenantId,
- * vocab)`，但 aster-cloud 从未调用它——用户在 DB 里定义的术语只进了高亮路径，
- * 编译时 `canonicalize({domain})` 走 builtin-only 查找，翻不了用户词。本 hook
- * 补上这根线：
- *   1. 拉取用户在 (domain, locale) 下的活跃词汇链接（复用既有 GET API）。
- *   2. 组装成 DomainVocabulary（纯叶子 assemble 模块，与服务端同源）。
- *   3. `vocabularyRegistry.registerCustom(tenantId, vocab)` 注入引擎。
- *   4. 订阅词汇 SSE 失效 tick，用户增删词后自动重新注册。
+ * 作用域规则与服务端编译门禁、审批冻结、执行完全一致（见 domain-vocabulary-scope）：
+ * 与编辑器 CNL 语言相同、且被当前源码引用的 (domain, locale) 分组。流程：
+ *   1. 拉取用户全部活跃词条（分页，不按 domain/locale 过滤——词条 locale 是自由填写的
+ *      `de` 之类，与编译器的 `de-DE` 按主语言匹配）。
+ *   2. 按当前源码选出作用域内分组，合并成一个词汇表，id 固定为 USER_VOCABULARY_DOMAIN。
+ *   3. 作用域内容变化时 `registerCustom(tenantId, vocab)`，作用域清空时撤销注册。
+ *   4. 订阅词汇 SSE 失效 tick，用户增删词后重新拉取。
  *
- * 返回组装后的 vocabulary（也可喂给 Monaco 高亮，让用户词与编译翻译同源），
- * 以及一个随注册变化递增的 epoch，供下游 effect 触发重编译/重高亮。
+ * 返回合并后的词汇（也喂给 Monaco 高亮）、编译器应使用的 domain，以及注册内容的稳定 key，
+ * 供下游触发重编译/重高亮。
  */
 
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import {
   vocabularyRegistry,
   initBuiltinVocabularies,
   type DomainVocabulary,
 } from '@/lib/aster-lexicon';
+import type { TermLikeRow } from '@/lib/domain-vocabulary-assemble';
 import {
-  assembleDomainVocabularyFromLinks,
-  type TermLikeRow,
-} from '@/lib/domain-vocabulary-assemble';
+  USER_VOCABULARY_DOMAIN,
+  VOCABULARY_LIST_MAX_PAGE_SIZE,
+  resolvePolicyVocabularyFromRows,
+} from '@/lib/domain-vocabulary-scope';
+import { validateVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
 import { useDomainVocabularyInvalidate } from '@/hooks/useDomainVocabularyInvalidate';
 
 /** GET /api/v1/domain-vocabularies/terms 返回的单条链接（取用到的字段）。 */
@@ -46,24 +48,27 @@ interface TermLink {
 
 interface ListResponse {
   items?: TermLink[];
+  total?: number;
 }
 
 export interface UseUserVocabularyRegistrationOptions {
   /** 租户标识符；缺省（匿名/未登录）时跳过注册。 */
   tenantId?: string;
-  /** 领域标识符。 */
-  domain?: string;
-  /** 语言代码（如 'en-US'）。 */
+  /** 编译器语言代码（如 'de-DE'）。 */
   locale: string;
-  /** 关闭注册（例如 feature flag 或匿名会话）。 */
+  /** 当前策略源码，用于确定作用域内的词汇分组。 */
+  source: string;
+  /** 关闭注册（例如非策略编辑场景或匿名会话）。 */
   enabled?: boolean;
 }
 
 export interface UseUserVocabularyRegistrationResult {
-  /** 组装后的用户词汇（无词汇时为 undefined）。 */
+  /** 作用域内的合并用户词汇（源码未引用任何用户词时为 undefined）。 */
   vocabulary: DomainVocabulary | undefined;
-  /** 每次成功重新注册递增，供下游 effect 依赖。 */
-  epoch: number;
+  /** 编译器应使用的 domain：有用户词汇时为 USER_VOCABULARY_DOMAIN。 */
+  domain: string | undefined;
+  /** 注册内容的稳定 key，变化即需重编译/重高亮。 */
+  registrationKey: string;
 }
 
 /** 把 API 行映射成 assemble 所需的最小行结构。 */
@@ -81,71 +86,99 @@ function toTermLikeRow(link: TermLink): TermLikeRow {
   };
 }
 
+/**
+ * 分页拉取用户全部活跃词条，直到读满服务端报告的 total——与服务端编译门禁/审批冻结
+ * 读取全部活跃词条同一口径，不设额外上限。任一页失败返回 null（保持上一次结果）。
+ */
+async function fetchAllTermRows(): Promise<TermLikeRow[] | null> {
+  const rows: TermLikeRow[] = [];
+  for (let page = 1; ; page++) {
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: String(VOCABULARY_LIST_MAX_PAGE_SIZE),
+    });
+    const res = await fetch(`/api/v1/domain-vocabularies/terms?${params.toString()}`, {
+      credentials: 'include',
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as ListResponse;
+    const items = data.items ?? [];
+    rows.push(...items.map(toTermLikeRow));
+    // 空页兜底：total 与实际行数不一致（并发删除等）时也必然终止。
+    if (items.length === 0 || rows.length >= (data.total ?? 0)) return rows;
+  }
+}
+
+/**
+ * 编辑器作用域内的合并词汇；词汇自身冲突（如两个分组把同一规范名映射成不同词）时
+ * 返回 null，回退内置词汇，而不是让 registerCustom 抛错。
+ */
+function resolveEditorVocabulary(
+  rows: readonly TermLikeRow[],
+  source: string,
+  locale: string,
+): DomainVocabulary | null {
+  // 编辑中途源码可能无法词法分析，编辑器用 lenient 退化剥离（服务端路径一律严格）。
+  const vocabulary = resolvePolicyVocabularyFromRows(rows, { source, locale }, {
+    id: USER_VOCABULARY_DOMAIN,
+    lenient: true,
+  });
+  return vocabulary && validateVocabulary(vocabulary).valid ? vocabulary : null;
+}
+
 export function useUserVocabularyRegistration({
   tenantId,
-  domain,
   locale,
+  source,
   enabled = true,
 }: UseUserVocabularyRegistrationOptions): UseUserVocabularyRegistrationResult {
-  const [vocabulary, setVocabulary] = useState<DomainVocabulary | undefined>(undefined);
-  const [epoch, setEpoch] = useState(0);
+  const [rows, setRows] = useState<TermLikeRow[]>([]);
+  const active = Boolean(enabled && tenantId);
 
-  const active = Boolean(enabled && tenantId && domain);
-
-  // 用户增删词后服务端推 invalidate，tick 递增触发重新拉取 + 注册。
-  const vocabTick = useDomainVocabularyInvalidate({
-    enabled: active,
-    match: domain ? { domain, locale } : undefined,
-  });
+  // 用户在任意 domain 增删词都可能改变作用域，故不按 (domain, locale) 过滤事件。
+  const vocabTick = useDomainVocabularyInvalidate({ enabled: active });
 
   useEffect(() => {
-    if (!active || !tenantId || !domain) return;
+    if (!active) return;
     let cancelled = false;
-
-    const load = async () => {
-      try {
-        const params = new URLSearchParams({ domain, locale, pageSize: '500' });
-        const res = await fetch(`/api/v1/domain-vocabularies/terms?${params.toString()}`, {
-          credentials: 'include',
-        });
-        if (!res.ok) return;
-        const data = (await res.json()) as ListResponse;
-        const items = data.items ?? [];
-        if (cancelled) return;
-
-        // 引擎查找以内置词汇为兜底，先确保内置已初始化。
-        initBuiltinVocabularies();
-
-        if (items.length === 0) {
-          // 用户清空了该领域词汇：撤销自定义注册，回退到 builtin。
-          // unregisterCustom 在引擎新版本才有；vendored tarball 尚未含此方法时
-          // 以可选方式安全降级（不撤销，旧注册随注册新词或刷新自然失效）。
-          const registry = vocabularyRegistry as {
-            unregisterCustom?: (tenantId: string, domain: string, locale: string) => boolean;
-          };
-          registry.unregisterCustom?.(tenantId, domain, locale);
-          setVocabulary(undefined);
-          setEpoch((n) => n + 1);
-          return;
-        }
-
-        const vocab = assembleDomainVocabularyFromLinks(items.map(toTermLikeRow), {
-          domain,
-          locale,
-        });
-        vocabularyRegistry.registerCustom(tenantId, vocab);
-        setVocabulary(vocab);
-        setEpoch((n) => n + 1);
-      } catch {
-        // 网络/解析失败：保持上一次注册，不影响编辑器可用性。
-      }
-    };
-
-    void load();
+    void fetchAllTermRows()
+      .then((next) => {
+        if (!cancelled && next) setRows(next);
+      })
+      .catch(() => {
+        // 网络/解析失败：保持上一次结果，不影响编辑器可用性。
+      });
     return () => {
       cancelled = true;
     };
-  }, [active, tenantId, domain, locale, vocabTick]);
+  }, [active, tenantId, vocabTick]);
 
-  return useMemo(() => ({ vocabulary, epoch }), [vocabulary, epoch]);
+  // 作用域随源码变化；延迟值避免每次按键都同步扫描全部词条。
+  const deferredSource = useDeferredValue(source);
+  const scoped = useMemo(
+    () => (active ? resolveEditorVocabulary(rows, deferredSource, locale) : null),
+    [active, rows, deferredSource, locale],
+  );
+  // 以内容为 key：源码变化但作用域未变时不重新注册、不触发重编译。
+  const registrationKey = scoped ? JSON.stringify(scoped) : '';
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const vocabulary = useMemo(() => scoped ?? undefined, [registrationKey]);
+
+  // 注入引擎 registry（外部系统同步）。本 hook 在编辑器里先于 useAsterCompiler 调用，
+  // 同一次提交中注册 effect 先于编译 effect 执行，编译时已能查到新词汇。
+  useEffect(() => {
+    if (!active || !tenantId) return;
+    initBuiltinVocabularies();
+    vocabularyRegistry.unregisterCustom(tenantId, USER_VOCABULARY_DOMAIN, locale);
+    if (vocabulary) vocabularyRegistry.registerCustom(tenantId, vocabulary);
+  }, [active, tenantId, locale, vocabulary]);
+
+  return useMemo(
+    () => ({
+      vocabulary,
+      domain: vocabulary ? USER_VOCABULARY_DOMAIN : undefined,
+      registrationKey,
+    }),
+    [vocabulary, registrationKey],
+  );
 }

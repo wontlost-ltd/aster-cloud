@@ -3,6 +3,7 @@
 
 import { db, policies, policyRecycleBins } from '@/lib/prisma';
 import { eq, isNotNull, isNull, not, and, desc, asc, lte, sql } from 'drizzle-orm';
+import { bypassQueryCache } from '@/db/fresh-read';
 // 回收站保留天数
 const RECYCLE_BIN_RETENTION_DAYS = 30;
 
@@ -29,6 +30,20 @@ export interface TrashItem {
   deletedBy: string;
   expiresAt: Date;
   daysRemaining: number;
+}
+
+/**
+ * 物理删除一条策略及其回收站记录（同一事务）。
+ *
+ * 外键 PolicyRecycleBin.policyId → Policy.id 已带 ON DELETE CASCADE（迁移 0058），
+ * 这里仍显式先删回收站行：纵深防御，不把回收站一致性押在单一机制上；
+ * 同时让已成孤儿的回收站行（Policy 早已不在）也能被清理掉，而不是永远残留。
+ */
+async function purgePolicy(policyId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.delete(policyRecycleBins).where(eq(policyRecycleBins.policyId, policyId));
+    await tx.delete(policies).where(eq(policies.id, policyId));
+  });
 }
 
 /**
@@ -214,9 +229,7 @@ export async function permanentDeletePolicy(
       };
     }
 
-    // 永久删除（级联删除会清理关联记录）
-    await db.delete(policies)
-      .where(eq(policies.id, policyId));
+    await purgePolicy(policyId);
 
     return { success: true, policyId };
   } catch (error) {
@@ -231,10 +244,11 @@ export async function permanentDeletePolicy(
 
 /**
  * 获取用户的回收站列表
+ * 回收站页在删除 / 恢复后立即重拉列表，属写后即读，绕过 Hyperdrive 缓存（见 @/db/fresh-read）。
  */
 export async function getTrashItems(userId: string): Promise<TrashItem[]> {
   const recycleBinItems = await db.query.policyRecycleBins.findMany({
-    where: eq(policyRecycleBins.userId, userId),
+    where: and(eq(policyRecycleBins.userId, userId), bypassQueryCache()),
     orderBy: [desc(policyRecycleBins.deletedAt)],
     with: {
       policy: {
@@ -249,13 +263,23 @@ export async function getTrashItems(userId: string): Promise<TrashItem[]> {
 
   const now = new Date();
 
-  return recycleBinItems.map((item) => {
+  // 孤儿行（策略本体已不存在）跳过并记日志，不能因一行坏数据让整个回收站 500（#603）。
+  // 外键补上后不应再出现；出现即说明有绕过 purgePolicy 的删除路径，需要排查。
+  const items: TrashItem[] = [];
+  for (const item of recycleBinItems) {
+    if (!item.policy) {
+      console.warn(
+        '[policy-lifecycle] 回收站孤儿行已跳过：recycleBinId=%s policyId=%s',
+        item.id,
+        item.policyId
+      );
+      continue;
+    }
     const daysRemaining = Math.max(
       0,
       Math.ceil((item.expiresAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))
     );
-
-    return {
+    items.push({
       id: item.id,
       policyId: item.policyId,
       name: item.policy.name,
@@ -264,8 +288,9 @@ export async function getTrashItems(userId: string): Promise<TrashItem[]> {
       deletedBy: item.deletedBy,
       expiresAt: item.expiresAt,
       daysRemaining,
-    };
-  });
+    });
+  }
+  return items;
 }
 
 /**
@@ -287,11 +312,10 @@ export async function cleanupExpiredTrashItems(): Promise<{
       columns: { policyId: true },
     });
 
-    // 永久删除过期策略
+    // 永久删除过期策略（连同回收站记录）
     for (const item of expiredItems) {
       try {
-        await db.delete(policies)
-          .where(eq(policies.id, item.policyId));
+        await purgePolicy(item.policyId);
         deletedCount++;
       } catch (err) {
         errors.push(`Failed to delete policy ${item.policyId}: ${err}`);
@@ -312,17 +336,19 @@ export async function getTrashStats(userId: string): Promise<{
   oldestExpiresAt: Date | null;
   newestDeletedAt: Date | null;
 }> {
+  // 与 getTrashItems 同为写后即读，统计须与列表一致，同样绕过 Hyperdrive 缓存。
+  const ownedFresh = and(eq(policyRecycleBins.userId, userId), bypassQueryCache());
   const [countResult, oldest, newest] = await Promise.all([
     db.select({ count: sql<number>`count(*)::int` })
       .from(policyRecycleBins)
-      .where(eq(policyRecycleBins.userId, userId)),
+      .where(ownedFresh),
     db.query.policyRecycleBins.findFirst({
-      where: eq(policyRecycleBins.userId, userId),
+      where: ownedFresh,
       orderBy: [asc(policyRecycleBins.expiresAt)],
       columns: { expiresAt: true },
     }),
     db.query.policyRecycleBins.findFirst({
-      where: eq(policyRecycleBins.userId, userId),
+      where: ownedFresh,
       orderBy: [desc(policyRecycleBins.deletedAt)],
       columns: { deletedAt: true },
     }),
@@ -354,11 +380,10 @@ export async function emptyTrash(userId: string): Promise<{
       columns: { policyId: true },
     });
 
-    // 永久删除所有
+    // 永久删除所有（连同回收站记录）
     for (const item of trashItems) {
       try {
-        await db.delete(policies)
-          .where(eq(policies.id, item.policyId));
+        await purgePolicy(item.policyId);
         deletedCount++;
       } catch (err) {
         errors.push(`Failed to delete policy ${item.policyId}: ${err}`);

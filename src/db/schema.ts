@@ -803,7 +803,12 @@ export const policyRecycleBins = pgTable(
   'PolicyRecycleBin',
   {
     id: text('id').primaryKey().notNull(),
-    policyId: text('policyId').notNull().unique(),
+    // 外键级联：策略被物理删除时回收站记录随之删除。此前无外键，永久删除只删 Policy
+    // 留下孤儿行，回收站列表读到 policy=null 后整页 500（#603）。
+    policyId: text('policyId')
+      .notNull()
+      .unique()
+      .references(() => policies.id, { onDelete: 'cascade' }),
     userId: text('userId').notNull(),
     snapshot: json('snapshot').notNull(),
     deletedAt: timestamp('deletedAt', { mode: 'date' }).defaultNow().notNull(),

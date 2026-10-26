@@ -49,6 +49,7 @@ import {
   type TermKind,
 } from '@/lib/domain-vocabulary-validation';
 import { isUndefinedTable, isUniqueViolation } from '@/lib/pg-errors';
+import { VOCABULARY_LIST_MAX_PAGE_SIZE } from '@/lib/domain-vocabulary-scope';
 
 function createHashSync(value: string): string {
   return nodeCreateHash('sha256').update(value).digest('hex');
@@ -148,7 +149,7 @@ export class VocabularyError extends Error {
 }
 
 const DEFAULT_PAGE_SIZE = 50;
-const MAX_PAGE_SIZE = 200;
+const MAX_PAGE_SIZE = VOCABULARY_LIST_MAX_PAGE_SIZE;
 
 function activeLinkPredicate(): SQL {
   const predicate = and(

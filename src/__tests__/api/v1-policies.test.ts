@@ -27,6 +27,13 @@ const {
   };
 });
 
+const { mockLoadExecutionVocabulary } = vi.hoisted(() => ({
+  mockLoadExecutionVocabulary: vi.fn(async (): Promise<Record<string, unknown> | undefined> => undefined),
+}));
+vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
+  loadExecutionVocabulary: mockLoadExecutionVocabulary,
+}));
+
 vi.mock('@/lib/api-keys', () => ({
   authenticateApiRequest: vi.fn(),
 }));
@@ -462,6 +469,26 @@ describe('V1 Policies API - Drizzle Migration', () => {
       expect(body.meta.durationMs).toBeTypeOf('number');
     });
 
+    it('#609：引擎失败原文（Java 异常）不出现在 API 响应中，带 execution_failed 码', async () => {
+      const raw = 'CNL 动态执行失败: Polyglot 执行失败: java.lang.RuntimeException: 无法访问成员：alter';
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+      mockExecutePolicyUnified.mockResolvedValue({
+        ...mockExecutionResult({ allowed: false, deniedReasons: [raw], metadata: { engineError: true } }),
+        diagnostics: [{ code: 'RUNTIME', message: 'java.lang.IllegalStateException: boom' }],
+      } as never);
+      mockGetPrimaryError.mockImplementation((r) => r.deniedReasons[0]);
+
+      const response = await POST(
+        makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody),
+        mockParams
+      );
+      const body = await response.json();
+
+      expect(body.errorCode).toBe('execution_failed');
+      expect(JSON.stringify(body)).not.toMatch(/java\.lang|Polyglot|无法访问/);
+      log.mockRestore();
+    });
+
     it('passes an optional Rule name from functionName to the policy executor', async () => {
       const response = await POST(
         makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', {
@@ -582,6 +609,26 @@ describe('V1 Policies API - Drizzle Migration', () => {
       expect(mockExecutePolicyUnified).toHaveBeenCalledWith(
         expect.objectContaining({ aliasSet: { TIMES: ['multiplied by'] } }),
       );
+    });
+
+    it('#602(v1)：按版本冻结快照加载作用域内词汇并透传给执行端', async () => {
+      const refs = [{ snapshotId: 's-de', domain: 'e2e1026', locale: 'de' }];
+      const vocabulary = { id: 'e2e1026', locale: 'de-DE', fields: [{ canonical: 'age', localized: 'alter' }] };
+      setupExecuteRow({ policy_vocab_snapshot_ids: refs });
+      mockLoadExecutionVocabulary.mockResolvedValueOnce(vocabulary);
+      mockExecutePolicyUnified.mockResolvedValue(mockExecutionResult({ allowed: true }));
+
+      const response = await POST(
+        makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody),
+        mockParams,
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockLoadExecutionVocabulary).toHaveBeenCalledWith(refs, {
+        source: 'Module X. Rule greet given name: has name.',
+        locale: 'en-US',
+      });
+      expect(mockExecutePolicyUnified).toHaveBeenCalledWith(expect.objectContaining({ vocabulary }));
     });
 
     it('C1(v1)：无别名（policy_alias_set=null）时 aliasSet 传 null', async () => {

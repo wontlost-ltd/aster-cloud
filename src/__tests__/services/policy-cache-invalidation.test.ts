@@ -65,7 +65,7 @@ vi.mock('../../services/security/security-event-service', () => ({
   logSecurityEvent: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
-  snapshotOnPolicyApprove: vi.fn().mockResolvedValue(undefined),
+  freezeVocabularyForApproval: vi.fn().mockResolvedValue([]),
 }));
 
 import { createVersion, updateVersionSource } from '@/services/policy/version-manager';

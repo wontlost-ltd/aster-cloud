@@ -202,6 +202,12 @@ export interface ExecutePolicyOptions {
    */
   aliasSet?: Record<string, string[]> | null;
   /**
+   * 执行版本冻结的领域词汇（ADR 0014 线C，DomainVocabulary 的 JSON）。执行端规范化阶段
+   * 据此把用户术语（如 `alter`）翻译为规范名（`age`），使规范字段名的输入能匹配。
+   * 由调用方用 loadExecutionVocabulary 从版本的 vocabularySnapshotIds 加载传入。
+   */
+  vocabulary?: Record<string, unknown>;
+  /**
    * 回放捕获（ADR 0030）：true 时向 aster-api 请求 replayCapture，响应带回放地基 hash。
    * 仅**已认证 execute 路径**应开（走 HMAC 内部调用）；aster-api 侧 gate 到 HMAC 已验证才生效。
    */
@@ -220,12 +226,12 @@ export interface ExecutePolicyOptions {
 export async function executePolicyUnified(
   options: ExecutePolicyOptions
 ): Promise<PolicyExecutionResult> {
-  const { policy, input, userId, tenantId, functionName, aliasSet, replayCapture, agent } = options;
+  const { policy, input, userId, tenantId, functionName, aliasSet, vocabulary, replayCapture, agent } = options;
   const policyContent = policy.content || '';
   const useAsterEngine = isAsterCNL(policyContent);
 
   if (useAsterEngine) {
-    return executeWithAsterEngine(policy, policyContent, input, userId, tenantId, functionName, aliasSet, replayCapture, agent);
+    return executeWithAsterEngine(policy, policyContent, input, userId, tenantId, functionName, aliasSet, vocabulary, replayCapture, agent);
   } else {
     return executeWithSimpleEngine(policy, policyContent, input, userId);
   }
@@ -245,6 +251,7 @@ async function executeWithAsterEngine(
   tenantId?: string,
   functionName?: string,
   aliasSet?: Record<string, string[]> | null,
+  vocabulary?: Record<string, unknown>,
   replayCapture?: boolean,
   agent?: AgentIdentity
 ): Promise<PolicyExecutionResult> {
@@ -256,7 +263,8 @@ async function executeWithAsterEngine(
     // aliasSet：已发布版本冻结的别名快照，透传给执行端使别名源码能编译（C1）。
     // replayCapture：回放地基（ADR 0030）——已认证 execute 路径开，透传 aster-api 权威 hash。
     // agent：调用方自报身份（ADR 0041 §4），由 aster-api 写入证据。
-    const response = await apiClient.evaluateSource(policyContent, input, { locale, functionName, aliasSet, replayCapture, agent });
+    // vocabulary：版本冻结的领域词汇（ADR 0014 线C），执行端据此翻译用户术语。
+    const response = await apiClient.evaluateSource(policyContent, input, { locale, functionName, aliasSet, vocabulary, replayCapture, agent });
     return buildCNLResult(policy, response);
   } catch (error) {
     return buildCNLErrorResult(policy, error);

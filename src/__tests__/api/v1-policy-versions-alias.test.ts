@@ -11,6 +11,8 @@ vi.mock('@/services/policy/version-manager', () => ({
   createVersion: vi.fn(),
   listVersions: vi.fn(),
   listExecutableVersions: vi.fn(),
+  // 路由 catch 分支用 instanceof 判编译门禁错误，mock 需提供该类。
+  PolicyCompileError: class PolicyCompileError extends Error {},
 }));
 vi.mock('@/lib/structural-alias-grants', () => ({
   getStructuralAliasGrant: vi.fn(),
@@ -91,6 +93,27 @@ describe('POST /api/v1/policies/[id]/versions — aliasSet 支持', () => {
 
     expect(createVersion).toHaveBeenCalledWith(expect.objectContaining({ aliasSet: null }));
     expect(buildAliasReservedForUser).not.toHaveBeenCalled();
+  });
+
+  it('#609：别名校验失败 → 400 alias_invalid，而非 500', async () => {
+    vi.mocked(createVersion).mockRejectedValueOnce(
+      new Error('用户自定义别名校验失败: 不允许为结构词 IF 自定义别名'),
+    );
+    const r = await POST(req({ source: 'Module X.', aliasSet: { IF: ['provided that'] } }), params);
+    expect(r.status).toBe(400);
+    expect((await r.json()).code).toBe('alias_invalid');
+  });
+
+  it('不受支持的 locale（en-GB）→ 400 unsupported_locale，不建版本', async () => {
+    const r = await POST(req({ source: 'Module X.', locale: 'en-GB' }), params);
+    expect(r.status).toBe(400);
+    expect(await r.json()).toMatchObject({ code: 'unsupported_locale' });
+    expect(createVersion).not.toHaveBeenCalled();
+  });
+
+  it('短码 locale 规范化：zh → zh-CN', async () => {
+    await POST(req({ source: 'Module X.', locale: 'zh' }), params);
+    expect(createVersion).toHaveBeenCalledWith(expect.objectContaining({ locale: 'zh-CN' }));
   });
 
   it('未授权 → 401', async () => {

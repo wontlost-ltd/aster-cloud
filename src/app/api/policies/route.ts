@@ -12,7 +12,12 @@ import {
   PolicyCompileError,
 } from '@/services/policy/version-manager';
 import { makeCompileValidator } from '@/lib/policy-compile-validator';
-import { compileGateErrorResponse } from '@/lib/policy-compile-response';
+import {
+  aliasInvalidResponse,
+  compileGateErrorResponse,
+  structuralGrantRequiredResponse,
+} from '@/lib/policy-compile-response';
+import { hasStructuralAliases } from '@/lib/policy-alias-shared';
 import {
   buildAliasReservedForUser,
   getStructuralAliasGrant,
@@ -20,6 +25,7 @@ import {
 import { errorEnvelope } from '@/lib/api/error-envelope';
 import { invalidatePolicyCache } from '@/lib/cache';
 import { eq, isNull, desc, sql, and, inArray } from 'drizzle-orm';
+import { parseCompileLocale } from '@/lib/cnl-locale';
 
 // GET /api/policies - List user's policies
 export async function GET() {
@@ -256,10 +262,14 @@ export async function POST(req: Request) {
       Object.keys(aliasSet as Record<string, unknown>).length > 0
         ? (aliasSet as Record<string, string[]>)
         : null;
-    const compileLocale = typeof locale === 'string' && locale.trim()
-      ? locale
-      : 'en-US';
+    const parsedLocale = parseCompileLocale(locale);
+    if (!parsedLocale.ok) return NextResponse.json(parsedLocale.error, { status: 400 });
+    const compileLocale = parsedLocale.locale;
     const allowStructural = await getStructuralAliasGrant(session.user.id);
+    // 未授权（或授权已撤销）却提交结构词别名：在编译门禁前直接拒绝，给出稳定码。
+    if (!allowStructural && hasStructuralAliases(aliasSetInput)) {
+      return structuralGrantRequiredResponse();
+    }
     const aliasReserved = aliasSetInput
       ? await buildAliasReservedForUser(session.user.id, compileLocale)
       : undefined;
@@ -271,6 +281,7 @@ export async function POST(req: Request) {
       source: content,
       locale: compileLocale,
       aliasSet: aliasSetInput,
+      allowStructural,
     });
 
     const policy = await db.transaction(async (tx) => {
@@ -305,18 +316,9 @@ export async function POST(req: Request) {
     if (error instanceof PolicyCompileError) {
       return compileGateErrorResponse(error);
     }
-    // aliasSet 校验失败是用户可修正的输入错误（4xx）——回显校验信息本就是给用户看的，
-    // 不含内部实现细节，保留 400 分支。
-    if (
-      error instanceof Error &&
-      (error.message.includes('用户自定义别名校验失败') ||
-        error.message.includes('aliasSet 非空'))
-    ) {
-      return NextResponse.json(
-        { error: 'Invalid aliasSet', message: error.message },
-        { status: 400 },
-      );
-    }
+    // aliasSet 校验失败是用户可修正的输入错误（4xx），带稳定码 alias_invalid 供前端本地化。
+    const aliasInvalid = aliasInvalidResponse(error);
+    if (aliasInvalid) return aliasInvalid;
     // H2 信息泄露修复：此前 500 把 error.stack + postgres 的 detail/hint/constraint/
     // table/column + 全部 error keys 直接回给客户端（schema/约束/内部路径外泄）。
     // 改为：完整细节只进服务端日志并以 requestId 关联，响应仅含稳定 code + requestId

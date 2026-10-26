@@ -16,7 +16,6 @@ import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
   db,
   domainTerms,
-  policyVersions,
   userDomainTerms,
   userVocabularySnapshots,
 } from '@/lib/prisma';
@@ -30,7 +29,15 @@ import {
   assembleDomainVocabularyFromLinks,
   type TermKind,
 } from '@/lib/domain-vocabulary-validation';
+import type { TermLikeRow } from '@/lib/domain-vocabulary-assemble';
 import type { DomainVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
+import {
+  policyScopeMatcher,
+  mergeVocabularies,
+  resolvePolicyVocabularyFromRows,
+  selectVocabulariesForPolicy,
+  type PolicyVocabularyContext,
+} from '@/lib/domain-vocabulary-scope';
 import { VocabularyError } from '@/lib/domain-vocabulary';
 
 export interface SnapshotRef {
@@ -73,10 +80,28 @@ function parseAliases(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
 }
 
+function toTermLikeRow(r: JoinedTermRow): TermLikeRow {
+  return {
+    domainTermId: r.termId,
+    domain: r.domain,
+    locale: r.locale,
+    kind: r.kind,
+    canonical: r.canonical,
+    localized: r.localized,
+    parentCanonical: r.parentCanonical,
+    aliases: parseAliases(r.aliases),
+    description: r.description,
+  };
+}
+
+/** drizzle 事务句柄：审批把冻结与审批写入放在同一事务里。 */
+export type SnapshotTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 async function loadActiveLinksGroupedByDomainLocale(
   scope: OwnerScope,
+  exec: Pick<SnapshotTx, 'select'> = db,
 ): Promise<Map<string, JoinedTermRow[]>> {
-  const rows = await db
+  const rows = await exec
     .select({
       termId: userDomainTerms.termId,
       domain: userDomainTerms.domain,
@@ -151,83 +176,31 @@ async function nextSnapshotVersion(
 
 /**
  * Freeze the caller's current active vocabulary into one snapshot per
- * (domain, locale). Returns the snapshot refs that should be persisted on
- * the PolicyVersion row.
+ * (domain, locale) **that the policy actually uses** (see
+ * domain-vocabulary-scope: same CNL language + referenced by the source).
+ * Returns the snapshot refs that should be persisted on the PolicyVersion row.
  *
- * Returns an empty array when the user has no active vocab — caller decides
- * whether to record an empty snapshot list on the policy version.
+ * 所有读写都在调用方传入的事务 `tx` 上执行：审批把冻结（含 refCount 递增）与审批记录、
+ * 状态更新放进同一事务，任何后续失败都会一并回滚，不留下多计的 refCount。
+ *
+ * Returns an empty array when the policy uses none of the user's vocab —
+ * unrelated domains are never frozen into (or ref-counted by) the version.
  */
 export async function createSnapshotsForOwner(
   scope: OwnerScope,
+  policy: PolicyVocabularyContext,
+  tx: SnapshotTx,
 ): Promise<SnapshotRef[]> {
-  const groups = await loadActiveLinksGroupedByDomainLocale(scope);
+  const groups = await loadActiveLinksGroupedByDomainLocale(scope, tx);
+  const inScope = policyScopeMatcher(policy);
   const refs: SnapshotRef[] = [];
 
   for (const [key, rows] of groups) {
-    const [domain, locale] = key.split('|');
-    const termIds = rows.map((r) => r.termId);
-    const contentHash = hashContent(termIds);
-
-    const vocabJson = assembleDomainVocabularyFromLinks(
-      rows.map((r) => ({
-        domainTermId: r.termId,
-        domain: r.domain,
-        locale: r.locale,
-        kind: r.kind,
-        canonical: r.canonical,
-        localized: r.localized,
-        parentCanonical: r.parentCanonical,
-        aliases: parseAliases(r.aliases),
-        description: r.description,
-      })),
-      { domain, locale },
-    );
-
-    // Use a SERIALIZABLE-style serialization via the per-user advisory
-    // lock so two concurrent approvals can't both observe `version = N`
-    // and unique-violate. The unique index on
-    // (ownerType, ownerId, domain, locale, contentHash) still gives us
-    // dedup; the lock just prevents the `version` race.
-    const ref = await db.transaction(async (tx) => {
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${`vocab-snap:${scope.ownerId}:${domain}:${locale}`}))`,
-      );
-      const existing = await tx.query.userVocabularySnapshots.findFirst({
-        where: and(
-          eq(userVocabularySnapshots.ownerType, scope.ownerType),
-          eq(userVocabularySnapshots.ownerId, scope.ownerId),
-          eq(userVocabularySnapshots.domain, domain),
-          eq(userVocabularySnapshots.locale, locale),
-          eq(userVocabularySnapshots.contentHash, contentHash),
-        ),
-        columns: { id: true },
-      });
-      if (existing) {
-        await tx
-          .update(userVocabularySnapshots)
-          .set({ refCount: sql`${userVocabularySnapshots.refCount} + 1` })
-          .where(eq(userVocabularySnapshots.id, existing.id));
-        return { snapshotId: existing.id, domain, locale, dedupHit: true };
-      }
-      // Lock is held + tx is passed so the version read shares the txn.
-      const version = await nextSnapshotVersion(tx, scope, domain, locale);
-      const id = crypto.randomUUID();
-      await tx.insert(userVocabularySnapshots).values({
-        id,
-        ownerType: scope.ownerType,
-        ownerId: scope.ownerId,
-        domain,
-        locale,
-        version,
-        vocabularyJson: vocabJson,
-        termIds,
-        contentHash,
-        refCount: 1,
-      });
-      return { snapshotId: id, domain, locale, dedupHit: false };
-    });
-
-    refs.push({ snapshotId: ref.snapshotId, domain: ref.domain, locale: ref.locale });
+    const [domain, locale] = key.split('|') as [string, string];
+    const vocabJson = assembleDomainVocabularyFromLinks(rows.map(toTermLikeRow), { domain, locale });
+    if (!inScope(vocabJson)) continue;
+    const ref = await upsertSnapshot(tx, scope, { domain, locale, vocabJson, termIds: rows.map((r) => r.termId) });
+    refs.push({ snapshotId: ref.snapshotId, domain, locale });
     recordSnapshotCreate({ dedupHit: ref.dedupHit });
     recordLexiconOp('snapshot.create', 'success');
   }
@@ -236,86 +209,151 @@ export async function createSnapshotsForOwner(
 }
 
 /**
- * 按 policyVersions.vocabularySnapshotIds 加载并合并冻结的领域词汇，得到执行
- * 端需要的单个 DomainVocabulary。
+ * 按内容哈希去重写入一个 (domain, locale) 快照：已存在则 refCount + 1，否则插入新版本。
+ * Per-(owner, domain, locale) advisory lock serializes concurrent approvals so two
+ * callers can't both observe `version = N` and unique-violate; the unique index on
+ * (ownerType, ownerId, domain, locale, contentHash) still gives us dedup.
+ */
+async function upsertSnapshot(
+  tx: SnapshotTx,
+  scope: OwnerScope,
+  group: { domain: string; locale: string; vocabJson: DomainVocabulary; termIds: string[] },
+): Promise<{ snapshotId: string; dedupHit: boolean }> {
+  const { domain, locale, vocabJson, termIds } = group;
+  const contentHash = hashContent(termIds);
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext(${`vocab-snap:${scope.ownerId}:${domain}:${locale}`}))`,
+  );
+  const existing = await tx.query.userVocabularySnapshots.findFirst({
+    where: and(
+      eq(userVocabularySnapshots.ownerType, scope.ownerType),
+      eq(userVocabularySnapshots.ownerId, scope.ownerId),
+      eq(userVocabularySnapshots.domain, domain),
+      eq(userVocabularySnapshots.locale, locale),
+      eq(userVocabularySnapshots.contentHash, contentHash),
+    ),
+    columns: { id: true },
+  });
+  if (existing) {
+    await tx
+      .update(userVocabularySnapshots)
+      .set({ refCount: sql`${userVocabularySnapshots.refCount} + 1` })
+      .where(eq(userVocabularySnapshots.id, existing.id));
+    return { snapshotId: existing.id, dedupHit: true };
+  }
+  // Lock is held + tx is passed so the version read shares the txn.
+  const version = await nextSnapshotVersion(tx, scope, domain, locale);
+  const id = crypto.randomUUID();
+  await tx.insert(userVocabularySnapshots).values({
+    id,
+    ownerType: scope.ownerType,
+    ownerId: scope.ownerId,
+    domain,
+    locale,
+    version,
+    vocabularyJson: vocabJson,
+    termIds,
+    contentHash,
+    refCount: 1,
+  });
+  return { snapshotId: id, dedupHit: false };
+}
+
+/**
+ * 按 policyVersions.vocabularySnapshotIds 加载冻结的领域词汇，得到执行端需要的
+ * 单个 DomainVocabulary（ADR 0014 线C）。
  *
- * <p>ADR 0014 线C：发布的策略执行（evaluate-source）时，把其快照词汇透传到
- * Java 执行端，使规范化阶段能翻译用户自定义术语。一个策略可能跨多个领域
- * 引用多个快照——这里把各快照的 structs/fields/functions/enumValues 合并成
- * 一个词汇表（id 用首个快照的 domain，足以驱动 IdentifierIndex 翻译）。
+ * <p>只取策略作用域内的快照（与 CNL 语言相同且被源码引用，见 domain-vocabulary-scope）：
+ * 修复前审批的版本冻结了账号下所有分组（#610），这里按源码再筛一次，使旧版本执行
+ * 也不会被无关领域的同名词串扰；作用域内的快照合并为一个词汇表，locale 对齐策略语言。
  *
  * @param refs policyVersions.vocabularySnapshotIds（{snapshotId,domain,locale}[]）
- * @returns 合并后的词汇表；无引用或加载不到时返回 null（执行端退化为仅内置）
+ * @param policy 被执行版本的源码与 CNL 语言
+ * @returns 合并后的词汇表；无引用、加载不到或都不在作用域内时返回 null（执行端仅用内置词汇）
  */
 export async function loadVocabularyForExecution(
   refs: ReadonlyArray<SnapshotRef> | null | undefined,
+  policy: PolicyVocabularyContext,
 ): Promise<DomainVocabulary | null> {
-  if (!refs || refs.length === 0) return null;
+  if (!Array.isArray(refs) || refs.length === 0) return null;
 
   const snapshotIds = refs.map((r) => r.snapshotId);
   const rows = await db.query.userVocabularySnapshots.findMany({
     where: inArray(userVocabularySnapshots.id, snapshotIds),
-    columns: { vocabularyJson: true, domain: true, locale: true },
+    columns: { vocabularyJson: true },
   });
-  if (rows.length === 0) return null;
-
   const vocabs = rows
     .map((r) => r.vocabularyJson as DomainVocabulary | null)
     .filter((v): v is DomainVocabulary => v != null);
-  if (vocabs.length === 0) return null;
-
-  // 单快照直接返回；多快照合并各类映射数组。
-  if (vocabs.length === 1) return vocabs[0]!;
-
-  const first = vocabs[0]!;
-  return {
-    id: first.id,
-    name: first.name,
-    locale: first.locale,
-    version: 'merged',
-    structs: vocabs.flatMap((v) => v.structs ?? []),
-    fields: vocabs.flatMap((v) => v.fields ?? []),
-    functions: vocabs.flatMap((v) => v.functions ?? []),
-    enumValues: vocabs.flatMap((v) => v.enumValues ?? []),
-  };
+  return mergeVocabularies(selectVocabulariesForPolicy(vocabs, policy), {
+    locale: policy.locale,
+  });
 }
 
 /**
- * Hook invoked by version-manager.approveVersion(APPROVED). Best-effort:
- * snapshot failure must not break the approval flow because policies remain
- * executable via the embedded Core IR. We log loudly so the issue surfaces.
+ * 执行路径用的 best-effort 包装：加载失败不阻断执行（退化为仅内置词汇），
+ * 返回值可直接作为 evaluateSource 的 vocabulary 选项。
  */
-export async function snapshotOnPolicyApprove(params: {
-  policyVersionId: string;
-  policyAuthorId: string | null;
-}): Promise<SnapshotRef[]> {
-  if (!params.policyAuthorId) return [];
+export async function loadExecutionVocabulary(
+  refs: unknown,
+  policy: PolicyVocabularyContext,
+): Promise<Record<string, unknown> | undefined> {
   try {
-    const refs = await createSnapshotsForOwner({
-      ownerType: 'user',
-      ownerId: params.policyAuthorId,
-    });
-    await db
-      .update(policyVersions)
-      .set({ vocabularySnapshotIds: refs })
-      .where(eq(policyVersions.id, params.policyVersionId));
-
-    await logAuditEvent({
-      userId: params.policyAuthorId,
-      action: 'lexicon.term.add',
-      resource: 'vocabulary-snapshot',
-      resourceId: params.policyVersionId,
-      metadata: {
-        action: 'created_on_publish',
-        snapshotCount: refs.length,
-      },
-    });
-
-    return refs;
+    const vocab = await loadVocabularyForExecution(refs as SnapshotRef[] | null, policy);
+    return vocab ? (vocab as unknown as Record<string, unknown>) : undefined;
   } catch (err) {
-    console.error('[snapshotOnPolicyApprove] non-blocking failure', err);
-    return [];
+    console.warn('[vocabulary] failed to load frozen vocabulary for execution', err);
+    return undefined;
   }
+}
+
+/**
+ * 用户当前活跃词汇中该策略作用域内的部分（未冻结，供保存时编译门禁使用）。
+ * 与编辑器注册的词汇同源同规则，保证「编辑器无错 ⇔ 服务端编译通过」。
+ */
+export async function loadLiveVocabularyForPolicy(
+  ownerId: string,
+  policy: PolicyVocabularyContext,
+): Promise<DomainVocabulary | null> {
+  const groups = await loadActiveLinksGroupedByDomainLocale({ ownerType: 'user', ownerId });
+  const rows = [...groups.values()].flat().map(toTermLikeRow);
+  return resolvePolicyVocabularyFromRows(rows, policy);
+}
+
+/**
+ * 审批时冻结被审批版本作用域内的作者词汇（#610），返回应写入
+ * PolicyVersion.vocabularySnapshotIds 的引用。必须在审批事务 `tx` 内调用，引用由调用方
+ * 与状态变更在同一事务中落库；失败直接抛出（事务整体回滚）。作用域为空时不写任何快照。
+ */
+export async function freezeVocabularyForApproval(
+  params: {
+    policyAuthorId: string;
+    /** 被审批版本的源码与 CNL 语言。 */
+    policy: PolicyVocabularyContext;
+  },
+  tx: SnapshotTx,
+): Promise<SnapshotRef[]> {
+  return createSnapshotsForOwner(
+    { ownerType: 'user', ownerId: params.policyAuthorId },
+    params.policy,
+    tx,
+  );
+}
+
+/** 审批事务提交后记录冻结审计（事务回滚时不应留下「已冻结」的审计）。 */
+export async function auditVocabularyFreeze(params: {
+  policyAuthorId: string;
+  policyVersionId: string;
+  refs: readonly SnapshotRef[];
+}): Promise<void> {
+  if (params.refs.length === 0) return;
+  await logAuditEvent({
+    userId: params.policyAuthorId,
+    action: 'lexicon.term.add',
+    resource: 'vocabulary-snapshot',
+    resourceId: params.policyVersionId,
+    metadata: { action: 'created_on_publish', snapshotCount: params.refs.length },
+  });
 }
 
 export interface RollbackResult {

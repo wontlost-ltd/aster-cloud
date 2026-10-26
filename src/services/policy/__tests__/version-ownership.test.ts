@@ -47,7 +47,7 @@ vi.mock('../../security/policy-security', () => ({
 }));
 vi.mock('../../security/security-event-service', () => ({ logSecurityEvent: vi.fn() }));
 vi.mock('@/lib/metrics/aha-detection', () => ({ recordAhaMomentIfFirst: vi.fn() }));
-vi.mock('@/lib/domain-vocabulary-snapshot', () => ({ snapshotOnPolicyApprove: vi.fn() }));
+vi.mock('@/lib/domain-vocabulary-snapshot', () => ({ freezeVocabularyForApproval: vi.fn(async () => []) }));
 vi.mock('@/lib/policy-alias', () => ({
   canonicalAliasJson: () => '{}', cloudToolchainId: () => 'tc',
   computeSourceEnvelope: () => ({}), STRUCTURAL_KINDS: [],

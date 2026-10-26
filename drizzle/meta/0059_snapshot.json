@@ -1,6 +1,6 @@
 {
   "id": "686fbf15-8f6d-4fde-b58d-d9d00a2e7122",
-  "prevId": "e67ab346-1e94-46d9-8cdb-4a4dbbc7e896",
+  "prevId": "1fbb14d9-a0e4-4272-b0d0-c3eb07fec63a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4303,7 +4303,21 @@
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "PolicyRecycleBin_policyId_Policy_id_fk": {
+          "name": "PolicyRecycleBin_policyId_Policy_id_fk",
+          "tableFrom": "PolicyRecycleBin",
+          "tableTo": "Policy",
+          "columnsFrom": [
+            "policyId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "PolicyRecycleBin_policyId_unique": {
