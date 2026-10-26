@@ -4,7 +4,7 @@
 import { db, policies, policyRecycleBins } from '@/lib/prisma';
 import { eq, isNotNull, isNull, not, and, desc, asc, lte, sql } from 'drizzle-orm';
 import { bypassQueryCache } from '@/db/fresh-read';
-import { releaseSnapshotRefsForPolicy } from '@/lib/domain-vocabulary-snapshot';
+import { releaseSnapshotRefsForPolicy, reportSnapshotRelease } from '@/lib/domain-vocabulary-snapshot';
 // 回收站保留天数
 const RECYCLE_BIN_RETENTION_DAYS = 30;
 
@@ -47,14 +47,16 @@ export interface TrashItem {
  * 永久删除、过期清理、清空回收站三条路径都经由这里。
  */
 async function purgePolicy(policyId: string): Promise<void> {
-  await db.transaction(async (tx) => {
+  const release = await db.transaction(async (tx) => {
     await tx.delete(policyRecycleBins).where(eq(policyRecycleBins.policyId, policyId));
     const removed = await tx
       .delete(policies)
       .where(eq(policies.id, policyId))
       .returning({ id: policies.id });
-    if (removed.length > 0) await releaseSnapshotRefsForPolicy(policyId, tx);
+    return removed.length > 0 ? releaseSnapshotRefsForPolicy(policyId, tx) : null;
   });
+  // 计数异常的告警与指标在提交后上报：回滚的删除不应留下「已释放」的痕迹
+  if (release) reportSnapshotRelease(policyId, release);
 }
 
 /**

@@ -175,6 +175,29 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('审批与永久删除对快照
     expect(await snapshotRefCounts(db)).toEqual([0]);
   });
 
+  it('同一版本被并发审批：只有一个成功，refCount 只 +1', async () => {
+    for (let round = 0; round < 5; round += 1) {
+      if (round > 0) {
+        await cleanup(db);
+        await seedPolicyWithPendingVersions(db);
+        await approveVersion({ policyId: POLICY, version: 1, approverId: USER, decision: 'APPROVED' });
+      }
+      const attempts = await Promise.allSettled([
+        approveVersion({ policyId: POLICY, version: 2, approverId: USER, decision: 'APPROVED' }),
+        approveVersion({ policyId: POLICY, version: 2, approverId: USER, decision: 'APPROVED' }),
+        approveVersion({ policyId: POLICY, version: 2, approverId: USER, decision: 'APPROVED' }),
+      ]);
+      expect(attempts.filter((a) => a.status === 'fulfilled')).toHaveLength(1);
+      expect(await versionStatus(db, 2)).toBe('APPROVED');
+      expect(await snapshotRefCounts(db)).toEqual([2]);
+      const approvals = await db
+        .select({ id: policyApprovals.id })
+        .from(policyApprovals)
+        .where(eq(policyApprovals.versionId, `${POLICY}-v2`));
+      expect(approvals).toHaveLength(1);
+    }
+  });
+
   it('并发审批与删除（多轮）：结束时 refCount 恒等于存活策略的引用数（此处为 0）', async () => {
     for (let round = 0; round < 5; round += 1) {
       if (round > 0) {

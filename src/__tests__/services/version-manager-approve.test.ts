@@ -14,6 +14,8 @@ const h = vi.hoisted(() => ({
   recordAha: vi.fn(),
   snapshot: vi.fn(),
   lockPolicy: vi.fn(),
+  /** 事务内 FOR UPDATE 复核时读到的版本状态（模拟并发审批已改掉状态）。 */
+  lockedVersionStatus: { value: 'PENDING_APPROVAL' },
   audit: vi.fn(),
   invalidateCache: vi.fn(),
   /** 已提交的事务写入（模拟回滚：事务回调抛错时其写入不进入此列表）。 */
@@ -28,6 +30,9 @@ async function fakeTransaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T> {
   const staged: string[] = [];
   const tx = {
     staged,
+    select: () => ({
+      from: () => ({ where: () => ({ for: async () => [{ status: h.lockedVersionStatus.value }] }) }),
+    }),
     insert: () => ({ values: async (v: unknown) => { await h.insertValues(v); staged.push('approval'); } }),
     update: () => ({
       set: (v: unknown) => {
@@ -92,6 +97,7 @@ beforeEach(() => {
   h.insertValues.mockResolvedValue(undefined);
   h.snapshot.mockResolvedValue([]);
   h.lockPolicy.mockResolvedValue(true);
+  h.lockedVersionStatus.value = 'PENDING_APPROVAL';
   h.audit.mockResolvedValue(undefined);
   h.committed.length = 0;
   h.invalidateCache.mockResolvedValue(undefined);
@@ -250,6 +256,16 @@ describe('approveVersion — 词汇快照（#610）', () => {
     expect(h.snapshot).not.toHaveBeenCalled();
     expect(h.committed).toEqual([]);
     expect(h.invalidateCache).not.toHaveBeenCalled();
+  });
+
+  it('同一版本被并发审批：锁住版本行后发现已不在待审批 → 后到者失败，不冻结、不写入', async () => {
+    setup({ userId: 'owner', teamId: null }, 'owner');
+    h.lockedVersionStatus.value = 'APPROVED';
+
+    await expect(approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' }))
+      .rejects.toThrow('不在待审批状态');
+    expect(h.snapshot).not.toHaveBeenCalled();
+    expect(h.committed).toEqual([]);
   });
 
   it('驳回不冻结词汇，也不改写快照引用', async () => {

@@ -23,6 +23,7 @@ import {
   countSnapshotRefs,
   lockPolicyForSnapshotRefs,
   releaseSnapshotRefsForPolicy,
+  reportSnapshotRelease,
 } from '@/lib/domain-vocabulary-snapshot';
 
 const ref = (snapshotId: string) => ({ snapshotId, domain: 'd', locale: 'de' });
@@ -98,9 +99,8 @@ const chunksOf = (u: { set: unknown }) => (u.set as { refCount: { queryChunks: u
 describe('releaseSnapshotRefsForPolicy', () => {
   it('每个被引用快照一次 UPDATE，递减量 = 引用次数，带 0 下限，且先 FOR UPDATE 锁快照行', async () => {
     const { tx, updates, lockModes } = fakeTx([[ref('s1'), ref('s2')], [ref('s1')]], { s1: 5, s2: 1 });
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const n = await releaseSnapshotRefsForPolicy('p1', tx as never);
-    expect(n).toBe(2);
+    const result = await releaseSnapshotRefsForPolicy('p1', tx as never);
+    expect(result).toEqual({ released: 2, underflows: [] });
     expect(lockModes).toEqual(['update']);
     expect(updates).toHaveLength(2);
     // drizzle sql 片段里依次是：GREATEST(… - <times>, 0)
@@ -108,15 +108,38 @@ describe('releaseSnapshotRefsForPolicy', () => {
     expect(JSON.stringify(chunksOf(updates[0]))).toContain(', 0)');
     expect(chunksOf(updates[0])).toContain(2);
     expect(chunksOf(updates[1])).toContain(1);
+  });
+
+  it('要减的次数超过现有计数：仍夹到 0，并作为异常返回（不在事务内直接告警）', async () => {
+    const { tx, updates } = fakeTx([[ref('s1')], [ref('s1')]], { s1: 1 });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = await releaseSnapshotRefsForPolicy('p1', tx as never);
+    expect(updates).toHaveLength(1);
+    expect(result.underflows).toEqual([{ snapshotId: 's1', refCount: 1, times: 2 }]);
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
   });
 
-  it('要减的次数超过现有计数：仍夹到 0，但记告警（不变量被破坏不能静默吞掉）', async () => {
-    const { tx, updates } = fakeTx([[ref('s1')], [ref('s1')]], { s1: 1 });
+  it('引用指向已不存在的快照行：作为异常返回并跳过', async () => {
+    const { tx, updates } = fakeTx([[ref('gone')]], {});
+    const result = await releaseSnapshotRefsForPolicy('p1', tx as never);
+    expect(result).toEqual({ released: 0, underflows: [{ snapshotId: 'gone', refCount: null, times: 1 }] });
+    expect(updates).toEqual([]);
+  });
+
+  it('策略没有任何快照引用 → 不锁不改', async () => {
+    const { tx, updates } = fakeTx([[], null]);
+    expect(await releaseSnapshotRefsForPolicy('p1', tx as never)).toEqual({ released: 0, underflows: [] });
+    expect(updates).toEqual([]);
+    expect(tx.select).toHaveBeenCalledTimes(1);
+    expect(tx.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('reportSnapshotRelease（提交后调用）', () => {
+  it('有计数异常：逐条告警', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    await releaseSnapshotRefsForPolicy('p1', tx as never);
-    expect(updates).toHaveLength(1);
+    reportSnapshotRelease('p1', { released: 1, underflows: [{ snapshotId: 's1', refCount: 1, times: 2 }] });
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('underflow'),
       expect.objectContaining({ policyId: 'p1', snapshotId: 's1', refCount: 1, times: 2 }),
@@ -124,21 +147,11 @@ describe('releaseSnapshotRefsForPolicy', () => {
     warn.mockRestore();
   });
 
-  it('引用指向已不存在的快照行：告警并跳过', async () => {
-    const { tx, updates } = fakeTx([[ref('gone')]], {});
+  it('无异常：不告警', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    expect(await releaseSnapshotRefsForPolicy('p1', tx as never)).toBe(0);
-    expect(updates).toEqual([]);
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('underflow'), expect.objectContaining({ refCount: null }));
+    reportSnapshotRelease('p1', { released: 2, underflows: [] });
+    expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
-  });
-
-  it('策略没有任何快照引用 → 不锁不改', async () => {
-    const { tx, updates } = fakeTx([[], null]);
-    expect(await releaseSnapshotRefsForPolicy('p1', tx as never)).toBe(0);
-    expect(updates).toEqual([]);
-    expect(tx.select).toHaveBeenCalledTimes(1);
-    expect(tx.update).not.toHaveBeenCalled();
   });
 });
 

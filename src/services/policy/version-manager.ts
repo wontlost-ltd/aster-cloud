@@ -583,6 +583,20 @@ export async function submitForApproval(params: {
 /**
  * 审批版本
  */
+function notPendingError(version: number): Error {
+  return new Error(`版本 v${version} 不存在或不在待审批状态`);
+}
+
+/** 在审批事务内 FOR UPDATE 锁住版本行，返回它是否仍处于待审批状态。 */
+async function lockPendingVersion(tx: SnapshotTx, versionId: string): Promise<boolean> {
+  const rows = await tx
+    .select({ status: policyVersions.status })
+    .from(policyVersions)
+    .where(eq(policyVersions.id, versionId))
+    .for('update');
+  return rows[0]?.status === 'PENDING_APPROVAL';
+}
+
 export async function approveVersion(params: {
   policyId: string;
   version: number;
@@ -608,7 +622,7 @@ export async function approveVersion(params: {
   });
 
   if (!targetVersion) {
-    throw new Error(`版本 v${version} 不存在或不在待审批状态`);
+    throw notPendingError(version);
   }
 
   // 团队策略：四眼原则，作者不能审批；个人策略：所有者可审批自己的提交（标记 selfApproved）
@@ -645,6 +659,11 @@ export async function approveVersion(params: {
     // 不再审批，避免给孤儿版本加快照引用；锁住后并发的永久删除会等本事务提交再读引用并释放。
     if (!(await lockPolicyForSnapshotRefs(tx, policyId))) {
       throw new PolicyAccessDeniedError();
+    }
+    // 事务外读到的「待审批」可能已过时：同一版本被并发审批时两边都会读到 PENDING_APPROVAL。
+    // 锁住版本行后复核状态，后到者按「不在待审批状态」失败，快照引用只加一次。
+    if (!(await lockPendingVersion(tx, targetVersion.id))) {
+      throw notPendingError(version);
     }
     const refs = decision === 'APPROVED' ? await freezeApprovalVocabulary(targetVersion, tx) : undefined;
     await tx.insert(policyApprovals).values({

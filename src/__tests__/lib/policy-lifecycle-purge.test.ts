@@ -30,8 +30,9 @@ const h = vi.hoisted(() => {
     // 释放快照引用也记进同一条操作序列，用来校验「删到策略行之后才释放」的顺序与事务归属
     release: vi.fn(async (policyId: string, tx: unknown) => {
       deletes.push({ table: `release:${policyId}`, inTx: tx === TX });
-      return 0;
+      return { released: 1, underflows: [] as Array<{ snapshotId: string; refCount: number | null; times: number }> };
     }),
+    report: vi.fn(),
     txDelete,
     dbDelete: makeDelete(false),
     transaction: vi.fn(),
@@ -55,6 +56,7 @@ vi.mock('@/lib/prisma', () => ({
 
 vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
   releaseSnapshotRefsForPolicy: h.release,
+  reportSnapshotRelease: h.report,
 }));
 
 import { policies, policyRecycleBins } from '@/lib/prisma';
@@ -131,7 +133,24 @@ describe('policy-lifecycle 永久删除路径（#603）', () => {
     const r = await permanentDeletePolicy('p1', 'user-1');
     expect(r).toMatchObject({ success: false, error: 'lock timeout' });
     await expect(h.transaction.mock.results[0].value).rejects.toThrow('lock timeout');
+    // 回滚的删除不上报释放结果
+    expect(h.report).not.toHaveBeenCalled();
     errSpy.mockRestore();
+  });
+
+  it('释放结果在事务提交后才上报（含计数异常）', async () => {
+    h.policyFindFirst.mockResolvedValue({ id: 'p1' });
+    const outcome = { released: 1, underflows: [{ snapshotId: 's1', refCount: 0, times: 1 }] };
+    h.release.mockResolvedValueOnce(outcome);
+    let committed = false;
+    h.transaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const r = await fn(h.TX);
+      committed = true;
+      return r;
+    });
+    h.report.mockImplementationOnce(() => expect(committed).toBe(true));
+    await permanentDeletePolicy('p1', 'user-1');
+    expect(h.report).toHaveBeenCalledWith('p1', outcome);
   });
 
   it('并发/重复删除：DELETE 没删到策略行（已被别的事务删掉）→ 不释放快照引用', async () => {
@@ -140,6 +159,7 @@ describe('policy-lifecycle 永久删除路径（#603）', () => {
     const r = await permanentDeletePolicy('p1', 'user-1');
     expect(r).toEqual({ success: true, policyId: 'p1' });
     expect(h.release).not.toHaveBeenCalled();
+    expect(h.report).not.toHaveBeenCalled();
   });
 
   it('cleanupExpiredTrashItems：每个过期项都在事务内连同回收站行删除', async () => {
