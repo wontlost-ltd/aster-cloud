@@ -7,6 +7,7 @@ import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { EditPolicyContent } from './edit-policy-content';
 import { getStructuralAliasGrant } from '@/lib/structural-alias-grants';
 import { localizedTitle } from '@/lib/page-metadata';
+import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
 
 export const generateMetadata = localizedTitle('pageTitles', 'policyEdit');
 
@@ -44,8 +45,26 @@ export default async function EditPolicyPage({ params }: PageProps) {
   // 版本号 = Policy.version（与 content 同源的活跃版本）。解析失败/无别名 → null。
   const activeVersion = await db.query.policyVersions.findFirst({
     where: and(eq(policyVersions.policyId, id), eq(policyVersions.version, policyData.version)),
-    columns: { aliasSet: true },
+    columns: {
+      aliasSet: true,
+      content: true,
+      source: true,
+      sourceEnvelopeSha256: true,
+      sourceToolchainId: true,
+      vocabularySnapshotIds: true,
+    },
   });
+  // 策略的 CNL 语言（#627）：编辑器状态栏、别名规范拼写跟随策略而非界面语言。
+  // 与审批冻结、secure-execute 同一解析口径；无活跃版本行（极旧数据）时交给客户端按源码识别。
+  const policyCnlLocale = activeVersion
+    ? resolveStoredVersionLocale({
+        source: activeVersion.source ?? activeVersion.content,
+        aliasSet: activeVersion.aliasSet,
+        sourceEnvelopeSha256: activeVersion.sourceEnvelopeSha256,
+        sourceToolchainId: activeVersion.sourceToolchainId,
+        vocabularySnapshotIds: activeVersion.vocabularySnapshotIds,
+      })
+    : null;
   let initialAliasSet: Record<string, string[]> | null = null;
   if (activeVersion?.aliasSet) {
     try {
@@ -99,6 +118,7 @@ export default async function EditPolicyPage({ params }: PageProps) {
       policy={policy}
       translations={translations}
       locale={locale}
+      policyCnlLocale={policyCnlLocale}
       allowStructuralAliases={allowStructuralAliases}
     />
   );

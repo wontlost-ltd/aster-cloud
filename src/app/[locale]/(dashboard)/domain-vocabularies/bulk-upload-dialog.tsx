@@ -38,6 +38,7 @@ interface BulkUploadDialogProps {
 
 /** 同步导入的响应体（/bulk）。 */
 interface SyncBulkResponse {
+  rowCount?: number;
   rollup?: BulkRollupView;
   errors?: unknown[];
 }
@@ -197,14 +198,15 @@ export function BulkUploadDialog({
 
   // 同步结果以服务端 rollup 为准（#607）：全部成功才关窗；有失败行时留在弹窗里列出原因。
   const handleSyncResult = (data: SyncBulkResponse) => {
-    const summary = summarizeBulkOutcome(data.rollup, data.errors);
+    const summary = summarizeBulkOutcome(data.rollup, data.errors, data.rowCount);
     if (summary.imported > 0) onImported?.();
     if (summary.tone === 'success') {
       toast.success(t('syncCompleted', { count: summary.imported }));
       onClose();
       return;
     }
-    const counts = { imported: summary.imported, failed: summary.failed, total: totalRows };
+    // 总数取服务端 rowCount，与「已导入 + 未导入」同一口径（#629）
+    const counts = { imported: summary.imported, failed: summary.failed, total: summary.total };
     if (summary.tone === 'partial') toast.warning(t('syncPartial', counts));
     else toast.error(t('syncNoneImported', counts));
     setSyncResult({ summary, errors: normalizeRowErrors(data.errors) });

@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react';
 import { useTranslations } from 'next-intl';
-import { PolicyForm } from '@/components/policy/policy-form';
+import { PolicyForm, type PolicySaveContext } from '@/components/policy/policy-form';
 import type { PolicyDraftFields } from '@/components/policy/policy-form/use-policy-draft';
 import { track, Events, levenshtein } from '@/lib/mixpanel';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
@@ -41,6 +41,8 @@ interface EditPolicyContentProps {
   policy: Policy;
   translations: Translations;
   locale: string;
+  /** 已记录的策略 CNL 语言（服务端按活跃版本解析），见 policy-form/policy-cnl-locale。 */
+  policyCnlLocale: string | null;
   allowStructuralAliases: boolean;
 }
 
@@ -48,12 +50,13 @@ export function EditPolicyContent({
   policy,
   translations: t,
   locale,
+  policyCnlLocale,
   allowStructuralAliases,
 }: EditPolicyContentProps) {
   const tPolicies = useTranslations('policies');
 
   const handleSave = useCallback(
-    async (fields: PolicyDraftFields) => {
+    async (fields: PolicyDraftFields, { locale: cnlLocale }: PolicySaveContext) => {
       // Preserve the legacy ai-draft telemetry hand-off. window.__asterAiDraft
       // is set by the AI assistant flow when it commits a generated body.
       const aiDraft =
@@ -68,8 +71,10 @@ export function EditPolicyContent({
       const res = await fetch(`/api/policies/${policy.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        // 带上策略的 CNL 语言：服务端按它编译并记录进版本（缺省时会按 en-US 记录，#627）
         body: JSON.stringify({
           ...fields,
+          locale: cnlLocale,
           metadata: { source_kind: sourceKind },
         }),
       });
@@ -125,6 +130,7 @@ export function EditPolicyContent({
     <PolicyForm
       mode="edit"
       uiLocale={locale}
+      policyCnlLocale={policyCnlLocale}
       policyId={policy.id}
       initial={{
         name: policy.name,

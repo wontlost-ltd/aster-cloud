@@ -4,6 +4,7 @@ import { db, policies, policyVersions, executions, users } from '@/lib/prisma';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { getTranslations } from 'next-intl/server';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
+import { isPolicySharingEnabled } from '@/lib/platform-settings';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
 import { resolveRetention } from '@/lib/retention/execution-retention';
 import { loadVersionReviewContext } from '@/services/policy/version-manager';
@@ -119,11 +120,14 @@ export default async function PolicyDetailPage({
   //   必然空窗、而选项还在那里——那套窗口实际只适用于留存期最长的企业级用户。
   const retentionDays = resolveRetention(planUser?.plan).executionDays;
 
-  const [profile, hasExecutableVersion, review] = await Promise.all([
+  const [profile, hasExecutableVersion, review, sharingEnabled] = await Promise.all([
     loadActiveProfile(id, policy.version),
     hasApprovedVersion(id),
     // 版本面板的批准/驳回按审批规则显示（团队策略按当前用户的团队角色）
     loadVersionReviewContext(id, session.user.id),
+    // 共享开关在服务端读一次并下发（同列表页 shared-with-me 的做法）：关闭时客户端不挂载共享卡片，
+    // 不再请求对关闭态有意回 404 的 GET /shares（#630）
+    isPolicySharingEnabled(),
   ]);
 
   const t = await getTranslations('policies');
@@ -188,6 +192,7 @@ export default async function PolicyDetailPage({
       policy={{ ...policy, isFrozen: freeze.isFrozen }}
       profile={profile}
       hasExecutableVersion={hasExecutableVersion}
+      sharingEnabled={sharingEnabled}
       review={review ? {
         policyOwnerId: review.policyOwnerId,
         policyTeamId: review.policyTeamId,

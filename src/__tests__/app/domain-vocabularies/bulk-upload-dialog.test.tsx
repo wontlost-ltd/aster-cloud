@@ -65,14 +65,25 @@ describe('summarizeBulkOutcome', () => {
     expect(summarizeBulkOutcome({ added: 2, reused: 1, errorCount: 0 }, [])).toEqual({
       imported: 3,
       failed: 0,
+      total: 3,
       tone: 'success',
     });
     expect(summarizeBulkOutcome({ added: 0, reused: 0, errorCount: 4 }, [])).toEqual({
       imported: 0,
       failed: 4,
+      total: 4,
       tone: 'failed',
     });
     expect(summarizeBulkOutcome({ added: 2, errorCount: 2 }, [])).toMatchObject({ tone: 'partial' });
+  });
+
+  it('总数优先取服务端 rowCount（#629）', () => {
+    expect(summarizeBulkOutcome({ added: 1, reused: 0, skipped: 3, errorCount: 3 }, [], 4)).toEqual({
+      imported: 1,
+      failed: 3,
+      total: 4,
+      tone: 'partial',
+    });
   });
 
   it('normalizeRowErrors 容忍缺字段并按行号排序', () => {
@@ -105,6 +116,22 @@ describe('BulkUploadDialog — 同步结果', () => {
       'rowLabel:{"row":4}: rowErrors.validation_failed (canonical must start with a letter)',
     ]);
     expect(screen.getByRole('button', { name: 'done' })).toBeInTheDocument();
+  });
+
+  it('toast 的总数取服务端 rowCount，与「已导入 + 未导入」一致（#629）', async () => {
+    respond({
+      rowCount: 4,
+      processed: 4,
+      rollup: { added: 1, reused: 0, skipped: 3, errorCount: 3 },
+      errors: [
+        { row: 1, code: 'validation_failed', message: 'bad domain' },
+        { row: 2, code: 'validation_failed', message: 'bad locale' },
+        { row: 3, code: 'duplicate_link', message: 'dup' },
+      ],
+    });
+    await renderAndSubmit(CSV.replace('field,premium', 'struct,premium'));
+
+    expect(toast.warning).toHaveBeenCalledWith('syncPartial:{"imported":1,"failed":3,"total":4}');
   });
 
   it('一行都没导入：报错提示而不是「已导入 N 行」', async () => {

@@ -16,6 +16,7 @@ import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
   db,
   domainTerms,
+  policyVersions,
   userDomainTerms,
   userVocabularySnapshots,
 } from '@/lib/prisma';
@@ -338,6 +339,48 @@ export async function freezeVocabularyForApproval(
     params.policy,
     tx,
   );
+}
+
+/**
+ * 把若干版本的 vocabularySnapshotIds 汇总成「快照 id → 引用次数」。
+ *
+ * 口径与审批冻结对称：每个被批准的版本对其引用的每个快照 refCount +1（见 upsertSnapshot），
+ * 所以释放时同一快照被几个版本引用就要抵扣几次。非数组 / 缺 snapshotId 的脏数据忽略。
+ * 结果按 id 排序，使并发释放时的行锁顺序稳定，避免互相死锁。
+ */
+export function countSnapshotRefs(refLists: readonly unknown[]): Array<[string, number]> {
+  const refs = refLists.flatMap((list) => (Array.isArray(list) ? (list as unknown[]) : []));
+  const counts = new Map<string, number>();
+  for (const ref of refs) {
+    const id = (ref as Partial<SnapshotRef> | null)?.snapshotId;
+    if (typeof id === 'string' && id.length > 0) counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return [...counts].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+/**
+ * 策略被物理删除前，释放其所有版本对词汇快照的引用（#628）：按引用次数递减 refCount，
+ * 下限 0（与表上 refCount >= 0 的 CHECK 一致，历史上多减/漏增的数据也不会让删除失败）。
+ *
+ * 必须在删除策略的同一事务 `tx` 内调用：删除失败回滚时递减一并回滚，不会少计；
+ * 删除成功后策略不再进入回收站清理路径，不会被重复释放。
+ * 快照行本身不删：执行记录的 vocabSnapshotRef 仍可能指向它，是否回收只看 refCount。
+ *
+ * @returns 被递减的快照个数
+ */
+export async function releaseSnapshotRefsForPolicy(policyId: string, tx: SnapshotTx): Promise<number> {
+  const versions = await tx
+    .select({ refs: policyVersions.vocabularySnapshotIds })
+    .from(policyVersions)
+    .where(eq(policyVersions.policyId, policyId));
+  const counts = countSnapshotRefs(versions.map((v) => v.refs));
+  for (const [snapshotId, times] of counts) {
+    await tx
+      .update(userVocabularySnapshots)
+      .set({ refCount: sql`GREATEST(${userVocabularySnapshots.refCount} - ${times}, 0)` })
+      .where(eq(userVocabularySnapshots.id, snapshotId));
+  }
+  return counts.length;
 }
 
 /** 审批事务提交后记录冻结审计（事务回滚时不应留下「已冻结」的审计）。 */

@@ -4,6 +4,7 @@
 import { db, policies, policyRecycleBins } from '@/lib/prisma';
 import { eq, isNotNull, isNull, not, and, desc, asc, lte, sql } from 'drizzle-orm';
 import { bypassQueryCache } from '@/db/fresh-read';
+import { releaseSnapshotRefsForPolicy } from '@/lib/domain-vocabulary-snapshot';
 // 回收站保留天数
 const RECYCLE_BIN_RETENTION_DAYS = 30;
 
@@ -38,9 +39,15 @@ export interface TrashItem {
  * 外键 PolicyRecycleBin.policyId → Policy.id 已带 ON DELETE CASCADE（迁移 0058），
  * 这里仍显式先删回收站行：纵深防御，不把回收站一致性押在单一机制上；
  * 同时让已成孤儿的回收站行（Policy 早已不在）也能被清理掉，而不是永远残留。
+ *
+ * 同一事务内先释放该策略各版本对词汇快照的引用（refCount 递减，#628），否则快照会永远显示
+ * 「仍被引用」。PolicyVersion 与 Policy 之间没有外键，版本行不随策略删除（执行记录等仍引用），
+ * 但策略行与回收站行在本事务里一起消失，此后任何路径都不会再对同一策略调用 purge，
+ * 因此每个策略的引用只释放一次。永久删除、过期清理、清空回收站三条路径都经由这里。
  */
 async function purgePolicy(policyId: string): Promise<void> {
   await db.transaction(async (tx) => {
+    await releaseSnapshotRefsForPolicy(policyId, tx);
     await tx.delete(policyRecycleBins).where(eq(policyRecycleBins.policyId, policyId));
     await tx.delete(policies).where(eq(policies.id, policyId));
   });

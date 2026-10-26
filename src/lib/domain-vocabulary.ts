@@ -907,6 +907,17 @@ export interface BulkRowError {
   message: string;
 }
 
+/**
+ * 批量导入的计数口径（同步响应与异步任务共用，#629）。
+ *
+ * 每一行恰好落入一类：新建词条并链接（added）、复用已有词条并链接（reused）、
+ * 未导入（skipped，附且仅附一条行级错误：校验失败、重复、超配额、行/块写入失败等）。
+ * 因此任何时刻都有：
+ *
+ *   processed = added + reused + skipped，skipped = errorCount = errors.length
+ *
+ * 完成时 processed = rowCount。modified 为保留字段，批量导入从不修改已有词条，恒为 0。
+ */
 export interface BulkRollup {
   added: number;
   reused: number;
@@ -919,7 +930,9 @@ export interface BulkResult {
   jobId: string;
   status: 'completed';
   mode: 'sync';
+  /** 提交的行数。 */
   rowCount: number;
+  /** 已处理的行数（含校验失败的行）；同步导入返回时恒等于 rowCount。 */
   processed: number;
   rollup: BulkRollup;
   errors: BulkRowError[];
@@ -1335,7 +1348,9 @@ async function bulkAddUserVocabularyTermsInner(
   // the lock would let a concurrent single-add or other bulk slip in
   // between the count and the insert, exceeding the plan cap.
 
-  let processed = 0;
+  // 校验失败的行也算已处理（与异步 worker 同口径，#629）：它们已有结论（skipped + 行级错误），
+  // 否则会出现 processed 小于 skipped 之类自相矛盾的计数。
+  let processed = rawRows.length - acceptedRows.length;
   for (const chunk of chunkRows(acceptedRows, BULK_CHUNK_SIZE)) {
     let chunkResult: BulkRollup | null = null;
     let chunkErrors: BulkRowError[] = [];
