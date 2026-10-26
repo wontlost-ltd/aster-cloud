@@ -6,10 +6,15 @@ import { PLANS, PlanType } from '@/lib/plans';
 import { upgradeResponse } from '@/lib/plan-quota';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
 import { executionErrorCode, sanitizeExecutionResult } from '@/lib/execution-error';
-import { executePolicyUnified, getPrimaryError, deriveExecutionDecision, deriveExecutionOutcome, detectCNLLocale } from '@/services/policy/cnl-executor';
+import { executePolicyUnified, getPrimaryError, deriveExecutionDecision, deriveExecutionOutcome } from '@/services/policy/cnl-executor';
 import { buildReplayColumns, buildEvidenceColumns } from '@/lib/policy-execution-log';
 import { policyTenantId } from '@/lib/policy-tenant';
-import { loadExecutionVocabulary } from '@/lib/domain-vocabulary-snapshot';
+import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
+import {
+  ambiguousInputFieldBody,
+  loadVersionExecutionVocabulary,
+  prepareExecutionInput,
+} from '@/lib/execution-input';
 import { needsGuardDecision, registerGuardAfterInsert, registerGuardDecisionWith } from '@/lib/guard-register';
 import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
 import { parseAgentIdentity } from '@/services/policy/policy-api';
@@ -73,7 +78,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     const versionRows = await db.query.policyVersions.findMany({
       where: eq(policyVersions.policyId, id),
       columns: {
-        id: true, version: true, status: true, isDefault: true,
+        id: true, version: true, status: true, isDefault: true, createdBy: true, sourceEnvelopeSha256: true,
       },
     });
 
@@ -171,7 +176,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         sourceToolchainId: policy.sourceToolchainId ?? null,
         vocabularySnapshotIds: policy.vocabSnapshotIds,
       };
-      const selectedVersion = resolveExecutableVersion(versionRows, fallbackVersion);
+      const selectedVersion = resolveExecutableVersion<ExecutableVersionCandidate>(versionRows, fallbackVersion);
       const executableVersion = await hydrateExecutableVersion(
         selectedVersion,
         fallbackVersion,
@@ -304,21 +309,49 @@ export async function POST(req: Request, { params }: RouteParams) {
       }
     }
 
-    // ADR 0014 线C：执行版本冻结的领域词汇（只取策略作用域内的快照），best-effort。
-    const vocabulary = await loadExecutionVocabulary(policy.vocabSnapshotIds, {
+    // 领域词汇（ADR 0014 线C，#626）：已审批版本用冻结快照，草稿用作者现行词汇（作用域内），best-effort。
+    // 版本语言与 secure-execute 同一解析器：记录的编译 locale → 快照 locale → 源码识别。
+    const executedVersionRow = versionRows.find((row) => row.version === policy.version);
+    const policyLocale = resolveStoredVersionLocale({
       source: policy.content,
-      locale: detectCNLLocale(policy.content),
+      aliasSet: policy.aliasSet ?? null,
+      sourceEnvelopeSha256: executedVersionRow?.sourceEnvelopeSha256 ?? null,
+      sourceToolchainId: policy.sourceToolchainId ?? null,
+      vocabularySnapshotIds: policy.vocabSnapshotIds,
     });
+    const vocabulary = await loadVersionExecutionVocabulary({
+      status: executedVersionRow?.status,
+      vocabularySnapshotIds: policy.vocabSnapshotIds,
+      // 与审批冻结同口径：取版本作者（团队策略里可不是所有者）。
+      authorId: executedVersionRow?.createdBy,
+      source: policy.content,
+      locale: policyLocale,
+    });
+    // #626：输入按策略语言书写（规范名仍接受），执行前映射为规范名；两者并存时 400，不猜测。
+    const prepared = prepareExecutionInput({
+      input: validatedInput,
+      functionName,
+      vocabulary,
+      source: policy.content,
+      locale: policyLocale,
+      aliasSet: parsedAliasSet,
+    });
+    if (!prepared.ok) {
+      return NextResponse.json(ambiguousInputFieldBody(prepared.ambiguous), { status: 400 });
+    }
+    // 引擎实际评估的输入：执行记录、guard 登记、parity 都用它，保证与回放 hash 同源。
+    const engineInput = prepared.input as Record<string, unknown>;
     const rawExecutionResult = await executePolicyUnified({
       // 部分 Policy 投影（执行端只读 .content）；新增的 aliasSet:string|null 与完整 Policy
       // 行的字段类型不再充分重叠，按 TS 提示经 unknown 桥接（沿用本路径既有部分投影模式）。
       policy: policy as unknown as Parameters<typeof executePolicyUnified>[0]['policy'],
-      input: validatedInput,
+      input: engineInput,
       userId,
       tenantId: policyTenantId(policy),
-      ...(functionName ? { functionName } : {}),
+      ...(prepared.functionName ? { functionName: prepared.functionName } : {}),
       aliasSet: parsedAliasSet,
       vocabulary,
+      locale: policyLocale,
       // 回放地基（ADR 0030）：已认证 execute 走 HMAC 内部调用 → 开 replayCapture 取权威 hash。
       replayCapture: true,
       ...(agent ? { agent } : {}),
@@ -339,7 +372,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       policyVersion: policy.version ?? null,
       sourceToolchainId: policy.sourceToolchainId,
       vocabSnapshotRef: policy.vocabSnapshotIds,
-      locale: detectCNLLocale(policy.content),
+      locale: policyLocale,
       aliasSetJson: replayAliasSetJson,
       functionName: executionResult.executedFunction ?? null,
     }, executionResult.metadata.traceSkeleton, executionResult.metadata.reason);
@@ -354,7 +387,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       id: executionId,
       userId,
       policyId: id,
-      input: validatedInput as object,
+      input: engineInput as object,
       output: executionResult as object,
       error: primaryError,
       durationMs,
@@ -395,7 +428,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         registerGuardDecisionWith(() => createPolicyApiClientForUser(policyTenantId(policy), userId), {
           policy: { id: policy.id, name: policy.name, teamId: policy.teamId, userId: policy.userId },
           functionName: executionResult.executedFunction ?? policy.name,
-          input: validatedInput,
+          input: engineInput,
           agent: agent,
           result: executionResult,
           requesterUserId: userId,
@@ -411,8 +444,8 @@ export async function POST(req: Request, { params }: RouteParams) {
         tenantId: policyTenantId(policy),
         actorUserId: userId,
         source: policy.content,
-        input: validatedInput as Record<string, unknown> | unknown[],
-        locale: detectCNLLocale(policy.content),
+        input: engineInput,
+        locale: policyLocale,
         functionName: executionResult.executedFunction ?? '',
         aliasSet: parsedAliasSet,
         role: RUNNER_LAUNCHER_HMAC_ROLE,

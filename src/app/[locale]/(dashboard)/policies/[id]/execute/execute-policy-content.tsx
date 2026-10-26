@@ -71,6 +71,8 @@ interface ExecutionResult {
   /** 稳定错误码：execution_failed=引擎执行失败（error 为通用英文说明，界面按码本地化）。 */
   errorCode?: string;
   durationMs: number;
+  /** 结果里的规范名还原为策略语言后的值（#626，仅在与 output.result 不同时出现）。 */
+  localizedResult?: unknown;
   executedFunction?: string;
   diagnostics?: ExecutionDiagnostic[];
 }
@@ -459,6 +461,12 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
   // 规则选择器此时已显示 ambiguousHint。候选面板只作为前后端判断不一致时的兜底。
   const mustChooseRule = ruleSymbols.length > 1 && !selectedRule;
 
+  // 输入歧义：写法在词汇里撞名（带 candidates）或同一字段写了两次；都按策略语言提示。
+  const ambiguousInputMessage = (data: { field?: string; policyField?: string; candidates?: string[] }) =>
+    data.candidates
+      ? t('ambiguousInputSpelling', { field: data.policyField ?? data.field ?? '', candidates: data.candidates.join(', ') })
+      : t('ambiguousInputField', { field: data.policyField ?? data.field ?? '' });
+
   const handleExecute = async () => {
     const functionName = selectedRule;
     setIsLoading(true);
@@ -494,7 +502,9 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
         // 优先显示详细消息，支持冻结和配额超限场景
         const errorMessage = data.code === 'execution_failed'
           ? t('engineErrorDetail')
-          : data.message || extractErrorMessage(data) || t('executionFailed');
+          : data.code === 'ambiguous_input_field'
+            ? ambiguousInputMessage(data)
+            : data.message || extractErrorMessage(data) || t('executionFailed');
         setError(errorMessage);
         // 保存是否需要升级的标志
         if (data.upgrade || data.frozen) {
@@ -964,9 +974,10 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
                     <div>
                       <span className="text-sm font-medium text-fg">{t('result')}</span>
                       <pre className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-bg-subtle px-3 py-2 text-sm text-fg">
-                        {typeof result.output.result === 'string'
-                          ? result.output.result
-                          : JSON.stringify(result.output.result, null, 2)}
+                        {/* 服务端把结果里的规范名还原为策略语言（localizedResult）时优先展示它。 */}
+                        {typeof (result.localizedResult ?? result.output.result) === 'string'
+                          ? String(result.localizedResult ?? result.output.result)
+                          : JSON.stringify(result.localizedResult ?? result.output.result, null, 2)}
                       </pre>
                     </div>
                   )}

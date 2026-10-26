@@ -643,8 +643,8 @@ export class PolicyApiClient {
       locale?: string;
       functionName?: string;
       /**
-       * 领域词汇表（DomainVocabulary 的 JSON）。ADR 0014 线C：发布的策略
-       * 携带其快照领域词汇，使执行端规范化阶段能翻译用户自定义术语。
+       * 领域词汇表（DomainVocabulary 的 JSON）。ADR 0014 线C：已审批版本携带其冻结快照，
+       * 草稿携带作者现行词汇（#626，见 @/lib/execution-input），使执行端规范化阶段能翻译用户自定义术语。
        */
       vocabulary?: Record<string, unknown>;
       /**

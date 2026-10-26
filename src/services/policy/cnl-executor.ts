@@ -202,9 +202,9 @@ export interface ExecutePolicyOptions {
    */
   aliasSet?: Record<string, string[]> | null;
   /**
-   * 执行版本冻结的领域词汇（ADR 0014 线C，DomainVocabulary 的 JSON）。执行端规范化阶段
-   * 据此把用户术语（如 `alter`）翻译为规范名（`age`），使规范字段名的输入能匹配。
-   * 由调用方用 loadExecutionVocabulary 从版本的 vocabularySnapshotIds 加载传入。
+   * 执行版本的领域词汇（ADR 0014 线C，DomainVocabulary 的 JSON）。执行端规范化阶段
+   * 据此把用户术语（如 `alter`）翻译为规范名（`age`）。由调用方用 loadVersionExecutionVocabulary
+   * 加载（已审批版本 = 冻结快照，草稿 = 作者现行词汇），输入须已用同一词汇映射为规范名（#626）。
    */
   vocabulary?: Record<string, unknown>;
   /**
@@ -214,6 +214,11 @@ export interface ExecutePolicyOptions {
   replayCapture?: boolean;
   /** 调用方 agent 身份（ADR 0041 §4）：透传给 aster-api evaluate-source 请求体 `agent`。 */
   agent?: AgentIdentity;
+  /**
+   * 版本的 CNL 语言（resolveStoredVersionLocale：记录的编译 locale → 快照 locale → 源码识别）。
+   * 缺省时按源码识别（旧口径）。
+   */
+  locale?: string;
 }
 
 /**
@@ -226,12 +231,12 @@ export interface ExecutePolicyOptions {
 export async function executePolicyUnified(
   options: ExecutePolicyOptions
 ): Promise<PolicyExecutionResult> {
-  const { policy, input, userId, tenantId, functionName, aliasSet, vocabulary, replayCapture, agent } = options;
+  const { policy, input, userId, tenantId, functionName, aliasSet, vocabulary, replayCapture, agent, locale } = options;
   const policyContent = policy.content || '';
   const useAsterEngine = isAsterCNL(policyContent);
 
   if (useAsterEngine) {
-    return executeWithAsterEngine(policy, policyContent, input, userId, tenantId, functionName, aliasSet, vocabulary, replayCapture, agent);
+    return executeWithAsterEngine(policy, policyContent, input, userId, tenantId, functionName, aliasSet, vocabulary, replayCapture, agent, locale);
   } else {
     return executeWithSimpleEngine(policy, policyContent, input, userId);
   }
@@ -253,9 +258,10 @@ async function executeWithAsterEngine(
   aliasSet?: Record<string, string[]> | null,
   vocabulary?: Record<string, unknown>,
   replayCapture?: boolean,
-  agent?: AgentIdentity
+  agent?: AgentIdentity,
+  resolvedLocale?: string,
 ): Promise<PolicyExecutionResult> {
-  const locale = detectCNLLocale(policyContent) as CNLLocale;
+  const locale = (resolvedLocale ?? detectCNLLocale(policyContent)) as CNLLocale;
   const effectiveTenantId = tenantId || policy.teamId || policy.userId;
   const apiClient = createPolicyApiClient(effectiveTenantId, userId);
 
@@ -263,7 +269,7 @@ async function executeWithAsterEngine(
     // aliasSet：已发布版本冻结的别名快照，透传给执行端使别名源码能编译（C1）。
     // replayCapture：回放地基（ADR 0030）——已认证 execute 路径开，透传 aster-api 权威 hash。
     // agent：调用方自报身份（ADR 0041 §4），由 aster-api 写入证据。
-    // vocabulary：版本冻结的领域词汇（ADR 0014 线C），执行端据此翻译用户术语。
+    // vocabulary：版本的领域词汇（ADR 0014 线C；草稿为作者现行词汇），执行端据此翻译用户术语。
     const response = await apiClient.evaluateSource(policyContent, input, { locale, functionName, aliasSet, vocabulary, replayCapture, agent });
     return buildCNLResult(policy, response);
   } catch (error) {

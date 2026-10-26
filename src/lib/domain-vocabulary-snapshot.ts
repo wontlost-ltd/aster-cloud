@@ -41,6 +41,7 @@ import {
   type PolicyVocabularyContext,
 } from '@/lib/domain-vocabulary-scope';
 import { VocabularyError } from '@/lib/domain-vocabulary';
+import { bypassQueryCache } from '@/db/fresh-read';
 
 export interface SnapshotRef {
   snapshotId: string;
@@ -122,6 +123,9 @@ async function loadActiveLinksGroupedByDomainLocale(
         eq(userDomainTerms.userId, scope.ownerId),
         isNull(userDomainTerms.deletedAt),
         isNull(userDomainTerms.archivedAt),
+        // 草稿执行按作者现行词汇编译（#626）：编辑词条后下一次执行必须立即生效，
+        // 不能读到 Hyperdrive 缓存的旧词条；审批冻结在事务内，同样要最新值。
+        bypassQueryCache(),
       ),
     )
     .orderBy(asc(userDomainTerms.termId));

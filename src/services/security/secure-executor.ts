@@ -24,7 +24,13 @@ import { checkAndRecordNonce } from './nonce-service';
 import { logSecurityEvent } from './security-event-service';
 import { assertPolicyOwnership } from '../policy/version-manager';
 import { createPolicyApiClient } from '../policy/policy-api';
-import { loadExecutionVocabulary } from '@/lib/domain-vocabulary-snapshot';
+import {
+  ambiguousInputFieldMessage,
+  inputMappingAudit,
+  loadVersionExecutionVocabulary,
+  prepareExecutionInput,
+  type AmbiguousInputField,
+} from '@/lib/execution-input';
 import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
 import { safeEnv } from '@/lib/runtime/safe-env';
 
@@ -52,6 +58,8 @@ export interface SecureExecuteResult {
   isDeprecated?: boolean;
   expectedVersion?: number;
   expectedHash?: string;
+  /** errorCode=AMBIGUOUS_INPUT_FIELD 时：冲突字段（#626）。 */
+  ambiguous?: AmbiguousInputField;
 }
 
 export type SecurityErrorCode =
@@ -63,6 +71,7 @@ export type SecurityErrorCode =
   | 'POLICY_NOT_FOUND'
   | 'NO_APPROVED_VERSION'
   | 'VERSION_NOT_EXECUTABLE'
+  | 'AMBIGUOUS_INPUT_FIELD'
   | 'EXECUTION_FAILED';
 
 const SIGNING_SECRET = safeEnv('POLICY_SIGNING_SECRET') || '';
@@ -281,8 +290,11 @@ export async function executeSecurely(
       sourceToolchainId: targetVersion.sourceToolchainId,
       vocabularySnapshotIds: targetVersion.vocabularySnapshotIds,
     });
-    // ADR 0014 线C：该版本冻结的领域词汇（只取策略作用域内的快照），best-effort。
-    const vocabulary = await loadExecutionVocabulary(targetVersion.vocabularySnapshotIds, {
+    // 领域词汇（ADR 0014 线C，#626）：可执行版本均已审批，走冻结快照（作用域内），best-effort。
+    const vocabulary = await loadVersionExecutionVocabulary({
+      status: targetVersion.status,
+      vocabularySnapshotIds: targetVersion.vocabularySnapshotIds,
+      authorId: targetVersion.createdBy,
       source: sourceCode,
       locale,
     });
@@ -299,10 +311,30 @@ export async function executeSecurely(
       }
     }
 
+    // #626：签名已按原始输入校验；此后把策略语言的字段名/枚举值映射为规范名再交给引擎。
+    const prepared = prepareExecutionInput({
+      input: request.input,
+      functionName: undefined,
+      vocabulary,
+      source: sourceCode,
+      locale,
+      aliasSet,
+    });
+    if (!prepared.ok) {
+      return {
+        success: false,
+        error: ambiguousInputFieldMessage(prepared.ambiguous),
+        errorCode: 'AMBIGUOUS_INPUT_FIELD',
+        ambiguous: prepared.ambiguous,
+      };
+    }
+
+    const mappingAudit = inputMappingAudit(request.input, prepared.renames);
+
     const apiClient = createPolicyApiClient(tenantId, userId);
     const response = await apiClient.evaluateSource(
       sourceCode, // 关键：使用数据库中的源码
-      request.input as Record<string, unknown>,
+      prepared.input as Record<string, unknown>,
       {
         locale,
         ...(vocabulary ? { vocabulary } : {}),
@@ -321,6 +353,8 @@ export async function executeSecurely(
         isDeprecated,
         executionTimeMs,
         success: !response.error,
+        // #626 审计（新增字段）：签名覆盖原始输入，引擎执行映射后的输入；记录原始输入哈希与改写位置。
+        inputMapping: mappingAudit,
       },
     });
 
