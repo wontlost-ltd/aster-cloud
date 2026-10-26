@@ -509,6 +509,7 @@ export function PolicyForm({
                 compile_unavailable: t('saveErrorCodes.compile_unavailable'),
                 policy_frozen: t('saveErrorCodes.policy_frozen'),
                 unauthorized: t('saveErrorCodes.unauthorized'),
+                unsupported_locale: t('saveErrorCodes.unsupported_locale'),
               }, result.message),
             });
           }
@@ -728,6 +729,7 @@ export function PolicyForm({
                 value={content}
                 onChange={setContent}
                 locale={cnlLocale}
+                userVocabulary
                 height="100%"
                 placeholder={t('contentPlaceholder')}
                 aliasSet={fields.aliasSet ?? undefined}

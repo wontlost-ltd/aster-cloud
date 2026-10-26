@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockCompile } = vi.hoisted(() => ({ mockCompile: vi.fn() }));
+const { mockCompile, mockLoadVocabulary } = vi.hoisted(() => ({
+  mockCompile: vi.fn(),
+  mockLoadVocabulary: vi.fn(),
+}));
+
+vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
+  loadLiveVocabularyForPolicy: mockLoadVocabulary,
+}));
 
 // PolicyApiError 真实类要用（instanceof 判 statusCode），只 mock compile 方法。
 vi.mock('@/services/policy/policy-api', async (importOriginal) => {
@@ -19,8 +26,42 @@ import {
   PolicyCompileUnavailableError,
 } from '@/services/policy/version-manager';
 
+describe('makeCompileValidator — 领域词汇（#602）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCompile.mockResolvedValue({ success: true, diagnostics: [] });
+  });
+  const source = 'Modul x.\n\nDefiniere Fahrer hat alter als Ganzzahl.\n';
+
+  it('按作者 + 源码 + 语言加载作用域内词汇并随编译请求发送', async () => {
+    const vocabulary = { id: 'e2e1026', locale: 'de-DE', fields: [{ canonical: 'age', localized: 'alter' }] };
+    mockLoadVocabulary.mockResolvedValue(vocabulary);
+
+    await makeCompileValidator('u1')({ source, locale: 'de-DE' });
+
+    expect(mockLoadVocabulary).toHaveBeenCalledWith('u1', { source, locale: 'de-DE' });
+    expect(mockCompile).toHaveBeenCalledWith(expect.objectContaining({ source, locale: 'de-DE', vocabulary }));
+  });
+
+  it('无作用域内词汇 → vocabulary 为 null', async () => {
+    mockLoadVocabulary.mockResolvedValue(null);
+    await makeCompileValidator('u1')({ source, locale: 'de-DE' });
+    expect(mockCompile).toHaveBeenCalledWith(expect.objectContaining({ vocabulary: null }));
+  });
+
+  it('词汇加载失败 → 退化为不带词汇编译，不阻断保存', async () => {
+    mockLoadVocabulary.mockRejectedValue(new Error('db down'));
+    const r = await makeCompileValidator('u1')({ source, locale: 'de-DE' });
+    expect(r.diagnostics).toEqual([]);
+    expect(mockCompile).toHaveBeenCalledWith(expect.objectContaining({ vocabulary: null }));
+  });
+});
+
 describe('makeCompileValidator — 异常分类', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockLoadVocabulary.mockResolvedValue(null);
+  });
   const input = { source: 'Module X.', locale: 'en-US' };
 
   it('成功 → 返回上游 diagnostics', async () => {

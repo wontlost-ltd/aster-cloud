@@ -30,6 +30,7 @@ vi.mock('@/services/policy/version-manager', async () => {
     approveVersion: vi.fn(),
     PolicyAccessDeniedError: actual.PolicyAccessDeniedError,
     SegregationOfDutiesError: actual.SegregationOfDutiesError,
+    VocabularyFreezeError: actual.VocabularyFreezeError,
   };
 });
 vi.mock('@/lib/prisma', () => ({
@@ -219,6 +220,18 @@ describe('POST /api/v1/policies/[id]/versions/[version]/approve — SOX 守护',
     expect(mockApprove).toHaveBeenCalledWith(
       expect.objectContaining({ policyId: 'p1', version: 1, approverId: 'u1', decision: 'APPROVED' }),
     );
+  });
+
+  it('词汇冻结失败（VocabularyFreezeError）→ 503 vocabulary_freeze_failed，可重试', async () => {
+    const { VocabularyFreezeError } = await vi.importActual<typeof import('@/services/policy/version-manager')>(
+      '@/services/policy/version-manager',
+    );
+    setupMocks({ user: { plan: 'free', priceLockedAt: null, legacyTier: null }, versionAuthor: 'u1' });
+    mockApprove.mockRejectedValueOnce(new VocabularyFreezeError());
+
+    const res = await POST(makeRequest(), { params });
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toBe('vocabulary_freeze_failed');
   });
 
   it('策略不存在 → 不拦截，交由 approveVersion 判定（404 不泄露存在性）', async () => {

@@ -25,6 +25,7 @@ import {
 import { errorEnvelope } from '@/lib/api/error-envelope';
 import { invalidatePolicyCache } from '@/lib/cache';
 import { eq, isNull, desc, sql, and, inArray } from 'drizzle-orm';
+import { parseCompileLocale } from '@/lib/cnl-locale';
 
 // GET /api/policies - List user's policies
 export async function GET() {
@@ -261,9 +262,9 @@ export async function POST(req: Request) {
       Object.keys(aliasSet as Record<string, unknown>).length > 0
         ? (aliasSet as Record<string, string[]>)
         : null;
-    const compileLocale = typeof locale === 'string' && locale.trim()
-      ? locale
-      : 'en-US';
+    const parsedLocale = parseCompileLocale(locale);
+    if (!parsedLocale.ok) return NextResponse.json(parsedLocale.error, { status: 400 });
+    const compileLocale = parsedLocale.locale;
     const allowStructural = await getStructuralAliasGrant(session.user.id);
     // 未授权（或授权已撤销）却提交结构词别名：在编译门禁前直接拒绝，给出稳定码。
     if (!allowStructural && hasStructuralAliases(aliasSetInput)) {
