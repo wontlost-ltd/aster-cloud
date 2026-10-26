@@ -62,6 +62,11 @@ export interface PolicyCompileRequest {
    */
   aliasSet?: Record<string, string[]> | null;
   /**
+   * 结构词别名已获授权（服务端按 per-user entitlement 判定）。aster-api 仅对已验签的内部调用方
+   * 采信此标记；缺省按未授权编译，结构词别名会被拒。
+   */
+  allowStructural?: boolean;
+  /**
    * 策略作用域内的用户领域词汇（ADR 0014，DomainVocabulary 的 JSON）。与执行端传同一形状，
    * 使保存前编译与执行对用户术语的规范化一致。为空时不携带。
    */
@@ -570,6 +575,8 @@ export class PolicyApiClient {
       locale: request.locale || 'en-US',
       // 仅在有别名时携带（与 evaluateSource 一致），避免空字段增大请求体。
       ...(hasAliases ? { aliasSet: request.aliasSet } : {}),
+      // 结构词授权只在有别名且已授权时携带。
+      ...(hasAliases && request.allowStructural === true ? { allowStructural: true } : {}),
       ...(request.vocabulary ? { vocabulary: request.vocabulary } : {}),
     });
   }

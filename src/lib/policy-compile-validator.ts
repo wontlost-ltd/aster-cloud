@@ -70,7 +70,7 @@ async function loadCompileVocabulary(
 /**
  * 构造保存前源码可编译性校验器，注入给 createVersion（覆盖所有版本创建入口）。
  *
- * 用与执行一致的输入（source + locale + aliasSet + 作用域内领域词汇）调 aster-api 的
+ * 用与执行一致的输入（source + locale + aliasSet + 结构词授权 + 作用域内领域词汇）调 aster-api 的
  * POST /api/v1/policies/compile——依赖用户自定义别名的合法源码不会被「不带
  * alias 的编译」误判为解析错误（前后端语义一致）。
  *
@@ -89,7 +89,7 @@ async function loadCompileVocabulary(
  * createVersion 只在返回的 diagnostics 含 severity==='error' 时拒绝落库。
  */
 export function makeCompileValidator(userId: string): CompileValidator {
-  return async ({ source, locale, aliasSet }) => {
+  return async ({ source, locale, aliasSet, allowStructural }) => {
     const client = createPolicyApiClient(userId, userId);
     const vocabulary = await loadCompileVocabulary(userId, source, locale);
     try {
@@ -98,6 +98,7 @@ export function makeCompileValidator(userId: string): CompileValidator {
         locale,
         // aliasSet 类型收敛：CompileValidator 用 readonly，client 用可变；结构一致。
         aliasSet: aliasSet as Record<string, string[]> | null | undefined,
+        allowStructural,
         vocabulary,
       });
       if (result.success === false && !hasSourceError(result.diagnostics)) {

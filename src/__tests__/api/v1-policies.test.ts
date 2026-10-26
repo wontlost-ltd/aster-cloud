@@ -469,6 +469,26 @@ describe('V1 Policies API - Drizzle Migration', () => {
       expect(body.meta.durationMs).toBeTypeOf('number');
     });
 
+    it('#609：引擎失败原文（Java 异常）不出现在 API 响应中，带 execution_failed 码', async () => {
+      const raw = 'CNL 动态执行失败: Polyglot 执行失败: java.lang.RuntimeException: 无法访问成员：alter';
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+      mockExecutePolicyUnified.mockResolvedValue({
+        ...mockExecutionResult({ allowed: false, deniedReasons: [raw], metadata: { engineError: true } }),
+        diagnostics: [{ code: 'RUNTIME', message: 'java.lang.IllegalStateException: boom' }],
+      } as never);
+      mockGetPrimaryError.mockImplementation((r) => r.deniedReasons[0]);
+
+      const response = await POST(
+        makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody),
+        mockParams
+      );
+      const body = await response.json();
+
+      expect(body.errorCode).toBe('execution_failed');
+      expect(JSON.stringify(body)).not.toMatch(/java\.lang|Polyglot|无法访问/);
+      log.mockRestore();
+    });
+
     it('passes an optional Rule name from functionName to the policy executor', async () => {
       const response = await POST(
         makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', {

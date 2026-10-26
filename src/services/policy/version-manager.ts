@@ -267,6 +267,11 @@ export type CompileValidator = (input: {
   source: string;
   locale: string;
   aliasSet?: Readonly<Record<string, readonly string[]>> | null;
+  /**
+   * 结构词别名是否已授权（服务端按 per-user entitlement 权威判定后传入）。编译门禁须与
+   * createVersion 的别名校验同口径，否则已授权的结构词别名会被上游编译按未授权拒绝。
+   */
+  allowStructural?: boolean;
 }) => Promise<{ diagnostics?: CompileDiagnostic[]; profile?: string }>;
 
 /**
@@ -282,11 +287,7 @@ export type CompileValidator = (input: {
  */
 export async function assertCompilable(
   validator: CompileValidator,
-  input: {
-    source: string;
-    locale: string;
-    aliasSet?: Readonly<Record<string, readonly string[]>> | null;
-  },
+  input: Parameters<CompileValidator>[0],
 ): Promise<string | null> {
   try {
     const result = await validator(input);
@@ -423,6 +424,7 @@ export async function createVersion(
       source,
       locale,
       aliasSet: params.aliasSet,
+      allowStructural: params.allowStructuralAliases ?? false,
     })
     : (params.profile ?? null);
 

@@ -68,6 +68,8 @@ interface ExecutionResult {
   };
   decisionTrace?: DecisionTrace;
   error?: string;
+  /** 稳定错误码：execution_failed=引擎执行失败（error 为通用英文说明，界面按码本地化）。 */
+  errorCode?: string;
   durationMs: number;
   executedFunction?: string;
   diagnostics?: ExecutionDiagnostic[];
@@ -490,7 +492,9 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
 
       if (!res.ok) {
         // 优先显示详细消息，支持冻结和配额超限场景
-        const errorMessage = data.message || extractErrorMessage(data) || t('executionFailed');
+        const errorMessage = data.code === 'execution_failed'
+          ? t('engineErrorDetail')
+          : data.message || extractErrorMessage(data) || t('executionFailed');
         setError(errorMessage);
         // 保存是否需要升级的标志
         if (data.upgrade || data.frozen) {
@@ -1001,7 +1005,9 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
                 {/* Error */}
                 {result.error && (
                   <div className="rounded-lg bg-red-50 p-4">
-                    <p className="text-sm text-red-700">{result.error}</p>
+                    <p className="text-sm text-red-700">
+                      {result.errorCode === 'execution_failed' ? t('engineErrorDetail') : result.error}
+                    </p>
                   </div>
                 )}
 
