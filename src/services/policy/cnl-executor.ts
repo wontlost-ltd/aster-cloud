@@ -406,6 +406,15 @@ export interface ApprovalParseResult {
   outcome?: VerdictOutcome;
 }
 
+/** 运行时枚举值对象（带 `_enum` 标签）的成员名；不是枚举值对象时返回 undefined。 */
+function enumMemberOf(result: unknown): string | undefined {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return undefined;
+  const obj = result as Record<string, unknown>;
+  if (typeof obj._enum !== 'string') return undefined;
+  const member = obj.variant ?? obj.value;
+  return typeof member === 'string' ? member : undefined;
+}
+
 // Bug-4 修复：导出供单测验证 isEligible 等字段被正确识别
 export function parseApprovalFromResult(
   result: unknown,
@@ -426,6 +435,12 @@ export function parseApprovalFromResult(
       ? { approved: true, message: String(result) }
       : { approved: false, indeterminate: true, message: String(result) };
   }
+
+  // 枚举值：引擎返回运行时枚举对象 `{_enum, value, variant, args}`，有时（如经字段读出）是成员名字符串。
+  // 二者是同一个值，判定口径必须一致（#633）：一律按成员名字符串处理——不再因对象里有 value 键被当作
+  // 「计算结果」判批准。
+  const enumMember = enumMemberOf(result);
+  if (enumMember !== undefined) return parseApprovalFromResult(enumMember, mode);
 
   // 对象格式：支持多语言字段名和通用结果格式
   if (result && typeof result === 'object') {

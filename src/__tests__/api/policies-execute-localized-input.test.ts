@@ -220,11 +220,171 @@ describe('POST /api/policies/[id]/execute — 策略语言输入（#626）', () 
     mockFindVersions.mockResolvedValue(versions('APPROVED', { sourceEnvelopeSha256: envelope }));
     mockDbExecute.mockResolvedValue([policyRow(DE_POLICY, { toolchainId: 'tc-1' })]);
     mockEvaluateSource.mockResolvedValue({ result: 0, executionTimeMs: 1, error: null });
+    // 只验证 locale 选择：不带词汇（德语源码按 en-US 带词汇提取类型会失败，那是另一条用例）。
+    mockLoadFrozen.mockResolvedValue(undefined);
 
     await execute({ person: { alter: 21 } });
 
     expect(mockLoadFrozen).toHaveBeenCalledWith(FROZEN_REFS, { source: DE_POLICY, locale: 'en-US' });
     expect(mockEvaluateSource.mock.calls[0]![2].locale).toBe('en-US');
+  });
+});
+
+// #638 生产复现的词汇与源码：struct Driver↔Fahrer、Level↔Stufe，字段 age↔alter、rank↔niveau，
+// 枚举值 High↔Hoch / Low↔Niedrig（字段规范名用 rank，避开只差大小写的组合，见 aster-lang-ts#243）。
+function de638Vocab() {
+  const row = (kind: string, canonical: string, localized: string, parentCanonical: string | null = null) =>
+    ({ domainTermId: `${kind}-${canonical}`, domain: 'e2e1029', locale: 'de', kind, canonical, localized, parentCanonical });
+  return assembleDomainVocabularyFromLinks(
+    [
+      row('struct', 'Driver', 'Fahrer'),
+      row('struct', 'Level', 'Stufe'),
+      row('field', 'age', 'alter', 'Driver'),
+      row('field', 'rank', 'niveau', 'Driver'),
+      row('enum_value', 'High', 'Hoch', 'Level'),
+      row('enum_value', 'Low', 'Niedrig', 'Level'),
+    ],
+    { domain: 'e2e1029', locale: 'de-DE' },
+  ) as unknown as Record<string, unknown>;
+}
+
+const POLICY_638_HEAD = `Modul e2e1029.vocab.
+
+Definiere Stufe als eines von Hoch, Niedrig.
+
+Definiere Fahrer hat alter als Ganzzahl, niveau als Stufe.
+
+Regel einstufen gegeben person als Fahrer liefert Stufe:
+  gib zurück person.niveau.
+`;
+
+// 构造表达式（执行端与 TS 解析器都支持的 `mit f setze auf v` 写法）。
+const POLICY_638 = `${POLICY_638_HEAD}
+Regel bauen gegeben person als Fahrer liefert Fahrer:
+  gib zurück Fahrer mit alter setze auf person.alter und niveau setze auf Niedrig.
+`;
+
+// 生产源码里的 `mit f = v` 写法：TS 解析器不认这种函数体，修复前整份策略的类型提取失败、输入映射被静默跳过。
+const POLICY_638_EQUALS = `${POLICY_638}
+Regel nachbauen gegeben person als Fahrer liefert Fahrer:
+  gib zurück Fahrer mit alter = person.alter, niveau = Niedrig.
+`;
+
+async function executeRule(input: unknown, functionName: string) {
+  const res = await POST(
+    new Request('http://localhost/api/policies/p1/execute', {
+      method: 'POST',
+      body: JSON.stringify({ input, functionName }),
+      headers: { 'content-type': 'application/json' },
+    }),
+    { params: Promise.resolve({ id: 'p1' }) },
+  );
+  return { status: res.status, body: await res.json() };
+}
+
+describe('POST /api/policies/[id]/execute — 类型提取与执行同一词汇（#638）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetSession.mockResolvedValue({ user: { id: 'owner-1' } });
+    mockEvaluateSource.mockImplementation(evaluateWithTsEngine);
+    mockFindVersions.mockResolvedValue(versions('APPROVED'));
+    mockLoadFrozen.mockResolvedValue(de638Vocab());
+    mockLoadLive.mockResolvedValue(null);
+  });
+
+  it('构造表达式 + 本地化输入：引擎收到规范输入，执行成功，结果按策略语言还原', async () => {
+    mockDbExecute.mockResolvedValue([policyRow(POLICY_638)]);
+
+    const { status, body } = await executeRule({ person: { alter: 35, niveau: 'Hoch' } }, 'bauen');
+
+    expect(status).toBe(200);
+    expect(mockEvaluateSource.mock.calls[0]![1]).toEqual({ person: { age: 35, rank: 'High' } });
+    expect(storedExecutionInput()).toEqual({ person: { age: 35, rank: 'High' } });
+    expect(body.output.error ?? null).toBeNull();
+    expect(body.localizedResult).toMatchObject({ alter: 35, niveau: expect.anything() });
+  });
+
+  it('同一策略里有 TS 解析器不支持的函数体（`mit f = v`）：其它规则照常映射输入并执行成功', async () => {
+    mockDbExecute.mockResolvedValue([policyRow(POLICY_638_EQUALS)]);
+    // 执行端替身只回显：TS 解析器编不了整份源码，这里验证的是映射本身（修复前是原样透传）。
+    mockEvaluateSource.mockResolvedValue({ result: 'High', executionTimeMs: 1, error: null });
+
+    const { status, body } = await executeRule({ person: { alter: 35, niveau: 'Hoch' } }, 'einstufen');
+
+    expect(status).toBe(200);
+    expect(mockEvaluateSource.mock.calls[0]![1]).toEqual({ person: { age: 35, rank: 'High' } });
+    expect(body.localizedResult).toBe('Hoch');
+  });
+
+  it('`mit f = v` 那条规则自身的签名也能取到：输入同样映射为规范名', async () => {
+    mockDbExecute.mockResolvedValue([policyRow(POLICY_638_EQUALS)]);
+    mockEvaluateSource.mockResolvedValue({ result: { age: 35, rank: 'Low' }, executionTimeMs: 1, error: null });
+
+    const { status, body } = await executeRule({ person: { alter: 35, niveau: 'Hoch' } }, 'nachbauen');
+
+    expect(status).toBe(200);
+    expect(mockEvaluateSource.mock.calls[0]![1]).toEqual({ person: { age: 35, rank: 'High' } });
+    expect(body.localizedResult).toEqual({ alter: 35, niveau: 'Niedrig' });
+  });
+
+  it('连签名都解析不了：422 input_type_extraction_failed，不调用引擎、不落库、不静默透传', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockDbExecute.mockResolvedValue([policyRow('Modul kaputt.\n\nRegel gegeben Fahrer liefert:\n  gib zurück 1.\n')]);
+
+    const { status, body } = await executeRule({ person: { alter: 35 } }, 'einstufen');
+
+    expect(status).toBe(422);
+    expect(body.code).toBe('input_type_extraction_failed');
+    expect(mockEvaluateSource).not.toHaveBeenCalled();
+    expect(mockInsertValues).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('refusing to execute'), expect.anything());
+    warn.mockRestore();
+  });
+
+  it('未指定 Rule、只有一条 Rule：按这条 Rule 的参数映射输入', async () => {
+    mockDbExecute.mockResolvedValue([policyRow(POLICY_638_HEAD)]);
+    mockEvaluateSource.mockResolvedValue({ result: 'High', executionTimeMs: 1, error: null });
+
+    const { status } = await execute({ person: { alter: 35, niveau: 'Hoch' } });
+
+    expect(status).toBe(200);
+    expect(mockEvaluateSource.mock.calls[0]![1]).toEqual({ person: { age: 35, rank: 'High' } });
+  });
+
+  it('未指定 Rule、多条 Rule 且无 @entry：422 entry_rule_required 并列出可选 Rule，不按空参数映射执行', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockDbExecute.mockResolvedValue([policyRow(POLICY_638)]);
+
+    const { status, body } = await execute({ person: { alter: 35, niveau: 'Hoch' } });
+
+    expect(status).toBe(422);
+    expect(body).toMatchObject({ code: 'entry_rule_required', rules: ['einstufen', 'bauen'] });
+    expect(mockEvaluateSource).not.toHaveBeenCalled();
+    expect(mockInsertValues).not.toHaveBeenCalled();
+    vi.mocked(console.warn).mockRestore();
+  });
+
+  it('无词汇的策略不做类型提取，源码无法解析也照常交给引擎（行为不变）', async () => {
+    mockLoadFrozen.mockResolvedValue(undefined);
+    mockDbExecute.mockResolvedValue([policyRow('Modul kaputt.\n\nRegel gegeben Fahrer liefert:\n  gib zurück 1.\n')]);
+    mockEvaluateSource.mockResolvedValue({ result: null, executionTimeMs: 1, error: 'compile failed' });
+
+    await executeRule({ person: { alter: 35 } }, 'einstufen');
+
+    expect(mockEvaluateSource).toHaveBeenCalledTimes(1);
+  });
+
+  it('#639：规则直接返回输入结构时，cloud 原样透传引擎结果并按策略语言还原', async () => {
+    mockDbExecute.mockResolvedValue([policyRow(`${POLICY_638}
+Regel echo gegeben person als Fahrer liefert Fahrer:
+  gib zurück person.
+`)]);
+
+    const { status, body } = await executeRule({ person: { alter: 35, niveau: 'Hoch' } }, 'echo');
+
+    expect(status).toBe(200);
+    expect(body.output.result).toMatchObject({ age: 35, rank: 'High' });
+    expect(body.localizedResult).toMatchObject({ alter: 35, niveau: 'Hoch' });
   });
 });
 
