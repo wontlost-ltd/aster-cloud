@@ -1,0 +1,49 @@
+# ADR 0051 §9 resolver 存量重编译的一次性镜像
+# Built and tagged as wontlost/aster-resolver-migration:<sha>
+#
+# 由 k3s apps/aster-lang/cloud/resolver-migration 的手动 Job 使用（不在 ArgoCD 应用内，
+# 不参与 PostSync 迁移 Job 与迁移门禁）。入口与 package.json 的 ops:resolver-migration 相同：
+#   node --conditions=import --import tsx scripts/resolver-migration.ts
+# （引擎 ./browser 导出只声明 import 条件，tsx 按 CJS 加载时解析不到）。
+#
+# ★为什么不复用 aster-cloud-migrate：迁移镜像要拷 src/，几乎每次 push 都会产出新 digest，
+#   连带 pin PR → sync → PostSync → 受门控的 Worker 部署。本镜像只在 CI 的窄路径过滤命中时
+#   构建（见 ci.yml build-resolver-migration-image）。
+#
+# 构建上下文的忽略规则见 Dockerfile.resolver-migration.dockerignore（BuildKit 按 Dockerfile 名取用）。
+
+# ── deps：按应用锁文件完整安装，取出与应用逐字节一致的引擎包与运行时依赖的精确版本 ──
+FROM node:24-alpine AS deps
+WORKDIR /src
+RUN corepack enable pnpm
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile --ignore-scripts
+# 运行时清单：引擎用锁文件解析出的那份包（npm pack 成 tgz，与应用同字节）；其余为
+# resolver 代码闭包的外部依赖（esbuild metafile 实测），版本取锁文件实际安装值。
+# @opennextjs/cloudflare 只在 try/catch 内动态导入，Node 下缺失即回退，故不安装。
+RUN mkdir /out \
+ && (cd node_modules/@aster-cloud/aster-lang-ts && npm pack --silent --ignore-scripts --pack-destination /out) \
+ && node -e ' \
+      const fs = require("node:fs"); \
+      const v = (n) => JSON.parse(fs.readFileSync(`node_modules/${n}/package.json`, "utf8")).version; \
+      const tgz = fs.readdirSync("/out").find((f) => f.endsWith(".tgz")); \
+      const deps = { "@aster-cloud/aster-lang-ts": `file:./${tgz}` }; \
+      for (const n of ["dotenv", "drizzle-orm", "postgres", "prom-client", "tsx"]) deps[n] = v(n); \
+      fs.writeFileSync("/out/package.json", JSON.stringify({ name: "aster-resolver-migration", private: true, type: "module", dependencies: deps }, null, 2)); \
+      console.log(JSON.stringify(deps)); \
+    '
+
+# ── runtime ──
+FROM node:24-alpine
+WORKDIR /app
+COPY --from=deps /out/ ./
+RUN npm install --omit=dev --no-audit --no-fund && npm cache clean --force
+# tsx 按 tsconfig.json 的 paths 解析 @/ 别名；复制整个 src/（测试目录已被 dockerignore 排除），
+# 不挑模块：闭包跨 lib/services/db 多个目录，挑选容易随重构漏文件。
+COPY tsconfig.json ./
+COPY src/ ./src/
+COPY scripts/resolver-migration.ts ./scripts/resolver-migration.ts
+
+USER node
+
+CMD ["node", "--conditions=import", "--import", "tsx", "scripts/resolver-migration.ts"]
