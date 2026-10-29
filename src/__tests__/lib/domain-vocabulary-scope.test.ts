@@ -22,6 +22,7 @@ import {
   resolvePolicyVocabularyFromRows,
 } from '@/lib/domain-vocabulary-scope';
 import { assembleDomainVocabularyFromLinks, type TermLikeRow } from '@/lib/domain-vocabulary-assemble';
+import type { IdentifierMapping } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
 
 function row(
   id: string,
@@ -158,6 +159,34 @@ describe('mergeVocabularies', () => {
     const merged = mergeVocabularies([a, b], { id: 'm', locale: 'de-DE' })!;
     expect(merged.id).toBe('m');
     expect(merged.structs.map((m) => m.canonical)).toEqual(['Driver', 'Car']);
+  });
+
+  // #648：字面量宏不能在合并时丢失，否则合并后的词汇不再展开触发词
+  const literal = (localized: string, canonical: string) =>
+    ({ kind: 'literal', localized, canonical }) as unknown as IdentifierMapping;
+
+  it('keeps literals from every group and dedupes identical ones', () => {
+    const a = { ...assembleDomainVocabularyFromLinks([row('1', 'a', 'de', 'struct', 'Driver', 'Fahrer')]), literals: [literal('hoch', '"HIGH"')] };
+    const b = {
+      ...assembleDomainVocabularyFromLinks([row('2', 'b', 'de', 'struct', 'Car', 'Auto')]),
+      literals: [literal('hoch', '"HIGH"'), literal('niedrig', '"LOW"')],
+    };
+    const merged = mergeVocabularies([a, b], { id: 'm', locale: 'de-DE' })!;
+    expect(merged.literals?.map((m) => m.localized)).toEqual(['hoch', 'niedrig']);
+  });
+
+  it('keeps literals when a single group is re-labelled with a locale', () => {
+    const only = { ...assembleDomainVocabularyFromLinks([row('1', 'a', 'de', 'struct', 'Driver', 'Fahrer')]), literals: [literal('hoch', '"HIGH"')] };
+    const merged = mergeVocabularies([only], { locale: 'de-DE' })!;
+    expect(merged.locale).toBe('de-DE');
+    expect(merged.literals).toEqual([literal('hoch', '"HIGH"')]);
+    expect(merged.structs.map((m) => m.canonical)).toEqual(['Driver']);
+  });
+
+  it('adds no literals key when no group has literals', () => {
+    const a = assembleDomainVocabularyFromLinks([row('1', 'a', 'de', 'struct', 'Driver', 'Fahrer')]);
+    const b = assembleDomainVocabularyFromLinks([row('2', 'b', 'de', 'struct', 'Car', 'Auto')]);
+    expect(mergeVocabularies([a, b], { id: 'm' })).not.toHaveProperty('literals');
   });
 });
 
