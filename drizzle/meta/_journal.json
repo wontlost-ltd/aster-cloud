@@ -442,6 +442,13 @@
       "when": 1793242575570,
       "tag": "0061_resolver_migration_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1793273868638,
+      "tag": "0062_schema_drift_alignment",
+      "breakpoints": true
     }
   ]
 }

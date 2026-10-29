@@ -55,7 +55,7 @@ vi.mock('@/lib/prisma', () => {
       insert,
       update,
       transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
-        fn({ update, insert, select })),
+        fn({ update, insert, select, execute: vi.fn(async () => []) })),
       query: { policyVersions: { findFirst: mockVersionsFindFirst } },
     },
     policies: { id: {}, version: {}, content: {} },

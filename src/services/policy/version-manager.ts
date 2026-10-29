@@ -439,6 +439,11 @@ type ChainedVersionFields = Pick<
  * 链尾按 (version DESC, id DESC) 取，与 resolver 迁移判定直接后继的顺序一致；链接 = envelope（存在时）
  * 否则 sourceHash —— 与 Java chainLink 对齐（ADR 0022 §11.5 C1-a），让 alias_set 篡改对版本链可见。
  * 迁移正在改写链尾时本函数等其提交后读到新链接；本函数先提交时迁移的比较后改写会把新行当作后继一并改写。
+ *
+ * 空链没有行可锁：两个事务都会读到"无链尾"而各自写出 version=1、prevHash=null（#646）。
+ * 所以先按策略取事务级 advisory lock，把同一策略的建版本串行化，再锁链尾。不锁 Policy 行：
+ * 避免与 Policy 更新互相阻塞；resolver 迁移只锁版本行、不取这把锁，加锁顺序不会成环。
+ * (policyId, version) 唯一索引是最后一道防线。
  */
 async function insertChainedVersion(
   tx: SnapshotTx,
@@ -446,6 +451,7 @@ async function insertChainedVersion(
   source: string,
   fields: ChainedVersionFields,
 ): Promise<{ id: string; version: number; sourceHash: string }> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`policy-version-chain:${policyId}`}))`);
   const [tail] = await tx
     .select({
       version: policyVersions.version,
