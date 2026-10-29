@@ -18,6 +18,16 @@
 --   SELECT slug, count(*) FROM "Team" GROUP BY 1 HAVING count(*) > 1;
 --
 -- 幂等：全部 IF NOT EXISTS / SET DEFAULT，迁移 Job 重跑是 no-op。
+--
+-- 锁等待上限：ALTER COLUMN / CREATE INDEX 要拿表锁并持有到提交；线上若有长事务（如 resolver 迁移在行锁内
+-- 重编译），排队的 DDL 会连带堵住后面所有读写。drizzle migrator 把全部待跑迁移放在同一事务里执行，
+-- SET LOCAL 在该事务内生效：5 秒拿不到锁即失败回滚，Job 稍后重跑即可。
+--
+-- 回滚：只回滚代码时保留这些索引与默认值即可（旧代码在新库上照常工作）。若要撤掉迁移本身，
+-- 先 DROP INDEX 本文件新建的索引，再删除 "drizzle"."__drizzle_migrations" 中本迁移的记录
+-- （created_at = drizzle/meta/_journal.json 里 0062 的 when），否则之后重新部署不会再建这些索引。
+
+SET LOCAL lock_timeout = '5s';--> statement-breakpoint
 
 -- ① PolicyVersion：版本号唯一（哈希链不分叉的最后一道防线）+ 查询索引
 CREATE UNIQUE INDEX IF NOT EXISTS "PolicyVersion_policyId_version_key" ON "PolicyVersion" USING btree ("policyId","version");--> statement-breakpoint
