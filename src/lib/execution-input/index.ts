@@ -14,20 +14,18 @@
 import { createHash } from 'node:crypto';
 import { loadExecutionVocabulary, loadLiveVocabularyForPolicy } from '@/lib/domain-vocabulary-snapshot';
 import {
+  buildExecutionVocabulary,
   buildMappingModel,
-  buildVocabularyNameIndex,
-  engineName,
   localizeExecutionOutput,
   mapExecutionInput,
-  mapFunctionName,
   type AmbiguousInputField,
   type InputRename,
 } from './mapper';
 import { extractPolicyInputTypes } from './policy-types';
 import { recordInputTypeExtraction } from '@/lib/lexicon-metrics';
 
-export { buildMappingModel, buildVocabularyNameIndex, mapExecutionInput, localizeExecutionOutput, mapFunctionName } from './mapper';
-export type { AmbiguousInputField, InputRename, MappingModel, PolicyInputTypes, VocabularyNameIndex } from './mapper';
+export { buildExecutionVocabulary, buildMappingModel, mapExecutionInput, localizeExecutionOutput } from './mapper';
+export type { AmbiguousInputField, ExecutionVocabulary, InputRename, MappingModel, PolicyInputTypes } from './mapper';
 
 /** 同一对象内本地化键与规范键（或两个同义词）同时出现时的稳定错误码。 */
 export const AMBIGUOUS_INPUT_FIELD_CODE = 'ambiguous_input_field';
@@ -116,22 +114,23 @@ export type PreparedExecutionInput =
       localizeOutput: (value: unknown) => unknown;
     }
   | { ok: false; reason: 'ambiguous'; ambiguous: AmbiguousInputField }
-  | { ok: false; reason: 'type_extraction_failed' }
+  /** diagnostics：引擎诊断码（如 P005、E802），供界面与排障定位。 */
+  | { ok: false; reason: 'type_extraction_failed'; diagnostics: readonly string[] }
   | { ok: false; reason: 'entry_ambiguous'; rules: readonly string[] };
 
 /**
- * 执行前映射输入与函数名。无词汇时零开销（不编译源码）。
- * 类型提取与执行同一份词汇、同一 locale；提取失败时记日志 + 指标并返回 type_extraction_failed。
+ * 执行前映射输入与函数名。无词汇时零开销（不解析源码）。
+ * 类型取自引擎 resolvePolicyTypes，与执行同一份词汇、同一 locale；失败时记日志 + 指标并返回
+ * type_extraction_failed（带引擎诊断码）。
  */
 export function prepareExecutionInput(params: PrepareExecutionInputParams): PreparedExecutionInput {
-  const index = buildVocabularyNameIndex(params.vocabulary);
-  if (!index) {
+  const vocabulary = buildExecutionVocabulary(params.vocabulary);
+  if (!vocabulary) {
     return { ok: true, input: params.input, functionName: params.functionName, renames: [], localizeOutput: (v) => v };
   }
   const extracted = extractPolicyInputTypes(
-    { source: params.source, locale: params.locale, aliasSet: params.aliasSet, vocabulary: params.vocabulary, index },
+    { source: params.source, locale: params.locale, aliasSet: params.aliasSet, vocabulary },
     params.functionName,
-    (name) => engineName(index, name),
   );
   recordInputTypeExtraction(extracted.ok ? 'ok' : extracted.reason);
   if (!extracted.ok) {
@@ -140,16 +139,15 @@ export function prepareExecutionInput(params: PrepareExecutionInputParams): Prep
     });
     return extracted.reason === 'entry_ambiguous'
       ? { ok: false, reason: 'entry_ambiguous', rules: extracted.rules }
-      : { ok: false, reason: 'type_extraction_failed' };
+      : { ok: false, reason: 'type_extraction_failed', diagnostics: extracted.diagnostics };
   }
-  const types = extracted.types;
-  const model = buildMappingModel(index, types);
+  const model = buildMappingModel(vocabulary, extracted.types);
   const mapped = mapExecutionInput(params.input, model);
   if (!mapped.ok) return { ok: false, reason: 'ambiguous', ambiguous: mapped.ambiguous };
   return {
     ok: true,
     input: mapped.input,
-    functionName: mapFunctionName(params.functionName, index),
+    functionName: extracted.functionName,
     renames: mapped.renames,
     localizeOutput: (value) => localizeExecutionOutput(value, model),
   };
@@ -197,7 +195,10 @@ export function preparedInputErrorResponse(
   if (failure.reason === 'entry_ambiguous') {
     return { body: { error: ENTRY_RULE_REQUIRED_MESSAGE, code: ENTRY_RULE_REQUIRED_CODE, rules: failure.rules }, status: 422 };
   }
-  return { body: { error: INPUT_TYPE_EXTRACTION_FAILED_MESSAGE, code: INPUT_TYPE_EXTRACTION_FAILED_CODE }, status: 422 };
+  return {
+    body: { error: INPUT_TYPE_EXTRACTION_FAILED_MESSAGE, code: INPUT_TYPE_EXTRACTION_FAILED_CODE, diagnostics: failure.diagnostics },
+    status: 422,
+  };
 }
 
 /** 歧义的英文说明（界面按 code 本地化）。 */
