@@ -11,7 +11,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from './schema';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { getCloudflareEnvSync, type CloudflareEnv } from './binding';
+import { getCloudflareEnvSync, hasDbBinding, type CloudflareEnv } from './binding';
 
 // 类型导出
 export * from './schema';
@@ -165,7 +165,24 @@ export async function getDbAsync(): Promise<ReturnType<typeof createDb>> {
  * - createDb() 的开销主要是 JavaScript 对象创建，非常轻量
  * - 如果需要在单个请求中复用，可以在请求入口处获取一次并传递
  */
+/**
+ * 冷启动 schema 自愈（db-bootstrap）此前只由登录、dashboard 布局等页面入口触发；只走 API 的流量
+ * （API key、/api/policies/**）在迁移未跑时会一直 500，直到有人打开 dashboard（#650）。
+ * 这里在 Next 服务端首次取连接时后台触发一次：getDb 是同步的，不阻塞本次请求；
+ * 脚本、迁移 Job 与测试进程没有 NEXT_RUNTIME，不触发。无连接来源（build / 预渲染）时不占用这一次。
+ */
+let schemaBootstrapScheduled = false;
+
+function scheduleSchemaBootstrap(): void {
+  if (schemaBootstrapScheduled || !process.env.NEXT_RUNTIME || !hasDbBinding()) return;
+  schemaBootstrapScheduled = true;
+  void import('@/lib/db-bootstrap')
+    .then((bootstrap) => bootstrap.ensureSchemaApplied())
+    .catch((err) => console.error('[db] schema bootstrap failed to start:', err));
+}
+
 export function getDb() {
+  scheduleSchemaBootstrap();
   // 检查是否在请求上下文中已有缓存的连接
   const cachedDb = requestDbStorage.getStore();
   if (cachedDb) {
