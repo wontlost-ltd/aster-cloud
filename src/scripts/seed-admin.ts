@@ -11,8 +11,8 @@
  *   ADMIN_NAME               optional (defaults to "Admin")
  *
  * Usage:
- *   ADMIN_EMAIL=ryan.pang@wontlost.com \
- *   ADMIN_INITIAL_PASSWORD='TDLemon1900' \
+ *   ADMIN_EMAIL=<admin email> \
+ *   ADMIN_INITIAL_PASSWORD='<strong one-time password>' \
  *     pnpm seed:admin
  *
  * Why a script (not a migration): admin provisioning is operator-
