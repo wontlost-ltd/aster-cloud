@@ -74,6 +74,10 @@ export function signRequest(payload: SignaturePayload, secret: string): string {
  * 使用时间安全比较防止时序攻击。
  */
 export function verifySignature(request: SignedRequest, secret: string): boolean {
+  // 空密钥（含全空白）签出的签名任何人都能算，一律视为无效
+  if (!secret || !secret.trim()) {
+    return false;
+  }
   const expectedSignature = signRequest(
     {
       policyId: request.policyId,

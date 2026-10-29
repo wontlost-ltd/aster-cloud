@@ -7,6 +7,9 @@
  * - 验证 Nonce 防重放
  * - 验证哈希匹配
  * - 执行策略（使用数据库源码）
+ *
+ * 套餐与用量：按用户限流（每分钟 30 次），并按执行用量（UsageRecord type=execution）拦截与计量——
+ * aster-api 对 cloud 会话的 HMAC 调用不做任何套餐或用量限制（aster-api#411）。
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -17,6 +20,9 @@ import { AMBIGUOUS_INPUT_FIELD_CODE, ENTRY_RULE_REQUIRED_CODE, INPUT_TYPE_EXTRAC
 import { PolicyAccessDeniedError } from '@/services/policy/version-manager';
 import type { SignedRequest } from '@/services/security/policy-security';
 import { v4 as uuidv4 } from 'uuid';
+import { checkRateLimitDistributed } from '@/lib/rate-limit-distributed';
+import { getRateLimitHeaders, RateLimitPresets } from '@/lib/rate-limit';
+import { executionQuotaRejection, recordExecutionUsage } from '@/lib/execution-quota';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -32,6 +38,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized', code: 'unauthorized', requestId },
         { status: 401 }
+      );
+    }
+
+    const userId = session.user.id;
+
+    // 限流：按用户，跨 isolate 共享计数（KV），与策略执行同一预设（每分钟 30 次）
+    const rate = await checkRateLimitDistributed(`secure-execute:${userId}`, RateLimitPresets.POLICY_EXECUTE);
+    const rateLimitHeaders = getRateLimitHeaders(rate, RateLimitPresets.POLICY_EXECUTE);
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { success: false, error: 'Rate limit exceeded', code: 'rate_limited', retryAfter: rate.retryAfterSeconds, requestId },
+        { status: 429, headers: rateLimitHeaders }
       );
     }
 
@@ -115,26 +133,38 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       'unknown';
     const userAgent = request.headers.get('user-agent') || undefined;
 
-    // 5. 安全执行
+    // 5. 执行配额：aster-api 对 cloud 会话的 HMAC 调用不做套餐/用量限制（aster-api#411），
+    //    与界面执行同口径按 UsageRecord(type=execution) 拦截，Free 每月 1000 次。
+    const quotaRejection = await executionQuotaRejection(userId, rateLimitHeaders);
+    if (quotaRejection) {
+      return quotaRejection;
+    }
+
+    // 6. 安全执行
     const result = await executeSecurely({
       request: signedRequest,
-      userId: session.user.id,
-      tenantId: (session.user as { teamId?: string }).teamId || session.user.id,
+      userId,
+      tenantId: (session.user as { teamId?: string }).teamId || userId,
       ipAddress,
       userAgent,
       requestId,
     });
+    if (result.engineInvoked) {
+      await recordExecutionUsage(userId);
+    }
 
-    // 6. 返回结果
+    // 7. 返回结果
     const status = result.success
       ? 200
       : result.errorCode === 'SIGNATURE_INVALID'
         ? 401
-        : result.errorCode === 'HASH_MISMATCH'
-          ? 409
-          : result.errorCode === 'INPUT_TYPE_EXTRACTION_FAILED' || result.errorCode === 'ENTRY_RULE_REQUIRED'
-            ? 422
-            : 400;
+        : result.errorCode === 'SIGNING_UNAVAILABLE'
+          ? 503
+          : result.errorCode === 'HASH_MISMATCH'
+            ? 409
+            : result.errorCode === 'INPUT_TYPE_EXTRACTION_FAILED' || result.errorCode === 'ENTRY_RULE_REQUIRED'
+              ? 422
+              : 400;
 
     return NextResponse.json(
       {
@@ -162,7 +192,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         ...(result.errorCode === 'ENTRY_RULE_REQUIRED' ? { code: ENTRY_RULE_REQUIRED_CODE, rules: result.entryRules } : {}),
         requestId,
       },
-      { status }
+      { status, headers: rateLimitHeaders }
     );
   } catch (error) {
     // 归属校验失败一律回 404（不是 403）——与兄弟版本路由一致，

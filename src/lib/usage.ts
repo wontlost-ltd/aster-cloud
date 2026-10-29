@@ -51,7 +51,7 @@ function resolvePlan(plan: PlanType, trialEndsAt: Date | null) {
 export async function checkUsageLimit(
   userId: string,
   type: UsageType
-): Promise<{ allowed: boolean; remaining?: number; limit?: number; message?: string }> {
+): Promise<{ allowed: boolean; remaining?: number; limit?: number; used?: number; message?: string }> {
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
     columns: {
@@ -99,6 +99,7 @@ export async function checkUsageLimit(
       allowed: false,
       limit,
       remaining: 0,
+      used: currentCount,
       message: `You've reached your monthly limit of ${limit} ${type}s. Upgrade to unlock more capacity.`,
     };
   }
@@ -107,6 +108,7 @@ export async function checkUsageLimit(
     allowed: true,
     limit,
     remaining: limit - currentCount,
+    used: currentCount,
   };
 }
 

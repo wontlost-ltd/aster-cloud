@@ -51,6 +51,11 @@ export interface SecureExecuteOptions {
 
 export interface SecureExecuteResult {
   success: boolean;
+  /**
+   * 引擎是否已运行并返回（含策略执行错误）；调用方据此计执行用量。执行前被拒、aster-api 拒绝或不可达都不计，
+   * 与 /api/policies/evaluate-source 同口径。
+   */
+  engineInvoked?: boolean;
   result?: unknown;
   error?: string;
   errorCode?: SecurityErrorCode;
@@ -78,9 +83,17 @@ export type SecurityErrorCode =
   | 'AMBIGUOUS_INPUT_FIELD'
   | 'INPUT_TYPE_EXTRACTION_FAILED'
   | 'ENTRY_RULE_REQUIRED'
+  | 'SIGNING_UNAVAILABLE'
   | 'EXECUTION_FAILED';
 
-const SIGNING_SECRET = safeEnv('POLICY_SIGNING_SECRET') || '';
+/**
+ * 请求签名密钥（POLICY_SIGNING_SECRET）。每次调用时读取；缺失或全空白返回 null，调用方必须 fail-closed——
+ * 旧实现 `|| ''` 退化为空串，任何人都能用空密钥算出「合法」签名。
+ */
+function signingSecret(): string | null {
+  const secret = safeEnv('POLICY_SIGNING_SECRET')?.trim();
+  return secret ? secret : null;
+}
 
 type PolicyVersionWithPolicy = PolicyVersion & {
   policy: Policy;
@@ -119,14 +132,23 @@ export async function executeSecurely(
   // 回给调用方，那是攻击者补齐重放所需的最后一块拼图。先判归属，非所有者
   // 拿不到任何信息。
   //
-  // 也不能依赖签名当门禁：SIGNING_SECRET 取自 POLICY_SIGNING_SECRET，而该变量
-  // 在全仓任何配置里都不存在（只有本文件读它），`|| ''` 使其退化为空串——
-  // 任何人都能用空密钥算出合法签名。密钥即便配上也是**全局单一**，不区分
-  // user/tenant/policy，故本质上无法充当归属证明。
+  // 也不能依赖签名当门禁：签名密钥是**全局单一**的，不区分 user/tenant/policy，
+  // 本质上无法充当归属证明。
   await assertPolicyOwnership(request.policyId, userId);
 
-  // 1. 验证签名
-  if (!verifySignature(request, SIGNING_SECRET)) {
+  // 1. 签名密钥未配置 → fail-closed（不消费 nonce、不读版本、不执行）
+  const secret = signingSecret();
+  if (!secret) {
+    console.error('[SecureExecute] POLICY_SIGNING_SECRET 未配置，拒绝执行');
+    return {
+      success: false,
+      error: '安全执行未配置签名密钥',
+      errorCode: 'SIGNING_UNAVAILABLE',
+    };
+  }
+
+  // 2. 验证签名
+  if (!verifySignature(request, secret)) {
     await logSecurityEvent({
       ...eventContext,
       eventType: 'SIGNATURE_INVALID',
@@ -142,7 +164,7 @@ export async function executeSecurely(
     };
   }
 
-  // 2. 验证时间戳
+  // 3. 验证时间戳
   if (!validateTimestamp(request.timestamp)) {
     await logSecurityEvent({
       ...eventContext,
@@ -160,7 +182,7 @@ export async function executeSecurely(
     };
   }
 
-  // 3. 验证 Nonce（防重放）
+  // 4. 验证 Nonce（防重放）
   const nonceResult = await checkAndRecordNonce(
     request.nonce,
     request.policyId,
@@ -184,7 +206,7 @@ export async function executeSecurely(
     };
   }
 
-  // 4. 获取目标版本（支持多版本共存）
+  // 5. 获取目标版本（支持多版本共存）
   let targetVersion: PolicyVersionWithPolicy | null = null;
   let isDeprecated = false;
 
@@ -240,7 +262,7 @@ export async function executeSecurely(
     }
   }
 
-  // 5. 验证哈希匹配。
+  // 6. 验证哈希匹配。
   //   - 首选 envelope 哈希（sourceEnvelopeSha256）：覆盖 content+aliasSet+locale+工具链，
   //     绑定完整编译输入，能区分「同 content 不同别名」的两个版本（否则别名替换/版本漂移
   //     不被哈希察觉）。
@@ -277,7 +299,7 @@ export async function executeSecurely(
     };
   }
 
-  // 6. 执行策略（使用数据库中的源码，不使用请求中的任何源码）
+  // 7. 执行策略（使用数据库中的源码，不使用请求中的任何源码）
   const startTime = Date.now();
   try {
     // 获取源码：优先使用 source 字段，兼容旧版本使用 content 字段
@@ -373,6 +395,7 @@ export async function executeSecurely(
 
     return {
       success: !response.error,
+      engineInvoked: true,
       result: response.result,
       error: response.error ?? undefined,
       executionTimeMs,
