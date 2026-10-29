@@ -1,5 +1,7 @@
 # Truffle 安全架构 - 操作日志
 
+> **已下线（2026-10-30，cloud#655）**：下文涉及的 `secure-execute` 路由、`secure-executor.ts` 与 `POLICY_SIGNING_SECRET` 均已移除，仅作历史记录。
+
 ## 概述
 
 本工作流设计 Aster Policy 的安全执行架构，基于 GraalVM Truffle 运行时，实现纵深防御策略。
