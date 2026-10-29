@@ -428,6 +428,20 @@
       "when": 1793007273316,
       "tag": "0059_user_vocabulary_version",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1793236549259,
+      "tag": "0060_policy_version_scopes_json",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1793242575570,
+      "tag": "0061_resolver_migration_columns",
+      "breakpoints": true
     }
   ]
 }
