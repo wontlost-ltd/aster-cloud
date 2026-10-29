@@ -94,8 +94,10 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
       // 从 versions 中找到对应的 version number
       const ver = (versions as PolicyVersionInfo[]).find((v) => v.id === versionId);
       if (ver) {
-        if (!(await submitForApproval(ver.version, releaseNote))) throw new Error(t('submitFailed'));
-        toast.success(t('versionSubmitted', { version: ver.version }));
+        // 失败时 hook 已写 actionError（列表上方横幅，带服务端原因）；不再抛出，避免列表再弹一条通用 toast
+        if (await submitForApproval(ver.version, releaseNote)) {
+          toast.success(t('versionSubmitted', { version: ver.version }));
+        }
       }
     },
     [versions, submitForApproval, t]
@@ -136,8 +138,10 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
     async (versionId: string, comment?: string) => {
       const ver = (versions as PolicyVersionInfo[]).find((v) => v.id === versionId);
       if (ver && comment) {
-        if (!(await reject(ver.version, comment))) throw new Error(t('submitFailed'));
-        toast.success(t('versionRejected', { version: ver.version }));
+        // 同上：失败只由 actionError 横幅提示一次
+        if (await reject(ver.version, comment)) {
+          toast.success(t('versionRejected', { version: ver.version }));
+        }
       }
     },
     [versions, reject, t]

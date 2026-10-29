@@ -323,6 +323,8 @@ export function usePolicyVersions({
   // 批准版本：失败只返回结构化结果，由调用方按错误码提示，不写 actionError（避免重复提示）。
   const approve = useCallback(
     async (version: number, comment?: string): Promise<ApproveResult> => {
+      // 新操作开始即清掉上一次操作的失败提示（成功后横幅不残留）
+      setActionError(null);
       try {
         const response = await fetch(
           `/api/v1/policies/${policyId}/versions/${version}/approve`,

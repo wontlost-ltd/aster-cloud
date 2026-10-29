@@ -56,6 +56,27 @@ describe('usePolicyVersions 操作失败', () => {
     expect(result.current.actionError).toBeNull();
   });
 
+  it('失败横幅在下一次操作成功后自动清除', async () => {
+    const { result } = await mountLoaded();
+    fetchMock.mockResolvedValueOnce(json({ error: 'nope' }, 403));
+    await act(async () => { await result.current.setDefault(2); });
+    expect(result.current.actionError).toBe('nope');
+    fetchMock
+      .mockResolvedValueOnce(json({ ok: true }))
+      .mockResolvedValueOnce(json({ versions: VERSIONS }));
+    await act(async () => { await result.current.submitForApproval(2); });
+    expect(result.current.actionError).toBeNull();
+  });
+
+  it('批准开始时同样清除上一次的失败横幅', async () => {
+    const { result } = await mountLoaded();
+    fetchMock.mockResolvedValueOnce(json({ error: 'nope' }, 403));
+    await act(async () => { await result.current.setDefault(2); });
+    fetchMock.mockResolvedValueOnce(json({ error: 'segregation_of_duties' }, 403));
+    await act(async () => { await result.current.approve(2); });
+    expect(result.current.actionError).toBeNull();
+  });
+
   it('列表加载失败仍写 error', async () => {
     fetchMock.mockResolvedValueOnce(json({ error: 'load failed' }, 500));
     const { result } = renderHook(() => usePolicyVersions({ policyId: 'pol-1' }));
