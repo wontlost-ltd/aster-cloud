@@ -9,6 +9,7 @@
  *   3. 最后才按源码关键词识别（detectCNLLocale，启发式）。
  */
 
+import { createHash } from 'node:crypto';
 import { computeSourceEnvelope } from '@/lib/policy-alias';
 import { detectCNLLocale } from '@/services/policy/cnl-executor';
 import { CNL_LOCALES } from '@/lib/cnl-locale';
@@ -28,27 +29,44 @@ export interface StoredVersionLocaleInput {
   aliasSet: string | null;
   sourceEnvelopeSha256: string | null;
   sourceToolchainId: string | null;
-  /** 封印 envelope 时的词汇段；NULL = ADR 0051 前的旧行，无法重算。 */
+  /** 封印 envelope 时的词汇段；NULL = ADR 0051 前的旧行（4 段 envelope，待迁移回填）。 */
   sourceScopesJson: string | null;
   vocabularySnapshotIds: unknown;
 }
 
 /**
- * 从 envelope 反推保存时的编译 locale；无 envelope、旧行缺封印词汇段（待 resolver 迁移回填）
- * 或都不匹配时返回 undefined。
+ * ADR 0051 之前的 4 段 envelope（content, aliasSetJson, locale, toolchainId），与 Java
+ * PolicyVersion.computeLegacySourceEnvelope 逐字节一致。只供旧行（sourceScopesJson 为 NULL）
+ * 反推编译 locale，直到 resolver 迁移回填；新行一律用 5 段 computeSourceEnvelope。
+ */
+function legacyFourSegmentEnvelope(
+  content: string | null,
+  aliasSetJson: string | null,
+  locale: string | null,
+  toolchainId: string | null,
+): string {
+  const hash = createHash('sha256');
+  for (const field of [content, aliasSetJson, locale, toolchainId]) {
+    const bytes = Buffer.from(field ?? '', 'utf8');
+    hash.update(`${bytes.length}:`, 'ascii');
+    hash.update(bytes);
+    hash.update('|', 'ascii');
+  }
+  return hash.digest('hex');
+}
+
+/**
+ * 从 envelope 反推保存时的编译 locale：有封印词汇段时按 5 段重算；旧行（NULL）按 4 段旧格式
+ * 与其记录的工具链重算。无 envelope 或都不匹配时返回 undefined。
  */
 export function recordedCompileLocale(version: StoredVersionLocaleInput): string | undefined {
-  if (!version.sourceEnvelopeSha256 || version.sourceScopesJson === null) return undefined;
-  return RECORDED_LOCALE_CANDIDATES.find(
-    (locale) =>
-      computeSourceEnvelope(
-        version.source,
-        version.aliasSet,
-        locale,
-        version.sourceToolchainId,
-        version.sourceScopesJson,
-      ) === version.sourceEnvelopeSha256,
-  );
+  if (!version.sourceEnvelopeSha256) return undefined;
+  const { source, aliasSet, sourceToolchainId, sourceScopesJson } = version;
+  const envelopeFor = (locale: string) =>
+    sourceScopesJson === null
+      ? legacyFourSegmentEnvelope(source, aliasSet, locale, sourceToolchainId)
+      : computeSourceEnvelope(source, aliasSet, locale, sourceToolchainId, sourceScopesJson);
+  return RECORDED_LOCALE_CANDIDATES.find((locale) => envelopeFor(locale) === version.sourceEnvelopeSha256);
 }
 
 /** 快照引用的 locale 唯一时返回该值，否则 undefined。 */
@@ -67,9 +85,9 @@ function uniqueSnapshotLocale(refs: unknown): string | undefined {
 export function resolveStoredVersionLocale(version: StoredVersionLocaleInput): string {
   const recorded = recordedCompileLocale(version);
   if (!recorded && version.sourceEnvelopeSha256) {
-    // 有 envelope 却反推不出：旧版本保存时用了不受支持的 locale，或是 ADR 0051 前的行
-    // （4 段 envelope、无封印词汇段，待迁移），只能走兜底链。
-    console.warn('[policy-version-locale] recorded compile locale not recoverable; falling back');
+    // 有 envelope 却反推不出（如旧版本保存时用了不受支持的 locale）：只能走兜底链。
+    // 旧数据上属预期情形，记 debug 不刷告警。
+    console.debug('[policy-version-locale] recorded compile locale not recoverable; falling back');
   }
   return choosePolicyLocale({
     recorded,

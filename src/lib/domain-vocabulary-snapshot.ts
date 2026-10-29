@@ -42,7 +42,6 @@ import {
 } from '@/lib/domain-vocabulary-scope';
 import { VocabularyError } from '@/lib/domain-vocabulary';
 import { bypassQueryCache } from '@/db/fresh-read';
-import { vocabularyScopesJson } from '@/lib/policy-alias';
 
 export interface SnapshotRef {
   snapshotId: string;
@@ -325,18 +324,6 @@ export async function loadLiveVocabularyForPolicy(
   const groups = await loadActiveLinksGroupedByDomainLocale({ ownerType: 'user', ownerId });
   const rows = [...groups.values()].flat().map(toTermLikeRow);
   return resolvePolicyVocabularyFromRows(rows, policy);
-}
-
-/**
- * 新建版本 envelope 的词汇段（ADR 0051 §7）：新版本是草稿，取作者现行词汇中作用域内部分，
- * 与编译门禁、草稿执行同源。加载失败或词汇非法直接抛出——envelope 必须如实记录编译输入，
- * 不能退化为「无词汇」。调用方在事务外调用（避免事务内再占一条连接）。
- */
-export async function loadLiveVocabularyScopesJson(
-  ownerId: string,
-  policy: PolicyVocabularyContext,
-): Promise<string> {
-  return vocabularyScopesJson(await loadLiveVocabularyForPolicy(ownerId, policy));
 }
 
 /**

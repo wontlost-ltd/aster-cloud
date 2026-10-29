@@ -9,11 +9,12 @@ import {
   assertCompilable,
   PolicyCompileError,
 } from '@/services/policy/version-manager';
-import { makeCompileValidator } from '@/lib/policy-compile-validator';
+import { loadSaveVocabulary, makeCompileValidator } from '@/lib/policy-compile-validator';
 import {
   aliasInvalidResponse,
   compileGateErrorResponse,
   structuralGrantRequiredResponse,
+  vocabularyScopeInvalidResponse,
 } from '@/lib/policy-compile-response';
 import { getStructuralAliasGrant, buildAliasReservedForUser } from '@/lib/structural-alias-grants';
 import { canonicalAliasJson } from '@/lib/policy-alias';
@@ -22,7 +23,6 @@ import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { softDeletePolicy } from '@/lib/policy-lifecycle';
 import { invalidatePolicyCache } from '@/lib/cache';
 import { parseCompileLocale } from '@/lib/cnl-locale';
-import { loadLiveVocabularyScopesJson } from '@/lib/domain-vocabulary-snapshot';
 
 
 interface RouteParams {
@@ -284,8 +284,12 @@ export async function PUT(req: Request, { params }: RouteParams) {
     // 用与 createVersion 一致的 aliasSetInput（effective 别名）编译，避免语义分裂。
     // 有 error 诊断抛 PolicyCompileError → 下方 catch 转 400（检查不可用时 503）。
     // 通过时得到的治理档案 id 随新版本落库。
-    const profile = newVersion
-      ? await assertCompilable(makeCompileValidator(session.user.id), {
+    // 作者词汇每次保存只加载一次，编译门禁与 envelope 封印共用（ADR 0051 §7）。
+    const saveVocabulary = newVersion
+      ? await loadSaveVocabulary(session.user.id, { source: versionSource, locale: compileLocale })
+      : null;
+    const profile = saveVocabulary
+      ? await assertCompilable(makeCompileValidator(session.user.id, saveVocabulary.vocabulary), {
         source: versionSource,
         locale: compileLocale,
         aliasSet: aliasSetInput,
@@ -296,20 +300,15 @@ export async function PUT(req: Request, { params }: RouteParams) {
     const aliasReserved = newVersion && aliasSetInput
       ? await buildAliasReservedForUser(session.user.id, compileLocale)
       : undefined;
-    // envelope 词汇段同样在事务外读取。
-    const scopesJson = newVersion
-      ? await loadLiveVocabularyScopesJson(session.user.id, { source: versionSource, locale: compileLocale })
-      : '';
-
     const policy = await db.transaction(async (tx) => {
-      if (newVersion) {
+      if (saveVocabulary) {
         const createdVersion = await createVersion({
           policyId: id,
           source: versionSource,
           createdBy: session.user.id,
           releaseNote: undefined,
           locale: compileLocale,
-          scopesJson,
+          scopesJson: saveVocabulary.scopesJson,
           aliasSet: aliasSetInput,
           aliasReserved,
           allowStructuralAliases: allowStructural,
@@ -339,6 +338,8 @@ export async function PUT(req: Request, { params }: RouteParams) {
     // 别名校验失败（如结构词授权已撤销）是用户可修正的输入错误，不是 500。
     const aliasInvalid = aliasInvalidResponse(error);
     if (aliasInvalid) return aliasInvalid;
+    const vocabularyInvalid = vocabularyScopeInvalidResponse(error);
+    if (vocabularyInvalid) return vocabularyInvalid;
     console.error('Error updating policy:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

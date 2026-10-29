@@ -3,6 +3,7 @@
  * envelope 第 5 段取封印时落库的 sourceScopesJson（ADR 0051 §7），不按现行/快照词汇重推。
  */
 import { describe, it, expect, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import { IdentifierKind, type DomainVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
 import { computeSourceEnvelope, vocabularyScopesJson } from '@/lib/policy-alias';
 import { recordedCompileLocale, resolveStoredVersionLocale } from '@/lib/policy-version-locale';
@@ -59,11 +60,39 @@ describe('recordedCompileLocale', () => {
     ).toBe('en-US');
   });
 
-  it('returns undefined without an envelope, without the sealed scopes (pre-ADR 0051 row) or when nothing matches', () => {
+  it('returns undefined without an envelope or when nothing matches', () => {
     expect(recordedCompileLocale(stored())).toBeUndefined();
     expect(recordedCompileLocale(stored({ sourceEnvelopeSha256: 'deadbeef' }))).toBeUndefined();
-    const envelope = computeSourceEnvelope(DE_SOURCE, null, 'en-US', 'tc-1', '');
-    expect(recordedCompileLocale(stored({ sourceEnvelopeSha256: envelope, sourceScopesJson: null }))).toBeUndefined();
+    expect(recordedCompileLocale(stored({ sourceEnvelopeSha256: 'deadbeef', sourceScopesJson: null }))).toBeUndefined();
+  });
+
+  describe('旧行（sourceScopesJson 为 NULL）按 ADR 0051 前的 4 段 envelope 反推', () => {
+    /** 与 Java PolicyVersion.computeLegacySourceEnvelope 相同的分帧（独立实现，由下方锚点钉住）。 */
+    const legacy = (...fields: Array<string | null>) =>
+      createHash('sha256')
+        .update(fields.map((f) => `${Buffer.byteLength(f ?? '', 'utf8')}:${f ?? ''}|`).join(''), 'utf8')
+        .digest('hex');
+    const LEGACY_TC = 'abi=1.0;core=ts;validator=1;build=abc123';
+
+    it('分帧与既有 4 段锚点一致（printf "1:a|0:|0:|0:|" | openssl dgst -sha256）', () => {
+      expect(legacy('a', null, '', '')).toBe('68fbcc50d3fabae237194d8c0f3e0795308e3f317e6244252ac5609be49620a9');
+    });
+
+    it.each(['en-US', 'de-DE', 'zh-CN', 'de'])('recovers %s with the stored legacy toolchain id', (locale) => {
+      const envelope = legacy(DE_SOURCE, ALIAS, locale, LEGACY_TC);
+      expect(
+        recordedCompileLocale(
+          stored({ aliasSet: ALIAS, sourceEnvelopeSha256: envelope, sourceToolchainId: LEGACY_TC, sourceScopesJson: null }),
+        ),
+      ).toBe(locale);
+    });
+
+    it('有封印词汇段的新行不接受 4 段 envelope', () => {
+      const envelope = legacy(DE_SOURCE, null, 'en-US', LEGACY_TC);
+      expect(
+        recordedCompileLocale(stored({ sourceEnvelopeSha256: envelope, sourceToolchainId: LEGACY_TC, sourceScopesJson: '' })),
+      ).toBeUndefined();
+    });
   });
 });
 
@@ -80,7 +109,8 @@ describe('resolveStoredVersionLocale', () => {
     expect(resolveStoredVersionLocale(stored({ source: 'Module x.\n' }))).toBe('en-US');
   });
 
-  it('NULL sealed scopes (pre-ADR 0051 row): warns and falls back as before', () => {
+  it('NULL sealed scopes and no legacy match: falls back to snapshot locale, then source detection (debug only)', () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined);
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const envelope = computeSourceEnvelope(DE_SOURCE, null, 'en-US', 'tc-1', '');
     const refs = [{ locale: 'zh-CN' }];
@@ -88,15 +118,17 @@ describe('resolveStoredVersionLocale', () => {
       resolveStoredVersionLocale(stored({ sourceEnvelopeSha256: envelope, sourceScopesJson: null, vocabularySnapshotIds: refs })),
     ).toBe('zh-CN');
     expect(resolveStoredVersionLocale(stored({ sourceEnvelopeSha256: envelope, sourceScopesJson: null }))).toBe('de-DE');
-    expect(warn).toHaveBeenCalledTimes(2);
+    expect(debug).toHaveBeenCalledTimes(2);
+    expect(warn).not.toHaveBeenCalled();
+    debug.mockRestore();
     warn.mockRestore();
   });
 
-  it('warns when an envelope exists but its locale is not recoverable (legacy unsupported locale)', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  it('logs at debug when an envelope exists but its locale is not recoverable (legacy unsupported locale)', () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined);
     const envelope = computeSourceEnvelope(DE_SOURCE, null, 'en-GB', 'tc-1', '');
     expect(resolveStoredVersionLocale(stored({ sourceEnvelopeSha256: envelope }))).toBe('de-DE');
-    expect(warn).toHaveBeenCalledTimes(1);
-    warn.mockRestore();
+    expect(debug).toHaveBeenCalledTimes(1);
+    debug.mockRestore();
   });
 });

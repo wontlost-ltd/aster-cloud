@@ -23,15 +23,19 @@ vi.mock('@/lib/prisma', () => ({
   policies: { id: {}, userId: {}, deletedAt: {} },
 }));
 vi.mock('@/lib/policy-freeze', () => ({ isPolicyFrozen: vi.fn() }));
-// envelope 词汇段（ADR 0051 §7）：作者现行词汇的规范 scopes JSON。
-vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
-  loadLiveVocabularyScopesJson: vi.fn(async () => '{"scopes":"live"}'),
+// 作者词汇每次保存加载一次（ADR 0051 §7），同一份交给编译门禁与 envelope 封印。
+vi.mock('@/lib/policy-compile-validator', () => ({
+  loadSaveVocabulary: vi.fn(),
+  makeCompileValidator: vi.fn(() => vi.fn()),
 }));
 
 import { POST } from '@/app/api/v1/policies/[id]/versions/route';
 import { auth } from '@/auth';
 import { createVersion } from '@/services/policy/version-manager';
-import { loadLiveVocabularyScopesJson } from '@/lib/domain-vocabulary-snapshot';
+import { loadSaveVocabulary, makeCompileValidator } from '@/lib/policy-compile-validator';
+import { VocabularyScopeError } from '@aster-cloud/aster-lang-ts/browser';
+
+const SAVE_VOCABULARY = { vocabulary: { id: 'v' }, scopesJson: '{"scopes":"live"}' } as never;
 import {
   getStructuralAliasGrant,
   buildAliasReservedForUser,
@@ -51,6 +55,7 @@ const params = { params: Promise.resolve({ id: 'p1' }) };
 describe('POST /api/v1/policies/[id]/versions — aliasSet 支持', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(loadSaveVocabulary).mockResolvedValue(SAVE_VOCABULARY);
     vi.mocked(auth).mockResolvedValue({ user: { id: 'user-1' } } as never);
     // 默认：调用者拥有该策略且未冻结（授权通过）。
     vi.mocked(db.query.policies.findFirst).mockResolvedValue({ id: 'p1' } as never);
@@ -100,10 +105,22 @@ describe('POST /api/v1/policies/[id]/versions — aliasSet 支持', () => {
     expect(buildAliasReservedForUser).not.toHaveBeenCalled();
   });
 
-  it('envelope 词汇段取作者现行词汇（按源码与编译 locale）', async () => {
+  it('作者词汇只加载一次（按源码与编译 locale），同一份交给编译门禁与 envelope 封印', async () => {
     await POST(req({ source: 'Module X.', locale: 'de' }), params);
-    expect(loadLiveVocabularyScopesJson).toHaveBeenCalledWith('user-1', { source: 'Module X.', locale: 'de-DE' });
+    expect(loadSaveVocabulary).toHaveBeenCalledTimes(1);
+    expect(loadSaveVocabulary).toHaveBeenCalledWith('user-1', { source: 'Module X.', locale: 'de-DE' });
+    expect(makeCompileValidator).toHaveBeenCalledWith('user-1', { id: 'v' });
     expect(createVersion).toHaveBeenCalledWith(expect.objectContaining({ scopesJson: '{"scopes":"live"}' }));
+  });
+
+  it('作者词汇非法（字段缺 parent）→ 400 vocabulary_scope_invalid，不建版本', async () => {
+    vi.mocked(loadSaveVocabulary).mockRejectedValueOnce(
+      new VocabularyScopeError('field_parent_required', 'field "alter" has no parent struct'),
+    );
+    const r = await POST(req({ source: 'Module X.' }), params);
+    expect(r.status).toBe(400);
+    expect(await r.json()).toMatchObject({ code: 'vocabulary_scope_invalid', reason: 'field_parent_required' });
+    expect(createVersion).not.toHaveBeenCalled();
   });
 
   it('#609：别名校验失败 → 400 alias_invalid，而非 500', async () => {

@@ -534,6 +534,7 @@ export function PolicyForm({
                 policy_frozen: t('saveErrorCodes.policy_frozen'),
                 unauthorized: t('saveErrorCodes.unauthorized'),
                 unsupported_locale: t('saveErrorCodes.unsupported_locale'),
+                vocabulary_scope_invalid: t('saveErrorCodes.vocabulary_scope_invalid'),
               }, result.message),
             });
           }
@@ -728,6 +729,7 @@ export function PolicyForm({
               compile_unavailable: t('saveErrorCodes.compile_unavailable'),
               policy_frozen: t('saveErrorCodes.policy_frozen'),
               unauthorized: t('saveErrorCodes.unauthorized'),
+              vocabulary_scope_invalid: t('saveErrorCodes.vocabulary_scope_invalid'),
             }, serverError.message)}
             {serverError.upgrade && CLIENT_CAPABILITIES.billing && (
               <Link

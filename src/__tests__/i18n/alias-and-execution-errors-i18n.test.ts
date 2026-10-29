@@ -28,6 +28,7 @@ const KEYS = [
   ...ALIAS_ISSUE_CODES.map((c) => `policies.form.aliases.errors.${c}`),
   'policies.form.aliasesInvalidBeforeSaving',
   'policies.form.saveErrorCodes.alias_invalid',
+  'policies.form.saveErrorCodes.vocabulary_scope_invalid',
   'policies.execute.engineErrorDetail',
   'policies.execute.ambiguousInputField',
   'policies.execute.ambiguousInputSpelling',

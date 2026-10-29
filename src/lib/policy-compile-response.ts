@@ -27,6 +27,28 @@ export function aliasInvalidResponse(error: unknown): NextResponse | null {
   );
 }
 
+/** 作者词汇无法构成作用域（引擎 VocabularyScopeError）的稳定错误码。 */
+export const VOCABULARY_SCOPE_INVALID_CODE = 'vocabulary_scope_invalid';
+
+/**
+ * 保存入口 catch 分支共用：作者词汇非法（字段/枚举成员缺 parent、字面量宏冲突）→ 400
+ * vocabulary_scope_invalid，reason 为引擎错误码；其它错误返回 null。按 name 判别而不 instanceof，
+ * 不依赖引擎模块实例（打包/测试 mock 下可能不是同一个类）。
+ */
+export function vocabularyScopeInvalidResponse(error: unknown): NextResponse | null {
+  if (!(error instanceof Error) || error.name !== 'VocabularyScopeError') return null;
+  const reason = (error as Error & { code?: unknown }).code;
+  return NextResponse.json(
+    {
+      error: 'Invalid domain vocabulary',
+      code: VOCABULARY_SCOPE_INVALID_CODE,
+      reason: typeof reason === 'string' ? reason : undefined,
+      message: error.message,
+    },
+    { status: 400 },
+  );
+}
+
 /**
  * 新版本含结构词别名但当前没有有效授权（未授予或已撤销）→ 400 alias_invalid。
  * reason 供 API 调用方区分；界面按 code 本地化。

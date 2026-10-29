@@ -333,7 +333,7 @@ export interface CreateVersionParams {
   toolchainId?: string;
   /**
    * envelope 第 5 段（ADR 0051 §7）：作者现行词汇作用域的规范 JSON，无词汇为空串。
-   * 由调用方在事务外用 loadLiveVocabularyScopesJson 取得（新版本是草稿，取现行词汇）。
+   * 由调用方在事务外用 loadSaveVocabulary 取得（新版本是草稿，取现行词汇；与编译门禁同一份）。
    */
   scopesJson: string;
   /**

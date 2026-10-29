@@ -97,9 +97,18 @@ vi.mock('@/services/pii/detector', () => ({
   detectPII: vi.fn().mockReturnValue({ detectedTypes: [] }),
 }));
 
-// envelope 词汇段（ADR 0051 §7）：作者现行词汇的规范 scopes JSON，事务外读取。
-vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
-  loadLiveVocabularyScopesJson: vi.fn(async () => '{"scopes":"live"}'),
+// 作者词汇每次保存加载一次（ADR 0051 §7）：同一份交给编译门禁与 envelope 封印，事务外读取。
+const { mockLoadSaveVocabulary, mockMakeCompileValidator, SAVE_VOCABULARY } = vi.hoisted(() => {
+  const SAVE_VOCABULARY = { vocabulary: { id: 'v' }, scopesJson: '{"scopes":"live"}' };
+  return {
+    SAVE_VOCABULARY,
+    mockLoadSaveVocabulary: vi.fn(),
+    mockMakeCompileValidator: vi.fn(() => vi.fn()),
+  };
+});
+vi.mock('@/lib/policy-compile-validator', () => ({
+  loadSaveVocabulary: mockLoadSaveVocabulary,
+  makeCompileValidator: mockMakeCompileValidator,
 }));
 
 vi.mock('@/services/policy/version-manager', () => ({
@@ -175,6 +184,7 @@ import { softDeletePolicy } from '@/lib/policy-lifecycle';
 import { invalidatePolicyCache } from '@/lib/cache';
 import { detectPII } from '@/services/pii/detector';
 import type { PIIDetectionResult } from '@/services/pii/detector';
+import { VocabularyScopeError } from '@aster-cloud/aster-lang-ts/browser';
 
 const mockGetSession = vi.mocked(getSession);
 const mockGetPolicyFreezeStatus = vi.mocked(getPolicyFreezeStatus);
@@ -271,6 +281,7 @@ function mockPolicyVersion(overrides: Record<string, unknown> = {}) {
 describe('Policies API - Drizzle Migration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockLoadSaveVocabulary.mockResolvedValue(SAVE_VOCABULARY);
     mockGetSession.mockResolvedValue(DEFAULT_SESSION);
     // Default freeze status: no freezes
     mockGetPolicyFreezeStatus.mockResolvedValue({
@@ -464,10 +475,36 @@ describe('Policies API - Drizzle Migration', () => {
       const response = await POST(makeRequest('http://localhost/api/policies', 'POST', validBody));
 
       expect(response.status).toBe(201);
-      // envelope 词汇段取作者现行词汇，随首个版本落库
+      // 作者词汇只加载一次：同一份交给编译门禁，词汇段随首个版本落库
+      expect(mockLoadSaveVocabulary).toHaveBeenCalledTimes(1);
+      expect(mockMakeCompileValidator).toHaveBeenCalledWith(expect.any(String), SAVE_VOCABULARY.vocabulary);
       expect(mockCreateVersion).toHaveBeenCalledWith(
         expect.objectContaining({ scopesJson: '{"scopes":"live"}' }),
       );
+    });
+
+    it('作者词汇非法（枚举值缺 parent）→ 400 vocabulary_scope_invalid，不编译不落库', async () => {
+      mockLoadSaveVocabulary.mockRejectedValueOnce(
+        new VocabularyScopeError('member_parent_required', 'enum value "Hoch" has no parent enum'),
+      );
+      const response = await POST(makeRequest('http://localhost/api/policies', 'POST', validBody));
+      const body = await response.json();
+      expect(response.status).toBe(400);
+      expect(body.code).toBe('vocabulary_scope_invalid');
+      expect(body.reason).toBe('member_parent_required');
+      expect(mockAssertCompilable).not.toHaveBeenCalled();
+      expect(mockCreateVersion).not.toHaveBeenCalled();
+    });
+
+    it('作者词汇加载失败 → 与编译门禁同一错误 503 compile_unavailable，不落库', async () => {
+      class Unavailable extends mockPolicyCompileError {
+        readonly retryAfterSeconds = 5;
+      }
+      mockLoadSaveVocabulary.mockRejectedValueOnce(new Unavailable('Policy compilation is temporarily unavailable.'));
+      const response = await POST(makeRequest('http://localhost/api/policies', 'POST', validBody));
+      expect(response.status).toBe(503);
+      expect((await response.json()).code).toBe('compile_unavailable');
+      expect(mockCreateVersion).not.toHaveBeenCalled();
     });
 
     it('编译门禁抛 PolicyCompileError → 路由返回 400 compile_error（事务外 preflight）', async () => {

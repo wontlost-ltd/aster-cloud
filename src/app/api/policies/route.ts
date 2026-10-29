@@ -11,11 +11,12 @@ import {
   assertCompilable,
   PolicyCompileError,
 } from '@/services/policy/version-manager';
-import { makeCompileValidator } from '@/lib/policy-compile-validator';
+import { loadSaveVocabulary, makeCompileValidator } from '@/lib/policy-compile-validator';
 import {
   aliasInvalidResponse,
   compileGateErrorResponse,
   structuralGrantRequiredResponse,
+  vocabularyScopeInvalidResponse,
 } from '@/lib/policy-compile-response';
 import { hasStructuralAliases } from '@/lib/policy-alias-shared';
 import {
@@ -26,7 +27,6 @@ import { errorEnvelope } from '@/lib/api/error-envelope';
 import { invalidatePolicyCache } from '@/lib/cache';
 import { eq, isNull, desc, sql, and, inArray } from 'drizzle-orm';
 import { parseCompileLocale } from '@/lib/cnl-locale';
-import { loadLiveVocabularyScopesJson } from '@/lib/domain-vocabulary-snapshot';
 
 // GET /api/policies - List user's policies
 export async function GET() {
@@ -278,17 +278,13 @@ export async function POST(req: Request) {
     // 编译门禁在开启事务**之前** preflight——避免事务内网络调用（慢/超时会持锁
     // + 挂着已插入行等 30s）。有 error 诊断抛 PolicyCompileError → 下方 catch 转 400（检查不可用时 503）。
     // 通过时得到的治理档案 id 随首个版本落库。
-    const profile = await assertCompilable(makeCompileValidator(session.user.id), {
+    // 作者词汇只加载一次，编译门禁与 envelope 封印共用（ADR 0051 §7）；同在事务外。
+    const saveVocabulary = await loadSaveVocabulary(session.user.id, { source: content, locale: compileLocale });
+    const profile = await assertCompilable(makeCompileValidator(session.user.id, saveVocabulary.vocabulary), {
       source: content,
       locale: compileLocale,
       aliasSet: aliasSetInput,
       allowStructural,
-    });
-
-    // envelope 词汇段在事务外读取（事务内经全局 db 读要第二条连接）。
-    const scopesJson = await loadLiveVocabularyScopesJson(session.user.id, {
-      source: content,
-      locale: compileLocale,
     });
 
     const policy = await db.transaction(async (tx) => {
@@ -304,7 +300,7 @@ export async function POST(req: Request) {
         createdBy: session.user.id,
         releaseNote: undefined,
         locale: compileLocale,
-        scopesJson,
+        scopesJson: saveVocabulary.scopesJson,
         aliasSet: aliasSetInput,
         aliasReserved,
         allowStructuralAliases: allowStructural,
@@ -327,6 +323,8 @@ export async function POST(req: Request) {
     // aliasSet 校验失败是用户可修正的输入错误（4xx），带稳定码 alias_invalid 供前端本地化。
     const aliasInvalid = aliasInvalidResponse(error);
     if (aliasInvalid) return aliasInvalid;
+    const vocabularyInvalid = vocabularyScopeInvalidResponse(error);
+    if (vocabularyInvalid) return vocabularyInvalid;
     // H2 信息泄露修复：此前 500 把 error.stack + postgres 的 detail/hint/constraint/
     // table/column + 全部 error keys 直接回给客户端（schema/约束/内部路径外泄）。
     // 改为：完整细节只进服务端日志并以 requestId 关联，响应仅含稳定 code + requestId

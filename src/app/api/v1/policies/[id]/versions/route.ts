@@ -16,8 +16,12 @@ import {
   PolicyCompileError,
 } from '@/services/policy/version-manager';
 import { canReviewPolicyVersions } from '@/services/policy/version-approval-rules';
-import { makeCompileValidator } from '@/lib/policy-compile-validator';
-import { aliasInvalidResponse, compileGateErrorResponse } from '@/lib/policy-compile-response';
+import { loadSaveVocabulary, makeCompileValidator } from '@/lib/policy-compile-validator';
+import {
+  aliasInvalidResponse,
+  compileGateErrorResponse,
+  vocabularyScopeInvalidResponse,
+} from '@/lib/policy-compile-response';
 import {
   getStructuralAliasGrant,
   buildAliasReservedForUser,
@@ -26,7 +30,6 @@ import { db, policies } from '@/lib/prisma';
 import { and, eq, isNull } from 'drizzle-orm';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { parseCompileLocale } from '@/lib/cnl-locale';
-import { loadLiveVocabularyScopesJson } from '@/lib/domain-vocabulary-snapshot';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -171,7 +174,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       ? await buildAliasReservedForUser(session.user.id, compileLocale)
       : undefined;
 
-    const scopesJson = await loadLiveVocabularyScopesJson(session.user.id, { source, locale: compileLocale });
+    // 作者词汇只加载一次，编译门禁与 envelope 封印共用（ADR 0051 §7）。
+    const saveVocabulary = await loadSaveVocabulary(session.user.id, { source, locale: compileLocale });
 
     const result = await createVersion({
       policyId: id,
@@ -179,11 +183,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       createdBy: session.user.id,
       releaseNote,
       locale: compileLocale,
-      scopesJson,
+      scopesJson: saveVocabulary.scopesJson,
       aliasSet: aliasSetInput,
       aliasReserved,
       allowStructuralAliases: allowStructural,
-      validateCompilable: makeCompileValidator(session.user.id),
+      validateCompilable: makeCompileValidator(session.user.id, saveVocabulary.vocabulary),
     });
 
     return NextResponse.json(result, { status: 201 });
@@ -194,6 +198,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
     const aliasInvalid = aliasInvalidResponse(error);
     if (aliasInvalid) return aliasInvalid;
+    const vocabularyInvalid = vocabularyScopeInvalidResponse(error);
+    if (vocabularyInvalid) return vocabularyInvalid;
     console.error('[Versions POST] Error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Could not create version.' },
