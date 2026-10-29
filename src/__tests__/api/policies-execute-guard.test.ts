@@ -66,6 +66,12 @@ vi.mock('@/lib/platform-settings', () => ({ isPolicySharingEnabled: () => h.shar
 vi.mock('@opennextjs/cloudflare', () => ({
   getCloudflareContext: vi.fn().mockRejectedValue(new Error('Not cloudflare')),
 }));
+// API 调用 owner 池（v1 execute）由 v1-policies.test.ts 覆盖；此处恒为空池
+vi.mock('@/lib/api-quota-pool', () => ({
+  countOwnerPoolUsage: vi.fn(async () => 0),
+  recordApiCallRecord: vi.fn(async () => undefined),
+  currentPeriodMonth: () => '2026-10',
+}));
 vi.mock('@/lib/prisma', () => ({
   db: {
     query: {
@@ -139,7 +145,7 @@ describe.each(routes)('POST $name execute — ADR 0042 guard 登记', ({ post, p
     h.teamMemberFind.mockResolvedValue({ id: 'tm-1' });
     h.sharingEnabled.mockResolvedValue(true);
     h.mockGetSession.mockResolvedValue({ user: { id: 'user-1' } });
-    h.mockAuthApi.mockResolvedValue({ success: true, userId: 'user-1', apiKeyId: 'k1' });
+    h.mockAuthApi.mockResolvedValue({ success: true, userId: 'user-1', apiKeyId: 'k1', quotaOwnerId: 'user-1' });
     h.createClient.mockResolvedValue({ guardFromEvidence: h.guardFromEvidence });
     h.mockDbExecute.mockResolvedValue([policyRow]);
     h.mockVersionFind.mockResolvedValue([]);
@@ -300,7 +306,7 @@ describe('POST v1 execute — 策略所有者 ≠ key 持有者', () => {
     h.mockInsert.mockReturnValue({ values: h.mockValuesInsert });
     h.mockUpdate.mockReturnValue({ set: h.mockUpdateSet });
     h.mockUpdateSet.mockReturnValue({ where: h.mockUpdateWhere });
-    h.mockAuthApi.mockResolvedValue({ success: true, userId: 'user-1', apiKeyId: 'k1' });
+    h.mockAuthApi.mockResolvedValue({ success: true, userId: 'user-1', apiKeyId: 'k1', quotaOwnerId: 'user-1' });
     h.teamMemberFind.mockResolvedValue({ id: 'tm-1' });
     h.createClient.mockResolvedValue({ guardFromEvidence: h.guardFromEvidence });
     h.mockDbExecute.mockResolvedValue([{ ...policyRow, policy_user_id: 'owner-1', policy_team_id: 'team-1' }]);

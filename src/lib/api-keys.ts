@@ -77,6 +77,8 @@ export async function validateApiKey(key: string): Promise<{
   userId?: string;
   apiKeyId?: string;
   teamId?: string | null;
+  /** 配额 owner（团队 key 为团队 owner，个人 key 为持有者），ADR 0015 §3 */
+  quotaOwnerId?: string;
   error?: string;
 }> {
   if (!key || !key.startsWith('ak_')) {
@@ -103,6 +105,7 @@ export async function validateApiKey(key: string): Promise<{
     userId: identity.userId,
     apiKeyId: identity.apiKeyId,
     teamId: identity.teamId,
+    quotaOwnerId: identity.quotaOwnerId,
   };
 }
 
@@ -212,6 +215,8 @@ export type ApiAuthResult =
       userId: string;
       apiKeyId: string;
       teamId: string | null;
+      /** 配额 owner：API 调用配额按它的套餐与 owner 池（apiCallRecords）判定 */
+      quotaOwnerId: string;
     }
   | {
       success: false;
@@ -247,5 +252,6 @@ export async function authenticateApiRequest(req: Request): Promise<ApiAuthResul
     userId: validation.userId,
     apiKeyId: validation.apiKeyId!,
     teamId: validation.teamId ?? null,
+    quotaOwnerId: validation.quotaOwnerId ?? validation.userId,
   };
 }
