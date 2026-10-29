@@ -38,7 +38,8 @@ export async function seedCompileProblems(source: string, locale: SeedLocale): P
     );
   }
   for (const err of result.loweringErrors ?? []) problems.push({ code: 'E000', message: String(err) });
-  for (const d of result.typeErrors ?? []) {
+  // 名称解析错误（ADR 0051 E8xx）只出现在 resolutionDiagnostics，且此时引擎不做类型检查。
+  for (const d of [...(result.resolutionDiagnostics ?? []), ...(result.typeErrors ?? [])]) {
     if (d.severity === 'error') problems.push({ code: String(d.code), message: d.message, line: d.span?.start.line });
   }
   return problems;
