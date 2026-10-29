@@ -47,10 +47,23 @@ const positiveInt = (raw, fallback) => {
   const n = parseInt(raw ?? '', 10);
   return Number.isFinite(n) && n > 0 ? n : fallback;
 };
+const perClientRate = positiveInt(process.env.LSP_HANDSHAKES_PER_MINUTE, 6);
+const perClientBurst = positiveInt(process.env.LSP_HANDSHAKE_BURST, 10);
 const clientLimiter = createClientLimiter({
   maxSessionsPerClient: positiveInt(process.env.LSP_MAX_SESSIONS_PER_CLIENT, 3),
-  ratePerMinute: positiveInt(process.env.LSP_HANDSHAKES_PER_MINUTE, 6),
-  burst: positiveInt(process.env.LSP_HANDSHAKE_BURST, 10),
+  ratePerMinute: perClientRate,
+  burst: perClientBurst,
+});
+// 生产缺 CF-Connecting-IP 的握手共用一个桶（见 clientIdentity）：会话数只受全局上限约束，
+// 握手速率放大 10 倍——仍防刷子进程，又不至于让配置异常时所有用户立即被 429。
+const missingIpLimiter = createClientLimiter({
+  maxSessionsPerClient: maxConnections,
+  ratePerMinute: perClientRate * 10,
+  burst: perClientBurst * 10,
+});
+const warnMissingClientIp = createThrottledWarner({
+  intervalMs: 5 * 60_000,
+  message: 'upgrade without CF-Connecting-IP in production — check the Cloudflare tunnel ingress; using the shared fallback bucket',
 });
 
 // Shared-secret gate. Browsers can't set custom WS headers, so the token is
@@ -195,13 +208,69 @@ export function createClientLimiter({ maxSessionsPerClient, ratePerMinute, burst
 }
 
 /**
- * 限流用的客户端标识：CF-Connecting-IP（Cloudflare 边缘写入的单值真实 IP；本 Service 只有 cloudflared
- * 能到达，故可信），缺失时（本地开发）回退到对端地址。
+ * 限流键的地址归一：IPv4 与 IPv4-mapped IPv6（::ffff:a.b.c.d）按完整 IPv4 地址；
+ * 其他 IPv6 按 /64 前缀——IPv6 客户端通常拥有整个 /64，按完整地址计数可以无限换地址绕过。
+ * 无法解析的值原样（小写）返回。
  */
-export function clientKey(headers, remoteAddress) {
+export function normalizeClientIp(raw) {
+  let ip = String(raw).trim().toLowerCase().replace(/^\[|\]$/g, '');
+  const zone = ip.indexOf('%');
+  if (zone >= 0) ip = ip.slice(0, zone);
+  if (!ip.includes(':')) return ip;
+  const halves = ip.split('::');
+  if (halves.length > 2) return ip;
+  const toGroups = (part) => (part ? part.split(':') : []).flatMap((g) => {
+    if (!g.includes('.')) return [g];
+    const o = g.split('.').map(Number);
+    return [((o[0] << 8) | o[1]).toString(16), ((o[2] << 8) | o[3]).toString(16)];
+  });
+  const head = toGroups(halves[0]);
+  const tail = halves.length === 2 ? toGroups(halves[1]) : [];
+  const fill = halves.length === 2 ? 8 - head.length - tail.length : 0;
+  if (fill < 0) return ip;
+  const groups = [...head, ...Array(fill).fill('0'), ...tail];
+  if (groups.length !== 8 || groups.some((g) => !/^[0-9a-f]{1,4}$/.test(g))) return ip;
+  const n = groups.map((g) => parseInt(g, 16));
+  // IPv4-mapped（::ffff:a.b.c.d）：按其中的 IPv4 完整地址
+  if (n.slice(0, 5).every((x) => x === 0) && n[5] === 0xffff) {
+    return [n[6] >> 8, n[6] & 0xff, n[7] >> 8, n[7] & 0xff].join('.');
+  }
+  return `${groups.slice(0, 4).map((g) => parseInt(g, 16).toString(16)).join(':')}::/64`;
+}
+
+/** 生产上缺 CF-Connecting-IP 的握手共用的桶（见 clientIdentity）。 */
+export const MISSING_CLIENT_IP_KEY = 'no-cf-connecting-ip';
+
+/**
+ * 限流用的客户端标识。
+ *
+ * 生产上 lsp.aster-lang.dev 的 Cloudflare tunnel 直连本 Service（ClusterIP，只有 cloudflared 可达），
+ * CF-Connecting-IP 由 cloudflared 注入、单值且可信。**生产缺这个头即配置异常**（Cloudflare 配置变更、
+ * 入口改道、集群内调用方）：此时对端地址是 cloudflared pod，按它计数会把所有用户挤进两三个桶，
+ * 造成大面积 429 且难以定位。故缺头的握手归入单独的共享桶（missingHeader=true，由调用方告警，
+ * 并用额度更大的限流器），不按对端地址合并。非生产（本地开发）缺头时按对端地址计数。
+ */
+export function clientIdentity(headers, remoteAddress, production) {
   const raw = headers['cf-connecting-ip'];
   const cf = (Array.isArray(raw) ? raw[0] : raw)?.trim();
-  return cf || remoteAddress || 'unknown';
+  if (cf) return { key: normalizeClientIp(cf), missingHeader: false };
+  if (production) return { key: MISSING_CLIENT_IP_KEY, missingHeader: true };
+  return { key: remoteAddress ? normalizeClientIp(remoteAddress) : 'unknown', missingHeader: false };
+}
+
+/**
+ * 带节流的告警：首次立即记录，之后每个 intervalMs 窗口至多记一次，并带上累计次数，避免刷屏。
+ */
+export function createThrottledWarner({ intervalMs, now = Date.now, log = console.warn, message }) {
+  let count = 0;
+  let lastAt = -Infinity;
+  return () => {
+    count += 1;
+    const t = now();
+    if (t - lastAt < intervalMs) return;
+    lastAt = t;
+    log(`[LSP] WARNING: ${message} (seen ${count} times since start)`);
+  };
 }
 
 /** 语言服务器子进程的 node 参数：堆上限 128 MiB（子进程不继承网关的 NODE_OPTIONS）。 */
@@ -415,8 +484,10 @@ server.on('upgrade', (request, socket, head) => {
   }
 
   // 按客户端限流在通过 Origin/token 门之后做：只有可能真正 spawn 子进程的握手才计数
-  const client = clientKey(request.headers, request.socket.remoteAddress);
-  const limited = clientLimiter.acquire(client);
+  const { key: client, missingHeader } = clientIdentity(request.headers, request.socket.remoteAddress, isProduction);
+  if (missingHeader) warnMissingClientIp();
+  const limiter = missingHeader ? missingIpLimiter : clientLimiter;
+  const limited = limiter.acquire(client);
   if (!limited.ok) {
     console.log(`[LSP] Rejected upgrade (${limited.code}): ${limited.reason}`);
     const retry = limited.retryAfterSeconds ? `Retry-After: ${limited.retryAfterSeconds}\r\n` : '';
@@ -425,7 +496,7 @@ server.on('upgrade', (request, socket, head) => {
     return;
   }
   // 底层 socket 关闭（会话结束、握手中途失败）时归还名额，恰好一次
-  socket.once('close', () => clientLimiter.release(client));
+  socket.once('close', () => limiter.release(client));
 
   wss.handleUpgrade(request, socket, head, (ws) => {
     wss.emit('connection', ws, request);

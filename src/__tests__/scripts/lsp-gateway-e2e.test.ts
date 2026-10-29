@@ -149,10 +149,10 @@ describe('网关生命周期：工作目录清理', () => {
     await killGateways(started.splice(0));
   });
 
-  const startGateway = async (tmp: string) => {
+  const startGateway = async (tmp: string, nodeEnv: 'test' | 'production' = 'test') => {
     const p = await freePort();
     const gw = spawnGateway([join(ROOT, 'lsp-server.mjs')], {
-      env: { PATH: process.env.PATH, PORT: String(p), HOSTNAME: '127.0.0.1', NODE_ENV: 'test', LSP_AUTH_TOKEN: TOKEN,
+      env: { PATH: process.env.PATH, PORT: String(p), HOSTNAME: '127.0.0.1', NODE_ENV: nodeEnv, LSP_AUTH_TOKEN: TOKEN,
         ALLOWED_ORIGINS: ORIGIN, TMPDIR: tmp, LSP_SERVER_SCRIPT: join(__dirname, 'fixtures', 'fake-lsp-server.mjs') },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -179,6 +179,26 @@ describe('网关生命周期：工作目录清理', () => {
     gw.kill('SIGTERM');
     await exited;
     expect(existsSync(dir)).toBe(false);
+    rmSync(tmp, { recursive: true, force: true });
+  }, 20_000);
+
+  /* 复审 M1：生产缺 CF-Connecting-IP 是配置异常——告警（节流），归入单独的共享桶，不受单 IP 3 会话限制 */
+  it('★生产缺 CF-Connecting-IP：共享桶不受单 IP 3 会话限制，告警只记一次', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'lsp-gw-nocf-'));
+    const { gw, port: p } = await startGateway(tmp, 'production');
+    let stderr = '';
+    gw.stderr!.on('data', (d) => { stderr += String(d); });
+    const open = (): Promise<WebSocket> => new Promise((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${p}/lsp?locale=zh-CN&token=${TOKEN}`, { headers: { Origin: ORIGIN } });
+      ws.on('open', () => resolve(ws));
+      ws.on('unexpected-response', (_q, res) => reject(new Error(`status ${res.statusCode}`)));
+      ws.on('error', reject);
+    });
+    const sockets = [await open(), await open(), await open(), await open()];
+    await new Promise((r) => setTimeout(r, 200));
+    expect(stderr.match(/without CF-Connecting-IP/g)).toHaveLength(1);
+    sockets.forEach((ws) => ws.close());
+    gw.kill('SIGTERM');
     rmSync(tmp, { recursive: true, force: true });
   }, 20_000);
 
