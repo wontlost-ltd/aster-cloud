@@ -30,6 +30,8 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
     versions,
     loading,
     error,
+    actionError,
+    clearActionError,
     refresh,
     setDefault,
     deprecate,
@@ -141,6 +143,7 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
     [versions, reject, t]
   );
 
+  // 只有列表本身没加载出来才整块替换；操作失败见下方 actionError 提示。
   if (error) {
     return (
       <div className="bg-bg dark:bg-gray-800 shadow sm:rounded-lg p-6">
@@ -172,6 +175,19 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
             </button>
           )}
         </div>
+
+        {/* 操作失败只在列表上方提示，版本列表保持可用（列表加载失败才整块替换） */}
+        {actionError && (
+          <div
+            role="alert"
+            className="mb-4 flex items-start justify-between gap-3 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
+          >
+            <span>{actionError}</span>
+            <button type="button" onClick={clearActionError} className="shrink-0 underline hover:no-underline">
+              {t('actionErrorDismiss')}
+            </button>
+          </div>
+        )}
 
         {/* Content */}
         {viewMode === 'list' && (

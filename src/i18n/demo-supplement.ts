@@ -947,6 +947,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         subtitle: 'Every save is a new version.',
         initialVersion: 'Initial version',
         editedVersion: 'Edited version',
+        actionErrorDismiss: 'Dismiss',
         approvalErrorCodes: {
           invite_reviewer_cta: 'Invite a teammate',
           segregation_of_duties: 'A different team member must approve this version.',
@@ -2103,6 +2104,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         subtitle: '每次保存都会创建一个新版本。',
         initialVersion: '初始版本',
         editedVersion: '编辑后的版本',
+        actionErrorDismiss: '关闭',
         approvalErrorCodes: {
           invite_reviewer_cta: '邀请团队成员',
           segregation_of_duties: '此版本必须由其他团队成员审批。',
@@ -3271,6 +3273,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         subtitle: 'Jedes Speichern erstellt eine neue Version.',
         initialVersion: 'Anfangsversion',
         editedVersion: 'Bearbeitete Version',
+        actionErrorDismiss: 'Schließen',
         approvalErrorCodes: {
           invite_reviewer_cta: 'Teammitglied einladen',
           segregation_of_duties: 'Ein anderes Teammitglied muss diese Version freigeben.',
@@ -4422,6 +4425,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         subtitle: 'हर बार सहेजने पर नया संस्करण बनता है।',
         initialVersion: 'प्रारंभिक संस्करण',
         editedVersion: 'संपादित संस्करण',
+        actionErrorDismiss: 'बंद करें',
         approvalErrorCodes: {
           invite_reviewer_cta: 'टीम के सदस्य को आमंत्रित करें',
           segregation_of_duties: 'इस संस्करण को टीम के किसी अन्य सदस्य से अनुमोदित कराएँ।',
