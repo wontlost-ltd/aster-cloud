@@ -31,6 +31,7 @@ import { chooseDefaultRule, reconcileSelectedRule, extractRuleSymbols } from '@/
 // P0-R2 (codex review Low #9): import 必须在顶部
 import { detectCNLLanguage, isHighConfidence } from '@/lib/cnl-language-detector';
 import { inferParameterStructs, inferredFieldDefault } from './infer-parameter-structs';
+import { findExampleDefaultInput } from '@/data/policy-examples';
 import { executionStatus } from './execution-status';
 import {
   EXECUTE_ERROR_KEYS,
@@ -251,7 +252,9 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
             (parameter.fields ?? []).map((field) => [field.name, inferredFieldDefault(field)]),
           );
         }
-        setInput(JSON.stringify(sampleInput, null, 2));
+        // 由内置模板创建、未改动源码的策略：预填模板自带的可执行输入，而不是按类型生成的空值示例。
+        const templateInput = findExampleDefaultInput(content, parameters.map((parameter) => parameter.name));
+        setInput(JSON.stringify(templateInput ?? sampleInput, null, 2));
       } else if (!data.success && data.error) {
         // Schema extraction failed - display error and use default empty JSON
         console.warn('Schema extraction failed:', data.error);

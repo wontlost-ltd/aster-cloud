@@ -1038,6 +1038,40 @@ export function getExampleSource(example: PolicyExample, locale: SupportedLocale
   return example.sources[locale] || example.sources['en-US'];
 }
 
+/** 模板比对用的源码规范化：统一换行、去行尾空白与首尾空行（保存/粘贴可能改变这些）。 */
+function normalizeExampleSource(source: string): string {
+  return source
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .join('\n')
+    .trim();
+}
+
+/**
+ * 若策略源码就是某个内置模板（任一语种），返回该语种模板自带的示例输入（深拷贝），否则 null。
+ *
+ * 执行页据此预填：模板的 Define 字段多为无类型，按类型生成的示例全是空字符串，用户填完才能跑通；
+ * 模板本身带着可直接执行的 defaultInputs。parameterNames 是当前所选规则的参数名——只有与
+ * defaultInputs 的键完全一致才采用（模板里有多条规则时，选中非入口规则不会套错输入）。
+ */
+export function findExampleDefaultInput(
+  content: string,
+  parameterNames: readonly string[],
+): PolicyExampleInput | null {
+  const normalized = normalizeExampleSource(content);
+  for (const example of POLICY_EXAMPLES) {
+    for (const locale of Object.keys(example.sources) as SupportedLocale[]) {
+      if (normalizeExampleSource(example.sources[locale]) !== normalized) continue;
+      const input = example.defaultInputs[locale];
+      const keys = Object.keys(input);
+      const sameKeys = keys.length === parameterNames.length && parameterNames.every((name) => keys.includes(name));
+      return sameKeys ? structuredClone(input) : null;
+    }
+  }
+  return null;
+}
+
 /**
  * 获取示例名称（根据语言）
  */
