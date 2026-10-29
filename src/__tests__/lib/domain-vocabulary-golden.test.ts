@@ -36,8 +36,9 @@ describe('vocabulary golden serialization', () => {
     const key = computeDedupKey(normalized);
     // Recorded once at the time of B15; future changes to the canonical
     // representation must update this golden value intentionally.
+    // ADR 0051：localizedNorm 改为 NFC 精确写法（不再小写），golden 随之更新。
     expect(key).toBe(
-      '96127442e39d131a403c8d563fd1160ce7c03b3221c41b899e3e21427ab8002b',
+      'c3caaa67273f98222c203a53f62f27d6b3018e2880402dbfbac8f43a78d0e549',
     );
   });
 

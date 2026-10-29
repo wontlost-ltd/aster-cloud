@@ -42,6 +42,7 @@ import { logAuditEvent } from '@/lib/audit-log';
 function selectChain(result: unknown) {
   const chain: Record<string, unknown> = {};
   chain.from = () => chain;
+  chain.innerJoin = () => chain;
   chain.where = () => chain;
   chain.then = (resolve: (v: unknown) => void) => resolve(result);
   return chain;
@@ -122,7 +123,7 @@ beforeEach(() => {
 describe('processBulkJobChunk', () => {
   it('重复行只记 duplicate_link，同 chunk 其余行照常导入并完成任务', async () => {
     const driver = row('Driver');
-    hoisted.selectQueue.push([{ id: 'term-driver', dedupKey: key(driver) }], [{ termId: 'term-driver' }]);
+    hoisted.selectQueue.push([], [{ id: 'term-driver', dedupKey: key(driver) }], [{ termId: 'term-driver' }]);
     hoisted.insert
       .mockReturnValueOnce(
         insertChain([
@@ -152,7 +153,7 @@ describe('processBulkJobChunk', () => {
   });
 
   it('chunk 处理期间任务被取消：提交命中 0 行 → 整块回滚，不覆盖 cancelled', async () => {
-    hoisted.selectQueue.push([]);
+    hoisted.selectQueue.push([], []) /* 作用域冲突筛查、已有词条 */;
     hoisted.insert
       .mockReturnValueOnce(insertChain([{ id: 'term-1', dedupKey: key(row('Vehicle')) }]))
       .mockReturnValueOnce(insertChain([{ termId: 'term-1' }]));
@@ -168,7 +169,7 @@ describe('processBulkJobChunk', () => {
   });
 
   it('配额锁在 chunk 事务内获取（与单条新增、同步批量同一把锁）', async () => {
-    hoisted.selectQueue.push([]);
+    hoisted.selectQueue.push([], []) /* 作用域冲突筛查、已有词条 */;
     hoisted.insert
       .mockReturnValueOnce(insertChain([{ id: 'term-1', dedupKey: key(row('Vehicle')) }]))
       .mockReturnValueOnce(insertChain([{ termId: 'term-1' }]));
@@ -189,7 +190,7 @@ describe('processBulkJobChunk', () => {
         }),
       }),
     };
-    hoisted.selectQueue.push([]);
+    hoisted.selectQueue.push([], []) /* 作用域冲突筛查、已有词条 */;
     hoisted.insert
       .mockReturnValueOnce(failing) // 批量补建词条失败 → 退回逐行
       .mockReturnValueOnce(insertChain([{ id: 'term-a' }])) // 第 0 行词条
@@ -220,7 +221,7 @@ describe('processBulkJobChunk', () => {
       }),
     };
     const input = [row('Alpha'), row('Bad', { domain: 'Bad Domain' }), row('Gamma')];
-    hoisted.selectQueue.push([]);
+    hoisted.selectQueue.push([], []) /* 作用域冲突筛查、已有词条 */;
     hoisted.insert
       .mockReturnValueOnce(failing)
       .mockReturnValueOnce(insertChain([{ id: 'term-a' }]))
@@ -232,7 +233,7 @@ describe('processBulkJobChunk', () => {
     const afterFirst = persisted();
 
     // 第二次认领：从 processed=2 续跑，带着第一次写回的 rollup / errors
-    hoisted.selectQueue.push([]);
+    hoisted.selectQueue.push([], []) /* 作用域冲突筛查、已有词条 */;
     hoisted.insert
       .mockReturnValueOnce(insertChain([{ id: 'term-g', dedupKey: key(row('Gamma')) }]))
       .mockReturnValueOnce(insertChain([{ termId: 'term-g' }]));
@@ -255,5 +256,30 @@ describe('processBulkJobChunk', () => {
     hoisted.transaction.mockRejectedValueOnce(new Error('connection reset'));
     await expect(processBulkJobChunk(job([row('Vehicle')]))).rejects.toThrow('connection reset');
     expect(hoisted.txUpdateSet).not.toHaveBeenCalled();
+  });
+
+});
+
+describe('processBulkJobChunk — 作用域冲突（ADR 0051 §8）', () => {
+  it('与已提交词条（含前面 chunk 已落的行）冲突的行记 validation_failed，其余照常导入', async () => {
+    const field = (canonical: string, localized: string) =>
+      row(canonical, { kind: 'field', localized, parentCanonical: 'Driver' });
+    const existing = {
+      id: 'link-0', termId: 'term-0', userId: 'u1', domain: 'insurance.auto', locale: 'de', kind: 'field',
+      canonical: 'age', localized: 'alter', parentCanonical: 'Driver', aliases: [], description: null,
+      source: 'user', createdAt: new Date(), updatedAt: new Date(),
+    };
+    const level = field('level', 'stufe');
+    hoisted.selectQueue.push([existing], []);
+    hoisted.insert
+      .mockReturnValueOnce(insertChain([{ id: 'term-l', dedupKey: key(level) }]))
+      .mockReturnValueOnce(insertChain([{ termId: 'term-l' }]));
+
+    const outcome = await processBulkJobChunk(job([field('years', 'alter'), level]));
+
+    expect(outcome.rollupDelta).toMatchObject({ added: 1, skipped: 1, errorCount: 1 });
+    expect(outcome.errorsDelta.map((e) => [e.row, e.code])).toEqual([[0, 'validation_failed']]);
+    expect(outcome.errorsDelta[0]!.message).toMatch(/^scope conflict: "alter"/);
+    expectDeltaInvariant(outcome);
   });
 });

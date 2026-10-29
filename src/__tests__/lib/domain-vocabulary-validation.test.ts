@@ -8,6 +8,7 @@ import {
   validateDomainVocabulary,
 } from '@/lib/domain-vocabulary-validation';
 import { parseVocabularyValidationMessage } from '@/lib/vocabulary-validation-message';
+import { compile, DE_DE } from '@aster-cloud/aster-lang-ts/browser';
 
 /** 德语 de 分组里的一条词条行。 */
 function row(kind: string, canonical: string, localized: string, extra: Record<string, unknown> = {}) {
@@ -16,7 +17,7 @@ function row(kind: string, canonical: string, localized: string, extra: Record<s
 
 describe('domain-vocabulary-validation', () => {
   describe('normalizeTermInput', () => {
-    it('trims surrounding whitespace and produces lowercase norm columns', () => {
+    it('trims surrounding whitespace; canonical/parent norms are lowercase, localized norm keeps case', () => {
       const normalized = normalizeTermInput({
         domain: ' finance.loan ',
         locale: ' en-US ',
@@ -31,7 +32,7 @@ describe('domain-vocabulary-validation', () => {
       expect(normalized.locale).toBe('en-US');
       expect(normalized.canonical).toBe('Principal');
       expect(normalized.canonicalNorm).toBe('principal');
-      expect(normalized.localizedNorm).toBe('principal amount');
+      expect(normalized.localizedNorm).toBe('Principal Amount');
       expect(normalized.parentCanonical).toBe('Loan');
       expect(normalized.parentCanonicalNorm).toBe('loan');
       expect(normalized.aliases).toEqual(['Amount']);
@@ -52,6 +53,23 @@ describe('domain-vocabulary-validation', () => {
   });
 
   describe('computeDedupKey', () => {
+    it('仅大小写不同的写法得到不同去重键（ADR 0051 §14：两种写法都保留）', () => {
+      const base = { domain: 'grades', locale: 'de', kind: 'field' as const, canonical: 'age', parentCanonical: 'Driver' };
+      const upper = normalizeTermInput({ ...base, localized: 'Alter' });
+      const lower = normalizeTermInput({ ...base, localized: 'alter' });
+      expect(upper.localized).toBe('Alter');
+      expect(computeDedupKey(upper)).not.toBe(computeDedupKey(lower));
+    });
+
+    it('NFC 等价写法得到同一去重键', () => {
+      const base = { domain: 'grades', locale: 'de', kind: 'struct' as const, canonical: 'Cafe' };
+      const composed = normalizeTermInput({ ...base, localized: 'café' });
+      const decomposed = normalizeTermInput({ ...base, localized: 'cafe\u0301' });
+      expect(decomposed.localized).toBe('café');
+      expect(computeDedupKey(composed)).toBe(computeDedupKey(decomposed));
+    });
+
+
     it('is stable across whitespace-only differences via normalized columns', () => {
       const a = normalizeTermInput({
         domain: 'finance.loan',
@@ -231,6 +249,28 @@ describe('domain-vocabulary-validation', () => {
       expect(
         findTermScopeConflicts(existing, row('field', 'years', 'alter', { parentCanonical: 'Driver' })),
       ).toHaveLength(1);
+    });
+  });
+
+  describe('仅大小写不同的条目都能解析（ADR 0051 §14 第 2 条）', () => {
+    function typeNames(rows: ReturnType<typeof row>[], source: string): string[] {
+      const vocabulary = assembleDomainVocabularyFromLinks(rows, { domain: 'grades', locale: 'de-DE' });
+      expect(validateDomainVocabulary(vocabulary).valid).toBe(true);
+      const result = compile(source, { lexicon: DE_DE, vocabulary });
+      expect(result.success, JSON.stringify(result)).toBe(true);
+      return result.core!.decls.filter((d) => d.kind === 'Data').map((d) => (d as { name: string }).name);
+    }
+
+    it('Fahrer / FAHRER 映射到不同规范名：按精确写法分别解析', () => {
+      const rows = [row('struct', 'Driver', 'Fahrer'), row('struct', 'Chauffeur', 'FAHRER')];
+      expect(typeNames(rows, 'Definiere Fahrer hat a als Ganzzahl.\nDefiniere FAHRER hat b als Ganzzahl.'))
+        .toEqual(['Driver', 'Chauffeur']);
+    });
+
+    it('同一规范名的两种大小写写法都解析到该规范名', () => {
+      const rows = [row('struct', 'Driver', 'Fahrer'), row('struct', 'Driver', 'FAHRER')];
+      expect(typeNames(rows, 'Definiere Fahrer hat a als Ganzzahl.')).toEqual(['Driver']);
+      expect(typeNames(rows, 'Definiere FAHRER hat a als Ganzzahl.')).toEqual(['Driver']);
     });
   });
 });

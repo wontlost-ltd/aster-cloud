@@ -58,6 +58,11 @@ function canonicalJson(value: unknown): string {
   return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
 }
 
+/** 去首尾空白并做 NFC：写法比较的精确口径（与引擎 §6.3 精确匹配一致）。 */
+function nfcTrim(value: string): string {
+  return value.trim().normalize('NFC');
+}
+
 function normalizeText(value: string | null | undefined): string {
   return (value ?? '').trim().toLowerCase();
 }
@@ -167,9 +172,11 @@ export function validateDomainVocabulary(vocab: DomainVocabulary): VocabularyVal
 }
 
 /**
- * Normalize user-facing input and compute the columns used by the global
- * DomainTerm dedup key. The norm columns are lower(trim(...)) so the dedup
- * key is stable across whitespace and case.
+ * 规范化用户输入并计算全局 DomainTerm 去重键所用的列。
+ * - canonical / parent 的 norm 列为 lower(trim(...))：规范名是 ASCII 标识符，大小写不区分词条。
+ * - localized 的 norm 列为 NFC(trim(...))，**不折叠大小写**：仅大小写不同的写法是不同词条
+ *   （ADR 0051 §14 第 2 条，如 Alter / alter），去重不得把其中一个吞掉；大小写折叠只用于
+ *   按角色 / 作用域的冲突判定（findVocabularyScopeConflicts）。
  */
 export function normalizeTermInput(input: {
   domain: string;
@@ -187,8 +194,8 @@ export function normalizeTermInput(input: {
     kind: input.kind,
     canonical: input.canonical.trim(),
     canonicalNorm: normalizeText(input.canonical),
-    localized: input.localized.trim(),
-    localizedNorm: normalizeText(input.localized),
+    localized: nfcTrim(input.localized),
+    localizedNorm: nfcTrim(input.localized),
     parentCanonical: input.parentCanonical?.trim() || undefined,
     parentCanonicalNorm: normalizeText(input.parentCanonical),
     description: input.description?.trim() || undefined,

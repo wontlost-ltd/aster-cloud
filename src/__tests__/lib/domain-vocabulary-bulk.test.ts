@@ -75,6 +75,8 @@ import {
 } from '@/lib/domain-vocabulary';
 import { getLexiconQuota } from '@/lib/usage';
 import { computeDedupKey, normalizeTermInput } from '@/lib/domain-vocabulary-validation';
+import { parseVocabularyValidationMessage } from '@/lib/vocabulary-validation-message';
+import { normalizeRowErrors, skippedBreakdown } from '@/app/[locale]/(dashboard)/domain-vocabularies/bulk-result';
 
 /** 与服务端同一算法的 dedupKey，用来构造「已有词条」的查询结果。 */
 function key(row: TermInput): string {
@@ -182,6 +184,7 @@ describe('bulkAddUserVocabularyTerms', () => {
   it('counts add vs reused for two distinct rows', async () => {
     const borrower = { ...baseRow, canonical: 'Borrower', localized: 'Borrower' };
     queueSelect([{ count: 0 }]);
+    queueSelect([]); // 作用域冲突筛查：分组内无已有词条
     queueSelect([{ id: 'term-b', dedupKey: key(borrower) }]); // Borrower 的全局词条已存在
     queueSelect([]); // 但用户还没有链接它
     hoisted.insert
@@ -203,6 +206,7 @@ describe('bulkAddUserVocabularyTerms', () => {
     vi.mocked(getLexiconQuota).mockResolvedValue({ maxTerms: 2, bulkAsync: false, allowed: true });
     // 用户已有 1 条，3 行里只能再落 1 行，其余两行报 quota_exceeded。
     queueSelect([{ count: 1 }]);
+    queueSelect([]); // 作用域冲突筛查：分组内无已有词条
     queueSelect([]); // 无已有词条 → 不查链接
     const termInsert = makeInsertChain([{ id: 'term-1', dedupKey: key(baseRow) }]);
     hoisted.insert
@@ -229,6 +233,7 @@ describe('bulkAddUserVocabularyTerms', () => {
   it('reports row-level validation errors without aborting valid rows', async () => {
     const lender = { ...baseRow, canonical: 'Lender', localized: 'Lender' };
     queueSelect([{ count: 0 }]);
+    queueSelect([]); // 作用域冲突筛查：分组内无已有词条
     queueSelect([]);
     hoisted.insert
       .mockReturnValueOnce(makeInsertChain([{ id: 'term-1', dedupKey: key(lender) }]).chain)
@@ -251,6 +256,7 @@ describe('bulkAddUserVocabularyTerms', () => {
     const driver = { ...baseRow, canonical: 'Driver', localized: 'Driver' };
     const premium = { ...baseRow, canonical: 'premium', localized: 'premium' };
     queueSelect([{ count: 0 }]);
+    queueSelect([]); // 作用域冲突筛查：分组内无已有词条
     queueSelect([{ id: 'term-driver', dedupKey: key(driver) }]);
     queueSelect([{ termId: 'term-driver' }]); // Driver 已在用户词汇里
     const linkInsert = makeInsertChain([{ termId: 'term-ph' }, { termId: 'term-pr' }]);
@@ -289,6 +295,7 @@ describe('bulkAddUserVocabularyTerms', () => {
       code: '40P01',
     });
     queueSelect([{ count: 0 }]);
+    queueSelect([]); // 作用域冲突筛查：分组内无已有词条
     queueSelect([]);
     hoisted.insert
       .mockReturnValueOnce(failingInsertChain(pgError)) // 批量补建词条失败 → 回滚 SAVEPOINT
@@ -326,6 +333,7 @@ describe('bulkAddUserVocabularyTerms', () => {
 
   it('domain / locale 格式不合法的行报 validation_failed，合法 locale 规范大小写（#612）', async () => {
     queueSelect([{ count: 0 }]);
+    queueSelect([]); // 作用域冲突筛查：分组内无已有词条
     queueSelect([]);
     const termInsert = makeInsertChain([{ id: 'term-1', dedupKey: key(baseRow) }]);
     hoisted.insert
@@ -352,6 +360,7 @@ describe('bulkAddUserVocabularyTerms', () => {
   it('生产复现（#629）：有效 + 非法 domain + 非法 locale + 重复 → 计数自洽，持久化的任务行同口径', async () => {
     const driver = { ...baseRow, canonical: 'Driver', localized: 'Driver' };
     queueSelect([{ count: 0 }]);
+    queueSelect([]); // 作用域冲突筛查：分组内无已有词条
     queueSelect([{ id: 'term-driver', dedupKey: key(driver) }]);
     queueSelect([{ termId: 'term-driver' }]); // Driver 已在用户词汇里
     const jobInsert = makeInsertChain([]);
@@ -374,5 +383,66 @@ describe('bulkAddUserVocabularyTerms', () => {
     expect(jobInsert.values).toHaveBeenCalledWith(
       expect.objectContaining({ mode: 'sync', rowCount: 4, processed: 4 }),
     );
+  });
+
+});
+
+describe('bulkAddUserVocabularyTerms — 作用域冲突（ADR 0051 §8）', () => {
+  const grades = { domain: 'grades', locale: 'de' };
+  const field = (canonical: string, localized: string): TermInput =>
+    ({ ...grades, kind: 'field', canonical, localized, parentCanonical: 'Driver' });
+
+  function joined(over: Record<string, unknown>) {
+    return {
+      id: 'link-0', termId: 'term-0', userId: 'user-1', ...grades, kind: 'field', parentCanonical: 'Driver',
+      aliases: [], description: null, source: 'user', createdAt: new Date(), updatedAt: new Date(), ...over,
+    };
+  }
+
+  it('同批内两行写法相同、规范名不同：后一行记 validation_failed（scopeConflict），前一行照常导入', async () => {
+    const age = field('age', 'alter');
+    queueSelect([{ count: 0 }]);
+    queueSelect([]); // 作用域冲突筛查：分组内无已有词条
+    queueSelect([]); // 无已有全局词条
+    const linkInsert = makeInsertChain([{ termId: 'term-age' }]);
+    hoisted.insert
+      .mockReturnValueOnce(makeInsertChain([{ id: 'term-age', dedupKey: key(age) }]).chain)
+      .mockReturnValueOnce(linkInsert.chain)
+      .mockReturnValueOnce(makeInsertChain([]).chain); // job row
+
+    const result = await bulkAddUserVocabularyTerms('user-1', [age, field('years', 'alter')]);
+
+    expect(result.rollup).toMatchObject({ added: 1, skipped: 1, errorCount: 1 });
+    expect(result.errors.map((e) => [e.row, e.code])).toEqual([[1, 'validation_failed']]);
+    expect(parseVocabularyValidationMessage(result.errors[0]!.message)).toEqual({ reason: 'scopeConflict', values: { name: 'alter' } });
+    // 界面按 #636 分组：归入「无效」
+    expect(skippedBreakdown(normalizeRowErrors(result.errors), result.rollup.skipped)).toMatchObject({ invalid: 1 });
+    expect(linkInsert.values.mock.calls[0][0]).toHaveLength(1);
+    expectConsistentCounts(result);
+  });
+
+  it('与用户已有词条冲突的行被拒；Stufe（类型）与 stufe（字段）、仅大小写不同的写法都可导入', async () => {
+    const stufeField = field('level', 'stufe');
+    const upper = field('years', 'Alter');
+    queueSelect([{ count: 2 }]);
+    queueSelect([
+      joined({ canonical: 'age', localized: 'alter' }),
+      joined({ id: 'link-1', termId: 'term-1', kind: 'struct', canonical: 'Level', localized: 'Stufe', parentCanonical: null }),
+    ]);
+    queueSelect([]); // 无已有全局词条
+    hoisted.insert
+      .mockReturnValueOnce(makeInsertChain([
+        { id: 'term-s', dedupKey: key(stufeField) },
+        { id: 'term-u', dedupKey: key(upper) },
+      ]).chain)
+      .mockReturnValueOnce(makeInsertChain([{ termId: 'term-s' }, { termId: 'term-u' }]).chain)
+      .mockReturnValueOnce(makeInsertChain([]).chain); // job row
+
+    const result = await bulkAddUserVocabularyTerms('user-1', [stufeField, field('years', 'alter'), upper]);
+
+    expect(result.rollup).toMatchObject({ added: 2, skipped: 1 });
+    expect(result.errors.map((e) => [e.row, e.code])).toEqual([[1, 'validation_failed']]);
+    expect(parseVocabularyValidationMessage(result.errors[0]!.message)?.reason).toBe('scopeConflict');
+    expectConsistentCounts(result);
   });
 });

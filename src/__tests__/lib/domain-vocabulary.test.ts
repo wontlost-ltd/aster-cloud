@@ -330,6 +330,28 @@ describe('作用域冲突校验（ADR 0051 §8）', () => {
     expect(hoisted.insert).toHaveBeenCalledTimes(2);
   });
 
+  it('仅大小写不同的写法都保存为各自的全局词条（去重键不折叠大小写）', async () => {
+    const keys: string[] = [];
+    for (const [localized, existing] of [['Alter', []], ['alter', [
+      joinedRow({ id: 'link-0', domain: 'grades', locale: 'de', kind: 'field', canonical: 'age', localized: 'Alter', parentCanonical: 'Driver' }),
+    ]]] as const) {
+      queueSelectResult([{ count: 0 }]);
+      queueSelectResult(existing);
+      queueSelectResult([joinedRow({ kind: 'field', canonical: 'age', localized, parentCanonical: 'Driver' })]);
+      const termInsert = makeInsertChain([{ id: `term-${localized}` }]);
+      hoisted.insert.mockReturnValueOnce(termInsert.chain).mockReturnValueOnce(makeInsertChain([{ id: `link-${localized}` }]).chain);
+
+      const result = await addUserVocabularyTerm('user-1', field('age', localized));
+
+      expect(result.createdGlobalTerm).toBe(true);
+      const values = termInsert.chain.values.mock.calls[0]![0] as { localized: string; localizedNorm: string; dedupKey: string };
+      expect(values.localized).toBe(localized);
+      expect(values.localizedNorm).toBe(localized);
+      keys.push(values.dedupKey);
+    }
+    expect(keys[0]).not.toBe(keys[1]);
+  });
+
   it('同父结构下写法相同、规范名不同的字段被拒，消息可识别为 scopeConflict', async () => {
     queueSelectResult([{ count: 1 }]);
     queueSelectResult([
