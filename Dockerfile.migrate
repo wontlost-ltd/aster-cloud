@@ -1,6 +1,10 @@
 # Migration runner image
 # Built and tagged as wontlost/aster-cloud-migrate:<sha>
-# Used by k3s Job to apply drizzle migrations against prod PG
+# Used by k3s Jobs against prod PG:
+#   1. drizzle 迁移（ArgoCD PostSync，CMD：npx tsx scripts/migrate.ts）
+#   2. ADR 0051 §9 resolver 存量重编译（k3s CronJob aster-adr0051-resolver-migration 手动触发）：
+#      node --conditions=import --import tsx scripts/resolver-migration.ts
+#      （与 package.json 的 ops:resolver-migration 相同；引擎 ./browser 导出只声明 import 条件）
 #
 # Why a separate image: aster-cloud itself runs on Cloudflare Workers (no PG
 # client). Migrations need a Node+postgres environment that can reach the
@@ -10,20 +14,24 @@ FROM node:24-alpine
 
 WORKDIR /app
 
-# Minimal install: tsx + drizzle bits + postgres driver
-# Pinning explicit versions keeps the migrate image stable while the main
-# app upgrades. Update these when bumping dependencies in package.json.
-RUN npm install --no-audit --no-fund \
-      tsx@4.21.0 \
-      drizzle-orm@0.45.1 \
-      postgres@3.4.8 \
-      drizzle-kit@0.31.9 \
-      typescript@5.9.3
+# 依赖清单单独放在 migrate-package.json，精确钉版、用 npm 安装（不走 pnpm 工作区，原因见
+# fcf08272）。其中 @aster-cloud/aster-lang-ts 必须与 package.json 精确同版：
+# scripts/check-lsp-pin.mjs 守护，auto-upgrade 的 bump-pins 会一并改写。
+# 其余为 resolver 迁移代码闭包的运行时依赖（dotenv、prom-client 由 src/ 模块静态导入），
+# 以及 drizzle 迁移所需的 tsx / drizzle-kit / typescript。
+COPY migrate-package.json ./package.json
+RUN npm install --omit=dev --no-audit --no-fund
 
 COPY drizzle.config.ts ./
 COPY drizzle/ ./drizzle/
 COPY src/db/schema.ts ./src/db/schema.ts
 COPY scripts/migrate.ts ./scripts/migrate.ts
+
+# resolver 迁移：脚本 + 其 @/ 别名指向的 src/（tsx 按 tsconfig.json 的 paths 解析）。
+# 复制整个 src/ 而不是挑模块：闭包跨 lib/services/db 多个目录，挑选容易随重构漏文件。
+COPY tsconfig.json ./
+COPY src/ ./src/
+COPY scripts/resolver-migration.ts ./scripts/resolver-migration.ts
 
 # 非 root 用户
 USER node

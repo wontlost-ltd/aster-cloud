@@ -21,9 +21,9 @@ import { dirname, join } from 'node:path';
 
 export const DEP = '@aster-cloud/aster-lang-ts';
 
-// package.json 之外还需同步的钉版文件。aster-cloud：独立 LSP 镜像的 lsp-package.json
-// 必须与应用精确同版（scripts/check-lsp-pin.mjs 守护）。
-export const SECONDARY_PINS = ['lsp-package.json'];
+// package.json 之外还需同步的钉版文件。aster-cloud：独立 LSP 镜像的 lsp-package.json 与
+// 迁移镜像的 migrate-package.json 必须与应用精确同版（scripts/check-lsp-pin.mjs 守护）。
+export const SECONDARY_PINS = ['lsp-package.json', 'migrate-package.json'];
 
 // 只接受 x.y.z（可带预发布后缀）：版本号会进入分支名与 shell，严格校验避免注入与脏分支。
 const VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;

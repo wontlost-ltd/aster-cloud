@@ -110,8 +110,8 @@ describe('bumpPin (secondary pins such as lsp-package.json)', () => {
     expect(lsp.dependencies[DEP]).toBe('1.0.31');
   });
 
-  it('aster-cloud keeps lsp-package.json in the secondary pin set', () => {
-    expect(SECONDARY_PINS).toEqual(['lsp-package.json']);
+  it('aster-cloud keeps lsp-package.json and migrate-package.json in the secondary pin set', () => {
+    expect(SECONDARY_PINS).toEqual(['lsp-package.json', 'migrate-package.json']);
   });
 
   it('throws when the pin is missing or the version is invalid', () => {

@@ -118,8 +118,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # package.json 与 lsp-package.json 必须同步钉到同一精确版本（check-lsp-pin 守护）。
-      - name: Bump package.json and lsp-package.json in lockstep
+      # package.json、lsp-package.json、migrate-package.json 必须同步钉到同一精确版本（check-lsp-pin 守护）。
+      - name: Bump package.json, lsp-package.json and migrate-package.json in lockstep
         run: |
           set -euo pipefail
           pnpm add --save-exact "@aster-cloud/aster-lang-ts@${VERSION}"
@@ -139,7 +139,7 @@ jobs:
           git config user.name "${BOT}"
           git config user.email "${BOT}@users.noreply.github.com"
           git checkout -b "${BRANCH}"
-          git add package.json pnpm-lock.yaml lsp-package.json
+          git add package.json pnpm-lock.yaml lsp-package.json migrate-package.json
           git commit -m "chore(deps): upgrade @aster-cloud/aster-lang-ts to ${VERSION}"
           # 分支可能残留自已关闭的旧 PR；该分支专属本 workflow，强推覆盖即可。
           git push --force origin "HEAD:refs/heads/${BRANCH}"
@@ -150,7 +150,7 @@ jobs:
             --body "$(cat <<BODY
           Automated upgrade of \`@aster-cloud/aster-lang-ts\` to \`${VERSION}\` (pulled from npm by the scheduled auto-upgrade workflow).
 
-          - \`package.json\` and \`lsp-package.json\` bumped in lockstep
+          - \`package.json\`, \`lsp-package.json\` and \`migrate-package.json\` bumped in lockstep
           - \`pnpm test:run\` and \`pnpm run build:next\` passed in the upgrade run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
           BODY
           )"

@@ -48,16 +48,19 @@ function readPin(file, section) {
 }
 
 const appPin = readPin('package.json', 'dependencies');
-const lspPin = readPin('lsp-package.json', 'dependencies');
 
-if (appPin !== lspPin) {
-  console.error(
-    `✗ LSP compiler pin drift: lsp-package.json pins ${DEP}@${lspPin} ` +
-      `but package.json pins ${DEP}@${appPin}.\n` +
-      `  Update lsp-package.json to the exact app pin (${appPin}) so the ` +
-      `deployed LSP runs the same compiler build as the app.`,
-  );
-  process.exit(1);
+// lsp-package.json：独立 LSP 镜像；migrate-package.json：迁移镜像（ADR 0051 resolver 迁移经它编译与封印）。
+for (const file of ['lsp-package.json', 'migrate-package.json']) {
+  const pin = readPin(file, 'dependencies');
+  if (appPin !== pin) {
+    console.error(
+      `✗ compiler pin drift: ${file} pins ${DEP}@${pin} ` +
+        `but package.json pins ${DEP}@${appPin}.\n` +
+        `  Update ${file} to the exact app pin (${appPin}) so the ` +
+        `deployed image runs the same compiler build as the app.`,
+    );
+    process.exit(1);
+  }
 }
 
-console.log(`✓ LSP compiler pin matches app pin: ${DEP}@${appPin}`);
+console.log(`✓ LSP and migrate image compiler pins match app pin: ${DEP}@${appPin}`);
