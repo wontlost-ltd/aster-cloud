@@ -15,6 +15,7 @@ vi.mock('@/lib/auth', () => ({
 }));
 // 编译门禁走网络，与本用例无关：恒判可编译，并带回档案 id 以验证落库。
 vi.mock('@/lib/policy-compile-validator', () => ({
+  loadSaveVocabulary: async () => ({ vocabulary: null, scopesJson: '' }),
   makeCompileValidator: () => async () => ({ diagnostics: [], profile: 'governed' }),
 }));
 

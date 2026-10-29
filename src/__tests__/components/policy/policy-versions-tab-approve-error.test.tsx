@@ -44,6 +44,17 @@ describe('PolicyVersionsTab 批准失败提示', () => {
     expect(h.approve).toHaveBeenCalledWith(2, undefined);
   });
 
+  it('vocabulary_changed_since_save → 本地化「保存新版本」提示 toast', async () => {
+    h.approve.mockResolvedValue({ ok: false, errorCode: 'vocabulary_changed_since_save', message: 'raw' });
+    render(<PolicyVersionsTab policyId="p1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'approve-v1' }));
+
+    await waitFor(() =>
+      expect(h.toastError).toHaveBeenCalledWith('policies.versions.approvalErrorCodes.vocabulary_changed_since_save'),
+    );
+  });
+
   it('未知错误码回退显示服务端 message', async () => {
     h.approve.mockResolvedValue({ ok: false, errorCode: 'other', message: 'Approval conflict' });
     render(<PolicyVersionsTab policyId="p1" />);

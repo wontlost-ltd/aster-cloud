@@ -54,12 +54,14 @@ vi.mock('@/lib/audit-log', () => ({
 
 import {
   createSnapshotsForOwner,
+  loadLiveVocabularyForPolicy,
   loadVocabularyForExecution,
   rollbackToSnapshot,
   freezeVocabularyForApproval,
 } from '@/lib/domain-vocabulary-snapshot';
 import { assembleDomainVocabularyFromLinks } from '@/lib/domain-vocabulary-assemble';
 import { VocabularyError } from '@/lib/domain-vocabulary';
+import { vocabularyScopesJson } from '@/lib/policy-alias';
 
 interface ThenChain {
   from: ReturnType<typeof vi.fn>;
@@ -212,6 +214,40 @@ describe('freezeVocabularyForApproval (#610)', () => {
     expect(hoisted.insert).toHaveBeenCalledTimes(1);
     const inserted = hoisted.insertValues.mock.calls[0]![0] as { termIds: string[] };
     expect(inserted.termIds).toEqual(['t-driver', 't-age']);
+  });
+
+  it('verifyVocabulary 拿到的词汇与保存时的现行词汇同一 scopesJson（审批一致性比对的口径）', async () => {
+    queueSelect(PROD_ROWS);
+    const saved = vocabularyScopesJson(
+      await loadLiveVocabularyForPolicy('user-1', { source: DE_POLICY, locale: 'de-DE' }),
+    );
+    queueSelect(PROD_ROWS);
+    queueSelect([{ max: null }]);
+    hoisted.findFirstSnapshot.mockResolvedValue(undefined);
+    const seen: string[] = [];
+
+    await freezeVocabularyForApproval(
+      { policyAuthorId: 'user-1', policy: { source: DE_POLICY, locale: 'de-DE' } },
+      makeTx(),
+      { verifyVocabulary: (v) => { seen.push(vocabularyScopesJson(v)); } },
+    );
+
+    expect(saved).not.toBe('');
+    expect(seen).toEqual([saved]);
+  });
+
+  it('verifyVocabulary 抛错 → 冻结中止，不写快照也不动 refCount', async () => {
+    queueSelect(PROD_ROWS);
+
+    await expect(freezeVocabularyForApproval(
+      { policyAuthorId: 'user-1', policy: { source: DE_POLICY, locale: 'de-DE' } },
+      makeTx(),
+      { verifyVocabulary: () => { throw new Error('changed'); } },
+    )).rejects.toThrow('changed');
+
+    expect(hoisted.insert).not.toHaveBeenCalled();
+    expect(hoisted.update).not.toHaveBeenCalled();
+    expect(hoisted.findFirstSnapshot).not.toHaveBeenCalled();
   });
 
   it('approving a policy that uses no vocabulary freezes nothing and bumps no refCount', async () => {

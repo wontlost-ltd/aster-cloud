@@ -406,6 +406,19 @@ async function runSchemaPatch(): Promise<void> {
     ALTER TABLE "PolicyVersion"
       ADD COLUMN IF NOT EXISTS "vocabularySnapshotIds" jsonb NOT NULL DEFAULT '[]'::jsonb
   `);
+  // ADR 0051 §7：封印 envelope 时的词汇段（迁移 0060）。schema 声明了该列后，整行查询
+  // PolicyVersion 都会选它；迁移未跑时冷启动先补列，避免所有版本读写 500。
+  await db.execute(sql`
+    ALTER TABLE "PolicyVersion" ADD COLUMN IF NOT EXISTS "sourceScopesJson" text
+  `);
+  // ADR 0051 §9 resolver 迁移状态列（迁移 0061）：同理，整行查询会选这些列，迁移未跑时冷启动先补上。
+  await db.execute(sql`
+    ALTER TABLE "PolicyVersion"
+      ADD COLUMN IF NOT EXISTS "resolverVersion" integer,
+      ADD COLUMN IF NOT EXISTS "resolverMigrationError" text,
+      ADD COLUMN IF NOT EXISTS "archivedByResolverMigration" boolean NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS "statusBeforeArchive" "PolicyVersionStatus"
+  `);
 
   // ----------------------------------------------------------------
   // Lexicon idempotency + bulk jobs (B5 / migration 0022 + 0023)

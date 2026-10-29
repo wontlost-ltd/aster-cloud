@@ -8,12 +8,12 @@
 //
 // 关键技术契约（已用生产引擎实证，见 vocab-demo.compile.test.ts）：
 //  1. 规则用**行业术语**（localized）+ 对应语言 CNL 关键词书写；compile(src, { lexicon,
-//     domain, tenantId }) 经 vocabularyRegistry.registerCustom（按 locale 注册）注入的领域
-//     词汇，把行业术语翻译成 canonical IR。lexicon 与 vocab 的 locale 必须一致。
+//     domain, tenantId }) 取经 vocabularyRegistry.registerCustom（按 locale 注册）注入的领域
+//     词汇，引擎按名字所在位置（类型 / 字段 / 参数等，ADR 0051）把行业术语解析为 canonical IR。
+//     lexicon 与 vocab 的 locale 必须一致。
 //  2. **eval 输入必须用 canonical 字段名**（如 systolic 而非 收缩压）——领域词只在表层。
 //  3. registerCustom key = `${tenantId}:${domain}:${locale}`；compile 传同一组 domain+tenantId。
-//  4. ⚠️ 规则 param 名**不得是 struct localized 名的大小写变体**（领域 canonicalizer 会误把
-//     param 当术语翻译→编译静默落空）。param 用与 struct 无关的中性词。
+//  4. 参数等局部名按位置解析，不会被当成同名（含大小写变体）的 struct 术语；param 名可自由取。
 
 import {
   vocabularyRegistry,

@@ -30,6 +30,17 @@ vi.mock('drizzle-orm', () => ({
   and: (...c: unknown[]) => ({ and: c }),
   isNull: (col: { name: string }) => ({ isNull: col.name }),
 }));
+// 版本词汇（ADR 0051）：语言判定用真实实现，词汇按用例给定
+const compileContext = vi.hoisted(() => ({ vocabulary: undefined as Record<string, unknown> | undefined, calls: [] as unknown[] }));
+vi.mock('@/lib/execution-input', async () => {
+  const { resolveStoredVersionLocale } = await vi.importActual<typeof import('@/lib/policy-version-locale')>('@/lib/policy-version-locale');
+  return {
+    loadStoredVersionCompileContext: async (v: Parameters<typeof resolveStoredVersionLocale>[0]) => {
+      compileContext.calls.push(v);
+      return { locale: resolveStoredVersionLocale(v), vocabulary: compileContext.vocabulary };
+    },
+  };
+});
 vi.mock('@/lib/policy-api-identity', () => ({
   createPolicyApiClientForUser: (...a: unknown[]) => h.createClient(...a),
 }));
@@ -45,12 +56,15 @@ import { RateLimitPresets } from '@/lib/rate-limit';
 const { findFirst, findExecutable, exportCedar, getSession } = h;
 const owned = (over: Record<string, unknown> = {}) => ({ id: 'p1', userId: 'u1', teamId: null, ...over });
 const executable = (over: Record<string, unknown> = {}) =>
-  ({ version: 1, source: 'Module m.', content: 'Module m.', aliasSet: null, ...over });
+  ({ version: 1, source: 'Module m.', content: 'Module m.', aliasSet: null, status: 'APPROVED', createdBy: 'u1',
+    vocabularySnapshotIds: null, sourceEnvelopeSha256: null, sourceScopesJson: null, sourceToolchainId: null, ...over });
 const req = () => new Request('http://localhost/api/policies/p1/export/cedar', { method: 'POST' });
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 
 beforeEach(() => {
   vi.clearAllMocks();
+  compileContext.vocabulary = undefined;
+  compileContext.calls = [];
   getSession.mockResolvedValue({ user: { id: 'u1' } });
   h.checkRateLimit.mockReturnValue({ allowed: true, remaining: 19, resetAt: Date.now() + 60_000 });
   h.createClient.mockResolvedValue({ exportCedar });
@@ -109,6 +123,23 @@ describe('POST /api/policies/[id]/export/cedar', () => {
     expect(exportCedar.mock.calls[0][0].locale).toBe('en-US');
     expect(h.createClient).toHaveBeenCalledWith('u1', 'u1');
     expect(await res.json()).toEqual({ exportable: true, policies: 'permit…', schema: {}, probes: { count: 4, agreed: 4 }, diagnostics: [] });
+  });
+
+  it('sends the version vocabulary (frozen snapshot for the approved version), omitted when none', async () => {
+    findFirst.mockResolvedValue(owned());
+    const snapshots = [{ snapshotId: 's1', domain: 'grades', locale: 'de' }];
+    findExecutable.mockResolvedValue(executable({ vocabularySnapshotIds: snapshots }));
+    exportCedar.mockResolvedValue({ exportable: false, diagnostics: [] });
+    compileContext.vocabulary = { id: 'grades', locale: 'en-US', structs: [], fields: [], functions: [] };
+
+    await POST(req(), ctx('p1'));
+
+    expect(exportCedar.mock.calls[0][0].vocabulary).toEqual(compileContext.vocabulary);
+    expect(compileContext.calls[0]).toMatchObject({ status: 'APPROVED', vocabularySnapshotIds: snapshots, source: 'Module m.' });
+
+    compileContext.vocabulary = undefined;
+    await POST(req(), ctx('p1'));
+    expect(exportCedar.mock.calls[1][0]).not.toHaveProperty('vocabulary');
   });
 
   it('falls back to content when the executable version has no source column', async () => {

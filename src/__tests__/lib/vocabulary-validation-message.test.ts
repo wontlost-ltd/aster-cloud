@@ -47,12 +47,13 @@ function validate(parts: Partial<DomainVocabulary>) {
  */
 const ENGINE_MESSAGES: Record<string, string> = {
   invalidCanonical: validate({ structs: [mapping(IdentifierKind.STRUCT, 'Bad Name!', 'Fahrer')] }).errors.join('; '),
-  duplicateCanonical: validate({
-    structs: [mapping(IdentifierKind.STRUCT, 'Driver', 'Fahrer'), mapping(IdentifierKind.STRUCT, 'Driver', 'Lenker')],
+  // ADR 0051：冲突按角色与作用域判定（同父结构下同写法不同规范名）
+  scopeConflict: validate({
+    fields: [
+      mapping(IdentifierKind.FIELD, 'age', 'alter', { parent: 'Driver' }),
+      mapping(IdentifierKind.FIELD, 'years', 'alter', { parent: 'Driver' }),
+    ],
   }).errors.join('; '),
-  duplicateLocalized: validate({
-    structs: [mapping(IdentifierKind.STRUCT, 'Driver', 'Fahrer'), mapping(IdentifierKind.STRUCT, 'Rider', 'Fahrer')],
-  }).warnings.join('; '),
   triggerConflict: validate({
     structs: [mapping(IdentifierKind.STRUCT, 'Driver', 'vip')],
     literals: [mapping(IdentifierKind.LITERAL, 'VIP customer', 'vip')],
@@ -60,8 +61,15 @@ const ENGINE_MESSAGES: Record<string, string> = {
   emptyLiteral: validate({ literals: [mapping(IdentifierKind.LITERAL, '', 'gruss')] }).errors.join('; '),
   controlLiteral: validate({ literals: [mapping(IdentifierKind.LITERAL, 'a\nb', 'gruss')] }).errors.join('; '),
   quotedLiteral: validate({ literals: [mapping(IdentifierKind.LITERAL, 'say "hi"', 'gruss')] }).errors.join('; '),
-  fieldWithoutParent: validate({ fields: [mapping(IdentifierKind.FIELD, 'age', 'alter')] }).warnings.join('; '),
+  fieldWithoutParent: validate({ fields: [mapping(IdentifierKind.FIELD, 'age', 'alter')] }).errors.join('; '),
+  enumWithoutParent: validate({ enumValues: [mapping(IdentifierKind.ENUM_VALUE, 'High', 'Hoch')] }).errors.join('; '),
   registryWrapper: `词汇表 "d" 验证失败:\n${validate({ structs: [mapping(IdentifierKind.STRUCT, 'Bad Name!', 'Fahrer')] }).errors.join('\n')}`,
+};
+
+/** ADR 0051 之前引擎的诊断（已落库的历史任务行级错误里仍可能出现，须继续识别）。 */
+const LEGACY_ENGINE_MESSAGES: Record<string, string> = {
+  duplicateCanonical: 'structs[1]: 规范化名称 "Driver" 重复',
+  duplicateLocalized: 'structs[1]: 本地化名称 "Fahrer" 重复，可能导致歧义',
 };
 
 /** 服务层 / 路由 / 异步 worker 的英文 validation_failed 消息（src/lib/domain-vocabulary*.ts、api/v1/domain-vocabularies）。 */
@@ -108,15 +116,22 @@ describe('parseVocabularyValidationMessage（#609/#634）', () => {
     );
     expect(reasons).toEqual({
       invalidCanonical: 'invalidCanonical',
-      duplicateCanonical: 'duplicateCanonical',
-      duplicateLocalized: 'duplicateLocalized',
+      scopeConflict: 'scopeConflict',
       triggerConflict: 'triggerConflict',
       emptyLiteral: 'invalidLiteral',
       controlLiteral: 'invalidLiteral',
       quotedLiteral: 'invalidLiteral',
       fieldWithoutParent: 'parentRequired',
+      enumWithoutParent: 'parentRequired',
       registryWrapper: 'invalidCanonical',
     });
+    expect(parseVocabularyValidationMessage(ENGINE_MESSAGES.scopeConflict)?.values).toEqual({ name: 'alter' });
+  });
+
+  it('ADR 0051 之前的历史引擎诊断仍能识别', () => {
+    for (const [reason, message] of Object.entries(LEGACY_ENGINE_MESSAGES)) {
+      expect(parseVocabularyValidationMessage(message)?.reason, message).toBe(reason);
+    }
   });
 
   it('识别服务层英文前置校验（含批量行前缀）', () => {
@@ -196,7 +211,8 @@ describe('词汇校验失败在 en/de/hi 下不显示中文（#634）', () => {
 
   it('每个原因码在 en/zh/de/hi 补充文案里都有', () => {
     const reasons = new Set(
-      [...Object.values(ENGINE_MESSAGES), ...SERVER_MESSAGES].map((m) => parseVocabularyValidationMessage(m)!.reason),
+      [...Object.values(ENGINE_MESSAGES), ...Object.values(LEGACY_ENGINE_MESSAGES), ...SERVER_MESSAGES]
+        .map((m) => parseVocabularyValidationMessage(m)!.reason),
     );
     for (const locale of ['en', 'zh', 'de', 'hi'] as const) {
       const validation = (DEMO_SUPPLEMENT[locale] as { domainVocabularies: { errors: { validation: Record<string, string> } } })

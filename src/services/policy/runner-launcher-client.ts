@@ -8,6 +8,8 @@ export interface RunnerLaunchParams {
   locale: string;
   functionName: string;
   aliasSet: Record<string, string[]> | null;
+  /** 版本的领域词汇（DomainVocabulary JSON，ADR 0051）：名称按位置解析所需，两侧须用同一份。 */
+  vocabulary?: Record<string, unknown>;
   role: string;
 }
 
@@ -62,6 +64,7 @@ export async function launchRunnerJob(params: RunnerLaunchParams): Promise<Runne
     const body = JSON.stringify({
       tenantId: params.tenantId, source: params.source, input: params.input,
       locale: params.locale, functionName: params.functionName, aliasSet: params.aliasSet,
+      ...(params.vocabulary ? { vocabulary: params.vocabulary } : {}),
     });
     const headers = await signRunnerLauncherHeaders('POST', LAUNCH_PATH, body, params.tenantId, params.role);
     (headers as Record<string, string>)['Content-Type'] = 'application/json';

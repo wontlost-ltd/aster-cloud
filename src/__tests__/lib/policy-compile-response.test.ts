@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { compileGateErrorResponse } from '@/lib/policy-compile-response';
+import { buildVocabularyScopes, IdentifierKind } from '@aster-cloud/aster-lang-ts/browser';
+import { compileGateErrorResponse, vocabularyScopeInvalidResponse } from '@/lib/policy-compile-response';
 import type { PolicyCompileError } from '@/services/policy/version-manager';
 
 const diagnostic = {
@@ -55,5 +56,49 @@ describe('aliasInvalidResponse', () => {
     await expect(response?.json()).resolves.toMatchObject({ code: 'alias_invalid' });
     expect(aliasInvalidResponse(new Error('DB down'))).toBeNull();
     expect(aliasInvalidResponse('not an error')).toBeNull();
+  });
+});
+
+describe('vocabularyScopeInvalidResponse — 指出出错词条（ADR 0051）', () => {
+  function scopeError(vocab: Partial<Parameters<typeof buildVocabularyScopes>[0]>): unknown {
+    try {
+      buildVocabularyScopes({ id: 'v', name: 'v', locale: 'de-DE', version: '1', structs: [], fields: [], functions: [], ...vocab });
+    } catch (err) {
+      return err;
+    }
+    throw new Error('expected VocabularyScopeError');
+  }
+
+  it('字段缺 parent → 400，带 term 与 kind', async () => {
+    const error = scopeError({ fields: [{ canonical: 'age', localized: 'alter', kind: IdentifierKind.FIELD }] });
+    const response = vocabularyScopeInvalidResponse(error)!;
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      code: 'vocabulary_scope_invalid', reason: 'field_parent_required', term: 'alter', kind: 'field',
+    });
+  });
+
+  it('枚举成员缺 parent → kind=enum_value', async () => {
+    const error = scopeError({ enumValues: [{ canonical: 'High', localized: 'Hoch', kind: IdentifierKind.ENUM_VALUE }] });
+    expect(await vocabularyScopeInvalidResponse(error)!.json()).toMatchObject({
+      reason: 'member_parent_required', term: 'Hoch', kind: 'enum_value',
+    });
+  });
+
+  it('非 VocabularyScopeError → null', () => {
+    expect(vocabularyScopeInvalidResponse(new Error('x'))).toBeNull();
+  });
+});
+
+describe('compileGateErrorResponse — 词汇加载失败', () => {
+  it('unavailableCode=vocabulary_unavailable → 503 且码与 compile_unavailable 区分', async () => {
+    const error = Object.assign(new Error('Domain vocabulary could not be loaded.'), {
+      retryAfterSeconds: 60,
+      unavailableCode: 'vocabulary_unavailable',
+    }) as PolicyCompileError;
+    const response = compileGateErrorResponse(error);
+    expect(response.status).toBe(503);
+    expect(response.headers.get('Retry-After')).toBe('60');
+    expect(await response.json()).toMatchObject({ code: 'vocabulary_unavailable', error: 'vocabulary_unavailable' });
   });
 });

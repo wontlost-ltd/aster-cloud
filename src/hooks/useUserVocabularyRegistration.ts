@@ -1,35 +1,34 @@
 /**
- * useUserVocabularyRegistration — 把当前策略作用域内的用户领域词汇注入 aster-lang-ts
- * 引擎的 vocabularyRegistry（per-tenant custom 词汇），让编译/翻译层（而非仅高亮层）
- * 也能识别用户自定义术语（ADR 0014 线B）。
+ * useUserVocabularyRegistration — 编辑器侧的作者领域词汇（ADR 0014 线B、ADR 0051）。
  *
  * 作用域规则与服务端编译门禁、审批冻结、执行完全一致（见 domain-vocabulary-scope）：
  * 与编辑器 CNL 语言相同、且被当前源码引用的 (domain, locale) 分组。流程：
  *   1. 拉取用户全部活跃词条（分页，不按 domain/locale 过滤——词条 locale 是自由填写的
  *      `de` 之类，与编译器的 `de-DE` 按主语言匹配）。
  *   2. 按当前源码选出作用域内分组，合并成一个词汇表，id 固定为 USER_VOCABULARY_DOMAIN。
- *   3. 作用域内容变化时 `registerCustom(tenantId, vocab)`，作用域清空时撤销注册。
- *   4. 订阅词汇 SSE 失效 tick，用户增删词后重新拉取。
+ *   3. 用引擎 buildVocabularyScopes 构建按位置解析的 VocabularyScopes；编译直接传入该词汇，
+ *      与服务端保存时（同一词汇 → 同一 scopes）逐字节一致，不再经租户注册表中转。
+ *   4. 订阅词汇版本失效 tick（轮询 /api/v1/domain-vocabularies/version），用户增删词后重新拉取。
  *
- * 返回合并后的词汇（也喂给 Monaco 高亮）、编译器应使用的 domain，以及注册内容的稳定 key，
- * 供下游触发重编译/重高亮。
+ * 返回合并后的词汇（编译 / 高亮 / LSP 共用）、其 VocabularyScopes，以及以
+ * canonicalScopesJson 为内容的稳定 key（与 envelope 第 5 段同值），供下游触发重编译/重高亮。
  */
 
 'use client';
 
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import {
-  vocabularyRegistry,
-  initBuiltinVocabularies,
+  buildVocabularyScopes,
+  canonicalScopesJson,
   type DomainVocabulary,
-} from '@/lib/aster-lexicon';
+  type VocabularyScopes,
+} from '@aster-cloud/aster-lang-ts/browser';
 import type { TermLikeRow } from '@/lib/domain-vocabulary-assemble';
 import {
   USER_VOCABULARY_DOMAIN,
   VOCABULARY_LIST_MAX_PAGE_SIZE,
   resolvePolicyVocabularyFromRows,
 } from '@/lib/domain-vocabulary-scope';
-import { validateVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
 import { useDomainVocabularyInvalidate } from '@/hooks/useDomainVocabularyInvalidate';
 
 /** GET /api/v1/domain-vocabularies/terms 返回的单条链接（取用到的字段）。 */
@@ -52,7 +51,7 @@ interface ListResponse {
 }
 
 export interface UseUserVocabularyRegistrationOptions {
-  /** 租户标识符；缺省（匿名/未登录）时跳过注册。 */
+  /** 租户标识符；缺省（匿名/未登录）时不加载用户词汇。 */
   tenantId?: string;
   /** 编译器语言代码（如 'de-DE'）。 */
   locale: string;
@@ -65,10 +64,15 @@ export interface UseUserVocabularyRegistrationOptions {
 export interface UseUserVocabularyRegistrationResult {
   /** 作用域内的合并用户词汇（源码未引用任何用户词时为 undefined）。 */
   vocabulary: DomainVocabulary | undefined;
-  /** 编译器应使用的 domain：有用户词汇时为 USER_VOCABULARY_DOMAIN。 */
-  domain: string | undefined;
-  /** 注册内容的稳定 key，变化即需重编译/重高亮。 */
+  /** 该词汇按位置解析的作用域视图（与服务端 buildVocabularyScopes 同源）。 */
+  scopes: VocabularyScopes | undefined;
+  /** canonicalScopesJson(scopes)；无词汇为空串。变化即需重编译/重高亮。 */
   registrationKey: string;
+}
+
+interface EditorVocabulary {
+  readonly vocabulary: DomainVocabulary;
+  readonly scopes: VocabularyScopes;
 }
 
 /** 把 API 行映射成 assemble 所需的最小行结构。 */
@@ -110,20 +114,25 @@ async function fetchAllTermRows(): Promise<TermLikeRow[] | null> {
 }
 
 /**
- * 编辑器作用域内的合并词汇；词汇自身冲突（如两个分组把同一规范名映射成不同词）时
- * 返回 null，回退内置词汇，而不是让 registerCustom 抛错。
+ * 编辑器作用域内的合并词汇及其 VocabularyScopes。词汇无法构成作用域（字段 / 枚举成员缺 parent、
+ * 字面量宏冲突，与服务端保存时 400 vocabulary_scope_invalid 同一判定）时返回 null，编辑器退回内置词汇。
  */
 function resolveEditorVocabulary(
   rows: readonly TermLikeRow[],
   source: string,
   locale: string,
-): DomainVocabulary | null {
+): EditorVocabulary | null {
   // 编辑中途源码可能无法词法分析，编辑器用 lenient 退化剥离（服务端路径一律严格）。
   const vocabulary = resolvePolicyVocabularyFromRows(rows, { source, locale }, {
     id: USER_VOCABULARY_DOMAIN,
     lenient: true,
   });
-  return vocabulary && validateVocabulary(vocabulary).valid ? vocabulary : null;
+  if (!vocabulary) return null;
+  try {
+    return { vocabulary, scopes: buildVocabularyScopes(vocabulary) };
+  } catch {
+    return null;
+  }
 }
 
 export function useUserVocabularyRegistration({
@@ -159,26 +168,13 @@ export function useUserVocabularyRegistration({
     () => (active ? resolveEditorVocabulary(rows, deferredSource, locale) : null),
     [active, rows, deferredSource, locale],
   );
-  // 以内容为 key：源码变化但作用域未变时不重新注册、不触发重编译。
-  const registrationKey = scoped ? JSON.stringify(scoped) : '';
+  // 以规范作用域 JSON 为 key：源码变化但作用域未变时不触发重编译。
+  const registrationKey = scoped ? canonicalScopesJson(scoped.scopes) : '';
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const vocabulary = useMemo(() => scoped ?? undefined, [registrationKey]);
-
-  // 注入引擎 registry（外部系统同步）。本 hook 在编辑器里先于 useAsterCompiler 调用，
-  // 同一次提交中注册 effect 先于编译 effect 执行，编译时已能查到新词汇。
-  useEffect(() => {
-    if (!active || !tenantId) return;
-    initBuiltinVocabularies();
-    vocabularyRegistry.unregisterCustom(tenantId, USER_VOCABULARY_DOMAIN, locale);
-    if (vocabulary) vocabularyRegistry.registerCustom(tenantId, vocabulary);
-  }, [active, tenantId, locale, vocabulary]);
+  const stable = useMemo(() => scoped ?? undefined, [registrationKey]);
 
   return useMemo(
-    () => ({
-      vocabulary,
-      domain: vocabulary ? USER_VOCABULARY_DOMAIN : undefined,
-      registrationKey,
-    }),
-    [vocabulary, registrationKey],
+    () => ({ vocabulary: stable?.vocabulary, scopes: stable?.scopes, registrationKey }),
+    [stable, registrationKey],
   );
 }

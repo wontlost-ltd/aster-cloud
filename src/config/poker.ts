@@ -214,10 +214,14 @@ export const POKER_RULES: Record<DemoLocale, PokerRule> = {
     rankField: 'rank', suitField: 'suit',
     source: `Module poker.showdown.
 
-Rule cardRank given card, produce:
+Define Card has rank as Int, suit as Text.
+
+Define Table has p1cards as List of Card, p2cards as List of Card.
+
+Rule cardRank given card as Card, produce:
   Return card.rank.
 
-Rule cardSuit given card, produce:
+Rule cardSuit given card as Card, produce:
   Return card.suit.
 
 Rule identity given x, produce:
@@ -289,7 +293,7 @@ Rule bestScore given cards, produce:
   Let scores be List.map(fives, classifyScore5).
   Return List.max(scores).
 
-Rule decide given table, produce Text:
+Rule decide given table as Table, produce Text:
   Let s1 be bestScore(table.p1cards).
   Let s2 be bestScore(table.p2cards).
   If s1 greater than s2:
@@ -304,10 +308,14 @@ Rule decide given table, produce Text:
     rankField: '点数', suitField: '花色',
     source: `模块 扑克.摊牌。
 
-规则 取点数 给定 牌 产出：
+定义 扑克牌 包含 点数 作为 整数，花色 作为 文本。
+
+定义 牌桌 包含 一号牌 作为 List of 扑克牌，二号牌 作为 List of 扑克牌。
+
+规则 取点数 给定 牌 作为 扑克牌 产出：
   返回 牌.点数。
 
-规则 取花色 给定 牌 产出：
+规则 取花色 给定 牌 作为 扑克牌 产出：
   返回 牌.花色。
 
 规则 本身 给定 元素 产出：
@@ -379,7 +387,7 @@ Rule decide given table, produce Text:
   令 各分 定义为 List.map(五张组, 牌型分)。
   返回 List.max(各分)。
 
-规则 裁决 给定 台面 产出 文本：
+规则 裁决 给定 台面 作为 牌桌 产出 文本：
   令 一号分 定义为 最佳分(台面.一号牌)。
   令 二号分 定义为 最佳分(台面.二号牌)。
   如果 一号分 大于 二号分：
@@ -394,10 +402,14 @@ Rule decide given table, produce Text:
     rankField: 'wert', suitField: 'farbe',
     source: `Modul poker.showdown.
 
-Regel kartenWert gegeben karte liefert:
+Definiere Karte hat wert als Ganzzahl, farbe als Text.
+
+Definiere Tisch hat einsKarten als List of Karte, zweiKarten als List of Karte.
+
+Regel kartenWert gegeben karte als Karte liefert:
   gib zurueck karte.wert.
 
-Regel kartenFarbe gegeben karte liefert:
+Regel kartenFarbe gegeben karte als Karte liefert:
   gib zurueck karte.farbe.
 
 Regel selbst gegeben element liefert:
@@ -469,7 +481,7 @@ Regel besteWertung gegeben hand liefert:
   sei wertungen gleich List.map(fuenfer, handWert).
   gib zurueck List.max(wertungen).
 
-Regel entscheide gegeben tisch liefert Text:
+Regel entscheide gegeben tisch als Tisch liefert Text:
   sei einsWert gleich besteWertung(tisch.einsKarten).
   sei zweiWert gleich besteWertung(tisch.zweiKarten).
   wenn einsWert groesser als zweiWert:

@@ -55,6 +55,7 @@ vi.mock('@/services/policy/version-manager', () => ({
   PolicyCompileError: mockPolicyCompileError,
 }));
 vi.mock('@/lib/policy-compile-validator', () => ({
+  loadSaveVocabulary: vi.fn(async () => ({ vocabulary: null, scopesJson: '' })),
   makeCompileValidator: vi.fn().mockReturnValue(vi.fn()),
 }));
 

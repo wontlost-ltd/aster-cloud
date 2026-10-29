@@ -13,6 +13,7 @@ import {
   Textarea,
 } from '@/components/ui';
 import { checkVocabularyScope } from '@/lib/domain-vocabulary-format';
+import { requiresParent } from '@/lib/domain-vocabulary-assemble';
 import { KIND_OPTIONS, type Kind } from './constants';
 import { useFocusTrap } from './use-focus-trap';
 
@@ -80,6 +81,7 @@ export function VocabularyDialog({
   const [domain, setDomain] = useState('');
   const [locale, setLocale] = useState('');
   const [kind, setKind] = useState<Kind>('struct');
+  const parentRequired = requiresParent(kind);
   const [canonical, setCanonical] = useState('');
   const [localized, setLocalized] = useState('');
   const [parentCanonical, setParentCanonical] = useState('');
@@ -136,7 +138,7 @@ export function VocabularyDialog({
       canonical: required(canonical, 'canonical'),
       localized: required(localized, 'localized'),
     };
-    if (kind === 'field') {
+    if (parentRequired) {
       v.parentCanonical = required(parentCanonical, 'parentCanonical');
     } else if (parentCanonical.trim()) {
       v.parentCanonical = parentCanonical.trim();
@@ -319,10 +321,10 @@ export function VocabularyDialog({
 
           <Field
             id="vd-parent"
-            label={kind === 'field' ? withoutOptionalSuffix(t('parentCanonical')) : t('parentCanonical')}
+            label={parentRequired ? withoutOptionalSuffix(t('parentCanonical')) : t('parentCanonical')}
             help={t('parentCanonicalHelp')}
             error={fieldErrors.parentCanonical}
-            required={kind === 'field'}
+            required={parentRequired}
           >
             <Input
               id="vd-parent"

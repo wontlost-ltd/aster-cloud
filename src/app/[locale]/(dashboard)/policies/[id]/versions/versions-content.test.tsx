@@ -137,4 +137,15 @@ describe('VersionsContent 审批操作', () => {
     await waitFor(() => expect(h.toastError).toHaveBeenCalledWith('policies.versions.sox.selfApprovalNotAllowed'));
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/policies/p1/versions/2/approve', expect.objectContaining({ method: 'POST' }));
   });
+
+  it('审批因保存后词汇变化被拒（409）：toast 显示本地化「保存新版本」提示', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: 'vocabulary_changed_since_save', message: 'x' }), { status: 409 }));
+    renderAs('admin1', { policyOwnerId: 'author', policyTeamId: 'team1', reviewerTeamRole: 'admin' });
+    fireEvent.click(screen.getByRole('button', { name: 'policies.versions.actions.approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'policies.versions.approveDialog.confirm' }));
+
+    await waitFor(() =>
+      expect(h.toastError).toHaveBeenCalledWith('policies.versions.approvalErrorCodes.vocabulary_changed_since_save'),
+    );
+  });
 });

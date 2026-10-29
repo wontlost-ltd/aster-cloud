@@ -50,6 +50,7 @@ export default async function EditPolicyPage({ params }: PageProps) {
       content: true,
       source: true,
       sourceEnvelopeSha256: true,
+      sourceScopesJson: true,
       sourceToolchainId: true,
       vocabularySnapshotIds: true,
     },
@@ -60,6 +61,7 @@ export default async function EditPolicyPage({ params }: PageProps) {
     source: activeVersion ? (activeVersion.source ?? activeVersion.content) : policyData.content,
     aliasSet: activeVersion?.aliasSet ?? null,
     sourceEnvelopeSha256: activeVersion?.sourceEnvelopeSha256 ?? null,
+    sourceScopesJson: activeVersion?.sourceScopesJson ?? null,
     sourceToolchainId: activeVersion?.sourceToolchainId ?? null,
     vocabularySnapshotIds: activeVersion?.vocabularySnapshotIds ?? null,
   });

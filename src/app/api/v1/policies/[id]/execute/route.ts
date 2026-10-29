@@ -78,7 +78,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     const versionRows = await db.query.policyVersions.findMany({
       where: eq(policyVersions.policyId, id),
       columns: {
-        id: true, version: true, status: true, isDefault: true, createdBy: true, sourceEnvelopeSha256: true,
+        id: true, version: true, status: true, isDefault: true, createdBy: true, sourceEnvelopeSha256: true, sourceScopesJson: true,
       },
     });
 
@@ -316,6 +316,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       source: policy.content,
       aliasSet: policy.aliasSet ?? null,
       sourceEnvelopeSha256: executedVersionRow?.sourceEnvelopeSha256 ?? null,
+      sourceScopesJson: executedVersionRow?.sourceScopesJson ?? null,
       sourceToolchainId: policy.sourceToolchainId ?? null,
       vocabularySnapshotIds: policy.vocabSnapshotIds,
     });
@@ -449,6 +450,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         locale: policyLocale,
         functionName: executionResult.executedFunction ?? '',
         aliasSet: parsedAliasSet,
+        vocabulary,
         role: RUNNER_LAUNCHER_HMAC_ROLE,
         authorityReplay: executionResult.metadata.replay,
       }),

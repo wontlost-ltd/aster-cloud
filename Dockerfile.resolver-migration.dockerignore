@@ -1,0 +1,36 @@
+# Dependencies
+node_modules
+
+# Next.js
+.next
+out
+
+# Build outputs
+dist
+build
+
+# Development
+.env*
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Testing
+coverage
+.nyc_output
+
+# Misc
+*.log
+*.md
+!README.md
+
+# resolver 迁移镜像专用：测试代码不进镜像
+src/__tests__
+**/__tests__
+**/*.test.ts
+**/*.spec.ts

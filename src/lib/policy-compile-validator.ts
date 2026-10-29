@@ -7,9 +7,13 @@ import {
   DEFAULT_COMPILE_RETRY_AFTER_SECONDS,
   PolicyCompileError,
   PolicyCompileUnavailableError,
+  VOCABULARY_UNAVAILABLE_CODE,
   type CompileValidator,
 } from '@/services/policy/version-manager';
 import { loadLiveVocabularyForPolicy } from '@/lib/domain-vocabulary-snapshot';
+import type { PolicyVocabularyContext } from '@/lib/domain-vocabulary-scope';
+import { vocabularyScopesJson } from '@/lib/policy-alias';
+import type { DomainVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
 
 /** 取上游 429 错误体中的 retryAfter（秒），缺失或非法时回退默认值。 */
 function retryAfterOf(err: PolicyApiError): number {
@@ -48,27 +52,43 @@ function hasSourceError(diagnostics: PolicyCompileResponse['diagnostics']): bool
   );
 }
 
+/** 一次保存所用的作者词汇：编译门禁与 envelope 封印共用同一份，二者不会分叉。 */
+export interface SaveVocabulary {
+  /** 作者现行词汇中该策略作用域内的部分；无则 null。 */
+  vocabulary: DomainVocabulary | null;
+  /** envelope 第 5 段（ADR 0051 §7）。 */
+  scopesJson: string;
+}
+
 /**
- * 保存时编译所用的领域词汇：作者当前活跃词汇中该策略作用域内的部分（与编辑器注册、
- * 审批冻结同一规则，见 domain-vocabulary-scope）。加载失败退化为不带词汇编译，
- * 不因词汇库故障阻断保存。
+ * 每次保存只加载一次作者现行词汇（作用域规则同编辑器注册与审批冻结，见 domain-vocabulary-scope），
+ * 并据此算出 envelope 词汇段。
+ * - 加载失败：编译门禁与封印都没有可信的词汇输入，按暂不可用拒绝（503 可重试，码为
+ *   vocabulary_unavailable，与编译服务不可用区分），不退化为无词汇——否则落库的 envelope 与实际编译输入不一致。
+ * - 词汇非法（字段/枚举成员缺 parent、字面量冲突）：引擎抛 VocabularyScopeError，原样上抛，
+ *   由保存入口映射为 400 vocabulary_scope_invalid。
  */
-async function loadCompileVocabulary(
+export async function loadSaveVocabulary(
   userId: string,
-  source: string,
-  locale: string,
-): Promise<Record<string, unknown> | null> {
+  policy: PolicyVocabularyContext,
+): Promise<SaveVocabulary> {
+  let vocabulary: DomainVocabulary | null;
   try {
-    const vocabulary = await loadLiveVocabularyForPolicy(userId, { source, locale });
-    return vocabulary ? (vocabulary as unknown as Record<string, unknown>) : null;
+    vocabulary = await loadLiveVocabularyForPolicy(userId, policy);
   } catch (err) {
     console.warn('[compile-gate] failed to load domain vocabulary', err);
-    return null;
+    throw new PolicyCompileUnavailableError(
+      DEFAULT_COMPILE_RETRY_AFTER_SECONDS,
+      'Domain vocabulary could not be loaded. Try again later.',
+      VOCABULARY_UNAVAILABLE_CODE,
+    );
   }
+  return { vocabulary, scopesJson: vocabularyScopesJson(vocabulary) };
 }
 
 /**
  * 构造保存前源码可编译性校验器，注入给 createVersion（覆盖所有版本创建入口）。
+ * saveVocabulary 为本次保存经 {@link loadSaveVocabulary} 加载的同一份作者词汇（与 envelope 封印共用）。
  *
  * 用与执行一致的输入（source + locale + aliasSet + 结构词授权 + 作用域内领域词汇）调 aster-api 的
  * POST /api/v1/policies/compile——依赖用户自定义别名的合法源码不会被「不带
@@ -87,11 +107,16 @@ async function loadCompileVocabulary(
  *   assertCompilable 按是否声明档案决定（503 或放行）。
  *
  * createVersion 只在返回的 diagnostics 含 severity==='error' 时拒绝落库。
+ * tenantId 缺省为 userId（个人租户）；按已存版本重编译时传策略所属租户（policyTenantId）。
  */
-export function makeCompileValidator(userId: string): CompileValidator {
+export function makeCompileValidator(
+  userId: string,
+  saveVocabulary: DomainVocabulary | null,
+  tenantId: string = userId,
+): CompileValidator {
+  const vocabulary = saveVocabulary as unknown as Record<string, unknown> | null;
   return async ({ source, locale, aliasSet, allowStructural }) => {
-    const client = createPolicyApiClient(userId, userId);
-    const vocabulary = await loadCompileVocabulary(userId, source, locale);
+    const client = createPolicyApiClient(tenantId, userId);
     try {
       const result = await client.compile({
         source,

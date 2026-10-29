@@ -66,8 +66,8 @@ Aster CNL ist eine Teilmenge des Englischen (mit Lokalisierungsunterst√ºtzung f√
 ```
 Module pricing.
 
-Rule discounted-price given amount as Number, tier as Text, produce Number:
-  If tier is "gold":
+Rule discountedPrice given amount as Float, tier as Text, produce Float:
+  If tier equals to "gold":
     Return amount * 0.8.
   Return amount.
 ```

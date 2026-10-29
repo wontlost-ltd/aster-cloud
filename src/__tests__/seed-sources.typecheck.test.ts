@@ -27,6 +27,11 @@ describe('种子策略源码必须通过编译与类型检查', () => {
     });
   }
 
+  it('名称解析失败的源码被拒绝（E802）', async () => {
+    const bad = 'Module p.\n\nDefine Applicant has\n  score as Int.\n\nRule r given applicant as Applicant, produce Bool:\n  Return applicant.score at least threshold.\n';
+    expect((await seedCompileProblems(bad, 'en-US')).map((p) => p.code)).toContain('E802');
+  });
+
   it('未标类型字段被赋枚举值的源码被拒绝（E012）', async () => {
     const bad = 'Module m.\nDefine S as one of A, B.\nDefine D has status, reason.\nRule r given x as Int, produce D:\n  Return D with status set to A, reason set to "x".\n';
     expect((await seedCompileProblems(bad, 'en-US')).map((p) => p.code)).toContain('E012');

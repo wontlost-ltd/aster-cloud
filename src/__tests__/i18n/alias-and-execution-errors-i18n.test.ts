@@ -21,13 +21,17 @@ const ALIAS_ISSUE_CODES = [
   'nonCanonical', 'singleWord', 'shadowsKeyword', 'shadowsBaseAlias', 'collidesVocabulary', 'duplicate',
 ];
 const VOCAB_REASONS = [
-  'generic', 'invalidCanonical', 'duplicateCanonical', 'triggerConflict', 'invalidLiteral',
+  'generic', 'invalidCanonical', 'duplicateCanonical', 'triggerConflict', 'scopeConflict', 'invalidLiteral',
   'parentRequired', 'fieldRequired',
 ];
 const KEYS = [
   ...ALIAS_ISSUE_CODES.map((c) => `policies.form.aliases.errors.${c}`),
   'policies.form.aliasesInvalidBeforeSaving',
   'policies.form.saveErrorCodes.alias_invalid',
+  'policies.form.saveErrorCodes.vocabulary_scope_invalid',
+  'policies.form.saveErrorCodes.vocabulary_scope_invalid_term',
+  'policies.form.saveErrorCodes.vocabulary_unavailable',
+  'policies.form.openVocabulary',
   'policies.execute.engineErrorDetail',
   'policies.execute.ambiguousInputField',
   'policies.execute.ambiguousInputSpelling',

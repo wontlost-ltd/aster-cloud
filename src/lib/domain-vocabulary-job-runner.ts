@@ -18,6 +18,7 @@ import {
   applyVocabularyScopeFormat,
   normalizeTermInput,
   assembleDomainVocabularyFromLinks,
+  requiresParent,
   validateDomainVocabulary,
   type NormalizedTermInput,
   type TermKind,
@@ -129,8 +130,8 @@ function prepareRow(raw: unknown): PreparedRow {
   const formatted = applyVocabularyScopeFormat(normalized);
   if (!formatted.ok) return invalid(formatted.message);
   const value = formatted.value;
-  if (value.kind === 'field' && !value.parentCanonical) {
-    return invalid('parentCanonical is required for kind=field');
+  if (requiresParent(value.kind) && !value.parentCanonical) {
+    return invalid(`parentCanonical is required for kind=${value.kind}`);
   }
   const validation = validateDomainVocabulary(
     assembleDomainVocabularyFromLinks(

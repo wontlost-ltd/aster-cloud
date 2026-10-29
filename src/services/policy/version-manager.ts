@@ -32,9 +32,12 @@ import {
   computeSourceEnvelope,
   STRUCTURAL_KINDS,
   validateUserAliases,
+  vocabularyScopesJson,
   type ReservedSets,
 } from '@/lib/policy-alias';
 import { declaresProfile } from '@/lib/policy-profile-declaration';
+import { RESOLVER_VERSION } from '@aster-cloud/aster-lang-ts/browser';
+import type { DomainVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
 import { getTeamMemberRole } from '@/lib/team-permissions';
 import {
   canReviewPolicyVersions,
@@ -45,7 +48,6 @@ import {
 
 type PolicyVersion = InferSelectModel<typeof policyVersions>;
 type PolicyVersionStatus = PolicyVersion['status'];
-type VersionDbClient = Pick<typeof db, 'query' | 'insert' | 'transaction'>;
 
 /**
  * 调用方不是该策略的所有者（或策略不存在/已软删）。路由 catch 后返回 404——
@@ -110,8 +112,28 @@ export class VocabularyFreezeError extends Error {
 }
 
 /**
+ * 作者词汇在保存（封印 sourceScopesJson）之后、审批之前发生了变化：此刻冻结的词汇与版本
+ * envelope 封印的词汇不一致，批准它会让执行所用词汇与已审阅、已封印的编译输入分叉。
+ * 路由映射为 409 vocabulary_changed_since_save；作者在编辑器再保存一次即按现行词汇生成新版本
+ * （PUT /api/policies/[id] 比对封印词汇段），再提交该版本审批。
+ */
+export class VocabularyChangedSinceSaveError extends Error {
+  readonly code = 'vocabulary_changed_since_save';
+  constructor(
+    message = 'The domain vocabulary used by this version has changed since it was saved. Save the policy to create a version with the current vocabulary, then submit that version for approval.',
+  ) {
+    super(message);
+    this.name = 'VocabularyChangedSinceSaveError';
+  }
+}
+
+/**
  * 在审批事务内冻结待批准版本作用域内的作者词汇（B12 / #610），返回快照引用。
  * 作用域按版本源码与其记录的编译 locale 计算；失败抛 VocabularyFreezeError（事务回滚）。
+ *
+ * 一致性：写入快照前比对「即将冻结的词汇」的 scopesJson 与版本保存时封印的 sourceScopesJson，
+ * 不同则抛 VocabularyChangedSinceSaveError，不写任何快照。sourceScopesJson 为 NULL 的存量行
+ * 早于词汇封印（ADR 0051 之前），无可比对的封印值，直接放行；resolver 迁移会为其回填。
  */
 async function freezeApprovalVocabulary(
   version: InferSelectModel<typeof policyVersions>,
@@ -124,14 +146,23 @@ async function freezeApprovalVocabulary(
     aliasSet: version.aliasSet,
     sourceEnvelopeSha256: version.sourceEnvelopeSha256,
     sourceToolchainId: version.sourceToolchainId,
+    sourceScopesJson: version.sourceScopesJson,
     vocabularySnapshotIds: null,
   });
+  const sealed = version.sourceScopesJson;
+  const verifyVocabulary = sealed === null
+    ? undefined
+    : (vocabulary: DomainVocabulary | null) => {
+      if (vocabularyScopesJson(vocabulary) !== sealed) throw new VocabularyChangedSinceSaveError();
+    };
   try {
     return await freezeVocabularyForApproval(
       { policyAuthorId: version.createdBy, policy: { source, locale } },
       tx,
+      { verifyVocabulary },
     );
   } catch (err) {
+    if (err instanceof VocabularyChangedSinceSaveError) throw err;
     console.error('[vocabulary-snapshot] freeze failed, approval aborted:', err);
     throw new VocabularyFreezeError();
   }
@@ -183,6 +214,8 @@ export async function assertVersionReadAccess(policyId: string, userId: string):
 export class PolicyCompileError extends Error {
   /** 有值表示「编译检查暂不可用、可稍后重试」，路由据此返回 503 + Retry-After。 */
   readonly retryAfterSeconds?: number;
+  /** 暂不可用时的稳定错误码（缺省 compile_unavailable），界面据此给出不同提示。 */
+  readonly unavailableCode?: string;
   readonly diagnostics?: CompileDiagnostic[];
 
   constructor(
@@ -202,16 +235,22 @@ export class PolicyCompileError extends Error {
  */
 export class PolicyCompileUnavailableError extends PolicyCompileError {
   override readonly retryAfterSeconds: number;
+  override readonly unavailableCode: string;
 
   constructor(
     retryAfterSeconds: number,
     message = 'Policy compilation is temporarily unavailable. Try again later.',
+    unavailableCode = 'compile_unavailable',
   ) {
     super(message);
     this.name = 'PolicyCompileUnavailableError';
     this.retryAfterSeconds = retryAfterSeconds;
+    this.unavailableCode = unavailableCode;
   }
 }
+
+/** 作者领域词汇暂时无法加载的稳定错误码（与编译服务不可用区分）。 */
+export const VOCABULARY_UNAVAILABLE_CODE = 'vocabulary_unavailable';
 
 /** 编译检查不可用且上游未给出重试时间时的默认重试秒数（aster-api 限流窗口为一分钟）。 */
 export const DEFAULT_COMPILE_RETRY_AFTER_SECONDS = 60;
@@ -331,6 +370,11 @@ export interface CreateVersionParams {
   /** 工具链身份串（进 envelope）。缺省由 env ASTER_RUNTIME_BUILD 拼。 */
   toolchainId?: string;
   /**
+   * envelope 第 5 段（ADR 0051 §7）：作者现行词汇作用域的规范 JSON，无词汇为空串。
+   * 由调用方在事务外用 loadSaveVocabulary 取得（新版本是草稿，取现行词汇；与编译门禁同一份）。
+   */
+  scopesJson: string;
+  /**
    * 源码可编译性校验器（注入）。提供时：编译源码，若含 error 诊断则抛
    * PolicyCompileError（拒绝落库不可编译源码）。校验器自身抛异常（编译服务不可达）
    * 时按 assertCompilable 的规则放行或拒绝。缺省=不校验（向后兼容）。
@@ -346,7 +390,7 @@ export interface CreateVersionParams {
    * 提供时版本行与安全事件都经它写入，缓存失效由调用方在提交后执行（事务内失效会让并发读
    * 在提交前把旧值重新填回缓存）。
    */
-  dbClient?: VersionDbClient;
+  dbClient?: SnapshotTx;
 }
 
 export interface CreateVersionResult {
@@ -385,11 +429,57 @@ async function invalidateAfterVersionChange(policyId: string): Promise<void> {
   }
 }
 
+type ChainedVersionFields = Pick<
+  typeof policyVersions.$inferInsert,
+  'createdBy' | 'releaseNote' | 'aliasSet' | 'sourceEnvelopeSha256' | 'sourceToolchainId' | 'sourceScopesJson' | 'profile'
+>;
+
+/**
+ * 锁住策略的链尾版本（SELECT … FOR UPDATE）后接在其后插入新草稿版本。
+ * 链尾按 (version DESC, id DESC) 取，与 resolver 迁移判定直接后继的顺序一致；链接 = envelope（存在时）
+ * 否则 sourceHash —— 与 Java chainLink 对齐（ADR 0022 §11.5 C1-a），让 alias_set 篡改对版本链可见。
+ * 迁移正在改写链尾时本函数等其提交后读到新链接；本函数先提交时迁移的比较后改写会把新行当作后继一并改写。
+ */
+async function insertChainedVersion(
+  tx: SnapshotTx,
+  policyId: string,
+  source: string,
+  fields: ChainedVersionFields,
+): Promise<{ id: string; version: number; sourceHash: string }> {
+  const [tail] = await tx
+    .select({
+      version: policyVersions.version,
+      sourceHash: policyVersions.sourceHash,
+      sourceEnvelopeSha256: policyVersions.sourceEnvelopeSha256,
+    })
+    .from(policyVersions)
+    .where(eq(policyVersions.policyId, policyId))
+    .orderBy(desc(policyVersions.version), desc(policyVersions.id))
+    .limit(1)
+    .for('update');
+  const version = (tail?.version ?? 0) + 1;
+  const prevHash = tail ? (tail.sourceEnvelopeSha256 ?? tail.sourceHash) : null;
+  const sourceHash = computeChainedHash(source, prevHash);
+  const [created] = await tx.insert(policyVersions).values({
+    id: crypto.randomUUID(),
+    policyId,
+    version,
+    source,
+    content: source, // 兼容旧字段
+    sourceHash,
+    prevHash,
+    status: 'DRAFT',
+    // 新版本按当前解析规则封印，resolver 迁移（ADR 0051 §9）无需再处理。
+    resolverVersion: RESOLVER_VERSION,
+    ...fields,
+  }).returning();
+  return { id: created.id, version, sourceHash };
+}
+
 export async function createVersion(
   params: CreateVersionParams
 ): Promise<CreateVersionResult> {
   const { policyId, source, createdBy, releaseNote } = params;
-  const client = params.dbClient ?? db;
   const locale = params.locale ?? DEFAULT_CNL_LOCALE;
   // 不变量：envelope 只记录受支持的规范 locale（保存入口已用 parseCompileLocale 校验），
   // 以便执行与审批能从 envelope 精确反推版本的编译语言（policy-version-locale）。
@@ -430,39 +520,27 @@ export async function createVersion(
     : (params.profile ?? null);
 
   const toolchainId = params.toolchainId ?? cloudToolchainId();
-  const sourceEnvelopeSha256 = computeSourceEnvelope(source, aliasSetJson, locale, toolchainId);
-
-  // 获取最新版本号和链接哈希。
-  // 链接 = envelope（存在时）否则 sourceHash —— 与 Java chainLink 对齐（ADR 0022 §11.5 C1-a）：
-  // 让 alias_set 篡改对版本链可见（前序版本带别名时其 envelope 进链，改 alias_set 即断链）。
-  const latestVersion = await client.query.policyVersions.findFirst({
-    where: eq(policyVersions.policyId, policyId),
-    orderBy: [desc(policyVersions.version)],
-    columns: { version: true, sourceHash: true, sourceEnvelopeSha256: true },
-  });
-
-  const newVersionNumber = (latestVersion?.version ?? 0) + 1;
-  const prevHash = latestVersion
-    ? (latestVersion.sourceEnvelopeSha256 ?? latestVersion.sourceHash)
-    : null;
-  const sourceHash = computeChainedHash(source, prevHash);
-
-  const [created] = await client.insert(policyVersions).values({
-    id: crypto.randomUUID(),
-    policyId,
-    version: newVersionNumber,
+  const sourceEnvelopeSha256 = computeSourceEnvelope(
     source,
-    content: source, // 兼容旧字段
-    sourceHash,
-    prevHash,
+    aliasSetJson,
+    locale,
+    toolchainId,
+    params.scopesJson,
+  );
+
+  // 链尾锁与插入在同一事务里：与 resolver 迁移改写链接（ADR 0051 §9）互斥，新版本总能接在最新链接上。
+  const insertVersion = (tx: SnapshotTx) => insertChainedVersion(tx, policyId, source, {
     createdBy,
     releaseNote,
-    status: 'DRAFT',
     aliasSet: aliasSetJson,
     sourceEnvelopeSha256,
     sourceToolchainId: toolchainId,
+    // 封印所用词汇段原样落库：之后词条编辑或审批冻结都不改变 envelope 的重算输入。
+    sourceScopesJson: params.scopesJson,
     profile,
-  }).returning();
+  });
+  const created = params.dbClient ? await insertVersion(params.dbClient) : await db.transaction(insertVersion);
+  const { version: newVersionNumber, sourceHash } = created;
 
   const hasStructuralAliases = aliasSetJson
     ? Object.keys(JSON.parse(aliasSetJson) as Record<string, string[]>)

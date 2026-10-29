@@ -28,6 +28,10 @@ vi.mock('@/lib/team-permissions', () => ({
   checkTeamPermission: vi.fn().mockResolvedValue({ allowed: true }),
   TeamPermission: { CREATE_POLICY: 'CREATE_POLICY', VIEW_POLICIES: 'VIEW_POLICIES' },
 }));
+// 本文件只测编译服务不可用的分类：作者词汇正常加载（无词汇）。词汇加载失败另有用例（policy-compile-validator.test）。
+vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
+  loadLiveVocabularyForPolicy: vi.fn(async () => null),
+}));
 vi.mock('@/services/policy/policy-api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/policy/policy-api')>()),
   createPolicyApiClient: vi.fn(() => ({ compile: mockCompile })),

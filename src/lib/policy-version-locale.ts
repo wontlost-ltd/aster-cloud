@@ -2,13 +2,14 @@
  * 已存版本的 CNL 语言解析（secure-execute 与审批冻结共用）。
  *
  * PolicyVersion 没有单独的 locale 列，但保存时的编译 locale 已写进 sourceEnvelopeSha256
- * （content + aliasSet + locale + 工具链）。按以下优先级取语言，保证旧版本执行口径不变：
+ * （content + aliasSet + locale + 工具链 + 词汇段，ADR 0051 §7）。词汇段取封印时落库的
+ * sourceScopesJson，不按现行/快照词汇重推，故之后编辑词条或审批冻结都不影响反推。按以下优先级取语言，保证旧版本执行口径不变：
  *   1. 版本记录的编译 locale：用候选 locale 重算 envelope，与存储值相等者即保存时所用值。
  *   2. 冻结快照引用的 locale 唯一时取之（secure-execute 原有口径，兼容无 envelope 的旧版本）。
  *   3. 最后才按源码关键词识别（detectCNLLocale，启发式）。
  */
 
-import { computeSourceEnvelope } from '@/lib/policy-alias';
+import { computeLegacySourceEnvelope, computeSourceEnvelope } from '@/lib/policy-alias';
 import { detectCNLLocale } from '@/services/policy/cnl-executor';
 import { CNL_LOCALES } from '@/lib/cnl-locale';
 import { choosePolicyLocale } from '@/lib/policy-locale-priority';
@@ -27,17 +28,23 @@ export interface StoredVersionLocaleInput {
   aliasSet: string | null;
   sourceEnvelopeSha256: string | null;
   sourceToolchainId: string | null;
+  /** 封印 envelope 时的词汇段；NULL = ADR 0051 前的旧行（4 段 envelope，待迁移回填）。 */
+  sourceScopesJson: string | null;
   vocabularySnapshotIds: unknown;
 }
 
-/** 从 envelope 反推保存时的编译 locale；无 envelope 或都不匹配时返回 undefined。 */
+/**
+ * 从 envelope 反推保存时的编译 locale：有封印词汇段时按 5 段重算；旧行（NULL）按 4 段旧格式
+ * 与其记录的工具链重算。无 envelope 或都不匹配时返回 undefined。
+ */
 export function recordedCompileLocale(version: StoredVersionLocaleInput): string | undefined {
   if (!version.sourceEnvelopeSha256) return undefined;
-  return RECORDED_LOCALE_CANDIDATES.find(
-    (locale) =>
-      computeSourceEnvelope(version.source, version.aliasSet, locale, version.sourceToolchainId) ===
-      version.sourceEnvelopeSha256,
-  );
+  const { source, aliasSet, sourceToolchainId, sourceScopesJson } = version;
+  const envelopeFor = (locale: string) =>
+    sourceScopesJson === null
+      ? computeLegacySourceEnvelope(source, aliasSet, locale, sourceToolchainId)
+      : computeSourceEnvelope(source, aliasSet, locale, sourceToolchainId, sourceScopesJson);
+  return RECORDED_LOCALE_CANDIDATES.find((locale) => envelopeFor(locale) === version.sourceEnvelopeSha256);
 }
 
 /** 快照引用的 locale 唯一时返回该值，否则 undefined。 */
@@ -56,8 +63,9 @@ function uniqueSnapshotLocale(refs: unknown): string | undefined {
 export function resolveStoredVersionLocale(version: StoredVersionLocaleInput): string {
   const recorded = recordedCompileLocale(version);
   if (!recorded && version.sourceEnvelopeSha256) {
-    // 有 envelope 却反推不出：旧版本保存时用了不受支持的 locale，只能走兜底链。
-    console.warn('[policy-version-locale] recorded compile locale not recoverable; falling back');
+    // 有 envelope 却反推不出（如旧版本保存时用了不受支持的 locale）：只能走兜底链。
+    // 旧数据上属预期情形，记 debug 不刷告警。
+    console.debug('[policy-version-locale] recorded compile locale not recoverable; falling back');
   }
   return choosePolicyLocale({
     recorded,

@@ -108,8 +108,9 @@ describe('PolicyForm 的 CNL 语言跟随策略而非界面语言（#627）', ()
       resolveStoredVersionLocale({
         source: GERMAN,
         aliasSet: null,
-        sourceEnvelopeSha256: computeSourceEnvelope(GERMAN, null, 'en-US', 'tc-1'),
+        sourceEnvelopeSha256: computeSourceEnvelope(GERMAN, null, 'en-US', 'tc-1', ''),
         sourceToolchainId: 'tc-1',
+        sourceScopesJson: '',
         vocabularySnapshotIds: null,
       });
 

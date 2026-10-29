@@ -13,9 +13,21 @@ const { mockInsertReturning, mockInsertValues, mockVersionsFindFirst } = vi.hois
 
 vi.mock('@/lib/prisma', () => {
   const insert = vi.fn(() => ({ values: mockInsertValues }));
+  // 链尾在事务内 SELECT … FOR UPDATE 读取（mockVersionsFindFirst 给出链尾行）
+  const select = vi.fn(() => ({
+    from: () => ({ where: () => ({ orderBy: () => ({ limit: () => ({
+      for: async () => {
+        const tail = await mockVersionsFindFirst();
+        return tail ? [tail] : [];
+      },
+    }) }) }) }),
+  }));
+  const tx = { insert, select };
   return {
     db: {
       insert,
+      select,
+      transaction: vi.fn(async (fn: (client: unknown) => Promise<unknown>) => fn(tx)),
       query: { policyVersions: { findFirst: mockVersionsFindFirst } },
     },
     policyVersions: {
@@ -23,6 +35,7 @@ vi.mock('@/lib/prisma', () => {
       version: {},
       sourceHash: {},
       sourceEnvelopeSha256: {},
+      id: {},
     },
     policyApprovals: {},
   };
@@ -40,13 +53,49 @@ import {
   DEFAULT_COMPILE_RETRY_AFTER_SECONDS,
   type CompileValidator,
 } from '@/services/policy/version-manager';
+import { cloudToolchainId, computeSourceEnvelope } from '@/lib/policy-alias';
+import { RESOLVER_VERSION } from '@aster-cloud/aster-lang-ts/browser';
 
 const baseParams = {
   policyId: 'p1',
   source: 'Module X.',
   createdBy: 'u1',
   locale: 'en-US',
+  scopesJson: '',
 };
+
+describe('createVersion — 5 段 envelope（ADR 0051 §7）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockVersionsFindFirst.mockResolvedValue(null);
+    mockInsertReturning.mockResolvedValue([
+      { id: 'v1', version: 1, sourceHash: 'h', sourceEnvelopeSha256: 'e' },
+    ]);
+  });
+
+  it('词汇段与新工具链身份串进 envelope，词汇段一并落库', async () => {
+    const scopesJson = '{"enumMembers":{},"fields":{},"functions":{},"literals":{},"schemaVersion":1,"types":{}}';
+    await createVersion({ ...baseParams, scopesJson });
+    const values = (mockInsertValues.mock.calls[0] as unknown[])[0] as {
+      sourceEnvelopeSha256: string;
+      sourceToolchainId: string;
+      sourceScopesJson: string;
+      resolverVersion: number;
+    };
+    const toolchainId = cloudToolchainId();
+    // 新版本按新解析规则封印，resolver 迁移（ADR 0051 §9）直接跳过
+    expect(values.resolverVersion).toBe(RESOLVER_VERSION);
+    expect(values.sourceToolchainId).toBe(toolchainId);
+    // 封印所用词汇段原样落库，供之后按同一输入重算 envelope
+    expect(values.sourceScopesJson).toBe(scopesJson);
+    expect(values.sourceEnvelopeSha256).toBe(
+      computeSourceEnvelope('Module X.', null, 'en-US', toolchainId, scopesJson),
+    );
+    expect(values.sourceEnvelopeSha256).not.toBe(
+      computeSourceEnvelope('Module X.', null, 'en-US', toolchainId, ''),
+    );
+  });
+});
 
 describe('createVersion — 源码可编译性门禁', () => {
   beforeEach(() => {

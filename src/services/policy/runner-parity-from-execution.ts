@@ -49,6 +49,8 @@ export interface ParityFromExecutionCtx {
   locale: string;                              // 必填（execute 路由 detectCNLLocale 恒有值）
   functionName: string;                        // 必填（无则传空串——launcher 契约允许）
   aliasSet: Record<string, string[]> | null;   // 对齐 RunnerLaunchParams.aliasSet（null 非 undefined）
+  /** 版本的领域词汇（与执行同一份，ADR 0051）；无词汇时省略。 */
+  vocabulary?: Record<string, unknown>;
   role: string;                                // HMAC canonical 的 role
   /** ★已在手的权威侧 A replayMetadata（不重跑 aster-api）。传 execute 路由的
    *   executionResult.metadata.replay（PolicyReplayMetadata|undefined），内部归一化为 5 字段。 */
@@ -116,6 +118,7 @@ async function runParity(ctx: ParityFromExecutionCtx): Promise<RunnerParityResul
       locale: ctx.locale,
       functionName: ctx.functionName,
       aliasSet: ctx.aliasSet,
+      ...(ctx.vocabulary ? { vocabulary: ctx.vocabulary } : {}),
       role: ctx.role,
     },
     // ★注入已在手的权威侧 A（归一化）——runRunnerParityCheck 不重跑 callAuthorityForParity（不双评估 aster-api）。

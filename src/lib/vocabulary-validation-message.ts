@@ -16,6 +16,7 @@ export type VocabularyValidationReason =
   | 'duplicateCanonical'
   | 'duplicateLocalized'
   | 'triggerConflict'
+  | 'scopeConflict'
   | 'invalidLiteral'
   | 'parentRequired'
   | 'fieldRequired'
@@ -48,6 +49,11 @@ const RULES: ReadonlyArray<{
   { pattern: /触发词 "([^"]*)" 与另一条映射冲突/, reason: 'triggerConflict', param: 'trigger' },
   { pattern: /字面量宏内容/, reason: 'invalidLiteral' },
   { pattern: /字段 "[^"]*" 没有指定父结构体/, reason: 'parentRequired' },
+  { pattern: /枚举成员 "[^"]*" 没有指定父枚举/, reason: 'parentRequired' },
+  // 引擎按角色 / 作用域判定的写法冲突（ADR 0051）
+  { pattern: /写法 "([^"]*)" 在 \S+ 中对应多个规范名/, reason: 'scopeConflict', param: 'name' },
+  // 按位置解析的作用域冲突（domain-vocabulary-validation formatScopeConflict，ADR 0051）
+  { pattern: /^scope conflict: "([^"]*)"/, reason: 'scopeConflict', param: 'name' },
   // 服务层 / 路由 / 异步 worker 的英文前置校验
   { pattern: new RegExp(`^${ROW_PREFIX}parentCanonical is required`), reason: 'parentRequired' },
   {

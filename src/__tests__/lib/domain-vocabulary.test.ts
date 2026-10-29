@@ -107,6 +107,7 @@ import {
   type TermInput,
 } from '@/lib/domain-vocabulary';
 import { getLexiconQuota } from '@/lib/usage';
+import { parseVocabularyValidationMessage } from '@/lib/vocabulary-validation-message';
 import { logAuditEvent } from '@/lib/audit-log';
 
 // --------------------------------------------------------------------------
@@ -227,6 +228,8 @@ describe('addUserVocabularyTerm', () => {
   it('inserts a global term and the user link when the dedup key is new', async () => {
     // countActiveTerms → 0
     queueSelectResult([{ count: 0 }]);
+    // 作用域冲突校验：同分组无其它词条
+    queueSelectResult([]);
     // getTermLink (post-insert reload) → link row
     queueSelectResult([joinedRow()]);
 
@@ -252,6 +255,7 @@ describe('addUserVocabularyTerm', () => {
 
   it('reuses an existing global term when the dedup key matches', async () => {
     queueSelectResult([{ count: 0 }]);
+    queueSelectResult([]);
     queueSelectResult([joinedRow()]);
 
     const termInsert = makeInsertChain([]); // ON CONFLICT DO NOTHING returned 0 rows
@@ -307,10 +311,89 @@ describe('addUserVocabularyTerm', () => {
   });
 });
 
+describe('作用域冲突校验（ADR 0051 §8）', () => {
+  const field = (canonical: string, localized: string) => ({
+    ...baseInput, domain: 'grades', locale: 'de', kind: 'field' as const, canonical, localized, parentCanonical: 'Driver',
+  });
+
+  it('Stufe（类型）已存在时可保存 stufe（字段）', async () => {
+    queueSelectResult([{ count: 1 }]);
+    queueSelectResult([joinedRow({ id: 'link-0', domain: 'grades', locale: 'de', canonical: 'Level', localized: 'Stufe' })]);
+    queueSelectResult([joinedRow({ kind: 'field', canonical: 'level', localized: 'stufe', parentCanonical: 'Driver' })]);
+    hoisted.insert
+      .mockReturnValueOnce(makeInsertChain([{ id: 'term-new' }]).chain)
+      .mockReturnValueOnce(makeInsertChain([{ id: 'link-new' }]).chain);
+
+    const result = await addUserVocabularyTerm('user-1', field('level', 'stufe'));
+
+    expect(result.link.localized).toBe('stufe');
+    expect(hoisted.insert).toHaveBeenCalledTimes(2);
+  });
+
+  it('仅大小写不同的写法都保存为各自的全局词条（去重键不折叠大小写）', async () => {
+    const keys: string[] = [];
+    for (const [localized, existing] of [['Alter', []], ['alter', [
+      joinedRow({ id: 'link-0', domain: 'grades', locale: 'de', kind: 'field', canonical: 'age', localized: 'Alter', parentCanonical: 'Driver' }),
+    ]]] as const) {
+      queueSelectResult([{ count: 0 }]);
+      queueSelectResult(existing);
+      queueSelectResult([joinedRow({ kind: 'field', canonical: 'age', localized, parentCanonical: 'Driver' })]);
+      const termInsert = makeInsertChain([{ id: `term-${localized}` }]);
+      hoisted.insert.mockReturnValueOnce(termInsert.chain).mockReturnValueOnce(makeInsertChain([{ id: `link-${localized}` }]).chain);
+
+      const result = await addUserVocabularyTerm('user-1', field('age', localized));
+
+      expect(result.createdGlobalTerm).toBe(true);
+      const values = termInsert.chain.values.mock.calls[0]![0] as { localized: string; localizedNorm: string; dedupKey: string };
+      expect(values.localized).toBe(localized);
+      expect(values.localizedNorm).toBe(localized);
+      keys.push(values.dedupKey);
+    }
+    expect(keys[0]).not.toBe(keys[1]);
+  });
+
+  it('同父结构下写法相同、规范名不同的字段被拒，消息可识别为 scopeConflict', async () => {
+    queueSelectResult([{ count: 1 }]);
+    queueSelectResult([
+      joinedRow({ id: 'link-0', domain: 'grades', locale: 'de', kind: 'field', canonical: 'age', localized: 'alter', parentCanonical: 'Driver' }),
+    ]);
+
+    const error = await addUserVocabularyTerm('user-1', field('years', 'alter')).catch((e: unknown) => e);
+
+    expect(error).toMatchObject({ code: 'validation_failed' });
+    expect(parseVocabularyValidationMessage((error as Error).message)?.reason).toBe('scopeConflict');
+    expect(hoisted.insert).not.toHaveBeenCalled();
+  });
+
+  it('枚举成员与字段一样必须指定父类型（ADR 0051 §14 第 3 条）', async () => {
+    const error = await addUserVocabularyTerm('user-1', {
+      ...baseInput, kind: 'enum_value', canonical: 'High', localized: 'Hoch',
+    }).catch((e: unknown) => e);
+
+    expect(error).toMatchObject({ code: 'validation_failed', message: 'parentCanonical is required for kind=enum_value' });
+    expect(parseVocabularyValidationMessage((error as Error).message)?.reason).toBe('parentRequired');
+    expect(getLexiconQuota).not.toHaveBeenCalled();
+  });
+
+  it('修改时排除链接自身，不与自己的旧写法冲突', async () => {
+    queueSelectResult([joinedRow({ id: 'link-1', kind: 'field', canonical: 'age', localized: 'alter', parentCanonical: 'Driver' })]);
+    queueSelectResult([joinedRow({ id: 'link-1', kind: 'field', canonical: 'age', localized: 'alter', parentCanonical: 'Driver' })]);
+    queueSelectResult([joinedRow({ id: 'link-1', kind: 'field', canonical: 'years', localized: 'alter', parentCanonical: 'Driver' })]);
+    hoisted.insert.mockReturnValueOnce(makeInsertChain([{ id: 'term-new' }]).chain);
+    hoisted.update.mockReturnValueOnce(makeUpdateChain().chain);
+
+    const result = await modifyUserVocabularyTerm('user-1', 'link-1', field('years', 'alter'));
+
+    expect(result.link.canonical).toBe('years');
+  });
+});
+
 describe('modifyUserVocabularyTerm', () => {
   it('repoints the link to a new term and audits the change', async () => {
     // getTermLink (existing) → returns current row with termId='term-old'
     queueSelectResult([joinedRow({ termId: 'term-old' })]);
+    // 作用域冲突校验：分组里只有被修改的链接自身（应被排除）
+    queueSelectResult([joinedRow({ termId: 'term-old', localized: 'Loan V2', canonical: 'Other' })]);
     // getTermLink (post-update reload) → returns row with new termId
     queueSelectResult([joinedRow({ termId: 'term-new' })]);
 
@@ -387,6 +470,8 @@ describe('restoreUserVocabularyTerm', () => {
   it('clears deletedAt and reloads the link', async () => {
     // includeDeleted lookup → returns row
     queueSelectResult([joinedRow()]);
+    // 作用域冲突校验：分组内无同写法条目
+    queueSelectResult([]);
     // post-update reload → returns row
     queueSelectResult([joinedRow()]);
 

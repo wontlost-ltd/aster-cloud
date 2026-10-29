@@ -97,6 +97,20 @@ vi.mock('@/services/pii/detector', () => ({
   detectPII: vi.fn().mockReturnValue({ detectedTypes: [] }),
 }));
 
+// 作者词汇每次保存加载一次（ADR 0051 §7）：同一份交给编译门禁与 envelope 封印，事务外读取。
+const { mockLoadSaveVocabulary, mockMakeCompileValidator, SAVE_VOCABULARY } = vi.hoisted(() => {
+  const SAVE_VOCABULARY = { vocabulary: { id: 'v' }, scopesJson: '{"scopes":"live"}' };
+  return {
+    SAVE_VOCABULARY,
+    mockLoadSaveVocabulary: vi.fn(),
+    mockMakeCompileValidator: vi.fn(() => vi.fn()),
+  };
+});
+vi.mock('@/lib/policy-compile-validator', () => ({
+  loadSaveVocabulary: mockLoadSaveVocabulary,
+  makeCompileValidator: mockMakeCompileValidator,
+}));
+
 vi.mock('@/services/policy/version-manager', () => ({
   createVersion: mockCreateVersion,
   PolicyCompileError: mockPolicyCompileError,
@@ -170,6 +184,7 @@ import { softDeletePolicy } from '@/lib/policy-lifecycle';
 import { invalidatePolicyCache } from '@/lib/cache';
 import { detectPII } from '@/services/pii/detector';
 import type { PIIDetectionResult } from '@/services/pii/detector';
+import { VocabularyScopeError } from '@aster-cloud/aster-lang-ts/browser';
 
 const mockGetSession = vi.mocked(getSession);
 const mockGetPolicyFreezeStatus = vi.mocked(getPolicyFreezeStatus);
@@ -266,6 +281,7 @@ function mockPolicyVersion(overrides: Record<string, unknown> = {}) {
 describe('Policies API - Drizzle Migration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockLoadSaveVocabulary.mockResolvedValue(SAVE_VOCABULARY);
     mockGetSession.mockResolvedValue(DEFAULT_SESSION);
     // Default freeze status: no freezes
     mockGetPolicyFreezeStatus.mockResolvedValue({
@@ -459,6 +475,36 @@ describe('Policies API - Drizzle Migration', () => {
       const response = await POST(makeRequest('http://localhost/api/policies', 'POST', validBody));
 
       expect(response.status).toBe(201);
+      // 作者词汇只加载一次：同一份交给编译门禁，词汇段随首个版本落库
+      expect(mockLoadSaveVocabulary).toHaveBeenCalledTimes(1);
+      expect(mockMakeCompileValidator).toHaveBeenCalledWith(expect.any(String), SAVE_VOCABULARY.vocabulary);
+      expect(mockCreateVersion).toHaveBeenCalledWith(
+        expect.objectContaining({ scopesJson: '{"scopes":"live"}' }),
+      );
+    });
+
+    it('作者词汇非法（枚举值缺 parent）→ 400 vocabulary_scope_invalid，不编译不落库', async () => {
+      mockLoadSaveVocabulary.mockRejectedValueOnce(
+        new VocabularyScopeError('member_parent_required', 'enum value "Hoch" has no parent enum'),
+      );
+      const response = await POST(makeRequest('http://localhost/api/policies', 'POST', validBody));
+      const body = await response.json();
+      expect(response.status).toBe(400);
+      expect(body.code).toBe('vocabulary_scope_invalid');
+      expect(body.reason).toBe('member_parent_required');
+      expect(mockAssertCompilable).not.toHaveBeenCalled();
+      expect(mockCreateVersion).not.toHaveBeenCalled();
+    });
+
+    it('作者词汇加载失败 → 与编译门禁同一错误 503 compile_unavailable，不落库', async () => {
+      class Unavailable extends mockPolicyCompileError {
+        readonly retryAfterSeconds = 5;
+      }
+      mockLoadSaveVocabulary.mockRejectedValueOnce(new Unavailable('Policy compilation is temporarily unavailable.'));
+      const response = await POST(makeRequest('http://localhost/api/policies', 'POST', validBody));
+      expect(response.status).toBe(503);
+      expect((await response.json()).code).toBe('compile_unavailable');
+      expect(mockCreateVersion).not.toHaveBeenCalled();
     });
 
     it('编译门禁抛 PolicyCompileError → 路由返回 400 compile_error（事务外 preflight）', async () => {
@@ -898,6 +944,69 @@ describe('Policies API - Drizzle Migration', () => {
       );
 
       expect(response.status).toBe(200);
+      expect(mockCreateVersion).not.toHaveBeenCalled();
+    });
+
+    it('ADR 0051：源码与别名不变但作者词汇已变（封印≠现行）→ 建新版本，按现行词汇封印', async () => {
+      vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue(
+        { aliasSet: null, sourceScopesJson: '{"scopes":"sealed-at-save"}' } as never,
+      );
+
+      const response = await PUT(
+        makeRequest('http://localhost/api/policies/p1', 'PUT', { content: 'Module X.' }),
+        mockParams,
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockLoadSaveVocabulary).toHaveBeenCalledTimes(1);
+      expect(mockAssertCompilable).toHaveBeenCalledTimes(1);
+      expect(mockCreateVersion).toHaveBeenCalledWith(
+        expect.objectContaining({ source: 'Module X.', scopesJson: SAVE_VOCABULARY.scopesJson }),
+      );
+    });
+
+    it('ADR 0051：源码、别名、词汇都不变（封印=现行）→ 不建新版本', async () => {
+      vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue(
+        { aliasSet: null, sourceScopesJson: SAVE_VOCABULARY.scopesJson } as never,
+      );
+
+      const response = await PUT(
+        makeRequest('http://localhost/api/policies/p1', 'PUT', { content: 'Module X.' }),
+        mockParams,
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockCreateVersion).not.toHaveBeenCalled();
+      expect(mockAssertCompilable).not.toHaveBeenCalled();
+    });
+
+    it('ADR 0051：封印前的旧行（sourceScopesJson 为 NULL）不因词汇比对强制建版本', async () => {
+      vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue(
+        { aliasSet: null, sourceScopesJson: null } as never,
+      );
+
+      const response = await PUT(
+        makeRequest('http://localhost/api/policies/p1', 'PUT', { content: 'Module X.' }),
+        mockParams,
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockLoadSaveVocabulary).not.toHaveBeenCalled();
+      expect(mockCreateVersion).not.toHaveBeenCalled();
+    });
+
+    it('ADR 0051：只改名称（不带 content）不加载词汇、不建版本', async () => {
+      vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue(
+        { aliasSet: null, sourceScopesJson: '{"scopes":"sealed-at-save"}' } as never,
+      );
+
+      const response = await PUT(
+        makeRequest('http://localhost/api/policies/p1', 'PUT', { name: 'Renamed' }),
+        mockParams,
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockLoadSaveVocabulary).not.toHaveBeenCalled();
       expect(mockCreateVersion).not.toHaveBeenCalled();
     });
 

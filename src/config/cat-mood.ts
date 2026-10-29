@@ -6,10 +6,9 @@
 //
 // 技术契约（已用生产引擎实证，见 cat-mood.compile.test.ts）：
 //  1. 规则用**撸猫术语**（localized）+ 对应语言 CNL 关键词书写；compile({lexicon,domain,
-//     tenantId}) 经 registerCustom 注入的猫词汇翻译成 canonical IR。
+//     tenantId}) 取经 registerCustom 注入的猫词汇，引擎按名字所在位置（ADR 0051）解析为 canonical IR。
 //  2. eval 输入用 **canonical 字段名**（belly/sunbeam/strangers，非 tummyFullness）。
-//  3. 避 `or`/`或`/`oder`（域翻译下编译落空）→ 用嵌套 If；param 名避 struct localized 变体；
-//     德文标识符避 ue/ae/oe。
+//  3. 规则逐档 If 是为了与 CAT_TIERS 的优先级一一对应；德文标识符避 ue/ae/oe。
 
 import {
   vocabularyRegistry,

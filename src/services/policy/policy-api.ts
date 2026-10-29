@@ -222,6 +222,8 @@ export interface PolicyCedarExportRequest {
   aliasSet?: Record<string, string[]> | null;
   functionName?: string;
   versionId?: number;
+  /** 领域词汇（DomainVocabulary JSON，仅源码模式，ADR 0051）：名称按位置解析所需，与执行同一份。 */
+  vocabulary?: Record<string, unknown>;
   /** 调用方自述引用，原样记入审计、不经核验；至多 4 项，键值须符合 [A-Za-z0-9._:/-]{1,128}。 */
   claimedRef?: Record<string, string>;
 }

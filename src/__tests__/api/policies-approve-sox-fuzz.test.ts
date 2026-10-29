@@ -26,6 +26,7 @@ vi.mock('@/services/policy/version-manager', async () => {
     PolicyAccessDeniedError: actual.PolicyAccessDeniedError,
     SegregationOfDutiesError: actual.SegregationOfDutiesError,
     VocabularyFreezeError: actual.VocabularyFreezeError,
+    VocabularyChangedSinceSaveError: actual.VocabularyChangedSinceSaveError,
   };
 });
 vi.mock('@/lib/prisma', () => ({

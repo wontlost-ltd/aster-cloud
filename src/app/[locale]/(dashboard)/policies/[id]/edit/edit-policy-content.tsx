@@ -85,6 +85,9 @@ export function EditPolicyContent({
           message: data.message || extractErrorMessage(data) || t.form.failedToUpdate,
           code: data.code ?? data.error?.code ?? data.error,
           diagnostics: data.diagnostics,
+          reason: data.reason,
+          term: data.term,
+          kind: data.kind,
           upgrade: !!(data.upgrade || data.frozen),
         };
       }

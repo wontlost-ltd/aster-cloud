@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { PolicyCompileError } from '@/services/policy/version-manager';
+import { vocabularyScopeErrorDetails } from '@/lib/vocabulary-scope-error';
 
 /** 别名校验失败的稳定错误码（保存入口共用，前端按此码本地化）。 */
 export const ALIAS_INVALID_CODE = 'alias_invalid';
@@ -27,6 +28,31 @@ export function aliasInvalidResponse(error: unknown): NextResponse | null {
   );
 }
 
+/** 作者词汇无法构成作用域（引擎 VocabularyScopeError）的稳定错误码。 */
+export const VOCABULARY_SCOPE_INVALID_CODE = 'vocabulary_scope_invalid';
+
+/**
+ * 保存入口 catch 分支共用：作者词汇非法（字段/枚举成员缺 parent、字面量宏冲突）→ 400
+ * vocabulary_scope_invalid，reason 为引擎错误码，term 为出错词条的写法（引擎消息里首个引号内容），
+ * kind 为词条种类；其它错误返回 null。按 name 判别而不 instanceof，不依赖引擎模块实例
+ * （打包/测试 mock 下可能不是同一个类）。
+ */
+export function vocabularyScopeInvalidResponse(error: unknown): NextResponse | null {
+  const details = vocabularyScopeErrorDetails(error);
+  if (!details) return null;
+  return NextResponse.json(
+    {
+      error: 'Invalid domain vocabulary',
+      code: VOCABULARY_SCOPE_INVALID_CODE,
+      reason: details.reason,
+      term: details.term,
+      kind: details.kind,
+      message: details.message,
+    },
+    { status: 400 },
+  );
+}
+
 /**
  * 新版本含结构词别名但当前没有有效授权（未授予或已撤销）→ 400 alias_invalid。
  * reason 供 API 调用方区分；界面按 code 本地化。
@@ -45,7 +71,8 @@ export function structuralGrantRequiredResponse(): NextResponse {
 
 /**
  * 把保存前编译门禁的拒绝映射为 HTTP 响应，供所有保存入口共用。
- * - 带 retryAfterSeconds（编译检查暂不可用，如上游限流）→ 503 compile_unavailable + Retry-After。
+ * - 带 retryAfterSeconds（暂不可用：上游限流等为 compile_unavailable，作者词汇加载失败为
+ *   vocabulary_unavailable）→ 503 + Retry-After，码取 error.unavailableCode。
  * - 其余（源码有阻断诊断或上游判定输入非法）→ 400 compile_error。
  *
  * 只按字段判别而不 instanceof 子类：路由测试会整体 mock version-manager。
@@ -58,10 +85,12 @@ export function compileGateErrorResponse(error: PolicyCompileError): NextRespons
   const aliasInvalid = isAliasValidationFailure(error.message)
     || (diagnostics ?? []).some((d) => isAliasValidationFailure(d.message));
   if (retryAfter !== undefined) {
+    // 词汇加载失败（vocabulary_unavailable）与编译服务不可用（compile_unavailable）分开给码。
+    const unavailableCode = error.unavailableCode ?? 'compile_unavailable';
     return NextResponse.json(
       {
-        error: 'compile_unavailable',
-        code: 'compile_unavailable',
+        error: unavailableCode,
+        code: unavailableCode,
         message: error.message,
       },
       { status: 503, headers: { 'Retry-After': String(retryAfter) } },

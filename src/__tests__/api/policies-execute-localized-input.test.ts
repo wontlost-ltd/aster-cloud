@@ -117,11 +117,15 @@ function policyRow(
   };
 }
 
-function versions(status: string, extra: { createdBy?: string | null; sourceEnvelopeSha256?: string | null } = {}) {
+function versions(
+  status: string,
+  extra: { createdBy?: string | null; sourceEnvelopeSha256?: string | null; sourceScopesJson?: string | null } = {},
+) {
   return [{
     id: 'pv-1', version: 1, status, isDefault: false,
     createdBy: extra.createdBy === undefined ? 'author-1' : extra.createdBy,
     sourceEnvelopeSha256: extra.sourceEnvelopeSha256 ?? null,
+    sourceScopesJson: extra.sourceScopesJson ?? null,
   }];
 }
 
@@ -216,8 +220,8 @@ describe('POST /api/policies/[id]/execute — 策略语言输入（#626）', () 
 
   it('locale 与 secure-execute 同一解析器：版本记录的编译 locale 优先于源码识别', async () => {
     // 源码看起来是德语，但版本保存时按 en-US 编译（envelope 记录）：三条路径都应按 en-US 执行。
-    const envelope = computeSourceEnvelope(DE_POLICY, null, 'en-US', 'tc-1');
-    mockFindVersions.mockResolvedValue(versions('APPROVED', { sourceEnvelopeSha256: envelope }));
+    const envelope = computeSourceEnvelope(DE_POLICY, null, 'en-US', 'tc-1', '');
+    mockFindVersions.mockResolvedValue(versions('APPROVED', { sourceEnvelopeSha256: envelope, sourceScopesJson: '' }));
     mockDbExecute.mockResolvedValue([policyRow(DE_POLICY, { toolchainId: 'tc-1' })]);
     mockEvaluateSource.mockResolvedValue({ result: 0, executionTimeMs: 1, error: null });
     // 只验证 locale 选择：不带词汇（德语源码按 en-US 带词汇提取类型会失败，那是另一条用例）。
@@ -304,27 +308,51 @@ describe('POST /api/policies/[id]/execute — 类型提取与执行同一词汇�
     expect(body.localizedResult).toMatchObject({ alter: 35, niveau: expect.anything() });
   });
 
-  it('同一策略里有 TS 解析器不支持的函数体（`mit f = v`）：其它规则照常映射输入并执行成功', async () => {
+  it('同一策略里有 TS 解析器不支持的函数体（`mit f = v`）：引擎解析失败 → 422 带诊断码，不在未映射的输入上执行', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
     mockDbExecute.mockResolvedValue([policyRow(POLICY_638_EQUALS)]);
-    // 执行端替身只回显：TS 解析器编不了整份源码，这里验证的是映射本身（修复前是原样透传）。
-    mockEvaluateSource.mockResolvedValue({ result: 'High', executionTimeMs: 1, error: null });
 
     const { status, body } = await executeRule({ person: { alter: 35, niveau: 'Hoch' } }, 'einstufen');
 
-    expect(status).toBe(200);
-    expect(mockEvaluateSource.mock.calls[0]![1]).toEqual({ person: { age: 35, rank: 'High' } });
-    expect(body.localizedResult).toBe('Hoch');
+    expect(status).toBe(422);
+    expect(body).toMatchObject({ code: 'input_type_extraction_failed', diagnostics: ['P005'] });
+    expect(mockEvaluateSource).not.toHaveBeenCalled();
+    expect(mockInsertValues).not.toHaveBeenCalled();
   });
 
-  it('`mit f = v` 那条规则自身的签名也能取到：输入同样映射为规范名', async () => {
-    mockDbExecute.mockResolvedValue([policyRow(POLICY_638_EQUALS)]);
-    mockEvaluateSource.mockResolvedValue({ result: { age: 35, rank: 'Low' }, executionTimeMs: 1, error: null });
+  it('ADR 0051 §1：类型 Stufe 与字段 stufe 只差大小写、规则名与参数同词，本地化输入执行成功', async () => {
+    const row = (kind: string, canonical: string, localized: string, parentCanonical: string | null = null) =>
+      ({ domainTermId: `${kind}-${canonical}`, domain: 'e2e1029', locale: 'de', kind, canonical, localized, parentCanonical });
+    mockLoadFrozen.mockResolvedValue(assembleDomainVocabularyFromLinks(
+      [
+        row('struct', 'Driver', 'Fahrer'),
+        row('struct', 'Level', 'Stufe'),
+        row('field', 'age', 'alter', 'Driver'),
+        row('field', 'level', 'stufe', 'Driver'),
+        row('enum_value', 'High', 'Hoch', 'Level'),
+        row('enum_value', 'Low', 'Niedrig', 'Level'),
+        row('function', 'classify', 'einstufen'),
+      ],
+      { domain: 'e2e1029', locale: 'de-DE' },
+    ));
+    mockDbExecute.mockResolvedValue([policyRow(`Modul e2e1029.stufe.
 
-    const { status, body } = await executeRule({ person: { alter: 35, niveau: 'Hoch' } }, 'nachbauen');
+Definiere Stufe als eines von Hoch, Niedrig.
+
+Definiere Fahrer hat alter als Ganzzahl, stufe als Stufe.
+
+Regel einstufen gegeben fahrer als Fahrer liefert Stufe:
+  gib zurück fahrer.stufe.
+`)]);
+
+    const { status, body } = await executeRule({ fahrer: { alter: 35, stufe: 'Hoch' } }, 'einstufen');
 
     expect(status).toBe(200);
-    expect(mockEvaluateSource.mock.calls[0]![1]).toEqual({ person: { age: 35, rank: 'High' } });
-    expect(body.localizedResult).toEqual({ alter: 35, niveau: 'Niedrig' });
+    expect(mockEvaluateSource.mock.calls[0]![1]).toEqual({ fahrer: { age: 35, level: 'High' } });
+    expect(storedExecutionInput()).toEqual({ fahrer: { age: 35, level: 'High' } });
+    expect(body.output.error ?? null).toBeNull();
+    expect(mockEvaluateSource.mock.calls[0]![2]).toMatchObject({ functionName: 'classify' });
+    expect(body.localizedResult).toBe('Hoch');
   });
 
   it('连签名都解析不了：422 input_type_extraction_failed，不调用引擎、不落库、不静默透传', async () => {

@@ -1,10 +1,10 @@
 /**
- * useUserVocabularyRegistration（#602 线B）：编辑器按源码注册作用域内的用户词汇。
+ * useUserVocabularyRegistration（#602 线B、ADR 0051）：编辑器按源码选出作用域内的用户词汇。
  *
- * 覆盖生产缺陷：策略编辑器从未拉取用户词汇。现在开启后应：
  *   - 拉取全部词条（不按 domain/locale 过滤，`de` 词条适用于 de-DE 编译器）；
- *   - 只把源码引用的同语言分组合并注册到 USER_VOCABULARY_DOMAIN；
- *   - 源码不再引用用户词时撤销注册。
+ *   - 只合并源码引用的同语言分组，并构建 VocabularyScopes；
+ *   - 编辑器的 scopes 与服务端保存时的 canonicalScopesJson（envelope 第 5 段）逐字节一致；
+ *   - 源码不再引用用户词时清空。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
@@ -13,9 +13,14 @@ vi.mock('@/hooks/useDomainVocabularyInvalidate', () => ({
   useDomainVocabularyInvalidate: () => 0,
 }));
 
+import { canonicalScopesJson, compileAndTypecheck, DE_DE } from '@aster-cloud/aster-lang-ts/browser';
 import { useUserVocabularyRegistration } from '@/hooks/useUserVocabularyRegistration';
-import { vocabularyRegistry } from '@/lib/aster-lexicon';
-import { USER_VOCABULARY_DOMAIN, VOCABULARY_LIST_MAX_PAGE_SIZE } from '@/lib/domain-vocabulary-scope';
+import {
+  USER_VOCABULARY_DOMAIN,
+  VOCABULARY_LIST_MAX_PAGE_SIZE,
+  resolvePolicyVocabularyFromRows,
+} from '@/lib/domain-vocabulary-scope';
+import { vocabularyScopesJson } from '@/lib/policy-alias';
 
 const ITEMS = [
   { termId: 't1', domain: 'e2e1026', locale: 'de', kind: 'struct', canonical: 'Driver', localized: 'Fahrer' },
@@ -36,35 +41,67 @@ describe('useUserVocabularyRegistration', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    vocabularyRegistry.unregisterCustom('tenant-hook', USER_VOCABULARY_DOMAIN, 'de-DE');
   });
 
-  it('registers only the in-scope groups under the editor domain', async () => {
+  it('builds scopes for only the in-scope groups', async () => {
     const { result } = renderHook(() =>
       useUserVocabularyRegistration({ tenantId: 'tenant-hook', locale: 'de-DE', source: SOURCE }),
     );
 
-    await waitFor(() => expect(result.current.domain).toBe(USER_VOCABULARY_DOMAIN));
+    await waitFor(() => expect(result.current.scopes).toBeDefined());
     const url = String(fetchMock.mock.calls[0]![0]);
     expect(url).not.toContain('domain=');
     expect(url).not.toContain('locale=');
+    expect(result.current.vocabulary!.id).toBe(USER_VOCABULARY_DOMAIN);
     expect(result.current.vocabulary!.structs.map((m) => m.canonical)).toEqual(['Driver']);
-
-    const registered = vocabularyRegistry.getWithCustom('tenant-hook', USER_VOCABULARY_DOMAIN, 'de-DE');
-    expect(registered?.vocabulary.fields.map((m) => m.canonical)).toEqual(['age']);
+    expect([...result.current.scopes!.fields.get('Driver')!.keys()]).toEqual(['alter']);
   });
 
-  it('unregisters when the source no longer uses any user term', async () => {
+  it('editor scopes equal the server canonicalScopesJson for the same rows', async () => {
+    const { result } = renderHook(() =>
+      useUserVocabularyRegistration({ tenantId: 'tenant-hook', locale: 'de-DE', source: SOURCE }),
+    );
+    await waitFor(() => expect(result.current.scopes).toBeDefined());
+
+    const rows = ITEMS.map((i) => ({ ...i, domainTermId: i.termId }));
+    const server = vocabularyScopesJson(resolvePolicyVocabularyFromRows(rows, { source: SOURCE, locale: 'de-DE' }));
+    expect(server).not.toBe('');
+    expect(canonicalScopesJson(result.current.scopes!)).toBe(server);
+    expect(result.current.registrationKey).toBe(server);
+  });
+
+  it('keeps position-aware vocabularies the old validator rejected (Stufe type + stufe field, cross-struct fields)', async () => {
+    const items = [
+      { termId: 's1', domain: 'grades', locale: 'de', kind: 'struct', canonical: 'Level', localized: 'Stufe' },
+      { termId: 's2', domain: 'grades', locale: 'de', kind: 'struct', canonical: 'Driver', localized: 'Fahrer' },
+      { termId: 'f1', domain: 'grades', locale: 'de', kind: 'field', canonical: 'level', localized: 'stufe', parentCanonical: 'Driver' },
+      { termId: 'f2', domain: 'grades', locale: 'de', kind: 'field', canonical: 'level', localized: 'stufe', parentCanonical: 'Level' },
+    ];
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ items, total: items.length }) });
+    const source = 'Definiere Stufe hat stufe als Ganzzahl.\nDefiniere Fahrer hat stufe als Stufe.';
+
+    const { result } = renderHook(() =>
+      useUserVocabularyRegistration({ tenantId: 'tenant-hook', locale: 'de-DE', source }),
+    );
+
+    await waitFor(() => expect(result.current.vocabulary).toBeDefined());
+    const compiled = compileAndTypecheck(source, { lexicon: DE_DE, vocabulary: result.current.vocabulary });
+    expect(compiled.success).toBe(true);
+    expect(compiled.core?.decls.map((d) => (d as { name: string }).name)).toEqual(['Level', 'Driver']);
+  });
+
+  it('clears when the source no longer uses any user term', async () => {
     const { result, rerender } = renderHook(
       ({ source }) => useUserVocabularyRegistration({ tenantId: 'tenant-hook', locale: 'de-DE', source }),
       { initialProps: { source: SOURCE } },
     );
-    await waitFor(() => expect(result.current.domain).toBe(USER_VOCABULARY_DOMAIN));
+    await waitFor(() => expect(result.current.scopes).toBeDefined());
 
     rerender({ source: 'Definiere Auto hat preis als Ganzzahl.' });
 
-    await waitFor(() => expect(result.current.domain).toBeUndefined());
-    expect(vocabularyRegistry.getWithCustom('tenant-hook', USER_VOCABULARY_DOMAIN, 'de-DE')).toBeUndefined();
+    await waitFor(() => expect(result.current.scopes).toBeUndefined());
+    expect(result.current.vocabulary).toBeUndefined();
+    expect(result.current.registrationKey).toBe('');
   });
 
   it('pages through every term up to the server-reported total (no client-side cap)', async () => {
@@ -85,7 +122,7 @@ describe('useUserVocabularyRegistration', () => {
       useUserVocabularyRegistration({ tenantId: 'tenant-hook', locale: 'de-DE', source: SOURCE }),
     );
 
-    await waitFor(() => expect(result.current.domain).toBe(USER_VOCABULARY_DOMAIN));
+    await waitFor(() => expect(result.current.scopes).toBeDefined());
     expect(fetchMock).toHaveBeenCalledTimes(3);
     const sizes = fetchMock.mock.calls.map((c) => new URL(String(c[0]), 'http://x').searchParams.get('pageSize'));
     expect(sizes).toEqual(Array(3).fill(String(VOCABULARY_LIST_MAX_PAGE_SIZE)));
@@ -102,7 +139,7 @@ describe('useUserVocabularyRegistration', () => {
       useUserVocabularyRegistration({ tenantId: 'tenant-hook', locale: 'de-DE', source: SOURCE }),
     );
 
-    await waitFor(() => expect(result.current.domain).toBe(USER_VOCABULARY_DOMAIN));
+    await waitFor(() => expect(result.current.scopes).toBeDefined());
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 

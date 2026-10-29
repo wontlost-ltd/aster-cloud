@@ -91,6 +91,9 @@ import { validateUserAliases } from '@/lib/policy-alias-shared';
 import { useAliasIssueMessage } from '@/components/policy/use-alias-issue-message';
 import { localizedErrorMessage } from '@/lib/api/localized-error-message';
 
+/** 保存时作者词汇非法的错误码（与服务端 policy-compile-response 一致）。 */
+const VOCABULARY_SCOPE_INVALID_CODE = 'vocabulary_scope_invalid';
+
 // 类型-only 导入（不拉入 Monaco 重包；运行时组件仍走下方 dynamic）。
 import type { EditorCompileState } from '@/components/policy/monaco-policy-editor';
 
@@ -140,6 +143,12 @@ export interface PolicySaveError {
   }>;
   /** Backend signalled the user should upgrade their plan. */
   upgrade?: boolean;
+  /** vocabulary_scope_invalid：引擎错误码（如 field_parent_required）。 */
+  reason?: string;
+  /** vocabulary_scope_invalid：出错词条的写法。 */
+  term?: string;
+  /** vocabulary_scope_invalid：出错词条的种类（field / enum_value / literal）。 */
+  kind?: string;
 }
 
 /** 保存时随字段一起提交的上下文。 */
@@ -500,6 +509,28 @@ export function PolicyForm({
     openSidePanel,
   ]);
 
+  /**
+   * 保存失败的本地化说明：按错误码给文案，不展示服务端原文；词汇非法且已知出错词条时点名该词条。
+   */
+  const saveErrorText = useCallback(
+    (error: PolicySaveError): string => {
+      if (error.code === VOCABULARY_SCOPE_INVALID_CODE && error.term) {
+        return t('saveErrorCodes.vocabulary_scope_invalid_term', { term: error.term });
+      }
+      return localizedErrorMessage(error.code, {
+        alias_invalid: t('saveErrorCodes.alias_invalid'),
+        compile_error: t('saveErrorCodes.compile_error'),
+        compile_unavailable: t('saveErrorCodes.compile_unavailable'),
+        policy_frozen: t('saveErrorCodes.policy_frozen'),
+        unauthorized: t('saveErrorCodes.unauthorized'),
+        unsupported_locale: t('saveErrorCodes.unsupported_locale'),
+        vocabulary_scope_invalid: t('saveErrorCodes.vocabulary_scope_invalid'),
+        vocabulary_unavailable: t('saveErrorCodes.vocabulary_unavailable'),
+      }, error.message);
+    },
+    [t],
+  );
+
   /** Submit. Optional callback to fire on success (e.g. navigate). */
   const handleSubmit = useCallback(
     async (afterSave?: (id: string) => void): Promise<void> => {
@@ -527,15 +558,7 @@ export function PolicyForm({
               message: first.message ?? t('saveDiagnosticFallback'),
             }));
           } else {
-            toast.error(t('saveFailed'), {
-              description: localizedErrorMessage(result.code, {
-                compile_error: t('saveErrorCodes.compile_error'),
-                compile_unavailable: t('saveErrorCodes.compile_unavailable'),
-                policy_frozen: t('saveErrorCodes.policy_frozen'),
-                unauthorized: t('saveErrorCodes.unauthorized'),
-                unsupported_locale: t('saveErrorCodes.unsupported_locale'),
-              }, result.message),
-            });
+            toast.error(t('saveFailed'), { description: saveErrorText(result) });
           }
           return;
         }
@@ -550,7 +573,7 @@ export function PolicyForm({
         setIsSaving(false);
       }
     },
-    [validate, isSaving, onSave, fields, cnlLocale, clearDraft, t, openSidePanel],
+    [validate, isSaving, onSave, fields, cnlLocale, clearDraft, t, openSidePanel, saveErrorText],
   );
 
   const onSaveOnly = useCallback(
@@ -722,13 +745,15 @@ export function PolicyForm({
             role="alert"
             className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-2 text-sm text-danger"
           >
-            {localizedErrorMessage(serverError.code, {
-              alias_invalid: t('saveErrorCodes.alias_invalid'),
-              compile_error: t('saveErrorCodes.compile_error'),
-              compile_unavailable: t('saveErrorCodes.compile_unavailable'),
-              policy_frozen: t('saveErrorCodes.policy_frozen'),
-              unauthorized: t('saveErrorCodes.unauthorized'),
-            }, serverError.message)}
+            {saveErrorText(serverError)}
+            {serverError.code === VOCABULARY_SCOPE_INVALID_CODE && (
+              <Link
+                href={`/${uiLocale}/domain-vocabularies`}
+                className="ml-3 underline hover:no-underline"
+              >
+                {t('openVocabulary')}
+              </Link>
+            )}
             {serverError.upgrade && CLIENT_CAPABILITIES.billing && (
               <Link
                 href={`/${uiLocale}/billing`}

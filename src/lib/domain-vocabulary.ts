@@ -43,9 +43,13 @@ import {
   applyVocabularyScopeFormat,
   assembleDomainVocabularyFromLinks,
   computeDedupKey,
+  findTermScopeConflicts,
+  formatScopeConflict,
   normalizeTermInput,
+  requiresParent,
   validateDomainVocabulary,
   type NormalizedTermInput,
+  type TermLikeRow,
   type TermKind,
 } from '@/lib/domain-vocabulary-validation';
 import { isUndefinedTable, isUniqueViolation } from '@/lib/pg-errors';
@@ -279,13 +283,13 @@ function validateInput(input: TermInput): NormalizedTermInput {
 }
 
 function validateNormalized(normalized: NormalizedTermInput): NormalizedTermInput {
-  // 字段必须挂在父结构体下,否则后续的 lexicon 索引会出现孤立 field。
+  // 字段与枚举成员按父名分作用域解析（ADR 0051 §7、§14 第 3 条），必须挂在父类型下。
   // 上游 validateVocabulary 只把缺 parent 当成 warning,所以在 service
   // 层强制拒绝,保证 REST API、bulk 路径、未来 SDK 调用都遵守同一契约。
-  if (normalized.kind === 'field' && !normalized.parentCanonical) {
+  if (requiresParent(normalized.kind) && !normalized.parentCanonical) {
     throw new VocabularyError(
       'validation_failed',
-      'parentCanonical is required for kind=field',
+      `parentCanonical is required for kind=${normalized.kind}`,
     );
   }
 
@@ -313,6 +317,88 @@ function validateNormalized(normalized: NormalizedTermInput): NormalizedTermInpu
 }
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/** 待保存词条（新增 / 修改 / 恢复）在作用域冲突校验中的行形态。 */
+interface ScopedTerm {
+  domain: string;
+  locale: string;
+  kind: string;
+  canonical: string;
+  localized: string;
+  parentCanonical?: string | null;
+  aliases?: readonly string[] | null;
+}
+
+/** 用户在某 (domain, locale) 分组内的活跃词条（作用域冲突校验用）。 */
+async function loadGroupTermRows(
+  reader: Tx | typeof db,
+  userId: string,
+  group: { domain: string; locale: string },
+): Promise<Array<TermLikeRow & { linkId: string }>> {
+  const rows = (await reader
+    .select(selectTermLinkFields())
+    .from(userDomainTerms)
+    .innerJoin(domainTerms, eq(userDomainTerms.termId, domainTerms.id))
+    .where(
+      and(
+        eq(userDomainTerms.userId, userId),
+        eq(userDomainTerms.domain, group.domain),
+        eq(userDomainTerms.locale, group.locale),
+        activeLinkPredicate(),
+      ),
+    )) as JoinedTermRow[];
+  return rows.map((row) => ({ ...mapJoinedRow(row), domainTermId: row.termId, linkId: row.id }));
+}
+
+/** 冲突列表 → validation_failed 消息（vocabulary-validation-message 识别为 scopeConflict）。 */
+function scopeConflictMessage(conflicts: ReturnType<typeof findTermScopeConflicts>): string | null {
+  return conflicts.length > 0 ? conflicts.map(formatScopeConflict).join('; ') : null;
+}
+
+/**
+ * 保存前的作用域冲突校验（ADR 0051 §8）：同一 (domain, locale) 分组内，同角色同作用域、NFC 后写法
+ * 完全相同却映射到不同规范名的条目拒绝保存；仅大小写不同允许。excludeLinkId 为被修改 / 恢复的链接自身。
+ */
+async function assertNoScopeConflict(
+  reader: Tx | typeof db,
+  userId: string,
+  term: ScopedTerm,
+  excludeLinkId?: string,
+): Promise<void> {
+  const existing = (await loadGroupTermRows(reader, userId, term)).filter((row) => row.linkId !== excludeLinkId);
+  const message = scopeConflictMessage(findTermScopeConflicts(existing, { ...term, domainTermId: 'candidate' }));
+  if (message) throw new VocabularyError('validation_failed', message);
+}
+
+/**
+ * 批量导入的作用域冲突筛查（与单条新增同一规则）：每行依次与该用户已有活跃词条、以及本次导入中
+ * 先前已通过筛查的行比较；冲突行记 validation_failed 行级错误（界面归入「无效」组并本地化原因），
+ * 不落库。在配额锁内调用；前面 chunk 已提交的行作为已有词条参与比较。
+ */
+async function screenBulkScopeConflicts(
+  tx: Tx,
+  userId: string,
+  rows: readonly BulkChunkRow[],
+): Promise<{ accepted: BulkChunkRow[]; errors: BulkRowError[] }> {
+  const groups = new Map<string, TermLikeRow[]>();
+  const accepted: BulkChunkRow[] = [];
+  const errors: BulkRowError[] = [];
+  for (const chunkRow of rows) {
+    const { normalized } = chunkRow;
+    const groupKey = JSON.stringify([normalized.domain, normalized.locale]);
+    const known = groups.get(groupKey) ?? (await loadGroupTermRows(tx, userId, normalized));
+    groups.set(groupKey, known);
+    const candidate: TermLikeRow = { ...normalized, domainTermId: `row-${chunkRow.row}` };
+    const message = scopeConflictMessage(findTermScopeConflicts(known, candidate));
+    if (message) {
+      errors.push({ row: chunkRow.row, code: 'validation_failed', message });
+      continue;
+    }
+    known.push(candidate);
+    accepted.push(chunkRow);
+  }
+  return { accepted, errors };
+}
 
 async function upsertDomainTerm(
   tx: Tx | typeof db,
@@ -562,6 +648,8 @@ async function addUserVocabularyTermInner(
       );
     }
 
+    // 在用户级 advisory lock 内校验，并发新增不会各自通过后形成冲突。
+    await assertNoScopeConflict(tx, userId, normalized);
     const upserted = await upsertDomainTerm(tx, normalized);
 
     let created: { id: string } | undefined;
@@ -647,6 +735,7 @@ async function modifyUserVocabularyTermInner(
   if (!existing) {
     throw new VocabularyError('not_found', 'Vocabulary term link not found');
   }
+  await assertNoScopeConflict(db, userId, normalized, linkId);
 
   const transactionResult = await db.transaction(async (tx) => {
     const upserted = await upsertDomainTerm(tx, normalized);
@@ -793,6 +882,8 @@ async function restoreUserVocabularyTermInner(
   if (!deleted) {
     throw new VocabularyError('not_found', 'Vocabulary term link not found');
   }
+  // 删除期间同一分组可能新增了同写法的条目，恢复同样不得引入作用域冲突。
+  await assertNoScopeConflict(db, userId, deleted, linkId);
 
   await db
     .update(userDomainTerms)
@@ -1037,6 +1128,21 @@ export async function landBulkChunk(
   deadline: number = Number.POSITIVE_INFINITY,
 ): Promise<BulkChunkLanding> {
   if (rows.length === 0) return { added: 0, reused: 0, errors: [] };
+  const screened = await screenBulkScopeConflicts(tx, userId, rows);
+  const landed = await landScreenedRows(tx, userId, screened.accepted, remainingQuota, quotaMessage, deadline);
+  return mergeScreenedLanding(rows, screened, landed);
+}
+
+/** 落通过作用域筛查的行：先批量路径，意外失败再退回逐行路径。 */
+async function landScreenedRows(
+  tx: Tx,
+  userId: string,
+  rows: readonly BulkChunkRow[],
+  remainingQuota: number,
+  quotaMessage: string,
+  deadline: number,
+): Promise<BulkChunkLanding> {
+  if (rows.length === 0) return { added: 0, reused: 0, errors: [] };
   try {
     return await tx.transaction((sp) =>
       landBulkChunkBatched(sp, userId, rows, remainingQuota, quotaMessage),
@@ -1045,6 +1151,25 @@ export async function landBulkChunk(
     console.error('[landBulkChunk] batched path failed; falling back to per-row', err);
     return landBulkChunkPerRow(tx, userId, rows, remainingQuota, quotaMessage, deadline);
   }
+}
+
+/**
+ * 合并筛查错误与落库结果。stoppedAt 换算回原 rows 的下标；提前停下时只保留停止行之前的筛查错误
+ * （其后的行留给下一次认领重新筛查）。
+ */
+function mergeScreenedLanding(
+  rows: readonly BulkChunkRow[],
+  screened: { accepted: BulkChunkRow[]; errors: BulkRowError[] },
+  landed: BulkChunkLanding,
+): BulkChunkLanding {
+  const stopRow = landed.stoppedAt === undefined ? undefined : screened.accepted[landed.stoppedAt]!;
+  const screenErrors = stopRow ? screened.errors.filter((e) => e.row < stopRow.row) : screened.errors;
+  return {
+    added: landed.added,
+    reused: landed.reused,
+    errors: [...screenErrors, ...landed.errors].sort((a, b) => a.row - b.row),
+    ...(stopRow ? { stoppedAt: rows.indexOf(stopRow) } : {}),
+  };
 }
 
 interface KeyedRow extends BulkChunkRow {

@@ -26,6 +26,7 @@ import {
   ZH_CN,
   DE_DE,
   type CompileResult,
+  type DomainVocabulary,
   type SchemaResult,
   type Lexicon,
   type TypecheckDiagnostic,
@@ -55,6 +56,11 @@ export interface UseAsterCompilerOptions {
    * 未命中再回退到内置词汇。
    */
   tenantId?: string;
+  /**
+   * 作者领域词汇（ADR 0051）：提供时优先于 domain / tenantId，引擎据此构建 VocabularyScopes
+   * 按位置解析源码中的本地化名字——与服务端保存/执行使用同一份词汇。
+   */
+  vocabulary?: DomainVocabulary;
   /** 用户策略层关键词别名，kind → 多词别名。 */
   userAliasSet?: Readonly<Record<string, readonly string[]>> | null;
   /**
@@ -90,6 +96,41 @@ export interface UseAsterCompilerResult {
   getSampleInputs: (functionName?: string) => Record<string, unknown> | null;
 }
 
+type DiagnosticCode = TypecheckDiagnostic['code'];
+
+/**
+ * 把一次 compileAndTypecheck 结果里的全部诊断汇总成编辑器可标记的列表。
+ *
+ * 顺序：解析错误 → 名称解析诊断（ADR 0051 E8xx 错误 / W8xx 警告）→ 降级错误 → 类型诊断。
+ * 名称解析失败时引擎不做类型检查（typeErrors 为空），E8xx 只出现在 resolutionDiagnostics，
+ * 因此必须单独收集，否则编辑器对「词汇里没有这个名字」之类的错误毫无标记。
+ * 引擎诊断消息原样透传，与 typeErrors 一致（服务端 /compile 也原样转发）。
+ */
+export function collectCompileDiagnostics(
+  result: CompileResult & { typeErrors?: readonly TypecheckDiagnostic[] },
+): TypecheckDiagnostic[] {
+  const all: TypecheckDiagnostic[] = [];
+
+  for (const err of result.parseErrors ?? []) {
+    const parseError = err as { message: string; span?: TypecheckDiagnostic['span'] };
+    all.push({
+      severity: 'error',
+      code: 'E000' as DiagnosticCode,
+      message: parseError.message,
+      span: parseError.span,
+    });
+  }
+
+  all.push(...(result.resolutionDiagnostics ?? []));
+
+  for (const message of result.loweringErrors ?? []) {
+    all.push({ severity: 'error', code: 'E000' as DiagnosticCode, message });
+  }
+
+  all.push(...(result.typeErrors ?? []));
+  return all;
+}
+
 /**
  * Hook for local CNL compilation without external LSP server
  *
@@ -113,6 +154,7 @@ export function useAsterCompiler({
   locale = 'en-US',
   domain,
   tenantId,
+  vocabulary,
   userAliasSet,
   externalInvalidationKey,
   debounceDelay = 300,
@@ -231,43 +273,12 @@ export function useAsterCompiler({
     }
 
     try {
-      const result = compileAndTypecheck(source, { lexicon, domain, tenantId });
+      const result = compileAndTypecheck(source, { lexicon, vocabulary, domain, tenantId });
       // 实时校验也保存 compileResult，使消费方（如上抛给父层的 module 摘要）能拿到
       // 最新 Core IR，而不必单独调 compileSource()。二者本质是同一 compileAndTypecheck 调用。
       setCompileResult(result);
 
-      // Collect all diagnostics
-      const allDiagnostics: TypecheckDiagnostic[] = [];
-
-      // Add parse errors as diagnostics (now with position info)
-      if (result.parseErrors && result.parseErrors.length > 0) {
-        for (const err of result.parseErrors) {
-          // ParseError is now an object with message and optional span
-          const parseError = err as { message: string; span?: { start: { line: number; col: number }; end: { line: number; col: number } } };
-          allDiagnostics.push({
-            severity: 'error',
-            code: 'E000' as import('@aster-cloud/aster-lang-ts/browser').TypecheckDiagnostic['code'],
-            message: parseError.message,
-            span: parseError.span,
-          });
-        }
-      }
-
-      // Add lowering errors as diagnostics
-      if (result.loweringErrors && result.loweringErrors.length > 0) {
-        for (const err of result.loweringErrors) {
-          allDiagnostics.push({
-            severity: 'error',
-            code: 'E000' as import('@aster-cloud/aster-lang-ts/browser').TypecheckDiagnostic['code'],
-            message: err,
-          });
-        }
-      }
-
-      // Add type check diagnostics (these have proper span info)
-      if (result.typeErrors && result.typeErrors.length > 0) {
-        allDiagnostics.push(...result.typeErrors);
-      }
+      const allDiagnostics = collectCompileDiagnostics(result);
 
       setDiagnostics(allDiagnostics);
       setErrors(allDiagnostics.map((d) => d.message));
@@ -283,7 +294,7 @@ export function useAsterCompiler({
       setCompileResult(null); // 解析崩溃 → 无有效 module
       return [errorDiag];
     }
-  }, [getSource, lexicon, domain, tenantId]);
+  }, [getSource, lexicon, vocabulary, domain, tenantId]);
 
   /**
    * Compile the current source
@@ -294,41 +305,10 @@ export function useAsterCompiler({
 
     setCompiling(true);
     try {
-      const result = compileAndTypecheck(source, { lexicon, domain, tenantId });
+      const result = compileAndTypecheck(source, { lexicon, vocabulary, domain, tenantId });
       setCompileResult(result);
 
-      // Collect all diagnostics
-      const allDiagnostics: TypecheckDiagnostic[] = [];
-
-      // Add parse errors (now with position info)
-      if (result.parseErrors && result.parseErrors.length > 0) {
-        for (const err of result.parseErrors) {
-          // ParseError is now an object with message and optional span
-          const parseError = err as { message: string; span?: { start: { line: number; col: number }; end: { line: number; col: number } } };
-          allDiagnostics.push({
-            severity: 'error',
-            code: 'E000' as import('@aster-cloud/aster-lang-ts/browser').TypecheckDiagnostic['code'],
-            message: parseError.message,
-            span: parseError.span,
-          });
-        }
-      }
-
-      // Add lowering errors
-      if (result.loweringErrors && result.loweringErrors.length > 0) {
-        for (const err of result.loweringErrors) {
-          allDiagnostics.push({
-            severity: 'error',
-            code: 'E000' as import('@aster-cloud/aster-lang-ts/browser').TypecheckDiagnostic['code'],
-            message: err,
-          });
-        }
-      }
-
-      // Add type check diagnostics
-      if (result.typeErrors && result.typeErrors.length > 0) {
-        allDiagnostics.push(...result.typeErrors);
-      }
+      const allDiagnostics = collectCompileDiagnostics(result);
 
       setDiagnostics(allDiagnostics);
       setErrors(allDiagnostics.map((d) => d.message));
@@ -337,7 +317,7 @@ export function useAsterCompiler({
     } finally {
       setCompiling(false);
     }
-  }, [getSource, lexicon, domain, tenantId]);
+  }, [getSource, lexicon, vocabulary, domain, tenantId]);
 
   /**
    * Clear all errors

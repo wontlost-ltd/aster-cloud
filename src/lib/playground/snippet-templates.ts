@@ -67,7 +67,7 @@ const SOURCE_AMOUNT_THRESHOLD = [
   '# carries an `amount` below the configured ceiling.',
   'Module examples.basic.',
   '',
-  'Rule allow given amount as Number, produce Boolean:',
+  'Rule allow given amount as Float, produce Bool:',
   '  Return amount < 100.',
   '',
 ].join('\n');
@@ -77,7 +77,7 @@ const SOURCE_TIERED_ACCESS = [
   '# policy against every input the user provides.',
   'Module examples.batch.',
   '',
-  'Rule allow given tenant as Text, tier as Text, produce Boolean:',
+  'Rule allow given tenant as Text, tier as Text, produce Bool:',
   '  Return tenant equals to "preview" and (tier equals to "free" or tier equals to "pro").',
   '',
 ].join('\n');
@@ -87,7 +87,7 @@ const SOURCE_SCHEMA_SHAPE = [
   '# signature are surfaced by the schema endpoint as the input shape.',
   'Module examples.schema.',
   '',
-  'Rule allow given userId as Text, resourceKind as Text, action as Text, produce Boolean:',
+  'Rule allow given userId as Text, resourceKind as Text, action as Text, produce Bool:',
   '  Return resourceKind equals to "policy" and (action equals to "read" or action equals to "list").',
   '',
 ].join('\n');
@@ -97,7 +97,7 @@ const SOURCE_VERSIONED_POLICY = [
   '# revision history via the versions endpoint.',
   'Module examples.versioning.',
   '',
-  'Rule allow given role as Text, produce Boolean:',
+  'Rule allow given role as Text, produce Bool:',
   '  Return role equals to "owner".',
   '',
 ].join('\n');
@@ -107,7 +107,7 @@ const SOURCE_VALIDATE_ONLY = [
   '# succeeds even though no runtime evaluation is performed.',
   'Module examples.validate.',
   '',
-  'Rule allow given action as Text, produce Boolean:',
+  'Rule allow given action as Text, produce Bool:',
   '  Return action equals to "read" or action equals to "list".',
   '',
 ].join('\n');
@@ -124,7 +124,7 @@ const SOURCE_WORKFLOW_DECISION = [
   '# workflow events endpoint records and rolls up into state/metrics.',
   'Module workflows.demo.',
   '',
-  'Rule decide given event as Text, payload as Text, produce Boolean:',
+  'Rule decide given event as Text, payload as Text, produce Bool:',
   '  Return event equals to "approved" or payload equals to "auto-approve".',
   '',
 ].join('\n');
@@ -139,7 +139,7 @@ const SOURCE_GRAPHQL_DEMO = [
   '# request, with `source`, `context`, and `functionName` arguments.',
   'Module examples.graphql.',
   '',
-  'Rule evaluate given subject as Text, action as Text, produce Boolean:',
+  'Rule evaluate given subject as Text, action as Text, produce Bool:',
   '  Return action equals to "read" or subject equals to "admin".',
   '',
 ].join('\n');
@@ -161,7 +161,7 @@ const SOURCE_AUDIT_LOOKUP = [
   '# enumerate version usage, or compare two evaluations.',
   'Module examples.audit.',
   '',
-  'Rule allow given actor as Text, resource as Text, produce Boolean:',
+  'Rule allow given actor as Text, resource as Text, produce Bool:',
   '  Return actor equals to "service-account" and (resource equals to "policy" or resource equals to "audit-log").',
   '',
 ].join('\n');

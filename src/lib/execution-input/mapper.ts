@@ -2,32 +2,36 @@
  * 执行输入的领域词汇映射（#626，纯函数，无 I/O）。
  *
  * 产品规则：执行输入与策略语言一致——德语策略的输入写德语字段名（`{"person":{"alter":35}}`）。
- * 执行端（aster-api）规范化源码时按词汇把标识符 token（大小写不敏感，含别名）替换为规范名，
- * 引擎看到的字段 / 结构 / 枚举值都是规范名。这里在调用引擎前，**只在类型确定的位置**做同口径映射：
+ * 引擎按位置解析标识符（ADR 0051），执行时看到的字段 / 结构 / 枚举值都是规范名。类型表直接取自
+ * 引擎 `resolvePolicyTypes`（规范名 + 作者写法），这里在调用引擎前**只在类型确定的位置**映射：
  *
- *   - 参数名（顶层键）来自源码，原样使用；
+ *   - 参数名（顶层键）是源码局部名，原样使用；
  *   - 对象只有在其类型是策略里声明的结构（或 `__type` 标签指向已知结构）时才映射字段键：
- *     策略写法 / 规范名 / 该字段词条的本地化名与同义词 → 规范名；
+ *     作者写法 / 规范名 / 该结构下该字段词条的本地化名与同义词 → 规范名；
  *   - 枚举值只在字段类型是已声明枚举、且值是其成员时映射；运行时枚举对象
  *     （`{__type:'?', _enum, value, variant, args}`）同样只改 `_enum` / `value` / `variant`，
  *     其类型只以自身 `_enum` 标签为准：标签指向已声明枚举才改写（类型未知处也认这个显式标签），
  *     认不出的标签整个对象原样透传，不按声明类型去猜；没有 `_enum` 标签的对象不算枚举值；
- *   - 类型未知（未知参数、未知字段、Text/Int 等、类型提取失败）、Map 的键：一律原样；
- *   - 同一对象内两个键指向同一字段 → 歧义；某个写法在该结构内同时对应多个字段（大小写折叠后
- *     撞名，或规范名等于另一字段的本地化名）→ 该写法不可映射，输入用到它时同样按歧义报错；
+ *   - 类型未知（未知参数、未知字段、Text/Int 等、引擎定不了的类型）、Map 的键：一律原样；
+ *   - 写法匹配与引擎同口径（ADR 0051 §6.3）：先 NFC 精确匹配，再大小写折叠匹配；同一层命中多个
+ *     不同字段 → 该写法歧义，输入用到它时报错；同一对象内两个键指向同一字段 → 歧义；
  *   - 结构内未知键原样保留。
  *
- * 写法表按结构（字段）/ 按枚举（成员）分别建立：同一个本地化词出现在不同结构里不算冲突。
+ * 写法表按结构（字段）/ 按枚举（成员）分别建立：同一个本地化词在不同结构里各有所指不算冲突。
  * 关键词别名（ADR 0022 aliasSet）只作用于源码关键词，不参与输入映射。
- * 同一套遍历也用于把结果里的规范名还原为策略语言（输出方向，不报歧义）。
+ * 同一套遍历也用于把结果里的规范名还原为作者写法（输出方向，不报歧义）。
  */
 
 import {
-  buildIdentifierIndex,
+  buildVocabularyScopes,
+  foldKey,
   IdentifierKind,
+  type Candidate,
   type DomainVocabulary,
   type IdentifierMapping,
-} from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
+  type PolicyTypes,
+  type VocabularyScopes,
+} from '@aster-cloud/aster-lang-ts/browser';
 
 /** 运行时类型标签键（Truffle/TS 运行时按它识别结构/变体）。 */
 export const TYPE_TAG_KEY = '__type';
@@ -38,22 +42,13 @@ export const ENUM_TAG_KEY = '_enum';
 /** 运行时枚举值对象里存放成员名的键（引擎两键同值，都要改写）。 */
 const ENUM_MEMBER_KEYS = ['value', 'variant'] as const;
 
-interface VocabTerm {
-  readonly kind: IdentifierKind;
-  readonly canonical: string;
-  readonly spellings: readonly string[];
-  readonly parent?: string;
+/** 执行词汇：规整后的词汇（交给引擎解析类型）与引擎的按位置作用域视图（同义词来源）。 */
+export interface ExecutionVocabulary {
+  readonly vocabulary: DomainVocabulary;
+  readonly scopes: VocabularyScopes;
 }
 
-/** 执行词汇的索引。 */
-export interface VocabularyNameIndex {
-  /** 与执行端相同口径的全局 本地化/别名（小写）→ 规范名（同键后写覆盖，镜像引擎），用于算引擎眼中的名字。 */
-  readonly engineCanonical: ReadonlyMap<string, string>;
-  /** 非字面量词条（按类别 + 父结构做同义词归属）。 */
-  readonly terms: readonly VocabTerm[];
-}
-
-/** 策略类型节点（Core IR 的子集，只取输入映射用得到的形状）。 */
+/** 策略类型节点（Core IR 类型的子集，只取输入映射用得到的形状；名字均为规范名）。 */
 export type PolicyTypeNode =
   | { readonly kind: 'TypeName'; readonly name: string }
   | { readonly kind: 'List' | 'Maybe' | 'Option'; readonly type: PolicyTypeNode }
@@ -61,25 +56,14 @@ export type PolicyTypeNode =
   | { readonly kind: 'PiiType'; readonly baseType: PolicyTypeNode }
   | { readonly kind: string };
 
-export interface PolicyDataDecl {
-  readonly kind: 'Data';
-  readonly name: string;
-  readonly fields: ReadonlyArray<{ readonly name: string; readonly type: PolicyTypeNode }>;
-}
-
-export interface PolicyEnumDecl {
-  readonly kind: 'Enum';
-  readonly name: string;
-  readonly variants: readonly string[];
-}
-
-/** 从策略源码（未经词汇规范化，名字即作者所写）提取的参数与类型声明。 */
+/** 入口函数的参数与返回类型，加上引擎解析出的结构 / 枚举声明。 */
 export interface PolicyInputTypes {
-  /** 入口函数参数（按位置）。 */
+  /** 入口函数参数（按位置；参数名为源码写法）。 */
   readonly params: ReadonlyArray<{ readonly name: string; readonly type: PolicyTypeNode }>;
   /** 入口函数返回类型（输出本地化用）。 */
   readonly result?: PolicyTypeNode;
-  readonly decls: ReadonlyArray<PolicyDataDecl | PolicyEnumDecl>;
+  readonly structs: PolicyTypes['structs'];
+  readonly enums: PolicyTypes['enums'];
 }
 
 export interface AmbiguousInputField {
@@ -104,16 +88,18 @@ export type MapInputResult =
   | { readonly ok: true; readonly input: unknown; readonly renames: readonly InputRename[] }
   | { readonly ok: false; readonly ambiguous: AmbiguousInputField };
 
-/* ---------------------------------------------------------------- 词汇索引 */
+/* ---------------------------------------------------------------- 执行词汇 */
 
-const TERM_ARRAYS: ReadonlyArray<[string, IdentifierKind]> = [
+/** 词条数组键与其类别：快照 JSON 可能缺数组或缺条目的 kind，按所在数组补齐。 */
+const TERM_ARRAYS: ReadonlyArray<readonly [string, IdentifierKind]> = [
   ['structs', IdentifierKind.STRUCT],
   ['fields', IdentifierKind.FIELD],
   ['functions', IdentifierKind.FUNCTION],
   ['enumValues', IdentifierKind.ENUM_VALUE],
+  ['literals', IdentifierKind.LITERAL],
 ];
 
-/** 只保留 canonical/localized 为字符串的条目，kind 以所在数组为准（快照 JSON 可能缺 kind）。 */
+/** 只保留 canonical/localized 为字符串的条目，kind 以所在数组为准。 */
 export function mappingsOf(value: unknown, kind: IdentifierKind): IdentifierMapping[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -122,115 +108,93 @@ export function mappingsOf(value: unknown, kind: IdentifierKind): IdentifierMapp
     .map((m) => ({ ...m, kind }));
 }
 
-function toTerm(m: IdentifierMapping): VocabTerm {
-  const aliases = Array.isArray(m.aliases) ? m.aliases.filter((a): a is string => typeof a === 'string') : [];
-  return { kind: m.kind, canonical: m.canonical, spellings: [m.localized, ...aliases], ...(m.parent ? { parent: m.parent } : {}) };
+function text(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value ? value : fallback;
 }
 
 /**
- * 由执行词汇建索引；词汇为空或形状不对时返回 null（调用方按「无词汇」处理，输入原样透传）。
- * 字面量宏（literal）展开成字符串，不可能是字段名/枚举值，排除在外。
+ * 由执行词汇建引擎作用域；没有任何标识符词条（字面量宏不算，它展开成字符串，不可能是字段名 /
+ * 枚举值）或引擎拒绝该词汇时返回 null（调用方按「无词汇」处理，输入原样透传）。
  */
-export function buildVocabularyNameIndex(vocabulary: unknown): VocabularyNameIndex | null {
-  if (!vocabulary || typeof vocabulary !== 'object') return null;
-  const v = vocabulary as Record<string, unknown>;
-  const byArray = TERM_ARRAYS.map(([key, kind]) => mappingsOf(v[key], kind));
+export function buildExecutionVocabulary(raw: unknown): ExecutionVocabulary | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const v = raw as Record<string, unknown>;
+  const arrays = Object.fromEntries(TERM_ARRAYS.map(([key, kind]) => [key, mappingsOf(v[key], kind)]));
+  const identifiers = TERM_ARRAYS.filter(([, kind]) => kind !== IdentifierKind.LITERAL);
+  if (identifiers.every(([key]) => arrays[key]!.length === 0)) return null;
+  const vocabulary = {
+    ...arrays,
+    id: text(v.id, 'user-vocabulary'),
+    name: text(v.name, text(v.id, 'user-vocabulary')),
+    locale: text(v.locale, ''),
+    version: text(v.version, 'user'),
+  } as unknown as DomainVocabulary;
   try {
-    const index = buildIdentifierIndex({
-      ...(v as unknown as DomainVocabulary),
-      structs: byArray[0]!, fields: byArray[1]!, functions: byArray[2]!, enumValues: byArray[3]!, literals: [],
-    });
-    if (index.toCanonical.size === 0) return null;
-    return { engineCanonical: index.toCanonical, terms: byArray.flat().map(toTerm) };
+    return { vocabulary, scopes: buildVocabularyScopes(vocabulary) };
   } catch (err) {
     console.warn('[execution-input] malformed vocabulary; input passed through unchanged', err);
     return null;
   }
 }
 
-/** 引擎规范化后的名字：命中词汇（大小写不敏感）取规范名，否则原样。 */
-export function engineName(index: VocabularyNameIndex, name: string): string {
-  return index.engineCanonical.get(name.toLowerCase()) ?? name;
-}
-
 /* ---------------------------------------------------------------- 写法表 */
 
-/**
- * 结构字段 / 枚举成员 / 结构本身：策略写法（source）与引擎规范名（target）。
- * 只出现在词汇里、源码未声明的词条也占一个槽位（declared=false）：不映射，只用于发现撞名。
- */
-interface Slot {
-  readonly source: string;
-  readonly target: string;
-  readonly declared: boolean;
+/** 一个声明项（结构字段 / 枚举成员 / 类型 / 函数）：规范名、作者写法，字段另带类型。 */
+export interface Slot {
+  readonly canonical: string;
+  readonly written: string;
   readonly type?: PolicyTypeNode;
 }
 
-/** 写法（小写）→ 可能指向的槽位；同一写法对应多个不同 target 即撞名。 */
-type SpellingTable = ReadonlyMap<string, readonly Slot[]>;
-
-type Lookup = { kind: 'none' } | { kind: 'one'; slot: Slot } | { kind: 'conflict'; targets: string[] };
-
-function lookup(table: SpellingTable, key: string): Lookup {
-  const slots = table.get(key.toLowerCase()) ?? [];
-  if (slots.length === 0) return { kind: 'none' };
-  if (slots.length > 1) return { kind: 'conflict', targets: slots.map((s) => s.target).sort() };
-  return slots[0]!.declared ? { kind: 'one', slot: slots[0]! } : { kind: 'none' };
+/** 写法 → 声明项：NFC 精确键与折叠键各一张；规范名 → 声明项供输出方向直接还原。 */
+export interface SpellingTable {
+  readonly exact: ReadonlyMap<string, readonly Slot[]>;
+  readonly folded: ReadonlyMap<string, readonly Slot[]>;
+  readonly byCanonical: ReadonlyMap<string, Slot>;
 }
 
-/** 作用域内的词条：类别相同、父结构（若词条声明了）一致。 */
-function scopedTerms(index: VocabularyNameIndex, kind: IdentifierKind, parent: string | null): VocabTerm[] {
-  return index.terms.filter((t) => t.kind === kind && (!t.parent || parent === null || t.parent === parent));
-}
+export type Lookup = { kind: 'none' } | { kind: 'one'; slot: Slot } | { kind: 'conflict'; targets: string[] };
 
-type TableEntry = { slot: Slot; spellings: readonly string[] };
+function addSpelling(table: Map<string, Slot[]>, key: string, slot: Slot): void {
+  const slots = table.get(key) ?? [];
+  if (!slots.some((s) => s.canonical === slot.canonical)) slots.push(slot);
+  table.set(key, slots);
+}
 
 /**
- * 某作用域（一个结构的字段 / 一个枚举的成员 / 全部结构名）的写法表条目：
- * 源码声明的每一项（策略写法 + 引擎规范名）加上作用域内全部词条（本地化名 + 同义词）。
- *
- * 词条归属：
- *   - 规范名与某声明项的引擎规范名相同 → 并入该声明项；
- *   - 否则若它的写法就是某声明项的策略写法，而该声明项的引擎规范名来自作用域**外**的词条
- *     （引擎上下文无关替换，同一个词被别的结构的词条抢走）→ 并入该声明项、以引擎为准，记警告；
- *     这正是「同一个词在不同结构里各有所指」，不算本作用域撞名；
- *   - 其余作为未声明槽位：不映射，只参与撞名检测（作用域内两个词条争同一写法即撞名）。
+ * 某作用域（一个结构的字段 / 一个枚举的成员 / 全部类型名 / 全部函数）的写法表：
+ * 每个声明项接受作者写法、规范名，以及作用域内规范名与之相同的词条写法（本地化名与同义词）。
+ * 只认引擎解析出的声明项：词汇里有、策略里没声明的词条不参与，也就不会制造假撞名。
  */
-function scopeEntries(scope: string, declared: readonly Slot[], terms: readonly VocabTerm[]): TableEntry[] {
-  const entries: TableEntry[] = declared.map((slot) => ({ slot, spellings: [slot.source, slot.target] }));
-  const inScope = (target: string) => terms.some((t) => t.canonical === target);
-  for (const term of terms) {
-    const shadowed = declared.find((slot) => !inScope(slot.target) && spells(term, slot.source));
-    if (shadowed) {
-      console.warn(`[execution-input] ${scope}: "${shadowed.source}" resolves to "${shadowed.target}" in the engine, not "${term.canonical}"`);
-    }
-    const owner = declared.find((slot) => slot.target === term.canonical) ?? shadowed;
-    const slot = owner ?? { source: term.spellings[0]!, target: term.canonical, declared: false };
-    entries.push({ slot, spellings: term.spellings });
-  }
-  return entries;
-}
-
-function spells(term: VocabTerm, written: string): boolean {
-  const lower = written.toLowerCase();
-  return term.spellings.some((s) => s.toLowerCase() === lower);
-}
-
-function buildTable(scope: string, entries: readonly TableEntry[]): SpellingTable {
-  const table = new Map<string, Slot[]>();
-  for (const { slot, spellings } of entries) {
-    for (const spelling of spellings) {
-      const key = spelling.toLowerCase();
-      const slots = table.get(key) ?? [];
-      if (!slots.some((s) => s.target === slot.target)) slots.push(slot);
-      table.set(key, slots);
+export function buildSpellingTable(slots: readonly Slot[], candidates: readonly Candidate[]): SpellingTable {
+  const exact = new Map<string, Slot[]>();
+  const folded = new Map<string, Slot[]>();
+  for (const slot of slots) {
+    const synonyms = candidates.filter((c) => c.canonical === slot.canonical).map((c) => c.written);
+    for (const spelling of [slot.written, slot.canonical, ...synonyms]) {
+      addSpelling(exact, spelling.normalize('NFC'), slot);
+      addSpelling(folded, foldKey(spelling), slot);
     }
   }
-  const conflicts = [...table].filter(([, slots]) => slots.length > 1).map(([key]) => key);
-  if (conflicts.length > 0) {
-    console.warn(`[execution-input] vocabulary spelling collisions in ${scope}; these keys are not mapped`, conflicts);
-  }
-  return table;
+  return { exact, folded, byCanonical: new Map(slots.map((s) => [s.canonical, s])) };
+}
+
+function lookupSlots(slots: readonly Slot[] | undefined): Lookup | null {
+  if (!slots || slots.length === 0) return null;
+  if (slots.length === 1) return { kind: 'one', slot: slots[0]! };
+  return { kind: 'conflict', targets: slots.map((s) => s.canonical).sort() };
+}
+
+/** 与引擎同口径：NFC 精确匹配优先，其次折叠匹配；同一层多个不同规范名即撞名。 */
+export function lookupSpelling(table: SpellingTable, key: string): Lookup {
+  return lookupSlots(table.exact.get(key.normalize('NFC')))
+    ?? lookupSlots(table.folded.get(foldKey(key)))
+    ?? { kind: 'none' };
+}
+
+/** 折叠索引里的全部候选（按父名分组的取该组）。 */
+export function candidatesOf(index: ReadonlyMap<string, Candidate[]> | undefined): Candidate[] {
+  return index ? [...index.values()].flat() : [];
 }
 
 interface StructModel {
@@ -240,50 +204,41 @@ interface StructModel {
 
 interface EnumModel {
   readonly kind: 'Enum';
-  readonly variants: SpellingTable;
+  readonly members: SpellingTable;
 }
 
+type TypeModel = StructModel | EnumModel;
+
 /**
- * 一个版本的映射模型：按源码声明名索引的结构 / 枚举写法表，
+ * 一个版本的映射模型：按规范名索引的结构 / 枚举写法表，
  * 以及结构名写法表（`__type` 用）与枚举名写法表（`_enum` 用）。
  */
 export interface MappingModel {
-  readonly index: VocabularyNameIndex;
   readonly types: PolicyInputTypes;
-  readonly byName: ReadonlyMap<string, StructModel | EnumModel>;
+  readonly byName: ReadonlyMap<string, TypeModel>;
   readonly structs: SpellingTable;
   readonly enums: SpellingTable;
 }
 
-function structModel(index: VocabularyNameIndex, decl: PolicyDataDecl): StructModel {
-  const declared = decl.fields.map((f) => ({ source: f.name, target: engineName(index, f.name), declared: true, type: f.type }));
-  const terms = scopedTerms(index, IdentifierKind.FIELD, engineName(index, decl.name));
-  return { kind: 'Data', fields: buildTable(`struct ${decl.name}`, scopeEntries(`struct ${decl.name}`, declared, terms)) };
-}
-
-function enumModel(index: VocabularyNameIndex, decl: PolicyEnumDecl): EnumModel {
-  const declared = decl.variants.map((v) => ({ source: v, target: engineName(index, v), declared: true }));
-  const terms = scopedTerms(index, IdentifierKind.ENUM_VALUE, engineName(index, decl.name));
-  return { kind: 'Enum', variants: buildTable(`enum ${decl.name}`, scopeEntries(`enum ${decl.name}`, declared, terms)) };
-}
-
-/** 类型名写法表：源码声明的结构（或枚举）名 + 词汇里的类型名词条（枚举名在词汇里也记作 struct）。 */
-function typeNameTable(index: VocabularyNameIndex, scope: string, decls: ReadonlyArray<{ name: string }>): SpellingTable {
-  const declared = decls.map((d) => ({ source: d.name, target: engineName(index, d.name), declared: true }));
-  return buildTable(scope, scopeEntries(scope, declared, scopedTerms(index, IdentifierKind.STRUCT, null)));
-}
-
 /** 建映射模型；无词汇时返回 null（输入原样）。类型取不到时传空类型：一切按未知类型原样透传。 */
-export function buildMappingModel(index: VocabularyNameIndex | null, types: PolicyInputTypes | null): MappingModel | null {
-  if (!index) return null;
-  const effective: PolicyInputTypes = types ?? { params: [], decls: [] };
-  const byName = new Map<string, StructModel | EnumModel>();
-  for (const decl of effective.decls) {
-    byName.set(decl.name, decl.kind === 'Data' ? structModel(index, decl) : enumModel(index, decl));
+export function buildMappingModel(vocab: ExecutionVocabulary | null, types: PolicyInputTypes | null): MappingModel | null {
+  if (!vocab) return null;
+  const { scopes } = vocab;
+  const effective: PolicyInputTypes = types ?? { params: [], structs: [], enums: [] };
+  const byName = new Map<string, TypeModel>();
+  for (const s of effective.structs) {
+    byName.set(s.canonical, { kind: 'Data', fields: buildSpellingTable(s.fields, candidatesOf(scopes.fields.get(s.canonical))) });
   }
-  const structs = typeNameTable(index, 'struct names', effective.decls.filter((d) => d.kind === 'Data'));
-  const enums = typeNameTable(index, 'enum names', effective.decls.filter((d) => d.kind === 'Enum'));
-  return { index, types: effective, byName, structs, enums };
+  for (const e of effective.enums) {
+    byName.set(e.canonical, { kind: 'Enum', members: buildSpellingTable(e.members, candidatesOf(scopes.enumMembers.get(e.canonical))) });
+  }
+  const typeCandidates = candidatesOf(scopes.types);
+  return {
+    types: effective,
+    byName,
+    structs: buildSpellingTable(effective.structs, typeCandidates),
+    enums: buildSpellingTable(effective.enums, typeCandidates),
+  };
 }
 
 /* ---------------------------------------------------------------- 遍历 */
@@ -319,16 +274,21 @@ function conflict(path: string, written: string, targets: string[]): Walked {
   return { ok: false, ambiguous: { field: path, fields: [path], policyName: written, candidates: targets } };
 }
 
-/** 按方向把查到的槽位换成输出写法；输出方向撞名时不改。 */
+/** 按方向查写法：输入按写法表（精确优先、再折叠），输出按规范名直接还原。 */
+function find(ctx: WalkContext, table: SpellingTable, key: string): Lookup {
+  if (ctx.direction === 'input') return lookupSpelling(table, key);
+  const slot = table.byCanonical.get(key);
+  return slot ? { kind: 'one', slot } : { kind: 'none' };
+}
+
+/** 按方向把查到的声明项换成输出写法（输入 → 规范名，输出 → 作者写法）。 */
 function rewrite(ctx: WalkContext, found: Lookup, written: string, path: string): Walked {
   if (found.kind === 'none') return PASS(written);
-  if (found.kind === 'conflict') return ctx.direction === 'input' ? conflict(path, written, found.targets) : PASS(written);
-  const out = ctx.direction === 'input' ? found.slot.target : found.slot.source;
+  if (found.kind === 'conflict') return conflict(path, written, found.targets);
+  const out = ctx.direction === 'input' ? found.slot.canonical : found.slot.written;
   if (out !== written && ctx.direction === 'input') ctx.renames.push({ path, from: written, to: out });
   return PASS(out);
 }
-
-type TypeModel = StructModel | EnumModel;
 
 type TagResolution = { ok: true; model: TypeModel | undefined; tag: unknown } | { ok: false; ambiguous: AmbiguousInputField };
 
@@ -346,10 +306,10 @@ function resolveTag(
 ): TagResolution {
   const tag = value[tagKey];
   if (typeof tag !== 'string') return { ok: true, model: declared, tag };
-  const found = lookup(table, tag);
+  const found = find(ctx, table, tag);
   const rewritten = rewrite(ctx, found, tag, joinPath(path, tagKey));
   if (!rewritten.ok) return rewritten;
-  const tagged = found.kind === 'one' ? ctx.model.byName.get(found.slot.source) : undefined;
+  const tagged = found.kind === 'one' ? ctx.model.byName.get(found.slot.canonical) : undefined;
   return { ok: true, model: tagged ?? declared, tag: rewritten.value };
 }
 
@@ -362,7 +322,7 @@ function walkStruct(ctx: WalkContext, value: Record<string, unknown>, declared: 
   const entries: Array<[string, unknown]> = [];
   for (const [key, child] of Object.entries(value)) {
     const childPath = joinPath(path, key);
-    const found = key === TYPE_TAG_KEY ? null : lookup(fields, key);
+    const found = key === TYPE_TAG_KEY ? null : find(ctx, fields, key);
     if (!found || found.kind === 'none') {
       entries.push([key, key === TYPE_TAG_KEY ? resolved.tag : child]);
       continue;
@@ -396,12 +356,12 @@ function walkEnumObject(ctx: WalkContext, value: Record<string, unknown>, path: 
   const resolved = resolveTag(ctx, value, ENUM_TAG_KEY, ctx.model.enums, undefined, path);
   if (!resolved.ok) return resolved;
   if (resolved.model?.kind !== 'Enum') return PASS(value);
-  const variants = resolved.model.variants;
+  const members = resolved.model.members;
   const out: Record<string, unknown> = { ...value, [ENUM_TAG_KEY]: resolved.tag };
   for (const key of ENUM_MEMBER_KEYS) {
     const member = value[key];
     if (typeof member !== 'string') continue;
-    const rewritten = rewrite(ctx, lookup(variants, member), member, joinPath(path, key));
+    const rewritten = rewrite(ctx, find(ctx, members, member), member, joinPath(path, key));
     if (!rewritten.ok) return rewritten;
     out[key] = rewritten.value;
   }
@@ -410,7 +370,7 @@ function walkEnumObject(ctx: WalkContext, value: Record<string, unknown>, path: 
 
 /** 同一对象内两个键落到同一字段：输入方向报歧义；输出方向不会发生（规范键唯一）。 */
 function duplicate(prior: string, path: string, found: Lookup): Walked {
-  const policyName = found.kind === 'one' ? found.slot.source : path;
+  const policyName = found.kind === 'one' ? found.slot.written : path;
   return { ok: false, ambiguous: { field: path, fields: [prior, path], policyName } };
 }
 
@@ -445,7 +405,7 @@ function walkValue(ctx: WalkContext, value: unknown, rawType: PolicyTypeNode | u
   if (type.kind !== 'TypeName' || !('name' in type)) return PASS(value);
   const decl = ctx.model.byName.get(type.name);
   if (isPlainObject(value)) return walkStruct(ctx, value, decl?.kind === 'Data' ? decl : undefined, path);
-  if (typeof value === 'string' && decl?.kind === 'Enum') return rewrite(ctx, lookup(decl.variants, value), value, path);
+  if (typeof value === 'string' && decl?.kind === 'Enum') return rewrite(ctx, find(ctx, decl.members, value), value, path);
   return PASS(value);
 }
 
@@ -491,10 +451,4 @@ export function localizeExecutionOutput(value: unknown, model: MappingModel | nu
   if (!model) return value;
   const walked = walkValue({ model, direction: 'output', renames: [] }, value, model.types.result, '');
   return walked.ok ? walked.value : value;
-}
-
-/** 函数名与源码标识符同口径规范化（规范名仍然接受）。 */
-export function mapFunctionName(name: string | undefined, index: VocabularyNameIndex | null): string | undefined {
-  if (!name || !index) return name;
-  return engineName(index, name);
 }

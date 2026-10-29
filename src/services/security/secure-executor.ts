@@ -293,6 +293,7 @@ export async function executeSecurely(
       source: sourceCode,
       aliasSet: targetVersion.aliasSet,
       sourceEnvelopeSha256: targetVersion.sourceEnvelopeSha256,
+      sourceScopesJson: targetVersion.sourceScopesJson,
       sourceToolchainId: targetVersion.sourceToolchainId,
       vocabularySnapshotIds: targetVersion.vocabularySnapshotIds,
     });

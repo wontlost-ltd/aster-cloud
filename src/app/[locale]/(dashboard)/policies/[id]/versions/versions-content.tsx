@@ -196,6 +196,8 @@ export function VersionsContent({
         toast.error(t('sox.selfApprovalNotAllowed'));
       } else if (errorCode === 'invite_reviewer_required') {
         toast.error(t('sox.inviteReviewerRequired'));
+      } else if (errorCode === 'vocabulary_changed_since_save') {
+        toast.error(t('approvalErrorCodes.vocabulary_changed_since_save'));
       } else {
         toast.error(data?.error || tCommon('somethingWrong'));
       }

@@ -1,0 +1,223 @@
+name: Resolver Migration Image
+
+# ADR 0051 §9 存量重编译的一次性 Job 镜像（Dockerfile.resolver-migration）：构建 → cosign 签名 →
+# image-pin bot 更新 k3s apps/aster-lang-ops/resolver-migration 的 pin。
+#
+# ★为什么是独立 workflow 而不是 ci.yml 里的 job（R48）：Deploy Worker 由 CI workflow 的完成事件触发，
+#   放在 CI 里，Worker 部署就得等它；手动 dispatch 重建时整条 CI 也会重跑并再部署一次 Worker。
+#   独立出来后两者完全解耦：本 workflow 成败不影响 CI 结论与 Worker 部署，dispatch 也只重建本镜像。
+# ★不参与迁移门禁：k3s 中该目录不属于任何 ArgoCD 应用，pin 合并后不会 sync / PostSync，本 workflow
+#   也不等待 ArgoCD。
+# ★签名身份：cosign keyless 证书的 identity 是本文件
+#   https://github.com/wontlost-ltd/aster-cloud/.github/workflows/resolver-migration-image.yml@refs/heads/main，
+#   k3s 信任根（allowed-images.yaml 的 workflowFile）与 CIP subject 都按它登记；改名须三处同改。
+
+on:
+  push:
+    branches: [main]
+    # 粗过滤：只有这些文件变化才会启动本 workflow。package.json 任何改动都会命中，
+    # 由下方 filter 步骤再判断是否真的是引擎钉版变化。
+    paths:
+      - Dockerfile.resolver-migration
+      - Dockerfile.resolver-migration.dockerignore
+      - scripts/resolver-migration.ts
+      - src/services/policy/resolver-migration.ts
+      - package.json
+      - .github/workflows/resolver-migration-image.yml
+  # 闭包内其它模块（src/lib 等）变化不会触发；需要用最新代码重建时在 main 上手动 dispatch（一律构建），
+  # 也用于 bot pin PR 因 freshness（sourceSha ≠ main HEAD）失败后的恢复。
+  workflow_dispatch:
+
+# main 上的运行有副作用（推镜像、开 pin PR），不取消；同 ref 排队。
+concurrency:
+  group: resolver-migration-image-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # ★所有 job 必须有 timeout（与 ci.yml 同一约定）。
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # cosign keyless 签名需要 OIDC token（Fulcio 证书 + Rekor 透明日志）。
+      id-token: write
+    outputs:
+      built: ${{ steps.filter.outputs.build }}
+      digest: ${{ steps.resolver-build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Detect resolver-migration changes (窄路径过滤)
+        id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          build=false
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            build=true; echo "workflow_dispatch → 构建"
+          elif [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+               || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            build=true; echo "无可比较的 before 提交 → 构建"
+          else
+            changed="$(git diff --name-only "$BEFORE" "$GITHUB_SHA")"
+            if printf '%s\n' "$changed" | grep -qxE 'Dockerfile\.resolver-migration(\.dockerignore)?|scripts/resolver-migration\.ts|src/services/policy/resolver-migration\.ts|\.github/workflows/resolver-migration-image\.yml'; then
+              build=true; echo "resolver 迁移相关文件有变化 → 构建"
+            fi
+            engine_pin() { git show "$1:package.json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).dependencies["@aster-cloud/aster-lang-ts"]??""))'; }
+            if [ "$(engine_pin "$BEFORE")" != "$(engine_pin "$GITHUB_SHA")" ]; then
+              build=true; echo "引擎钉版变化 → 构建"
+            fi
+          fi
+          echo "build=${build}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v4
+        if: steps.filter.outputs.build == 'true'
+
+      - uses: docker/login-action@v4
+        if: steps.filter.outputs.build == 'true'
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 只推不可变 SHA tag。BuildKit 按 Dockerfile 名取 Dockerfile.resolver-migration.dockerignore
+      # （排除 src/__tests__ 等），不用仓库根的 .dockerignore。deps 阶段 --platform=$BUILDPLATFORM，
+      # arm64 不走 QEMU 跑 pnpm install。
+      - name: Build & push resolver-migration image
+        id: resolver-build
+        if: steps.filter.outputs.build == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.resolver-migration
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            docker.io/wontlost/aster-resolver-migration:${{ github.sha }}
+          cache-from: type=gha,scope=resolver-migration
+          cache-to: type=gha,mode=max,scope=resolver-migration
+
+      - name: Install cosign
+        if: steps.filter.outputs.build == 'true'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          # 与 ci.yml 的 build-migrate-image / build-lsp-image 同一版本（v3 默认 new-bundle 格式会让旧路径验签失败）。
+          cosign-release: 'v2.5.2'
+
+      - name: Sign resolver-migration image digest (keyless)
+        if: steps.filter.outputs.build == 'true'
+        env:
+          COSIGN_YES: "true"
+          DIGEST: ${{ steps.resolver-build.outputs.digest }}
+        run: |
+          test -n "${DIGEST}" || { echo "build 未输出 digest，中止"; exit 1; }
+          REF="docker.io/wontlost/aster-resolver-migration@${DIGEST}"
+          # 身份判据与下方 fail-closed verify 步骤逐字一致（单一真相，勿分叉）；指向本 workflow 文件。
+          ID_REGEXP="^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/resolver-migration-image\.yml@refs/heads/main$"
+          OIDC_ISSUER="https://token.actions.githubusercontent.com"
+          # 幂等守卫：同 ci.yml build-lsp-image，只探证书身份、不触 Rekor；trust 由下方 full verify 兜底。
+          if cosign verify "${REF}" \
+               --insecure-ignore-tlog \
+               --certificate-identity-regexp "${ID_REGEXP}" \
+               --certificate-oidc-issuer "${OIDC_ISSUER}" >/dev/null 2>&1; then
+            echo "digest 已被本仓身份签过，跳过重签（幂等）：${DIGEST}"
+            exit 0
+          fi
+          for attempt in 1 2 3; do
+            if cosign sign "${REF}"; then
+              echo "signed digest=${DIGEST} (attempt ${attempt})"
+              exit 0
+            fi
+            echo "cosign sign 第 ${attempt} 次失败（Rekor 抖动?），退避重试…"
+            sleep $((attempt * 5))
+          done
+          echo "cosign sign 连续 3 次失败，中止"; exit 1
+
+      # fail-closed：签名/身份不符 → verify 失败 → job 失败。
+      - name: Verify freshly-built resolver-migration digest signature
+        if: steps.filter.outputs.build == 'true'
+        env:
+          DIGEST: ${{ steps.resolver-build.outputs.digest }}
+        run: |
+          cosign verify "docker.io/wontlost/aster-resolver-migration@${DIGEST}" \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/resolver-migration-image\.yml@refs/heads/main$" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+
+      - name: Summary
+        if: steps.filter.outputs.build == 'true'
+        env:
+          DIGEST: ${{ steps.resolver-build.outputs.digest }}
+        run: |
+          {
+            echo "### aster-resolver-migration 镜像已签名"
+            echo ""
+            echo "- digest: \`${DIGEST}\`"
+            echo "- sourceSha: \`${GITHUB_SHA}\`"
+            echo "- runId: \`${GITHUB_RUN_ID}\`"
+            echo "- tag: \`docker.io/wontlost/aster-resolver-migration:${GITHUB_SHA}\`（不可变）"
+            echo ""
+            echo "首次接入时，用以上三项替换 k3s apps/aster-lang-ops/resolver-migration 的 BOOTSTRAP 占位；之后由 image-pin-pr job 开 PR。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # image-pin bot 向 k3s 开 PR 更新 digest pin。与 ci.yml 的 image-pin-pr-lsp 同形态：
+  # 共用 open-image-pin-pr.sh，仅以 env 指向本镜像的 lock/kust；不等待 ArgoCD。
+  image-pin-pr:
+    needs: build
+    if: ${{ github.ref == 'refs/heads/main' && needs.build.outputs.built == 'true' && vars.IMAGE_PIN_APP_ID != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: image-pin-pr-aster-resolver-migration     # per-image：不与 migrate / lsp 的 job 互相取消
+      cancel-in-progress: true
+    steps:
+      - name: Final stale gate (再确认 github.sha 仍是 origin/main tip)
+        id: stalegate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # k3s freshness 要求 sourceSha == aster-cloud main HEAD；过时 run 开的 PR 必红，直接跳过。
+          tip="$(gh api "repos/${{ github.repository }}/commits/main" --jq .sha)"
+          echo "this run: ${GITHUB_SHA}  origin/main tip: ${tip}"
+          if [ "${GITHUB_SHA}" != "${tip}" ]; then
+            echo "::notice::main 已前进，本 run 过时 → 跳过 image-pin PR；需要 pin 时在 main 上手动 dispatch 本 workflow"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Mint k3s-scoped token (跨 org：App 装在 wontlost-ltd/k3s)
+        if: ${{ steps.stalegate.outputs.skip != 'true' }}
+        id: k3stoken
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          client-id: ${{ vars.IMAGE_PIN_APP_CLIENT_ID }}
+          private-key: ${{ secrets.IMAGE_PIN_APP_PRIVATE_KEY }}
+          owner: wontlost-ltd
+          repositories: k3s
+          permission-contents: write
+          permission-pull-requests: write
+          permission-checks: read
+
+      - name: Checkout (for shared script)
+        if: ${{ steps.stalegate.outputs.skip != 'true' }}
+        uses: actions/checkout@v7
+
+      - name: Open/update resolver-migration image-pin PR to k3s
+        if: ${{ steps.stalegate.outputs.skip != 'true' }}
+        env:
+          GH_TOKEN: ${{ steps.k3stoken.outputs.token }}
+          DIGEST: ${{ needs.build.outputs.digest }}
+          SOURCE_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          LOCK_PATH: apps/aster-lang-ops/resolver-migration/image-lock.yaml
+          KUSTOMIZATION_PATH: apps/aster-lang-ops/resolver-migration/kustomization.yaml
+        run: |
+          bash scripts/ci/open-image-pin-pr.sh \
+            docker.io/wontlost/aster-resolver-migration image-pin/aster-resolver-migration

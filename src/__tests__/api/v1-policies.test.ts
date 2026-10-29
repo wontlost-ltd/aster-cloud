@@ -698,13 +698,13 @@ Regel bewerten gegeben person als Fahrer liefert Ganzzahl:
       });
 
       it('locale 与 secure-execute 同一解析器：版本记录的编译 locale 优先于源码识别', async () => {
-        const envelope = computeSourceEnvelope(DE_SOURCE, null, 'en-US', 'tc-1');
+        const envelope = computeSourceEnvelope(DE_SOURCE, null, 'en-US', 'tc-1', '');
         setupExecuteRow({
           policy_content: DE_SOURCE, policy_version: 1, policy_source_toolchain_id: 'tc-1',
           policy_vocab_snapshot_ids: [{ snapshotId: 's', domain: 'e2e1027', locale: 'de' }],
         });
         vi.mocked(db.query.policyVersions.findMany).mockResolvedValueOnce(
-          [{ ...approved[0], sourceEnvelopeSha256: envelope }] as never,
+          [{ ...approved[0], sourceEnvelopeSha256: envelope, sourceScopesJson: '' }] as never,
         );
 
         await run({ person: { alter: 21 } });
