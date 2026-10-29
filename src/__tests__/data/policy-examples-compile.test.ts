@@ -45,8 +45,12 @@ describe('内置策略样例编译验证（防 Undefined variable / 语法错误
             : String(e)
         );
         const typeErrors = (r.typeErrors ?? []).map((e) => e.message);
+        // 名称解析诊断（ADR 0051 E8xx/W8xx）单独返回，且有错误时引擎不做类型检查——
+        // 只看 typeErrors 会把解析失败的样例误判为通过。警告也不允许：样例应当零噪音。
+        const resolution = (r.resolutionDiagnostics ?? []).map((d) => `${d.code}: ${d.message}`);
 
         expect(parseErrors, `${example.id} [${locale}] parseErrors`).toEqual([]);
+        expect(resolution, `${example.id} [${locale}] resolutionDiagnostics`).toEqual([]);
         expect(typeErrors, `${example.id} [${locale}] typeErrors`).toEqual([]);
       });
     }
