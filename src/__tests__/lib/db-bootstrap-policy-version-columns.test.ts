@@ -14,12 +14,19 @@ vi.mock('@/db', () => ({
 import { ensureSchemaApplied } from '@/lib/db-bootstrap';
 
 describe('db-bootstrap — PolicyVersion 列补丁', () => {
-  it('幂等补上 sourceScopesJson 列', async () => {
+  it('幂等补上 sourceScopesJson 与 resolver 迁移状态列', async () => {
     await ensureSchemaApplied();
     const dialect = new PgDialect();
     const statements = execute.mock.calls.map((call) =>
       dialect.sqlToQuery((call as unknown as [SQL])[0]).sql.replace(/\s+/g, ' ').trim(),
     );
     expect(statements).toContain('ALTER TABLE "PolicyVersion" ADD COLUMN IF NOT EXISTS "sourceScopesJson" text');
+    // resolver 迁移状态列（迁移 0061，ADR 0051 §9）
+    expect(statements).toContain(
+      'ALTER TABLE "PolicyVersion" ADD COLUMN IF NOT EXISTS "resolverVersion" integer, '
+        + 'ADD COLUMN IF NOT EXISTS "resolverMigrationError" text, '
+        + 'ADD COLUMN IF NOT EXISTS "archivedByResolverMigration" boolean NOT NULL DEFAULT false, '
+        + 'ADD COLUMN IF NOT EXISTS "statusBeforeArchive" "PolicyVersionStatus"',
+    );
   });
 });

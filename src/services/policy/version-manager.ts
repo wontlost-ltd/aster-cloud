@@ -35,6 +35,7 @@ import {
   type ReservedSets,
 } from '@/lib/policy-alias';
 import { declaresProfile } from '@/lib/policy-profile-declaration';
+import { RESOLVER_VERSION } from '@aster-cloud/aster-lang-ts/browser';
 import { getTeamMemberRole } from '@/lib/team-permissions';
 import {
   canReviewPolicyVersions,
@@ -483,6 +484,8 @@ export async function createVersion(
     sourceToolchainId: toolchainId,
     // 封印所用词汇段原样落库：之后词条编辑或审批冻结都不改变 envelope 的重算输入。
     sourceScopesJson: params.scopesJson,
+    // 新版本按当前解析规则封印，resolver 迁移（ADR 0051 §9）无需再处理。
+    resolverVersion: RESOLVER_VERSION,
     profile,
   }).returning();
 

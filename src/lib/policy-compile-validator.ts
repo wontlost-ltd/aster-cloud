@@ -107,14 +107,16 @@ export async function loadSaveVocabulary(
  *   assertCompilable 按是否声明档案决定（503 或放行）。
  *
  * createVersion 只在返回的 diagnostics 含 severity==='error' 时拒绝落库。
+ * tenantId 缺省为 userId（个人租户）；按已存版本重编译时传策略所属租户（policyTenantId）。
  */
 export function makeCompileValidator(
   userId: string,
   saveVocabulary: DomainVocabulary | null,
+  tenantId: string = userId,
 ): CompileValidator {
   const vocabulary = saveVocabulary as unknown as Record<string, unknown> | null;
   return async ({ source, locale, aliasSet, allowStructural }) => {
-    const client = createPolicyApiClient(userId, userId);
+    const client = createPolicyApiClient(tenantId, userId);
     try {
       const result = await client.compile({
         source,

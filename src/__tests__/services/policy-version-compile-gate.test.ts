@@ -41,6 +41,7 @@ import {
   type CompileValidator,
 } from '@/services/policy/version-manager';
 import { cloudToolchainId, computeSourceEnvelope } from '@/lib/policy-alias';
+import { RESOLVER_VERSION } from '@aster-cloud/aster-lang-ts/browser';
 
 const baseParams = {
   policyId: 'p1',
@@ -66,8 +67,11 @@ describe('createVersion — 5 段 envelope（ADR 0051 §7）', () => {
       sourceEnvelopeSha256: string;
       sourceToolchainId: string;
       sourceScopesJson: string;
+      resolverVersion: number;
     };
     const toolchainId = cloudToolchainId();
+    // 新版本按新解析规则封印，resolver 迁移（ADR 0051 §9）直接跳过
+    expect(values.resolverVersion).toBe(RESOLVER_VERSION);
     expect(values.sourceToolchainId).toBe(toolchainId);
     // 封印所用词汇段原样落库，供之后按同一输入重算 envelope
     expect(values.sourceScopesJson).toBe(scopesJson);
