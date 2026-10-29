@@ -188,7 +188,7 @@ describe('类型未知处一律原样', () => {
     expect(mapped({ xs: [{ alter: 1 }] }, buildMappingModel(VOCAB, types))).toEqual({ xs: [{ alter: 1 }] });
   });
 
-  it('Review Focus 5：R2 定不了类型的嵌套对象（导入类型 / Text 字段里的对象）原样透传、不报错', () => {
+  it('Review Focus 5：R2 定不了类型的嵌套对象（Text 字段里的对象、未知 __type）原样透传、不报错', () => {
     const source = `Modul e2e1027.nested.
 
 Definiere Fahrer hat alter als Ganzzahl, extra als Text.

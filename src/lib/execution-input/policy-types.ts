@@ -57,7 +57,8 @@ function sha256(...parts: string[]): string {
 function cacheKey(input: PolicyTypeSource): string {
   const aliases = input.aliasSet ? JSON.stringify(Object.entries(input.aliasSet).sort(([a], [b]) => a.localeCompare(b))) : '';
   const scopes = input.vocabulary ? canonicalScopesJson(input.vocabulary.scopes) : '';
-  return sha256(input.locale, aliases, scopes, input.source);
+  // 按规范 lexicon id 取键：版本记录里的短码（de）与完整 locale（de-DE）解析结果相同，共用一条缓存
+  return sha256(getLexicon(input.locale).id, aliases, scopes, input.source);
 }
 
 /* ---------------------------------------------------------------- 解析 */

@@ -213,7 +213,7 @@ export const INPUT_TYPE_EXTRACTION_FAILED_MESSAGE =
 
 /** 未指定 Rule 且入口不唯一时的英文说明（界面按 code 本地化）。 */
 export const ENTRY_RULE_REQUIRED_MESSAGE =
-  'This policy has several rules and none is marked @entry. Specify which rule to run (functionName).';
+  'This policy has several rules and none is marked @entry. Choose the rule to run with functionName.';
 
 /**
  * 准备失败时 dashboard / v1 共用的响应：歧义 400，类型提取失败 422。
@@ -231,13 +231,13 @@ export function preparedInputErrorResponse(
   };
 }
 
-/** 歧义的英文说明（界面按 code 本地化）。 */
+/** 歧义的英文说明（界面按 code 本地化；措辞与界面文案 execute.ambiguousInput* 同一口径）。 */
 export function ambiguousInputFieldMessage(ambiguous: AmbiguousInputField): string {
   if (ambiguous.candidates) {
-    return `Input field "${ambiguous.field}" matches several policy fields (${ambiguous.candidates.join(', ')}) ` +
-      'in this policy\'s vocabulary. Use the canonical field name instead.';
+    return `The input field "${ambiguous.field}" matches several fields in this policy's vocabulary ` +
+      `(${ambiguous.candidates.join(', ')}). Use the canonical field name instead.`;
   }
   const [first, second] = ambiguous.fields;
-  return `Input fields "${first}" and "${second}" both refer to the policy field "${ambiguous.policyName}". ` +
-    'Send only one of them.';
+  return `The input contains the policy field "${ambiguous.policyName}" twice ("${first}" and "${second}": ` +
+    'its policy-language name and its canonical name, or two synonyms). Keep only one of them.';
 }

@@ -108,6 +108,13 @@ Regel nachbauen gegeben fahrer als Fahrer liefert Fahrer:
     expect(second.ok && second.types.structs[0]!.fields[1]!.canonical).toBe('grade');
   });
 
+  // #650：缓存键用规范 lexicon id，短码与完整 locale 是同一份解析结果
+  it('等价 locale（de / de-DE）命中同一缓存条目', () => {
+    extractPolicyInputTypes({ ...withVocab(SOURCE), locale: 'de-DE' }, 'bewerten');
+    extractPolicyInputTypes({ ...withVocab(SOURCE), locale: 'de' }, 'bewerten');
+    expect(engine.resolvePolicyTypes).toHaveBeenCalledTimes(1);
+  });
+
   it('关键词别名只用于解析源码', () => {
     const aliased = SOURCE.replaceAll('gib zurück', 'ergebnis lautet');
     const result = extractPolicyInputTypes({ ...withVocab(aliased), aliasSet: { RETURN: ['ergebnis lautet'] } }, 'bewerten');
