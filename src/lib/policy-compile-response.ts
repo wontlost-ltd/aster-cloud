@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { PolicyCompileError } from '@/services/policy/version-manager';
 import { vocabularyScopeErrorDetails, vocabularyScopeErrorMessage } from '@/lib/vocabulary-scope-error';
+import { withVocabularyHelp } from '@/lib/vocabulary-diagnostic';
 
 /** 别名校验失败的稳定错误码（保存入口共用，前端按此码本地化）。 */
 export const ALIAS_INVALID_CODE = 'alias_invalid';
@@ -76,7 +77,8 @@ export function structuralGrantRequiredResponse(): NextResponse {
  * 把保存前编译门禁的拒绝映射为 HTTP 响应，供所有保存入口共用。
  * - 带 retryAfterSeconds（暂不可用：上游限流等为 compile_unavailable，作者词汇加载失败为
  *   vocabulary_unavailable）→ 503 + Retry-After，码取 error.unavailableCode。
- * - 其余（源码有阻断诊断或上游判定输入非法）→ 400 compile_error。
+ * - 其余（源码有阻断诊断或上游判定输入非法）→ 400 compile_error。词汇解析诊断（E800–E806）附
+ *   `vocabulary`（写法、候选词条、词汇页路径），供界面与 API 调用方定位要修改的词条（ADR 0051 §1）。
  *
  * 只按字段判别而不 instanceof 子类：路由测试会整体 mock version-manager。
  */
@@ -104,7 +106,7 @@ export function compileGateErrorResponse(error: PolicyCompileError): NextRespons
       error: 'compile_error',
       code: aliasInvalid ? ALIAS_INVALID_CODE : 'compile_error',
       message: error.message,
-      diagnostics: diagnostics ?? [],
+      diagnostics: withVocabularyHelp(diagnostics ?? []),
     },
     { status: 400 },
   );

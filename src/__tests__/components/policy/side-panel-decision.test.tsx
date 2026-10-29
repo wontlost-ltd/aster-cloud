@@ -83,3 +83,25 @@ describe('编辑器新增文案四语齐全（F6 / F30）', () => {
     expect(typeof form.mobileReadOnlyNotice === 'string' && form.mobileReadOnlyNotice.length > 0).toBe(true);
   });
 });
+
+/* ADR 0051 §1 / 2026-10-30 生产复测 A4：词汇歧义诊断（含保存时服务端返回的诊断）带出写法与词汇页链接。 */
+describe('DecisionTab 词汇诊断链接', () => {
+  it('★E804 → 「在领域词汇中查看“Hoch”」链接；普通诊断不带链接', () => {
+    render(
+      <IntlClientProvider locale="zh" messages={messages as never}>
+        <DecisionTab
+          state="error"
+          locale="zh"
+          diagnostics={[
+            { severity: 'error', code: 'E804', message: "Name 'Hoch' in MEMBER_REF position is ambiguous between: High (Hoch), high (hoch)", startLine: 9, startColumn: 14, endLine: 9, endColumn: 18 },
+            { severity: 'error', code: 'E003', message: 'x', startLine: 1, startColumn: 1, endLine: 1, endColumn: 2 },
+          ]}
+        />
+      </IntlClientProvider>,
+    );
+    const links = screen.getAllByRole('link');
+    expect(links).toHaveLength(1);
+    expect(links[0].textContent).toBe('在领域词汇中查看“Hoch”');
+    expect(links[0].getAttribute('href')).toBe('/zh/domain-vocabularies?q=Hoch');
+  });
+});

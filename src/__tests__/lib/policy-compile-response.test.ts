@@ -28,6 +28,27 @@ describe('compileGateErrorResponse', () => {
   });
 });
 
+describe('compileGateErrorResponse — 词汇诊断带词条与词汇页链接（复测 A4）', () => {
+  it('★E804 诊断附 vocabulary（写法、候选、词汇页路径）', async () => {
+    const e804 = {
+      severity: 'error' as const,
+      code: 'E804',
+      message: "Name 'Hoch' in MEMBER_REF position is ambiguous between: High (Hoch), high (hoch)",
+      startLine: 9,
+      startColumn: 14,
+    };
+    const error = Object.assign(new Error('compile failed'), { diagnostics: [e804, diagnostic] }) as PolicyCompileError;
+
+    const body = await compileGateErrorResponse(error).json();
+
+    expect(body.diagnostics[0]).toEqual({
+      ...e804,
+      vocabulary: { written: 'Hoch', candidates: ['High (Hoch)', 'high (hoch)'], href: '/domain-vocabularies?q=Hoch' },
+    });
+    expect(body.diagnostics[1]).toEqual(diagnostic);
+  });
+});
+
 describe('compileGateErrorResponse — 别名校验失败（#609）', () => {
   it('上游诊断为别名校验失败 → code alias_invalid（保留诊断）', async () => {
     const aliasDiagnostic = {
