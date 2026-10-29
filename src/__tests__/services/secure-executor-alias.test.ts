@@ -32,6 +32,9 @@ vi.mock('@/services/security/security-event-service', () => ({
 }));
 vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
   loadExecutionVocabulary: vi.fn(async () => undefined),
+  // envelope 反推编译 locale 用的按 locale 词汇来源（本测试的 envelope 词汇段均为空）
+  loadFrozenVocabularyForSource: async () => () => null,
+  loadLiveVocabularyForSource: async () => () => null,
 }));
 const mockEvaluateSource = vi.fn(
   async (
@@ -252,7 +255,7 @@ Regel bewerten gegeben person als Fahrer liefert Ganzzahl:
   // #602 复审：locale 优先取版本保存时记录的编译 locale，旧版本执行口径不被源码启发式改变。
   it('locale 优先取 envelope 记录的编译 locale（即使源码看起来是德语）', async () => {
     const source = 'Modul x.\n\nDefiniere Fahrer hat alter als Ganzzahl.\n';
-    const envelope = computeSourceEnvelope(source, null, 'en-US', 'tc-1');
+    const envelope = computeSourceEnvelope(source, null, 'en-US', 'tc-1', '');
     vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue(
       version({
         source, aliasSet: null, sourceToolchainId: 'tc-1', sourceEnvelopeSha256: envelope,

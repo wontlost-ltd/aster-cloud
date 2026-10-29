@@ -1,9 +1,8 @@
 /**
  * 用户自定义别名 TS 实现测试（ADR 0022 方案 D）。
  *
- * 核心：**Java↔TS envelope/canonical 逐字节 parity**。参照哈希由 aster-api 的
- * PolicyVersion.computeSourceEnvelope 生成（EnvelopeParityProbeTest）。两侧算法必须字节一致，
- * 否则同一别名集产出不同 envelope → 破坏可复现/跨引擎一致。任一侧改算法须同步更新两侧 + 本参照。
+ * envelope 的 Java↔TS 逐字节 parity 由共享向量钉住（source-envelope.test.ts，ADR 0051 §7 的 5 段格式）；
+ * 这里只保留与引擎无关的独立锚点与分帧性质。
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -12,56 +11,20 @@ import {
   validateUserAliases,
 } from '@/lib/policy-alias';
 
-describe('policy-alias — Java↔TS envelope parity', () => {
-  // 来自 aster-api EnvelopeParityProbeTest（Java 参照值，2026-06-25）
-  it('ENV_1: 全字段（别名+toolchain）与 Java 一致', () => {
-    const env = computeSourceEnvelope(
-      'Module M.\n\nRule p given x as Int, produce Int:\n  Return x times 3.',
-      '{"TIMES":["multiplied by"]}',
-      'en-US',
-      'abi=1.0;core=dev;validator=1;build=test',
-    );
-    expect(env).toBe('54fd83653343de702d6beeed7a82e1b1f1c5ce86c52a67bed2c70fdc547c30e7');
-  });
-
-  it('ENV_2: 字段边界（"ab","c","","")与 Java 一致', () => {
-    expect(computeSourceEnvelope('ab', 'c', '', '')).toBe(
-      '2443f58475afa7e726cc67b3400a39d35eff8b3217d8491216adfa19a62020ec',
-    );
-  });
-
-  it('ENV_3: null 别名 + 中文 locale 与 Java 一致', () => {
-    expect(computeSourceEnvelope('content', null, 'zh-CN', 'tc')).toBe(
-      '9db0801ccad54aa59b3fa73a636ab1b523994d9a4084c04fddc8f25ddd168c75',
-    );
-  });
-
-  it('ENV_CJK: 多字节 UTF-8（中文 content + 中文别名）与 Java 一致', () => {
-    // 防 parity 盲区：纯 ASCII 下两侧绿不代表多字节也绿（字节长 vs 字符长、JSON 非ASCII转义）
-    expect(
-      computeSourceEnvelope('模块 定价。规则 计算 给定 金额。', '{"TIMES":["乘以三遍"]}', 'zh-CN', 'tc'),
-    ).toBe('a905a68730345126058d162fb82d3938ed31f0166c59aa5046dafddb4330d294');
-  });
-
-  it('ENV_EMOJI: 4 字节 UTF-8（emoji）与 Java 一致', () => {
-    expect(computeSourceEnvelope('x 🎯 y', '{"PLUS":["加 上"]}', 'en-US', 't')).toBe(
-      'dbf5cc6d1b50f402267f65bfb58651f48c178d5c97463a8a1a3c4cebac6aef53',
-    );
-  });
-
-  it('独立锚点：帧 "1:a|0:|0:|0:|" 的 SHA-256（openssl 验证，非 Java 生成）', () => {
-    // 防"Java/TS 一起错"：此值由 openssl 独立算出（printf '1:a|0:|0:|0:|' | openssl dgst -sha256）
-    expect(computeSourceEnvelope('a', null, '', '')).toBe(
-      '68fbcc50d3fabae237194d8c0f3e0795308e3f317e6244252ac5609be49620a9',
+describe('policy-alias — envelope 分帧', () => {
+  it('独立锚点：帧 "1:a|0:|0:|0:|0:|" 的 SHA-256（openssl 验证，非 Java 生成）', () => {
+    // 防"Java/TS 一起错"：printf '1:a|0:|0:|0:|0:|' | openssl dgst -sha256
+    expect(computeSourceEnvelope('a', null, '', '', '')).toBe(
+      '4ab3b7ab9c842ae349bbf83e973daeb8dfde25549c4265c2de57f284e1c5a45e',
     );
   });
 
   it('null≡空串字段，别名变则 envelope 变', () => {
-    expect(computeSourceEnvelope('c', null, 'en-US', 't')).toBe(
-      computeSourceEnvelope('c', '', 'en-US', 't'),
+    expect(computeSourceEnvelope('c', null, 'en-US', 't', null)).toBe(
+      computeSourceEnvelope('c', '', 'en-US', 't', ''),
     );
-    expect(computeSourceEnvelope('c', '{"TIMES":["a b"]}', 'en-US', 't')).not.toBe(
-      computeSourceEnvelope('c', '{"TIMES":["c d"]}', 'en-US', 't'),
+    expect(computeSourceEnvelope('c', '{"TIMES":["a b"]}', 'en-US', 't', '')).not.toBe(
+      computeSourceEnvelope('c', '{"TIMES":["c d"]}', 'en-US', 't', ''),
     );
   });
 });

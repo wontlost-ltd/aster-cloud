@@ -97,6 +97,11 @@ vi.mock('@/services/pii/detector', () => ({
   detectPII: vi.fn().mockReturnValue({ detectedTypes: [] }),
 }));
 
+// envelope 词汇段（ADR 0051 §7）：作者现行词汇的规范 scopes JSON，事务外读取。
+vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
+  loadLiveVocabularyScopesJson: vi.fn(async () => '{"scopes":"live"}'),
+}));
+
 vi.mock('@/services/policy/version-manager', () => ({
   createVersion: mockCreateVersion,
   PolicyCompileError: mockPolicyCompileError,
@@ -459,6 +464,10 @@ describe('Policies API - Drizzle Migration', () => {
       const response = await POST(makeRequest('http://localhost/api/policies', 'POST', validBody));
 
       expect(response.status).toBe(201);
+      // envelope 词汇段取作者现行词汇，随首个版本落库
+      expect(mockCreateVersion).toHaveBeenCalledWith(
+        expect.objectContaining({ scopesJson: '{"scopes":"live"}' }),
+      );
     });
 
     it('编译门禁抛 PolicyCompileError → 路由返回 400 compile_error（事务外 preflight）', async () => {

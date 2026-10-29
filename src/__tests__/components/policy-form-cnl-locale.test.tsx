@@ -108,14 +108,18 @@ describe('PolicyForm 的 CNL 语言跟随策略而非界面语言（#627）', ()
       resolveStoredVersionLocale({
         source: GERMAN,
         aliasSet: null,
-        sourceEnvelopeSha256: computeSourceEnvelope(GERMAN, null, 'en-US', 'tc-1'),
+        sourceEnvelopeSha256: computeSourceEnvelope(GERMAN, null, 'en-US', 'tc-1', ''),
         sourceToolchainId: 'tc-1',
         vocabularySnapshotIds: null,
+        // 无作者的草稿：envelope 词汇段为空，不触库
+        status: 'DRAFT',
+        createdBy: null,
       });
 
     it('执行端与编辑器同为 en-US，编辑器给出切换提示；不切换时保存仍提交 en-US', async () => {
-      expect(recorded()).toBe('en-US'); // 执行（secure-execute / 审批冻结）使用的值
-      const { onSave } = renderForm({ mode: 'edit', content: GERMAN, policyCnlLocale: recorded() });
+      const locale = await recorded();
+      expect(locale).toBe('en-US'); // 执行（secure-execute / 审批冻结）使用的值
+      const { onSave } = renderForm({ mode: 'edit', content: GERMAN, policyCnlLocale: locale });
 
       expect(statusLocale()).toBe('EN-US');
       expect(panelLocale()).toBe('en-US');
@@ -124,7 +128,7 @@ describe('PolicyForm 的 CNL 语言跟随策略而非界面语言（#627）', ()
     });
 
     it('用户显式切换后：显示 DE-DE、提示消失，保存提交 de-DE', async () => {
-      const { onSave } = renderForm({ mode: 'edit', content: GERMAN, policyCnlLocale: recorded() });
+      const { onSave } = renderForm({ mode: 'edit', content: GERMAN, policyCnlLocale: await recorded() });
 
       fireEvent.click(screen.getByRole('button', { name: 'localeMismatchSwitch:{"locale":"DE-DE"}' }));
 

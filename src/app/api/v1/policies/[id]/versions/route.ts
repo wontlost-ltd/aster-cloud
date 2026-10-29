@@ -26,6 +26,7 @@ import { db, policies } from '@/lib/prisma';
 import { and, eq, isNull } from 'drizzle-orm';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { parseCompileLocale } from '@/lib/cnl-locale';
+import { loadLiveVocabularyScopesJson } from '@/lib/domain-vocabulary-snapshot';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -170,12 +171,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       ? await buildAliasReservedForUser(session.user.id, compileLocale)
       : undefined;
 
+    const scopesJson = await loadLiveVocabularyScopesJson(session.user.id, { source, locale: compileLocale });
+
     const result = await createVersion({
       policyId: id,
       source,
       createdBy: session.user.id,
       releaseNote,
       locale: compileLocale,
+      scopesJson,
       aliasSet: aliasSetInput,
       aliasReserved,
       allowStructuralAliases: allowStructural,

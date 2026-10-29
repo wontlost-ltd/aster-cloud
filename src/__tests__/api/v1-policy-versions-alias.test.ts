@@ -23,10 +23,15 @@ vi.mock('@/lib/prisma', () => ({
   policies: { id: {}, userId: {}, deletedAt: {} },
 }));
 vi.mock('@/lib/policy-freeze', () => ({ isPolicyFrozen: vi.fn() }));
+// envelope 词汇段（ADR 0051 §7）：作者现行词汇的规范 scopes JSON。
+vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
+  loadLiveVocabularyScopesJson: vi.fn(async () => '{"scopes":"live"}'),
+}));
 
 import { POST } from '@/app/api/v1/policies/[id]/versions/route';
 import { auth } from '@/auth';
 import { createVersion } from '@/services/policy/version-manager';
+import { loadLiveVocabularyScopesJson } from '@/lib/domain-vocabulary-snapshot';
 import {
   getStructuralAliasGrant,
   buildAliasReservedForUser,
@@ -93,6 +98,12 @@ describe('POST /api/v1/policies/[id]/versions — aliasSet 支持', () => {
 
     expect(createVersion).toHaveBeenCalledWith(expect.objectContaining({ aliasSet: null }));
     expect(buildAliasReservedForUser).not.toHaveBeenCalled();
+  });
+
+  it('envelope 词汇段取作者现行词汇（按源码与编译 locale）', async () => {
+    await POST(req({ source: 'Module X.', locale: 'de' }), params);
+    expect(loadLiveVocabularyScopesJson).toHaveBeenCalledWith('user-1', { source: 'Module X.', locale: 'de-DE' });
+    expect(createVersion).toHaveBeenCalledWith(expect.objectContaining({ scopesJson: '{"scopes":"live"}' }));
   });
 
   it('#609：别名校验失败 → 400 alias_invalid，而非 500', async () => {

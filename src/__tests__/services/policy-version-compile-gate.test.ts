@@ -40,13 +40,42 @@ import {
   DEFAULT_COMPILE_RETRY_AFTER_SECONDS,
   type CompileValidator,
 } from '@/services/policy/version-manager';
+import { cloudToolchainId, computeSourceEnvelope } from '@/lib/policy-alias';
 
 const baseParams = {
   policyId: 'p1',
   source: 'Module X.',
   createdBy: 'u1',
   locale: 'en-US',
+  scopesJson: '',
 };
+
+describe('createVersion — 5 段 envelope（ADR 0051 §7）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockVersionsFindFirst.mockResolvedValue(null);
+    mockInsertReturning.mockResolvedValue([
+      { id: 'v1', version: 1, sourceHash: 'h', sourceEnvelopeSha256: 'e' },
+    ]);
+  });
+
+  it('词汇段与新工具链身份串进 envelope 并落库', async () => {
+    const scopesJson = '{"enumMembers":{},"fields":{},"functions":{},"literals":{},"schemaVersion":1,"types":{}}';
+    await createVersion({ ...baseParams, scopesJson });
+    const values = (mockInsertValues.mock.calls[0] as unknown[])[0] as {
+      sourceEnvelopeSha256: string;
+      sourceToolchainId: string;
+    };
+    const toolchainId = cloudToolchainId();
+    expect(values.sourceToolchainId).toBe(toolchainId);
+    expect(values.sourceEnvelopeSha256).toBe(
+      computeSourceEnvelope('Module X.', null, 'en-US', toolchainId, scopesJson),
+    );
+    expect(values.sourceEnvelopeSha256).not.toBe(
+      computeSourceEnvelope('Module X.', null, 'en-US', toolchainId, ''),
+    );
+  });
+});
 
 describe('createVersion — 源码可编译性门禁', () => {
   beforeEach(() => {

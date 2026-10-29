@@ -119,13 +119,18 @@ async function freezeApprovalVocabulary(
 ): Promise<SnapshotRef[]> {
   if (!version.createdBy) return [];
   const source = version.source ?? version.content;
-  const locale = resolveStoredVersionLocale({
-    source,
-    aliasSet: version.aliasSet,
-    sourceEnvelopeSha256: version.sourceEnvelopeSha256,
-    sourceToolchainId: version.sourceToolchainId,
-    vocabularySnapshotIds: null,
-  });
+  const locale = await resolveStoredVersionLocale(
+    {
+      source,
+      aliasSet: version.aliasSet,
+      sourceEnvelopeSha256: version.sourceEnvelopeSha256,
+      sourceToolchainId: version.sourceToolchainId,
+      vocabularySnapshotIds: null,
+      status: version.status,
+      createdBy: version.createdBy,
+    },
+    tx,
+  );
   try {
     return await freezeVocabularyForApproval(
       { policyAuthorId: version.createdBy, policy: { source, locale } },
@@ -331,6 +336,11 @@ export interface CreateVersionParams {
   /** 工具链身份串（进 envelope）。缺省由 env ASTER_RUNTIME_BUILD 拼。 */
   toolchainId?: string;
   /**
+   * envelope 第 5 段（ADR 0051 §7）：作者现行词汇作用域的规范 JSON，无词汇为空串。
+   * 由调用方在事务外用 loadLiveVocabularyScopesJson 取得（新版本是草稿，取现行词汇）。
+   */
+  scopesJson: string;
+  /**
    * 源码可编译性校验器（注入）。提供时：编译源码，若含 error 诊断则抛
    * PolicyCompileError（拒绝落库不可编译源码）。校验器自身抛异常（编译服务不可达）
    * 时按 assertCompilable 的规则放行或拒绝。缺省=不校验（向后兼容）。
@@ -430,7 +440,13 @@ export async function createVersion(
     : (params.profile ?? null);
 
   const toolchainId = params.toolchainId ?? cloudToolchainId();
-  const sourceEnvelopeSha256 = computeSourceEnvelope(source, aliasSetJson, locale, toolchainId);
+  const sourceEnvelopeSha256 = computeSourceEnvelope(
+    source,
+    aliasSetJson,
+    locale,
+    toolchainId,
+    params.scopesJson,
+  );
 
   // 获取最新版本号和链接哈希。
   // 链接 = envelope（存在时）否则 sourceHash —— 与 Java chainLink 对齐（ADR 0022 §11.5 C1-a）：

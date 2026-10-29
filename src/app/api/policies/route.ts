@@ -26,6 +26,7 @@ import { errorEnvelope } from '@/lib/api/error-envelope';
 import { invalidatePolicyCache } from '@/lib/cache';
 import { eq, isNull, desc, sql, and, inArray } from 'drizzle-orm';
 import { parseCompileLocale } from '@/lib/cnl-locale';
+import { loadLiveVocabularyScopesJson } from '@/lib/domain-vocabulary-snapshot';
 
 // GET /api/policies - List user's policies
 export async function GET() {
@@ -284,6 +285,12 @@ export async function POST(req: Request) {
       allowStructural,
     });
 
+    // envelope 词汇段在事务外读取（事务内经全局 db 读要第二条连接）。
+    const scopesJson = await loadLiveVocabularyScopesJson(session.user.id, {
+      source: content,
+      locale: compileLocale,
+    });
+
     const policy = await db.transaction(async (tx) => {
       const result = await tx
         .insert(policies)
@@ -297,6 +304,7 @@ export async function POST(req: Request) {
         createdBy: session.user.id,
         releaseNote: undefined,
         locale: compileLocale,
+        scopesJson,
         aliasSet: aliasSetInput,
         aliasReserved,
         allowStructuralAliases: allowStructural,

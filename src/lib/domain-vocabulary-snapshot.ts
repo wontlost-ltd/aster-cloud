@@ -42,6 +42,7 @@ import {
 } from '@/lib/domain-vocabulary-scope';
 import { VocabularyError } from '@/lib/domain-vocabulary';
 import { bypassQueryCache } from '@/db/fresh-read';
+import { vocabularyScopesJson } from '@/lib/policy-alias';
 
 export interface SnapshotRef {
   snapshotId: string;
@@ -281,7 +282,27 @@ export async function loadVocabularyForExecution(
   refs: ReadonlyArray<SnapshotRef> | null | undefined,
   policy: PolicyVocabularyContext,
 ): Promise<DomainVocabulary | null> {
-  if (!Array.isArray(refs) || refs.length === 0) return null;
+  return (await loadFrozenVocabularyForSource(refs, policy.source))(policy.locale);
+}
+
+/**
+ * 同一份已加载的词汇来源，按 CNL 语言现算策略作用域内的合并词汇表。用于需要对多个候选
+ * locale 求值的场景（envelope 反推编译 locale），避免每个 locale 各查一次库。
+ */
+export type VocabularyForLocale = (locale: string) => DomainVocabulary | null;
+
+/** 只读查询句柄：全局 db 或审批事务 tx。 */
+export type VocabularyReader = Pick<SnapshotTx, 'select'>;
+
+/**
+ * 冻结快照版：加载 vocabularySnapshotIds 引用的快照，按 locale 筛出作用域内部分并合并
+ * （规则同 {@link loadVocabularyForExecution}）。
+ */
+export async function loadFrozenVocabularyForSource(
+  refs: ReadonlyArray<SnapshotRef> | null | undefined,
+  source: string,
+): Promise<VocabularyForLocale> {
+  if (!Array.isArray(refs) || refs.length === 0) return () => null;
 
   const snapshotIds = refs.map((r) => r.snapshotId);
   const rows = await db.query.userVocabularySnapshots.findMany({
@@ -291,9 +312,21 @@ export async function loadVocabularyForExecution(
   const vocabs = rows
     .map((r) => r.vocabularyJson as DomainVocabulary | null)
     .filter((v): v is DomainVocabulary => v != null);
-  return mergeVocabularies(selectVocabulariesForPolicy(vocabs, policy), {
-    locale: policy.locale,
-  });
+  return (locale) =>
+    mergeVocabularies(selectVocabulariesForPolicy(vocabs, { source, locale }), { locale });
+}
+
+/**
+ * 作者现行词汇版：加载一次活跃词条，按 locale 现算作用域（规则同 {@link loadLiveVocabularyForPolicy}）。
+ */
+export async function loadLiveVocabularyForSource(
+  ownerId: string,
+  source: string,
+  exec: VocabularyReader = db,
+): Promise<VocabularyForLocale> {
+  const groups = await loadActiveLinksGroupedByDomainLocale({ ownerType: 'user', ownerId }, exec);
+  const rows = [...groups.values()].flat().map(toTermLikeRow);
+  return (locale) => resolvePolicyVocabularyFromRows(rows, { source, locale });
 }
 
 /**
@@ -321,9 +354,19 @@ export async function loadLiveVocabularyForPolicy(
   ownerId: string,
   policy: PolicyVocabularyContext,
 ): Promise<DomainVocabulary | null> {
-  const groups = await loadActiveLinksGroupedByDomainLocale({ ownerType: 'user', ownerId });
-  const rows = [...groups.values()].flat().map(toTermLikeRow);
-  return resolvePolicyVocabularyFromRows(rows, policy);
+  return (await loadLiveVocabularyForSource(ownerId, policy.source))(policy.locale);
+}
+
+/**
+ * 新建版本 envelope 的词汇段（ADR 0051 §7）：新版本是草稿，取作者现行词汇中作用域内部分，
+ * 与编译门禁、草稿执行同源。加载失败或词汇非法直接抛出——envelope 必须如实记录编译输入，
+ * 不能退化为「无词汇」。调用方在事务外调用（避免事务内再占一条连接）。
+ */
+export async function loadLiveVocabularyScopesJson(
+  ownerId: string,
+  policy: PolicyVocabularyContext,
+): Promise<string> {
+  return vocabularyScopesJson(await loadLiveVocabularyForPolicy(ownerId, policy));
 }
 
 /**

@@ -60,6 +60,9 @@ vi.mock('../nonce-service', () => ({ checkAndRecordNonce: vi.fn(async () => true
 vi.mock('../../policy/policy-api', () => ({ createPolicyApiClient: vi.fn(() => ({})) }));
 vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
   loadExecutionVocabulary: vi.fn(async () => undefined),
+  // envelope 反推编译 locale 用的按 locale 词汇来源（本测试的 envelope 词汇段均为空）
+  loadFrozenVocabularyForSource: async () => () => null,
+  loadLiveVocabularyForSource: async () => () => null,
 }));
 vi.mock('@/lib/runtime/safe-env', () => ({ safeEnv: () => '' }));
 

@@ -65,6 +65,9 @@ vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
   freezeVocabularyForApproval: h.snapshot,
   auditVocabularyFreeze: h.audit,
   lockPolicyForSnapshotRefs: h.lockPolicy,
+  // envelope 反推编译 locale 用的按 locale 词汇来源（本测试的 envelope 词汇段均为空）
+  loadFrozenVocabularyForSource: async () => () => null,
+  loadLiveVocabularyForSource: async () => () => null,
 }));
 vi.mock('@/lib/cache', () => ({ invalidatePolicyCache: h.invalidateCache }));
 

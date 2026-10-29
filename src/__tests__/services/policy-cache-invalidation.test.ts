@@ -87,6 +87,7 @@ describe('执行缓存失效（防「改了策略仍跑旧源码」）', () => {
       source: 'Module X.',
       createdBy: 'u1',
       locale: 'en-US',
+      scopesJson: '',
     });
     expect(mockInvalidate).toHaveBeenCalledWith('p1');
   });
@@ -109,6 +110,7 @@ describe('执行缓存失效（防「改了策略仍跑旧源码」）', () => {
         source: 'Module X.',
         createdBy: 'u1',
         locale: 'en-US',
+        scopesJson: '',
       }),
     ).resolves.toBeDefined();
   });

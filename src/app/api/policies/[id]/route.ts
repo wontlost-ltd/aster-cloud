@@ -22,6 +22,7 @@ import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { softDeletePolicy } from '@/lib/policy-lifecycle';
 import { invalidatePolicyCache } from '@/lib/cache';
 import { parseCompileLocale } from '@/lib/cnl-locale';
+import { loadLiveVocabularyScopesJson } from '@/lib/domain-vocabulary-snapshot';
 
 
 interface RouteParams {
@@ -295,6 +296,10 @@ export async function PUT(req: Request, { params }: RouteParams) {
     const aliasReserved = newVersion && aliasSetInput
       ? await buildAliasReservedForUser(session.user.id, compileLocale)
       : undefined;
+    // envelope 词汇段同样在事务外读取。
+    const scopesJson = newVersion
+      ? await loadLiveVocabularyScopesJson(session.user.id, { source: versionSource, locale: compileLocale })
+      : '';
 
     const policy = await db.transaction(async (tx) => {
       if (newVersion) {
@@ -304,6 +309,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
           createdBy: session.user.id,
           releaseNote: undefined,
           locale: compileLocale,
+          scopesJson,
           aliasSet: aliasSetInput,
           aliasReserved,
           allowStructuralAliases: allowStructural,
