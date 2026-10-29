@@ -561,6 +561,25 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('resolver 迁移（ADR 0051 §9
     expect((await rowsOf(db, policyId))[0]).toMatchObject({ status: 'ARCHIVED', archivedByResolverMigration: true });
   });
 
+  // #649：4xx 但只带 api 内部故障码 = 编译没做成，与 200 success:false 分支同口径，按基础设施故障不归档
+  it('只有 COMPILE_INTERNAL_ERROR 诊断的 4xx 不归档：行保持待迁移，列入 infrastructure', async () => {
+    const policyId = `${PREFIX}http-internal`;
+    await seed(db, policyId, [{ source: src('hi') }]);
+    compileState.outcomes.set(src('hi'), {
+      kind: 'http', status: 400, code: 'COMPILE_FAILED',
+      diagnostics: [{ severity: 'error', code: 'COMPILE_INTERNAL_ERROR', message: 'internal failure' }],
+    });
+    const before = await rowsOf(db, policyId);
+
+    const report = await run(policyId);
+
+    expect(report).toMatchObject({ processed: 1, succeeded: 0, failed: 1 });
+    expect(report.triage.infrastructure).toEqual([
+      expect.objectContaining({ id: `${policyId}-v1`, category: 'infrastructure' }),
+    ]);
+    expect(await rowsOf(db, policyId)).toEqual(before);
+  });
+
   it('分诊报告：E8xx、无效构造写法、E801、作者词汇非法（按用户）、完整性不符分组列出', async () => {
     const e8 = `${PREFIX}tri-e8`;
     const construct = `${PREFIX}tri-construct`;

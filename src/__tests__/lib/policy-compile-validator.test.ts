@@ -133,6 +133,39 @@ describe('makeCompileValidator — 异常分类', () => {
     expect((caught as PolicyCompileError).diagnostics).toMatchObject(diagnostics);
   });
 
+  // #649：4xx 但只带 api 内部故障码 = 编译没做成，与 success:false 分支同口径（hasSourceError），不当源码错误拒绝
+  it('上游 4xx 只有 COMPILE_INTERNAL_ERROR 诊断 → 抛普通错误（编译不可用），不是 PolicyCompileError', async () => {
+    mockCompile.mockRejectedValue(new PolicyApiError('compile failed', 400, 'COMPILE_FAILED', undefined, {
+      diagnostics: [{ severity: 'error', code: 'COMPILE_INTERNAL_ERROR', message: 'internal' }],
+    }));
+    const caught = await makeCompileValidator('u1', null)(input).catch((e: unknown) => e);
+    expect(caught).toBeInstanceOf(Error);
+    expect(caught).not.toBeInstanceOf(PolicyCompileError);
+  });
+
+  it('上游 4xx 同时含源码错误与内部故障码 → 仍按源码错误拒绝', async () => {
+    mockCompile.mockRejectedValue(new PolicyApiError('compile failed', 400, 'COMPILE_FAILED', undefined, {
+      diagnostics: [
+        { severity: 'error', code: 'COMPILE_INTERNAL_ERROR', message: 'internal' },
+        { severity: 'error', code: 'E001', message: 'Unexpected token' },
+      ],
+    }));
+    const caught = await makeCompileValidator('u1', null)(input).catch((e: unknown) => e);
+    expect(caught).toBeInstanceOf(PolicyCompileError);
+    expect((caught as PolicyCompileError).diagnostics?.map((d) => d.code)).toContain('E001');
+  });
+
+  it('上游 4xx 只有内部故障码、源码声明了档案 → assertCompilable 按不可用拒绝（503）', async () => {
+    mockCompile.mockRejectedValue(new PolicyApiError('compile failed', 400, 'COMPILE_FAILED', undefined, {
+      diagnostics: [{ severity: 'error', code: 'COMPILE_INTERNAL_ERROR', message: 'internal' }],
+    }));
+    const caught = await assertCompilable(
+      makeCompileValidator('u1', null),
+      { source: 'Module a.\nProfile "governed".\n', locale: 'en-US' },
+    ).catch((e: unknown) => e);
+    expect(caught).toBeInstanceOf(PolicyCompileUnavailableError);
+  });
+
   it('上游 5xx → 原样上抛（由 createVersion fail-open）', async () => {
     const err = new PolicyApiError('server error', 503);
     mockCompile.mockRejectedValue(err);

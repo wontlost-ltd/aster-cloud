@@ -32,7 +32,7 @@ import {
   type SnapshotRef,
 } from '@/lib/domain-vocabulary-snapshot';
 import type { PolicyVocabularyContext } from '@/lib/domain-vocabulary-scope';
-import { makeCompileValidator } from '@/lib/policy-compile-validator';
+import { hasSourceError, makeCompileValidator } from '@/lib/policy-compile-validator';
 import { policyTenantId } from '@/lib/policy-tenant';
 import { vocabularyScopeErrorDetails } from '@/lib/vocabulary-scope-error';
 import { computeChainedHash } from '@/services/security/policy-security';
@@ -231,11 +231,13 @@ async function recompile(row: VersionRow, owner: Owner | null, locale: string): 
  * 只有带编译诊断的上游拒绝（编译资源对源码/别名输入错误返回的形态）才算名称解析失败。
  * 保存路径的校验器把 408 以外的 4xx 都映射为 PolicyCompileError，但对迁移而言签名/租户 401/403、
  * 地址错误 404、请求体过大 413 等都是配置或传输问题：一次运行会把所有行归档，故一律按基础设施故障上抛。
+ * 诊断里只有 api 内部故障码时同样按基础设施故障处理。
  */
 function carriesCompileDiagnostics(err: unknown): err is PolicyCompileError & { diagnostics: CompileDiagnostic[] } {
   return err instanceof PolicyCompileError
     && !(err instanceof PolicyCompileUnavailableError)
-    && (err.diagnostics?.length ?? 0) > 0;
+    // 只有内部故障码（COMPILE_INTERNAL_ERROR）的诊断是编译没做成，不是源码错误（与校验器同口径）
+    && hasSourceError(err.diagnostics ?? []);
 }
 
 async function loadVersionVocabulary(row: VersionRow, policy: PolicyVocabularyContext): Promise<DomainVocabulary | null> {
