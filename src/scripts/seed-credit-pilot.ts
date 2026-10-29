@@ -12,15 +12,18 @@
  *
  * 幂等：按 id / key 名查有则更新、无则插入；多次运行不会重复创建
  *
+ * 版本行与保存路径（createVersion）同构（ADR 0051）：链式 sourceHash/prevHash、5 段 envelope、
+ * 当前工具链身份、封印的作者词汇段与 resolverVersion——清库重建后无需再跑 resolver 迁移。
+ *
  * 环境变量：
  *   DATABASE_URL       必须
  *   CP_SEED_PASSWORD   可选（默认 Aster2026!）
  *
- * 用法：pnpm seed:credit-pilot
+ * 用法：pnpm seed:credit-pilot（经 `node --conditions=import --import tsx` 运行：
+ *   引擎的 ./browser 子路径只有 ESM 导出，封印所需的工具链常量要静态导入）
  */
 
 import 'dotenv/config';
-import { createHash } from 'crypto';
 import bcrypt from 'bcryptjs';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
@@ -29,11 +32,14 @@ import * as schema from '@/db/schema';
 import { creditPilotSource, creditPilotSugarSource, CREDIT_PILOT } from '@/config/credit-pilot-source';
 import { createApiKey, refreshTeamKeySnapshots } from '@/lib/api-keys';
 import { assertSeedCompiles } from '@/lib/seed-compile-gate';
+import { sealSeedVersionChain, type SealedSeedVersionFields } from '@/lib/seed-version-seal';
+import { cloudToolchainId } from '@/lib/policy-alias';
+import { loadSaveVocabulary } from '@/lib/policy-compile-validator';
 
 type Db = ReturnType<typeof drizzle<typeof schema>>;
 
 const LOG = '[seed-credit-pilot]';
-const TOOLCHAIN_ID = 'abi=1.0;core=1.0.30;validator=1;build=dev';
+const LOCALE = 'en-US';
 const API_KEY_NAME = 'credit-pilot-owner';
 const LEGACY_KEY_NAME = 'credit-pilot-analyst';
 
@@ -65,10 +71,6 @@ const VERSIONS = [
     profile: CREDIT_PILOT.profile,
   },
 ];
-
-function sha256(text: string): string {
-  return createHash('sha256').update(text).digest('hex');
-}
 
 async function upsertUser(db: Db, spec: UserSpec, passwordHash: string): Promise<void> {
   const existing = await db.query.users.findFirst({ where: eq(schema.users.id, spec.id) });
@@ -148,19 +150,41 @@ async function upsertPolicy(db: Db): Promise<void> {
   await db.insert(schema.policies).values({ id: CREDIT_PILOT.policyId, ...values, createdAt: new Date() });
 }
 
-async function upsertVersion(db: Db, spec: (typeof VERSIONS)[number]): Promise<void> {
-  // 直接写 policyVersions 绕过了 REST 保存门：先用同一份引擎做编译 + 类型检查
-  await assertSeedCompiles(spec.content, 'en-US', `${CREDIT_PILOT.policyId}@v${spec.version}`);
+/**
+ * 按保存路径的规则封印整条版本链。词汇与保存时同源（loadSaveVocabulary）；种子直接写 APPROVED、
+ * 不经审批冻结词汇快照，所以属主在作用域内有词汇时拒绝写库，而不是写出封印与冻结不一致的版本。
+ */
+async function sealVersions(): Promise<SealedSeedVersionFields[]> {
+  const inputs = [];
+  for (const spec of VERSIONS) {
+    const label = `${CREDIT_PILOT.policyId}@v${spec.version}`;
+    // 直接写 policyVersions 绕过了 REST 保存门：先用同一份引擎做编译 + 类型检查
+    await assertSeedCompiles(spec.content, LOCALE, label);
+    const { vocabulary, scopesJson } = await loadSaveVocabulary(CREDIT_PILOT.ownerId, {
+      source: spec.content,
+      locale: LOCALE,
+    });
+    if (vocabulary) {
+      throw new Error(`${label}：属主 ${CREDIT_PILOT.ownerId} 有作用域内的领域词汇，种子不做审批冻结，拒绝写库`);
+    }
+    inputs.push({ content: spec.content, scopesJson });
+  }
+  return sealSeedVersionChain(inputs, { locale: LOCALE, toolchainId: cloudToolchainId() });
+}
+
+async function upsertVersion(
+  db: Db,
+  spec: (typeof VERSIONS)[number],
+  sealed: SealedSeedVersionFields,
+): Promise<void> {
   const existing = await db.query.policyVersions.findFirst({ where: eq(schema.policyVersions.id, spec.id) });
   const values = {
+    ...sealed,
     policyId: CREDIT_PILOT.policyId,
     version: spec.version,
-    content: spec.content,
-    sourceHash: sha256(spec.content),
     status: 'APPROVED' as const,
     createdBy: CREDIT_PILOT.ownerId,
     isDefault: spec.isDefault,
-    sourceToolchainId: TOOLCHAIN_ID,
     profile: spec.profile,
   };
   if (existing) {
@@ -246,9 +270,10 @@ async function main(): Promise<void> {
   }
 
   console.log(LOG, '创建策略', CREDIT_PILOT.policyId, '及版本', CREDIT_PILOT.versionIds.join(' / '));
+  const sealed = await sealVersions();
   await upsertPolicy(db);
-  for (const spec of VERSIONS) {
-    await upsertVersion(db, spec);
+  for (const [i, spec] of VERSIONS.entries()) {
+    await upsertVersion(db, spec, sealed[i]);
   }
 
   await revokeLegacyKey(db);
