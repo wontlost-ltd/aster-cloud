@@ -61,6 +61,31 @@ describe('domain-vocabulary-validation', () => {
       expect(computeDedupKey(upper)).not.toBe(computeDedupKey(lower));
     });
 
+    /* 生产复测（2026-10-30 F）：编辑词条只改别名/描述时，去重键不变 → upsert 命中已有全局词条
+     * （onConflictDoNothing）→ 新别名/描述被静默丢弃，响应仍是 200。别名与描述必须进去重键。 */
+    describe('别名与描述参与去重键', () => {
+      const base = { domain: 'versicherung', locale: 'de', kind: 'field' as const, canonical: 'age', localized: 'alter', parentCanonical: 'Driver' };
+      const plain = computeDedupKey(normalizeTermInput(base));
+
+      it('只改别名 → 去重键不同', () => {
+        expect(computeDedupKey(normalizeTermInput({ ...base, aliases: ['lebensalter'] }))).not.toBe(plain);
+      });
+
+      it('只改描述 → 去重键不同', () => {
+        expect(computeDedupKey(normalizeTermInput({ ...base, description: 'Alter des Fahrers' }))).not.toBe(plain);
+      });
+
+      it('别名顺序、重复与首尾空白不影响去重键', () => {
+        const a = computeDedupKey(normalizeTermInput({ ...base, aliases: ['b', 'a'] }));
+        const b = computeDedupKey(normalizeTermInput({ ...base, aliases: [' a ', 'b', 'a'] }));
+        expect(a).toBe(b);
+      });
+
+      it('空别名、空白描述与不传等价（已有词条的去重键保持不变）', () => {
+        expect(computeDedupKey(normalizeTermInput({ ...base, aliases: [], description: '   ' }))).toBe(plain);
+      });
+    });
+
     it('NFC 等价写法得到同一去重键', () => {
       const base = { domain: 'grades', locale: 'de', kind: 'struct' as const, canonical: 'Cafe' };
       const composed = normalizeTermInput({ ...base, localized: 'café' });
