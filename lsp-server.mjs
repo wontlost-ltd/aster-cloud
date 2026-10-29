@@ -42,6 +42,17 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'https://aster-lang.cloud
 // via LSP_MAX_CONNECTIONS; defaults to a conservative cap.
 const maxConnections = parseInt(process.env.LSP_MAX_CONNECTIONS || '50', 10);
 
+// 按客户端限流的参数（见 createClientLimiter）：单 IP 并发会话 3、握手平均 6 次/分钟、突发 10。
+const positiveInt = (raw, fallback) => {
+  const n = parseInt(raw ?? '', 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+};
+const clientLimiter = createClientLimiter({
+  maxSessionsPerClient: positiveInt(process.env.LSP_MAX_SESSIONS_PER_CLIENT, 3),
+  ratePerMinute: positiveInt(process.env.LSP_HANDSHAKES_PER_MINUTE, 6),
+  burst: positiveInt(process.env.LSP_HANDSHAKE_BURST, 10),
+});
+
 // Shared-secret gate. Browsers can't set custom WS headers, so the token is
 // accepted via header (x-lsp-token, for server-side/proxy callers) OR the
 // `token` query param (for the Monaco browser client). NOTE: when delivered to
@@ -118,6 +129,84 @@ export function sweepStaleWorkDirs(root = tmpdir(), now = Date.now()) {
     }
   }
   return removed;
+}
+
+/**
+ * 按客户端（IP）的会话与握手限流。
+ *
+ * lsp.aster-lang.dev 的 Cloudflare tunnel 直连本 Service、不经 Traefik，入口中间件不生效，故在进程内做。
+ * 前端 bundle 内联共享 token 后，任何脚本都能握手；每个会话 spawn 一个约 80 MiB 的子进程，
+ * 全局上限（LSP_MAX_CONNECTIONS）之外还要防止单个来源占满：
+ *   - 单 IP 并发会话上限（maxSessionsPerClient）；
+ *   - 单 IP 握手速率：令牌桶，容量 burst，按 ratePerMinute 补充。
+ * 超限返回 429（握手阶段的 HTTP 状态，浏览器端表现为连接失败）；速率超限附 Retry-After。
+ *
+ * @param {{ maxSessionsPerClient: number, ratePerMinute: number, burst: number, now?: () => number }} opts
+ */
+export function createClientLimiter({ maxSessionsPerClient, ratePerMinute, burst, now = Date.now }) {
+  const perMs = ratePerMinute / 60_000;
+  /** @type {Map<string, { tokens: number, at: number, active: number }>} */
+  const clients = new Map();
+  let lastSweep = now();
+
+  const refill = (entry, t) => {
+    entry.tokens = Math.min(burst, entry.tokens + (t - entry.at) * perMs);
+    entry.at = t;
+  };
+
+  // 回收「令牌已满且无会话」的条目，防止 Map 随来源 IP 无限增长；至多每分钟扫一次
+  const sweep = (t) => {
+    if (t - lastSweep < 60_000) return;
+    lastSweep = t;
+    for (const [key, entry] of clients) {
+      refill(entry, t);
+      if (entry.active === 0 && entry.tokens >= burst) clients.delete(key);
+    }
+  };
+
+  return {
+    acquire(key) {
+      const t = now();
+      sweep(t);
+      let entry = clients.get(key);
+      if (!entry) {
+        entry = { tokens: burst, at: t, active: 0 };
+        clients.set(key, entry);
+      }
+      refill(entry, t);
+      if (entry.tokens < 1) {
+        return { ok: false, code: 429, reason: 'Rate limit exceeded', retryAfterSeconds: Math.ceil((1 - entry.tokens) / perMs / 1000) };
+      }
+      entry.tokens -= 1;
+      if (entry.active >= maxSessionsPerClient) {
+        return { ok: false, code: 429, reason: 'Too many sessions from this client' };
+      }
+      entry.active += 1;
+      return { ok: true };
+    },
+    release(key) {
+      const entry = clients.get(key);
+      if (entry && entry.active > 0) entry.active -= 1;
+    },
+    size() {
+      return clients.size;
+    },
+  };
+}
+
+/**
+ * 限流用的客户端标识：CF-Connecting-IP（Cloudflare 边缘写入的单值真实 IP；本 Service 只有 cloudflared
+ * 能到达，故可信），缺失时（本地开发）回退到对端地址。
+ */
+export function clientKey(headers, remoteAddress) {
+  const raw = headers['cf-connecting-ip'];
+  const cf = (Array.isArray(raw) ? raw[0] : raw)?.trim();
+  return cf || remoteAddress || 'unknown';
+}
+
+/** 语言服务器子进程的 node 参数：堆上限 128 MiB（子进程不继承网关的 NODE_OPTIONS）。 */
+export function childNodeArgs(scriptPath) {
+  return ['--max-old-space-size=128', scriptPath, '--stdio'];
 }
 
 /**
@@ -325,6 +414,19 @@ server.on('upgrade', (request, socket, head) => {
     return;
   }
 
+  // 按客户端限流在通过 Origin/token 门之后做：只有可能真正 spawn 子进程的握手才计数
+  const client = clientKey(request.headers, request.socket.remoteAddress);
+  const limited = clientLimiter.acquire(client);
+  if (!limited.ok) {
+    console.log(`[LSP] Rejected upgrade (${limited.code}): ${limited.reason}`);
+    const retry = limited.retryAfterSeconds ? `Retry-After: ${limited.retryAfterSeconds}\r\n` : '';
+    socket.write(`HTTP/1.1 ${limited.code} ${limited.reason}\r\n${retry}\r\n`);
+    socket.destroy();
+    return;
+  }
+  // 底层 socket 关闭（会话结束、握手中途失败）时归还名额，恰好一次
+  socket.once('close', () => clientLimiter.release(client));
+
   wss.handleUpgrade(request, socket, head, (ws) => {
     wss.emit('connection', ws, request);
   });
@@ -530,7 +632,7 @@ function spawnLSPServer(locale) {
       }
     }
 
-    const lspProcess = spawn('node', [lspServerPath, '--stdio'], {
+    const lspProcess = spawn('node', childNodeArgs(lspServerPath), {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: childEnv,
       cwd: workDir,
