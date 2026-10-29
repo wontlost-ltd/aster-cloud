@@ -36,8 +36,6 @@ Known limits:
     A row saved with any other locale is reported under triage.integrityMismatch (left untouched for manual review).
   - triage.invalidConstructForm (\`X mit f = v\`, aster-lang-ts#244) is a heuristic: P005 plus a regex on the source;
     other P005 failures are listed under triage.otherCompile.
-  - Drafts edited after creation (updateVersionSource keeps the creation-time envelope) fail the old-seal check
-    and appear under triage.integrityMismatch as false positives; review them by hand.
   - Only upstream rejections that carry compile diagnostics archive a row. 401/403/404/413 and other 4xx without
     diagnostics, 5xx and transport errors are infrastructure failures: nothing is changed, re-run after fixing config.
 

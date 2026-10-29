@@ -77,7 +77,7 @@ vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
   freezeVocabularyForApproval: vi.fn().mockResolvedValue([]),
 }));
 
-import { createVersion, updateVersionSource } from '@/services/policy/version-manager';
+import { createVersion } from '@/services/policy/version-manager';
 
 describe('执行缓存失效（防「改了策略仍跑旧源码」）', () => {
   beforeEach(() => {
@@ -97,16 +97,6 @@ describe('执行缓存失效（防「改了策略仍跑旧源码」）', () => {
       createdBy: 'u1',
       locale: 'en-US',
       scopesJson: '',
-    });
-    expect(mockInvalidate).toHaveBeenCalledWith('p1');
-  });
-
-  it('★updateVersionSource 必须失效缓存', async () => {
-    await updateVersionSource({
-      policyId: 'p1',
-      version: 1,
-      source: 'Module Y.',
-      userId: 'u1',
     });
     expect(mockInvalidate).toHaveBeenCalledWith('p1');
   });

@@ -583,47 +583,6 @@ export async function createVersion(
 }
 
 /**
- * 更新版本源码（仅限草稿状态）
- */
-export async function updateVersionSource(params: {
-  policyId: string;
-  version: number;
-  source: string;
-  userId: string;
-}): Promise<{ sourceHash: string }> {
-  const { policyId, version, source, userId: _userId } = params;
-
-  const targetVersion = await db.query.policyVersions.findFirst({
-    where: and(
-      eq(policyVersions.policyId, policyId),
-      eq(policyVersions.version, version),
-      eq(policyVersions.status, 'DRAFT')
-    ),
-  });
-
-  if (!targetVersion) {
-    throw new Error(`版本 v${version} 不存在或不是草稿状态，无法编辑`);
-  }
-
-  // 重新计算链式哈希
-  const prevHash = targetVersion.prevHash;
-  const sourceHash = computeChainedHash(source, prevHash);
-
-  await db.update(policyVersions)
-    .set({
-      source,
-      content: source, // 兼容旧字段
-      sourceHash,
-    })
-    .where(eq(policyVersions.id, targetVersion.id));
-
-  // ★写完必须失效执行缓存：命中缓存的执行路径不查库（见 invalidateAfterVersionChange）
-  await invalidateAfterVersionChange(policyId);
-  return { sourceHash };
-
-}
-
-/**
  * 提交版本审批
  */
 export async function submitForApproval(params: {

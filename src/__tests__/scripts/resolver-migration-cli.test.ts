@@ -39,7 +39,7 @@ describe('scripts/resolver-migration.ts', () => {
     expect(result.status).toBe(0);
     for (const text of [
       '--conditions=import', 'no fallback', 'Success means', 'integrityMismatch', 'heuristic', 'P005',
-      'updateVersionSource', 'pg_dump', 'HASH_MISMATCH', 'without\n    diagnostics',
+      'pg_dump', 'HASH_MISMATCH', 'without\n    diagnostics',
     ]) {
       expect(result.stdout).toContain(text);
     }
