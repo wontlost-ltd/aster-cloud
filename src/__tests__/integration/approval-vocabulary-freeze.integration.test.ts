@@ -11,6 +11,12 @@ import { eq, sql } from 'drizzle-orm';
 vi.mock('server-only', () => ({}));
 vi.mock('@/lib/cache', () => ({ invalidatePolicyCache: vi.fn(async () => undefined) }));
 vi.mock('@/lib/metrics/aha-detection', () => ({ recordAhaMomentIfFirst: vi.fn(async () => false) }));
+vi.mock('@/lib/auth', () => ({ getSession: vi.fn(async () => ({ user: { id: 'user-vocab-freeze-it' } })) }));
+// 编译门禁走网络，与本用例无关：恒判可编译；作者词汇加载（loadSaveVocabulary）保持真实。
+vi.mock('@/lib/policy-compile-validator', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/policy-compile-validator')>()),
+  makeCompileValidator: () => async () => ({ diagnostics: [] }),
+}));
 
 import { createDb } from '@/db';
 import {
@@ -23,7 +29,8 @@ import {
   users,
   userVocabularySnapshots,
 } from '@/lib/prisma';
-import { approveVersion, VocabularyChangedSinceSaveError } from '@/services/policy/version-manager';
+import { approveVersion, submitForApproval, VocabularyChangedSinceSaveError } from '@/services/policy/version-manager';
+import { PUT } from '@/app/api/policies/[id]/route';
 import { loadLiveVocabularyForPolicy } from '@/lib/domain-vocabulary-snapshot';
 import { cloudToolchainId, computeSourceEnvelope, vocabularyScopesJson } from '@/lib/policy-alias';
 
@@ -204,5 +211,36 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('审批冻结词汇：与审批
     expect(v4.refs).toEqual([]);
     const approvals = await db.select().from(policyApprovals).where(eq(policyApprovals.versionId, `${POLICY}-v4`));
     expect(approvals).toEqual([]);
+  });
+  it('词汇变更后编辑器原样保存（PUT）→ 按现行词汇生成新版本，提交后可批准；再保存不再建版本', async () => {
+    const save = () =>
+      PUT(
+        new Request(`http://localhost/api/policies/${POLICY}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: SOURCE, locale: 'de-DE' }),
+        }),
+        { params: Promise.resolve({ id: POLICY }) },
+      );
+
+    const res = await save();
+    expect(res.status).toBe(200);
+    expect((await res.json()).version).toBe(5);
+    const [v5] = await db.select({ sourceScopesJson: policyVersions.sourceScopesJson }).from(policyVersions)
+      .where(sql`${policyVersions.policyId} = ${POLICY} AND ${policyVersions.version} = 5`);
+    const live = vocabularyScopesJson(await loadLiveVocabularyForPolicy(USER, { source: SOURCE, locale: 'de-DE' }));
+    expect(v5!.sourceScopesJson).toBe(live);
+
+    await submitForApproval({ policyId: POLICY, version: 5, userId: USER });
+    await approveVersion({ policyId: POLICY, version: 5, approverId: USER, decision: 'APPROVED' });
+    const [approved] = await db.select({ status: policyVersions.status }).from(policyVersions)
+      .where(sql`${policyVersions.policyId} = ${POLICY} AND ${policyVersions.version} = 5`);
+    expect(approved!.status).toBe('APPROVED');
+
+    const again = await save();
+    expect(again.status).toBe(200);
+    const versions = await db.select({ v: policyVersions.version }).from(policyVersions)
+      .where(eq(policyVersions.policyId, POLICY));
+    expect(versions.map((r) => r.v).sort()).toEqual([1, 2, 3, 4, 5]);
   });
 });

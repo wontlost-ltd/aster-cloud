@@ -114,12 +114,13 @@ export class VocabularyFreezeError extends Error {
 /**
  * 作者词汇在保存（封印 sourceScopesJson）之后、审批之前发生了变化：此刻冻结的词汇与版本
  * envelope 封印的词汇不一致，批准它会让执行所用词汇与已审阅、已封印的编译输入分叉。
- * 路由映射为 409 vocabulary_changed_since_save，提示作者按现行词汇保存新版本后再提交审批。
+ * 路由映射为 409 vocabulary_changed_since_save；作者在编辑器再保存一次即按现行词汇生成新版本
+ * （PUT /api/policies/[id] 比对封印词汇段），再提交该版本审批。
  */
 export class VocabularyChangedSinceSaveError extends Error {
   readonly code = 'vocabulary_changed_since_save';
   constructor(
-    message = 'The domain vocabulary used by this version has changed since it was saved. Save a new version and submit it for approval.',
+    message = 'The domain vocabulary used by this version has changed since it was saved. Save the policy to create a version with the current vocabulary, then submit that version for approval.',
   ) {
     super(message);
     this.name = 'VocabularyChangedSinceSaveError';

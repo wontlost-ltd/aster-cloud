@@ -947,6 +947,69 @@ describe('Policies API - Drizzle Migration', () => {
       expect(mockCreateVersion).not.toHaveBeenCalled();
     });
 
+    it('ADR 0051：源码与别名不变但作者词汇已变（封印≠现行）→ 建新版本，按现行词汇封印', async () => {
+      vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue(
+        { aliasSet: null, sourceScopesJson: '{"scopes":"sealed-at-save"}' } as never,
+      );
+
+      const response = await PUT(
+        makeRequest('http://localhost/api/policies/p1', 'PUT', { content: 'Module X.' }),
+        mockParams,
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockLoadSaveVocabulary).toHaveBeenCalledTimes(1);
+      expect(mockAssertCompilable).toHaveBeenCalledTimes(1);
+      expect(mockCreateVersion).toHaveBeenCalledWith(
+        expect.objectContaining({ source: 'Module X.', scopesJson: SAVE_VOCABULARY.scopesJson }),
+      );
+    });
+
+    it('ADR 0051：源码、别名、词汇都不变（封印=现行）→ 不建新版本', async () => {
+      vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue(
+        { aliasSet: null, sourceScopesJson: SAVE_VOCABULARY.scopesJson } as never,
+      );
+
+      const response = await PUT(
+        makeRequest('http://localhost/api/policies/p1', 'PUT', { content: 'Module X.' }),
+        mockParams,
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockCreateVersion).not.toHaveBeenCalled();
+      expect(mockAssertCompilable).not.toHaveBeenCalled();
+    });
+
+    it('ADR 0051：封印前的旧行（sourceScopesJson 为 NULL）不因词汇比对强制建版本', async () => {
+      vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue(
+        { aliasSet: null, sourceScopesJson: null } as never,
+      );
+
+      const response = await PUT(
+        makeRequest('http://localhost/api/policies/p1', 'PUT', { content: 'Module X.' }),
+        mockParams,
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockLoadSaveVocabulary).not.toHaveBeenCalled();
+      expect(mockCreateVersion).not.toHaveBeenCalled();
+    });
+
+    it('ADR 0051：只改名称（不带 content）不加载词汇、不建版本', async () => {
+      vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue(
+        { aliasSet: null, sourceScopesJson: '{"scopes":"sealed-at-save"}' } as never,
+      );
+
+      const response = await PUT(
+        makeRequest('http://localhost/api/policies/p1', 'PUT', { name: 'Renamed' }),
+        mockParams,
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockLoadSaveVocabulary).not.toHaveBeenCalled();
+      expect(mockCreateVersion).not.toHaveBeenCalled();
+    });
+
     it('#604：别名有变时按当前授权把 allowStructural 传给编译门禁', async () => {
       vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue({ aliasSet: null } as never);
       mockGetStructuralAliasGrant.mockResolvedValue(true);

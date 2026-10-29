@@ -213,7 +213,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
         eq(policyVersions.policyId, id),
         eq(policyVersions.version, existingPolicy.version),
       ),
-      columns: { aliasSet: true },
+      columns: { aliasSet: true, sourceScopesJson: true },
     });
     const existingCanonical = activeVersion?.aliasSet ?? null;
     let existingAliasSet: Record<string, string[]> | null = null;
@@ -235,9 +235,21 @@ export async function PUT(req: Request, { params }: RouteParams) {
     // 只有字段存在时别名才可能变；缺省=保留现有，恒不算变。
     const aliasChanged =
       requestHasAliasField && existingCanonical !== canonicalAliasJson(submittedAliasSet);
-    const newVersion = contentChanged || aliasChanged;
     // 新版本的源码：content 提交则用之，否则沿用现有 content（alias-only 变更不改源码）。
     const versionSource = content !== undefined ? content : existingPolicy.content;
+    // 作者词汇每次保存只加载一次，编译门禁、envelope 封印与下方词汇变更判定共用（ADR 0051 §7）。
+    // 源码与别名都没变时，编辑器保存（带 content）仍要比对词汇：活跃版本封印的词汇段与作者现行
+    // 词汇不同即建新版本，使审批的 vocabulary_changed_since_save 可通过「再保存一次」解决。
+    // 封印值为 NULL 的旧行（ADR 0051 之前）不参与比对，不因此强制建版本；只改名称等字段的请求
+    // （不带 content）不加载词汇。
+    const sealedScopesJson = activeVersion?.sourceScopesJson ?? null;
+    const inputsChanged = contentChanged || aliasChanged;
+    const checkVocabulary = !inputsChanged && content !== undefined && sealedScopesJson !== null;
+    const saveVocabulary = inputsChanged || checkVocabulary
+      ? await loadSaveVocabulary(session.user.id, { source: versionSource, locale: compileLocale })
+      : null;
+    const vocabularyChanged = checkVocabulary && saveVocabulary!.scopesJson !== sealedScopesJson;
+    const newVersion = inputsChanged || vocabularyChanged;
 
     const piiResult = newVersion ? detectPII(versionSource) : null;
 
@@ -284,11 +296,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
     // 用与 createVersion 一致的 aliasSetInput（effective 别名）编译，避免语义分裂。
     // 有 error 诊断抛 PolicyCompileError → 下方 catch 转 400（检查不可用时 503）。
     // 通过时得到的治理档案 id 随新版本落库。
-    // 作者词汇每次保存只加载一次，编译门禁与 envelope 封印共用（ADR 0051 §7）。
-    const saveVocabulary = newVersion
-      ? await loadSaveVocabulary(session.user.id, { source: versionSource, locale: compileLocale })
-      : null;
-    const profile = saveVocabulary
+    const profile = newVersion && saveVocabulary
       ? await assertCompilable(makeCompileValidator(session.user.id, saveVocabulary.vocabulary), {
         source: versionSource,
         locale: compileLocale,
@@ -301,7 +309,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
       ? await buildAliasReservedForUser(session.user.id, compileLocale)
       : undefined;
     const policy = await db.transaction(async (tx) => {
-      if (saveVocabulary) {
+      if (newVersion && saveVocabulary) {
         const createdVersion = await createVersion({
           policyId: id,
           source: versionSource,
