@@ -35,3 +35,23 @@ export function vocabularyScopeErrorDetails(error: unknown): VocabularyScopeErro
     message: error.message,
   };
 }
+
+/** 按引擎错误码生成的英文说明（{term} 处填出错词条写法）；界面另按 code/reason/term 本地化。 */
+const SCOPE_ERROR_MESSAGE: Readonly<Record<string, string>> = {
+  field_parent_required: 'Domain vocabulary field {term} has no parent type. Assign the type it belongs to and save again.',
+  member_parent_required: 'Domain vocabulary enum value {term} has no parent enum. Assign the enum it belongs to and save again.',
+  literal_conflict: 'Domain vocabulary literal trigger {term} maps to more than one value. Keep a single value and save again.',
+};
+
+const GENERIC_SCOPE_ERROR_MESSAGE =
+  'The domain vocabulary cannot be applied to this policy. Fix the listed term and save again.';
+
+/**
+ * 给 API 调用方的英文消息。引擎文案是中文且不随请求 locale 变化，不直接透传；
+ * 未知错误码与缺词条时退回通用说明。
+ */
+export function vocabularyScopeErrorMessage(details: Pick<VocabularyScopeErrorDetails, 'reason' | 'term'>): string {
+  const template = details.reason ? SCOPE_ERROR_MESSAGE[details.reason] : undefined;
+  if (!template) return GENERIC_SCOPE_ERROR_MESSAGE;
+  return template.replace(' {term}', details.term ? ` "${details.term}"` : '');
+}

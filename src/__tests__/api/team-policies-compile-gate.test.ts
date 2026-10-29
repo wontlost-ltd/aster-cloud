@@ -60,6 +60,8 @@ vi.mock('@/lib/policy-compile-validator', () => ({
 }));
 
 const { POST } = await import('@/app/api/teams/[teamId]/policies/route');
+const { loadSaveVocabulary } = await import('@/lib/policy-compile-validator');
+const { VocabularyScopeError } = await import('@aster-cloud/aster-lang-ts/browser');
 
 function req(body: unknown) {
   return new Request('http://localhost/api/teams/t1/policies', {
@@ -109,6 +111,32 @@ describe('POST /api/teams/{teamId}/policies 编译门禁', () => {
     expect(res.status).toBe(503);
     expect(res.headers.get('Retry-After')).toBe('9');
     expect(body.error).toBe('compile_unavailable');
+    expect(mockValuesInsert).not.toHaveBeenCalled();
+  });
+
+  // ADR 0051：作者词汇非法 / 加载失败两条拒绝路径（#650）
+  it('作者词汇非法（字段缺 parent）→ 400 vocabulary_scope_invalid，不编译不落库', async () => {
+    vi.mocked(loadSaveVocabulary).mockRejectedValueOnce(
+      new VocabularyScopeError('field_parent_required', '字段 "alter" 缺少 parent'),
+    );
+    const res = await POST(req(VALID), ctx as never);
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body).toMatchObject({ code: 'vocabulary_scope_invalid', reason: 'field_parent_required', term: 'alter' });
+    expect(mockAssertCompilable).not.toHaveBeenCalled();
+    expect(mockValuesInsert).not.toHaveBeenCalled();
+  });
+
+  it('作者词汇加载失败 → 503 vocabulary_unavailable + Retry-After，不落库', async () => {
+    vi.mocked(loadSaveVocabulary).mockRejectedValueOnce(Object.assign(
+      new mockPolicyCompileError('Domain vocabulary could not be loaded. Try again later.'),
+      { retryAfterSeconds: 30, unavailableCode: 'vocabulary_unavailable' },
+    ));
+    const res = await POST(req(VALID), ctx as never);
+    expect(res.status).toBe(503);
+    expect(res.headers.get('Retry-After')).toBe('30');
+    expect((await res.json()).code).toBe('vocabulary_unavailable');
+    expect(mockAssertCompilable).not.toHaveBeenCalled();
     expect(mockValuesInsert).not.toHaveBeenCalled();
   });
 });

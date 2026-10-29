@@ -88,6 +88,31 @@ describe('vocabularyScopeInvalidResponse — 指出出错词条（ADR 0051）', 
   it('非 VocabularyScopeError → null', () => {
     expect(vocabularyScopeInvalidResponse(new Error('x'))).toBeNull();
   });
+
+  // #650：API 调用方拿到的 message 由 cloud 按 reason 生成英文，不再原样透传引擎的中文文案；引擎原文放 detail
+  it('message 为英文且点出词条，引擎原文放 detail', async () => {
+    const error = scopeError({ fields: [{ canonical: 'age', localized: 'alter', kind: IdentifierKind.FIELD }] });
+    const body = await vocabularyScopeInvalidResponse(error)!.json();
+    expect(body.message).toBe('Domain vocabulary field "alter" has no parent type. Assign the type it belongs to and save again.');
+    expect(body.message).not.toMatch(/[\u4e00-\u9fff]/);
+    expect(body.detail).toBe((error as Error).message);
+  });
+
+  it('枚举成员缺 parent / 字面量冲突各有英文文案', async () => {
+    const member = scopeError({ enumValues: [{ canonical: 'High', localized: 'Hoch', kind: IdentifierKind.ENUM_VALUE }] });
+    expect((await vocabularyScopeInvalidResponse(member)!.json()).message)
+      .toBe('Domain vocabulary enum value "Hoch" has no parent enum. Assign the enum it belongs to and save again.');
+    const literal = Object.assign(new Error('字面量宏触发词 "hoch" 对应多个内容'), { name: 'VocabularyScopeError', code: 'literal_conflict' });
+    expect((await vocabularyScopeInvalidResponse(literal)!.json()).message)
+      .toBe('Domain vocabulary literal trigger "hoch" maps to more than one value. Keep a single value and save again.');
+  });
+
+  it('未知 reason → 通用英文文案', async () => {
+    const unknown = Object.assign(new Error('新错误'), { name: 'VocabularyScopeError', code: 'something_new' });
+    const body = await vocabularyScopeInvalidResponse(unknown)!.json();
+    expect(body.message).toBe('The domain vocabulary cannot be applied to this policy. Fix the listed term and save again.');
+    expect(body.reason).toBe('something_new');
+  });
 });
 
 describe('compileGateErrorResponse — 词汇加载失败', () => {
