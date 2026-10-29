@@ -9,7 +9,7 @@
 //          覆盖常见 policy 决策字段，保持英中德三语对齐。
 
 import { describe, it, expect } from 'vitest';
-import { parseApprovalFromResult } from '@/services/policy/cnl-executor';
+import { buildCNLResult, deriveExecutionDecision, getPrimaryError, parseApprovalFromResult } from '@/services/policy/cnl-executor';
 
 describe('parseApprovalFromResult — 决策字段识别', () => {
   describe('Bug-4 核心字段：isEligible / eligible', () => {
@@ -334,14 +334,39 @@ describe('Verdict 内置值（ADR 0039）', () => {
   });
 });
 
-// #633：枚举值对象与成员名字符串是同一个值，判定口径必须一致——都按成员名字符串处理。
-describe('枚举值：对象与字符串同一口径（#633）', () => {
-  const enumValue = (member: string) => ({ __type: '?', _enum: 'Level', value: member, variant: member, args: [] });
+// #633：枚举值对象不得因带 value 键被当作「计算结果」判批准。
+// 2026-10-30 生产复测 C：枚举是有类型的值，不是自由文本——成员名不走拒绝关键字启发式，
+// 否则 QuoteStatus.Rejected 会被判成拒绝并把 "Rejected" 写进响应顶层的 error 字段。
+describe('枚举值判定（#633、复测 C）', () => {
+  const enumValue = (member: string, en = 'Level') => ({ __type: '?', _enum: en, value: member, variant: member, args: [] });
 
-  it.each(['decision', 'value'] as const)('%s 模式：枚举对象与成员名字符串得到相同判定', (mode) => {
-    for (const member of ['High', 'Low', 'Hoch', 'abgelehnt']) {
-      expect(parseApprovalFromResult(enumValue(member), mode)).toEqual(parseApprovalFromResult(member, mode));
+  it('value 模式：枚举对象与成员名字符串得到相同判定', () => {
+    for (const member of ['High', 'Low', 'Hoch', 'abgelehnt', 'Rejected']) {
+      expect(parseApprovalFromResult(enumValue(member), 'value')).toEqual(parseApprovalFromResult(member, 'value'));
     }
+  });
+
+  it.each(['Rejected', 'Denied', 'abgelehnt', 'Approved', 'High'])(
+    'decision 模式：枚举成员 %s 无 allow/deny 语义 → indeterminate，不是拒绝原因',
+    (member) => {
+      expect(parseApprovalFromResult(enumValue(member, 'QuoteStatus'), 'decision')).toEqual({
+        approved: false,
+        indeterminate: true,
+        message: member,
+      });
+    },
+  );
+
+  it('buildCNLResult：返回 QuoteStatus.Rejected 时不产生 deniedReasons（顶层 error 为空）', () => {
+    const policy = { id: 'p1', name: 'quote' } as Parameters<typeof buildCNLResult>[0];
+    const result = buildCNLResult(policy, {
+      success: true,
+      result: enumValue('Rejected', 'QuoteStatus'),
+      executionTimeMs: 1,
+    } as Parameters<typeof buildCNLResult>[1]);
+    expect(result.deniedReasons).toEqual([]);
+    expect(getPrimaryError(result)).toBeUndefined();
+    expect(deriveExecutionDecision(result)).toBe('indeterminate');
   });
 
   it('decision 模式：普通枚举成员无决策语义 → indeterminate，不因对象带 value 键而判批准', () => {
