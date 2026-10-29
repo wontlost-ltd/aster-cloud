@@ -32,10 +32,12 @@ import {
   computeSourceEnvelope,
   STRUCTURAL_KINDS,
   validateUserAliases,
+  vocabularyScopesJson,
   type ReservedSets,
 } from '@/lib/policy-alias';
 import { declaresProfile } from '@/lib/policy-profile-declaration';
 import { RESOLVER_VERSION } from '@aster-cloud/aster-lang-ts/browser';
+import type { DomainVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
 import { getTeamMemberRole } from '@/lib/team-permissions';
 import {
   canReviewPolicyVersions,
@@ -110,8 +112,27 @@ export class VocabularyFreezeError extends Error {
 }
 
 /**
+ * 作者词汇在保存（封印 sourceScopesJson）之后、审批之前发生了变化：此刻冻结的词汇与版本
+ * envelope 封印的词汇不一致，批准它会让执行所用词汇与已审阅、已封印的编译输入分叉。
+ * 路由映射为 409 vocabulary_changed_since_save，提示作者按现行词汇保存新版本后再提交审批。
+ */
+export class VocabularyChangedSinceSaveError extends Error {
+  readonly code = 'vocabulary_changed_since_save';
+  constructor(
+    message = 'The domain vocabulary used by this version has changed since it was saved. Save a new version and submit it for approval.',
+  ) {
+    super(message);
+    this.name = 'VocabularyChangedSinceSaveError';
+  }
+}
+
+/**
  * 在审批事务内冻结待批准版本作用域内的作者词汇（B12 / #610），返回快照引用。
  * 作用域按版本源码与其记录的编译 locale 计算；失败抛 VocabularyFreezeError（事务回滚）。
+ *
+ * 一致性：写入快照前比对「即将冻结的词汇」的 scopesJson 与版本保存时封印的 sourceScopesJson，
+ * 不同则抛 VocabularyChangedSinceSaveError，不写任何快照。sourceScopesJson 为 NULL 的存量行
+ * 早于词汇封印（ADR 0051 之前），无可比对的封印值，直接放行；resolver 迁移会为其回填。
  */
 async function freezeApprovalVocabulary(
   version: InferSelectModel<typeof policyVersions>,
@@ -127,12 +148,20 @@ async function freezeApprovalVocabulary(
     sourceScopesJson: version.sourceScopesJson,
     vocabularySnapshotIds: null,
   });
+  const sealed = version.sourceScopesJson;
+  const verifyVocabulary = sealed === null
+    ? undefined
+    : (vocabulary: DomainVocabulary | null) => {
+      if (vocabularyScopesJson(vocabulary) !== sealed) throw new VocabularyChangedSinceSaveError();
+    };
   try {
     return await freezeVocabularyForApproval(
       { policyAuthorId: version.createdBy, policy: { source, locale } },
       tx,
+      { verifyVocabulary },
     );
   } catch (err) {
+    if (err instanceof VocabularyChangedSinceSaveError) throw err;
     console.error('[vocabulary-snapshot] freeze failed, approval aborted:', err);
     throw new VocabularyFreezeError();
   }

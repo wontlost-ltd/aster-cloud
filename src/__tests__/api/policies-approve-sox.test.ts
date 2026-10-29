@@ -31,6 +31,7 @@ vi.mock('@/services/policy/version-manager', async () => {
     PolicyAccessDeniedError: actual.PolicyAccessDeniedError,
     SegregationOfDutiesError: actual.SegregationOfDutiesError,
     VocabularyFreezeError: actual.VocabularyFreezeError,
+    VocabularyChangedSinceSaveError: actual.VocabularyChangedSinceSaveError,
   };
 });
 vi.mock('@/lib/prisma', () => ({
@@ -232,6 +233,18 @@ describe('POST /api/v1/policies/[id]/versions/[version]/approve — SOX 守护',
     const res = await POST(makeRequest(), { params });
     expect(res.status).toBe(503);
     expect((await res.json()).error).toBe('vocabulary_freeze_failed');
+  });
+
+  it('保存后词汇已变（VocabularyChangedSinceSaveError）→ 409 vocabulary_changed_since_save', async () => {
+    const { VocabularyChangedSinceSaveError } = await vi.importActual<typeof import('@/services/policy/version-manager')>(
+      '@/services/policy/version-manager',
+    );
+    setupMocks({ user: { plan: 'free', priceLockedAt: null, legacyTier: null }, versionAuthor: 'u1' });
+    mockApprove.mockRejectedValueOnce(new VocabularyChangedSinceSaveError());
+
+    const res = await POST(makeRequest(), { params });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe('vocabulary_changed_since_save');
   });
 
   it('策略不存在 → 不拦截，交由 approveVersion 判定（404 不泄露存在性）', async () => {

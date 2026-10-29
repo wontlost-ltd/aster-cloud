@@ -72,9 +72,11 @@ import {
   approveVersion,
   PolicyAccessDeniedError,
   SegregationOfDutiesError,
+  VocabularyChangedSinceSaveError,
   VocabularyFreezeError,
 } from '@/services/policy/version-manager';
-import { computeSourceEnvelope } from '@/lib/policy-alias';
+import { computeSourceEnvelope, vocabularyScopesJson } from '@/lib/policy-alias';
+import { IdentifierKind, type DomainVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
 
 function setup(policy: { userId: string; teamId: string | null }, author: string, role: string | null = null) {
   h.policiesFindFirst.mockResolvedValue(policy);
@@ -87,6 +89,36 @@ function setup(policy: { userId: string; teamId: string | null }, author: string
 }
 
 const GERMAN_SOURCE = 'Modul x.\n\nDefiniere Fahrer hat alter als Ganzzahl.\n';
+
+function vocab(localized: string): DomainVocabulary {
+  return {
+    id: 'd', name: 'd', locale: 'de-DE', version: '1',
+    structs: [{ canonical: 'Driver', localized, kind: IdentifierKind.STRUCT }],
+    fields: [], functions: [], enumValues: [],
+  } as DomainVocabulary;
+}
+
+type FreezeOpts = { verifyVocabulary?: (v: DomainVocabulary | null) => void };
+
+/** 冻结替身：按真实实现的顺序先把「即将冻结的词汇」交给 verifyVocabulary，通过后才写入（staged）。 */
+function freezeWith(live: DomainVocabulary | null, refs: Array<{ snapshotId: string; domain: string; locale: string }>) {
+  return async (_params: unknown, tx: { staged: string[] }, opts: FreezeOpts = {}) => {
+    opts.verifyVocabulary?.(live);
+    tx.staged.push('refCount+1');
+    return refs;
+  };
+}
+
+/** 以 sealedScopes 封印的待审批版本。 */
+function setupSealed(sealedScopes: string | null) {
+  setup({ userId: 'owner', teamId: null }, 'owner');
+  h.versionsFindFirst.mockResolvedValue({
+    id: 'v1', policyId: 'p1', version: 2, createdBy: 'owner', status: 'PENDING_APPROVAL',
+    content: GERMAN_SOURCE, source: null, aliasSet: null, sourceToolchainId: 'tc-1',
+    sourceScopesJson: sealedScopes,
+    sourceEnvelopeSha256: computeSourceEnvelope(GERMAN_SOURCE, null, 'de-DE', 'tc-1', sealedScopes ?? ''),
+  });
+}
 
 function decisionEvent() {
   return h.logSecurityEvent.mock.calls.map((c) => c[0]).find((e) => e.eventType === 'APPROVAL_DECISION');
@@ -187,6 +219,7 @@ describe('approveVersion — 词汇快照（#610）', () => {
     expect(h.snapshot).toHaveBeenCalledWith(
       { policyAuthorId: 'owner', policy: { source: GERMAN_SOURCE, locale: 'de-DE' } },
       expect.objectContaining({ staged: expect.any(Array) }),
+      { verifyVocabulary: undefined },
     );
     expect(h.audit).toHaveBeenCalledWith({ policyAuthorId: 'owner', policyVersionId: 'v1', refs });
     expect(h.updateSet).toHaveBeenCalledWith({ status: 'APPROVED', vocabularySnapshotIds: refs });
@@ -195,25 +228,71 @@ describe('approveVersion — 词汇快照（#610）', () => {
   it('ADR 0051：审批只挂快照引用，不改写封印的 envelope 与其词汇段；冻结按封印时记录的 locale', async () => {
     setup({ userId: 'owner', teamId: null }, 'owner');
     // 保存时以 en-US + 词汇 V1 封印（源码看起来是德语，只有 envelope 能给出 en-US）
-    const sealedScopes = '{"enumMembers":{},"fields":{},"functions":{},"literals":{},"schemaVersion":1,"types":{"v1":[]}}';
+    const sealedScopes = vocabularyScopesJson(vocab('Fahrer'));
     h.versionsFindFirst.mockResolvedValue({
       id: 'v1', policyId: 'p1', version: 2, createdBy: 'owner', status: 'PENDING_APPROVAL',
       content: GERMAN_SOURCE, source: null, aliasSet: null, sourceToolchainId: 'tc-1',
       sourceScopesJson: sealedScopes,
       sourceEnvelopeSha256: computeSourceEnvelope(GERMAN_SOURCE, null, 'en-US', 'tc-1', sealedScopes),
     });
-    // 作者之后把词汇改成 V2，审批冻结得到的快照与封印时不同
-    const refs = [{ snapshotId: 's-v2', domain: 'd', locale: 'de' }];
-    h.snapshot.mockResolvedValue(refs);
+    const refs = [{ snapshotId: 's-v1', domain: 'd', locale: 'de' }];
+    h.snapshot.mockImplementation(freezeWith(vocab('Fahrer'), refs));
 
     await approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' });
 
     expect(h.snapshot).toHaveBeenCalledWith(
       { policyAuthorId: 'owner', policy: { source: GERMAN_SOURCE, locale: 'en-US' } },
       expect.anything(),
+      expect.anything(),
     );
     // 状态更新里没有 envelope / 词汇段字段：已审批版本的 envelope 仍按封印输入重算可得
     expect(h.updateSet).toHaveBeenCalledWith({ status: 'APPROVED', vocabularySnapshotIds: refs });
+  });
+
+  it('保存后词汇未变 → 批准成功，快照与审批一并提交', async () => {
+    setupSealed(vocabularyScopesJson(vocab('Fahrer')));
+    const refs = [{ snapshotId: 's1', domain: 'd', locale: 'de' }];
+    h.snapshot.mockImplementation(freezeWith(vocab('Fahrer'), refs));
+
+    await approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' });
+
+    expect(h.committed).toEqual(['refCount+1', 'approval', 'status']);
+    expect(h.updateSet).toHaveBeenCalledWith({ status: 'APPROVED', vocabularySnapshotIds: refs });
+  });
+
+  it('保存后改了词条 → 拒绝批准（vocabulary_changed_since_save），不冻结、不写审批、不改状态', async () => {
+    setupSealed(vocabularyScopesJson(vocab('Fahrer')));
+    h.snapshot.mockImplementation(freezeWith(vocab('Lenker'), [{ snapshotId: 's2', domain: 'd', locale: 'de' }]));
+
+    const err = await approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(VocabularyChangedSinceSaveError);
+    expect((err as VocabularyChangedSinceSaveError).code).toBe('vocabulary_changed_since_save');
+    expect(h.committed).toEqual([]);
+    expect(h.insertValues).not.toHaveBeenCalled();
+    expect(h.updateSet).not.toHaveBeenCalled();
+    expect(h.audit).not.toHaveBeenCalled();
+    expect(h.invalidateCache).not.toHaveBeenCalled();
+  });
+
+  it('保存时无词汇（封印空串）、审批时作者新增了在用词条 → 拒绝批准', async () => {
+    setupSealed('');
+    h.snapshot.mockImplementation(freezeWith(vocab('Fahrer'), [{ snapshotId: 's1', domain: 'd', locale: 'de' }]));
+
+    await expect(approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' }))
+      .rejects.toBeInstanceOf(VocabularyChangedSinceSaveError);
+    expect(h.committed).toEqual([]);
+  });
+
+  it('封印前的存量行（sourceScopesJson 为 NULL）不比对，照常批准', async () => {
+    setupSealed(null);
+    h.snapshot.mockImplementation(freezeWith(vocab('Lenker'), []));
+
+    await approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' });
+
+    const opts = h.snapshot.mock.calls[0]![2] as FreezeOpts;
+    expect(opts.verifyVocabulary).toBeUndefined();
+    expect(h.updateSet).toHaveBeenCalledWith({ status: 'APPROVED', vocabularySnapshotIds: [] });
   });
 
   it('冻结失败 → 审批整体失败：不写审批记录、不改状态、不失效缓存', async () => {

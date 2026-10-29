@@ -1,6 +1,7 @@
 // 审批冻结词汇的原子性（真实 Postgres，外部 DATABASE_URL）。#610 复审：
 // 冻结（快照插入 / refCount 递增）与审批记录、状态更新在同一事务内。审批写入失败时
 // 冻结一并回滚：refCount 不变、版本仍待审批；写入成功时三者同时生效。
+// ADR 0051：即将冻结的词汇与保存时封印的 sourceScopesJson 不一致时拒绝批准，不冻结任何快照。
 //
 // Run: LICENSE_E2E=1 DATABASE_URL=… pnpm exec vitest run --config vitest.integration.config.ts approval-vocabulary-freeze
 
@@ -22,7 +23,9 @@ import {
   users,
   userVocabularySnapshots,
 } from '@/lib/prisma';
-import { approveVersion } from '@/services/policy/version-manager';
+import { approveVersion, VocabularyChangedSinceSaveError } from '@/services/policy/version-manager';
+import { loadLiveVocabularyForPolicy } from '@/lib/domain-vocabulary-snapshot';
+import { cloudToolchainId, computeSourceEnvelope, vocabularyScopesJson } from '@/lib/policy-alias';
 
 const USER = 'user-vocab-freeze-it';
 const POLICY = 'pol-vocab-freeze-it';
@@ -79,6 +82,24 @@ async function pendingVersion(db: Db, version: number): Promise<void> {
   });
 }
 
+/** 按保存时的作者现行词汇封印的待审批版本（与 createVersion 同一封印口径）。 */
+async function sealedPendingVersion(db: Db, version: number): Promise<void> {
+  const scopes = vocabularyScopesJson(await loadLiveVocabularyForPolicy(USER, { source: SOURCE, locale: 'de-DE' }));
+  const toolchain = cloudToolchainId();
+  await db.insert(policyVersions).values({
+    id: `${POLICY}-v${version}`,
+    policyId: POLICY,
+    version,
+    content: SOURCE,
+    source: SOURCE,
+    status: 'PENDING_APPROVAL',
+    createdBy: USER,
+    sourceScopesJson: scopes,
+    sourceToolchainId: toolchain,
+    sourceEnvelopeSha256: computeSourceEnvelope(SOURCE, null, 'de-DE', toolchain, scopes),
+  });
+}
+
 async function refCount(db: Db): Promise<number[]> {
   const rows = await db
     .select({ refCount: userVocabularySnapshots.refCount })
@@ -118,10 +139,12 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('审批冻结词汇：与审批
       })),
     );
     await db.insert(policies).values({
-      id: POLICY, userId: USER, name: 'vocab-freeze-it', content: SOURCE, version: 2, updatedAt: new Date(),
+      id: POLICY, userId: USER, name: 'vocab-freeze-it', content: SOURCE, version: 4, updatedAt: new Date(),
     } as typeof policies.$inferInsert);
     await pendingVersion(db, 1);
     await pendingVersion(db, 2);
+    await sealedPendingVersion(db, 3);
+    await sealedPendingVersion(db, 4);
   });
 
   afterAll(async () => {
@@ -161,5 +184,25 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('审批冻结词汇：与审批
     await approveVersion({ policyId: POLICY, version: 2, approverId: USER, decision: 'APPROVED' });
     expect(await refCount(db)).toEqual([2]);
     expect((await status(db, 2)).status).toBe('APPROVED');
+  });
+  it('保存后词汇未变：封印与冻结一致，照常批准', async () => {
+    await approveVersion({ policyId: POLICY, version: 3, approverId: USER, decision: 'APPROVED' });
+    expect((await status(db, 3)).status).toBe('APPROVED');
+    expect(await refCount(db)).toEqual([3]);
+  });
+
+  it('保存后改了在用词条：拒绝批准，不冻结、不写审批记录、版本仍待审批', async () => {
+    await db.update(domainTerms).set({ aliases: ['lebensalter'] }).where(eq(domainTerms.id, 'dt-vocab-freeze-it-age'));
+
+    await expect(
+      approveVersion({ policyId: POLICY, version: 4, approverId: USER, decision: 'APPROVED' }),
+    ).rejects.toBeInstanceOf(VocabularyChangedSinceSaveError);
+
+    expect(await refCount(db)).toEqual([3]);
+    const v4 = await status(db, 4);
+    expect(v4.status).toBe('PENDING_APPROVAL');
+    expect(v4.refs).toEqual([]);
+    const approvals = await db.select().from(policyApprovals).where(eq(policyApprovals.versionId, `${POLICY}-v4`));
+    expect(approvals).toEqual([]);
   });
 });

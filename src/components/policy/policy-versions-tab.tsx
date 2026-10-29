@@ -111,8 +111,8 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
       }
 
       // 审批被拒在此处就地提示并结束（不再抛出），版本列表的通用失败 toast 不会重复弹出。
-      if (result.errorCode === 'segregation_of_duties') {
-        toast.error(t('approvalErrorCodes.segregation_of_duties'));
+      if (result.errorCode === 'segregation_of_duties' || result.errorCode === 'vocabulary_changed_since_save') {
+        toast.error(t(`approvalErrorCodes.${result.errorCode}`));
         return;
       }
       if (result.errorCode === 'invite_reviewer_required') {

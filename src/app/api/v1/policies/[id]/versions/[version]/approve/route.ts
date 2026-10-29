@@ -19,6 +19,7 @@ import { db, users, teams, teamMembers, policies, policyVersions } from '@/lib/p
 import {
   PolicyAccessDeniedError,
   SegregationOfDutiesError,
+  VocabularyChangedSinceSaveError,
   VocabularyFreezeError,
   approveVersion,
 } from '@/services/policy/version-manager';
@@ -68,6 +69,10 @@ export async function POST(
     // 团队策略的作者自审：与 checkSoxGuard 同一错误码，前端据此显示本地化提示
     if (error instanceof SegregationOfDutiesError) {
       return NextResponse.json({ error: 'segregation_of_duties', message: error.message }, { status: 403 });
+    }
+    // 保存后作者词汇已变：版本仍待审批，重试无用，需按现行词汇保存新版本。
+    if (error instanceof VocabularyChangedSinceSaveError) {
+      return NextResponse.json({ error: error.code, message: error.message }, { status: 409 });
     }
     // 词汇冻结失败：版本未被批准（仍待审批），属暂时性故障，提示重试。
     if (error instanceof VocabularyFreezeError) {

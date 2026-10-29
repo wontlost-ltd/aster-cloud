@@ -180,6 +180,26 @@ async function nextSnapshotVersion(
   return (rows[0]?.max ?? 0) + 1;
 }
 
+/** 冻结选项。 */
+export interface FreezeOptions {
+  /**
+   * 写入快照前回调，入参为这些快照日后在执行端合并出的词汇表（无则 null）。
+   * 抛错即中止冻结，且不留下任何快照写入。
+   */
+  verifyVocabulary?: (vocabulary: DomainVocabulary | null) => void;
+}
+
+/**
+ * 一组冻结分组在执行端呈现的词汇表：与 {@link loadVocabularyForExecution} 同一筛选与合并规则，
+ * 使审批时校验的正是执行时将使用的词汇。
+ */
+function frozenExecutionVocabulary(
+  vocabularies: readonly DomainVocabulary[],
+  policy: PolicyVocabularyContext,
+): DomainVocabulary | null {
+  return mergeVocabularies(selectVocabulariesForPolicy(vocabularies, policy), { locale: policy.locale });
+}
+
 /**
  * Freeze the caller's current active vocabulary into one snapshot per
  * (domain, locale) **that the policy actually uses** (see
@@ -196,16 +216,23 @@ export async function createSnapshotsForOwner(
   scope: OwnerScope,
   policy: PolicyVocabularyContext,
   tx: SnapshotTx,
+  opts: FreezeOptions = {},
 ): Promise<SnapshotRef[]> {
   const groups = await loadActiveLinksGroupedByDomainLocale(scope, tx);
   const inScope = policyScopeMatcher(policy);
-  const refs: SnapshotRef[] = [];
-
+  const selected: Array<{ domain: string; locale: string; vocabJson: DomainVocabulary; termIds: string[] }> = [];
   for (const [key, rows] of groups) {
     const [domain, locale] = key.split('|') as [string, string];
     const vocabJson = assembleDomainVocabularyFromLinks(rows.map(toTermLikeRow), { domain, locale });
-    if (!inScope(vocabJson)) continue;
-    const ref = await upsertSnapshot(tx, scope, { domain, locale, vocabJson, termIds: rows.map((r) => r.termId) });
+    if (inScope(vocabJson)) selected.push({ domain, locale, vocabJson, termIds: rows.map((r) => r.termId) });
+  }
+
+  // 写快照之前先交给调用方校验：校验失败时不产生任何快照或 refCount 变化。
+  opts.verifyVocabulary?.(frozenExecutionVocabulary(selected.map((g) => g.vocabJson), policy));
+
+  const refs: SnapshotRef[] = [];
+  for (const { domain, locale, vocabJson, termIds } of selected) {
+    const ref = await upsertSnapshot(tx, scope, { domain, locale, vocabJson, termIds });
     refs.push({ snapshotId: ref.snapshotId, domain, locale });
     recordSnapshotCreate({ dedupHit: ref.dedupHit });
     recordLexiconOp('snapshot.create', 'success');
@@ -291,9 +318,7 @@ export async function loadVocabularyForExecution(
   const vocabs = rows
     .map((r) => r.vocabularyJson as DomainVocabulary | null)
     .filter((v): v is DomainVocabulary => v != null);
-  return mergeVocabularies(selectVocabulariesForPolicy(vocabs, policy), {
-    locale: policy.locale,
-  });
+  return frozenExecutionVocabulary(vocabs, policy);
 }
 
 /**
@@ -338,11 +363,13 @@ export async function freezeVocabularyForApproval(
     policy: PolicyVocabularyContext;
   },
   tx: SnapshotTx,
+  opts: FreezeOptions = {},
 ): Promise<SnapshotRef[]> {
   return createSnapshotsForOwner(
     { ownerType: 'user', ownerId: params.policyAuthorId },
     params.policy,
     tx,
+    opts,
   );
 }
 
