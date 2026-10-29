@@ -1,5 +1,5 @@
 // 导出为 Cedar 路由（ADR 0047 §6）：POST /api/policies/[id]/export/cedar。
-// 仅策略所有者可导出；导出 secure-execute 会执行的版本（无则 409），走源码模式并附 claimedRef；
+// 仅策略所有者可导出；导出执行路径会选中的版本（无则 409），走源码模式并附 claimedRef；
 // 上游忙 503 原样透传，其余上游错误 502。
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -21,7 +21,7 @@ vi.mock('@/lib/prisma', () => ({
   },
   policies: { id: { name: 'policies.id' }, userId: { name: 'policies.userId' }, deletedAt: { name: 'policies.deletedAt' } },
 }));
-vi.mock('@/services/security/secure-executor', () => ({
+vi.mock('@/services/policy/default-executable-version', () => ({
   findDefaultExecutableVersion: (...a: unknown[]) => h.findExecutable(...a),
 }));
 // where 条件以可检查的结构表达，供归属（owner-only）断言

@@ -1,5 +1,11 @@
 # Truffle 安全架构 - 实施指南
 
+> **已下线（2026-10-30）**：本文描述的 `POST /api/v1/policies/{id}/secure-execute`（共享密钥 HMAC 签名执行）及
+> `src/services/security/secure-executor.ts` 已移除（#654）。原因：生产从未配置 `POLICY_SIGNING_SECRET`，验签实际以空串
+> 进行，签名形同虚设；原客户端方案还要求浏览器读取 `NEXT_PUBLIC_` 密钥，等于公开密钥；该端点只认登录会话、不认 API Key，
+> 界面也没有调用方。普通执行路径已按当前生效版本、envelope 校验与冻结词汇快照执行。将来如需「按指定版本执行」，
+> 应在普通 execute / v1 execute 上加可选的期望版本哈希参数，复用现有认证与配额。以下为历史设计，仅供参考。
+
 本文档提供安全架构的详细实现代码，可直接用于开发。
 
 ## 目录

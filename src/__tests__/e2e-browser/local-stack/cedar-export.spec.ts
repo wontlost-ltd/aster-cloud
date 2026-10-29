@@ -6,7 +6,7 @@
  * 另一条规则使用 `Text.length`（Cedar 无对应字符串长度运算），应列出 E721 诊断而不下载任何文件。
  * 可导出时还核对 aster-api 审计表的 POLICY_EXPORTED（claimedRef 与文件哈希）。
  * 策略均经 `POST /api/policies` 以 t1 身份新建（与界面新建同一路径，含编译门禁），用例结束软删除。
- * 导出的是 secure-execute 会执行的版本：新建的 v1 为 DRAFT，四眼原则下单用户无法自批，故直接在 aster_cloud
+ * 导出的是执行路径会选中的版本：新建的 v1 为 DRAFT，四眼原则下单用户无法自批，故直接在 aster_cloud
  * 库中把 v1 置为 APPROVED（仅测试夹具）；另一条用例保持草稿，断言面板提示先批准。
  */
 import { test, expect, type Download, type Page } from '@playwright/test';

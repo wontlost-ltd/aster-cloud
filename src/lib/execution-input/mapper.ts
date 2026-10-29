@@ -77,7 +77,7 @@ export interface AmbiguousInputField {
   readonly candidates?: readonly string[];
 }
 
-/** 一次映射改写了什么（secure-execute 审计用）。 */
+/** 一次映射改写了什么。 */
 export interface InputRename {
   readonly path: string;
   readonly from: string;

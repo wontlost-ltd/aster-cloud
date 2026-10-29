@@ -45,8 +45,7 @@ Runbook:
   - Before running, pg_dump "PolicyVersion" and "UserVocabularySnapshot" (ADR 0051 §9 rollback point).
   - Each row lock is held while aster-api compiles (up to the 30s client timeout); a concurrent save on that
     policy's tail version waits for it. Run inside the release window.
-  - Relinking rewrites successors' prevHash/sourceHash; secure-execute clients that pinned an old sourceHash get
-    HASH_MISMATCH and must refresh.
+  - Relinking rewrites successors' prevHash/sourceHash; a pinned old sourceHash no longer matches (HASH_MISMATCH) and must be refreshed.
 `;
 
 function argValue(name: string): string | undefined {

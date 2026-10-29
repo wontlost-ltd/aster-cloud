@@ -1,4 +1,4 @@
-// 默认可执行版本的选择（secure-execute 未指定版本时执行的版本）：Cedar 导出复用同一选择。
+// 默认可执行版本的选择：Cedar 导出复用同一选择。
 // 优先 isDefault 的 APPROVED 版本，否则最新 APPROVED 版本；都没有时为 null。
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -22,7 +22,7 @@ vi.mock('drizzle-orm', () => ({
 }));
 vi.mock('@/services/policy/policy-api', () => ({ createPolicyApiClient: vi.fn() }));
 
-import { findDefaultExecutableVersion, getDefaultVersionInfo } from '@/services/security/secure-executor';
+import { findDefaultExecutableVersion } from '@/services/policy/default-executable-version';
 
 beforeEach(() => {
   findFirst.mockReset();
@@ -51,13 +51,5 @@ describe('findDefaultExecutableVersion', () => {
   it('returns null when no version is approved (drafts are never executable)', async () => {
     findFirst.mockResolvedValue(undefined);
     expect(await findDefaultExecutableVersion('p1')).toBeNull();
-  });
-});
-
-describe('getDefaultVersionInfo', () => {
-  it('reports the same version secure-execute would run', async () => {
-    findFirst.mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce({ version: 4, sourceHash: 'h4', source: null, content: 'Module m.' });
-    expect(await getDefaultVersionInfo('p1')).toEqual({ version: 4, sourceHash: 'h4', source: 'Module m.' });
   });
 });

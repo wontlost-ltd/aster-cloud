@@ -714,7 +714,7 @@ describe('V1 Policies API - Drizzle Migration', () => {
       );
 
       expect(response.status).toBe(200);
-      // locale 与 secure-execute 同一解析器：无 envelope 时取冻结快照引用的唯一 locale。
+      // locale 与 dashboard execute 同一解析器：无 envelope 时取冻结快照引用的唯一 locale。
       expect(mockLoadExecutionVocabulary).toHaveBeenCalledWith(refs, { source, locale: 'de' });
       expect(mockExecutePolicyUnified).toHaveBeenCalledWith(expect.objectContaining({ vocabulary }));
     });
@@ -778,7 +778,7 @@ Regel bewerten gegeben person als Fahrer liefert Ganzzahl:
         expect(mockExecutePolicyUnified).not.toHaveBeenCalled();
       });
 
-      it('locale 与 secure-execute 同一解析器：版本记录的编译 locale 优先于源码识别', async () => {
+      it('locale 与 dashboard execute 同一解析器：版本记录的编译 locale 优先于源码识别', async () => {
         const envelope = computeSourceEnvelope(DE_SOURCE, null, 'en-US', 'tc-1', '');
         setupExecuteRow({
           policy_content: DE_SOURCE, policy_version: 1, policy_source_toolchain_id: 'tc-1',

@@ -66,7 +66,7 @@ export class PolicyAccessDeniedError extends Error {
  * <h3>为什么放在服务层而不是各路由</h3>
  *
  * 此前 8 个版本路由（submit/approve/reject/set-default/archive/deprecate/
- * 版本详情/secure-execute）只校验登录态，`policyId` 从 URL 直接进服务层，
+ * 版本详情，以及已下线的 secure-execute）只校验登录态，`policyId` 从 URL 直接进服务层，
  * 而本文件的查询只按 `policyId + version + status` 过滤——**任何登录用户可操作
  * 任意租户的策略版本**。同目录 `versions/route.ts` 早有正确写法，只是没传播到这 8 处。
  *

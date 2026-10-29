@@ -345,6 +345,7 @@ pnpm lint                        # 0 errors（1 个无关 warning）
 > 等于 Round 8 修复留下的等价盲点。
 >
 > [High] `next.config.ts` / `turnstile.ts` / `resend.ts` / `plan-gate-client.ts` /
+> （`secure-executor.ts` 已下线，2026-10-30，cloud#655。）
 > `snapshot-pusher.ts` / `secure-executor.ts` 模块顶部仍有裸 `process.env` 初始化。
 >
 > [Medium] no-process regression test 用 `Object.defineProperty(globalThis,
@@ -362,7 +363,7 @@ pnpm lint                        # 0 errors（1 个无关 warning）
 | `src/lib/resend.ts` | RESEND_API_KEY / RESEND_FROM_EMAIL / NEXT_PUBLIC_APP_URL 改 safeEnv |
 | `src/lib/plan-gate-client.ts` | ASTER_API_INTERNAL_URL / ASTER_PLAN_GATE_HMAC_KEY 改 safeEnv |
 | `src/lib/snapshot-pusher.ts` | 同 plan-gate-client |
-| `src/services/security/secure-executor.ts` | POLICY_SIGNING_SECRET 改 safeEnv |
+| `src/services/security/secure-executor.ts` | POLICY_SIGNING_SECRET 改 safeEnv（已下线，2026-10-30，cloud#655：文件与该变量均已移除） |
 | `src/lib/env-validation.ts` | `getProcessEnv` 改为 alias `safeProcessEnv`（去重） |
 | `src/lib/deployment-mode.ts` | 局部 `safeEnv` 改为 import 自共享 helper |
 | `src/__tests__/lib/env-validation.test.ts` | 改用 `delete globalThis.process` 真正移除 binding，**精确模拟 edge runtime 的 ReferenceError**；新增"验证模拟手法"测试用 `eval('process.env.X')` 确认裸引用真的抛 ReferenceError |
