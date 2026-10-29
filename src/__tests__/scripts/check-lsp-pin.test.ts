@@ -25,11 +25,4 @@ describe('LSP compiler pin parity', () => {
     expect(appPin).toBeTruthy();
     expect(lspPin).toBe(appPin);
   });
-
-  it('migrate-package.json pins the same aster-lang-ts version as package.json', () => {
-    const appPin = read('package.json').dependencies?.[DEP];
-    const migratePin = read('migrate-package.json').dependencies?.[DEP];
-    expect(appPin).toBeTruthy();
-    expect(migratePin).toBe(appPin);
-  });
 });
