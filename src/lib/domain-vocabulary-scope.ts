@@ -219,7 +219,8 @@ function dedupe(mappings: readonly IdentifierMapping[]): IdentifierMapping[] {
 /**
  * 把多个分组合并成一个词汇表（编译器与执行端一次只接收一个词汇表）。
  * 完全相同的映射去重，避免同一词在两个分组里重复定义而被引擎判为重复。
- * 只有一个分组时原样返回，保留其原始 id。
+ * 只有一个分组时原样返回，保留其原始 id。字面量宏（literals）与其它映射一样合并去重；
+ * 没有任何分组带字面量时不加该键，保持既有词汇表形状。
  */
 export function mergeVocabularies(
   vocabularies: readonly DomainVocabulary[],
@@ -229,7 +230,9 @@ export function mergeVocabularies(
   const first = vocabularies[0]!;
   if (vocabularies.length === 1 && !opts.id && !opts.locale) return first;
   const id = opts.id ?? first.id;
+  const literals = dedupe(vocabularies.flatMap((v) => v.literals ?? []));
   return {
+    ...first,
     id,
     name: opts.id ?? first.name,
     locale: opts.locale ?? first.locale,
@@ -238,6 +241,7 @@ export function mergeVocabularies(
     fields: dedupe(vocabularies.flatMap((v) => v.fields ?? [])),
     functions: dedupe(vocabularies.flatMap((v) => v.functions ?? [])),
     enumValues: dedupe(vocabularies.flatMap((v) => v.enumValues ?? [])),
+    ...(literals.length > 0 ? { literals } : {}),
   };
 }
 

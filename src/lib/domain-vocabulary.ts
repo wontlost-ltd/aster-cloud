@@ -587,6 +587,15 @@ function userQuotaLockKey(userId: string): bigint {
 }
 
 /**
+ * 在当前事务里拿用户级词汇写锁（与配额锁同一把，随事务结束释放）。
+ * 新增、修改、恢复、批量导入都在这把锁内做作用域冲突校验并写入：锁外校验时并发写入互不可见，
+ * 会各自通过后在同一分组里形成冲突词条。
+ */
+export async function lockUserVocabularyWrites(tx: Tx, userId: string): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(${userQuotaLockKey(userId)})`);
+}
+
+/**
  * 在当前事务里拿用户配额锁，并在锁内重新计算剩余配额。
  *
  * 单条新增、同步批量、异步 worker 必须走同一把锁：锁外计数会让并发写入各自
@@ -597,7 +606,7 @@ export async function lockUserQuotaAndCountRemaining(
   userId: string,
   maxTerms: number,
 ): Promise<number> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(${userQuotaLockKey(userId)})`);
+  await lockUserVocabularyWrites(tx, userId);
   if (maxTerms === -1) return Number.POSITIVE_INFINITY;
   const [{ count }] = await tx
     .select({ count: sql<number>`count(*)::int` })
@@ -735,9 +744,11 @@ async function modifyUserVocabularyTermInner(
   if (!existing) {
     throw new VocabularyError('not_found', 'Vocabulary term link not found');
   }
-  await assertNoScopeConflict(db, userId, normalized, linkId);
 
   const transactionResult = await db.transaction(async (tx) => {
+    // 与新增同一把用户锁内校验并写入：并发新增 / 修改不会各自通过后形成冲突词条。
+    await lockUserVocabularyWrites(tx, userId);
+    await assertNoScopeConflict(tx, userId, normalized, linkId);
     const upserted = await upsertDomainTerm(tx, normalized);
     await tx
       .update(userDomainTerms)
@@ -882,25 +893,28 @@ async function restoreUserVocabularyTermInner(
   if (!deleted) {
     throw new VocabularyError('not_found', 'Vocabulary term link not found');
   }
-  // 删除期间同一分组可能新增了同写法的条目，恢复同样不得引入作用域冲突。
-  await assertNoScopeConflict(db, userId, deleted, linkId);
-
-  await db
-    .update(userDomainTerms)
-    .set({
-      deletedAt: null,
-      deletedBy: null,
-      deletedReason: null,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(userDomainTerms.userId, userId),
-        eq(userDomainTerms.id, linkId),
-        isNotNull(userDomainTerms.deletedAt),
-        isNull(userDomainTerms.archivedAt),
-      ),
-    );
+  await db.transaction(async (tx) => {
+    // 删除期间同一分组可能新增了同写法的条目，恢复同样不得引入作用域冲突；
+    // 与新增同一把用户锁内校验并写入，并发写入对校验可见。
+    await lockUserVocabularyWrites(tx, userId);
+    await assertNoScopeConflict(tx, userId, deleted, linkId);
+    await tx
+      .update(userDomainTerms)
+      .set({
+        deletedAt: null,
+        deletedBy: null,
+        deletedReason: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(userDomainTerms.userId, userId),
+          eq(userDomainTerms.id, linkId),
+          isNotNull(userDomainTerms.deletedAt),
+          isNull(userDomainTerms.archivedAt),
+        ),
+      );
+  });
 
   const link = await getTermLink(userId, linkId);
   if (!link) {
@@ -923,7 +937,7 @@ async function restoreUserVocabularyTermInner(
 
 /**
  * Dry-run helper: report whether adding a term would reuse an existing global
- * DomainTerm and surface any vocabulary-level validation warnings.
+ * DomainTerm and surface the vocabulary validation problems the term would introduce.
  */
 export async function previewAddTerm(
   userId: string,
@@ -940,46 +954,21 @@ export async function previewAddTerm(
     columns: { id: true },
   });
 
-  const current = await listUserVocabularyTerms(userId, {
-    domain: normalized.domain,
-    locale: normalized.locale,
-    pageSize: MAX_PAGE_SIZE,
-  });
-  const rows = [
-    ...current.items.map((item) => ({
-      domainTermId: item.termId,
-      domain: item.domain,
-      locale: item.locale,
-      kind: item.kind,
-      canonical: item.canonical,
-      localized: item.localized,
-      parentCanonical: item.parentCanonical,
-      aliases: item.aliases,
-      description: item.description,
-    })),
-    {
-      domainTermId: 'preview',
-      domain: normalized.domain,
-      locale: normalized.locale,
-      kind: normalized.kind,
-      canonical: normalized.canonical,
-      localized: normalized.localized,
-      parentCanonical: normalized.parentCanonical,
-      aliases: normalized.aliases,
-      description: normalized.description,
-    },
-  ];
-  const validation = validateDomainVocabulary(
-    assembleDomainVocabularyFromLinks(rows, {
-      domain: normalized.domain,
-      locale: normalized.locale,
-    }),
-  );
+  // 整组现有词条（不分页）；只返回加入预览词条后新出现的诊断，组里已有的无关旧错误不算这条词条的冲突。
+  // 组装按行序追加，预览词条在末尾，已有词条的诊断文本（含位置）前后一致，可直接按文本求差。
+  // 已知边界：预览词条引入的诊断若与组内已有诊断文本完全相同，会被当作旧问题隐藏（诊断含位置，实际极少）。
+  const group = { domain: normalized.domain, locale: normalized.locale };
+  const current = await loadGroupTermRows(db, userId, group);
+  const previewRow: TermLikeRow = { ...normalized, domainTermId: 'preview' };
+  const before = validateDomainVocabulary(assembleDomainVocabularyFromLinks(current, group));
+  const after = validateDomainVocabulary(assembleDomainVocabularyFromLinks([...current, previewRow], group));
+  const known = new Set([...before.errors, ...before.warnings]);
+  const collisions = [...after.errors, ...after.warnings].filter((message) => !known.has(message));
 
   return {
     existsInGlobal: Boolean(existing),
     existingTermId: existing?.id ?? null,
-    collisions: [...validation.errors, ...validation.warnings],
+    collisions,
   };
 }
 

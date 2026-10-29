@@ -65,13 +65,27 @@ describe('PolicyForm 词汇保存错误', () => {
 
     await waitFor(() => expect(h.toastError).toHaveBeenCalled());
     expect(h.toastError).toHaveBeenCalledWith('saveFailed', {
-      description: 'saveErrorCodes.vocabulary_scope_invalid_term(alter)',
+      description: 'saveErrorCodes.vocabulary_scope_parent_required_term(alter)',
     });
     const banner = screen.getByRole('alert');
-    expect(banner.textContent).toContain('saveErrorCodes.vocabulary_scope_invalid_term(alter)');
+    expect(banner.textContent).toContain('saveErrorCodes.vocabulary_scope_parent_required_term(alter)');
     expect(banner.textContent).not.toContain('缺少');
     const link = screen.getByRole('link', { name: 'openVocabulary' });
     expect(link.getAttribute('href')).toBe('/de/domain-vocabularies');
+  });
+
+  // #650：缺 parent 与字面量冲突各用自己的文案，不再共用一段同时讲两件事的通用说明
+  it.each([
+    ['member_parent_required', 'Hoch', 'saveErrorCodes.vocabulary_scope_parent_required_term(Hoch)'],
+    ['member_parent_required', undefined, 'saveErrorCodes.vocabulary_scope_parent_required'],
+    ['literal_conflict', 'hoch', 'saveErrorCodes.vocabulary_scope_literal_conflict_term(hoch)'],
+    ['literal_conflict', undefined, 'saveErrorCodes.vocabulary_scope_literal_conflict'],
+    ['something_new', 'x', 'saveErrorCodes.vocabulary_scope_invalid_term(x)'],
+  ])('reason=%s term=%s → %s', async (reason, term, expected) => {
+    renderForm(async () => ({ message: 'x', code: 'vocabulary_scope_invalid', reason, term }));
+    fireEvent.click(screen.getByRole('button', { name: 'save' }));
+    await waitFor(() => expect(h.toastError).toHaveBeenCalled());
+    expect(h.toastError).toHaveBeenCalledWith('saveFailed', { description: expected });
   });
 
   it('vocabulary_scope_invalid 无 term → 通用提示，仍链接到词汇页', async () => {

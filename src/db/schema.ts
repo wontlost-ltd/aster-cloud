@@ -16,6 +16,8 @@ import {
   uniqueIndex,
   index,
   check,
+  unique,
+  foreignKey,
 } from 'drizzle-orm/pg-core';
 import { desc, relations, sql } from 'drizzle-orm';
 
@@ -78,8 +80,8 @@ export const eventSeverityEnum = pgEnum('EventSeverity', [
 export const executionSourceEnum = pgEnum('ExecutionSource', [
   'dashboard',
   'api',
-  'cli',
   'playground',
+  'cli',
 ]);
 
 // 执行决策结果（ADR 0022 后续）。与 boolean success（=allowed，准入通过）正交、更细：
@@ -154,21 +156,25 @@ export const sessions = pgTable(
   'Session',
   {
     id: text('id').primaryKey().notNull(),
-    sessionToken: text('sessionToken').notNull().unique(),
+    sessionToken: text('sessionToken').notNull(),
     userId: text('userId').notNull(),
-    expires: timestamp('expires', { mode: 'date' }).notNull(),
+    expires: timestamp('expires', { mode: 'date', precision: 3 }).notNull(),
   },
-  (table) => [index('Session_userId_idx').on(table.userId)]
+  (table) => [
+    uniqueIndex('Session_sessionToken_key').on(table.sessionToken),
+    index('Session_userId_idx').on(table.userId),
+  ]
 );
 
 export const verificationTokens = pgTable(
   'VerificationToken',
   {
     identifier: text('identifier').notNull(),
-    token: text('token').notNull().unique(),
-    expires: timestamp('expires', { mode: 'date' }).notNull(),
+    token: text('token').notNull(),
+    expires: timestamp('expires', { mode: 'date', precision: 3 }).notNull(),
   },
   (table) => [
+    uniqueIndex('VerificationToken_token_key').on(table.token),
     uniqueIndex('VerificationToken_identifier_token_key').on(
       table.identifier,
       table.token
@@ -215,7 +221,7 @@ export const trustedDevices = pgTable(
     id: text('id').primaryKey().notNull(),
     userId: text('userId').notNull(),
     /** sha256(随机 token) 的小写 hex —— ★不存明文，也不存指纹 */
-    tokenHash: text('tokenHash').notNull().unique(),
+    tokenHash: text('tokenHash').notNull(),
     /** 粗粒度可读标签，仅供用户辨认；★不是完整 UA */
     label: text('label'),
     expires: timestamp('expires', { mode: 'date' }).notNull(),
@@ -223,6 +229,7 @@ export const trustedDevices = pgTable(
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
   },
   (table) => [
+    uniqueIndex('TrustedDevice_tokenHash_unique').on(table.tokenHash),
     index('TrustedDevice_userId_idx').on(table.userId),
     index('TrustedDevice_expires_idx').on(table.expires),
   ]
@@ -245,7 +252,7 @@ export const totpCredentials = pgTable(
   {
     id: text('id').primaryKey().notNull(),
     /** 一个用户至多一个 TOTP 绑定 */
-    userId: text('userId').notNull().unique(),
+    userId: text('userId').notNull(),
     /** pgp_sym_encrypt 后的 base32 secret —— ★必须可逆，不能存 hash */
     encryptedSecret: text('encryptedSecret').notNull(),
     /** null = 尚未确认（候选状态），非 null = 已启用 */
@@ -259,7 +266,10 @@ export const totpCredentials = pgTable(
     lastUsedCounter: integer('lastUsedCounter'),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
   },
-  (table) => [index('TotpCredential_userId_idx').on(table.userId)]
+  (table) => [
+    uniqueIndex('TotpCredential_userId_key').on(table.userId),
+    index('TotpCredential_userId_idx').on(table.userId),
+  ]
 );
 
 /**
@@ -335,11 +345,12 @@ export const passwordResetTokens = pgTable(
   {
     id: text('id').primaryKey().notNull(),
     email: text('email').notNull(),
-    token: text('token').notNull().unique(),
-    expires: timestamp('expires', { mode: 'date' }).notNull(),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    token: text('token').notNull(),
+    expires: timestamp('expires', { mode: 'date', precision: 3 }).notNull(),
+    createdAt: timestamp('createdAt', { mode: 'date', precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
+    uniqueIndex('PasswordResetToken_token_key').on(table.token),
     index('PasswordResetToken_email_idx').on(table.email),
     index('PasswordResetToken_token_idx').on(table.token),
   ]
@@ -354,7 +365,7 @@ export const users = pgTable(
   {
     id: text('id').primaryKey().notNull(),
     name: text('name'),
-    email: text('email').unique(),
+    email: text('email'),
     /**
      * 反多重注册去重键（gmail+xxx 剥离、点号去除、toLowerCase）
      * 详见 lib/email-normalize.ts
@@ -372,8 +383,8 @@ export const users = pgTable(
 
     // Subscription
     plan: planEnum('plan').default('free').notNull(),
-    stripeCustomerId: text('stripeCustomerId').unique(),
-    subscriptionId: text('subscriptionId').unique(),
+    stripeCustomerId: text('stripeCustomerId'),
+    subscriptionId: text('subscriptionId'),
     subscriptionStatus: subscriptionStatusEnum('subscriptionStatus'),
     // 老用户保护：首次锁定价格的时间，决定走 LEGACY_PLAN_LIMITS 还是 PM_PLAN_LIMITS_V2
     priceLockedAt: timestamp('priceLockedAt', { mode: 'date' }),
@@ -494,11 +505,18 @@ export const users = pgTable(
     updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
   },
   (table) => [
-    index('User_email_idx').on(table.email),
-    index('User_stripeCustomerId_idx').on(table.stripeCustomerId),
-    uniqueIndex('User_emailNormalized_unique').on(table.emailNormalized),
+    uniqueIndex('User_subscriptionId_unique').on(table.subscriptionId),
+    uniqueIndex('User_stripeCustomerId_unique').on(table.stripeCustomerId),
+    uniqueIndex('User_email_unique').on(table.email),
+    uniqueIndex('User_emailNormalized_unique')
+      .on(table.emailNormalized)
+      .where(sql`${table.emailNormalized} IS NOT NULL`),
     // 用于 cron 找到所有该 hard-purge 的墓碑用户
-    index('User_purgePendingUntil_idx').on(table.purgePendingUntil),
+    index('User_purgePendingUntil_idx')
+      .on(table.purgePendingUntil)
+      .where(sql`${table.purgePendingUntil} IS NOT NULL`),
+    // 风险分层 cron 只扫有风险的用户
+    index('User_riskTier_idx').on(table.riskTier).where(sql`${table.riskTier} > 0`),
   ]
 );
 
@@ -538,14 +556,15 @@ export const apiKeys = pgTable(
     // 团队作用域：非空即「成员以该团队身份使用」，角色在解析时从 TeamMember 现查（ADR 0015 §1）
     teamId: text('teamId'),
     name: text('name').notNull(),
-    key: text('key').notNull().unique(),
+    key: text('key').notNull(),
     prefix: text('prefix').notNull(),
-    lastUsedAt: timestamp('lastUsedAt', { mode: 'date' }),
-    expiresAt: timestamp('expiresAt', { mode: 'date' }),
-    revokedAt: timestamp('revokedAt', { mode: 'date' }),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    lastUsedAt: timestamp('lastUsedAt', { mode: 'date', precision: 3 }),
+    expiresAt: timestamp('expiresAt', { mode: 'date', precision: 3 }),
+    revokedAt: timestamp('revokedAt', { mode: 'date', precision: 3 }),
+    createdAt: timestamp('createdAt', { mode: 'date', precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
+    uniqueIndex('ApiKey_key_key').on(table.key),
     index('ApiKey_userId_idx').on(table.userId),
     index('ApiKey_prefix_idx').on(table.prefix),
     index('ApiKey_teamId_idx').on(table.teamId),
@@ -568,8 +587,8 @@ export const policyGroups = pgTable(
     userId: text('userId'),
     teamId: text('teamId'),
     isSystem: boolean('isSystem').default(false).notNull(),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
+    createdAt: timestamp('createdAt', { mode: 'date', precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date', precision: 3 }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
   (table) => [
     index('PolicyGroup_parentId_idx').on(table.parentId),
@@ -595,15 +614,16 @@ export const policies = pgTable(
     content: text('content').notNull(),
     version: integer('version').default(1).notNull(),
     isPublic: boolean('isPublic').default(false).notNull(),
-    shareSlug: text('shareSlug').unique(),
-    piiFields: json('piiFields'),
-    deletedAt: timestamp('deletedAt', { mode: 'date' }),
+    shareSlug: text('shareSlug'),
+    piiFields: jsonb('piiFields'),
+    deletedAt: timestamp('deletedAt', { mode: 'date', precision: 3 }),
     deletedBy: text('deletedBy'),
     deleteReason: text('deleteReason'),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
+    createdAt: timestamp('createdAt', { mode: 'date', precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date', precision: 3 }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
   (table) => [
+    uniqueIndex('Policy_shareSlug_key').on(table.shareSlug),
     index('Policy_userId_idx').on(table.userId),
     index('Policy_teamId_idx').on(table.teamId),
     index('Policy_groupId_idx').on(table.groupId),
@@ -682,7 +702,7 @@ export const policyApprovals = pgTable(
     approverId: text('approverId').notNull(),
     decision: approvalDecisionEnum('decision').notNull(),
     comment: text('comment'),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    createdAt: timestamp('createdAt', { mode: 'date', precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     index('PolicyApproval_versionId_idx').on(table.versionId),
@@ -699,13 +719,14 @@ export const usedNonces = pgTable(
   'UsedNonce',
   {
     id: text('id').primaryKey().notNull(),
-    nonce: text('nonce').notNull().unique(),
+    nonce: text('nonce').notNull(),
     policyId: text('policyId'),
     userId: text('userId'),
-    usedAt: timestamp('usedAt', { mode: 'date' }).defaultNow().notNull(),
-    expiresAt: timestamp('expiresAt', { mode: 'date' }).notNull(),
+    usedAt: timestamp('usedAt', { mode: 'date', precision: 3 }).defaultNow().notNull(),
+    expiresAt: timestamp('expiresAt', { mode: 'date', precision: 3 }).notNull(),
   },
   (table) => [
+    uniqueIndex('UsedNonce_nonce_key').on(table.nonce),
     index('UsedNonce_expiresAt_idx').on(table.expiresAt),
     index('UsedNonce_policyId_idx').on(table.policyId),
   ]
@@ -794,8 +815,8 @@ export const securityEvents = pgTable(
     ipAddress: text('ipAddress'),
     userAgent: text('userAgent'),
     requestId: text('requestId'),
-    details: json('details').notNull(),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    details: jsonb('details').notNull(),
+    createdAt: timestamp('createdAt', { mode: 'date', precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     index('SecurityEvent_eventType_idx').on(table.eventType),
@@ -817,15 +838,15 @@ export const policyRecycleBins = pgTable(
     // 留下孤儿行，回收站列表读到 policy=null 后整页 500（#603）。
     policyId: text('policyId')
       .notNull()
-      .unique()
       .references(() => policies.id, { onDelete: 'cascade' }),
     userId: text('userId').notNull(),
-    snapshot: json('snapshot').notNull(),
-    deletedAt: timestamp('deletedAt', { mode: 'date' }).defaultNow().notNull(),
+    snapshot: jsonb('snapshot').notNull(),
+    deletedAt: timestamp('deletedAt', { mode: 'date', precision: 3 }).defaultNow().notNull(),
     deletedBy: text('deletedBy').notNull(),
-    expiresAt: timestamp('expiresAt', { mode: 'date' }).notNull(),
+    expiresAt: timestamp('expiresAt', { mode: 'date', precision: 3 }).notNull(),
   },
   (table) => [
+    uniqueIndex('PolicyRecycleBin_policyId_key').on(table.policyId),
     index('PolicyRecycleBin_userId_idx').on(table.userId),
     index('PolicyRecycleBin_expiresAt_idx').on(table.expiresAt),
   ]
@@ -841,8 +862,8 @@ export const executions = pgTable(
     id: text('id').primaryKey().notNull(),
     userId: text('userId').notNull(),
     policyId: text('policyId').notNull(),
-    input: json('input').notNull(),
-    output: json('output'),
+    input: jsonb('input').notNull(),
+    output: jsonb('output'),
     error: text('error'),
     durationMs: integer('durationMs').notNull(),
     // success：沿用旧语义 = 准入通过（allowed）。真实拒绝/无决策/错误均 success=false。
@@ -855,7 +876,7 @@ export const executions = pgTable(
     policyVersion: integer('policyVersion'),
     source: executionSourceEnum('source').default('dashboard').notNull(),
     apiKeyId: text('apiKeyId'),
-    metadata: json('metadata'),
+    metadata: jsonb('metadata'),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
 
     // ═══ P0-A 决策级持久层（ADR 0030 附录 A.1）——回放地基 ═══
@@ -1141,9 +1162,7 @@ export const regressionDriftApprovals = pgTable(
     // 被审批的失败报告（不可变引用）+ 其 reportHash（钉死审批针对的确切报告内容）。
     // ★Item 3（迁移 0039）：FK 到 RegressionReport——防直插引用不存在报告的审批（append-only 无 DELETE，
     // 故 ON DELETE NO ACTION）。父表 reportHash/policyId/policyVersionRowId 一致性由 INSERT trigger 校验。
-    reportId: text('reportId')
-      .notNull()
-      .references(() => regressionReports.id, { onDelete: 'no action' }),
+    reportId: text('reportId').notNull(),
     reportHash: text('reportHash').notNull(),
     policyId: text('policyId').notNull(),
     policyVersionRowId: text('policyVersionRowId').notNull(),
@@ -1167,6 +1186,11 @@ export const regressionDriftApprovals = pgTable(
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
   },
   (table) => [
+    foreignKey({
+      name: 'RegressionDriftApproval_reportId_fkey',
+      columns: [table.reportId],
+      foreignColumns: [regressionReports.id],
+    }).onDelete('no action'),
     index('RegressionDriftApproval_reportId_idx').on(table.reportId),
     index('RegressionDriftApproval_policyVersionRowId_idx').on(table.policyVersionRowId),
     // ★一份报告对同一 approver 只允许**一条有效（未撤销）**审批（partial unique；撤销后可再建）。
@@ -1236,8 +1260,8 @@ export const usageRecords = pgTable(
     type: usageTypeEnum('type').notNull(),
     count: integer('count').default(1).notNull(),
     period: text('period').notNull(),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
+    createdAt: timestamp('createdAt', { mode: 'date', precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date', precision: 3 }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex('UsageRecord_userId_type_period_key').on(
@@ -1258,7 +1282,7 @@ export const teams = pgTable(
   {
     id: text('id').primaryKey().notNull(),
     name: text('name').notNull(),
-    slug: text('slug').notNull().unique(),
+    slug: text('slug').notNull(),
     ownerId: text('ownerId').notNull(),
     // 团队向其用户开放的 UI 语言白名单（locale 代号数组，如 ['en','hi']）。
     // null = 未配置 = 所有后端可用语言都开放（默认行为，不破坏现有团队）。
@@ -1269,8 +1293,8 @@ export const teams = pgTable(
     updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
   (table) => [
+    uniqueIndex('Team_slug_unique').on(table.slug),
     index('Team_ownerId_idx').on(table.ownerId),
-    index('Team_slug_idx').on(table.slug),
   ]
 );
 
@@ -1287,7 +1311,7 @@ export const teamMembers = pgTable(
     role: teamRoleEnum('role').default('member').notNull(),
     /** 业务角色（ADR 0042 §2.1）：审批规则 required role 精确匹配的对象，经 verify/快照下发 aster-api。 */
     businessRoles: text('businessRoles').array().notNull().default([]),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    createdAt: timestamp('createdAt', { mode: 'date', precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     uniqueIndex('TeamMember_teamId_userId_key').on(table.teamId, table.userId),
@@ -1306,11 +1330,12 @@ export const teamInvitations = pgTable(
     teamId: text('teamId').notNull(),
     email: text('email').notNull(),
     role: teamRoleEnum('role').default('member').notNull(),
-    token: text('token').notNull().unique(),
-    expiresAt: timestamp('expiresAt', { mode: 'date' }).notNull(),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    token: text('token').notNull(),
+    expiresAt: timestamp('expiresAt', { mode: 'date', precision: 3 }).notNull(),
+    createdAt: timestamp('createdAt', { mode: 'date', precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
+    uniqueIndex('TeamInvitation_token_key').on(table.token),
     index('TeamInvitation_teamId_idx').on(table.teamId),
     index('TeamInvitation_email_idx').on(table.email),
     index('TeamInvitation_token_idx').on(table.token),
@@ -1334,7 +1359,7 @@ export const platformSettings = pgTable(
   'PlatformSetting',
   {
     key: text('key').primaryKey().notNull(),
-    value: json('value').notNull(),
+    value: jsonb('value').notNull(),
     updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
     updatedBy: text('updatedBy'),
   },
@@ -1419,7 +1444,7 @@ export const notifications = pgTable(
     id: text('id').primaryKey().notNull(),
     userId: text('userId').notNull(),
     kind: text('kind').notNull(),
-    data: json('data').notNull(),
+    data: jsonb('data').notNull(),
     readAt: timestamp('readAt', { mode: 'date' }),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
   },
@@ -1442,11 +1467,11 @@ export const complianceReports = pgTable(
     type: complianceTypeEnum('type').notNull(),
     title: text('title').notNull(),
     status: reportStatusEnum('status').default('generating').notNull(),
-    data: json('data'),
+    data: jsonb('data'),
     policyIds: text('policyIds').array(),
     period: text('period'),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    completedAt: timestamp('completedAt', { mode: 'date' }),
+    createdAt: timestamp('createdAt', { mode: 'date', precision: 3 }).defaultNow().notNull(),
+    completedAt: timestamp('completedAt', { mode: 'date', precision: 3 }),
   },
   (table) => [
     index('ComplianceReport_userId_idx').on(table.userId),
@@ -1467,10 +1492,10 @@ export const auditLogs = pgTable(
     action: text('action').notNull(),
     resource: text('resource').notNull(),
     resourceId: text('resourceId'),
-    metadata: json('metadata'),
+    metadata: jsonb('metadata'),
     ipAddress: text('ipAddress'),
     userAgent: text('userAgent'),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    createdAt: timestamp('createdAt', { mode: 'date', precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     index('AuditLog_userId_idx').on(table.userId),
@@ -1488,13 +1513,14 @@ export const demoSessions = pgTable(
   'DemoSession',
   {
     id: text('id').primaryKey().notNull(),
-    sessionId: text('sessionId').notNull().unique(),
+    sessionId: text('sessionId').notNull(),
     ipAddress: text('ipAddress'),
     userAgent: text('userAgent'),
-    expiresAt: timestamp('expiresAt', { mode: 'date' }).notNull(),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    expiresAt: timestamp('expiresAt', { mode: 'date', precision: 3 }).notNull(),
+    createdAt: timestamp('createdAt', { mode: 'date', precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
+    uniqueIndex('DemoSession_sessionId_key').on(table.sessionId),
     index('DemoSession_expiresAt_idx').on(table.expiresAt),
     index('DemoSession_sessionId_idx').on(table.sessionId),
   ]
@@ -1509,10 +1535,10 @@ export const demoPolicies = pgTable(
     description: text('description'),
     content: text('content').notNull(),
     version: integer('version').default(1).notNull(),
-    defaultInput: json('defaultInput'),
-    piiFields: json('piiFields'),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull().$onUpdate(() => new Date()),
+    defaultInput: jsonb('defaultInput'),
+    piiFields: jsonb('piiFields'),
+    createdAt: timestamp('createdAt', { mode: 'date', precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date', precision: 3 }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
   (table) => [index('DemoPolicy_sessionId_idx').on(table.sessionId)]
 );
@@ -1525,7 +1551,7 @@ export const demoPolicyVersions = pgTable(
     version: integer('version').notNull(),
     content: text('content').notNull(),
     comment: text('comment'),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    createdAt: timestamp('createdAt', { mode: 'date', precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     uniqueIndex('DemoPolicyVersion_policyId_version_key').on(
@@ -1542,12 +1568,12 @@ export const demoExecutions = pgTable(
     id: text('id').primaryKey().notNull(),
     sessionId: text('sessionId').notNull(),
     policyId: text('policyId').notNull(),
-    input: json('input').notNull(),
-    output: json('output'),
+    input: jsonb('input').notNull(),
+    output: jsonb('output'),
     error: text('error'),
     durationMs: integer('durationMs').notNull(),
     success: boolean('success').notNull(),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    createdAt: timestamp('createdAt', { mode: 'date', precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     index('DemoExecution_sessionId_idx').on(table.sessionId),
@@ -1564,8 +1590,8 @@ export const demoAuditLogs = pgTable(
     action: text('action').notNull(),
     resource: text('resource').notNull(),
     resourceId: text('resourceId'),
-    metadata: json('metadata'),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    metadata: jsonb('metadata'),
+    createdAt: timestamp('createdAt', { mode: 'date', precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     index('DemoAuditLog_sessionId_idx').on(table.sessionId),
@@ -1905,6 +1931,8 @@ export const licenseTelemetry = pgTable(
       desc(table.receivedAt),
     ),
     index('LicenseTelemetry_received_idx').on(table.receivedAt),
+    // 同一许可证同一统计窗口只收一条（重复上报幂等）
+    unique('LicenseTelemetry_unique_window').on(table.licenseId, table.periodStart, table.periodEnd),
     index('LicenseTelemetry_customer_received_idx').on(
       table.customer,
       desc(table.receivedAt),
@@ -1932,6 +1960,10 @@ export const telemetryAccessAudit = pgTable(
     index('TelemetryAccessAudit_at_idx').on(desc(table.at)),
     index('TelemetryAccessAudit_subject_idx').on(table.subjectKind, table.subjectKey),
     index('TelemetryAccessAudit_actor_idx').on(table.actorId, desc(table.at)),
+    check(
+      'TelemetryAccessAudit_action_check',
+      sql`${table.action} IN ('read-list', 'read-single', 'delete-customer', 'delete-license', 'delete-by-dsar', 'retention-gc', 'dry-run-preview')`,
+    ),
   ]
 );
 
@@ -1960,15 +1992,20 @@ export const issuedLicenses = pgTable(
     supersededBy: text('superseded_by'),
   },
   (table) => [
-    index('IssuedLicense_stripe_session_idx').on(table.stripeCheckoutSessionId),
-    index('IssuedLicense_stripe_subscription_idx').on(table.stripeSubscriptionId),
+    index('IssuedLicense_stripe_session_idx')
+      .on(table.stripeCheckoutSessionId)
+      .where(sql`${table.stripeCheckoutSessionId} IS NOT NULL`),
+    index('IssuedLicense_stripe_subscription_idx')
+      .on(table.stripeSubscriptionId)
+      .where(sql`${table.stripeSubscriptionId} IS NOT NULL`),
     index('IssuedLicense_customer_expires_idx').on(table.customer, desc(table.expiresAt)),
-    index('IssuedLicense_renewed_from_idx').on(table.renewedFromLicenseId),
+    index('IssuedLicense_renewed_from_idx')
+      .on(table.renewedFromLicenseId)
+      .where(sql`${table.renewedFromLicenseId} IS NOT NULL`),
     // Partial index for the overlap-expiry cron: rows pending supersede
-    index('IssuedLicense_pending_supersede_idx').on(
-      table.supersededBy,
-      table.expiresAt,
-    ),
+    index('IssuedLicense_pending_supersede_idx')
+      .on(table.supersededBy, table.expiresAt)
+      .where(sql`${table.supersededAt} IS NULL AND ${table.supersededBy} IS NOT NULL`),
   ]
 );
 
@@ -2334,6 +2371,7 @@ export const cronJobLease = pgTable(
     uniqueIndex('CronJobLease_job_window_unique').on(table.jobName, table.windowStart),
     index('CronJobLease_status_idx').on(table.status, desc(table.acquiredAt)),
     index('CronJobLease_acquired_at_idx').on(desc(table.acquiredAt)),
+    check('CronJobLease_status_check', sql`${table.status} IN ('running', 'done', 'failed')`),
   ]
 );
 

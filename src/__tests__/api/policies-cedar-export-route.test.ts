@@ -31,12 +31,13 @@ vi.mock('drizzle-orm', () => ({
   isNull: (col: { name: string }) => ({ isNull: col.name }),
 }));
 // 版本词汇（ADR 0051）：语言判定用真实实现，词汇按用例给定
-const compileContext = vi.hoisted(() => ({ vocabulary: undefined as Record<string, unknown> | undefined, calls: [] as unknown[] }));
+const compileContext = vi.hoisted(() => ({ vocabulary: undefined as Record<string, unknown> | undefined, calls: [] as unknown[], error: undefined as Error | undefined }));
 vi.mock('@/lib/execution-input', async () => {
   const { resolveStoredVersionLocale } = await vi.importActual<typeof import('@/lib/policy-version-locale')>('@/lib/policy-version-locale');
   return {
     loadStoredVersionCompileContext: async (v: Parameters<typeof resolveStoredVersionLocale>[0]) => {
       compileContext.calls.push(v);
+      if (compileContext.error) throw compileContext.error;
       return { locale: resolveStoredVersionLocale(v), vocabulary: compileContext.vocabulary };
     },
   };
@@ -65,6 +66,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   compileContext.vocabulary = undefined;
   compileContext.calls = [];
+  compileContext.error = undefined;
   getSession.mockResolvedValue({ user: { id: 'u1' } });
   h.checkRateLimit.mockReturnValue({ allowed: true, remaining: 19, resetAt: Date.now() + 60_000 });
   h.createClient.mockResolvedValue({ exportCedar });
@@ -140,6 +142,32 @@ describe('POST /api/policies/[id]/export/cedar', () => {
     compileContext.vocabulary = undefined;
     await POST(req(), ctx('p1'));
     expect(exportCedar.mock.calls[1][0]).not.toHaveProperty('vocabulary');
+  });
+
+  // #650：Cedar 产物必须按与执行同一份词汇编译；词汇加载失败不能静默按无词汇导出
+  it('503 vocabulary_unavailable when the version vocabulary cannot be loaded; nothing is exported', async () => {
+    findFirst.mockResolvedValue(owned());
+    findExecutable.mockResolvedValue(executable());
+    compileContext.error = Object.assign(new Error('Domain vocabulary could not be loaded.'), {
+      name: 'VersionVocabularyUnavailableError', code: 'vocabulary_unavailable',
+    });
+    const res = await POST(req(), ctx('p1'));
+    expect(res.status).toBe(503);
+    expect(res.headers.get('Retry-After')).toBeTruthy();
+    expect(await res.json()).toMatchObject({ code: 'vocabulary_unavailable' });
+    expect(exportCedar).not.toHaveBeenCalled();
+  });
+
+  it('400 vocabulary_scope_invalid when the author vocabulary is invalid', async () => {
+    findFirst.mockResolvedValue(owned());
+    findExecutable.mockResolvedValue(executable({ status: 'DRAFT' }));
+    compileContext.error = Object.assign(new Error('member_parent_required: 枚举成员 "Hoch" 缺少 parent'), {
+      name: 'VocabularyScopeError', code: 'member_parent_required',
+    });
+    const res = await POST(req(), ctx('p1'));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ code: 'vocabulary_scope_invalid', term: 'Hoch' });
+    expect(exportCedar).not.toHaveBeenCalled();
   });
 
   it('falls back to content when the executable version has no source column', async () => {

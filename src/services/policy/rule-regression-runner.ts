@@ -951,6 +951,7 @@ export interface VersionVocabularyRow {
 /**
  * 按 locale 取版本词汇（ADR 0051：名称按位置解析依赖词汇，回归基线与回放必须与执行同一份）。
  * 作用域按 locale 选取，同一 run 内各 case 的 locale 可能不同，按 locale 缓存只加载一次。
+ * 严格加载：失败抛错而不退化为无词汇（否则基线 / 回放被静默算错），由 {@link caseVocabulary} 归类。
  */
 export function versionVocabularyLoader(
   pv: VersionVocabularyRow,
@@ -965,10 +966,33 @@ export function versionVocabularyLoader(
       authorId: pv.createdBy,
       source: pv.content,
       locale,
-    });
+    }, { strict: true });
     cache.set(locale, loaded);
     return loaded;
   };
+}
+
+/** case 词汇加载结果：失败时给出不可回放理由（词汇加载失败 / 作者词汇非法）。 */
+export type CaseVocabulary =
+  | { ok: true; vocabulary: Record<string, unknown> | undefined }
+  | { ok: false; reason: 'VOCABULARY_UNAVAILABLE' | 'VOCABULARY_SCOPE_INVALID' };
+
+/**
+ * 取某个 case 用的版本词汇。词汇取不到时该 case 既不能算通过也不能算回归（不是策略行为变化），
+ * 调用方据此标记不可回放 / 跳过冻结。
+ */
+export async function caseVocabulary(
+  vocabularyFor: ((locale: string) => Promise<Record<string, unknown> | undefined>) | null,
+  locale: string,
+): Promise<CaseVocabulary> {
+  if (!vocabularyFor) return { ok: true, vocabulary: undefined };
+  try {
+    return { ok: true, vocabulary: await vocabularyFor(locale) };
+  } catch (err) {
+    const scopeInvalid = err instanceof Error && err.name === 'VocabularyScopeError';
+    if (!scopeInvalid) console.warn('[rule-regression] version vocabulary could not be loaded', err);
+    return { ok: false, reason: scopeInvalid ? 'VOCABULARY_SCOPE_INVALID' : 'VOCABULARY_UNAVAILABLE' };
+  }
 }
 
 /**
@@ -1043,6 +1067,8 @@ export async function freezeHandwritten(params: {
   const ownerUserId = params.ownerUserId ?? actorUserId;
   const retentionEnabled = await isReplayRetentionEnabled(ownerUserId);
   const result: FreezeResult = { frozen: 0, duplicate: 0, skipped: 0, outputConflicts: [], caseIds: [], skippedReasons: [] };
+  // 同一版本的多个 case 共用一个词汇加载器（按 locale 缓存），一次冻结每版本每 locale 只加载一次
+  const vocabularyLoaders = new Map<string, ReturnType<typeof versionVocabularyLoader>>();
 
   for (const hc of cases) {
     // 载入版本内容 + 冻结 aliasSet + toolchain。★版本行必须属于本 policyId（Codex 复审 #2）：
@@ -1070,6 +1096,15 @@ export async function freezeHandwritten(params: {
     const locale = hc.locale ?? detectCNLLocale(pv.content);
     const aliasSet = parseAliasSet(pv.aliasSet);
 
+    const loader = vocabularyLoaders.get(pv.id) ?? versionVocabularyLoader(pv);
+    vocabularyLoaders.set(pv.id, loader);
+    const vocab = await caseVocabulary(loader, locale);
+    if (!vocab.ok) {
+      result.skipped++;
+      result.skippedReasons.push(`${vocab.reason.toLowerCase()}:${hc.functionName}`);
+      continue;
+    }
+
     let captured;
     try {
       captured = await evaluateForCapture({
@@ -1080,7 +1115,7 @@ export async function freezeHandwritten(params: {
         locale,
         functionName: hc.functionName,
         aliasSet,
-        vocabulary: await versionVocabularyLoader(pv)(locale),
+        vocabulary: vocab.vocabulary,
       });
     } catch (e) {
       result.skipped++;
@@ -1321,6 +1356,14 @@ export async function run(params: {
       continue;
     }
 
+    // 词汇取不到：无法按与执行同一份编译输入回放，标不可回放（不算通过，也不算策略回归）
+    const vocab = await caseVocabulary(vocabularyFor, c.locale);
+    if (!vocab.ok) {
+      nonReplayable++;
+      details.push({ ...base, reason: vocab.reason });
+      continue;
+    }
+
     let captured;
     try {
       captured = await evaluateForCapture({
@@ -1331,7 +1374,7 @@ export async function run(params: {
         locale: c.locale,
         functionName: c.functionName,
         aliasSet,
-        vocabulary: await vocabularyFor?.(c.locale),
+        vocabulary: vocab.vocabulary,
       });
     } catch (e) {
       // 编译/评估失败 = 回归（Layer 1 编译漂移）。

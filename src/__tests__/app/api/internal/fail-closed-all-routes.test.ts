@@ -23,6 +23,7 @@ vi.mock('@/lib/prisma', () => ({
   users: {}, apiKeys: {}, teams: {}, teamMembers: {}, apiCallRecords: {},
 }));
 vi.mock('@/lib/plans', () => ({ getEffectiveLimits: boom }));
+vi.mock('@/lib/cache', () => ({ invalidatePolicyCacheReporting: boom }));
 vi.mock('@/lib/ai-quota', () => ({ checkAiQuota: boom, recordAiUsage: boom }));
 vi.mock('@/lib/api-rate-limiter', () => ({ checkRate: boom }));
 vi.mock('@/lib/team-permissions', () => ({ SOLO_TENANT_ROLE: 'owner' }));
@@ -53,6 +54,7 @@ const CASES: Case[] = [
   { name: 'api/rate-check POST', path: '/api/internal/api/rate-check', method: 'POST', mod: '@/app/api/internal/api/rate-check/route' },
   { name: 'api/usage GET', path: '/api/internal/api/usage', method: 'GET', mod: '@/app/api/internal/api/usage/route' },
   { name: 'api/usage POST', path: '/api/internal/api/usage', method: 'POST', mod: '@/app/api/internal/api/usage/route' },
+  { name: 'policies/[id]/invalidate-cache POST', path: '/api/internal/policies/p1/invalidate-cache', method: 'POST', mod: '@/app/api/internal/policies/[id]/invalidate-cache/route', params: { id: 'p1' } },
 ];
 
 describe('internal routes fail-closed when HMAC key unset (audit #168)', () => {

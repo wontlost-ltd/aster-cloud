@@ -138,6 +138,30 @@ describe('内部端点：策略版本源码', () => {
     }));
   });
 
+  // #650：重放必须与执行同一份词汇；词汇加载失败不能退化为无词汇（重放结果会被静默算错）
+  it('版本词汇加载失败 → 503 vocabulary_unavailable + Retry-After，不返回源码', async () => {
+    rows.value = [{ id: 'v-uuid', policyId: 'p1', version: 2, content: 'Module x.', status: 'APPROVED' }];
+    loadStoredVersionCompileContext.mockRejectedValueOnce(
+      Object.assign(new Error('Domain vocabulary could not be loaded.'), { name: 'VersionVocabularyUnavailableError', code: 'vocabulary_unavailable' }),
+    );
+    const res = await GET(req());
+    expect(res.status).toBe(503);
+    expect(res.headers.get('Retry-After')).toBeTruthy();
+    const body = await res.json();
+    expect(body).toMatchObject({ error: 'vocabulary_unavailable', code: 'vocabulary_unavailable' });
+    expect(body).not.toHaveProperty('content');
+  });
+
+  it('作者词汇非法 → 400 vocabulary_scope_invalid', async () => {
+    rows.value = [{ id: 'v-uuid', policyId: 'p1', version: 2, content: 'Module x.', status: 'DRAFT' }];
+    loadStoredVersionCompileContext.mockRejectedValueOnce(
+      Object.assign(new Error('field_parent_required: 字段 "alter" 缺少 parent'), { name: 'VocabularyScopeError', code: 'field_parent_required' }),
+    );
+    const res = await GET(req());
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ code: 'vocabulary_scope_invalid', reason: 'field_parent_required', term: 'alter' });
+  });
+
   it('★查不到 → 404，且不区分"不存在"与"不属于你"', async () => {
     rows.value = [];
     const res = await GET(req());

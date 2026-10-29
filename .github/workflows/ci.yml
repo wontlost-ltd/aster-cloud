@@ -969,3 +969,39 @@ jobs:
           export PR_LABELS="$(jq -r '.labels[].name' <<< "$pr_json" | paste -sd, -)"
           export PR_BODY="$(jq -r '.body' <<< "$pr_json")"
           node scripts/ci/check-migration-split.mjs
+
+  # #646：迁移链重放结果必须与 schema.ts 一致。build 里的 `db:generate` 漂移检查只比 schema.ts 与
+  # drizzle/meta 快照，看不到手写迁移 SQL 漏建的索引 / 约束（生产 PolicyVersion 唯一索引因此缺失）。
+  # 这里用一次性 Postgres 分别按迁移链与 schema.ts 建库，逐项比对列 / 索引 / 约束 / enum。
+  migration-schema-drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: drift_check
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - name: 迁移链与 schema.ts 逐项比对
+        env:
+          LICENSE_E2E: '1'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/drift_check
+        run: pnpm exec vitest run --config vitest.integration.config.ts schema-migration-drift

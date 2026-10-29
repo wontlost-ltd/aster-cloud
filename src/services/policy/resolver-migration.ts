@@ -23,6 +23,7 @@ import { RESOLVER_VERSION } from '@aster-cloud/aster-lang-ts/browser';
 import type { DomainVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
 import { db, policies, policyVersions } from '@/lib/prisma';
 import { invalidatePolicyCache } from '@/lib/cache';
+import { invalidatePolicyCacheRemote } from '@/lib/policy-cache-remote';
 import { cloudToolchainId, computeSourceEnvelope, vocabularyScopesJson } from '@/lib/policy-alias';
 import { recordedCompileLocale, resolveStoredVersionLocale } from '@/lib/policy-version-locale';
 import { executionVocabularySource } from '@/lib/execution-input';
@@ -32,7 +33,7 @@ import {
   type SnapshotRef,
 } from '@/lib/domain-vocabulary-snapshot';
 import type { PolicyVocabularyContext } from '@/lib/domain-vocabulary-scope';
-import { makeCompileValidator } from '@/lib/policy-compile-validator';
+import { hasSourceError, makeCompileValidator } from '@/lib/policy-compile-validator';
 import { policyTenantId } from '@/lib/policy-tenant';
 import { vocabularyScopeErrorDetails } from '@/lib/vocabulary-scope-error';
 import { computeChainedHash } from '@/services/security/policy-security';
@@ -231,11 +232,13 @@ async function recompile(row: VersionRow, owner: Owner | null, locale: string): 
  * 只有带编译诊断的上游拒绝（编译资源对源码/别名输入错误返回的形态）才算名称解析失败。
  * 保存路径的校验器把 408 以外的 4xx 都映射为 PolicyCompileError，但对迁移而言签名/租户 401/403、
  * 地址错误 404、请求体过大 413 等都是配置或传输问题：一次运行会把所有行归档，故一律按基础设施故障上抛。
+ * 诊断里只有 api 内部故障码时同样按基础设施故障处理。
  */
 function carriesCompileDiagnostics(err: unknown): err is PolicyCompileError & { diagnostics: CompileDiagnostic[] } {
   return err instanceof PolicyCompileError
     && !(err instanceof PolicyCompileUnavailableError)
-    && (err.diagnostics?.length ?? 0) > 0;
+    // 只有内部故障码（COMPILE_INTERNAL_ERROR）的诊断是编译没做成，不是源码错误（与校验器同口径）
+    && hasSourceError(err.diagnostics ?? []);
 }
 
 async function loadVersionVocabulary(row: VersionRow, policy: PolicyVocabularyContext): Promise<DomainVocabulary | null> {
@@ -354,10 +357,21 @@ async function pendingBatch(cursor: string, batchSize: number, prefix: string | 
   return rows.map((r) => r.id);
 }
 
+/**
+ * 可选：cloud 对内地址。迁移 Job 跑在 Worker 之外拿不到 Workers KV，本地失效是空操作；配置后经
+ * cloud 内部端点让 Worker 删除缓存（#649）。未配置时只做本地失效，KV 旧条目等 TTL（≤1 小时）过期。
+ */
+export const RESOLVER_MIGRATION_CACHE_URL_ENV = 'ASTER_CLOUD_INTERNAL_URL';
+
 /** 行事务已提交，失效失败只影响缓存新鲜度（另有 TTL 兜底），不改变该行的迁移结果。 */
 async function invalidateCache(policyId: string): Promise<void> {
+  const baseUrl = process.env[RESOLVER_MIGRATION_CACHE_URL_ENV]?.trim();
   try {
-    await invalidatePolicyCache(policyId);
+    if (baseUrl) {
+      await invalidatePolicyCacheRemote(policyId, { baseUrl, secret: process.env.ASTER_PLAN_GATE_HMAC_KEY ?? '' });
+    } else {
+      await invalidatePolicyCache(policyId);
+    }
   } catch (err) {
     console.warn('[resolver-migration] committed, but cache invalidation failed', policyId, err);
   }

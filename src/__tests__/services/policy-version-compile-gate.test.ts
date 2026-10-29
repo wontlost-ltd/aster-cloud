@@ -22,7 +22,9 @@ vi.mock('@/lib/prisma', () => {
       },
     }) }) }) }),
   }));
-  const tx = { insert, select };
+  // 链尾锁前的按策略 advisory lock（#646）
+  const execute = vi.fn(async () => []);
+  const tx = { insert, select, execute };
   return {
     db: {
       insert,

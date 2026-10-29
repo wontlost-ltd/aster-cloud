@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { PolicyCompileError } from '@/services/policy/version-manager';
-import { vocabularyScopeErrorDetails } from '@/lib/vocabulary-scope-error';
+import { vocabularyScopeErrorDetails, vocabularyScopeErrorMessage } from '@/lib/vocabulary-scope-error';
 
 /** 别名校验失败的稳定错误码（保存入口共用，前端按此码本地化）。 */
 export const ALIAS_INVALID_CODE = 'alias_invalid';
@@ -34,7 +34,8 @@ export const VOCABULARY_SCOPE_INVALID_CODE = 'vocabulary_scope_invalid';
 /**
  * 保存入口 catch 分支共用：作者词汇非法（字段/枚举成员缺 parent、字面量宏冲突）→ 400
  * vocabulary_scope_invalid，reason 为引擎错误码，term 为出错词条的写法（引擎消息里首个引号内容），
- * kind 为词条种类；其它错误返回 null。按 name 判别而不 instanceof，不依赖引擎模块实例
+ * kind 为词条种类，message 为按 reason 生成的英文说明（引擎原文在 detail）；其它错误返回 null。
+ * 按 name 判别而不 instanceof，不依赖引擎模块实例
  * （打包/测试 mock 下可能不是同一个类）。
  */
 export function vocabularyScopeInvalidResponse(error: unknown): NextResponse | null {
@@ -47,7 +48,9 @@ export function vocabularyScopeInvalidResponse(error: unknown): NextResponse | n
       reason: details.reason,
       term: details.term,
       kind: details.kind,
-      message: details.message,
+      message: vocabularyScopeErrorMessage(details),
+      // 引擎原文（中文），仅供排查
+      detail: details.message,
     },
     { status: 400 },
   );
@@ -105,4 +108,25 @@ export function compileGateErrorResponse(error: PolicyCompileError): NextRespons
     },
     { status: 400 },
   );
+}
+
+/**
+ * 按已存版本重编译 / 重放（What-If、Cedar 导出）时的词汇错误 → HTTP 响应，其它错误返回 null：
+ * - 词汇加载失败（execution-input 的 VersionVocabularyUnavailableError）→ 503 vocabulary_unavailable + Retry-After；
+ * - 作者词汇非法（引擎 VocabularyScopeError）→ 400 vocabulary_scope_invalid。
+ * 按 name 判别而不 instanceof：路由测试会整体 mock execution-input。
+ */
+export function versionVocabularyErrorResponse(error: unknown, headers?: Headers): NextResponse | null {
+  if (error instanceof Error && error.name === 'VersionVocabularyUnavailableError') {
+    const retryAfter = (error as Error & { retryAfterSeconds?: unknown }).retryAfterSeconds;
+    const responseHeaders = new Headers(headers);
+    responseHeaders.set('Retry-After', String(typeof retryAfter === 'number' ? retryAfter : 60));
+    return NextResponse.json(
+      { error: 'vocabulary_unavailable', code: 'vocabulary_unavailable', message: error.message },
+      { status: 503, headers: responseHeaders },
+    );
+  }
+  const invalid = vocabularyScopeInvalidResponse(error);
+  if (invalid && headers) headers.forEach((value, key) => invalid.headers.set(key, value));
+  return invalid;
 }

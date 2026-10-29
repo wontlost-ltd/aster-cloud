@@ -965,6 +965,38 @@ describe('Policies API - Drizzle Migration', () => {
       );
     });
 
+    it('作者词汇非法（字段缺 parent）→ 400 vocabulary_scope_invalid，不编译不落库', async () => {
+      vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue({ aliasSet: null } as never);
+      mockLoadSaveVocabulary.mockRejectedValueOnce(
+        new VocabularyScopeError('field_parent_required', '字段 "alter" 缺少 parent'),
+      );
+      const response = await PUT(
+        makeRequest('http://localhost/api/policies/p1', 'PUT', { content: 'Module Y.' }),
+        mockParams,
+      );
+      const body = await response.json();
+      expect(response.status).toBe(400);
+      expect(body).toMatchObject({ code: 'vocabulary_scope_invalid', reason: 'field_parent_required', term: 'alter' });
+      expect(mockAssertCompilable).not.toHaveBeenCalled();
+      expect(mockCreateVersion).not.toHaveBeenCalled();
+    });
+
+    it('作者词汇加载失败 → 503 vocabulary_unavailable + Retry-After，不落库', async () => {
+      vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue({ aliasSet: null } as never);
+      mockLoadSaveVocabulary.mockRejectedValueOnce(Object.assign(
+        new mockPolicyCompileError('Domain vocabulary could not be loaded. Try again later.'),
+        { retryAfterSeconds: 30, unavailableCode: 'vocabulary_unavailable' },
+      ));
+      const response = await PUT(
+        makeRequest('http://localhost/api/policies/p1', 'PUT', { content: 'Module Y.' }),
+        mockParams,
+      );
+      expect(response.status).toBe(503);
+      expect(response.headers.get('Retry-After')).toBe('30');
+      expect((await response.json()).code).toBe('vocabulary_unavailable');
+      expect(mockCreateVersion).not.toHaveBeenCalled();
+    });
+
     it('ADR 0051：源码、别名、词汇都不变（封印=现行）→ 不建新版本', async () => {
       vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue(
         { aliasSet: null, sourceScopesJson: SAVE_VOCABULARY.scopesJson } as never,

@@ -123,6 +123,19 @@ describe('POST /api/v1/policies/[id]/versions — aliasSet 支持', () => {
     expect(createVersion).not.toHaveBeenCalled();
   });
 
+  it('作者词汇加载失败 → 503 vocabulary_unavailable + Retry-After，不建版本（#650）', async () => {
+    const { PolicyCompileError } = await import('@/services/policy/version-manager');
+    vi.mocked(loadSaveVocabulary).mockRejectedValueOnce(Object.assign(
+      new PolicyCompileError('Domain vocabulary could not be loaded. Try again later.'),
+      { retryAfterSeconds: 30, unavailableCode: 'vocabulary_unavailable' },
+    ));
+    const r = await POST(req({ source: 'Module X.' }), params);
+    expect(r.status).toBe(503);
+    expect(r.headers.get('Retry-After')).toBe('30');
+    expect((await r.json()).code).toBe('vocabulary_unavailable');
+    expect(createVersion).not.toHaveBeenCalled();
+  });
+
   it('#609：别名校验失败 → 400 alias_invalid，而非 500', async () => {
     vi.mocked(createVersion).mockRejectedValueOnce(
       new Error('用户自定义别名校验失败: 不允许为结构词 IF 自定义别名'),

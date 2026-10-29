@@ -45,8 +45,13 @@ function compileDiagnosticsFrom(error: PolicyApiError) {
     }));
 }
 
-// 源码错误 = 不带内部故障码的 error 诊断
-function hasSourceError(diagnostics: PolicyCompileResponse['diagnostics']): boolean {
+/**
+ * 源码错误 = 不带内部故障码的 error 诊断。只有内部故障码的诊断表示编译没做成，
+ * 不论上游以 200 success:false 还是 4xx 返回，都不能当作源码错误（保存拒绝 / 迁移归档）。
+ */
+export function hasSourceError(
+  diagnostics: PolicyCompileResponse['diagnostics'] | readonly { severity?: string; code?: string }[],
+): boolean {
   return (diagnostics ?? []).some(
     (d) => d.severity === 'error' && d.code !== COMPILE_INTERNAL_ERROR_CODE,
   );
@@ -102,7 +107,7 @@ export async function loadSaveVocabulary(
  *   路由返回 503 + Retry-After。
  * - 上游 5xx / 超时 / 网络不可达 → 原样上抛，由 assertCompilable 决定：声明了治理档案的
  *   源码按不可用拒绝（503），未声明的 fail-open 放行（保存可用性不被编译服务可用性绑架）。
- * - 上游返回 success:false 且只有 COMPILE_INTERNAL_ERROR 诊断（api 内部故障），或兜底地
+ * - 上游返回 success:false 或 4xx 且只有 COMPILE_INTERNAL_ERROR 诊断（api 内部故障），或兜底地
  *   没有任何 error 诊断 = 编译没做成而非源码有错/无错 → 抛普通错误，同样交给
  *   assertCompilable 按是否声明档案决定（503 或放行）。
  *
@@ -145,9 +150,13 @@ export function makeCompileValidator(
         err.statusCode !== 408 &&
         err.code !== 'TIMEOUT'
       ) {
+        const diagnostics = compileDiagnosticsFrom(err);
+        if (diagnostics.length > 0 && !hasSourceError(diagnostics)) {
+          throw new Error(`compile unavailable: HTTP ${err.statusCode} with only internal diagnostics`);
+        }
         throw new PolicyCompileError(
           err.message || 'Policy could not be compiled. Check the source or aliases and try again.',
-          compileDiagnosticsFrom(err),
+          diagnostics,
         );
       }
       throw err;

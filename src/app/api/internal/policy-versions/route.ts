@@ -27,7 +27,8 @@
  *
  * 名称按位置解析依赖词汇（ADR 0051），重放必须与执行用同一份编译输入：响应附带 `vocabulary`
  * （已审批 / 已弃用 = 冻结快照，草稿 = 作者现行词汇，与执行同一口径）与版本冻结的 `aliasSet`。
- * 没有时省略该字段（aster-api 视为无词汇 / 无别名）。
+ * 没有时省略该字段（aster-api 视为无词汇 / 无别名）。词汇加载失败返回 503 vocabulary_unavailable、
+ * 作者词汇非法返回 400 vocabulary_scope_invalid，不退化为无词汇。
  */
 
 import { NextResponse } from 'next/server';
@@ -36,6 +37,7 @@ import { and, eq } from 'drizzle-orm';
 import { verifyInternalSignature } from '@/lib/internal-signature';
 import { db, policyVersions, policies } from '@/lib/prisma';
 import { loadStoredVersionCompileContext } from '@/lib/execution-input';
+import { versionVocabularyErrorResponse } from '@/lib/policy-compile-response';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -90,16 +92,24 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'version_not_found' }, { status: 404 });
   }
 
-  const { vocabulary } = await loadStoredVersionCompileContext({
-    source: row.content,
-    status: row.status,
-    createdBy: row.createdBy,
-    aliasSet: row.aliasSet ?? null,
-    vocabularySnapshotIds: row.vocabularySnapshotIds,
-    sourceEnvelopeSha256: row.sourceEnvelopeSha256 ?? null,
-    sourceScopesJson: row.sourceScopesJson ?? null,
-    sourceToolchainId: row.sourceToolchainId ?? null,
-  });
+  let vocabulary: Record<string, unknown> | undefined;
+  try {
+    ({ vocabulary } = await loadStoredVersionCompileContext({
+      source: row.content,
+      status: row.status,
+      createdBy: row.createdBy,
+      aliasSet: row.aliasSet ?? null,
+      vocabularySnapshotIds: row.vocabularySnapshotIds,
+      sourceEnvelopeSha256: row.sourceEnvelopeSha256 ?? null,
+      sourceScopesJson: row.sourceScopesJson ?? null,
+      sourceToolchainId: row.sourceToolchainId ?? null,
+    }));
+  } catch (error) {
+    // 词汇加载失败 / 作者词汇非法：不返回无词汇的编译输入（重放结果会被静默算错），按 503 / 400 拒绝
+    const response = versionVocabularyErrorResponse(error);
+    if (response) return response;
+    throw error;
+  }
   const aliasSet = parseAliasSet(row.aliasSet);
 
   return NextResponse.json({

@@ -514,8 +514,21 @@ export function PolicyForm({
    */
   const saveErrorText = useCallback(
     (error: PolicySaveError): string => {
-      if (error.code === VOCABULARY_SCOPE_INVALID_CODE && error.term) {
-        return t('saveErrorCodes.vocabulary_scope_invalid_term', { term: error.term });
+      if (error.code === VOCABULARY_SCOPE_INVALID_CODE) {
+        // 按引擎原因分文案：缺 parent（字段 / 枚举成员）与字面量冲突的修法不同；未知原因用通用说明
+        const term = error.term;
+        switch (error.reason) {
+          case 'field_parent_required':
+          case 'member_parent_required':
+            return term
+              ? t('saveErrorCodes.vocabulary_scope_parent_required_term', { term })
+              : t('saveErrorCodes.vocabulary_scope_parent_required');
+          case 'literal_conflict':
+            return term
+              ? t('saveErrorCodes.vocabulary_scope_literal_conflict_term', { term })
+              : t('saveErrorCodes.vocabulary_scope_literal_conflict');
+        }
+        if (term) return t('saveErrorCodes.vocabulary_scope_invalid_term', { term });
       }
       return localizedErrorMessage(error.code, {
         alias_invalid: t('saveErrorCodes.alias_invalid'),

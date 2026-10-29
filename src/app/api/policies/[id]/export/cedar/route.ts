@@ -15,6 +15,7 @@ import { checkRateLimit, getRateLimitHeaders, RateLimitPresets } from '@/lib/rat
 import { policyTenantId } from '@/lib/policy-tenant';
 import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
 import { loadStoredVersionCompileContext } from '@/lib/execution-input';
+import { versionVocabularyErrorResponse } from '@/lib/policy-compile-response';
 import { PolicyApiError } from '@/services/policy/policy-api';
 import { findDefaultExecutableVersion } from '@/services/policy/default-executable-version';
 
@@ -89,6 +90,7 @@ export async function POST(_req: Request, { params }: RouteParams) {
     });
     return NextResponse.json(result, { headers });
   } catch (error) {
-    return upstreamError(error, headers);
+    // 词汇加载失败 / 作者词汇非法：不按无词汇导出（产物会与执行语义不符），按 503 / 400 拒绝
+    return versionVocabularyErrorResponse(error, headers) ?? upstreamError(error, headers);
   }
 }
