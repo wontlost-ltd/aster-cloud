@@ -10,7 +10,7 @@ process.stdin.on('data', () => {
   if (replied) return;
   replied = true;
   const zh = frame({ jsonrpc: '2.0', method: 'window/logMessage', params: { type: 3, message: '模块 已加载：规则 计算' } });
-  const env = frame({ jsonrpc: '2.0', method: 'test/env', params: { cwd: process.cwd(), home: process.env.HOME, pid: process.pid } });
+  const env = frame({ jsonrpc: '2.0', method: 'test/env', params: { cwd: process.cwd(), home: process.env.HOME, pid: process.pid, execArgv: process.execArgv } });
   const cut = zh.indexOf(Buffer.from('载')) + 1;
   process.stdout.write(zh.subarray(0, cut));
   setTimeout(() => process.stdout.write(Buffer.concat([zh.subarray(cut), env])), 20);

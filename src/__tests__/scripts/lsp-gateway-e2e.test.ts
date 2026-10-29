@@ -62,11 +62,13 @@ afterAll(async () => {
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 
-type Frame = { method?: string; params?: { message?: string; cwd?: string; home?: string } };
+type Frame = { method?: string; params?: { message?: string; cwd?: string; home?: string; execArgv?: string[] } };
 
-function connect(): Promise<{ ws: WebSocket; frames: Frame[]; raw: string[]; env: Promise<Frame> }> {
+function connect(clientIp?: string): Promise<{ ws: WebSocket; frames: Frame[]; raw: string[]; env: Promise<Frame> }> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/lsp?locale=zh-CN&token=${TOKEN}`, { headers: { Origin: ORIGIN } });
+    const headers: Record<string, string> = { Origin: ORIGIN };
+    if (clientIp) headers['CF-Connecting-IP'] = clientIp;
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/lsp?locale=zh-CN&token=${TOKEN}`, { headers });
     const frames: Frame[] = []; const raw: string[] = [];
     let gotEnv: (f: Frame) => void;
     const env = new Promise<Frame>((r) => { gotEnv = r; });
@@ -110,6 +112,34 @@ describe('LSP 网关端到端', () => {
   }, 15_000);
 });
 
+describe('LSP 网关：按客户端限流与子进程堆上限', () => {
+  it('★子进程以 --max-old-space-size=128 启动', async () => {
+    const c = await connect('198.51.100.1');
+    const env = await c.env;
+    expect(env.params!.execArgv).toContain('--max-old-space-size=128');
+    c.ws.close();
+  }, 15_000);
+
+  it('★同一 CF-Connecting-IP 第 4 个会话在握手阶段被拒（429），其他 IP 不受影响', async () => {
+    const ip = '198.51.100.7';
+    const open = await Promise.all([connect(ip), connect(ip), connect(ip)]);
+    const status = await new Promise<number>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/lsp?locale=zh-CN&token=${TOKEN}`, { headers: { Origin: ORIGIN, 'CF-Connecting-IP': ip } });
+      ws.on('unexpected-response', (_req, res) => resolve(res.statusCode ?? 0));
+      ws.on('open', () => reject(new Error('第 4 个会话不应建立')));
+    });
+    expect(status).toBe(429);
+    const other = await connect('198.51.100.8');
+    other.ws.close();
+    // 关闭一个后同一 IP 可再连
+    open[0].ws.close();
+    await new Promise((r) => setTimeout(r, 300));
+    const again = await connect(ip);
+    again.ws.close();
+    open.slice(1).forEach((c) => c.ws.close());
+  }, 20_000);
+});
+
 /* ★独立网关实例：SIGTERM 时 shutdown() 直接 process.exit，子进程的 exit 回调来不及清理目录；
  *   启动时还要清掉上一次被 SIGKILL 留下的目录。 */
 describe('网关生命周期：工作目录清理', () => {
@@ -119,10 +149,10 @@ describe('网关生命周期：工作目录清理', () => {
     await killGateways(started.splice(0));
   });
 
-  const startGateway = async (tmp: string) => {
+  const startGateway = async (tmp: string, nodeEnv: 'test' | 'production' = 'test') => {
     const p = await freePort();
     const gw = spawnGateway([join(ROOT, 'lsp-server.mjs')], {
-      env: { PATH: process.env.PATH, PORT: String(p), HOSTNAME: '127.0.0.1', NODE_ENV: 'test', LSP_AUTH_TOKEN: TOKEN,
+      env: { PATH: process.env.PATH, PORT: String(p), HOSTNAME: '127.0.0.1', NODE_ENV: nodeEnv, LSP_AUTH_TOKEN: TOKEN,
         ALLOWED_ORIGINS: ORIGIN, TMPDIR: tmp, LSP_SERVER_SCRIPT: join(__dirname, 'fixtures', 'fake-lsp-server.mjs') },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -149,6 +179,26 @@ describe('网关生命周期：工作目录清理', () => {
     gw.kill('SIGTERM');
     await exited;
     expect(existsSync(dir)).toBe(false);
+    rmSync(tmp, { recursive: true, force: true });
+  }, 20_000);
+
+  /* 复审 M1：生产缺 CF-Connecting-IP 是配置异常——告警（节流），归入单独的共享桶，不受单 IP 3 会话限制 */
+  it('★生产缺 CF-Connecting-IP：共享桶不受单 IP 3 会话限制，告警只记一次', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'lsp-gw-nocf-'));
+    const { gw, port: p } = await startGateway(tmp, 'production');
+    let stderr = '';
+    gw.stderr!.on('data', (d) => { stderr += String(d); });
+    const open = (): Promise<WebSocket> => new Promise((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${p}/lsp?locale=zh-CN&token=${TOKEN}`, { headers: { Origin: ORIGIN } });
+      ws.on('open', () => resolve(ws));
+      ws.on('unexpected-response', (_q, res) => reject(new Error(`status ${res.statusCode}`)));
+      ws.on('error', reject);
+    });
+    const sockets = [await open(), await open(), await open(), await open()];
+    await new Promise((r) => setTimeout(r, 200));
+    expect(stderr.match(/without CF-Connecting-IP/g)).toHaveLength(1);
+    sockets.forEach((ws) => ws.close());
+    gw.kill('SIGTERM');
     rmSync(tmp, { recursive: true, force: true });
   }, 20_000);
 
