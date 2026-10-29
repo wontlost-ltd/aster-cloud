@@ -4,6 +4,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const { mockEvaluateSource } = vi.hoisted(() => ({ mockEvaluateSource: vi.fn() }));
 
 vi.mock('@/lib/auth', () => ({ getSession: vi.fn().mockResolvedValue({ user: { id: 'u1' } }) }));
+// 执行配额由 evaluate-source-quota.test.ts 覆盖；此处恒放行
+vi.mock('@/lib/usage', () => ({
+  checkUsageLimit: vi.fn().mockResolvedValue({ allowed: true, limit: -1, remaining: -1 }),
+  recordUsage: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock('@/services/policy/policy-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/services/policy/policy-api')>();
   return { ...actual, createPolicyApiClient: vi.fn(() => ({ evaluateSource: mockEvaluateSource })) };

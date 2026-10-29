@@ -8,6 +8,7 @@ import {
   getRateLimitHeaders,
   RateLimitPresets,
 } from '@/lib/rate-limit';
+import { executionQuotaRejection, recordExecutionUsage } from '@/lib/execution-quota';
 
 /**
  * POST /api/policies/evaluate-source
@@ -105,12 +106,21 @@ export async function POST(req: Request) {
       );
     }
 
+    // 执行配额：aster-api 对 cloud 会话的 HMAC 调用不做套餐/用量限制（aster-api#411），必须在此拦截。
+    // 与界面执行同口径按 UsageRecord(type=execution) 计，Free 每月 1000 次。
+    const quotaRejection = await executionQuotaRejection(session.user.id, rateLimitHeaders);
+    if (quotaRejection) {
+      return quotaRejection;
+    }
+
     // 调用 Policy API 执行源代码
     const client = createPolicyApiClient(session.user.id, session.user.id);
     const response: PolicyEvaluateResponse = await client.evaluateSource(source, context, {
       locale: locale || 'en-US',
       functionName,
     });
+    // 引擎已运行即计一次（含执行错误），与界面执行同口径；aster-api 拒绝/不可达抛异常，不计。
+    await recordExecutionUsage(session.user.id);
 
     // Policy API 返回 { result, executionTimeMs, error }
     // 使用类型断言获取实际字段

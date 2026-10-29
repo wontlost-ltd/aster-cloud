@@ -40,6 +40,16 @@ vi.mock('@/lib/api-keys', () => ({
   authenticateApiRequest: vi.fn(),
 }));
 
+const { mockCountOwnerPoolUsage, mockRecordApiCallRecord } = vi.hoisted(() => ({
+  mockCountOwnerPoolUsage: vi.fn(async (_owner: string, _period: string) => 0),
+  mockRecordApiCallRecord: vi.fn(async (_r: unknown) => undefined),
+}));
+vi.mock('@/lib/api-quota-pool', () => ({
+  countOwnerPoolUsage: mockCountOwnerPoolUsage,
+  recordApiCallRecord: mockRecordApiCallRecord,
+  currentPeriodMonth: () => '2026-10',
+}));
+
 vi.mock('@/lib/policy-freeze', () => ({
   getPolicyFreezeStatus: vi.fn(),
   getBatchPolicyFreezeStatus: vi.fn(),
@@ -191,7 +201,7 @@ function mockExecutionResult(overrides: Partial<{
   };
 }
 
-const VALID_AUTH = { success: true as const, userId: 'user-1', apiKeyId: 'key-1', teamId: null };
+const VALID_AUTH = { success: true as const, userId: 'user-1', apiKeyId: 'key-1', teamId: null, quotaOwnerId: 'user-1' };
 
 function makeRequest(url: string, method = 'GET', body?: unknown): Request {
   return new Request(url, {
@@ -418,7 +428,8 @@ describe('V1 Policies API - Drizzle Migration', () => {
     });
 
     it('should return 429 with upgrade contract when API call limit is exceeded', async () => {
-      setupExecuteRow({ api_usage_count: 5000 }); // pro plan apiCalls=5000, at limit
+      // pro plan apiCalls=5000：按 owner 池（apiCallRecords）计，已到上限
+      mockCountOwnerPoolUsage.mockResolvedValueOnce(5000);
 
       const response = await POST(
         makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody),
@@ -433,6 +444,76 @@ describe('V1 Policies API - Drizzle Migration', () => {
       expect(body.recommendedPlan).toBe('pro');
       expect(body.usage).toBeGreaterThanOrEqual(5000);
       expect(body.limit).toBe(5000);
+    });
+
+    it('API 配额按 key 的配额 owner 池计数，cloud REST 与直连 aster-api 共用一个池', async () => {
+      const response = await POST(
+        makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody),
+        mockParams
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockCountOwnerPoolUsage).toHaveBeenCalledWith('user-1', '2026-10');
+    });
+
+    it('团队 key：按团队 owner 的套餐与池判定，owner 池已满即 429', async () => {
+      mockAuthenticateApiRequest.mockResolvedValue({ ...VALID_AUTH, teamId: 'team-1', quotaOwnerId: 'owner-1' });
+      vi.mocked(db.query.users.findFirst).mockResolvedValue({ plan: 'pro', trialEndsAt: null } as never);
+      vi.mocked(db.query.policies.findMany).mockResolvedValue([{ id: 'p1' }] as never);
+      setupExecuteRow({ user_plan: 'free' }); // 成员本人是 free，不影响团队 key 的 API 配额
+      mockCountOwnerPoolUsage.mockResolvedValueOnce(5000);
+
+      const response = await POST(
+        makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody),
+        mockParams
+      );
+      const body = await response.json();
+
+      expect(mockCountOwnerPoolUsage).toHaveBeenCalledWith('owner-1', '2026-10');
+      expect(response.status).toBe(429);
+      expect(body.limit).toBe(5000);
+      expect(mockExecutePolicyUnified).not.toHaveBeenCalled();
+    });
+
+    it('成功执行写一行 apiCallRecords（带 quotaOwnerId），使计费页与告警看到 cloud REST 调用', async () => {
+      mockAuthenticateApiRequest.mockResolvedValue({ ...VALID_AUTH, teamId: 'team-1', quotaOwnerId: 'owner-1' });
+      vi.mocked(db.query.users.findFirst).mockResolvedValue({ plan: 'pro', trialEndsAt: null } as never);
+      vi.mocked(db.query.policies.findMany).mockResolvedValue([{ id: 'p1' }] as never);
+
+      const response = await POST(
+        makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody),
+        mockParams
+      );
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(response.status).toBe(200);
+      expect(mockRecordApiCallRecord).toHaveBeenCalledTimes(1);
+      expect(mockRecordApiCallRecord).toHaveBeenCalledWith(expect.objectContaining({
+        userId: 'user-1',
+        apiKeyId: 'key-1',
+        quotaOwnerId: 'owner-1',
+        endpointPath: '/api/v1/policies/{id}/execute',
+        status: 'success',
+      }), expect.any(Date));
+    });
+
+    it('引擎失败记 api_error（不计入配额池的 success 计数）', async () => {
+      mockExecutePolicyUnified.mockResolvedValue(mockExecutionResult({
+        allowed: false,
+        metadata: { engineError: true },
+      }));
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      await POST(makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody), mockParams);
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(mockRecordApiCallRecord).toHaveBeenCalledWith(expect.objectContaining({ status: 'api_error' }), expect.any(Date));
+    });
+
+    it('API 配额已满时不执行也不记 apiCallRecords', async () => {
+      mockCountOwnerPoolUsage.mockResolvedValueOnce(5000);
+      await POST(makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody), mockParams);
+      expect(mockRecordApiCallRecord).not.toHaveBeenCalled();
     });
 
     it('should return 429 with upgrade contract when execution limit is exceeded', async () => {

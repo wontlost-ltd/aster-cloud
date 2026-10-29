@@ -299,7 +299,7 @@ describe('API Keys', () => {
       mockResolve.mockResolvedValue(PERSONAL_IDENTITY);
       mockHasFeatureAccess.mockResolvedValue(true);
       const r = await validateApiKey('ak_' + 'a'.repeat(64));
-      expect(r).toEqual({ valid: true, userId: 'u1', apiKeyId: 'k1', teamId: null });
+      expect(r).toEqual({ valid: true, userId: 'u1', apiKeyId: 'k1', teamId: null, quotaOwnerId: 'u1' });
       expect(mockHasFeatureAccess).toHaveBeenCalledWith('u1', 'apiAccess');
       expect(mockUpdate).toHaveBeenCalledTimes(1);
       const setArg = firstArg(mockUpdateSet) as Record<string, unknown>;
@@ -311,7 +311,7 @@ describe('API Keys', () => {
       mockResolve.mockResolvedValue({ valid: true, apiKeyId: 'k2', userId: 'u2', tenantId: 't1', teamId: 't1', quotaOwnerId: 'owner', role: 'member', plan: 'team', subscriptionStatus: 'active' });
       mockHasFeatureAccess.mockResolvedValue(true);
       const { validateApiKey } = await import('@/lib/api-keys');
-      expect(await validateApiKey('ak_' + 'f'.repeat(64))).toEqual({ valid: true, userId: 'u2', apiKeyId: 'k2', teamId: 't1' });
+      expect(await validateApiKey('ak_' + 'f'.repeat(64))).toEqual({ valid: true, userId: 'u2', apiKeyId: 'k2', teamId: 't1', quotaOwnerId: 'owner' });
       expect(mockHasFeatureAccess).toHaveBeenCalledWith('owner', 'apiAccess');
       mockResolve.mockResolvedValue({ valid: false, reason: 'membership_revoked' });
       expect((await validateApiKey('ak_' + 'f'.repeat(64))).valid).toBe(false);
@@ -562,16 +562,16 @@ describe('API Keys', () => {
       const r = await authenticateApiRequest(
         makeReq('Bearer ak_' + 'a'.repeat(64)),
       );
-      expect(r).toEqual({ success: true, userId: 'u1', apiKeyId: 'k1', teamId: null });
+      expect(r).toEqual({ success: true, userId: 'u1', apiKeyId: 'k1', teamId: null, quotaOwnerId: 'u1' });
     });
 
-    it('returns the key teamId for a team key', async () => {
+    it('returns the key teamId and the team owner as quotaOwnerId for a team key', async () => {
       mockResolve.mockResolvedValue(TEAM_IDENTITY);
       mockHasFeatureAccess.mockResolvedValue(true);
       const r = await authenticateApiRequest(
         makeReq('Bearer ak_' + 'a'.repeat(64)),
       );
-      expect(r).toEqual({ success: true, userId: 'u2', apiKeyId: 'k2', teamId: 't1' });
+      expect(r).toEqual({ success: true, userId: 'u2', apiKeyId: 'k2', teamId: 't1', quotaOwnerId: 'owner' });
     });
   });
 });

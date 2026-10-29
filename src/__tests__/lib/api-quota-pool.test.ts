@@ -7,9 +7,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  * 旧行 quotaOwnerId 为 NULL 时按持有者 userId 归池（COALESCE 语义，不回填）。
  */
 
-const { mockWhere } = vi.hoisted(() => ({ mockWhere: vi.fn() }));
+const { mockWhere, mockValues } = vi.hoisted(() => ({ mockWhere: vi.fn(), mockValues: vi.fn() }));
 vi.mock('@/lib/prisma', () => ({
-  db: { select: () => ({ from: () => ({ where: mockWhere }) }) },
+  db: { select: () => ({ from: () => ({ where: mockWhere }) }), insert: () => ({ values: mockValues }) },
   apiCallRecords: { quotaOwnerId: 'quotaOwnerId', userId: 'userId', periodMonth: 'periodMonth', status: 'status' },
 }));
 vi.mock('drizzle-orm', () => ({
@@ -48,5 +48,20 @@ describe('api-quota-pool', () => {
     expect(currentPeriodMonth(new Date('2026-10-31T23:30:00Z'))).toBe('2026-10');
     expect(currentPeriodMonth(new Date('2026-11-01T00:30:00+08:00'))).toBe('2026-10');
     expect(currentPeriodMonth(new Date('2026-01-05T00:00:00Z'))).toBe('2026-01');
+  });
+
+  it('recordApiCallRecord 按 UTC 月份写入 owner 池一行', async () => {
+    const { recordApiCallRecord } = await import('@/lib/api-quota-pool');
+    mockValues.mockResolvedValue(undefined);
+    const now = new Date('2026-11-01T00:30:00+08:00');
+    await recordApiCallRecord({
+      userId: 'member', tenantId: 't1', apiKeyId: 'k1', quotaOwnerId: 'owner',
+      endpointPath: '/api/v1/policies/{id}/execute', status: 'success', latencyMs: 12,
+    }, now);
+    expect(mockValues).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'member', tenantId: 't1', apiKeyId: 'k1', quotaOwnerId: 'owner', periodMonth: '2026-10',
+      endpointPath: '/api/v1/policies/{id}/execute', status: 'success', latencyMs: 12, createdAt: now,
+    }));
+    expect(typeof mockValues.mock.calls[0][0].id).toBe('string');
   });
 });

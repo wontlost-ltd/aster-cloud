@@ -20,6 +20,10 @@ vi.mock('@/lib/prisma', () => ({
   policies: { id: {}, userId: {}, deletedAt: {} },
   policyVersions: { policyId: {}, version: {}, status: {}, isDefault: {} },
 }));
+// 签名密钥缺失时 fail-closed（secure-execute-signing-secret.test.ts 覆盖）；本文件关注别名与哈希，给一把密钥
+vi.mock('@/lib/runtime/safe-env', () => ({
+  safeEnv: (key: string) => (key === 'POLICY_SIGNING_SECRET' ? 'test-signing-secret' : process.env[key]),
+}));
 vi.mock('@/services/security/policy-security', () => ({
   verifySignature: vi.fn(() => true),
   validateTimestamp: vi.fn(() => true),

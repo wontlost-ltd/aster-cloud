@@ -41,3 +41,35 @@ export async function countOwnerPoolUsage(ownerId: string, periodMonth: string):
     .where(and(ownerPoolCondition(ownerId), eq(apiCallRecords.periodMonth, periodMonth), eq(apiCallRecords.status, 'success')));
   return r[0]?.c ?? 0;
 }
+
+/** 一次 Policy Execution API 调用的记录（与 aster-api 经 /api/internal/api/usage 上报的行同形）。 */
+export interface ApiCallRecordInput {
+  userId: string;
+  tenantId: string | null;
+  apiKeyId: string | null;
+  /** 配额 owner（团队 key 为团队 owner）；决定计入哪个池 */
+  quotaOwnerId: string;
+  endpointPath: string;
+  status: 'success' | 'api_error';
+  latencyMs: number;
+}
+
+/**
+ * 写一行 apiCallRecords。cloud REST 执行（/api/v1/policies/[id]/execute）经 HMAC 转发到 aster-api 时，
+ * aster-api 不再计 API 调用（aster-api#411），由 cloud 在此记入同一个 owner 池——这样直连 aster-api 的
+ * key 调用与 cloud REST 调用共用一个 API 月度配额，计费页与告警看到的是合并用量。
+ */
+export async function recordApiCallRecord(record: ApiCallRecordInput, now: Date = new Date()): Promise<void> {
+  await db.insert(apiCallRecords).values({
+    id: crypto.randomUUID(),
+    userId: record.userId,
+    tenantId: record.tenantId,
+    apiKeyId: record.apiKeyId,
+    quotaOwnerId: record.quotaOwnerId,
+    periodMonth: currentPeriodMonth(now),
+    endpointPath: record.endpointPath,
+    status: record.status,
+    latencyMs: record.latencyMs,
+    createdAt: now,
+  });
+}

@@ -20,6 +20,16 @@ import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
 import { parseAgentIdentity } from '@/services/policy/policy-api';
 import { hydrateExecutableVersion, resolveExecutableVersion, type ExecutableVersionCandidate } from '@/services/policy/executable-version';
 import { maybeRunParityForExecution, RUNNER_LAUNCHER_HMAC_ROLE } from '@/services/policy/runner-parity-from-execution';
+import { countOwnerPoolUsage, currentPeriodMonth, recordApiCallRecord } from '@/lib/api-quota-pool';
+
+/** apiCallRecords 里本端点的 endpointPath（模板，不带具体策略 id，便于按端点聚合）。 */
+const API_CALL_ENDPOINT = '/api/v1/policies/{id}/execute';
+
+/** 有效套餐：未知值按 free，过期试用降为 free。 */
+function effectivePlanOf(row: { plan: string | null; trialEndsAt: Date | null } | null | undefined): PlanType {
+  const plan: PlanType = (row?.plan && row.plan in PLANS ? row.plan : 'free') as PlanType;
+  return plan === 'trial' && row?.trialEndsAt && row.trialEndsAt < new Date() ? 'free' : plan;
+}
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -51,7 +61,6 @@ type UnifiedQueryResult = {
   user_plan: string | null;
   user_trial_ends_at: Date | null;
   // Usage counts
-  api_usage_count: number | null;
   exec_usage_count: number | null;
   // Team membership
   is_team_member: boolean;
@@ -73,7 +82,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    const { userId, apiKeyId } = auth;
+    const { userId, apiKeyId, quotaOwnerId } = auth;
 
     const versionRows = await db.query.policyVersions.findMany({
       where: eq(policyVersions.policyId, id),
@@ -124,16 +133,12 @@ export async function POST(req: Request, { params }: RouteParams) {
         pv."vocabularySnapshotIds" AS policy_vocab_snapshot_ids,
         u.plan AS user_plan,
         u."trialEndsAt" AS user_trial_ends_at,
-        api_ur.count AS api_usage_count,
         exec_ur.count AS exec_usage_count,
         CASE WHEN tm.id IS NOT NULL THEN true ELSE false END AS is_team_member
       FROM "Policy" p
       -- 活跃版本的冻结 aliasSet（版本号 = Policy.version；与 content 同源）。C1（v1）。
       LEFT JOIN "PolicyVersion" pv ON pv."policyId" = p.id AND pv.version = p.version
       CROSS JOIN "User" u
-      LEFT JOIN "UsageRecord" api_ur ON api_ur."userId" = ${userId}
-        AND api_ur.type = 'api_call'
-        AND api_ur.period = ${period}
       LEFT JOIN "UsageRecord" exec_ur ON exec_ur."userId" = ${userId}
         AND exec_ur.type = 'execution'
         AND exec_ur.period = ${period}
@@ -209,7 +214,6 @@ export async function POST(req: Request, { params }: RouteParams) {
       trialEndsAt: row.user_trial_ends_at,
     } : null;
 
-    const apiCallUsage = row?.api_usage_count ?? 0;
     const executionUsage = row?.exec_usage_count ?? 0;
     const isTeamMember = row?.is_team_member ?? false;
 
@@ -265,23 +269,32 @@ export async function POST(req: Request, { params }: RouteParams) {
       }
     }
 
-    // 配额检查（调用者自身用量）
-    const rawPlan = userData?.plan;
-    const plan: PlanType = (rawPlan && rawPlan in PLANS ? rawPlan : 'free') as PlanType;
-    const trialExpired = plan === 'trial' && userData?.trialEndsAt && userData.trialEndsAt < new Date();
-    const effectivePlan: PlanType = trialExpired ? 'free' : plan;
-    const limits = PLANS[effectivePlan].limits;
-
-    if (limits.apiCalls !== -1 && apiCallUsage >= limits.apiCalls) {
-      return NextResponse.json(
-        upgradeResponse('evaluations', {
-          usage: apiCallUsage,
-          limit: limits.apiCalls,
-          message: `You've reached your monthly limit of ${limits.apiCalls} API calls.`,
-        }),
-        { status: 429 }
-      );
+    // API 调用配额：按 key 的配额 owner（团队 key 为团队 owner）的套餐与 owner 池（apiCallRecords）判定，
+    // 与直连 aster-api 的 key 调用共用同一个月度池（aster-api 经 precheck 读同一池）。
+    // 本端点经 HMAC 转发到 aster-api，aster-api 不再计 API 调用（aster-api#411），由下方 recordApiCallRecord 记入池。
+    const apiPlan = quotaOwnerId === userId
+      ? effectivePlanOf(userData)
+      : effectivePlanOf(await db.query.users.findFirst({
+          where: eq(users.id, quotaOwnerId),
+          columns: { plan: true, trialEndsAt: true },
+        }));
+    const apiCallsLimit = PLANS[apiPlan].limits.apiCalls;
+    if (apiCallsLimit !== -1) {
+      const apiCallUsage = await countOwnerPoolUsage(quotaOwnerId, currentPeriodMonth());
+      if (apiCallUsage >= apiCallsLimit) {
+        return NextResponse.json(
+          upgradeResponse('evaluations', {
+            usage: apiCallUsage,
+            limit: apiCallsLimit,
+            message: `You've reached your monthly limit of ${apiCallsLimit} API calls.`,
+          }),
+          { status: 429 }
+        );
+      }
     }
+
+    // 执行配额（调用者自身用量，与界面执行同口径）
+    const limits = PLANS[effectivePlanOf(userData)].limits;
 
     if (limits.executions !== -1 && executionUsage >= limits.executions) {
       return NextResponse.json(
@@ -408,6 +421,17 @@ export async function POST(req: Request, { params }: RouteParams) {
     }));
     const writePromise = Promise.all([
       executionInsertPromise,
+      // API 调用计入 owner 池（apiCallRecords）：配额判定、计费页与告警都读它
+      recordApiCallRecord({
+        userId,
+        tenantId: policyTenantId(policy),
+        apiKeyId: apiKeyId || null,
+        quotaOwnerId,
+        endpointPath: API_CALL_ENDPOINT,
+        status: executionErrorCode(executionResult) ? 'api_error' : 'success',
+        latencyMs: durationMs,
+      }, now),
+      // UsageRecord(api_call) 是「cloud 自身 /api/v1 REST 调用」计量（/api/v1/policies 列表等共用），保留
       db.insert(usageRecords)
         .values({ id: crypto.randomUUID(), userId, type: 'api_call', period, count: 1, createdAt: now, updatedAt: now })
         .onConflictDoUpdate({
