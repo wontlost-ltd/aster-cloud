@@ -9,6 +9,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useAsterLSP } from '@/hooks/useAsterLSP';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 type Sent = { jsonrpc: string; id?: number | string; method?: string; params?: unknown; result?: unknown; error?: unknown };
 
@@ -169,6 +171,29 @@ describe('useAsterLSP 协议', () => {
     expect(pushed.index).toEqual({ persist: false });
     expect(methods.indexOf('workspace/didChangeConfiguration')).toBeGreaterThan(methods.indexOf('initialized'));
     expect(methods.indexOf('workspace/didChangeConfiguration')).toBeLessThan(methods.indexOf('textDocument/didOpen'));
+  });
+
+  /* ★生产配置（2026-10-30 复测 A4）：host 取自已提交的 .env.production，token 由构建期内联。
+   *   两者齐备时必须真的向 wss://<host>/lsp 发起握手，并带上 locale 与 token。 */
+  it('★生产配置（.env.production 的 host + 构建期 token）发起 wss 握手', async () => {
+    const envProduction = readFileSync(join(__dirname, '..', '..', '..', '.env.production'), 'utf-8');
+    const host = /^NEXT_PUBLIC_LSP_HOST=(.+)$/m.exec(envProduction)?.[1]?.trim();
+    expect(host).toBe('lsp.aster-lang.dev');
+    process.env.NEXT_PUBLIC_LSP_HOST = host;
+    process.env.NEXT_PUBLIC_LSP_TOKEN = 'tok/+=';
+    try {
+      const monaco = makeFakeMonaco();
+      renderHook(() => useAsterLSP({
+        editor: fakeEditor as never,
+        monaco: monaco as never,
+        documentUri: 'inmemory://policy/default.aster',
+        locale: 'de-DE',
+      }));
+      await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+      expect(FakeWebSocket.instances[0].url).toBe('wss://lsp.aster-lang.dev/lsp?locale=de-DE&token=tok%2F%2B%3D');
+    } finally {
+      delete process.env.NEXT_PUBLIC_LSP_TOKEN;
+    }
   });
 
   it('未传 monaco 时不连接（不自行加载第二份 Monaco）', async () => {

@@ -39,6 +39,11 @@ name: Deploy Worker
 #   secrets.CF_API_TOKEN           —— 需 Workers Scripts:Edit + Workers KV:Edit
 #                                     （OpenNext 上传 assets 需要）
 #   vars.CLOUDFLARE_ACCOUNT_ID     —— 非敏感，用 vars 而非 secret，便于日志排查
+#   secrets.NEXT_PUBLIC_LSP_TOKEN  —— 编辑器连接 LSP 网关（wss://lsp.aster-lang.dev/lsp）的共享 token，
+#                                     值必须与 k3s aster-lsp 的 LSP_AUTH_TOKEN（Vault 下发的 aster-lsp-auth）一致。
+#                                     NEXT_PUBLIC_* 只在 next build 时内联，Worker 运行时 vars/secret 无效，
+#                                     故必须出现在构建步骤的环境里；缺它编辑器不发起 LSP 连接（悬停/跳转不可用）。
+#                                     host 来自已提交的 .env.production（lsp.aster-lang.dev）。
 #
 # ★不设 paths 过滤：Worker 部署的是**整个构建产物**，任何源码/依赖/配置改动都可能影响它。
 #   加 paths 白名单会出现"改了没在白名单里的文件 → 不部署 → 线上与 main 不一致"的静默漂移，
@@ -98,13 +103,15 @@ jobs:
         env:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CF_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          LSP_TOKEN: ${{ secrets.NEXT_PUBLIC_LSP_TOKEN }}
         run: |
           set -euo pipefail
           [ -n "$CF_API_TOKEN" ] || { echo "::error::缺 secrets.CF_API_TOKEN（需 Workers Scripts:Edit + Workers KV:Edit）"; exit 1; }
           [ -n "$CF_ACCOUNT_ID" ] || { echo "::error::缺 vars.CLOUDFLARE_ACCOUNT_ID"; exit 1; }
+          [ -n "$LSP_TOKEN" ] || { echo "::error::缺 secrets.NEXT_PUBLIC_LSP_TOKEN（值同 k3s aster-lsp 的 LSP_AUTH_TOKEN；缺它编辑器不连接 LSP）"; exit 1; }
           echo "凭据就绪，account=$CF_ACCOUNT_ID"
 
-      # 复用 package.json 的 deploy 脚本（docs-index → next build → pii-scan →
+      # 复用 package.json 的 deploy 脚本（docs-index → next build → LSP 内联检查 → pii-scan →
       # opennextjs build → wrangler deploy）。不在此重写构建步骤，避免与本地
       # `pnpm deploy` 行为漂移——单一真相源在 package.json。
       - name: Build + deploy
@@ -113,6 +120,9 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           NODE_ENV: production
           DEPLOY_RUN_ID: ${{ github.run_id }}
+          # 构建期内联进客户端产物（见文件头 secrets.NEXT_PUBLIC_LSP_TOKEN 说明）；
+          # deploy 脚本里的 check-lsp-inlined 在 next build 之后核对产物，未内联则不部署。
+          NEXT_PUBLIC_LSP_TOKEN: ${{ secrets.NEXT_PUBLIC_LSP_TOKEN }}
         run: pnpm run deploy
 
       # 部署后核实线上版本确实变了。只看 wrangler 退出码不够——曾有"命令成功但
