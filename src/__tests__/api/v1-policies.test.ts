@@ -34,9 +34,6 @@ const { mockLoadExecutionVocabulary, mockLoadLiveVocabulary } = vi.hoisted(() =>
 vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
   loadExecutionVocabulary: mockLoadExecutionVocabulary,
   loadLiveVocabularyForPolicy: mockLoadLiveVocabulary,
-  // envelope 反推编译 locale 用的按 locale 词汇来源（本测试的 envelope 词汇段均为空）
-  loadFrozenVocabularyForSource: async () => () => null,
-  loadLiveVocabularyForSource: async () => () => null,
 }));
 
 vi.mock('@/lib/api-keys', () => ({
@@ -707,7 +704,7 @@ Regel bewerten gegeben person als Fahrer liefert Ganzzahl:
           policy_vocab_snapshot_ids: [{ snapshotId: 's', domain: 'e2e1027', locale: 'de' }],
         });
         vi.mocked(db.query.policyVersions.findMany).mockResolvedValueOnce(
-          [{ ...approved[0], sourceEnvelopeSha256: envelope }] as never,
+          [{ ...approved[0], sourceEnvelopeSha256: envelope, sourceScopesJson: '' }] as never,
         );
 
         await run({ person: { alter: 21 } });

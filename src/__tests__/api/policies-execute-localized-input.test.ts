@@ -44,9 +44,6 @@ vi.mock('@opennextjs/cloudflare', () => ({
 vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
   loadExecutionVocabulary: mockLoadFrozen,
   loadLiveVocabularyForPolicy: mockLoadLive,
-  // envelope 反推编译 locale 用的按 locale 词汇来源（本测试的 envelope 词汇段均为空）
-  loadFrozenVocabularyForSource: async () => () => null,
-  loadLiveVocabularyForSource: async () => () => null,
 }));
 vi.mock('@/lib/prisma', () => {
   const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
@@ -120,11 +117,15 @@ function policyRow(
   };
 }
 
-function versions(status: string, extra: { createdBy?: string | null; sourceEnvelopeSha256?: string | null } = {}) {
+function versions(
+  status: string,
+  extra: { createdBy?: string | null; sourceEnvelopeSha256?: string | null; sourceScopesJson?: string | null } = {},
+) {
   return [{
     id: 'pv-1', version: 1, status, isDefault: false,
     createdBy: extra.createdBy === undefined ? 'author-1' : extra.createdBy,
     sourceEnvelopeSha256: extra.sourceEnvelopeSha256 ?? null,
+    sourceScopesJson: extra.sourceScopesJson ?? null,
   }];
 }
 
@@ -220,7 +221,7 @@ describe('POST /api/policies/[id]/execute — 策略语言输入（#626）', () 
   it('locale 与 secure-execute 同一解析器：版本记录的编译 locale 优先于源码识别', async () => {
     // 源码看起来是德语，但版本保存时按 en-US 编译（envelope 记录）：三条路径都应按 en-US 执行。
     const envelope = computeSourceEnvelope(DE_POLICY, null, 'en-US', 'tc-1', '');
-    mockFindVersions.mockResolvedValue(versions('APPROVED', { sourceEnvelopeSha256: envelope }));
+    mockFindVersions.mockResolvedValue(versions('APPROVED', { sourceEnvelopeSha256: envelope, sourceScopesJson: '' }));
     mockDbExecute.mockResolvedValue([policyRow(DE_POLICY, { toolchainId: 'tc-1' })]);
     mockEvaluateSource.mockResolvedValue({ result: 0, executionTimeMs: 1, error: null });
     // 只验证 locale 选择：不带词汇（德语源码按 en-US 带词汇提取类型会失败，那是另一条用例）。

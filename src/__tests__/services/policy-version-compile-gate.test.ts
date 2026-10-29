@@ -59,15 +59,18 @@ describe('createVersion — 5 段 envelope（ADR 0051 §7）', () => {
     ]);
   });
 
-  it('词汇段与新工具链身份串进 envelope 并落库', async () => {
+  it('词汇段与新工具链身份串进 envelope，词汇段一并落库', async () => {
     const scopesJson = '{"enumMembers":{},"fields":{},"functions":{},"literals":{},"schemaVersion":1,"types":{}}';
     await createVersion({ ...baseParams, scopesJson });
     const values = (mockInsertValues.mock.calls[0] as unknown[])[0] as {
       sourceEnvelopeSha256: string;
       sourceToolchainId: string;
+      sourceScopesJson: string;
     };
     const toolchainId = cloudToolchainId();
     expect(values.sourceToolchainId).toBe(toolchainId);
+    // 封印所用词汇段原样落库，供之后按同一输入重算 envelope
+    expect(values.sourceScopesJson).toBe(scopesJson);
     expect(values.sourceEnvelopeSha256).toBe(
       computeSourceEnvelope('Module X.', null, 'en-US', toolchainId, scopesJson),
     );

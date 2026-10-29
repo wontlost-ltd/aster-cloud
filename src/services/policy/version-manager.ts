@@ -119,18 +119,14 @@ async function freezeApprovalVocabulary(
 ): Promise<SnapshotRef[]> {
   if (!version.createdBy) return [];
   const source = version.source ?? version.content;
-  const locale = await resolveStoredVersionLocale(
-    {
-      source,
-      aliasSet: version.aliasSet,
-      sourceEnvelopeSha256: version.sourceEnvelopeSha256,
-      sourceToolchainId: version.sourceToolchainId,
-      vocabularySnapshotIds: null,
-      status: version.status,
-      createdBy: version.createdBy,
-    },
-    tx,
-  );
+  const locale = resolveStoredVersionLocale({
+    source,
+    aliasSet: version.aliasSet,
+    sourceEnvelopeSha256: version.sourceEnvelopeSha256,
+    sourceToolchainId: version.sourceToolchainId,
+    sourceScopesJson: version.sourceScopesJson,
+    vocabularySnapshotIds: null,
+  });
   try {
     return await freezeVocabularyForApproval(
       { policyAuthorId: version.createdBy, policy: { source, locale } },
@@ -477,6 +473,8 @@ export async function createVersion(
     aliasSet: aliasSetJson,
     sourceEnvelopeSha256,
     sourceToolchainId: toolchainId,
+    // 封印所用词汇段原样落库：之后词条编辑或审批冻结都不改变 envelope 的重算输入。
+    sourceScopesJson: params.scopesJson,
     profile,
   }).returning();
 

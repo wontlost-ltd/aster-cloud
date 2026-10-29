@@ -289,14 +289,13 @@ export async function executeSecurely(
 
     // 执行端按 locale 选 lexicon：优先取版本保存时记录的编译 locale（envelope），
     // 其次沿用快照引用唯一 locale，最后才按源码识别（见 policy-version-locale）。
-    const locale = await resolveStoredVersionLocale({
+    const locale = resolveStoredVersionLocale({
       source: sourceCode,
       aliasSet: targetVersion.aliasSet,
       sourceEnvelopeSha256: targetVersion.sourceEnvelopeSha256,
+      sourceScopesJson: targetVersion.sourceScopesJson,
       sourceToolchainId: targetVersion.sourceToolchainId,
       vocabularySnapshotIds: targetVersion.vocabularySnapshotIds,
-      status: targetVersion.status,
-      createdBy: targetVersion.createdBy,
     });
     // 领域词汇（ADR 0014 线C，#626）：可执行版本均已审批，走冻结快照（作用域内），best-effort。
     const vocabulary = await loadVersionExecutionVocabulary({

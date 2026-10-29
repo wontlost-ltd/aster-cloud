@@ -65,9 +65,6 @@ vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
   freezeVocabularyForApproval: h.snapshot,
   auditVocabularyFreeze: h.audit,
   lockPolicyForSnapshotRefs: h.lockPolicy,
-  // envelope 反推编译 locale 用的按 locale 词汇来源（本测试的 envelope 词汇段均为空）
-  loadFrozenVocabularyForSource: async () => () => null,
-  loadLiveVocabularyForSource: async () => () => null,
 }));
 vi.mock('@/lib/cache', () => ({ invalidatePolicyCache: h.invalidateCache }));
 
@@ -77,6 +74,7 @@ import {
   SegregationOfDutiesError,
   VocabularyFreezeError,
 } from '@/services/policy/version-manager';
+import { computeSourceEnvelope } from '@/lib/policy-alias';
 
 function setup(policy: { userId: string; teamId: string | null }, author: string, role: string | null = null) {
   h.policiesFindFirst.mockResolvedValue(policy);
@@ -84,7 +82,7 @@ function setup(policy: { userId: string; teamId: string | null }, author: string
   h.versionsFindFirst.mockResolvedValue({
     id: 'v1', policyId: 'p1', version: 2, createdBy: author, status: 'PENDING_APPROVAL',
     content: GERMAN_SOURCE, source: null,
-    aliasSet: null, sourceEnvelopeSha256: null, sourceToolchainId: null,
+    aliasSet: null, sourceEnvelopeSha256: null, sourceToolchainId: null, sourceScopesJson: null,
   });
 }
 
@@ -191,6 +189,30 @@ describe('approveVersion — 词汇快照（#610）', () => {
       expect.objectContaining({ staged: expect.any(Array) }),
     );
     expect(h.audit).toHaveBeenCalledWith({ policyAuthorId: 'owner', policyVersionId: 'v1', refs });
+    expect(h.updateSet).toHaveBeenCalledWith({ status: 'APPROVED', vocabularySnapshotIds: refs });
+  });
+
+  it('ADR 0051：审批只挂快照引用，不改写封印的 envelope 与其词汇段；冻结按封印时记录的 locale', async () => {
+    setup({ userId: 'owner', teamId: null }, 'owner');
+    // 保存时以 en-US + 词汇 V1 封印（源码看起来是德语，只有 envelope 能给出 en-US）
+    const sealedScopes = '{"enumMembers":{},"fields":{},"functions":{},"literals":{},"schemaVersion":1,"types":{"v1":[]}}';
+    h.versionsFindFirst.mockResolvedValue({
+      id: 'v1', policyId: 'p1', version: 2, createdBy: 'owner', status: 'PENDING_APPROVAL',
+      content: GERMAN_SOURCE, source: null, aliasSet: null, sourceToolchainId: 'tc-1',
+      sourceScopesJson: sealedScopes,
+      sourceEnvelopeSha256: computeSourceEnvelope(GERMAN_SOURCE, null, 'en-US', 'tc-1', sealedScopes),
+    });
+    // 作者之后把词汇改成 V2，审批冻结得到的快照与封印时不同
+    const refs = [{ snapshotId: 's-v2', domain: 'd', locale: 'de' }];
+    h.snapshot.mockResolvedValue(refs);
+
+    await approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' });
+
+    expect(h.snapshot).toHaveBeenCalledWith(
+      { policyAuthorId: 'owner', policy: { source: GERMAN_SOURCE, locale: 'en-US' } },
+      expect.anything(),
+    );
+    // 状态更新里没有 envelope / 词汇段字段：已审批版本的 envelope 仍按封印输入重算可得
     expect(h.updateSet).toHaveBeenCalledWith({ status: 'APPROVED', vocabularySnapshotIds: refs });
   });
 

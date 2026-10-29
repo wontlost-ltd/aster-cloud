@@ -32,9 +32,6 @@ vi.mock('@/services/security/security-event-service', () => ({
 }));
 vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
   loadExecutionVocabulary: vi.fn(async () => undefined),
-  // envelope 反推编译 locale 用的按 locale 词汇来源（本测试的 envelope 词汇段均为空）
-  loadFrozenVocabularyForSource: async () => () => null,
-  loadLiveVocabularyForSource: async () => () => null,
 }));
 const mockEvaluateSource = vi.fn(
   async (
@@ -258,7 +255,7 @@ Regel bewerten gegeben person als Fahrer liefert Ganzzahl:
     const envelope = computeSourceEnvelope(source, null, 'en-US', 'tc-1', '');
     vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue(
       version({
-        source, aliasSet: null, sourceToolchainId: 'tc-1', sourceEnvelopeSha256: envelope,
+        source, aliasSet: null, sourceToolchainId: 'tc-1', sourceEnvelopeSha256: envelope, sourceScopesJson: '',
         vocabularySnapshotIds: [{ snapshotId: 's-de', domain: 'e2e1026', locale: 'de' }],
       }) as never,
     );

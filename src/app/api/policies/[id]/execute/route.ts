@@ -104,7 +104,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     const versionRows = await db.query.policyVersions.findMany({
       where: eq(policyVersions.policyId, id),
       columns: {
-        id: true, version: true, status: true, isDefault: true, createdBy: true, sourceEnvelopeSha256: true,
+        id: true, version: true, status: true, isDefault: true, createdBy: true, sourceEnvelopeSha256: true, sourceScopesJson: true,
       },
     });
 
@@ -387,14 +387,13 @@ export async function POST(req: Request, { params }: RouteParams) {
     // 领域词汇（ADR 0014 线C，#626）：已审批版本用冻结快照，草稿用作者现行词汇（作用域内），best-effort。
     // 版本语言与 secure-execute 同一解析器：记录的编译 locale → 快照 locale → 源码识别。
     const executedVersionRow = versionRows.find((row) => row.version === policy.version);
-    const policyLocale = await resolveStoredVersionLocale({
+    const policyLocale = resolveStoredVersionLocale({
       source: policy.content,
       aliasSet: policy.aliasSet ?? null,
       sourceEnvelopeSha256: executedVersionRow?.sourceEnvelopeSha256 ?? null,
+      sourceScopesJson: executedVersionRow?.sourceScopesJson ?? null,
       sourceToolchainId: policy.sourceToolchainId ?? null,
       vocabularySnapshotIds: policy.vocabSnapshotIds,
-      status: executedVersionRow?.status,
-      createdBy: executedVersionRow?.createdBy,
     });
     const vocabulary = await loadVersionExecutionVocabulary({
       status: executedVersionRow?.status,
