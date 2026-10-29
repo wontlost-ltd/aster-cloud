@@ -356,7 +356,7 @@ packages:
     engines: {node: '>= 10'}
 
   '@aster-cloud/aster-lang-ts@file:.e2e-local/aster-lang-ts-local.tgz':
-    resolution: {integrity: sha512-XMrrND1nFMDnFzuFXon1reWrYwApxOlcAgQ+mgY6ZcO/BZ3GbaRY9AAbio4BfaFlzt6O6uUoQkaqMXs9uQIkiQ==, tarball: file:.e2e-local/aster-lang-ts-local.tgz}
+    resolution: {integrity: sha512-uuhe1rBcDnvD741Abtm3wBMhNl29YSYROuc3kc3As24zrFzQBevYdWKS0xEXZK8dff6qh4TURN/koaQmuXRgEQ==, tarball: file:.e2e-local/aster-lang-ts-local.tgz}
     version: 1.0.37
     engines: {node: '>=24.0.0'}
     hasBin: true
