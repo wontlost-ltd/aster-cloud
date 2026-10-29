@@ -7,13 +7,17 @@
 # （引擎 ./browser 导出只声明 import 条件，tsx 按 CJS 加载时解析不到）。
 #
 # ★为什么不复用 aster-cloud-migrate：迁移镜像要拷 src/，几乎每次 push 都会产出新 digest，
-#   连带 pin PR → sync → PostSync → 受门控的 Worker 部署。本镜像只在 CI 的窄路径过滤命中时
-#   构建（见 ci.yml build-resolver-migration-image）。
+#   连带 pin PR → sync → PostSync → 受门控的 Worker 部署。本镜像由独立 workflow
+#   .github/workflows/resolver-migration-image.yml 构建（窄路径过滤或手动 dispatch），不在 CI 内，
+#   Worker 部署不等它，dispatch 重建也不会重新部署 Worker。
 #
 # 构建上下文的忽略规则见 Dockerfile.resolver-migration.dockerignore（BuildKit 按 Dockerfile 名取用）。
 
 # ── deps：按应用锁文件完整安装，取出与应用逐字节一致的引擎包与运行时依赖的精确版本 ──
-FROM node:24-alpine AS deps
+# deps 阶段在构建机原生平台运行（--platform=$BUILDPLATFORM），避免多架构构建时 pnpm install 走 QEMU。
+# 它只产出与平台无关的东西（引擎包 tgz + 版本清单）：引擎是纯 JS（依赖 semver、decimal.js，无原生模块），
+# 且 --ignore-scripts 不跑任何构建脚本；平台相关的安装发生在下面运行阶段（目标平台）的 npm install。
+FROM --platform=$BUILDPLATFORM node:24-alpine AS deps
 WORKDIR /src
 RUN corepack enable pnpm
 COPY package.json pnpm-lock.yaml ./
@@ -21,6 +25,8 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 # 运行时清单：引擎用锁文件解析出的那份包（npm pack 成 tgz，与应用同字节）；其余为
 # resolver 代码闭包的外部依赖（esbuild metafile 实测），版本取锁文件实际安装值。
 # @opennextjs/cloudflare 只在 try/catch 内动态导入，Node 下缺失即回退，故不安装。
+# 生成的 package.json 声明 "type": "module"：运行目录只有本脚本一个入口，脚本与 src/ 都是 ESM 语法，按 ESM 加载
+# 最直接（本地 podman 验证即在此设置下）；应用 package.json 未声明 type，ops:resolver-migration 靠 tsx 的互操作同样可用。
 RUN mkdir /out \
  && (cd node_modules/@aster-cloud/aster-lang-ts && npm pack --silent --ignore-scripts --pack-destination /out) \
  && node -e ' \
