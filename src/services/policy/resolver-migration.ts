@@ -10,7 +10,8 @@
  *   resolverVersion=1、清空错误；仅本任务归档过的行恢复 statusBeforeArchive。
  * - 名称解析失败（编译错误诊断、作者词汇无法构成作用域）：旧 envelope / 工具链 / 词汇段不动，记错误；
  *   当前非 ARCHIVED 才记下原状态并归档、置标记；已归档（无论来源）只更新错误。resolverVersion 保持 NULL。
- * - 基础设施故障（编译服务不可用、词汇加载失败、DB 错误）：事务回滚，行不变，只在报告里列出，重跑再试。
+ * - 基础设施故障（编译服务不可用、不带编译诊断的上游拒绝如签名/租户 401/403、地址 404、413，词汇加载失败、DB 错误）：
+ *   事务回滚，行不变，只在报告里列出，重跑再试。
  *
  * 哈希链：prevHash = 前驱链接（envelope ?? sourceHash），sourceHash = H(source + prevHash)。成功行链接变了，
  * 就在同一事务里把直接后继的 prevHash 从旧链接改成新链接（比较后才写：迁移前已断的链保持断开），
@@ -116,6 +117,8 @@ interface Owner {
   teamId: string | null;
 }
 
+type RowLocation = Pick<MigrationFailure, 'id' | 'policyId' | 'version' | 'ownerId'>;
+
 type Recompiled =
   | { ok: true; scopesJson: string }
   | { ok: false; failure: Omit<MigrationFailure, 'id' | 'policyId' | 'version' | 'ownerId'> };
@@ -145,25 +148,28 @@ export async function runResolverMigration(options: ResolverMigrationOptions = {
 
 /** 在独立事务里迁移一行；事务内抛出的异常一律视为基础设施故障（行不变，重跑再试）。 */
 export async function migrateVersion(id: string): Promise<RowResult> {
+  // 读到行之后由 migrateLocked 填入定位信息，故障时报告能指出是哪个策略的哪一版
+  const where: RowLocation = { id, policyId: null, version: null, ownerId: null };
   let migrated: { result: RowResult; policyId: string | null };
   try {
-    migrated = await db.transaction((tx) => migrateLocked(tx, id));
+    migrated = await db.transaction((tx) => migrateLocked(tx, where));
   } catch (err) {
     console.warn('[resolver-migration] row failed, left pending', id, err);
     const error = truncateMigrationError(err instanceof Error ? `${err.name}: ${err.message}` : String(err));
-    return failed({ id, policyId: null, version: null, ownerId: null, category: 'infrastructure', error, codes: [] });
+    return failed({ ...where, category: 'infrastructure', error, codes: [] });
   }
   if (migrated.policyId) await invalidateCache(migrated.policyId);
   return migrated.result;
 }
 
-async function migrateLocked(tx: Tx, id: string): Promise<{ result: RowResult; policyId: string | null }> {
+async function migrateLocked(tx: Tx, where: RowLocation): Promise<{ result: RowResult; policyId: string | null }> {
+  const { id } = where;
   const [row] = await tx.select().from(policyVersions).where(eq(policyVersions.id, id)).for('update');
   if (!row || row.resolverVersion === RESOLVER_VERSION) {
     return { result: { id, status: 'SKIPPED' }, policyId: null };
   }
   const owner = await ownerOf(tx, row.policyId);
-  const where = { id, policyId: row.policyId, version: row.version, ownerId: row.createdBy ?? owner?.userId ?? null };
+  Object.assign(where, { policyId: row.policyId, version: row.version, ownerId: row.createdBy ?? owner?.userId ?? null });
   if (!sealIntact(row)) {
     await tx.update(policyVersions).set({ resolverMigrationError: INTEGRITY_MISMATCH_ERROR }).where(eq(policyVersions.id, id));
     const failure = { ...where, category: 'integrity' as const, error: INTEGRITY_MISMATCH_ERROR, codes: [] };
@@ -216,9 +222,20 @@ async function recompile(row: VersionRow, owner: Owner | null, locale: string): 
     const errors = (diagnostics ?? []).filter((d) => d.severity === 'error');
     return errors.length === 0 ? { ok: true, scopesJson } : compileFailure(errors, source);
   } catch (err) {
-    if (err instanceof PolicyCompileUnavailableError || !(err instanceof PolicyCompileError)) throw err;
-    return compileFailure(err.diagnostics ?? [], source, err.message);
+    if (!carriesCompileDiagnostics(err)) throw err;
+    return compileFailure(err.diagnostics, source, err.message);
   }
+}
+
+/**
+ * 只有带编译诊断的上游拒绝（编译资源对源码/别名输入错误返回的形态）才算名称解析失败。
+ * 保存路径的校验器把 408 以外的 4xx 都映射为 PolicyCompileError，但对迁移而言签名/租户 401/403、
+ * 地址错误 404、请求体过大 413 等都是配置或传输问题：一次运行会把所有行归档，故一律按基础设施故障上抛。
+ */
+function carriesCompileDiagnostics(err: unknown): err is PolicyCompileError & { diagnostics: CompileDiagnostic[] } {
+  return err instanceof PolicyCompileError
+    && !(err instanceof PolicyCompileUnavailableError)
+    && (err.diagnostics?.length ?? 0) > 0;
 }
 
 async function loadVersionVocabulary(row: VersionRow, policy: PolicyVocabularyContext): Promise<DomainVocabulary | null> {

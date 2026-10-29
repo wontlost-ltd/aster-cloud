@@ -15,6 +15,8 @@ type Outcome =
   | { kind: 'ok' }
   | { kind: 'diagnostics'; code: string; message?: string }
   | { kind: 'unavailable' }
+  /** 上游 HTTP 拒绝；diagnostics 给出时为编译资源的源码/别名输入错误形态。 */
+  | { kind: 'http'; status: number; code: string; diagnostics?: unknown[] }
   /** 编译挂起直到 release：让迁移事务持有行锁，制造并发窗口。 */
   | { kind: 'gate'; released: Promise<void> };
 
@@ -32,6 +34,10 @@ vi.mock('@/services/policy/policy-api', async (importOriginal) => {
         compileState.calls.push({ tenantId, userId, request });
         const outcome = (compileState.outcomes.get(request.source as string) ?? { kind: 'ok' }) as Outcome;
         if (outcome.kind === 'gate') await outcome.released;
+        if (outcome.kind === 'http') {
+          const details = outcome.diagnostics ? { code: outcome.code, diagnostics: outcome.diagnostics } : { code: outcome.code };
+          throw new actual.PolicyApiError(`HTTP ${outcome.status}`, outcome.status, outcome.code, undefined, details);
+        }
         if (outcome.kind === 'unavailable') {
           throw new actual.PolicyApiError('Service Unavailable', 503, 'UNAVAILABLE');
         }
@@ -517,6 +523,42 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('resolver 迁移（ADR 0051 §9
     expect(await rowsOf(db, policyId)).toEqual(before);
     compileState.outcomes.clear();
     expect(await run(policyId)).toMatchObject({ succeeded: 1 });
+  });
+
+  it.each([
+    [401, 'unauthorized'],
+    [403, 'internal_only'],
+    [404, 'not_found'],
+  ])('不带编译诊断的上游 %i（签名/租户/地址错误）：按基础设施处理，不归档、不改动', async (status, code) => {
+    const policyId = `${PREFIX}http-${status}`;
+    await seed(db, policyId, [{ source: src(`h${status}a`) }, { source: src(`h${status}b`), status: 'DRAFT' }]);
+    for (const name of [`h${status}a`, `h${status}b`]) {
+      compileState.outcomes.set(src(name), { kind: 'http', status, code });
+    }
+    const before = await rowsOf(db, policyId);
+
+    const report = await run(policyId);
+
+    expect(report).toMatchObject({ processed: 2, succeeded: 0, failed: 2 });
+    expect(report.triage.infrastructure).toEqual([
+      expect.objectContaining({ id: `${policyId}-v1`, policyId, version: 1, ownerId: USER, category: 'infrastructure' }),
+      expect.objectContaining({ id: `${policyId}-v2`, policyId, version: 2, ownerId: USER }),
+    ]);
+    expect(await rowsOf(db, policyId)).toEqual(before);
+  });
+
+  it('带编译诊断的 4xx（源码/别名输入错误）仍按名称解析失败归档', async () => {
+    const policyId = `${PREFIX}http-diag`;
+    await seed(db, policyId, [{ source: src('hd') }]);
+    compileState.outcomes.set(src('hd'), {
+      kind: 'http', status: 400, code: 'compile_error',
+      diagnostics: [{ severity: 'error', code: 'E802', message: "Cannot resolve name 'x'", startLine: 1, startColumn: 1 }],
+    });
+
+    const report = await run(policyId);
+
+    expect(report.failures).toEqual([expect.objectContaining({ category: 'compile', codes: ['E802'] })]);
+    expect((await rowsOf(db, policyId))[0]).toMatchObject({ status: 'ARCHIVED', archivedByResolverMigration: true });
   });
 
   it('分诊报告：E8xx、无效构造写法、E801、作者词汇非法（按用户）、完整性不符分组列出', async () => {

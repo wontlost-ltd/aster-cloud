@@ -37,7 +37,10 @@ describe('scripts/resolver-migration.ts', () => {
   it('--help 写明运行方式与已知限制', () => {
     const result = runCli(['--help'], {});
     expect(result.status).toBe(0);
-    for (const text of ['--conditions=import', 'no fallback', 'Success means', 'integrityMismatch', 'heuristic', 'P005']) {
+    for (const text of [
+      '--conditions=import', 'no fallback', 'Success means', 'integrityMismatch', 'heuristic', 'P005',
+      'updateVersionSource', 'pg_dump', 'HASH_MISMATCH', 'without\n    diagnostics',
+    ]) {
       expect(result.stdout).toContain(text);
     }
   });
