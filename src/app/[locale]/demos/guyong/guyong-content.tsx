@@ -21,8 +21,7 @@ import {
   compile,
   evaluate,
   canonicalize,
-  vocabularyRegistry,
-  initBuiltinVocabularies,
+  buildVocabularyScopes,
 } from '@aster-cloud/aster-lang-ts/browser';
 import { GUYONG } from '@/config/guyong-demo';
 import { toCanonical, toDisplay } from '@/lib/layout-map';
@@ -55,15 +54,11 @@ export function GuyongDemoContent() {
   const VIEW_TEXT = { display: displaySource, compile: compileSource, canonical: canonicalKeyword };
   const displayLines = displaySource.split('\n');
 
-  // 编译当前变体（先注册该变体的字面量宏词汇，再带 domain 编译）。变体切换即重编译。
+  // 编译当前变体：直接传该变体的字面量宏词汇（ADR 0051 编译入口取词汇，不经注册表）。变体切换即重编译。
   const compiled = useMemo(() => {
-    initBuiltinVocabularies();
-    const vocab = GUYONG.vocabFor(variant);
-    vocabularyRegistry.registerCustom(vocab.id, vocab);
     const r = compile(compileSource, {
       lexicon: GUYONG.lexicon,
-      domain: GUYONG.domain,
-      tenantId: GUYONG.domain,
+      vocabulary: GUYONG.vocabFor(variant),
     });
     const errs = (r as { parseErrors?: { message?: string }[] }).parseErrors ?? [];
     return { core: r.core, ok: r.success && errs.length === 0, errs };
@@ -122,9 +117,7 @@ export function GuyongDemoContent() {
     if (!compiled.core) return;
     const canonicalized = canonicalize(compileSource, {
       lexicon: GUYONG.lexicon,
-      domain: GUYONG.domain,
-      locale: GUYONG.lexicon.id,
-      tenantId: GUYONG.domain,
+      vocabulary: buildVocabularyScopes(GUYONG.vocabFor(variant)),
     });
     const ev = evaluate(compiled.core, GUYONG.entry, {});
     setRun({

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { compile, evaluate, canonicalize, vocabularyRegistry, initBuiltinVocabularies } from '@aster-cloud/aster-lang-ts/browser';
+import { compile, evaluate, canonicalize, buildVocabularyScopes } from '@aster-cloud/aster-lang-ts/browser';
 import { POEMS, toPoemLocale } from '@/config/poem-demo';
 import { toCanonical, toDisplay } from '@/lib/layout-map';
 import { cn } from '@/components/ui';
@@ -42,19 +42,12 @@ export function PoemDemoContent({ locale }: { locale: string }) {
   const displaySource = poem.layout ? toDisplay(poem.layout) : poem.source;
 
   // 编译诗体源码（注入诗词别名词典）→ canonicalize 归一回规范关键词 → 同款引擎编译。
-  // alias-literal 范式（《静夜思》）还需先注册字面量宏词汇表，并以 domain/tenantId 触发展开。
+  // alias-literal 范式（《静夜思》）还需字面量宏词汇表：直接作为编译词汇传入（ADR 0051）。
   const core = useMemo(() => {
-    if (poem.vocab) {
-      initBuiltinVocabularies();
-      vocabularyRegistry.registerCustom(poem.vocab.id, poem.vocab);
-      const r = compile(compileSource, {
-        lexicon: poem.lexicon,
-        domain: poem.vocab.id,
-        tenantId: poem.vocab.id,
-      });
-      return r.core ?? null;
-    }
-    const r = compile(compileSource, { lexicon: poem.lexicon });
+    const r = compile(compileSource, {
+      lexicon: poem.lexicon,
+      ...(poem.vocab ? { vocabulary: poem.vocab } : {}),
+    });
     return r.core ?? null;
   }, [poem, compileSource]);
 
@@ -78,9 +71,7 @@ export function PoemDemoContent({ locale }: { locale: string }) {
     if (!core || !poem.vocab) return;
     const canonical = canonicalize(compileSource, {
       lexicon: poem.lexicon,
-      domain: poem.vocab.id,
-      locale: poem.lexicon.id,
-      tenantId: poem.vocab.id,
+      vocabulary: buildVocabularyScopes(poem.vocab),
     });
     const ev = evaluate(core, poem.entry, {});
     setRun({

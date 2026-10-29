@@ -12,20 +12,15 @@ import {
   compile,
   evaluate,
   ZH_CN,
-  vocabularyRegistry,
-  initBuiltinVocabularies,
 } from '@aster-cloud/aster-lang-ts/browser';
 import { GUYONG, type GuyongVariant } from '@/config/guyong-demo';
 import { toCanonical, toDisplay, verifyContentParity } from '@/lib/layout-map';
 
-/** 按 demo content 同款方式编译某变体：先注册该变体字面量宏词汇，再走 toCanonical(=source) 编译。 */
+/** 按 demo content 同款方式编译某变体：直接传该变体字面量宏词汇，走 toCanonical(=source) 编译。 */
 function compileVariant(v: GuyongVariant) {
-  initBuiltinVocabularies();
-  vocabularyRegistry.registerCustom(GUYONG.vocabFor(v).id, GUYONG.vocabFor(v));
   return compile(toCanonical(GUYONG.layoutFor(v)), {
     lexicon: GUYONG.lexicon,
-    domain: GUYONG.domain,
-    tenantId: GUYONG.domain,
+    vocabulary: GUYONG.vocabFor(v),
   });
 }
 

@@ -182,7 +182,8 @@ Rule gather given stars:
 // 整首诗按**原词序**即源码：关键词别名把诗句领字变结构关键词（床前→Module / 疑是→Rule /
 // 举头→produce / 低头→Return），**字面量宏**（IdentifierKind.LITERAL）把末词展开成字符串
 // 字面量（思故乡→"静夜思"）。运行入口 rule「地上霜」输出诗名「静夜思」。
-// 别名 + 字面量宏都只在 canonicalize 表层，Lexer/Parser/Core IR 不知其存在 → 诗体版 ≡ 规范版。
+// 返回类型「望明月」是一条类型词条（规范名 Text）：名称按位置解析（ADR 0051），未知类型名会报
+// E800，故由词汇把它解析为内置文本类型。别名、字面量宏与词汇解析都不改变 Core IR 结构 → 诗体版 ≡ 规范版。
 const JYS_DOMAIN = 'jingyesi-zh';
 
 /**
@@ -207,10 +208,11 @@ const POEM_ZH: PoemConfig = {
     [K.MODULE_DECL]: ['床前'], [K.FUNC_TO]: ['疑是'], [K.FUNC_PRODUCE]: ['举头'],
     [K.RETURN]: ['低头'],
   } } as Lexicon,
-  // 字面量宏：思故乡 → 内容「静夜思」。vocab.locale 须 = lexicon.id（compile 用 lexicon.id 查词汇）。
+  // 字面量宏：思故乡 → 内容「静夜思」；类型词条：望明月 → Text（返回类型位置按词汇解析）。
   vocab: {
     id: JYS_DOMAIN, name: '静夜思', locale: JYS_DOMAIN, version: '1.0.0',
-    structs: [], fields: [], functions: [], enumValues: [],
+    structs: [{ localized: '望明月', canonical: 'Text', kind: IdentifierKind.STRUCT }],
+    fields: [], functions: [], enumValues: [],
     literals: [{ localized: '思故乡', canonical: '静夜思', kind: IdentifierKind.LITERAL }],
   },
   source: `床前 明月光。
@@ -219,7 +221,7 @@ const POEM_ZH: PoemConfig = {
   // LayoutMap：页面**显示** toDisplay（无空格工整原诗），**编译**走 toCanonical（=上面 source）。
   layout: JINGYESI_LAYOUT,
   canonical: `模块 明月光。
-规则 地上霜 产出 望明月：
+规则 地上霜 产出 文本：
   返回 「静夜思」。`,
   entry: '地上霜', param: '时',
   // alias-literal 范式页面只跑一次（runOnce），不用 samples。这里保留三个**不同** input 仅作

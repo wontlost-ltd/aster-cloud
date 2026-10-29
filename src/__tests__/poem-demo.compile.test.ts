@@ -20,21 +20,20 @@
  *   4. 全前提为真 → verdictAll；翻任一前提 → verdictElse（引擎真判定，翻转随前提）。
  */
 import { describe, it, expect } from 'vitest';
-import { compile, evaluate, EN_US, ZH_CN, DE_DE, HI_IN, vocabularyRegistry, initBuiltinVocabularies } from '@aster-cloud/aster-lang-ts/browser';
+import { compile, evaluate, EN_US, ZH_CN, DE_DE, HI_IN } from '@aster-cloud/aster-lang-ts/browser';
 import { POEMS, type PoemLocale, type PoemConfig } from '@/config/poem-demo';
 import { toCanonical, toDisplay, verifyContentParity } from '@/lib/layout-map';
 
 const BASE: Record<PoemLocale, typeof ZH_CN> = { en: EN_US, zh: ZH_CN, de: DE_DE, hi: HI_IN };
 const LOCALES: PoemLocale[] = ['en', 'zh', 'de', 'hi'];
 
-/** 按 demo content 同款方式编译一首诗：带 vocab（alias-literal）先注册字面量宏词汇表并传 domain。 */
+/** 按 demo content 同款方式编译：带 vocab（alias-literal）时把字面量宏词汇表作为编译词汇传入（ADR 0051）。 */
+function compileWithVocab(poem: PoemConfig, source: string) {
+  return compile(source, { lexicon: poem.lexicon, ...(poem.vocab ? { vocabulary: poem.vocab } : {}) });
+}
+
 function compilePoem(poem: PoemConfig) {
-  if (poem.vocab) {
-    initBuiltinVocabularies();
-    vocabularyRegistry.registerCustom(poem.vocab.id, poem.vocab);
-    return compile(poem.source, { lexicon: poem.lexicon, domain: poem.vocab.id, tenantId: poem.vocab.id });
-  }
-  return compile(poem.source, { lexicon: poem.lexicon });
+  return compileWithVocab(poem, poem.source);
 }
 
 /** 剥离 origin/span（位置元数据；结构比较口径）。 */
@@ -189,17 +188,7 @@ describe('poem demo: source-as-poem across three paradigms', () => {
 
       it(`${loc} (${poem.title}): LayoutMap — 用 toCanonical 编译与用 source 编译得同一 Core IR`, () => {
         // 证明「走 layout 的 canonical 源码」与「直接用 source」编译结果结构一致（因二者逐字相等）。
-        const viaLayout = poem.vocab
-          ? (() => {
-              initBuiltinVocabularies();
-              vocabularyRegistry.registerCustom(poem.vocab!.id, poem.vocab!);
-              return compile(toCanonical(poem.layout!), {
-                lexicon: poem.lexicon,
-                domain: poem.vocab!.id,
-                tenantId: poem.vocab!.id,
-              });
-            })()
-          : compile(toCanonical(poem.layout!), { lexicon: poem.lexicon });
+        const viaLayout = compileWithVocab(poem, toCanonical(poem.layout!));
         const viaSource = compilePoem(poem);
         expect(viaLayout.core, `[${loc}] layout compiles`).toBeTruthy();
         expect(stripOrigin(viaLayout.core)).toEqual(stripOrigin(viaSource.core));
