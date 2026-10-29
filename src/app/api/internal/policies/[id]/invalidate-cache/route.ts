@@ -12,7 +12,7 @@
 import { NextResponse } from 'next/server';
 
 import { verifyInternalSignature } from '@/lib/internal-signature';
-import { invalidatePolicyCache } from '@/lib/cache';
+import { invalidatePolicyCacheReporting } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +30,16 @@ export async function POST(
     return NextResponse.json({ error: verified.reason }, { status: 401 });
   }
 
+  // 失败必须让调用方（迁移 Job）看得到：无 KV binding → 503，KV 删除失败 → 502
   const policyId = (await params).id;
-  await invalidatePolicyCache(policyId);
+  try {
+    const outcome = await invalidatePolicyCacheReporting(policyId);
+    if (outcome === 'kv_unavailable') {
+      return NextResponse.json({ invalidated: false, error: 'kv_unavailable' }, { status: 503 });
+    }
+  } catch (err) {
+    console.error('[internal/invalidate-cache] KV delete failed', policyId, err);
+    return NextResponse.json({ invalidated: false, error: 'kv_delete_failed' }, { status: 502 });
+  }
   return NextResponse.json({ invalidated: true });
 }

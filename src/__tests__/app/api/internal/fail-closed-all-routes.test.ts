@@ -23,7 +23,7 @@ vi.mock('@/lib/prisma', () => ({
   users: {}, apiKeys: {}, teams: {}, teamMembers: {}, apiCallRecords: {},
 }));
 vi.mock('@/lib/plans', () => ({ getEffectiveLimits: boom }));
-vi.mock('@/lib/cache', () => ({ invalidatePolicyCache: boom }));
+vi.mock('@/lib/cache', () => ({ invalidatePolicyCacheReporting: boom }));
 vi.mock('@/lib/ai-quota', () => ({ checkAiQuota: boom, recordAiUsage: boom }));
 vi.mock('@/lib/api-rate-limiter', () => ({ checkRate: boom }));
 vi.mock('@/lib/team-permissions', () => ({ SOLO_TENANT_ROLE: 'owner' }));

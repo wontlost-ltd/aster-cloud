@@ -956,6 +956,7 @@ export async function previewAddTerm(
 
   // 整组现有词条（不分页）；只返回加入预览词条后新出现的诊断，组里已有的无关旧错误不算这条词条的冲突。
   // 组装按行序追加，预览词条在末尾，已有词条的诊断文本（含位置）前后一致，可直接按文本求差。
+  // 已知边界：预览词条引入的诊断若与组内已有诊断文本完全相同，会被当作旧问题隐藏（诊断含位置，实际极少）。
   const group = { domain: normalized.domain, locale: normalized.locale };
   const current = await loadGroupTermRows(db, userId, group);
   const previewRow: TermLikeRow = { ...normalized, domainTermId: 'preview' };

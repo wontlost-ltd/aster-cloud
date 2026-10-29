@@ -181,6 +181,20 @@ export async function invalidatePolicyCache(policyId: string): Promise<void> {
 }
 
 /**
+ * 失效策略缓存并报告结果（供内部失效端点向调用方返回失败信号；业务写路径用 {@link invalidatePolicyCache}）。
+ * 无 KV binding 返回 'kv_unavailable'；KV 删除失败原样抛出。
+ */
+export async function invalidatePolicyCacheReporting(policyId: string): Promise<'invalidated' | 'kv_unavailable'> {
+  const kv = await getKV();
+  if (!kv) return 'kv_unavailable';
+  await Promise.all([
+    kv.delete(`${CACHE_PREFIX.POLICY}${policyId}`),
+    kv.delete(`${CACHE_PREFIX.POLICY_CONTENT}${policyId}`),
+  ]);
+  return 'invalidated';
+}
+
+/**
  * 缓存用户数据（plan, trialEndsAt）
  */
 export interface CachedUserData {

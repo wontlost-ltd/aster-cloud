@@ -6,8 +6,10 @@ import { createHash, createHmac } from 'node:crypto';
  * resolver 迁移 Job 跑在 k8s 里拿不到 Workers KV，经此端点让 Worker 删除策略执行缓存。
  */
 
-const { mockInvalidate } = vi.hoisted(() => ({ mockInvalidate: vi.fn(async () => undefined) }));
-vi.mock('@/lib/cache', () => ({ invalidatePolicyCache: mockInvalidate }));
+const { mockInvalidate } = vi.hoisted(() => ({
+  mockInvalidate: vi.fn(async (): Promise<'invalidated' | 'kv_unavailable'> => 'invalidated'),
+}));
+vi.mock('@/lib/cache', () => ({ invalidatePolicyCacheReporting: mockInvalidate }));
 // 重放拒绝由 internal-signature 单测与真 Postgres 集成测试覆盖；本文件只关心路由行为。
 vi.mock('@/services/security/nonce-service', () => ({ claimNonce: vi.fn(async () => true) }));
 
@@ -46,6 +48,23 @@ describe('POST /api/internal/policies/[id]/invalidate-cache', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ invalidated: true });
     expect(mockInvalidate).toHaveBeenCalledWith('pol-1');
+  });
+
+  it('无 KV binding → 503，调用方能看到未失效', async () => {
+    mockInvalidate.mockResolvedValueOnce('kv_unavailable');
+    const res = await call(signedHeaders(TEST_KEY));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ invalidated: false, error: 'kv_unavailable' });
+  });
+
+  it('KV 删除失败 → 502 并记录，不返回 200', async () => {
+    mockInvalidate.mockRejectedValueOnce(new Error('kv down'));
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await call(signedHeaders(TEST_KEY));
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ invalidated: false, error: 'kv_delete_failed' });
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
   });
 
   it('签名密钥不符 → 401，不触碰缓存', async () => {
