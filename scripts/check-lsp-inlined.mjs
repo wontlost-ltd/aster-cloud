@@ -13,7 +13,9 @@
  *
  * 判定：
  *   - 产物中必须存在 LSP 客户端（含 `/lsp?locale=` 的 chunk），否则视为检查空转；
- *   - 任何 .js 产物中都不得残留 `env.NEXT_PUBLIC_LSP_HOST` / `env.NEXT_PUBLIC_LSP_TOKEN`。
+ *   - 任何 .js 产物中都不得残留 `env.NEXT_PUBLIC_LSP_HOST` / `env.NEXT_PUBLIC_LSP_TOKEN`；
+ *   - 构建环境里的 NEXT_PUBLIC_LSP_TOKEN 不得为空白：Next 会把空串原样内联（`r=""`），产物检查看不出来，
+ *     编辑器的 isLspConfigured 却仍判为未配置。本脚本与 next build 在同一环境中运行，故直接核对环境变量。
  * 只输出变量名，绝不打印 token 值。
  *
  * 退出码：0 = 通过；1 = 未内联或产物缺失。
@@ -42,6 +44,11 @@ export function inspectLspInlining(sources) {
   return { ok: hasLspClient && missing.length === 0, hasLspClient, missing };
 }
 
+/** 构建环境中的 token 是否为空白（未设置或仅空白都算）。 */
+export function isBlankToken(env) {
+  return !(env.NEXT_PUBLIC_LSP_TOKEN ?? '').trim();
+}
+
 function listJsFiles(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);
@@ -68,6 +75,10 @@ if (isMain) {
   const dir = process.argv[2] ?? join(root, '.next', 'static', 'chunks');
   if (!existsSync(dir)) {
     console.error(`::error::找不到构建产物目录 ${dir}，请先运行 next build`);
+    process.exit(1);
+  }
+  if (isBlankToken(process.env)) {
+    console.error('::error::构建环境中 NEXT_PUBLIC_LSP_TOKEN 未设置或为空白，编辑器不会连接 LSP（悬停/跳转不可用）');
     process.exit(1);
   }
   const result = inspectChunkDir(dir);

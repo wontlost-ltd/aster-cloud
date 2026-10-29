@@ -37,7 +37,7 @@ describe('vocabularyDiagnosticHelp', () => {
   });
 
   it('未解析类诊断（E801）只有写法，没有候选', () => {
-    expect(vocabularyDiagnosticHelp({ code: 'E801', message: "Field 'punkte' in FIELD_REF position could not be resolved" }))
+    expect(vocabularyDiagnosticHelp({ code: 'E801', message: "Cannot resolve field 'punkte' in FIELD_REF position" }))
       .toEqual({ written: 'punkte', candidates: [] });
   });
 

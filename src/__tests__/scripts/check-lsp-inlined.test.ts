@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { inspectLspInlining, inspectChunkDir } from '../../../scripts/check-lsp-inlined.mjs';
+import { inspectLspInlining, inspectChunkDir, isBlankToken } from '../../../scripts/check-lsp-inlined.mjs';
 
 // 线上 chunk 499.1746dbcffb6ca4c7.js 的真实片段（token 未内联）
 const PROD_CHUNK_TOKEN_MISSING =
@@ -60,5 +60,15 @@ describe('inspectChunkDir', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+/* 审查 L1：Next 会把空串内联成 r=""，产物检查看不出来，必须直接核对构建环境。 */
+describe('isBlankToken', () => {
+  it.each([[{}], [{ NEXT_PUBLIC_LSP_TOKEN: '' }], [{ NEXT_PUBLIC_LSP_TOKEN: '   ' }]])('%j → 空白', (env) => {
+    expect(isBlankToken(env)).toBe(true);
+  });
+  it('有值 → 非空白', () => {
+    expect(isBlankToken({ NEXT_PUBLIC_LSP_TOKEN: 'tok' })).toBe(false);
   });
 });
