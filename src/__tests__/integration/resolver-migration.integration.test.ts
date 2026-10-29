@@ -561,6 +561,34 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('resolver 迁移（ADR 0051 §9
     expect((await rowsOf(db, policyId))[0]).toMatchObject({ status: 'ARCHIVED', archivedByResolverMigration: true });
   });
 
+  // #649：Job 跑在 Worker 之外，配置 ASTER_CLOUD_INTERNAL_URL 后经 cloud 内部端点失效 Workers KV
+  it('配置 cloud 内部地址时，每个迁移过的策略经签名请求失效执行缓存；端点失败只告警', async () => {
+    const policyId = `${PREFIX}remote-cache`;
+    await seed(db, policyId, [{ source: src('rc1') }, { source: src('rc2') }]);
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const req = new Request(input, init);
+      urls.push(`${req.method} ${req.url} ${req.headers.has('X-Internal-Signature')}`);
+      return new Response('{"error":"down"}', { status: urls.length === 1 ? 200 : 502 });
+    }));
+    vi.stubEnv('ASTER_CLOUD_INTERNAL_URL', 'https://cloud.internal/');
+    vi.stubEnv('ASTER_PLAN_GATE_HMAC_KEY', 'migration-test-key');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const report = await run(policyId);
+      expect(report).toMatchObject({ processed: 2, succeeded: 2, failed: 0 });
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+    const expected = `POST https://cloud.internal/api/internal/policies/${policyId}/invalidate-cache true`;
+    expect(urls).toEqual([expected, expected]);
+    expect(warn).toHaveBeenCalledWith(
+      '[resolver-migration] committed, but cache invalidation failed', policyId, expect.any(Error),
+    );
+    warn.mockRestore();
+  });
+
   // #649：4xx 但只带 api 内部故障码 = 编译没做成，与 200 success:false 分支同口径，按基础设施故障不归档
   it('只有 COMPILE_INTERNAL_ERROR 诊断的 4xx 不归档：行保持待迁移，列入 infrastructure', async () => {
     const policyId = `${PREFIX}http-internal`;

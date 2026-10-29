@@ -9,6 +9,7 @@ import { writeFile } from 'node:fs/promises';
 import { getDb } from '@/lib/prisma';
 import {
   RESOLVER_MIGRATION_BATCH_SIZE,
+  RESOLVER_MIGRATION_CACHE_URL_ENV,
   RESOLVER_MIGRATION_REQUIRED_ENV,
   missingResolverMigrationEnv,
   runResolverMigration,
@@ -26,6 +27,12 @@ Required environment (no fallback — the tool refuses to run without them):
   ${RESOLVER_MIGRATION_REQUIRED_ENV.join(', ')}
                                    aster-api internal URL and internal signing key; never defaults to production
 
+Optional environment:
+  ${RESOLVER_MIGRATION_CACHE_URL_ENV}         aster-cloud base URL reachable from the job; each migrated policy's
+                                   execution cache (Workers KV) is invalidated through
+                                   POST /api/internal/policies/<id>/invalidate-cache (signed with the key above).
+                                   Without it the job cannot reach Workers KV: cached entries expire within 1 hour.
+
 Output: full JSON report on stdout (processed/succeeded/failed/failures/triage); --report also writes it to a file.
 Exit codes: 0 = every row has a verdict; 1 = some rows hit infrastructure failures and stay pending (re-run);
             2 = configuration or script error.
@@ -36,8 +43,9 @@ Known limits:
     A row saved with any other locale is reported under triage.integrityMismatch (left untouched for manual review).
   - triage.invalidConstructForm (\`X mit f = v\`, aster-lang-ts#244) is a heuristic: P005 plus a regex on the source;
     other P005 failures are listed under triage.otherCompile.
-  - Only upstream rejections that carry compile diagnostics archive a row. 401/403/404/413 and other 4xx without
-    diagnostics, 5xx and transport errors are infrastructure failures: nothing is changed, re-run after fixing config.
+  - Only upstream rejections that carry source-error diagnostics archive a row. 401/403/404/413 and other 4xx without
+    diagnostics (or with only COMPILE_INTERNAL_ERROR), 5xx and transport errors are infrastructure failures: nothing
+    is changed, re-run after fixing config.
 
 Runbook:
   - Before running, pg_dump "PolicyVersion" and "UserVocabularySnapshot" (ADR 0051 §9 rollback point).
@@ -60,6 +68,12 @@ async function main(): Promise<number> {
   if (missing.length > 0) {
     console.error(`[resolver-migration] refusing to run: missing ${missing.join(', ')} (no fallback to production)`);
     return 2;
+  }
+  if (!process.env[RESOLVER_MIGRATION_CACHE_URL_ENV]?.trim()) {
+    console.error(
+      `[resolver-migration] warning: ${RESOLVER_MIGRATION_CACHE_URL_ENV} not set; Workers KV execution cache ` +
+        'is not invalidated and may serve migrated/archived versions for up to 1 hour',
+    );
   }
   const batchSize = Number(argValue('--batch-size') ?? RESOLVER_MIGRATION_BATCH_SIZE);
   if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 500) {

@@ -442,3 +442,25 @@ export async function checkInternalSignature(
 
   return { ok: false, reason: 'invalid_signature' };
 }
+
+/**
+ * 按 {@link checkInternalSignature} 的 v2 canonical 为发往 cloud 自身 `/api/internal/*` 的请求签名
+ * （`method\npath\ntimestamp\nnonce\nbodyHash`，时间戳为秒）。供跑在 Worker 之外、需要回调 Worker 的
+ * 运维任务使用（如 resolver 迁移 Job 经内部端点失效 Workers KV）。
+ */
+export async function signInternalV2Headers(
+  method: string,
+  url: string,
+  body: string,
+  secret: string,
+): Promise<{ 'X-Aster-Timestamp': string; 'X-Aster-Nonce': string; 'X-Internal-Signature': string }> {
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const nonce = generateNonce();
+  const bodyHash = await sha256Hex(new TextEncoder().encode(body).buffer as ArrayBuffer);
+  const canonical = `${method.toUpperCase()}\n${new URL(url).pathname}\n${timestamp}\n${nonce}\n${bodyHash}`;
+  return {
+    'X-Aster-Timestamp': timestamp,
+    'X-Aster-Nonce': nonce,
+    'X-Internal-Signature': await hmacSha256(secret, canonical),
+  };
+}
