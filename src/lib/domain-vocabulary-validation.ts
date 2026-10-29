@@ -150,25 +150,11 @@ export function formatScopeConflict(conflict: VocabularyScopeConflict): string {
 }
 
 /**
- * 引擎 validateVocabulary 里被按位置解析取代的旧检查：规范名重复（同义词、跨结构同名字段都是合法的）
- * 与本地化名重复（仅大小写不同允许；真正的同写法冲突由 findVocabularyScopeConflicts 判定）。
- */
-const SUPERSEDED_CHECKS = [/规范化名称 "[^"]*" 重复/, /本地化名称 "[^"]*" 重复/];
-
-function isSuperseded(message: string): boolean {
-  return SUPERSEDED_CHECKS.some((pattern) => pattern.test(message));
-}
-
-/**
- * 词汇校验：引擎的格式校验（规范名标识符、字面量宏等）+ 按位置解析的作用域冲突（ADR 0051）。
+ * 词汇校验：引擎 validateVocabulary 已按 ADR 0051 判定（规范名格式、字面量宏、字段 / 枚举成员须有
+ * parent、同角色同作用域写法冲突），这里直接复用，保证与编辑器、注册表同一口径。
  */
 export function validateDomainVocabulary(vocab: DomainVocabulary): VocabularyValidationResult {
-  const upstream = validateVocabulary(vocab);
-  const errors = [
-    ...upstream.errors.filter((e) => !isSuperseded(e)),
-    ...findVocabularyScopeConflicts(vocab).map(formatScopeConflict),
-  ];
-  return { valid: errors.length === 0, errors, warnings: upstream.warnings.filter((w) => !isSuperseded(w)) };
+  return validateVocabulary(vocab);
 }
 
 /**
