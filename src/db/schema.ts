@@ -646,6 +646,16 @@ export const policyVersions = pgTable(
     sourceEnvelopeSha256: text('sourceEnvelopeSha256'),
     // sourceToolchainId：envelope 计算所用工具链身份，供 tip-anchor verifier 重算验证。
     sourceToolchainId: text('sourceToolchainId'),
+    // sourceScopesJson：封印 envelope 时所用的词汇段（ADR 0051 §7 第 5 段），""=无词汇；
+    // 重算 envelope 只读它，不按现行/快照词汇重推。NULL=ADR 0051 前的旧行（待迁移回填）。
+    sourceScopesJson: text('sourceScopesJson'),
+    // ADR 0051 §9 resolver 迁移状态：resolverVersion 只在按新解析规则编译成功（或新建）时写入，NULL=待迁移；
+    // 迁移失败的原因记在 resolverMigrationError。archivedByResolverMigration 仅标记迁移任务自己归档的行，
+    // statusBeforeArchive 记其归档前状态，供修复后重跑时恢复；人工归档的行两者都不动。
+    resolverVersion: integer('resolverVersion'),
+    resolverMigrationError: text('resolverMigrationError'),
+    archivedByResolverMigration: boolean('archivedByResolverMigration').default(false).notNull(),
+    statusBeforeArchive: policyVersionStatusEnum('statusBeforeArchive'),
     // 保存时编译得到的治理档案 id（ADR 0046 §6），NULL=未声明档案或旧版本。
     profile: text('profile'),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
