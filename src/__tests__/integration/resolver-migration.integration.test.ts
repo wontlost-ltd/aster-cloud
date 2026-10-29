@@ -14,7 +14,9 @@ vi.mock('@/lib/metrics/aha-detection', () => ({ recordAhaMomentIfFirst: vi.fn(as
 type Outcome =
   | { kind: 'ok' }
   | { kind: 'diagnostics'; code: string; message?: string }
-  | { kind: 'unavailable' };
+  | { kind: 'unavailable' }
+  /** 编译挂起直到 release：让迁移事务持有行锁，制造并发窗口。 */
+  | { kind: 'gate'; released: Promise<void> };
 
 const compileState = vi.hoisted(() => ({
   outcomes: new Map<string, unknown>(),
@@ -29,6 +31,7 @@ vi.mock('@/services/policy/policy-api', async (importOriginal) => {
       compile: async (request: Record<string, unknown>) => {
         compileState.calls.push({ tenantId, userId, request });
         const outcome = (compileState.outcomes.get(request.source as string) ?? { kind: 'ok' }) as Outcome;
+        if (outcome.kind === 'gate') await outcome.released;
         if (outcome.kind === 'unavailable') {
           throw new actual.PolicyApiError('Service Unavailable', 503, 'UNAVAILABLE');
         }
@@ -58,7 +61,7 @@ import {
   users,
   userVocabularySnapshots,
 } from '@/lib/prisma';
-import { approveVersion } from '@/services/policy/version-manager';
+import { approveVersion, createVersion } from '@/services/policy/version-manager';
 import { cloudToolchainId, computeSourceEnvelope, vocabularyScopesJson } from '@/lib/policy-alias';
 import { recordedCompileLocale } from '@/lib/policy-version-locale';
 import { computeChainedHash } from '@/services/security/policy-security';
@@ -474,6 +477,32 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('resolver 迁移（ADR 0051 §9
 
     const [, v2] = await rowsOf(db, policyId);
     expect(v2!.prevHash).toBe('broken-link');
+  });
+
+  it('迁移链尾期间新建版本：createVersion 等迁移提交后接在新链接上', async () => {
+    const policyId = `${PREFIX}tail-lock`;
+    await seed(db, policyId, [{ source: src('l1') }, { source: src('l2') }]);
+    let release!: () => void;
+    compileState.outcomes.set(src('l2'), { kind: 'gate', released: new Promise<void>((r) => { release = r; }) });
+
+    const migrating = migrateVersion(`${policyId}-v2`);
+    await vi.waitFor(() => expect(compileState.calls).toHaveLength(1));
+    let created = false;
+    const creating = createVersion({ policyId, source: src('l3'), createdBy: USER, locale: 'en-US', scopesJson: '' })
+      .then((r) => { created = true; return r; });
+    await new Promise((r) => setTimeout(r, 700));
+    // 迁移事务仍持有链尾行锁：新建版本必须等待
+    expect(created).toBe(false);
+
+    release();
+    expect(await migrating).toMatchObject({ status: 'SUCCEEDED' });
+    const result = await creating;
+
+    const rows = await rowsOf(db, policyId);
+    expect(result.version).toBe(3);
+    expect(rows[1]!.resolverVersion).toBe(1);
+    expect(rows[2]!.prevHash).toBe(rows[1]!.sourceEnvelopeSha256);
+    expectChainValid(rows);
   });
 
   it('基础设施故障（编译服务 503）：不归档、不改动，下次重跑再试', async () => {

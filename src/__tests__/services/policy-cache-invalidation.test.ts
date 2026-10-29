@@ -41,12 +41,21 @@ vi.mock('@/lib/prisma', () => {
   const update = vi.fn(() => ({
     set: vi.fn(() => ({ where: mockUpdateWhere })),
   }));
+  // 链尾在事务内 SELECT … FOR UPDATE 读取（mockVersionsFindFirst 给出链尾行）
+  const select = vi.fn(() => ({
+    from: () => ({ where: () => ({ orderBy: () => ({ limit: () => ({
+      for: async () => {
+        const tail = await mockVersionsFindFirst();
+        return tail ? [tail] : [];
+      },
+    }) }) }) }),
+  }));
   return {
     db: {
       insert,
       update,
       transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
-        fn({ update })),
+        fn({ update, insert, select })),
       query: { policyVersions: { findFirst: mockVersionsFindFirst } },
     },
     policies: { id: {}, version: {}, content: {} },

@@ -13,9 +13,21 @@ const { mockInsertReturning, mockInsertValues, mockVersionsFindFirst } = vi.hois
 
 vi.mock('@/lib/prisma', () => {
   const insert = vi.fn(() => ({ values: mockInsertValues }));
+  // 链尾在事务内 SELECT … FOR UPDATE 读取（mockVersionsFindFirst 给出链尾行）
+  const select = vi.fn(() => ({
+    from: () => ({ where: () => ({ orderBy: () => ({ limit: () => ({
+      for: async () => {
+        const tail = await mockVersionsFindFirst();
+        return tail ? [tail] : [];
+      },
+    }) }) }) }),
+  }));
+  const tx = { insert, select };
   return {
     db: {
       insert,
+      select,
+      transaction: vi.fn(async (fn: (client: unknown) => Promise<unknown>) => fn(tx)),
       query: { policyVersions: { findFirst: mockVersionsFindFirst } },
     },
     policyVersions: {
@@ -23,6 +35,7 @@ vi.mock('@/lib/prisma', () => {
       version: {},
       sourceHash: {},
       sourceEnvelopeSha256: {},
+      id: {},
     },
     policyApprovals: {},
   };

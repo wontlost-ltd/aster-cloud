@@ -1,22 +1,42 @@
 /**
  * 存量重编译管理脚本（ADR 0051 §9，cloud "PolicyVersion"）。逻辑见 src/services/policy/resolver-migration.ts：
  * 逐行事务、主键升序每批 50、编译经 aster-api 签名接口（带版本词汇），可随时中断与重跑。
- *
  * 由发布 Job 在 aster-api 迁移端点之后调用，须在 rollout 窗口内执行（迁移 0061 先于代码上线）。
- * 环境变量与 cloud 服务相同：DATABASE_URL、ASTER_POLICY_API_INTERNAL_URL（未设置时客户端回落到生产地址，
- * 本地运行务必显式指定）及内部签名密钥 ASTER_PLAN_GATE_HMAC_KEY / ASTER_HMAC_SECRET。
- *
- * 调用（引擎 browser 入口只声明 import 条件，故以 --conditions=import 运行）：
- *   pnpm ops:resolver-migration [--batch-size 50] [--policy-prefix <id 前缀>] [--report <文件>]
- *
- * 输出：stdout 打印完整报告 JSON（processed/succeeded/failed/failures/triage）；--report 另写一份到文件。
- * 退出码：0 = 全部行已有结论（成功、设计内归档或完整性不符待人工）；1 = 有基础设施故障行保持待迁移，需重跑；
- * 2 = 脚本自身出错。
+ * 用法、环境变量、退出码与已知限制见下方 USAGE（`--help` 打印）。
  */
 import 'dotenv/config';
 import { writeFile } from 'node:fs/promises';
 import { getDb } from '@/lib/prisma';
-import { RESOLVER_MIGRATION_BATCH_SIZE, runResolverMigration } from '@/services/policy/resolver-migration';
+import {
+  RESOLVER_MIGRATION_BATCH_SIZE,
+  RESOLVER_MIGRATION_REQUIRED_ENV,
+  missingResolverMigrationEnv,
+  runResolverMigration,
+} from '@/services/policy/resolver-migration';
+
+const USAGE = `resolver migration (ADR 0051 §9, cloud "PolicyVersion")
+
+Usage:
+  pnpm ops:resolver-migration [--batch-size 50] [--policy-prefix <policyId prefix>] [--report <file>]
+  (= node --conditions=import --import tsx scripts/resolver-migration.ts …; the engine's ./browser export
+   only declares the "import" condition, so plain \`tsx\` cannot resolve it)
+
+Required environment (no fallback — the tool refuses to run without them):
+  DATABASE_URL                     cloud database
+  ${RESOLVER_MIGRATION_REQUIRED_ENV.join(', ')}
+                                   aster-api internal URL and internal signing key; never defaults to production
+
+Output: full JSON report on stdout (processed/succeeded/failed/failures/triage); --report also writes it to a file.
+Exit codes: 0 = every row has a verdict; 1 = some rows hit infrastructure failures and stay pending (re-run);
+            2 = configuration or script error.
+
+Known limits:
+  - Success means "recompiled through aster-api with the version's vocabulary and resealed"; cloud stores no Core IR.
+  - The cloud row has no locale column: the old seal is checked by guessing the locale from the supported candidates.
+    A row saved with any other locale is reported under triage.integrityMismatch (left untouched for manual review).
+  - triage.invalidConstructForm (\`X mit f = v\`, aster-lang-ts#244) is a heuristic: P005 plus a regex on the source;
+    other P005 failures are listed under triage.otherCompile.
+`;
 
 function argValue(name: string): string | undefined {
   const index = process.argv.indexOf(name);
@@ -24,6 +44,15 @@ function argValue(name: string): string | undefined {
 }
 
 async function main(): Promise<number> {
+  if (process.argv.includes('--help')) {
+    console.log(USAGE);
+    return 0;
+  }
+  const missing = missingResolverMigrationEnv(process.env);
+  if (missing.length > 0) {
+    console.error(`[resolver-migration] refusing to run: missing ${missing.join(', ')} (no fallback to production)`);
+    return 2;
+  }
   const batchSize = Number(argValue('--batch-size') ?? RESOLVER_MIGRATION_BATCH_SIZE);
   if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 500) {
     console.error('--batch-size must be an integer in 1..500');
@@ -38,14 +67,12 @@ async function main(): Promise<number> {
     `[resolver-migration] processed=${report.processed} succeeded=${report.succeeded} failed=${report.failed} ` +
       `integrity=${report.triage.integrityMismatch.length} infrastructure=${report.triage.infrastructure.length}`,
   );
+  await getDb().$client.end({ timeout: 5 });
   return report.triage.infrastructure.length > 0 ? 1 : 0;
 }
 
 main()
-  .then(async (code) => {
-    await getDb().$client.end({ timeout: 5 });
-    process.exit(code);
-  })
+  .then((code) => process.exit(code))
   .catch((err) => {
     console.error('[resolver-migration] FAILED:', err);
     process.exit(2);

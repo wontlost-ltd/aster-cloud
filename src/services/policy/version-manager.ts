@@ -46,7 +46,6 @@ import {
 
 type PolicyVersion = InferSelectModel<typeof policyVersions>;
 type PolicyVersionStatus = PolicyVersion['status'];
-type VersionDbClient = Pick<typeof db, 'query' | 'insert' | 'transaction'>;
 
 /**
  * 调用方不是该策略的所有者（或策略不存在/已软删）。路由 catch 后返回 404——
@@ -361,7 +360,7 @@ export interface CreateVersionParams {
    * 提供时版本行与安全事件都经它写入，缓存失效由调用方在提交后执行（事务内失效会让并发读
    * 在提交前把旧值重新填回缓存）。
    */
-  dbClient?: VersionDbClient;
+  dbClient?: SnapshotTx;
 }
 
 export interface CreateVersionResult {
@@ -400,11 +399,57 @@ async function invalidateAfterVersionChange(policyId: string): Promise<void> {
   }
 }
 
+type ChainedVersionFields = Pick<
+  typeof policyVersions.$inferInsert,
+  'createdBy' | 'releaseNote' | 'aliasSet' | 'sourceEnvelopeSha256' | 'sourceToolchainId' | 'sourceScopesJson' | 'profile'
+>;
+
+/**
+ * 锁住策略的链尾版本（SELECT … FOR UPDATE）后接在其后插入新草稿版本。
+ * 链尾按 (version DESC, id DESC) 取，与 resolver 迁移判定直接后继的顺序一致；链接 = envelope（存在时）
+ * 否则 sourceHash —— 与 Java chainLink 对齐（ADR 0022 §11.5 C1-a），让 alias_set 篡改对版本链可见。
+ * 迁移正在改写链尾时本函数等其提交后读到新链接；本函数先提交时迁移的比较后改写会把新行当作后继一并改写。
+ */
+async function insertChainedVersion(
+  tx: SnapshotTx,
+  policyId: string,
+  source: string,
+  fields: ChainedVersionFields,
+): Promise<{ id: string; version: number; sourceHash: string }> {
+  const [tail] = await tx
+    .select({
+      version: policyVersions.version,
+      sourceHash: policyVersions.sourceHash,
+      sourceEnvelopeSha256: policyVersions.sourceEnvelopeSha256,
+    })
+    .from(policyVersions)
+    .where(eq(policyVersions.policyId, policyId))
+    .orderBy(desc(policyVersions.version), desc(policyVersions.id))
+    .limit(1)
+    .for('update');
+  const version = (tail?.version ?? 0) + 1;
+  const prevHash = tail ? (tail.sourceEnvelopeSha256 ?? tail.sourceHash) : null;
+  const sourceHash = computeChainedHash(source, prevHash);
+  const [created] = await tx.insert(policyVersions).values({
+    id: crypto.randomUUID(),
+    policyId,
+    version,
+    source,
+    content: source, // 兼容旧字段
+    sourceHash,
+    prevHash,
+    status: 'DRAFT',
+    // 新版本按当前解析规则封印，resolver 迁移（ADR 0051 §9）无需再处理。
+    resolverVersion: RESOLVER_VERSION,
+    ...fields,
+  }).returning();
+  return { id: created.id, version, sourceHash };
+}
+
 export async function createVersion(
   params: CreateVersionParams
 ): Promise<CreateVersionResult> {
   const { policyId, source, createdBy, releaseNote } = params;
-  const client = params.dbClient ?? db;
   const locale = params.locale ?? DEFAULT_CNL_LOCALE;
   // 不变量：envelope 只记录受支持的规范 locale（保存入口已用 parseCompileLocale 校验），
   // 以便执行与审批能从 envelope 精确反推版本的编译语言（policy-version-locale）。
@@ -453,41 +498,19 @@ export async function createVersion(
     params.scopesJson,
   );
 
-  // 获取最新版本号和链接哈希。
-  // 链接 = envelope（存在时）否则 sourceHash —— 与 Java chainLink 对齐（ADR 0022 §11.5 C1-a）：
-  // 让 alias_set 篡改对版本链可见（前序版本带别名时其 envelope 进链，改 alias_set 即断链）。
-  const latestVersion = await client.query.policyVersions.findFirst({
-    where: eq(policyVersions.policyId, policyId),
-    orderBy: [desc(policyVersions.version)],
-    columns: { version: true, sourceHash: true, sourceEnvelopeSha256: true },
-  });
-
-  const newVersionNumber = (latestVersion?.version ?? 0) + 1;
-  const prevHash = latestVersion
-    ? (latestVersion.sourceEnvelopeSha256 ?? latestVersion.sourceHash)
-    : null;
-  const sourceHash = computeChainedHash(source, prevHash);
-
-  const [created] = await client.insert(policyVersions).values({
-    id: crypto.randomUUID(),
-    policyId,
-    version: newVersionNumber,
-    source,
-    content: source, // 兼容旧字段
-    sourceHash,
-    prevHash,
+  // 链尾锁与插入在同一事务里：与 resolver 迁移改写链接（ADR 0051 §9）互斥，新版本总能接在最新链接上。
+  const insertVersion = (tx: SnapshotTx) => insertChainedVersion(tx, policyId, source, {
     createdBy,
     releaseNote,
-    status: 'DRAFT',
     aliasSet: aliasSetJson,
     sourceEnvelopeSha256,
     sourceToolchainId: toolchainId,
     // 封印所用词汇段原样落库：之后词条编辑或审批冻结都不改变 envelope 的重算输入。
     sourceScopesJson: params.scopesJson,
-    // 新版本按当前解析规则封印，resolver 迁移（ADR 0051 §9）无需再处理。
-    resolverVersion: RESOLVER_VERSION,
     profile,
-  }).returning();
+  });
+  const created = params.dbClient ? await insertVersion(params.dbClient) : await db.transaction(insertVersion);
+  const { version: newVersionNumber, sourceHash } = created;
 
   const hasStructuralAliases = aliasSetJson
     ? Object.keys(JSON.parse(aliasSetJson) as Record<string, string[]>)

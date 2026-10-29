@@ -120,6 +120,17 @@ type Recompiled =
   | { ok: true; scopesJson: string }
   | { ok: false; failure: Omit<MigrationFailure, 'id' | 'policyId' | 'version' | 'ownerId'> };
 
+/**
+ * 迁移入口必须显式配置的环境变量：编译服务内部地址与内部签名密钥。共享客户端在缺地址时会回落到生产地址、
+ * 缺密钥时不签名照发，这对在线请求是可接受的降级，对批量改写封印的迁移不可接受，故入口拒绝运行（fail closed）。
+ */
+export const RESOLVER_MIGRATION_REQUIRED_ENV = ['ASTER_POLICY_API_INTERNAL_URL', 'ASTER_PLAN_GATE_HMAC_KEY'] as const;
+
+/** 返回缺失（未设置或为空白）的必需环境变量名；为空表示可以运行。 */
+export function missingResolverMigrationEnv(env: Readonly<Record<string, string | undefined>>): string[] {
+  return RESOLVER_MIGRATION_REQUIRED_ENV.filter((name) => !env[name]?.trim());
+}
+
 /** 跑完所有待迁移行并汇总报告。 */
 export async function runResolverMigration(options: ResolverMigrationOptions = {}): Promise<ResolverMigrationReport> {
   const batchSize = options.batchSize ?? RESOLVER_MIGRATION_BATCH_SIZE;

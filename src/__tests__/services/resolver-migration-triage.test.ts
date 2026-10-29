@@ -4,7 +4,12 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('@/lib/prisma', () => ({ db: {}, policies: {}, policyVersions: {} }));
 vi.mock('@/lib/cache', () => ({ invalidatePolicyCache: vi.fn() }));
 
-import { buildTriage, truncateMigrationError, type MigrationFailure } from '@/services/policy/resolver-migration';
+import {
+  buildTriage,
+  missingResolverMigrationEnv,
+  truncateMigrationError,
+  type MigrationFailure,
+} from '@/services/policy/resolver-migration';
 
 function failure(id: string, patch: Partial<MigrationFailure>): MigrationFailure {
   return { id, policyId: `p-${id}`, version: 1, ownerId: 'u1', category: 'compile', error: 'x', codes: [], ...patch };
@@ -49,5 +54,17 @@ describe('buildTriage', () => {
       .toEqual({ alice: ['v1', 'v2'], bob: ['v3'] });
     expect(ids(triage.integrityMismatch)).toEqual(['int']);
     expect(ids(triage.infrastructure)).toEqual(['infra']);
+  });
+});
+
+describe('missingResolverMigrationEnv（迁移入口 fail closed）', () => {
+  it('内部地址与签名密钥缺一不可，空白视为缺失', () => {
+    expect(missingResolverMigrationEnv({})).toEqual(['ASTER_POLICY_API_INTERNAL_URL', 'ASTER_PLAN_GATE_HMAC_KEY']);
+    expect(missingResolverMigrationEnv({ ASTER_POLICY_API_INTERNAL_URL: 'http://api', ASTER_PLAN_GATE_HMAC_KEY: ' ' }))
+      .toEqual(['ASTER_PLAN_GATE_HMAC_KEY']);
+    // 公开地址不能替代内部地址：共享客户端会回落到它或生产地址
+    expect(missingResolverMigrationEnv({ NEXT_PUBLIC_ASTER_POLICY_API_URL: 'http://api', ASTER_PLAN_GATE_HMAC_KEY: 'k' }))
+      .toEqual(['ASTER_POLICY_API_INTERNAL_URL']);
+    expect(missingResolverMigrationEnv({ ASTER_POLICY_API_INTERNAL_URL: 'http://api', ASTER_PLAN_GATE_HMAC_KEY: 'k' })).toEqual([]);
   });
 });
