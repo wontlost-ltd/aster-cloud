@@ -11,7 +11,12 @@
  *    同一对象内两个键指向同一字段时返回 400 ambiguous_input_field，不猜测。
  */
 
-import { loadExecutionVocabulary, loadLiveVocabularyForPolicy } from '@/lib/domain-vocabulary-snapshot';
+import {
+  loadExecutionVocabulary,
+  loadLiveVocabularyForPolicy,
+  loadVocabularyForExecution,
+  type SnapshotRef,
+} from '@/lib/domain-vocabulary-snapshot';
 import {
   buildExecutionVocabulary,
   buildMappingModel,
@@ -66,13 +71,55 @@ export interface ExecutionVocabularyTarget {
   locale: string;
 }
 
+/** 词汇加载失败的稳定错误码，与保存入口的 503 vocabulary_unavailable 同码。 */
+export const VERSION_VOCABULARY_UNAVAILABLE_CODE = 'vocabulary_unavailable';
+
 /**
- * 加载被执行版本的领域词汇，best-effort：加载失败退化为不带词汇执行（与修复前一致），
- * 返回值可直接作为 evaluateSource 的 vocabulary 选项。
+ * 严格模式下版本词汇加载失败（数据库不可用等）。What-If 重放、Cedar 导出、回归基线必须与执行用同一份词汇，
+ * 退化为无词汇会得到误导性的编译错误或被静默算错的结果，故按暂不可用拒绝，由调用方映射为 503 / 不可回放。
+ */
+export class VersionVocabularyUnavailableError extends Error {
+  readonly code = VERSION_VOCABULARY_UNAVAILABLE_CODE;
+  /** 建议的重试间隔（秒），与保存入口编译门禁的默认值一致。 */
+  readonly retryAfterSeconds = 60;
+
+  constructor(cause: unknown) {
+    super('Domain vocabulary could not be loaded. Try again later.', { cause });
+    this.name = 'VersionVocabularyUnavailableError';
+  }
+}
+
+/** 作者词汇非法（引擎 VocabularyScopeError）是确定性的输入问题，不是加载失败，严格模式下原样上抛。 */
+function isVocabularyScopeError(err: unknown): boolean {
+  return err instanceof Error && err.name === 'VocabularyScopeError';
+}
+
+async function loadVersionVocabularyStrict(
+  target: ExecutionVocabularyTarget,
+): Promise<Record<string, unknown> | undefined> {
+  const policy = { source: target.source, locale: target.locale };
+  if (executionVocabularySource(target.status) !== 'frozen' && !target.authorId) return undefined;
+  try {
+    const vocab = executionVocabularySource(target.status) === 'frozen'
+      ? await loadVocabularyForExecution(target.vocabularySnapshotIds as SnapshotRef[] | null, policy)
+      : await loadLiveVocabularyForPolicy(target.authorId!, policy);
+    return vocab ? (vocab as unknown as Record<string, unknown>) : undefined;
+  } catch (err) {
+    if (isVocabularyScopeError(err)) throw err;
+    throw new VersionVocabularyUnavailableError(err);
+  }
+}
+
+/**
+ * 加载被执行版本的领域词汇，返回值可直接作为 evaluateSource 的 vocabulary 选项。
+ * - 默认 best-effort（执行路径）：加载失败退化为不带词汇执行（与修复前一致）；
+ * - strict（重编译 / 回放路径）：加载失败抛 {@link VersionVocabularyUnavailableError}，作者词汇非法原样上抛。
  */
 export async function loadVersionExecutionVocabulary(
   target: ExecutionVocabularyTarget,
+  options: { strict?: boolean } = {},
 ): Promise<Record<string, unknown> | undefined> {
+  if (options.strict) return loadVersionVocabularyStrict(target);
   const policy = { source: target.source, locale: target.locale };
   if (executionVocabularySource(target.status) === 'frozen') {
     return loadExecutionVocabulary(target.vocabularySnapshotIds, policy);
@@ -100,13 +147,14 @@ export interface StoredVersionCompileInput extends StoredVersionLocaleInput {
 export interface StoredVersionCompileContext {
   /** 版本的编译语言（与执行同一判定，见 policy-version-locale）。 */
   locale: string;
-  /** 版本的领域词汇（DomainVocabulary JSON）；无作用域内词汇或加载失败时为 undefined。 */
+  /** 版本的领域词汇（DomainVocabulary JSON）；无作用域内词汇时为 undefined。 */
   vocabulary: Record<string, unknown> | undefined;
 }
 
 /**
- * 已存版本交给 aster-api 重新编译时的语言与词汇（What-If 重放、Cedar 导出、回归基线与执行同一口径）：
- * 已审批 / 已弃用取冻结快照，草稿取作者现行词汇（ADR 0051 §7）。词汇 best-effort。
+ * 已存版本交给 aster-api 重新编译时的语言与词汇（What-If 重放、Cedar 导出与执行同一口径）：
+ * 已审批 / 已弃用取冻结快照，草稿取作者现行词汇（ADR 0051 §7）。词汇严格加载：失败抛
+ * {@link VersionVocabularyUnavailableError}，作者词汇非法抛引擎 VocabularyScopeError，不退化为无词汇。
  */
 export async function loadStoredVersionCompileContext(
   version: StoredVersionCompileInput,
@@ -118,7 +166,7 @@ export async function loadStoredVersionCompileContext(
     authorId: version.createdBy,
     source: version.source,
     locale,
-  });
+  }, { strict: true });
   return { locale, vocabulary };
 }
 

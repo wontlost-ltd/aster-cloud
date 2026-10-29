@@ -109,3 +109,24 @@ export function compileGateErrorResponse(error: PolicyCompileError): NextRespons
     { status: 400 },
   );
 }
+
+/**
+ * 按已存版本重编译 / 重放（What-If、Cedar 导出）时的词汇错误 → HTTP 响应，其它错误返回 null：
+ * - 词汇加载失败（execution-input 的 VersionVocabularyUnavailableError）→ 503 vocabulary_unavailable + Retry-After；
+ * - 作者词汇非法（引擎 VocabularyScopeError）→ 400 vocabulary_scope_invalid。
+ * 按 name 判别而不 instanceof：路由测试会整体 mock execution-input。
+ */
+export function versionVocabularyErrorResponse(error: unknown, headers?: Headers): NextResponse | null {
+  if (error instanceof Error && error.name === 'VersionVocabularyUnavailableError') {
+    const retryAfter = (error as Error & { retryAfterSeconds?: unknown }).retryAfterSeconds;
+    const responseHeaders = new Headers(headers);
+    responseHeaders.set('Retry-After', String(typeof retryAfter === 'number' ? retryAfter : 60));
+    return NextResponse.json(
+      { error: 'vocabulary_unavailable', code: 'vocabulary_unavailable', message: error.message },
+      { status: 503, headers: responseHeaders },
+    );
+  }
+  const invalid = vocabularyScopeInvalidResponse(error);
+  if (invalid && headers) headers.forEach((value, key) => invalid.headers.set(key, value));
+  return invalid;
+}

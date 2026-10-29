@@ -12,7 +12,7 @@ vi.mock('@/services/policy/policy-api', () => ({
 vi.mock('@/lib/execution-input', () => ({ loadVersionExecutionVocabulary }));
 vi.mock('@/lib/prisma', () => ({ db: {} }));
 
-import { evaluateForCapture, versionVocabularyLoader } from '@/services/policy/rule-regression-runner';
+import { caseVocabulary, evaluateForCapture, versionVocabularyLoader } from '@/services/policy/rule-regression-runner';
 
 const vocabulary = { id: 'grades', locale: 'de-DE', structs: [], fields: [], functions: [] };
 const pv = { content: 'Modul m.', status: 'APPROVED', createdBy: 'a1', vocabularySnapshotIds: [{ snapshotId: 's1' }] };
@@ -29,9 +29,23 @@ describe('rule-regression-runner 词汇', () => {
     await load('de-DE');
     await load('en-US');
     expect(loadVersionExecutionVocabulary).toHaveBeenCalledTimes(2);
+    // 严格加载（#650）：回归基线必须与执行同一份词汇，失败不退化为无词汇
     expect(loadVersionExecutionVocabulary).toHaveBeenCalledWith({
       status: 'APPROVED', vocabularySnapshotIds: pv.vocabularySnapshotIds, authorId: 'a1', source: 'Modul m.', locale: 'de-DE',
-    });
+    }, { strict: true });
+  });
+
+  it('caseVocabulary：加载成功返回词汇；失败按原因给出不可回放理由（不算通过也不算回归）', async () => {
+    expect(await caseVocabulary(async () => vocabulary, 'de-DE')).toEqual({ ok: true, vocabulary });
+    expect(await caseVocabulary(null, 'de-DE')).toEqual({ ok: true, vocabulary: undefined });
+
+    const unavailable = Object.assign(new Error('db down'), { name: 'VersionVocabularyUnavailableError' });
+    expect(await caseVocabulary(async () => { throw unavailable; }, 'de-DE'))
+      .toEqual({ ok: false, reason: 'VOCABULARY_UNAVAILABLE' });
+
+    const invalid = Object.assign(new Error('field_parent_required: x'), { name: 'VocabularyScopeError' });
+    expect(await caseVocabulary(async () => { throw invalid; }, 'de-DE'))
+      .toEqual({ ok: false, reason: 'VOCABULARY_SCOPE_INVALID' });
   });
 
   it('evaluateForCapture 把词汇交给 aster-api，无词汇时省略', async () => {
