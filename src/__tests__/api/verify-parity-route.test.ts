@@ -31,6 +31,9 @@ vi.mock('@/services/policy/runner-parity-from-execution', () => ({
   RUNNER_LAUNCHER_HMAC_ROLE: 'ADMIN',
 }));
 
+const loadVersionExecutionVocabulary = vi.hoisted(() => vi.fn(async () => undefined as Record<string, unknown> | undefined));
+vi.mock('@/lib/execution-input', () => ({ loadVersionExecutionVocabulary }));
+
 import { POST } from '@/app/api/policies/[id]/executions/[execId]/verify-parity/route';
 
 function call(id = 'p1', execId = 'e1') {
@@ -159,5 +162,21 @@ describe('POST verify-parity', () => {
     findFirstVersion.mockResolvedValue({ content: 'Rule x is 1.', aliasSet: '{"greet":["hola"]}' });
     await call();
     expect(runParityForExecutionNow.mock.calls[0][0].aliasSet).toEqual({ greet: ['hola'] });
+  });
+
+  it('side-B 带当次版本的领域词汇（ADR 0051：与执行同一口径），无词汇时省略', async () => {
+    const vocabulary = { id: 'grades', locale: 'de-DE', structs: [], fields: [], functions: [] };
+    findFirstVersion.mockResolvedValue({ ...versionRow, status: 'APPROVED', createdBy: 'a1', vocabularySnapshotIds: [{ snapshotId: 's1' }] });
+    loadVersionExecutionVocabulary.mockResolvedValueOnce(vocabulary);
+
+    await call();
+
+    expect(runParityForExecutionNow.mock.calls[0][0].vocabulary).toEqual(vocabulary);
+    expect(loadVersionExecutionVocabulary).toHaveBeenCalledWith({
+      status: 'APPROVED', vocabularySnapshotIds: [{ snapshotId: 's1' }], authorId: 'a1', source: 'Rule x is 1.', locale: 'en',
+    });
+
+    await call();
+    expect(runParityForExecutionNow.mock.calls[1][0].vocabulary).toBeUndefined();
   });
 });

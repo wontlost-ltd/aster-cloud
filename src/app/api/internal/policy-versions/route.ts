@@ -22,6 +22,12 @@
  * （`verifyInternalSignature`），并**强制 userId 参与查询条件**——
  * 即便调用方是可信内部服务，也不能"忘了传 userId 就拿到别人的策略源码"。
  * 策略源码属于用户资产，跨租户读取是本仓历史上出过的那类事故。
+ *
+ * <h2>编译输入</h2>
+ *
+ * 名称按位置解析依赖词汇（ADR 0051），重放必须与执行用同一份编译输入：响应附带 `vocabulary`
+ * （已审批 / 已弃用 = 冻结快照，草稿 = 作者现行词汇，与执行同一口径）与版本冻结的 `aliasSet`。
+ * 没有时省略该字段（aster-api 视为无词汇 / 无别名）。
  */
 
 import { NextResponse } from 'next/server';
@@ -29,6 +35,7 @@ import { and, eq } from 'drizzle-orm';
 
 import { verifyInternalSignature } from '@/lib/internal-signature';
 import { db, policyVersions, policies } from '@/lib/prisma';
+import { loadStoredVersionCompileContext } from '@/lib/execution-input';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -63,6 +70,13 @@ export async function GET(req: Request) {
       policyId: policyVersions.policyId,
       version: policyVersions.version,
       content: policyVersions.content,
+      status: policyVersions.status,
+      createdBy: policyVersions.createdBy,
+      aliasSet: policyVersions.aliasSet,
+      vocabularySnapshotIds: policyVersions.vocabularySnapshotIds,
+      sourceEnvelopeSha256: policyVersions.sourceEnvelopeSha256,
+      sourceScopesJson: policyVersions.sourceScopesJson,
+      sourceToolchainId: policyVersions.sourceToolchainId,
     })
     .from(policyVersions)
     .innerJoin(policies, eq(policies.id, policyVersions.policyId))
@@ -76,10 +90,34 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'version_not_found' }, { status: 404 });
   }
 
+  const { vocabulary } = await loadStoredVersionCompileContext({
+    source: row.content,
+    status: row.status,
+    createdBy: row.createdBy,
+    aliasSet: row.aliasSet ?? null,
+    vocabularySnapshotIds: row.vocabularySnapshotIds,
+    sourceEnvelopeSha256: row.sourceEnvelopeSha256 ?? null,
+    sourceScopesJson: row.sourceScopesJson ?? null,
+    sourceToolchainId: row.sourceToolchainId ?? null,
+  });
+  const aliasSet = parseAliasSet(row.aliasSet);
+
   return NextResponse.json({
     versionId: row.id,
     policyId: row.policyId,
     version: row.version,
     content: row.content,
+    ...(vocabulary ? { vocabulary } : {}),
+    ...(aliasSet ? { aliasSet } : {}),
   });
+}
+
+/** 版本冻结的别名集（canonical JSON）；损坏视同无别名，与执行路径同一口径。 */
+function parseAliasSet(aliasSet: string | null | undefined): Record<string, string[]> | null {
+  if (!aliasSet) return null;
+  try {
+    return JSON.parse(aliasSet) as Record<string, string[]>;
+  } catch {
+    return null;
+  }
 }

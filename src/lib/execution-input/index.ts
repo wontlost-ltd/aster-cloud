@@ -23,6 +23,7 @@ import {
 } from './mapper';
 import { extractPolicyInputTypes } from './policy-types';
 import { recordInputTypeExtraction } from '@/lib/lexicon-metrics';
+import { resolveStoredVersionLocale, type StoredVersionLocaleInput } from '@/lib/policy-version-locale';
 
 export { buildExecutionVocabulary, buildMappingModel, mapExecutionInput, localizeExecutionOutput } from './mapper';
 export type { AmbiguousInputField, ExecutionVocabulary, InputRename, MappingModel, PolicyInputTypes } from './mapper';
@@ -89,6 +90,37 @@ export async function loadVersionExecutionVocabulary(
     console.warn('[vocabulary] failed to load live vocabulary for draft execution', err);
     return undefined;
   }
+}
+
+/** 已存版本的编译上下文所需字段（PolicyVersion 行的子集；source 为版本源码）。 */
+export interface StoredVersionCompileInput extends StoredVersionLocaleInput {
+  status: string | null | undefined;
+  createdBy: string | null | undefined;
+}
+
+export interface StoredVersionCompileContext {
+  /** 版本的编译语言（与执行同一判定，见 policy-version-locale）。 */
+  locale: string;
+  /** 版本的领域词汇（DomainVocabulary JSON）；无作用域内词汇或加载失败时为 undefined。 */
+  vocabulary: Record<string, unknown> | undefined;
+}
+
+/**
+ * 已存版本交给 aster-api 重新编译时的语言与词汇（What-If 重放、Cedar 导出、回归基线与执行同一口径）：
+ * 已审批 / 已弃用取冻结快照，草稿取作者现行词汇（ADR 0051 §7）。词汇 best-effort。
+ */
+export async function loadStoredVersionCompileContext(
+  version: StoredVersionCompileInput,
+): Promise<StoredVersionCompileContext> {
+  const locale = resolveStoredVersionLocale(version);
+  const vocabulary = await loadVersionExecutionVocabulary({
+    status: version.status,
+    vocabularySnapshotIds: version.vocabularySnapshotIds,
+    authorId: version.createdBy,
+    source: version.source,
+    locale,
+  });
+  return { locale, vocabulary };
 }
 
 export interface PrepareExecutionInputParams {

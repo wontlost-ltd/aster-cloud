@@ -37,6 +37,11 @@ vi.mock('@/lib/prisma', () => {
   };
 });
 
+const loadStoredVersionCompileContext = vi.hoisted(() =>
+  vi.fn(async () => ({ locale: 'en-US', vocabulary: undefined as Record<string, unknown> | undefined })),
+);
+vi.mock('@/lib/execution-input', () => ({ loadStoredVersionCompileContext }));
+
 vi.mock('drizzle-orm', () => ({
   and: (...xs: unknown[]) => ({ op: 'and', xs: xs.filter(Boolean) }),
   eq: (col: unknown, val: unknown) => ({ op: 'eq', col, val }),
@@ -98,7 +103,7 @@ describe('内部端点：策略版本源码', () => {
     expect(json).toContain('u1');
   });
 
-  it('命中时返回源码', async () => {
+  it('命中时返回源码（无词汇、无别名时不带这两个字段）', async () => {
     rows.value = [{ id: 'v-uuid', policyId: 'p1', version: 2, content: 'Module x.' }];
     const res = await GET(req());
     expect(res.status).toBe(200);
@@ -108,6 +113,29 @@ describe('内部端点：策略版本源码', () => {
       version: 2,
       content: 'Module x.',
     });
+  });
+
+  it('附带版本的领域词汇与冻结别名（ADR 0051：重放与执行同一份编译输入）', async () => {
+    const vocabulary = { id: 'grades', locale: 'de-DE', structs: [], fields: [], functions: [] };
+    loadStoredVersionCompileContext.mockResolvedValueOnce({ locale: 'de-DE', vocabulary });
+    const row = {
+      id: 'v-uuid', policyId: 'p1', version: 3, content: 'Modul x.', status: 'APPROVED', createdBy: 'author-1',
+      vocabularySnapshotIds: [{ snapshotId: 's1', domain: 'grades', locale: 'de' }],
+      aliasSet: '{"return":["Gib zurück"]}', sourceEnvelopeSha256: null, sourceScopesJson: null, sourceToolchainId: null,
+    };
+    rows.value = [row];
+
+    const res = await GET(req());
+
+    expect(await res.json()).toEqual({
+      versionId: 'v-uuid', policyId: 'p1', version: 3, content: 'Modul x.',
+      vocabulary, aliasSet: { return: ['Gib zurück'] },
+    });
+    // 已审批 / 已弃用取冻结快照、草稿取作者现行词汇由 helper 按 status 判定，这里传齐判定所需字段
+    expect(loadStoredVersionCompileContext).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'Modul x.', status: 'APPROVED', createdBy: 'author-1',
+      vocabularySnapshotIds: row.vocabularySnapshotIds, aliasSet: row.aliasSet,
+    }));
   });
 
   it('★查不到 → 404，且不区分"不存在"与"不属于你"', async () => {

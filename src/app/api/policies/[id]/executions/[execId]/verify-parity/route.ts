@@ -18,6 +18,7 @@ import {
   RUNNER_LAUNCHER_HMAC_ROLE,
 } from '@/services/policy/runner-parity-from-execution';
 import type { PolicyReplayMetadata } from '@/services/policy/policy-api';
+import { loadVersionExecutionVocabulary } from '@/lib/execution-input';
 
 interface RouteParams {
   params: Promise<{ id: string; execId: string }>;
@@ -71,7 +72,7 @@ export async function POST(_req: Request, { params }: RouteParams) {
     }
     const version = await db.query.policyVersions.findFirst({
       where: and(eq(policyVersions.id, exec.policyVersionRowId), eq(policyVersions.policyId, id)),
-      columns: { content: true, aliasSet: true },
+      columns: { content: true, aliasSet: true, status: true, createdBy: true, vocabularySnapshotIds: true },
     });
     if (!version) {
       return NextResponse.json({
@@ -106,6 +107,15 @@ export async function POST(_req: Request, { params }: RouteParams) {
 
     // ★显式路径无外层失败隔离（runParityForExecutionNow 会 reject）——本 endpoint 自 catch，保证
     //   parity 失败不污染 HTTP 响应（返 500 结构化错误，不 5xx 裸抛）。source 用**当次冻结版本**。
+    // 领域词汇（ADR 0051）：与执行同一口径（已审批 / 已弃用取冻结快照，草稿取作者现行词汇）。
+    const vocabulary = await loadVersionExecutionVocabulary({
+      status: version.status,
+      vocabularySnapshotIds: version.vocabularySnapshotIds,
+      authorId: version.createdBy,
+      source: version.content,
+      locale: exec.locale ?? '',
+    });
+
     const { result, persisted } = await runParityForExecutionNow({
       executionId: exec.id,
       tenantId: policyTenantId(policy),
@@ -115,6 +125,7 @@ export async function POST(_req: Request, { params }: RouteParams) {
       locale: exec.locale ?? '',
       functionName: exec.functionName ?? '',
       aliasSet,
+      vocabulary,
       role: RUNNER_LAUNCHER_HMAC_ROLE,
       authorityReplay,
     });

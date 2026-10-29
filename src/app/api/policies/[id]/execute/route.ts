@@ -524,6 +524,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         locale: policyLocale,
         functionName: executionResult.executedFunction ?? prepared.functionName ?? '',
         aliasSet: parsedAliasSet,
+        vocabulary,
         role: RUNNER_LAUNCHER_HMAC_ROLE,
         authorityReplay: executionResult.metadata.replay,
       }),

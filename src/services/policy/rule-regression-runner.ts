@@ -22,6 +22,7 @@ import {
 import { canonicalHash } from '@/lib/canonical-json';
 import { createPolicyApiClient } from './policy-api';
 import { detectCNLLocale } from './cnl-executor';
+import { loadVersionExecutionVocabulary } from '@/lib/execution-input';
 
 /**
  * runner 版本——进 reportHash，保证报告可复算归因到 runner 逻辑版本。
@@ -939,11 +940,42 @@ export async function freezeFromExecutions(params: {
   return result;
 }
 
+/** 版本行里决定领域词汇的字段（与执行同一口径：已审批 / 已弃用取冻结快照，草稿取作者现行词汇）。 */
+export interface VersionVocabularyRow {
+  content: string;
+  status: string | null;
+  createdBy: string | null;
+  vocabularySnapshotIds: unknown;
+}
+
+/**
+ * 按 locale 取版本词汇（ADR 0051：名称按位置解析依赖词汇，回归基线与回放必须与执行同一份）。
+ * 作用域按 locale 选取，同一 run 内各 case 的 locale 可能不同，按 locale 缓存只加载一次。
+ */
+export function versionVocabularyLoader(
+  pv: VersionVocabularyRow,
+): (locale: string) => Promise<Record<string, unknown> | undefined> {
+  const cache = new Map<string, Promise<Record<string, unknown> | undefined>>();
+  return (locale) => {
+    const cached = cache.get(locale);
+    if (cached) return cached;
+    const loaded = loadVersionExecutionVocabulary({
+      status: pv.status,
+      vocabularySnapshotIds: pv.vocabularySnapshotIds,
+      authorId: pv.createdBy,
+      source: pv.content,
+      locale,
+    });
+    cache.set(locale, loaded);
+    return loaded;
+  };
+}
+
 /**
  * 用当前后端评估一个 source+input，返回权威 replayMetadata（canonical hashes + toolchain）。
  * 走 HMAC 内部调用 + replayCapture=true。失败抛（调用方决定如何处理）。
  */
-async function evaluateForCapture(params: {
+export async function evaluateForCapture(params: {
   tenantId: string;
   actorUserId: string;
   source: string;
@@ -951,6 +983,8 @@ async function evaluateForCapture(params: {
   locale: string;
   functionName: string;
   aliasSet: Record<string, string[]> | null;
+  /** 版本的领域词汇（DomainVocabulary JSON）；无则不带。 */
+  vocabulary: Record<string, unknown> | undefined;
 }): Promise<{
   canonicalInputHash: string | null;
   canonicalOutputHash: string | null;
@@ -965,6 +999,7 @@ async function evaluateForCapture(params: {
     locale: params.locale,
     functionName: params.functionName,
     aliasSet: params.aliasSet,
+    ...(params.vocabulary ? { vocabulary: params.vocabulary } : {}),
     replayCapture: true,
   });
   const rm = resp.replayMetadata;
@@ -1022,6 +1057,8 @@ export async function freezeHandwritten(params: {
         sourceEnvelopeSha256: true,
         vocabularySnapshotIds: true,
         version: true,
+        status: true,
+        createdBy: true,
       },
     });
     if (!pv) {
@@ -1043,6 +1080,7 @@ export async function freezeHandwritten(params: {
         locale,
         functionName: hc.functionName,
         aliasSet,
+        vocabulary: await versionVocabularyLoader(pv)(locale),
       });
     } catch (e) {
       result.skipped++;
@@ -1192,7 +1230,7 @@ export async function run(params: {
   // 载入版本内容（replay 需要 source）。★绑 policyId（Codex 复审 #2）：防消费脏 case 用错 policy 版本。
   const pv = await db.query.policyVersions.findFirst({
     where: and(eq(policyVersions.id, policyVersionRowId), eq(policyVersions.policyId, policyId)),
-    columns: { id: true, content: true, aliasSet: true },
+    columns: { id: true, content: true, aliasSet: true, status: true, createdBy: true, vocabularySnapshotIds: true },
   });
 
   const details: CaseRunDetail[] = [];
@@ -1204,6 +1242,7 @@ export async function run(params: {
   const capturedCurrentToolchains = new Set<string>();
 
   const aliasSet = pv ? parseAliasSet(pv.aliasSet) : null;
+  const vocabularyFor = pv ? versionVocabularyLoader(pv) : null;
 
   for (const c of cases) {
     const base: CaseRunDetail = {
@@ -1292,6 +1331,7 @@ export async function run(params: {
         locale: c.locale,
         functionName: c.functionName,
         aliasSet,
+        vocabulary: await vocabularyFor?.(c.locale),
       });
     } catch (e) {
       // 编译/评估失败 = 回归（Layer 1 编译漂移）。

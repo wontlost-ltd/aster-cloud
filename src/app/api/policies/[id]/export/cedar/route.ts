@@ -4,8 +4,8 @@
  *
  * 导出 secure-execute 会执行的版本（isDefault 的批准版本，否则最新批准版本）：把未经批准的草稿交给
  * 执行端等于绕过审批，故没有可执行版本时返回 409。cloud 的版本不在 aster-api，故走源码模式：
- * 该版本源码、冻结别名集、按内容检测的语言，并附 claimedRef（cloud 策略 id 与所导出的版本号，
- * api 只记审计不核验）。仅策略所有者可导出。
+ * 该版本源码、冻结别名集、与执行同一判定的语言与领域词汇（已审批版本取冻结快照，ADR 0051），
+ * 并附 claimedRef（cloud 策略 id 与所导出的版本号，api 只记审计不核验）。仅策略所有者可导出。
  */
 import { NextResponse } from 'next/server';
 import { and, eq, isNull } from 'drizzle-orm';
@@ -14,7 +14,7 @@ import { db, policies } from '@/lib/prisma';
 import { checkRateLimit, getRateLimitHeaders, RateLimitPresets } from '@/lib/rate-limit';
 import { policyTenantId } from '@/lib/policy-tenant';
 import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
-import { detectCNLLocale } from '@/services/policy/cnl-executor';
+import { loadStoredVersionCompileContext } from '@/lib/execution-input';
 import { PolicyApiError } from '@/services/policy/policy-api';
 import { findDefaultExecutableVersion } from '@/services/security/secure-executor';
 
@@ -78,11 +78,13 @@ export async function POST(_req: Request, { params }: RouteParams) {
   const source = version.source ?? version.content;
 
   try {
+    const { locale, vocabulary } = await loadStoredVersionCompileContext({ ...version, source });
     const client = await createPolicyApiClientForUser(policyTenantId(policy), userId);
     const result = await client.exportCedar({
       source,
-      locale: detectCNLLocale(source),
+      locale,
       aliasSet: parseAliasSet(version.aliasSet),
+      ...(vocabulary ? { vocabulary } : {}),
       ...claimedRefFor(policy.id, version.version),
     });
     return NextResponse.json(result, { headers });

@@ -32,6 +32,7 @@ export async function callAuthorityForParity(params: RunnerParityParams): Promis
   const client = createPolicyApiClient(params.tenantId, params.actorUserId);
   const resp = await client.evaluateSource(params.source, params.input, {
     locale: params.locale, functionName: params.functionName, aliasSet: params.aliasSet,
+    ...(params.vocabulary ? { vocabulary: params.vocabulary } : {}),
     replayCapture: true,
   });
   const rm = resp.replayMetadata;
