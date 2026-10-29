@@ -9,8 +9,7 @@
  *   3. 最后才按源码关键词识别（detectCNLLocale，启发式）。
  */
 
-import { createHash } from 'node:crypto';
-import { computeSourceEnvelope } from '@/lib/policy-alias';
+import { computeLegacySourceEnvelope, computeSourceEnvelope } from '@/lib/policy-alias';
 import { detectCNLLocale } from '@/services/policy/cnl-executor';
 import { CNL_LOCALES } from '@/lib/cnl-locale';
 import { choosePolicyLocale } from '@/lib/policy-locale-priority';
@@ -35,27 +34,6 @@ export interface StoredVersionLocaleInput {
 }
 
 /**
- * ADR 0051 之前的 4 段 envelope（content, aliasSetJson, locale, toolchainId），与 Java
- * PolicyVersion.computeLegacySourceEnvelope 逐字节一致。只供旧行（sourceScopesJson 为 NULL）
- * 反推编译 locale，直到 resolver 迁移回填；新行一律用 5 段 computeSourceEnvelope。
- */
-function legacyFourSegmentEnvelope(
-  content: string | null,
-  aliasSetJson: string | null,
-  locale: string | null,
-  toolchainId: string | null,
-): string {
-  const hash = createHash('sha256');
-  for (const field of [content, aliasSetJson, locale, toolchainId]) {
-    const bytes = Buffer.from(field ?? '', 'utf8');
-    hash.update(`${bytes.length}:`, 'ascii');
-    hash.update(bytes);
-    hash.update('|', 'ascii');
-  }
-  return hash.digest('hex');
-}
-
-/**
  * 从 envelope 反推保存时的编译 locale：有封印词汇段时按 5 段重算；旧行（NULL）按 4 段旧格式
  * 与其记录的工具链重算。无 envelope 或都不匹配时返回 undefined。
  */
@@ -64,7 +42,7 @@ export function recordedCompileLocale(version: StoredVersionLocaleInput): string
   const { source, aliasSet, sourceToolchainId, sourceScopesJson } = version;
   const envelopeFor = (locale: string) =>
     sourceScopesJson === null
-      ? legacyFourSegmentEnvelope(source, aliasSet, locale, sourceToolchainId)
+      ? computeLegacySourceEnvelope(source, aliasSet, locale, sourceToolchainId)
       : computeSourceEnvelope(source, aliasSet, locale, sourceToolchainId, sourceScopesJson);
   return RECORDED_LOCALE_CANDIDATES.find((locale) => envelopeFor(locale) === version.sourceEnvelopeSha256);
 }

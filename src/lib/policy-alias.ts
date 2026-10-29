@@ -7,6 +7,7 @@
  * <ul>
  *   <li>{@link computeSourceEnvelope} —— 长度前缀分帧 SHA-256（node:crypto），与 Java
  *       PolicyVersion.computeSourceEnvelope 逐字节对齐（防别名替换篡改 C1）</li>
+ *   <li>{@link computeLegacySourceEnvelope} —— ADR 0051 前的 4 段 envelope，与 5 段共用同一分帧，仅识别旧行</li>
  *   <li>{@link cloudToolchainId} —— 读 process.env 构建 sha，进 source envelope</li>
  *   <li>{@link vocabularyScopesJson} —— envelope 第 5 段（词汇作用域规范 JSON，ADR 0051 §7）</li>
  * </ul>
@@ -76,11 +77,26 @@ export function vocabularyScopesJson(vocabulary: DomainVocabulary | null | undef
 }
 
 /**
- * 计算完整编译输入的 SHA-256 信封哈希（与 Java PolicyVersion.computeSourceEnvelope 逐字节对齐）。
+ * envelope 的分帧与摘要（5 段与旧 4 段共用，与 Java PolicyVersion 的 envelope 分帧逐字节对齐）。
  *
- * 长度前缀分帧：每段 `<byteLen>:<utf8bytes>|`（byteLen 用 UTF-8 字节数，非字符数）。
- * 字段顺序：content, aliasSetJson, locale, toolchainId, scopesJson（{@link vocabularyScopesJson}）。
- * null → 空串。
+ * 长度前缀分帧：每段 `<byteLen>:<utf8bytes>|`（byteLen 用 UTF-8 字节数，非字符数），null → 空串；
+ * 返回整串的 SHA-256 十六进制。
+ */
+function lengthPrefixedSha256(fields: ReadonlyArray<string | null>): string {
+  const hash = createHash('sha256');
+  for (const field of fields) {
+    const bytes = Buffer.from(field ?? '', 'utf8');
+    hash.update(`${bytes.length}:`, 'ascii');
+    hash.update(bytes);
+    hash.update('|', 'ascii');
+  }
+  return hash.digest('hex');
+}
+
+/**
+ * 计算完整编译输入的 SHA-256 信封哈希（与 Java PolicyVersion.computeSourceEnvelope 逐字节对齐）。
+ * 字段顺序：content, aliasSetJson, locale, toolchainId, scopesJson（{@link vocabularyScopesJson}），
+ * 分帧见 {@link lengthPrefixedSha256}。
  */
 export function computeSourceEnvelope(
   content: string | null,
@@ -89,14 +105,19 @@ export function computeSourceEnvelope(
   toolchainId: string | null,
   scopesJson: string | null,
 ): string {
-  const hash = createHash('sha256');
-  const fields = [content, aliasSetJson, locale, toolchainId, scopesJson];
-  for (const field of fields) {
-    const bytes = Buffer.from(field ?? '', 'utf8');
-    hash.update(Buffer.from(String(bytes.length), 'ascii'));
-    hash.update(Buffer.from(':', 'ascii'));
-    hash.update(bytes);
-    hash.update(Buffer.from('|', 'ascii'));
-  }
-  return hash.digest('hex');
+  return lengthPrefixedSha256([content, aliasSetJson, locale, toolchainId, scopesJson]);
+}
+
+/**
+ * ADR 0051 之前的 4 段 envelope（content, aliasSetJson, locale, toolchainId），与 Java
+ * PolicyVersion.computeLegacySourceEnvelope 逐字节一致。只用于识别 sourceScopesJson 为 NULL 的
+ * 旧行，新行一律用 5 段 {@link computeSourceEnvelope}。
+ */
+export function computeLegacySourceEnvelope(
+  content: string | null,
+  aliasSetJson: string | null,
+  locale: string | null,
+  toolchainId: string | null,
+): string {
+  return lengthPrefixedSha256([content, aliasSetJson, locale, toolchainId]);
 }

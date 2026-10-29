@@ -5,7 +5,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { IdentifierKind, type DomainVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
-import { computeSourceEnvelope, vocabularyScopesJson } from '@/lib/policy-alias';
+import { computeLegacySourceEnvelope, computeSourceEnvelope, vocabularyScopesJson } from '@/lib/policy-alias';
 import { recordedCompileLocale, resolveStoredVersionLocale } from '@/lib/policy-version-locale';
 
 const DE_SOURCE = 'Modul x.\n\nDefiniere Fahrer hat alter als Ganzzahl.\n';
@@ -76,6 +76,12 @@ describe('recordedCompileLocale', () => {
 
     it('分帧与既有 4 段锚点一致（printf "1:a|0:|0:|0:|" | openssl dgst -sha256）', () => {
       expect(legacy('a', null, '', '')).toBe('68fbcc50d3fabae237194d8c0f3e0795308e3f317e6244252ac5609be49620a9');
+      expect(computeLegacySourceEnvelope('a', null, '', '')).toBe(legacy('a', null, '', ''));
+    });
+
+    it('生产实现与独立分帧逐字节一致（多字节 UTF-8 与 null 段）', () => {
+      expect(computeLegacySourceEnvelope(DE_SOURCE, ALIAS, 'de-DE', LEGACY_TC)).toBe(legacy(DE_SOURCE, ALIAS, 'de-DE', LEGACY_TC));
+      expect(computeLegacySourceEnvelope('规则 ä', null, null, 'tc')).toBe(legacy('规则 ä', null, null, 'tc'));
     });
 
     it.each(['en-US', 'de-DE', 'zh-CN', 'de'])('recovers %s with the stored legacy toolchain id', (locale) => {
