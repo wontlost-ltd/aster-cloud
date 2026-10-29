@@ -115,7 +115,7 @@ describe('PolicyForm 的 CNL 语言跟随策略而非界面语言（#627）', ()
       });
 
     it('执行端与编辑器同为 en-US，编辑器给出切换提示；不切换时保存仍提交 en-US', async () => {
-      expect(recorded()).toBe('en-US'); // 执行（secure-execute / 审批冻结）使用的值
+      expect(recorded()).toBe('en-US'); // 执行 / 审批冻结使用的值
       const { onSave } = renderForm({ mode: 'edit', content: GERMAN, policyCnlLocale: recorded() });
 
       expect(statusLocale()).toBe('EN-US');

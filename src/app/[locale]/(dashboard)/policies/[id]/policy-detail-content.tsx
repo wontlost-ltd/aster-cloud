@@ -205,7 +205,7 @@ export function PolicyDetailContent({
         <PolicyProfileBadge profile={profile} locale={locale} label={t.detail.profile} />
       </div>
 
-      {/* 导出为 Cedar（ADR 0047 §6）：导出 secure-execute 会执行的版本，只读操作，冻结策略同样可导出 */}
+      {/* 导出为 Cedar（ADR 0047 §6）：导出执行路径实际选中的版本（默认的已批准版本，否则最新已批准版本），只读操作，冻结策略同样可导出 */}
       <CedarExportPanel
         policyId={policy.id}
         labels={t.cedarExport}

@@ -1,8 +1,8 @@
 /**
- * checkAndRecordNonce / claimNonce 对唯一约束冲突的判定（#480）。
+ * claimNonce 对唯一约束冲突的判定（#480）。
  *
- * drizzle 把 23505 包在 cause 上；此前只看顶层 code，重放时直接抛错（secure-executor 返回 500
- * 而非 ALREADY_USED）。真 Postgres 行为见 internal-nonce-replay.saas.integration.test.ts。
+ * drizzle 把 23505 包在 cause 上；此前只看顶层 code，重放时直接抛错（返回 500
+ * 而非判为重放）。真 Postgres 行为见 internal-nonce-replay.saas.integration.test.ts。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -12,23 +12,16 @@ vi.mock('@/lib/prisma', () => ({
   usedNonces: {},
 }));
 
-import { checkAndRecordNonce, claimNonce } from '@/services/security/nonce-service';
+import { claimNonce } from '@/services/security/nonce-service';
 
 const duplicate = () =>
   Object.assign(new Error('Failed query'), {
     cause: Object.assign(new Error('duplicate key'), { code: '23505' }),
   });
 
-const UUID = '3f1c2a4b-5d6e-4f70-8a91-b2c3d4e5f607';
-
 beforeEach(() => values.mockReset());
 
 describe('nonce-service 唯一约束冲突', () => {
-  it('★checkAndRecordNonce：drizzle 包装的 23505 → ALREADY_USED，而不是抛错', async () => {
-    values.mockRejectedValueOnce(duplicate());
-    await expect(checkAndRecordNonce(UUID)).resolves.toEqual({ valid: false, reason: 'ALREADY_USED' });
-  });
-
   it('★claimNonce：drizzle 包装的 23505 → false', async () => {
     values.mockRejectedValueOnce(duplicate());
     await expect(claimNonce('n-1', new Date())).resolves.toBe(false);

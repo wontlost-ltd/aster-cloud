@@ -1,11 +1,11 @@
 /**
- * 已存版本的 CNL 语言解析（secure-execute 与审批冻结共用）。
+ * 已存版本的 CNL 语言解析（执行与审批冻结共用）。
  *
  * PolicyVersion 没有单独的 locale 列，但保存时的编译 locale 已写进 sourceEnvelopeSha256
  * （content + aliasSet + locale + 工具链 + 词汇段，ADR 0051 §7）。词汇段取封印时落库的
  * sourceScopesJson，不按现行/快照词汇重推，故之后编辑词条或审批冻结都不影响反推。按以下优先级取语言，保证旧版本执行口径不变：
  *   1. 版本记录的编译 locale：用候选 locale 重算 envelope，与存储值相等者即保存时所用值。
- *   2. 冻结快照引用的 locale 唯一时取之（secure-execute 原有口径，兼容无 envelope 的旧版本）。
+ *   2. 冻结快照引用的 locale 唯一时取之（兼容无 envelope 的旧版本）。
  *   3. 最后才按源码关键词识别（detectCNLLocale，启发式）。
  */
 

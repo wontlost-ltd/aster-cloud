@@ -2,7 +2,7 @@
 //
 // 钉住：①跨站 cookie 变更 → 403 ②同源 → 放行 ③安全方法 → 放行 ④Bearer → 放行
 // ⑤豁免前缀（internal/auth/cron/telemetry/dsar/stripe-webhook/csp-report/playground/renew）→ 放行
-// ⑥★不整体豁免 /api/v1：cookie-auth 的 v1 子路由（domain-vocabularies/versions/secure-execute）
+// ⑥★不整体豁免 /api/v1：cookie-auth 的 v1 子路由（domain-vocabularies/versions）
 //   跨站 → 403 ⑦前缀边界（/api/authz 不被 /api/auth 误豁免）⑧stripe/checkout 非 webhook 需 CSRF。
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -74,7 +74,6 @@ describe('applyCsrfGate — 中间件 CSRF 网关（审计 #168）', () => {
   it('★不整体豁免 /api/v1：cookie-auth 的 v1 子路由跨站 → 403', () => {
     expect(gate('/api/v1/domain-vocabularies/terms', 'POST')).toBe(403);
     expect(gate('/api/v1/policies/p1/versions', 'POST')).toBe(403);
-    expect(gate('/api/v1/policies/p1/secure-execute', 'POST')).toBe(403);
     // 同源应放行
     expect(gate('/api/v1/policies/p1/versions', 'POST', { origin: ORIGIN })).toBe('PASS');
   });

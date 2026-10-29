@@ -2,7 +2,7 @@
  * 导出为 Cedar（ADR 0047 §6）。
  * POST /api/policies/[id]/export/cedar
  *
- * 导出 secure-execute 会执行的版本（isDefault 的批准版本，否则最新批准版本）：把未经批准的草稿交给
+ * 导出执行路径会选中的版本（isDefault 的批准版本，否则最新批准版本）：把未经批准的草稿交给
  * 执行端等于绕过审批，故没有可执行版本时返回 409。cloud 的版本不在 aster-api，故走源码模式：
  * 该版本源码、冻结别名集、与执行同一判定的语言与领域词汇（已审批版本取冻结快照，ADR 0051），
  * 并附 claimedRef（cloud 策略 id 与所导出的版本号，api 只记审计不核验）。仅策略所有者可导出。
@@ -16,7 +16,7 @@ import { policyTenantId } from '@/lib/policy-tenant';
 import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
 import { loadStoredVersionCompileContext } from '@/lib/execution-input';
 import { PolicyApiError } from '@/services/policy/policy-api';
-import { findDefaultExecutableVersion } from '@/services/security/secure-executor';
+import { findDefaultExecutableVersion } from '@/services/policy/default-executable-version';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -30,7 +30,7 @@ function claimedRefFor(id: string, version: number): { claimedRef?: Record<strin
   return Object.values(ref).every((v) => CLAIMED_REF_VALUE.test(v)) ? { claimedRef: ref } : {};
 }
 
-// 版本冻结的别名集（canonical JSON）；与 secure-execute 同一口径，解析失败视同无别名
+// 版本冻结的别名集（canonical JSON）；与执行路径同一口径，解析失败视同无别名
 function parseAliasSet(aliasSet: string | null): Record<string, string[]> | null {
   if (!aliasSet) return null;
   try {

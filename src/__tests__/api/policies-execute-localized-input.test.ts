@@ -214,11 +214,11 @@ describe('POST /api/policies/[id]/execute — 策略语言输入（#626）', () 
 
     expect(body.output.result).toBe(42);
     expect(mockLoadLive).not.toHaveBeenCalled();
-    // 无 envelope 时取冻结快照引用的唯一 locale（与 secure-execute 同一解析器）。
+    // 无 envelope 时取冻结快照引用的唯一 locale（与 v1 execute 同一解析器）。
     expect(mockLoadFrozen).toHaveBeenCalledWith(FROZEN_REFS, { source: DE_POLICY, locale: 'de' });
   });
 
-  it('locale 与 secure-execute 同一解析器：版本记录的编译 locale 优先于源码识别', async () => {
+  it('locale 与 v1 execute 同一解析器：版本记录的编译 locale 优先于源码识别', async () => {
     // 源码看起来是德语，但版本保存时按 en-US 编译（envelope 记录）：三条路径都应按 en-US 执行。
     const envelope = computeSourceEnvelope(DE_POLICY, null, 'en-US', 'tc-1', '');
     mockFindVersions.mockResolvedValue(versions('APPROVED', { sourceEnvelopeSha256: envelope, sourceScopesJson: '' }));

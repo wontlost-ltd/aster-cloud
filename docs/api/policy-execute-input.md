@@ -4,9 +4,8 @@
 
 - `POST /api/policies/{id}/execute`（控制台执行页）
 - `POST /api/v1/policies/{id}/execute`（API Key / SDK）
-- `POST /api/v1/policies/{id}/secure-execute`（签名执行）
 
-> **实现位置**：`src/lib/execution-input/`（三条路径共用）。改动输入映射规则时，必须同步更新本文档。
+> **实现位置**：`src/lib/execution-input/`（两条路径共用）。改动输入映射规则时，必须同步更新本文档。
 
 ---
 
@@ -62,9 +61,6 @@
 }
 ```
 
-`secure-execute` 的响应体沿用其既有形状（`success: false`、`errorCode: "AMBIGUOUS_INPUT_FIELD"`），并附加同样的
-`code` / `field` / `fields` / `policyField`（及 `candidates`）。未发生执行，不计入用量。
-
 ## 4. 用哪份词汇
 
 | 被执行的版本 | 词汇 |
@@ -74,7 +70,7 @@
 
 同一份词汇既交给引擎规范化源码，也用于上面的输入映射。版本没有作用域内的词汇时，输入原样交给引擎。
 
-版本语言三条路径统一用 `resolveStoredVersionLocale`：版本保存时记录的编译 locale → 冻结快照的唯一 locale →
+版本语言两条路径统一用 `resolveStoredVersionLocale`：版本保存时记录的编译 locale → 冻结快照的唯一 locale →
 源码识别。
 
 ## 5. 响应（向后兼容）
@@ -84,5 +80,3 @@
   `output.result` 不同时出现，供界面展示。
 - 执行记录（`Execution.input`）保存映射后的规范输入，即引擎实际评估的输入；回放、parity、
   审批登记都以它为准。
-- `secure-execute`：签名覆盖的是原始输入。每次签名执行，`POLICY_EXECUTED` 安全事件的 `details.inputMapping`
-  都记录原始输入哈希 `originalInputSha256` 与改写位置 `renames`（`path` / `from` / `to`，无改写时为空数组），签名内容与执行内容可追溯。

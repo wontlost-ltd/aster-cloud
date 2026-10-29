@@ -11,8 +11,6 @@ import { inArray, lt, sql } from 'drizzle-orm';
 import { isUniqueViolation } from '@/lib/pg-errors';
 import { affectedRows, runInBatches } from '@/lib/retention/batching';
 
-const NONCE_EXPIRY_MS = 10 * 60 * 1000; // 10 分钟
-
 /** nonce 最大长度。aster-api 发的是 36 字符 UUID，cloud 出站发的是 32 位 hex。 */
 const MAX_NONCE_LENGTH = 128;
 
@@ -22,38 +20,10 @@ export const NONCE_GC_BATCH_SIZE = 5_000;
 /** 单次回收的批数上限；清不完留给下一次 cron。 */
 export const NONCE_GC_MAX_BATCHES_PER_RUN = 100;
 
-export interface NonceCheckResult {
-  valid: boolean;
-  reason?: 'ALREADY_USED' | 'INVALID_FORMAT';
-}
-
-/**
- * 检查并记录 Nonce（原子操作）
- *
- * 使用数据库唯一约束保证原子性：
- * - 如果 Nonce 已存在，创建会失败（重放攻击）
- * - 如果 Nonce 不存在，创建成功并记录
- */
-export async function checkAndRecordNonce(
-  nonce: string,
-  policyId?: string,
-  userId?: string
-): Promise<NonceCheckResult> {
-  // 验证 Nonce 格式（UUID v4）
-  const uuidV4Regex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  if (!uuidV4Regex.test(nonce)) {
-    return { valid: false, reason: 'INVALID_FORMAT' };
-  }
-
-  const expiresAt = new Date(Date.now() + NONCE_EXPIRY_MS);
-  const claimed = await insertNonceOnce({ nonce, policyId, userId, expiresAt });
-  return claimed ? { valid: true } : { valid: false, reason: 'ALREADY_USED' };
-}
-
 /**
  * 认领一个 /api/internal/* 入站签名的 nonce（#480）。
  *
- * <p>与 {@link checkAndRecordNonce} 共用 UsedNonce 表与唯一约束，区别只有两点：
+ * <p>基于 UsedNonce 表的唯一约束，要点：
  * <ul>
  *   <li>不校验 UUID 格式：签名已证明 nonce 出自持钥方，格式由签名方决定；
  *       只限长度，防止超长值写进表里。</li>

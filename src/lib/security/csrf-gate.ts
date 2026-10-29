@@ -23,7 +23,7 @@ import { checkCsrf } from '@/lib/security/csrf';
  *   - /api/v1/telemetry, /api/v1/dsar  per-license HMAC（x-aster-signature，无 Bearer/Origin）
  *   - /api/csp-report, /api/playground, /api/renew  公开/匿名/URL-token，无 cookie session
  *
- * ★不整体豁免 /api/v1——大部分 v1（domain-vocabularies、policy versions、secure-execute）是
+ * ★不整体豁免 /api/v1——大部分 v1（domain-vocabularies、policy versions）是
  *   cookie-session、**需要** CSRF；仅 /api/v1/policies(root POST) + /api/v1/policies/[id]/execute
  *   走 Bearer，由 checkCsrf 内置 Bearer 豁免透明放行，无需列前缀。
  */

@@ -1,5 +1,5 @@
 /**
- * 执行前的输入准备（#626）：dashboard / v1 / secure-execute 三条执行路径共用。
+ * 执行前的输入准备（#626）：dashboard / v1 两条执行路径共用。
  *
  * 1. 词汇来源（唯一切换点 {@link executionVocabularySource}）：
  *    - 已审批 / 已弃用版本：审批时冻结的快照（只取策略作用域内的部分）；
@@ -11,7 +11,6 @@
  *    同一对象内两个键指向同一字段时返回 400 ambiguous_input_field，不猜测。
  */
 
-import { createHash } from 'node:crypto';
 import { loadExecutionVocabulary, loadLiveVocabularyForPolicy } from '@/lib/domain-vocabulary-snapshot';
 import {
   buildExecutionVocabulary,
@@ -195,7 +194,7 @@ export function localizedResultField(result: unknown, localize: (value: unknown)
   return JSON.stringify(localized) === JSON.stringify(result) ? {} : { localizedResult: localized };
 }
 
-/** 歧义输入的 400 响应体（dashboard / v1 共用；secure-execute 另加其 errorCode 口径）。 */
+/** 歧义输入的 400 响应体（dashboard / v1 共用）。 */
 export function ambiguousInputFieldBody(ambiguous: AmbiguousInputField) {
   return {
     error: ambiguousInputFieldMessage(ambiguous),
@@ -218,7 +217,6 @@ export const ENTRY_RULE_REQUIRED_MESSAGE =
 
 /**
  * 准备失败时 dashboard / v1 共用的响应：歧义 400，类型提取失败 422。
- * secure-execute 另有自己的 errorCode 口径，不走这里。
  */
 export function preparedInputErrorResponse(
   failure: Extract<PreparedExecutionInput, { ok: false }>,
@@ -242,15 +240,4 @@ export function ambiguousInputFieldMessage(ambiguous: AmbiguousInputField): stri
   const [first, second] = ambiguous.fields;
   return `Input fields "${first}" and "${second}" both refer to the policy field "${ambiguous.policyName}". ` +
     'Send only one of them.';
-}
-
-/**
- * secure-execute 审计：签名覆盖的是原始输入，引擎执行的是映射后的输入。每次签名执行都记录原始输入的
- * 哈希与改写过的位置（无改写时为空数组），使签名内容与执行内容可追溯。
- */
-export function inputMappingAudit(originalInput: unknown, renames: readonly InputRename[]) {
-  return {
-    originalInputSha256: `sha256:${createHash('sha256').update(JSON.stringify(originalInput) ?? '').digest('hex')}`,
-    renames,
-  };
 }
