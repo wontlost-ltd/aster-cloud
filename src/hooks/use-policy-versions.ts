@@ -59,6 +59,9 @@ export type ApproveErrorCode =
   | 'vocabulary_changed_since_save'
   | 'other';
 
+/** 提交审批 / 驳回的结果：失败时带可直接展示的原因。 */
+export type VersionActionResult = { ok: true } | { ok: false; message: string };
+
 export interface ApproveResult {
   ok: boolean;
   errorCode?: ApproveErrorCode;
@@ -98,12 +101,12 @@ interface UsePolicyVersionsResult {
   deprecate: (version: number, reason?: string) => Promise<boolean>;
   /** 归档版本 */
   archive: (version: number, reason?: string) => Promise<boolean>;
-  /** 提交审批 */
-  submitForApproval: (version: number, releaseNote?: string) => Promise<boolean>;
+  /** 提交审批（失败返回原因，由调用方提示；不写 actionError） */
+  submitForApproval: (version: number, releaseNote?: string) => Promise<VersionActionResult>;
   /** 批准版本（返回结构化结果，便于 UI 区分 SOX 错误） */
   approve: (version: number, comment?: string) => Promise<ApproveResult>;
-  /** 拒绝版本 */
-  reject: (version: number, comment: string) => Promise<boolean>;
+  /** 拒绝版本（失败返回原因，由调用方提示；不写 actionError） */
+  reject: (version: number, comment: string) => Promise<VersionActionResult>;
 }
 
 /**
@@ -290,7 +293,7 @@ export function usePolicyVersions({
 
   // 提交审批
   const submitForApproval = useCallback(
-    async (version: number, releaseNote?: string): Promise<boolean> => {
+    async (version: number, releaseNote?: string): Promise<VersionActionResult> => {
       setActionError(null);
 
       try {
@@ -307,14 +310,12 @@ export function usePolicyVersions({
 
         if (response.ok) {
           await refresh();
-          return true;
+          return { ok: true };
         } else {
-          setActionError(extractErrorMessage(data) || '提交审批失败');
-          return false;
+          return { ok: false, message: extractErrorMessage(data) || '提交审批失败' };
         }
       } catch (err) {
-        setActionError(err instanceof Error ? err.message : '未知错误');
-        return false;
+        return { ok: false, message: err instanceof Error ? err.message : '未知错误' };
       }
     },
     [policyId, refresh]
@@ -360,7 +361,7 @@ export function usePolicyVersions({
 
   // 拒绝版本
   const reject = useCallback(
-    async (version: number, comment: string): Promise<boolean> => {
+    async (version: number, comment: string): Promise<VersionActionResult> => {
       setActionError(null);
 
       try {
@@ -377,14 +378,12 @@ export function usePolicyVersions({
 
         if (response.ok) {
           await refresh();
-          return true;
+          return { ok: true };
         } else {
-          setActionError(extractErrorMessage(data) || '拒绝失败');
-          return false;
+          return { ok: false, message: extractErrorMessage(data) || '拒绝失败' };
         }
       } catch (err) {
-        setActionError(err instanceof Error ? err.message : '未知错误');
-        return false;
+        return { ok: false, message: err instanceof Error ? err.message : '未知错误' };
       }
     },
     [policyId, refresh]

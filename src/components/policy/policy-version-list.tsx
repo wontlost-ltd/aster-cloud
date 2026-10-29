@@ -7,6 +7,17 @@ import { VersionStatusBadge } from './version-status-badge';
 import { ConfirmDialog, toast } from '@/components/ui';
 import { decideVersionApproval, type VersionReviewContext } from '@/services/policy/version-approval-rules';
 
+/**
+ * 版本操作失败且原因已知（如服务端返回的说明）时由操作回调抛出：
+ * 列表显示该原因并保持对话框打开，不再弹通用错误。
+ */
+export class VersionActionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'VersionActionError';
+  }
+}
+
 interface PolicyVersionInfo {
   id: string;
   version: number;
@@ -107,8 +118,9 @@ export function PolicyVersionList({
           break;
       }
       closeActionDialog();
-    } catch {
-      toast.error(tCommon('somethingWrong'));
+    } catch (err) {
+      // 失败时对话框保持打开（保留用户填写的说明）；已知原因的失败直接显示原因，只提示一次
+      toast.error(err instanceof VersionActionError ? err.message : tCommon('somethingWrong'));
     } finally {
       setActionLoading(false);
     }

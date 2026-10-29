@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useTranslations } from 'next-intl';
-import { PolicyVersionList, type PolicyVersionInfo } from './policy-version-list';
+import { PolicyVersionList, VersionActionError, type PolicyVersionInfo } from './policy-version-list';
 import { VersionDetailPanel } from './version-detail-panel';
 import { VersionComparePanel } from './version-compare-panel';
 import { usePolicyVersions } from '@/hooks/use-policy-versions';
@@ -94,10 +94,10 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
       // 从 versions 中找到对应的 version number
       const ver = (versions as PolicyVersionInfo[]).find((v) => v.id === versionId);
       if (ver) {
-        // 失败时 hook 已写 actionError（列表上方横幅，带服务端原因）；不再抛出，避免列表再弹一条通用 toast
-        if (await submitForApproval(ver.version, releaseNote)) {
-          toast.success(t('versionSubmitted', { version: ver.version }));
-        }
+        // 失败抛 VersionActionError：列表显示服务端原因（只提示一次）并保持对话框打开，发布说明不丢
+        const result = await submitForApproval(ver.version, releaseNote);
+        if (!result.ok) throw new VersionActionError(result.message);
+        toast.success(t('versionSubmitted', { version: ver.version }));
       }
     },
     [versions, submitForApproval, t]
@@ -138,10 +138,10 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
     async (versionId: string, comment?: string) => {
       const ver = (versions as PolicyVersionInfo[]).find((v) => v.id === versionId);
       if (ver && comment) {
-        // 同上：失败只由 actionError 横幅提示一次
-        if (await reject(ver.version, comment)) {
-          toast.success(t('versionRejected', { version: ver.version }));
-        }
+        // 同上：失败时保留驳回意见，只提示一次
+        const result = await reject(ver.version, comment);
+        if (!result.ok) throw new VersionActionError(result.message);
+        toast.success(t('versionRejected', { version: ver.version }));
       }
     },
     [versions, reject, t]

@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 
-const h = vi.hoisted(() => ({ approve: vi.fn(), submit: vi.fn(), toastError: vi.fn(), toastSuccess: vi.fn(), clearActionError: vi.fn(), actionError: null as string | null }));
+const h = vi.hoisted(() => ({ approve: vi.fn(), submit: vi.fn(), dialogClosed: vi.fn(), toastError: vi.fn(), toastSuccess: vi.fn(), clearActionError: vi.fn(), actionError: null as string | null }));
 
 vi.mock('next-intl', () => ({
   useTranslations: (ns: string) => (key: string) => `${ns}.${key}`,
@@ -18,17 +18,24 @@ vi.mock('@/hooks/use-policy-versions', () => ({
     submitForApproval: h.submit, approve: h.approve, reject: vi.fn(),
   }),
 }));
-vi.mock('@/components/policy/policy-version-list', () => ({
-  PolicyVersionList: ({ onApprove, onSubmitForApproval }: {
-    onApprove: (id: string) => Promise<void>;
-    onSubmitForApproval: (id: string) => Promise<void>;
-  }) => (
-    <>
-      <button type="button" onClick={() => onApprove('v1')}>approve-v1</button>
-      <button type="button" onClick={() => { onSubmitForApproval('v1').catch(() => h.toastError('list-generic')); }}>submit-v1</button>
-    </>
-  ),
-}));
+vi.mock('@/components/policy/policy-version-list', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/components/policy/policy-version-list')>();
+  return {
+    VersionActionError: actual.VersionActionError,
+    // 模拟列表的 handleConfirmAction：失败时按错误类型提示一次，并标记对话框保持打开
+    PolicyVersionList: ({ onApprove, onSubmitForApproval }: {
+      onApprove: (id: string) => Promise<void>;
+      onSubmitForApproval: (id: string) => Promise<void>;
+    }) => (
+      <>
+        <button type="button" onClick={() => onApprove('v1')}>approve-v1</button>
+        <button type="button" onClick={() => {
+          onSubmitForApproval('v1').then(() => h.dialogClosed(), (e: Error) => h.toastError(e.name === 'VersionActionError' ? e.message : 'generic'));
+        }}>submit-v1</button>
+      </>
+    ),
+  };
+});
 vi.mock('@/components/policy/version-detail-panel', () => ({ VersionDetailPanel: () => null }));
 vi.mock('@/components/policy/version-compare-panel', () => ({ VersionComparePanel: () => null }));
 
@@ -98,14 +105,26 @@ describe('PolicyVersionsTab 操作失败提示', () => {
 });
 
 describe('PolicyVersionsTab 提交失败只提示一次', () => {
-  it('提交失败：不抛出（列表不再弹通用 toast），也不弹成功 toast；原因由 actionError 横幅给出', async () => {
-    h.submit.mockResolvedValue(false);
+  it('提交失败：抛 VersionActionError（列表显示服务端原因一次、对话框不关闭），不弹成功 toast', async () => {
+    h.submit.mockResolvedValue({ ok: false, message: 'Version already pending' });
     render(<PolicyVersionsTab policyId="p1" />);
 
     fireEvent.click(screen.getByRole('button', { name: 'submit-v1' }));
 
-    await waitFor(() => expect(h.submit).toHaveBeenCalledWith(2, undefined));
-    expect(h.toastError).not.toHaveBeenCalled();
+    await waitFor(() => expect(h.toastError).toHaveBeenCalledTimes(1));
+    expect(h.toastError).toHaveBeenCalledWith('Version already pending');
+    expect(h.dialogClosed).not.toHaveBeenCalled();
     expect(h.toastSuccess).not.toHaveBeenCalled();
+  });
+
+  it('提交成功：成功 toast，对话框关闭', async () => {
+    h.submit.mockResolvedValue({ ok: true });
+    render(<PolicyVersionsTab policyId="p1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'submit-v1' }));
+
+    await waitFor(() => expect(h.dialogClosed).toHaveBeenCalled());
+    expect(h.toastSuccess).toHaveBeenCalled();
+    expect(h.toastError).not.toHaveBeenCalled();
   });
 });

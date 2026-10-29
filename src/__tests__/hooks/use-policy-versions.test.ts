@@ -64,8 +64,20 @@ describe('usePolicyVersions 操作失败', () => {
     fetchMock
       .mockResolvedValueOnce(json({ ok: true }))
       .mockResolvedValueOnce(json({ versions: VERSIONS }));
-    await act(async () => { await result.current.submitForApproval(2); });
+    let submitted: Awaited<ReturnType<typeof result.current.submitForApproval>> | undefined;
+    await act(async () => { submitted = await result.current.submitForApproval(2); });
+    expect(submitted).toEqual({ ok: true });
     expect(result.current.actionError).toBeNull();
+  });
+
+  it('提交失败：返回服务端原因，不写横幅（由调用方提示一次）', async () => {
+    const { result } = await mountLoaded();
+    fetchMock.mockResolvedValueOnce(json({ error: 'Version already pending' }, 409));
+    let submitted: Awaited<ReturnType<typeof result.current.submitForApproval>> | undefined;
+    await act(async () => { submitted = await result.current.submitForApproval(2); });
+    expect(submitted).toEqual({ ok: false, message: 'Version already pending' });
+    expect(result.current.actionError).toBeNull();
+    expect(result.current.versions).toHaveLength(2);
   });
 
   it('批准开始时同样清除上一次的失败横幅', async () => {
