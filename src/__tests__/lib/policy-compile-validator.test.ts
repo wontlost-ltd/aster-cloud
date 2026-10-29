@@ -68,6 +68,10 @@ describe('makeCompileValidator / loadSaveVocabulary — 领域词汇（#602，AD
     await expect(loadSaveVocabulary('u1', { source, locale: 'de-DE' })).rejects.toBeInstanceOf(
       PolicyCompileUnavailableError,
     );
+    // 与编译服务不可用区分：界面据此提示「词汇暂时无法加载」
+    await expect(loadSaveVocabulary('u1', { source, locale: 'de-DE' })).rejects.toMatchObject({
+      unavailableCode: 'vocabulary_unavailable',
+    });
     expect(mockCompile).not.toHaveBeenCalled();
     warn.mockRestore();
   });

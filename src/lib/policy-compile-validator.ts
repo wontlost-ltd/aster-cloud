@@ -7,6 +7,7 @@ import {
   DEFAULT_COMPILE_RETRY_AFTER_SECONDS,
   PolicyCompileError,
   PolicyCompileUnavailableError,
+  VOCABULARY_UNAVAILABLE_CODE,
   type CompileValidator,
 } from '@/services/policy/version-manager';
 import { loadLiveVocabularyForPolicy } from '@/lib/domain-vocabulary-snapshot';
@@ -62,8 +63,8 @@ export interface SaveVocabulary {
 /**
  * 每次保存只加载一次作者现行词汇（作用域规则同编辑器注册与审批冻结，见 domain-vocabulary-scope），
  * 并据此算出 envelope 词汇段。
- * - 加载失败：编译门禁与封印都没有可信的词汇输入，统一按「编译检查暂不可用」拒绝（503 可重试），
- *   不退化为无词汇——否则落库的 envelope 与实际编译输入不一致。
+ * - 加载失败：编译门禁与封印都没有可信的词汇输入，按暂不可用拒绝（503 可重试，码为
+ *   vocabulary_unavailable，与编译服务不可用区分），不退化为无词汇——否则落库的 envelope 与实际编译输入不一致。
  * - 词汇非法（字段/枚举成员缺 parent、字面量冲突）：引擎抛 VocabularyScopeError，原样上抛，
  *   由保存入口映射为 400 vocabulary_scope_invalid。
  */
@@ -76,7 +77,11 @@ export async function loadSaveVocabulary(
     vocabulary = await loadLiveVocabularyForPolicy(userId, policy);
   } catch (err) {
     console.warn('[compile-gate] failed to load domain vocabulary', err);
-    throw new PolicyCompileUnavailableError(DEFAULT_COMPILE_RETRY_AFTER_SECONDS);
+    throw new PolicyCompileUnavailableError(
+      DEFAULT_COMPILE_RETRY_AFTER_SECONDS,
+      'Domain vocabulary could not be loaded. Try again later.',
+      VOCABULARY_UNAVAILABLE_CODE,
+    );
   }
   return { vocabulary, scopesJson: vocabularyScopesJson(vocabulary) };
 }

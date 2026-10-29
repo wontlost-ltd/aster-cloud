@@ -184,6 +184,8 @@ export async function assertVersionReadAccess(policyId: string, userId: string):
 export class PolicyCompileError extends Error {
   /** 有值表示「编译检查暂不可用、可稍后重试」，路由据此返回 503 + Retry-After。 */
   readonly retryAfterSeconds?: number;
+  /** 暂不可用时的稳定错误码（缺省 compile_unavailable），界面据此给出不同提示。 */
+  readonly unavailableCode?: string;
   readonly diagnostics?: CompileDiagnostic[];
 
   constructor(
@@ -203,16 +205,22 @@ export class PolicyCompileError extends Error {
  */
 export class PolicyCompileUnavailableError extends PolicyCompileError {
   override readonly retryAfterSeconds: number;
+  override readonly unavailableCode: string;
 
   constructor(
     retryAfterSeconds: number,
     message = 'Policy compilation is temporarily unavailable. Try again later.',
+    unavailableCode = 'compile_unavailable',
   ) {
     super(message);
     this.name = 'PolicyCompileUnavailableError';
     this.retryAfterSeconds = retryAfterSeconds;
+    this.unavailableCode = unavailableCode;
   }
 }
+
+/** 作者领域词汇暂时无法加载的稳定错误码（与编译服务不可用区分）。 */
+export const VOCABULARY_UNAVAILABLE_CODE = 'vocabulary_unavailable';
 
 /** 编译检查不可用且上游未给出重试时间时的默认重试秒数（aster-api 限流窗口为一分钟）。 */
 export const DEFAULT_COMPILE_RETRY_AFTER_SECONDS = 60;
