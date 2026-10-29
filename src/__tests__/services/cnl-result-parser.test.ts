@@ -360,10 +360,10 @@ describe('枚举值判定（#633、复测 C）', () => {
   it('buildCNLResult：返回 QuoteStatus.Rejected 时不产生 deniedReasons（顶层 error 为空）', () => {
     const policy = { id: 'p1', name: 'quote' } as Parameters<typeof buildCNLResult>[0];
     const result = buildCNLResult(policy, {
-      success: true,
       result: enumValue('Rejected', 'QuoteStatus'),
       executionTimeMs: 1,
-    } as Parameters<typeof buildCNLResult>[1]);
+      error: null,
+    });
     expect(result.deniedReasons).toEqual([]);
     expect(getPrimaryError(result)).toBeUndefined();
     expect(deriveExecutionDecision(result)).toBe('indeterminate');
