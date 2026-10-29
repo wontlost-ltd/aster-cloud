@@ -3,7 +3,7 @@
  *
  * 把 user_domain_term 行组装成 aster-lang-ts 的 DomainVocabulary。该逻辑
  * 同时被服务端（domain-vocabulary-validation.ts，依赖 node:crypto 做 dedup
- * 键）和客户端（editor 把用户词汇 registerCustom 进引擎）复用，因此抽到
+ * 键）和客户端（编辑器按作者词汇编译与高亮）复用，因此抽到
  * 这个不触碰 `node:*` 的叶子模块里，保证浏览器可安全导入。
  *
  * 设计约束（见 ADR 0009 跨运行时边界）：本文件只能 import
@@ -33,6 +33,11 @@ export interface TermLikeRow {
   parentCanonical?: string | null;
   aliases?: readonly string[] | null;
   description?: string | null;
+}
+
+/** 需要父类型的词条种类：字段挂在结构下，枚举成员挂在枚举下（ADR 0051 §14 第 3 条）。 */
+export function requiresParent(kind: string): boolean {
+  return kind === 'field' || kind === 'enum_value';
 }
 
 export interface AssembleVocabularyOptions {
@@ -69,8 +74,8 @@ function mappingFromRow(row: TermLikeRow): IdentifierMapping {
 }
 
 /**
- * 按 kind 分组，把词汇行组装成 DomainVocabulary，供 aster-lang-ts 降级
- * 或 Monaco/引擎 registerCustom 复用。
+ * 按 kind 分组，把词汇行组装成 DomainVocabulary，供引擎 buildVocabularyScopes、
+ * 编译与 Monaco 高亮复用。
  */
 export function assembleDomainVocabularyFromLinks(
   termRows: readonly TermLikeRow[],

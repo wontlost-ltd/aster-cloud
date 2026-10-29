@@ -43,9 +43,13 @@ import {
   applyVocabularyScopeFormat,
   assembleDomainVocabularyFromLinks,
   computeDedupKey,
+  findTermScopeConflicts,
+  formatScopeConflict,
   normalizeTermInput,
+  requiresParent,
   validateDomainVocabulary,
   type NormalizedTermInput,
+  type TermLikeRow,
   type TermKind,
 } from '@/lib/domain-vocabulary-validation';
 import { isUndefinedTable, isUniqueViolation } from '@/lib/pg-errors';
@@ -279,13 +283,13 @@ function validateInput(input: TermInput): NormalizedTermInput {
 }
 
 function validateNormalized(normalized: NormalizedTermInput): NormalizedTermInput {
-  // 字段必须挂在父结构体下,否则后续的 lexicon 索引会出现孤立 field。
+  // 字段与枚举成员按父名分作用域解析（ADR 0051 §7、§14 第 3 条），必须挂在父类型下。
   // 上游 validateVocabulary 只把缺 parent 当成 warning,所以在 service
   // 层强制拒绝,保证 REST API、bulk 路径、未来 SDK 调用都遵守同一契约。
-  if (normalized.kind === 'field' && !normalized.parentCanonical) {
+  if (requiresParent(normalized.kind) && !normalized.parentCanonical) {
     throw new VocabularyError(
       'validation_failed',
-      'parentCanonical is required for kind=field',
+      `parentCanonical is required for kind=${normalized.kind}`,
     );
   }
 
@@ -313,6 +317,48 @@ function validateNormalized(normalized: NormalizedTermInput): NormalizedTermInpu
 }
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/** 待保存词条（新增 / 修改 / 恢复）在作用域冲突校验中的行形态。 */
+interface ScopedTerm {
+  domain: string;
+  locale: string;
+  kind: string;
+  canonical: string;
+  localized: string;
+  parentCanonical?: string | null;
+  aliases?: readonly string[] | null;
+}
+
+/**
+ * 保存前的作用域冲突校验（ADR 0051 §8）：同一 (domain, locale) 分组内，同角色同作用域、NFC 后写法
+ * 完全相同却映射到不同规范名的条目拒绝保存；仅大小写不同允许。excludeLinkId 为被修改 / 恢复的链接自身。
+ */
+async function assertNoScopeConflict(
+  reader: Tx | typeof db,
+  userId: string,
+  term: ScopedTerm,
+  excludeLinkId?: string,
+): Promise<void> {
+  const rows = (await reader
+    .select(selectTermLinkFields())
+    .from(userDomainTerms)
+    .innerJoin(domainTerms, eq(userDomainTerms.termId, domainTerms.id))
+    .where(
+      and(
+        eq(userDomainTerms.userId, userId),
+        eq(userDomainTerms.domain, term.domain),
+        eq(userDomainTerms.locale, term.locale),
+        activeLinkPredicate(),
+      ),
+    )) as JoinedTermRow[];
+  const existing: TermLikeRow[] = rows
+    .filter((row) => row.id !== excludeLinkId)
+    .map((row) => ({ ...mapJoinedRow(row), domainTermId: row.termId }));
+  const conflicts = findTermScopeConflicts(existing, { ...term, domainTermId: 'candidate' });
+  if (conflicts.length > 0) {
+    throw new VocabularyError('validation_failed', conflicts.map(formatScopeConflict).join('; '));
+  }
+}
 
 async function upsertDomainTerm(
   tx: Tx | typeof db,
@@ -562,6 +608,8 @@ async function addUserVocabularyTermInner(
       );
     }
 
+    // 在用户级 advisory lock 内校验，并发新增不会各自通过后形成冲突。
+    await assertNoScopeConflict(tx, userId, normalized);
     const upserted = await upsertDomainTerm(tx, normalized);
 
     let created: { id: string } | undefined;
@@ -647,6 +695,7 @@ async function modifyUserVocabularyTermInner(
   if (!existing) {
     throw new VocabularyError('not_found', 'Vocabulary term link not found');
   }
+  await assertNoScopeConflict(db, userId, normalized, linkId);
 
   const transactionResult = await db.transaction(async (tx) => {
     const upserted = await upsertDomainTerm(tx, normalized);
@@ -793,6 +842,8 @@ async function restoreUserVocabularyTermInner(
   if (!deleted) {
     throw new VocabularyError('not_found', 'Vocabulary term link not found');
   }
+  // 删除期间同一分组可能新增了同写法的条目，恢复同样不得引入作用域冲突。
+  await assertNoScopeConflict(db, userId, deleted, linkId);
 
   await db
     .update(userDomainTerms)

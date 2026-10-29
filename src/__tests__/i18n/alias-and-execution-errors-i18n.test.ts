@@ -21,7 +21,7 @@ const ALIAS_ISSUE_CODES = [
   'nonCanonical', 'singleWord', 'shadowsKeyword', 'shadowsBaseAlias', 'collidesVocabulary', 'duplicate',
 ];
 const VOCAB_REASONS = [
-  'generic', 'invalidCanonical', 'duplicateCanonical', 'triggerConflict', 'invalidLiteral',
+  'generic', 'invalidCanonical', 'duplicateCanonical', 'triggerConflict', 'scopeConflict', 'invalidLiteral',
   'parentRequired', 'fieldRequired',
 ];
 const KEYS = [

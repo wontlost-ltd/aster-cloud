@@ -26,6 +26,7 @@ import {
   ZH_CN,
   DE_DE,
   type CompileResult,
+  type DomainVocabulary,
   type SchemaResult,
   type Lexicon,
   type TypecheckDiagnostic,
@@ -55,6 +56,11 @@ export interface UseAsterCompilerOptions {
    * 未命中再回退到内置词汇。
    */
   tenantId?: string;
+  /**
+   * 作者领域词汇（ADR 0051）：提供时优先于 domain / tenantId，引擎据此构建 VocabularyScopes
+   * 按位置解析源码中的本地化名字——与服务端保存/执行使用同一份词汇。
+   */
+  vocabulary?: DomainVocabulary;
   /** 用户策略层关键词别名，kind → 多词别名。 */
   userAliasSet?: Readonly<Record<string, readonly string[]>> | null;
   /**
@@ -113,6 +119,7 @@ export function useAsterCompiler({
   locale = 'en-US',
   domain,
   tenantId,
+  vocabulary,
   userAliasSet,
   externalInvalidationKey,
   debounceDelay = 300,
@@ -231,7 +238,7 @@ export function useAsterCompiler({
     }
 
     try {
-      const result = compileAndTypecheck(source, { lexicon, domain, tenantId });
+      const result = compileAndTypecheck(source, { lexicon, vocabulary, domain, tenantId });
       // 实时校验也保存 compileResult，使消费方（如上抛给父层的 module 摘要）能拿到
       // 最新 Core IR，而不必单独调 compileSource()。二者本质是同一 compileAndTypecheck 调用。
       setCompileResult(result);
@@ -283,7 +290,7 @@ export function useAsterCompiler({
       setCompileResult(null); // 解析崩溃 → 无有效 module
       return [errorDiag];
     }
-  }, [getSource, lexicon, domain, tenantId]);
+  }, [getSource, lexicon, vocabulary, domain, tenantId]);
 
   /**
    * Compile the current source
@@ -294,7 +301,7 @@ export function useAsterCompiler({
 
     setCompiling(true);
     try {
-      const result = compileAndTypecheck(source, { lexicon, domain, tenantId });
+      const result = compileAndTypecheck(source, { lexicon, vocabulary, domain, tenantId });
       setCompileResult(result);
 
       // Collect all diagnostics
@@ -337,7 +344,7 @@ export function useAsterCompiler({
     } finally {
       setCompiling(false);
     }
-  }, [getSource, lexicon, domain, tenantId]);
+  }, [getSource, lexicon, vocabulary, domain, tenantId]);
 
   /**
    * Clear all errors

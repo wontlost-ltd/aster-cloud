@@ -545,12 +545,11 @@ export function MonacoPolicyEditor({
     };
   }, [tModules]);
 
-  // ADR 0014 线B：把策略作用域内的用户领域词汇 registerCustom 进引擎，让编译/翻译层
-  // 也能识别用户术语（而非仅高亮）。内部订阅 SSE 失效自动重新注册，返回合并后的
-  // 用户词汇、编译器应使用的 domain，以及注册内容的稳定 key。
+  // ADR 0014 线B / ADR 0051：策略作用域内的作者领域词汇及其 VocabularyScopes。编译直接传入
+  // 该词汇（引擎据此按位置解析），与服务端保存时的词汇与 scopesJson 一致；registrationKey 即
+  // canonicalScopesJson，变化时重新校验与高亮。内部订阅词汇版本失效，增删词后自动刷新。
   const {
     vocabulary: userVocabulary,
-    domain: userVocabularyDomain,
     registrationKey: userVocabKey,
   } = useUserVocabularyRegistration({
     tenantId,
@@ -558,19 +557,15 @@ export function MonacoPolicyEditor({
     source: value,
     enabled: userVocabularyEnabled,
   });
-  // 编译器使用的 domain：有作用域内用户词汇时用其注册 id，否则回退内置领域。
-  const compilerDomain = userVocabularyDomain ?? domain;
 
-  // F10: subscribe to user-vocabulary SSE invalidates so a user adding /
-  // removing a term in another tab triggers a re-fetch + Monaco
-  // re-registration. The tick is folded into the vocabulary memo's deps so
-  // every invalidate re-runs `getVocabulary` and downstream effects.
+  // F10：订阅词汇版本失效（轮询 /api/v1/domain-vocabularies/version，见
+  // useDomainVocabularyInvalidate），其它标签页增删词后重新取词汇并刷新 Monaco 高亮。
+  // tick 进入高亮词汇 memo 的依赖，每次失效都重新 getVocabulary。
   const vocabTick = useDomainVocabularyInvalidate({
     enabled: Boolean(domain),
     match: domain ? { domain, locale: compilerLocale } : undefined,
   });
-  // 高亮词汇：优先用户自定义词汇（已 registerCustom，含用户术语），缺省回退
-  // 内置。userVocabKey 进 deps 保证用户增删词后高亮同步刷新。
+  // 高亮词汇：优先作者领域词汇（含用户术语），缺省回退内置。userVocabKey 进 deps 保证用户增删词后高亮同步刷新。
   const vocabulary = useMemo(
     () => userVocabulary ?? (domain ? getVocabulary(domain, compilerLocale) : undefined),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -585,8 +580,9 @@ export function MonacoPolicyEditor({
     editor: isEditorReady ? editorRef.current : null,
     monaco: isEditorReady ? monacoRef.current : null,
     locale: compilerLocale,
-    domain: compilerDomain,
+    domain,
     tenantId,
+    vocabulary: userVocabulary,
     userAliasSet: aliasSet,
     // 用户词注册内容变化时 key 变化，触发重新校验（否则 diagnostics 会
     // 停留在「未识别用户词」的旧结果直到用户再次输入）。

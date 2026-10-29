@@ -2,9 +2,17 @@ import { describe, expect, it } from 'vitest';
 import {
   assembleDomainVocabularyFromLinks,
   computeDedupKey,
+  findTermScopeConflicts,
+  findVocabularyScopeConflicts,
   normalizeTermInput,
   validateDomainVocabulary,
 } from '@/lib/domain-vocabulary-validation';
+import { parseVocabularyValidationMessage } from '@/lib/vocabulary-validation-message';
+
+/** 德语 de 分组里的一条词条行。 */
+function row(kind: string, canonical: string, localized: string, extra: Record<string, unknown> = {}) {
+  return { domainTermId: `${kind}-${canonical}-${localized}`, domain: 'grades', locale: 'de', kind, canonical, localized, ...extra };
+}
 
 describe('domain-vocabulary-validation', () => {
   describe('normalizeTermInput', () => {
@@ -165,6 +173,64 @@ describe('domain-vocabulary-validation', () => {
       const result = validateDomainVocabulary(vocab);
       expect(result.valid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('按位置解析的作用域冲突（ADR 0051 §8）', () => {
+    it('允许 Stufe（类型）与 stufe（字段）并存：不同角色互不冲突', () => {
+      const vocab = assembleDomainVocabularyFromLinks([
+        row('struct', 'Level', 'Stufe'),
+        row('field', 'level', 'stufe', { parentCanonical: 'Applicant' }),
+      ]);
+      expect(findVocabularyScopeConflicts(vocab)).toEqual([]);
+      expect(validateDomainVocabulary(vocab).valid).toBe(true);
+    });
+
+    it('允许仅大小写不同的同角色条目与跨结构同名字段', () => {
+      const vocab = assembleDomainVocabularyFromLinks([
+        row('struct', 'Level', 'Stufe'),
+        row('struct', 'Grade', 'stufe'),
+        row('field', 'age', 'alter', { parentCanonical: 'Driver' }),
+        row('field', 'age', 'alter', { parentCanonical: 'Car' }),
+      ]);
+      expect(validateDomainVocabulary(vocab)).toMatchObject({ valid: true, errors: [] });
+    });
+
+    it('拒绝同父结构下写法完全相同但规范名不同的两个字段，并给出可本地化的原因码', () => {
+      const vocab = assembleDomainVocabularyFromLinks([
+        row('field', 'age', 'alter', { parentCanonical: 'Driver' }),
+        row('field', 'years', 'alter', { parentCanonical: 'Driver' }),
+      ]);
+      expect(findVocabularyScopeConflicts(vocab)).toEqual([
+        { role: 'fields', parent: 'Driver', written: 'alter', canonicals: ['age', 'years'] },
+      ]);
+      const result = validateDomainVocabulary(vocab);
+      expect(result.valid).toBe(false);
+      expect(parseVocabularyValidationMessage(result.errors.join('; '))).toEqual({
+        reason: 'scopeConflict',
+        values: { name: 'alter' },
+      });
+    });
+
+    it('同义词与 NFC 组合字符也按写法比较', () => {
+      const vocab = assembleDomainVocabularyFromLinks([
+        row('function', 'approve', 'genehmigen', { aliases: ['café'] }),
+        row('function', 'reject', 'ablehnen', { aliases: ['cafe\u0301'] }),
+      ]);
+      expect(findVocabularyScopeConflicts(vocab).map((c) => c.written)).toEqual(['café']);
+    });
+
+    it('保存单条时只报告与候选写法相关的冲突', () => {
+      const existing = [
+        row('field', 'age', 'alter', { parentCanonical: 'Driver' }),
+        row('struct', 'A', 'x'),
+        row('struct', 'B', 'x'),
+      ];
+      expect(findTermScopeConflicts(existing, row('field', 'level', 'stufe', { parentCanonical: 'Driver' }))).toEqual([]);
+      expect(findTermScopeConflicts(existing, row('struct', 'Level', 'Alter'))).toEqual([]);
+      expect(
+        findTermScopeConflicts(existing, row('field', 'years', 'alter', { parentCanonical: 'Driver' })),
+      ).toHaveLength(1);
     });
   });
 });
