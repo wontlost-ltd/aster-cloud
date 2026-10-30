@@ -148,4 +148,16 @@ describe('VersionsContent 审批操作', () => {
       expect(h.toastError).toHaveBeenCalledWith('policies.versions.approvalErrorCodes.vocabulary_changed_since_save'),
     );
   });
+
+  /* 第 4 轮生产复测：失败 toast 显示错误码而不是 message；失败时对话框须保持打开、说明不丢 */
+  it('其他失败：显示服务端 message，对话框保持打开、说明保留', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: 'simulated_failure', message: 'Service unavailable' }), { status: 503 }));
+    renderAs('admin1', { policyOwnerId: 'author', policyTeamId: 'team1', reviewerTeamRole: 'admin' });
+    fireEvent.click(screen.getByRole('button', { name: 'policies.versions.actions.approve' }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'r4 note' } });
+    fireEvent.click(screen.getByRole('button', { name: 'policies.versions.approveDialog.confirm' }));
+
+    await waitFor(() => expect(h.toastError).toHaveBeenCalledWith('Service unavailable'));
+    expect(screen.getByRole('textbox')).toHaveValue('r4 note');
+  });
 });
