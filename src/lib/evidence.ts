@@ -120,9 +120,8 @@ export async function enrichEntries(rows: readonly EvidenceRow[], deps: EnrichDe
   const [lookup, guardLookup, replay, proofs, approvals] = await Promise.all([
     lookupByTenant(idsByTenant(rows, (r) => r.evidenceCorrelationId), deps.fetchReceipts, limiter),
     lookupByTenant(idsByTenant(rows, (r) => r.guardDecisionId), deps.fetchDecisionReceipts, limiter),
-    // What-If 批次按策略所有者 userId 作租户（BFF 以会话用户建批次，窗口/版本查询按所有者收窄，ADR 0034 §4.3），
-    // 与收据所用的 policyTenantId（teamId 优先）不同，故此处按 policyOwnerId 分组。
-    replayByTenant(idsByTenant(rows, (r) => r.id, (r) => r.policyOwnerId), deps.fetchReplayItems, limiter),
+    // What-If 批次与收据同一租户口径：策略租户（团队策略为 teamId，个人策略为所有者 userId，ADR 0016 §2）。
+    replayByTenant(idsByTenant(rows, (r) => r.id), deps.fetchReplayItems, limiter),
     loadProofReviewers(versionIds),
     loadVersionApprovalReviewers(versionIds),
   ]);

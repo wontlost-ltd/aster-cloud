@@ -16,6 +16,7 @@ vi.mock('@/lib/auth', () => ({ getSession: () => getSession() }));
 
 const createWhatIfBatch = vi.hoisted(() => vi.fn());
 const getWhatIfBatch = vi.hoisted(() => vi.fn());
+const clientArgs = vi.hoisted(() => [] as unknown[][]);
 
 class FakePolicyApiError extends Error {
   constructor(
@@ -28,7 +29,10 @@ class FakePolicyApiError extends Error {
 }
 
 vi.mock('@/services/policy/policy-api', () => ({
-  createPolicyApiClient: () => ({ createWhatIfBatch, getWhatIfBatch }),
+  createPolicyApiClient: (...args: unknown[]) => {
+    clientArgs.push(args);
+    return { createWhatIfBatch, getWhatIfBatch };
+  },
   PolicyApiError: FakePolicyApiError,
 }));
 
@@ -242,5 +246,32 @@ describe('What-If 批次授权', () => {
   it('他人的个人策略 → 404', async () => {
     policyAccessState.policy = { id: 'p1', userId: 'someone-else', teamId: null };
     expect((await POST(postReq(validBody), { params })).status).toBe(404);
+  });
+});
+
+// ADR 0016 §2（H1）：批次租户 = 策略租户；创建与查询同一租户，userId 为当前用户（创建者）。
+describe('What-If 批次租户', () => {
+  beforeEach(() => {
+    clientArgs.length = 0;
+    getSession.mockReset();
+    getSession.mockResolvedValue({ user: { id: 'u1' } });
+    createWhatIfBatch.mockReset();
+    createWhatIfBatch.mockResolvedValue({ batchId: 'b1', status: 'PENDING' });
+    getWhatIfBatch.mockReset();
+    getWhatIfBatch.mockResolvedValue({ batchId: 'b1', status: 'PENDING' });
+  });
+
+  it('团队策略：创建与查询都以 teamId 为租户、当前用户为 userId', async () => {
+    policyAccessState.policy = { id: 'p1', userId: 'u1', teamId: 't1' };
+    policyAccessState.teamRole = 'member';
+    expect((await POST(postReq(validBody), { params })).status).toBe(202);
+    expect((await GET(new Request('https://x.test'), { params: batchParams })).status).toBe(200);
+    expect(clientArgs).toEqual([['t1', 'u1'], ['t1', 'u1']]);
+  });
+
+  it('个人策略：租户为所有者本人', async () => {
+    policyAccessState.policy = { id: 'p1', userId: 'u1', teamId: null };
+    await POST(postReq(validBody), { params });
+    expect(clientArgs).toEqual([['u1', 'u1']]);
   });
 });

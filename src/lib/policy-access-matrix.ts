@@ -7,8 +7,8 @@
  *   - 个人策略（teamId 为空）：只有所有者（policies.userId）可操作，其余人 404。
  *     公开策略 / 团队分享（PolicyShare）的只读与执行授予由各入口在 404 之后另行叠加，不在本矩阵。
  *   - 团队作用域 API key（ADR 0015）：只能访问 key 所属团队的策略；其他团队策略与任何个人策略一律 404。
- *   - What-If（ADR 0034 §4.3）：批次以策略所有者 userId 为租户、只回放所有者本人的执行，
- *     因此只有策略创建者能发起；团队策略还要求创建者当前仍有执行权限。
+ *   - What-If（ADR 0034 §4 护栏 3、ADR 0016 §2）：批次租户为策略租户（团队策略 teamId，个人策略 userId），
+ *     批次的 userId 为发起人；只有策略创建者能发起 / 查看，团队策略还要求创建者当前仍有执行权限。
  *
  * 动作与团队权限的对应见 POLICY_ACTION_PERMISSION；角色拥有哪些权限见 team-permission-matrix。
  * 完整矩阵与各入口的对应关系见 docs/architecture/decisions/0016-team-policy-authorization.md。
