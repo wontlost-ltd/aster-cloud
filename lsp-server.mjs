@@ -472,6 +472,39 @@ const wss = new WebSocketServer({ noServer: true });
 export const KEEPALIVE_INTERVAL_MS = 30_000;
 let keepaliveTimer = null;
 
+/**
+ * 闲置超时（#657）：浏览器会自动回 pong，单靠上面的保活，闲置的编辑器标签页会无限期占着一个
+ * 约 80 MiB 的语言服务器子进程。一段时间内客户端没有发来任何 LSP 消息（ping/pong 不算）就以
+ * 4408 关闭会话；关闭即走常规清理（结束子进程、删除工作目录）。客户端收到 4408 后不自动重连，
+ * 等用户回到页面或有操作时再连（src/hooks/useAsterLSP.ts）。
+ */
+export const LSP_IDLE_CLOSE_CODE = 4408;
+export const DEFAULT_IDLE_TIMEOUT_MS = 15 * 60_000;
+
+/** LSP_IDLE_TIMEOUT_MS：未设或非法时取默认 15 分钟；显式 0 关闭闲置超时。 */
+export function idleTimeoutFromEnv(raw) {
+  if (raw === undefined || raw === '') return DEFAULT_IDLE_TIMEOUT_MS;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 ? n : DEFAULT_IDLE_TIMEOUT_MS;
+}
+
+/** 闲置检查间隔：不超过保活间隔，也不超过闲置时长的四分之一（最少 250ms），关闭的滞后不超过检查间隔。 */
+export function idleCheckIntervalMs(idleTimeoutMs) {
+  return Math.min(KEEPALIVE_INTERVAL_MS, Math.max(250, Math.floor(idleTimeoutMs / 4)));
+}
+
+/** 关闭闲置超过 idleTimeoutMs 的会话；lastActivityAt 由连接建立与每条客户端消息刷新。 */
+export function idleTick(clients, { now = Date.now(), idleTimeoutMs }) {
+  if (!(idleTimeoutMs > 0)) return;
+  for (const ws of clients) {
+    if (typeof ws.lastActivityAt !== 'number') continue;
+    if (now - ws.lastActivityAt >= idleTimeoutMs) ws.close(LSP_IDLE_CLOSE_CODE, 'Idle timeout');
+  }
+}
+
+const idleTimeoutMs = idleTimeoutFromEnv(process.env.LSP_IDLE_TIMEOUT_MS);
+let idleTimer = null;
+
 export function keepaliveTick(clients) {
   for (const ws of clients) {
     if (ws.isAlive === false) {
@@ -538,6 +571,7 @@ server.on('upgrade', (request, socket, head) => {
 wss.on('connection', (ws, request) => {
   console.log('[LSP] New WebSocket connection');
   ws.isAlive = true;
+  ws.lastActivityAt = Date.now();
   ws.on('pong', () => {
     ws.isAlive = true;
   });
@@ -559,6 +593,7 @@ wss.on('connection', (ws, request) => {
 
   // Forward messages from WebSocket to LSP process (stdin)
   ws.on('message', (data) => {
+    ws.lastActivityAt = Date.now();
     if (lspProcess.stdin && !lspProcess.stdin.destroyed) {
       const message = data.toString();
       // LSP messages need Content-Length header
@@ -643,6 +678,7 @@ wss.on('connection', (ws, request) => {
 const shutdown = () => {
   console.log('[Server] Shutting down...');
   if (keepaliveTimer) clearInterval(keepaliveTimer);
+  if (idleTimer) clearInterval(idleTimer);
   for (const [ws, lspProcess] of activeConnections) {
     ws.close();
     lspProcess.kill();
@@ -670,6 +706,9 @@ if (isMain) {
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
   keepaliveTimer = setInterval(() => keepaliveTick(wss.clients), KEEPALIVE_INTERVAL_MS);
+  if (idleTimeoutMs > 0) {
+    idleTimer = setInterval(() => idleTick(wss.clients, { idleTimeoutMs }), idleCheckIntervalMs(idleTimeoutMs));
+  }
 
   const swept = sweepStaleWorkDirs();
   if (swept.length > 0) console.log(`[LSP] Swept ${swept.length} stale work dir(s)`);

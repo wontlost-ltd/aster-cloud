@@ -29,6 +29,7 @@ import { selectLspFeatures, type LspFeatures, type LspServerCapabilities } from 
 import { isMemberAccessPosition } from '@/lib/aster-keyword-completions';
 import {
   HandshakeBudget,
+  LSP_IDLE_CLOSE_CODE,
   LSP_RATE_LIMITED_CLOSE_CODE,
   LSP_RECONNECT_BASE_MS,
   LSP_RECONNECT_MAX_MS,
@@ -1096,14 +1097,9 @@ export function useAsterLSP({
     onGiveUp: () => setStatus('disconnected'),
   }));
 
-  /** 当前会话已失效（失败或被服务端关闭）：清理并按退避安排重连。 */
-  const sessionFailed = useCallback((
-    ws: WebSocket,
-    retryAfterMs: number | null,
-    message: string,
-    waitingStatus: LspConnectionStatus = 'reconnecting',
-  ) => {
-    if (wsRef.current !== ws) return;
+  /** 摘下已失效的会话并拒绝其挂起请求；ws 已不是当前会话时返回 false（旧会话的迟到事件）。 */
+  const dropSession = useCallback((ws: WebSocket): boolean => {
+    if (wsRef.current !== ws) return false;
     wsRef.current = null;
     ws.onclose = null;
     ws.close();
@@ -1112,6 +1108,26 @@ export function useAsterLSP({
     }
     pendingRequestsRef.current.clear();
     setConnected(false);
+    return true;
+  }, []);
+
+  /** 网关因闲置关闭会话（4408，#657）：不自动重连，等用户回到页面或有操作时再连（见下方 effect）。 */
+  const idleClosedRef = useRef(false);
+  const sessionIdle = useCallback((ws: WebSocket) => {
+    if (!dropSession(ws)) return;
+    setError(null);
+    setStatus('idle');
+    idleClosedRef.current = !isDisposedRef.current && autoReconnect;
+  }, [dropSession, autoReconnect]);
+
+  /** 当前会话已失效（失败或被服务端关闭）：清理并按退避安排重连。 */
+  const sessionFailed = useCallback((
+    ws: WebSocket,
+    retryAfterMs: number | null,
+    message: string,
+    waitingStatus: LspConnectionStatus = 'reconnecting',
+  ) => {
+    if (!dropSession(ws)) return;
     setError(message);
     if (isDisposedRef.current || !autoReconnect) {
       setStatus('disconnected');
@@ -1119,7 +1135,7 @@ export function useAsterLSP({
     }
     setStatus(waitingStatus);
     scheduler.failed(retryAfterMs);
-  }, [autoReconnect, scheduler]);
+  }, [autoReconnect, scheduler, dropSession]);
 
   /**
    * Connect to the LSP server
@@ -1135,6 +1151,7 @@ export function useAsterLSP({
     }
 
     scheduler.cancel();
+    idleClosedRef.current = false;
     setStatus((prev) => (prev === 'idle' || prev === 'connecting' ? 'connecting' : 'reconnecting'));
     setConnecting(true);
     setError(null);
@@ -1149,6 +1166,10 @@ export function useAsterLSP({
     ws.onclose = (event) => {
       if (!suppressErrors) {
         console.log('[LSP] WebSocket closed:', event.code, event.reason);
+      }
+      if (event.code === LSP_IDLE_CLOSE_CODE) {
+        sessionIdle(ws);
+        return;
       }
       // 网关限流（4429）：按 retry-after 等待；旧网关不带 retry-after 时直接退到退避上限，不持续消耗握手预算
       const limited = event.code === LSP_RATE_LIMITED_CLOSE_CODE;
@@ -1183,7 +1204,7 @@ export function useAsterLSP({
     } finally {
       if (wsRef.current === ws || wsRef.current === null) setConnecting(false);
     }
-  }, [getWebSocketUrl, handleMessage, initializeLSP, sessionFailed, handshakeBudget, scheduler, maxReconnectDelay, suppressErrors]);
+  }, [getWebSocketUrl, handleMessage, initializeLSP, sessionFailed, sessionIdle, handshakeBudget, scheduler, maxReconnectDelay, suppressErrors]);
   useEffect(() => {
     scheduler.setConnect(() => { void connect(); });
   }, [scheduler, connect]);
@@ -1193,6 +1214,7 @@ export function useAsterLSP({
    */
   const disconnect = useCallback(() => {
     scheduler.cancel();
+    idleClosedRef.current = false;
 
     // Dispose providers
     providerDisposablesRef.current.forEach(d => d.dispose());
@@ -1252,6 +1274,26 @@ export function useAsterLSP({
       window.removeEventListener('online', retryNow);
     };
   }, [scheduler]);
+
+  // 闲置关闭后（4408）：页面可见时用户有任何操作（回到页面、聚焦窗口、按键、点击）才重新连接
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const resume = () => {
+      if (!idleClosedRef.current || document.visibilityState === 'hidden') return;
+      idleClosedRef.current = false;
+      void connect();
+    };
+    document.addEventListener('visibilitychange', resume);
+    document.addEventListener('keydown', resume);
+    document.addEventListener('pointerdown', resume);
+    window.addEventListener('focus', resume);
+    return () => {
+      document.removeEventListener('visibilitychange', resume);
+      document.removeEventListener('keydown', resume);
+      document.removeEventListener('pointerdown', resume);
+      window.removeEventListener('focus', resume);
+    };
+  }, [connect]);
 
   // Sync document changes to LSP
   useEffect(() => {

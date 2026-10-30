@@ -14,6 +14,12 @@
 /** 网关因限流拒绝会话时的 WebSocket 关闭码（4000–4999 为应用自定义区间，429 取自 HTTP 语义）。 */
 export const LSP_RATE_LIMITED_CLOSE_CODE = 4429;
 
+/**
+ * 网关因会话闲置（一段时间内没有 LSP 消息）关闭会话时的关闭码（408 取自 HTTP 语义，#657）。
+ * 收到它不自动重连：用户回到页面或有操作时再按需连接，闲置标签页不再占着语言服务器子进程。
+ */
+export const LSP_IDLE_CLOSE_CODE = 4408;
+
 export const LSP_RECONNECT_BASE_MS = 1_000;
 export const LSP_RECONNECT_MAX_MS = 30_000;
 
