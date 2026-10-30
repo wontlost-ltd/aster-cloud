@@ -10,6 +10,7 @@
  * 快照体（推送与 snapshot/full 共用）也只在这里由身份映射，见 toApiKeySnapshotBody。
  */
 import { db, apiKeys, users, teams, teamMembers } from '@/lib/prisma';
+import { bypassQueryCache } from '@/db/fresh-read';
 import { and, eq, inArray } from 'drizzle-orm';
 import { SOLO_TENANT_ROLE, type TeamRole } from '@/lib/team-permissions';
 import type { Plan } from '@/db/schema';
@@ -105,7 +106,8 @@ export async function resolveApiKeyIdentities(keys: ApiKeyRow[], now: Date = new
     ? await Promise.all([
         db.query.teams.findMany({ where: inArray(teams.id, teamIds), columns: { id: true, ownerId: true } }),
         db.query.teamMembers.findMany({
-          where: and(inArray(teamMembers.teamId, teamIds), inArray(teamMembers.userId, holderIds)),
+          // 成员关系必须新鲜：移除 / 降级后团队 key 立即失效，不能吃 Hyperdrive 的查询缓存（见 @/db/fresh-read）
+          where: and(inArray(teamMembers.teamId, teamIds), inArray(teamMembers.userId, holderIds), bypassQueryCache()),
           columns: { teamId: true, userId: true, role: true, businessRoles: true },
         }),
       ])

@@ -57,3 +57,4 @@
 | [0002](./0002-deployment-mode-two-tier-capability-surface.md) | Two-tier capability surface — compile-time constants + runtime CAPABILITIES | Accepted |
 | [0003](./0003-deployment-mode-dce-backstop.md) | DCE backstop: DefinePlugin + webpack alias=false + ESLint guard | Accepted |
 | [0015](./0015-team-scoped-api-keys.md) | 团队作用域 API key 与 owner 共享配额池 | Accepted |
+| [0016](./0016-team-policy-authorization.md) | 团队策略按当前团队角色授权（资源 × 动作 × 角色矩阵） | Accepted |

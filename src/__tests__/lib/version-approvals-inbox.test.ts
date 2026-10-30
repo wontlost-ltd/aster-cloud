@@ -81,14 +81,17 @@ beforeEach(() => {
   h.usersFindMany.mockResolvedValue([]);
 });
 
+/** 个人策略谓词（policy-access 的 isPersonalPolicy，经模板标签替身渲染） */
+const PERSONAL = { sql: "coalesce(?, '') = ''", values: [{ name: 'policies.teamId' }] };
+
 describe('listPendingVersionApprovals', () => {
-  it('无团队审阅角色：只查名下未删除策略的待审批版本', async () => {
+  it('无团队审阅角色：只查名下未删除个人策略的待审批版本（自己创建的团队策略不带入）', async () => {
     h.versionsFindMany.mockResolvedValue([]);
 
     await listPendingVersionApprovals('owner');
 
     expect(h.policiesFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { and: [{ eq: ['policies.userId', 'owner'] }, { isNull: 'policies.deletedAt' }] },
+      where: { and: [{ and: [{ eq: ['policies.userId', 'owner'] }, PERSONAL] }, { isNull: 'policies.deletedAt' }] },
     }));
     expect(h.versionsFindMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { and: [{ inArray: ['policyVersions.policyId', ['p1', 'p2']] }, { eq: ['policyVersions.status', 'PENDING_APPROVAL'] }] },
@@ -130,7 +133,7 @@ describe('listPendingVersionApprovals', () => {
     }));
     expect(h.policiesFindMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { and: [
-        { or: [{ eq: ['policies.userId', 'admin1'] }, { inArray: ['policies.teamId', ['team1']] }] },
+        { or: [{ and: [{ eq: ['policies.userId', 'admin1'] }, PERSONAL] }, { inArray: ['policies.teamId', ['team1']] }] },
         { isNull: 'policies.deletedAt' },
       ] },
     }));
@@ -160,7 +163,7 @@ describe('listPendingVersionApprovals', () => {
     const items = await listPendingVersionApprovals('owner');
 
     expect(h.membersFindMany).toHaveBeenLastCalledWith(expect.objectContaining({
-      where: { and: [{ inArray: ['teamMembers.teamId', ['team1']] }, { inArray: ['teamMembers.role', ['owner', 'admin']] }] },
+      where: { and: [{ inArray: ['teamMembers.teamId', ['team1']] }, { inArray: ['teamMembers.role', ['admin', 'owner']] }] },
     }));
     expect(items.map((i) => [i.canAct, i.noEligibleReviewer, i.teamId])).toEqual([[false, true, 'team1']]);
   });

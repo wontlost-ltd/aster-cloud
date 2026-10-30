@@ -11,6 +11,7 @@
 import 'server-only';
 
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { isPersonalPolicy } from '@/lib/policy-access';
 import { db, policies, policyVersions, securityEvents, teamMembers, users } from '@/lib/prisma';
 import type { TeamRole } from '@/lib/team-permissions';
 import {
@@ -108,9 +109,10 @@ export async function listPendingVersionApprovals(userId: string): Promise<Pendi
   const reviewerTeams = [...teamRoles.keys()];
   const owned = await db.query.policies.findMany({
     where: and(
+      // 个人策略只看本人的；团队策略只看本人当前有审批权的团队（创建者身份不带入他人或已离开的团队）
       reviewerTeams.length > 0
-        ? or(eq(policies.userId, userId), inArray(policies.teamId, reviewerTeams))
-        : eq(policies.userId, userId),
+        ? or(and(eq(policies.userId, userId), isPersonalPolicy()), inArray(policies.teamId, reviewerTeams))
+        : and(eq(policies.userId, userId), isPersonalPolicy()),
       isNull(policies.deletedAt),
     ),
     columns: { id: true, name: true, userId: true, teamId: true },
