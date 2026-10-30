@@ -6,6 +6,11 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- ADR 0051 按位置的领域词汇解析（cloud PR-B） (#643)
+- PolicyVersion 增加 sourceScopesJson 与 resolver 迁移列（ADR 0051） (#642) *(db)*
+- ExecutionSource 枚举增加 cli（expand-only，先于读取代码上线） *(db)*
+- 重验页加范围/模式选择与发起前影响预估（ADR 0050 rev 6） (#556) *(admin)*
+- 发起策略重验写审计，并把管理员 id 带给 api 落 triggered_by (#554) *(admin)*
 - 会话纪元 dbEpoch（uncached 读、fail-closed 撤销、admin 单调 bump 与审计）；admin 重验代理与页面（ADR 0050 Task 8） *(auth)*
 - AI 工作台入口改为数据库授权，管理员默认启用并可授予他人 *(admin)*
 - 种子脚本写库前过编译 + 类型检查门禁，并以测试覆盖全部种子源码 *(seed)*
@@ -367,6 +372,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Documentation
 
+- Refresh unreleased (#549) *(changelog)*
 - Refresh unreleased *(changelog)*
 - Note unpublished registry package and pooled evidence *(credit-pilot)*
 - 收据核验示例改用 Bearer 认证并说明 ASTER_API 基地址（ADR 0044 §5） *(guides)*
@@ -684,6 +690,38 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- 输入缺少规则读取的字段时返回 400 missing_input_field 与字段路径 (#666) *(execute)*
+- LSP logMessage 按级别映射控制台，Info/Log 默认静默 (#667) *(editor)*
+- 生产复测第 6 轮——LSP 断线重连与状态提示、Cedar 导出可选规则、zh E000 句末符号 (#665)
+- 内置策略模板的规则参数补全类型，编辑器参数点号后可补全字段 (#663)
+- 生产复测第 4 轮——LSP 字段补全、词条编辑不再清空别名/描述、版本操作失败保留说明、E000 本地化 (#660)
+- 生产复测第 3 轮——LSP 构建期 token、E804 词汇页链接、词条别名/描述落库、模板预填、枚举 Rejected、409 版本列表 (#656)
+- 网关按客户端 IP 限制并发会话与握手速率，子进程堆上限 128 MiB (#658) *(lsp)*
+- ADR 0051 跟进（#646–#650）：迁移漂移、首版本并发、词汇与 resolver 迁移若干修复 (#651)
+- 会话执行与 cloud REST 执行补 cloud 侧配额（与 aster-api#411 同批上线） (#652) *(quota)*
+- 信贷试点种子按 ADR 0051 保存路径封印版本 (#644) *(seed)*
+- 执行类型提取与执行同一词汇且失败不静默、枚举结果统一、批量解析/执行页错误本地化、快照页文案与标题（#633 #634 #638 #640） (#641)
+- 枚举结果本地化、词汇校验错误全量本地化、执行页表单单一状态源、批量导入按原因展示未导入 (#637)
+- 执行输入按策略语言书写，执行前按版本词汇映射为规范名（#626） (#632) *(execute)*
+- 编辑器 CNL 语言跟随策略、永久删除释放快照引用、批量计数口径统一、详情页不再请求 404 共享接口 (#631)
+- 异步批量 worker 登记 cron、同步批量按行处理重复、跨 isolate 失效轮询及词汇页若干问题 (#620) *(vocab)*
+- 领域词汇按策略作用域贯通编辑器、编译门禁、审批冻结与执行（#602 #610） (#619) *(vocabulary)*
+- 别名输入逐字录入、结构词授权透传编译门禁、别名/执行错误本地化 (#618) *(policy)*
+- 回收站永久删除留孤儿行致 500；结构词授权读到 Hyperdrive 缓存旧值（#603 #614） (#617) *(policies,admin)*
+- Sitemap 文档 URL 丢失、匿名访客 Playground 主动作缺失；修正过时 e2e 断言（#594 #595） (#600) *(docs)*
+- 补 0057 快照并让 Drizzle 漂移检查真正生效 (#597) (#598) *(db)*
+- 本地全功能浏览器测试问题（#585–#592） (#593)
+- Decimal 展开位数按真实展开长度计算（aster-lang-core#185） (#581) *(canonical)*
+- 第二轮 E2E 问题——版本页 toast 键、执行响应 decision、日志筛选与计数、UI 细节 (#575 #576 #577 #578)
+- 合并冲突收尾——审批错误就地提示、缓存失效容错、i18n 命名空间与测试更新
+- API 错误文案英文化并带 code、保存失败回传诊断、安全页与发布说明本地化 (#561) *(i18n)*
+- 提交说明保存、词汇恢复入口、通知/命令面板/toast/移动端等细节 (#571 #572 #573) *(ux)*
+- 模板 E104、API 用法示例、重验范围说明、安全事件、Hindi 文档回退、注册文案、回收站计数 (#560 #564 #565 #566 #567 #568 #569)
+- 可执行版本解析与审批约束、编辑后缓存失效、决策与执行状态分离、结构参数表单 (#558 #559 #562 #563) *(execute)*
+- 会话纪元撤销无纪元旧令牌并校验用户存在；Settings 套餐读库 (#557 #570) *(auth)*
+- 共享开关关闭时不再请求 shared-with-me，消除控制台 404 (#553) *(policies)*
+- 管理员概览卡文案改为 title/description/cta 对象，补策略重验入口 (#552) *(i18n)*
+- 策略重验启动确认改用设计系统 ConfirmDialog (#550) *(admin)*
 - 重验代理签名只覆盖路径，不含查询串 *(admin)*
 - 门禁改为动态加载 ESM 入口，tsx(CJS) 运行的种子脚本可用 *(seed)*
 - 个人策略允许自审；助手抽屉只在打开时渲染 *(approvals,assistant)*
