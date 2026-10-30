@@ -281,6 +281,10 @@ export function useAsterLSP({
   const documentUriRef = useRef(documentUri);
   // eslint-disable-next-line react-hooks/refs
   documentUriRef.current = editor?.getModel()?.uri.toString() ?? documentUri;
+  // 补全 provider 注册一次、按当前语言判断句末 "."，故经 ref 读取
+  const localeRef = useRef(locale);
+  // eslint-disable-next-line react-hooks/refs
+  localeRef.current = locale;
 
   /**
    * Get the WebSocket URL for LSP connection
@@ -635,7 +639,8 @@ export function useAsterLSP({
 
     // Completion Provider（上下文补全）
     //
-    // ★只取服务端按上下文给出的结果：`x.` 后按接收者类型列出的字段、构造字段名、@control 键等。
+    // ★只取服务端按上下文给出的结果：`x.` 后按接收者类型列出的字段、@control 键等
+    //   （构造字段名位置不在预判范围内，不向 LSP 请求）。
     //   服务端在其他位置返回的通用列表（全部关键字 + 英文类型名）丢弃——关键字补全归本地 provider
     //   （按 locale 与用户别名给词），接上会重复，zh 下英文类型名还是错词。
     //   触发字符只用 '.'。quick suggestions 仍会对每个新词调用本 provider，故入口先做廉价预判
@@ -658,10 +663,16 @@ export function useAsterLSP({
           const inString = ((linePrefix.match(/"/g) ?? []).length) % 2 === 1;
           const memberAccess = !inString && isMemberAccessPosition(linePrefix);
           if (!inString && !memberAccess) return null;
-          // ★句末 "."（审查 M4）：en / de 的语句以 "." 结束，行尾刚敲下的 "." 多半是句号；
-          //   此时弹字段列表，回车（acceptSuggestionOnEnter）会把第一个字段插进去而不是换行。
-          //   不给建议、标记 incomplete，用户接着输入字母时再查。
-          if (memberAccess && linePrefix.endsWith('.') && position.column >= model.getLineMaxColumn(position.lineNumber)) {
+          // ★句末 "."（审查 M4 / 复审 N1）：只有句末用 "." 的语言（en-US / de-DE）里，行尾刚由 "."
+          //   自动触发的补全多半是句号——此时弹字段列表，回车（acceptSuggestionOnEnter）会插入字段而不是换行。
+          //   不给建议、标记 incomplete，用户接着输入字母时再查。zh-CN 句末是 "。"、行尾 `x.` 必是成员访问；
+          //   手动 Ctrl+Space（Invoke）表示用户确实要补全：两者都照常请求。
+          const periodEndsSentence = localeRef.current === 'en-US' || localeRef.current === 'de-DE';
+          const autoTriggered = (context?.triggerKind ?? 0) !== monaco.languages.CompletionTriggerKind.Invoke;
+          if (
+            periodEndsSentence && autoTriggered && memberAccess && linePrefix.endsWith('.')
+            && position.column >= model.getLineMaxColumn(position.lineNumber)
+          ) {
             return { suggestions: [], incomplete: true };
           }
           try {

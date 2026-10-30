@@ -94,6 +94,7 @@ function makeFakeMonaco() {
       registerCompletionItemProvider: reg('completion'),
       DocumentHighlightKind: { Text: 0 },
       CompletionItemKind: { Field: 3, Value: 13, EnumMember: 16, Property: 9, Text: 18 },
+      CompletionTriggerKind: { Invoke: 0, TriggerCharacter: 1, TriggerForIncompleteCompletions: 2 },
       SymbolKind: {},
     },
     editor: { setModelMarkers: vi.fn() },
@@ -219,7 +220,7 @@ describe('useAsterLSP 协议', () => {
     expect(FakeWebSocket.instances).toHaveLength(0);
   });
 
-  const mount = (locale: 'zh-CN' | 'en-US' = 'zh-CN', extra: Record<string, unknown> = {}) => {
+  const mount = (locale: 'zh-CN' | 'en-US' | 'de-DE' = 'zh-CN', extra: Record<string, unknown> = {}) => {
     const monaco = makeFakeMonaco();
     renderHook(() => useAsterLSP({
       editor: fakeEditor as never,
@@ -299,6 +300,40 @@ describe('useAsterLSP 协议', () => {
     expect(completionRequests()).toHaveLength(0);
   });
 
+  /* 复审 N1：句末拦截只针对句末是 "." 的语言（en-US / de-DE）且仅限 "." 自动触发；
+   *   zh-CN 句末是 "。"，行尾 `x.` 一定是成员访问；手动 Ctrl+Space（Invoke）在任何语言下都照常请求。 */
+  it('★zh-CN 行尾 `返回 x.`（"." 触发）照常请求并弹出字段', async () => {
+    FakeWebSocket.completion = [{ label: '年龄', kind: 5, detail: 'age' }];
+    const monaco = mount('zh-CN');
+    await opened();
+    await waitFor(() => expect(monaco.providers.completion).toBeDefined());
+    const text = '  返回 驾驶员.';
+    const res = await complete(monaco, text, text.length + 1, { triggerKind: 1, triggerCharacter: '.' });
+    expect(completionRequests()).toHaveLength(1);
+    expect(res!.suggestions.map((x) => x.label)).toEqual(['年龄']);
+  });
+
+  it('★en-US 行尾 `x.` 手动 Ctrl+Space（Invoke）照常请求并弹出字段', async () => {
+    FakeWebSocket.completion = [{ label: 'age', kind: 5 }];
+    const monaco = mount('en-US');
+    await opened();
+    await waitFor(() => expect(monaco.providers.completion).toBeDefined());
+    const text = '  Return applicant.';
+    const res = await complete(monaco, text, text.length + 1, { triggerKind: 0 });
+    expect(completionRequests()).toHaveLength(1);
+    expect(res!.suggestions.map((x) => x.label)).toEqual(['age']);
+  });
+
+  it('de-DE 行尾 `x.`（"." 触发）同样按句末处理：不发请求', async () => {
+    const monaco = mount('de-DE');
+    await opened();
+    await waitFor(() => expect(monaco.providers.completion).toBeDefined());
+    const text = '  gib zurueck fahrer.';
+    const res = await complete(monaco, text, text.length + 1, { triggerKind: 1, triggerCharacter: '.' });
+    expect(res).toEqual({ suggestions: [], incomplete: true });
+    expect(completionRequests()).toHaveLength(0);
+  });
+
   /* 审查 M1：只在上下文补全可能有结果的位置发请求；其余位置立即返回，不拖慢本地关键字补全 */
   it('★非成员访问、非字符串位置：不发请求，立即返回', async () => {
     const monaco = mount('en-US');
@@ -309,19 +344,24 @@ describe('useAsterLSP 协议', () => {
     expect(completionRequests()).toHaveLength(0);
   });
 
-  it('★服务端不应答：约 800ms 后返回空，清掉挂起请求并发 $/cancelRequest', async () => {
+  it('★服务端不应答：800ms 后返回空，清掉挂起请求并发 $/cancelRequest（可控时钟）', async () => {
     FakeWebSocket.completion = 'hang';
     const monaco = mount('en-US');
     await opened();
     await waitFor(() => expect(monaco.providers.completion).toBeDefined());
-    const started = Date.now();
-    const res = await complete(monaco, '  Return fahrer.a', 18, { triggerKind: 0 });
-    const elapsed = Date.now() - started;
-    expect(res).toBeNull();
-    expect(elapsed).toBeGreaterThanOrEqual(700);
-    expect(elapsed).toBeLessThan(2000);
-    const id = completionRequests()[0]!.id;
-    expect(FakeWebSocket.instances[0].sent.find((m) => m.method === '$/cancelRequest')?.params).toEqual({ id });
+    vi.useFakeTimers();
+    try {
+      let settled = false;
+      const pending = complete(monaco, '  Return fahrer.a', 18, { triggerKind: 0 }).then((r) => { settled = true; return r; });
+      await vi.advanceTimersByTimeAsync(799);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await pending).toBeNull();
+      const id = completionRequests()[0]!.id;
+      expect(FakeWebSocket.instances[0].sent.find((m) => m.method === '$/cancelRequest')?.params).toEqual({ id });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   /* 审查 M2：服务端用 textEdit 指定替换范围（如 @control("GDPR: 覆盖引号后到光标），客户端不得按单词边界替换 */

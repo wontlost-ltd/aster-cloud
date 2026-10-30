@@ -600,7 +600,7 @@ export function MonacoPolicyEditor({
    *   - 诊断：归浏览器侧 useAsterCompiler（完整 parse+typecheck，别名感知、离线可用），
    *     LSP 推送的诊断被丢弃（suppressDiagnostics），故不会出现双份红波浪线。
    *   - 关键字补全：归本地 provider（buildKeywordSuggestions，按 locale 与用户别名给词）。
-   *     上下文补全（`x.` 后按接收者类型列字段、构造字段名、@control 键）归 LSP：
+   *     上下文补全（`x.` 后按接收者类型列字段、字符串内的 @control 键）归 LSP（构造字段名位置不向 LSP 请求）：
    *     hook 只取这些上下文结果，丢弃服务端的通用关键字 / 英文类型名列表；
    *     成员访问位置本地 provider 不给词（isMemberAccessPosition）。
    *   - hover / 跳转定义 / 文档符号 / 签名帮助 / 代码操作 / 格式化 / 高亮 / 引用 / 重命名：
