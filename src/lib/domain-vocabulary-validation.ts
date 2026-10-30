@@ -172,7 +172,7 @@ export function normalizeTermInput(input: {
   canonical: string;
   localized: string;
   parentCanonical?: string;
-  description?: string;
+  description?: string | null;
   aliases?: string[];
 }): NormalizedTermInput {
   return {

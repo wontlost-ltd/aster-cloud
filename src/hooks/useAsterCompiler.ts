@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { editor } from 'monaco-editor';
+import { localizeParseMessage } from '@/lib/parse-diagnostic-l10n';
 import {
   compileAndTypecheck,
   extractSchema,
@@ -108,6 +109,7 @@ type DiagnosticCode = TypecheckDiagnostic['code'];
  */
 export function collectCompileDiagnostics(
   result: CompileResult & { typeErrors?: readonly TypecheckDiagnostic[] },
+  locale?: string,
 ): TypecheckDiagnostic[] {
   const all: TypecheckDiagnostic[] = [];
 
@@ -116,7 +118,8 @@ export function collectCompileDiagnostics(
     all.push({
       severity: 'error',
       code: 'E000' as DiagnosticCode,
-      message: parseError.message,
+      // 解析错误按策略语言译出句子骨架（引擎尚无解析错误 overlay，见 parse-diagnostic-l10n）
+      message: localizeParseMessage(parseError.message, locale),
       span: parseError.span,
     });
   }
@@ -124,7 +127,7 @@ export function collectCompileDiagnostics(
   all.push(...(result.resolutionDiagnostics ?? []));
 
   for (const message of result.loweringErrors ?? []) {
-    all.push({ severity: 'error', code: 'E000' as DiagnosticCode, message });
+    all.push({ severity: 'error', code: 'E000' as DiagnosticCode, message: localizeParseMessage(message, locale) });
   }
 
   all.push(...(result.typeErrors ?? []));
@@ -278,7 +281,7 @@ export function useAsterCompiler({
       // 最新 Core IR，而不必单独调 compileSource()。二者本质是同一 compileAndTypecheck 调用。
       setCompileResult(result);
 
-      const allDiagnostics = collectCompileDiagnostics(result);
+      const allDiagnostics = collectCompileDiagnostics(result, locale);
 
       setDiagnostics(allDiagnostics);
       setErrors(allDiagnostics.map((d) => d.message));
@@ -294,7 +297,7 @@ export function useAsterCompiler({
       setCompileResult(null); // 解析崩溃 → 无有效 module
       return [errorDiag];
     }
-  }, [getSource, lexicon, vocabulary, domain, tenantId]);
+  }, [getSource, lexicon, locale, vocabulary, domain, tenantId]);
 
   /**
    * Compile the current source
@@ -308,7 +311,7 @@ export function useAsterCompiler({
       const result = compileAndTypecheck(source, { lexicon, vocabulary, domain, tenantId });
       setCompileResult(result);
 
-      const allDiagnostics = collectCompileDiagnostics(result);
+      const allDiagnostics = collectCompileDiagnostics(result, locale);
 
       setDiagnostics(allDiagnostics);
       setErrors(allDiagnostics.map((d) => d.message));
@@ -317,7 +320,7 @@ export function useAsterCompiler({
     } finally {
       setCompiling(false);
     }
-  }, [getSource, lexicon, vocabulary, domain, tenantId]);
+  }, [getSource, lexicon, locale, vocabulary, domain, tenantId]);
 
   /**
    * Clear all errors

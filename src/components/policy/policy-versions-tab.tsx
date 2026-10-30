@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useTranslations } from 'next-intl';
 import { PolicyVersionList, VersionActionError, type PolicyVersionInfo } from './policy-version-list';
+import type { VersionActionResult } from '@/hooks/use-policy-versions';
 import { VersionDetailPanel } from './version-detail-panel';
 import { VersionComparePanel } from './version-compare-panel';
 import { usePolicyVersions } from '@/hooks/use-policy-versions';
@@ -21,6 +22,14 @@ interface PolicyVersionsTabProps {
 }
 
 type ViewMode = 'list' | 'detail' | 'compare';
+
+/**
+ * 所有版本操作失败都抛 VersionActionError：列表据此显示原因（只提示一次）并保持对话框打开，
+ * 用户填写的说明 / 原因不丢（第 4 轮生产复测：批准失败时对话框关闭、说明丢失）。
+ */
+function failIfNotOk(result: VersionActionResult): void {
+  if (!result.ok) throw new VersionActionError(result.message);
+}
 
 export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionDays = null, review }: PolicyVersionsTabProps) {
   const { data: session } = useSession();
@@ -69,23 +78,26 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
   // 将 version 传递给基于 version number 的 API
   const handleSetDefault = useCallback(
     async (version: number) => {
-      await setDefault(version);
+      failIfNotOk(await setDefault(version));
+      toast.success(t('versionDefaulted', { version }));
     },
-    [setDefault]
+    [setDefault, t]
   );
 
   const handleDeprecate = useCallback(
     async (version: number, reason?: string) => {
-      await deprecate(version, reason);
+      failIfNotOk(await deprecate(version, reason));
+      toast.success(t('versionDeprecated', { version }));
     },
-    [deprecate]
+    [deprecate, t]
   );
 
   const handleArchive = useCallback(
     async (version: number, reason?: string) => {
-      await archive(version, reason);
+      failIfNotOk(await archive(version, reason));
+      toast.success(t('versionArchived', { version }));
     },
-    [archive]
+    [archive, t]
   );
 
   // 这些 API 现在需要 version number 而不是 versionId
@@ -114,11 +126,7 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
         return;
       }
 
-      // 审批被拒在此处就地提示并结束（不再抛出），版本列表的通用失败 toast 不会重复弹出。
-      if (result.errorCode === 'segregation_of_duties' || result.errorCode === 'vocabulary_changed_since_save') {
-        toast.error(t(`approvalErrorCodes.${result.errorCode}`));
-        return;
-      }
+      // 邀请审批人：改为弹出邀请框（替代当前对话框），不抛出
       if (result.errorCode === 'invite_reviewer_required') {
         setInviteModal({
           open: true,
@@ -127,7 +135,11 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
         });
         return;
       }
-      toast.error(result.message ?? t('approvalErrorCodes.other'));
+      // 其余失败：按错误码给本地化原因，抛出后由列表提示一次并保持对话框打开（批准说明不丢）
+      const known = result.errorCode === 'segregation_of_duties' || result.errorCode === 'vocabulary_changed_since_save';
+      throw new VersionActionError(
+        known ? t(`approvalErrorCodes.${result.errorCode}`) : result.message ?? t('approvalErrorCodes.other'),
+      );
     },
     [versions, approve, t]
   );

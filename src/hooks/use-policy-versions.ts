@@ -59,7 +59,17 @@ export type ApproveErrorCode =
   | 'vocabulary_changed_since_save'
   | 'other';
 
-/** 提交审批 / 驳回的结果：失败时带可直接展示的原因。 */
+/**
+ * 失败响应里可直接展示的原因：优先服务端的 message（人读文案），其次 error 等字段，最后兜底文案。
+ * error 字段多为错误码（如 vocabulary_changed_since_save），直接展示没有意义。
+ */
+function failureMessage(data: unknown, fallback: string): string {
+  const message = (data as { message?: unknown } | null)?.message;
+  if (typeof message === 'string' && message.trim()) return message;
+  return extractErrorMessage(data) || fallback;
+}
+
+/** 版本操作（设默认 / 废弃 / 归档 / 提交 / 驳回）的结果：失败时带可直接展示的原因。 */
 export type VersionActionResult = { ok: true } | { ok: false; message: string };
 
 export interface ApproveResult {
@@ -80,9 +90,9 @@ interface UsePolicyVersionsResult {
   /** 列表加载失败的错误信息（只表示版本列表没加载出来）。 */
   error: string | null;
   /**
-   * 最近一次版本操作（创建 / 设默认 / 废弃 / 归档 / 提交 / 驳回）失败的信息。
-   * 与 error 分开：操作失败时版本列表仍有效，界面应在列表上方提示而不是替换列表。
-   * 批准失败返回结构化 ApproveResult 由调用方提示，不写这里。
+   * 创建版本失败的信息（与列表级 error 分开：版本列表仍有效，界面在列表上方提示）。
+   * 其余操作（设默认 / 废弃 / 归档 / 提交 / 批准 / 驳回）失败返回结果由调用方提示，
+   * 只在开始时清除这里的旧提示。
    */
   actionError: string | null;
   /** 清除 actionError（用户关闭提示）。 */
@@ -95,12 +105,12 @@ interface UsePolicyVersionsResult {
     version: number;
     sourceHash: string;
   } | null>;
-  /** 设置默认版本 */
-  setDefault: (version: number) => Promise<boolean>;
-  /** 废弃版本 */
-  deprecate: (version: number, reason?: string) => Promise<boolean>;
-  /** 归档版本 */
-  archive: (version: number, reason?: string) => Promise<boolean>;
+  /** 设置默认版本（失败返回原因，由调用方提示） */
+  setDefault: (version: number) => Promise<VersionActionResult>;
+  /** 废弃版本（失败返回原因，由调用方提示） */
+  deprecate: (version: number, reason?: string) => Promise<VersionActionResult>;
+  /** 归档版本（失败返回原因，由调用方提示） */
+  archive: (version: number, reason?: string) => Promise<VersionActionResult>;
   /** 提交审批（失败返回原因，由调用方提示；不写 actionError） */
   submitForApproval: (version: number, releaseNote?: string) => Promise<VersionActionResult>;
   /** 批准版本（返回结构化结果，便于 UI 区分 SOX 错误） */
@@ -201,7 +211,7 @@ export function usePolicyVersions({
 
   // 设置默认版本
   const setDefault = useCallback(
-    async (version: number): Promise<boolean> => {
+    async (version: number): Promise<VersionActionResult> => {
       setActionError(null);
 
       try {
@@ -214,14 +224,12 @@ export function usePolicyVersions({
 
         if (response.ok) {
           await refresh();
-          return true;
+          return { ok: true };
         } else {
-          setActionError(extractErrorMessage(data) || '设置默认版本失败');
-          return false;
+          return { ok: false, message: failureMessage(data, '设置默认版本失败') };
         }
       } catch (err) {
-        setActionError(err instanceof Error ? err.message : '未知错误');
-        return false;
+        return { ok: false, message: err instanceof Error ? err.message : '未知错误' };
       }
     },
     [policyId, refresh]
@@ -229,7 +237,7 @@ export function usePolicyVersions({
 
   // 废弃版本
   const deprecate = useCallback(
-    async (version: number, reason?: string): Promise<boolean> => {
+    async (version: number, reason?: string): Promise<VersionActionResult> => {
       setActionError(null);
 
       try {
@@ -246,14 +254,12 @@ export function usePolicyVersions({
 
         if (response.ok) {
           await refresh();
-          return true;
+          return { ok: true };
         } else {
-          setActionError(extractErrorMessage(data) || '废弃版本失败');
-          return false;
+          return { ok: false, message: failureMessage(data, '废弃版本失败') };
         }
       } catch (err) {
-        setActionError(err instanceof Error ? err.message : '未知错误');
-        return false;
+        return { ok: false, message: err instanceof Error ? err.message : '未知错误' };
       }
     },
     [policyId, refresh]
@@ -261,7 +267,7 @@ export function usePolicyVersions({
 
   // 归档版本
   const archive = useCallback(
-    async (version: number, reason?: string): Promise<boolean> => {
+    async (version: number, reason?: string): Promise<VersionActionResult> => {
       setActionError(null);
 
       try {
@@ -278,14 +284,12 @@ export function usePolicyVersions({
 
         if (response.ok) {
           await refresh();
-          return true;
+          return { ok: true };
         } else {
-          setActionError(extractErrorMessage(data) || '归档版本失败');
-          return false;
+          return { ok: false, message: failureMessage(data, '归档版本失败') };
         }
       } catch (err) {
-        setActionError(err instanceof Error ? err.message : '未知错误');
-        return false;
+        return { ok: false, message: err instanceof Error ? err.message : '未知错误' };
       }
     },
     [policyId, refresh]
@@ -312,7 +316,7 @@ export function usePolicyVersions({
           await refresh();
           return { ok: true };
         } else {
-          return { ok: false, message: extractErrorMessage(data) || '提交审批失败' };
+          return { ok: false, message: failureMessage(data, '提交审批失败') };
         }
       } catch (err) {
         return { ok: false, message: err instanceof Error ? err.message : '未知错误' };
@@ -350,7 +354,7 @@ export function usePolicyVersions({
           code === 'vocabulary_changed_since_save'
             ? code
             : 'other';
-        return { ok: false, errorCode, message: data?.message, cta: data?.cta };
+        return { ok: false, errorCode, message: failureMessage(data, '批准失败'), cta: data?.cta };
       } catch (err) {
         const message = err instanceof Error ? err.message : '未知错误';
         return { ok: false, errorCode: 'other', message };
@@ -380,7 +384,7 @@ export function usePolicyVersions({
           await refresh();
           return { ok: true };
         } else {
-          return { ok: false, message: extractErrorMessage(data) || '拒绝失败' };
+          return { ok: false, message: failureMessage(data, '拒绝失败') };
         }
       } catch (err) {
         return { ok: false, message: err instanceof Error ? err.message : '未知错误' };

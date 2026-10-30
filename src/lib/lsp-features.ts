@@ -24,6 +24,7 @@ export interface LspServerCapabilities {
   renameProvider?: unknown;
   documentFormattingProvider?: unknown;
   documentHighlightProvider?: unknown;
+  completionProvider?: unknown;
   experimental?: { aster?: { localizedParsing?: boolean; openDocumentNavigation?: boolean } };
 }
 
@@ -37,6 +38,8 @@ export interface LspFeatures {
   rename: boolean;
   formatting: boolean;
   documentHighlight: boolean;
+  /** 上下文补全（`x.` 后按接收者类型列字段等）；通用关键字仍由本地 provider 提供 */
+  completion: boolean;
 }
 
 /** 旧服务端（无 localizedParsing 标志）上实测可正常解析的语言 */
@@ -56,6 +59,7 @@ export function selectLspFeatures(locale: string, caps: LspServerCapabilities | 
     codeAction: parses && has(c.codeActionProvider),
     formatting: parses && has(c.documentFormattingProvider),
     documentHighlight: parses && has(c.documentHighlightProvider),
+    completion: parses && has(c.completionProvider),
     references: openDocs && has(c.referencesProvider),
     rename: openDocs && has(c.renameProvider),
   };

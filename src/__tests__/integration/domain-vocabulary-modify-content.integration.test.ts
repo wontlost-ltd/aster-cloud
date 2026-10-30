@@ -91,14 +91,21 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('编辑词条的别名与描述
     expect(reread!.aliases).toEqual(['lebensalter']);
   });
 
+  /* 第 4 轮生产复测：前端遗漏字段时不能误清空——未提供 = 保持不变，显式 null / [] = 清空 */
+  it('★未提供 aliases / description：保持原值', async () => {
+    const result = await modifyUserVocabularyTerm(AUTHOR, authorLink, { ...AGE });
+    expect(result.link.aliases).toEqual(['lebensalter']);
+    expect(result.link.description).toBe('Alter des Fahrers');
+  });
+
   it('另一租户共享的旧全局词条不受影响', async () => {
     const other = await getUserVocabularyTerm(OTHER, otherLink);
     expect(other!.aliases).toEqual([]);
     expect(other!.description).toBeNull();
   });
 
-  it('改回原内容：重新指向原全局词条，不新建重复行', async () => {
-    const result = await modifyUserVocabularyTerm(AUTHOR, authorLink, AGE);
+  it('改回原内容（显式清空别名与描述）：重新指向原全局词条，不新建重复行', async () => {
+    const result = await modifyUserVocabularyTerm(AUTHOR, authorLink, { ...AGE, aliases: [], description: null });
     expect(result.createdGlobalTerm).toBe(false);
     const [a, b] = await Promise.all([getUserVocabularyTerm(AUTHOR, authorLink), getUserVocabularyTerm(OTHER, otherLink)]);
     expect(a!.termId).toBe(b!.termId);

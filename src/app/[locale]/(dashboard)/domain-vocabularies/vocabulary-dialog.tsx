@@ -32,7 +32,9 @@ export interface VocabularyDialogValues {
   canonical: string;
   localized: string;
   parentCanonical?: string;
-  description?: string;
+  /** 编辑时恒带：null 表示清空。新建时为空则省略。 */
+  description?: string | null;
+  /** 编辑时恒带：[] 表示清空。新建时为空则省略。 */
   aliases?: string[];
 }
 
@@ -144,13 +146,19 @@ export function VocabularyDialog({
       v.parentCanonical = parentCanonical.trim();
     }
     const trimmedDesc = description.trim();
-    if (trimmedDesc) v.description = trimmedDesc;
-
     const aliases = aliasesInput
       .split(',')
       .map((a) => a.trim())
       .filter(Boolean);
-    if (aliases.length > 0) v.aliases = aliases;
+    // ★编辑时别名与描述恒带（空即显式清空）：服务端 PATCH 对未提供的字段保持原值，
+    //   省略就无法清空；新建时为空则省略。
+    if (mode === 'edit') {
+      v.description = trimmedDesc || null;
+      v.aliases = aliases;
+    } else {
+      if (trimmedDesc) v.description = trimmedDesc;
+      if (aliases.length > 0) v.aliases = aliases;
+    }
 
     // 与服务端同一份格式规则（#612）：只在字段非空时检查格式，空值走上面的必填提示。
     const scope = checkVocabularyScope(v);

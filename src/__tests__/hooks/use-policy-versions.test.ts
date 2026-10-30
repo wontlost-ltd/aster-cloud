@@ -45,48 +45,39 @@ describe('usePolicyVersions 操作失败', () => {
     expect(result.current.versions).toHaveLength(2);
   });
 
-  it('设为默认失败：写 actionError，不写列表级 error', async () => {
+  it('★设为默认失败：返回服务端 message（不是错误码），列表与 error 不变', async () => {
     const { result } = await mountLoaded();
-    fetchMock.mockResolvedValueOnce(json({ error: 'nope' }, 403));
-    await act(async () => { await result.current.setDefault(2); });
+    fetchMock.mockResolvedValueOnce(json({ error: 'forbidden', message: 'Only admins can set default' }, 403));
+    let outcome: Awaited<ReturnType<typeof result.current.setDefault>> | undefined;
+    await act(async () => { outcome = await result.current.setDefault(2); });
+    expect(outcome).toEqual({ ok: false, message: 'Only admins can set default' });
     expect(result.current.error).toBeNull();
-    expect(result.current.actionError).toBe('nope');
     expect(result.current.versions).toHaveLength(2);
-    act(() => result.current.clearActionError());
-    expect(result.current.actionError).toBeNull();
   });
 
-  it('失败横幅在下一次操作成功后自动清除', async () => {
+  it('★提交失败：响应带 message 时用 message，而不是 error 里的错误码', async () => {
     const { result } = await mountLoaded();
-    fetchMock.mockResolvedValueOnce(json({ error: 'nope' }, 403));
-    await act(async () => { await result.current.setDefault(2); });
-    expect(result.current.actionError).toBe('nope');
-    fetchMock
-      .mockResolvedValueOnce(json({ ok: true }))
-      .mockResolvedValueOnce(json({ versions: VERSIONS }));
+    fetchMock.mockResolvedValueOnce(json({ error: 'simulated_failure', message: 'Service unavailable' }, 503));
     let submitted: Awaited<ReturnType<typeof result.current.submitForApproval>> | undefined;
     await act(async () => { submitted = await result.current.submitForApproval(2); });
-    expect(submitted).toEqual({ ok: true });
-    expect(result.current.actionError).toBeNull();
+    expect(submitted).toEqual({ ok: false, message: 'Service unavailable' });
   });
 
-  it('提交失败：返回服务端原因，不写横幅（由调用方提示一次）', async () => {
+  it('只有 error 时回退到 error', async () => {
     const { result } = await mountLoaded();
     fetchMock.mockResolvedValueOnce(json({ error: 'Version already pending' }, 409));
     let submitted: Awaited<ReturnType<typeof result.current.submitForApproval>> | undefined;
     await act(async () => { submitted = await result.current.submitForApproval(2); });
     expect(submitted).toEqual({ ok: false, message: 'Version already pending' });
     expect(result.current.actionError).toBeNull();
-    expect(result.current.versions).toHaveLength(2);
   });
 
-  it('批准开始时同样清除上一次的失败横幅', async () => {
+  it('批准失败的 message 同样优先取服务端 message', async () => {
     const { result } = await mountLoaded();
-    fetchMock.mockResolvedValueOnce(json({ error: 'nope' }, 403));
-    await act(async () => { await result.current.setDefault(2); });
-    fetchMock.mockResolvedValueOnce(json({ error: 'segregation_of_duties' }, 403));
-    await act(async () => { await result.current.approve(2); });
-    expect(result.current.actionError).toBeNull();
+    fetchMock.mockResolvedValueOnce(json({ error: 'conflict', message: 'Approval conflict' }, 409));
+    let approved: Awaited<ReturnType<typeof result.current.approve>> | undefined;
+    await act(async () => { approved = await result.current.approve(2); });
+    expect(approved).toMatchObject({ ok: false, errorCode: 'other', message: 'Approval conflict' });
   });
 
   it('列表加载失败仍写 error', async () => {

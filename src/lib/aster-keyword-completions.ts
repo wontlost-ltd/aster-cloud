@@ -81,3 +81,15 @@ export function buildKeywordSuggestions(
     })),
   };
 }
+
+/**
+ * 光标是否处在成员访问位置（`x.` 或 `x.前缀` 之后，x 为标识符，可多段如 `a.b.`）。
+ *
+ * 这里的补全应当是接收者类型的字段，归 LSP（按 ADR 0051 的 FIELD_REF 角色解析）；
+ * 本地关键字在这里一个都不对，故本地 provider 在此位置不给词。
+ * 字符串字面量内（引号未闭合）与数字小数（`1.5`）不算。
+ */
+export function isMemberAccessPosition(lineUntilPosition: string): boolean {
+  if (((lineUntilPosition.match(/"/g) ?? []).length) % 2 === 1) return false;
+  return /(?:^|[^\p{L}\p{N}_.])[\p{L}_][\p{L}\p{N}_]*(?:\.[\p{L}_][\p{L}\p{N}_]*)*\.[\p{L}\p{N}_]*$/u.test(lineUntilPosition);
+}

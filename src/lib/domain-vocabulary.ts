@@ -97,7 +97,9 @@ export interface TermInput {
   canonical: string;
   localized: string;
   parentCanonical?: string;
-  description?: string;
+  /** 修改时：undefined = 保持原值，null / '' = 清空 */
+  description?: string | null;
+  /** 修改时：undefined = 保持原值，[] = 清空 */
   aliases?: string[];
 }
 
@@ -739,11 +741,16 @@ async function modifyUserVocabularyTermInner(
   linkId: string,
   input: TermInput,
 ): Promise<{ link: TermLink; repointed: boolean; createdGlobalTerm: boolean }> {
-  const normalized = validateInput(input);
   const existing = await getTermLink(userId, linkId);
   if (!existing) {
     throw new VocabularyError('not_found', 'Vocabulary term link not found');
   }
+  // 未提供的别名 / 描述沿用原值（区分「未提供」与「显式清空」），避免前端漏带字段误清空
+  const normalized = validateInput({
+    ...input,
+    aliases: input.aliases === undefined ? existing.aliases : input.aliases,
+    description: input.description === undefined ? existing.description : input.description,
+  });
 
   const transactionResult = await db.transaction(async (tx) => {
     // 与新增同一把用户锁内校验并写入：并发新增 / 修改不会各自通过后形成冲突词条。

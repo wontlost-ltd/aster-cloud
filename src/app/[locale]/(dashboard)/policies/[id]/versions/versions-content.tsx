@@ -186,7 +186,7 @@ export function VersionsContent({
       body: JSON.stringify(body),
     });
     const data = (await res.json().catch(() => null)) as
-      | { error?: string; code?: string }
+      | { error?: string; code?: string; message?: string }
       | null;
     if (!res.ok) {
       // 审批路由把错误码放在 error 字段（segregation_of_duties / invite_reviewer_required），
@@ -199,7 +199,8 @@ export function VersionsContent({
       } else if (errorCode === 'vocabulary_changed_since_save') {
         toast.error(t('approvalErrorCodes.vocabulary_changed_since_save'));
       } else {
-        toast.error(data?.error || tCommon('somethingWrong'));
+        // 优先显示服务端的人读 message；error 多为错误码（第 4 轮生产复测：toast 显示 simulated_failure）
+        toast.error(data?.message || data?.error || tCommon('somethingWrong'));
       }
       return;
     }
