@@ -23,7 +23,12 @@ import {
   type TermLikeRow,
   type AssembleVocabularyOptions,
 } from './domain-vocabulary-assemble';
-import { VOCAB_FORMAT_MESSAGES, checkVocabularyScope } from './domain-vocabulary-format';
+import {
+  VOCAB_FORMAT_MESSAGES,
+  checkTermBounds,
+  checkVocabularyScope,
+  termBoundsMessage,
+} from './domain-vocabulary-format';
 import { compareByCodePoint } from './canonical-json';
 
 export type VocabularyValidationResult = ReturnType<typeof validateVocabulary>;
@@ -224,16 +229,20 @@ export function computeDedupKey(input: {
 }
 
 /**
- * 对已规范化的输入执行 domain / locale 格式校验（#612），并把 locale 换成
- * BCP-47 规范大小写。必须在计算 dedup 键之前调用，否则 `zh-cn` 与 `zh-CN`
- * 会落成两个全局 DomainTerm。
+ * 对已规范化的输入执行 domain / locale 格式校验（#612）与单词条上限校验（#621，与 aster-api
+ * VocabularyBounds 一致），并把 locale 换成 BCP-47 规范大小写。必须在计算 dedup 键之前调用，
+ * 否则 `zh-cn` 与 `zh-CN` 会落成两个全局 DomainTerm。单条增改与同步/异步批量都经过这里。
  */
 export function applyVocabularyScopeFormat(
   normalized: NormalizedTermInput,
 ): { ok: true; value: NormalizedTermInput } | { ok: false; message: string } {
   const scope = checkVocabularyScope(normalized);
-  if (scope.issues.length > 0) {
-    return { ok: false, message: scope.issues.map((i) => VOCAB_FORMAT_MESSAGES[i]).join('; ') };
+  const messages = [
+    ...scope.issues.map((i) => VOCAB_FORMAT_MESSAGES[i]),
+    ...checkTermBounds(normalized).map(termBoundsMessage),
+  ];
+  if (messages.length > 0) {
+    return { ok: false, message: messages.join('; ') };
   }
   return { ok: true, value: { ...normalized, domain: scope.domain, locale: scope.locale } };
 }

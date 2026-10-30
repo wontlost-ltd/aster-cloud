@@ -357,6 +357,35 @@ describe('bulkAddUserVocabularyTerms', () => {
     expectConsistentCounts(result);
   });
 
+  it('超过 aster-api 词汇上限的行报 validation_failed，其余照常导入（#621）', async () => {
+    queueSelect([{ count: 0 }]);
+    queueSelect([]); // 作用域冲突筛查：分组内无已有词条
+    queueSelect([]);
+    const termInsert = makeInsertChain([{ id: 'term-1', dedupKey: key(baseRow) }]);
+    hoisted.insert
+      .mockReturnValueOnce(termInsert.chain)
+      .mockReturnValueOnce(makeInsertChain([{ termId: 'term-1' }]).chain)
+      .mockReturnValueOnce(makeInsertChain([]).chain); // job row
+
+    const result = await bulkAddUserVocabularyTerms('user-1', [
+      { ...baseRow, canonical: 'Many', localized: 'many', aliases: Array.from({ length: 257 }, (_, i) => `m${i}`) },
+      { ...baseRow, canonical: 'Long', localized: 'long', description: 'x'.repeat(16_385) },
+      baseRow,
+    ]);
+
+    expect(result.errors.map((e) => [e.row, e.code])).toEqual([
+      [0, 'validation_failed'],
+      [1, 'validation_failed'],
+    ]);
+    expect(parseVocabularyValidationMessage(result.errors[0].message)?.reason).toBe('aliasesTooMany');
+    expect(parseVocabularyValidationMessage(result.errors[1].message)).toEqual({
+      reason: 'textTooLong',
+      values: { field: 'description' },
+    });
+    expect(termInsert.values).toHaveBeenCalledTimes(1);
+    expectConsistentCounts(result);
+  });
+
   it('生产复现（#629）：有效 + 非法 domain + 非法 locale + 重复 → 计数自洽，持久化的任务行同口径', async () => {
     const driver = { ...baseRow, canonical: 'Driver', localized: 'Driver' };
     queueSelect([{ count: 0 }]);

@@ -62,3 +62,46 @@ export function checkVocabularyScope(input: { domain: string; locale: string }):
   if (!canonicalLocale) issues.push('locale_format');
   return { domain, locale: canonicalLocale ?? rawLocale, issues };
 }
+
+/**
+ * 单词条上限，与 aster-api `VocabularyBounds` 一致（#621）：映射内数组（aliases）最多 256 项，
+ * 任一字符串最多 16384 个字符（按 UTF-16 码元计，与 Java String.length 同口径）。
+ * cloud 的列是 text/jsonb，不设上限时超限词条能保存成功，却在之后每次编译、执行时被 aster-api
+ * 以 400 vocabulary_too_large 拒绝；故在保存入口（单条增改、同步/异步批量）就拒绝。
+ */
+export const VOCAB_TERM_MAX_ALIASES = 256;
+export const VOCAB_TERM_MAX_TEXT_LENGTH = 16_384;
+
+/** 受长度上限约束的词条字段。 */
+export type VocabularyTermTextField = 'canonical' | 'localized' | 'parentCanonical' | 'description' | 'aliases';
+
+export type VocabularyTermBoundsIssue =
+  | { issue: 'aliases_too_many' }
+  | { issue: 'text_too_long'; field: VocabularyTermTextField };
+
+/** 检查单个词条是否在上限内；返回发现的问题（无问题为空数组）。 */
+export function checkTermBounds(term: {
+  canonical: string;
+  localized: string;
+  parentCanonical?: string | null;
+  description?: string | null;
+  aliases?: readonly string[] | null;
+}): VocabularyTermBoundsIssue[] {
+  const issues: VocabularyTermBoundsIssue[] = [];
+  const aliases = term.aliases ?? [];
+  if (aliases.length > VOCAB_TERM_MAX_ALIASES) issues.push({ issue: 'aliases_too_many' });
+  const tooLong = (value: string | null | undefined) => (value?.length ?? 0) > VOCAB_TERM_MAX_TEXT_LENGTH;
+  const scalars = ['canonical', 'localized', 'parentCanonical', 'description'] as const;
+  for (const field of scalars) {
+    if (tooLong(term[field])) issues.push({ issue: 'text_too_long', field });
+  }
+  if (aliases.some(tooLong)) issues.push({ issue: 'text_too_long', field: 'aliases' });
+  return issues;
+}
+
+/** 上限问题的英文消息（稳定格式：界面经 vocabulary-validation-message 识别为原因码后本地化）。 */
+export function termBoundsMessage(issue: VocabularyTermBoundsIssue): string {
+  return issue.issue === 'aliases_too_many'
+    ? `aliases must contain at most ${VOCAB_TERM_MAX_ALIASES} entries`
+    : `${issue.field} must be at most ${VOCAB_TERM_MAX_TEXT_LENGTH} characters`;
+}
