@@ -5,7 +5,7 @@ import { eq, and } from 'drizzle-orm';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
 import { refreshTeamKeySnapshots } from '@/lib/api-keys';
 import { invalidatePlanCache } from '@/lib/plan-gate-client';
-import { checkTeamOwnerEligibility } from '@/lib/team-plan';
+import { checkTeamOwnerEligibility, lockTeamRow } from '@/lib/team-plan';
 import { logSecurityAdminAction } from '@/services/security/security-event-service';
 
 type RouteParams = { params: Promise<{ teamId: string }> };
@@ -51,8 +51,29 @@ export async function POST(req: Request, { params }: RouteParams) {
     }
 
     // 转让后团队能力（邀请、团队 key、配额池）立即按新 owner 的套餐计：新 owner 须有团队功能，
-    // 且其套餐的成员上限容得下当前成员数（#677）
-    const eligibility = await checkTeamOwnerEligibility(newOwnerId, teamId);
+    // 且其套餐的成员上限容得下当前成员数（#677）。判定在锁住团队行的事务内完成，与并发的
+    // 接受邀请串行化，判定通过到写入之间成员数不会变（审查 L3）。
+    const eligibility = await db.transaction(async (tx) => {
+      await lockTeamRow(tx, teamId);
+      const verdict = await checkTeamOwnerEligibility(newOwnerId, teamId, tx);
+      if (!verdict.eligible) return verdict;
+
+      // 更新团队的 ownerId
+      await tx.update(teams).set({ ownerId: newOwnerId }).where(eq(teams.id, teamId));
+
+      // 将新所有者角色更新为 owner
+      await tx
+        .update(teamMembers)
+        .set({ role: 'owner' })
+        .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, newOwnerId)));
+
+      // 将原所有者角色降级为 admin
+      await tx
+        .update(teamMembers)
+        .set({ role: 'admin' })
+        .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, session.user.id)));
+      return verdict;
+    });
     if (!eligibility.eligible) {
       return NextResponse.json(
         eligibility.code === 'new_owner_seat_limit'
@@ -69,24 +90,6 @@ export async function POST(req: Request, { params }: RouteParams) {
         { status: 400 }
       );
     }
-
-    // 使用事务更新所有权
-    await db.transaction(async (tx) => {
-      // 更新团队的 ownerId
-      await tx.update(teams).set({ ownerId: newOwnerId }).where(eq(teams.id, teamId));
-
-      // 将新所有者角色更新为 owner
-      await tx
-        .update(teamMembers)
-        .set({ role: 'owner' })
-        .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, newOwnerId)));
-
-      // 将原所有者角色降级为 admin
-      await tx
-        .update(teamMembers)
-        .set({ role: 'admin' })
-        .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, session.user.id)));
-    });
 
     // 转让改变了全队 key 的 quotaOwnerId 与新旧 owner 的角色：重推全队 key 快照，并失效团队按 owner 套餐计的 plan 缓存（ADR 0015 §5）
     await refreshTeamKeySnapshots(teamId).catch((err) =>

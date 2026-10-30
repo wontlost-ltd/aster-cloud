@@ -11,6 +11,8 @@ const h = vi.hoisted(() => ({
   eligibility: vi.fn(),
   refresh: vi.fn(),
   invalidate: vi.fn(),
+  lock: vi.fn(),
+  update: vi.fn(),
 }));
 
 vi.mock('@/lib/auth', () => ({ getSession: vi.fn(async () => ({ user: { id: 'u-owner' } })) }));
@@ -25,7 +27,7 @@ vi.mock('@/lib/prisma', () => ({
 }));
 vi.mock('@/lib/api-keys', () => ({ refreshTeamKeySnapshots: h.refresh }));
 vi.mock('@/lib/plan-gate-client', () => ({ invalidatePlanCache: h.invalidate }));
-vi.mock('@/lib/team-plan', () => ({ checkTeamOwnerEligibility: h.eligibility }));
+vi.mock('@/lib/team-plan', () => ({ checkTeamOwnerEligibility: h.eligibility, lockTeamRow: h.lock }));
 vi.mock('@/services/security/security-event-service', () => ({ logSecurityAdminAction: vi.fn() }));
 
 import { POST } from '@/app/api/teams/[teamId]/transfer/route';
@@ -38,9 +40,9 @@ describe('POST /api/teams/[teamId]/transfer — 新 owner 套餐资格（#677）
   beforeEach(() => {
     vi.clearAllMocks();
     h.findFirst.mockResolvedValue({ id: 'm2', teamId: 't1', userId: 'u2', role: 'admin' });
-    h.transaction.mockImplementation(async (fn: (tx: unknown) => Promise<void>) =>
-      fn({ update: () => ({ set: () => ({ where: vi.fn() }) }) }),
-    );
+    h.update.mockImplementation(() => ({ set: () => ({ where: vi.fn() }) }));
+    h.transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({ update: h.update }));
+    h.lock.mockResolvedValue({ ownerId: 'u-owner' });
     h.refresh.mockResolvedValue(0);
     h.invalidate.mockResolvedValue(undefined);
   });
@@ -50,8 +52,10 @@ describe('POST /api/teams/[teamId]/transfer — 新 owner 套餐资格（#677）
     const res = await POST(req({ newOwnerId: 'u2' }), params);
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe('new_owner_plan_ineligible');
-    expect(h.eligibility).toHaveBeenCalledWith('u2', 't1');
-    expect(h.transaction).not.toHaveBeenCalled();
+    // 资格判定在锁住团队行的事务内（审查 L3），不合格时不写库
+    expect(h.lock).toHaveBeenCalledWith(expect.anything(), 't1');
+    expect(h.eligibility).toHaveBeenCalledWith('u2', 't1', expect.anything());
+    expect(h.update).not.toHaveBeenCalled();
     expect(h.refresh).not.toHaveBeenCalled();
   });
 
@@ -60,7 +64,7 @@ describe('POST /api/teams/[teamId]/transfer — 新 owner 套餐资格（#677）
     const res = await POST(req({ newOwnerId: 'u2' }), params);
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ code: 'new_owner_seat_limit', memberCount: 7, limit: 5 });
-    expect(h.transaction).not.toHaveBeenCalled();
+    expect(h.update).not.toHaveBeenCalled();
   });
 
   it('新 owner 合格 → 200 照常转让', async () => {
@@ -68,6 +72,9 @@ describe('POST /api/teams/[teamId]/transfer — 新 owner 套餐资格（#677）
     const res = await POST(req({ newOwnerId: 'u2' }), params);
     expect(res.status).toBe(200);
     expect(h.transaction).toHaveBeenCalledTimes(1);
+    expect(h.update).toHaveBeenCalledTimes(3);
+    // 先锁再判定
+    expect(h.lock.mock.invocationCallOrder[0]).toBeLessThan(h.eligibility.mock.invocationCallOrder[0]);
   });
 
   it('不是成员的目标先报 new_owner_not_member，不查套餐', async () => {
