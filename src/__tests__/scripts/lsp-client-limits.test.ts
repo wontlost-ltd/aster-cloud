@@ -7,7 +7,8 @@
  * 需要：单 IP 并发会话上限、单 IP 握手速率（令牌桶）、子进程堆上限。
  */
 import { describe, it, expect } from 'vitest';
-import { childNodeArgs, clientIdentity, createClientLimiter, createThrottledWarner, normalizeClientIp } from '../../../lsp-server.mjs';
+import { childNodeArgs, clientIdentity, createClientLimiter, createThrottledWarner, normalizeClientIp, rateLimitedClose, RATE_LIMITED_CLOSE_CODE, SESSION_LIMIT_RETRY_AFTER_SECONDS } from '../../../lsp-server.mjs';
+import { LSP_RATE_LIMITED_CLOSE_CODE, parseRetryAfter } from '@/lib/lsp-reconnect';
 
 const limits = (now: () => number) => createClientLimiter({ maxSessionsPerClient: 3, ratePerMinute: 6, burst: 10, now });
 
@@ -15,7 +16,9 @@ describe('createClientLimiter — 单 IP 并发会话', () => {
   it('★同一 IP 第 4 个会话被拒（429），释放一个后可再连', () => {
     const l = limits(() => 0);
     for (let i = 0; i < 3; i++) expect(l.acquire('1.1.1.1')).toEqual({ ok: true });
-    expect(l.acquire('1.1.1.1')).toEqual({ ok: false, code: 429, reason: 'Too many sessions from this client' });
+    // 会话数超限也带 retry-after：否则多开的标签页会持续握手，耗光该 IP 的令牌（#665 审查 M2）
+    expect(l.acquire('1.1.1.1')).toEqual({ ok: false, code: 429, reason: 'Too many sessions from this client', retryAfterSeconds: SESSION_LIMIT_RETRY_AFTER_SECONDS });
+    expect(SESSION_LIMIT_RETRY_AFTER_SECONDS).toBeGreaterThanOrEqual(30);
     l.release('1.1.1.1');
     expect(l.acquire('1.1.1.1')).toEqual({ ok: true });
   });
@@ -129,5 +132,28 @@ describe('createThrottledWarner', () => {
 describe('childNodeArgs', () => {
   it('★子进程带 --max-old-space-size=128', () => {
     expect(childNodeArgs('/app/server.js')).toEqual(['--max-old-space-size=128', '/app/server.js', '--stdio']);
+  });
+});
+
+// 浏览器的 WebSocket API 拿不到握手阶段的 HTTP 状态与 Retry-After，故限流以关闭码 4429 + 原因告知（第 6 轮）
+describe('rateLimitedClose — 限流告知浏览器', () => {
+  it('★速率超限：关闭码 4429，原因带 retry-after，客户端能解析出同一秒数', () => {
+    const close = rateLimitedClose({ ok: false, code: 429, reason: 'Rate limit exceeded', retryAfterSeconds: 10 });
+    expect(close).toEqual({ code: 4429, reason: 'Rate limit exceeded; retry-after=10' });
+    expect(parseRetryAfter(close.reason)).toBe(10_000);
+  });
+
+  it('★会话数超限：同样带 retry-after', () => {
+    const close = rateLimitedClose({ ok: false, code: 429, reason: 'Too many sessions from this client', retryAfterSeconds: 30 });
+    expect(close).toEqual({ code: 4429, reason: 'Too many sessions from this client; retry-after=30' });
+    expect(parseRetryAfter(close.reason)).toBe(30_000);
+  });
+
+  it('拒绝结果没有 retryAfterSeconds 时原因不带 retry-after', () => {
+    expect(rateLimitedClose({ reason: 'Rate limit exceeded' })).toEqual({ code: 4429, reason: 'Rate limit exceeded' });
+  });
+
+  it('网关与客户端的关闭码一致', () => {
+    expect(RATE_LIMITED_CLOSE_CODE).toBe(LSP_RATE_LIMITED_CLOSE_CODE);
   });
 });

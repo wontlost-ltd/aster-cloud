@@ -5,14 +5,38 @@
  * 是设计；但 aster-lang-ts 的解析错误没有错误码、也不走 overlay：只有关键词槽位用作者语言
  * （如 `Expected '返回' after '那么'`），句子骨架恒为英文。
  *
- * 这里按解析器的固定句型翻译骨架与常见名词，引号内的符号 / 关键词原样保留。句型或名词任一不认识时
- * 返回原文，避免半中半英的拼接。
+ * 这里按解析器的固定句型翻译骨架与常见名词。引号内的关键词解析器已按作者语言给出，原样保留；
+ * 引号内的标点解析器恒报英文写法（`'.'`），按目标词法的实际写法改写（zh：`'。'`、`'：'`、`'，'`）。
+ * 句型或名词任一不认识时返回原文，避免半中半英的拼接。
  *
  * ★依赖：这是过渡层。aster-lang-ts 给解析错误补上错误码与 diagnostic overlay 译文后，编辑器应改走引擎
  *   的 localizeDiagnostics，并删除本模块（服务端 aster-api 的解析错误同样需要引擎侧译文）。
  */
 
+import { DE_DE, EN_US, ZH_CN, type Lexicon } from '@aster-cloud/aster-lang-ts/browser';
+
 type Lang = 'zh-CN' | 'de-DE';
+
+/**
+ * 解析器消息里的英文标点 → 目标词法的写法，按词法的 punctuation 表逐项对应。
+ * 顺序有意义：en 的 listSeparator 与 enumSeparator 同为 `,`，解析器报 `','` 的位置都是列表 / 参数分隔，
+ * 故取 listSeparator（zh `，`），不取 enumSeparator（zh `、`）。
+ */
+const PUNCTUATION_KEYS = ['statementEnd', 'blockStart', 'listSeparator'] as const;
+
+function punctuationMap(target: Lexicon): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const key of PUNCTUATION_KEYS) {
+    const from = EN_US.punctuation[key];
+    if (!map.has(from)) map.set(from, target.punctuation[key]);
+  }
+  return map;
+}
+
+const PUNCTUATION: Record<Lang, Map<string, string>> = {
+  'zh-CN': punctuationMap(ZH_CN),
+  'de-DE': punctuationMap(DE_DE),
+};
 
 /** 解析器消息里出现的名词短语 → [中文, 德文] */
 const NOUNS: Record<string, [string, string]> = {
@@ -52,10 +76,19 @@ const FIXED: Record<string, [string, string]> = {
 
 const QUOTED_LIST = /^'[^']*'(?: or '[^']*')*$/;
 
-/** 翻译一个槽位：引号列表（'a' or 'b'）只翻连接词，名词短语查表；不认识返回 null。 */
+/** 引号片段整体是一个英文标点时换成目标词法的写法；关键词与其余符号原样保留。 */
+function quoted(fragment: string, lang: Lang): string {
+  const inner = fragment.slice(1, -1);
+  const mapped = PUNCTUATION[lang].get(inner);
+  return mapped ? `'${mapped}'` : fragment;
+}
+
+/** 翻译一个槽位：引号列表（'a' or 'b'）只翻连接词与标点，名词短语查表；不认识返回 null。 */
 function slot(text: string, lang: Lang): string | null {
   const t = text.trim();
-  if (QUOTED_LIST.test(t)) return t.split(' or ').join(lang === 'zh-CN' ? '或' : ' oder ');
+  if (QUOTED_LIST.test(t)) {
+    return t.split(' or ').map((q) => quoted(q, lang)).join(lang === 'zh-CN' ? '或' : ' oder ');
+  }
   const noun = NOUNS[t];
   return noun ? noun[lang === 'zh-CN' ? 0 : 1] : null;
 }

@@ -26,6 +26,15 @@ import { respondToServerRequest } from '@/lib/lsp-server-requests';
 import { splitJsonMessages } from '@/lib/lsp-json-frames';
 import { selectLspFeatures, type LspFeatures, type LspServerCapabilities } from '@/lib/lsp-features';
 import { isMemberAccessPosition } from '@/lib/aster-keyword-completions';
+import {
+  HandshakeBudget,
+  LSP_RATE_LIMITED_CLOSE_CODE,
+  LSP_RECONNECT_BASE_MS,
+  LSP_RECONNECT_MAX_MS,
+  ReconnectScheduler,
+  parseRetryAfter,
+  sharedHandshakeBudget,
+} from '@/lib/lsp-reconnect';
 
 type MonacoNamespace = typeof import('monaco-editor');
 
@@ -63,10 +72,14 @@ export interface UseAsterLSPOptions {
   autoConnect?: boolean;
   /** Reconnect on disconnect */
   autoReconnect?: boolean;
-  /** Reconnect delay in ms */
+  /** 首次重连前的等待（ms），之后指数退避 */
   reconnectDelay?: number;
-  /** Maximum reconnect attempts (0 = unlimited) */
+  /** 重连等待的上限（ms） */
+  maxReconnectDelay?: number;
+  /** 连续失败多少次后放弃（0 = 不限，默认不限） */
   maxReconnectAttempts?: number;
+  /** 握手预算，默认同页所有会话共享（见 lib/lsp-reconnect） */
+  handshakeBudget?: HandshakeBudget;
   /** Suppress console errors for connection failures */
   suppressErrors?: boolean;
   /**
@@ -84,9 +97,18 @@ export interface UseAsterLSPOptions {
   suppressDiagnostics?: boolean;
 }
 
+/**
+ * LSP 会话状态：idle 未连接（未启用或本端已断开）、connecting 首次连接中、connected 已初始化、
+ * reconnecting 会话丢失后正在 / 等待重连、tooManySessions 网关因同一网络会话过多拒绝（按 retry-after 等待后重连）、
+ * disconnected 已断开且暂停重连（页面隐藏、离线或已放弃）。
+ */
+export type LspConnectionStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'tooManySessions' | 'disconnected';
+
 export interface UseAsterLSPResult {
   /** Whether connected to LSP server */
   connected: boolean;
+  /** 会话状态，供编辑器状态栏提示断线 / 重连 */
+  status: LspConnectionStatus;
   /** Whether currently connecting */
   connecting: boolean;
   /** Connection error message */
@@ -253,20 +275,21 @@ export function useAsterLSP({
   suppressDiagnostics = false,
   autoConnect = true,
   autoReconnect = true,
-  reconnectDelay = 3000,
-  maxReconnectAttempts = 3,
+  reconnectDelay = LSP_RECONNECT_BASE_MS,
+  maxReconnectDelay = LSP_RECONNECT_MAX_MS,
+  maxReconnectAttempts = 0,
+  handshakeBudget = sharedHandshakeBudget,
   suppressErrors = true,
 }: UseAsterLSPOptions): UseAsterLSPResult {
   const [connected, setConnected] = useState(false);
+  const [status, setStatus] = useState<LspConnectionStatus>('idle');
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const requestIdRef = useRef(0);
   const pendingRequestsRef = useRef<Map<number, { resolve: (r: unknown) => void; reject: (e: Error) => void }>>(new Map());
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isDisposedRef = useRef(false);
-  const reconnectAttemptsRef = useRef(0);
   const providerDisposablesRef = useRef<IDisposable[]>([]);
   // ref-latch：把最新的 editor/documentUri prop 镜像进 ref，避免各回调里读到
   // 陈旧闭包。属渲染期同步最新 prop 的惯用写法，ref 值不参与本次渲染输出。
@@ -940,117 +963,109 @@ export function useAsterLSP({
     const model = editor.getModel();
     if (model) documentUriRef.current = model.uri.toString();
 
-    try {
-      const initResult = await sendRequest<{ capabilities?: LspServerCapabilities }>('initialize', {
-        processId: null,
-        rootUri: null,
-        capabilities: {
-          textDocument: {
-            synchronization: {
-              dynamicRegistration: false,
-              willSave: false,
-              didSave: true,
-              willSaveWaitUntil: false,
-            },
-            completion: {
-              dynamicRegistration: false,
-              completionItem: {
-                snippetSupport: true,
-                commitCharactersSupport: true,
-                documentationFormat: ['markdown', 'plaintext'],
-              },
-            },
-            hover: {
-              dynamicRegistration: false,
-              contentFormat: ['markdown', 'plaintext'],
-            },
-            signatureHelp: {
-              dynamicRegistration: false,
-              signatureInformation: {
-                documentationFormat: ['markdown', 'plaintext'],
-              },
-            },
-            definition: {
-              dynamicRegistration: false,
-            },
-            references: {
-              dynamicRegistration: false,
-            },
-            documentHighlight: {
-              dynamicRegistration: false,
-            },
-            documentSymbol: {
-              dynamicRegistration: false,
-              hierarchicalDocumentSymbolSupport: true,
-            },
-            formatting: {
-              dynamicRegistration: false,
-            },
-            codeAction: {
-              dynamicRegistration: false,
-              codeActionLiteralSupport: {
-                codeActionKind: {
-                  valueSet: ['quickfix', 'refactor', 'source'],
-                },
-              },
-            },
-            rename: {
-              dynamicRegistration: false,
-              prepareSupport: true,
-            },
-            publishDiagnostics: {
-              relatedInformation: true,
+    const initResult = await sendRequest<{ capabilities?: LspServerCapabilities }>('initialize', {
+      processId: null,
+      rootUri: null,
+      capabilities: {
+        textDocument: {
+          synchronization: {
+            dynamicRegistration: false,
+            willSave: false,
+            didSave: true,
+            willSaveWaitUntil: false,
+          },
+          completion: {
+            dynamicRegistration: false,
+            completionItem: {
+              snippetSupport: true,
+              commitCharactersSupport: true,
+              documentationFormat: ['markdown', 'plaintext'],
             },
           },
-          workspace: {
-            workspaceFolders: false,
-            didChangeConfiguration: {
-              dynamicRegistration: false,
+          hover: {
+            dynamicRegistration: false,
+            contentFormat: ['markdown', 'plaintext'],
+          },
+          signatureHelp: {
+            dynamicRegistration: false,
+            signatureInformation: {
+              documentationFormat: ['markdown', 'plaintext'],
             },
-            didChangeWatchedFiles: {
-              dynamicRegistration: false,
+          },
+          definition: {
+            dynamicRegistration: false,
+          },
+          references: {
+            dynamicRegistration: false,
+          },
+          documentHighlight: {
+            dynamicRegistration: false,
+          },
+          documentSymbol: {
+            dynamicRegistration: false,
+            hierarchicalDocumentSymbolSupport: true,
+          },
+          formatting: {
+            dynamicRegistration: false,
+          },
+          codeAction: {
+            dynamicRegistration: false,
+            codeActionLiteralSupport: {
+              codeActionKind: {
+                valueSet: ['quickfix', 'refactor', 'source'],
+              },
             },
+          },
+          rename: {
+            dynamicRegistration: false,
+            prepareSupport: true,
+          },
+          publishDiagnostics: {
+            relatedInformation: true,
           },
         },
-        // 构造逻辑见 buildLspInitOptions —— 抽成纯函数是为了可被直接断言，
-        // 否则要测「调用方传了什么」就得先拉起一条 WebSocket。
-        initializationOptions: buildLspInitOptions(locale, tenantId, domainVocabularies),
-      });
-
-      console.log('[LSP] Initialized:', initResult);
-
-      sendNotification('initialized', {});
-
-      // ★服务端只从 settings 读 locale（aster-lang-ts server.js 的 onDidChangeConfiguration
-      //   → s.locale）；网关传的 ASTER_LOCALE 环境变量与 initializationOptions.locale
-      //   都不生效。客户端未声明 workspace.configuration，服务端就采用这里推送的 settings。
-      //   不推送 → 服务端按英文解析 zh/de 文档，hover/跳转全部报「Unexpected character」。
-      //   必须在 didOpen 之前发，首个解析才会用对 lexicon。
-      sendNotification('workspace/didChangeConfiguration', {
-        settings: { asterLanguageServer: buildLspSettings(locale) },
-      });
-
-      // 只注册当前服务端真正可用的功能（见 selectLspFeatures）
-      await registerProviders(selectLspFeatures(locale, initResult?.capabilities));
-
-      if (model) {
-        sendNotification('textDocument/didOpen', {
-          textDocument: {
-            uri: documentUriRef.current,
-            languageId: 'aster-cnl',
-            version: model.getVersionId(),
-            text: model.getValue(),
+        workspace: {
+          workspaceFolders: false,
+          didChangeConfiguration: {
+            dynamicRegistration: false,
           },
-        });
-      }
+          didChangeWatchedFiles: {
+            dynamicRegistration: false,
+          },
+        },
+      },
+      // 构造逻辑见 buildLspInitOptions —— 抽成纯函数是为了可被直接断言，
+      // 否则要测「调用方传了什么」就得先拉起一条 WebSocket。
+      initializationOptions: buildLspInitOptions(locale, tenantId, domainVocabularies),
+    });
 
-      setConnected(true);
-      setError(null);
-    } catch (e) {
-      console.error('[LSP] Initialization failed:', e);
-      setError(e instanceof Error ? e.message : 'LSP initialization failed');
-      setConnected(false);
+    console.log('[LSP] Initialized:', initResult);
+
+    sendNotification('initialized', {});
+
+    // ★服务端只从 settings 读 locale（aster-lang-ts server.js 的 onDidChangeConfiguration
+    //   → s.locale）；网关传的 ASTER_LOCALE 环境变量与 initializationOptions.locale
+    //   都不生效。客户端未声明 workspace.configuration，服务端就采用这里推送的 settings。
+    //   不推送 → 服务端按英文解析 zh/de 文档，hover/跳转全部报「Unexpected character」。
+    //   必须在 didOpen 之前发，首个解析才会用对 lexicon。
+    sendNotification('workspace/didChangeConfiguration', {
+      settings: { asterLanguageServer: buildLspSettings(locale) },
+    });
+
+    // 只注册当前服务端真正可用的功能（见 selectLspFeatures）
+    await registerProviders(selectLspFeatures(locale, initResult?.capabilities));
+
+    if (model) {
+      sendNotification('textDocument/didOpen', {
+        textDocument: {
+          uri: documentUriRef.current,
+          languageId: 'aster-cnl',
+          version: model.getVersionId(),
+          text: model.getValue(),
+        },
+      });
     }
+
     // ★tenantId / domainVocabularies 必须进 deps：它们只在 initialize 时下发一次，
     //   若被闭包捕获成旧值，用户在别处增删领域术语后 LSP 会一直用过期词汇。
   }, [
@@ -1063,132 +1078,131 @@ export function useAsterLSP({
     registerProviders,
   ]);
 
+  /*
+   * 断线重连（生产复测第 6 轮）：见 lib/lsp-reconnect。
+   * ★只有本端主动断开（disconnect，含 effect 重跑与卸载）不重连；服务端关闭会话（含 1000
+   *   "Language server stopped"）、握手失败、初始化失败都按退避重连。
+   * ★每个会话的回调都先核对 wsRef.current === ws：effect 重跑时旧会话的关闭 / 初始化失败
+   *   不得改动新会话的状态（第 6 轮现场：旧会话以 1000 "Client disconnect" 关闭时拒掉了新会话的
+   *   initialize，新会话从此连着却没初始化，补全只剩单词建议）。
+   */
+  // 发起连接的函数由下方 effect 绑定（connect 随依赖变化）
+  const [scheduler] = useState(() => new ReconnectScheduler({
+    budget: handshakeBudget,
+    shouldPause: () => typeof document !== 'undefined' && (document.visibilityState === 'hidden' || navigator.onLine === false),
+    onPause: () => setStatus('disconnected'),
+    baseMs: reconnectDelay,
+    maxMs: maxReconnectDelay,
+    maxAttempts: maxReconnectAttempts,
+    onGiveUp: () => setStatus('disconnected'),
+  }));
+
+  /** 当前会话已失效（失败或被服务端关闭）：清理并按退避安排重连。 */
+  const sessionFailed = useCallback((
+    ws: WebSocket,
+    retryAfterMs: number | null,
+    message: string,
+    waitingStatus: LspConnectionStatus = 'reconnecting',
+  ) => {
+    if (wsRef.current !== ws) return;
+    wsRef.current = null;
+    ws.onclose = null;
+    ws.close();
+    for (const [, pending] of pendingRequestsRef.current) {
+      pending.reject(new Error('Connection closed'));
+    }
+    pendingRequestsRef.current.clear();
+    setConnected(false);
+    setError(message);
+    if (isDisposedRef.current || !autoReconnect) {
+      setStatus('disconnected');
+      return;
+    }
+    setStatus(waitingStatus);
+    scheduler.failed(retryAfterMs);
+  }, [autoReconnect, scheduler]);
+
   /**
    * Connect to the LSP server
    */
   const connect = useCallback(async () => {
     if (isDisposedRef.current) return;
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    if (wsRef.current) return;
 
-    if (maxReconnectAttempts > 0 && reconnectAttemptsRef.current >= maxReconnectAttempts) {
-      if (!suppressErrors) {
-        console.warn('[LSP] Max reconnect attempts reached, giving up');
-      }
+    const wsUrl = getWebSocketUrl();
+    if (!wsUrl) {
+      setError('LSP WebSocket URL not available');
       return;
     }
 
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-
+    scheduler.cancel();
+    setStatus((prev) => (prev === 'idle' || prev === 'connecting' ? 'connecting' : 'reconnecting'));
     setConnecting(true);
     setError(null);
 
-    try {
-      const wsUrl = getWebSocketUrl();
-      if (!wsUrl) {
-        throw new Error('LSP WebSocket URL not available');
+    handshakeBudget.record();
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onmessage = (event) => {
+      if (wsRef.current === ws) handleMessage(event.data);
+    };
+    ws.onclose = (event) => {
+      if (!suppressErrors) {
+        console.log('[LSP] WebSocket closed:', event.code, event.reason);
       }
+      // 网关限流（4429）：按 retry-after 等待；旧网关不带 retry-after 时直接退到退避上限，不持续消耗握手预算
+      const limited = event.code === LSP_RATE_LIMITED_CLOSE_CODE;
+      const retryAfterMs = limited ? parseRetryAfter(event.reason) ?? maxReconnectDelay : null;
+      const tooManySessions = limited && /too many sessions/i.test(event.reason);
+      sessionFailed(ws, retryAfterMs, event.reason || 'Connection closed', tooManySessions ? 'tooManySessions' : 'reconnecting');
+    };
 
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-
+    try {
       await new Promise<void>((resolve, reject) => {
-        ws.onopen = () => {
-          if (!suppressErrors) {
-            console.log('[LSP] WebSocket connected');
-          }
-          reconnectAttemptsRef.current = 0;
-          resolve();
-        };
-
-        ws.onerror = () => {
-          reject(new Error('WebSocket connection failed'));
-        };
-
-        setTimeout(() => reject(new Error('Connection timeout')), 10000);
+        const timer = setTimeout(() => reject(new Error('Connection timeout')), 10000);
+        ws.onopen = () => { clearTimeout(timer); resolve(); };
+        ws.onerror = () => { clearTimeout(timer); reject(new Error('WebSocket connection failed')); };
       });
-
-      ws.onmessage = (event) => {
-        handleMessage(event.data);
-      };
-
-      ws.onclose = (event) => {
-        if (!suppressErrors) {
-          console.log('[LSP] WebSocket closed:', event.code, event.reason);
-        }
-        setConnected(false);
-
-        for (const [, pending] of pendingRequestsRef.current) {
-          pending.reject(new Error('Connection closed'));
-        }
-        pendingRequestsRef.current.clear();
-
-        if (autoReconnect && !isDisposedRef.current && event.code !== 1000) {
-          reconnectAttemptsRef.current++;
-          if (maxReconnectAttempts === 0 || reconnectAttemptsRef.current < maxReconnectAttempts) {
-            if (!suppressErrors) {
-              console.log(`[LSP] Will reconnect in ${reconnectDelay}ms (attempt ${reconnectAttemptsRef.current})`);
-            }
-            reconnectTimeoutRef.current = setTimeout(() => {
-              // 断线自动重连：connect 递归引用自身（在自身声明前被 onclose 闭包捕获）。
-              // 这是自引用重连回调的既有模式，重连由延时定时器异步触发，运行期行为正确；
-              // 改用 ref 持有最新 connect 属高风险重构，故此处按既有行为抑制。
-              // eslint-disable-next-line react-hooks/immutability
-              connect();
-            }, reconnectDelay);
-          }
-        }
-      };
-
+      if (wsRef.current !== ws) return;
       ws.onerror = () => {
         if (!suppressErrors) {
           console.error('[LSP] WebSocket error');
         }
-        setError('WebSocket error');
       };
 
       await initializeLSP();
+      if (wsRef.current !== ws) return;
+      scheduler.succeeded();
+      setConnected(true);
+      setStatus('connected');
     } catch (e) {
-      reconnectAttemptsRef.current++;
       if (!suppressErrors) {
         console.error('[LSP] Connection failed:', e);
       }
-      setError(e instanceof Error ? e.message : 'Connection failed');
-      setConnected(false);
-
-      if (autoReconnect && !isDisposedRef.current) {
-        if (maxReconnectAttempts === 0 || reconnectAttemptsRef.current < maxReconnectAttempts) {
-          reconnectTimeoutRef.current = setTimeout(() => {
-            connect();
-          }, reconnectDelay);
-        }
-      }
+      sessionFailed(ws, null, e instanceof Error ? e.message : 'Connection failed');
     } finally {
-      setConnecting(false);
+      if (wsRef.current === ws || wsRef.current === null) setConnecting(false);
     }
-  }, [getWebSocketUrl, handleMessage, initializeLSP, autoReconnect, reconnectDelay, maxReconnectAttempts, suppressErrors]);
+  }, [getWebSocketUrl, handleMessage, initializeLSP, sessionFailed, handshakeBudget, scheduler, maxReconnectDelay, suppressErrors]);
+  useEffect(() => {
+    scheduler.setConnect(() => { void connect(); });
+  }, [scheduler, connect]);
 
   /**
    * Disconnect from the LSP server
    */
   const disconnect = useCallback(() => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-
-    reconnectAttemptsRef.current = 0;
+    scheduler.cancel();
 
     // Dispose providers
     providerDisposablesRef.current.forEach(d => d.dispose());
     providerDisposablesRef.current = [];
 
-    if (wsRef.current) {
-      wsRef.current.close(1000, 'Client disconnect');
-      wsRef.current = null;
-    }
+    const ws = wsRef.current;
+    // 先摘掉引用再关闭：该会话随后的 onclose 据此识别为本端主动断开，不触发重连
+    wsRef.current = null;
+    ws?.close(1000, 'Client disconnect');
 
     for (const [, pending] of pendingRequestsRef.current) {
       pending.reject(new Error('Disconnected'));
@@ -1197,7 +1211,8 @@ export function useAsterLSP({
 
     setConnected(false);
     setConnecting(false);
-  }, []);
+    setStatus('idle');
+  }, [scheduler]);
 
   /**
    * Reconnect to the LSP server
@@ -1213,6 +1228,8 @@ export function useAsterLSP({
 
     // 没有编辑器自己的 Monaco 实例就不连：provider 无处注册，连上也只是空跑 didChange。
     if (autoConnect && editor && monaco) {
+      // 连接外部系统（WebSocket）正是 effect 的职责；connect 同步置 connecting 状态以便状态栏即时反映
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       connect();
     }
 
@@ -1221,6 +1238,21 @@ export function useAsterLSP({
       disconnect();
     };
   }, [autoConnect, editor, monaco, connect, disconnect]);
+
+  // 页面重新可见 / 网络恢复：有待执行的重连时立即重试（仍受 Retry-After 与握手预算约束）
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const retryNow = () => {
+      if (document.visibilityState === 'hidden') return;
+      scheduler.retryNow();
+    };
+    document.addEventListener('visibilitychange', retryNow);
+    window.addEventListener('online', retryNow);
+    return () => {
+      document.removeEventListener('visibilitychange', retryNow);
+      window.removeEventListener('online', retryNow);
+    };
+  }, [scheduler]);
 
   // Sync document changes to LSP
   useEffect(() => {
@@ -1248,6 +1280,7 @@ export function useAsterLSP({
 
   return {
     connected,
+    status,
     connecting,
     error,
     connect,

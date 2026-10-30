@@ -222,6 +222,66 @@ describe('POST /api/policies/[id]/export/cedar', () => {
     expect(await res.json()).toEqual({ success: false, error: 'unauthenticated' });
   });
 
+  // #661：多条规则可导出（E720 several rules … choose one）时，调用方指定导出哪一条
+  describe('functionName（#661）', () => {
+    const twoRules = 'Module m.\n\nRule allowRead given request:\n  Return true.\n\nRule allowWrite given request:\n  Return false.\n';
+    const reqWith = (body: unknown) => new Request('http://localhost/api/policies/p1/export/cedar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: typeof body === 'string' ? body : JSON.stringify(body),
+    });
+
+    beforeEach(() => {
+      findFirst.mockResolvedValue(owned());
+      findExecutable.mockResolvedValue(executable({ source: twoRules }));
+      exportCedar.mockResolvedValue({ exportable: true, policies: 'permit…', schema: {}, diagnostics: [] });
+    });
+
+    it('forwards a functionName that names a rule of the exported version', async () => {
+      const res = await POST(reqWith({ functionName: ' allowWrite ' }), ctx('p1'));
+      expect(res.status).toBe(200);
+      expect(exportCedar.mock.calls[0][0]).toMatchObject({ source: twoRules, functionName: 'allowWrite' });
+    });
+
+    it('no body / empty object keeps the old request (no functionName sent)', async () => {
+      await POST(req(), ctx('p1'));
+      await POST(reqWith({}), ctx('p1'));
+      expect(exportCedar.mock.calls[0][0]).not.toHaveProperty('functionName');
+      expect(exportCedar.mock.calls[1][0]).not.toHaveProperty('functionName');
+    });
+
+    it('400 unknown_function when the name is not a rule of this policy version; nothing is exported', async () => {
+      const res = await POST(reqWith({ functionName: 'deleteEverything' }), ctx('p1'));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({ error: 'unknown_function' });
+      expect(exportCedar).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['non-string', { functionName: 42 }],
+      ['blank', { functionName: '   ' }],
+      ['array body', [1]],
+      ['malformed JSON', '{"functionName":'],
+    ])('400 invalid_function_name for %s', async (_label, body) => {
+      const res = await POST(reqWith(body), ctx('p1'));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({ error: 'invalid_function_name' });
+      expect(exportCedar).not.toHaveBeenCalled();
+    });
+
+    it('accepts the canonical name of a rule localized through the version vocabulary (E720 lists canonical names)', async () => {
+      findExecutable.mockResolvedValue(executable({ source: 'Modul m.\n\nRegel leseErlaubt gegeben anfrage:\n  Gib zurueck wahr.\n' }));
+      compileContext.vocabulary = {
+        id: 'd', locale: 'de-DE', structs: [], fields: [], enumValues: [],
+        functions: [{ canonical: 'allowRead', localized: 'leseErlaubt', kind: 'function' }],
+      };
+      expect((await POST(reqWith({ functionName: 'allowRead' }), ctx('p1'))).status).toBe(200);
+      expect(exportCedar.mock.calls[0][0]).toMatchObject({ functionName: 'allowRead' });
+      // 源码写法转发前换成规范名（aster-api 按名称解析之后的 Core IR 查找规则）
+      expect((await POST(reqWith({ functionName: 'leseErlaubt' }), ctx('p1'))).status).toBe(200);
+      expect(exportCedar.mock.calls[1][0]).toMatchObject({ functionName: 'allowRead' });
+      expect((await POST(reqWith({ functionName: 'allowWrite' }), ctx('p1'))).status).toBe(400);
+    });
+  });
+
   it('503 cedar_export_busy passes through with body and Retry-After', async () => {
     findFirst.mockResolvedValue(owned());
     findExecutable.mockResolvedValue(executable());

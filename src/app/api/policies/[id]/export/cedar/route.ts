@@ -6,6 +6,9 @@
  * 执行端等于绕过审批，故没有可执行版本时返回 409。cloud 的版本不在 aster-api，故走源码模式：
  * 该版本源码、冻结别名集、与执行同一判定的语言与领域词汇（已审批版本取冻结快照，ADR 0051），
  * 并附 claimedRef（cloud 策略 id 与所导出的版本号，api 只记审计不核验）。仅策略所有者可导出。
+ *
+ * 请求体可选 `{ functionName }`（#661）：可导出的规则不止一条时（E720）由调用方指定导出哪一条。
+ * 规则名须属于所导出的版本（源码写法或经版本词汇映射后的规范名，转发时一律用规范名），否则 400，不转发给 aster-api。
  */
 import { NextResponse } from 'next/server';
 import { and, eq, isNull } from 'drizzle-orm';
@@ -18,6 +21,7 @@ import { loadStoredVersionCompileContext } from '@/lib/execution-input';
 import { versionVocabularyErrorResponse } from '@/lib/policy-compile-response';
 import { PolicyApiError } from '@/services/policy/policy-api';
 import { findDefaultExecutableVersion } from '@/services/policy/default-executable-version';
+import { resolvePolicyRuleName } from '@/lib/cedar-export-rules';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -53,7 +57,24 @@ function upstreamError(error: unknown, headers: Headers): NextResponse {
   return NextResponse.json({ success: false, error: message }, { status: 502, headers });
 }
 
-export async function POST(_req: Request, { params }: RouteParams) {
+/** 可选的请求体 `{ functionName }`：无请求体或不带该键视为未指定；形状不对返回 null。 */
+async function readFunctionName(req: Request): Promise<{ functionName?: string } | null> {
+  const text = await req.text().catch(() => '');
+  if (!text.trim()) return {};
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) return null;
+  const raw = (body as { functionName?: unknown }).functionName;
+  if (raw === undefined || raw === null) return {};
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  return { functionName: raw.trim() };
+}
+
+export async function POST(req: Request, { params }: RouteParams) {
   const session = await getSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -64,6 +85,11 @@ export async function POST(_req: Request, { params }: RouteParams) {
   const headers = new Headers(getRateLimitHeaders(limit, RateLimitPresets.EVALUATE_SOURCE));
   if (!limit.allowed) {
     return NextResponse.json({ error: 'Rate limit exceeded', retryAfter: limit.retryAfterSeconds }, { status: 429, headers });
+  }
+
+  const requested = await readFunctionName(req);
+  if (!requested) {
+    return NextResponse.json({ error: 'invalid_function_name', message: 'functionName must be a non-empty string' }, { status: 400, headers });
   }
 
   const { id } = await params;
@@ -80,12 +106,17 @@ export async function POST(_req: Request, { params }: RouteParams) {
 
   try {
     const { locale, vocabulary } = await loadStoredVersionCompileContext({ ...version, source });
+    const functionName = requested.functionName && resolvePolicyRuleName(source, vocabulary, requested.functionName);
+    if (functionName === null) {
+      return NextResponse.json({ error: 'unknown_function', message: 'functionName is not a rule of this policy version' }, { status: 400, headers });
+    }
     const client = await createPolicyApiClientForUser(policyTenantId(policy), userId);
     const result = await client.exportCedar({
       source,
       locale,
       aliasSet: parseAliasSet(version.aliasSet),
       ...(vocabulary ? { vocabulary } : {}),
+      ...(functionName ? { functionName } : {}),
       ...claimedRefFor(policy.id, version.version),
     });
     return NextResponse.json(result, { headers });

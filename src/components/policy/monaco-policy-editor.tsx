@@ -26,7 +26,7 @@ import { violet, sky, emerald, amber, rose, zinc } from '@aster-cloud/tokens';
 import { useEntryRuleDecorations } from './use-entry-rule-decorations';
 import { extractUseRefs, type UseRef } from '@/lib/aster/modules';
 import type { AsterModuleCatalogEntry } from '@/services/policy/policy-api';
-import { useAsterLSP } from '@/hooks/useAsterLSP';
+import { useAsterLSP, type LspConnectionStatus } from '@/hooks/useAsterLSP';
 import { VocabularyDiagnosticLink } from '@/components/policy/vocabulary-diagnostic-link';
 import { summarizeCoreModule, type EditorCompileModuleSummary } from './core-module-summary';
 
@@ -424,6 +424,13 @@ export function isLspConfigured(host: string | undefined, token: string | undefi
   return isLocal || Boolean(token?.trim());
 }
 
+/** 需要在状态栏提示的 LSP 会话状态 → diagnostics 文案键；其余状态不提示 */
+const LSP_STATUS_LABEL: Partial<Record<LspConnectionStatus, string>> = {
+  reconnecting: 'lspReconnecting',
+  tooManySessions: 'lspTooManySessions',
+  disconnected: 'lspDisconnected',
+};
+
 export function MonacoPolicyEditor({
   value,
   onChange,
@@ -635,7 +642,7 @@ export function MonacoPolicyEditor({
     [userVocabulary],
   );
   /* eslint-disable react-hooks/refs */
-  useAsterLSP({
+  const { status: lspStatus } = useAsterLSP({
     editor: lspEnabled && isEditorReady ? editorRef.current : null,
     // ★必须是编辑器自己的 Monaco（onMount 拿到的那一份），见 useAsterLSP 的 monaco 选项说明。
     monaco: lspEnabled && isEditorReady ? monacoRef.current : null,
@@ -1181,6 +1188,15 @@ export function MonacoPolicyEditor({
           {errorCount === 0 && warningCount === 0 && (
             <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-200">
               {t('noIssues')}
+            </span>
+          )}
+          {/* LSP 断开时字段补全 / 悬停不可用（本地诊断与关键字补全照常），提示用户正在重连 */}
+          {lspEnabled && LSP_STATUS_LABEL[lspStatus] && (
+            <span
+              data-testid="lsp-status"
+              className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
+            >
+              {t(LSP_STATUS_LABEL[lspStatus])}
             </span>
           )}
         </div>

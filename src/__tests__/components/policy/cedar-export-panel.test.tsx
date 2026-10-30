@@ -13,6 +13,8 @@ const labels = {
   noExecutableVersion: 'Approve a version before exporting to Cedar',
   versionsLink: 'Version history',
   schemaNote: 'Schema covers only what the rule mentions',
+  chooseRule: 'Several rules can be exported. Choose the rule to export:',
+  exportRule: 'Export this rule',
 };
 
 function jsonResponse(status: number, body: unknown) {
@@ -167,5 +169,79 @@ describe('CedarExportPanel', () => {
 
     expect(await screen.findByText('Export failed')).toBeDefined();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Export to Cedar' }).hasAttribute('disabled')).toBe(false));
+  });
+
+  // #661：E720 多候选时让用户选择导出哪条规则，再带 functionName 导出
+  describe('several exportable rules (E720)', () => {
+    const several = {
+      exportable: false, policies: null, schema: null,
+      diagnostics: [{ severity: 'error', code: 'E720', startLine: 1, startColumn: 1, endLine: 1, endColumn: 1,
+        message: 'Module "m" cannot be exported to Cedar: several rules can be exported (allowRead, allowWrite); choose one' }],
+    };
+    const exported = {
+      exportable: true, moduleName: 'm', policies: 'permit…', schema: {}, schemaText: '{}', probes: { count: 2, agreed: 2 }, diagnostics: [],
+    };
+
+    it('offers the candidates, exports the chosen one with functionName and downloads it', async () => {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(jsonResponse(200, several))
+        .mockResolvedValueOnce(jsonResponse(200, exported));
+      vi.stubGlobal('fetch', fetchMock);
+
+      renderPanel();
+
+      const select = await screen.findByLabelText('Several rules can be exported. Choose the rule to export:');
+      expect([...(select as HTMLSelectElement).options].map((o) => o.value)).toEqual(['allowRead', 'allowWrite']);
+      expect(createObjectURL).not.toHaveBeenCalled();
+      fireEvent.change(select, { target: { value: 'allowWrite' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Export this rule' }));
+
+      expect(await screen.findByText('Verified against Cedar on 2 probes')).toBeDefined();
+      expect(fetchMock).toHaveBeenLastCalledWith('/api/policies/p1/export/cedar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ functionName: 'allowWrite' }),
+      });
+      expect(downloads.map((d) => d.name)).toEqual(['m.cedar', 'm.cedarschema.json']);
+    });
+
+    it('defaults to the first candidate', async () => {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(jsonResponse(200, several))
+        .mockResolvedValueOnce(jsonResponse(200, exported));
+      vi.stubGlobal('fetch', fetchMock);
+
+      renderPanel();
+      fireEvent.click(await screen.findByRole('button', { name: 'Export this rule' }));
+
+      await screen.findByText('Verified against Cedar on 2 probes');
+      expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ functionName: 'allowRead' });
+    });
+
+    it('the chosen rule itself not exportable: lists its diagnostics', async () => {
+      vi.stubGlobal('fetch', vi.fn()
+        .mockResolvedValueOnce(jsonResponse(200, several))
+        .mockResolvedValueOnce(jsonResponse(200, {
+          exportable: false, policies: null, schema: null,
+          diagnostics: [{ severity: 'error', code: 'E721', message: 'unsupported construct', startLine: 7, startColumn: 3, endLine: 7, endColumn: 9 }],
+        })));
+
+      renderPanel();
+      fireEvent.click(await screen.findByRole('button', { name: 'Export this rule' }));
+
+      expect(await screen.findByText('E721')).toBeDefined();
+      expect(screen.queryByRole('button', { name: 'Export this rule' })).toBeNull();
+    });
+
+    it('E720 without candidates (no guard-shaped rule) stays a plain not-exportable result', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, {
+        exportable: false, policies: null, schema: null,
+        diagnostics: [{ severity: 'error', code: 'E720', message: 'Module "m" cannot be exported to Cedar: no rule has the guard request shape', startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 }],
+      })));
+
+      renderPanel();
+
+      expect(await screen.findByText('This policy cannot be exported to Cedar')).toBeDefined();
+      expect(screen.getByText('E720')).toBeDefined();
+      expect(screen.queryByRole('combobox')).toBeNull();
+    });
   });
 });

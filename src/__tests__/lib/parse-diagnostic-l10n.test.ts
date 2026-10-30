@@ -7,8 +7,8 @@ import { collectCompileDiagnostics } from '@/hooks/useAsterCompiler';
 
 describe('localizeParseMessage', () => {
   it.each([
-    ["Expected '.' at end of statement", '语句末尾应为 \'.\'', "Am Ende der Anweisung wird '.' erwartet"],
-    ["Expected '.' or ':' after return type", "返回类型之后应为 '.' 或 ':'", "Nach Rückgabetyp wird '.' oder ':' erwartet"],
+    ["Expected '.' at end of statement", "语句末尾应为 '。'", "Am Ende der Anweisung wird '.' erwartet"],
+    ["Expected '.' or ':' after return type", "返回类型之后应为 '。' 或 '：'", "Nach Rückgabetyp wird '.' oder ':' erwartet"],
     ["Expected '返回' after '那么'", "'那么' 之后应为 '返回'", "Nach '那么' wird '返回' erwartet"],
     ["Expected 'set to' in construction", "构造中应为 'set to'", "In Konstruktion wird 'set to' erwartet"],
     ['Expected identifier', '此处应为标识符', 'Bezeichner erwartet'],
@@ -16,9 +16,23 @@ describe('localizeParseMessage', () => {
     ['Unknown statement', '无法识别的语句', 'Unbekannte Anweisung'],
     ['Unexpected token at top level', '顶层出现意外的记号', 'Unerwartetes Token auf oberster Ebene'],
     ["Unexpected ')'", "意外的 ')'", "Unerwartet: ')'"],
+    ["Expected ','", "此处应为 '，'", "',' erwartet"],
+    ["Expected ':' after '那么'", "'那么' 之后应为 '：'", "Nach '那么' wird ':' erwartet"],
   ])('%s', (en, zh, de) => {
     expect(localizeParseMessage(en, 'zh-CN')).toBe(zh);
     expect(localizeParseMessage(en, 'de-DE')).toBe(de);
+  });
+
+  it('★zh 词法下引号里的标点按 zh 实际写法显示（句末 。、块起始 ：、列表分隔 ，），多字符引号片段与括号不动', () => {
+    expect(localizeParseMessage("Expected '.' at end of statement", 'zh-CN')).toBe("语句末尾应为 '。'");
+    expect(localizeParseMessage("Expected ')' after expression", 'zh-CN')).toBe("表达式之后应为 ')'");
+    expect(localizeParseMessage("Expected '定义为' after '令'", 'zh-CN')).toBe("'令' 之后应为 '定义为'");
+    expect(localizeParseMessage("Expected '..' after '.'", 'zh-CN')).toBe("'。' 之后应为 '..'");
+  });
+
+  it('de / en 的标点不受 zh 映射影响', () => {
+    expect(localizeParseMessage("Expected '.' or ':' after return type", 'de-DE')).toBe("Nach Rückgabetyp wird '.' oder ':' erwartet");
+    expect(localizeParseMessage("Expected ','", 'en-US')).toBe("Expected ','");
   });
 
   it('三槽句型切错时回退到两槽句型（引号里含 " in "）', () => {
@@ -54,7 +68,7 @@ describe('collectCompileDiagnostics 按 locale 本地化 E000', () => {
       loweringErrors: ['Unknown statement'],
       typeErrors: [{ severity: 'error', code: 'E003', message: 'Undefined variable: x' }],
     } as never, 'zh-CN');
-    expect(out.map((d) => d.message)).toEqual(["语句末尾应为 '.'", '无法识别的语句', 'Undefined variable: x']);
+    expect(out.map((d) => d.message)).toEqual(["语句末尾应为 '。'", '无法识别的语句', 'Undefined variable: x']);
   });
 
   it('不传 locale 时保持原文', () => {

@@ -17,6 +17,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
 import { killAllGateways, killGateways, spawnGateway } from './fixtures/gateway-process';
+import { connect as netConnect } from 'node:net';
+import { randomBytes } from 'node:crypto';
+import { REJECTED_CLOSE_TIMEOUT_MS, SESSION_LIMIT_RETRY_AFTER_SECONDS } from '../../../lsp-server.mjs';
 
 const ROOT = join(__dirname, '..', '..', '..');
 const ORIGIN = 'http://localhost:3000';
@@ -120,15 +123,18 @@ describe('LSP 网关：按客户端限流与子进程堆上限', () => {
     c.ws.close();
   }, 15_000);
 
-  it('★同一 CF-Connecting-IP 第 4 个会话在握手阶段被拒（429），其他 IP 不受影响', async () => {
+  // 浏览器拿不到握手阶段的 HTTP 状态，故被拒的会话完成握手后立即以 4429 关闭（不 spawn 子进程）
+  it('★同一 CF-Connecting-IP 第 4 个会话被拒（关闭码 4429），其他 IP 不受影响', async () => {
     const ip = '198.51.100.7';
     const open = await Promise.all([connect(ip), connect(ip), connect(ip)]);
-    const status = await new Promise<number>((resolve, reject) => {
+    const closed = await new Promise<{ code: number; reason: string; messages: number }>((resolve, reject) => {
       const ws = new WebSocket(`ws://127.0.0.1:${port}/lsp?locale=zh-CN&token=${TOKEN}`, { headers: { Origin: ORIGIN, 'CF-Connecting-IP': ip } });
-      ws.on('unexpected-response', (_req, res) => resolve(res.statusCode ?? 0));
-      ws.on('open', () => reject(new Error('第 4 个会话不应建立')));
+      let messages = 0;
+      ws.on('message', () => { messages++; });
+      ws.on('unexpected-response', (_req, res) => reject(new Error(`status ${res.statusCode}`)));
+      ws.on('close', (code, reason) => resolve({ code, reason: String(reason), messages }));
     });
-    expect(status).toBe(429);
+    expect(closed).toEqual({ code: 4429, reason: `Too many sessions from this client; retry-after=${SESSION_LIMIT_RETRY_AFTER_SECONDS}`, messages: 0 });
     const other = await connect('198.51.100.8');
     other.ws.close();
     // 关闭一个后同一 IP 可再连
@@ -138,6 +144,40 @@ describe('LSP 网关：按客户端限流与子进程堆上限', () => {
     again.ws.close();
     open.slice(1).forEach((c) => c.ws.close());
   }, 20_000);
+});
+
+// #665 审查 M1：被拒的握手以 4429 关闭后，对端若不回关闭帧，ws 默认要等 30 秒才销毁 socket；
+// 恶意客户端可借此让每次被拒的握手多占一个 fd。被拒连接须在 REJECTED_CLOSE_TIMEOUT_MS 后强制断开。
+describe('LSP 网关：被拒连接不滞留', () => {
+  /** 手写升级请求、收到 101 与关闭帧后既不回关闭帧也不关 socket；返回服务端断开所用毫秒数 */
+  const silentRejectedClient = (ip: string) => new Promise<{ ms: number; data: string }>((resolve, reject) => {
+    const sock = netConnect(port, '127.0.0.1');
+    let data = '';
+    let closeFrameAt = 0;
+    sock.on('data', (chunk: Buffer) => {
+      data += chunk.toString('latin1');
+      // 关闭帧首字节 0x88
+      if (!closeFrameAt && chunk.indexOf(0x88) !== -1) closeFrameAt = Date.now();
+    });
+    sock.on('close', () => (closeFrameAt ? resolve({ ms: Date.now() - closeFrameAt, data }) : reject(new Error(`no close frame: ${data}`))));
+    sock.on('error', () => {});
+    sock.write([
+      `GET /lsp?locale=zh-CN&token=${TOKEN} HTTP/1.1`, `Host: 127.0.0.1:${port}`, 'Upgrade: websocket', 'Connection: Upgrade',
+      `Sec-WebSocket-Key: ${randomBytes(16).toString('base64')}`, 'Sec-WebSocket-Version: 13', `Origin: ${ORIGIN}`,
+      `CF-Connecting-IP: ${ip}`, '', '',
+    ].join('\r\n'));
+  });
+
+  it('★不回关闭帧的被拒客户端在约 1 秒内被断开（而非 30 秒）', async () => {
+    const ip = '198.51.100.9';
+    const open = await Promise.all([connect(ip), connect(ip), connect(ip)]);
+    const { ms, data } = await silentRejectedClient(ip);
+    expect(data).toContain('101');
+    expect(REJECTED_CLOSE_TIMEOUT_MS).toBeLessThanOrEqual(1_000);
+    expect(ms).toBeGreaterThanOrEqual(REJECTED_CLOSE_TIMEOUT_MS - 100);
+    expect(ms).toBeLessThan(REJECTED_CLOSE_TIMEOUT_MS + 1_000);
+    open.forEach((c) => c.ws.close());
+  }, 15_000);
 });
 
 /* ★独立网关实例：SIGTERM 时 shutdown() 直接 process.exit，子进程的 exit 回调来不及清理目录；
