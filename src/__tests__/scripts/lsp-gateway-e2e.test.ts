@@ -189,11 +189,11 @@ describe('网关生命周期：工作目录清理', () => {
     await killGateways(started.splice(0));
   });
 
-  const startGateway = async (tmp: string, nodeEnv: 'test' | 'production' = 'test') => {
+  const startGateway = async (tmp: string, nodeEnv: 'test' | 'production' = 'test', extraEnv: Record<string, string> = {}) => {
     const p = await freePort();
     const gw = spawnGateway([join(ROOT, 'lsp-server.mjs')], {
       env: { PATH: process.env.PATH, PORT: String(p), HOSTNAME: '127.0.0.1', NODE_ENV: nodeEnv, LSP_AUTH_TOKEN: TOKEN,
-        ALLOWED_ORIGINS: ORIGIN, TMPDIR: tmp, LSP_SERVER_SCRIPT: join(__dirname, 'fixtures', 'fake-lsp-server.mjs') },
+        ALLOWED_ORIGINS: ORIGIN, TMPDIR: tmp, LSP_SERVER_SCRIPT: join(__dirname, 'fixtures', 'fake-lsp-server.mjs'), ...extraEnv },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     started.push(gw);
@@ -240,6 +240,37 @@ describe('网关生命周期：工作目录清理', () => {
     sockets.forEach((ws) => ws.close());
     gw.kill('SIGTERM');
     rmSync(tmp, { recursive: true, force: true });
+  }, 20_000);
+
+  // #657：闲置会话被关闭（4408），子进程退出、工作目录删除；持续有消息的会话不受影响
+  it('★闲置超时：无 LSP 消息的会话以 4408 关闭并删除工作目录，活跃会话保持', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'lsp-gw-idle-'));
+    const { gw, port: p } = await startGateway(tmp, 'test', { LSP_IDLE_TIMEOUT_MS: '1000' });
+    const open = async () => {
+      const ws = new WebSocket(`ws://127.0.0.1:${p}/lsp?locale=zh-CN&token=${TOKEN}`, { headers: { Origin: ORIGIN } });
+      const closed = new Promise<number>((r) => ws.once('close', (code) => r(code)));
+      const env = await new Promise<Frame>((resolve, reject) => {
+        ws.on('message', (d) => { const f = JSON.parse(String(d)) as Frame; if (f.method === 'test/env') resolve(f); });
+        ws.on('open', () => ws.send(JSON.stringify({ jsonrpc: '2.0', method: 'initialized', params: {} })));
+        ws.on('error', reject);
+      });
+      return { ws, closed, dir: env.params!.cwd! };
+    };
+    const idle = await open();
+    const active = await open();
+    const chatter = setInterval(() => active.ws.send(JSON.stringify({ jsonrpc: '2.0', method: '$/ping', params: {} })), 200);
+    try {
+      expect(await idle.closed).toBe(4408);
+      for (let i = 0; i < 50 && existsSync(idle.dir); i++) await new Promise((r) => setTimeout(r, 100));
+      expect(existsSync(idle.dir)).toBe(false);
+      expect(active.ws.readyState).toBe(WebSocket.OPEN);
+      expect(existsSync(active.dir)).toBe(true);
+    } finally {
+      clearInterval(chatter);
+      active.ws.close();
+      gw.kill('SIGTERM');
+      rmSync(tmp, { recursive: true, force: true });
+    }
   }, 20_000);
 
   it('★启动时清掉 owner 已退出的遗留目录', async () => {

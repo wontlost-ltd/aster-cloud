@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { useAsterLSP } from '@/hooks/useAsterLSP';
-import { HandshakeBudget, LSP_RATE_LIMITED_CLOSE_CODE } from '@/lib/lsp-reconnect';
+import { HandshakeBudget, LSP_IDLE_CLOSE_CODE, LSP_RATE_LIMITED_CLOSE_CODE } from '@/lib/lsp-reconnect';
 
 type Sent = { jsonrpc: string; id?: number | string; method?: string };
 type CloseEvent = { code: number; reason: string };
@@ -242,6 +242,55 @@ describe('useAsterLSP 断线重连', () => {
     expect(FakeWebSocket.instances).toHaveLength(1);
     await tick(1_100);
     expect(FakeWebSocket.instances).toHaveLength(2);
+  });
+
+  // #657：网关关闭闲置会话（4408）后不自动重连，用户回到页面或有操作时才按需重连
+  it('★闲置超时关闭（4408）：不自动重连，状态为 idle；用户有操作时才重连', async () => {
+    const { result } = renderLsp();
+    await tick();
+    FakeWebSocket.instances[0]!.serverClose(LSP_IDLE_CLOSE_CODE, 'Idle timeout');
+    await tick();
+    expect(result.current.status).toBe('idle');
+    expect(result.current.connected).toBe(false);
+    await tick(10 * 60_000);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+
+    act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' })); });
+    await tick();
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(FakeWebSocket.instances[1]!.initialized).toBe(true);
+    expect(result.current.status).toBe('connected');
+  });
+
+  it('★闲置关闭后页面在后台：重新可见时才重连，后台的操作事件不触发', async () => {
+    const { result } = renderLsp();
+    await tick();
+    visibility = 'hidden';
+    FakeWebSocket.instances[0]!.serverClose(LSP_IDLE_CLOSE_CODE, 'Idle timeout');
+    await tick();
+    act(() => { window.dispatchEvent(new Event('focus')); });
+    await tick(60_000);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    visibility = 'visible';
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+    await tick();
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(result.current.status).toBe('connected');
+  });
+
+  it('★重连后的会话再出错时照常按退避重连（闲置标记不残留）', async () => {
+    const { result } = renderLsp();
+    await tick();
+    FakeWebSocket.instances[0]!.serverClose(LSP_IDLE_CLOSE_CODE, 'Idle timeout');
+    await tick();
+    act(() => { window.dispatchEvent(new Event('focus')); });
+    await tick();
+    expect(result.current.status).toBe('connected');
+    FakeWebSocket.instances[1]!.serverClose(1006);
+    await tick();
+    expect(result.current.status).toBe('reconnecting');
+    await tick(1_000);
+    expect(FakeWebSocket.instances).toHaveLength(3);
   });
 
   it('★页面隐藏时不重连；重新可见时立即重试', async () => {
