@@ -305,6 +305,42 @@ describe('PATCH /api/v1/domain-vocabularies/terms/[id]', () => {
   });
 });
 
+/* 第 4 轮生产复测（中，数据丢失）：PATCH 未带 aliases / description 时不得清空已存值。
+ * 路由把「未提供」（undefined）与「显式清空」（null / [] / ''）区分开传给服务层。 */
+describe('PATCH /api/v1/domain-vocabularies/terms/[id] — 未提供与显式清空', () => {
+  const okResult = () => ({ link: { id: 'link-1' }, repointed: false, createdGlobalTerm: false });
+  const send = (body: Record<string, unknown>) => patchTerm(
+    new Request('http://localhost/api/v1/domain-vocabularies/terms/link-1', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    }),
+    makeParams('link-1'),
+  );
+
+  it('★未带 aliases / description → 以 undefined 传给服务层（保持不变）', async () => {
+    vi.mocked(modifyUserVocabularyTerm).mockResolvedValue(okResult() as never);
+    await send(validTerm);
+    const input = vi.mocked(modifyUserVocabularyTerm).mock.calls.at(-1)![2];
+    expect(input.aliases).toBeUndefined();
+    expect(input.description).toBeUndefined();
+  });
+
+  it('★显式 null → 清空（aliases 为 []、description 为 null）', async () => {
+    vi.mocked(modifyUserVocabularyTerm).mockResolvedValue(okResult() as never);
+    await send({ ...validTerm, aliases: null, description: null });
+    const input = vi.mocked(modifyUserVocabularyTerm).mock.calls.at(-1)![2];
+    expect(input.aliases).toEqual([]);
+    expect(input.description).toBeNull();
+  });
+
+  it('显式 [] 与空串同样表示清空', async () => {
+    vi.mocked(modifyUserVocabularyTerm).mockResolvedValue(okResult() as never);
+    await send({ ...validTerm, aliases: [], description: '' });
+    const input = vi.mocked(modifyUserVocabularyTerm).mock.calls.at(-1)![2];
+    expect(input.aliases).toEqual([]);
+    expect(input.description).toBe('');
+  });
+});
+
 describe('DELETE /api/v1/domain-vocabularies/terms/[id]', () => {
   it('returns 200 + success body after soft-delete', async () => {
     vi.mocked(softDeleteUserVocabularyTerm).mockResolvedValue({

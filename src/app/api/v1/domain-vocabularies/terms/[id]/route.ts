@@ -49,8 +49,15 @@ function parseTermInput(raw: TermBody): TermInput {
     }
     return value;
   };
+  // ★别名与描述区分「未提供」与「显式清空」：未提供（undefined）→ 服务层保持原值；
+  //   null / [] / '' → 清空。防止任何前端漏带字段就把已存值清掉（第 4 轮生产复测）。
+  const clearableString = (name: string, value: unknown): string | null | undefined => {
+    if (value === null) return null;
+    return optionalString(name, value);
+  };
   const optionalAliases = (value: unknown): string[] | undefined => {
-    if (value === undefined || value === null) return undefined;
+    if (value === undefined) return undefined;
+    if (value === null) return [];
     if (!Array.isArray(value) || value.some((v) => typeof v !== 'string')) {
       throw new VocabularyError('validation_failed', 'aliases must be an array of strings');
     }
@@ -72,7 +79,7 @@ function parseTermInput(raw: TermBody): TermInput {
     canonical: required('canonical', raw.canonical),
     localized: required('localized', raw.localized),
     parentCanonical: optionalString('parentCanonical', raw.parentCanonical),
-    description: optionalString('description', raw.description),
+    description: clearableString('description', raw.description),
     aliases: optionalAliases(raw.aliases),
   };
 }

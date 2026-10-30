@@ -6,6 +6,13 @@ import { hydrateRoot } from 'react-dom/client';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 vi.mock('lucide-react', async (orig) => ({ ...((await orig()) as Record<string, unknown>) }));
+// 保存后会 router.refresh() 重新拉 RSC；测试环境没有 App Router 上下文，只替换 useRouter
+const router = vi.hoisted(() => ({ push: () => {}, replace: () => {}, refresh: () => {}, prefetch: () => {} }));
+vi.mock('@/i18n/navigation', () => ({
+  Link: ({ href, children, ...rest }: { href: string; children?: React.ReactNode }) => <a href={href} {...rest}>{children}</a>,
+  usePathname: () => '/domain-vocabularies',
+  useRouter: () => router,
+}));
 
 // t 必须是稳定引用：真实 next-intl 的 t 不随渲染变化，组件把它放进 effect 依赖。
 const t = vi.hoisted(() => (key: string, params?: Record<string, unknown>) =>
@@ -145,5 +152,38 @@ describe('VocabulariesContent — 刷新后找回异步任务（#605）', () => 
       expect.anything(),
     );
     expect(await screen.findByText('status.queued')).toBeInTheDocument();
+  });
+});
+
+/* 第 4 轮生产复测（中，数据丢失）：编辑对话框不回填 aliases / description，直接保存会清空已存值。 */
+describe('VocabulariesContent — 编辑对话框回填别名与描述', () => {
+  it('★点 Edit 后别名与描述回填；不改直接保存，PATCH 带回原值', async () => {
+    const row = term('1', { aliases: ['hochstufe', 'oben'], description: 'Hohe Stufe' });
+    vi.mocked(global.fetch).mockResolvedValue(new Response(JSON.stringify({ link: row }), { status: 200 }));
+    render(<VocabulariesContent {...baseProps} initialTerms={[row]} />);
+    fireEvent.click(screen.getAllByText('actions.edit')[0]!);
+
+    expect((document.getElementById('vd-aliases') as HTMLInputElement).value).toBe('hochstufe, oben');
+    expect((document.getElementById('vd-description') as HTMLTextAreaElement).value).toBe('Hohe Stufe');
+
+    const form = document.getElementById('vd-aliases')!.closest('form')!;
+    await act(async () => { fireEvent.submit(form); });
+    const patch = vi.mocked(global.fetch).mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'PATCH');
+    expect(JSON.parse(String((patch![1] as RequestInit).body))).toMatchObject({ aliases: ['hochstufe', 'oben'], description: 'Hohe Stufe' });
+  });
+
+  it('★清空别名与描述后保存：PATCH 显式带 aliases: [] 与 description: null（而不是省略）', async () => {
+    const row = term('1', { aliases: ['hochstufe'], description: 'Hohe Stufe' });
+    vi.mocked(global.fetch).mockResolvedValue(new Response(JSON.stringify({ link: row }), { status: 200 }));
+    render(<VocabulariesContent {...baseProps} initialTerms={[row]} />);
+    fireEvent.click(screen.getAllByText('actions.edit')[0]!);
+    fireEvent.change(document.getElementById('vd-aliases')!, { target: { value: '' } });
+    fireEvent.change(document.getElementById('vd-description')!, { target: { value: '  ' } });
+    const form = document.getElementById('vd-aliases')!.closest('form')!;
+    await act(async () => { fireEvent.submit(form); });
+    const patch = vi.mocked(global.fetch).mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'PATCH');
+    const body = JSON.parse(String((patch![1] as RequestInit).body));
+    expect(body.aliases).toEqual([]);
+    expect(body.description).toBeNull();
   });
 });
