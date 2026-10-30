@@ -14,6 +14,7 @@ import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
 import { checkTeamAccess } from '@/lib/team-permissions';
 import type { GuardDecision } from '@/services/policy/guard-types';
 import { PolicyApiError } from '@/services/policy/policy-api';
+import { upstreamErrorMessage } from '@/lib/upstream-error-messages';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -47,7 +48,7 @@ function apiErrorResponse(e: PolicyApiError): NextResponse {
   return NextResponse.json(
     {
       error: e.code ?? `http_${e.statusCode}`,
-      message: e.message,
+      message: upstreamErrorMessage(e.code, e.message),
       ...(Array.isArray(verifiedRoles) ? { verifiedRoles } : {}),
     },
     { status: e.statusCode }

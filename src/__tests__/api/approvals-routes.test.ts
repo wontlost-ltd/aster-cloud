@@ -97,11 +97,14 @@ describe('POST /api/approvals/:tenantId/:approvalId/:verb', () => {
     expect(h.notifyApprovalDecided).not.toHaveBeenCalled();
   });
 
-  it('api 403 segregation_of_duties → 原样 403，不带 verifiedRoles', async () => {
-    h.approveGuard.mockRejectedValue(new FakePolicyApiError('same user', 403, 'segregation_of_duties'));
+  it('api 403 segregation_of_duties → 原样 403，不带 verifiedRoles；中文 message 换成英文（#680）', async () => {
+    h.approveGuard.mockRejectedValue(new FakePolicyApiError('动作的发起主体或提交方不能审批该动作', 403, 'segregation_of_duties'));
     const res = await post('team1', 'approve');
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: 'segregation_of_duties', message: 'same user' });
+    expect(await res.json()).toEqual({
+      error: 'segregation_of_duties',
+      message: 'The requester or submitter of an action cannot approve it.',
+    });
   });
 
   it('reject 无 comment（或全空白）→ 400 comment_required，不调 api', async () => {
