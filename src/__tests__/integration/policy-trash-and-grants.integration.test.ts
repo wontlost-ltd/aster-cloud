@@ -10,19 +10,28 @@
 // Run: LICENSE_E2E=1 DATABASE_URL=… pnpm exec vitest run --config vitest.integration.config.ts policy-trash-and-grants
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 vi.mock('server-only', () => ({}));
 vi.mock('@/lib/admin-auth', () => ({ requireAdmin: vi.fn(async () => ({ userId: 'it-trash-admin' })) }));
 vi.mock('@/lib/license-write-gate', () => ({ requireLicenseWriteOk: vi.fn(async () => null) }));
 
 import { createDb } from '@/db';
-import { policies, policyRecycleBins, structuralAliasGrants, users } from '@/lib/prisma';
+import {
+  policies,
+  policyRecycleBins,
+  policyReviewInvitations,
+  policyReviewers,
+  policyShares,
+  structuralAliasGrants,
+  users,
+} from '@/lib/prisma';
 import {
   cleanupExpiredTrashItems,
   emptyTrash,
   getTrashItems,
   permanentDeletePolicy,
+  purgeOrphanPolicyAccessRows,
   softDeletePolicy,
 } from '@/lib/policy-lifecycle';
 import { getStructuralAliasGrant } from '@/lib/structural-alias-grants';
@@ -35,7 +44,43 @@ const USER_IDS = [ADMIN, OWNER];
 type Db = ReturnType<typeof createDb>;
 const globalForDb = globalThis as unknown as { __asterLocalDevDb?: Db | null };
 
+const ACCESS_PREFIX = 'it-trash-';
+
+async function cleanupAccessRows(db: Db): Promise<void> {
+  await db.delete(policyShares).where(sql`${policyShares.id} LIKE ${ACCESS_PREFIX + '%'}`);
+  await db.delete(policyReviewers).where(sql`${policyReviewers.id} LIKE ${ACCESS_PREFIX + '%'}`);
+  await db.delete(policyReviewInvitations).where(sql`${policyReviewInvitations.id} LIKE ${ACCESS_PREFIX + '%'}`);
+}
+
+/** 给策略挂上共享、审阅人、待处理与已接受的审阅邀请各一条（#623）。 */
+async function seedAccessRows(db: Db, policyId: string): Promise<void> {
+  await db.insert(policyShares).values({
+    id: `${policyId}-share`, policyId, teamId: 'it-trash-team', sharedByUserId: OWNER,
+  });
+  await db.insert(policyReviewers).values({
+    id: `${policyId}-reviewer`, policyId, userId: ADMIN, grantedByUserId: OWNER,
+  });
+  const expiresAt = new Date(Date.now() + 86_400_000);
+  await db.insert(policyReviewInvitations).values([
+    { id: `${policyId}-inv-pending`, policyId, email: 'p@example.test', invitedByUserId: OWNER, token: `${policyId}-t1`, expiresAt },
+    { id: `${policyId}-inv-accepted`, policyId, email: 'a@example.test', invitedByUserId: OWNER, token: `${policyId}-t2`, expiresAt, acceptedAt: new Date() },
+  ]);
+}
+
+async function accessRowIds(db: Db, policyId: string): Promise<string[]> {
+  const ids = [
+    ...(await db.select({ id: policyShares.id }).from(policyShares).where(eq(policyShares.policyId, policyId))),
+    ...(await db.select({ id: policyReviewers.id }).from(policyReviewers).where(eq(policyReviewers.policyId, policyId))),
+    ...(await db
+      .select({ id: policyReviewInvitations.id })
+      .from(policyReviewInvitations)
+      .where(eq(policyReviewInvitations.policyId, policyId))),
+  ];
+  return ids.map((r) => r.id).sort();
+}
+
 async function cleanup(db: Db): Promise<void> {
+  await cleanupAccessRows(db);
   await db.delete(structuralAliasGrants).where(inArray(structuralAliasGrants.userId, USER_IDS));
   await db.delete(policyRecycleBins).where(eq(policyRecycleBins.userId, OWNER));
   await db.delete(policies).where(eq(policies.userId, OWNER));
@@ -81,6 +126,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('回收站与结构词授权（
   });
 
   beforeEach(async () => {
+    await cleanupAccessRows(db);
     await db.delete(structuralAliasGrants).where(inArray(structuralAliasGrants.userId, USER_IDS));
     await db.delete(policyRecycleBins).where(eq(policyRecycleBins.userId, OWNER));
     await db.delete(policies).where(eq(policies.userId, OWNER));
@@ -105,6 +151,34 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('回收站与结构词授权（
       const bins = await db.select().from(policyRecycleBins).where(eq(policyRecycleBins.policyId, 'it-trash-p1'));
       expect(bins).toHaveLength(0);
       expect((await getTrashItems(OWNER)).map((i) => i.policyId)).toEqual(['it-trash-p2']);
+    });
+
+    it('#623 永久删除同时删掉共享、审阅人与待处理邀请，已接受的邀请作为审计历史保留', async () => {
+      await seedPolicy(db, 'it-trash-acl');
+      await seedAccessRows(db, 'it-trash-acl');
+      await softDeletePolicy('it-trash-acl', OWNER);
+
+      expect(await permanentDeletePolicy('it-trash-acl', OWNER)).toEqual({ success: true, policyId: 'it-trash-acl' });
+
+      expect(await accessRowIds(db, 'it-trash-acl')).toEqual(['it-trash-acl-inv-accepted']);
+    });
+
+    it('#623 孤儿访问记录回收：只删策略已不存在的行，存活策略与已接受邀请不受影响', async () => {
+      await seedPolicy(db, 'it-trash-alive');
+      await seedAccessRows(db, 'it-trash-alive');
+      // 策略不存在（如随账号级联删除、或修复前硬删除留下）的孤儿行
+      await seedAccessRows(db, 'it-trash-gone');
+
+      const r = await purgeOrphanPolicyAccessRows();
+      expect(r).toEqual({ shares: 1, reviewers: 1, invitations: 1 });
+
+      expect(await accessRowIds(db, 'it-trash-alive')).toEqual([
+        'it-trash-alive-inv-accepted',
+        'it-trash-alive-inv-pending',
+        'it-trash-alive-reviewer',
+        'it-trash-alive-share',
+      ]);
+      expect(await accessRowIds(db, 'it-trash-gone')).toEqual(['it-trash-gone-inv-accepted']);
     });
 
     it('过期清理删除策略与回收站行，未过期项不受影响', async () => {

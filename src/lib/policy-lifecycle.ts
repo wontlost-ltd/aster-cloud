@@ -1,8 +1,16 @@
 // src/lib/policy-lifecycle.ts
 // 策略生命周期管理：软删除、恢复、定时清理
 
-import { db, policies, policyRecycleBins } from '@/lib/prisma';
+import {
+  db,
+  policies,
+  policyRecycleBins,
+  policyReviewInvitations,
+  policyReviewers,
+  policyShares,
+} from '@/lib/prisma';
 import { eq, isNotNull, isNull, not, and, desc, asc, lte, sql } from 'drizzle-orm';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { bypassQueryCache } from '@/db/fresh-read';
 import { releaseSnapshotRefsForPolicy, reportSnapshotRelease } from '@/lib/domain-vocabulary-snapshot';
 // 回收站保留天数
@@ -44,6 +52,12 @@ export interface TrashItem {
  * 只有真正删掉策略行的事务才释放其版本的快照引用，并发/重复删除不会重复释放。
  * 版本行不随策略删除（无外键），作为历史证据保留，但不再计入引用（约定见
  * domain-vocabulary-snapshot 的「快照引用的归属与并发约定」）。
+ *
+ * 其它以 policyId 指向策略、无外键的表（#623）分两类：
+ *   - 访问授权（共享、审阅人、待处理的审阅邀请）：策略没了就没有意义，同一事务内删除，
+ *     见 deletePolicyAccessRows；
+ *   - 历史证据（版本、执行与结果、回归、Proof、已接受的邀请）：保留，读取路径经 Policy 关联，
+ *     孤儿行不会出现在列表里。
  * 永久删除、过期清理、清空回收站三条路径都经由这里。
  */
 async function purgePolicy(policyId: string): Promise<void> {
@@ -53,10 +67,26 @@ async function purgePolicy(policyId: string): Promise<void> {
       .delete(policies)
       .where(eq(policies.id, policyId))
       .returning({ id: policies.id });
-    return removed.length > 0 ? releaseSnapshotRefsForPolicy(policyId, tx) : null;
+    if (removed.length === 0) return null;
+    await deletePolicyAccessRows(tx, policyId);
+    return releaseSnapshotRefsForPolicy(policyId, tx);
   });
   // 计数异常的告警与指标在提交后上报：回滚的删除不应留下「已释放」的痕迹
   if (release) reportSnapshotRelease(policyId, release);
+}
+
+type PurgeTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * 删除策略的访问授权行：团队共享、审阅人、待处理的审阅邀请。已接受的邀请是审计历史，保留。
+ * 这些表没有指向 Policy 的外键，不在这里删就会在硬删除后留下孤儿授权（#623）。
+ */
+async function deletePolicyAccessRows(tx: PurgeTx, policyId: string): Promise<void> {
+  await tx.delete(policyShares).where(eq(policyShares.policyId, policyId));
+  await tx.delete(policyReviewers).where(eq(policyReviewers.policyId, policyId));
+  await tx
+    .delete(policyReviewInvitations)
+    .where(and(eq(policyReviewInvitations.policyId, policyId), isNull(policyReviewInvitations.acceptedAt)));
 }
 
 /**
@@ -308,7 +338,7 @@ export async function getTrashItems(userId: string): Promise<TrashItem[]> {
 
 /**
  * 清理过期的回收站项目
- * 应由定时任务调用（如 Vercel Cron）
+ * 由 /api/cron/policy-trash-cleanup 每日调用（cron-registry 的 policy-trash-cleanup，#623）
  */
 export async function cleanupExpiredTrashItems(): Promise<{
   deletedCount: number;
@@ -339,6 +369,34 @@ export async function cleanupExpiredTrashItems(): Promise<{
   }
 
   return { deletedCount, errors };
+}
+
+/**
+ * 回收策略已不存在的访问授权行（#623）：共享、审阅人、待处理的审阅邀请。
+ *
+ * purgePolicy 已在删除策略的事务内清理这些行；这里兜住其它硬删除路径（如账号清除时策略随
+ * 用户级联删除）与修复前已经留下的孤儿。由回收站清理 cron 每日调用。
+ */
+export async function purgeOrphanPolicyAccessRows(): Promise<{
+  shares: number;
+  reviewers: number;
+  invitations: number;
+}> {
+  const policyGone = (policyIdColumn: AnyPgColumn) =>
+    sql`NOT EXISTS (SELECT 1 FROM ${policies} WHERE ${policies.id} = ${policyIdColumn})`;
+  const shares = await db
+    .delete(policyShares)
+    .where(policyGone(policyShares.policyId))
+    .returning({ id: policyShares.id });
+  const reviewers = await db
+    .delete(policyReviewers)
+    .where(policyGone(policyReviewers.policyId))
+    .returning({ id: policyReviewers.id });
+  const invitations = await db
+    .delete(policyReviewInvitations)
+    .where(and(isNull(policyReviewInvitations.acceptedAt), policyGone(policyReviewInvitations.policyId)))
+    .returning({ id: policyReviewInvitations.id });
+  return { shares: shares.length, reviewers: reviewers.length, invitations: invitations.length };
 }
 
 /**

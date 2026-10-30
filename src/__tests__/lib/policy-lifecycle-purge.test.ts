@@ -2,7 +2,8 @@
 //
 // 缺陷：PolicyRecycleBin.policyId 无外键，永久删除只删 Policy，留下孤儿回收站行，
 // getTrashItems 在 item.policy.name 处抛 TypeError，回收站整页 500。
-// 本文件钉住：三条删除路径都在同一事务里先释放词汇快照引用（#628）、再删回收站行、最后删策略；
+// 本文件钉住：三条删除路径都在同一事务里删回收站行、删策略，删到策略行后再删该策略的共享/审阅人/
+// 审阅邀请（#623：这些表无外键，硬删除后会留孤儿访问记录）并释放词汇快照引用（#628）；
 // 列表遇孤儿跳过而非崩溃。
 // 外键级联本身在真实 Postgres 上验证，见 integration/policy-trash-and-grants.integration.test.ts。
 
@@ -52,6 +53,9 @@ vi.mock('@/lib/prisma', () => ({
   },
   policies: { id: { name: 'Policy.id' }, userId: {}, deletedAt: {}, name: {} },
   policyRecycleBins: { policyId: { name: 'PolicyRecycleBin.policyId' }, userId: {}, deletedAt: {}, expiresAt: {} },
+  policyShares: { policyId: { name: 'PolicyShare.policyId' } },
+  policyReviewers: { policyId: { name: 'PolicyReviewer.policyId' } },
+  policyReviewInvitations: { policyId: { name: 'PolicyReviewInvitation.policyId' } },
 }));
 
 vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
@@ -59,7 +63,7 @@ vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
   reportSnapshotRelease: h.report,
 }));
 
-import { policies, policyRecycleBins } from '@/lib/prisma';
+import { policies, policyRecycleBins, policyReviewInvitations, policyReviewers, policyShares } from '@/lib/prisma';
 import {
   cleanupExpiredTrashItems,
   emptyTrash,
@@ -80,7 +84,7 @@ function binRow(id: string, policy: { id: string; name: string; description: str
   };
 }
 
-// 每次 purge 必须是：一次事务内「删回收站行 → DELETE 策略 RETURNING → 删到了才释放快照引用」，
+// 每次 purge 必须是：一次事务内「删回收站行 → DELETE 策略 RETURNING → 删到了才删访问记录并释放快照引用」，
 // 且不在事务外直接删。
 function expectPurgedInTx(policyIds: string[]) {
   expect(h.transaction).toHaveBeenCalledTimes(policyIds.length);
@@ -88,6 +92,9 @@ function expectPurgedInTx(policyIds: string[]) {
   const expected = policyIds.flatMap((id) => [
     { table: policyRecycleBins, inTx: true },
     { table: policies, inTx: true },
+    { table: policyShares, inTx: true },
+    { table: policyReviewers, inTx: true },
+    { table: policyReviewInvitations, inTx: true },
     { table: `release:${id}`, inTx: true },
   ]);
   expect(h.deletes).toEqual(expected);
@@ -160,6 +167,8 @@ describe('policy-lifecycle 永久删除路径（#603）', () => {
     expect(r).toEqual({ success: true, policyId: 'p1' });
     expect(h.release).not.toHaveBeenCalled();
     expect(h.report).not.toHaveBeenCalled();
+    // 访问记录已由先删掉策略的那个事务清理
+    expect(h.deletes.map((d) => d.table)).toEqual([policyRecycleBins, policies]);
   });
 
   it('cleanupExpiredTrashItems：每个过期项都在事务内连同回收站行删除', async () => {
