@@ -23,6 +23,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import type { editor, languages, IDisposable, Position } from 'monaco-editor';
 import { buildLspInitOptions, buildLspSettings, shouldApplyDiagnostics } from '@/lib/lsp-init-options';
 import { respondToServerRequest } from '@/lib/lsp-server-requests';
+import { logLspMessage, type LspMessageParams } from '@/lib/lsp-log-message';
 import { splitJsonMessages } from '@/lib/lsp-json-frames';
 import { selectLspFeatures, type LspFeatures, type LspServerCapabilities } from '@/lib/lsp-features';
 import { isMemberAccessPosition } from '@/lib/aster-keyword-completions';
@@ -453,9 +454,7 @@ export function useAsterLSP({
         }
         case 'window/logMessage':
         case 'window/showMessage': {
-          const msgParams = params as { type: number; message: string };
-          const types = ['', 'Error', 'Warning', 'Info', 'Log'];
-          console.log(`[LSP ${types[msgParams.type] || 'Message'}]`, msgParams.message);
+          logLspMessage(params as LspMessageParams);
           break;
         }
         default:
