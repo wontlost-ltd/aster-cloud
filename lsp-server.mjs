@@ -506,6 +506,8 @@ export function idleTick(clients, { now = Date.now(), idleTimeoutMs }) {
  * 应用层心跳（与前端 src/lib/lsp-reconnect.ts 的 LSP_HEARTBEAT_METHOD 一致）：网关直接应答，
  * 不转发给语言服务器，也不刷新 lastActivityAt——心跳是机器行为，算作活动会让闲置超时永不触发。
  * 只识别带 id 的单条请求；返回应答文本，非心跳返回 null。
+ * 心跳只验证浏览器到网关的链路，不证明语言服务器子进程存活。部署顺序：先发本网关镜像，后发 Worker
+ * （旧网关会把心跳当作活动，闲置超时被抵消；详见 src/lib/lsp-reconnect.ts）。
  */
 export const LSP_HEARTBEAT_METHOD = '$/aster/ping';
 export function heartbeatReply(raw) {

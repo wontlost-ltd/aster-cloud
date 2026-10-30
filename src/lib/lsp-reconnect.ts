@@ -25,6 +25,13 @@ export const LSP_IDLE_CLOSE_CODE = 4408;
  * 协议级 ping/pong 对页面脚本不可见。连接期间每 INTERVAL 发一次 `$/aster/ping` 请求，TIMEOUT 内无回应
  * 视为断线，最坏检测延迟 = INTERVAL + TIMEOUT（25 秒）。网关自己应答该请求，不转发、不算闲置活动
  * （见 lsp-server.mjs heartbeatReply），所以不会抵消 #657 的闲置超时；每分钟 4 个小消息，不产生新握手。
+ *
+ * 约束：
+ * - 心跳只验证浏览器到网关的链路，网关自答，不证明语言服务器子进程存活（子进程退出由网关关闭会话体现）。
+ * - 部署顺序：先发 LSP 网关镜像，后发 Worker。新前端配旧网关功能正常（旧网关转发给语言服务器，回
+ *   MethodNotFound 也算存活），但旧网关会把心跳当作活动，闲置超时被抵消；新网关配旧前端无影响。
+ * - 握手成功不等于链路健康：scheduler.succeeded()（退避清零）推迟到首个心跳得到回应，
+ *   所以「连上即心跳超时」的会话会让重连间隔持续递增，不会在多标签页下突破网关握手限流。
  */
 export const LSP_HEARTBEAT_METHOD = '$/aster/ping';
 export const LSP_HEARTBEAT_INTERVAL_MS = 15_000;
@@ -179,5 +186,13 @@ export class ReconnectScheduler {
 
   private now(): number {
     return (this.deps.now ?? Date.now)();
+  }
+}
+
+/** 带超时的 LSP 请求超时错误；调用方据类型而不是消息文案判断。 */
+export class LspRequestTimeoutError extends Error {
+  constructor(readonly method: string) {
+    super(`LSP request ${method} timed out`);
+    this.name = 'LspRequestTimeoutError';
   }
 }
