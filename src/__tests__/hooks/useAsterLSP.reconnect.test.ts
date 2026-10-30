@@ -49,6 +49,9 @@ class FakeWebSocket {
     if (msg.method === 'initialize') {
       this.serverSend({ jsonrpc: '2.0', id: msg.id, result: { capabilities: { completionProvider: { triggerCharacters: ['.'] } } } });
     }
+    if (msg.method === '$/aster/ping') {
+      this.serverSend({ jsonrpc: '2.0', id: msg.id, result: null });
+    }
     if (msg.method === 'textDocument/completion') {
       this.serverSend({ jsonrpc: '2.0', id: msg.id, result: [] });
     }

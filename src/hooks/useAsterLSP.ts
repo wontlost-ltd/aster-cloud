@@ -34,6 +34,10 @@ import {
   LSP_RECONNECT_BASE_MS,
   LSP_RECONNECT_MAX_MS,
   ReconnectScheduler,
+  LSP_HEARTBEAT_INTERVAL_MS,
+  LSP_HEARTBEAT_METHOD,
+  LSP_HEARTBEAT_TIMEOUT_MS,
+  LspRequestTimeoutError,
   parseRetryAfter,
   sharedHandshakeBudget,
 } from '@/lib/lsp-reconnect';
@@ -376,7 +380,7 @@ export function useAsterLSP({
               if (ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ jsonrpc: '2.0', method: '$/cancelRequest', params: { id } }));
               }
-              reject(new Error(`LSP request ${method} timed out`));
+              reject(new LspRequestTimeoutError(method));
             }, opts.timeoutMs)
           : undefined;
 
@@ -1193,7 +1197,8 @@ export function useAsterLSP({
 
       await initializeLSP();
       if (wsRef.current !== ws) return;
-      scheduler.succeeded();
+      // 退避清零推迟到首个心跳得到回应（见下方心跳 effect），握手成功但链路不通的会话不重置退避
+      scheduler.cancel();
       setConnected(true);
       setStatus('connected');
     } catch (e) {
@@ -1259,6 +1264,25 @@ export function useAsterLSP({
       disconnect();
     };
   }, [autoConnect, editor, monaco, connect, disconnect]);
+
+  // 应用层心跳：静默断网时套接字不会关闭，靠请求超时发现并走常规重连（常量与约束见 lib/lsp-reconnect）。
+  // 只有超时才算失联：旧网关把心跳转给语言服务器并回 MethodNotFound，同样证明链路是通的。
+  // 首个得到回应的心跳才让重连退避清零；会话被关闭 / 换掉后迟到的结果由 sessionFailed 的 wsRef 守卫忽略。
+  useEffect(() => {
+    if (!connected) return;
+    const ws = wsRef.current;
+    if (!ws) return;
+    const timer = setInterval(() => {
+      sendRequest(LSP_HEARTBEAT_METHOD, undefined, { timeoutMs: LSP_HEARTBEAT_TIMEOUT_MS }).then(
+        () => scheduler.succeeded(),
+        (e: unknown) => {
+          if (e instanceof LspRequestTimeoutError) sessionFailed(ws, null, 'Heartbeat timeout');
+          else if (wsRef.current === ws && ws.readyState === WebSocket.OPEN) scheduler.succeeded();
+        },
+      );
+    }, LSP_HEARTBEAT_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [connected, sendRequest, sessionFailed, scheduler]);
 
   // 页面重新可见 / 网络恢复：有待执行的重连时立即重试（仍受 Retry-After 与握手预算约束）
   useEffect(() => {
