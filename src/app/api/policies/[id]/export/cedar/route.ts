@@ -8,7 +8,7 @@
  * 并附 claimedRef（cloud 策略 id 与所导出的版本号，api 只记审计不核验）。仅策略所有者可导出。
  *
  * 请求体可选 `{ functionName }`（#661）：可导出的规则不止一条时（E720）由调用方指定导出哪一条。
- * 规则名须属于所导出的版本（源码写法或经版本词汇映射后的规范名），否则 400，不转发给 aster-api。
+ * 规则名须属于所导出的版本（源码写法或经版本词汇映射后的规范名，转发时一律用规范名），否则 400，不转发给 aster-api。
  */
 import { NextResponse } from 'next/server';
 import { and, eq, isNull } from 'drizzle-orm';
@@ -21,7 +21,7 @@ import { loadStoredVersionCompileContext } from '@/lib/execution-input';
 import { versionVocabularyErrorResponse } from '@/lib/policy-compile-response';
 import { PolicyApiError } from '@/services/policy/policy-api';
 import { findDefaultExecutableVersion } from '@/services/policy/default-executable-version';
-import { policyRuleNames } from '@/lib/cedar-export-rules';
+import { resolvePolicyRuleName } from '@/lib/cedar-export-rules';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -106,8 +106,8 @@ export async function POST(req: Request, { params }: RouteParams) {
 
   try {
     const { locale, vocabulary } = await loadStoredVersionCompileContext({ ...version, source });
-    const { functionName } = requested;
-    if (functionName && !policyRuleNames(source, vocabulary).has(functionName)) {
+    const functionName = requested.functionName && resolvePolicyRuleName(source, vocabulary, requested.functionName);
+    if (functionName === null) {
       return NextResponse.json({ error: 'unknown_function', message: 'functionName is not a rule of this policy version' }, { status: 400, headers });
     }
     const client = await createPolicyApiClientForUser(policyTenantId(policy), userId);

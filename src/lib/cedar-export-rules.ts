@@ -52,16 +52,20 @@ function functionCanonicals(vocabulary: Record<string, unknown> | undefined): Ma
 }
 
 /**
- * 该版本源码中声明的规则名：源码写法，以及经版本词汇映射后的规范名（E720 候选用规范名）。
- * 规则声明按 Rule / 规则 / Regel 识别（与执行页的规则选择同一口径）。
+ * 把调用方给的规则名解析为导出时传给 aster-api 的名称；不是该版本的规则时返回 null。
+ *
+ * 规则声明按 Rule / 规则 / Regel 识别（与执行页的规则选择同一口径）。aster-api 按名称解析之后的 Core IR
+ * 查找规则（ADR 0051），经版本词汇本地化的规则须传规范名：给的是源码写法时换成规范名，给的是规范名时原样返回。
  */
-export function policyRuleNames(source: string, vocabulary?: Record<string, unknown>): Set<string> {
+export function resolvePolicyRuleName(
+  source: string,
+  vocabulary: Record<string, unknown> | undefined,
+  name: string,
+): string | null {
   const canonicals = functionCanonicals(vocabulary);
-  const names = new Set<string>();
-  for (const { name } of extractRuleSymbols(source)) {
-    names.add(name);
-    const canonical = canonicals.get(name);
-    if (canonical) names.add(canonical);
+  for (const rule of extractRuleSymbols(source)) {
+    const canonical = canonicals.get(rule.name) ?? rule.name;
+    if (name === rule.name || name === canonical) return canonical;
   }
-  return names;
+  return null;
 }

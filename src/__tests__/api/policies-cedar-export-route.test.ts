@@ -275,7 +275,9 @@ describe('POST /api/policies/[id]/export/cedar', () => {
       };
       expect((await POST(reqWith({ functionName: 'allowRead' }), ctx('p1'))).status).toBe(200);
       expect(exportCedar.mock.calls[0][0]).toMatchObject({ functionName: 'allowRead' });
+      // 源码写法转发前换成规范名（aster-api 按名称解析之后的 Core IR 查找规则）
       expect((await POST(reqWith({ functionName: 'leseErlaubt' }), ctx('p1'))).status).toBe(200);
+      expect(exportCedar.mock.calls[1][0]).toMatchObject({ functionName: 'allowRead' });
       expect((await POST(reqWith({ functionName: 'allowWrite' }), ctx('p1'))).status).toBe(400);
     });
   });
