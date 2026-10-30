@@ -6,7 +6,6 @@ import { loadPolicyForAction } from '@/lib/policy-access';
 import { invalidatePolicyCache } from '@/lib/cache';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
 import { assertCompilable, createVersion, PolicyCompileError } from '@/services/policy/version-manager';
-import { invalidatePolicyCache } from '@/lib/cache';
 import { loadSaveVocabulary, makeCompileValidator } from '@/lib/policy-compile-validator';
 import { compileGateErrorResponse, vocabularyScopeInvalidResponse } from '@/lib/policy-compile-response';
 
