@@ -74,10 +74,12 @@ export async function POST(req: Request) {
       );
     }
 
+    // 未识别的异常只写日志（上方 console.error），不回传原始消息（#662）。
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Internal server error',
+        error: 'Internal server error',
+        code: 'internal_error',
       },
       { status: 500 }
     );

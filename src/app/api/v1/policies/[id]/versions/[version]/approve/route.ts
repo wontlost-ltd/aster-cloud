@@ -13,6 +13,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
+import { VersionStateError } from '@/services/policy/version-state-error';
+import { internalErrorResponse } from '@/lib/api/version-action-error';
 import { and, eq, sql } from 'drizzle-orm';
 
 import { db, users, teams, teamMembers, policies, policyVersions } from '@/lib/prisma';
@@ -78,8 +80,11 @@ export async function POST(
     if (error instanceof VocabularyFreezeError) {
       return NextResponse.json({ error: 'vocabulary_freeze_failed', message: error.message }, { status: 503 });
     }
-    const message = error instanceof Error ? error.message : 'Could not approve version.';
-    return NextResponse.json({ error: 'approve_failed', message }, { status: 400 });
+    // 版本不在待审批状态：前端按 error 判别审批失败种类，这里保持 approve_failed。
+    if (error instanceof VersionStateError) {
+      return NextResponse.json({ error: 'approve_failed', code: error.code, message: error.message }, { status: 400 });
+    }
+    return internalErrorResponse('Approve', error, 'Could not approve version.');
   }
 }
 

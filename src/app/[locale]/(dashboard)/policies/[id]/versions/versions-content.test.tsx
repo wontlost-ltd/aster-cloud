@@ -160,4 +160,40 @@ describe('VersionsContent 审批操作', () => {
     await waitFor(() => expect(h.toastError).toHaveBeenCalledWith('Service unavailable'));
     expect(screen.getByRole('textbox')).toHaveValue('r4 note');
   });
+
+  /* #662 审查 High-1：兜底 500 返回结构化 envelope（error 是对象），toast 必须收到字符串，不能把对象交给 sonner 渲染 */
+  const approveWith = async (body: unknown, status: number) => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(body), { status }));
+    renderAs('admin1', { policyOwnerId: 'author', policyTeamId: 'team1', reviewerTeamRole: 'admin' });
+    fireEvent.click(screen.getByRole('button', { name: 'policies.versions.actions.approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'policies.versions.approveDialog.confirm' }));
+    await waitFor(() => expect(h.toastError).toHaveBeenCalledTimes(1));
+    return h.toastError.mock.calls[0]![0] as unknown;
+  };
+
+  it('500 envelope（无顶层 message）：toast 显示 error.message 字符串', async () => {
+    const shown = await approveWith(
+      { error: { code: 'internal_error', message: 'Could not approve version.', requestId: 'r1' } },
+      500,
+    );
+    expect(shown).toBe('Could not approve version.');
+  });
+
+  it('500 envelope 带顶层 message：优先显示顶层 message', async () => {
+    const shown = await approveWith(
+      { error: { code: 'internal_error', message: 'inner', requestId: 'r1' }, message: 'Could not approve version.' },
+      500,
+    );
+    expect(shown).toBe('Could not approve version.');
+  });
+
+  it('envelope 里的错误码同样识别为本地化提示', async () => {
+    const shown = await approveWith({ error: { code: 'segregation_of_duties', message: 'x', requestId: 'r1' } }, 403);
+    expect(shown).toBe('policies.versions.sox.selfApprovalNotAllowed');
+  });
+
+  it('响应体为空或无可读文案：显示通用文案', async () => {
+    const shown = await approveWith({ error: { code: 'internal_error' } }, 500);
+    expect(shown).toBe('common.somethingWrong');
+  });
 });

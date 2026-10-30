@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
+import { internalErrorResponse } from '@/lib/api/version-action-error';
 import { getSecurityEvents } from '@/services/security/security-event-service';
 import type { SecurityEventType, EventSeverity } from '@/lib/prisma';
 
@@ -63,10 +64,6 @@ export async function GET(request: NextRequest) {
       pageSize: limit,
     });
   } catch (error) {
-    console.error('[Security Events API] Query failed:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Could not load security events.' },
-      { status: 500 }
-    );
+    return internalErrorResponse('Security Events API', error, 'Could not load security events.');
   }
 }

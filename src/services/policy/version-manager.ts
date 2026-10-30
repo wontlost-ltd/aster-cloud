@@ -39,6 +39,7 @@ import { declaresProfile } from '@/lib/policy-profile-declaration';
 import { RESOLVER_VERSION } from '@aster-cloud/aster-lang-ts/browser';
 import type { DomainVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
 import { getTeamMemberRole } from '@/lib/team-permissions';
+import { VersionStateError } from './version-state-error';
 import {
   canReviewPolicyVersions,
   decideVersionApproval,
@@ -48,6 +49,8 @@ import {
 
 type PolicyVersion = InferSelectModel<typeof policyVersions>;
 type PolicyVersionStatus = PolicyVersion['status'];
+
+export { VersionStateError };
 
 /**
  * 调用方不是该策略的所有者（或策略不存在/已软删）。路由 catch 后返回 404——
@@ -604,7 +607,7 @@ export async function submitForApproval(params: {
   });
 
   if (!targetVersion) {
-    throw new Error(`版本 v${version} 不存在或状态不允许提交审批`);
+    throw new VersionStateError('version_not_submittable', `版本 v${version} 不存在或状态不允许提交审批`);
   }
 
   await db.update(policyVersions)
@@ -626,8 +629,8 @@ export async function submitForApproval(params: {
 /**
  * 审批版本
  */
-function notPendingError(version: number): Error {
-  return new Error(`版本 v${version} 不存在或不在待审批状态`);
+function notPendingError(version: number): VersionStateError {
+  return new VersionStateError('version_not_pending', `版本 v${version} 不存在或不在待审批状态`);
 }
 
 /** 在审批事务内 FOR UPDATE 锁住版本行，返回它是否仍处于待审批状态。 */
@@ -777,7 +780,7 @@ export async function setDefaultVersion(params: {
   });
 
   if (!targetVersion) {
-    throw new Error(`版本 v${version} 不存在或未批准，无法设为默认`);
+    throw new VersionStateError('version_not_approved', `版本 v${version} 不存在或未批准，无法设为默认`);
   }
 
   // 原子操作：清除旧默认 + 设置新默认
@@ -828,12 +831,12 @@ export async function deprecateVersion(params: {
   });
 
   if (!targetVersion) {
-    throw new Error(`版本 v${version} 不存在或未批准，无法废弃`);
+    throw new VersionStateError('version_not_approved', `版本 v${version} 不存在或未批准，无法废弃`);
   }
 
   // 如果是默认版本，不允许废弃
   if (targetVersion.isDefault) {
-    throw new Error(`版本 v${version} 是默认版本，请先设置其他版本为默认`);
+    throw new VersionStateError('default_version_locked', `版本 v${version} 是默认版本，请先设置其他版本为默认`);
   }
 
   await db.update(policyVersions)
@@ -878,12 +881,12 @@ export async function archiveVersion(params: {
   });
 
   if (!targetVersion) {
-    throw new Error(`版本 v${version} 不存在或状态不允许归档`);
+    throw new VersionStateError('version_not_archivable', `版本 v${version} 不存在或状态不允许归档`);
   }
 
   // 如果是默认版本，不允许归档
   if (targetVersion.isDefault) {
-    throw new Error(`版本 v${version} 是默认版本，请先设置其他版本为默认`);
+    throw new VersionStateError('default_version_locked', `版本 v${version} 是默认版本，请先设置其他版本为默认`);
   }
 
   await db.update(policyVersions)

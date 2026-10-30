@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
+import { internalErrorResponse } from '@/lib/api/version-action-error';
 
 import {
   PolicyAccessDeniedError,
@@ -44,9 +45,6 @@ export async function GET(
     if (error instanceof PolicyAccessDeniedError) {
       return NextResponse.json({ error: 'Version not found.', code: 'version_not_found' }, { status: 404 });
     }
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Could not load version details.' },
-      { status: 500 }
-    );
+    return internalErrorResponse('VersionDetail', error, 'Could not load version details.');
   }
 }

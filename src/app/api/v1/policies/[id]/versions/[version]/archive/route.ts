@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
+import { versionActionErrorResponse } from '@/lib/api/version-action-error';
 
 import {
   PolicyAccessDeniedError,
@@ -54,10 +55,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (error instanceof PolicyAccessDeniedError) {
       return NextResponse.json({ error: 'Policy not found.', code: 'policy_not_found' }, { status: 404 });
     }
-    console.error('[Archive] Error:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Could not archive version.' },
-      { status: 400 }
-    );
+    return versionActionErrorResponse('Archive', error, 'Could not archive version.');
   }
 }

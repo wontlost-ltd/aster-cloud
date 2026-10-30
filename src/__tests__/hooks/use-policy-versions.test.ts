@@ -72,6 +72,23 @@ describe('usePolicyVersions 操作失败', () => {
     expect(result.current.actionError).toBeNull();
   });
 
+  // #662：兜底 500 是结构化 envelope（error 为对象），返回的 message 必须是字符串
+  it('归档失败返回 500 envelope：message 取 error.message 字符串', async () => {
+    const { result } = await mountLoaded();
+    fetchMock.mockResolvedValueOnce(json({ error: { code: 'internal_error', message: 'Could not archive version.', requestId: 'r1' } }, 500));
+    let archived: Awaited<ReturnType<typeof result.current.archive>> | undefined;
+    await act(async () => { archived = await result.current.archive(2); });
+    expect(archived).toEqual({ ok: false, message: 'Could not archive version.' });
+  });
+
+  it('批准失败返回 envelope 形式的 segregation_of_duties：错误码仍被识别', async () => {
+    const { result } = await mountLoaded();
+    fetchMock.mockResolvedValueOnce(json({ error: { code: 'segregation_of_duties', message: 'x', requestId: 'r1' } }, 403));
+    let approved: Awaited<ReturnType<typeof result.current.approve>> | undefined;
+    await act(async () => { approved = await result.current.approve(2); });
+    expect(approved).toMatchObject({ ok: false, errorCode: 'segregation_of_duties', message: 'x' });
+  });
+
   it('批准失败的 message 同样优先取服务端 message', async () => {
     const { result } = await mountLoaded();
     fetchMock.mockResolvedValueOnce(json({ error: 'conflict', message: 'Approval conflict' }, 409));
