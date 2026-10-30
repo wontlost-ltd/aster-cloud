@@ -38,6 +38,8 @@ const KEYS = [
   'policies.cedarExport.noExecutableVersion', 'policies.detail.versionHistory',
   // #661 多规则选择
   'policies.cedarExport.chooseRule', 'policies.cedarExport.exportRule',
+  // 第 6 轮 LSP 断开提示
+  'diagnostics.lspReconnecting', 'diagnostics.lspDisconnected',
   // F32 回收站 / 确认框
   'policies.trash.confirmPermanentDeleteNamed', 'common.cancel', 'common.confirm', 'common.loading',
   // F25 AHA 卡片

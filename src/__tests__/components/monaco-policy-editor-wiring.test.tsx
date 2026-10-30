@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 
 /**
  * 编辑器**接线层**的测试 —— 守的是「组件真的把对的东西传下去了」。
@@ -99,10 +99,11 @@ vi.mock('@monaco-editor/react', () => ({
 
 // ── useAsterLSP 探针：捕获组件传下去的入参 ────────────────────────────
 const lspCalls: Array<Record<string, unknown>> = [];
+const lspState = vi.hoisted(() => ({ status: 'idle' as string }));
 vi.mock('@/hooks/useAsterLSP', () => ({
   useAsterLSP: (opts: Record<string, unknown>) => {
     lspCalls.push(opts);
-    return { connected: false, connecting: false, error: null,
+    return { connected: lspState.status === 'connected', status: lspState.status, connecting: false, error: null,
       connect: vi.fn(), disconnect: vi.fn(), reconnect: vi.fn() };
   },
 }));
@@ -155,6 +156,7 @@ async function completionsAt(line = 'Mod') {
 beforeEach(() => {
   registeredProviders.length = 0;
   lspCalls.length = 0;
+  lspState.status = 'idle';
 });
 
 describe('编辑器接线：关键词补全', () => {
@@ -281,5 +283,40 @@ describe('编辑器接线：LSP 参数下发', () => {
     expect(lspCalls.at(-1)!.autoConnect).toBe(false);
     delete process.env.NEXT_PUBLIC_LSP_HOST;
     delete process.env.NEXT_PUBLIC_LSP_TOKEN;
+  });
+});
+
+// 生产复测第 6 轮：LSP 断开后补全只剩单词建议，用户无从得知。状态栏给出可见提示。
+describe('编辑器接线：LSP 断开 / 重连提示', () => {
+  const withLsp = (status: string, props: Record<string, unknown> = {}) => {
+    process.env.NEXT_PUBLIC_LSP_HOST = 'lsp.example.test';
+    process.env.NEXT_PUBLIC_LSP_TOKEN = 'tok';
+    lspState.status = status;
+    render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" {...props} />);
+    delete process.env.NEXT_PUBLIC_LSP_HOST;
+    delete process.env.NEXT_PUBLIC_LSP_TOKEN;
+  };
+
+  it('★重连中：状态栏显示「LSP 已断开，正在重连」', async () => {
+    withLsp('reconnecting');
+    expect(await screen.findByText('lspReconnecting')).toBeDefined();
+  });
+
+  it('★已断开（页面隐藏 / 离线后暂停）：状态栏显示「LSP 已断开」', async () => {
+    withLsp('disconnected');
+    expect(await screen.findByText('lspDisconnected')).toBeDefined();
+  });
+
+  it.each(['connected', 'connecting', 'idle'])('%s：不显示断开提示', async (status) => {
+    withLsp(status);
+    await waitFor(() => expect(lspCalls.length).toBeGreaterThan(0));
+    expect(screen.queryByText('lspReconnecting')).toBeNull();
+    expect(screen.queryByText('lspDisconnected')).toBeNull();
+  });
+
+  it('未启用 LSP（readOnly）时即使 hook 报断开也不提示', async () => {
+    withLsp('disconnected', { readOnly: true });
+    await waitFor(() => expect(lspCalls.length).toBeGreaterThan(0));
+    expect(screen.queryByText('lspDisconnected')).toBeNull();
   });
 });
