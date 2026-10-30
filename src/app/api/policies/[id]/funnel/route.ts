@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db, executions } from '@/lib/prisma';
 import { and, eq, gte, lte, desc, count } from 'drizzle-orm';
-import { executionExecutorScope, loadPolicyForAction } from '@/lib/policy-access';
+import { executionAggregateScope, loadPolicyForAction } from '@/lib/policy-access';
 import {
   aggregateConditionFunnel,
   type TraceSkeletonLike,
@@ -46,7 +46,8 @@ export async function GET(
     // 非成员 / 他人个人策略 404：不泄露「该 id 存在但不属于你」。
     return errorEnvelope({ code: 'NOT_FOUND', message: 'Policy not found.', status: 404 });
   }
-  const executorId = executionExecutorScope(access.policy);
+  // 漏斗只输出计数：团队策略计入全部执行，个人策略只计所有者本人的执行
+  const scope = executionAggregateScope(access.policy);
 
   const limit = Math.min(
     Math.max(Number(url.searchParams.get('limit')) || DEFAULT_SAMPLE, 1),
@@ -83,7 +84,7 @@ export async function GET(
   }
 
   // 团队策略统计全部成员的执行（#673），个人策略只统计所有者本人的执行
-  const conds = [eq(executions.policyId, id), ...(executorId ? [eq(executions.userId, executorId)] : [])];
+  const conds = [eq(executions.policyId, id), ...(scope.kind === 'user' ? [eq(executions.userId, scope.userId)] : [])];
   if (from) conds.push(gte(executions.createdAt, new Date(from)));
   if (to) conds.push(lte(executions.createdAt, new Date(to)));
   // 按具体版本筛：改策略后想只看新版本的走向

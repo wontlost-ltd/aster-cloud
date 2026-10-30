@@ -13,7 +13,6 @@ import { vi } from 'vitest';
 import { NextResponse } from 'next/server';
 import {
   decidePolicyAccess,
-  policyCapabilities,
   POLICY_NOT_FOUND,
   type PolicyAccessDecision,
   type PolicyAccessSubject,
@@ -55,8 +54,6 @@ export function policyAccessModule() {
   return {
     authorizePolicyAction: vi.fn(async (actor: Actor, policy: PolicyAccessSubject, action: PolicyAction) =>
       decide(actor, policy, action)),
-    loadPolicyCapabilities: vi.fn(async (actor: Actor, policy: PolicyAccessSubject) =>
-      policyCapabilities({ actorId: actor.userId, policy, teamRole: policy.teamId ? policyAccessState.teamRole : null })),
     loadPolicyForAction: vi.fn(async (policyId: string, actor: Actor, action: PolicyAction, opts: { deleted?: boolean } = {}) => {
       const policy = policyAccessState.loader ? (await policyAccessState.loader(policyId)) ?? null : policyAccessState.policy;
       const deleted = Boolean(policy?.deletedAt);
@@ -68,7 +65,12 @@ export function policyAccessModule() {
     }),
     policyAccessDeniedResponse: (decision: Extract<PolicyAccessDecision, { allowed: false }>, init: { headers?: HeadersInit } = {}) =>
       NextResponse.json({ error: decision.error, code: decision.code }, { status: decision.status, headers: init.headers }),
-    executionExecutorScope: (policy: PolicyAccessSubject) => (policy.teamId ? null : policy.userId),
+    executionDetailScope: (policy: PolicyAccessSubject) =>
+      (policy.teamId ? { kind: 'teamMembers', teamId: policy.teamId } : { kind: 'user', userId: policy.userId }),
+    executionAggregateScope: (policy: PolicyAccessSubject) =>
+      (policy.teamId ? { kind: 'all' } : { kind: 'user', userId: policy.userId }),
+    teamMemberIds: vi.fn((teamId: string) => ({ __teamMembers: teamId })),
+    authorizeGroupPlacement: vi.fn(async () => true),
     teamsAllowing: vi.fn(() => ({ __teamsAllowing: true })),
     isPersonalPolicy: vi.fn(() => ({ __personal: true })),
     policiesVisibleTo: vi.fn(() => ({ __visible: true })),

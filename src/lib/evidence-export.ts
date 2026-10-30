@@ -6,7 +6,7 @@
 import { db, executions, policies } from '@/lib/prisma';
 import { and, eq, gte, lte, asc, isNull, isNotNull, inArray, or, sql } from 'drizzle-orm';
 import { policyTenantId } from '@/lib/policy-tenant';
-import { isPersonalPolicy, teamsAllowing } from '@/lib/policy-access';
+import { isPersonalPolicy, teamMemberIds, teamsAllowing } from '@/lib/policy-access';
 import { EMPTY_TALLY, type EvidenceRow } from '@/services/evidence/bundle';
 import type { DecisionTally, EvidenceAgent, EvidenceDecision, EvidencePreview } from '@/services/evidence/types';
 
@@ -38,28 +38,37 @@ export interface EvidenceQuery {
  * 统一 WHERE（count/preview/query 三处共用，保证语义一致——Codex 审查：否则预览计数会高于实际
  * 导出、已删策略行还会误触发 413）。
  *
- * 可见范围（#673）：个人策略只含所有者本人的执行；团队策略含全部成员的执行，团队按请求人**当前**
- * 成员关系与查看权限收窄（离队即不可见）。
+ * 可见范围（#673，ADR 0016 §3）：个人策略只含所有者本人的执行；团队策略只含执行人为该团队**现任**成员的
+ * 执行（团队外用户经公开 / 分享留下的原始记录属于执行人，不进证据），团队按请求人当前成员关系与查看权限收窄。
+ * 每个可见团队一个分支：策略属于该团队且执行人是该团队成员——不能把「A 队成员执行了 B 队公开策略」算进 B 队。
  *
  * 用**非相关**子查询排除已删策略与不可见策略：policyId IN (SELECT id FROM Policy WHERE … AND deletedAt
  * IS NULL)。刻意不用相关 EXISTS——drizzle 的 findMany 把主表 alias 成 "executions" 而 db.select 用
  * 原表名 "Execution"，相关子查询里 executions.policyId 会渲染成错误的表引用（真库实测 42P01）。
  * 非相关子查询自包含，与外层 alias 无关，count/preview/query 三处渲染都正确。
  */
-function buildConditions(q: EvidenceQuery) {
+async function buildConditions(q: EvidenceQuery) {
   const livePersonalIds = db
     .select({ id: policies.id })
     .from(policies)
     .where(and(eq(policies.userId, q.userId), isPersonalPolicy(), isNull(policies.deletedAt)));
-  const liveTeamIds = db
-    .select({ id: policies.id })
-    .from(policies)
-    .where(and(inArray(policies.teamId, teamsAllowing(q.userId, 'view')), isNull(policies.deletedAt)));
+  const teamIds = (await teamsAllowing(q.userId, 'view'))
+    .map((r) => r.teamId)
+    .filter((id): id is string => Boolean(id));
+  const teamBranches = teamIds.map((teamId) =>
+    and(
+      inArray(
+        executions.policyId,
+        db.select({ id: policies.id }).from(policies).where(and(eq(policies.teamId, teamId), isNull(policies.deletedAt))),
+      ),
+      inArray(executions.userId, teamMemberIds(teamId)),
+    )!,
+  );
 
   const conditions = [
     or(
       and(eq(executions.userId, q.userId), inArray(executions.policyId, livePersonalIds)),
-      inArray(executions.policyId, liveTeamIds),
+      ...teamBranches,
     )!,
   ];
   if (q.policyId) conditions.push(eq(executions.policyId, q.policyId));
@@ -75,7 +84,7 @@ function buildConditions(q: EvidenceQuery) {
  * 超过 EVIDENCE_EXPORT_ROW_LIMIT 抛 EvidenceTooLargeError（调用方转 413）。
  */
 export async function queryEvidenceExecutions(q: EvidenceQuery): Promise<EvidenceRow[]> {
-  const whereClause = buildConditions(q);
+  const whereClause = await buildConditions(q);
 
   // 先 count 守卫（避免真拉回超大结果集）。
   const count = await countEvidenceExecutions(q);
@@ -181,7 +190,7 @@ export async function countEvidenceExecutions(q: EvidenceQuery): Promise<number>
   const r = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(executions)
-    .where(buildConditions(q));
+    .where(await buildConditions(q));
   return r[0]?.count ?? 0;
 }
 
@@ -199,7 +208,7 @@ export async function getEvidencePreview(q: EvidenceQuery): Promise<EvidencePrev
       count: sql<number>`count(*)::int`,
     })
     .from(executions)
-    .where(buildConditions(q))
+    .where(await buildConditions(q))
     .groupBy(executions.decision);
 
   const tally: DecisionTally = { ...EMPTY_TALLY };

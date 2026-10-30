@@ -100,18 +100,18 @@ describe('GET /api/policies/[id]/logs — 过滤参数', () => {
 describe('GET /api/policies/[id]/logs — stats / recent 模式', () => {
   it('★days 非数字回落 30，过大截到 365', async () => {
     expect((await call('?mode=stats&days=abc')).status).toBe(200);
-    expect(mockStats).toHaveBeenLastCalledWith('u1', 'p1', 30);
+    expect(mockStats).toHaveBeenLastCalledWith({ kind: 'user', userId: 'u1' }, 'p1', 30);
     await call('?mode=stats&days=99999');
-    expect(mockStats).toHaveBeenLastCalledWith('u1', 'p1', 365);
+    expect(mockStats).toHaveBeenLastCalledWith({ kind: 'user', userId: 'u1' }, 'p1', 365);
     await call('?mode=stats&days=7');
-    expect(mockStats).toHaveBeenLastCalledWith('u1', 'p1', 7);
+    expect(mockStats).toHaveBeenLastCalledWith({ kind: 'user', userId: 'u1' }, 'p1', 7);
   });
 
   it('★recent 的 limit 非数字回落 10，过大截到 100', async () => {
     await call('?mode=recent&limit=abc');
-    expect(mockRecent).toHaveBeenLastCalledWith('p1', 'u1', 10);
+    expect(mockRecent).toHaveBeenLastCalledWith('p1', { kind: 'user', userId: 'u1' }, 10);
     await call('?mode=recent&limit=100000');
-    expect(mockRecent).toHaveBeenLastCalledWith('p1', 'u1', 100);
+    expect(mockRecent).toHaveBeenLastCalledWith('p1', { kind: 'user', userId: 'u1' }, 100);
   });
 });
 
@@ -119,20 +119,20 @@ describe('GET /api/policies/[id]/logs — stats / recent 模式', () => {
 describe('GET /api/policies/[id]/logs — 授权与执行人范围', () => {
   const teamPolicy = { id: 'p1', name: 'Calc', userId: 'creator', teamId: 't1' };
 
-  it('团队策略：非创建者的成员可看，日志不按执行人过滤（看全部成员的执行）', async () => {
+  it('团队策略：非创建者的成员可看；明细只含团队现任成员的执行，统计计入全部执行（审查 M1）', async () => {
     policyAccessState.policy = teamPolicy;
     policyAccessState.teamRole = 'viewer';
     expect((await call('')).status).toBe(200);
-    expect(queryArgs()).toMatchObject({ executorId: null, policyId: 'p1' });
+    expect(queryArgs()).toMatchObject({ executors: { kind: 'teamMembers', teamId: 't1' }, policyId: 'p1' });
     await call('?mode=stats');
-    expect(mockStats).toHaveBeenLastCalledWith(null, 'p1', 30);
+    expect(mockStats).toHaveBeenLastCalledWith({ kind: 'all' }, 'p1', 30);
     await call('?mode=recent');
-    expect(mockRecent).toHaveBeenLastCalledWith('p1', null, 10);
+    expect(mockRecent).toHaveBeenLastCalledWith('p1', { kind: 'teamMembers', teamId: 't1' }, 10);
   });
 
   it('个人策略：只看所有者本人的执行', async () => {
     await call('');
-    expect(queryArgs()).toMatchObject({ executorId: 'u1' });
+    expect(queryArgs()).toMatchObject({ executors: { kind: 'user', userId: 'u1' } });
   });
 
   it('团队外用户 / 已离队的创建者 → 404，不查日志', async () => {

@@ -1,6 +1,6 @@
 import { getSession } from '@/lib/auth';
 import { redirect, notFound } from 'next/navigation';
-import { executionExecutorScope, loadPolicyForAction } from '@/lib/policy-access';
+import { executionAggregateScope, executionDetailScope, loadPolicyForAction } from '@/lib/policy-access';
 import { getTranslations } from 'next-intl/server';
 import { queryExecutionLogs, getExecutionStats } from '@/lib/policy-execution-log';
 import { LogsContent } from './logs-content';
@@ -13,16 +13,15 @@ async function getInitialLogsData(userId: string, policyId: string) {
   // 授权与日志 API 同一口径：团队策略任一当前成员可看，个人策略只认所有者（#669 #670）
   const access = await loadPolicyForAction(policyId, { userId }, 'view');
   if (!access.ok) return { policy: null, logsResult: null, stats: null };
-  // 团队策略看全部成员的执行，个人策略只看所有者本人的执行（#673）
-  const executorId = executionExecutorScope(access.policy);
+  // 明细只含团队现任成员的执行，统计计入全部执行；个人策略只看所有者本人的执行（#673，ADR 0016 §3）
   const [logsResult, stats] = await Promise.all([
     queryExecutionLogs({
-      executorId,
+      executors: executionDetailScope(access.policy),
       policyId,
       page: 1,
       pageSize: 20,
     }),
-    getExecutionStats(executorId, policyId, 30),
+    getExecutionStats(executionAggregateScope(access.policy), policyId, 30),
   ]);
 
   return { policy: { id: access.policy.id, name: access.policy.name }, logsResult, stats };

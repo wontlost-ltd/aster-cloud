@@ -12,14 +12,12 @@ import { bypassQueryCache } from '@/db/fresh-read';
 import { getTeamMemberRole, rolesWithPermission, type TeamRole } from '@/lib/team-permissions';
 import {
   decidePolicyAccess,
-  policyCapabilities,
   policyTeamIdOf,
   POLICY_ACTION_PERMISSION,
   POLICY_NOT_FOUND,
   type PolicyAccessDecision,
   type PolicyAccessSubject,
   type PolicyAction,
-  type PolicyCapabilities,
 } from '@/lib/policy-access-matrix';
 
 export {
@@ -51,12 +49,6 @@ export async function authorizePolicyAction(
 ): Promise<PolicyAccessDecision> {
   const teamRole = await teamRoleFor(actor, policy);
   return decidePolicyAccess({ action, actorId: actor.userId, policy, teamRole, keyTeamId: actor.keyTeamId });
-}
-
-/** 一次查角色，算出全部动作的可用性（页面渲染按钮用）。 */
-export async function loadPolicyCapabilities(actor: PolicyActor, policy: PolicyAccessSubject): Promise<PolicyCapabilities> {
-  const teamRole = await teamRoleFor(actor, policy);
-  return policyCapabilities({ actorId: actor.userId, policy, teamRole, keyTeamId: actor.keyTeamId });
 }
 
 export type LoadedPolicy =
@@ -136,9 +128,47 @@ export function ownPoliciesVisibleTo(userId: string): SQL {
 }
 
 /**
- * 日志、统计、漏斗、证据可见的执行人范围：团队策略的执行属于团队，看全部执行（null，#673）；
- * 个人策略只看所有者本人的执行（公开 / 分享给他人执行的记录属于执行人自己）。
+ * 执行记录的执行人范围。执行记录（含原始 input/output）属于执行人（ADR 0016 §3）：
+ *   - user：个人策略只看所有者本人的执行（公开 / 分享给他人执行的记录属于执行人自己）；
+ *   - teamMembers：团队策略的明细（日志列表、最近执行、证据导出）只含执行人为团队**现任**成员的执行，
+ *     经公开 / 分享由团队外用户留下的记录不进入明细；
+ *   - all：团队策略的聚合（统计、条件漏斗）计入该策略的全部执行，只输出计数，不暴露原始记录。
  */
-export function executionExecutorScope(policy: PolicyAccessSubject): string | null {
-  return policyTeamIdOf(policy) ? null : policy.userId;
+export type ExecutionExecutors =
+  | { kind: 'user'; userId: string }
+  | { kind: 'teamMembers'; teamId: string }
+  | { kind: 'all' };
+
+/** 明细（日志列表、最近执行、证据）可见的执行人范围。 */
+export function executionDetailScope(policy: PolicyAccessSubject): ExecutionExecutors {
+  const teamId = policyTeamIdOf(policy);
+  return teamId ? { kind: 'teamMembers', teamId } : { kind: 'user', userId: policy.userId };
+}
+
+/** 聚合（统计、条件漏斗）计入的执行人范围。 */
+export function executionAggregateScope(policy: PolicyAccessSubject): ExecutionExecutors {
+  return policyTeamIdOf(policy) ? { kind: 'all' } : { kind: 'user', userId: policy.userId };
+}
+
+/** 团队现任成员的 userId 子查询（绕过查询缓存，离队即刻生效）。 */
+export function teamMemberIds(teamId: string) {
+  return db
+    .select({ userId: teamMembers.userId })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.teamId, teamId), bypassQueryCache()));
+}
+
+/**
+ * 能否把策略放进某分组（ADR 0016）：要求对策略有 update 权限；他人创建的团队策略只能放进同一团队的分组，
+ * 不能挪进调用者的个人私有分组（否则策略的组织结构被个人分组「劫持」）。
+ */
+export async function authorizeGroupPlacement(
+  actor: PolicyActor,
+  policy: PolicyAccessSubject,
+  group: { teamId: string | null },
+): Promise<boolean> {
+  const decision = await authorizePolicyAction(actor, policy, 'update');
+  if (!decision.allowed) return false;
+  if (policy.userId === actor.userId) return true;
+  return Boolean(group.teamId) && policyTeamIdOf(policy) === group.teamId;
 }
