@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeEmail, isSameMailbox } from '@/lib/email-normalize';
+import { normalizeEmail, isSameMailbox, maskEmail } from '@/lib/email-normalize';
 
 describe('normalizeEmail', () => {
   describe('gmail / googlemail', () => {
@@ -93,5 +93,20 @@ describe('isSameMailbox（团队邀请按同一邮箱匹配，#682）', () => {
     expect(isSameMailbox('', '')).toBe(false);
     expect(isSameMailbox(null, 'a@b.c')).toBe(false);
     expect(isSameMailbox('a@b.c', undefined)).toBe(false);
+  });
+});
+
+describe('maskEmail（注册 409 的已有账号提示，#682）', () => {
+  it('+别名：保留首字符、后缀前 3 个字符与域名', () => {
+    expect(maskEmail('ryan.pang+adr0051-retest@wontlost.com')).toBe('r***+adr…@wontlost.com');
+  });
+  it('短后缀不加省略号', () => {
+    expect(maskEmail('ab+x@ex.com')).toBe('a***+x@ex.com');
+  });
+  it('无 +后缀', () => {
+    expect(maskEmail('ryan.pang@wontlost.com')).toBe('r***@wontlost.com');
+  });
+  it('非法输入不抛错', () => {
+    expect(maskEmail('not-an-email')).toBe('***');
   });
 });

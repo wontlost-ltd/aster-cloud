@@ -404,7 +404,7 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
                 <p className="text-sm text-fg-muted">
                   {t.noAccount}{' '}
                   <Link
-                    href="/signup"
+                    href={explicitCallback ? `/signup?callbackUrl=${encodeURIComponent(explicitCallback)}` : '/signup'}
                     className="font-medium text-primary hover:text-primary-hover"
                   >
                     {t.startTrial}

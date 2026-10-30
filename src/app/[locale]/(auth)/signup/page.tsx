@@ -15,13 +15,15 @@ import { SignupContent } from './signup-content';
 
 type Props = {
   params: Promise<{ locale: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export default async function SignupPage({ params }: Props) {
+export default async function SignupPage({ params, searchParams }: Props) {
   if (!CAN_SIGNUP) {
     notFound();
   }
   const { locale } = await params;
   setRequestLocale(locale);
-  return <SignupContent />;
+  const callbackUrl = (await searchParams)?.callbackUrl;
+  return <SignupContent returnTo={typeof callbackUrl === 'string' ? callbackUrl : null} />;
 }

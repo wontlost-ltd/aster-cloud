@@ -68,7 +68,10 @@ vi.mock('@/lib/prisma', () => ({
 }));
 
 vi.mock('@/auth', () => ({ hashPassword: mockHashPassword }));
-vi.mock('@/lib/email-normalize', () => ({ normalizeEmail: mockNormalizeEmail }));
+vi.mock('@/lib/email-normalize', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/email-normalize')>()),
+  normalizeEmail: mockNormalizeEmail,
+}));
 vi.mock('@/lib/signup-rate-limit', () => ({
   hashIp: (ip: string) => `h(${ip})`,
   checkSignupRateLimit: mockSignupHardLimit,
@@ -198,6 +201,36 @@ describe('signup — 建号、防枚举、不绕风控', () => {
     expect(body.code).toBe('email_already_registered');
     expect(body.alias).toBe(true);
     expect(mockCreateUser).not.toHaveBeenCalled();
+  });
+
+  it('★已有账号是同一邮箱的另一个 +别名：409 附已有账号地址的掩码提示（#682 别名对别名）', async () => {
+    mockUserFindFirst
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ id: 'retest', email: 'ryan.pang+adr0051-retest@wontlost.com' });
+
+    const { POST } = await import('@/app/api/auth/signup/route');
+    const res = await POST(post({ email: 'ryan.pang+adr0051-member1@wontlost.com', password: 'longenough1' }) as never);
+
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body).toMatchObject({ code: 'email_already_registered', alias: true, existingAccountHint: 'r***+adr…@wontlost.com' });
+    // 掩码不泄露完整地址
+    expect(JSON.stringify(body)).not.toContain('adr0051-retest');
+  });
+
+  it('★并发注册撞唯一索引（23505）→ 409 email_already_registered，而不是 500', async () => {
+    mockCreateUser.mockRejectedValue(Object.assign(new Error('wrapped'), { cause: { code: '23505' } }));
+    const { POST } = await import('@/app/api/auth/signup/route');
+    const res = await POST(post(GOOD) as never);
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('email_already_registered');
+    expect(mockHashPassword).not.toHaveBeenCalled();
+  });
+
+  it('createUser 的其他错误照常抛出（不被吞成 409）', async () => {
+    mockCreateUser.mockRejectedValue(new Error('db down'));
+    const { POST } = await import('@/app/api/auth/signup/route');
+    await expect(POST(post(GOOD) as never)).rejects.toThrow('db down');
   });
 
   it('★on-prem（CAN_SIGNUP=false）关闭 API，不只是关页面', async () => {

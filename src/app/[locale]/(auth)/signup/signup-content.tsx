@@ -36,7 +36,7 @@ import {
 import { extractErrorMessage } from '@/lib/api/error-envelope';
 import { getSignupPlanSummary } from '@/lib/signup-plan-summary';
 
-export function SignupContent() {
+export function SignupContent({ returnTo = null }: { returnTo?: string | null } = {}) {
   const t = useTranslations('auth.signup');
   const locale = useLocale();
   const [isLoading, setIsLoading] = useState(false);
@@ -46,6 +46,10 @@ export function SignupContent() {
   const [emailDone, setEmailDone] = useState(false);
   // 邮箱已注册（409 email_already_registered）：错误下方给出登录 / 重置密码入口
   const [alreadyRegistered, setAlreadyRegistered] = useState(false);
+  // 从邀请等深链经登录页来注册时带着 callbackUrl：已注册时的「登录」入口原样带回，登录后回到原页面。
+  // 只接受站内相对路径，防开放重定向。
+  const safeReturnTo = returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : null;
+  const loginHref = safeReturnTo ? `/login?callbackUrl=${encodeURIComponent(safeReturnTo)}` : '/login';
 
   // Locale-aware callback URL: defaultLocale = no prefix; others get /<locale>.
   const localePrefix = locale === defaultLocale ? '' : `/${locale}`;
@@ -75,7 +79,13 @@ export function SignupContent() {
       if (res.status === 409 && data?.code === 'email_already_registered') {
         // 同一邮箱（含 +别名 / Gmail 点号变体）已有账号：引导登录，不显示「账号已就绪」（#682）
         setAlreadyRegistered(true);
-        setError(data.alias ? t('errors.emailAliasRegistered') : t('errors.emailAlreadyRegistered'));
+        setError(
+          data.alias && typeof data.existingAccountHint === 'string'
+            ? t('errors.emailAliasRegisteredAs', { hint: data.existingAccountHint })
+            : data.alias
+              ? t('errors.emailAliasRegistered')
+              : t('errors.emailAlreadyRegistered'),
+        );
         return;
       }
       if (!res.ok) {
@@ -181,7 +191,7 @@ export function SignupContent() {
                 {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
                 {alreadyRegistered && (
                   <div className="flex gap-4 text-sm">
-                    <Link href="/login" className="font-medium text-primary hover:text-primary-hover">
+                    <Link href={loginHref} className="font-medium text-primary hover:text-primary-hover">
                       {t('signIn')}
                     </Link>
                     <Link href="/forgot-password" className="font-medium text-primary hover:text-primary-hover">

@@ -7,12 +7,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 
 vi.mock('next-auth/react', () => ({ signIn: vi.fn() }));
-vi.mock('next-intl', () => ({ useTranslations: () => (key: string) => key, useLocale: () => 'en' }));
+vi.mock('next-intl', () => ({
+  useTranslations: () => (key: string, values?: Record<string, unknown>) => (values ? `${key}:${JSON.stringify(values)}` : key),
+  useLocale: () => 'en',
+}));
 vi.mock('@/i18n/navigation', () => ({
   Link: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a>,
 }));
 
 import { SignupContent } from '@/app/[locale]/(auth)/signup/signup-content';
+
+/** 已注册提示下方的「登录」入口（与「忘记密码」同一行） */
+function loginLinkHref(): string | null {
+  const row = screen.getByText('forgotPassword').closest('a')?.parentElement;
+  return row?.querySelector('a')?.getAttribute('href') ?? null;
+}
 
 function submit(email: string) {
   fireEvent.change(screen.getByLabelText('emailLabel'), { target: { value: email } });
@@ -56,6 +65,40 @@ describe('SignupContent — 邮箱已注册', () => {
 
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('errors.emailAliasRegistered'));
     expect(screen.queryByText('checkEmailTitle')).toBeNull();
+  });
+
+  it('+别名对 +别名：提示里给出已有账号地址的掩码（#682）', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: 'x', code: 'email_already_registered', alias: true, existingAccountHint: 'r***+adr…@wontlost.com' }),
+    });
+    render(<SignupContent />);
+    submit('ryan.pang+member@wontlost.com');
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toBe('errors.emailAliasRegisteredAs:{"hint":"r***+adr…@wontlost.com"}'),
+    );
+  });
+
+  it('从邀请深链来注册：已注册时「登录」入口带回 callbackUrl；站外地址不带', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: 'x', code: 'email_already_registered', alias: false }),
+    });
+    render(<SignupContent returnTo="/en/teams/invite?token=abc" />);
+    submit('a@example.com');
+    await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+    expect(loginLinkHref()).toBe(
+      `/login?callbackUrl=${encodeURIComponent('/en/teams/invite?token=abc')}`,
+    );
+    cleanup();
+
+    render(<SignupContent returnTo="//evil.example/x" />);
+    submit('a@example.com');
+    await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+    expect(loginLinkHref()).toBe('/login');
   });
 
   it('新账号：进入「账号已就绪」状态', async () => {

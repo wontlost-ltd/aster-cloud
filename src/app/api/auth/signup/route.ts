@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { and, eq, isNull } from 'drizzle-orm';
 import { db, users } from '@/lib/prisma';
 import { hashPassword } from '@/auth';
-import { normalizeEmail } from '@/lib/email-normalize';
+import { maskEmail, normalizeEmail } from '@/lib/email-normalize';
 import { hashIp, recordSignupAttempt } from '@/lib/signup-rate-limit';
 import { getClientIp, RateLimitPresets } from '@/lib/rate-limit';
 import { checkRateLimitDistributed } from '@/lib/rate-limit-distributed';
@@ -46,6 +46,33 @@ import { checkRateLimitDistributed } from '@/lib/rate-limit-distributed';
  * - **不在此处发验证信**：发信由用户在设置页主动触发（限流在那一侧），
  *   注册链路只负责建号。避免注册接口被当成发信喷口。
  */
+/**
+ * 已注册的统一响应（#682）：409 email_already_registered。`alias` 表示命中的是同一邮箱的另一种写法
+ * （+别名 / Gmail 点号变体），此时附已有账号地址的掩码提示 `existingAccountHint`，告诉用户用哪个地址登录。
+ */
+function alreadyRegistered(alias: boolean, existingEmail?: string | null) {
+  const hint = alias && existingEmail ? maskEmail(existingEmail) : null;
+  return NextResponse.json(
+    {
+      error: hint
+        ? `An account already exists for this mailbox as ${hint}. Sign in with that address, or reset its password.`
+        : 'An account already exists for this email address. Sign in instead.',
+      code: 'email_already_registered',
+      alias,
+      ...(hint ? { existingAccountHint: hint } : {}),
+    },
+    { status: 409 },
+  );
+}
+
+/** Postgres 唯一约束冲突（含被 drizzle / 适配器包装在 cause 里的情况）。 */
+function isUniqueViolation(err: unknown): boolean {
+  for (let e: unknown = err, i = 0; e && i < 3; e = (e as { cause?: unknown }).cause, i++) {
+    if ((e as { code?: unknown }).code === '23505') return true;
+  }
+  return false;
+}
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -142,21 +169,11 @@ export async function POST(request: NextRequest) {
   const existingNormalized = normalized
     ? await db.query.users.findFirst({
         where: eq(users.emailNormalized, normalized),
-        columns: { id: true },
+        columns: { id: true, email: true },
       })
     : null;
-  if (existing || existingNormalized) {
-    return NextResponse.json(
-      {
-        error: existing
-          ? 'An account already exists for this email address. Sign in instead.'
-          : 'An account already exists for this mailbox under another form of the address (for example without the +suffix). Sign in with that account instead.',
-        code: 'email_already_registered',
-        alias: !existing,
-      },
-      { status: 409 },
-    );
-  }
+  if (existing) return alreadyRegistered(false);
+  if (existingNormalized) return alreadyRegistered(true, existingNormalized.email);
 
   // 适配器的 createUser 负责**打分层**：注册风险分层、IP 聚类、历史
   // hard-purge 计数、tier≥2 的 Slack 告警。拒绝层已在上面单独调过。
@@ -166,13 +183,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Signup unavailable' }, { status: 500 });
   }
 
-  const created = await adapter.createUser({
-    id: crypto.randomUUID(), // 适配器内部会重新生成，此处仅满足类型
-    email: lower,
-    emailVerified: null, // ★不预置已验证：必须走验证流程才解锁 AI
-    name: typeof name === 'string' && name.trim() ? name.trim() : null,
-    image: null,
-  });
+  let created: Awaited<ReturnType<NonNullable<typeof adapter.createUser>>>;
+  try {
+    created = await adapter.createUser({
+      id: crypto.randomUUID(), // 适配器内部会重新生成，此处仅满足类型
+      email: lower,
+      emailVerified: null, // ★不预置已验证：必须走验证流程才解锁 AI
+      name: typeof name === 'string' && name.trim() ? name.trim() : null,
+      image: null,
+    });
+  } catch (err) {
+    // 并发注册同一邮箱：两个请求都通过了上面的存在性检查，后到者撞唯一索引（23505）→ 同样按已注册处理
+    if (isUniqueViolation(err)) return alreadyRegistered(false);
+    throw err;
+  }
 
   const passwordHash = await hashPassword(password);
   await db

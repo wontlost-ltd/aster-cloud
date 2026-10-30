@@ -43,6 +43,24 @@ export function normalizeEmail(email: string): string {
 }
 
 /**
+ * 已有账号地址的掩码提示（#682）：保留 local-part 首字符、+后缀前 3 个字符与完整域名，
+ * 例如 `ryan.pang+adr0051-retest@wontlost.com` → `r***+adr…@wontlost.com`。
+ * 注册遇到同一邮箱的另一种写法时用它告诉用户「该用哪个地址登录」，又不完整暴露地址。
+ */
+export function maskEmail(email: string): string {
+  const trimmed = (email ?? '').trim();
+  const atIdx = trimmed.lastIndexOf('@');
+  if (atIdx <= 0) return '***';
+  const local = trimmed.slice(0, atIdx);
+  const domain = trimmed.slice(atIdx + 1);
+  const plusIdx = local.indexOf('+');
+  const base = plusIdx >= 0 ? local.slice(0, plusIdx) : local;
+  const suffix = plusIdx >= 0 ? local.slice(plusIdx + 1) : '';
+  const maskedSuffix = plusIdx >= 0 ? `+${suffix.slice(0, 3)}${suffix.length > 3 ? '…' : ''}` : '';
+  return `${base.charAt(0) || '*'}***${maskedSuffix}@${domain}`;
+}
+
+/**
  * 两个地址是否投递到同一邮箱：与注册去重同一口径（normalizeEmail），
  * 团队邀请的接受 / 拒绝 / 收件箱据此匹配，避免「+别名无法注册、邀请又只认 +别名」的死路。
  */
