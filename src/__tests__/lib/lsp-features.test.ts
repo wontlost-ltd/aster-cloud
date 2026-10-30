@@ -5,6 +5,7 @@ const ALL = {
   hoverProvider: true, definitionProvider: true, referencesProvider: true, documentSymbolProvider: true,
   signatureHelpProvider: {}, codeActionProvider: {}, renameProvider: { prepareProvider: true },
   documentFormattingProvider: true, documentHighlightProvider: true,
+  completionProvider: { triggerCharacters: ['.'] },
 };
 
 describe('selectLspFeatures', () => {
@@ -23,6 +24,11 @@ describe('selectLspFeatures', () => {
   it('新服务端（两个标志）+ zh：全部可用', () => {
     const f = selectLspFeatures('zh-CN', { ...ALL, experimental: { aster: { localizedParsing: true, openDocumentNavigation: true } } });
     expect(Object.values(f).every((v) => v === true)).toBe(true);
+  });
+
+  it('声明 completionProvider 且可解析时启用上下文补全', () => {
+    expect(selectLspFeatures('de-DE', ALL).completion).toBe(true);
+    expect(selectLspFeatures('en-US', { ...ALL, completionProvider: undefined }).completion).toBe(false);
   });
 
   it('服务端未声明的能力不注册', () => {

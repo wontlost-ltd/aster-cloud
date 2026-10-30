@@ -18,6 +18,7 @@ const NEW_SERVER_CAPS = {
   hoverProvider: true, definitionProvider: true, referencesProvider: true, documentSymbolProvider: true,
   signatureHelpProvider: {}, codeActionProvider: {}, renameProvider: { prepareProvider: true },
   documentFormattingProvider: true, documentHighlightProvider: true,
+  completionProvider: { resolveProvider: true, triggerCharacters: [' ', '.', ':'] },
   experimental: { aster: { localizedParsing: true, openDocumentNavigation: true } },
 };
 /** 生产 1.0.32 的能力：无 experimental 标志 */
@@ -29,6 +30,7 @@ class FakeWebSocket {
   static serverCaps: Record<string, unknown> = NEW_SERVER_CAPS;
   static hoverFails = false;
   static prepareRename: 'null' | 'error' = 'null';
+  static completion: unknown = null;
   readyState = 0;
   sent: Sent[] = [];
   onopen: (() => void) | null = null;
@@ -59,6 +61,9 @@ class FakeWebSocket {
         ? { jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: 'boom' } }
         : { jsonrpc: '2.0', id: msg.id, result: null });
     }
+    if (msg.method === 'textDocument/completion') {
+      this.serverSend({ jsonrpc: '2.0', id: msg.id, result: FakeWebSocket.completion });
+    }
     if (msg.method === 'textDocument/codeAction') {
       this.serverSend({ jsonrpc: '2.0', id: msg.id, result: [] });
     }
@@ -68,7 +73,11 @@ class FakeWebSocket {
 }
 
 function makeFakeMonaco() {
-  const providers: Record<string, { provideHover?: (...a: unknown[]) => unknown; provideCodeActions?: (...a: unknown[]) => unknown; resolveRenameLocation?: (...a: unknown[]) => unknown }> = {};
+  const providers: Record<string, {
+    provideHover?: (...a: unknown[]) => unknown; provideCodeActions?: (...a: unknown[]) => unknown;
+    resolveRenameLocation?: (...a: unknown[]) => unknown; provideCompletionItems?: (...a: unknown[]) => unknown;
+    triggerCharacters?: string[];
+  }> = {};
   const reg = (kind: string) => vi.fn((_lang: string, p: unknown) => { providers[kind] = p as never; return { dispose: vi.fn() }; });
   return {
     providers,
@@ -84,6 +93,7 @@ function makeFakeMonaco() {
       registerDocumentHighlightProvider: reg('highlight'),
       registerCompletionItemProvider: reg('completion'),
       DocumentHighlightKind: { Text: 0 },
+      CompletionItemKind: { Field: 3, Value: 13, EnumMember: 16, Property: 9, Text: 18 },
       SymbolKind: {},
     },
     editor: { setModelMarkers: vi.fn() },
@@ -101,6 +111,7 @@ const fakeModel = {
   getVersionId: () => 1,
   onDidChangeContent: (fn: () => void) => { contentListeners.push(fn); return { dispose: vi.fn() }; },
   getWordAtPosition: () => ({ word: 'the', startColumn: 7, endColumn: 10 }),
+  getWordUntilPosition: () => ({ word: '', startColumn: 20, endColumn: 20 }),
 };
 const otherModel = { ...fakeModel, uri: { toString: () => 'inmemory://model/2' } };
 const fakeEditor = { getModel: () => fakeModel };
@@ -112,6 +123,7 @@ describe('useAsterLSP 协议', () => {
     FakeWebSocket.serverCaps = NEW_SERVER_CAPS;
     FakeWebSocket.hoverFails = false;
     FakeWebSocket.prepareRename = 'null';
+    FakeWebSocket.completion = null;
     vi.stubGlobal('WebSocket', FakeWebSocket);
     process.env.NEXT_PUBLIC_LSP_HOST = 'lsp.example.test';
   });
@@ -222,7 +234,50 @@ describe('useAsterLSP 协议', () => {
 
   /* ★C9：补全归本地 provider（按 locale 与别名给词）。LSP 补全只有关键字 + 英文类型名，
    *   注册了就会重复/给 zh 用户错词——hook 绝不能注册补全。 */
-  it('★不注册 LSP 补全 provider', async () => {
+  /* 第 4 轮生产复测：服务端声明了 completionProvider，编辑器却从不发 textDocument/completion，
+   *   `x.` 后只有本地关键字。现在注册 LSP 补全，但只取上下文相关的结果（字段 / 控制点键等），
+   *   通用的关键字与英文类型名仍归本地 provider（按 locale 与别名给词），避免重复与错词。 */
+  it('★注册 LSP 补全 provider，触发字符为 "."', async () => {
+    const monaco = mount();
+    await opened();
+    await waitFor(() => expect(monaco.languages.registerCompletionItemProvider).toHaveBeenCalled());
+    expect(monaco.providers.completion.triggerCharacters).toEqual(['.']);
+  });
+
+  it('★`x.` 后发出 textDocument/completion，并只渲染所属 struct 的字段', async () => {
+    FakeWebSocket.completion = [
+      { label: 'alter', kind: 5, detail: 'age' },
+      { label: 'stufe', kind: 5, detail: 'level' },
+    ];
+    const monaco = mount('en-US');
+    await opened();
+    await waitFor(() => expect(monaco.providers.completion).toBeDefined());
+    const res = await monaco.providers.completion.provideCompletionItems!(fakeModel, { lineNumber: 3, column: 20 }, { triggerKind: 1, triggerCharacter: '.' }) as {
+      suggestions: Array<{ label: string; kind: number; detail?: string; insertText: string }>;
+    };
+    const req = FakeWebSocket.instances[0].sent.find((m) => m.method === 'textDocument/completion');
+    expect(req?.params).toMatchObject({ position: { line: 2, character: 19 }, context: { triggerKind: 2, triggerCharacter: '.' } });
+    expect(res.suggestions.map((x) => [x.label, x.kind, x.detail, x.insertText])).toEqual([
+      ['alter', 3, 'age', 'alter'],
+      ['stufe', 3, 'level', 'stufe'],
+    ]);
+  });
+
+  it('通用结果（关键字 / 类型名）被丢弃，交给本地 provider', async () => {
+    FakeWebSocket.completion = { isIncomplete: false, items: [
+      { label: 'Return', kind: 14 }, { label: 'Int', kind: 7 }, { label: 'EU_AI_ACT:ART14', kind: 12 },
+    ] };
+    const monaco = mount('en-US');
+    await opened();
+    await waitFor(() => expect(monaco.providers.completion).toBeDefined());
+    const res = await monaco.providers.completion.provideCompletionItems!(fakeModel, { lineNumber: 1, column: 5 }, { triggerKind: 0 }) as {
+      suggestions: Array<{ label: string }>;
+    };
+    expect(res.suggestions.map((x) => x.label)).toEqual(['EU_AI_ACT:ART14']);
+  });
+
+  it('服务端未声明 completionProvider 时不注册', async () => {
+    FakeWebSocket.serverCaps = { ...NEW_SERVER_CAPS, completionProvider: undefined };
     const monaco = mount();
     await opened();
     await waitFor(() => expect(monaco.languages.registerHoverProvider).toHaveBeenCalled());

@@ -133,6 +133,16 @@ interface LSPHover {
   range?: LSPRange;
 }
 
+/** LSP CompletionItemKind 中本编辑器采用的上下文补全种类（其余如 Keyword=14、Class=7 交给本地 provider） */
+const LSP_COMPLETION_KIND = { Property: 10, Field: 5, Value: 12, EnumMember: 20 } as const;
+
+interface LSPCompletionItem {
+  label: string;
+  kind?: number;
+  detail?: string;
+  insertText?: string;
+}
+
 interface LSPSignatureHelp {
   signatures: Array<{
     label: string;
@@ -590,6 +600,60 @@ export function useAsterLSP({
         },
       });
       providerDisposablesRef.current.push(documentSymbolProvider);
+    }
+
+    // Completion Provider（上下文补全）
+    //
+    // ★只取服务端按上下文给出的结果：`x.` 后按接收者类型列出的字段、构造字段名、@control 键等。
+    //   服务端在其他位置返回的通用列表（全部关键字 + 英文类型名）丢弃——关键字补全归本地 provider
+    //   （按 locale 与用户别名给词），接上会重复，zh 下英文类型名还是错词。
+    //   触发字符只用 '.'：空格触发会在每个词后都打一次请求，而空格后需要的正是本地关键字。
+    if (features.completion) {
+      const kindMap: Record<number, languages.CompletionItemKind> = {
+        [LSP_COMPLETION_KIND.Field]: monaco.languages.CompletionItemKind.Field,
+        [LSP_COMPLETION_KIND.Property]: monaco.languages.CompletionItemKind.Property,
+        [LSP_COMPLETION_KIND.Value]: monaco.languages.CompletionItemKind.Value,
+        [LSP_COMPLETION_KIND.EnumMember]: monaco.languages.CompletionItemKind.EnumMember,
+      };
+      const completionProvider = monaco.languages.registerCompletionItemProvider(languageId, {
+        triggerCharacters: ['.'],
+        provideCompletionItems: async (model, position, context): Promise<languages.CompletionList | null> => {
+          if (!isLspModel(model)) return null;
+          try {
+            const result = await sendRequest<LSPCompletionItem[] | { items: LSPCompletionItem[] } | null>('textDocument/completion', {
+              ...makeTextDocumentPositionParams(position),
+              // Monaco 的 triggerKind 从 0 起（Invoke=0），LSP 从 1 起（Invoked=1）
+              context: {
+                triggerKind: (context?.triggerKind ?? 0) + 1,
+                ...(context?.triggerCharacter ? { triggerCharacter: context.triggerCharacter } : {}),
+              },
+            });
+            const items = Array.isArray(result) ? result : result?.items ?? [];
+            const word = model.getWordUntilPosition(position);
+            const range = {
+              startLineNumber: position.lineNumber,
+              endLineNumber: position.lineNumber,
+              startColumn: word.startColumn,
+              endColumn: word.endColumn,
+            };
+            return {
+              suggestions: items
+                .filter((item) => item.kind !== undefined && kindMap[item.kind] !== undefined)
+                .map((item) => ({
+                  label: item.label,
+                  kind: kindMap[item.kind!]!,
+                  insertText: item.insertText ?? item.label,
+                  ...(item.detail ? { detail: item.detail } : {}),
+                  range,
+                })),
+            };
+          } catch (e) {
+            reportProviderError('Completion', e);
+            return null;
+          }
+        },
+      });
+      providerDisposablesRef.current.push(completionProvider);
     }
 
     // Signature Help Provider

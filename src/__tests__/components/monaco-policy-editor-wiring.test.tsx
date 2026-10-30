@@ -142,7 +142,7 @@ import { MonacoPolicyEditor } from '@/components/policy/monaco-policy-editor';
 async function completionsAt(line = 'Mod') {
   const p = registeredProviders.at(-1);
   if (!p) throw new Error('补全 provider 未注册——onMount 未被调用？');
-  const model = { ...fakeModel, getLineContent: () => line, getValue: () => line };
+  const model = { ...fakeModel, getLineContent: () => line, getValue: () => line, getValueInRange: () => line };
   const res = (await p.provider.provideCompletionItems(
     model,
     { lineNumber: 1, column: line.length + 1 },
@@ -186,6 +186,15 @@ describe('编辑器接线：关键词补全', () => {
     );
     await waitFor(() => expect(registeredProviders.length).toBeGreaterThan(0));
     expect((await completionsAt('模')).map((x) => x.label)).toContain('模組');
+  });
+});
+
+describe('编辑器接线：成员访问位置让位给 LSP', () => {
+  it('★`fahrer.` 后本地 provider 不给关键字（字段补全归 LSP）', async () => {
+    render(<MonacoPolicyEditor value="" onChange={() => {}} locale="de" />);
+    await waitFor(() => expect(registeredProviders.length).toBeGreaterThan(0));
+    expect(await completionsAt('  gib zurueck fahrer.')).toEqual([]);
+    expect((await completionsAt('  gib zurueck ')).length).toBeGreaterThan(10);
   });
 });
 

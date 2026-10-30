@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { collectKeywordLabels, buildKeywordSuggestions } from '@/lib/aster-keyword-completions';
+import { collectKeywordLabels, buildKeywordSuggestions, isMemberAccessPosition } from '@/lib/aster-keyword-completions';
 import { EN_US, ZH_CN, DE_DE, HI_IN, type Lexicon } from '@/lib/aster-lexicon';
 
 /**
@@ -139,5 +139,21 @@ describe('非法 aliases 的健壮性', () => {
     const labels = collectKeywordLabels(dirty);
     expect(labels).toContain('模組');
     expect(labels.every((l) => typeof l === 'string')).toBe(true);
+  });
+});
+
+/* 第 4 轮生产复测：`fahrer.` 后只列出关键字。成员访问位置的补全归 LSP（按接收者类型列字段），
+ * 本地关键字在这里一个都不对，必须让位。 */
+describe('isMemberAccessPosition', () => {
+  it.each([
+    ['  gib zurueck fahrer.', true],
+    ['  gib zurueck fahrer.st', true],
+    ['  Return fahrer.stufe.', true],
+    ['  返回 驾驶员.年', true],
+    ['  Return x', false],
+    ['  Return 1.5', false],
+    ['  Return "a.b', false],
+  ])('%j → %s', (line, expected) => {
+    expect(isMemberAccessPosition(line)).toBe(expected);
   });
 });

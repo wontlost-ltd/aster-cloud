@@ -17,7 +17,7 @@ import {
 } from '@/lib/aster-lexicon';
 import { useSession } from 'next-auth/react';
 import { useAsterCompiler, type CNLLocale } from '@/hooks/useAsterCompiler';
-import { buildKeywordSuggestions } from '@/lib/aster-keyword-completions';
+import { buildKeywordSuggestions, isMemberAccessPosition } from '@/lib/aster-keyword-completions';
 import { useAsterModuleCatalog } from '@/hooks/useAsterModuleCatalog';
 import { useDomainVocabularyInvalidate } from '@/hooks/useDomainVocabularyInvalidate';
 import { useUserVocabularyRegistration } from '@/hooks/useUserVocabularyRegistration';
@@ -600,8 +600,9 @@ export function MonacoPolicyEditor({
    *   - 诊断：归浏览器侧 useAsterCompiler（完整 parse+typecheck，别名感知、离线可用），
    *     LSP 推送的诊断被丢弃（suppressDiagnostics），故不会出现双份红波浪线。
    *   - 关键字补全：归本地 provider（buildKeywordSuggestions，按 locale 与用户别名给词）。
-   *     LSP 的补全只有关键字 + 英文类型名（Text/Int…，zh 下是错词），不提供任何
-   *     用户符号，接上只会产生重复或错误条目，故不注册 LSP 补全。
+   *     上下文补全（`x.` 后按接收者类型列字段、构造字段名、@control 键）归 LSP：
+   *     hook 只取这些上下文结果，丢弃服务端的通用关键字 / 英文类型名列表；
+   *     成员访问位置本地 provider 不给词（isMemberAccessPosition）。
    *   - hover / 跳转定义 / 文档符号 / 签名帮助 / 代码操作 / 格式化 / 高亮 / 引用 / 重命名：
    *     由 LSP 提供，但**只注册当前服务端真正支持的**（见 lib/lsp-features 的 selectLspFeatures）：
    *     生产镜像（aster-lang-ts 1.0.32）只对 en-US / de-DE 提供前七项（zh 不提供），引用/重命名不注册；
@@ -960,6 +961,10 @@ export function MonacoPolicyEditor({
 
           const versionMatch = /^\s*(?:Use|\u5f15\u7528|verwende)\s+([A-Za-z_\u4e00-\u9fff][\w\u4e00-\u9fff]*(?:\.[A-Za-z_\u4e00-\u9fff][\w\u4e00-\u9fff]*)*)\s+(?:(?:version|\u7248\u672c)\s+\d*)?$/i.exec(lineUntilPosition);
           if (!versionMatch) {
+            // 成员访问（`x.` 之后）：字段补全归 LSP（按接收者类型），本地关键字在此处全是错词，让位
+            if (isMemberAccessPosition(lineUntilPosition)) {
+              return { suggestions: [] };
+            }
             /* ★关键词补全（浏览器内，不依赖 LSP）。
              *
              *   此前这里直接 `return { suggestions: [] }` —— 即只有 `Use` 行才有补全，
