@@ -61,11 +61,10 @@ vi.mock('@/lib/usage', () => ({
   recordUsage: vi.fn().mockResolvedValue(undefined),
 }));
 
+// 执行授权走真实的策略授权矩阵（policy-access），这里只替换「当前团队角色」的数据库读
 vi.mock('@/lib/team-permissions', () => ({
-  checkTeamPermission: vi.fn(),
-  TeamPermission: {
-    POLICY_EXECUTE: 'policy.execute',
-  },
+  getTeamMemberRole: vi.fn().mockResolvedValue(null),
+  rolesWithPermission: vi.fn(() => ['viewer', 'member', 'admin', 'owner']),
 }));
 
 vi.mock('@/services/policy/cnl-executor', () => ({
@@ -141,7 +140,7 @@ import { db } from '@/lib/prisma';
 import { getPolicyFreezeStatus, getBatchPolicyFreezeStatus } from '@/lib/policy-freeze';
 import { checkUsageLimit } from '@/lib/usage';
 import { executePolicyUnified, getPrimaryError } from '@/services/policy/cnl-executor';
-import { checkTeamPermission } from '@/lib/team-permissions';
+import { getTeamMemberRole } from '@/lib/team-permissions';
 import { computeSourceEnvelope } from '@/lib/policy-alias';
 
 const mockAuthenticateApiRequest = vi.mocked(authenticateApiRequest);
@@ -150,7 +149,7 @@ const mockGetBatchPolicyFreezeStatus = vi.mocked(getBatchPolicyFreezeStatus);
 const mockCheckUsageLimit = vi.mocked(checkUsageLimit);
 const mockExecutePolicyUnified = vi.mocked(executePolicyUnified);
 const mockGetPrimaryError = vi.mocked(getPrimaryError);
-const mockCheckTeamPermission = vi.mocked(checkTeamPermission);
+const mockTeamRole = vi.mocked(getTeamMemberRole);
 
 /** 构建完整的 Policy mock 对象，所有字段均有合理默认值 */
 function mockPolicy(overrides: Record<string, unknown> = {}) {
@@ -233,6 +232,7 @@ describe('V1 Policies API - Drizzle Migration', () => {
     mockGetBatchPolicyFreezeStatus.mockResolvedValue(new Map());
     // Default: no team memberships
     vi.mocked(db.query.teamMembers.findMany).mockResolvedValue([]);
+    mockTeamRole.mockResolvedValue(null);
     // Default: empty execution count
     setupSelectCount(0);
   });
@@ -275,7 +275,8 @@ describe('V1 Policies API - Drizzle Migration', () => {
       const mockPolicies = [
         mockPolicy({ name: 'My Policy' }),
       ];
-      vi.mocked(db.query.policies.findMany).mockResolvedValue(mockPolicies);
+      // 第一次查询：个人策略；第二次：可见团队的策略
+      vi.mocked(db.query.policies.findMany).mockResolvedValueOnce(mockPolicies).mockResolvedValueOnce([]);
 
       const response = await GET(makeRequest('http://localhost/api/v1/policies'));
       const body = await response.json();
@@ -292,7 +293,7 @@ describe('V1 Policies API - Drizzle Migration', () => {
         mockPolicy({ id: 'p1', name: 'Active Policy' }),
         mockPolicy({ id: 'p2', name: 'Frozen Policy' }),
       ];
-      vi.mocked(db.query.policies.findMany).mockResolvedValue(mockPolicies);
+      vi.mocked(db.query.policies.findMany).mockResolvedValueOnce(mockPolicies).mockResolvedValueOnce([]);
       mockGetPolicyFreezeStatus.mockResolvedValue({
         limit: 1,
         totalPolicies: 2,
@@ -307,6 +308,33 @@ describe('V1 Policies API - Drizzle Migration', () => {
       const p2 = body.policies.find((p: { id: string }) => p.id === 'p2');
       expect(p1.isFrozen).toBe(false);
       expect(p2.isFrozen).toBe(true);
+    });
+
+    it('#671：团队 key 只列该团队的策略，不查持有者的个人策略；配额按团队 owner 计', async () => {
+      mockAuthenticateApiRequest.mockResolvedValue({ ...VALID_AUTH, teamId: 'team-1', quotaOwnerId: 'owner-1' });
+      vi.mocked(db.query.policies.findMany).mockResolvedValueOnce([
+        { ...mockPolicy({ id: 'tp1', userId: 'owner-1' }), teamId: 'team-1', team: { id: 'team-1', name: 'T' } },
+      ] as never);
+
+      const response = await GET(makeRequest('http://localhost/api/v1/policies'));
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(db.query.policies.findMany).toHaveBeenCalledTimes(1);
+      expect(body.policies.map((p: { id: string }) => p.id)).toEqual(['tp1']);
+      expect(body.policies[0]).toMatchObject({ source: 'team', teamId: 'team-1' });
+      expect(mockCheckUsageLimit).toHaveBeenCalledWith('owner-1', 'api_call');
+    });
+
+    it('#671：Free 成员的团队 key 不按成员个人配额拦截（按配额 owner 判定）', async () => {
+      mockAuthenticateApiRequest.mockResolvedValue({ ...VALID_AUTH, userId: 'free-member', teamId: 'team-1', quotaOwnerId: 'owner-1' });
+      mockCheckUsageLimit.mockImplementation(async (userId: string) =>
+        userId === 'owner-1'
+          ? { allowed: true, limit: 5000, remaining: 4999 }
+          : { allowed: false, limit: 0, remaining: 0, message: 'limit 0' });
+      vi.mocked(db.query.policies.findMany).mockResolvedValue([]);
+
+      expect((await GET(makeRequest('http://localhost/api/v1/policies'))).status).toBe(200);
     });
 
     it('should return 500 on internal error', async () => {
@@ -412,6 +440,47 @@ describe('V1 Policies API - Drizzle Migration', () => {
       expect(body.error).toBe('Policy not found');
     });
 
+    it('#671：团队 key 执行持有者本人的个人策略 → 404，不执行', async () => {
+      mockAuthenticateApiRequest.mockResolvedValue({ ...VALID_AUTH, teamId: 'team-1', quotaOwnerId: 'owner-1' });
+      setupExecuteRow({ policy_user_id: 'user-1', policy_team_id: null });
+
+      const response = await POST(makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody), mockParams);
+
+      expect(response.status).toBe(404);
+      expect(mockExecutePolicyUnified).not.toHaveBeenCalled();
+    });
+
+    it('#671：团队 key 不能借公开策略越出团队；其他团队的策略同样 404', async () => {
+      mockAuthenticateApiRequest.mockResolvedValue({ ...VALID_AUTH, teamId: 'team-1', quotaOwnerId: 'owner-1' });
+      setupExecuteRow({ policy_user_id: 'other-user', policy_team_id: null, policy_is_public: true });
+      expect((await POST(makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody), mockParams)).status).toBe(404);
+      setupExecuteRow({ policy_user_id: 'other-user', policy_team_id: 'team-2' });
+      mockTeamRole.mockResolvedValue('owner');
+      expect((await POST(makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody), mockParams)).status).toBe(404);
+      expect(mockExecutePolicyUnified).not.toHaveBeenCalled();
+    });
+
+    it('团队 key 执行本团队策略：按持有者当前角色（member 可执行）', async () => {
+      mockAuthenticateApiRequest.mockResolvedValue({ ...VALID_AUTH, teamId: 'team-1', quotaOwnerId: 'user-1' });
+      setupExecuteRow({ policy_user_id: 'other-user', policy_team_id: 'team-1' });
+      mockTeamRole.mockResolvedValue('member');
+
+      const response = await POST(makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody), mockParams);
+
+      expect(response.status).toBe(200);
+      expect(mockTeamRole).toHaveBeenCalledWith('user-1', 'team-1');
+    });
+
+    it('#670：团队策略的创建者已不在团队（无成员行）→ 404，不按创建者身份放行', async () => {
+      setupExecuteRow({ policy_user_id: 'user-1', policy_team_id: 'team-1' });
+      mockTeamRole.mockResolvedValue(null);
+
+      const response = await POST(makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody), mockParams);
+
+      expect(response.status).toBe(404);
+      expect(mockExecutePolicyUnified).not.toHaveBeenCalled();
+    });
+
     it('should return 404 when user has no access to private policy', async () => {
       setupExecuteRow({
         policy_user_id: 'other-user',
@@ -461,7 +530,9 @@ describe('V1 Policies API - Drizzle Migration', () => {
       mockAuthenticateApiRequest.mockResolvedValue({ ...VALID_AUTH, teamId: 'team-1', quotaOwnerId: 'owner-1' });
       vi.mocked(db.query.users.findFirst).mockResolvedValue({ plan: 'pro', trialEndsAt: null } as never);
       vi.mocked(db.query.policies.findMany).mockResolvedValue([{ id: 'p1' }] as never);
-      setupExecuteRow({ user_plan: 'free' }); // 成员本人是 free，不影响团队 key 的 API 配额
+      // 团队 key 只能执行本团队策略（#671）：夹具是团队策略，持有者为当前 member
+      setupExecuteRow({ user_plan: 'free', policy_team_id: 'team-1' }); // 成员本人是 free，不影响团队 key 的 API 配额
+      mockTeamRole.mockResolvedValue('member');
       mockCountOwnerPoolUsage.mockResolvedValueOnce(5000);
 
       const response = await POST(
@@ -478,6 +549,8 @@ describe('V1 Policies API - Drizzle Migration', () => {
 
     it('成功执行写一行 apiCallRecords（带 quotaOwnerId），使计费页与告警看到 cloud REST 调用', async () => {
       mockAuthenticateApiRequest.mockResolvedValue({ ...VALID_AUTH, teamId: 'team-1', quotaOwnerId: 'owner-1' });
+      setupExecuteRow({ policy_team_id: 'team-1' });
+      mockTeamRole.mockResolvedValue('member');
       vi.mocked(db.query.users.findFirst).mockResolvedValue({ plan: 'pro', trialEndsAt: null } as never);
       vi.mocked(db.query.policies.findMany).mockResolvedValue([{ id: 'p1' }] as never);
 
@@ -914,12 +987,7 @@ Regel bewerten gegeben person als Fahrer liefert Ganzzahl:
         policy_team_id: 'team-1',
         is_team_member: true,
       });
-      mockCheckTeamPermission.mockResolvedValue({
-        allowed: false,
-        error: 'Insufficient permissions',
-        code: 'insufficient_team_role',
-        status: 403,
-      });
+      mockTeamRole.mockResolvedValue('viewer');
 
       const response = await POST(
         makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody),
@@ -928,7 +996,7 @@ Regel bewerten gegeben person als Fahrer liefert Ganzzahl:
       const body = await response.json();
 
       expect(response.status).toBe(403);
-      expect(body.error).toBe('Insufficient permissions');
+      expect(body.code).toBe('insufficient_team_role');
     });
 
     it('should return 403 when policy is frozen (owner plan exceeded)', async () => {
