@@ -3,14 +3,14 @@
 // 历史 bug：模板写 `given driver,`（无类型），参数被推断为 Text，
 // `driver.` 之后没有任何字段候选（aster-lang-ts#257 审查确认）。
 //
-// 补全入口 fieldCompletions 未出现在包的 exports 里，只能按相对路径引用 dist；
-// 它与 LSP 服务端走的是同一份实现（lsp/completion.js 由 server.js 调用）。
+// 成员补全入口 memberCompletions（aster-lang-ts 1.2.1 起，lsp/member-completion.js）未出现在包的
+// exports 里，只能按相对路径引用 dist（导出跟进见 aster-lang-ts#260）；它与 LSP 服务端走同一份实现。
 
 import { describe, it, expect } from 'vitest';
 import { EN_US, ZH_CN, DE_DE } from '@aster-cloud/aster-lang-ts/browser';
 import type { Lexicon } from '@aster-cloud/aster-lang-ts/lexicons/types';
 import { POLICY_EXAMPLES, type SupportedLocale } from '@/data/policy-examples';
-import { fieldCompletions } from '../../../node_modules/@aster-cloud/aster-lang-ts/dist/src/lsp/completion.js';
+import { memberCompletions } from '../../../node_modules/@aster-cloud/aster-lang-ts/dist/src/lsp/member-completion.js';
 import { parseDocumentText } from '../../../node_modules/@aster-cloud/aster-lang-ts/dist/src/lsp/parse-document.js';
 
 const LEXICONS: Record<SupportedLocale, Lexicon> = { 'en-US': EN_US, 'zh-CN': ZH_CN, 'de-DE': DE_DE };
@@ -74,7 +74,7 @@ describe('内置模板规则参数带类型', () => {
         const character = probe.length;
 
         const doc = parseDocumentText(text, LEXICONS[locale], undefined, undefined);
-        const items = fieldCompletions({ text, tokens: doc.tokens, ast: doc.ast, parseDiagnostics: doc.parseDiagnostics, vocabulary: doc.vocabulary }, { line, character });
+        const items = memberCompletions({ ...doc, text }, { line, character }, LEXICONS[locale]);
         expect(items, `${example.id} [${locale}] 点号后无字段补全`).not.toBeNull();
         const labels = (items as { label: string }[]).map((i) => i.label);
         for (const f of expected) expect(labels, `缺字段 ${f}`).toContain(f);
