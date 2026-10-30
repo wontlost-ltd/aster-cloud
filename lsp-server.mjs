@@ -144,6 +144,21 @@ export function sweepStaleWorkDirs(root = tmpdir(), now = Date.now()) {
   return removed;
 }
 
+/** 限流拒绝会话时的 WebSocket 关闭码（与前端 src/lib/lsp-reconnect.ts 的 LSP_RATE_LIMITED_CLOSE_CODE 一致）。 */
+export const RATE_LIMITED_CLOSE_CODE = 4429;
+
+/**
+ * 限流拒绝 → WebSocket 关闭帧。浏览器的 WebSocket API 拿不到握手阶段的 HTTP 状态与 Retry-After
+ * （只报连接失败），无法据此退避；故被拒的握手照常完成，随即以 4429 关闭，原因里带 `retry-after=N`
+ * （前端 parseRetryAfter 解析）。不 spawn 子进程、不占会话名额，代价与直接回 HTTP 429 相当。
+ *
+ * @param {{ ok?: boolean, code?: number, reason: string, retryAfterSeconds?: number }} limited createClientLimiter.acquire 的拒绝结果
+ */
+export function rateLimitedClose(limited) {
+  const retry = limited.retryAfterSeconds ? `; retry-after=${limited.retryAfterSeconds}` : '';
+  return { code: RATE_LIMITED_CLOSE_CODE, reason: `${limited.reason}${retry}` };
+}
+
 /**
  * 按客户端（IP）的会话与握手限流。
  *
@@ -152,13 +167,13 @@ export function sweepStaleWorkDirs(root = tmpdir(), now = Date.now()) {
  * 全局上限（LSP_MAX_CONNECTIONS）之外还要防止单个来源占满：
  *   - 单 IP 并发会话上限（maxSessionsPerClient）；
  *   - 单 IP 握手速率：令牌桶，容量 burst，按 ratePerMinute 补充。
- * 超限返回 429（握手阶段的 HTTP 状态，浏览器端表现为连接失败）；速率超限附 Retry-After。
+ * 超限结果为 code 429；速率超限附 retryAfterSeconds。如何告知客户端见 rateLimitedClose。
  *
  * @param {{ maxSessionsPerClient: number, ratePerMinute: number, burst: number, now?: () => number }} opts
  */
 export function createClientLimiter({ maxSessionsPerClient, ratePerMinute, burst, now = Date.now }) {
   const perMs = ratePerMinute / 60_000;
-  /** @type {Map<string, { tokens: number, at: number, active: number }>} */
+/** @type {Map<string, { tokens: number, at: number, active: number }>} */
   const clients = new Map();
   let lastSweep = now();
 
@@ -490,9 +505,8 @@ server.on('upgrade', (request, socket, head) => {
   const limited = limiter.acquire(client);
   if (!limited.ok) {
     console.log(`[LSP] Rejected upgrade (${limited.code}): ${limited.reason}`);
-    const retry = limited.retryAfterSeconds ? `Retry-After: ${limited.retryAfterSeconds}\r\n` : '';
-    socket.write(`HTTP/1.1 ${limited.code} ${limited.reason}\r\n${retry}\r\n`);
-    socket.destroy();
+    const close = rateLimitedClose(limited);
+    wss.handleUpgrade(request, socket, head, (ws) => ws.close(close.code, close.reason));
     return;
   }
   // 底层 socket 关闭（会话结束、握手中途失败）时归还名额，恰好一次

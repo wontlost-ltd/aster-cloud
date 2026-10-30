@@ -120,15 +120,18 @@ describe('LSP 网关：按客户端限流与子进程堆上限', () => {
     c.ws.close();
   }, 15_000);
 
-  it('★同一 CF-Connecting-IP 第 4 个会话在握手阶段被拒（429），其他 IP 不受影响', async () => {
+  // 浏览器拿不到握手阶段的 HTTP 状态，故被拒的会话完成握手后立即以 4429 关闭（不 spawn 子进程）
+  it('★同一 CF-Connecting-IP 第 4 个会话被拒（关闭码 4429），其他 IP 不受影响', async () => {
     const ip = '198.51.100.7';
     const open = await Promise.all([connect(ip), connect(ip), connect(ip)]);
-    const status = await new Promise<number>((resolve, reject) => {
+    const closed = await new Promise<{ code: number; reason: string; messages: number }>((resolve, reject) => {
       const ws = new WebSocket(`ws://127.0.0.1:${port}/lsp?locale=zh-CN&token=${TOKEN}`, { headers: { Origin: ORIGIN, 'CF-Connecting-IP': ip } });
-      ws.on('unexpected-response', (_req, res) => resolve(res.statusCode ?? 0));
-      ws.on('open', () => reject(new Error('第 4 个会话不应建立')));
+      let messages = 0;
+      ws.on('message', () => { messages++; });
+      ws.on('unexpected-response', (_req, res) => reject(new Error(`status ${res.statusCode}`)));
+      ws.on('close', (code, reason) => resolve({ code, reason: String(reason), messages }));
     });
-    expect(status).toBe(429);
+    expect(closed).toEqual({ code: 4429, reason: 'Too many sessions from this client', messages: 0 });
     const other = await connect('198.51.100.8');
     other.ws.close();
     // 关闭一个后同一 IP 可再连
