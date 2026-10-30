@@ -403,6 +403,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     dashboardNav: { reports: 'Evidence', approvals: 'Approvals', domainVocabularies: 'Domain vocabularies', aiWorkspace: 'AI workspace', commandPalette: { aiWorkspace: 'Open AI workspace', domainVocabularies: 'Open domain vocabularies', groupAdmin: 'Admin', groupPolicies: 'Policies' } },
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
     notifications: {
+      versionRejectedNoComment: '{policyName} v{version} was rejected',
+      versionRejected: '{policyName} v{version} was rejected: {comment}',
+      versionApproved: '{policyName} v{version} was approved',
+      versionSubmitted: 'Approval needed: {policyName} v{version}',
       guardApprovalRequested: 'Approval needed: {policyName}',
       guardApprovalDecided: 'Your request for {policyName} was {outcome}',
       guardOutcomeApproved: 'approved',
@@ -475,6 +479,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 二次验证（issue #400）——走本地补充层，不需要 ui-messages 跨仓发版。
     auth: {
       signup: {
+        forgotPassword: 'Forgot password?',
+        errors: {
+          emailAliasRegistered: 'This address delivers to the same mailbox as an existing account (for example the same address without the +suffix). Sign in with that account, or reset its password.',
+          emailAlreadyRegistered: 'An account already exists for this email. Sign in, or reset your password if you have forgotten it.',
+        },
         title: 'Create your account',
         subtitle: 'New accounts may include a Pro trial; see Billing after sign-up.',
         trialIncludes: 'Available plans:',
@@ -601,6 +610,23 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      policies: {
+        unknownCreator: 'a former member',
+        executionCount: '{count, plural, one {# execution} other {# executions}}',
+      },
+      acceptInvite: {
+        emailMismatch: 'This invitation was sent to {email}. Sign in with the account for that mailbox to accept it.',
+        joiningTeam: 'You\'ve been invited to join {teamName} as {role}.',
+      },
+      settings: {
+        deleteWarning1: 'Team policies are not deleted: each one becomes a personal policy of the member who created it. Members, invitations and team API keys are removed.',
+        deleteTeamDescription: 'Permanently delete this team. Team policies are kept as personal policies of the members who created them.',
+        transferErrors: {
+          newOwnerSeatLimit: 'This member\'s plan allows {limit} team members, but the team has {count}.',
+          newOwnerPlanIneligible: 'This member\'s plan does not include team features. They need a Pro or higher plan before they can own the team.',
+        },
+        transferPlanNote: 'Team features, the member limit and team API usage follow the owner\'s plan. After the transfer they follow the new owner\'s plan, so the new owner needs a Pro or higher plan that allows this team\'s members.',
+      },
       errorCodes: { invalid_email: 'Enter a valid email address.', invalid_role: 'The selected role is not valid.', already_team_member: 'This person is already a team member.', invitation_already_pending: 'An invitation is already pending for this email.', unauthorized: 'You are not authorized to invite team members.' },
       // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
       createTeam: {
@@ -608,6 +634,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         slugInvalid: 'Team URL must be 2–50 characters: lowercase letters, digits and single hyphens, not starting or ending with a hyphen.',
       },
       members: {
+        roleSelectLabel: 'Team role for {name}',
         businessRolesLabel: 'Business roles:',
         businessRolesNone: 'None',
         businessRolesEdit: 'Edit',
@@ -798,6 +825,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     security: {
       dashboard: { title: 'Security monitoring', retry: 'Retry', loadFailed: 'Could not load security data.', unknownError: 'Unknown error.', timeRange: { '1h': '1 hour', '24h': '24 hours', '7d': '7 days', '30d': '30 days' }, totalEvents: 'Total events', errorRate: 'Error rate', errorsAndCritical: 'Errors / critical', eventTypeBreakdown: 'Event type breakdown', recentEvents: 'Recent events', allSeverities: 'All severities', noEvents: 'No events recorded.', policy: 'Policy', requestId: 'Request ID', viewDetails: 'View details', severity: { INFO: 'Info', WARNING: 'Warning', ERROR: 'Error', CRITICAL: 'Critical' } },
       eventTypes: {
+        TEAM_MEMBER_BUSINESS_ROLES_UPDATED: 'Team member business roles changed',
         SIGNATURE_INVALID: 'Invalid signature',
         NONCE_REUSED: 'Nonce replay',
         TIMESTAMP_EXPIRED: 'Timestamp expired',
@@ -894,7 +922,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       // 回收站永久删除确认：点名被删除的策略（{name} 由客户端替换）。
       trash: { confirmPermanentDeleteNamed: 'Permanently delete "{name}"? This action cannot be undone.' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
-      detail: { profile: 'Profile' },
+      detail: { teamBadge: 'Team: {name}', profile: 'Profile' },
       // 导出为 Cedar（ADR 0047 §6）。
       cedarExport: {
         button: 'Export to Cedar',
@@ -941,6 +969,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       // 版本列表补充（其余按钮文案复用包内 policies.versions.actions.*）。
       versions: {
+        rejectionReason: 'Reason: {comment}',
         executionRule: 'Execution uses the default version when set; otherwise the highest approved version. If no version has ever been approved, it uses the latest saved content.',
         submitFailed: 'Version submission failed',
         releaseNotePlaceholder: 'Add a release note (optional)',
@@ -1588,6 +1617,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     dashboardNav: { reports: '证据', approvals: '审批', domainVocabularies: '领域词汇', aiWorkspace: 'AI 工作台', commandPalette: { aiWorkspace: '打开 AI 工作台', domainVocabularies: '打开领域词汇', groupAdmin: '管理', groupPolicies: '策略' } },
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
     notifications: {
+      versionRejectedNoComment: '{policyName} v{version} 被驳回',
+      versionRejected: '{policyName} v{version} 被驳回：{comment}',
+      versionApproved: '{policyName} v{version} 已获批准',
+      versionSubmitted: '待审批：{policyName} v{version}',
       guardApprovalRequested: '待审批：{policyName}',
       guardApprovalDecided: '你对 {policyName} 的请求已{outcome}',
       guardOutcomeApproved: '批准',
@@ -1658,6 +1691,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     auth: {
       signup: {
+        forgotPassword: '忘记密码？',
+        errors: {
+          emailAliasRegistered: '该地址与已有账号属于同一邮箱（例如去掉 + 后缀后的地址）。请用那个账号登录，或重置其密码。',
+          emailAlreadyRegistered: '该邮箱已注册账号。请直接登录；忘记密码可重置。',
+        },
         title: '创建账户',
         subtitle: '新账户可能包含 Pro 试用；注册后请在“账单”页面查看。',
         trialIncludes: '可用套餐：',
@@ -1772,6 +1810,23 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      policies: {
+        unknownCreator: '已离开的成员',
+        executionCount: '{count, plural, other {# 次执行}}',
+      },
+      acceptInvite: {
+        emailMismatch: '这份邀请发给 {email}。请用该邮箱对应的账号登录后接受。',
+        joiningTeam: '你被邀请以{role}身份加入 {teamName}。',
+      },
+      settings: {
+        deleteWarning1: '团队策略不会被删除：每条策略都会转为其创建者的个人策略。成员、邀请和团队 API key 会被移除。',
+        deleteTeamDescription: '永久删除该团队。团队策略会保留为各自创建者的个人策略。',
+        transferErrors: {
+          newOwnerSeatLimit: '该成员的套餐最多允许 {limit} 名团队成员，而本团队有 {count} 名。',
+          newOwnerPlanIneligible: '该成员的套餐不含团队功能，需要升级到 Pro 或更高套餐后才能成为团队 owner。',
+        },
+        transferPlanNote: '团队功能、成员上限与团队 API 用量都按 owner 的套餐计。转让后改按新 owner 的套餐计，因此新 owner 需要 Pro 或更高、且成员上限容得下本团队的套餐。',
+      },
       errorCodes: { invalid_email: '请输入有效的邮箱地址。', invalid_role: '所选角色无效。', already_team_member: '此用户已是团队成员。', invitation_already_pending: '此邮箱已有待处理邀请。', unauthorized: '你无权邀请团队成员。' },
       // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
       createTeam: {
@@ -1779,6 +1834,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         slugInvalid: '团队 URL 需为 2–50 个字符，仅可使用小写字母、数字和单个连字符，且不能以连字符开头或结尾。',
       },
       members: {
+        roleSelectLabel: '{name} 的团队角色',
         businessRolesLabel: '业务角色：',
         businessRolesNone: '无',
         businessRolesEdit: '编辑',
@@ -1968,6 +2024,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     security: {
       dashboard: { title: '安全监控', retry: '重试', loadFailed: '无法加载安全数据。', unknownError: '未知错误。', timeRange: { '1h': '1 小时', '24h': '24 小时', '7d': '7 天', '30d': '30 天' }, totalEvents: '事件总数', errorRate: '错误率', errorsAndCritical: '错误 / 严重', eventTypeBreakdown: '事件类型分布', recentEvents: '最近事件', allSeverities: '所有级别', noEvents: '暂无事件记录。', policy: '策略', requestId: '请求 ID', viewDetails: '查看详情', severity: { INFO: '信息', WARNING: '警告', ERROR: '错误', CRITICAL: '严重' } },
       eventTypes: {
+        TEAM_MEMBER_BUSINESS_ROLES_UPDATED: '团队成员业务角色已变更',
         SIGNATURE_INVALID: '签名无效',
         NONCE_REUSED: 'Nonce 重放',
         TIMESTAMP_EXPIRED: '时间戳过期',
@@ -2063,7 +2120,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     policies: {
       trash: { confirmPermanentDeleteNamed: '确定要永久删除策略「{name}」吗？此操作无法撤销。' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
-      detail: { profile: '治理档案' },
+      detail: { teamBadge: '团队：{name}', profile: '治理档案' },
       // 导出为 Cedar（ADR 0047 §6）。
       cedarExport: {
         button: '导出为 Cedar',
@@ -2108,6 +2165,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       // 版本列表补充（其余按钮文案复用包内 policies.versions.actions.*）。
       versions: {
+        rejectionReason: '驳回理由：{comment}',
         executionRule: '执行时优先使用设为默认的版本；否则使用版本号最高的已批准版本。若从未有版本获批，则使用最新保存的内容。',
         submitFailed: '提交审批失败',
         releaseNotePlaceholder: '填写发布说明（可选）',
@@ -2761,6 +2819,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     dashboardNav: { reports: 'Nachweise', approvals: 'Freigaben', domainVocabularies: 'Fachvokabular', aiWorkspace: 'KI-Arbeitsbereich', commandPalette: { aiWorkspace: 'KI-Arbeitsbereich öffnen', domainVocabularies: 'Fachvokabular öffnen', groupAdmin: 'Administration', groupPolicies: 'Richtlinien' } },
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
     notifications: {
+      versionRejectedNoComment: '{policyName} v{version} wurde abgelehnt',
+      versionRejected: '{policyName} v{version} wurde abgelehnt: {comment}',
+      versionApproved: '{policyName} v{version} wurde freigegeben',
+      versionSubmitted: 'Freigabe erforderlich: {policyName} v{version}',
       guardApprovalRequested: 'Freigabe erforderlich: {policyName}',
       guardApprovalDecided: 'Ihre Anfrage für {policyName} wurde {outcome}',
       guardOutcomeApproved: 'freigegeben',
@@ -2831,6 +2893,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     auth: {
       signup: {
+        forgotPassword: 'Passwort vergessen?',
+        errors: {
+          emailAliasRegistered: 'Diese Adresse landet im selben Postfach wie ein bestehendes Konto (zum Beispiel dieselbe Adresse ohne +Zusatz). Melden Sie sich mit diesem Konto an oder setzen Sie dessen Passwort zurück.',
+          emailAlreadyRegistered: 'Für diese E-Mail-Adresse gibt es bereits ein Konto. Melden Sie sich an oder setzen Sie Ihr Passwort zurück, falls Sie es vergessen haben.',
+        },
         title: 'Konto erstellen',
         subtitle: 'Neue Konten können eine Pro-Testphase enthalten. Die Details finden Sie nach der Anmeldung unter „Abrechnung“.',
         trialIncludes: 'Verfügbare Tarife:',
@@ -2951,6 +3018,23 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      policies: {
+        unknownCreator: 'ein ehemaliges Mitglied',
+        executionCount: '{count, plural, one {# Ausführung} other {# Ausführungen}}',
+      },
+      acceptInvite: {
+        emailMismatch: 'Diese Einladung wurde an {email} gesendet. Melden Sie sich mit dem Konto für dieses Postfach an, um sie anzunehmen.',
+        joiningTeam: 'Sie wurden eingeladen, {teamName} als {role} beizutreten.',
+      },
+      settings: {
+        deleteWarning1: 'Teamrichtlinien werden nicht gelöscht: Jede wird zur persönlichen Richtlinie des Mitglieds, das sie erstellt hat. Mitglieder, Einladungen und Team-API-Schlüssel werden entfernt.',
+        deleteTeamDescription: 'Dieses Team dauerhaft löschen. Teamrichtlinien bleiben als persönliche Richtlinien ihrer Ersteller erhalten.',
+        transferErrors: {
+          newOwnerSeatLimit: 'Der Tarif dieses Mitglieds erlaubt {limit} Teammitglieder, das Team hat aber {count}.',
+          newOwnerPlanIneligible: 'Der Tarif dieses Mitglieds enthält keine Teamfunktionen. Es braucht einen Pro- oder höheren Tarif, um Eigentümer des Teams zu werden.',
+        },
+        transferPlanNote: 'Teamfunktionen, das Mitgliederlimit und die Team-API-Nutzung richten sich nach dem Tarif des Eigentümers. Nach der Übertragung gilt der Tarif des neuen Eigentümers – er braucht also einen Pro- oder höheren Tarif, der die Mitglieder dieses Teams zulässt.',
+      },
       errorCodes: { invalid_email: 'Geben Sie eine gültige E-Mail-Adresse ein.', invalid_role: 'Die ausgewählte Rolle ist ungültig.', already_team_member: 'Diese Person ist bereits Teammitglied.', invitation_already_pending: 'Für diese E-Mail-Adresse liegt bereits eine Einladung vor.', unauthorized: 'Sie dürfen keine Teammitglieder einladen.' },
       // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
       createTeam: {
@@ -2958,6 +3042,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         slugInvalid: 'Die Team-URL muss 2–50 Zeichen lang sein: Kleinbuchstaben, Ziffern und einzelne Bindestriche, ohne Bindestrich am Anfang oder Ende.',
       },
       members: {
+        roleSelectLabel: 'Teamrolle von {name}',
         businessRolesLabel: 'Geschäftsrollen:',
         businessRolesNone: 'Keine',
         businessRolesEdit: 'Bearbeiten',
@@ -3147,6 +3232,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     security: {
       dashboard: { title: 'Sicherheitsüberwachung', retry: 'Erneut versuchen', loadFailed: 'Sicherheitsdaten konnten nicht geladen werden.', unknownError: 'Unbekannter Fehler.', timeRange: { '1h': '1 Stunde', '24h': '24 Stunden', '7d': '7 Tage', '30d': '30 Tage' }, totalEvents: 'Ereignisse gesamt', errorRate: 'Fehlerrate', errorsAndCritical: 'Fehler / kritisch', eventTypeBreakdown: 'Ereignisse nach Typ', recentEvents: 'Letzte Ereignisse', allSeverities: 'Alle Schweregrade', noEvents: 'Keine Ereignisse erfasst.', policy: 'Policy', requestId: 'Anfrage-ID', viewDetails: 'Details anzeigen', severity: { INFO: 'Info', WARNING: 'Warnung', ERROR: 'Fehler', CRITICAL: 'Kritisch' } },
       eventTypes: {
+        TEAM_MEMBER_BUSINESS_ROLES_UPDATED: 'Geschäftsrollen eines Teammitglieds geändert',
         SIGNATURE_INVALID: 'Ungültige Signatur',
         NONCE_REUSED: 'Nonce-Wiederverwendung',
         TIMESTAMP_EXPIRED: 'Zeitstempel abgelaufen',
@@ -3242,7 +3328,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     policies: {
       trash: { confirmPermanentDeleteNamed: 'Richtlinie „{name}“ endgültig löschen? Diese Aktion kann nicht rückgängig gemacht werden.' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
-      detail: { profile: 'Profil' },
+      detail: { teamBadge: 'Team: {name}', profile: 'Profil' },
       // 导出为 Cedar（ADR 0047 §6）。
       cedarExport: {
         button: 'Nach Cedar exportieren',
@@ -3287,6 +3373,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       // 版本列表补充（其余按钮文案复用包内 policies.versions.actions.*）。
       versions: {
+        rejectionReason: 'Begründung: {comment}',
         executionRule: 'Bei der Ausführung gilt die als Standard festgelegte Version; andernfalls die höchste freigegebene Version. Wurde noch nie eine Version freigegeben, wird der zuletzt gespeicherte Inhalt verwendet.',
         submitFailed: 'Version konnte nicht zur Prüfung eingereicht werden',
         releaseNotePlaceholder: 'Versionshinweis hinzufügen (optional)',
@@ -3928,6 +4015,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     dashboardNav: { reports: 'साक्ष्य', approvals: 'अनुमोदन', domainVocabularies: 'डोमेन शब्दावली', aiWorkspace: 'AI कार्यक्षेत्र', commandPalette: { aiWorkspace: 'AI कार्यक्षेत्र खोलें', domainVocabularies: 'डोमेन शब्दावली खोलें', groupAdmin: 'व्यवस्थापन', groupPolicies: 'नीतियाँ' } },
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
     notifications: {
+      versionRejectedNoComment: '{policyName} v{version} अस्वीकृत हुआ',
+      versionRejected: '{policyName} v{version} अस्वीकृत हुआ: {comment}',
+      versionApproved: '{policyName} v{version} अनुमोदित हुआ',
+      versionSubmitted: 'अनुमोदन आवश्यक: {policyName} v{version}',
       guardApprovalRequested: 'अनुमोदन आवश्यक: {policyName}',
       guardApprovalDecided: '{policyName} के लिए आपका अनुरोध {outcome}',
       guardOutcomeApproved: 'स्वीकृत हुआ',
@@ -3998,6 +4089,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     auth: {
       signup: {
+        forgotPassword: 'पासवर्ड भूल गए?',
+        errors: {
+          emailAliasRegistered: 'यह पता किसी मौजूदा खाते वाले मेलबॉक्स में ही पहुँचता है (उदाहरण के लिए +प्रत्यय के बिना वही पता)। उसी खाते से साइन इन करें, या उसका पासवर्ड रीसेट करें।',
+          emailAlreadyRegistered: 'इस ईमेल के लिए पहले से एक खाता मौजूद है। साइन इन करें, या पासवर्ड भूल गए हों तो उसे रीसेट करें।',
+        },
         title: 'अपना खाता बनाएँ',
         subtitle: 'नए खातों में Pro परीक्षण शामिल हो सकता है; साइन अप के बाद Billing देखें।',
         trialIncludes: 'उपलब्ध प्लान:',
@@ -4113,6 +4209,23 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      policies: {
+        unknownCreator: 'एक पूर्व सदस्य',
+        executionCount: '{count, plural, other {# निष्पादन}}',
+      },
+      acceptInvite: {
+        emailMismatch: 'यह आमंत्रण {email} पर भेजा गया था। स्वीकार करने के लिए उस मेलबॉक्स वाले खाते से साइन इन करें।',
+        joiningTeam: 'आपको {teamName} में {role} के रूप में शामिल होने के लिए आमंत्रित किया गया है।',
+      },
+      settings: {
+        deleteWarning1: 'टीम नीतियाँ हटाई नहीं जातीं: हर नीति उसे बनाने वाले सदस्य की व्यक्तिगत नीति बन जाती है। सदस्य, आमंत्रण और टीम API कुंजियाँ हटा दी जाती हैं।',
+        deleteTeamDescription: 'इस टीम को स्थायी रूप से हटाएं। टीम नीतियाँ उन्हें बनाने वाले सदस्यों की व्यक्तिगत नीतियों के रूप में बनी रहेंगी।',
+        transferErrors: {
+          newOwnerSeatLimit: 'इस सदस्य की योजना {limit} टीम सदस्यों की अनुमति देती है, लेकिन टीम में {count} सदस्य हैं।',
+          newOwnerPlanIneligible: 'इस सदस्य की योजना में टीम सुविधाएँ शामिल नहीं हैं। टीम का मालिक बनने के लिए उसे Pro या उससे ऊपर की योजना चाहिए।',
+        },
+        transferPlanNote: 'टीम सुविधाएँ, सदस्य सीमा और टीम API उपयोग मालिक की योजना के अनुसार चलते हैं। हस्तांतरण के बाद ये नए मालिक की योजना के अनुसार चलेंगे, इसलिए नए मालिक को Pro या उससे ऊपर की ऐसी योजना चाहिए जो इस टीम के सदस्यों की अनुमति दे।',
+      },
       errorCodes: { invalid_email: 'मान्य ईमेल पता दर्ज करें।', invalid_role: 'चुनी गई भूमिका मान्य नहीं है।', already_team_member: 'यह व्यक्ति पहले से टीम का सदस्य है।', invitation_already_pending: 'इस ईमेल के लिए आमंत्रण पहले से लंबित है।', unauthorized: 'आपको टीम सदस्यों को आमंत्रित करने की अनुमति नहीं है।' },
       // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
       createTeam: {
@@ -4120,6 +4233,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         slugInvalid: 'टीम URL 2–50 अक्षरों का होना चाहिए: केवल छोटे अक्षर, अंक और एकल हाइफ़न, और हाइफ़न से शुरू या समाप्त नहीं होना चाहिए।',
       },
       members: {
+        roleSelectLabel: '{name} की टीम भूमिका',
         businessRolesLabel: 'व्यावसायिक भूमिकाएँ:',
         businessRolesNone: 'कोई नहीं',
         businessRolesEdit: 'संपादित करें',
@@ -4309,6 +4423,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     security: {
       dashboard: { title: 'सुरक्षा निगरानी', retry: 'फिर कोशिश करें', loadFailed: 'सुरक्षा डेटा लोड नहीं हो सका।', unknownError: 'अज्ञात त्रुटि।', timeRange: { '1h': '1 घंटा', '24h': '24 घंटे', '7d': '7 दिन', '30d': '30 दिन' }, totalEvents: 'कुल घटनाएँ', errorRate: 'त्रुटि दर', errorsAndCritical: 'त्रुटियाँ / गंभीर', eventTypeBreakdown: 'घटना प्रकार का विभाजन', recentEvents: 'हाल की घटनाएँ', allSeverities: 'सभी स्तर', noEvents: 'कोई घटना दर्ज नहीं है।', policy: 'नीति', requestId: 'अनुरोध ID', viewDetails: 'विवरण देखें', severity: { INFO: 'जानकारी', WARNING: 'चेतावनी', ERROR: 'त्रुटि', CRITICAL: 'गंभीर' } },
       eventTypes: {
+        TEAM_MEMBER_BUSINESS_ROLES_UPDATED: 'टीम सदस्य की व्यावसायिक भूमिकाएँ बदली गईं',
         SIGNATURE_INVALID: 'अमान्य हस्ताक्षर',
         NONCE_REUSED: 'Nonce पुनः उपयोग',
         TIMESTAMP_EXPIRED: 'टाइमस्टैम्प समाप्त',
@@ -4404,7 +4519,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     policies: {
       trash: { confirmPermanentDeleteNamed: 'नीति "{name}" को स्थायी रूप से हटाएँ? यह क्रिया पूर्ववत नहीं की जा सकती।' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
-      detail: { profile: 'Profile' },
+      detail: { teamBadge: 'टीम: {name}', profile: 'Profile' },
       // 导出为 Cedar（ADR 0047 §6）。
       cedarExport: {
         button: 'Cedar में निर्यात करें',
@@ -4449,6 +4564,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       // 版本列表补充（其余按钮文案复用包内 policies.versions.actions.*）。
       versions: {
+        rejectionReason: 'कारण: {comment}',
         executionRule: 'निष्पादन में डिफ़ॉल्ट संस्करण को प्राथमिकता मिलती है; अन्यथा सबसे बड़ा स्वीकृत संस्करण चलता है। यदि कभी कोई संस्करण स्वीकृत नहीं हुआ, तो नवीनतम सहेजी गई सामग्री चलती है।',
         submitFailed: 'संस्करण सबमिट नहीं हो सका',
         releaseNotePlaceholder: 'रिलीज़ नोट जोड़ें (वैकल्पिक)',
