@@ -26,9 +26,12 @@ export function missingInputFieldMessage(field: string): string {
   return `The input is missing the field "${field}" that the policy reads. Add it to the input and try again.`;
 }
 
-/** 缺字段的 400 响应体（dashboard / v1 / evaluate-source 共用）。 */
-export function missingInputFieldBody(field: string) {
-  return { error: missingInputFieldMessage(field), code: MISSING_INPUT_FIELD_CODE, field };
+/**
+ * 缺字段的 400 响应体（dashboard / v1 / evaluate-source 共用），与 ambiguous_input_field 同一字段语义：
+ * `field` 为规范名路径（引擎原样，程序据此识别），`policyField` 为策略语言写法（界面展示用，缺省同 field）。
+ */
+export function missingInputFieldBody(field: string, policyField: string = field) {
+  return { error: missingInputFieldMessage(policyField), code: MISSING_INPUT_FIELD_CODE, field, policyField };
 }
 
 /**
@@ -63,6 +66,7 @@ interface EngineResultLike {
   deniedReasons: string[];
   metadata: { engineError?: boolean };
   diagnostics?: DiagnosticLike[];
+  inputError?: { code: string };
 }
 
 /** 单条诊断是否带内部实现细节。 */
@@ -106,7 +110,8 @@ export function sanitizeExecutionResult<T extends EngineResultLike>(
   };
 }
 
-/** 执行结果对应的错误码：仅引擎失败时有值。 */
+/** 执行结果对应的错误码：输入错误取其错误码（如 missing_input_field），引擎失败为 execution_failed，其余无。 */
 export function executionErrorCode(result: EngineResultLike): string | undefined {
+  if (result.inputError) return result.inputError.code;
   return result.metadata.engineError ? EXECUTION_FAILED_CODE : undefined;
 }

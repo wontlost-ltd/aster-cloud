@@ -66,6 +66,16 @@ describe('POST /api/policies/evaluate-source — 错误脱敏', () => {
     expect(res.status).toBe(400);
     expect(body.code).toBe('missing_input_field');
     expect(body.field).toBe('applicant.creditScore');
+    expect(body.policyField).toBe('applicant.creditScore');
     expect(body.error).toContain('applicant.creditScore');
+  });
+
+  it('其它 aster-api 4xx 仍走原错误处理', async () => {
+    mockEvaluateSource.mockRejectedValue(new PolicyApiError('too deep', 400, 'input_too_deep'));
+    const res = await POST(request());
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body.code).toBeUndefined();
+    expect(body.error).toBe('too deep');
   });
 });

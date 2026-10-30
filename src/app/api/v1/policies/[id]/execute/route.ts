@@ -371,13 +371,6 @@ export async function POST(req: Request, { params }: RouteParams) {
       replayCapture: true,
       ...(agent ? { agent } : {}),
     });
-    // 输入缺少规则读取的字段：与其它输入错误同口径回 400（不写执行记录、不计调用），字段路径按策略语言给出。
-    if (rawExecutionResult.inputError) {
-      return NextResponse.json(
-        missingInputFieldBody(prepared.localizeFieldPath(rawExecutionResult.inputError.field)),
-        { status: 400 },
-      );
-    }
     // 与 dashboard 执行同口径：引擎失败原文（中文 + Java 异常）只进服务端日志，API 只给稳定码 + 通用说明。
     const executionResult = sanitizeExecutionResult(rawExecutionResult, { policyId: id, userId });
     const primaryError = getPrimaryError(executionResult);
@@ -497,6 +490,17 @@ export async function POST(req: Request, { params }: RouteParams) {
     } catch {
       // 非 Cloudflare 环境，直接执行（不阻塞响应）
       void backgroundTasks;
+    }
+
+    // 输入缺少规则读取的字段：执行记录与 API 调用（api_error）、用量已照常记入，按输入错误回 400；
+    // field 为规范名路径，policyField 为策略语言写法。
+    if (executionResult.inputError) {
+      const { field } = executionResult.inputError;
+      return NextResponse.json({
+        ...missingInputFieldBody(field, prepared.localizeFieldPath(field)),
+        executionId,
+        meta: { policyId: id, policyName: policy.name, durationMs, timestamp: new Date().toISOString() },
+      }, { status: 400 });
     }
 
     return NextResponse.json({

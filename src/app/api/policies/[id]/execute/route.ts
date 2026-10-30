@@ -434,14 +434,6 @@ export async function POST(req: Request, { params }: RouteParams) {
     });
     timings.executionWait = Date.now() - t3;
     timings.executionTotal = Date.now() - t3;
-    // 输入缺少规则读取的字段：与其它输入错误同口径回 400（不写执行记录、不计用量），
-    // 字段路径还原为策略语言，用户按它补输入即可。
-    if (rawExecutionResult.inputError) {
-      return NextResponse.json(
-        missingInputFieldBody(prepared.localizeFieldPath(rawExecutionResult.inputError.field)),
-        { status: 400 },
-      );
-    }
     // 引擎失败原文（中文 + Java 异常）只进服务端日志；响应与执行记录只存通用说明。
     const executionResult = sanitizeExecutionResult(rawExecutionResult, { policyId: id, userId });
 
@@ -553,6 +545,18 @@ export async function POST(req: Request, { params }: RouteParams) {
     } catch {
       // 非 Cloudflare 环境，直接执行（不阻塞响应）
       void backgroundTasks;
+    }
+
+    // 输入缺少规则读取的字段：引擎已执行，照常写执行记录（decision=error，output.inputError 带码与路径）
+    // 与用量后，按输入错误回 400；field 为规范名路径，policyField 为策略语言写法。
+    if (executionResult.inputError) {
+      const { field } = executionResult.inputError;
+      return NextResponse.json({
+        ...missingInputFieldBody(field, prepared.localizeFieldPath(field)),
+        executionId,
+        decision,
+        durationMs,
+      }, { status: 400 });
     }
 
     return NextResponse.json({

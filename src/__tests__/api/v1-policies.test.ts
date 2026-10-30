@@ -78,8 +78,9 @@ vi.mock('@/services/policy/cnl-executor', () => ({
   deriveExecutionDecision: vi.fn((r: {
     allowed?: boolean;
     metadata?: { engineError?: boolean; decision?: string; outcome?: string };
+    inputError?: unknown;
   }) =>
-    r?.metadata?.engineError
+    r?.metadata?.engineError || r?.inputError
       ? 'error'
       : r?.metadata?.decision === 'indeterminate'
         ? 'indeterminate'
@@ -573,9 +574,9 @@ describe('V1 Policies API - Drizzle Migration', () => {
       log.mockRestore();
     });
 
-    it('输入缺少规则读取的字段：400 + missing_input_field + 字段路径，不记执行与 API 调用', async () => {
+    it('输入缺少规则读取的字段：照常写执行记录、记 api_error 与用量，再回 400 + missing_input_field', async () => {
       mockExecutePolicyUnified.mockResolvedValue({
-        ...mockExecutionResult({ allowed: false, deniedReasons: ['Input is missing field "applicant.creditScore".'] }),
+        ...mockExecutionResult({ allowed: false, deniedReasons: ['The input is missing the field "applicant.creditScore".'] }),
         inputError: { code: 'missing_input_field', field: 'applicant.creditScore' },
       } as never);
 
@@ -589,10 +590,17 @@ describe('V1 Policies API - Drizzle Migration', () => {
       expect(response.status).toBe(400);
       expect(body.code).toBe('missing_input_field');
       expect(body.field).toBe('applicant.creditScore');
+      expect(body.policyField).toBe('applicant.creditScore');
       expect(body.error).toContain('applicant.creditScore');
+      expect(body.executionId).toEqual(expect.any(String));
       expect(JSON.stringify(body)).not.toMatch(/execution_failed|java\.lang|Polyglot/);
-      expect(mockInsert).not.toHaveBeenCalled();
-      expect(mockRecordApiCallRecord).not.toHaveBeenCalled();
+      const persisted = mockValuesInsert.mock.calls.find(
+        ([row]) => (row as { source?: string }).source === 'api',
+      )?.[0] as { id?: string; decision?: string; output?: { inputError?: unknown } };
+      expect(persisted.id).toBe(body.executionId);
+      expect(persisted.decision).toBe('error');
+      expect(persisted.output?.inputError).toEqual({ code: 'missing_input_field', field: 'applicant.creditScore' });
+      expect(mockRecordApiCallRecord).toHaveBeenCalledWith(expect.objectContaining({ status: 'api_error' }), expect.any(Date));
     });
 
     it('passes an optional Rule name from functionName to the policy executor', async () => {

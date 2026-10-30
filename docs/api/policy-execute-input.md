@@ -63,21 +63,35 @@
 
 ## 3a. 缺少规则读取的字段 → 400
 
-输入里缺少规则**实际读取**的字段（或缺少整个参数）时，返回 400 `missing_input_field`，`field` 是缺失字段
-相对输入的路径，已还原为策略语言写法（德语策略报 `person.alter` 而不是 `person.age`）：
+输入里缺少规则**实际读取**的字段（或缺少整个参数）时，返回 400 `missing_input_field`。字段语义与
+`ambiguous_input_field` 一致：`field` 为缺失字段相对输入的**规范名**路径（引擎原样，程序据此识别），
+`policyField` 为策略语言写法（德语策略为 `person.alter`，无词汇时与 `field` 相同），界面展示用它：
 
 ```json
 {
   "error": "The input is missing the field \"applicant.creditScore\" that the policy reads. Add it to the input and try again.",
   "code": "missing_input_field",
-  "field": "applicant.creditScore"
+  "field": "applicant.creditScore",
+  "policyField": "applicant.creditScore",
+  "executionId": "…"
 }
 ```
 
 - 判定在执行端（aster-api）：只有规则执行时真的读到该字段才报错，所以缺少规则没用到的字段、带多余字段都照常执行。
 - 单参数规则直接传整个对象（输入不带参数名这一层）时，路径也不带参数名（如 `creditScore`）。
-- 这是输入错误：不写执行记录、不计执行用量 / API 调用，与 `ambiguous_input_field` 同口径。
+- 引擎已经执行过，所以**照常写执行记录**（decision=`error`，`output.inputError` 带码与规范名路径）并计执行用量；
+  v1 另记一次 `api_error` API 调用。响应带 `executionId`（v1 另带 `meta`）。
 - 路径之外不透出引擎原文（Java 异常、Polyglot 等）。
+
+### 行为变化（需 aster-api#416 部署后生效）
+
+| 端点 | 变更前 | 变更后 |
+|---|---|---|
+| `POST /api/v1/policies/{id}/execute` | 200，`success:false`、`errorCode:"execution_failed"`、通用说明，`data` 为执行结果 | **400**，`{ error, code:"missing_input_field", field, policyField, executionId, meta }`，无 `data` |
+| `POST /api/policies/{id}/execute`（控制台） | 200，`errorCode:"execution_failed"` | 400，同上（带 `executionId`、`decision`、`durationMs`） |
+| `POST /api/policies/evaluate-source`（编辑器预览） | 400，通用说明 | 400，带 `code` / `field` / `policyField` |
+
+执行记录与用量计数在变更前后都会写入（decision=`error`）。按 HTTP 状态码区分成功/失败的 API 集成方需要处理新的 400 分支。
 
 ## 4. 用哪份词汇
 

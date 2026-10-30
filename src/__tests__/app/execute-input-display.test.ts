@@ -46,7 +46,9 @@ describe('EXECUTE_ERROR_KEYS', () => {
 describe('parameterizedExecuteError', () => {
   const t = (key: string, values?: Record<string, string>) => `${key}${values ? JSON.stringify(values) : ''}`;
 
-  it('输入缺字段：按 missingInputField 显示字段路径', () => {
+  it('输入缺字段：按 missingInputField 显示字段路径，优先策略语言写法 policyField', () => {
+    expect(parameterizedExecuteError({ code: 'missing_input_field', field: 'person.age', policyField: 'person.alter' }, t))
+      .toBe('missingInputField{"field":"person.alter"}');
     expect(parameterizedExecuteError({ code: 'missing_input_field', field: 'applicant.creditScore' }, t))
       .toBe('missingInputField{"field":"applicant.creditScore"}');
   });
