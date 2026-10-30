@@ -3,10 +3,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const originalKey = process.env.ASTER_PLAN_GATE_HMAC_KEY;
 const originalUrl = process.env.ASTER_API_INTERNAL_URL;
 
-const { mockFindFirst, mockResolve, mockTeamsFindMany } = vi.hoisted(() => ({
+const { mockFindFirst, mockResolve, mockTeamsFindMany, mockCountOwnerPoolUsage } = vi.hoisted(() => ({
   mockFindFirst: vi.fn(),
   mockResolve: vi.fn(),
   mockTeamsFindMany: vi.fn(),
+  mockCountOwnerPoolUsage: vi.fn(),
+}));
+
+// owner 池用量口径由 api-quota-pool 决定（与 precheck 同源），这里只替换计数并固定账期
+vi.mock('@/lib/api-quota-pool', () => ({
+  countOwnerPoolUsage: mockCountOwnerPoolUsage,
+  currentPeriodMonth: () => '2026-10',
 }));
 
 // 身份口径由解析器决定（ADR 0015 §2），这里只替换按 hash 解析的函数；
@@ -34,6 +41,8 @@ describe('pushUserSnapshot', () => {
     mockFindFirst.mockReset();
     mockTeamsFindMany.mockReset();
     mockTeamsFindMany.mockResolvedValue([]);
+    mockCountOwnerPoolUsage.mockReset();
+    mockCountOwnerPoolUsage.mockResolvedValue(0);
     process.env.ASTER_PLAN_GATE_HMAC_KEY = 'test-secret-32chars-min-len-please';
     process.env.ASTER_API_INTERNAL_URL = 'http://aster-api.test';
     global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 }) as never;
@@ -192,6 +201,41 @@ describe('pushUserSnapshot', () => {
       'http://aster-api.test/api/internal/plan-cache/t2',
     ]);
     expect(mockTeamsFindMany).toHaveBeenCalledTimes(1);
+  });
+
+  // aster-api 快照按 max(本地计数, 同账期基线) 裁决（aster-api#421）；推送若不带用量，
+  // 会把 precheck 预热写入的基线覆盖为空（#694）。
+  it('推送体携带该用户作为配额 owner 的池用量 monthlyUsed 与账期 usagePeriod', async () => {
+    mockFindFirst.mockResolvedValue({
+      plan: 'pro', priceLockedAt: null, legacyTier: null,
+      subscriptionStatus: 'active', aiBannedUntil: null, gracePeriodEndsAt: null,
+    });
+    mockCountOwnerPoolUsage.mockResolvedValue(1800);
+    const { pushUserSnapshot } = await import('@/lib/snapshot-pusher');
+    await pushUserSnapshot('owner-1');
+
+    expect(mockCountOwnerPoolUsage).toHaveBeenCalledWith('owner-1', '2026-10');
+    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body).toMatchObject({ plan: 'pro', monthlyUsed: 1800, usagePeriod: '2026-10' });
+  });
+
+  it('用量查询失败 → 仍推送套餐快照，只是不带用量字段（aster-api 视同无基线）', async () => {
+    mockFindFirst.mockResolvedValue({
+      plan: 'team', priceLockedAt: null, legacyTier: null,
+      subscriptionStatus: 'active', aiBannedUntil: null, gracePeriodEndsAt: null,
+    });
+    mockCountOwnerPoolUsage.mockRejectedValue(new Error('db down'));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { pushUserSnapshot } = await import('@/lib/snapshot-pusher');
+    await pushUserSnapshot('owner-1');
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.plan).toBe('team');
+    expect(body).not.toHaveProperty('monthlyUsed');
+    expect(body).not.toHaveProperty('usagePeriod');
   });
 
   it('user 不存在 → 不 fetch（让 aster-api 缓存自然过期）', async () => {

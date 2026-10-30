@@ -220,6 +220,11 @@ export interface PolicyCedarExportRequest {
   source?: string;
   locale: string;
   aliasSet?: Record<string, string[]> | null;
+  /**
+   * 结构词别名已获授权（仅源码模式）。导出的是已批准版本，其冻结别名集在建版本时已按 per-user 授权核对，
+   * 与执行路径一样按已授权编译。aster-api 仅对 HMAC 已验签的内部调用方采信此标记（aster-api#419）。
+   */
+  allowStructural?: boolean;
   functionName?: string;
   versionId?: number;
   /** 领域词汇（DomainVocabulary JSON，仅源码模式，ADR 0051）：名称按位置解析所需，与执行同一份。 */

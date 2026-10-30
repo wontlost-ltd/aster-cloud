@@ -4,11 +4,12 @@
  *
  * 池的定义只在本模块出现：所有"按月统计 API 调用量"的入口都必须经由本模块，保证限流判定、
  * 展示与告警口径一致——
- *   - 按单个 owner 计数（precheck、usage GET、dashboard 用量卡片）：countOwnerPoolUsage；
+ *   - 按单个 owner 计数（precheck、快照推送、usage GET、dashboard 用量卡片）：countOwnerPoolUsage；
+ *   - 按一批 owner 计数（全量快照同步分页）：countOwnerPoolUsageByOwner；
  *   - 按 owner 分组扫描（api-quota-alerts 告警 cron）：quotaOwnerKey。
  */
 import { db, apiCallRecords } from '@/lib/prisma';
-import { and, eq, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 
 /** 计费月份 'YYYY-MM'，按 UTC 切月，与 apiCallRecords.periodMonth 写入口径一致。 */
 export function currentPeriodMonth(now: Date = new Date()): string {
@@ -40,6 +41,29 @@ export async function countOwnerPoolUsage(ownerId: string, periodMonth: string):
     .from(apiCallRecords)
     .where(and(ownerPoolCondition(ownerId), eq(apiCallRecords.periodMonth, periodMonth), eq(apiCallRecords.status, 'success')));
   return r[0]?.c ?? 0;
+}
+
+/**
+ * 一批 owner 各自的池在指定月份内的成功调用数，一次查询按池键分组；没有调用的 owner 计 0。
+ * 条件与 ownerPoolCondition 逐 owner 等价：quotaOwnerId ∈ owners，或旧行 quotaOwnerId 为 NULL 且持有者 ∈ owners。
+ */
+export async function countOwnerPoolUsageByOwner(ownerIds: string[], periodMonth: string): Promise<Map<string, number>> {
+  const usage = new Map(ownerIds.map((id): [string, number] => [id, 0]));
+  if (ownerIds.length === 0) return usage;
+  const rows = await db
+    .select({ owner: quotaOwnerKey, c: sql<number>`count(*)::int` })
+    .from(apiCallRecords)
+    .where(and(
+      or(
+        inArray(apiCallRecords.quotaOwnerId, ownerIds),
+        and(isNull(apiCallRecords.quotaOwnerId), inArray(apiCallRecords.userId, ownerIds))
+      ),
+      eq(apiCallRecords.periodMonth, periodMonth),
+      eq(apiCallRecords.status, 'success')
+    ))
+    .groupBy(quotaOwnerKey);
+  for (const row of rows) usage.set(row.owner, row.c);
+  return usage;
 }
 
 /** 一次 Policy Execution API 调用的记录（与 aster-api 经 /api/internal/api/usage 上报的行同形）。 */

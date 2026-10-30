@@ -36,6 +36,37 @@ describe('launchRunnerJob', () => {
     if (!r.ok) expect(r.kind).toBe('unavailable');
   });
 
+  // launcher 在建 Job 前预检请求体（aster-api#408/#410）：超出 ConfigMap 1 MiB 上限返回 413。
+  // 这是调用方可修正的问题（缩减词汇或源码），不能与集群不可用混为 unavailable（#692）。
+  it('413（请求体超 ConfigMap 上限）→ runner-error/REQUEST_TOO_LARGE，message 取 launcher 正文 error', async () => {
+    const error = 'runner request too large for configmap (limit 1MiB), reduce vocabulary or source';
+    global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error }), { status: 413 }));
+    const r = await launchRunnerJob({ tenantId: 't', source: 's', input: {}, locale: 'en-US', functionName: 'f', aliasSet: null, role: 'ADMIN' });
+    expect(r).toEqual({ ok: false, kind: 'runner-error', errorCode: 'REQUEST_TOO_LARGE', phase: 'launch', message: error });
+  });
+
+  it('413 正文不是 JSON 或缺 error 字段 → 仍归 REQUEST_TOO_LARGE，message 用固定说明', async () => {
+    for (const body of ['too large', JSON.stringify({}), JSON.stringify({ error: 42 })]) {
+      global.fetch = vi.fn().mockResolvedValue(new Response(body, { status: 413 }));
+      const r = await launchRunnerJob({ tenantId: 't', source: 's', input: {}, locale: 'en-US', functionName: 'f', aliasSet: null, role: 'ADMIN' });
+      if (!r.ok && r.kind === 'runner-error') {
+        expect(r.errorCode).toBe('REQUEST_TOO_LARGE');
+        expect(r.phase).toBe('launch');
+        expect(r.message).toBe('runner request too large');
+      } else {
+        throw new Error(`expected kind=runner-error for body ${body}`);
+      }
+    }
+  });
+
+  it('其余非 2xx（500/502/401）仍归 unavailable', async () => {
+    for (const status of [500, 502, 401]) {
+      global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'x' }), { status }));
+      const r = await launchRunnerJob({ tenantId: 't', source: 's', input: {}, locale: 'en-US', functionName: 'f', aliasSet: null, role: 'ADMIN' });
+      expect(r).toEqual({ ok: false, kind: 'unavailable', reason: `HTTP ${status}` });
+    }
+  });
+
   it('超时（AbortError）→ unavailable，不抛', async () => {
     global.fetch = vi.fn().mockRejectedValue(Object.assign(new Error('aborted'), { name: 'AbortError' }));
     const r = await launchRunnerJob({ tenantId: 't', source: 's', input: {}, locale: 'en-US', functionName: 'f', aliasSet: null, role: 'ADMIN' });

@@ -4,7 +4,7 @@
  *
  * 导出执行路径会选中的版本（isDefault 的批准版本，否则最新批准版本）：把未经批准的草稿交给
  * 执行端等于绕过审批，故没有可执行版本时返回 409。cloud 的版本不在 aster-api，故走源码模式：
- * 该版本源码、冻结别名集、与执行同一判定的语言与领域词汇（已审批版本取冻结快照，ADR 0051），
+ * 该版本源码、冻结别名集（与执行一样按已授权应用，含结构词别名）、与执行同一判定的语言与领域词汇（已审批版本取冻结快照，ADR 0051），
  * 并附 claimedRef（cloud 策略 id 与所导出的版本号，api 只记审计不核验）。仅策略所有者可导出。
  *
  * 请求体可选 `{ functionName }`（#661）：可导出的规则不止一条时（E720）由调用方指定导出哪一条。
@@ -108,10 +108,14 @@ export async function POST(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'unknown_function', message: 'functionName is not a rule of this policy version' }, { status: 400, headers });
     }
     const client = await createPolicyApiClientForUser(policyTenantId(policy), userId);
+    const aliasSet = parseAliasSet(version.aliasSet);
     const result = await client.exportCedar({
       source,
       locale,
-      aliasSet: parseAliasSet(version.aliasSet),
+      aliasSet,
+      // 冻结即信任：与执行路径同一判定，已批准版本的别名集按已授权编译（含结构词别名）。
+      // aster-api 仅对 HMAC 已验签的调用方采信该标记；无别名时不带，保持原请求形状。
+      ...(aliasSet && Object.keys(aliasSet).length > 0 ? { allowStructural: true } : {}),
       ...(vocabulary ? { vocabulary } : {}),
       ...(functionName ? { functionName } : {}),
       ...claimedRefFor(policy.id, version.version),
