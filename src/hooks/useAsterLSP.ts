@@ -983,6 +983,8 @@ export function useAsterLSP({
             completionItem: {
               snippetSupport: true,
               commitCharactersSupport: true,
+              // 声明后服务端对字段补全返回 InsertReplaceEdit（insert 止于光标，replace 延伸到名字末尾）
+              insertReplaceSupport: true,
               documentationFormat: ['markdown', 'plaintext'],
             },
           },

@@ -402,6 +402,37 @@ describe('useAsterLSP 协议', () => {
     });
   });
 
+  /* ts 1.2.3：客户端声明 insertReplaceSupport 后，字段补全返回 InsertReplaceEdit（insert 止于光标，replace 延伸到名字末尾）。 */
+  it('★initialize 声明 completionItem.insertReplaceSupport', async () => {
+    mount('en-US');
+    await opened();
+    const init = FakeWebSocket.instances[0].sent.find((m) => m.method === 'initialize');
+    const caps = (init?.params as { capabilities: { textDocument: { completion: { completionItem: Record<string, unknown> } } } }).capabilities;
+    expect(caps.textDocument.completion.completionItem.insertReplaceSupport).toBe(true);
+  });
+
+  it('★`d.ag|e` 选 age：replace 范围覆盖到名字末尾，应用后得到 age 而不是 agee', async () => {
+    const text = '  d.age';
+    const cursorColumn = 7; // 光标在 `ag` 与 `e` 之间（1 起的列号）
+    FakeWebSocket.completion = [{
+      label: 'age', kind: 5,
+      textEdit: {
+        newText: 'age',
+        insert: { start: { line: 2, character: 4 }, end: { line: 2, character: 6 } },
+        replace: { start: { line: 2, character: 4 }, end: { line: 2, character: 7 } },
+      },
+    }];
+    const monaco = mount('en-US');
+    await opened();
+    await waitFor(() => expect(monaco.providers.completion).toBeDefined());
+    const res = await complete(monaco, text, cursorColumn, { triggerKind: 0 });
+    const { insert, replace } = res!.suggestions[0]!.range as Record<'insert' | 'replace', { startColumn: number; endColumn: number }>;
+    const apply = (r: { startColumn: number; endColumn: number }) => text.slice(0, r.startColumn - 1) + 'age' + text.slice(r.endColumn - 1);
+    expect(apply(replace)).toBe('  d.age');
+    // insert 模式只覆盖到光标，会留下尾部的 e——编辑器因此必须启用 replace 模式（见接线测试）
+    expect(apply(insert)).toBe('  d.agee');
+  });
+
   it('通用结果（关键字 / 类型名）被丢弃，交给本地 provider', async () => {
     FakeWebSocket.completion = { isIncomplete: false, items: [
       { label: 'Return', kind: 14 }, { label: 'Int', kind: 7 }, { label: 'EU_AI_ACT:ART14', kind: 12 },

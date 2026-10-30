@@ -1157,6 +1157,8 @@ export function MonacoPolicyEditor({
           suggest: {
             showKeywords: true,
             showSnippets: true,
+            // LSP InsertReplaceEdit：光标在名字中间（d.ag|e）选 age 应得 age，而非 Monaco 默认 insert 模式的 agee
+            insertMode: 'replace',
           },
           // 修复 hover tooltip 超出边界被裁剪的问题
           fixedOverflowWidgets: true,
