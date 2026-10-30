@@ -18,6 +18,7 @@ interface Policy {
   createdBy: {
     id: string;
     name: string | null;
+    email?: string | null;
   } | null;
   executionCount: number;
   createdAt: string;
@@ -209,7 +210,7 @@ export default function TeamPoliciesPage() {
 
                       {/* 执行次数 */}
                       <span className="text-sm text-fg-muted">
-                        {t('executions', { count: policy.executionCount })}
+                        {t('policies.executionCount', { count: policy.executionCount })}
                       </span>
 
                       {/* 版本 */}
@@ -220,7 +221,9 @@ export default function TeamPoliciesPage() {
                     <div className="text-xs text-fg-subtle">
                       {policy.createdBy && (
                         <span>
-                          {t('policies.createdBy', { name: policy.createdBy.name || 'Unknown' })}
+                          {t('policies.createdBy', {
+                            name: policy.createdBy.name || policy.createdBy.email || t('policies.unknownCreator'),
+                          })}
                           {' · '}
                         </span>
                       )}

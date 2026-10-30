@@ -7,13 +7,17 @@ import { useTranslations } from 'next-intl';
 import { Container } from '@/components/ui';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
 
-interface InvitationInfo {
+/** 服务端按 token 读出的邀请摘要；token 无效时为 null。 */
+export interface InvitationSummary {
   teamName: string;
   role: string;
-  email: string;
+  expired: boolean;
+  invitedEmail: string;
+  /** 当前账号邮箱与邀请邮箱是否同一邮箱（不符时接受会被拒） */
+  emailMatches: boolean;
 }
 
-export function AcceptInviteContent() {
+export function AcceptInviteContent({ invitation = null }: { invitation?: InvitationSummary | null }) {
   const t = useTranslations('teams');
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -22,7 +26,6 @@ export function AcceptInviteContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAccepting, setIsAccepting] = useState(false);
   const [error, setError] = useState('');
-  const [_invitationInfo, _setInvitationInfo] = useState<InvitationInfo | null>(null);
 
   useEffect(() => {
     if (!token) {
@@ -132,7 +135,24 @@ export function AcceptInviteContent() {
           <h3 className="mt-4 text-lg font-medium text-fg">
             {t('acceptInvite.title')}
           </h3>
-          <p className="mt-2 text-sm text-fg-muted">{t('acceptInvite.joining')}</p>
+          {invitation ? (
+            <p className="mt-2 text-sm text-fg-muted">
+              {t('acceptInvite.joiningTeam', {
+                teamName: invitation.teamName,
+                role: t(`roles.${invitation.role}` as 'roles.member'),
+              })}
+            </p>
+          ) : (
+            <p className="mt-2 text-sm text-fg-muted">{t('acceptInvite.joining')}</p>
+          )}
+          {invitation?.expired && (
+            <p className="mt-3 text-sm text-red-700">{t('acceptInvite.expired')}</p>
+          )}
+          {invitation && !invitation.expired && !invitation.emailMatches && (
+            <p className="mt-3 text-sm text-warning">
+              {t('acceptInvite.emailMismatch', { email: invitation.invitedEmail })}
+            </p>
+          )}
 
           {error && (
             <div className="mt-4 rounded-md bg-red-50 p-3">
@@ -143,7 +163,7 @@ export function AcceptInviteContent() {
           <div className="mt-6 space-y-3">
             <button
               onClick={handleAccept}
-              disabled={isAccepting}
+              disabled={isAccepting || invitation?.expired === true}
               className="w-full inline-flex justify-center items-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-hover disabled:opacity-50"
             >
               {isAccepting ? (

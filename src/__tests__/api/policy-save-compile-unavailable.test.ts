@@ -22,8 +22,17 @@ vi.mock('@/lib/auth', () => ({
 }));
 vi.mock('@/lib/prisma', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/prisma')>()),
-  db: { insert: vi.fn(() => ({ values: mockValuesInsert })) },
+  db: {
+    insert: vi.fn(() => ({ values: mockValuesInsert })),
+    transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn({ insert: vi.fn(() => ({ values: mockValuesInsert })) })),
+  },
 }));
+// 只验编译不可用的分类：v1 版本行写入另有用例（team-policies-compile-gate.test）
+vi.mock('@/services/policy/version-manager', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/policy/version-manager')>()),
+  createVersion: vi.fn(async () => ({ id: 'v1', version: 1 })),
+}));
+vi.mock('@/lib/cache', () => ({ invalidatePolicyCache: vi.fn(async () => undefined) }));
 vi.mock('@/lib/team-permissions', () => ({
   checkTeamPermission: vi.fn().mockResolvedValue({ allowed: true }),
   TeamPermission: { CREATE_POLICY: 'CREATE_POLICY', VIEW_POLICIES: 'VIEW_POLICIES' },
