@@ -118,7 +118,7 @@ describe('内置策略样例执行验证（防「编译过但跑不了」）', (
         expect(m, `${example.id} [${locale}] 解析不出参数列表`).toBeTruthy();
         const params = (m as RegExpExecArray)[1]
           .split(/[,，]/)
-          .map((x) => x.trim())
+          .map((x) => x.trim().split(/\s+(?:as|作为|als)\s+/)[0])
           .filter(Boolean);
         const keys = Object.keys(example.defaultInputs[locale]);
         expect(keys, `${example.id} [${locale}] 键名与参数名不一致`).toEqual(params);
