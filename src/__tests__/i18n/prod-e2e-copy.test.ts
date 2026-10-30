@@ -36,6 +36,8 @@ const KEYS = [
   'policies.logs.parity.tooltip', 'policies.logs.parity.match',
   // F8 Cedar 导出
   'policies.cedarExport.noExecutableVersion', 'policies.detail.versionHistory',
+  // #661 多规则选择
+  'policies.cedarExport.chooseRule', 'policies.cedarExport.exportRule',
   // F32 回收站 / 确认框
   'policies.trash.confirmPermanentDeleteNamed', 'common.cancel', 'common.confirm', 'common.loading',
   // F25 AHA 卡片

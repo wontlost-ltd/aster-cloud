@@ -900,6 +900,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         failed: 'Export failed',
         noExecutableVersion: 'Approve a version before exporting to Cedar',
         schemaNote: 'The exported schema declares only the actions and the context keys (with their types) this rule mentions. A gateway that validates requests against the schema rejects anything outside it — stricter than Aster, never looser.',
+        chooseRule: 'Several rules in this policy can be exported. Choose the rule to export:',
+        exportRule: 'Export this rule',
       },
       execute: {
         // 执行前输入类型提取失败（#638）、服务端拒绝非对象输入、表单无法展示非对象输入（#634）。
@@ -2060,6 +2062,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         failed: '导出失败',
         noExecutableVersion: '导出到 Cedar 前请先批准一个版本',
         schemaNote: '导出的 schema 只声明本规则提到的 action 与 context 键（含类型）；按 schema 校验请求的网关会拒绝其余请求——只会比 Aster 更严，不会更松。',
+        chooseRule: '该策略中有多条规则可以导出，请选择要导出的规则：',
+        exportRule: '导出所选规则',
       },
       execute: {
         // 执行前输入类型提取失败（#638）、服务端拒绝非对象输入、表单无法展示非对象输入（#634）。
@@ -3230,6 +3234,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         failed: 'Export fehlgeschlagen',
         noExecutableVersion: 'Genehmigen Sie eine Version, bevor Sie nach Cedar exportieren',
         schemaNote: 'Das exportierte Schema deklariert nur die in dieser Regel genannten Actions und Context-Schlüssel (mit ihren Typen). Ein Gateway, das Anfragen gegen das Schema validiert, lehnt alles andere ab – strenger als Aster, nie laxer.',
+        chooseRule: 'Mehrere Regeln dieser Richtlinie können exportiert werden. Wählen Sie die zu exportierende Regel:',
+        exportRule: 'Diese Regel exportieren',
       },
       execute: {
         // 执行前输入类型提取失败（#638）、服务端拒绝非对象输入、表单无法展示非对象输入（#634）。
@@ -4383,6 +4389,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         failed: 'निर्यात विफल रहा',
         noExecutableVersion: 'Cedar में निर्यात करने से पहले किसी संस्करण को स्वीकृत करें',
         schemaNote: 'निर्यात किया गया स्कीमा केवल वे actions और context कुंजियाँ (उनके प्रकारों सहित) घोषित करता है जिनका यह नियम उल्लेख करता है। जो गेटवे अनुरोधों को स्कीमा से सत्यापित करता है, वह इसके बाहर की हर चीज़ अस्वीकार करता है — Aster से अधिक सख़्त, कभी ढीला नहीं।',
+        chooseRule: 'इस नीति के कई नियम निर्यात किए जा सकते हैं। निर्यात करने के लिए नियम चुनें:',
+        exportRule: 'यह नियम निर्यात करें',
       },
       execute: {
         // 执行前输入类型提取失败（#638）、服务端拒绝非对象输入、表单无法展示非对象输入（#634）。

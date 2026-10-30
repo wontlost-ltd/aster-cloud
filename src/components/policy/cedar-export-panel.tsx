@@ -4,9 +4,11 @@
  * 策略详情页「导出为 Cedar」面板（ADR 0047 §6）。
  * 调所有者路由导出可执行版本：可导出时原样下载 <module>.cedar 与 <module>.cedarschema.json（模块名取编译器给出的
  * moduleName），并报告与 Cedar 比对过的探针数；不可导出时列出诊断；无可执行版本时提示先批准。文案由服务端页面预渲染传入。
+ * 可导出的规则不止一条时（E720 多候选，#661）列出候选让用户选择，再带 functionName 导出所选规则。
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useId, useState } from 'react';
 import type { PolicyCedarExportResponse, PolicyDiagnostic } from '@/services/policy/policy-api';
+import { cedarRuleCandidates } from '@/lib/cedar-export-rules';
 
 export interface CedarExportLabels {
   button: string;
@@ -20,6 +22,10 @@ export interface CedarExportLabels {
   versionsLink: string;
   /** 导出的 schema 只覆盖规则提到的形状（ADR 0047 §5「对外形态收窄」），按 schema 校验请求的网关会更严 */
   schemaNote: string;
+  /** 多条规则可导出时选择框的标签 */
+  chooseRule: string;
+  /** 导出所选规则的按钮 */
+  exportRule: string;
 }
 
 interface CedarExportPanelProps {
@@ -39,6 +45,7 @@ type ExportState =
   | { kind: 'busy' }
   | { kind: 'verified'; count: number }
   | { kind: 'notExportable'; diagnostics: PolicyDiagnostic[] }
+  | { kind: 'chooseRule'; candidates: string[] }
   | { kind: 'error'; message: string };
 
 function downloadFile(name: string, text: string, type: string): void {
@@ -60,12 +67,21 @@ async function failureMessage(res: Response, labels: CedarExportLabels): Promise
   return typeof body?.message === 'string' && body.message ? body.message : labels.failed;
 }
 
-async function runExport(policyId: string, labels: CedarExportLabels): Promise<ExportState> {
-  const res = await fetch(`/api/policies/${policyId}/export/cedar`, { method: 'POST' });
+// 未指定规则时不带请求体（服务端按唯一候选导出）；指定时带 functionName
+function exportRequest(functionName: string | undefined): RequestInit {
+  if (!functionName) return { method: 'POST' };
+  return { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ functionName }) };
+}
+
+async function runExport(policyId: string, labels: CedarExportLabels, functionName?: string): Promise<ExportState> {
+  const res = await fetch(`/api/policies/${policyId}/export/cedar`, exportRequest(functionName));
   if (!res.ok) return { kind: 'error', message: await failureMessage(res, labels) };
   const data = (await res.json()) as PolicyCedarExportResponse;
   if (!data.exportable || data.policies == null || data.schemaText == null) {
-    return { kind: 'notExportable', diagnostics: data.diagnostics ?? [] };
+    const diagnostics = data.diagnostics ?? [];
+    // 已指定规则时不再给选择（服务端不会对指定的规则再报多候选）
+    const candidates = functionName ? [] : cedarRuleCandidates(diagnostics);
+    return candidates.length > 1 ? { kind: 'chooseRule', candidates } : { kind: 'notExportable', diagnostics };
   }
   const moduleName = data.moduleName ?? 'policy';
   // 两个文件都原样写出、不重新序列化：其 SHA-256 即 aster-api 审计记录的 policiesHash / schemaHash
@@ -109,16 +125,47 @@ function ExportResult({ state, labels }: { state: ExportState; labels: CedarExpo
   );
 }
 
+function RuleChooser({ candidates, labels, busy, onExport }: {
+  candidates: string[];
+  labels: CedarExportLabels;
+  busy: boolean;
+  onExport: (functionName: string) => void;
+}) {
+  const [chosen, setChosen] = useState(candidates[0]!);
+  const selectId = useId();
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+      <label htmlFor={selectId} className="text-fg">{labels.chooseRule}</label>
+      <select
+        id={selectId}
+        value={chosen}
+        onChange={(e) => setChosen(e.target.value)}
+        className="rounded-md border border-border bg-bg px-2 py-1 font-mono text-sm text-fg"
+      >
+        {candidates.map((name) => <option key={name} value={name}>{name}</option>)}
+      </select>
+      <button
+        type="button"
+        onClick={() => onExport(chosen)}
+        disabled={busy}
+        className="inline-flex items-center rounded-md bg-primary px-3 py-1 text-sm font-semibold text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {labels.exportRule}
+      </button>
+    </div>
+  );
+}
+
 const NO_VERSION_HINT_ID = 'cedar-export-no-version';
 
 export function CedarExportPanel({ policyId, labels, hasExecutableVersion, versionsHref }: CedarExportPanelProps) {
   const [state, setState] = useState<ExportState>({ kind: 'idle' });
   const busy = state.kind === 'busy';
 
-  const handleExport = useCallback(async () => {
+  const handleExport = useCallback(async (functionName?: string) => {
     setState({ kind: 'busy' });
     try {
-      setState(await runExport(policyId, labels));
+      setState(await runExport(policyId, labels, functionName));
     } catch {
       setState({ kind: 'error', message: labels.failed });
     }
@@ -128,7 +175,7 @@ export function CedarExportPanel({ policyId, labels, hasExecutableVersion, versi
     <div className="mb-6">
       <button
         type="button"
-        onClick={handleExport}
+        onClick={() => handleExport()}
         disabled={busy || !hasExecutableVersion}
         aria-label={labels.button}
         aria-describedby={hasExecutableVersion ? undefined : NO_VERSION_HINT_ID}
@@ -143,6 +190,9 @@ export function CedarExportPanel({ policyId, labels, hasExecutableVersion, versi
             {labels.versionsLink} →
           </a>
         </p>
+      )}
+      {state.kind === 'chooseRule' && (
+        <RuleChooser candidates={state.candidates} labels={labels} busy={busy} onExport={handleExport} />
       )}
       <ExportResult state={state} labels={labels} />
     </div>
