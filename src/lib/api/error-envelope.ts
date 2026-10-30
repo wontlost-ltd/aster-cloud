@@ -130,6 +130,36 @@ export function extractErrorMessage(body: unknown): string | null {
 }
 
 /**
+ * 操作失败时给用户看的文案：顶层 message（人读文案）→ 结构化 envelope 的 error.message →
+ * 旧式字符串 error；都没有返回 null，由调用方回落到本地化通用文案。始终返回字符串或 null，
+ * 绝不把对象交给 toast（sonner 把 title 当 React 子节点渲染，对象会抛错）。
+ */
+export function actionErrorMessage(body: unknown): string | null {
+  if (body == null || typeof body !== 'object') return null;
+  const rec = body as Record<string, unknown>;
+  if (typeof rec.message === 'string' && rec.message.trim()) return rec.message;
+  const err = rec.error;
+  if (err && typeof err === 'object') {
+    const inner = (err as Record<string, unknown>).message;
+    return typeof inner === 'string' && inner.trim() ? inner : null;
+  }
+  return typeof err === 'string' && err.trim() ? err : null;
+}
+
+/** 错误响应里的稳定错误码：顶层 code → 旧式字符串 error → envelope 的 error.code。 */
+export function actionErrorCode(body: unknown): string | null {
+  if (body == null || typeof body !== 'object') return null;
+  const rec = body as Record<string, unknown>;
+  if (typeof rec.code === 'string') return rec.code;
+  const err = rec.error;
+  if (typeof err === 'string') return err;
+  if (err && typeof err === 'object' && typeof (err as Record<string, unknown>).code === 'string') {
+    return (err as { code: string }).code;
+  }
+  return null;
+}
+
+/**
  * Companion: extract the requestId so callers can surface "Error ID:
  * abc123" alongside the user-facing message. Returns `null` if the
  * body is not in structured-envelope shape.

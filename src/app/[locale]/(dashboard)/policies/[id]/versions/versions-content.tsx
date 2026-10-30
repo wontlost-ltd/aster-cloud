@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { actionErrorCode, actionErrorMessage } from '@/lib/api/error-envelope';
 import {
   Breadcrumbs,
   ConfirmDialog,
@@ -185,13 +186,12 @@ export function VersionsContent({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    const data = (await res.json().catch(() => null)) as
-      | { error?: string; code?: string; message?: string }
-      | null;
+    const data: unknown = await res.json().catch(() => null);
     if (!res.ok) {
       // 审批路由把错误码放在 error 字段（segregation_of_duties / invite_reviewer_required），
-      // 个别入口用 code；两处都读，保证 SOX 提示显示本地化文案而不是原始错误码。
-      const errorCode = data?.code ?? data?.error;
+      // 个别入口用 code，兜底 500 用结构化 envelope（error 是对象，#662）；三种形状都读，
+      // 保证 SOX 提示显示本地化文案而不是原始错误码。
+      const errorCode = actionErrorCode(data);
       if (errorCode === 'segregation_of_duties') {
         toast.error(t('sox.selfApprovalNotAllowed'));
       } else if (errorCode === 'invite_reviewer_required') {
@@ -199,8 +199,9 @@ export function VersionsContent({
       } else if (errorCode === 'vocabulary_changed_since_save') {
         toast.error(t('approvalErrorCodes.vocabulary_changed_since_save'));
       } else {
-        // 优先显示服务端的人读 message；error 多为错误码（第 4 轮生产复测：toast 显示 simulated_failure）
-        toast.error(data?.message || data?.error || tCommon('somethingWrong'));
+        // 优先显示服务端的人读 message；error 多为错误码（第 4 轮生产复测：toast 显示 simulated_failure）。
+        // 只把字符串交给 toast：envelope 的 error 是对象，直接传会让 sonner 渲染时抛错（#662 审查）。
+        toast.error(actionErrorMessage(data) ?? tCommon('somethingWrong'));
       }
       return;
     }

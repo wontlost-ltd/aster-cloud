@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { errorEnvelope } from '@/lib/api/error-envelope';
+import type { ErrorEnvelopeBody } from '@/lib/api/error-envelope';
 import { VersionStateError } from '@/services/policy/version-state-error';
 
 /**
@@ -9,7 +9,12 @@ import { VersionStateError } from '@/services/policy/version-state-error';
 export function internalErrorResponse(logTag: string, error: unknown, message: string): NextResponse {
   const requestId = crypto.randomUUID();
   console.error(`[${logTag}] requestId=${requestId}`, error);
-  return errorEnvelope({ status: 500, code: 'internal_error', message, requestId });
+  // 结构化 envelope 之外再给顶层 message（与 envelope 内相同）：只读顶层 message 的前端也能拿到可读字符串
+  const body: ErrorEnvelopeBody & { message: string } = {
+    error: { code: 'internal_error', message, requestId },
+    message,
+  };
+  return NextResponse.json(body, { status: 500, headers: { 'x-request-id': requestId } });
 }
 
 /**

@@ -92,6 +92,8 @@ describe('版本与安全路由：兜底分支不回传原始错误（#662）', 
       const body = JSON.parse(text);
       expect(body.error.code).toBe('internal_error');
       expect(typeof body.error.message).toBe('string');
+      // 顶层也有人读 message（与 envelope 内相同），前端无论读哪一层都拿到字符串
+      expect(body.message).toBe(body.error.message);
       expect(body.error.requestId).toBe(res.headers.get('x-request-id'));
       expect(consoleError).toHaveBeenCalled();
       expect(JSON.stringify(consoleError.mock.calls)).toContain(body.error.requestId);

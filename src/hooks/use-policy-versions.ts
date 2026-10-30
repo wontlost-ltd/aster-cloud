@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import type { PolicyVersionStatus } from '@/lib/prisma';
-import { extractErrorMessage } from '@/lib/api/error-envelope';
+import { actionErrorCode, actionErrorMessage, extractErrorMessage } from '@/lib/api/error-envelope';
 
 /**
  * 版本信息
@@ -64,9 +64,7 @@ export type ApproveErrorCode =
  * error 字段多为错误码（如 vocabulary_changed_since_save），直接展示没有意义。
  */
 function failureMessage(data: unknown, fallback: string): string {
-  const message = (data as { message?: unknown } | null)?.message;
-  if (typeof message === 'string' && message.trim()) return message;
-  return extractErrorMessage(data) || fallback;
+  return actionErrorMessage(data) ?? fallback;
 }
 
 /** 版本操作（设默认 / 废弃 / 归档 / 提交 / 驳回）的结果：失败时带可直接展示的原因。 */
@@ -347,7 +345,7 @@ export function usePolicyVersions({
           return { ok: true };
         }
 
-        const code = (data?.error ?? '') as string;
+        const code = actionErrorCode(data) ?? '';
         const errorCode: ApproveErrorCode =
           code === 'invite_reviewer_required' ||
           code === 'segregation_of_duties' ||
