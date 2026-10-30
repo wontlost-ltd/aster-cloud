@@ -42,6 +42,20 @@ function safeErrorMessage(e: unknown): string {
 }
 
 /**
+ * launcher 413：请求体超出 runner ConfigMap 的 1 MiB 上限（建 Job 前预检，或入站 body 超限）。
+ * 调用方缩减词汇或源码即可修正，故归 runner-error 而非 unavailable，界面才能与集群不可用区分。
+ * message 优先取 launcher 正文的 error 字段；正文不可解析时用固定说明。
+ */
+async function requestTooLarge(resp: Response): Promise<RunnerLaunchOutcome> {
+  let message = 'runner request too large';
+  try {
+    const body = await resp.json() as { error?: unknown };
+    if (typeof body?.error === 'string' && body.error) message = body.error;
+  } catch { /* 正文非 JSON：保留固定说明 */ }
+  return { ok: false, kind: 'runner-error', errorCode: 'REQUEST_TOO_LARGE', phase: 'launch', message };
+}
+
+/**
  * 调 runner-launcher endpoint 跑一次 replay，收 ReplayMetadata。★首版 endpoint 由
  * ASTER_RUNNER_LAUNCHER_URL 配（Slice-2a 指 stub/local，Slice-2b 切真 launcher）。
  * 独立 HMAC key（signRunnerLauncherHeaders）。任何失败归 unavailable/runner-error，不抛。
@@ -71,6 +85,7 @@ export async function launchRunnerJob(params: RunnerLaunchParams): Promise<Runne
     const resp = await fetch(`${baseUrl}${LAUNCH_PATH}`, {
       method: 'POST', headers, body, signal: controller.signal,
     });
+    if (resp.status === 413) return requestTooLarge(resp);
     if (!resp.ok) return { ok: false, kind: 'unavailable', reason: `HTTP ${resp.status}` };
     const env = await resp.json() as {
       outcome: string; replayMetadata?: LaunchReplayMetadata;
