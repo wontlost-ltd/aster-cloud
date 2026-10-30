@@ -1,7 +1,6 @@
 // 团队资源的套餐口径（#672 / #677），真实 Postgres。
 //
 // #672：团队策略的套餐持有人是团队 owner（成员调用时）；非成员或个人策略回退到本人。
-//       团队里的 Free 成员按所在团队 owner 的套餐获得词汇额度，viewer 不计。
 // #677：新 owner 必须有团队功能，且其套餐的成员上限容得下当前成员数。
 //
 // Run: LICENSE_E2E=1 DATABASE_URL=… pnpm exec vitest run --config vitest.integration.config.ts team-plan
@@ -13,8 +12,12 @@ vi.mock('server-only', () => ({}));
 
 import { createDb } from '@/db';
 import { policies, teamMembers, teams, users } from '@/lib/prisma';
-import { checkTeamOwnerEligibility, planHolderForPolicy, planHolderForTeam } from '@/lib/team-plan';
-import { getLexiconQuotaWithContext } from '@/lib/usage';
+import {
+  checkTeamOwnerEligibility,
+  lockTeamRow,
+  planHolderForTeam,
+  teamSeatAvailable,
+} from '@/lib/team-plan';
 
 const OWNER = 'it-tp-owner';
 const FREE_MEMBER = 'it-tp-free';
@@ -81,18 +84,9 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('团队资源套餐口径（真
   });
 
   it('#672 团队策略的套餐持有人是团队 owner；个人策略与非成员回退到本人', async () => {
-    expect(await planHolderForPolicy(FREE_MEMBER, 'it-tp-team-policy')).toBe(OWNER);
-    expect(await planHolderForPolicy(FREE_MEMBER, 'it-tp-own-policy')).toBe(FREE_MEMBER);
+    expect(await planHolderForTeam(FREE_MEMBER, TEAM)).toBe(OWNER);
+    expect(await planHolderForTeam(FREE_MEMBER, null)).toBe(FREE_MEMBER);
     expect(await planHolderForTeam(OUTSIDER, TEAM)).toBe(OUTSIDER);
-    expect(await planHolderForPolicy(FREE_MEMBER, 'missing')).toBe(FREE_MEMBER);
-  });
-
-  it('#672 Free 成员按团队 owner（Pro）获得词汇额度；viewer 不计', async () => {
-    const member = await getLexiconQuotaWithContext(FREE_MEMBER);
-    expect(member).toMatchObject({ allowed: true, maxTerms: 5000, plan: 'free', viaTeam: true });
-    // viewer 在 TEAM 中不计，但在 BIG_TEAM 是 member，同样得到 owner 额度
-    const outsider = await getLexiconQuotaWithContext(OUTSIDER);
-    expect(outsider.viaTeam).toBe(true);
   });
 
   it('#677 Free 成员不能成为 owner；Pro 成员可以；成员数超出新 owner 套餐上限（老 Pro 5 人）时拒绝', async () => {
@@ -101,5 +95,21 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('团队资源套餐口径（真
     expect(await checkTeamOwnerEligibility(PRO_MEMBER, BIG_TEAM)).toEqual({
       eligible: false, code: 'new_owner_seat_limit', memberCount: 6, limit: 5,
     });
+  });
+
+  it('审查 L3：事务内锁团队行后按 owner 套餐判定席位（现行 Pro 不限；老 Pro 5 人时 6 人团队已满）', async () => {
+    const result = await db.transaction(async (tx) => {
+      const team = await lockTeamRow(tx, BIG_TEAM);
+      expect(team?.ownerId).toBe(OWNER);
+      return {
+        currentPro: await teamSeatAvailable(tx, BIG_TEAM, OWNER),
+        legacyPro: await teamSeatAvailable(tx, BIG_TEAM, PRO_MEMBER),
+        ineligibleInTx: await checkTeamOwnerEligibility(PRO_MEMBER, BIG_TEAM, tx),
+      };
+    });
+    expect(result.currentPro).toEqual({ ok: true });
+    expect(result.legacyPro).toEqual({ ok: false, memberCount: 6, limit: 5 });
+    expect(result.ineligibleInTx).toMatchObject({ eligible: false, code: 'new_owner_seat_limit' });
+    expect(await db.transaction((tx) => lockTeamRow(tx, 'missing-team'))).toBeNull();
   });
 });

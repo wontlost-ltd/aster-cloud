@@ -42,9 +42,6 @@ vi.mock('@/lib/prisma', () => ({
         findFirst: vi.fn(),
         findMany: vi.fn(),
       },
-      teamMembers: {
-        findMany: vi.fn().mockResolvedValue([]),
-      },
     },
     insert: mockInsert,
     update: mockUpdate,
@@ -53,7 +50,6 @@ vi.mock('@/lib/prisma', () => ({
   users: { id: {}, plan: {}, trialEndsAt: {} },
   usageRecords: { id: {}, userId: {}, type: {}, count: {}, period: {} },
   policies: { id: {}, userId: {}, deletedAt: {} },
-  teamMembers: { userId: {}, role: {} },
 }));
 
 import { db, policies } from '@/lib/prisma';
@@ -63,7 +59,6 @@ import {
   getUsageStats,
   hasFeatureAccess,
   getLexiconQuota,
-  getLexiconQuotaWithContext,
   EVIDENCE_EXPORT_METRIC,
 } from '@/lib/usage';
 
@@ -438,43 +433,6 @@ describe('Usage Tracking', () => {
       const result = await getLexiconQuota('nonexistent');
 
       expect(result).toEqual({ maxTerms: 0, bulkAsync: false, allowed: false });
-    });
-  });
-
-  // 词汇按作者存储、团队策略用作者词汇：团队里的 Free 成员按所在团队 owner 的套餐获得词汇能力（#672）
-  describe('getLexiconQuota — 团队 owner 套餐', () => {
-    const membership = (ownerPlan: string, trialEndsAt: Date | null = null) => ({
-      team: { owner: { plan: ownerPlan, trialEndsAt } },
-    });
-
-    it('Free 成员所在团队 owner 为 Pro → 按 Pro 配额，标出 viaTeam', async () => {
-      vi.mocked(db.query.users.findFirst).mockResolvedValue(mockUser());
-      vi.mocked(db.query.teamMembers.findMany).mockResolvedValue([membership('pro')] as never);
-
-      expect(await getLexiconQuota('user-1')).toEqual({ maxTerms: 5000, bulkAsync: true, allowed: true });
-      const ctx = await getLexiconQuotaWithContext('user-1');
-      expect(ctx.viaTeam).toBe(true);
-      expect(ctx.plan).toBe('free'); // 个人套餐照实返回，降级横幅等仍按本人
-    });
-
-    it('多个团队取配额最大的 owner 套餐', async () => {
-      vi.mocked(db.query.users.findFirst).mockResolvedValue(mockUser());
-      vi.mocked(db.query.teamMembers.findMany).mockResolvedValue([membership('pro'), membership('enterprise')] as never);
-      expect((await getLexiconQuota('user-1')).maxTerms).toBe(-1);
-    });
-
-    it('团队 owner 的试用已过期按 Free 计，不放宽', async () => {
-      vi.mocked(db.query.users.findFirst).mockResolvedValue(mockUser());
-      vi.mocked(db.query.teamMembers.findMany).mockResolvedValue([membership('trial', new Date('2020-01-01'))] as never);
-      expect(await getLexiconQuota('user-1')).toEqual({ maxTerms: 0, bulkAsync: false, allowed: false });
-    });
-
-    it('个人套餐更高时用个人套餐，viaTeam=false', async () => {
-      vi.mocked(db.query.users.findFirst).mockResolvedValue(mockUser({ plan: 'pro' }));
-      vi.mocked(db.query.teamMembers.findMany).mockResolvedValue([membership('free')] as never);
-      const ctx = await getLexiconQuotaWithContext('user-1');
-      expect(ctx.maxTerms).toBe(5000);
-      expect(ctx.viaTeam).toBe(false);
     });
   });
 });
