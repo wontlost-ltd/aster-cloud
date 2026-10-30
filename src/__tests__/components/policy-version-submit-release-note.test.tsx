@@ -4,7 +4,7 @@ import enBase from '@aster-cloud/ui-messages/en-US.json';
 import { IntlClientProvider } from '@/i18n/intl-client-provider';
 import { DEMO_SUPPLEMENT } from '@/i18n/demo-supplement';
 import { deepMergeMessages } from '@/i18n/request';
-import { PolicyVersionList } from '@/components/policy/policy-version-list';
+import { PolicyVersionList, VersionActionError } from '@/components/policy/policy-version-list';
 import { toast } from '@/components/ui';
 
 const messages = deepMergeMessages(enBase as Record<string, unknown>, DEMO_SUPPLEMENT.en);
@@ -49,6 +49,21 @@ describe('版本提交发布说明', () => {
     const buttons = screen.getAllByRole('button', { name: 'Submit for approval' });
     fireEvent.click(buttons[buttons.length - 1]);
     await waitFor(() => expect(errorToast).toHaveBeenCalledWith('Something went wrong'));
+    errorToast.mockRestore();
+  });
+
+  /* 复审 L3：已知原因的失败显示原因、只提示一次，且对话框保持打开、发布说明不丢 */
+  it('VersionActionError：显示原因，对话框保持打开，发布说明保留', async () => {
+    const errorToast = vi.spyOn(toast, 'error');
+    renderList(async () => { throw new VersionActionError('Version already pending'); });
+    fireEvent.click(screen.getByText('Submit for approval'));
+    const note = screen.getByRole('textbox');
+    fireEvent.change(note, { target: { value: 'Rate model revision' } });
+    const buttons = screen.getAllByRole('button', { name: 'Submit for approval' });
+    fireEvent.click(buttons[buttons.length - 1]);
+    await waitFor(() => expect(errorToast).toHaveBeenCalledWith('Version already pending'));
+    expect(errorToast).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('textbox')).toHaveValue('Rate model revision');
     errorToast.mockRestore();
   });
 });

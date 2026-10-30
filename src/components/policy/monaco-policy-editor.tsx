@@ -27,6 +27,7 @@ import { useEntryRuleDecorations } from './use-entry-rule-decorations';
 import { extractUseRefs, type UseRef } from '@/lib/aster/modules';
 import type { AsterModuleCatalogEntry } from '@/services/policy/policy-api';
 import { useAsterLSP } from '@/hooks/useAsterLSP';
+import { VocabularyDiagnosticLink } from '@/components/policy/vocabulary-diagnostic-link';
 import { summarizeCoreModule, type EditorCompileModuleSummary } from './core-module-summary';
 
 // Monaco 语言 ID
@@ -1209,6 +1210,13 @@ export function MonacoPolicyEditor({
                     L{diag.span?.start?.line ?? 1}:{diag.span?.start?.col ?? 1}
                   </span>
                 </button>
+                {/* 词汇诊断：带出写法并链接到词汇页（链接不能嵌在按钮里） */}
+                <VocabularyDiagnosticLink
+                  code={typeof diag.code === 'string' ? diag.code : undefined}
+                  message={diag.message}
+                  data={diag.data}
+                  className="mb-2 ml-7"
+                />
               </li>
             ))}
         </ul>

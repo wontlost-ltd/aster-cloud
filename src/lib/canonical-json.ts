@@ -276,7 +276,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /** 按 Unicode code point 比较（正确处理代理对，避免 code unit 序在补充平面字符上的偏差）。 */
-function compareByCodePoint(a: string, b: string): number {
+export function compareByCodePoint(a: string, b: string): number {
   const ai = Array.from(a);
   const bi = Array.from(b);
   const n = Math.min(ai.length, bi.length);

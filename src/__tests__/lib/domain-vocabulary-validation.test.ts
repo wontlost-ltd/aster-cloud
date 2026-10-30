@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   assembleDomainVocabularyFromLinks,
@@ -59,6 +60,40 @@ describe('domain-vocabulary-validation', () => {
       const lower = normalizeTermInput({ ...base, localized: 'alter' });
       expect(upper.localized).toBe('Alter');
       expect(computeDedupKey(upper)).not.toBe(computeDedupKey(lower));
+    });
+
+    /* 生产复测（2026-10-30 F）：编辑词条只改别名/描述时，去重键不变 → upsert 命中已有全局词条
+     * （onConflictDoNothing）→ 新别名/描述被静默丢弃，响应仍是 200。别名与描述必须进去重键。 */
+    describe('别名与描述参与去重键', () => {
+      const base = { domain: 'versicherung', locale: 'de', kind: 'field' as const, canonical: 'age', localized: 'alter', parentCanonical: 'Driver' };
+      const plain = computeDedupKey(normalizeTermInput(base));
+
+      it('只改别名 → 去重键不同', () => {
+        expect(computeDedupKey(normalizeTermInput({ ...base, aliases: ['lebensalter'] }))).not.toBe(plain);
+      });
+
+      it('只改描述 → 去重键不同', () => {
+        expect(computeDedupKey(normalizeTermInput({ ...base, description: 'Alter des Fahrers' }))).not.toBe(plain);
+      });
+
+      it('别名顺序、重复与首尾空白不影响去重键', () => {
+        const a = computeDedupKey(normalizeTermInput({ ...base, aliases: ['b', 'a'] }));
+        const b = computeDedupKey(normalizeTermInput({ ...base, aliases: [' a ', 'b', 'a'] }));
+        expect(a).toBe(b);
+      });
+
+      /* 别名按码点排序（与 canonical-json 同口径），不按 UTF-16 码元：全角字母 U+FF21 的码元大于
+       * 补充平面字符的高代理（U+D840），码元序会把 U+20000 排在前面。 */
+      it('别名按码点排序：全角字符排在补充平面字符之前', () => {
+        const key = computeDedupKey(normalizeTermInput({ ...base, aliases: ['\u{20000}', 'Ａ'] }));
+        const json = '{"aliases":["Ａ","\u{20000}"],"canonicalNorm":"age","domain":"versicherung","kind":"field",'
+          + '"locale":"de","localizedNorm":"alter","parentCanonicalNorm":"driver"}';
+        expect(key).toBe(createHash('sha256').update(json).digest('hex'));
+      });
+
+      it('空别名、空白描述与不传等价（已有词条的去重键保持不变）', () => {
+        expect(computeDedupKey(normalizeTermInput({ ...base, aliases: [], description: '   ' }))).toBe(plain);
+      });
     });
 
     it('NFC 等价写法得到同一去重键', () => {

@@ -436,11 +436,17 @@ export function parseApprovalFromResult(
       : { approved: false, indeterminate: true, message: String(result) };
   }
 
-  // 枚举值：引擎返回运行时枚举对象 `{_enum, value, variant, args}`，有时（如经字段读出）是成员名字符串。
-  // 二者是同一个值，判定口径必须一致（#633）：一律按成员名字符串处理——不再因对象里有 value 键被当作
-  // 「计算结果」判批准。
+  // 枚举值：引擎返回运行时枚举对象 `{_enum, value, variant, args}`。不得因对象里有 value 键被当作
+  // 「计算结果」判批准（#633）。枚举是有类型的值而非自由文本，成员名不走下面裸字符串的拒绝关键字
+  // 启发式：decision 模式一律 indeterminate（与数值同口径），否则 QuoteStatus.Rejected 会被判成拒绝、
+  // "Rejected" 被写进响应顶层 error（2026-10-30 生产复测 C）。要表达准入决策须返回 Verdict。
+  // value 模式按成员名字符串处理，即成功的计算结果。
   const enumMember = enumMemberOf(result);
-  if (enumMember !== undefined) return parseApprovalFromResult(enumMember, mode);
+  if (enumMember !== undefined) {
+    return mode === 'value'
+      ? parseApprovalFromResult(enumMember, mode)
+      : { approved: false, indeterminate: true, message: enumMember };
+  }
 
   // 对象格式：支持多语言字段名和通用结果格式
   if (result && typeof result === 'object') {

@@ -38,6 +38,7 @@ import {
 } from '@/data/policy-examples';
 import { cn } from '@/components/ui';
 import { useIsMobile } from './use-is-mobile';
+import { VocabularyDiagnosticLink } from '@/components/policy/vocabulary-diagnostic-link';
 
 /** 侧栏容器可见的视口条件，与 index.tsx 中 `lg:flex` 一致。 */
 const PANEL_VISIBLE_QUERY = '(min-width: 1024px)';
@@ -372,6 +373,8 @@ export function DecisionTab({
                 </div>
                 <div className="mt-0.5">{d.message}</div>
               </button>
+              {/* 链接放在按钮外：<a> 不能嵌在 <button> 里 */}
+              <VocabularyDiagnosticLink code={d.code} message={d.message} className="mt-1 px-2.5" />
             </li>
           ))}
         </ul>

@@ -24,6 +24,7 @@ import {
   type AssembleVocabularyOptions,
 } from './domain-vocabulary-assemble';
 import { VOCAB_FORMAT_MESSAGES, checkVocabularyScope } from './domain-vocabulary-format';
+import { compareByCodePoint } from './canonical-json';
 
 export type VocabularyValidationResult = ReturnType<typeof validateVocabulary>;
 
@@ -189,7 +190,14 @@ export function normalizeTermInput(input: {
   };
 }
 
-/** Compute the stable global DomainTerm deduplication key. */
+/**
+ * 计算全局 DomainTerm 的去重键。
+ *
+ * 别名与描述也是全局词条行的内容：编辑词条时 upsert 按去重键命中已有行就直接复用，
+ * 若键里没有它们，只改别名/描述的编辑会落到旧行上而被静默丢弃（2026-10-30 生产复测 F），
+ * 不同租户还会因此共享彼此的别名与描述。故二者进键：别名按集合（NFC、去空白、去重、按码点排序），
+ * 描述去首尾空白。为空时不写入键，已有不带别名/描述的词条去重键保持不变。
+ */
 export function computeDedupKey(input: {
   domain: string;
   locale: string;
@@ -197,7 +205,11 @@ export function computeDedupKey(input: {
   canonicalNorm: string;
   localizedNorm: string;
   parentCanonicalNorm?: string | null;
+  aliases?: readonly string[] | null;
+  description?: string | null;
 }): string {
+  const aliases = [...new Set((input.aliases ?? []).map(nfcTrim).filter(Boolean))].sort(compareByCodePoint);
+  const description = input.description?.trim() ?? '';
   const json = canonicalJson({
     domain: input.domain,
     locale: input.locale,
@@ -205,6 +217,8 @@ export function computeDedupKey(input: {
     canonicalNorm: input.canonicalNorm,
     localizedNorm: input.localizedNorm,
     parentCanonicalNorm: input.parentCanonicalNorm ?? '',
+    ...(aliases.length > 0 ? { aliases } : {}),
+    ...(description ? { description } : {}),
   });
   return createHash('sha256').update(json).digest('hex');
 }
