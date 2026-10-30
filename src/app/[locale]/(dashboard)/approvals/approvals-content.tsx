@@ -72,6 +72,14 @@ function errorText(t: T, body: ApiErrorBody, item: InboxItem): string {
       return t('commentRequired');
     case 'forbidden':
       return t('errors.forbidden');
+    case 'approval_not_found':
+      return t('errors.approval_not_found');
+    case 'receipt_unavailable':
+      return t('errors.receipt_unavailable');
+    case 'invalid_approval':
+      return t('errors.invalid_approval');
+    case 'user_required':
+      return t('errors.user_required');
     default:
       return body.message || t('errors.generic');
   }

@@ -29,6 +29,11 @@ function get(tree: Tree, dotPath: string): unknown {
 }
 
 const KEYS = [
+  'auth.signup.errors.emailAliasRegisteredAs',
+  'approvals.errors.approval_not_found',
+  'approvals.errors.receipt_unavailable',
+  'approvals.errors.invalid_approval',
+  'approvals.errors.user_required',
   'teams.settings.transferPlanNote',
   'teams.settings.transferErrors.newOwnerPlanIneligible',
   'teams.settings.transferErrors.newOwnerSeatLimit',
@@ -69,6 +74,11 @@ describe('团队流程文案四语完整性', () => {
       const withCjk = KEYS.filter((k) => /[\u4e00-\u9fff]/.test(String(get(tree, k))));
       expect(withCjk, locale).toEqual([]);
     }
+  });
+
+  it('审查 L3：转让说明写明付费席位不会自动迁移', () => {
+    expect(String(get(merged('en'), 'teams.settings.transferPlanNote'))).toMatch(/not moved automatically/);
+    expect(String(get(merged('zh'), 'teams.settings.transferPlanNote'))).toMatch(/不会自动迁移/);
   });
 
   it('#675 删除团队的确认文案如实说明团队策略转为创建者的个人策略', () => {

@@ -10,7 +10,14 @@ const UPSTREAM_MESSAGES: Readonly<Record<string, string>> = {
   whatif_not_entitled: 'What-If impact estimates require a Pro or higher plan.',
   whatif_batch_in_progress: 'A What-If batch is already running. Start another one when it finishes.',
   segregation_of_duties: 'The requester or submitter of an action cannot approve it.',
-  approval_not_pending: 'This approval has already been decided.',
+  approval_not_pending: 'This approval has already been decided or has expired.',
+  // aster-api GuardApprovalService 的其余中文错误（审查 L1）
+  role_mismatch: 'This approval requires a business role that is not among your verified roles.',
+  comment_required: 'A comment is required to reject.',
+  approval_not_found: 'Approval not found.',
+  receipt_unavailable: 'The decision could not be written to the audit chain. Please try again later.',
+  invalid_approval: 'The approver identifier or the comment is too long.',
+  user_required: 'Deciding an approval requires a verified user identity.',
 };
 
 /** 已登记错误码返回英文提示，否则返回上游原文。 */

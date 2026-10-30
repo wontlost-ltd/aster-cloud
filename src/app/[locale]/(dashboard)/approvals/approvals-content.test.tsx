@@ -166,6 +166,17 @@ describe('ApprovalsContent', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/approvals/team1/a1/approve', expect.objectContaining({ method: 'POST' }));
   });
 
+  it.each(['approval_not_found', 'receipt_unavailable', 'invalid_approval', 'user_required'])(
+    'api %s：按错误码本地化，不显示 api 原文（审查 L1）',
+    async (code) => {
+      fetchMock.mockResolvedValue({ ok: false, status: 409, json: async () => ({ error: code, message: '中文原文' }) });
+      renderWith([item('a1')]);
+      fireEvent.click(screen.getByRole('button', { name: 'approve' }));
+      fireEvent.click(screen.getByRole('button', { name: 'confirmApprove' }));
+      await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(`errors.${code}`));
+    },
+  );
+
   it('驳回成功后按当前 tab 重新拉取列表', async () => {
     fetchMock
       .mockResolvedValueOnce({ ok: true, json: async () => ({ decisionId: 'd-a1' }) })

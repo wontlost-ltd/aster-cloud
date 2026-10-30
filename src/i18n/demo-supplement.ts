@@ -469,6 +469,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       cancel: 'Cancel',
       noRoles: 'none',
       errors: {
+        user_required: 'Your identity could not be verified. Sign in again and retry.',
+        invalid_approval: 'The comment is too long. Shorten it and try again.',
+        receipt_unavailable: 'The decision could not be recorded in the audit chain. Please try again shortly.',
+        approval_not_found: 'This approval no longer exists.',
         role_mismatch: 'Your verified roles ({roles}) do not include the required role {role}.',
         segregation_of_duties: 'You requested this action, so someone else must decide it.',
         approval_not_pending: 'This approval is no longer pending.',
@@ -481,6 +485,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       signup: {
         forgotPassword: 'Forgot password?',
         errors: {
+          emailAliasRegisteredAs: 'This address shares a mailbox with an existing account: {hint}. Sign in with that address, or reset its password (the reset link goes to the same mailbox).',
           emailAliasRegistered: 'This address delivers to the same mailbox as an existing account (for example the same address without the +suffix). Sign in with that account, or reset its password.',
           emailAlreadyRegistered: 'An account already exists for this email. Sign in, or reset your password if you have forgotten it.',
         },
@@ -625,7 +630,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           newOwnerSeatLimit: 'This member\'s plan allows {limit} team members, but the team has {count}.',
           newOwnerPlanIneligible: 'This member\'s plan does not include team features. They need a Pro or higher plan before they can own the team.',
         },
-        transferPlanNote: 'Team features, the member limit and team API usage follow the owner\'s plan. After the transfer they follow the new owner\'s plan, so the new owner needs a Pro or higher plan that allows this team\'s members.',
+        transferPlanNote: 'Team features, the member limit and team API usage follow the owner\'s plan. After the transfer they follow the new owner\'s plan, so the new owner needs a Pro or higher plan that allows this team\'s members. Paid seats are not moved automatically: the new owner\'s subscription is not updated by the transfer, so review billing for both accounts afterwards.',
       },
       errorCodes: { invalid_email: 'Enter a valid email address.', invalid_role: 'The selected role is not valid.', already_team_member: 'This person is already a team member.', invitation_already_pending: 'An invitation is already pending for this email.', unauthorized: 'You are not authorized to invite team members.' },
       // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
@@ -1682,6 +1687,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       cancel: '取消',
       noRoles: '无',
       errors: {
+        user_required: '无法验证你的身份，请重新登录后重试。',
+        invalid_approval: '说明过长，请缩短后重试。',
+        receipt_unavailable: '审批结论未能写入审计链，请稍后重试。',
+        approval_not_found: '该审批已不存在。',
         role_mismatch: '你的已验证角色（{roles}）不包含所需角色 {role}。',
         segregation_of_duties: '该动作由你发起，须由他人审批。',
         approval_not_pending: '该审批已不再处于待审批状态。',
@@ -1693,6 +1702,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       signup: {
         forgotPassword: '忘记密码？',
         errors: {
+          emailAliasRegisteredAs: '该地址与已有账号属于同一邮箱：{hint}。请用那个地址登录，或重置其密码（重置邮件会发到同一邮箱）。',
           emailAliasRegistered: '该地址与已有账号属于同一邮箱（例如去掉 + 后缀后的地址）。请用那个账号登录，或重置其密码。',
           emailAlreadyRegistered: '该邮箱已注册账号。请直接登录；忘记密码可重置。',
         },
@@ -1825,7 +1835,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           newOwnerSeatLimit: '该成员的套餐最多允许 {limit} 名团队成员，而本团队有 {count} 名。',
           newOwnerPlanIneligible: '该成员的套餐不含团队功能，需要升级到 Pro 或更高套餐后才能成为团队 owner。',
         },
-        transferPlanNote: '团队功能、成员上限与团队 API 用量都按 owner 的套餐计。转让后改按新 owner 的套餐计，因此新 owner 需要 Pro 或更高、且成员上限容得下本团队的套餐。',
+        transferPlanNote: '团队功能、成员上限与团队 API 用量都按 owner 的套餐计。转让后改按新 owner 的套餐计，因此新 owner 需要 Pro 或更高、且成员上限容得下本团队的套餐。付费席位不会自动迁移：转让不会更新新 owner 的订阅，转让后请分别核对双方的账单。',
       },
       errorCodes: { invalid_email: '请输入有效的邮箱地址。', invalid_role: '所选角色无效。', already_team_member: '此用户已是团队成员。', invitation_already_pending: '此邮箱已有待处理邀请。', unauthorized: '你无权邀请团队成员。' },
       // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
@@ -2884,6 +2894,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       cancel: 'Abbrechen',
       noRoles: 'keine',
       errors: {
+        user_required: 'Ihre Identität konnte nicht bestätigt werden. Melden Sie sich erneut an und versuchen Sie es noch einmal.',
+        invalid_approval: 'Der Kommentar ist zu lang. Bitte kürzen Sie ihn.',
+        receipt_unavailable: 'Die Entscheidung konnte nicht in der Audit-Kette gespeichert werden. Bitte versuchen Sie es gleich erneut.',
+        approval_not_found: 'Diese Freigabe existiert nicht mehr.',
         role_mismatch: 'Ihre verifizierten Rollen ({roles}) enthalten die erforderliche Rolle {role} nicht.',
         segregation_of_duties: 'Sie haben diese Aktion angefragt; jemand anderes muss entscheiden.',
         approval_not_pending: 'Diese Freigabe ist nicht mehr ausstehend.',
@@ -2895,6 +2909,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       signup: {
         forgotPassword: 'Passwort vergessen?',
         errors: {
+          emailAliasRegisteredAs: 'Diese Adresse gehört zum selben Postfach wie ein bestehendes Konto: {hint}. Melden Sie sich mit dieser Adresse an oder setzen Sie deren Passwort zurück (der Link geht an dasselbe Postfach).',
           emailAliasRegistered: 'Diese Adresse landet im selben Postfach wie ein bestehendes Konto (zum Beispiel dieselbe Adresse ohne +Zusatz). Melden Sie sich mit diesem Konto an oder setzen Sie dessen Passwort zurück.',
           emailAlreadyRegistered: 'Für diese E-Mail-Adresse gibt es bereits ein Konto. Melden Sie sich an oder setzen Sie Ihr Passwort zurück, falls Sie es vergessen haben.',
         },
@@ -3033,7 +3048,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           newOwnerSeatLimit: 'Der Tarif dieses Mitglieds erlaubt {limit} Teammitglieder, das Team hat aber {count}.',
           newOwnerPlanIneligible: 'Der Tarif dieses Mitglieds enthält keine Teamfunktionen. Es braucht einen Pro- oder höheren Tarif, um Eigentümer des Teams zu werden.',
         },
-        transferPlanNote: 'Teamfunktionen, das Mitgliederlimit und die Team-API-Nutzung richten sich nach dem Tarif des Eigentümers. Nach der Übertragung gilt der Tarif des neuen Eigentümers – er braucht also einen Pro- oder höheren Tarif, der die Mitglieder dieses Teams zulässt.',
+        transferPlanNote: 'Teamfunktionen, das Mitgliederlimit und die Team-API-Nutzung richten sich nach dem Tarif des Eigentümers. Nach der Übertragung gilt der Tarif des neuen Eigentümers – er braucht also einen Pro- oder höheren Tarif, der die Mitglieder dieses Teams zulässt. Bezahlte Plätze werden nicht automatisch übertragen: Das Abonnement des neuen Eigentümers wird nicht angepasst. Prüfen Sie danach die Abrechnung beider Konten.',
       },
       errorCodes: { invalid_email: 'Geben Sie eine gültige E-Mail-Adresse ein.', invalid_role: 'Die ausgewählte Rolle ist ungültig.', already_team_member: 'Diese Person ist bereits Teammitglied.', invitation_already_pending: 'Für diese E-Mail-Adresse liegt bereits eine Einladung vor.', unauthorized: 'Sie dürfen keine Teammitglieder einladen.' },
       // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
@@ -4080,6 +4095,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       cancel: 'रद्द करें',
       noRoles: 'कोई नहीं',
       errors: {
+        user_required: 'आपकी पहचान सत्यापित नहीं हो सकी। फिर से साइन इन करके प्रयास करें।',
+        invalid_approval: 'टिप्पणी बहुत लंबी है। उसे छोटा करके पुनः प्रयास करें।',
+        receipt_unavailable: 'निर्णय ऑडिट शृंखला में दर्ज नहीं हो सका। कृपया थोड़ी देर बाद पुनः प्रयास करें।',
+        approval_not_found: 'यह अनुमोदन अब मौजूद नहीं है।',
         role_mismatch: 'आपकी सत्यापित भूमिकाओं ({roles}) में आवश्यक भूमिका {role} शामिल नहीं है।',
         segregation_of_duties: 'यह कार्रवाई आपने अनुरोधित की है, इसलिए निर्णय किसी और को लेना होगा।',
         approval_not_pending: 'यह अनुमोदन अब लंबित नहीं है।',
@@ -4091,6 +4110,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       signup: {
         forgotPassword: 'पासवर्ड भूल गए?',
         errors: {
+          emailAliasRegisteredAs: 'यह पता एक मौजूदा खाते वाले मेलबॉक्स का ही है: {hint}। उसी पते से साइन इन करें, या उसका पासवर्ड रीसेट करें (रीसेट लिंक उसी मेलबॉक्स में जाएगा)।',
           emailAliasRegistered: 'यह पता किसी मौजूदा खाते वाले मेलबॉक्स में ही पहुँचता है (उदाहरण के लिए +प्रत्यय के बिना वही पता)। उसी खाते से साइन इन करें, या उसका पासवर्ड रीसेट करें।',
           emailAlreadyRegistered: 'इस ईमेल के लिए पहले से एक खाता मौजूद है। साइन इन करें, या पासवर्ड भूल गए हों तो उसे रीसेट करें।',
         },
@@ -4224,7 +4244,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           newOwnerSeatLimit: 'इस सदस्य की योजना {limit} टीम सदस्यों की अनुमति देती है, लेकिन टीम में {count} सदस्य हैं।',
           newOwnerPlanIneligible: 'इस सदस्य की योजना में टीम सुविधाएँ शामिल नहीं हैं। टीम का मालिक बनने के लिए उसे Pro या उससे ऊपर की योजना चाहिए।',
         },
-        transferPlanNote: 'टीम सुविधाएँ, सदस्य सीमा और टीम API उपयोग मालिक की योजना के अनुसार चलते हैं। हस्तांतरण के बाद ये नए मालिक की योजना के अनुसार चलेंगे, इसलिए नए मालिक को Pro या उससे ऊपर की ऐसी योजना चाहिए जो इस टीम के सदस्यों की अनुमति दे।',
+        transferPlanNote: 'टीम सुविधाएँ, सदस्य सीमा और टीम API उपयोग मालिक की योजना के अनुसार चलते हैं। हस्तांतरण के बाद ये नए मालिक की योजना के अनुसार चलेंगे, इसलिए नए मालिक को Pro या उससे ऊपर की ऐसी योजना चाहिए जो इस टीम के सदस्यों की अनुमति दे। सशुल्क सीटें अपने-आप स्थानांतरित नहीं होतीं: हस्तांतरण से नए मालिक की सदस्यता अपडेट नहीं होती, इसलिए बाद में दोनों खातों की बिलिंग जाँच लें।',
       },
       errorCodes: { invalid_email: 'मान्य ईमेल पता दर्ज करें।', invalid_role: 'चुनी गई भूमिका मान्य नहीं है।', already_team_member: 'यह व्यक्ति पहले से टीम का सदस्य है।', invitation_already_pending: 'इस ईमेल के लिए आमंत्रण पहले से लंबित है।', unauthorized: 'आपको टीम सदस्यों को आमंत्रित करने की अनुमति नहीं है।' },
       // 新建团队表单的本地化校验文案（F9，替代浏览器原生气泡）。
