@@ -13,6 +13,7 @@ vi.mock('@/lib/prisma', () => ({
   },
   executions: {},
   policies: {},
+  teamMembers: {},
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -24,6 +25,7 @@ vi.mock('drizzle-orm', () => ({
   isNull: () => ({}),
   isNotNull: () => ({}),
   inArray: () => ({}),
+  or: () => ({}),
   sql: () => ({}),
 }));
 

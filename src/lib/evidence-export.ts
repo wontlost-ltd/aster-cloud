@@ -4,8 +4,9 @@
 // **默认排除 traceJson 等 PII 明文**，只导 traceHash）。
 
 import { db, executions, policies } from '@/lib/prisma';
-import { and, eq, gte, lte, asc, isNull, isNotNull, inArray, sql } from 'drizzle-orm';
+import { and, eq, gte, lte, asc, isNull, isNotNull, inArray, or, sql } from 'drizzle-orm';
 import { policyTenantId } from '@/lib/policy-tenant';
+import { isPersonalPolicy, teamsAllowing } from '@/lib/policy-access';
 import { EMPTY_TALLY, type EvidenceRow } from '@/services/evidence/bundle';
 import type { DecisionTally, EvidenceAgent, EvidenceDecision, EvidencePreview } from '@/services/evidence/types';
 
@@ -20,8 +21,9 @@ export class EvidenceTooLargeError extends Error {
 }
 
 export interface EvidenceQuery {
+  /** 请求人：可见范围 = 本人个人策略上本人的执行 + 本人当前可查看的团队策略上的全部执行（#673）。 */
   userId: string;
-  /** undefined = 该用户全部策略。 */
+  /** undefined = 请求人可见的全部策略。单策略导出由调用方先按授权矩阵校验该策略。 */
   policyId?: string;
   startDate?: Date;
   endDate?: Date;
@@ -36,20 +38,29 @@ export interface EvidenceQuery {
  * 统一 WHERE（count/preview/query 三处共用，保证语义一致——Codex 审查：否则预览计数会高于实际
  * 导出、已删策略行还会误触发 413）。
  *
- * 用**非相关**子查询排除已删策略：policyId IN (SELECT id FROM Policy WHERE userId=? AND deletedAt
+ * 可见范围（#673）：个人策略只含所有者本人的执行；团队策略含全部成员的执行，团队按请求人**当前**
+ * 成员关系与查看权限收窄（离队即不可见）。
+ *
+ * 用**非相关**子查询排除已删策略与不可见策略：policyId IN (SELECT id FROM Policy WHERE … AND deletedAt
  * IS NULL)。刻意不用相关 EXISTS——drizzle 的 findMany 把主表 alias 成 "executions" 而 db.select 用
  * 原表名 "Execution"，相关子查询里 executions.policyId 会渲染成错误的表引用（真库实测 42P01）。
  * 非相关子查询自包含，与外层 alias 无关，count/preview/query 三处渲染都正确。
  */
 function buildConditions(q: EvidenceQuery) {
-  const livePolicyIds = db
+  const livePersonalIds = db
     .select({ id: policies.id })
     .from(policies)
-    .where(and(eq(policies.userId, q.userId), isNull(policies.deletedAt)));
+    .where(and(eq(policies.userId, q.userId), isPersonalPolicy(), isNull(policies.deletedAt)));
+  const liveTeamIds = db
+    .select({ id: policies.id })
+    .from(policies)
+    .where(and(inArray(policies.teamId, teamsAllowing(q.userId, 'view')), isNull(policies.deletedAt)));
 
   const conditions = [
-    eq(executions.userId, q.userId),
-    inArray(executions.policyId, livePolicyIds),
+    or(
+      and(eq(executions.userId, q.userId), inArray(executions.policyId, livePersonalIds)),
+      inArray(executions.policyId, liveTeamIds),
+    )!,
   ];
   if (q.policyId) conditions.push(eq(executions.policyId, q.policyId));
   if (q.startDate) conditions.push(gte(executions.createdAt, q.startDate));

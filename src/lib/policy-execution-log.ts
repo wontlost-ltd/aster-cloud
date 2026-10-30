@@ -2,7 +2,7 @@
 // 策略执行日志服务：查询、分页、统计
 
 import { db, executions } from '@/lib/prisma';
-import { eq, and, or, isNull, gte, lte, desc, sql } from 'drizzle-orm';
+import { eq, and, or, isNull, gte, lte, desc, sql, type SQL } from 'drizzle-orm';
 import type { InferSelectModel } from 'drizzle-orm';
 import type { ExecutionMetadata } from '@/lib/guard-register';
 import type { AgentIdentity, PolicyReplayMetadata, PolicyTraceSkeleton } from '@/services/policy/policy-api';
@@ -318,7 +318,11 @@ export interface ExecutionLogItem {
 }
 
 export interface ExecutionLogQuery {
-  userId: string;
+  /**
+   * 执行人过滤：个人策略传所有者 userId（只看本人的执行）；团队策略传 null（看该策略的全部执行，#673）。
+   * 为 null 时必须给 policyId，避免无界扫描所有人的执行。
+   */
+  executorId: string | null;
   policyId?: string;
   success?: boolean;
   legacyFailed?: boolean;
@@ -389,14 +393,26 @@ export function deriveDecisionStats(counts: {
 }
 
 /**
+ * 执行人 × 策略过滤条件。executorId 为 null（团队策略的全部执行）时必须限定 policyId。
+ */
+function executionScope(executorId: string | null, policyId: string | undefined): SQL {
+  if (executorId === null) {
+    if (!policyId) throw new Error('executionScope: executorId=null requires a policyId');
+    return eq(executions.policyId, policyId);
+  }
+  return policyId
+    ? and(eq(executions.userId, executorId), eq(executions.policyId, policyId))!
+    : eq(executions.userId, executorId);
+}
+
+/**
  * 查询执行日志（分页）
  */
 export async function queryExecutionLogs(query: ExecutionLogQuery): Promise<ExecutionLogResult> {
-  const { userId, policyId, success, decision, legacyFailed, legacyError, legacyApproved, source, startDate, endDate, page = 1, pageSize = 20 } = query;
+  const { executorId, policyId, success, decision, legacyFailed, legacyError, legacyApproved, source, startDate, endDate, page = 1, pageSize = 20 } = query;
 
   // Build where conditions（or() 的参数恒非空，返回值不会是 undefined）
-  const conditions = [eq(executions.userId, userId)];
-  if (policyId) conditions.push(eq(executions.policyId, policyId));
+  const conditions = [executionScope(executorId, policyId)];
   if (legacyFailed) conditions.push(or(
     eq(executions.decision, 'denied'),
     eq(executions.decision, 'error'),
@@ -512,19 +528,18 @@ export async function getExecutionLogDetail(
  * 获取策略执行统计
  */
 export async function getExecutionStats(
-  userId: string,
+  executorId: string | null,
   policyId?: string,
   days: number = 30
 ): Promise<ExecutionStats> {
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
 
-  // Build where conditions
+  // Build where conditions（执行人口径同 queryExecutionLogs）
   const conditions = [
-    eq(executions.userId, userId),
+    executionScope(executorId, policyId),
     gte(executions.createdAt, startDate),
   ];
-  if (policyId) conditions.push(eq(executions.policyId, policyId));
 
   const whereClause = and(...conditions);
   const whereWithSuccess = and(...conditions, or(
@@ -656,14 +671,11 @@ export async function getExecutionStats(
  */
 export async function getRecentExecutions(
   policyId: string,
-  userId: string,
+  executorId: string | null,
   limit: number = 10
 ): Promise<ExecutionLogItem[]> {
   const items = await db.query.executions.findMany({
-    where: and(
-      eq(executions.policyId, policyId),
-      eq(executions.userId, userId)
-    ),
+    where: executionScope(executorId, policyId),
     orderBy: [desc(executions.createdAt)],
     limit,
     with: {

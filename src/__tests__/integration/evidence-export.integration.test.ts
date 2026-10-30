@@ -13,7 +13,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 
 // server-only 由 Next 构建期别名提供（未作为依赖安装），测试中以空模块替代（收据客户端引入）。
 vi.mock('server-only', () => ({}));
-import { db, executions, policies, complianceReports } from '@/lib/prisma';
+import { db, executions, policies, complianceReports, teamMembers } from '@/lib/prisma';
+import { eq } from 'drizzle-orm';
 import {
   queryEvidenceExecutions,
   getEvidencePreview,
@@ -70,6 +71,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('evidence-export 数据层（�
     await db.delete(executions);
     await db.delete(complianceReports);
     await db.delete(policies);
+    await db.delete(teamMembers).where(eq(teamMembers.teamId, 'team-ev'));
     await seedPolicy(POL, U, 'Loan policy');
   });
 
@@ -236,6 +238,8 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('evidence-export 数据层（�
       id: 'pol-team', userId: U, teamId: 'team-ev', name: 'Team policy', content: 'Module M. Rule R.',
       updatedAt: new Date(),
     } as typeof policies.$inferInsert);
+    // 团队策略的证据按当前成员关系可见（ADR 0016）：导出人须是该团队成员
+    await db.insert(teamMembers).values({ id: 'tm-ev', teamId: 'team-ev', userId: U, role: 'member' });
     await seedExecution({
       id: 'v2-a', createdAt: new Date('2026-07-01T00:00:00Z'), outcome: 'REQUIRE_APPROVAL', ruleId: 'R-1',
       controls: ['GDPR:ART17'], agent: { provider: 'anthropic', model: 'claude', source: 'declared' },
@@ -251,6 +255,10 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('evidence-export 数据层（�
     expect(b).toMatchObject({
       id: 'v2-b', outcome: null, agent: null, evidenceCorrelationId: null, policyTenantId: 'team-ev', policyOwnerId: U, guardDecisionId: null, profile: null,
     });
+
+    // 离队后团队策略的执行不再出现在本人的证据里（#670 #673）
+    await db.delete(teamMembers).where(eq(teamMembers.id, 'tm-ev'));
+    expect((await queryEvidenceExecutions({ userId: U })).map((r) => r.id)).toEqual(['v2-a']);
   });
 
   it('★无关联 id 的行导出为现行 schemaVersion 5 + receipt=legacy（不发起收据请求）', async () => {

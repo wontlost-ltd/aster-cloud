@@ -7,19 +7,16 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockGetSession, mockFindFirst, mockQueryLogs, mockStats, mockRecent } = vi.hoisted(() => ({
+const { mockGetSession, mockQueryLogs, mockStats, mockRecent } = vi.hoisted(() => ({
   mockGetSession: vi.fn(),
-  mockFindFirst: vi.fn(),
   mockQueryLogs: vi.fn(),
   mockStats: vi.fn(),
   mockRecent: vi.fn(),
 }));
 
 vi.mock('@/lib/auth', () => ({ getSession: mockGetSession }));
-vi.mock('@/lib/prisma', () => ({
-  db: { query: { policies: { findFirst: mockFindFirst } } },
-  policies: { id: 'id', userId: 'userId', deletedAt: 'deletedAt' },
-}));
+vi.mock('@/lib/policy-access', async () =>
+  (await import('@/__tests__/helpers/policy-access-mock')).policyAccessModule());
 vi.mock('@/lib/policy-execution-log', () => ({
   queryExecutionLogs: mockQueryLogs,
   getExecutionStats: mockStats,
@@ -27,6 +24,7 @@ vi.mock('@/lib/policy-execution-log', () => ({
 }));
 
 import { GET } from '@/app/api/policies/[id]/logs/route';
+import { policyAccessState } from '@/__tests__/helpers/policy-access-mock';
 
 const call = (qs: string) =>
   GET(new Request(`https://x.test/api/policies/p1/logs${qs}`), { params: Promise.resolve({ id: 'p1' }) });
@@ -34,7 +32,8 @@ const call = (qs: string) =>
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetSession.mockResolvedValue({ user: { id: 'u1' } });
-  mockFindFirst.mockResolvedValue({ id: 'p1', name: 'Calc' });
+  policyAccessState.policy = { id: 'p1', name: 'Calc', userId: 'u1', teamId: null };
+  policyAccessState.teamRole = null;
   mockQueryLogs.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 });
   mockStats.mockResolvedValue({});
   mockRecent.mockResolvedValue([]);
@@ -113,5 +112,38 @@ describe('GET /api/policies/[id]/logs — stats / recent 模式', () => {
     expect(mockRecent).toHaveBeenLastCalledWith('p1', 'u1', 10);
     await call('?mode=recent&limit=100000');
     expect(mockRecent).toHaveBeenLastCalledWith('p1', 'u1', 100);
+  });
+});
+
+// 授权与执行人范围（#669 #670 #673）
+describe('GET /api/policies/[id]/logs — 授权与执行人范围', () => {
+  const teamPolicy = { id: 'p1', name: 'Calc', userId: 'creator', teamId: 't1' };
+
+  it('团队策略：非创建者的成员可看，日志不按执行人过滤（看全部成员的执行）', async () => {
+    policyAccessState.policy = teamPolicy;
+    policyAccessState.teamRole = 'viewer';
+    expect((await call('')).status).toBe(200);
+    expect(queryArgs()).toMatchObject({ executorId: null, policyId: 'p1' });
+    await call('?mode=stats');
+    expect(mockStats).toHaveBeenLastCalledWith(null, 'p1', 30);
+    await call('?mode=recent');
+    expect(mockRecent).toHaveBeenLastCalledWith('p1', null, 10);
+  });
+
+  it('个人策略：只看所有者本人的执行', async () => {
+    await call('');
+    expect(queryArgs()).toMatchObject({ executorId: 'u1' });
+  });
+
+  it('团队外用户 / 已离队的创建者 → 404，不查日志', async () => {
+    policyAccessState.policy = { ...teamPolicy, userId: 'u1' };
+    policyAccessState.teamRole = null;
+    expect((await call('')).status).toBe(404);
+    expect(mockQueryLogs).not.toHaveBeenCalled();
+  });
+
+  it('他人的个人策略 → 404', async () => {
+    policyAccessState.policy = { id: 'p1', name: 'Calc', userId: 'other', teamId: null };
+    expect((await call('')).status).toBe(404);
   });
 });

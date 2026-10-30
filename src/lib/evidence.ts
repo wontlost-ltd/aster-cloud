@@ -3,7 +3,8 @@
 // 审计物必须**可复现/可重下载**：导出时把 bundle 持久化，用户下季度还能拉到字节完全一致的同一份
 // （on-demand 重生会因新执行/留存清理而漂移）。替换旧 lib/compliance.ts（假分报告）。
 
-import { db, complianceReports, policies } from '@/lib/prisma';
+import { loadPolicyForAction } from '@/lib/policy-access';
+import { db, complianceReports } from '@/lib/prisma';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import {
   buildBundle,
@@ -155,13 +156,12 @@ export async function createEvidenceExport(
   let policySnapshot: EvidenceManifest['policy'] = { scope: 'all' };
   let titleScope = 'all policies';
   if (request.policyId) {
-    const p = await db.query.policies.findFirst({
-      where: and(eq(policies.id, request.policyId), eq(policies.userId, userId)),
-      columns: { id: true, name: true, version: true },
-    });
-    if (!p) {
+    // 团队策略任一当前成员可导出（覆盖全部成员的执行，#673），个人策略只认所有者
+    const access = await loadPolicyForAction(request.policyId, { userId }, 'view');
+    if (!access.ok) {
       throw new Error('policy_not_found');
     }
+    const p = access.policy;
     // manifest 记策略**当前**版本号（导出时刻）；每条 entry 各自带执行时的版本号（可能不同版本）。
     policySnapshot = { id: p.id, name: p.name, version: p.version ?? null, policyVersionRowId: null };
     titleScope = p.name;
