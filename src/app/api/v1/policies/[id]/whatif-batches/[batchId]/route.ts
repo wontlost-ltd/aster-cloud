@@ -12,6 +12,7 @@ import { getSession } from '@/lib/auth';
 import { loadPolicyForAction } from '@/lib/policy-access';
 import { policyTenantId } from '@/lib/policy-tenant';
 import { createPolicyApiClient, PolicyApiError } from '@/services/policy/policy-api';
+import { upstreamErrorMessage, withEnglishWindowLabel } from '@/lib/upstream-error-messages';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -45,11 +46,11 @@ export async function GET(
 
   try {
     const result = await client.getWhatIfBatch(policyId, batchId);
-    return NextResponse.json(result);
+    return NextResponse.json(withEnglishWindowLabel(result));
   } catch (e) {
     if (e instanceof PolicyApiError) {
       return NextResponse.json(
-        { error: e.code ?? 'batch_fetch_failed', message: e.message },
+        { error: e.code ?? 'batch_fetch_failed', message: upstreamErrorMessage(e.code, e.message) },
         { status: e.statusCode ?? 502 },
       );
     }

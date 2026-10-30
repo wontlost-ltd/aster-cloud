@@ -16,6 +16,10 @@ const labels = {
   guardOutcomeRejected: 'rejected',
   permissionView: 'view',
   permissionExecute: 'execute',
+  versionSubmitted: '{policyName} v{version} needs approval',
+  versionApproved: '{policyName} v{version} was approved',
+  versionRejected: '{policyName} v{version} was rejected: {comment}',
+  versionRejectedNoComment: '{policyName} v{version} was rejected',
 } as unknown as Labels;
 
 function row(kind: string, data: Record<string, unknown>): Row {
@@ -37,5 +41,24 @@ describe('notifications-bell 文案渲染', () => {
   it('policy.shared：策略名与团队名含替换模式原样显示', () => {
     const text = renderText(row('policy.shared', { policyName: '$`x', teamName: "T$'", permission: 'view' }), labels).text;
     expect(text).toBe("$`x shared with T$' (view)");
+  });
+
+  it('策略版本提交审批 → 审批收件箱（#678）', () => {
+    const r = renderText(row('policy.version_submitted', { policyId: 'p1', policyName: 'Loan', version: 2 }), labels);
+    expect(r).toEqual({ text: 'Loan v2 needs approval', href: '/approvals' });
+  });
+
+  it('策略版本驳回带理由，链接到版本页（#678）', () => {
+    const r = renderText(
+      row('policy.version_decided', { policyId: 'p1', policyName: 'Loan', version: 2, outcome: 'REJECTED', comment: 'too risky' }),
+      labels,
+    );
+    expect(r).toEqual({ text: 'Loan v2 was rejected: too risky', href: '/policies/p1/versions' });
+    expect(
+      renderText(row('policy.version_decided', { policyId: 'p1', policyName: 'Loan', version: 2, outcome: 'REJECTED' }), labels).text,
+    ).toBe('Loan v2 was rejected');
+    expect(
+      renderText(row('policy.version_decided', { policyId: 'p1', policyName: 'Loan', version: 3, outcome: 'APPROVED' }), labels).text,
+    ).toBe('Loan v3 was approved');
   });
 });

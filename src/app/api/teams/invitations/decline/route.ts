@@ -18,6 +18,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import { getSession } from '@/lib/auth';
 import { db, teamInvitations, users, notifications } from '@/lib/prisma';
 import { errorEnvelope } from '@/lib/api/error-envelope';
+import { matchesInvitationMailbox } from '@/lib/team-invitation-email';
 
 export async function POST(req: Request) {
   try {
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    if (invitation.email.toLowerCase() !== me.email.toLowerCase()) {
+    if (!matchesInvitationMailbox(me.email, invitation.email)) {
       // Don't leak that the invitation exists for someone else —
       // 404 mirrors the accept route's "doesn't exist" path.
       return NextResponse.json(

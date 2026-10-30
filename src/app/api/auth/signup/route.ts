@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { and, eq, isNull } from 'drizzle-orm';
 import { db, users } from '@/lib/prisma';
 import { hashPassword } from '@/auth';
-import { normalizeEmail } from '@/lib/email-normalize';
+import { maskEmail, normalizeEmail } from '@/lib/email-normalize';
 import { hashIp, recordSignupAttempt } from '@/lib/signup-rate-limit';
 import { getClientIp, RateLimitPresets } from '@/lib/rate-limit';
 import { checkRateLimitDistributed } from '@/lib/rate-limit-distributed';
@@ -21,8 +21,10 @@ import { checkRateLimitDistributed } from '@/lib/rate-limit-distributed';
  * 会建带密码的 admin 账号。此处说的是**自助**注册。）
  *
  * <h3>安全取舍</h3>
- * - **邮箱枚举**：已注册时返回与成功**同形**的 200，不泄露该邮箱是否存在。
- *   真正的区分只体现在收不收得到信——这与 forgot-password 的口径一致。
+ * - **已注册**：邮箱（或其 +别名 / Gmail 点号变体，见 email-normalize.ts）已有账号时
+ *   明确返回 409 `email_already_registered`（`alias` 标明是否为同一邮箱的另一种写法），
+ *   界面引导用既有账号登录或重置密码。此前返回与成功同形的 200 以防邮箱枚举，结果是页面
+ *   显示「账号已就绪」却没有建号、也不发信，用户无从得知（#682）；这里取可用性。
  * - **风控分两层，必须都过**：
  *   1. *打分层* 在 `DrizzleAdapter.createUser`（历史 hard-purge / 可疑邮箱
  *      → 写 `riskTier`）。调 adapter 即继承。★注意其中的 IP 聚类分量依赖
@@ -44,6 +46,33 @@ import { checkRateLimitDistributed } from '@/lib/rate-limit-distributed';
  * - **不在此处发验证信**：发信由用户在设置页主动触发（限流在那一侧），
  *   注册链路只负责建号。避免注册接口被当成发信喷口。
  */
+/**
+ * 已注册的统一响应（#682）：409 email_already_registered。`alias` 表示命中的是同一邮箱的另一种写法
+ * （+别名 / Gmail 点号变体），此时附已有账号地址的掩码提示 `existingAccountHint`，告诉用户用哪个地址登录。
+ */
+function alreadyRegistered(alias: boolean, existingEmail?: string | null) {
+  const hint = alias && existingEmail ? maskEmail(existingEmail) : null;
+  return NextResponse.json(
+    {
+      error: hint
+        ? `An account already exists for this mailbox as ${hint}. Sign in with that address, or reset its password.`
+        : 'An account already exists for this email address. Sign in instead.',
+      code: 'email_already_registered',
+      alias,
+      ...(hint ? { existingAccountHint: hint } : {}),
+    },
+    { status: 409 },
+  );
+}
+
+/** Postgres 唯一约束冲突（含被 drizzle / 适配器包装在 cause 里的情况）。 */
+function isUniqueViolation(err: unknown): boolean {
+  for (let e: unknown = err, i = 0; e && i < 3; e = (e as { cause?: unknown }).cause, i++) {
+    if ((e as { code?: unknown }).code === '23505') return true;
+  }
+  return false;
+}
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -130,9 +159,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ★邮箱枚举防护：已存在时返回与成功同形的 200。
-  //   同时按 emailNormalized 查——否则 `a.b+x@gmail.com` 能绕开 `ab@gmail.com`
-  //   的占用检查，建出一个登录时会与既有账号相撞的重复号。
+  // 已存在时明确报错（#682）。同时按 emailNormalized 查——否则 `a.b+x@gmail.com`
+  //   能绕开 `ab@gmail.com` 的占用检查，建出一个登录时会与既有账号相撞的重复号。
   const normalized = normalizeEmail(lower);
   const existing = await db.query.users.findFirst({
     where: eq(users.email, lower),
@@ -141,12 +169,11 @@ export async function POST(request: NextRequest) {
   const existingNormalized = normalized
     ? await db.query.users.findFirst({
         where: eq(users.emailNormalized, normalized),
-        columns: { id: true },
+        columns: { id: true, email: true },
       })
     : null;
-  if (existing || existingNormalized) {
-    return NextResponse.json({ ok: true });
-  }
+  if (existing) return alreadyRegistered(false);
+  if (existingNormalized) return alreadyRegistered(true, existingNormalized.email);
 
   // 适配器的 createUser 负责**打分层**：注册风险分层、IP 聚类、历史
   // hard-purge 计数、tier≥2 的 Slack 告警。拒绝层已在上面单独调过。
@@ -156,13 +183,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Signup unavailable' }, { status: 500 });
   }
 
-  const created = await adapter.createUser({
-    id: crypto.randomUUID(), // 适配器内部会重新生成，此处仅满足类型
-    email: lower,
-    emailVerified: null, // ★不预置已验证：必须走验证流程才解锁 AI
-    name: typeof name === 'string' && name.trim() ? name.trim() : null,
-    image: null,
-  });
+  let created: Awaited<ReturnType<NonNullable<typeof adapter.createUser>>>;
+  try {
+    created = await adapter.createUser({
+      id: crypto.randomUUID(), // 适配器内部会重新生成，此处仅满足类型
+      email: lower,
+      emailVerified: null, // ★不预置已验证：必须走验证流程才解锁 AI
+      name: typeof name === 'string' && name.trim() ? name.trim() : null,
+      image: null,
+    });
+  } catch (err) {
+    // 并发注册同一邮箱：两个请求都通过了上面的存在性检查，后到者撞唯一索引（23505）→ 同样按已注册处理
+    if (isUniqueViolation(err)) return alreadyRegistered(false);
+    throw err;
+  }
 
   const passwordHash = await hashPassword(password);
   await db

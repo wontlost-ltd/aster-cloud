@@ -5,7 +5,7 @@ import { and, eq, desc, isNull, sql } from 'drizzle-orm';
 import { loadPolicyForAction } from '@/lib/policy-access';
 import { invalidatePolicyCache } from '@/lib/cache';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
-import { assertCompilable, PolicyCompileError } from '@/services/policy/version-manager';
+import { assertCompilable, createVersion, PolicyCompileError } from '@/services/policy/version-manager';
 import { loadSaveVocabulary, makeCompileValidator } from '@/lib/policy-compile-validator';
 import { compileGateErrorResponse, vocabularyScopeInvalidResponse } from '@/lib/policy-compile-response';
 
@@ -40,6 +40,7 @@ export async function GET(req: Request, { params }: RouteParams) {
           columns: {
             id: true,
             name: true,
+            email: true,
           },
         },
       },
@@ -64,6 +65,7 @@ export async function GET(req: Request, { params }: RouteParams) {
             ? {
                 id: policy.user.id,
                 name: policy.user.name,
+                email: policy.user.email,
               }
             : null,
           executionCount: executionCountResult.count,
@@ -151,28 +153,44 @@ export async function POST(req: Request, { params }: RouteParams) {
     //   用户在执行页才看到「行 15 第 25 列」的报错。
     //   放在插入**之前**（事务外）：避免事务内网络调用持锁。
     const saveVocabulary = await loadSaveVocabulary(session.user.id, { source: content, locale: 'en-US' });
-    await assertCompilable(makeCompileValidator(session.user.id, saveVocabulary.vocabulary), {
+    const profile = await assertCompilable(makeCompileValidator(session.user.id, saveVocabulary.vocabulary), {
       source: content,
       locale: 'en-US',
       aliasSet: null,
     });
 
+    // 策略行与 v1 版本行同一事务写入，与 /api/policies 一致（#681：此前只建策略行，
+    // 版本列表为空、提交审批 400，而详情页仍显示 v1）
     const newPolicyId = globalThis.crypto.randomUUID();
-    const [newPolicy] = await db
-      .insert(policies)
-      .values({
-        id: newPolicyId,
-        name,
-        content,
-        description: description || null,
-        userId: session.user.id,
-        teamId,
-      })
-      .returning();
-
-    if (!newPolicy) {
-      throw new Error('Failed to create policy');
-    }
+    const newPolicy = await db.transaction(async (tx) => {
+      const [inserted] = await tx
+        .insert(policies)
+        .values({
+          id: newPolicyId,
+          name,
+          content,
+          description: description || null,
+          userId: session.user.id,
+          teamId,
+        })
+        .returning();
+      if (!inserted) {
+        throw new Error('Failed to create policy');
+      }
+      await createVersion({
+        policyId: inserted.id,
+        source: content,
+        createdBy: session.user.id,
+        releaseNote: undefined,
+        locale: 'en-US',
+        scopesJson: saveVocabulary.scopesJson,
+        aliasSet: null,
+        profile,
+        dbClient: tx,
+      });
+      return inserted;
+    });
+    await invalidatePolicyCache(newPolicy.id).catch((err) => console.warn('[Cache] Failed to invalidate policy cache:', err));
 
     return NextResponse.json(
       {

@@ -15,6 +15,7 @@ import { sendTeamInvitationEmail } from '@/lib/resend';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
 import { upgradeResponse, UPGRADE_HTTP_STATUS } from '@/lib/plan-quota';
 import { createNotification } from '@/lib/notifications';
+import { canonicalInvitationEmail, userByMailbox } from '@/lib/team-invitation-email';
 import { sql } from 'drizzle-orm';
 
 type RouteParams = { params: Promise<{ teamId: string }> };
@@ -98,10 +99,11 @@ export async function POST(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: access.error, code: access.code }, { status: access.status });
     }
 
-    const { email, role } = await req.json();
+    const { email: rawEmail, role } = await req.json();
 
-    // 验证邮箱
-    if (!email || typeof email !== 'string' || !email.includes('@')) {
+    // 验证邮箱：统一 trim + 小写入库，重复检查与接受匹配都不受大小写影响（#679）
+    const email = canonicalInvitationEmail(rawEmail);
+    if (!email) {
       return NextResponse.json({ error: 'Invalid email address.', code: 'invalid_email' }, { status: 400 });
     }
 
@@ -150,9 +152,10 @@ export async function POST(req: Request, { params }: RouteParams) {
       }
     }
 
-    // 检查用户是否已是成员（通过 user.email 关联）
+    // 检查用户是否已是成员：按同一邮箱查找账号（+别名与基地址是同一账号，#682）
     const userWithEmail = await db.query.users.findFirst({
-      where: eq(users.email, email),
+      where: userByMailbox(email),
+      columns: { id: true },
     });
 
     if (userWithEmail) {
@@ -165,11 +168,11 @@ export async function POST(req: Request, { params }: RouteParams) {
       }
     }
 
-    // 检查是否已有待处理的邀请
+    // 检查是否已有待处理的邀请（忽略大小写：历史邀请可能按原大小写入库）
     const existingInvitation = await db.query.teamInvitations.findFirst({
       where: and(
         eq(teamInvitations.teamId, teamId),
-        eq(teamInvitations.email, email),
+        sql`lower(${teamInvitations.email}) = ${email}`,
         gt(teamInvitations.expiresAt, new Date())
       ),
     });
@@ -186,7 +189,7 @@ export async function POST(req: Request, { params }: RouteParams) {
 
     const inviter = await db.query.users.findFirst({
       where: eq(users.id, session.user.id),
-      columns: { name: true },
+      columns: { name: true, email: true },
     });
 
     // 创建邀请
@@ -209,11 +212,11 @@ export async function POST(req: Request, { params }: RouteParams) {
       throw new Error('Failed to create invitation');
     }
 
-    // 发送邀请邮件
+    // 发送邀请邮件（英文模板）：邀请人未设姓名时用其邮箱，让被邀请人知道是谁发来的（#680）
     const emailResult = await sendTeamInvitationEmail(
       email,
-      team?.name || '未知团队',
-      inviter?.name || '团队成员',
+      team?.name || 'a team',
+      inviter?.name?.trim() || inviter?.email || 'A teammate',
       token
     );
 

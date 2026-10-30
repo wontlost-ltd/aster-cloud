@@ -46,7 +46,7 @@ vi.mock('@/lib/prisma', () => ({
     update: () => ({ set: () => ({ where: mockUpdateWhere }) }),
   },
   passwordResetTokens: { email: 'prt.email', token: 'prt.token', id: 'prt.id' },
-  users: { email: 'users.email', id: 'users.id' },
+  users: { email: 'users.email', emailNormalized: 'users.emailNormalized', id: 'users.id' },
 }));
 
 vi.mock('@/lib/resend', () => ({ sendPasswordResetEmail: mockSendEmail }));
@@ -94,6 +94,50 @@ describe('forgot-password — stores hashed token, emails raw (audit #168)', () 
     const stored = mockInsertValues.mock.calls[0][0].token as string;
     expect(stored).toBe(sha256(emailedToken));
     expect(stored).not.toBe(emailedToken);
+  });
+});
+
+describe('forgot-password — 按同一邮箱找账号，发到账号登记的地址（#682）', () => {
+  beforeEach(() => { vi.resetModules(); reset(); });
+
+  const forgot = async (email: string) => {
+    const { POST } = await import('@/app/api/auth/forgot-password/route');
+    return POST(new Request('http://cloud.test/api/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    }) as never);
+  };
+
+  it('精确地址找不到时按 emailNormalized 找到另一个 +别名的账号，信与令牌都用账号地址', async () => {
+    mockUserFindFirst.mockImplementation((arg: { where: { col: string; val: string } }) =>
+      Promise.resolve(
+        arg.where.col === 'users.emailNormalized' && arg.where.val === 'ryan.pang@wontlost.com'
+          ? { id: 'u1', email: 'ryan.pang+adr0051-retest@wontlost.com' }
+          : undefined,
+      ),
+    );
+    const res = await forgot('Ryan.Pang+adr0051-member1@wontlost.com');
+    expect(res.status).toBe(200);
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    expect(mockSendEmail.mock.calls[0][0]).toBe('ryan.pang+adr0051-retest@wontlost.com');
+    expect(mockInsertValues.mock.calls[0][0].email).toBe('ryan.pang+adr0051-retest@wontlost.com');
+    expect(mockDeleteWhere).toHaveBeenCalledWith({ op: 'eq', col: 'prt.email', val: 'ryan.pang+adr0051-retest@wontlost.com' });
+  });
+
+  it('精确地址命中时不再按别名查', async () => {
+    mockUserFindFirst.mockResolvedValue({ id: 'u1', email: 'a@b.com' });
+    await forgot('a@b.com');
+    expect(mockUserFindFirst).toHaveBeenCalledTimes(1);
+    expect(mockSendEmail.mock.calls[0][0]).toBe('a@b.com');
+  });
+
+  it('同一邮箱也找不到：仍返回 200，不发信（防枚举不变）', async () => {
+    mockUserFindFirst.mockResolvedValue(undefined);
+    const res = await forgot('nobody+x@example.com');
+    expect(res.status).toBe(200);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockInsertValues).not.toHaveBeenCalled();
   });
 });
 

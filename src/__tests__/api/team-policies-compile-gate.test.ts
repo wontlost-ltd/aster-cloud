@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  * 「行 15 第 25 列」的语法错误，而保存时一路绿灯。
  */
 const {
-  mockInsert, mockValuesInsert,
+  mockInsert, mockValuesInsert, mockCreateVersion, mockTransaction,
   mockAssertCompilable, mockPolicyCompileError, mockCheckTeamPermission,
 } = vi.hoisted(() => {
   const mockReturningInsert = vi.fn().mockResolvedValue([
@@ -28,8 +28,10 @@ const {
       this.name = 'PolicyCompileError';
     }
   }
+  const mockTransaction = vi.fn(async (fn: (tx: unknown) => unknown) => fn({ insert: mockInsert }));
   return {
-    mockInsert, mockValuesInsert, mockReturningInsert,
+    mockInsert, mockValuesInsert, mockReturningInsert, mockTransaction,
+    mockCreateVersion: vi.fn().mockResolvedValue({ id: 'v1', version: 1 }),
     mockAssertCompilable: vi.fn().mockResolvedValue(undefined),
     mockPolicyCompileError: MockPolicyCompileError,
     mockCheckTeamPermission: vi.fn().mockResolvedValue({ allowed: true }),
@@ -40,7 +42,7 @@ vi.mock('@/lib/auth', () => ({
   getSession: vi.fn().mockResolvedValue({ user: { id: 'user-1' } }),
 }));
 vi.mock('@/lib/prisma', () => ({
-  db: { insert: mockInsert, query: { policies: { findFirst: vi.fn() } } },
+  db: { insert: mockInsert, transaction: mockTransaction, query: { policies: { findFirst: vi.fn() } } },
   policies: {}, executions: {},
 }));
 vi.mock('drizzle-orm', () => ({
@@ -50,7 +52,9 @@ vi.mock('@/lib/team-permissions', () => ({
   checkTeamPermission: mockCheckTeamPermission,
   TeamPermission: { CREATE_POLICY: 'CREATE_POLICY', VIEW_POLICIES: 'VIEW_POLICIES' },
 }));
+vi.mock('@/lib/cache', () => ({ invalidatePolicyCache: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/services/policy/version-manager', () => ({
+  createVersion: mockCreateVersion,
   assertCompilable: mockAssertCompilable,
   PolicyCompileError: mockPolicyCompileError,
 }));
@@ -81,6 +85,23 @@ describe('POST /api/teams/{teamId}/policies 编译门禁', () => {
     expect(mockAssertCompilable).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({ source: VALID.content }),
+    );
+  });
+
+  it('★新建团队策略在同一事务里生成 v1 版本（#681：此前没有版本行，提交审批 400）', async () => {
+    mockAssertCompilable.mockResolvedValueOnce('governed');
+    const res = await POST(req(VALID), ctx as never);
+    expect(res.status).toBe(201);
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
+    expect(mockCreateVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        policyId: 'p-new',
+        source: VALID.content,
+        createdBy: 'user-1',
+        locale: 'en-US',
+        profile: 'governed',
+        dbClient: expect.anything(),
+      }),
     );
   });
 

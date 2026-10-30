@@ -9,6 +9,7 @@ import { formatDate } from '@/lib/format';
 import { ConfirmDialog, Container, PageHeader, Breadcrumbs, Input, Label, Select } from '@/components/ui';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
 import { localizedErrorMessage } from '@/lib/api/localized-error-message';
+import { canChangeBusinessRoles } from '@/lib/business-role-permissions';
 import {
   BusinessRolesEditor,
   businessRolesSaveError,
@@ -565,7 +566,14 @@ export default function TeamMembersPage() {
                         <span className="pt-0.5 text-xs text-fg-muted">{t('members.businessRolesLabel')}</span>
                         <BusinessRolesEditor
                           roles={member.businessRoles ?? []}
-                          canEdit={canChangeRole}
+                          canEdit={
+                            canChangeRole &&
+                            canChangeBusinessRoles(
+                              userRole as TeamRole,
+                              member.role as TeamRole,
+                              member.userId === currentUserId,
+                            ).allowed
+                          }
                           onSave={(roles) => saveBusinessRoles(member.id, roles)}
                           labels={businessRoleLabels}
                         />
@@ -580,6 +588,7 @@ export default function TeamMembersPage() {
                     ) : canChangeRole && (userRole === 'owner' || (userRole === 'admin' && member.role !== 'admin')) ? (
                       <select
                         value={member.role}
+                        aria-label={t('members.roleSelectLabel', { name: member.user.name || member.user.email })}
                         onChange={(e) => handleRoleChange(member.id, e.target.value as TeamRole)}
                         className="rounded-md border-border-strong text-sm focus:border-primary focus:ring-primary"
                       >

@@ -70,6 +70,8 @@ interface VersionRow {
   archivedAt: string | null;
   archivedBy: string | null;
   _count: { approvals: number };
+  /** 被驳回时最近一次驳回的理由（#678） */
+  rejectionComment?: string | null;
 }
 
 type ActionKind =
@@ -320,7 +322,16 @@ export function VersionsContent({
               {
                 key: 'status',
                 header: t('table.status'),
-                cell: (v) => <StatusBadge status={v.status} t={t} />,
+                cell: (v) => (
+                  <div>
+                    <StatusBadge status={v.status} t={t} />
+                    {v.status === 'REJECTED' && v.rejectionComment && (
+                      <p className="mt-1 max-w-xs text-xs text-fg-muted">
+                        {t('rejectionReason', { comment: v.rejectionComment })}
+                      </p>
+                    )}
+                  </div>
+                ),
               },
               {
                 key: 'approvals',

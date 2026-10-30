@@ -367,7 +367,7 @@ describe('approveVersion — 词汇快照（#610）', () => {
     h.lockedVersionStatus.value = 'APPROVED';
 
     await expect(approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' }))
-      .rejects.toThrow('不在待审批状态');
+      .rejects.toThrow('is not pending approval');
     expect(h.snapshot).not.toHaveBeenCalled();
     expect(h.committed).toEqual([]);
   });

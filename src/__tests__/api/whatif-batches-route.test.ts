@@ -275,3 +275,27 @@ describe('What-If 批次租户', () => {
     expect(clientArgs).toEqual([['u1', 'u1']]);
   });
 });
+
+// #680：aster-api 的中文提示与窗口标签按错误码 / windowKind 换成英文（界面另按错误码本地化）
+describe('What-If 转发的英文提示', () => {
+  beforeEach(() => {
+    getSession.mockReset();
+    getSession.mockResolvedValue({ user: { id: 'u1' } });
+    policyAccessState.policy = { id: 'p1', userId: 'u1', teamId: null };
+    policyAccessState.teamRole = null;
+    createWhatIfBatch.mockReset();
+    getWhatIfBatch.mockReset();
+  });
+
+  it('★无权益的中文 message 换成英文', async () => {
+    createWhatIfBatch.mockRejectedValue(new FakePolicyApiError('What-If 影响估算需 Pro 及以上套餐', 403, 'whatif_not_entitled'));
+    const body = await (await POST(postReq(validBody), { params })).json();
+    expect(body.message).toBe('What-If impact estimates require a Pro or higher plan.');
+  });
+
+  it('★批次 windowLabel 按 windowKind 给英文', async () => {
+    getWhatIfBatch.mockResolvedValue({ batchId: 'b1', status: 'COMPLETED', windowKind: 'LAST_MONTH', windowLabel: '最近一个月' });
+    const body = await (await GET(new Request('https://x.test'), { params: batchParams })).json();
+    expect(body.windowLabel).toBe('Last month');
+  });
+});

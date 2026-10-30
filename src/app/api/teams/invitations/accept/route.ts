@@ -5,6 +5,16 @@ import { eq, and, sql } from 'drizzle-orm';
 import { IS_SAAS } from '@/lib/deployment-mode';
 import { getStripe } from '@/lib/stripe';
 import { createNotification } from '@/lib/notifications';
+import { matchesInvitationMailbox } from '@/lib/team-invitation-email';
+import { lockTeamRow, teamSeatAvailable } from '@/lib/team-plan';
+import { upgradeResponse, UPGRADE_HTTP_STATUS } from '@/lib/plan-quota';
+
+/** 接受时团队已满（按 owner 套餐的成员上限）：事务内抛出，路由映射为 402。 */
+class TeamSeatLimitError extends Error {
+  constructor(readonly memberCount: number, readonly limit: number) {
+    super('team_seat_limit');
+  }
+}
 
 
 // POST /api/teams/invitations/accept - 接受邀请
@@ -72,11 +82,9 @@ export async function POST(req: Request) {
       columns: { email: true },
     });
 
-    // 检查邀请邮箱是否匹配（安全要求：必须严格匹配）
-    if (
-      !currentUser?.email ||
-      currentUser.email.toLowerCase() !== invitation.email.toLowerCase()
-    ) {
+    // 检查邀请邮箱是否匹配：账号邮箱须与邀请邮箱是同一邮箱（忽略大小写；+别名与基地址
+    // 视为同一邮箱，与注册去重同一口径——注册会拒绝已有账号邮箱的 +别名，#682）
+    if (!matchesInvitationMailbox(currentUser?.email, invitation.email)) {
       return NextResponse.json({ error: 'This invitation is restricted to the specified email address.', code: 'invitation_email_mismatch' }, { status: 403 });
     }
 
@@ -94,17 +102,38 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'You are already a member of this team.', code: 'already_team_member' }, { status: 400 });
     }
 
-    // 使用事务创建成员并删除邀请
-    await db.transaction(async (tx) => {
-      await tx.insert(teamMembers).values({
-        id: globalThis.crypto.randomUUID(),
-        teamId: invitation.teamId,
-        userId: session.user.id,
-        role: invitation.role,
-      });
+    // 使用事务创建成员并删除邀请。先锁团队行再按 owner 套餐检查席位：邀请时的检查挡不住
+    // 多份邀请同时被接受，接受时在锁内再判一次才不会超员（审查 L3）。
+    try {
+      await db.transaction(async (tx) => {
+        const team = await lockTeamRow(tx, invitation.teamId);
+        if (team) {
+          const seat = await teamSeatAvailable(tx, invitation.teamId, team.ownerId);
+          if (!seat.ok) throw new TeamSeatLimitError(seat.memberCount, seat.limit);
+        }
 
-      await tx.delete(teamInvitations).where(eq(teamInvitations.id, invitation.id));
-    });
+        await tx.insert(teamMembers).values({
+          id: globalThis.crypto.randomUUID(),
+          teamId: invitation.teamId,
+          userId: session.user.id,
+          role: invitation.role,
+        });
+
+        await tx.delete(teamInvitations).where(eq(teamInvitations.id, invitation.id));
+      });
+    } catch (err) {
+      if (err instanceof TeamSeatLimitError) {
+        return NextResponse.json(
+          upgradeResponse('team_member_invite', {
+            usage: err.memberCount,
+            limit: err.limit,
+            message: `This team is full: its plan allows ${err.limit} team member(s). Ask the team owner to upgrade.`,
+          }),
+          { status: UPGRADE_HTTP_STATUS },
+        );
+      }
+      throw err;
+    }
 
     // Tidy the originating "team.invitation_received" notification
     // for this user so the bell drops the row immediately, instead

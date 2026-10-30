@@ -59,6 +59,10 @@ vi.mock('@/lib/stripe', () => ({
   getStripe: vi.fn(async () => mockStripeInstance),
 }));
 
+// 接受时在锁住团队行的事务内检查席位（审查 L3）
+const seat = vi.hoisted(() => ({ lock: vi.fn(), available: vi.fn() }));
+vi.mock('@/lib/team-plan', () => ({ lockTeamRow: seat.lock, teamSeatAvailable: seat.available }));
+
 import { POST } from '@/app/api/teams/invitations/accept/route';
 import { getSession } from '@/lib/auth';
 
@@ -93,6 +97,8 @@ beforeEach(() => {
     });
   });
   mockSession.mockReset();
+  seat.lock.mockReset().mockResolvedValue({ ownerId: 'u-owner' });
+  seat.available.mockReset().mockResolvedValue({ ok: true });
 });
 
 describe('POST /api/teams/invitations/accept — adversarial', () => {
@@ -165,6 +171,27 @@ describe('POST /api/teams/invitations/accept — adversarial', () => {
       expect(res.status).toBe(400);
       // 已存在的邀请也应被清理
       expect(mocks.deleteFn).toHaveBeenCalled();
+    });
+  });
+
+  describe('Seat limit on accept（审查 L3）', () => {
+    it('团队已满（按 owner 套餐上限）→ 402，不加成员、不删邀请', async () => {
+      defaultSession();
+      mocks.invitationFindFirst.mockResolvedValue({
+        id: 'inv-1', teamId: 't1', email: 'invitee@example.com', role: 'member',
+        expiresAt: new Date(Date.now() + 86_400_000), team: { id: 't1', name: 'T', slug: 't' },
+      });
+      mocks.userFindFirst.mockResolvedValue({ email: 'invitee@example.com' });
+      mocks.memberFindFirst.mockResolvedValue(undefined);
+      seat.available.mockResolvedValue({ ok: false, memberCount: 5, limit: 5 });
+
+      const res = await POST(makeRequest({ token: 'tok' }));
+
+      expect(res.status).toBe(402);
+      expect(seat.lock).toHaveBeenCalledWith(expect.anything(), 't1');
+      expect(seat.available).toHaveBeenCalledWith(expect.anything(), 't1', 'u-owner');
+      expect(mocks.insertValues).not.toHaveBeenCalled();
+      expect(mocks.deleteWhere).not.toHaveBeenCalled();
     });
   });
 

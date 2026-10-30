@@ -9,6 +9,11 @@ vi.mock('@/lib/usage', () => ({
   recordUsage: vi.fn().mockResolvedValue(undefined),
   EVIDENCE_EXPORT_METRIC: 'compliance_report',
 }));
+// 团队策略按团队 owner 的套餐判定（#672）：先经 policy-access 授权，再按策略所属团队决定套餐持有人
+const planHolderForTeam = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/team-plan', () => ({ planHolderForTeam }));
+vi.mock('@/lib/policy-access', async () =>
+  (await import('@/__tests__/helpers/policy-access-mock')).policyAccessModule());
 vi.mock('@/lib/evidence', () => ({
   createEvidenceExport: vi.fn(),
   listEvidenceExports: vi.fn().mockResolvedValue([]),
@@ -22,6 +27,7 @@ vi.mock('@/lib/evidence-export', async () => {
 });
 
 import { POST, GET } from '@/app/api/reports/route';
+import { policyAccessState } from '@/__tests__/helpers/policy-access-mock';
 import { getSession } from '@/lib/auth';
 import { hasFeatureAccess, recordUsage } from '@/lib/usage';
 import { createEvidenceExport } from '@/lib/evidence';
@@ -39,6 +45,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getSession).mockResolvedValue({ user: { id: 'user-1' } } as never);
   vi.mocked(hasFeatureAccess).mockResolvedValue(true);
+  planHolderForTeam.mockImplementation(async (userId: string, teamId: string | null) => (teamId ? 'team-owner' : userId));
+  // 'team-policy' 是他人创建的团队策略（调用者是成员）；其余 id 视为调用者自己的个人策略
+  policyAccessState.loader = async (id: string) =>
+    id === 'team-policy' ? { id, userId: 'creator', teamId: 't1' } : { id, userId: 'user-1', teamId: null };
+  policyAccessState.teamRole = 'member';
 });
 
 describe('GET /api/reports', () => {
@@ -65,6 +76,36 @@ describe('POST /api/reports — 门控', () => {
   it('门控用 evidenceExport 能力键', async () => {
     await POST(post({ dryRun: true }));
     expect(hasFeatureAccess).toHaveBeenCalledWith('user-1', 'evidenceExport');
+    expect(planHolderForTeam).not.toHaveBeenCalled();
+  });
+
+  it('★团队策略按团队 owner 的套餐判定，计量记到 owner（#672）', async () => {
+    vi.mocked(hasFeatureAccess).mockImplementation(async (id: string) => id === 'team-owner');
+    vi.mocked(createEvidenceExport).mockResolvedValue({ id: 'e1', manifest: {} } as never);
+
+    const r = await POST(post({ policyId: 'team-policy', format: 'json' }));
+
+    expect(r.status).toBe(201);
+    expect(planHolderForTeam).toHaveBeenCalledWith('user-1', 't1');
+    expect(hasFeatureAccess).toHaveBeenCalledWith('team-owner', 'evidenceExport');
+    // 导出内容仍以调用者身份生成（访问权由 evidence 层校验）
+    expect(vi.mocked(createEvidenceExport).mock.calls[0][0]).toBe('user-1');
+    expect(recordUsage).toHaveBeenCalledWith('team-owner', 'compliance_report');
+  });
+
+  it('团队 owner 套餐也不含证据导出 → 403', async () => {
+    vi.mocked(hasFeatureAccess).mockResolvedValue(false);
+    const r = await POST(post({ policyId: 'team-policy', dryRun: true }));
+    expect(r.status).toBe(403);
+    expect(getEvidencePreview).not.toHaveBeenCalled();
+  });
+
+  it('★先授权再判定套餐：无权访问的策略 404，不查套餐（不泄露门控结果）', async () => {
+    policyAccessState.teamRole = null; // 非成员
+    const r = await POST(post({ policyId: 'team-policy', dryRun: true }));
+    expect(r.status).toBe(404);
+    expect(planHolderForTeam).not.toHaveBeenCalled();
+    expect(hasFeatureAccess).not.toHaveBeenCalled();
   });
 });
 

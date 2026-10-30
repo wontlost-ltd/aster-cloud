@@ -23,7 +23,9 @@ export type NotificationKind =
   | 'team.invitation_accepted'
   | 'policy.shared'
   | 'guard.approval_requested'
-  | 'guard.approval_decided';
+  | 'guard.approval_decided'
+  | 'policy.version_submitted'
+  | 'policy.version_decided';
 
 /** guard 审批通知的共同载荷（ADR 0042 §5.3）：requiredRole 为 null 表示 ESCALATE（任意成员可审）。 */
 export interface GuardApprovalNotification {
@@ -60,6 +62,21 @@ export interface NotificationPayloads {
   };
   'guard.approval_requested': GuardApprovalNotification;
   'guard.approval_decided': GuardApprovalNotification;
+  /** 策略版本提交审批（#678）：发给团队里能审批的 owner / admin。 */
+  'policy.version_submitted': {
+    policyId: string;
+    policyName: string;
+    version: number;
+    teamId: string;
+  };
+  /** 策略版本审批结论（#678）：发给版本作者，驳回带理由。 */
+  'policy.version_decided': {
+    policyId: string;
+    policyName: string;
+    version: number;
+    outcome: 'APPROVED' | 'REJECTED';
+    comment?: string;
+  };
 }
 
 /**

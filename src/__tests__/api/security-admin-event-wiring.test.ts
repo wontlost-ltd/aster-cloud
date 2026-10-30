@@ -8,6 +8,7 @@ const routeActions = [
   ['src/app/api/teams/[teamId]/route.ts', 'TEAM_DELETED'],
   ['src/app/api/teams/[teamId]/transfer/route.ts', 'TEAM_OWNERSHIP_TRANSFERRED'],
   ['src/app/api/teams/[teamId]/members/[memberId]/route.ts', 'TEAM_MEMBER_REMOVED'],
+  ['src/app/api/teams/[teamId]/members/[memberId]/route.ts', 'TEAM_MEMBER_BUSINESS_ROLES_UPDATED'],
   ['src/app/api/policies/[id]/route.ts', 'POLICY_TRASHED'],
   ['src/app/api/policies/trash/[id]/route.ts', 'POLICY_RESTORED'],
   ['src/app/api/policies/trash/[id]/route.ts', 'POLICY_PERMANENTLY_DELETED'],

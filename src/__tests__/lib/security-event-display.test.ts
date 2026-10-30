@@ -37,7 +37,7 @@ describe('securityEventDisplayType', () => {
   it('管理操作按 details.action 显示具体事件类型', () => {
     const actions = [
       'API_KEY_CREATED', 'API_KEY_REVOKED', 'TEAM_CREATED', 'TEAM_DELETED',
-      'TEAM_OWNERSHIP_TRANSFERRED', 'TEAM_MEMBER_REMOVED', 'POLICY_TRASHED',
+      'TEAM_OWNERSHIP_TRANSFERRED', 'TEAM_MEMBER_REMOVED', 'TEAM_MEMBER_BUSINESS_ROLES_UPDATED', 'POLICY_TRASHED',
       'POLICY_RESTORED', 'POLICY_PERMANENTLY_DELETED',
     ];
     for (const action of actions) {

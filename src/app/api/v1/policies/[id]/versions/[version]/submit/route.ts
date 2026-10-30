@@ -7,6 +7,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { versionActionErrorResponse } from '@/lib/api/version-action-error';
+import { runAfterResponse } from '@/lib/after-response';
+import { notifyVersionSubmitted } from '@/lib/version-notifications';
 
 import {
   PolicyAccessDeniedError,
@@ -38,6 +40,9 @@ export async function POST(
       releaseNote: releaseNote || undefined,
     });
 
+    // 通知团队里能审批的人（#678）；响应之后执行，失败不影响提交
+    const submitterId = session.user.id;
+    runAfterResponse(() => notifyVersionSubmitted({ policyId, version, submitterId }));
     return NextResponse.json({ success: true });
   } catch (error) {
     // 非所有者与「策略不存在」返回同一 404，避免泄露该 policyId 是否存在

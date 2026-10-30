@@ -5,18 +5,22 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 
-const h = vi.hoisted(() => ({ toastError: vi.fn(), toastSuccess: vi.fn(), refresh: vi.fn() }));
+const PENDING_ROW = {
+  id: 'v1', version: 2, sourceHash: 'h', status: 'PENDING_APPROVAL', isDefault: false, releaseNote: null,
+  createdBy: 'author', createdAt: '2026-10-22T00:00:00Z', deprecatedAt: null, deprecatedBy: null,
+  archivedAt: null, archivedBy: null, _count: { approvals: 0 },
+};
+const h = vi.hoisted(() => ({
+  toastError: vi.fn(), toastSuccess: vi.fn(), refresh: vi.fn(),
+  versions: null as unknown[] | null,
+}));
 
 vi.mock('next-intl', () => ({
   useTranslations: (ns: string) => (key: string) => `${ns}.${key}`,
 }));
 vi.mock('@/lib/api', () => ({
   useApi: () => ({
-    data: { versions: [{
-      id: 'v1', version: 2, sourceHash: 'h', status: 'PENDING_APPROVAL', isDefault: false, releaseNote: null,
-      createdBy: 'author', createdAt: '2026-10-22T00:00:00Z', deprecatedAt: null, deprecatedBy: null,
-      archivedAt: null, archivedBy: null, _count: { approvals: 0 },
-    }] },
+    data: { versions: h.versions ?? [PENDING_ROW] },
     error: undefined, isLoading: false, mutate: h.refresh,
   }),
 }));
@@ -72,6 +76,7 @@ function renderAs(
 const fetchMock = vi.fn();
 beforeEach(() => vi.stubGlobal('fetch', fetchMock));
 afterEach(() => {
+  h.versions = null;
   cleanup();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
@@ -195,5 +200,18 @@ describe('VersionsContent 审批操作', () => {
   it('响应体为空或无可读文案：显示通用文案', async () => {
     const shown = await approveWith({ error: { code: 'internal_error' } }, 500);
     expect(shown).toBe('common.somethingWrong');
+  });
+});
+
+describe('VersionsContent 驳回理由（#678）', () => {
+  it('被驳回的版本在状态旁显示驳回理由', () => {
+    h.versions = [{ ...PENDING_ROW, status: 'REJECTED', rejectionComment: 'too risky' }];
+    renderAs('author', { policyOwnerId: 'author', policyTeamId: 't1', reviewerTeamRole: 'member' });
+    expect(screen.getByText('policies.versions.rejectionReason')).toBeTruthy();
+  });
+
+  it('未驳回的版本不显示驳回理由', () => {
+    renderAs('author', { policyOwnerId: 'author', policyTeamId: 't1', reviewerTeamRole: 'member' });
+    expect(screen.queryByText('policies.versions.rejectionReason')).toBeNull();
   });
 });

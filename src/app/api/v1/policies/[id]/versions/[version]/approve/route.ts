@@ -26,6 +26,8 @@ import {
   approveVersion,
 } from '@/services/policy/version-manager';
 import { getEffectiveLimits } from '@/lib/plans';
+import { runAfterResponse } from '@/lib/after-response';
+import { notifyVersionDecided } from '@/lib/version-notifications';
 
 export async function POST(
   request: NextRequest,
@@ -62,6 +64,9 @@ export async function POST(
       decision: 'APPROVED',
       comment: body.comment,
     });
+    // 通知版本作者（#678）
+    const comment = body.comment;
+    runAfterResponse(() => notifyVersionDecided({ policyId, version, reviewerId: approverId, outcome: 'APPROVED', comment }));
     return NextResponse.json({ success: true });
   } catch (error) {
     // 非所有者与「策略不存在」返回同一 404，避免泄露该 policyId 是否存在
@@ -153,7 +158,7 @@ async function checkSoxGuard(
       {
         error: 'invite_reviewer_required',
         message: 'Approval requires a separate reviewer. Invite a teammate to your workspace.',
-        cta: { label: 'Invite a teammate', href: `/teams/${ownedTeam.id}/invite` },
+        cta: { label: 'Invite a teammate', href: `/teams/${ownedTeam.id}/members` },
       },
       { status: 403 }
     );

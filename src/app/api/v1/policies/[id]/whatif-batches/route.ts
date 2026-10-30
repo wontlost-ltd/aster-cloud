@@ -19,6 +19,7 @@ import { getSession } from '@/lib/auth';
 import { loadPolicyForAction } from '@/lib/policy-access';
 import { policyTenantId } from '@/lib/policy-tenant';
 import { createPolicyApiClient, PolicyApiError } from '@/services/policy/policy-api';
+import { upstreamErrorMessage, withEnglishWindowLabel } from '@/lib/upstream-error-messages';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -85,12 +86,12 @@ export async function POST(
         //   实测教训：includeToday 上线后毫无效果，根因就是漏了这一行。
         includeToday: body.includeToday,
     });
-    return NextResponse.json(result, { status: 202 });
+    return NextResponse.json(withEnglishWindowLabel(result), { status: 202 });
   } catch (e) {
     if (e instanceof PolicyApiError) {
       // ★原样透传 403 / 409 / 400，含 api 侧的 error code 与提示字段
       return NextResponse.json(
-        { error: e.code ?? 'batch_failed', message: e.message },
+        { error: e.code ?? 'batch_failed', message: upstreamErrorMessage(e.code, e.message) },
         { status: e.statusCode ?? 502 },
       );
     }

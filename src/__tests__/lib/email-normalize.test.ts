@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeEmail } from '@/lib/email-normalize';
+import { normalizeEmail, isSameMailbox, maskEmail } from '@/lib/email-normalize';
 
 describe('normalizeEmail', () => {
   describe('gmail / googlemail', () => {
@@ -71,5 +71,42 @@ describe('normalizeEmail', () => {
       expect(unique.size).toBe(1);
       expect([...unique][0]).toBe('attacker@gmail.com');
     });
+  });
+});
+
+describe('isSameMailbox（团队邀请按同一邮箱匹配，#682）', () => {
+  it('大小写与两端空白不同仍是同一邮箱', () => {
+    expect(isSameMailbox(' Ryan.Pang@Wontlost.com ', 'ryan.pang@wontlost.com')).toBe(true);
+  });
+
+  it('+别名与基地址是同一邮箱（与注册去重同一口径）', () => {
+    expect(isSameMailbox('ryan.pang+team@wontlost.com', 'ryan.pang@wontlost.com')).toBe(true);
+    expect(isSameMailbox('f.o.o+x@gmail.com', 'foo@googlemail.com')).toBe(true);
+  });
+
+  it('不同 local-part 或不同域名不是同一邮箱', () => {
+    expect(isSameMailbox('ryanpang@wontlost.com', 'ryan.pang@wontlost.com')).toBe(false);
+    expect(isSameMailbox('ryan.pang@wontlost.com', 'ryan.pang@wontlost.dev')).toBe(false);
+  });
+
+  it('空值永不匹配', () => {
+    expect(isSameMailbox('', '')).toBe(false);
+    expect(isSameMailbox(null, 'a@b.c')).toBe(false);
+    expect(isSameMailbox('a@b.c', undefined)).toBe(false);
+  });
+});
+
+describe('maskEmail（注册 409 的已有账号提示，#682）', () => {
+  it('+别名：保留首字符、后缀前 3 个字符与域名', () => {
+    expect(maskEmail('ryan.pang+adr0051-retest@wontlost.com')).toBe('r***+adr…@wontlost.com');
+  });
+  it('短后缀不加省略号', () => {
+    expect(maskEmail('ab+x@ex.com')).toBe('a***+x@ex.com');
+  });
+  it('无 +后缀', () => {
+    expect(maskEmail('ryan.pang@wontlost.com')).toBe('r***@wontlost.com');
+  });
+  it('非法输入不抛错', () => {
+    expect(maskEmail('not-an-email')).toBe('***');
   });
 });

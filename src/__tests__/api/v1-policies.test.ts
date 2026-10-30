@@ -613,7 +613,10 @@ describe('V1 Policies API - Drizzle Migration', () => {
 
     // #653：团队 key 的执行配额与 API 调用配额同一口径（ADR 0015 §4/§10）——按配额 owner 的套餐与 owner 的执行用量计。
     describe('团队 key 的执行配额按配额 owner 计（#653）', () => {
-      const teamKey = () => {
+      // 团队 key 只能执行本团队的策略（#671）：夹具用 team-1 的团队策略，调用者是该团队的成员
+      const teamKey = (rowOverrides: Record<string, unknown> = {}) => {
+        setupExecuteRow({ policy_team_id: 'team-1', ...rowOverrides });
+        mockTeamRole.mockResolvedValue('member');
         mockAuthenticateApiRequest.mockResolvedValue({ ...VALID_AUTH, teamId: 'team-1', quotaOwnerId: 'owner-1' });
         vi.mocked(db.query.users.findFirst).mockResolvedValue({ plan: 'pro', trialEndsAt: null } as never);
         vi.mocked(db.query.policies.findMany).mockResolvedValue([{ id: 'p1' }] as never);
@@ -624,8 +627,7 @@ describe('V1 Policies API - Drizzle Migration', () => {
           .filter((v) => v && v.type === 'execution');
 
       it('成员本人 free 且个人执行已满 → 团队 key 仍按 owner 的 pro 套餐放行', async () => {
-        teamKey();
-        setupExecuteRow({ user_plan: 'free', exec_usage_count: 1000 });
+        teamKey({ user_plan: 'free', exec_usage_count: 1000 });
         vi.mocked(db.query.usageRecords.findFirst).mockResolvedValue({ count: 10 } as never);
 
         const response = await POST(makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody), mockParams);
@@ -635,8 +637,7 @@ describe('V1 Policies API - Drizzle Migration', () => {
       });
 
       it('owner 的执行用量已到 owner 套餐上限 → 429，限额为 owner 套餐的', async () => {
-        teamKey();
-        setupExecuteRow({ user_plan: 'free', exec_usage_count: 0 });
+        teamKey({ user_plan: 'free', exec_usage_count: 0 });
         vi.mocked(db.query.usageRecords.findFirst).mockResolvedValue({ count: 50000 } as never);
 
         const response = await POST(makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody), mockParams);

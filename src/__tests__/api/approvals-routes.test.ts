@@ -87,21 +87,28 @@ describe('POST /api/approvals/:tenantId/:approvalId/:verb', () => {
     expect(h.approveGuard).toHaveBeenCalledWith('a1', 'ok');
   });
 
-  it('api 403 role_mismatch → 原样 403 并带 verifiedRoles', async () => {
+  it('api 403 role_mismatch → 原样 403 并带 verifiedRoles；中文 message 换成英文（审查 L1）', async () => {
     h.approveGuard.mockRejectedValue(
-      new FakePolicyApiError('role mismatch', 403, 'role_mismatch', undefined, { error: 'role_mismatch', verifiedRoles: ['CISO'] }),
+      new FakePolicyApiError('该审批需要业务角色: DPO', 403, 'role_mismatch', undefined, { error: 'role_mismatch', verifiedRoles: ['CISO'] }),
     );
     const res = await post('team1', 'approve');
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: 'role_mismatch', message: 'role mismatch', verifiedRoles: ['CISO'] });
+    expect(await res.json()).toEqual({
+      error: 'role_mismatch',
+      message: 'This approval requires a business role that is not among your verified roles.',
+      verifiedRoles: ['CISO'],
+    });
     expect(h.notifyApprovalDecided).not.toHaveBeenCalled();
   });
 
-  it('api 403 segregation_of_duties → 原样 403，不带 verifiedRoles', async () => {
-    h.approveGuard.mockRejectedValue(new FakePolicyApiError('same user', 403, 'segregation_of_duties'));
+  it('api 403 segregation_of_duties → 原样 403，不带 verifiedRoles；中文 message 换成英文（#680）', async () => {
+    h.approveGuard.mockRejectedValue(new FakePolicyApiError('动作的发起主体或提交方不能审批该动作', 403, 'segregation_of_duties'));
     const res = await post('team1', 'approve');
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: 'segregation_of_duties', message: 'same user' });
+    expect(await res.json()).toEqual({
+      error: 'segregation_of_duties',
+      message: 'The requester or submitter of an action cannot approve it.',
+    });
   });
 
   it('reject 无 comment（或全空白）→ 400 comment_required，不调 api', async () => {

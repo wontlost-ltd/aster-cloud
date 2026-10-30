@@ -122,6 +122,18 @@ export default function TeamSettingsPage() {
     }
   };
 
+  // 新 owner 套餐不合格（#677）按错误码本地化，其余回退到服务端消息
+  const transferErrorText = (data: { code?: string; memberCount?: number; limit?: number }): string | null => {
+    if (data.code === 'new_owner_plan_ineligible') return t('settings.transferErrors.newOwnerPlanIneligible');
+    if (data.code === 'new_owner_seat_limit') {
+      return t('settings.transferErrors.newOwnerSeatLimit', {
+        count: data.memberCount ?? 0,
+        limit: data.limit ?? 0,
+      });
+    }
+    return extractErrorMessage(data);
+  };
+
   const handleTransfer = async () => {
     if (!transferTargetId) return;
     setIsTransferring(true);
@@ -133,7 +145,7 @@ export default function TeamSettingsPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error(t('settings.transferFailed', { error: extractErrorMessage(data) || res.status }));
+        toast.error(t('settings.transferFailed', { error: transferErrorText(data) || res.status }));
         return;
       }
       toast.success(t('settings.transferSuccess'));
@@ -439,6 +451,7 @@ export default function TeamSettingsPage() {
         description={
           <div className="space-y-3">
             <p>{t('settings.transferDialogBody')}</p>
+            <p className="text-sm text-fg-muted">{t('settings.transferPlanNote')}</p>
             {eligibleMembers.length === 0 ? (
               <p className="text-sm text-warning">
                 {t('settings.transferNoEligible')}
