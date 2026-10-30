@@ -75,18 +75,20 @@ let currentSource = SOURCE;
 
 const fetchMock = vi.fn();
 let executeResponse: unknown = {};
+let executeOk = true;
 
 beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
   fetchMock.mockReset();
   extractSchema.mockClear();
   currentSource = SOURCE;
+  executeOk = true;
   fetchMock.mockImplementation((url: string, init?: RequestInit) => {
     if (url.endsWith('/api/policies/p1') && (!init || !init.method || init.method === 'GET')) {
       return Promise.resolve({ ok: true, json: async () => ({ name: 'Calc', content: currentSource }) });
     }
     if (url.includes('/api/policies/p1/execute')) {
-      return Promise.resolve({ ok: true, json: async () => executeResponse });
+      return Promise.resolve({ ok: executeOk, json: async () => executeResponse });
     }
     return Promise.reject(new Error(`Unexpected fetch: ${url}`));
   });
@@ -151,6 +153,21 @@ describe('ExecutePolicyContent — 引擎执行失败不显示为拒绝', () => 
 
     await waitFor(() => expect(screen.getByText('policies.execute.executionFailed')).toBeInTheDocument(), WAIT);
     expect(screen.queryByText('policies.execute.rejected')).not.toBeInTheDocument();
+  });
+
+  it('输入缺字段（400 missing_input_field）：显示缺字段提示，不显示通用的引擎失败文案', async () => {
+    executeOk = false;
+    executeResponse = {
+      error: 'Input is missing the field "request" that the policy reads.',
+      code: 'missing_input_field',
+      field: 'request',
+    };
+    const select = await renderPage();
+    fireEvent.change(select, { target: { value: 'calculate' } });
+    fireEvent.click(screen.getByText('policies.execute.executeButton').closest('button')!);
+
+    await waitFor(() => expect(screen.getByText('policies.execute.missingInputField')).toBeInTheDocument(), WAIT);
+    expect(screen.queryByText('policies.execute.engineErrorDetail')).not.toBeInTheDocument();
   });
 
   it('真实拒绝仍显示「拒绝」', async () => {

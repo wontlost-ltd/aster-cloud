@@ -5,7 +5,7 @@ import { eq, sql, desc, asc } from 'drizzle-orm';
 import { PLANS, PlanType } from '@/lib/plans';
 import { upgradeResponse } from '@/lib/plan-quota';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
-import { executionErrorCode, sanitizeExecutionResult } from '@/lib/execution-error';
+import { executionErrorCode, missingInputFieldBody, sanitizeExecutionResult } from '@/lib/execution-error';
 import { executePolicyUnified, getPrimaryError, deriveExecutionDecision, deriveExecutionOutcome } from '@/services/policy/cnl-executor';
 import { buildReplayColumns, buildEvidenceColumns } from '@/lib/policy-execution-log';
 import { policyTenantId } from '@/lib/policy-tenant';
@@ -371,6 +371,13 @@ export async function POST(req: Request, { params }: RouteParams) {
       replayCapture: true,
       ...(agent ? { agent } : {}),
     });
+    // 输入缺少规则读取的字段：与其它输入错误同口径回 400（不写执行记录、不计调用），字段路径按策略语言给出。
+    if (rawExecutionResult.inputError) {
+      return NextResponse.json(
+        missingInputFieldBody(prepared.localizeFieldPath(rawExecutionResult.inputError.field)),
+        { status: 400 },
+      );
+    }
     // 与 dashboard 执行同口径：引擎失败原文（中文 + Java 异常）只进服务端日志，API 只给稳定码 + 通用说明。
     const executionResult = sanitizeExecutionResult(rawExecutionResult, { policyId: id, userId });
     const primaryError = getPrimaryError(executionResult);

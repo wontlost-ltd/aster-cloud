@@ -16,6 +16,22 @@ export const EXECUTION_FAILED_MESSAGE =
   'Policy execution failed. Check that the input fields match the policy and try again.';
 
 /**
+ * 输入缺少规则读取的字段（aster-api 400 missing_input_field）：调用方可修正的输入错误，
+ * 不是引擎故障。响应带字段路径（如 `applicant.creditScore`），前端按码 + 路径本地化。
+ */
+export const MISSING_INPUT_FIELD_CODE = 'missing_input_field';
+
+/** 缺字段的英文说明（无本地化上下文时展示）。文案由 cloud 生成，不转述上游原文。 */
+export function missingInputFieldMessage(field: string): string {
+  return `The input is missing the field "${field}" that the policy reads. Add it to the input and try again.`;
+}
+
+/** 缺字段的 400 响应体（dashboard / v1 / evaluate-source 共用）。 */
+export function missingInputFieldBody(field: string) {
+  return { error: missingInputFieldMessage(field), code: MISSING_INPUT_FIELD_CODE, field };
+}
+
+/**
  * 内部实现痕迹（命中即不可对外展示）：
  * - 全限定 JVM 类/包名（java.、javax.、jdk.、org.graalvm.、com.oracle.、io.aster.、io.quarkus. 等）；
  * - 栈帧（`at a.b.C.m(...)`）与 `Caused by:`；

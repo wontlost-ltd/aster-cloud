@@ -61,6 +61,24 @@
 }
 ```
 
+## 3a. 缺少规则读取的字段 → 400
+
+输入里缺少规则**实际读取**的字段（或缺少整个参数）时，返回 400 `missing_input_field`，`field` 是缺失字段
+相对输入的路径，已还原为策略语言写法（德语策略报 `person.alter` 而不是 `person.age`）：
+
+```json
+{
+  "error": "The input is missing the field \"applicant.creditScore\" that the policy reads. Add it to the input and try again.",
+  "code": "missing_input_field",
+  "field": "applicant.creditScore"
+}
+```
+
+- 判定在执行端（aster-api）：只有规则执行时真的读到该字段才报错，所以缺少规则没用到的字段、带多余字段都照常执行。
+- 单参数规则直接传整个对象（输入不带参数名这一层）时，路径也不带参数名（如 `creditScore`）。
+- 这是输入错误：不写执行记录、不计执行用量 / API 调用，与 `ambiguous_input_field` 同口径。
+- 路径之外不透出引擎原文（Java 异常、Polyglot 等）。
+
 ## 4. 用哪份词汇
 
 | 被执行的版本 | 词汇 |

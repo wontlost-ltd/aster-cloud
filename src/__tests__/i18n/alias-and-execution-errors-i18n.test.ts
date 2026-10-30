@@ -39,6 +39,7 @@ const KEYS = [
   'policies.execute.engineErrorDetail',
   'policies.execute.ambiguousInputField',
   'policies.execute.ambiguousInputSpelling',
+  'policies.execute.missingInputField',
   ...VOCAB_REASONS.map((r) => `domainVocabularies.errors.validation.${r}`),
 ];
 

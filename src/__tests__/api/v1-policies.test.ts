@@ -573,6 +573,28 @@ describe('V1 Policies API - Drizzle Migration', () => {
       log.mockRestore();
     });
 
+    it('输入缺少规则读取的字段：400 + missing_input_field + 字段路径，不记执行与 API 调用', async () => {
+      mockExecutePolicyUnified.mockResolvedValue({
+        ...mockExecutionResult({ allowed: false, deniedReasons: ['Input is missing field "applicant.creditScore".'] }),
+        inputError: { code: 'missing_input_field', field: 'applicant.creditScore' },
+      } as never);
+
+      const response = await POST(
+        makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', { input: { applicant: { id: 'A1' } } }),
+        mockParams
+      );
+      const body = await response.json();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(response.status).toBe(400);
+      expect(body.code).toBe('missing_input_field');
+      expect(body.field).toBe('applicant.creditScore');
+      expect(body.error).toContain('applicant.creditScore');
+      expect(JSON.stringify(body)).not.toMatch(/execution_failed|java\.lang|Polyglot/);
+      expect(mockInsert).not.toHaveBeenCalled();
+      expect(mockRecordApiCallRecord).not.toHaveBeenCalled();
+    });
+
     it('passes an optional Rule name from functionName to the policy executor', async () => {
       const response = await POST(
         makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', {

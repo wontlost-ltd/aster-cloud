@@ -452,3 +452,58 @@ export function localizeExecutionOutput(value: unknown, model: MappingModel | nu
   const walked = walkValue({ model, direction: 'output', renames: [] }, value, model.types.result, '');
   return walked.ok ? walked.value : value;
 }
+
+/**
+ * 把引擎报告的字段路径（规范名，如 `person.age`）还原为策略语言写法（`person.alter`），供输入错误提示用。
+ * 首段是参数名时按该参数的类型逐段还原；单参数规则的平铺输入（路径不带参数名）按唯一参数的类型还原。
+ * 查不到声明的段（未知字段、非结构类型）及其后各段原样保留；列表下标（`[0]`）跟随元素类型。
+ */
+export function localizeFieldPath(path: string, model: MappingModel | null): string {
+  if (!model || path === '') return path;
+  const segments = path.split('.');
+  const params = model.types.params;
+  const head = params.find((p) => p.name === segments[0]);
+  let type: PolicyTypeNode | undefined;
+  let start: number;
+  if (head) {
+    type = head.type;
+    start = 1;
+  } else if (params.length === 1) {
+    type = params[0]!.type;
+    start = 0;
+  } else {
+    return path;
+  }
+  const out = segments.slice(0, start);
+  for (const segment of segments.slice(start)) {
+    const [name, indexes] = splitIndexes(segment);
+    const decl = structOf(model, type);
+    const slot = decl?.fields.byCanonical.get(name);
+    out.push((slot ? slot.written : name) + indexes);
+    type = slot ? elementTypeAfter(slot.type, indexes) : undefined;
+  }
+  return out.join('.');
+}
+
+/** `items[0][1]` → [`items`, `[0][1]`]。 */
+function splitIndexes(segment: string): [string, string] {
+  const at = segment.indexOf('[');
+  return at < 0 ? [segment, ''] : [segment.slice(0, at), segment.slice(at)];
+}
+
+function structOf(model: MappingModel, type: PolicyTypeNode | undefined): StructModel | undefined {
+  const t = unwrapType(type);
+  if (!t || t.kind !== 'TypeName' || !('name' in t)) return undefined;
+  const decl = model.byName.get(t.name);
+  return decl?.kind === 'Data' ? decl : undefined;
+}
+
+/** 每个下标剥掉一层 List。 */
+function elementTypeAfter(type: PolicyTypeNode | undefined, indexes: string): PolicyTypeNode | undefined {
+  let current = type;
+  for (let i = 0; i < (indexes.match(/\[/g)?.length ?? 0); i++) {
+    const t = unwrapType(current);
+    current = t?.kind === 'List' ? (t as { type: PolicyTypeNode }).type : undefined;
+  }
+  return current;
+}

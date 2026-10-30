@@ -183,6 +183,25 @@ describe('POST /api/policies/[id]/execute — 执行失败脱敏（#609）', () 
     expect(body.errorCode).toBeUndefined();
   });
 
+  it('输入缺少规则读取的字段：400 + missing_input_field + 字段路径，不记执行、不计用量', async () => {
+    mockExecute.mockResolvedValue({
+      ...execResult({ denyCount: 1 }),
+      deniedReasons: ['Input is missing field "applicant.creditScore".'],
+      inputError: { code: 'missing_input_field', field: 'applicant.creditScore' },
+    });
+
+    const res = await POST(request({ input: { applicant: { id: 'A1', age: 35 } } }), params);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.code).toBe('missing_input_field');
+    expect(body.field).toBe('applicant.creditScore');
+    expect(body.error).toContain('applicant.creditScore');
+    expect(body.errorCode).toBeUndefined();
+    expect(JSON.stringify(body)).not.toMatch(/java\.lang|Polyglot|execution_failed/);
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
+
   it('路由内部异常：500 只回稳定码与通用说明', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     mockExecute.mockRejectedValue(new Error('java.lang.IllegalStateException: boom'));

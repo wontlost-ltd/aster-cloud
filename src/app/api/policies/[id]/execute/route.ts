@@ -14,6 +14,7 @@ import {
   EXECUTION_FAILED_CODE,
   EXECUTION_FAILED_MESSAGE,
   executionErrorCode,
+  missingInputFieldBody,
   sanitizeExecutionResult,
 } from '@/lib/execution-error';
 import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
@@ -433,6 +434,14 @@ export async function POST(req: Request, { params }: RouteParams) {
     });
     timings.executionWait = Date.now() - t3;
     timings.executionTotal = Date.now() - t3;
+    // 输入缺少规则读取的字段：与其它输入错误同口径回 400（不写执行记录、不计用量），
+    // 字段路径还原为策略语言，用户按它补输入即可。
+    if (rawExecutionResult.inputError) {
+      return NextResponse.json(
+        missingInputFieldBody(prepared.localizeFieldPath(rawExecutionResult.inputError.field)),
+        { status: 400 },
+      );
+    }
     // 引擎失败原文（中文 + Java 异常）只进服务端日志；响应与执行记录只存通用说明。
     const executionResult = sanitizeExecutionResult(rawExecutionResult, { policyId: id, userId });
 

@@ -21,6 +21,7 @@ import {
   buildExecutionVocabulary,
   buildMappingModel,
   localizeExecutionOutput,
+  localizeFieldPath,
   mapExecutionInput,
   type AmbiguousInputField,
   type InputRename,
@@ -29,7 +30,7 @@ import { extractPolicyInputTypes } from './policy-types';
 import { recordInputTypeExtraction } from '@/lib/lexicon-metrics';
 import { resolveStoredVersionLocale, type StoredVersionLocaleInput } from '@/lib/policy-version-locale';
 
-export { buildExecutionVocabulary, buildMappingModel, mapExecutionInput, localizeExecutionOutput } from './mapper';
+export { buildExecutionVocabulary, buildMappingModel, mapExecutionInput, localizeExecutionOutput, localizeFieldPath } from './mapper';
 export type { AmbiguousInputField, ExecutionVocabulary, InputRename, MappingModel, PolicyInputTypes } from './mapper';
 
 /** 同一对象内本地化键与规范键（或两个同义词）同时出现时的稳定错误码。 */
@@ -191,6 +192,8 @@ export type PreparedExecutionInput =
       renames: readonly InputRename[];
       /** 把结果里的规范名还原为策略语言（界面展示用）。 */
       localizeOutput: (value: unknown) => unknown;
+      /** 把引擎报告的字段路径（规范名）还原为策略语言（输入错误提示用）。 */
+      localizeFieldPath: (path: string) => string;
     }
   | { ok: false; reason: 'ambiguous'; ambiguous: AmbiguousInputField }
   /** diagnostics：引擎诊断码（如 P005、E802），供界面与排障定位。 */
@@ -205,7 +208,10 @@ export type PreparedExecutionInput =
 export function prepareExecutionInput(params: PrepareExecutionInputParams): PreparedExecutionInput {
   const vocabulary = buildExecutionVocabulary(params.vocabulary);
   if (!vocabulary) {
-    return { ok: true, input: params.input, functionName: params.functionName, renames: [], localizeOutput: (v) => v };
+    return {
+      ok: true, input: params.input, functionName: params.functionName, renames: [],
+      localizeOutput: (v) => v, localizeFieldPath: (p) => p,
+    };
   }
   const extracted = extractPolicyInputTypes(
     { source: params.source, locale: params.locale, aliasSet: params.aliasSet, vocabulary },
@@ -229,6 +235,7 @@ export function prepareExecutionInput(params: PrepareExecutionInputParams): Prep
     functionName: extracted.functionName,
     renames: mapped.renames,
     localizeOutput: (value) => localizeExecutionOutput(value, model),
+    localizeFieldPath: (path) => localizeFieldPath(path, model),
   };
 }
 

@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
-import { hasInternalDetail, publicErrorText, sanitizeDiagnostics } from '@/lib/execution-error';
+import {
+  hasInternalDetail,
+  MISSING_INPUT_FIELD_CODE,
+  missingInputFieldBody,
+  publicErrorText,
+  sanitizeDiagnostics,
+} from '@/lib/execution-error';
 import { getSession } from '@/lib/auth';
 import { createPolicyApiClient, PolicyApiError, PolicyEvaluateResponse } from '@/services/policy/policy-api';
 import {
@@ -183,6 +189,12 @@ export async function POST(req: Request) {
       { headers: rateLimitHeaders }
     );
   } catch (error) {
+    // 输入缺少规则读取的字段（aster-api 400）：输入错误，按码 + 字段路径返回，不当作执行故障记日志
+    const missingField = error instanceof PolicyApiError && error.code === MISSING_INPUT_FIELD_CODE
+      ? error.details?.field : undefined;
+    if (typeof missingField === 'string' && missingField !== '') {
+      return NextResponse.json({ success: false, ...missingInputFieldBody(missingField) }, { status: 400 });
+    }
     console.error('Error evaluating policy source:', error);
     return NextResponse.json(
       {
