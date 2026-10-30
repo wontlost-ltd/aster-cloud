@@ -123,3 +123,20 @@ describe('domain-vocabulary-bulk-worker（#605）', () => {
     );
   });
 });
+
+describe('policy-trash-cleanup（#623）', () => {
+  it('已登记为每日 04:45 UTC 的 cron，路由指向回收站过期清理', () => {
+    const job = getCronByJobName('policy-trash-cleanup');
+    expect(job?.cron).toBe('45 4 * * *');
+    expect(job?.routePath).toBe('/api/cron/policy-trash-cleanup');
+  });
+
+  it('窗口取当天 04:45（未到则取前一天）', () => {
+    expect(currentWindowStart('policy-trash-cleanup', new Date('2026-10-31T05:00:00.000Z')).toISOString()).toBe(
+      '2026-10-31T04:45:00.000Z',
+    );
+    expect(currentWindowStart('policy-trash-cleanup', new Date('2026-10-31T04:00:00.000Z')).toISOString()).toBe(
+      '2026-10-30T04:45:00.000Z',
+    );
+  });
+});

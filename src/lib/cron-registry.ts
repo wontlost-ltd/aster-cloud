@@ -192,6 +192,15 @@ export const CRON_REGISTRY: ReadonlyArray<CronJob> = [
     healthcheckEnv: 'HEALTHCHECKS_DOMAIN_VOCAB_RETENTION_URL',
   },
   {
+    jobName: 'policy-trash-cleanup',
+    cron: '45 4 * * *',
+    routePath: '/api/cron/policy-trash-cleanup',
+    // 04:45 UTC daily —— 04:30 user-purge 之后、05:00 risk-tier-decay 之前，与其它留存 cron 错开。
+    // 让回收站 30 天自动清理真正执行（#623）：此前 cleanupExpiredTrashItems 零调用方，
+    // 回收站无限累积；同时回收已删策略留下的孤儿共享/审阅人/待处理邀请。
+    windowStartFor: (now) => floorToUtcDayAtHour(now, 4, 45),
+  },
+  {
     jobName: 'cleanup-nonces',
     cron: '25 * * * *',
     routePath: '/api/cron/cleanup-nonces',

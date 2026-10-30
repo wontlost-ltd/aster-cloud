@@ -152,6 +152,27 @@ spec:
           restartPolicy: OnFailure
 ```
 
+on-prem 需要为下表中「on-prem 需调度」为「是」的每个任务各建一个同样结构的 CronJob。只需替换 `metadata.name`、`schedule`
+和 URL 路径，统一用 `POST` 并带 `Authorization: Bearer $CRON_SECRET`。
+同一窗口重复触发由数据库租约去重；`domain-vocabulary-bulk-worker` 靠任务行认领互斥。
+所以 CronJob 重试或与手动 curl 撞在一起都是安全的。
+清单与 `src/lib/cron-registry.ts` 逐项一致，由 `src/__tests__/lib/cron-registry-onprem-doc.test.ts` 校验。
+「否」的任务只在 SaaS 有意义，on-prem 路由直接返回 404，不必调度。
+
+| 调度（UTC） | 路由 | on-prem 需调度 | 作用 |
+|---|---|---|---|
+| `30 4 * * *` | `/api/cron/user-purge` | 是 | 软删超过 30 天的账号物理删除 |
+| `0 5 * * *` | `/api/cron/risk-tier-decay` | 否 | 注册风险分级衰减（SaaS 专属） |
+| `0 */6 * * *` | `/api/cron/license-revocation-refresh` | 是 | 刷新 license 吊销列表 |
+| `0 8 * * 1` | `/api/cron/license-renewal-warning` | 是 | license 续期提醒 |
+| `15 3 * * *` | `/api/cron/telemetry-retention-gc` | 否 | 遥测留存清理（SaaS 专属） |
+| `45 3 * * *` | `/api/cron/domain-vocabulary-retention` | 是 | 降级用户的领域词汇 90 天后归档 |
+| `0 4 * * *` | `/api/cron/execution-retention-gc` | 否 | 按套餐清理执行日志（SaaS 专属） |
+| `15 4 * * *` | `/api/cron/two-factor-code-gc` | 否 | 回收过期两步验证码（SaaS 专属） |
+| `45 4 * * *` | `/api/cron/policy-trash-cleanup` | 是 | 回收站 30 天过期清理与孤儿访问记录回收 |
+| `25 * * * *` | `/api/cron/cleanup-nonces` | 是 | 回收内部调用签名用过的过期 nonce |
+| `* * * * *` | `/api/cron/domain-vocabulary-bulk-worker` | 是 | 领域词汇异步批量导入的队列消费者（不调度则任务一直停在 queued） |
+
 ### 阶段 7：烟测
 
 ```bash
