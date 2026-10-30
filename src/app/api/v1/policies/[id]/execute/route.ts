@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authenticateApiRequest } from '@/lib/api-keys';
 import { db, policies, policyVersions, executions, users, usageRecords } from '@/lib/prisma';
-import { eq, sql, desc, asc } from 'drizzle-orm';
+import { and, eq, sql, desc, asc } from 'drizzle-orm';
 import { PLANS, PlanType } from '@/lib/plans';
 import { upgradeResponse } from '@/lib/plan-quota';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
@@ -293,15 +293,19 @@ export async function POST(req: Request, { params }: RouteParams) {
       }
     }
 
-    // 执行配额（调用者自身用量，与界面执行同口径）
-    const limits = PLANS[effectivePlanOf(userData)].limits;
+    // 执行配额与 API 调用配额同一口径（#653，ADR 0015 §4/§10）：按 key 的配额 owner 的套餐与 owner 的执行用量判定。
+    // 个人 key 的 owner 即调用者本人，用统一查询里已取到的本人用量；团队 key 计入团队 owner 的执行用量。
+    const executionLimit = PLANS[apiPlan].limits.executions;
+    const executionPoolUsage = quotaOwnerId === userId
+      ? executionUsage
+      : await ownerExecutionUsage(quotaOwnerId, period);
 
-    if (limits.executions !== -1 && executionUsage >= limits.executions) {
+    if (executionLimit !== -1 && executionPoolUsage >= executionLimit) {
       return NextResponse.json(
         upgradeResponse('evaluations', {
-          usage: executionUsage,
-          limit: limits.executions,
-          message: `You've reached your monthly limit of ${limits.executions} executions.`,
+          usage: executionPoolUsage,
+          limit: executionLimit,
+          message: `You've reached your monthly limit of ${executionLimit} executions.`,
         }),
         { status: 429 }
       );
@@ -438,8 +442,9 @@ export async function POST(req: Request, { params }: RouteParams) {
           target: [usageRecords.userId, usageRecords.type, usageRecords.period],
           set: { count: sql`${usageRecords.count} + 1`, updatedAt: now },
         }),
+      // 执行用量记入配额 owner（团队 key 为团队 owner），与上方执行配额判定同一个池；Execution 行仍记调用者本人
       db.insert(usageRecords)
-        .values({ id: crypto.randomUUID(), userId, type: 'execution', period, count: 1, createdAt: now, updatedAt: now })
+        .values({ id: crypto.randomUUID(), userId: quotaOwnerId, type: 'execution', period, count: 1, createdAt: now, updatedAt: now })
         .onConflictDoUpdate({
           target: [usageRecords.userId, usageRecords.type, usageRecords.period],
           set: { count: sql`${usageRecords.count} + 1`, updatedAt: now },
@@ -519,4 +524,17 @@ export async function POST(req: Request, { params }: RouteParams) {
     console.error('API execution error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
+}
+
+/** 配额 owner 本期的执行用量（UsageRecord execution 计数）；没有记录为 0。 */
+async function ownerExecutionUsage(ownerId: string, period: string): Promise<number> {
+  const record = await db.query.usageRecords.findFirst({
+    where: and(
+      eq(usageRecords.userId, ownerId),
+      eq(usageRecords.type, 'execution'),
+      eq(usageRecords.period, period),
+    ),
+    columns: { count: true },
+  });
+  return record?.count ?? 0;
 }

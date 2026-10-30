@@ -304,6 +304,11 @@ aster-api 侧为租户 `team1` 部署 `guard.customer.decide` 示例策略。
 - **v1 配额改按 quotaOwnerId**：本仓 `/api/v1/*` 的 `checkUsageLimit` / `recordUsage`（`usageRecords`）改按配额 owner
   计，`validateApiKey` 随 `ApiAuthResult` 返回解析器已有的 `quotaOwnerId`。落地前，free 成员的团队 key 只在
   aster-api 侧享有 owner 套餐（见 §2 第 4 条）。
+  - 已落地（aster-cloud#652）：`POST /api/v1/policies/{id}/execute` 的 API 调用配额按 owner 套餐与 owner 池（`ApiCallRecord`）判定并记入。
+  - 已落地（aster-cloud#653）：同一端点的**执行配额**也按配额 owner 计：限额取 owner 套餐的 `executions`，用量读写 owner 的
+    `UsageRecord(type = execution)`。团队 key 的执行计入 owner，`Execution` 行仍记调用成员本人（审计不变）；
+    个人 key 的 owner 即本人，行为不变。口径与 §4 的 API 调用 owner 池一致：成员个人套餐不影响团队 key，
+    owner 多建团队也不能倍增执行额度。
 
 ## 后果
 
