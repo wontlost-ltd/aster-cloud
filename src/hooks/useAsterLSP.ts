@@ -34,6 +34,9 @@ import {
   LSP_RECONNECT_BASE_MS,
   LSP_RECONNECT_MAX_MS,
   ReconnectScheduler,
+  LSP_HEARTBEAT_INTERVAL_MS,
+  LSP_HEARTBEAT_METHOD,
+  LSP_HEARTBEAT_TIMEOUT_MS,
   parseRetryAfter,
   sharedHandshakeBudget,
 } from '@/lib/lsp-reconnect';
@@ -1259,6 +1262,22 @@ export function useAsterLSP({
       disconnect();
     };
   }, [autoConnect, editor, monaco, connect, disconnect]);
+
+  // 应用层心跳：静默断网时套接字不会关闭，靠请求超时发现并走常规重连（常量说明见 lib/lsp-reconnect）。
+  // 只有超时才算失联：旧网关把心跳转给语言服务器并回 MethodNotFound，同样证明链路是通的。
+  useEffect(() => {
+    if (!connected) return;
+    const ws = wsRef.current;
+    if (!ws) return;
+    const timer = setInterval(() => {
+      sendRequest(LSP_HEARTBEAT_METHOD, undefined, { timeoutMs: LSP_HEARTBEAT_TIMEOUT_MS }).catch((e: unknown) => {
+        if (e instanceof Error && e.message.endsWith('timed out')) {
+          sessionFailed(ws, null, 'Heartbeat timeout');
+        }
+      });
+    }, LSP_HEARTBEAT_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [connected, sendRequest, sessionFailed]);
 
   // 页面重新可见 / 网络恢复：有待执行的重连时立即重试（仍受 Retry-After 与握手预算约束）
   useEffect(() => {

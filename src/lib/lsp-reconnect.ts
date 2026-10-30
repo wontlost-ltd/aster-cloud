@@ -20,6 +20,16 @@ export const LSP_RATE_LIMITED_CLOSE_CODE = 4429;
  */
 export const LSP_IDLE_CLOSE_CODE = 4408;
 
+/**
+ * 应用层心跳（生产复测第 7 轮）：网络静默中断（套接字未关闭、无回包）时浏览器长时间不触发 close，
+ * 协议级 ping/pong 对页面脚本不可见。连接期间每 INTERVAL 发一次 `$/aster/ping` 请求，TIMEOUT 内无回应
+ * 视为断线，最坏检测延迟 = INTERVAL + TIMEOUT（25 秒）。网关自己应答该请求，不转发、不算闲置活动
+ * （见 lsp-server.mjs heartbeatReply），所以不会抵消 #657 的闲置超时；每分钟 4 个小消息，不产生新握手。
+ */
+export const LSP_HEARTBEAT_METHOD = '$/aster/ping';
+export const LSP_HEARTBEAT_INTERVAL_MS = 15_000;
+export const LSP_HEARTBEAT_TIMEOUT_MS = 10_000;
+
 export const LSP_RECONNECT_BASE_MS = 1_000;
 export const LSP_RECONNECT_MAX_MS = 30_000;
 
