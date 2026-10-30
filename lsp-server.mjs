@@ -148,6 +148,18 @@ export function sweepStaleWorkDirs(root = tmpdir(), now = Date.now()) {
 export const RATE_LIMITED_CLOSE_CODE = 4429;
 
 /**
+ * 会话数超限时让客户端等待的秒数：会话不会很快释放，不带等待时间的话，同一网络多开的编辑器会持续握手，
+ * 耗光该 IP 的握手令牌，挤掉其他标签页的正常重连。
+ */
+export const SESSION_LIMIT_RETRY_AFTER_SECONDS = 30;
+
+/**
+ * 被拒连接发出关闭帧后等待对端回应的上限（毫秒），到时强制断开。ws 默认等 30 秒，
+ * 不回关闭帧的客户端可借此让每次被拒的握手多占一个 socket。
+ */
+export const REJECTED_CLOSE_TIMEOUT_MS = 1_000;
+
+/**
  * 限流拒绝 → WebSocket 关闭帧。浏览器的 WebSocket API 拿不到握手阶段的 HTTP 状态与 Retry-After
  * （只报连接失败），无法据此退避；故被拒的握手照常完成，随即以 4429 关闭，原因里带 `retry-after=N`
  * （前端 parseRetryAfter 解析）。不 spawn 子进程、不占会话名额，代价与直接回 HTTP 429 相当。
@@ -167,13 +179,13 @@ export function rateLimitedClose(limited) {
  * 全局上限（LSP_MAX_CONNECTIONS）之外还要防止单个来源占满：
  *   - 单 IP 并发会话上限（maxSessionsPerClient）；
  *   - 单 IP 握手速率：令牌桶，容量 burst，按 ratePerMinute 补充。
- * 超限结果为 code 429；速率超限附 retryAfterSeconds。如何告知客户端见 rateLimitedClose。
+ * 超限结果为 code 429，附 retryAfterSeconds（速率超限按令牌补充时间，会话数超限取固定值）。如何告知客户端见 rateLimitedClose。
  *
  * @param {{ maxSessionsPerClient: number, ratePerMinute: number, burst: number, now?: () => number }} opts
  */
 export function createClientLimiter({ maxSessionsPerClient, ratePerMinute, burst, now = Date.now }) {
   const perMs = ratePerMinute / 60_000;
-/** @type {Map<string, { tokens: number, at: number, active: number }>} */
+  /** @type {Map<string, { tokens: number, at: number, active: number }>} */
   const clients = new Map();
   let lastSweep = now();
 
@@ -207,7 +219,7 @@ export function createClientLimiter({ maxSessionsPerClient, ratePerMinute, burst
       }
       entry.tokens -= 1;
       if (entry.active >= maxSessionsPerClient) {
-        return { ok: false, code: 429, reason: 'Too many sessions from this client' };
+        return { ok: false, code: 429, reason: 'Too many sessions from this client', retryAfterSeconds: SESSION_LIMIT_RETRY_AFTER_SECONDS };
       }
       entry.active += 1;
       return { ok: true };
@@ -506,7 +518,12 @@ server.on('upgrade', (request, socket, head) => {
   if (!limited.ok) {
     console.log(`[LSP] Rejected upgrade (${limited.code}): ${limited.reason}`);
     const close = rateLimitedClose(limited);
-    wss.handleUpgrade(request, socket, head, (ws) => ws.close(close.code, close.reason));
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      ws.close(close.code, close.reason);
+      // 对端不回关闭帧时不等 ws 默认的 30 秒：到时强制断开
+      const timer = setTimeout(() => ws.terminate(), REJECTED_CLOSE_TIMEOUT_MS);
+      ws.once('close', () => clearTimeout(timer));
+    });
     return;
   }
   // 底层 socket 关闭（会话结束、握手中途失败）时归还名额，恰好一次
