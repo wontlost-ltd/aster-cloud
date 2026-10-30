@@ -14,6 +14,7 @@ import { getEffectiveLimits, type PlanType } from '@/lib/plans';
 import { safeEnv } from '@/lib/runtime/safe-env';
 import { resolveApiKeyIdentity, toApiKeySnapshotBody } from '@/lib/api-key-identity';
 import { invalidatePlanCacheForOwner } from '@/lib/plan-gate-client';
+import { countOwnerPoolUsage, currentPeriodMonth } from '@/lib/api-quota-pool';
 
 const ASTER_API_INTERNAL_URL =
   safeEnv('ASTER_API_INTERNAL_URL') ?? 'http://aster-api:8080';
@@ -56,6 +57,7 @@ export async function pushUserSnapshot(userId: string): Promise<void> {
       subscriptionStatus: user.subscriptionStatus ?? null,
       aiBannedUntilEpochMs: user.aiBannedUntil?.getTime() ?? null,
       gracePeriodEndsEpochMs: user.gracePeriodEndsAt?.getTime() ?? null,
+      ...(await ownerPoolUsageFields(userId)),
     });
 
     const path = `/api/internal/snapshot/user/${userId}`;
@@ -64,6 +66,22 @@ export async function pushUserSnapshot(userId: string): Promise<void> {
     await invalidatePlanCacheForOwner(userId);
   } catch (err) {
     console.warn(`[snapshot-pusher] pushUserSnapshot ${userId} error:`, err);
+  }
+}
+
+/**
+ * 该用户作为配额 owner 的池当月用量（与 precheck 的 monthlyUsed 同口径）及所属账期。
+ * aster-api 快照按 max(本地计数, 同账期基线) 裁决（aster-api#421），推送不带用量会把 precheck
+ * 预热写入的基线覆盖为空。尽力而为：计数失败时不带这两个字段（aster-api 视同无基线），
+ * 不让套餐变更的推送因用量查询失败而丢失。
+ */
+async function ownerPoolUsageFields(ownerId: string): Promise<{ monthlyUsed?: number; usagePeriod?: string }> {
+  const usagePeriod = currentPeriodMonth();
+  try {
+    return { monthlyUsed: await countOwnerPoolUsage(ownerId, usagePeriod), usagePeriod };
+  } catch (err) {
+    console.warn(`[snapshot-pusher] owner pool usage ${ownerId} unavailable:`, err);
+    return {};
   }
 }
 

@@ -17,6 +17,7 @@ vi.mock('drizzle-orm', () => ({
   and: (...c: unknown[]) => ({ op: 'and', c }),
   or: (...c: unknown[]) => ({ op: 'or', c }),
   isNull: (col: unknown) => ({ op: 'isNull', col }),
+  inArray: (col: unknown, vals: unknown) => ({ op: 'inArray', col, vals }),
   sql: Object.assign(() => ({ op: 'sql' }), { raw: () => ({ op: 'sql' }) }),
 }));
 
@@ -41,6 +42,33 @@ describe('api-quota-pool', () => {
     expect(mockWhere).toHaveBeenCalledWith({ op: 'and', c: [ownerPoolCondition('O'), { op: 'eq', col: 'periodMonth', val: '2026-10' }, { op: 'eq', col: 'status', val: 'success' }] });
     mockWhere.mockResolvedValue([]);
     expect(await countOwnerPoolUsage('O', '2026-10')).toBe(0);
+  });
+
+  // 全量快照同步按页批量取 owner 池用量（#694）：一次查询按池键分组，而非每个用户一次 count。
+  it('countOwnerPoolUsageByOwner 一次查询按池键分组，未出现的 owner 计 0', async () => {
+    const { countOwnerPoolUsageByOwner } = await import('@/lib/api-quota-pool');
+    const groupBy = vi.fn().mockResolvedValue([{ owner: 'A', c: 3 }, { owner: 'B', c: 5 }]);
+    mockWhere.mockReturnValue({ groupBy });
+
+    const usage = await countOwnerPoolUsageByOwner(['A', 'B', 'C'], '2026-10');
+
+    expect(usage).toEqual(new Map([['A', 3], ['B', 5], ['C', 0]]));
+    expect(mockWhere).toHaveBeenCalledTimes(1);
+    expect(mockWhere).toHaveBeenCalledWith({ op: 'and', c: [
+      { op: 'or', c: [
+        { op: 'inArray', col: 'quotaOwnerId', vals: ['A', 'B', 'C'] },
+        { op: 'and', c: [{ op: 'isNull', col: 'quotaOwnerId' }, { op: 'inArray', col: 'userId', vals: ['A', 'B', 'C'] }] },
+      ] },
+      { op: 'eq', col: 'periodMonth', val: '2026-10' },
+      { op: 'eq', col: 'status', val: 'success' },
+    ] });
+    expect(groupBy).toHaveBeenCalledTimes(1);
+  });
+
+  it('countOwnerPoolUsageByOwner 空 owner 列表不查库', async () => {
+    const { countOwnerPoolUsageByOwner } = await import('@/lib/api-quota-pool');
+    expect(await countOwnerPoolUsageByOwner([], '2026-10')).toEqual(new Map());
+    expect(mockWhere).not.toHaveBeenCalled();
   });
 
   it('currentPeriodMonth 用 UTC', async () => {

@@ -12,10 +12,17 @@ import { createHmac, createHash } from 'node:crypto';
  * 输入校验用例携带合法签名以隔离校验逻辑。
  */
 
-const { mockUsersFindMany, mockApiKeysFindMany, mockResolveMany } = vi.hoisted(() => ({
+const { mockUsersFindMany, mockApiKeysFindMany, mockResolveMany, mockUsageByOwner } = vi.hoisted(() => ({
   mockUsersFindMany: vi.fn(),
   mockApiKeysFindMany: vi.fn(),
   mockResolveMany: vi.fn(),
+  mockUsageByOwner: vi.fn(),
+}));
+
+// owner 池用量口径由 api-quota-pool 决定（与 precheck 同源）；这里只替换批量计数并固定账期
+vi.mock('@/lib/api-quota-pool', () => ({
+  countOwnerPoolUsageByOwner: mockUsageByOwner,
+  currentPeriodMonth: () => '2026-10',
 }));
 
 // 只替换解析函数；列常量取真实值，以钉住 apiKeys 查询带上 teamId
@@ -79,6 +86,7 @@ describe('GET /api/internal/snapshot/full — limit 校验', () => {
     mockUsersFindMany.mockReset().mockResolvedValue([]);
     mockApiKeysFindMany.mockReset().mockResolvedValue([]);
     mockResolveMany.mockReset().mockResolvedValue(new Map());
+    mockUsageByOwner.mockReset().mockImplementation(async (ids: string[]) => new Map(ids.map((id) => [id, 0])));
     process.env.ASTER_PLAN_GATE_HMAC_KEY = TEST_KEY;
   });
 
@@ -147,6 +155,42 @@ describe('GET /api/internal/snapshot/full — limit 校验', () => {
     const { GET } = await import('@/app/api/internal/snapshot/full/route');
     await GET(makeReq('?limit=1000'));
     expect(mockApiKeysFindMany).not.toHaveBeenCalled();
+  });
+
+  // aster-api 每小时对账用 users[] 重建快照（aster-api#421 fromJson）；不带用量会把 precheck 预热写入的
+  // 基线覆盖为空（#694）。每页一次批量查询，口径与 precheck 的 monthlyUsed 相同（该用户作为 owner 的池）。
+  it('users[] 携带各自作为配额 owner 的池用量 monthlyUsed 与账期 usagePeriod（每页一次批量查询）', async () => {
+    mockUsersFindMany.mockResolvedValue([
+      { id: 'owner', plan: 'team', priceLockedAt: null, legacyTier: null,
+        subscriptionStatus: 'active', aiBannedUntil: null, gracePeriodEndsAt: null },
+      { id: 'u2', plan: 'free', priceLockedAt: null, legacyTier: null,
+        subscriptionStatus: null, aiBannedUntil: null, gracePeriodEndsAt: null },
+    ]);
+    mockUsageByOwner.mockResolvedValue(new Map([['owner', 2500], ['u2', 0]]));
+
+    const { GET } = await import('@/app/api/internal/snapshot/full/route');
+    const res = await GET(makeReq('?limit=1000'));
+    expect(res.status).toBe(200);
+
+    expect(mockUsageByOwner).toHaveBeenCalledTimes(1);
+    expect(mockUsageByOwner).toHaveBeenCalledWith(['owner', 'u2'], '2026-10');
+    const body = await res.json();
+    expect(body.users).toEqual([
+      { userId: 'owner', plan: 'team', apiCallsLimit: 1000, subscriptionStatus: 'active',
+        aiBannedUntilEpochMs: null, gracePeriodEndsEpochMs: null, monthlyUsed: 2500, usagePeriod: '2026-10' },
+      { userId: 'u2', plan: 'free', apiCallsLimit: 1000, subscriptionStatus: null,
+        aiBannedUntilEpochMs: null, gracePeriodEndsEpochMs: null, monthlyUsed: 0, usagePeriod: '2026-10' },
+    ]);
+  });
+
+  // 空 owner 列表不查库由 countOwnerPoolUsageByOwner 自身保证（见 api-quota-pool 单测）
+  it('空页 → users 为空，用量按空 owner 列表取', async () => {
+    mockUsersFindMany.mockResolvedValue([]);
+    const { GET } = await import('@/app/api/internal/snapshot/full/route');
+    const res = await GET(makeReq('?limit=1000'));
+    expect(res.status).toBe(200);
+    expect(mockUsageByOwner).toHaveBeenCalledWith([], '2026-10');
+    expect((await res.json()).users).toEqual([]);
   });
 
   it('apiKeys 身份经解析器：团队 key 带 tenantId=teamId 与 quotaOwnerId，被移出成员的 key 下发 valid:false', async () => {
@@ -236,6 +280,7 @@ describe('GET /api/internal/snapshot/full — fail-closed HMAC (audit #168)', ()
     mockUsersFindMany.mockReset().mockResolvedValue([]);
     mockApiKeysFindMany.mockReset().mockResolvedValue([]);
     mockResolveMany.mockReset().mockResolvedValue(new Map());
+    mockUsageByOwner.mockReset().mockImplementation(async (ids: string[]) => new Map(ids.map((id) => [id, 0])));
   });
 
   afterEach(() => {

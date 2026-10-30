@@ -53,12 +53,15 @@ export async function GET(req: Request) {
       aiBannedUntil: true,
     },
   });
+  // 账期与 monthlyUsed 同源返回：aster-api 用它标注快照用量基线所属账期，跨月边界不错标
+  const period = currentPeriodMonth();
   if (!user) {
     // 未知用户：plan-gate fail-open 默认按 free 处理
     return NextResponse.json({
       plan: 'free',
       apiCallsLimit: 0,
       monthlyUsed: 0,
+      period,
       banned: false,
     });
   }
@@ -69,7 +72,6 @@ export async function GET(req: Request) {
     legacyTier: user.legacyTier,
   });
 
-  const period = currentPeriodMonth();
   const monthlyUsed = await countOwnerPoolUsage(userId, period);
 
   return NextResponse.json({

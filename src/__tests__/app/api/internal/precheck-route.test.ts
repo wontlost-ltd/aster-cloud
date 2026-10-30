@@ -119,13 +119,14 @@ describe('GET /api/internal/api/precheck — owner 共享配额池', () => {
     expect(mockCountOwnerPoolUsage).toHaveBeenCalledWith('owner-free', '2026-10');
   });
 
-  it('未知用户 → 既有 free 兜底响应，不查用量', async () => {
+  // period 与 monthlyUsed 同在：aster-api 用它标注快照基线所属账期，不按自己收到响应的时刻推断（#694）
+  it('未知用户 → 既有 free 兜底响应（带账期），不查用量', async () => {
     mockFindFirst.mockResolvedValue(undefined);
     const { GET } = await import('@/app/api/internal/api/precheck/route');
     const res = await GET(get('ghost'));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ plan: 'free', apiCallsLimit: 0, monthlyUsed: 0, banned: false });
+    expect(await res.json()).toEqual({ plan: 'free', apiCallsLimit: 0, monthlyUsed: 0, period: '2026-10', banned: false });
     expect(mockCountOwnerPoolUsage).not.toHaveBeenCalled();
   });
 

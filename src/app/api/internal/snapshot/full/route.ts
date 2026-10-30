@@ -5,6 +5,8 @@
  *   → { users: [...], apiKeys: [...], nextCursor: <userId> | null }
  *
  * users 与 apiKeys 一并返回（按 userId 排序，cursor 是上一页最后一个 userId）。
+ * users[] 每项带该用户作为配额 owner 的池当月用量 monthlyUsed 与账期 usagePeriod（与 precheck 同口径），
+ * aster-api 重建快照时据此保留用量基线（aster-api#421）；每页一次批量查询。
  */
 import { NextResponse } from 'next/server';
 import { verifyInternalSignature } from '@/lib/internal-signature';
@@ -12,6 +14,7 @@ import { db, users, apiKeys } from '@/lib/prisma';
 import { gt, asc, and, inArray, isNull } from 'drizzle-orm';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
 import { API_KEY_IDENTITY_COLUMNS, resolveApiKeyIdentities, toApiKeySnapshotBody } from '@/lib/api-key-identity';
+import { countOwnerPoolUsageByOwner, currentPeriodMonth } from '@/lib/api-quota-pool';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -64,6 +67,9 @@ export async function GET(req: Request) {
     },
   });
 
+  const usagePeriod = currentPeriodMonth();
+  const usage = await countOwnerPoolUsageByOwner(userRows.map((u) => u.id), usagePeriod);
+
   const userSnapshots = userRows.map((u) => {
     const lim = getEffectiveLimits({
       plan: u.plan as PlanType,
@@ -77,6 +83,8 @@ export async function GET(req: Request) {
       subscriptionStatus: u.subscriptionStatus ?? null,
       aiBannedUntilEpochMs: u.aiBannedUntil?.getTime() ?? null,
       gracePeriodEndsEpochMs: u.gracePeriodEndsAt?.getTime() ?? null,
+      monthlyUsed: usage.get(u.id) ?? 0,
+      usagePeriod,
     };
   });
 
