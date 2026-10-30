@@ -427,7 +427,7 @@ export async function getTrashStats(userId: string): Promise<{
 }
 
 /**
- * 批量清空回收站
+ * 批量清空回收站：本人删除、且本人当前仍有删除权限的条目。
  */
 export async function emptyTrash(userId: string): Promise<{
   deletedCount: number;
@@ -437,15 +437,18 @@ export async function emptyTrash(userId: string): Promise<{
   let deletedCount = 0;
 
   try {
-    // 查找调用者可处置的全部回收站项目（与回收站列表同一口径）
+    // 批量清空只处理**本人删除**的条目（个人策略的删除者恒为所有者本人）；同一团队其他成员删除的团队条目
+    // 只能在回收站里逐条永久删除，避免 admin 一键清掉别人刚删、还在恢复窗口里的策略（ADR 0016 §3）。
     const trashItems = await db.query.policyRecycleBins.findMany({
-      where: trashVisibleTo(userId),
+      where: and(trashVisibleTo(userId), eq(policyRecycleBins.deletedBy, userId)),
       columns: { policyId: true },
     });
 
-    // 永久删除所有（连同回收站记录）
+    // 逐条复核删除权限后再永久删除（连同回收站记录）：列表查询与删除之间角色可能已变化
     for (const item of trashItems) {
       try {
+        const access = await loadPolicyForAction(item.policyId, { userId }, 'delete', { deleted: true });
+        if (!access.ok) continue;
         await purgePolicy(item.policyId);
         deletedCount++;
       } catch (err) {

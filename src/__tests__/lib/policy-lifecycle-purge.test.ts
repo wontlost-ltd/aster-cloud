@@ -202,9 +202,18 @@ describe('policy-lifecycle 永久删除路径（#603）', () => {
 
   it('emptyTrash：同样连同回收站行删除', async () => {
     h.binFindMany.mockResolvedValue([{ policyId: 'p1' }]);
+    h.policyFindFirst.mockResolvedValue({ id: 'p1' });
     const r = await emptyTrash('user-1');
     expect(r).toEqual({ deletedCount: 1, errors: [] });
     expectPurgedInTx(['p1']);
+  });
+
+  it('emptyTrash：逐条复核删除权限，已无权的条目跳过、不永久删除（审查 M3）', async () => {
+    h.binFindMany.mockResolvedValue([{ policyId: 'p1' }]);
+    h.policyFindFirst.mockResolvedValue(undefined);
+    const r = await emptyTrash('user-1');
+    expect(r).toEqual({ deletedCount: 0, errors: [] });
+    expect(h.transaction).not.toHaveBeenCalled();
   });
 
   it('getTrashItems：孤儿行（策略已不存在）跳过并告警，其余正常返回', async () => {
