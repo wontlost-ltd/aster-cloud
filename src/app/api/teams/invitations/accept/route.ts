@@ -5,6 +5,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import { IS_SAAS } from '@/lib/deployment-mode';
 import { getStripe } from '@/lib/stripe';
 import { createNotification } from '@/lib/notifications';
+import { matchesInvitationMailbox } from '@/lib/team-invitation-email';
 
 
 // POST /api/teams/invitations/accept - 接受邀请
@@ -72,11 +73,9 @@ export async function POST(req: Request) {
       columns: { email: true },
     });
 
-    // 检查邀请邮箱是否匹配（安全要求：必须严格匹配）
-    if (
-      !currentUser?.email ||
-      currentUser.email.toLowerCase() !== invitation.email.toLowerCase()
-    ) {
+    // 检查邀请邮箱是否匹配：账号邮箱须与邀请邮箱是同一邮箱（忽略大小写；+别名与基地址
+    // 视为同一邮箱，与注册去重同一口径——注册会拒绝已有账号邮箱的 +别名，#682）
+    if (!matchesInvitationMailbox(currentUser?.email, invitation.email)) {
       return NextResponse.json({ error: 'This invitation is restricted to the specified email address.', code: 'invitation_email_mismatch' }, { status: 403 });
     }
 

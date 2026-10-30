@@ -21,6 +21,7 @@ import { eq, and, gt } from 'drizzle-orm';
 import { getSession } from '@/lib/auth';
 import { db, teamInvitations, users } from '@/lib/prisma';
 import { errorEnvelope } from '@/lib/api/error-envelope';
+import { invitationMailboxCandidates, matchesInvitationMailbox } from '@/lib/team-invitation-email';
 
 export async function GET() {
   try {
@@ -42,9 +43,10 @@ export async function GET() {
     }
 
     const now = new Date();
-    const rows = await db.query.teamInvitations.findMany({
+    // 同一邮箱的邀请（忽略大小写、含 +别名，#682）：SQL 先按域名预筛，再在内存里精确判定
+    const candidates = await db.query.teamInvitations.findMany({
       where: and(
-        eq(teamInvitations.email, me.email),
+        invitationMailboxCandidates(me.email),
         gt(teamInvitations.expiresAt, now),
       ),
       with: {
@@ -53,6 +55,8 @@ export async function GET() {
         },
       },
     });
+
+    const rows = candidates.filter((r) => matchesInvitationMailbox(me.email, r.email));
 
     return NextResponse.json({
       invitations: rows.map((r) => ({

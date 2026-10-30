@@ -6,8 +6,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  * 运维预置路径 db-bootstrap 一直存在）。
  *
  * 本测试锁住四条关键性质：
- *  (a) 邮箱枚举防护——已存在时返回与成功**同形**的 200，不泄露占用情况
- *  (b) emailNormalized 也参与占用检查（否则 a.b+x@gmail.com 能绕开 ab@gmail.com）
+ *  (a) 邮箱已注册时明确返回 409 email_already_registered（#682：此前返回与成功同形的 200，
+ *      页面显示「账号已就绪」却没有建号，用户无从得知要用既有账号登录）
+ *  (b) emailNormalized 也参与占用检查（否则 a.b+x@gmail.com 能绕开 ab@gmail.com），
+ *      命中时 409 带 alias: true，提示「同一邮箱的别名已注册」
  *  (c) 走适配器 createUser——注册风控（IP 聚类 / hard-purge / 可疑邮箱）不被绕过
  *  (d) on-prem（CAN_SIGNUP=false）下 API 也关闭，而非只关页面
  */
@@ -140,18 +142,6 @@ describe('signup — 建号、防枚举、不绕风控', () => {
     expect(allValues).not.toContain('longenough1'); // 明文绝不落库
   });
 
-  it('★响应形状：成功与「已占用」逐字段相同（同形是关系性质，不能只测一侧）', async () => {
-    const { POST } = await import('@/app/api/auth/signup/route');
-    const bodyNew = await (await POST(post(GOOD) as never)).json();
-
-    reset();
-    mockUserFindFirst.mockResolvedValue({ id: 'existing' });
-    const { POST: POST2 } = await import('@/app/api/auth/signup/route');
-    const bodyDup = await (await POST2(post(GOOD) as never)).json();
-
-    expect(bodyDup).toEqual(bodyNew);
-  });
-
   it('★一次性邮箱被拒，且返回同形 200（黑名单不可被当成探测接口）', async () => {
     mockIsDisposable.mockReturnValue(true);
     const { POST } = await import('@/app/api/auth/signup/route');
@@ -179,19 +169,22 @@ describe('signup — 建号、防枚举、不绕风控', () => {
     expect(mockRecordAttempt).toHaveBeenCalledWith(expect.anything(), true);
   });
 
-  it('★已存在的邮箱返回与成功同形的 200（不泄露占用）', async () => {
+  it('★已存在的邮箱返回 409 email_already_registered（#682：不再假装「账号已就绪」）', async () => {
     mockUserFindFirst.mockResolvedValue({ id: 'existing' });
     const { POST } = await import('@/app/api/auth/signup/route');
     const res = await POST(post(GOOD) as never);
 
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.code).toBe('email_already_registered');
+    expect(body.alias).toBe(false);
+    expect(typeof body.error).toBe('string');
     // 关键：不建号、不写密码
     expect(mockCreateUser).not.toHaveBeenCalled();
     expect(mockHashPassword).not.toHaveBeenCalled();
   });
 
-  it('★emailNormalized 撞号也被拦（a.b@x 与 ab@x 视为同一账号）', async () => {
+  it('★emailNormalized 撞号也被拦，409 且 alias: true（+别名与既有账号是同一邮箱）', async () => {
     // 精确 email 查不到，但 normalized 查得到
     mockUserFindFirst
       .mockResolvedValueOnce(undefined)
@@ -200,7 +193,10 @@ describe('signup — 建号、防枚举、不绕风控', () => {
     const { POST } = await import('@/app/api/auth/signup/route');
     const res = await POST(post({ email: 'a.b@example.com', password: 'longenough1' }) as never);
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.code).toBe('email_already_registered');
+    expect(body.alias).toBe(true);
     expect(mockCreateUser).not.toHaveBeenCalled();
   });
 

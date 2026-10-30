@@ -21,8 +21,10 @@ import { checkRateLimitDistributed } from '@/lib/rate-limit-distributed';
  * 会建带密码的 admin 账号。此处说的是**自助**注册。）
  *
  * <h3>安全取舍</h3>
- * - **邮箱枚举**：已注册时返回与成功**同形**的 200，不泄露该邮箱是否存在。
- *   真正的区分只体现在收不收得到信——这与 forgot-password 的口径一致。
+ * - **已注册**：邮箱（或其 +别名 / Gmail 点号变体，见 email-normalize.ts）已有账号时
+ *   明确返回 409 `email_already_registered`（`alias` 标明是否为同一邮箱的另一种写法），
+ *   界面引导用既有账号登录或重置密码。此前返回与成功同形的 200 以防邮箱枚举，结果是页面
+ *   显示「账号已就绪」却没有建号、也不发信，用户无从得知（#682）；这里取可用性。
  * - **风控分两层，必须都过**：
  *   1. *打分层* 在 `DrizzleAdapter.createUser`（历史 hard-purge / 可疑邮箱
  *      → 写 `riskTier`）。调 adapter 即继承。★注意其中的 IP 聚类分量依赖
@@ -130,9 +132,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ★邮箱枚举防护：已存在时返回与成功同形的 200。
-  //   同时按 emailNormalized 查——否则 `a.b+x@gmail.com` 能绕开 `ab@gmail.com`
-  //   的占用检查，建出一个登录时会与既有账号相撞的重复号。
+  // 已存在时明确报错（#682）。同时按 emailNormalized 查——否则 `a.b+x@gmail.com`
+  //   能绕开 `ab@gmail.com` 的占用检查，建出一个登录时会与既有账号相撞的重复号。
   const normalized = normalizeEmail(lower);
   const existing = await db.query.users.findFirst({
     where: eq(users.email, lower),
@@ -145,7 +146,16 @@ export async function POST(request: NextRequest) {
       })
     : null;
   if (existing || existingNormalized) {
-    return NextResponse.json({ ok: true });
+    return NextResponse.json(
+      {
+        error: existing
+          ? 'An account already exists for this email address. Sign in instead.'
+          : 'An account already exists for this mailbox under another form of the address (for example without the +suffix). Sign in with that account instead.',
+        code: 'email_already_registered',
+        alias: !existing,
+      },
+      { status: 409 },
+    );
   }
 
   // 适配器的 createUser 负责**打分层**：注册风险分层、IP 聚类、历史

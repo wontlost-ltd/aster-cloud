@@ -1,10 +1,15 @@
 // 邮箱规范化：消除"同一人多账号"漏洞
 //
 // 规则：
-//   - gmail.com / googlemail.com：剥离 +xxx 后缀，去除 local-part 中的点
+//   - 所有域名：toLowerCase，并剥离 local-part 中的 +xxx 后缀
+//     （Gmail、Google Workspace、Microsoft 365 / Outlook、iCloud、Fastmail、Proton 等主流服务
+//     都把 a+x@ 投递到 a@ 的同一邮箱；只对 Gmail 剥离会让其余服务的 +别名成为免费额度的刷号口子）
+//   - gmail.com / googlemail.com：另外去除 local-part 中的点，googlemail.com 归一为 gmail.com
 //     foo.bar+spam@gmail.com → foobar@gmail.com
-//   - 其他域名：仅 toLowerCase（保留 local-part 原貌，因为大小写敏感性视服务而定，
-//     但绝大多数邮件服务实际上不区分大小写，做 lower 不会误伤）
+//
+// 归一化结果写入 User.emailNormalized（部分唯一索引 User_emailNormalized_unique），
+// 即「一个邮箱一个账号」：注册遇到同一邮箱的别名时明确报错，引导用既有账号登录；
+// 团队邀请按同一邮箱（isSameMailbox）匹配，发给 a+team@ 的邀请可由 a@ 的账号接受。
 //
 // 详见 aster-deploy/docs/pm/07-ai-billing.md "反多重注册" 章节
 
@@ -35,4 +40,14 @@ export function normalizeEmail(email: string): string {
   }
 
   return `${local}@${host}`;
+}
+
+/**
+ * 两个地址是否投递到同一邮箱：与注册去重同一口径（normalizeEmail），
+ * 团队邀请的接受 / 拒绝 / 收件箱据此匹配，避免「+别名无法注册、邀请又只认 +别名」的死路。
+ */
+export function isSameMailbox(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const na = normalizeEmail(a);
+  return na !== '' && na === normalizeEmail(b);
 }

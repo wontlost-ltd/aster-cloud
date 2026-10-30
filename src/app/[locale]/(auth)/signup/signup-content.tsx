@@ -44,6 +44,8 @@ export function SignupContent() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [emailDone, setEmailDone] = useState(false);
+  // 邮箱已注册（409 email_already_registered）：错误下方给出登录 / 重置密码入口
+  const [alreadyRegistered, setAlreadyRegistered] = useState(false);
 
   // Locale-aware callback URL: defaultLocale = no prefix; others get /<locale>.
   const localePrefix = locale === defaultLocale ? '' : `/${locale}`;
@@ -57,6 +59,7 @@ export function SignupContent() {
   const handleEmailSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setAlreadyRegistered(false);
     if (password.length < 8) {
       setError(t('passwordTooShort'));
       return;
@@ -69,11 +72,15 @@ export function SignupContent() {
         body: JSON.stringify({ email, password }),
       });
       const data = await res.json().catch(() => null);
+      if (res.status === 409 && data?.code === 'email_already_registered') {
+        // 同一邮箱（含 +别名 / Gmail 点号变体）已有账号：引导登录，不显示「账号已就绪」（#682）
+        setAlreadyRegistered(true);
+        setError(data.alias ? t('errors.emailAliasRegistered') : t('errors.emailAlreadyRegistered'));
+        return;
+      }
       if (!res.ok) {
         throw new Error(extractErrorMessage(data) || t('signupFailed'));
       }
-      // ★成功与「邮箱已被占用」返回同形的 200（后端防枚举），故这里
-      //   一律显示「去查收邮件 / 去登录」，不区分两者。
       setEmailDone(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('signupFailed'));
@@ -171,7 +178,17 @@ export function SignupContent() {
                   />
                   <p className="text-xs text-fg-subtle">{t('passwordHint')}</p>
                 </Stack>
-                {error && <p className="text-xs text-red-600">{error}</p>}
+                {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
+                {alreadyRegistered && (
+                  <div className="flex gap-4 text-sm">
+                    <Link href="/login" className="font-medium text-primary hover:text-primary-hover">
+                      {t('signIn')}
+                    </Link>
+                    <Link href="/forgot-password" className="font-medium text-primary hover:text-primary-hover">
+                      {t('forgotPassword')}
+                    </Link>
+                  </div>
+                )}
                 <Button type="submit" disabled={isLoading} className="w-full">
                   {isLoading ? t('creating') : t('createAccount')}
                 </Button>
