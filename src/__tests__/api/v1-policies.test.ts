@@ -120,6 +120,9 @@ vi.mock('@/lib/prisma', () => ({
       teamMembers: {
         findMany: vi.fn(),
       },
+      usageRecords: {
+        findFirst: vi.fn(),
+      },
     },
     insert: mockInsert,
     execute: mockDbExecute,
@@ -606,6 +609,65 @@ describe('V1 Policies API - Drizzle Migration', () => {
       expect(body.recommendedPlan).toBe('pro');
       expect(body.usage).toBeGreaterThanOrEqual(50000);
       expect(body.limit).toBe(50000);
+    });
+
+    // #653：团队 key 的执行配额与 API 调用配额同一口径（ADR 0015 §4/§10）——按配额 owner 的套餐与 owner 的执行用量计。
+    describe('团队 key 的执行配额按配额 owner 计（#653）', () => {
+      const teamKey = () => {
+        mockAuthenticateApiRequest.mockResolvedValue({ ...VALID_AUTH, teamId: 'team-1', quotaOwnerId: 'owner-1' });
+        vi.mocked(db.query.users.findFirst).mockResolvedValue({ plan: 'pro', trialEndsAt: null } as never);
+        vi.mocked(db.query.policies.findMany).mockResolvedValue([{ id: 'p1' }] as never);
+      };
+      const executionUsageRows = () =>
+        mockValuesInsert.mock.calls
+          .map((c) => c[0] as { userId: string; type: string })
+          .filter((v) => v && v.type === 'execution');
+
+      it('成员本人 free 且个人执行已满 → 团队 key 仍按 owner 的 pro 套餐放行', async () => {
+        teamKey();
+        setupExecuteRow({ user_plan: 'free', exec_usage_count: 1000 });
+        vi.mocked(db.query.usageRecords.findFirst).mockResolvedValue({ count: 10 } as never);
+
+        const response = await POST(makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody), mockParams);
+
+        expect(response.status).toBe(200);
+        expect(mockExecutePolicyUnified).toHaveBeenCalled();
+      });
+
+      it('owner 的执行用量已到 owner 套餐上限 → 429，限额为 owner 套餐的', async () => {
+        teamKey();
+        setupExecuteRow({ user_plan: 'free', exec_usage_count: 0 });
+        vi.mocked(db.query.usageRecords.findFirst).mockResolvedValue({ count: 50000 } as never);
+
+        const response = await POST(makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody), mockParams);
+        const body = await response.json();
+
+        expect(response.status).toBe(429);
+        expect(body.reason).toBe('evaluations');
+        expect(body.limit).toBe(50000);
+        expect(body.usage).toBe(50000);
+        expect(mockExecutePolicyUnified).not.toHaveBeenCalled();
+      });
+
+      it('成功执行把执行用量记到 owner（Execution 行仍记成员本人）', async () => {
+        teamKey();
+        vi.mocked(db.query.usageRecords.findFirst).mockResolvedValue(undefined as never);
+
+        const response = await POST(makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody), mockParams);
+        await new Promise((r) => setTimeout(r, 0));
+
+        expect(response.status).toBe(200);
+        expect(executionUsageRows()).toEqual([expect.objectContaining({ userId: 'owner-1', type: 'execution' })]);
+      });
+
+      it('个人 key：执行配额与用量仍按本人，不额外查询 owner 用量', async () => {
+        const response = await POST(makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', validBody), mockParams);
+        await new Promise((r) => setTimeout(r, 0));
+
+        expect(response.status).toBe(200);
+        expect(db.query.usageRecords.findFirst).not.toHaveBeenCalled();
+        expect(executionUsageRows()).toEqual([expect.objectContaining({ userId: 'user-1', type: 'execution' })]);
+      });
     });
 
     it('should return execution result on success', async () => {
