@@ -85,7 +85,8 @@ export async function launchRunnerJob(params: RunnerLaunchParams): Promise<Runne
     const resp = await fetch(`${baseUrl}${LAUNCH_PATH}`, {
       method: 'POST', headers, body, signal: controller.signal,
     });
-    if (resp.status === 413) return requestTooLarge(resp);
+    // await 留在 try 内：finally 清 timer 之前读完 413 正文，正文卡住时仍由超时打断
+    if (resp.status === 413) return await requestTooLarge(resp);
     if (!resp.ok) return { ok: false, kind: 'unavailable', reason: `HTTP ${resp.status}` };
     const env = await resp.json() as {
       outcome: string; replayMetadata?: LaunchReplayMetadata;

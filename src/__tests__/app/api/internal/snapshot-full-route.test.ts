@@ -183,6 +183,30 @@ describe('GET /api/internal/snapshot/full — limit 校验', () => {
     ]);
   });
 
+  // 用量查询失败不能拖垮整页：套餐 / 封禁 / API key 的每小时对账照常下发，只是不带用量字段
+  // （aster-api 视同无基线，退回本地计数——只会少算，不会误判 429）
+  it('用量查询失败 → 仍返回 200，users[] 不带 monthlyUsed/usagePeriod，apiKeys 照常', async () => {
+    mockUsersFindMany.mockResolvedValue([
+      { id: 'u1', plan: 'pro', priceLockedAt: null, legacyTier: null,
+        subscriptionStatus: 'active', aiBannedUntil: null, gracePeriodEndsAt: null },
+    ]);
+    mockApiKeysFindMany.mockResolvedValue([{ id: 'k1', userId: 'u1', teamId: null, key: 'h1', revokedAt: null, expiresAt: null }]);
+    mockResolveMany.mockResolvedValue(new Map([['k1', { valid: false, reason: 'not_found' }]]));
+    mockUsageByOwner.mockRejectedValue(new Error('statement timeout'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { GET } = await import('@/app/api/internal/snapshot/full/route');
+    const res = await GET(makeReq('?limit=1000'));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.users).toEqual([
+      { userId: 'u1', plan: 'pro', apiCallsLimit: 1000, subscriptionStatus: 'active',
+        aiBannedUntilEpochMs: null, gracePeriodEndsEpochMs: null },
+    ]);
+    expect(body.apiKeys).toHaveLength(1);
+    expect(warn).toHaveBeenCalled();
+  });
+
   // 空 owner 列表不查库由 countOwnerPoolUsageByOwner 自身保证（见 api-quota-pool 单测）
   it('空页 → users 为空，用量按空 owner 列表取', async () => {
     mockUsersFindMany.mockResolvedValue([]);

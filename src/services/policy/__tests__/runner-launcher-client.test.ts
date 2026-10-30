@@ -59,6 +59,26 @@ describe('launchRunnerJob', () => {
     }
   });
 
+  // 读 413 正文也在超时保护内：正文迟迟不来时由 abort 打断，而不是让 parity 校验无限挂起
+  it('413 正文卡住 → 超时后仍返回 REQUEST_TOO_LARGE（固定说明），不挂起', async () => {
+    process.env.ASTER_RUNNER_LAUNCHER_TIMEOUT = '50';
+    try {
+      global.fetch = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+        const body = new ReadableStream({
+          start(controller) {
+            // 只在请求被 abort 时结束正文，模拟一直不写完的 413 响应
+            init.signal?.addEventListener('abort', () => controller.error(new DOMException('aborted', 'AbortError')));
+          },
+        });
+        return new Response(body, { status: 413 });
+      });
+      const r = await launchRunnerJob({ tenantId: 't', source: 's', input: {}, locale: 'en-US', functionName: 'f', aliasSet: null, role: 'ADMIN' });
+      expect(r).toEqual({ ok: false, kind: 'runner-error', errorCode: 'REQUEST_TOO_LARGE', phase: 'launch', message: 'runner request too large' });
+    } finally {
+      delete process.env.ASTER_RUNNER_LAUNCHER_TIMEOUT;
+    }
+  }, 2000);
+
   it('其余非 2xx（500/502/401）仍归 unavailable', async () => {
     for (const status of [500, 502, 401]) {
       global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'x' }), { status }));

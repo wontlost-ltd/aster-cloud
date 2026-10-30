@@ -59,10 +59,14 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('owner 池用量随快照下发
   const previous = globalForDb.__asterLocalDevDb;
   const previousKey = process.env.ASTER_PLAN_GATE_HMAC_KEY;
   const db = createDb(undefined, { max: 4 });
-  const period = currentPeriodMonth();
-  const lastMonth = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() - 1, 15));
+  // 固定在月中：种数据、路由内 currentPeriodMonth() 与签名时间戳读同一个时钟，跑在 UTC 月末也不会跨账期
+  const NOW = new Date('2026-10-15T12:00:00Z');
+  const period = '2026-10';
+  const lastMonth = new Date('2026-09-15T12:00:00Z');
 
   beforeAll(async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
     globalForDb.__asterLocalDevDb = db;
     process.env.ASTER_PLAN_GATE_HMAC_KEY = HMAC_KEY;
     await cleanup(db);
@@ -91,11 +95,16 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('owner 池用量随快照下发
   });
 
   afterAll(async () => {
+    vi.useRealTimers();
     await cleanup(db);
     globalForDb.__asterLocalDevDb = previous;
     if (previousKey === undefined) delete process.env.ASTER_PLAN_GATE_HMAC_KEY;
     else process.env.ASTER_PLAN_GATE_HMAC_KEY = previousKey;
     await db.$client.end({ timeout: 1 });
+  });
+
+  it('账期取固定时钟', () => {
+    expect(currentPeriodMonth()).toBe(period);
   });
 
   it('批量计数与逐 owner 计数一致，没有调用的 owner 计 0', async () => {

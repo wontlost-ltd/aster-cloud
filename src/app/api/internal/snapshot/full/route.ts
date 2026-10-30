@@ -6,7 +6,7 @@
  *
  * users 与 apiKeys 一并返回（按 userId 排序，cursor 是上一页最后一个 userId）。
  * users[] 每项带该用户作为配额 owner 的池当月用量 monthlyUsed 与账期 usagePeriod（与 precheck 同口径），
- * aster-api 重建快照时据此保留用量基线（aster-api#421）；每页一次批量查询。
+ * aster-api 重建快照时据此保留用量基线（aster-api#421）；每页一次批量查询，查询失败时整页不带这两个字段。
  */
 import { NextResponse } from 'next/server';
 import { verifyInternalSignature } from '@/lib/internal-signature';
@@ -18,6 +18,23 @@ import { countOwnerPoolUsageByOwner, currentPeriodMonth } from '@/lib/api-quota-
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+/**
+ * 本页各 owner 的池用量字段。查询失败时整页不带用量（返回空字段），不让 ApiCallRecord 上的慢查询 / 超时
+ * 拖垮套餐、封禁与 API key 的每小时对账；aster-api 视同无基线、退回本地计数——只会少算，不会误判 429。
+ */
+async function ownerPoolUsageFields(
+  ownerIds: string[],
+): Promise<(ownerId: string) => { monthlyUsed?: number; usagePeriod?: string }> {
+  const usagePeriod = currentPeriodMonth();
+  try {
+    const usage = await countOwnerPoolUsageByOwner(ownerIds, usagePeriod);
+    return (ownerId) => ({ monthlyUsed: usage.get(ownerId) ?? 0, usagePeriod });
+  } catch (err) {
+    console.warn('[snapshot/full] owner pool usage unavailable, page sent without usage:', err);
+    return () => ({});
+  }
+}
 
 export async function GET(req: Request) {
   const sharedKey = process.env.ASTER_PLAN_GATE_HMAC_KEY;
@@ -67,8 +84,7 @@ export async function GET(req: Request) {
     },
   });
 
-  const usagePeriod = currentPeriodMonth();
-  const usage = await countOwnerPoolUsageByOwner(userRows.map((u) => u.id), usagePeriod);
+  const usageFields = await ownerPoolUsageFields(userRows.map((u) => u.id));
 
   const userSnapshots = userRows.map((u) => {
     const lim = getEffectiveLimits({
@@ -83,8 +99,7 @@ export async function GET(req: Request) {
       subscriptionStatus: u.subscriptionStatus ?? null,
       aiBannedUntilEpochMs: u.aiBannedUntil?.getTime() ?? null,
       gracePeriodEndsEpochMs: u.gracePeriodEndsAt?.getTime() ?? null,
-      monthlyUsed: usage.get(u.id) ?? 0,
-      usagePeriod,
+      ...usageFields(u.id),
     };
   });
 

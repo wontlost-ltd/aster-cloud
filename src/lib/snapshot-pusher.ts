@@ -72,8 +72,9 @@ export async function pushUserSnapshot(userId: string): Promise<void> {
 /**
  * 该用户作为配额 owner 的池当月用量（与 precheck 的 monthlyUsed 同口径）及所属账期。
  * aster-api 快照按 max(本地计数, 同账期基线) 裁决（aster-api#421），推送不带用量会把 precheck
- * 预热写入的基线覆盖为空。尽力而为：计数失败时不带这两个字段（aster-api 视同无基线），
- * 不让套餐变更的推送因用量查询失败而丢失。
+ * 预热写入的基线覆盖为空。尽力而为：计数失败时不带这两个字段，不让套餐变更的推送因用量查询失败而丢失。
+ * 代价是这次推送同样会清掉已有基线，直到下一次全量同步或 precheck 预热重新写入；方向是安全的——
+ * aster-api 退回本地计数，只会少算用量，不会误判 429。
  */
 async function ownerPoolUsageFields(ownerId: string): Promise<{ monthlyUsed?: number; usagePeriod?: string }> {
   const usagePeriod = currentPeriodMonth();
