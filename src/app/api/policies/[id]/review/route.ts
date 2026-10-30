@@ -17,7 +17,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { getSession } from '@/lib/auth';
 import {
   db,
@@ -27,7 +27,7 @@ import {
   REVIEWER_SUBJECT_KINDS,
   type ReviewerSubjectKind,
 } from '@/lib/prisma';
-import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
+import { loadPolicyForAction } from '@/lib/policy-access';
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -61,21 +61,13 @@ type HumanVerdict = (typeof HUMAN_VERDICTS)[number];
  * 后者另有 {@link loadReviewer} 把关。
  */
 async function canViewReview(callerUserId: string, policyId: string) {
+  // 拥有者口径与复核人管理同一授权动作（share）；已删除策略不可复核
+  const access = await loadPolicyForAction(policyId, { userId: callerUserId }, 'share');
+  if (access.ok) return access.policy;
   const policy = await db.query.policies.findFirst({
-    where: eq(policies.id, policyId),
+    where: and(eq(policies.id, policyId), isNull(policies.deletedAt)),
   });
   if (!policy) return null;
-
-  if (policy.teamId) {
-    const perm = await checkTeamPermission(
-      callerUserId,
-      policy.teamId,
-      TeamPermission.POLICY_CREATE,
-    );
-    if (perm.allowed) return policy;
-  } else if (policy.userId === callerUserId) {
-    return policy;
-  }
 
   const reviewer = await db.query.policyReviewers.findFirst({
     where: and(

@@ -1,6 +1,6 @@
 import { getSession } from '@/lib/auth';
 import { redirect, notFound } from 'next/navigation';
-import { db, policies, policyVersions, executions, users } from '@/lib/prisma';
+import { db, policyVersions, executions, users } from '@/lib/prisma';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { getTranslations } from 'next-intl/server';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
@@ -10,6 +10,7 @@ import { resolveRetention } from '@/lib/retention/execution-retention';
 import { loadVersionReviewContext } from '@/services/policy/version-manager';
 import { PolicyDetailContent } from './policy-detail-content';
 import { localizedTitle } from '@/lib/page-metadata';
+import { loadPolicyCapabilities, loadPolicyForAction } from '@/lib/policy-access';
 
 export const generateMetadata = localizedTitle('pageTitles', 'policyDetail');
 
@@ -32,21 +33,21 @@ async function hasApprovedVersion(policyId: string): Promise<boolean> {
   return approved !== undefined;
 }
 
-// 服务端数据获取
+// 服务端数据获取：与 GET /api/policies/[id] 同一授权（团队策略任一当前成员，个人策略只认所有者，#669 #670）
 async function getPolicyData(userId: string, policyId: string) {
-  const policy = await db.query.policies.findFirst({
-    where: and(eq(policies.id, policyId), eq(policies.userId, userId)),
-    with: {
-      versions: {
-        orderBy: (versions) => desc(versions.version),
-        limit: 10,
-      },
-    },
-  });
-
-  if (!policy) {
+  const access = await loadPolicyForAction(policyId, { userId }, 'view');
+  if (!access.ok) {
     return null;
   }
+  const [capabilities, versions] = await Promise.all([
+    loadPolicyCapabilities({ userId }, access.policy),
+    db.query.policyVersions.findMany({
+      where: eq(policyVersions.policyId, policyId),
+      orderBy: desc(policyVersions.version),
+      limit: 10,
+    }),
+  ]);
+  const policy = { ...access.policy, versions };
 
   // 获取执行次数
   const [{ count: executionCount }] = await db
@@ -73,6 +74,8 @@ async function getPolicyData(userId: string, policyId: string) {
       createdAt: v.createdAt.toISOString(),
     })),
     _count: { executions: executionCount },
+    ownerId: policy.userId,
+    capabilities,
   };
 }
 
@@ -95,7 +98,8 @@ export default async function PolicyDetailPage({
 
   // 冻结状态：套餐降级超限后该策略只读（不可执行/编辑）。
   // 详情页据此禁用按钮并展示冻结横幅，与列表页一致。
-  const freeze = await isPolicyFrozen(session.user.id, id);
+  // 冻结取决于策略所有者（创建者）的套餐，与查看者无关。
+  const freeze = await isPolicyFrozen(policy.ownerId, id);
 
   // What-If 权益（ADR 0034 §7.2）：free 档 concurrentReplayBatches=0 表示
   // **没有这个功能**，不是「限流为 0」。
@@ -192,6 +196,9 @@ export default async function PolicyDetailPage({
       whatIfEntitled={whatIfEntitled}
       retentionDays={retentionDays}
       policy={{ ...policy, isFrozen: freeze.isFrozen }}
+      capabilities={policy.capabilities}
+      /* What-If 属主限定（ADR 0034 §4.3）：调用者是创建者但当前角色不够时同样不可用 */
+      whatIfOwnerOnly={!policy.capabilities.whatif}
       profile={profile}
       hasExecutableVersion={hasExecutableVersion}
       sharingEnabled={sharingEnabled}

@@ -19,53 +19,20 @@ import { NextRequest } from 'next/server';
 const getSession = vi.fn();
 vi.mock('@/lib/auth', () => ({ getSession: () => getSession() }));
 
-const captured: { where: unknown }[] = [];
-let ownedRows: unknown[] = [];
-
-vi.mock('@/lib/prisma', () => {
-  const makeChain = () => {
-    const ctx: { where: unknown } = { where: undefined };
-    captured.push(ctx);
-    const chain = {
-      where(w: unknown) {
-        ctx.where = w;
-        return chain;
-      },
-      limit: () => Promise.resolve(ownedRows),
-      then: (res: (v: unknown[]) => unknown) => Promise.resolve(ownedRows).then(res),
-    };
-    return chain;
-  };
-  return {
-    db: { select: () => ({ from: () => makeChain() }) },
-    policies: { id: 'policies.id', userId: 'policies.userId' },
-  };
-});
-
-vi.mock('drizzle-orm', () => ({
-  and: (...xs: unknown[]) => ({ op: 'and', xs }),
-  eq: (col: unknown, val: unknown) => ({ op: 'eq', col, val }),
-}));
+vi.mock('@/lib/policy-access', async () =>
+  (await import('@/__tests__/helpers/policy-access-mock')).policyAccessModule());
 
 const { GET } = await import('@/app/api/policies/[id]/whatif/route');
+const { policyAccessState } = await import('@/__tests__/helpers/policy-access-mock');
 
 const params = Promise.resolve({ id: 'p1' });
 const req = (qs = 'baseVersion=1&targetVersion=2') =>
   new NextRequest(`http://localhost/api/policies/p1/whatif?${qs}`);
 
-/** 递归找出 where 树里所有 eq(col, val) 组合，供隔离断言。 */
-function eqPairs(node: unknown, acc: string[] = []): string[] {
-  if (!node || typeof node !== 'object') return acc;
-  const n = node as { op?: string; xs?: unknown[]; col?: unknown; val?: unknown };
-  if (n.op === 'eq') acc.push(`${String(n.col)}=${String(n.val)}`);
-  if (Array.isArray(n.xs)) n.xs.forEach((x) => eqPairs(x, acc));
-  return acc;
-}
-
 describe('GET /api/policies/:id/whatif（当前一律 409）', () => {
   beforeEach(() => {
-    captured.length = 0;
-    ownedRows = [{ id: 'p1' }];
+    policyAccessState.policy = { id: 'p1', userId: 'u1', teamId: null };
+    policyAccessState.teamRole = null;
     getSession.mockReset();
   });
 
@@ -79,15 +46,17 @@ describe('GET /api/policies/:id/whatif（当前一律 409）', () => {
     // 若先返回 409 再校验归属，本端点会退化成「策略是否存在」的探针：
     // 任意登录用户拿别人的 policyId 来打，就能从状态码差异推断存在性。
     getSession.mockResolvedValue({ user: { id: 'u1' } });
-    ownedRows = [];
+    policyAccessState.policy = { id: 'p1', userId: 'someone-else', teamId: null };
     const res = await GET(req(), { params });
     expect(res.status).toBe(404);
   });
 
-  it('★归属校验必须带 userId（跨租户读防线）', async () => {
+  it('★团队策略：团队外用户 / 已离队的创建者 → 404；任一成员 → 409', async () => {
     getSession.mockResolvedValue({ user: { id: 'u1' } });
-    await GET(req(), { params });
-    expect(eqPairs(captured[0]?.where)).toContain('policies.userId=u1');
+    policyAccessState.policy = { id: 'p1', userId: 'u1', teamId: 't1' };
+    expect((await GET(req(), { params })).status).toBe(404);
+    policyAccessState.teamRole = 'viewer';
+    expect((await GET(req(), { params })).status).toBe(409);
   });
 
   it('★自己的策略 → 409 REPLAY_REQUIRED', async () => {

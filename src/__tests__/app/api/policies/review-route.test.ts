@@ -23,7 +23,7 @@ const {
   mockInsertValues,
   mockUpdateWhere,
   mockDeleteWhere,
-  mockCheckTeamPermission,
+  mockTeamRole,
 } = vi.hoisted(() => ({
   mockGetSession: vi.fn(),
   mockPolicyFindFirst: vi.fn(),
@@ -32,7 +32,7 @@ const {
   mockInsertValues: vi.fn(),
   mockUpdateWhere: vi.fn(),
   mockDeleteWhere: vi.fn(),
-  mockCheckTeamPermission: vi.fn(),
+  mockTeamRole: vi.fn(),
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -41,6 +41,9 @@ vi.mock('drizzle-orm', () => ({
   desc: (col: unknown) => ({ op: 'desc', col }),
   isNull: (col: unknown) => ({ op: 'isNull', col }),
   inArray: (col: unknown, vals: unknown) => ({ op: 'inArray', col, vals }),
+  isNotNull: (col: unknown) => ({ op: 'isNotNull', col }),
+  or: (...xs: unknown[]) => ({ op: 'or', xs }),
+  sql: () => ({ op: 'sql' }),
 }));
 
 vi.mock('@/lib/prisma', () => ({
@@ -54,16 +57,18 @@ vi.mock('@/lib/prisma', () => ({
     update: () => ({ set: () => ({ where: mockUpdateWhere }) }),
     delete: () => ({ where: mockDeleteWhere }),
   },
-  policies: { id: 'p.id', userId: 'p.userId', teamId: 'p.teamId' },
+  policies: { id: 'p.id', userId: 'p.userId', teamId: 'p.teamId', deletedAt: 'p.deletedAt' },
+  teamMembers: { teamId: 'tm.teamId', userId: 'tm.userId', role: 'tm.role' },
   policyReviewers: { policyId: 'pr.policyId', userId: 'pr.userId', createdAt: 'pr.createdAt' },
   policyProofs: { id: 'pp.id', policyId: 'pp.policyId', createdAt: 'pp.createdAt' },
   REVIEWER_SUBJECT_KINDS: ['domain_expert', 'engineer'],
 }));
 
 vi.mock('@/lib/auth', () => ({ getSession: mockGetSession }));
-vi.mock('@/lib/team-permissions', () => ({
-  checkTeamPermission: mockCheckTeamPermission,
-  TeamPermission: { POLICY_CREATE: 'POLICY_CREATE' },
+// 授权走真实的策略授权矩阵（policy-access），只替换「当前团队角色」这一处数据库读
+vi.mock('@/lib/team-permissions', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/team-permissions')>()),
+  getTeamMemberRole: mockTeamRole,
 }));
 
 const PARAMS = { params: Promise.resolve({ id: 'pol1' }) };
@@ -151,7 +156,7 @@ function reset() {
   mockInsertValues.mockReset().mockResolvedValue(undefined);
   mockUpdateWhere.mockReset().mockResolvedValue(undefined);
   mockDeleteWhere.mockReset().mockResolvedValue(undefined);
-  mockCheckTeamPermission.mockReset().mockResolvedValue({ allowed: false });
+  mockTeamRole.mockReset().mockResolvedValue(null);
 }
 
 describe('复核结论写入 — 四条约束', () => {
@@ -645,21 +650,21 @@ describe('复核队列读取 — GET 授权与契约', () => {
     }
   });
 
-  it('★团队策略：有 POLICY_CREATE 权限的成员可以看队列', async () => {
+  it('★团队策略：当前角色有管理权限（member 起）的成员可以看队列', async () => {
     // ★team 分支此前**从未被任何用例执行过**（所有 fixture 的 teamId 都是 null）。
     //   变异实测：把整个分支换成 `return policy`、或删掉 checkTeamPermission 调用，
     //   54 条全绿——任何登录用户都能读团队策略的完整证据链。
     mockPolicyFindFirst.mockResolvedValue({ id: 'pol1', userId: 'owner1', teamId: 't1',
                                             content: 'Module m.' });
     mockReviewerFindFirst.mockResolvedValue(undefined);
-    mockCheckTeamPermission.mockResolvedValue({ allowed: true });
+    mockTeamRole.mockResolvedValue('member');
     const { GET } = await import('@/app/api/policies/[id]/review/route');
 
     const res = await GET(get(), PARAMS);
 
     expect(res.status).toBe(200);
     // 必须**真的问过**权限系统，且问的是这个人、这个团队、这项权限。
-    expect(mockCheckTeamPermission).toHaveBeenCalledWith('u1', 't1', 'POLICY_CREATE');
+    expect(mockTeamRole).toHaveBeenCalledWith('u1', 't1');
   });
 
   it('★团队策略：无权限且非复核人 → 404（**即使调用者是 policy.userId**）', async () => {
@@ -672,13 +677,13 @@ describe('复核队列读取 — GET 授权与契约', () => {
     mockPolicyFindFirst.mockResolvedValue({ id: 'pol1', userId: 'u1', teamId: 't1',
                                             content: 'Module m.' });
     mockReviewerFindFirst.mockResolvedValue(undefined);
-    mockCheckTeamPermission.mockResolvedValue({ allowed: false });
+    mockTeamRole.mockResolvedValue(null);
     const { GET } = await import('@/app/api/policies/[id]/review/route');
 
     const res = await GET(get(), PARAMS);
 
     expect(res.status).toBe(404);
-    expect(mockCheckTeamPermission).toHaveBeenCalled();
+    expect(mockTeamRole).toHaveBeenCalled();
     expect(mockProofFindMany, '鉴权未过不得读任何证据').not.toHaveBeenCalled();
   });
 

@@ -30,6 +30,8 @@ interface VersionComparePanelProps {
   whatIfEntitled?: boolean;
   /** 执行日志留存天数（#396）：用于裁剪 What-If 可选窗口。null=不裁剪 */
   retentionDays?: number | null;
+  /** 调用者不是策略创建者：What-If 属主限定（ADR 0034 §4.3） */
+  whatIfOwnerOnly?: boolean;
 }
 
 interface DiffLine {
@@ -154,6 +156,7 @@ export function VersionComparePanel({
   onClose,
   whatIfEntitled = false,
   retentionDays = null,
+  whatIfOwnerOnly = false,
 }: VersionComparePanelProps) {
   // 文案走 i18n（policies.versionCompare，demo-supplement 四语）；此前硬编码中文导致 /en 页面显示中文。
   const t = useTranslations('policies.versionCompare');
@@ -383,6 +386,7 @@ export function VersionComparePanel({
             baseVersionId={leftRowId}
             targetVersionId={rightRowId}
             entitled={whatIfEntitled}
+            ownerOnly={whatIfOwnerOnly}
               retentionDays={retentionDays}
           />
         </div>

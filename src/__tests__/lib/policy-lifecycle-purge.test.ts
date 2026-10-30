@@ -42,8 +42,20 @@ const h = vi.hoisted(() => {
   };
 });
 
+// 授权（policy-access）在本文件只是前置条件：取到策略即视为有删除权限，判定本身见 policy-access-matrix 测试
+vi.mock('@/lib/policy-access', () => ({
+  loadPolicyForAction: vi.fn(async (policyId: string) => {
+    const policy = await h.policyFindFirst({ policyId });
+    return policy
+      ? { ok: true, policy, decision: { allowed: true, via: 'owner', teamRole: null } }
+      : { ok: false, decision: { allowed: false, status: 404, code: 'policy_not_found', error: 'Policy not found' } };
+  }),
+  policiesVisibleTo: vi.fn(() => ({})),
+}));
+
 vi.mock('@/lib/prisma', () => ({
   db: {
+    select: () => ({ from: () => ({ where: () => ({}) }) }),
     delete: h.dbDelete,
     transaction: h.transaction,
     query: {

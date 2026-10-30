@@ -7,8 +7,9 @@
  */
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { db, policies, executions } from '@/lib/prisma';
-import { and, eq, isNull } from 'drizzle-orm';
+import { loadPolicyForAction, policyAccessDeniedResponse } from '@/lib/policy-access';
+import { db, executions } from '@/lib/prisma';
+import { and, eq } from 'drizzle-orm';
 import { policyTenantId } from '@/lib/policy-tenant';
 import { needsGuardDecision, registerGuardDecisionWith, type ExecutionMetadata } from '@/lib/guard-register';
 import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
@@ -28,12 +29,11 @@ export async function POST(_req: Request, { params }: RouteParams) {
     const userId = session.user.id;
     const { id, execId } = await params;
 
-    // 归属校验沿用日志页口径：策略属于当前用户，执行行同时约束 policyId 与 userId
-    const policy = await db.query.policies.findFirst({
-      where: and(eq(policies.id, id), eq(policies.userId, userId), isNull(policies.deletedAt)),
-      columns: { id: true, name: true, teamId: true, userId: true },
-    });
-    if (!policy) return NextResponse.json({ error: 'Policy not found' }, { status: 404 });
+    // 策略按授权矩阵校验执行权限（团队策略看当前角色，离队即失效）；执行行同时约束 policyId 与 userId：
+    // 只有执行人本人能为自己的执行补登 guard 决策（ADR 0042 §5.1 的请求人即执行人）
+    const access = await loadPolicyForAction(id, { userId }, 'execute');
+    if (!access.ok) return policyAccessDeniedResponse(access.decision);
+    const policy = access.policy;
 
     const where = and(eq(executions.id, execId), eq(executions.policyId, id), eq(executions.userId, userId));
     const exec = await db.query.executions.findFirst({

@@ -6,6 +6,7 @@ import { upgradeResponse, UPGRADE_HTTP_STATUS } from '@/lib/plan-quota';
 import { detectPII } from '@/services/pii/detector';
 import { getPolicyFreezeStatus } from '@/lib/policy-freeze';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
+import { ownPoliciesVisibleTo } from '@/lib/policy-access';
 import {
   createVersion,
   assertCompilable,
@@ -38,7 +39,8 @@ export async function GET() {
 
     const [policiesData, freezeStatus] = await Promise.all([
       db.query.policies.findMany({
-        where: and(eq(policies.userId, session.user.id), isNull(policies.deletedAt)),
+        // 本人创建的策略；团队策略只保留本人当前仍是成员的（离队 / 被移除后不再出现，#670）
+        where: and(ownPoliciesVisibleTo(session.user.id), isNull(policies.deletedAt)),
         orderBy: [desc(policies.updatedAt)],
         with: {
           group: {

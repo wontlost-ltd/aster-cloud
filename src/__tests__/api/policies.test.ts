@@ -132,6 +132,10 @@ vi.mock('@/lib/usage', () => ({
   recordUsage: vi.fn().mockResolvedValue(undefined),
 }));
 
+// 授权走真实的策略授权矩阵；策略行沿用本文件的 db.query.policies.findFirst 替身（见 beforeEach）
+vi.mock('@/lib/policy-access', async () =>
+  (await import('@/__tests__/helpers/policy-access-mock')).policyAccessModule());
+
 vi.mock('@/lib/prisma', () => ({
   db: {
     query: {
@@ -185,6 +189,7 @@ import { invalidatePolicyCache } from '@/lib/cache';
 import { detectPII } from '@/services/pii/detector';
 import type { PIIDetectionResult } from '@/services/pii/detector';
 import { VocabularyScopeError } from '@aster-cloud/aster-lang-ts/browser';
+import { policyAccessState } from '@/__tests__/helpers/policy-access-mock';
 
 const mockGetSession = vi.mocked(getSession);
 const mockGetPolicyFreezeStatus = vi.mocked(getPolicyFreezeStatus);
@@ -283,6 +288,9 @@ describe('Policies API - Drizzle Migration', () => {
     vi.clearAllMocks();
     mockLoadSaveVocabulary.mockResolvedValue(SAVE_VOCABULARY);
     mockGetSession.mockResolvedValue(DEFAULT_SESSION);
+    policyAccessState.loader = async () =>
+      (await db.query.policies.findFirst({})) as typeof policyAccessState.policy;
+    policyAccessState.teamRole = null;
     // Default freeze status: no freezes
     mockGetPolicyFreezeStatus.mockResolvedValue({
       limit: 25,
@@ -694,6 +702,62 @@ describe('Policies API - Drizzle Migration', () => {
       expect(raw).not.toContain('23505');
       expect(raw).not.toContain('already exists');
       expect(raw).not.toContain('internal hint leak');
+    });
+  });
+
+  // 团队策略按当前团队角色授权，不按创建者身份放行（#669 #670）
+  describe('团队策略授权（/api/policies/[id]）', () => {
+    const mockParams = { params: Promise.resolve({ id: 'p1' }) };
+    const teamPolicy = (userId: string) => mockPolicy({ userId, teamId: 'team-1', isPublic: false, team: null });
+
+    beforeEach(() => {
+      vi.mocked(db.query.policyVersions.findMany).mockResolvedValue([]);
+      setupCountSelect(0);
+    });
+
+    it('GET：非创建者的 viewer 可读他人创建的团队策略', async () => {
+      vi.mocked(db.query.policies.findFirst).mockResolvedValue(teamPolicy('creator'));
+      policyAccessState.teamRole = 'viewer';
+      expect((await GET_ID(makeRequest('http://localhost/api/policies/p1'), mockParams)).status).toBe(200);
+    });
+
+    it('GET：已离队 / 被移除的创建者 → 404', async () => {
+      vi.mocked(db.query.policies.findFirst).mockResolvedValue(teamPolicy('user-1'));
+      policyAccessState.teamRole = null;
+      expect((await GET_ID(makeRequest('http://localhost/api/policies/p1'), mockParams)).status).toBe(404);
+    });
+
+    it('PUT：被降为 viewer 的创建者 → 403 insufficient_team_role，不写库', async () => {
+      vi.mocked(db.query.policies.findFirst).mockResolvedValue(teamPolicy('user-1'));
+      policyAccessState.teamRole = 'viewer';
+      const res = await PUT(makeRequest('http://localhost/api/policies/p1', 'PUT', { description: 'x' }), mockParams);
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({ code: 'insufficient_team_role' });
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('PUT：被移除的创建者 → 404，不写库', async () => {
+      vi.mocked(db.query.policies.findFirst).mockResolvedValue(teamPolicy('user-1'));
+      policyAccessState.teamRole = null;
+      expect((await PUT(makeRequest('http://localhost/api/policies/p1', 'PUT', { description: 'x' }), mockParams)).status).toBe(404);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('PUT：冻结按策略所有者（创建者）的套餐判定，而不是编辑者', async () => {
+      vi.mocked(db.query.policies.findFirst).mockResolvedValue(teamPolicy('creator'));
+      policyAccessState.teamRole = 'member';
+      mockIsPolicyFrozen.mockResolvedValue({ isFrozen: true, activePoliciesLimit: 1, totalPolicies: 2, frozenCount: 1 });
+      expect((await PUT(makeRequest('http://localhost/api/policies/p1', 'PUT', { description: 'x' }), mockParams)).status).toBe(403);
+      expect(mockIsPolicyFrozen).toHaveBeenCalledWith('creator', 'p1');
+    });
+
+    it('DELETE：softDeletePolicy 拒绝时透传 403 与原因码', async () => {
+      mockSoftDeletePolicy.mockResolvedValue({
+        success: false, policyId: 'p1', status: 403, code: 'insufficient_team_role', error: 'Your team role does not allow this action on the policy.',
+      });
+      const res = await DELETE(makeRequest('http://localhost/api/policies/p1', 'DELETE'), mockParams);
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({ code: 'insufficient_team_role' });
     });
   });
 

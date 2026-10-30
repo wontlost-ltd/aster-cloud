@@ -23,8 +23,8 @@ vi.mock('@/lib/cache', () => ({
 }));
 
 vi.mock('@/lib/team-permissions', () => ({
-  checkTeamPermission: vi.fn().mockResolvedValue({ allowed: true }),
-  TeamPermission: { POLICY_EXECUTE: 'policy.execute' },
+  // 执行授权走真实的策略授权矩阵（policy-access），这里只替换「当前团队角色」的数据库读
+  getTeamMemberRole: vi.fn().mockResolvedValue('member'),
 }));
 
 vi.mock('@/services/policy/runner-parity-from-execution', () => ({

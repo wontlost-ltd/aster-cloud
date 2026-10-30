@@ -22,11 +22,29 @@ import { hasStructuralAliases } from '@/lib/policy-alias-shared';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { softDeletePolicy } from '@/lib/policy-lifecycle';
 import { invalidatePolicyCache } from '@/lib/cache';
+import { loadPolicyForAction, policyAccessDeniedResponse } from '@/lib/policy-access';
 import { parseCompileLocale } from '@/lib/cnl-locale';
 
 
 interface RouteParams {
   params: Promise<{ id: string }>;
+}
+
+/**
+ * 策略是否经 PolicyShare 分享给了调用者所在的某个团队。平台关闭分享时分享行只是休眠数据，不构成授权。
+ */
+async function isSharedWithCaller(policyId: string, userId: string): Promise<boolean> {
+  const { isPolicySharingEnabled } = await import('@/lib/platform-settings');
+  if (!(await isPolicySharingEnabled())) return false;
+  const sharedRows = (await db.execute(sql`
+    SELECT 1 AS ok
+    FROM "PolicyShare" ps
+    JOIN "TeamMember" tm ON tm."teamId" = ps."teamId"
+    WHERE ps."policyId" = ${policyId}
+      AND tm."userId" = ${userId}
+    LIMIT 1
+  `)) as unknown as Array<{ ok: number }>;
+  return sharedRows.length > 0;
 }
 
 // GET /api/policies/[id] - Get a single policy
@@ -39,56 +57,15 @@ export async function GET(req: Request, { params }: RouteParams) {
 
     const { id } = await params;
 
-    // 先查用户自己的策略或公开策略
-    let policy = await db.query.policies.findFirst({
-      where: and(
-        eq(policies.id, id),
-        isNull(policies.deletedAt),
-        sql`(${policies.userId} = ${session.user.id} OR ${policies.isPublic} = true)`
-      ),
-    });
-
-    // 如果不是用户自己的策略,检查是否是团队策略
-    if (!policy || (policy.userId !== session.user.id && !policy.isPublic)) {
-      const teamPolicy = await db.query.policies.findFirst({
-        where: and(
-          eq(policies.id, id),
-          isNull(policies.deletedAt)
-        ),
-        with: {
-          team: {
-            with: {
-              members: true,
-            },
-          },
-        },
+    // 团队策略按当前成员角色、个人策略按所有者授权（#669 #670）；被拒（404）时再看公开与团队分享授予。
+    const access = await loadPolicyForAction(id, { userId: session.user.id }, 'view');
+    let policy = access.ok ? access.policy : null;
+    if (!policy) {
+      const candidate = await db.query.policies.findFirst({
+        where: and(eq(policies.id, id), isNull(policies.deletedAt)),
       });
-
-      if (teamPolicy?.team?.members.some(m => m.userId === session.user.id)) {
-        policy = teamPolicy;
-      }
-
-      // Final fallback: the policy was shared with one of the
-      // caller's teams via PolicyShare. Only consult when sharing
-      // is platform-enabled — flag off → shares are dormant data,
-      // not access grants.
-      if (!policy && teamPolicy) {
-        const { isPolicySharingEnabled } = await import(
-          '@/lib/platform-settings'
-        );
-        if (await isPolicySharingEnabled()) {
-          const sharedRows = (await db.execute(sql`
-            SELECT 1 AS ok
-            FROM "PolicyShare" ps
-            JOIN "TeamMember" tm ON tm."teamId" = ps."teamId"
-            WHERE ps."policyId" = ${id}
-              AND tm."userId" = ${session.user.id}
-            LIMIT 1
-          `)) as unknown as Array<{ ok: number }>;
-          if (sharedRows.length > 0) {
-            policy = teamPolicy;
-          }
-        }
+      if (candidate && (candidate.isPublic || (await isSharedWithCaller(id, session.user.id)))) {
+        policy = candidate;
       }
     }
 
@@ -118,11 +95,8 @@ export async function GET(req: Request, { params }: RouteParams) {
       .from(executions)
       .where(eq(executions.policyId, id));
 
-    // 检查策略是否被冻结（只对策略所有者检查）
-    let freezeInfo = null;
-    if (policy.userId === session.user.id) {
-      freezeInfo = await isPolicyFrozen(session.user.id, id);
-    }
+    // 冻结取决于策略所有者（创建者）的套餐，与调用者无关；只对有授权的调用者返回冻结详情。
+    const freezeInfo = access.ok ? await isPolicyFrozen(policy.userId, id) : null;
 
     return NextResponse.json({
       ...policy,
@@ -157,21 +131,13 @@ export async function PUT(req: Request, { params }: RouteParams) {
     const { id } = await params;
     const { name, content, description, isPublic, groupId, aliasSet, locale } = await req.json();
 
-    // Check ownership (exclude deleted policies)
-    const existingPolicy = await db.query.policies.findFirst({
-      where: and(
-        eq(policies.id, id),
-        eq(policies.userId, session.user.id),
-        isNull(policies.deletedAt)
-      ),
-    });
+    // 团队策略按当前角色授权（member 起可编辑，viewer 403，非成员 404）；个人策略只认所有者。
+    const access = await loadPolicyForAction(id, { userId: session.user.id }, 'update');
+    if (!access.ok) return policyAccessDeniedResponse(access.decision);
+    const existingPolicy = access.policy;
 
-    if (!existingPolicy) {
-      return NextResponse.json({ error: 'Policy not found' }, { status: 404 });
-    }
-
-    // 检查策略是否被冻结
-    const freezeInfo = await isPolicyFrozen(session.user.id, id);
+    // 检查策略是否被冻结（按策略所有者的套餐）
+    const freezeInfo = await isPolicyFrozen(existingPolicy.userId, id);
     if (freezeInfo.isFrozen) {
       return NextResponse.json(
         {
@@ -372,11 +338,11 @@ export async function DELETE(req: Request, { params }: RouteParams) {
       // 无请求体，忽略
     }
 
-    // 使用软删除
+    // 使用软删除（授权在 softDeletePolicy 内按团队角色判定：owner/admin 可删，member/viewer 403）
     const result = await softDeletePolicy(id, session.user.id, reason);
 
     if (!result.success) {
-      return NextResponse.json({ error: result.error }, { status: 404 });
+      return NextResponse.json({ error: result.error, code: result.code }, { status: result.status ?? 404 });
     }
 
     await logSecurityAdminAction(session.user.id, 'POLICY_TRASHED', { policyId: id });

@@ -10,8 +10,9 @@
  */
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { db, policies, executions, policyVersions } from '@/lib/prisma';
-import { and, eq, isNull } from 'drizzle-orm';
+import { loadPolicyForAction, policyAccessDeniedResponse } from '@/lib/policy-access';
+import { db, executions, policyVersions } from '@/lib/prisma';
+import { and, eq } from 'drizzle-orm';
 import { policyTenantId } from '@/lib/policy-tenant';
 import {
   runParityForExecutionNow,
@@ -32,12 +33,10 @@ export async function POST(_req: Request, { params }: RouteParams) {
     }
     const { id, execId } = await params;
 
-    // 归属校验：策略必须属于当前用户（沿用 logs route 模式）。
-    const policy = await db.query.policies.findFirst({
-      where: and(eq(policies.id, id), eq(policies.userId, session.user.id), isNull(policies.deletedAt)),
-      columns: { id: true, teamId: true, userId: true },
-    });
-    if (!policy) return NextResponse.json({ error: 'Policy not found' }, { status: 404 });
+    // 策略授权：会真跑 runner 并回写执行行，按执行权限判定（团队策略看当前角色，离队即失效）。
+    const access = await loadPolicyForAction(id, { userId: session.user.id }, 'execute');
+    if (!access.ok) return policyAccessDeniedResponse(access.decision);
+    const policy = access.policy;
 
     // 取目标 execution（须属于该策略**且属于当前用户**）。★纵深隔离（Codex 抓 P0）：executions 有独立
     //   userId，仅约束 policyId 会依赖「execution.userId==policy.userId」这一跨表不变量——一旦别处写入脏行

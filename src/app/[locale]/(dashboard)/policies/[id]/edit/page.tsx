@@ -1,7 +1,8 @@
 import { getTranslations } from 'next-intl/server';
 import { redirect, notFound } from 'next/navigation';
 import { getSession } from '@/lib/auth';
-import { db, policies, policyVersions } from '@/lib/prisma';
+import { loadPolicyForAction } from '@/lib/policy-access';
+import { db, policyVersions } from '@/lib/prisma';
 import { eq, and } from 'drizzle-orm';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { EditPolicyContent } from './edit-policy-content';
@@ -23,19 +24,21 @@ export default async function EditPolicyPage({ params }: PageProps) {
   }
   const t = await getTranslations('policies');
 
-  // 获取策略详情（只能编辑自己的策略）
-  const policyData = await db.query.policies.findFirst({
-    where: and(eq(policies.id, id), eq(policies.userId, session.user.id)),
-    columns: {
-      id: true,
-      name: true,
-      description: true,
-      content: true,
-      isPublic: true,
-      groupId: true,
-      version: true,
-    },
-  });
+  // 与 PUT /api/policies/[id] 同一授权：团队策略 member 起可编辑（含他人创建的，#669），
+  // viewer 与非成员（含已离队的创建者，#670）不能进入编辑页；个人策略只认所有者
+  const access = await loadPolicyForAction(id, { userId: session.user.id }, 'update');
+  const policyData = access.ok
+    ? {
+        id: access.policy.id,
+        name: access.policy.name,
+        description: access.policy.description,
+        content: access.policy.content,
+        isPublic: access.policy.isPublic,
+        groupId: access.policy.groupId,
+        version: access.policy.version,
+        ownerId: access.policy.userId,
+      }
+    : null;
 
   if (!policyData) {
     notFound();
@@ -76,7 +79,7 @@ export default async function EditPolicyPage({ params }: PageProps) {
 
   // 冻结策略只读：套餐降级超限后该策略被冻结，不可编辑。
   // 入口处服务端拦截，避免用户进编辑器改完后才在保存时被 API 403 拒绝。
-  const freeze = await isPolicyFrozen(session.user.id, id);
+  const freeze = await isPolicyFrozen(policyData.ownerId, id);
   if (freeze.isFrozen) {
     redirect(`/${locale}/policies/${id}?frozen=1`);
   }

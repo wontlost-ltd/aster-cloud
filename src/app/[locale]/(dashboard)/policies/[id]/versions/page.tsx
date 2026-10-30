@@ -1,10 +1,8 @@
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
-import { db, policies } from '@/lib/prisma';
-import { and, eq, isNull } from 'drizzle-orm';
+import { loadPolicyForAction } from '@/lib/policy-access';
 import { loadTeamReviewerIds, loadVersionReviewContext } from '@/services/policy/version-manager';
-import { canReviewPolicyVersions } from '@/services/policy/version-approval-rules';
 import { VersionsContent } from './versions-content';
 import { localizedTitle } from '@/lib/page-metadata';
 
@@ -17,7 +15,7 @@ interface RouteParams {
 /**
  * 版本列表的服务端外壳。
  *
- * 解析策略 id 与读权限（所有者，或审阅该团队策略版本的团队 owner/admin），并带上审阅上下文；
+ * 解析策略 id 与读权限（授权矩阵的 view），并带上审阅上下文（批准 / 驳回按钮按当前团队角色显示）；
  * 客户端组件经 SWR 从 /api/v1/policies/[id]/versions 拉取版本表，审批状态变化无需整页刷新。
  */
 export default async function VersionsPage({ params }: RouteParams) {
@@ -27,19 +25,16 @@ export default async function VersionsPage({ params }: RouteParams) {
     redirect(`/${locale}/login`);
   }
 
-  const [policy, review] = await Promise.all([
-    db.query.policies.findFirst({
-      where: and(eq(policies.id, id), isNull(policies.deletedAt)),
-      columns: { id: true, name: true },
-    }),
+  // 与版本 API 同一授权：团队策略任一当前成员可看版本（含他人创建的，#669），
+  // 非成员（含已离队的创建者，#670）与他人个人策略一律当作不存在
+  const [access, review] = await Promise.all([
+    loadPolicyForAction(id, { userId: session.user.id }, 'view'),
     loadVersionReviewContext(id, session.user.id),
   ]);
-
-  // 所有者，或有权审阅的人（团队策略的团队 owner/admin），其余一律当作不存在
-  const readable = review && (review.policyOwnerId === session.user.id || canReviewPolicyVersions(review));
-  if (!policy || !review || !readable) {
+  if (!access.ok || !review) {
     redirect(`/${locale}/policies`);
   }
+  const policy = access.policy;
 
   const [t, teamReviewerIds] = await Promise.all([
     getTranslations('policies'),

@@ -4,7 +4,7 @@ import { db, policies, policyVersions, executions, users, usageRecords } from '@
 import { eq, sql, desc, asc } from 'drizzle-orm';
 import { PLANS, PlanType } from '@/lib/plans';
 import { upgradeResponse } from '@/lib/plan-quota';
-import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
+import { authorizePolicyAction, policyAccessDeniedResponse } from '@/lib/policy-access';
 import { executePolicyUnified, getPrimaryError, deriveExecutionDecision, deriveExecutionOutcome } from '@/services/policy/cnl-executor';
 import { getCachedPolicyMeta, cachePolicyMeta, type CachedPolicyMeta } from '@/lib/cache';
 import { hydrateExecutableVersion, isCachedVersionCurrent, resolveExecutableVersion, type ExecutableVersionCandidate } from '@/services/policy/executable-version';
@@ -36,6 +36,25 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
+/**
+ * 策略经 PolicyShare 分享给调用者所在团队时的授予级别（'execute' | 'view'），没有或平台关闭分享时为 null。
+ * 多个团队分享同一策略时取最高级别。只在常规授权失败后才查，不拖慢所有者 / 成员的热路径。
+ */
+async function sharedGrantFor(policyId: string, userId: string): Promise<string | null> {
+  const { isPolicySharingEnabled } = await import('@/lib/platform-settings');
+  if (!(await isPolicySharingEnabled())) return null;
+  const sharedRows = (await db.execute<{ permission: string }>(sql`
+    SELECT ps."permission" AS permission
+    FROM "PolicyShare" ps
+    JOIN "TeamMember" tm ON tm."teamId" = ps."teamId"
+    WHERE ps."policyId" = ${policyId}
+      AND tm."userId" = ${userId}
+    ORDER BY (ps."permission" = 'execute') DESC
+    LIMIT 1
+  `)) as unknown as Array<{ permission: string }>;
+  return sharedRows[0]?.permission ?? null;
+}
+
 // 获取当前周期字符串（YYYY-MM）
 function getCurrentPeriod(): string {
   const now = new Date();
@@ -63,8 +82,6 @@ type UnifiedQueryResult = {
   user_trial_ends_at: Date | null;
   // Usage count
   usage_count: number | null;
-  // Team membership (for non-owner access)
-  is_team_member: boolean;
   [key: string]: unknown;
 }
 
@@ -147,14 +164,11 @@ export async function POST(req: Request, { params }: RouteParams) {
         NULL::jsonb AS policy_vocab_snapshot_ids,
         u.plan AS user_plan,
         u."trialEndsAt" AS user_trial_ends_at,
-        ur.count AS usage_count,
-        CASE WHEN tm.id IS NOT NULL THEN true ELSE false END AS is_team_member
+        ur.count AS usage_count
       FROM "User" u
       LEFT JOIN "UsageRecord" ur ON ur."userId" = ${userId}
         AND ur.type = 'execution'
         AND ur.period = ${period}
-      LEFT JOIN "TeamMember" tm ON tm."userId" = ${userId}
-        AND tm."teamId" = ${policy!.teamId}
       WHERE u.id = ${userId}
       LIMIT 1
     ` : sql`
@@ -172,8 +186,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         pv."vocabularySnapshotIds" AS policy_vocab_snapshot_ids,
         u.plan AS user_plan,
         u."trialEndsAt" AS user_trial_ends_at,
-        ur.count AS usage_count,
-        CASE WHEN tm.id IS NOT NULL THEN true ELSE false END AS is_team_member
+        ur.count AS usage_count
       FROM "Policy" p
       CROSS JOIN "User" u
       -- 活跃版本的冻结 aliasSet（版本号 = Policy.version；与 content 同源）。C1：执行时透传别名。
@@ -181,8 +194,6 @@ export async function POST(req: Request, { params }: RouteParams) {
       LEFT JOIN "UsageRecord" ur ON ur."userId" = ${userId}
         AND ur.type = 'execution'
         AND ur.period = ${period}
-      LEFT JOIN "TeamMember" tm ON tm."userId" = ${userId}
-        AND tm."teamId" = p."teamId"
       WHERE p.id = ${id}
         AND p."deletedAt" IS NULL
         AND u.id = ${userId}
@@ -247,72 +258,33 @@ export async function POST(req: Request, { params }: RouteParams) {
     } : null;
 
     const usageData = row && row.usage_count !== null ? { count: row.usage_count } : null;
-    const isTeamMember = row?.is_team_member ?? false;
 
     if (!policy) {
       return NextResponse.json({ error: 'Policy not found' }, { status: 404 });
     }
 
-    // 权限检查（快速路径：所有者或公开策略）
-    const isOwner = policy.userId === userId;
-    const isPublic = policy.isPublic;
-
-    // 权限验证（团队成员资格已在 SQL 查询中获取）。
-    // Slow-path fallback: policy may have been shared with one of
-    // the caller's teams via PolicyShare. Only consult that table
-    // when the fast path fails — most executions are owner / team-
-    // member, and a second query would slow the hot path. The
-    // platform admin can disable sharing via the
-    // policy_sharing.enabled flag; when OFF, shares are ignored
-    // entirely so a leftover row can't grant access.
-    // The share's `permission` column gates execute vs view-only.
-    // This route requires 'execute'; a 'view'-only share returns
-    // 403 (not 404) so the user isn't gaslit about whether the
-    // policy exists when they can read it via GET /policies/:id.
-    // Pick the highest-tier share if multiple teams of the caller
-    // share the same policy (ORDER BY puts 'execute' first).
-    let isSharedMember = false;
-    if (!isOwner && !isPublic && !isTeamMember) {
-      const { isPolicySharingEnabled } = await import(
-        '@/lib/platform-settings'
-      );
-      if (await isPolicySharingEnabled()) {
-        const sharedRow = await db.execute<{ permission: string }>(sql`
-          SELECT ps."permission" AS permission
-          FROM "PolicyShare" ps
-          JOIN "TeamMember" tm ON tm."teamId" = ps."teamId"
-          WHERE ps."policyId" = ${id}
-            AND tm."userId" = ${userId}
-          ORDER BY (ps."permission" = 'execute') DESC
-          LIMIT 1
-        `);
-        const sharedRows = sharedRow as unknown as Array<{ permission: string }>;
-        const grant = sharedRows[0]?.permission;
-        if (grant === 'execute') {
-          isSharedMember = true;
-        } else if (grant === 'view') {
-          return NextResponse.json(
-            {
-              error: 'Execute not permitted for this share (view-only)',
-              code: 'share_view_only',
-            },
-            { status: 403 },
-          );
-        }
+    // 授权：团队策略按调用者当前角色（owner/admin/member 可执行，viewer 403，非成员 404），
+    // 个人策略只认所有者——创建者身份不放行团队策略（#670）。
+    // 被拒时再看两类额外授予：公开策略任何登录用户可执行；PolicyShare 分享给调用者所在团队
+    // （平台开关关闭时分享行不构成授权；只读分享返回 403 而非 404，因为对方能经 GET 读到它）。
+    const t4 = Date.now();
+    const access = await authorizePolicyAction({ userId }, policy, 'execute');
+    timings.permChecks = Date.now() - t4;
+    if (!access.allowed && !policy.isPublic) {
+      if (access.status === 403) return policyAccessDeniedResponse(access);
+      const grant = await sharedGrantFor(id, userId);
+      if (grant === 'view') {
+        return NextResponse.json(
+          {
+            error: 'Execute not permitted for this share (view-only)',
+            code: 'share_view_only',
+          },
+          { status: 403 },
+        );
       }
-      if (!isSharedMember) {
+      if (grant !== 'execute') {
         return NextResponse.json({ error: 'Policy not found' }, { status: 404 });
       }
-    }
-
-    // 团队成员权限检查（仅非所有者，按团队角色判定 execute 权限）
-    if (!isOwner && policy.teamId) {
-      const t4 = Date.now();
-      const permCheck = await checkTeamPermission(userId, policy.teamId, TeamPermission.POLICY_EXECUTE);
-      if (!permCheck.allowed) {
-        return NextResponse.json({ error: permCheck.error, code: permCheck.code }, { status: permCheck.status });
-      }
-      timings.permChecks = Date.now() - t4;
     }
 
     // 策略冻结检查：冻结取决于「策略所有者」的套餐限制，与调用者是否为所有者无关。
@@ -323,7 +295,8 @@ export async function POST(req: Request, { params }: RouteParams) {
     // 性能：调用者即所有者时，统一查询已取到本人 plan/trialEndsAt（= 所有者的），
     // 无需再发一次 users.findFirst（热路径上少一次串行 DB 往返）。仅非所有者执行
     // 他人策略时才补查所有者套餐。
-    const ownerData = isOwner
+    // 调用者恰是策略所有者时复用已取到的本人套餐（只是数据复用，不参与授权）。
+    const ownerData = policy.userId === userId
       ? { plan: userData?.plan ?? null, trialEndsAt: userData?.trialEndsAt ?? null }
       : await db.query.users.findFirst({
           where: eq(users.id, policy.userId),

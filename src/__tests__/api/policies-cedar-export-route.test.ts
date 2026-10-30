@@ -32,6 +32,8 @@ vi.mock('drizzle-orm', () => ({
 }));
 // 版本词汇（ADR 0051）：语言判定用真实实现，词汇按用例给定
 const compileContext = vi.hoisted(() => ({ vocabulary: undefined as Record<string, unknown> | undefined, calls: [] as unknown[], error: undefined as Error | undefined }));
+vi.mock('@/lib/policy-access', async () =>
+  (await import('@/__tests__/helpers/policy-access-mock')).policyAccessModule());
 vi.mock('@/lib/execution-input', async () => {
   const { resolveStoredVersionLocale } = await vi.importActual<typeof import('@/lib/policy-version-locale')>('@/lib/policy-version-locale');
   return {
@@ -54,6 +56,7 @@ import { POST } from '@/app/api/policies/[id]/export/cedar/route';
 import { PolicyApiError } from '@/services/policy/policy-api';
 import { RateLimitPresets } from '@/lib/rate-limit';
 
+const { policyAccessState } = await import('@/__tests__/helpers/policy-access-mock');
 const { findFirst, findExecutable, exportCedar, getSession } = h;
 const owned = (over: Record<string, unknown> = {}) => ({ id: 'p1', userId: 'u1', teamId: null, ...over });
 const executable = (over: Record<string, unknown> = {}) =>
@@ -68,6 +71,9 @@ beforeEach(() => {
   compileContext.calls = [];
   compileContext.error = undefined;
   getSession.mockResolvedValue({ user: { id: 'u1' } });
+  // 策略行沿用本文件的 findFirst 替身；授权走真实矩阵（团队策略按当前角色）
+  policyAccessState.loader = (id) => findFirst({ id });
+  policyAccessState.teamRole = 'viewer';
   h.checkRateLimit.mockReturnValue({ allowed: true, remaining: 19, resetAt: Date.now() + 60_000 });
   h.createClient.mockResolvedValue({ exportCedar });
 });
@@ -94,13 +100,21 @@ describe('POST /api/policies/[id]/export/cedar', () => {
     expect(exportCedar).not.toHaveBeenCalled();
   });
 
-  it('ownership query constrains id and owner userId', async () => {
-    findFirst.mockResolvedValue(undefined);
-    await POST(req(), ctx('p1'));
-    const where = JSON.stringify(findFirst.mock.calls[0][0].where);
-    expect(where).toContain(JSON.stringify({ eq: ['policies.id', 'p1'] }));
-    expect(where).toContain(JSON.stringify({ eq: ['policies.userId', 'u1'] }));
-    expect(where).toContain(JSON.stringify({ isNull: 'policies.deletedAt' }));
+  it('他人的个人策略 → 404；团队策略的非成员（含已离队的创建者）→ 404', async () => {
+    findFirst.mockResolvedValue(owned({ userId: 'someone-else' }));
+    expect((await POST(req(), ctx('p1'))).status).toBe(404);
+    findFirst.mockResolvedValue(owned({ teamId: 't9' }));
+    policyAccessState.teamRole = null;
+    expect((await POST(req(), ctx('p1'))).status).toBe(404);
+    expect(exportCedar).not.toHaveBeenCalled();
+  });
+
+  it('团队策略：非创建者的 viewer 也能导出（只读，#669）', async () => {
+    findFirst.mockResolvedValue(owned({ teamId: 't9', userId: 'creator' }));
+    findExecutable.mockResolvedValue(executable());
+    exportCedar.mockResolvedValue({ cedar: 'permit(principal, action, resource);', verified: true, probes: 1 });
+    expect((await POST(req(), ctx('p1'))).status).not.toBe(404);
+    expect(exportCedar).toHaveBeenCalled();
   });
 
   it('409 when no version is executable (drafts are never exported)', async () => {

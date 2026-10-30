@@ -22,6 +22,7 @@ import {
 } from 'drizzle-orm';
 import { db, executions, policies, policyGroups } from '@/lib/prisma';
 import { escapeLikePattern } from '@/lib/sql-escape';
+import { ownPoliciesVisibleTo } from '@/lib/policy-access';
 
 export interface PolicyGroupRef {
   id: string;
@@ -96,8 +97,9 @@ export async function listUserPolicies(
   const page = normalizePage(opts.page);
   const pageSize = normalizePageSize(opts.pageSize);
 
+  // 本人创建的策略；团队策略只保留本人当前仍是成员的（离队 / 被移除后不再出现，#670）
   const conditions: SQL[] = [
-    eq(policies.userId, userId),
+    ownPoliciesVisibleTo(userId),
     isNull(policies.deletedAt),
   ];
 
@@ -226,7 +228,7 @@ export async function listPolicyGroupsWithCounts(
         .from(policies)
         .where(
           and(
-            eq(policies.userId, userId),
+            ownPoliciesVisibleTo(userId),
             isNull(policies.deletedAt),
             inArray(policies.groupId, groupIds),
           ),

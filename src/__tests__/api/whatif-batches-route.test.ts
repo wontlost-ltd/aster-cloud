@@ -32,7 +32,11 @@ vi.mock('@/services/policy/policy-api', () => ({
   PolicyApiError: FakePolicyApiError,
 }));
 
+vi.mock('@/lib/policy-access', async () =>
+  (await import('@/__tests__/helpers/policy-access-mock')).policyAccessModule());
+
 const { POST } = await import('@/app/api/v1/policies/[id]/whatif-batches/route');
+const { policyAccessState } = await import('@/__tests__/helpers/policy-access-mock');
 const { GET } = await import('@/app/api/v1/policies/[id]/whatif-batches/[batchId]/route');
 
 const params = Promise.resolve({ id: 'p1' });
@@ -54,6 +58,8 @@ const validBody = {
 
 describe('POST /api/v1/policies/:id/whatif-batches', () => {
   beforeEach(() => {
+    policyAccessState.policy = { id: 'p1', userId: 'u1', teamId: null };
+    policyAccessState.teamRole = null;
     getSession.mockReset();
     getSession.mockResolvedValue({ user: { id: 'u1' } });
     createWhatIfBatch.mockReset();
@@ -128,6 +134,8 @@ describe('POST /api/v1/policies/:id/whatif-batches', () => {
 
 describe('GET /api/v1/policies/:id/whatif-batches/:batchId', () => {
   beforeEach(() => {
+    policyAccessState.policy = { id: 'p1', userId: 'u1', teamId: null };
+    policyAccessState.teamRole = null;
     getSession.mockReset();
     getSession.mockResolvedValue({ user: { id: 'u1' } });
     getWhatIfBatch.mockReset();
@@ -192,4 +200,47 @@ describe('GET /api/v1/policies/:id/whatif-batches/:batchId', () => {
     });
   });
 
+});
+
+// ADR 0034 §4.3 属主限定 + 团队角色（#670）：授权在转发之前，被拒时不触碰 aster-api。
+describe('What-If 批次授权', () => {
+  beforeEach(() => {
+    getSession.mockReset();
+    getSession.mockResolvedValue({ user: { id: 'u1' } });
+    createWhatIfBatch.mockReset();
+    createWhatIfBatch.mockResolvedValue({ batchId: 'b1', status: 'PENDING' });
+    getWhatIfBatch.mockReset();
+    getWhatIfBatch.mockResolvedValue({ batchId: 'b1', status: 'PENDING' });
+  });
+
+  it('团队策略的非创建者（即便是 owner）→ 403 whatif_owner_only', async () => {
+    policyAccessState.policy = { id: 'p1', userId: 'creator', teamId: 't1' };
+    policyAccessState.teamRole = 'owner';
+    const res = await POST(postReq(validBody), { params });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error: 'whatif_owner_only' });
+    expect(createWhatIfBatch).not.toHaveBeenCalled();
+  });
+
+  it('创建者仍有执行权限 → 转发', async () => {
+    policyAccessState.policy = { id: 'p1', userId: 'u1', teamId: 't1' };
+    policyAccessState.teamRole = 'member';
+    expect((await POST(postReq(validBody), { params })).status).toBe(202);
+  });
+
+  it('创建者被降为 viewer → 403；被移除 → 404', async () => {
+    policyAccessState.policy = { id: 'p1', userId: 'u1', teamId: 't1' };
+    policyAccessState.teamRole = 'viewer';
+    expect((await POST(postReq(validBody), { params })).status).toBe(403);
+    policyAccessState.teamRole = null;
+    expect((await POST(postReq(validBody), { params })).status).toBe(404);
+    expect((await GET(new Request('https://x.test'), { params: batchParams })).status).toBe(404);
+    expect(createWhatIfBatch).not.toHaveBeenCalled();
+    expect(getWhatIfBatch).not.toHaveBeenCalled();
+  });
+
+  it('他人的个人策略 → 404', async () => {
+    policyAccessState.policy = { id: 'p1', userId: 'someone-else', teamId: null };
+    expect((await POST(postReq(validBody), { params })).status).toBe(404);
+  });
 });

@@ -16,6 +16,7 @@
  */
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
+import { loadPolicyForAction } from '@/lib/policy-access';
 import { createPolicyApiClient, PolicyApiError } from '@/services/policy/policy-api';
 
 export const runtime = 'nodejs';
@@ -30,6 +31,17 @@ export async function POST(
   const session = await getSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
+
+  // ADR 0034 §4.3：批次以策略所有者 userId 为租户、只回放所有者本人的执行，所以只有策略创建者能用；
+  // 团队策略另要求创建者当前仍是有执行权限的成员（离队 / 被移除 / 降为 viewer 后立即失效，#670）。
+  // 其他成员得到 403 whatif_owner_only（界面据此说明属主限定），非成员与他人个人策略 404。
+  const access = await loadPolicyForAction(policyId, { userId: session.user.id }, 'whatif');
+  if (!access.ok) {
+    return NextResponse.json(
+      { error: access.decision.code, message: access.decision.error },
+      { status: access.decision.status },
+    );
   }
 
   let body: {
