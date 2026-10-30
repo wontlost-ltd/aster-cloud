@@ -10,7 +10,7 @@ import {
 } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
 import { validateDomainVocabulary } from '@/lib/domain-vocabulary-validation';
 import { assembleDomainVocabularyFromLinks } from '@/lib/domain-vocabulary-assemble';
-import { VOCAB_FORMAT_MESSAGES } from '@/lib/domain-vocabulary-format';
+import { VOCAB_FORMAT_MESSAGES, termBoundsMessage } from '@/lib/domain-vocabulary-format';
 import { DEMO_SUPPLEMENT } from '@/i18n/demo-supplement';
 import { deepMergeMessages } from '@/i18n/request';
 import {
@@ -91,6 +91,9 @@ const SERVER_MESSAGES = [
   'kind must be struct|field|function|enum_value',
   VOCAB_FORMAT_MESSAGES.domain_format,
   VOCAB_FORMAT_MESSAGES.locale_format,
+  termBoundsMessage({ issue: 'aliases_too_many' }),
+  termBoundsMessage({ issue: 'text_too_long', field: 'description' }),
+  `terms[4].${termBoundsMessage({ issue: 'text_too_long', field: 'aliases' })}`,
   'bulk import requires at least one term',
   'async bulk import requires at least one term',
   '"terms" must not be empty',
@@ -158,6 +161,16 @@ describe('parseVocabularyValidationMessage（#609/#634）', () => {
       reason: 'bulkTooMany',
       values: { limit: '500' },
     });
+  });
+
+  it('识别单词条上限（#621）', () => {
+    expect(parseVocabularyValidationMessage(termBoundsMessage({ issue: 'aliases_too_many' }))).toEqual({
+      reason: 'aliasesTooMany',
+      values: { limit: '256' },
+    });
+    expect(
+      parseVocabularyValidationMessage(termBoundsMessage({ issue: 'text_too_long', field: 'description' })),
+    ).toEqual({ reason: 'textTooLong', values: { field: 'description' } });
   });
 
   it('识别重复规范名与触发词冲突', () => {

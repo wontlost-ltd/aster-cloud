@@ -283,3 +283,22 @@ describe('processBulkJobChunk — 作用域冲突（ADR 0051 §8）', () => {
     expectDeltaInvariant(outcome);
   });
 });
+
+describe('processBulkJobChunk — 单词条上限（#621）', () => {
+  it('别名超过 256 个的行记 validation_failed，其余照常导入', async () => {
+    const ok = row('Policyholder');
+    hoisted.selectQueue.push([], []);
+    hoisted.insert
+      .mockReturnValueOnce(insertChain([{ id: 'term-ph', dedupKey: key(ok) }]))
+      .mockReturnValueOnce(insertChain([{ termId: 'term-ph' }]));
+
+    const outcome = await processBulkJobChunk(
+      job([row('Claim', { aliases: Array.from({ length: 257 }, (_, i) => `c${i}`) }), ok]),
+    );
+
+    expect(outcome.rollupDelta).toMatchObject({ added: 1, skipped: 1, errorCount: 1 });
+    expect(outcome.errorsDelta.map((e) => [e.row, e.code])).toEqual([[0, 'validation_failed']]);
+    expect(outcome.errorsDelta[0]!.message).toMatch(/aliases must contain at most 256 entries/);
+    expectDeltaInvariant(outcome);
+  });
+});

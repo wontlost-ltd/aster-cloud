@@ -26,7 +26,9 @@ export type VocabularyValidationReason =
   | 'domainFormat'
   | 'localeFormat'
   | 'bulkEmpty'
-  | 'bulkTooMany';
+  | 'bulkTooMany'
+  | 'aliasesTooMany'
+  | 'textTooLong';
 
 export interface VocabularyValidationDetail {
   readonly reason: VocabularyValidationReason;
@@ -68,6 +70,9 @@ const RULES: ReadonlyArray<{
   { pattern: /^locale must be a valid BCP-47 tag/, reason: 'localeFormat' },
   { pattern: /requires at least one term|"terms" must (?:not be empty|be a non-empty array)|must include a "terms" array/, reason: 'bulkEmpty' },
   { pattern: /accepts at most (\d+) rows/, reason: 'bulkTooMany', param: 'limit' },
+  // 单词条上限（domain-vocabulary-format termBoundsMessage，#621）
+  { pattern: new RegExp(`^${ROW_PREFIX}aliases must contain at most (\\d+) entries`), reason: 'aliasesTooMany', param: 'limit' },
+  { pattern: new RegExp(`^${ROW_PREFIX}(\\w+) must be at most \\d+ characters`), reason: 'textTooLong', param: 'field' },
 ];
 
 /** 识别 validation_failed 消息；无法识别返回 null（调用方显示通用本地化提示）。 */
