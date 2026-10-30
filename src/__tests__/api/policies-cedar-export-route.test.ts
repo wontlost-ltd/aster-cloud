@@ -127,6 +127,27 @@ describe('POST /api/policies/[id]/export/cedar', () => {
     expect(await res.json()).toEqual({ exportable: true, policies: 'permit…', schema: {}, probes: { count: 4, agreed: 4 }, diagnostics: [] });
   });
 
+  // 导出的是已批准版本：别名集在建版本时已按 per-user 授权核对并冻结，与执行路径同一判定按已授权编译（#693）。
+  // aster-api 仅对 HMAC 已验签的调用方采信该标记（aster-api#419）。
+  it('trusts the frozen aliasSet of the approved version: allowStructural=true whenever aliases are sent', async () => {
+    findFirst.mockResolvedValue(owned());
+    findExecutable.mockResolvedValue(executable({ aliasSet: JSON.stringify({ RETURN: ['answer'], IF: ['when'] }) }));
+    exportCedar.mockResolvedValue({ exportable: true, policies: 'permit…', schema: {}, diagnostics: [] });
+    expect((await POST(req(), ctx('p1'))).status).toBe(200);
+    expect(exportCedar.mock.calls[0][0]).toMatchObject({
+      aliasSet: { RETURN: ['answer'], IF: ['when'] }, allowStructural: true });
+  });
+
+  it('omits allowStructural when the version has no aliases (null, empty or malformed aliasSet)', async () => {
+    findFirst.mockResolvedValue(owned());
+    exportCedar.mockResolvedValue({ exportable: false, diagnostics: [] });
+    for (const aliasSet of [null, '{}', '{not json']) {
+      findExecutable.mockResolvedValueOnce(executable({ aliasSet }));
+      expect((await POST(req(), ctx('p1'))).status).toBe(200);
+    }
+    for (const call of exportCedar.mock.calls) expect(call[0]).not.toHaveProperty('allowStructural');
+  });
+
   it('sends the version vocabulary (frozen snapshot for the approved version), omitted when none', async () => {
     findFirst.mockResolvedValue(owned());
     const snapshots = [{ snapshotId: 's1', domain: 'grades', locale: 'de' }];
