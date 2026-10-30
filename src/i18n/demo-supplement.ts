@@ -1002,6 +1002,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         otherDecisionStates: 'Other states: indeterminate/computed and pending approval/escalated.',
       },
       form: {
+        // 团队策略的公开状态只有 owner/admin 可切换（ADR 0016）
+        visibilityOwnerAdminOnly: 'Only team owners and admins can change whether a team policy is public.',
         nameRequired: 'Name is required.',
         // 策略语言与源码识别结果不一致时的提示与显式切换按钮（#627）
         localeMismatch: 'This policy is compiled and executed as {current}, but its source looks like {detected}.',
@@ -2165,6 +2167,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         pendingLabel: '待处置',
       },
       form: {
+        // 团队策略的公开状态只有 owner/admin 可切换（ADR 0016）
+        visibilityOwnerAdminOnly: '只有团队 owner 和 admin 可以更改团队策略的公开状态。',
         nameRequired: '请填写策略名称。',
         localeMismatch: '该策略按 {current} 编译和执行，但源码看起来是 {detected}。',
         localeMismatchSwitch: '将策略语言切换为 {locale}',
@@ -3338,6 +3342,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         pendingLabel: 'Ausstehend',
       },
       form: {
+        // 团队策略的公开状态只有 owner/admin 可切换（ADR 0016）
+        visibilityOwnerAdminOnly: 'Nur Team-Owner und -Admins können ändern, ob eine Team-Richtlinie öffentlich ist.',
         nameRequired: 'Ein Name ist erforderlich.',
         localeMismatch: 'Diese Policy wird als {current} kompiliert und ausgeführt, der Quelltext sieht jedoch nach {detected} aus.',
         localeMismatchSwitch: 'Policy-Sprache auf {locale} umstellen',
@@ -4498,6 +4504,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         pendingLabel: 'लंबित',
       },
       form: {
+        // 团队策略的公开状态只有 owner/admin 可切换（ADR 0016）
+        visibilityOwnerAdminOnly: 'केवल टीम के owner और admin ही बदल सकते हैं कि टीम नीति सार्वजनिक है या नहीं।',
         nameRequired: 'नाम आवश्यक है।',
         localeMismatch: 'यह नीति {current} के रूप में संकलित और निष्पादित होती है, लेकिन इसका स्रोत {detected} जैसा दिखता है।',
         localeMismatchSwitch: 'नीति की भाषा {locale} पर बदलें',

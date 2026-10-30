@@ -25,6 +25,8 @@ export const TeamPermission = {
   POLICY_EXECUTE: 'policy.execute',
   // 批准 / 驳回团队策略的待审批版本（另叠加四眼原则：版本作者不能审批自己的版本）。
   POLICY_APPROVE: 'policy.approve',
+  // 切换策略公开状态（isPublic）：公开会把团队策略源码与执行入口暴露给全平台，只给 owner/admin。
+  POLICY_PUBLISH: 'policy.publish',
   INVITATION_VIEW: 'invitation.view',
   INVITATION_CREATE: 'invitation.create',
   INVITATION_REVOKE: 'invitation.revoke',
@@ -53,6 +55,7 @@ export const ROLE_PERMISSIONS: Record<string, TeamPermissionType[]> = {
     TeamPermission.POLICY_DELETE,
     TeamPermission.POLICY_EXECUTE,
     TeamPermission.POLICY_APPROVE,
+    TeamPermission.POLICY_PUBLISH,
     TeamPermission.INVITATION_VIEW,
     TeamPermission.INVITATION_CREATE,
     TeamPermission.INVITATION_REVOKE,

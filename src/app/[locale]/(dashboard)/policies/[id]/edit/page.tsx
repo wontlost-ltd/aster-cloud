@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import { redirect, notFound } from 'next/navigation';
 import { getSession } from '@/lib/auth';
-import { loadPolicyForAction } from '@/lib/policy-access';
+import { authorizePolicyAction, loadPolicyForAction } from '@/lib/policy-access';
 import { db, policyVersions } from '@/lib/prisma';
 import { eq, and } from 'drizzle-orm';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
@@ -39,6 +39,10 @@ export default async function EditPolicyPage({ params }: PageProps) {
         ownerId: access.policy.userId,
       }
     : null;
+  // 切换公开状态需要 publish（团队策略 owner/admin），member 编辑时复选框只读
+  const canPublish = access.ok
+    ? (await authorizePolicyAction({ userId: session.user.id }, access.policy, 'publish')).allowed
+    : false;
 
   if (!policyData) {
     notFound();
@@ -123,6 +127,7 @@ export default async function EditPolicyPage({ params }: PageProps) {
       locale={locale}
       policyCnlLocale={policyCnlLocale}
       allowStructuralAliases={allowStructuralAliases}
+      visibilityLocked={!canPublish}
     />
   );
 }

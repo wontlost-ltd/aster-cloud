@@ -22,7 +22,7 @@ import { hasStructuralAliases } from '@/lib/policy-alias-shared';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { softDeletePolicy } from '@/lib/policy-lifecycle';
 import { invalidatePolicyCache } from '@/lib/cache';
-import { loadPolicyForAction, policyAccessDeniedResponse } from '@/lib/policy-access';
+import { authorizeGroupPlacement, authorizePolicyAction, loadPolicyForAction, policyAccessDeniedResponse } from '@/lib/policy-access';
 import { parseCompileLocale } from '@/lib/cnl-locale';
 
 
@@ -135,6 +135,11 @@ export async function PUT(req: Request, { params }: RouteParams) {
     const access = await loadPolicyForAction(id, { userId: session.user.id }, 'update');
     if (!access.ok) return policyAccessDeniedResponse(access.decision);
     const existingPolicy = access.policy;
+    // 切换公开状态会把团队策略暴露到团队之外：团队策略要求 owner/admin（publish），member 只能做普通编辑
+    if (isPublic !== undefined && Boolean(isPublic) !== existingPolicy.isPublic) {
+      const publish = await authorizePolicyAction({ userId: session.user.id }, existingPolicy, 'publish');
+      if (!publish.allowed) return policyAccessDeniedResponse(publish);
+    }
 
     // 检查策略是否被冻结（按策略所有者的套餐）
     const freezeInfo = await isPolicyFrozen(existingPolicy.userId, id);
@@ -236,9 +241,10 @@ export async function PUT(req: Request, { params }: RouteParams) {
           eq(policyGroups.id, groupId),
           eq(policyGroups.userId, session.user.id)
         ),
-        columns: { id: true },
+        columns: { id: true, teamId: true },
       });
-      if (!targetGroup) {
+      // 他人创建的团队策略不能挪进调用者的个人私有分组（ADR 0016）
+      if (!targetGroup || !(await authorizeGroupPlacement({ userId: session.user.id }, existingPolicy, targetGroup))) {
         return NextResponse.json({ error: 'Group not found' }, { status: 404 });
       }
     }

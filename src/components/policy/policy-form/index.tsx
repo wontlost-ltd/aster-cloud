@@ -185,6 +185,8 @@ export interface PolicyFormProps {
   breadcrumbs: Array<{ label: string; href?: string }>;
   /** Whether this user may configure structural keyword aliases. */
   allowStructuralAliases?: boolean;
+  /** 当前用户不能切换公开状态（团队策略只有 owner/admin 可以，ADR 0016）。 */
+  visibilityLocked?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -204,6 +206,7 @@ export function PolicyForm({
   detailHrefFor,
   breadcrumbs,
   allowStructuralAliases = false,
+  visibilityLocked = false,
 }: PolicyFormProps) {
   const router = useRouter();
   const t = useTranslations('policies.form');
@@ -854,6 +857,7 @@ export function PolicyForm({
                 onDescriptionChange={setDescription}
                 onGroupIdChange={setGroupId}
                 onIsPublicChange={setIsPublic}
+                visibilityLocked={visibilityLocked}
                 nameError={nameError}
                 aliasSet={aliasSet}
                 reservedSets={reservedSets}

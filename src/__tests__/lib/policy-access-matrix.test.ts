@@ -21,10 +21,10 @@ type Cell = 'allow' | 403 | 404;
 
 // 团队策略：行 = 角色，列 = 动作；调用者不是创建者。
 const TEAM_MATRIX: Record<TeamRole, Record<PolicyAction, Cell>> = {
-  owner: { view: 'allow', execute: 'allow', update: 'allow', share: 'allow', delete: 'allow', approve: 'allow', whatif: 403 },
-  admin: { view: 'allow', execute: 'allow', update: 'allow', share: 'allow', delete: 'allow', approve: 'allow', whatif: 403 },
-  member: { view: 'allow', execute: 'allow', update: 'allow', share: 'allow', delete: 403, approve: 403, whatif: 403 },
-  viewer: { view: 'allow', execute: 403, update: 403, share: 403, delete: 403, approve: 403, whatif: 403 },
+  owner: { view: 'allow', execute: 'allow', update: 'allow', share: 'allow', delete: 'allow', approve: 'allow', publish: 'allow', whatif: 403 },
+  admin: { view: 'allow', execute: 'allow', update: 'allow', share: 'allow', delete: 'allow', approve: 'allow', publish: 'allow', whatif: 403 },
+  member: { view: 'allow', execute: 'allow', update: 'allow', share: 'allow', delete: 403, approve: 403, publish: 403, whatif: 403 },
+  viewer: { view: 'allow', execute: 403, update: 403, share: 403, delete: 403, approve: 403, publish: 403, whatif: 403 },
 };
 
 function cellOf(d: ReturnType<typeof decidePolicyAccess>): Cell {
@@ -69,7 +69,7 @@ describe('团队策略：创建者身份不放行（#670）', () => {
   it('创建者被降为 viewer 后只剩查看', () => {
     const caps = policyCapabilities({ actorId: CREATOR, policy: teamPolicy, teamRole: 'viewer' });
     expect(caps).toEqual({
-      view: true, execute: false, update: false, share: false, delete: false, approve: false, whatif: false,
+      view: true, execute: false, update: false, share: false, delete: false, approve: false, publish: false, whatif: false,
     });
   });
 
@@ -136,6 +136,10 @@ describe('团队作用域 API key（#671）', () => {
 describe('角色权限集合', () => {
   it('审批权限只给 owner / admin', () => {
     expect(rolesWithPermission(TeamPermission.POLICY_APPROVE)).toEqual(['admin', 'owner']);
+  });
+
+  it('公开状态切换只给 owner / admin（审查 M2）', () => {
+    expect(rolesWithPermission(TeamPermission.POLICY_PUBLISH)).toEqual(['admin', 'owner']);
   });
 
   it('查看权限覆盖全部四个角色', () => {

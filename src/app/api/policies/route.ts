@@ -138,6 +138,13 @@ export async function POST(req: Request) {
           { status: perm.status ?? 403 },
         );
       }
+      // 直接以公开状态创建团队策略同样会暴露到团队之外：要求 owner/admin（与编辑时切换公开同一权限）
+      if (isPublic) {
+        const publish = await checkTeamPermission(session.user.id, teamId, TeamPermission.POLICY_PUBLISH);
+        if (!publish.allowed) {
+          return NextResponse.json({ error: publish.error, code: publish.code }, { status: publish.status });
+        }
+      }
     }
 
     // 如果指定了分组，验证分组存在且用户有权限

@@ -44,6 +44,8 @@ interface EditPolicyContentProps {
   /** 策略的 CNL 语言：服务端用与执行端相同的 resolveStoredVersionLocale 解析，见 policy-form/policy-cnl-locale。 */
   policyCnlLocale: string | null;
   allowStructuralAliases: boolean;
+  /** 当前用户不能切换公开状态（团队策略只有 owner/admin 可以） */
+  visibilityLocked?: boolean;
 }
 
 export function EditPolicyContent({
@@ -52,6 +54,7 @@ export function EditPolicyContent({
   locale,
   policyCnlLocale,
   allowStructuralAliases,
+  visibilityLocked = false,
 }: EditPolicyContentProps) {
   const tPolicies = useTranslations('policies');
 
@@ -147,6 +150,7 @@ export function EditPolicyContent({
       subtitle={t.form.editSubtitle}
       onSave={handleSave}
       allowStructuralAliases={allowStructuralAliases}
+      visibilityLocked={visibilityLocked}
       cancelHref={`/${locale}/policies/${policy.id}`}
       detailHrefFor={(id) => `/${locale}/policies/${id}`}
       breadcrumbs={[

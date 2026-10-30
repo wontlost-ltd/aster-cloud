@@ -23,11 +23,12 @@ import { hasPermission, TeamPermission, type TeamPermissionType, type TeamRole }
  *   - share：管理团队分享与复核人（ADR 0037 §15）
  *   - delete：移入回收站、从回收站恢复、永久删除、废弃 / 归档版本
  *   - approve：批准 / 驳回待审批版本（另叠加四眼原则，见 version-approval-rules）
+ *   - publish：切换公开状态（isPublic）——会把策略暴露到团队之外，只给 owner/admin
  *   - whatif：发起 / 查看 What-If 批次
  */
-export type PolicyAction = 'view' | 'execute' | 'update' | 'share' | 'delete' | 'approve' | 'whatif';
+export type PolicyAction = 'view' | 'execute' | 'update' | 'share' | 'delete' | 'approve' | 'publish' | 'whatif';
 
-export const POLICY_ACTIONS: readonly PolicyAction[] = ['view', 'execute', 'update', 'share', 'delete', 'approve', 'whatif'];
+export const POLICY_ACTIONS: readonly PolicyAction[] = ['view', 'execute', 'update', 'share', 'delete', 'approve', 'publish', 'whatif'];
 
 export const POLICY_ACTION_PERMISSION: Record<PolicyAction, TeamPermissionType> = {
   view: TeamPermission.POLICY_VIEW,
@@ -36,6 +37,7 @@ export const POLICY_ACTION_PERMISSION: Record<PolicyAction, TeamPermissionType> 
   share: TeamPermission.POLICY_UPDATE,
   delete: TeamPermission.POLICY_DELETE,
   approve: TeamPermission.POLICY_APPROVE,
+  publish: TeamPermission.POLICY_PUBLISH,
   whatif: TeamPermission.POLICY_EXECUTE,
 };
 
