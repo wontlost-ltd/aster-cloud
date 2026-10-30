@@ -290,7 +290,7 @@ describe('SOX guard — adversarial inputs', () => {
       expect(res.status).toBe(403);
       const data = await res.json();
       expect(data.error).toBe('invite_reviewer_required');
-      expect(data.cta?.href).toBe('/teams/t1/invite');
+      expect(data.cta?.href).toBe('/teams/t1/members');
     });
 
     it('count returns 100 (large team) → segregation_of_duties path on self-approve', async () => {
@@ -345,7 +345,7 @@ describe('SOX guard — adversarial inputs', () => {
         expect(res.status).toBe(403);
         const data = await res.json();
         expect(data.error).toBe('invite_reviewer_required');
-        expect(data.cta?.href).toBe('/teams/t-x/invite');
+        expect(data.cta?.href).toBe('/teams/t-x/members');
       }
     );
 

@@ -133,7 +133,7 @@ describe('POST /api/v1/policies/[id]/versions/[version]/approve — SOX 守护',
     expect(res.status).toBe(403);
     const data = await res.json();
     expect(data.error).toBe('invite_reviewer_required');
-    expect(data.cta?.href).toBe('/teams/t1/invite');
+    expect(data.cta?.href).toBe('/teams/t1/members');
     expect(mockApprove).not.toHaveBeenCalled();
   });
 

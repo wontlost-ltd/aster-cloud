@@ -56,6 +56,10 @@ function useLabels() {
     guardApprovalDecided: t.raw('guardApprovalDecided') as string,
     guardOutcomeApproved: t('guardOutcomeApproved'),
     guardOutcomeRejected: t('guardOutcomeRejected'),
+    versionSubmitted: t.raw('versionSubmitted') as string,
+    versionApproved: t.raw('versionApproved') as string,
+    versionRejected: t.raw('versionRejected') as string,
+    versionRejectedNoComment: t.raw('versionRejectedNoComment') as string,
     permissionView: t('permissionView'),
     permissionExecute: t('permissionExecute'),
     timeAgoNow: t('timeAgoNow'),
@@ -141,6 +145,25 @@ export function renderText(
       return {
         text: fillTemplate(labels.guardApprovalDecided, { policyName: d.policyName ?? 'a policy', outcome }),
         href: d.policyId ? `/policies/${d.policyId}/logs` : '/approvals',
+      };
+    }
+    case 'policy.version_submitted': {
+      const d = row.data as { policyName?: string; version?: number };
+      return {
+        text: fillTemplate(labels.versionSubmitted, { policyName: d.policyName ?? 'a policy', version: String(d.version ?? '') }),
+        href: '/approvals',
+      };
+    }
+    case 'policy.version_decided': {
+      const d = row.data as { policyId?: string; policyName?: string; version?: number; outcome?: string; comment?: string };
+      const vars = { policyName: d.policyName ?? 'a policy', version: String(d.version ?? ''), comment: d.comment ?? '' };
+      const template =
+        d.outcome === 'REJECTED'
+          ? d.comment ? labels.versionRejected : labels.versionRejectedNoComment
+          : labels.versionApproved;
+      return {
+        text: fillTemplate(template, vars),
+        href: d.policyId ? `/policies/${d.policyId}/versions` : '/policies',
       };
     }
     default:

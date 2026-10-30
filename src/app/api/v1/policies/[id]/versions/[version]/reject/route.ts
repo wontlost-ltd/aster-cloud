@@ -7,6 +7,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { versionActionErrorResponse } from '@/lib/api/version-action-error';
+import { runAfterResponse } from '@/lib/after-response';
+import { notifyVersionDecided } from '@/lib/version-notifications';
 
 import {
   PolicyAccessDeniedError,
@@ -49,6 +51,10 @@ export async function POST(
       comment: body.comment,
     });
 
+    // 通知版本作者并带驳回理由（#678）
+    const reviewerId = session.user.id;
+    const comment = body.comment;
+    runAfterResponse(() => notifyVersionDecided({ policyId, version, reviewerId, outcome: 'REJECTED', comment }));
     return NextResponse.json({ success: true });
   } catch (error) {
     // 非所有者与「策略不存在」返回同一 404，避免泄露该 policyId 是否存在

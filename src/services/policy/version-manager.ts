@@ -593,7 +593,10 @@ export async function submitForApproval(params: {
   });
 
   if (!targetVersion) {
-    throw new VersionStateError('version_not_submittable', `版本 v${version} 不存在或状态不允许提交审批`);
+    throw new VersionStateError(
+      'version_not_submittable',
+      `Version v${version} does not exist or cannot be submitted for approval in its current status.`,
+    );
   }
 
   await db.update(policyVersions)
@@ -616,7 +619,7 @@ export async function submitForApproval(params: {
  * 审批版本
  */
 function notPendingError(version: number): VersionStateError {
-  return new VersionStateError('version_not_pending', `版本 v${version} 不存在或不在待审批状态`);
+  return new VersionStateError('version_not_pending', `Version v${version} does not exist or is not pending approval.`);
 }
 
 /** 在审批事务内 FOR UPDATE 锁住版本行，返回它是否仍处于待审批状态。 */
@@ -920,17 +923,25 @@ export async function listVersions(policyId: string) {
     },
   });
 
-  // 获取每个版本的审批数量
+  // 获取每个版本的审批数量；被驳回的版本附最近一次驳回理由，作者在版本页看得到（#678）
   const versionsWithCount = await Promise.all(
     versions.map(async (v) => {
       const approvalCount = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(policyApprovals)
         .where(eq(policyApprovals.versionId, v.id));
+      const rejection = v.status === 'REJECTED'
+        ? await db.query.policyApprovals.findFirst({
+            where: and(eq(policyApprovals.versionId, v.id), eq(policyApprovals.decision, 'REJECTED')),
+            orderBy: [desc(policyApprovals.createdAt)],
+            columns: { comment: true },
+          })
+        : undefined;
 
       return {
         ...v,
         _count: { approvals: approvalCount[0]?.count || 0 },
+        rejectionComment: rejection?.comment ?? null,
       };
     })
   );
