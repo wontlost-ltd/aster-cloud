@@ -64,6 +64,11 @@ vi.mock('@/lib/plan-gate-client', () => ({
   invalidatePlanCache: vi.fn(),
 }));
 
+// 新 owner 套餐资格（#677）在 team-transfer-plan.test.ts 单独覆盖；这里一律放行
+vi.mock('@/lib/team-plan', () => ({
+  checkTeamOwnerEligibility: vi.fn(async () => ({ eligible: true })),
+}));
+
 const mockRevokeTeamKeys = vi.mocked(revokeTeamKeys);
 const mockRefreshTeamKeySnapshots = vi.mocked(refreshTeamKeySnapshots);
 const mockInvalidatePlanCache = vi.mocked(invalidatePlanCache);

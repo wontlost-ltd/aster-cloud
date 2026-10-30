@@ -5,6 +5,7 @@ import { eq, and } from 'drizzle-orm';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
 import { refreshTeamKeySnapshots } from '@/lib/api-keys';
 import { invalidatePlanCache } from '@/lib/plan-gate-client';
+import { checkTeamOwnerEligibility } from '@/lib/team-plan';
 import { logSecurityAdminAction } from '@/services/security/security-event-service';
 
 type RouteParams = { params: Promise<{ teamId: string }> };
@@ -47,6 +48,26 @@ export async function POST(req: Request, { params }: RouteParams) {
     // 不能转让给自己
     if (newOwnerId === session.user.id) {
       return NextResponse.json({ error: 'Ownership cannot be transferred to yourself.', code: 'cannot_transfer_to_self' }, { status: 400 });
+    }
+
+    // 转让后团队能力（邀请、团队 key、配额池）立即按新 owner 的套餐计：新 owner 须有团队功能，
+    // 且其套餐的成员上限容得下当前成员数（#677）
+    const eligibility = await checkTeamOwnerEligibility(newOwnerId, teamId);
+    if (!eligibility.eligible) {
+      return NextResponse.json(
+        eligibility.code === 'new_owner_seat_limit'
+          ? {
+              error: `The new owner's plan allows ${eligibility.limit} team member(s); this team has ${eligibility.memberCount}.`,
+              code: eligibility.code,
+              memberCount: eligibility.memberCount,
+              limit: eligibility.limit,
+            }
+          : {
+              error: "The new owner's plan does not include team features. They need a Pro or higher plan before they can own this team.",
+              code: eligibility.code,
+            },
+        { status: 400 }
+      );
     }
 
     // 使用事务更新所有权
