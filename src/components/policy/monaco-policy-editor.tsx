@@ -26,7 +26,7 @@ import { violet, sky, emerald, amber, rose, zinc } from '@aster-cloud/tokens';
 import { useEntryRuleDecorations } from './use-entry-rule-decorations';
 import { extractUseRefs, type UseRef } from '@/lib/aster/modules';
 import type { AsterModuleCatalogEntry } from '@/services/policy/policy-api';
-import { useAsterLSP } from '@/hooks/useAsterLSP';
+import { useAsterLSP, type LspConnectionStatus } from '@/hooks/useAsterLSP';
 import { VocabularyDiagnosticLink } from '@/components/policy/vocabulary-diagnostic-link';
 import { summarizeCoreModule, type EditorCompileModuleSummary } from './core-module-summary';
 
@@ -423,6 +423,13 @@ export function isLspConfigured(host: string | undefined, token: string | undefi
   const isLocal = /^(localhost|127\.0\.0\.1)(:|\/|$)/.test(h);
   return isLocal || Boolean(token?.trim());
 }
+
+/** 需要在状态栏提示的 LSP 会话状态 → diagnostics 文案键；其余状态不提示 */
+const LSP_STATUS_LABEL: Partial<Record<LspConnectionStatus, string>> = {
+  reconnecting: 'lspReconnecting',
+  tooManySessions: 'lspTooManySessions',
+  disconnected: 'lspDisconnected',
+};
 
 export function MonacoPolicyEditor({
   value,
@@ -1184,12 +1191,12 @@ export function MonacoPolicyEditor({
             </span>
           )}
           {/* LSP 断开时字段补全 / 悬停不可用（本地诊断与关键字补全照常），提示用户正在重连 */}
-          {lspEnabled && (lspStatus === 'reconnecting' || lspStatus === 'disconnected') && (
+          {lspEnabled && LSP_STATUS_LABEL[lspStatus] && (
             <span
               data-testid="lsp-status"
               className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
             >
-              {t(lspStatus === 'reconnecting' ? 'lspReconnecting' : 'lspDisconnected')}
+              {t(LSP_STATUS_LABEL[lspStatus])}
             </span>
           )}
         </div>

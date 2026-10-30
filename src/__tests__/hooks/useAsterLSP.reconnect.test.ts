@@ -216,6 +216,34 @@ describe('useAsterLSP 断线重连', () => {
     expect(result.current.status).toBe('connected');
   });
 
+  // #665 审查 M2：同一 IP 会话数超限时不能持续握手，挤掉其他标签页的重连
+  it('★会话数超限（4429 Too many sessions）：按 retry-after 等待，状态为 tooManySessions', async () => {
+    const { result } = renderLsp();
+    await tick();
+    FakeWebSocket.instances[0]!.serverClose(LSP_RATE_LIMITED_CLOSE_CODE, 'Too many sessions from this client; retry-after=30');
+    await tick();
+    expect(result.current.status).toBe('tooManySessions');
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+    await tick(29_000);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    await tick(1_100);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    await tick();
+    expect(result.current.status).toBe('connected');
+  });
+
+  it('★4429 不带 retry-after（旧网关）：直接退到退避上限 30s，不持续握手', async () => {
+    const { result } = renderLsp();
+    await tick();
+    FakeWebSocket.instances[0]!.serverClose(LSP_RATE_LIMITED_CLOSE_CODE, 'Too many sessions from this client');
+    await tick();
+    expect(result.current.status).toBe('tooManySessions');
+    await tick(29_000);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    await tick(1_100);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+  });
+
   it('★页面隐藏时不重连；重新可见时立即重试', async () => {
     const { result } = renderLsp();
     await tick();

@@ -99,9 +99,10 @@ export interface UseAsterLSPOptions {
 
 /**
  * LSP 会话状态：idle 未连接（未启用或本端已断开）、connecting 首次连接中、connected 已初始化、
- * reconnecting 会话丢失后正在 / 等待重连、disconnected 已断开且暂停重连（页面隐藏、离线或已放弃）。
+ * reconnecting 会话丢失后正在 / 等待重连、tooManySessions 网关因同一网络会话过多拒绝（按 retry-after 等待后重连）、
+ * disconnected 已断开且暂停重连（页面隐藏、离线或已放弃）。
  */
-export type LspConnectionStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
+export type LspConnectionStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'tooManySessions' | 'disconnected';
 
 export interface UseAsterLSPResult {
   /** Whether connected to LSP server */
@@ -1097,7 +1098,12 @@ export function useAsterLSP({
   }));
 
   /** 当前会话已失效（失败或被服务端关闭）：清理并按退避安排重连。 */
-  const sessionFailed = useCallback((ws: WebSocket, retryAfterMs: number | null, message: string) => {
+  const sessionFailed = useCallback((
+    ws: WebSocket,
+    retryAfterMs: number | null,
+    message: string,
+    waitingStatus: LspConnectionStatus = 'reconnecting',
+  ) => {
     if (wsRef.current !== ws) return;
     wsRef.current = null;
     ws.onclose = null;
@@ -1112,7 +1118,7 @@ export function useAsterLSP({
       setStatus('disconnected');
       return;
     }
-    setStatus('reconnecting');
+    setStatus(waitingStatus);
     scheduler.failed(retryAfterMs);
   }, [autoReconnect, scheduler]);
 
@@ -1130,7 +1136,7 @@ export function useAsterLSP({
     }
 
     scheduler.cancel();
-    setStatus((prev) => (prev === 'reconnecting' || prev === 'disconnected' ? 'reconnecting' : 'connecting'));
+    setStatus((prev) => (prev === 'idle' || prev === 'connecting' ? 'connecting' : 'reconnecting'));
     setConnecting(true);
     setError(null);
 
@@ -1145,8 +1151,11 @@ export function useAsterLSP({
       if (!suppressErrors) {
         console.log('[LSP] WebSocket closed:', event.code, event.reason);
       }
-      const retryAfterMs = event.code === LSP_RATE_LIMITED_CLOSE_CODE ? parseRetryAfter(event.reason) : null;
-      sessionFailed(ws, retryAfterMs, event.reason || 'Connection closed');
+      // 网关限流（4429）：按 retry-after 等待；旧网关不带 retry-after 时直接退到退避上限，不持续消耗握手预算
+      const limited = event.code === LSP_RATE_LIMITED_CLOSE_CODE;
+      const retryAfterMs = limited ? parseRetryAfter(event.reason) ?? maxReconnectDelay : null;
+      const tooManySessions = limited && /too many sessions/i.test(event.reason);
+      sessionFailed(ws, retryAfterMs, event.reason || 'Connection closed', tooManySessions ? 'tooManySessions' : 'reconnecting');
     };
 
     try {
@@ -1175,7 +1184,7 @@ export function useAsterLSP({
     } finally {
       if (wsRef.current === ws || wsRef.current === null) setConnecting(false);
     }
-  }, [getWebSocketUrl, handleMessage, initializeLSP, sessionFailed, handshakeBudget, scheduler, suppressErrors]);
+  }, [getWebSocketUrl, handleMessage, initializeLSP, sessionFailed, handshakeBudget, scheduler, maxReconnectDelay, suppressErrors]);
   useEffect(() => {
     scheduler.setConnect(() => { void connect(); });
   }, [scheduler, connect]);

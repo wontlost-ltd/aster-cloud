@@ -307,6 +307,11 @@ describe('编辑器接线：LSP 断开 / 重连提示', () => {
     expect(await screen.findByText('lspDisconnected')).toBeDefined();
   });
 
+  it('★同一网络打开的编辑器过多：状态栏显示专门提示', async () => {
+    withLsp('tooManySessions');
+    expect(await screen.findByText('lspTooManySessions')).toBeDefined();
+  });
+
   it.each(['connected', 'connecting', 'idle'])('%s：不显示断开提示', async (status) => {
     withLsp(status);
     await waitFor(() => expect(lspCalls.length).toBeGreaterThan(0));
