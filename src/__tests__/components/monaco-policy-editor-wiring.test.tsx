@@ -88,10 +88,13 @@ const fakeEditor = {
   layout: vi.fn(),
 };
 
+const editorOptions = vi.hoisted(() => ({ current: undefined as Record<string, unknown> | undefined }));
+
 // @monaco-editor/react 的 Editor：挂载时同步回调 onMount，把探针交给组件
 vi.mock('@monaco-editor/react', () => ({
   __esModule: true,
-  default: ({ onMount }: { onMount?: (e: unknown, m: unknown) => void }) => {
+  default: ({ onMount, options }: { onMount?: (e: unknown, m: unknown) => void; options?: Record<string, unknown> }) => {
+    editorOptions.current = options;
     onMount?.(fakeEditor, fakeMonaco);
     return null;
   },
@@ -201,6 +204,11 @@ describe('编辑器接线：成员访问位置让位给 LSP', () => {
 });
 
 describe('编辑器接线：LSP 参数下发', () => {
+  it('★补全采用 replace 模式（LSP InsertReplaceEdit：`d.ag|e` 选 age 得 age 而非 agee）', () => {
+    render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" />);
+    expect((editorOptions.current?.suggest as Record<string, unknown>).insertMode).toBe('replace');
+  });
+
   it('★tenantId 与领域词汇成对下发（回到 #162 缺陷时变红）', async () => {
     process.env.NEXT_PUBLIC_LSP_HOST = 'lsp.example.test';
     render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" domain="insurance.auto" />);
