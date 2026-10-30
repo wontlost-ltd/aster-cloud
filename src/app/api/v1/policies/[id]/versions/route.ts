@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
+import { internalErrorResponse } from '@/lib/api/version-action-error';
 
 import {
   createVersion,
@@ -200,10 +201,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (aliasInvalid) return aliasInvalid;
     const vocabularyInvalid = vocabularyScopeInvalidResponse(error);
     if (vocabularyInvalid) return vocabularyInvalid;
-    console.error('[Versions POST] Error:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Could not create version.' },
-      { status: 500 }
-    );
+    return internalErrorResponse('Versions POST', error, 'Could not create version.');
   }
 }

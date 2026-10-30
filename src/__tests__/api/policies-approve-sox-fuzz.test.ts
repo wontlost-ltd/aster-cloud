@@ -46,6 +46,7 @@ vi.mock('@/lib/prisma', () => ({
   policyVersions: {},
 }));
 
+import { VersionStateError } from '@/services/policy/version-state-error';
 import { POST } from '@/app/api/v1/policies/[id]/versions/[version]/approve/route';
 import { auth } from '@/auth';
 import { approveVersion } from '@/services/policy/version-manager';
@@ -219,27 +220,45 @@ describe('SOX guard — adversarial inputs', () => {
       // (DB inconsistency: session valid but user row missing → graceful fallthrough)
     });
 
-    it('approveVersion throws → 400 approve_failed with message', async () => {
+    it('approveVersion 抛版本状态错误 → 400 approve_failed，带 code 与人读 message', async () => {
       setupMocks({ user: { plan: 'free', priceLockedAt: null, legacyTier: null }, versionAuthor: 'u1' });
-      mockApprove.mockRejectedValueOnce(new Error('version not in PENDING_APPROVAL'));
+      mockApprove.mockRejectedValueOnce(
+        new VersionStateError('version_not_pending', 'version not in PENDING_APPROVAL'),
+      );
 
       const res = await POST(makeRequest(), { params: params() });
       expect(res.status).toBe(400);
       const data = await res.json();
       expect(data.error).toBe('approve_failed');
+      expect(data.code).toBe('version_not_pending');
       expect(data.message).toContain('PENDING_APPROVAL');
     });
 
-    it('approveVersion throws non-Error string → 400 with default message', async () => {
+    it('approveVersion 抛未识别异常 → 500 internal_error，不回传原始消息（#662）', async () => {
+      setupMocks({ user: { plan: 'free', priceLockedAt: null, legacyTier: null }, versionAuthor: 'u1' });
+      mockApprove.mockRejectedValueOnce(new Error('duplicate key value violates unique constraint "pv_pkey"'));
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const res = await POST(makeRequest(), { params: params() });
+      const text = await res.text();
+      consoleError.mockRestore();
+      expect(res.status).toBe(500);
+      expect(text).not.toContain('pv_pkey');
+      expect(JSON.parse(text).error).toMatchObject({ code: 'internal_error', message: 'Could not approve version.' });
+    });
+
+    it('approveVersion throws non-Error string → 500 with default message', async () => {
       setupMocks({ user: { plan: 'free', priceLockedAt: null, legacyTier: null }, versionAuthor: 'u1' });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       mockApprove.mockRejectedValueOnce('plain string error' as any);
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       const res = await POST(makeRequest(), { params: params() });
-      expect(res.status).toBe(400);
+      consoleError.mockRestore();
+      expect(res.status).toBe(500);
       const data = await res.json();
-      expect(data.error).toBe('approve_failed');
-      expect(data.message).toBe('Could not approve version.');
+      expect(data.error.code).toBe('internal_error');
+      expect(data.error.message).toBe('Could not approve version.');
     });
   });
 

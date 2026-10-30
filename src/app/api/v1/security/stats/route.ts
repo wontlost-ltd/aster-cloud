@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
+import { internalErrorResponse } from '@/lib/api/version-action-error';
 
 import { getSecurityEventStats } from '@/services/security/security-event-service';
 
@@ -47,10 +48,6 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('[Security Stats API] Query failed:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Could not load security statistics.' },
-      { status: 500 }
-    );
+    return internalErrorResponse('Security Stats API', error, 'Could not load security statistics.');
   }
 }

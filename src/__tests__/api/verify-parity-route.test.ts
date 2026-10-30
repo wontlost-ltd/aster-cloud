@@ -147,8 +147,13 @@ describe('POST verify-parity', () => {
     runParityForExecutionNow.mockRejectedValue(new Error('launcher down'));
     const resp = await call();
     expect(resp.status).toBe(500);
-    const body = await resp.json() as { error: string };
+    const text = await resp.text();
+    // 原始错误只进日志，响应只带通用文案与 requestId（#662）。
+    expect(text).not.toContain('launcher down');
+    const body = JSON.parse(text) as { error: string; code: string; requestId: string };
     expect(body.error).toContain('Parity verification failed');
+    expect(body.code).toBe('internal_error');
+    expect(body.requestId).toBe(resp.headers.get('x-request-id'));
   });
 
   it('aliasSetJson 为对象 → 传为 aliasSet', async () => {

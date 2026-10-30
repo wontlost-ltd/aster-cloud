@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
+import { versionActionErrorResponse } from '@/lib/api/version-action-error';
 
 import {
   PolicyAccessDeniedError,
@@ -43,9 +44,6 @@ export async function POST(
     if (error instanceof PolicyAccessDeniedError) {
       return NextResponse.json({ error: 'Policy not found.', code: 'policy_not_found' }, { status: 404 });
     }
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Could not submit version for approval.' },
-      { status: 400 }
-    );
+    return versionActionErrorResponse('Submit', error, 'Could not submit version for approval.');
   }
 }

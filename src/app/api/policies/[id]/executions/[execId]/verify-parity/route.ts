@@ -133,10 +133,12 @@ export async function POST(_req: Request, { params }: RouteParams) {
     // ★persisted=false（回写 execution 行失败）→ 明示客户端（Codex 抓：否则 200 但徽章不更新，误导）。
     return NextResponse.json({ executionId: exec.id, parity: result, persisted });
   } catch (err) {
-    console.error('[verify-parity] handler failed', err);
+    // 原始错误只进服务端日志（以 requestId 关联），不回传客户端（#662）。
+    const requestId = crypto.randomUUID();
+    console.error(`[verify-parity] handler failed requestId=${requestId}`, err);
     return NextResponse.json(
-      { error: 'Parity verification failed', detail: err instanceof Error ? err.message : String(err) },
-      { status: 500 },
+      { error: 'Parity verification failed', code: 'internal_error', requestId },
+      { status: 500, headers: { 'x-request-id': requestId } },
     );
   }
 }
