@@ -1,5 +1,5 @@
-import { db, users, usageRecords, policies } from '@/lib/prisma';
-import { eq, and, sql, isNull } from 'drizzle-orm';
+import { db, users, usageRecords, policies, teamMembers } from '@/lib/prisma';
+import { eq, and, sql, isNull, inArray } from 'drizzle-orm';
 import {
   PLANS,
   getPlanConfig,
@@ -269,10 +269,49 @@ export async function getLexiconQuota(
   return { maxTerms: ctx.maxTerms, bulkAsync: ctx.bulkAsync, allowed: ctx.allowed };
 }
 
+type LexiconCapabilities = { maxTerms: number; bulkAsync: boolean; allowed: boolean };
+
+function lexiconCapabilities(plan: PlanType): LexiconCapabilities {
+  const capabilities = getPlanConfig(plan).capabilities as PlanCapabilities;
+  const maxTerms = capabilities.customLexiconMaxTerms;
+  return {
+    maxTerms,
+    bulkAsync: capabilities.customLexiconBulkUploadAsync,
+    allowed: capabilities.customLexicon && (maxTerms === -1 || maxTerms > 0),
+  };
+}
+
+/** 配额更大者优先：不可用 < 有限额度（越大越好）< 不限（-1）。 */
+function lexiconRank(c: LexiconCapabilities): number {
+  if (!c.allowed) return -1;
+  return c.maxTerms === -1 ? Number.POSITIVE_INFINITY : c.maxTerms;
+}
+
+/**
+ * 用户所在团队（owner / admin / member；viewer 不创作策略）的 owner 套餐对应的词汇能力。
+ * 词汇按作者存储、团队策略编译与审批冻结都用作者词汇，所以团队里的 Free 成员要按团队 owner 的
+ * 套餐获得词汇能力（#672，与团队 key 按 owner 套餐计的 ADR 0015 §5 同口径）。
+ * owner 的试用过期按 Free 计（只读判定，不在这里写回 owner 的 plan）。
+ */
+async function teamLexiconCapabilities(userId: string): Promise<LexiconCapabilities[]> {
+  const memberships = await db.query.teamMembers.findMany({
+    where: and(eq(teamMembers.userId, userId), inArray(teamMembers.role, ['owner', 'admin', 'member'])),
+    columns: {},
+    with: { team: { columns: {}, with: { owner: { columns: { plan: true, trialEndsAt: true } } } } },
+  });
+  return memberships
+    .map((m) => m.team?.owner)
+    .filter((owner): owner is NonNullable<typeof owner> => Boolean(owner))
+    .map((owner) => lexiconCapabilities(resolvePlan(normalizePlan(owner.plan), owner.trialEndsAt).plan));
+}
+
 /**
  * 返回 quota + 触发上下文(当前 plan、是否刚从 trial 降级)。前端 Pro-gate /
  * 降级横幅需要这些信息以解释"为什么"——只关心额度数值的调用方继续用
  * getLexiconQuota。
+ *
+ * 额度取「本人套餐」与「所在团队 owner 套餐」中更大者；`plan` / `downgraded` 仍描述本人套餐，
+ * `viaTeam` 表示额度来自团队。
  */
 export async function getLexiconQuotaWithContext(userId: string): Promise<{
   maxTerms: number;
@@ -281,6 +320,7 @@ export async function getLexiconQuotaWithContext(userId: string): Promise<{
   plan: PlanType;
   downgraded: boolean;
   trialEndsAt: Date | null;
+  viaTeam: boolean;
 }> {
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
@@ -295,6 +335,7 @@ export async function getLexiconQuotaWithContext(userId: string): Promise<{
       plan: 'free',
       downgraded: false,
       trialEndsAt: null,
+      viaTeam: false,
     };
   }
 
@@ -308,17 +349,19 @@ export async function getLexiconQuotaWithContext(userId: string): Promise<{
       .where(eq(users.id, userId));
   }
 
-  const capabilities = getPlanConfig(effectivePlan).capabilities as PlanCapabilities;
-  const maxTerms = capabilities.customLexiconMaxTerms;
-  const bulkAsync = capabilities.customLexiconBulkUploadAsync;
-  const allowed = capabilities.customLexicon && (maxTerms === -1 || maxTerms > 0);
+  const personal = lexiconCapabilities(effectivePlan);
+  let best = personal;
+  if (personal.maxTerms !== -1) {
+    for (const viaTeam of await teamLexiconCapabilities(userId)) {
+      if (lexiconRank(viaTeam) > lexiconRank(best)) best = viaTeam;
+    }
+  }
 
   return {
-    maxTerms,
-    bulkAsync,
-    allowed,
+    ...best,
     plan: effectivePlan,
     downgraded,
     trialEndsAt: user.trialEndsAt,
+    viaTeam: best !== personal,
   };
 }

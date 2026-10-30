@@ -102,6 +102,8 @@ interface PolicyDetailContentProps {
   capabilities?: Pick<PolicyCapabilities, 'execute' | 'update' | 'delete'>;
   /** What-If 属主限定（ADR 0034 §4.3）：调用者不能运行时面板显示说明 */
   whatIfOwnerOnly?: boolean;
+  /** 所属团队（团队策略）；个人策略为 null。状态卡据此标出团队，区分个人策略与团队策略（#681）。 */
+  team?: { id: string; label: string } | null;
   translations: Translations;
   locale: string;
 }
@@ -118,6 +120,7 @@ export function PolicyDetailContent({
   sharingEnabled = false,
   capabilities = ALL_ACTIONS,
   whatIfOwnerOnly = false,
+  team = null,
   translations: t,
   locale,
 }: PolicyDetailContentProps) {
@@ -296,6 +299,14 @@ export function PolicyDetailContent({
               <span className="inline-flex items-center rounded-full bg-bg-muted px-2.5 py-0.5 text-sm font-medium text-fg">
                 {t.private}
               </span>
+            )}
+            {team && (
+              <Link
+                href={`/${locale}/teams/${team.id}`}
+                className="ml-2 inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-sm font-medium text-blue-800 hover:underline"
+              >
+                {team.label}
+              </Link>
             )}
           </dd>
         </div>

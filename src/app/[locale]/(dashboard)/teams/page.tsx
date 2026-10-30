@@ -20,7 +20,10 @@ export default async function TeamsPage() {
     redirect('/login');
   }
 
-  const hasAccess = await hasFeatureAccess(session.user.id, 'teamFeatures');
+  // 个人套餐只决定能否**新建**团队；已加入的团队按团队 owner 的套餐运作（ADR 0015 §5），
+  // 所以 Free 成员照样要看到自己所在的团队与待处理邀请（#672：此前整页换成升级提示，
+  // 邀请通知链接到 /teams 时是死路）。
+  const canCreateTeam = await hasFeatureAccess(session.user.id, 'teamFeatures');
 
   let teamsResult: {
     id: string;
@@ -32,68 +35,66 @@ export default async function TeamsPage() {
     createdAt: string;
   }[] = [];
 
-  if (hasAccess) {
-    const userTeamMemberships = await db.query.teamMembers.findMany({
-      where: eq(teamMembers.userId, session.user.id),
-      columns: { teamId: true, role: true },
+  const userTeamMemberships = await db.query.teamMembers.findMany({
+    where: eq(teamMembers.userId, session.user.id),
+    columns: { teamId: true, role: true },
+  });
+
+  if (userTeamMemberships.length > 0) {
+    const teamIds = userTeamMemberships.map((m) => m.teamId);
+    const teamsData = await db.query.teams.findMany({
+      where: inArray(teams.id, teamIds),
+      orderBy: desc(teams.updatedAt),
     });
 
-    if (userTeamMemberships.length > 0) {
-      const teamIds = userTeamMemberships.map((m) => m.teamId);
-      const teamsData = await db.query.teams.findMany({
-        where: inArray(teams.id, teamIds),
-        orderBy: desc(teams.updatedAt),
-      });
+    // Two GROUP BY queries replace the previous 2 × N pattern.
+    const teamIdList = teamsData.map((t) => t.id);
+    const [memberRows, policyRows] = await Promise.all([
+      db
+        .select({
+          teamId: teamMembers.teamId,
+          c: sql<number>`count(*)::int`,
+        })
+        .from(teamMembers)
+        .where(inArray(teamMembers.teamId, teamIdList))
+        .groupBy(teamMembers.teamId),
+      db
+        .select({
+          teamId: policies.teamId,
+          c: sql<number>`count(*)::int`,
+        })
+        .from(policies)
+        // 回收站里的策略不计入（与团队策略列表同一口径，#674）
+        .where(and(inArray(policies.teamId, teamIdList), isNull(policies.deletedAt)))
+        .groupBy(policies.teamId),
+    ]);
+    const memberCountByTeam = new Map<string, number>(
+      memberRows.map((r) => [r.teamId, r.c]),
+    );
+    const policyCountByTeam = new Map<string, number>(
+      policyRows
+        .filter((r): r is { teamId: string; c: number } => r.teamId !== null)
+        .map((r) => [r.teamId, r.c]),
+    );
 
-      // Two GROUP BY queries replace the previous 2 × N pattern.
-      const teamIdList = teamsData.map((t) => t.id);
-      const [memberRows, policyRows] = await Promise.all([
-        db
-          .select({
-            teamId: teamMembers.teamId,
-            c: sql<number>`count(*)::int`,
-          })
-          .from(teamMembers)
-          .where(inArray(teamMembers.teamId, teamIdList))
-          .groupBy(teamMembers.teamId),
-        db
-          .select({
-            teamId: policies.teamId,
-            c: sql<number>`count(*)::int`,
-          })
-          .from(policies)
-          // 回收站里的策略不计入（与团队策略列表同一口径，#674）
-          .where(and(inArray(policies.teamId, teamIdList), isNull(policies.deletedAt)))
-          .groupBy(policies.teamId),
-      ]);
-      const memberCountByTeam = new Map<string, number>(
-        memberRows.map((r) => [r.teamId, r.c]),
-      );
-      const policyCountByTeam = new Map<string, number>(
-        policyRows
-          .filter((r): r is { teamId: string; c: number } => r.teamId !== null)
-          .map((r) => [r.teamId, r.c]),
-      );
-
-      teamsResult = teamsData.map((team) => {
-        const membership = userTeamMemberships.find((m) => m.teamId === team.id);
-        return {
-          id: team.id,
-          name: team.name,
-          slug: team.slug,
-          role: membership?.role || 'member',
-          memberCount: memberCountByTeam.get(team.id) ?? 0,
-          policyCount: policyCountByTeam.get(team.id) ?? 0,
-          createdAt: team.createdAt.toISOString(),
-        };
-      });
-    }
+    teamsResult = teamsData.map((team) => {
+      const membership = userTeamMemberships.find((m) => m.teamId === team.id);
+      return {
+        id: team.id,
+        name: team.name,
+        slug: team.slug,
+        role: membership?.role || 'member',
+        memberCount: memberCountByTeam.get(team.id) ?? 0,
+        policyCount: policyCountByTeam.get(team.id) ?? 0,
+        createdAt: team.createdAt.toISOString(),
+      };
+    });
   }
 
   return (
     <TeamsContent
       initialTeams={teamsResult}
-      needsUpgrade={!hasAccess}
+      canCreateTeam={canCreateTeam}
     />
   );
 }

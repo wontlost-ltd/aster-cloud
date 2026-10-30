@@ -5,6 +5,7 @@ import { createEvidenceExport, listEvidenceExports } from '@/lib/evidence';
 import { getEvidencePreview, EvidenceTooLargeError } from '@/lib/evidence-export';
 import type { EvidenceFormat } from '@/services/evidence/types';
 import { loadPolicyForAction } from '@/lib/policy-access';
+import { planHolderForTeam } from '@/lib/team-plan';
 
 // GET /api/reports — 列出用户的证据导出历史。
 export async function GET() {
@@ -40,19 +41,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const body = (await req.json()) as ExportBody;
+
+    // 校验 policyId（可选，字符串）。
+    const policyId = typeof body.policyId === 'string' && body.policyId.length > 0 ? body.policyId : undefined;
+
+    // 单策略预览与导出同一授权：团队策略任一当前成员，个人策略只认所有者；其余 404。
+    // 先授权、再决定按谁的套餐判定——无权访问的策略不泄露其套餐门控结果。
+    let planHolder = session.user.id;
+    if (policyId) {
+      const access = await loadPolicyForAction(policyId, { userId: session.user.id }, 'view');
+      if (!access.ok) {
+        return NextResponse.json({ error: 'Policy not found' }, { status: 404 });
+      }
+      // 付费门控：团队策略按团队 owner 的套餐判定并计量到 owner（#672）；不指定策略时按本人套餐。
+      planHolder = await planHolderForTeam(session.user.id, access.policy.teamId);
+    }
+
     // 付费门控（证据导出仍限 Pro/Team；能力键=evidenceExport，持久计量值仍 compliance_report）。
-    const hasAccess = await hasFeatureAccess(session.user.id, 'evidenceExport');
+    const hasAccess = await hasFeatureAccess(planHolder, 'evidenceExport');
     if (!hasAccess) {
       return NextResponse.json(
         { error: 'Evidence export requires a Pro or Team subscription', upgrade: true },
         { status: 403 }
       );
     }
-
-    const body = (await req.json()) as ExportBody;
-
-    // 校验 policyId（可选，字符串）。
-    const policyId = typeof body.policyId === 'string' && body.policyId.length > 0 ? body.policyId : undefined;
 
     // 校验日期（可选，ISO；start<=end）。
     let startDate: Date | undefined;
@@ -78,10 +91,6 @@ export async function POST(req: Request) {
     // 预览（dryRun）：回 count + decision 分布 + **覆盖率**（不带 verifiableOnly——预览要展示全量的
     // verifiable/legacy 拆分，让用户据此决定是否勾「仅可验证」）。
     if (body.dryRun) {
-      // 单策略预览与导出同一授权：团队策略任一当前成员，个人策略只认所有者；其余 404
-      if (policyId && !(await loadPolicyForAction(policyId, { userId: session.user.id }, 'view')).ok) {
-        return NextResponse.json({ error: 'Policy not found' }, { status: 404 });
-      }
       const preview = await getEvidencePreview({ userId: session.user.id, policyId, startDate, endDate });
       return NextResponse.json(preview);
     }
@@ -98,7 +107,7 @@ export async function POST(req: Request) {
         verifiableOnly: body.verifiableOnly === true,
       });
       // 计量（值仍 compliance_report，向后兼容——见 usage.ts EVIDENCE_EXPORT_METRIC）。
-      await recordUsage(session.user.id, EVIDENCE_EXPORT_METRIC);
+      await recordUsage(planHolder, EVIDENCE_EXPORT_METRIC);
       return NextResponse.json({ id, manifest }, { status: 201 });
     } catch (err) {
       if (err instanceof EvidenceTooLargeError) {

@@ -63,6 +63,7 @@ export default async function DomainVocabulariesPage({
       plan: 'free',
       downgraded: false,
       trialEndsAt: null,
+      viaTeam: false,
     };
   }
 

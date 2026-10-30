@@ -1,6 +1,6 @@
 import { getSession } from '@/lib/auth';
 import { redirect, notFound } from 'next/navigation';
-import { db, policyVersions, executions, users } from '@/lib/prisma';
+import { db, policyVersions, executions, users, teams } from '@/lib/prisma';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { getTranslations } from 'next-intl/server';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
@@ -12,6 +12,7 @@ import { PolicyDetailContent } from './policy-detail-content';
 import { localizedTitle } from '@/lib/page-metadata';
 import { loadPolicyForAction } from '@/lib/policy-access';
 import { policyCapabilities } from '@/lib/policy-access-matrix';
+import { planHolderForTeam } from '@/lib/team-plan';
 
 export const generateMetadata = localizedTitle('pageTitles', 'policyDetail');
 
@@ -22,6 +23,13 @@ async function loadActiveProfile(policyId: string, version: number): Promise<str
     columns: { profile: true },
   });
   return activeVersion?.profile ?? null;
+}
+
+// 所属团队（团队策略）；个人策略或团队已删除返回 null
+async function loadPolicyTeam(teamId: string | null): Promise<{ id: string; name: string } | null> {
+  if (!teamId) return null;
+  const team = await db.query.teams.findFirst({ where: eq(teams.id, teamId), columns: { id: true, name: true } });
+  return team ?? null;
 }
 
 // 是否存在批准版本：与 findDefaultExecutableVersion 同一口径（只有 APPROVED 版本可执行/可导出），
@@ -75,6 +83,7 @@ async function getPolicyData(userId: string, policyId: string) {
     })),
     _count: { executions: executionCount },
     ownerId: policy.userId,
+    teamId: policy.teamId,
     capabilities,
   };
 }
@@ -109,11 +118,19 @@ export default async function PolicyDetailPage({
     where: eq(users.id, session.user.id),
     columns: { plan: true, priceLockedAt: true, legacyTier: true },
   });
-  const whatIfEntitled = planUser
+  // 团队策略按团队 owner 的套餐判定 What-If 权益（#672，与 whatif-batches 路由的租户口径一致）
+  const planHolderId = await planHolderForTeam(session.user.id, policy.teamId);
+  const whatIfPlanUser = planHolderId === session.user.id
+    ? planUser
+    : await db.query.users.findFirst({
+        where: eq(users.id, planHolderId),
+        columns: { plan: true, priceLockedAt: true, legacyTier: true },
+      });
+  const whatIfEntitled = whatIfPlanUser
     ? getEffectiveLimits({
-        plan: planUser.plan as PlanType,
-        priceLockedAt: planUser.priceLockedAt,
-        legacyTier: planUser.legacyTier,
+        plan: whatIfPlanUser.plan as PlanType,
+        priceLockedAt: whatIfPlanUser.priceLockedAt,
+        legacyTier: whatIfPlanUser.legacyTier,
       }).concurrentReplayBatches !== 0
     : false;   // 查不到用户按无权益处理（fail-closed）
 
@@ -124,7 +141,7 @@ export default async function PolicyDetailPage({
   //   必然空窗、而选项还在那里——那套窗口实际只适用于留存期最长的企业级用户。
   const retentionDays = resolveRetention(planUser?.plan).executionDays;
 
-  const [profile, hasExecutableVersion, review, sharingEnabled] = await Promise.all([
+  const [profile, hasExecutableVersion, review, sharingEnabled, policyTeam] = await Promise.all([
     loadActiveProfile(id, policy.version),
     hasApprovedVersion(id),
     // 版本面板的批准/驳回按审批规则显示（团队策略按当前用户的团队角色）
@@ -132,6 +149,7 @@ export default async function PolicyDetailPage({
     // 共享开关在服务端读一次并下发（同列表页 shared-with-me 的做法）：关闭时客户端不挂载共享卡片，
     // 不再请求对关闭态有意回 404 的 GET /shares（#630）
     isPolicySharingEnabled(),
+    loadPolicyTeam(policy.teamId),
   ]);
 
   const t = await getTranslations('policies');
@@ -202,6 +220,7 @@ export default async function PolicyDetailPage({
       profile={profile}
       hasExecutableVersion={hasExecutableVersion}
       sharingEnabled={sharingEnabled}
+      team={policyTeam ? { id: policyTeam.id, label: t('detail.teamBadge', { name: policyTeam.name }) } : null}
       review={review ? {
         policyOwnerId: review.policyOwnerId,
         policyTeamId: review.policyTeamId,
