@@ -34,7 +34,7 @@ export function securityEventDisplayType(
   if (eventType === 'VERSION_CREATED' && typeof details?.action === 'string') {
     const adminActions = new Set([
       'API_KEY_CREATED', 'API_KEY_REVOKED', 'TEAM_CREATED', 'TEAM_DELETED',
-      'TEAM_OWNERSHIP_TRANSFERRED', 'TEAM_MEMBER_REMOVED', 'POLICY_TRASHED',
+      'TEAM_OWNERSHIP_TRANSFERRED', 'TEAM_MEMBER_REMOVED', 'TEAM_MEMBER_BUSINESS_ROLES_UPDATED', 'POLICY_TRASHED',
       'POLICY_RESTORED', 'POLICY_PERMANENTLY_DELETED',
     ]);
     if (adminActions.has(details.action)) return details.action;

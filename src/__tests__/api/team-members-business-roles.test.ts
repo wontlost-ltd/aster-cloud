@@ -7,6 +7,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  *   1. 权限沿用 MEMBER_UPDATE_ROLE：owner/admin 可授予，member 403 且不写库
  *   2. 只改业务角色时只写 businessRoles，不碰成员角色（也不受 canChangeRole 的 owner 行限制）
  *   3. 词表不合法整体 400 invalid_business_role；写入后重推该成员的团队 key 快照
+ *   4. 最小权限（#676）：业务角色是审批资格，admin 不能改自己、owner 与其他 admin 的业务角色；
+ *      变更写入安全审计（含变更前后）
  */
 
 const getSession = vi.hoisted(() => vi.fn());
@@ -22,6 +24,8 @@ vi.mock('@/lib/prisma', () => ({
   teamMembers: { id: 'tm.id', teamId: 'tm.teamId', userId: 'tm.userId' },
 }));
 vi.mock('@/lib/api-keys', () => ({ refreshTeamKeySnapshots: m.refresh, revokeTeamKeys: vi.fn() }));
+const audit = vi.hoisted(() => vi.fn());
+vi.mock('@/services/security/security-event-service', () => ({ logSecurityAdminAction: audit }));
 // where 条件以可检查的结构表达，供租户隔离断言（team-permissions 只把条件原样交给 findFirst）
 vi.mock('drizzle-orm', () => ({
   eq: (col: unknown, val: unknown) => ({ eq: [col, val] }),
@@ -134,5 +138,57 @@ describe('PUT 成员业务角色（ADR 0042 §2.1）', () => {
     expect(targetQuery?.where).toEqual({ and: [{ eq: ['tm.id', 'm2'] }, { eq: ['tm.teamId', 't1'] }] });
     expect(m.update).not.toHaveBeenCalled();
     expect(m.refresh).not.toHaveBeenCalled();
+  });
+
+  describe('业务角色最小权限（#676）', () => {
+    it('admin 给自己授予业务角色 → 403 cannot_modify_own_business_roles，不写库', async () => {
+      seed('admin', { id: 'm2', teamId: 't1', userId: 'u-actor', role: 'admin', businessRoles: [] });
+      const res = await PUT(put({ businessRoles: ['Credit Officer'] }), params);
+      expect(res.status).toBe(403);
+      expect((await res.json()).code).toBe('cannot_modify_own_business_roles');
+      expect(m.update).not.toHaveBeenCalled();
+      expect(m.refresh).not.toHaveBeenCalled();
+    });
+
+    it('admin 清空 owner 的业务角色 → 403 cannot_modify_owner，不写库', async () => {
+      seed('admin', { id: 'm2', teamId: 't1', userId: 'u-owner', role: 'owner', businessRoles: ['Credit Officer'] });
+      const res = await PUT(put({ businessRoles: [] }), params);
+      expect(res.status).toBe(403);
+      expect((await res.json()).code).toBe('cannot_modify_owner');
+      expect(m.update).not.toHaveBeenCalled();
+    });
+
+    it('admin 改另一位 admin 的业务角色 → 403 admin_cannot_modify_admin', async () => {
+      seed('admin', { id: 'm2', teamId: 't1', userId: 'u2', role: 'admin', businessRoles: [] });
+      const res = await PUT(put({ businessRoles: ['CISO'] }), params);
+      expect(res.status).toBe(403);
+      expect((await res.json()).code).toBe('admin_cannot_modify_admin');
+      expect(m.update).not.toHaveBeenCalled();
+    });
+
+    it('admin 改 viewer 的业务角色 → 200', async () => {
+      seed('admin', { id: 'm2', teamId: 't1', userId: 'u2', role: 'viewer', businessRoles: [] });
+      const res = await PUT(put({ businessRoles: ['CISO'] }), params);
+      expect(res.status).toBe(200);
+    });
+
+    it('owner 可改 admin 的业务角色，变更写入审计（含变更前后）', async () => {
+      seed('owner', { id: 'm2', teamId: 't1', userId: 'u2', role: 'admin', businessRoles: ['DPO'] });
+      const res = await PUT(put({ businessRoles: ['CISO'] }), params);
+      expect(res.status).toBe(200);
+      expect(audit).toHaveBeenCalledWith('u-actor', 'TEAM_MEMBER_BUSINESS_ROLES_UPDATED', {
+        teamId: 't1',
+        memberId: 'm2',
+        targetUserId: 'u2',
+        before: ['DPO'],
+        after: ['CISO'],
+      });
+    });
+
+    it('只改 role 不写业务角色审计', async () => {
+      seed('owner', { id: 'm2', teamId: 't1', userId: 'u2', role: 'member', businessRoles: [] });
+      expect((await PUT(put({ role: 'viewer' }), params)).status).toBe(200);
+      expect(audit).not.toHaveBeenCalled();
+    });
   });
 });

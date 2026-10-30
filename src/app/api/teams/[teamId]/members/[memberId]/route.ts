@@ -4,6 +4,7 @@ import { db, teamMembers } from '@/lib/prisma';
 import { eq, and } from 'drizzle-orm';
 import { refreshTeamKeySnapshots, revokeTeamKeys } from '@/lib/api-keys';
 import { BusinessRoleError, normalizeBusinessRoles } from '@/lib/business-roles';
+import { canChangeBusinessRoles } from '@/lib/business-role-permissions';
 import {
   checkTeamAccess,
   checkTeamPermission,
@@ -83,11 +84,19 @@ export async function PUT(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: parsed.error, ...(parsed.code ? { code: parsed.code } : {}) }, { status: 400 });
     }
 
-    // 检查角色变更权限；只改业务角色时不涉及成员层级，owner 行也可被授予业务角色
+    // 检查角色变更权限
     if (parsed.set.role) {
       const changeCheck = canChangeRole(access.role, targetMember.role as TeamRole, parsed.set.role);
       if (!changeCheck.allowed) {
         return NextResponse.json({ error: changeCheck.error, code: changeCheck.code }, { status: changeCheck.status });
+      }
+    }
+    // 业务角色是审批资格：admin 不能改自己、owner 与其他 admin 的业务角色（#676）
+    if (parsed.set.businessRoles) {
+      const isSelf = targetMember.userId === session.user.id;
+      const brCheck = canChangeBusinessRoles(access.role, targetMember.role as TeamRole, isSelf);
+      if (!brCheck.allowed) {
+        return NextResponse.json({ error: brCheck.error, code: brCheck.code }, { status: brCheck.status });
       }
     }
 
@@ -117,6 +126,16 @@ export async function PUT(req: Request, { params }: RouteParams) {
 
     if (!updatedMember) {
       throw new Error('Failed to update member');
+    }
+
+    if (parsed.set.businessRoles) {
+      await logSecurityAdminAction(session.user.id, 'TEAM_MEMBER_BUSINESS_ROLES_UPDATED', {
+        teamId,
+        memberId,
+        targetUserId: targetMember.userId,
+        before: targetMember.businessRoles,
+        after: parsed.set.businessRoles,
+      });
     }
 
     return NextResponse.json({
