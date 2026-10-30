@@ -41,6 +41,7 @@ import type { DomainVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/ident
 import { getTeamMemberRole } from '@/lib/team-permissions';
 import { VersionStateError } from './version-state-error';
 import { loadPolicyForAction, type PolicyAction } from '@/lib/policy-access';
+import { bypassQueryCache } from '@/db/fresh-read';
 import {
   canReviewPolicyVersions,
   decideVersionApproval,
@@ -181,7 +182,7 @@ export async function loadVersionReviewContext(
 export async function loadTeamReviewerIds(teamId: string | null): Promise<string[]> {
   if (!teamId) return [];
   const rows = await db.query.teamMembers.findMany({
-    where: and(eq(teamMembers.teamId, teamId), inArray(teamMembers.role, [...TEAM_REVIEWER_ROLES])),
+    where: and(eq(teamMembers.teamId, teamId), inArray(teamMembers.role, [...TEAM_REVIEWER_ROLES]), bypassQueryCache()),
     columns: { userId: true },
   });
   return rows.map((r) => r.userId);

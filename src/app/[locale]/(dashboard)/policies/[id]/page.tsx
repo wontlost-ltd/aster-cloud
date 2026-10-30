@@ -10,7 +10,8 @@ import { resolveRetention } from '@/lib/retention/execution-retention';
 import { loadVersionReviewContext } from '@/services/policy/version-manager';
 import { PolicyDetailContent } from './policy-detail-content';
 import { localizedTitle } from '@/lib/page-metadata';
-import { loadPolicyCapabilities, loadPolicyForAction } from '@/lib/policy-access';
+import { loadPolicyForAction } from '@/lib/policy-access';
+import { policyCapabilities } from '@/lib/policy-access-matrix';
 
 export const generateMetadata = localizedTitle('pageTitles', 'policyDetail');
 
@@ -39,14 +40,13 @@ async function getPolicyData(userId: string, policyId: string) {
   if (!access.ok) {
     return null;
   }
-  const [capabilities, versions] = await Promise.all([
-    loadPolicyCapabilities({ userId }, access.policy),
-    db.query.policyVersions.findMany({
-      where: eq(policyVersions.policyId, policyId),
-      orderBy: desc(policyVersions.version),
-      limit: 10,
-    }),
-  ]);
+  // 复用授权时已查到的团队角色算按钮能力，不再重复查成员行
+  const capabilities = policyCapabilities({ actorId: userId, policy: access.policy, teamRole: access.decision.teamRole });
+  const versions = await db.query.policyVersions.findMany({
+    where: eq(policyVersions.policyId, policyId),
+    orderBy: desc(policyVersions.version),
+    limit: 10,
+  });
   const policy = { ...access.policy, versions };
 
   // 获取执行次数

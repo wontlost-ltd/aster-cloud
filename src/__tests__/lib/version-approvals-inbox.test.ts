@@ -82,6 +82,8 @@ beforeEach(() => {
 });
 
 /** 个人策略谓词（policy-access 的 isPersonalPolicy，经模板标签替身渲染） */
+/** 成员关系读取绕过查询缓存（@/db/fresh-read） */
+const FRESH = { sql: 'NOW() IS NOT NULL', values: [] };
 const PERSONAL = { sql: "coalesce(?, '') = ''", values: [{ name: 'policies.teamId' }] };
 
 describe('listPendingVersionApprovals', () => {
@@ -129,7 +131,7 @@ describe('listPendingVersionApprovals', () => {
     const items = await listPendingVersionApprovals('admin1');
 
     expect(h.membersFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { and: [{ eq: ['teamMembers.userId', 'admin1'] }, { inArray: ['teamMembers.role', ['owner', 'admin']] }] },
+      where: { and: [{ eq: ['teamMembers.userId', 'admin1'] }, { inArray: ['teamMembers.role', ['owner', 'admin']] }, FRESH] },
     }));
     expect(h.policiesFindMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { and: [
@@ -163,7 +165,7 @@ describe('listPendingVersionApprovals', () => {
     const items = await listPendingVersionApprovals('owner');
 
     expect(h.membersFindMany).toHaveBeenLastCalledWith(expect.objectContaining({
-      where: { and: [{ inArray: ['teamMembers.teamId', ['team1']] }, { inArray: ['teamMembers.role', ['admin', 'owner']] }] },
+      where: { and: [{ inArray: ['teamMembers.teamId', ['team1']] }, { inArray: ['teamMembers.role', ['admin', 'owner']] }, FRESH] },
     }));
     expect(items.map((i) => [i.canAct, i.noEligibleReviewer, i.teamId])).toEqual([[false, true, 'team1']]);
   });

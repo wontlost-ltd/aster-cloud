@@ -7,7 +7,7 @@
 //
 // Run: LICENSE_E2E=1 DATABASE_URL=… pnpm exec vitest run --config vitest.integration.config.ts team-policy-authz
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
 
@@ -64,19 +64,32 @@ vi.mock('@/lib/snapshot-pusher', async (importOriginal) => ({
 import { createDb } from '@/db';
 import {
   apiKeys,
+  auditLogs,
   complianceReports,
   executions,
   policies,
   policyApprovals,
+  policyGroups,
   policyRecycleBins,
+  policyReviewers,
+  policyShares,
   policyVersions,
   securityEvents,
   teamMembers,
   teams,
+  notifications,
   usageRecords,
   users,
 } from '@/lib/prisma';
 import { hashApiKey } from '@/lib/api-keys';
+import { createPolicyApiClient } from '@/services/policy/policy-api';
+import { invalidatePolicyCache } from '@/lib/cache';
+import { PLATFORM_SETTING_KEYS, setSetting } from '@/lib/platform-settings';
+import * as sharesRoute from '@/app/api/policies/[id]/shares/route';
+import * as reviewersRoute from '@/app/api/policies/[id]/reviewers/route';
+import * as groupPoliciesRoute from '@/app/api/policy-groups/[id]/policies/route';
+import * as teamRoute from '@/app/api/teams/[teamId]/route';
+import { getDashboardData } from '@/app/[locale]/(dashboard)/dashboard/dashboard-data';
 import * as policyRoute from '@/app/api/policies/[id]/route';
 import * as policiesRoute from '@/app/api/policies/route';
 import * as executeRoute from '@/app/api/policies/[id]/execute/route';
@@ -101,6 +114,8 @@ import * as v1ExecuteRoute from '@/app/api/v1/policies/[id]/execute/route';
 
 const P = 'it-tpa';
 const TEAM = `${P}-team`;
+/** 团队外用户 outsider 自己的团队：用来接收分享 */
+const TEAM2 = `${P}-team2`;
 const U = {
   owner: `${P}-owner`,
   admin: `${P}-admin`,
@@ -133,6 +148,13 @@ type Db = ReturnType<typeof createDb>;
 const globalForDb = globalThis as unknown as { __asterLocalDevDb?: Db | null };
 
 async function cleanup(db: Db): Promise<void> {
+  await db.delete(policyShares).where(inArray(policyShares.policyId, POLICY_IDS));
+  await db.delete(auditLogs).where(inArray(auditLogs.userId, USER_IDS));
+  await db.delete(notifications).where(inArray(notifications.userId, USER_IDS));
+  await db.delete(policyReviewers).where(inArray(policyReviewers.policyId, POLICY_IDS));
+  await db.delete(policyGroups).where(inArray(policyGroups.userId, USER_IDS));
+  await db.delete(teamMembers).where(eq(teamMembers.teamId, TEAM2));
+  await db.delete(teams).where(eq(teams.id, TEAM2));
   await db.delete(complianceReports).where(inArray(complianceReports.userId, USER_IDS));
   await db.delete(securityEvents).where(inArray(securityEvents.userId, USER_IDS));
   await db.delete(executions).where(inArray(executions.policyId, POLICY_IDS));
@@ -627,6 +649,203 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('团队策略授权矩阵（真
 
     it('Free 成员的团队 key 调列表不按成员个人配额拦截', async () => {
       expect(await statusOf(call.v1List(KEY.memberTeam))).toBe(200);
+    });
+  });
+
+  // ── 安全审查后续（cloud#691 审查 H1 / M1 / M2 / M3 / L1 / L3 / L7）──
+  describe('What-If 租户（H1）', () => {
+    it('团队策略的批次创建与查询都以团队 id 为租户、当前用户为 userId', async () => {
+      const mocked = vi.mocked(createPolicyApiClient);
+      mocked.mockClear();
+      expect(await statusOf(call.whatif('owner', POL.own))).toBe(202);
+      expect(await statusOf(call.whatifBatch('owner', POL.own))).toBe(200);
+      expect(mocked.mock.calls.map((c) => c.slice(0, 2))).toEqual([[TEAM, U.owner], [TEAM, U.owner]]);
+    });
+
+    it('个人策略的批次租户为所有者本人', async () => {
+      const mocked = vi.mocked(createPolicyApiClient);
+      mocked.mockClear();
+      expect(await statusOf(call.whatif('owner', POL.personal))).toBe(202);
+      expect(mocked.mock.calls.map((c) => c.slice(0, 2))).toEqual([[U.owner, U.owner]]);
+    });
+  });
+
+  describe('团队外执行人的原始记录（M1）', () => {
+    beforeEach(async () => {
+      await db.update(policies).set({ isPublic: true }).where(eq(policies.id, POL.own));
+      await db.insert(executions).values({
+        id: `${P}-exec-outsider`,
+        policyId: POL.own,
+        userId: U.outsider,
+        input: { secret: 'outsider-pii' },
+        output: { allowed: true },
+        durationMs: 3,
+        success: true,
+        decision: 'approved',
+        source: 'dashboard',
+        canonicalInputHash: 'h'.repeat(64),
+      } as typeof executions.$inferInsert);
+    });
+
+    it('团队外用户可经公开授予执行团队策略', async () => {
+      expect(await statusOf(call.execute('outsider', POL.own))).toBe(200);
+    });
+
+    it('viewer 的日志明细与最近执行不含团队外执行人的记录，统计计入全部执行', async () => {
+      const logs = await bodyOf<{ total: number; items: Array<{ id: string }> }>(call.logs('viewer', POL.own));
+      expect(logs.items.map((i) => i.id)).not.toContain(`${P}-exec-outsider`);
+      expect(logs.total).toBe(3);
+      const recent = await bodyOf<{ items: Array<{ id: string }> }>(call.logsRecent('viewer', POL.own));
+      expect(recent.items.map((i) => i.id)).not.toContain(`${P}-exec-outsider`);
+      const stats = await bodyOf<{ stats: { totalExecutions: number } }>(call.logsStats('viewer', POL.own));
+      expect(stats.stats.totalExecutions).toBe(4);
+    });
+
+    it('证据导出不含团队外执行人的记录', async () => {
+      expect((await bodyOf<{ count: number }>(call.evidence('owner', POL.own))).count).toBe(3);
+      expect((await bodyOf<{ count: number }>(call.evidence('owner'))).count).toBe(6);
+    });
+
+    it('离队成员留下的历史执行同样不再出现在明细里', async () => {
+      await db.delete(teamMembers).where(and(eq(teamMembers.teamId, TEAM), eq(teamMembers.userId, U.member)));
+      const logs = await bodyOf<{ total: number }>(call.logs('owner', POL.own));
+      expect(logs.total).toBe(2);
+    });
+  });
+
+  describe('公开状态切换（M2）', () => {
+    const putPublic = (actor: Actor, id: string, isPublic: boolean) =>
+      (as(actor), policyRoute.PUT(jsonRequest('PUT', `/api/policies/${id}`, { isPublic }), idParams(id)));
+
+    it('member 不能把团队策略设为公开（含自己创建的），但仍能做普通编辑', async () => {
+      const res = await putPublic('member', POL.mem, true);
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({ code: 'insufficient_team_role' });
+      expect(await statusOf(call.put('member', POL.mem))).toBe(200);
+      const [row] = await db.select({ isPublic: policies.isPublic }).from(policies).where(eq(policies.id, POL.mem));
+      expect(row.isPublic).toBe(false);
+    });
+
+    it('admin 可以切换公开状态；值不变的 isPublic 不触发检查', async () => {
+      expect(await statusOf(putPublic('admin', POL.mem, true))).toBe(200);
+      expect(await statusOf(putPublic('member', POL.mem, true))).toBe(200);
+    });
+
+    it('member 不能直接以公开状态创建团队策略', async () => {
+      as('member');
+      const res = await policiesRoute.POST(
+        jsonRequest('POST', '/api/policies', { name: 'x', content: SOURCE, teamId: TEAM, isPublic: true }),
+      );
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('分享与复核人（L7）', () => {
+    beforeEach(async () => {
+      await db.insert(teams).values({ id: TEAM2, name: 'Other Team', slug: TEAM2, ownerId: U.outsider });
+      await db.insert(teamMembers).values({ id: `${P}-tm2-outsider`, teamId: TEAM2, userId: U.outsider, role: 'owner' });
+      await setSetting(PLATFORM_SETTING_KEYS.POLICY_SHARING_ENABLED, true, U.owner);
+    });
+    afterEach(async () => {
+      await setSetting(PLATFORM_SETTING_KEYS.POLICY_SHARING_ENABLED, false, U.owner);
+    });
+
+    const shareReq = (actor: Actor, id: string, body: unknown) =>
+      (as(actor), sharesRoute.POST(jsonRequest('POST', `/api/policies/${id}/shares`, body), idParams(id)));
+
+    it('member 可分享他人创建的团队策略；viewer 与团队外 404', async () => {
+      expect(await statusOf(shareReq('viewer', POL.own, { teamId: TEAM2, permission: 'execute' }))).toBe(404);
+      expect(await statusOf(shareReq('ex', POL.ex, { teamId: TEAM2, permission: 'execute' }))).toBe(404);
+      expect(await statusOf(shareReq('member', POL.own, { teamId: TEAM2, permission: 'execute' }))).toBe(200);
+      as('member');
+      expect((await sharesRoute.GET(jsonRequest('GET', `/api/policies/${POL.own}/shares`), idParams(POL.own))).status).toBe(200);
+    });
+
+    it('分享授予：被分享团队的成员可读、可执行；只读分享执行 403', async () => {
+      expect(await statusOf(call.get('outsider', POL.mem))).toBe(404);
+      expect(await statusOf(shareReq('owner', POL.mem, { teamId: TEAM2, permission: 'view' }))).toBe(200);
+      expect(await statusOf(call.get('outsider', POL.mem))).toBe(200);
+      const viewOnly = await call.execute('outsider', POL.mem);
+      expect(viewOnly.status).toBe(403);
+      expect(await viewOnly.json()).toMatchObject({ code: 'share_view_only' });
+      await db.update(policyShares).set({ permission: 'execute' }).where(eq(policyShares.policyId, POL.mem));
+      expect(await statusOf(call.execute('outsider', POL.mem))).toBe(200);
+    });
+
+    it('公开 + 分享叠加：公开优先放行执行，分享仍可读', async () => {
+      await db.update(policies).set({ isPublic: true }).where(eq(policies.id, POL.mem));
+      expect(await statusOf(shareReq('owner', POL.mem, { teamId: TEAM2, permission: 'view' }))).toBe(200);
+      expect(await statusOf(call.get('outsider', POL.mem))).toBe(200);
+      expect(await statusOf(call.execute('outsider', POL.mem))).toBe(200);
+    });
+
+    it('复核人管理：member 起可看，viewer / 团队外 / 已离队 404', async () => {
+      const reviewers = (actor: Actor, id: string) =>
+        (as(actor), reviewersRoute.GET(jsonRequest('GET', `/api/policies/${id}/reviewers`), idParams(id)));
+      expect(await statusOf(reviewers('member', POL.own))).toBe(200);
+      expect(await statusOf(reviewers('viewer', POL.own))).toBe(404);
+      expect(await statusOf(reviewers('outsider', POL.own))).toBe(404);
+      expect(await statusOf(reviewers('ex', POL.ex))).toBe(404);
+    });
+  });
+
+  describe('团队 key 与公开策略（L7）', () => {
+    it('团队 key 不能借公开策略越出团队（个人 key 可以）', async () => {
+      await db.update(policies).set({ isPublic: true }).where(eq(policies.id, POL.personal));
+      expect(await statusOf(call.v1Execute(KEY.memberTeam, POL.personal))).toBe(404);
+    });
+  });
+
+  describe('清空回收站（M3）', () => {
+    it('只清空本人删除的条目；他人删除的团队条目保留，需逐条永久删除', async () => {
+      expect(await statusOf(call.del('admin', POL.mem))).toBe(200);
+      as('admin');
+      const res = await trashRoute.DELETE();
+      expect(res.status).toBe(200);
+      const left = await db.select({ id: policies.id }).from(policies).where(inArray(policies.id, [POL.mem, POL.deleted]));
+      expect(left.map((r) => r.id)).toEqual([POL.deleted]);
+      expect(await statusOf(call.purge('admin', POL.deleted))).toBe(200);
+    });
+
+    it('member 清空回收站不会删除任何团队条目', async () => {
+      as('member');
+      await trashRoute.DELETE();
+      const [row] = await db.select({ id: policies.id }).from(policies).where(eq(policies.id, POL.deleted));
+      expect(row?.id).toBe(POL.deleted);
+    });
+  });
+
+  describe('离队者的残留可见性与分组（L1）', () => {
+    it('离队者的仪表盘不再列出其创建的团队策略', async () => {
+      const data = await getDashboardData(U.ex);
+      expect(JSON.stringify(data)).not.toContain(POL.ex);
+    });
+
+    it('member 不能把他人创建的团队策略挪进自己的私有分组；自己创建的可以', async () => {
+      await db.insert(policyGroups).values({ id: `${P}-grp-member`, userId: U.member, name: 'mine', updatedAt: new Date() } as typeof policyGroups.$inferInsert);
+      const move = (id: string) =>
+        (as('member'),
+        groupPoliciesRoute.POST(jsonRequest('POST', `/api/policy-groups/${P}-grp-member/policies`, { policyIds: [id] }), {
+          params: Promise.resolve({ id: `${P}-grp-member` }),
+        }));
+      expect(await statusOf(move(POL.own))).toBe(404);
+      expect(await statusOf(move(POL.mem))).toBe(200);
+      const viaPut = (as('member'), policyRoute.PUT(jsonRequest('PUT', `/api/policies/${POL.own}`, { groupId: `${P}-grp-member` }), idParams(POL.own)));
+      expect(await statusOf(viaPut)).toBe(404);
+      const [row] = await db.select({ groupId: policies.groupId }).from(policies).where(eq(policies.id, POL.own));
+      expect(row.groupId).toBeNull();
+    });
+  });
+
+  describe('删除团队后失效策略元数据缓存（L3）', () => {
+    it('团队删除时对其全部策略失效执行路径缓存', async () => {
+      const mocked = vi.mocked(invalidatePolicyCache);
+      mocked.mockClear();
+      as('owner');
+      const res = await teamRoute.DELETE(jsonRequest('DELETE', `/api/teams/${TEAM}`), { params: Promise.resolve({ teamId: TEAM }) });
+      expect(res.status).toBe(200);
+      const invalidated = mocked.mock.calls.map((c) => c[0]).sort();
+      expect(invalidated).toEqual([POL.deleted, POL.ex, POL.mem, POL.own, POL.view].sort());
     });
   });
 });

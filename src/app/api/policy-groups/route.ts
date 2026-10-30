@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
+import { bypassQueryCache } from '@/db/fresh-read';
+import { ownPoliciesVisibleTo } from '@/lib/policy-access';
 import { db, policyGroups, policies, teamMembers } from '@/lib/prisma';
 import { eq, and, or, isNull, sql, asc, inArray } from 'drizzle-orm';
 import { errorEnvelope } from '@/lib/api/error-envelope';
@@ -28,7 +30,7 @@ export async function GET() {
 
     // 查询用户所在团队的分组
     const userTeamMemberships = await db.query.teamMembers.findMany({
-      where: eq(teamMembers.userId, session.user.id),
+      where: and(eq(teamMembers.userId, session.user.id), bypassQueryCache()),
       columns: { teamId: true },
     });
 
@@ -76,10 +78,10 @@ export async function GET() {
               //   并放宽到「我拥有的 OR 我所在团队的」以覆盖团队分组。
               teamIds.length > 0
                 ? or(
-                    eq(policies.userId, session.user.id),
+                    ownPoliciesVisibleTo(session.user.id),
                     inArray(policies.teamId, teamIds),
                   )
-                : eq(policies.userId, session.user.id),
+                : ownPoliciesVisibleTo(session.user.id),
               isNull(policies.deletedAt),
             ),
           )
@@ -147,7 +149,7 @@ export async function POST(req: Request) {
       // 如果不是用户的分组,检查是否是团队分组
       if (!parentGroup) {
         const userTeams = await db.query.teamMembers.findMany({
-          where: eq(teamMembers.userId, session.user.id),
+          where: and(eq(teamMembers.userId, session.user.id), bypassQueryCache()),
           columns: { teamId: true },
         });
 
@@ -171,6 +173,7 @@ export async function POST(req: Request) {
     if (teamId) {
       const membership = await db.query.teamMembers.findFirst({
         where: and(
+          bypassQueryCache(),
           eq(teamMembers.teamId, teamId),
           eq(teamMembers.userId, session.user.id)
         ),

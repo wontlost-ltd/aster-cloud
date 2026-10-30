@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
+import { bypassQueryCache } from '@/db/fresh-read';
 import { db, policyGroups, teamMembers } from '@/lib/prisma';
 import { eq, and, inArray, sql } from 'drizzle-orm';
 import { wouldCreateParentCycle } from '@/lib/policy-group-hierarchy';
@@ -45,6 +46,7 @@ export async function POST(req: Request) {
     // 查询用户作为owner/admin的团队分组
     const adminTeams = await db.query.teamMembers.findMany({
       where: and(
+        bypassQueryCache(),
         eq(teamMembers.userId, session.user.id),
         sql`${teamMembers.role} IN ('owner', 'admin')`
       ),

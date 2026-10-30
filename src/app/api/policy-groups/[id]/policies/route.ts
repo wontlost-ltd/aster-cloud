@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
+import { authorizeGroupPlacement, authorizePolicyAction } from '@/lib/policy-access';
+import { bypassQueryCache } from '@/db/fresh-read';
 import { db, policyGroups, policies, teamMembers } from '@/lib/prisma';
 import { eq, and, inArray, isNull } from 'drizzle-orm';
 
@@ -35,6 +37,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     const hasPermission = group.userId === session.user.id ||
       (group.teamId && await db.query.teamMembers.findFirst({
         where: and(
+          bypassQueryCache(),
           eq(teamMembers.teamId, group.teamId),
           eq(teamMembers.userId, session.user.id)
         ),
@@ -44,18 +47,16 @@ export async function POST(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'Group not found' }, { status: 404 });
     }
 
-    // 验证所有策略都属于当前用户
-    const userPolicies = await db.query.policies.findMany({
-      where: and(
-        inArray(policies.id, policyIds),
-        eq(policies.userId, session.user.id),
-        isNull(policies.deletedAt)
-      ),
-      columns: { id: true },
+    // 逐条授权（ADR 0016）：对策略有 update 权限；他人创建的团队策略只能放进同一团队的分组。
+    // 不存在 / 无权 / 不可放置的策略统一按「找不到」报告，不泄露存在性。
+    const candidates = await db.query.policies.findMany({
+      where: and(inArray(policies.id, policyIds), isNull(policies.deletedAt)),
     });
-
-    const foundIds = new Set(userPolicies.map((p) => p.id));
-    const notFoundIds = policyIds.filter((id: string) => !foundIds.has(id));
+    const allowedIds = new Set<string>();
+    for (const policy of candidates) {
+      if (await authorizeGroupPlacement({ userId: session.user.id }, policy, group)) allowedIds.add(policy.id);
+    }
+    const notFoundIds = policyIds.filter((id: string) => !allowedIds.has(id));
 
     if (notFoundIds.length > 0) {
       return NextResponse.json(
@@ -81,10 +82,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     await db
       .update(policies)
       .set({ groupId })
-      .where(and(
-        inArray(policies.id, policyIds),
-        eq(policies.userId, session.user.id)
-      ));
+      .where(inArray(policies.id, [...allowedIds]));
 
     return NextResponse.json({
       success: true,
@@ -124,6 +122,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     const hasPermission = group.userId === session.user.id ||
       (group.teamId && await db.query.teamMembers.findFirst({
         where: and(
+          bypassQueryCache(),
           eq(teamMembers.teamId, group.teamId),
           eq(teamMembers.userId, session.user.id)
         ),
@@ -133,15 +132,20 @@ export async function DELETE(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'Group not found' }, { status: 404 });
     }
 
-    // 批量移除策略的分组关联（设为 null）
-    await db
-      .update(policies)
-      .set({ groupId: null })
-      .where(and(
-        inArray(policies.id, policyIds),
-        eq(policies.userId, session.user.id),
-        eq(policies.groupId, groupId)
-      ));
+    // 批量移除策略的分组关联（设为 null）：只处理调用者对其有 update 权限的策略（ADR 0016）
+    const inGroup = await db.query.policies.findMany({
+      where: and(inArray(policies.id, policyIds), eq(policies.groupId, groupId)),
+    });
+    const removable: string[] = [];
+    for (const policy of inGroup) {
+      if ((await authorizePolicyAction({ userId: session.user.id }, policy, 'update')).allowed) removable.push(policy.id);
+    }
+    if (removable.length > 0) {
+      await db
+        .update(policies)
+        .set({ groupId: null })
+        .where(and(inArray(policies.id, removable), eq(policies.groupId, groupId)));
+    }
 
     return NextResponse.json({
       success: true,

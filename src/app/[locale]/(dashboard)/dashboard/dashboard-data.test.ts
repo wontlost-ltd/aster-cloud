@@ -28,6 +28,7 @@ vi.mock('drizzle-orm', () => ({
   inArray: (col: string, v: unknown) => ({ inArray: [col, v] }),
   sql: () => 'sql',
 }));
+vi.mock('@/lib/policy-access', () => ({ ownPoliciesVisibleTo: (userId: string) => ({ ownVisible: userId }) }));
 vi.mock('@/lib/usage', () => ({ getUsageStats: vi.fn(async () => ({ plan: 'pro' })) }));
 vi.mock('@/lib/policy-freeze', () => ({
   getPolicyFreezeStatus: vi.fn(async () => ({ frozenPolicyIds: new Set<string>() })),
@@ -42,14 +43,14 @@ function policy(id: string) {
 describe('getDashboardData', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('只查询本人且未软删的策略', async () => {
+  it('只查询本人仍可见（个人策略 + 仍在其团队的团队策略）且未软删的策略', async () => {
     h.policiesFindMany.mockResolvedValue([]);
 
     await getDashboardData('u1');
 
     expect(h.policiesFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { and: [{ eq: ['policies.userId', 'u1'] }, { isNull: 'policies.deletedAt' }] },
+        where: { and: [{ ownVisible: 'u1' }, { isNull: 'policies.deletedAt' }] },
       }),
     );
   });
