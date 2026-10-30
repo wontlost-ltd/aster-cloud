@@ -62,7 +62,8 @@ function slot(text: string, lang: Lang): string | null {
 
 /** 中文与引号片段相邻处补空格（`应为 '.'`、`'那么' 之后`），与引擎中文诊断的排版一致；引号内不动。 */
 function spaceQuotes(s: string): string {
-  const cjk = /[\u3000-\u9fff\uff00-\uffef]/;
+  // 只对汉字补空格：全角标点（，。：）与引号相邻时不加空格
+  const cjk = /\p{Script=Han}/u;
   return s.replace(/'[^']*'/g, (quoted, offset: number) => {
     const before = s[offset - 1];
     const after = s[offset + quoted.length];
@@ -96,7 +97,8 @@ export function localizeParseMessage(message: string, locale: string | undefined
     const m = rule.re.exec(message);
     if (!m) continue;
     const slots = m.slice(1).map((s) => slot(s, lang));
-    if (slots.some((s) => s === null)) return message;
+    // 槽位不认识时试下一条句型（如 `after 'y in z'` 先被三槽句型误切，两槽句型可以译）
+    if (slots.some((s) => s === null)) continue;
     const out = (lang === 'zh-CN' ? rule.zh : rule.de)(slots as string[]);
     return lang === 'zh-CN' ? spaceQuotes(out) : out;
   }

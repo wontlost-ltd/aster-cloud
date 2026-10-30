@@ -21,6 +21,14 @@ describe('localizeParseMessage', () => {
     expect(localizeParseMessage(en, 'de-DE')).toBe(de);
   });
 
+  it('三槽句型切错时回退到两槽句型（引号里含 " in "）', () => {
+    expect(localizeParseMessage("Expected 'x' after 'y in z'", 'zh-CN')).toBe("'y in z' 之后应为 'x'");
+  });
+
+  it('全角标点与引号相邻时不加空格', () => {
+    expect(localizeParseMessage("Expected 'then' after 'if' in construction", 'zh-CN')).toBe("构造中，'if' 之后应为 'then'");
+  });
+
   it('en-US 与未收录的语言原样返回', () => {
     expect(localizeParseMessage("Expected '.' at end of statement", 'en-US')).toBe("Expected '.' at end of statement");
     expect(localizeParseMessage("Expected '.' at end of statement", 'hi-IN')).toBe("Expected '.' at end of statement");

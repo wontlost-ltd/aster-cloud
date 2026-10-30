@@ -25,6 +25,7 @@ import { buildLspInitOptions, buildLspSettings, shouldApplyDiagnostics } from '@
 import { respondToServerRequest } from '@/lib/lsp-server-requests';
 import { splitJsonMessages } from '@/lib/lsp-json-frames';
 import { selectLspFeatures, type LspFeatures, type LspServerCapabilities } from '@/lib/lsp-features';
+import { isMemberAccessPosition } from '@/lib/aster-keyword-completions';
 
 type MonacoNamespace = typeof import('monaco-editor');
 
@@ -133,6 +134,23 @@ interface LSPHover {
   range?: LSPRange;
 }
 
+/** LSP 补全请求的超时（毫秒）：超时视为没有上下文补全，不阻塞补全框 */
+const COMPLETION_TIMEOUT_MS = 800;
+
+/** LSP TextEdit / InsertReplaceEdit 的范围换算为 Monaco 范围（行列从 1 起）；无 textEdit 返回 null。 */
+function completionRange(edit: LSPCompletionItem['textEdit']): languages.CompletionItem['range'] | null {
+  if (!edit) return null;
+  const toMonaco = (r: LSPRange) => ({
+    startLineNumber: r.start.line + 1,
+    startColumn: r.start.character + 1,
+    endLineNumber: r.end.line + 1,
+    endColumn: r.end.character + 1,
+  });
+  if ('range' in edit && edit.range) return toMonaco(edit.range);
+  if ('insert' in edit && 'replace' in edit) return { insert: toMonaco(edit.insert), replace: toMonaco(edit.replace) };
+  return null;
+}
+
 /** LSP CompletionItemKind 中本编辑器采用的上下文补全种类（其余如 Keyword=14、Class=7 交给本地 provider） */
 const LSP_COMPLETION_KIND = { Property: 10, Field: 5, Value: 12, EnumMember: 20 } as const;
 
@@ -141,6 +159,7 @@ interface LSPCompletionItem {
   kind?: number;
   detail?: string;
   insertText?: string;
+  textEdit?: { range: LSPRange; newText: string } | { insert: LSPRange; replace: LSPRange; newText: string };
 }
 
 interface LSPSignatureHelp {
@@ -304,7 +323,7 @@ export function useAsterLSP({
    * Send an LSP request and wait for response
    */
   const sendRequest = useCallback(
-    async <T>(method: string, params?: unknown): Promise<T> => {
+    async <T>(method: string, params?: unknown, opts?: { timeoutMs?: number }): Promise<T> => {
       return new Promise((resolve, reject) => {
         const ws = wsRef.current;
         if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -320,9 +339,21 @@ export function useAsterLSP({
           params,
         };
 
+        // 可选超时：服务端卡住而连接未断时，挂起的请求永不完成；到时清掉挂起条目、
+        // 通知服务端取消（$/cancelRequest），并以超时失败结束
+        const timer = opts?.timeoutMs
+          ? setTimeout(() => {
+              if (!pendingRequestsRef.current.delete(id)) return;
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ jsonrpc: '2.0', method: '$/cancelRequest', params: { id } }));
+              }
+              reject(new Error(`LSP request ${method} timed out`));
+            }, opts.timeoutMs)
+          : undefined;
+
         pendingRequestsRef.current.set(id, {
-          resolve: resolve as (r: unknown) => void,
-          reject,
+          resolve: (r: unknown) => { clearTimeout(timer); (resolve as (r: unknown) => void)(r); },
+          reject: (e: Error) => { clearTimeout(timer); reject(e); },
         });
 
         ws.send(JSON.stringify(message));
@@ -607,7 +638,8 @@ export function useAsterLSP({
     // ★只取服务端按上下文给出的结果：`x.` 后按接收者类型列出的字段、构造字段名、@control 键等。
     //   服务端在其他位置返回的通用列表（全部关键字 + 英文类型名）丢弃——关键字补全归本地 provider
     //   （按 locale 与用户别名给词），接上会重复，zh 下英文类型名还是错词。
-    //   触发字符只用 '.'：空格触发会在每个词后都打一次请求，而空格后需要的正是本地关键字。
+    //   触发字符只用 '.'。quick suggestions 仍会对每个新词调用本 provider，故入口先做廉价预判
+    //   （只在成员访问与字符串内发请求），请求另有超时，见下方。
     if (features.completion) {
       const kindMap: Record<number, languages.CompletionItemKind> = {
         [LSP_COMPLETION_KIND.Field]: monaco.languages.CompletionItemKind.Field,
@@ -617,8 +649,21 @@ export function useAsterLSP({
       };
       const completionProvider = monaco.languages.registerCompletionItemProvider(languageId, {
         triggerCharacters: ['.'],
-        provideCompletionItems: async (model, position, context): Promise<languages.CompletionList | null> => {
+        provideCompletionItems: async (model, position, context, token): Promise<languages.CompletionList | null> => {
           if (!isLspModel(model)) return null;
+          // ★廉价预判（审查 M1）：本地与 LSP provider 同组，Monaco 会等齐同组结果才出补全框。
+          //   只在上下文补全可能有结果的位置发请求——成员访问（`x.` / `x.前缀`）与字符串内
+          //   （@control("…") 键）；其余位置立即返回，本地关键字不被 LSP 往返拖慢。
+          const linePrefix = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
+          const inString = ((linePrefix.match(/"/g) ?? []).length) % 2 === 1;
+          const memberAccess = !inString && isMemberAccessPosition(linePrefix);
+          if (!inString && !memberAccess) return null;
+          // ★句末 "."（审查 M4）：en / de 的语句以 "." 结束，行尾刚敲下的 "." 多半是句号；
+          //   此时弹字段列表，回车（acceptSuggestionOnEnter）会把第一个字段插进去而不是换行。
+          //   不给建议、标记 incomplete，用户接着输入字母时再查。
+          if (memberAccess && linePrefix.endsWith('.') && position.column >= model.getLineMaxColumn(position.lineNumber)) {
+            return { suggestions: [], incomplete: true };
+          }
           try {
             const result = await sendRequest<LSPCompletionItem[] | { items: LSPCompletionItem[] } | null>('textDocument/completion', {
               ...makeTextDocumentPositionParams(position),
@@ -627,10 +672,11 @@ export function useAsterLSP({
                 triggerKind: (context?.triggerKind ?? 0) + 1,
                 ...(context?.triggerCharacter ? { triggerCharacter: context.triggerCharacter } : {}),
               },
-            });
+            }, { timeoutMs: COMPLETION_TIMEOUT_MS });
+            if (token?.isCancellationRequested) return null;
             const items = Array.isArray(result) ? result : result?.items ?? [];
             const word = model.getWordUntilPosition(position);
-            const range = {
+            const wordRange = {
               startLineNumber: position.lineNumber,
               endLineNumber: position.lineNumber,
               startColumn: word.startColumn,
@@ -642,12 +688,15 @@ export function useAsterLSP({
                 .map((item) => ({
                   label: item.label,
                   kind: kindMap[item.kind!]!,
-                  insertText: item.insertText ?? item.label,
+                  // ★服务端给了 textEdit 就按它的范围替换（审查 M2）：如 @control("GDPR: 覆盖引号后到光标，
+                  //   按单词边界（止于 ':'）替换会插入重复前缀 GDPR:GDPR:ART22
+                  insertText: item.textEdit?.newText ?? item.insertText ?? item.label,
                   ...(item.detail ? { detail: item.detail } : {}),
-                  range,
+                  range: completionRange(item.textEdit) ?? wordRange,
                 })),
             };
           } catch (e) {
+            // 超时（服务端卡住）或连接问题：补全不可用时静默返回，本地关键字补全照常
             reportProviderError('Completion', e);
             return null;
           }

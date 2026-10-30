@@ -61,7 +61,7 @@ class FakeWebSocket {
         ? { jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: 'boom' } }
         : { jsonrpc: '2.0', id: msg.id, result: null });
     }
-    if (msg.method === 'textDocument/completion') {
+    if (msg.method === 'textDocument/completion' && FakeWebSocket.completion !== 'hang') {
       this.serverSend({ jsonrpc: '2.0', id: msg.id, result: FakeWebSocket.completion });
     }
     if (msg.method === 'textDocument/codeAction') {
@@ -244,7 +244,23 @@ describe('useAsterLSP 协议', () => {
     expect(monaco.providers.completion.triggerCharacters).toEqual(['.']);
   });
 
-  it('★`x.` 后发出 textDocument/completion，并只渲染所属 struct 的字段', async () => {
+  /** 只有一行文本的模型：getWordUntilPosition 按 Monaco 规则取光标前的单词（字母数字下划线） */
+  const lineModel = (text: string) => ({
+    ...fakeModel,
+    getLineContent: () => text,
+    getLineMaxColumn: () => text.length + 1,
+    getWordUntilPosition: (pos: { column: number }) => {
+      const before = text.slice(0, pos.column - 1);
+      const word = /[\p{L}\p{N}_]*$/u.exec(before)![0];
+      return { word, startColumn: pos.column - word.length, endColumn: pos.column };
+    },
+  });
+  type Suggestions = { suggestions: Array<{ label: string; kind: number; detail?: string; insertText: string; range: unknown }>; incomplete?: boolean } | null;
+  const complete = async (monaco: ReturnType<typeof mount>, text: string, column: number, context: Record<string, unknown>) =>
+    await monaco.providers.completion.provideCompletionItems!(lineModel(text), { lineNumber: 3, column }, context, { isCancellationRequested: false }) as Suggestions;
+  const completionRequests = () => FakeWebSocket.instances[0].sent.filter((m) => m.method === 'textDocument/completion');
+
+  it('★`x.前缀` 处发出 textDocument/completion，并只渲染所属 struct 的字段', async () => {
     FakeWebSocket.completion = [
       { label: 'alter', kind: 5, detail: 'age' },
       { label: 'stufe', kind: 5, detail: 'level' },
@@ -252,15 +268,98 @@ describe('useAsterLSP 协议', () => {
     const monaco = mount('en-US');
     await opened();
     await waitFor(() => expect(monaco.providers.completion).toBeDefined());
-    const res = await monaco.providers.completion.provideCompletionItems!(fakeModel, { lineNumber: 3, column: 20 }, { triggerKind: 1, triggerCharacter: '.' }) as {
-      suggestions: Array<{ label: string; kind: number; detail?: string; insertText: string }>;
-    };
-    const req = FakeWebSocket.instances[0].sent.find((m) => m.method === 'textDocument/completion');
-    expect(req?.params).toMatchObject({ position: { line: 2, character: 19 }, context: { triggerKind: 2, triggerCharacter: '.' } });
-    expect(res.suggestions.map((x) => [x.label, x.kind, x.detail, x.insertText])).toEqual([
+    const text = '  gib zurueck fahrer.st';
+    const res = await complete(monaco, text, text.length + 1, { triggerKind: 0 });
+    expect(completionRequests()[0]?.params).toMatchObject({ position: { line: 2, character: text.length }, context: { triggerKind: 1 } });
+    expect(res!.suggestions.map((x) => [x.label, x.kind, x.detail, x.insertText])).toEqual([
       ['alter', 3, 'age', 'alter'],
       ['stufe', 3, 'level', 'stufe'],
     ]);
+  });
+
+  it('`x.` 后面还有内容（行中间）时，"." 触发即发请求', async () => {
+    FakeWebSocket.completion = [{ label: 'alter', kind: 5 }];
+    const monaco = mount('en-US');
+    await opened();
+    await waitFor(() => expect(monaco.providers.completion).toBeDefined());
+    const res = await complete(monaco, '  Return fahrer. plus 1.', 17, { triggerKind: 1, triggerCharacter: '.' });
+    expect(completionRequests()[0]?.params).toMatchObject({ context: { triggerKind: 2, triggerCharacter: '.' } });
+    expect(res!.suggestions.map((x) => x.label)).toEqual(['alter']);
+  });
+
+  /* 审查 M4：en / de 的句末 "." 不是成员访问——`Return applicant.` 后回车必须换行，不能接受字段补全 */
+  it('★行尾刚输入 "."（可能是句末）：不发请求、不给建议，标记 incomplete 以便继续输入时再查', async () => {
+    FakeWebSocket.completion = [{ label: 'age', kind: 5 }];
+    const monaco = mount('en-US');
+    await opened();
+    await waitFor(() => expect(monaco.providers.completion).toBeDefined());
+    const text = '  Return applicant.';
+    const res = await complete(monaco, text, text.length + 1, { triggerKind: 1, triggerCharacter: '.' });
+    expect(res).toEqual({ suggestions: [], incomplete: true });
+    expect(completionRequests()).toHaveLength(0);
+  });
+
+  /* 审查 M1：只在上下文补全可能有结果的位置发请求；其余位置立即返回，不拖慢本地关键字补全 */
+  it('★非成员访问、非字符串位置：不发请求，立即返回', async () => {
+    const monaco = mount('en-US');
+    await opened();
+    await waitFor(() => expect(monaco.providers.completion).toBeDefined());
+    const res = await complete(monaco, '  Return ab', 12, { triggerKind: 0 });
+    expect(res).toBeNull();
+    expect(completionRequests()).toHaveLength(0);
+  });
+
+  it('★服务端不应答：约 800ms 后返回空，清掉挂起请求并发 $/cancelRequest', async () => {
+    FakeWebSocket.completion = 'hang';
+    const monaco = mount('en-US');
+    await opened();
+    await waitFor(() => expect(monaco.providers.completion).toBeDefined());
+    const started = Date.now();
+    const res = await complete(monaco, '  Return fahrer.a', 18, { triggerKind: 0 });
+    const elapsed = Date.now() - started;
+    expect(res).toBeNull();
+    expect(elapsed).toBeGreaterThanOrEqual(700);
+    expect(elapsed).toBeLessThan(2000);
+    const id = completionRequests()[0]!.id;
+    expect(FakeWebSocket.instances[0].sent.find((m) => m.method === '$/cancelRequest')?.params).toEqual({ id });
+  });
+
+  /* 审查 M2：服务端用 textEdit 指定替换范围（如 @control("GDPR: 覆盖引号后到光标），客户端不得按单词边界替换 */
+  it('★使用服务端 textEdit 的范围与 newText：@control("GDPR: 不会插入重复前缀', async () => {
+    const text = '@control("GDPR:';
+    FakeWebSocket.completion = [{
+      label: 'GDPR:ART22', kind: 12,
+      textEdit: { range: { start: { line: 2, character: 10 }, end: { line: 2, character: text.length } }, newText: 'GDPR:ART22' },
+    }];
+    const monaco = mount('en-US');
+    await opened();
+    await waitFor(() => expect(monaco.providers.completion).toBeDefined());
+    const res = await complete(monaco, text, text.length + 1, { triggerKind: 0 });
+    expect(completionRequests()).toHaveLength(1);
+    expect(res!.suggestions[0]).toMatchObject({
+      insertText: 'GDPR:ART22',
+      range: { startLineNumber: 3, startColumn: 11, endLineNumber: 3, endColumn: text.length + 1 },
+    });
+  });
+
+  it('InsertReplaceEdit：插入用 insert 范围、替换用 replace 范围', async () => {
+    const text = '  Return fahrer.al';
+    FakeWebSocket.completion = [{
+      label: 'alter', kind: 5,
+      textEdit: {
+        newText: 'alter',
+        insert: { start: { line: 2, character: 16 }, end: { line: 2, character: 18 } },
+        replace: { start: { line: 2, character: 16 }, end: { line: 2, character: 20 } },
+      },
+    }];
+    const monaco = mount('en-US');
+    await opened();
+    await waitFor(() => expect(monaco.providers.completion).toBeDefined());
+    const res = await complete(monaco, text, text.length + 1, { triggerKind: 0 });
+    expect(res!.suggestions[0]!.range).toEqual({
+      insert: { startLineNumber: 3, startColumn: 17, endLineNumber: 3, endColumn: 19 },
+      replace: { startLineNumber: 3, startColumn: 17, endLineNumber: 3, endColumn: 21 },
+    });
   });
 
   it('通用结果（关键字 / 类型名）被丢弃，交给本地 provider', async () => {
@@ -270,10 +369,8 @@ describe('useAsterLSP 协议', () => {
     const monaco = mount('en-US');
     await opened();
     await waitFor(() => expect(monaco.providers.completion).toBeDefined());
-    const res = await monaco.providers.completion.provideCompletionItems!(fakeModel, { lineNumber: 1, column: 5 }, { triggerKind: 0 }) as {
-      suggestions: Array<{ label: string }>;
-    };
-    expect(res.suggestions.map((x) => x.label)).toEqual(['EU_AI_ACT:ART14']);
+    const res = await complete(monaco, '@control("EU', 13, { triggerKind: 0 });
+    expect(res!.suggestions.map((x) => x.label)).toEqual(['EU_AI_ACT:ART14']);
   });
 
   it('服务端未声明 completionProvider 时不注册', async () => {
