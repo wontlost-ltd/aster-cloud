@@ -9,10 +9,9 @@
  *   1. Platform admin toggle `policy_sharing.enabled` must be ON.
  *      OFF → 404 across the board so the feature looks like it
  *      doesn't exist (avoids leaking the admin toggle state).
- *   2. Caller must be the policy's owner. For user-owned policies
- *      that means policies.userId === caller. For team-owned
- *      policies, caller must have POLICY_CREATE on the owning team
- *      (admin/owner roles).
+ *   2. Caller must hold the `share` action of the policy access
+ *      matrix (src/lib/policy-access-matrix.ts): personal policies →
+ *      owner only; team policies → current owner/admin/member role.
  *   3. Cannot share a team-owned policy with the same team that
  *      already owns it (would be a no-op grant).
  *
@@ -40,18 +39,14 @@ import {
 } from '@/lib/prisma';
 import { errorEnvelope } from '@/lib/api/error-envelope';
 import { isPolicySharingEnabled } from '@/lib/platform-settings';
-import {
-  checkTeamPermission,
-  TeamPermission,
-} from '@/lib/team-permissions';
+import { loadPolicyForAction } from '@/lib/policy-access';
 import { createNotification } from '@/lib/notifications';
 
 type RouteParams = { params: Promise<{ id: string }> };
 
 /**
- * Verify the caller is the owner of this policy (and resolve the
- * owner info). For team-owned policies, owner = anyone with
- * POLICY_CREATE on the owning team. Returns the policy or null.
+ * 调用者能否管理该策略的分享：授权矩阵的 share 动作（团队策略 owner/admin/member，按当前角色；
+ * 个人策略只认所有者）。已删除策略不可管理。返回策略与归属类型，无权返回 null（对外 404）。
  */
 async function loadOwnedPolicy(
   callerUserId: string,
@@ -63,24 +58,9 @@ async function loadOwnedPolicy(
     }
   | null
 > {
-  const policy = await db.query.policies.findFirst({
-    where: eq(policies.id, policyId),
-  });
-  if (!policy) return null;
-
-  if (policy.teamId) {
-    const perm = await checkTeamPermission(
-      callerUserId,
-      policy.teamId,
-      TeamPermission.POLICY_CREATE,
-    );
-    if (!perm.allowed) return null;
-    return { policy, kind: 'team' };
-  }
-  if (policy.userId === callerUserId) {
-    return { policy, kind: 'user' };
-  }
-  return null;
+  const access = await loadPolicyForAction(policyId, { userId: callerUserId }, 'share');
+  if (!access.ok) return null;
+  return { policy: access.policy, kind: access.policy.teamId ? 'team' : 'user' };
 }
 
 export async function GET(req: Request, { params }: RouteParams) {

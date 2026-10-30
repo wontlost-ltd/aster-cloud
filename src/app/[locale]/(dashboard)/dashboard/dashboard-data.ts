@@ -2,16 +2,18 @@ import 'server-only';
 
 import { getUsageStats } from '@/lib/usage';
 import { db, policies, executions } from '@/lib/prisma';
-import { eq, desc, sql, inArray, and, isNull } from 'drizzle-orm';
+import { desc, sql, inArray, and, isNull } from 'drizzle-orm';
 import { getPolicyFreezeStatus } from '@/lib/policy-freeze';
+import { ownPoliciesVisibleTo } from '@/lib/policy-access';
 
 /** 仪表盘服务端数据：用量统计 + 「常用策略」（按执行次数取前 5 个未删除策略）。 */
 export async function getDashboardData(userId: string) {
   const [stats, policiesData, freezeStatus] = await Promise.all([
     getUsageStats(userId),
-    // 「常用策略」只列未删除的策略：已软删的在回收站里，不出现在首页
+    // 「常用策略」只列未删除的策略：已软删的在回收站里，不出现在首页。
+    // 本人创建的团队策略只在本人仍可查看时列出（离队后不暴露名称 / 描述 / 计数，ADR 0016）
     db.query.policies.findMany({
-      where: and(eq(policies.userId, userId), isNull(policies.deletedAt)),
+      where: and(ownPoliciesVisibleTo(userId), isNull(policies.deletedAt)),
       orderBy: desc(policies.updatedAt),
       limit: 20, // 只获取最近的20个用于排序
     }),

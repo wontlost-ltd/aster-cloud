@@ -7,6 +7,7 @@ import { ConfirmDialog, Container, PageHeader, Breadcrumbs } from '@/components/
 import { PolicyVersionsTab } from '@/components/policy/policy-versions-tab';
 import type { VersionReviewContext } from '@/services/policy/version-approval-rules';
 import { PolicyReviewPanel } from '@/components/policy/policy-review-panel';
+import type { PolicyCapabilities } from '@/lib/policy-access-matrix';
 import { ShareWithTeamsCard } from '@/components/policy/share-with-teams-card';
 import { PolicyAnalyticsSection } from '@/components/policy/policy-analytics-section';
 import { PolicyProfileBadge } from '@/components/policy/policy-profile-badge';
@@ -94,9 +95,18 @@ interface PolicyDetailContentProps {
    * 关闭时不挂载共享卡片：其 GET /shares 对关闭态有意回 404，挂载就会在控制台留下 404 噪音。
    */
   sharingEnabled?: boolean;
+  /**
+   * 调用者对该策略可做的动作（授权矩阵，服务端按当前团队角色算出）。缺省视为全部可用，
+   * 真正的拦截始终在 API 层；这里只决定按钮是否出现（viewer 不显示执行 / 编辑 / 删除）。
+   */
+  capabilities?: Pick<PolicyCapabilities, 'execute' | 'update' | 'delete'>;
+  /** What-If 属主限定（ADR 0034 §4.3）：调用者不能运行时面板显示说明 */
+  whatIfOwnerOnly?: boolean;
   translations: Translations;
   locale: string;
 }
+
+const ALL_ACTIONS = { execute: true, update: true, delete: true } as const;
 
 export function PolicyDetailContent({
   whatIfEntitled = false,
@@ -106,6 +116,8 @@ export function PolicyDetailContent({
   hasExecutableVersion = true,
   review,
   sharingEnabled = false,
+  capabilities = ALL_ACTIONS,
+  whatIfOwnerOnly = false,
   translations: t,
   locale,
 }: PolicyDetailContentProps) {
@@ -157,7 +169,7 @@ export function PolicyDetailContent({
           <div className="flex space-x-3">
             {/* 冻结策略只读：Execute/Edit 渲染为禁用态（与列表页一致）；
                 Delete 仍允许——删除是用户解除冻结（降到限额内）的途径。 */}
-            {policy.isFrozen ? (
+            {!capabilities.execute ? null : policy.isFrozen ? (
               <span
                 className="inline-flex items-center rounded-md bg-bg-muted px-3 py-2 text-sm font-semibold text-fg-subtle cursor-not-allowed select-none"
                 aria-disabled="true"
@@ -173,7 +185,7 @@ export function PolicyDetailContent({
                 {t.executeAction}
               </Link>
             )}
-            {policy.isFrozen ? (
+            {!capabilities.update ? null : policy.isFrozen ? (
               <span
                 className="inline-flex items-center rounded-md bg-bg px-3 py-2 text-sm font-semibold text-fg-subtle shadow-sm ring-1 ring-inset ring-gray-300 cursor-not-allowed select-none"
                 aria-disabled="true"
@@ -189,12 +201,14 @@ export function PolicyDetailContent({
                 {t.edit}
               </Link>
             )}
+            {capabilities.delete && (
             <button
               onClick={handleDeleteClick}
               className="inline-flex items-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700"
             >
               {t.delete}
             </button>
+            )}
           </div>
         }
         className="mb-6"
@@ -332,7 +346,7 @@ export function PolicyDetailContent({
       <PolicyReviewPanel policyId={policy.id} />
 
       {/* Version Management with Approval Workflow */}
-      <PolicyVersionsTab policyId={policy.id} whatIfEntitled={whatIfEntitled} retentionDays={retentionDays} review={review} />
+      <PolicyVersionsTab policyId={policy.id} whatIfEntitled={whatIfEntitled} retentionDays={retentionDays} review={review} whatIfOwnerOnly={whatIfOwnerOnly} />
 
       {/* 决策分析（Phase 1 条件漏斗 + Phase 4 What-if）。
           自带 i18n，故不走 translations prop——避免详情页把每个新面板的

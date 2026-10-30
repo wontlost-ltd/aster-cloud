@@ -11,9 +11,8 @@
  * 规则名须属于所导出的版本（源码写法或经版本词汇映射后的规范名，转发时一律用规范名），否则 400，不转发给 aster-api。
  */
 import { NextResponse } from 'next/server';
-import { and, eq, isNull } from 'drizzle-orm';
 import { getSession } from '@/lib/auth';
-import { db, policies } from '@/lib/prisma';
+import { loadPolicyForAction, policyAccessDeniedResponse } from '@/lib/policy-access';
 import { checkRateLimit, getRateLimitHeaders, RateLimitPresets } from '@/lib/rate-limit';
 import { policyTenantId } from '@/lib/policy-tenant';
 import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
@@ -93,12 +92,10 @@ export async function POST(req: Request, { params }: RouteParams) {
   }
 
   const { id } = await params;
-  const policy = await db.query.policies.findFirst({
-    where: and(eq(policies.id, id), eq(policies.userId, userId), isNull(policies.deletedAt)),
-    columns: { id: true, userId: true, teamId: true },
-  });
-  // 404 而非 403：不泄露「该 id 存在但不属于你」
-  if (!policy) return NextResponse.json({ error: 'Policy not found' }, { status: 404, headers });
+  // 团队策略任一成员可导出（只读），个人策略只认所有者；非成员 404，不泄露「该 id 存在但不属于你」
+  const access = await loadPolicyForAction(id, { userId }, 'view');
+  if (!access.ok) return policyAccessDeniedResponse(access.decision, { headers });
+  const policy = access.policy;
 
   const version = await findDefaultExecutableVersion(policy.id);
   if (!version) return NextResponse.json({ error: 'no executable version' }, { status: 409, headers });

@@ -25,6 +25,7 @@ vi.mock('drizzle-orm', () => ({
   eq: (col: unknown, val: unknown) => ({ op: 'eq', col, val }),
   and: (...c: unknown[]) => ({ op: 'and', c }),
   inArray: (col: unknown, vals: unknown[]) => ({ op: 'in', col, vals }),
+  sql: (strings: TemplateStringsArray) => ({ op: 'sql', text: strings.join('?') }),
 }));
 
 const NOW = new Date('2026-10-08T00:00:00Z');
@@ -123,7 +124,7 @@ describe('resolveApiKeyIdentities', () => {
     expect((await resolveApiKeyIdentities([], NOW)).size).toBe(0);
     expect(m.usersFindMany).not.toHaveBeenCalled();
   });
-  it('成员查询同时按 teamId 与持有者 userId 过滤', async () => {
+  it('成员查询同时按 teamId 与持有者 userId 过滤，且绕过查询缓存（移除即失效）', async () => {
     const { resolveApiKeyIdentities } = await import('@/lib/api-key-identity');
     await resolveApiKeyIdentities([personal, teamKey], NOW);
     expect(m.teamMembersFindMany).toHaveBeenCalledWith(
@@ -133,6 +134,7 @@ describe('resolveApiKeyIdentities', () => {
           c: [
             { op: 'in', col: 'teamMembers.teamId', vals: ['t1'] },
             { op: 'in', col: 'teamMembers.userId', vals: ['u1', 'u2'] },
+            { op: 'sql', text: 'NOW() IS NOT NULL' },
           ],
         },
       })

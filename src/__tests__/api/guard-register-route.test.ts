@@ -33,6 +33,8 @@ vi.mock('drizzle-orm', () => ({
   and: (...c: unknown[]) => ({ and: c }),
   isNull: (col: { name: string }) => ({ isNull: col.name }),
 }));
+vi.mock('@/lib/policy-access', async () =>
+  (await import('@/__tests__/helpers/policy-access-mock')).policyAccessModule());
 vi.mock('@/lib/business-roles', () => ({
   isPolicyTenantMember: (...a: unknown[]) => h.isMember(...a),
 }));
@@ -43,6 +45,7 @@ vi.mock('@/lib/guard-notifications', () => ({ notifyApprovalRequested: (...a: un
 
 import { POST } from '@/app/api/policies/[id]/executions/[execId]/guard-register/route';
 import { executions } from '@/lib/prisma';
+import { policyAccessState } from '@/__tests__/helpers/policy-access-mock';
 
 const params = { params: Promise.resolve({ id: 'p1', execId: 'e1' }) };
 const call = () => POST(new Request('http://localhost/x', { method: 'POST' }), params);
@@ -63,7 +66,8 @@ describe('POST guard-register', () => {
     h.update.mockReturnValue({ set: h.set });
     h.set.mockReturnValue({ where: h.where });
     h.getSession.mockResolvedValue({ user: { id: 'user-1' } });
-    h.policyFind.mockResolvedValue({ id: 'p1', name: 'Delete customer', teamId: 'team-1', userId: 'user-1' });
+    policyAccessState.policy = { id: 'p1', name: 'Delete customer', teamId: 'team-1', userId: 'user-1' };
+    policyAccessState.teamRole = 'member';
     h.createClient.mockResolvedValue({ guardFromEvidence: h.guardFromEvidence });
     h.isMember.mockResolvedValue(true);
   });
@@ -120,23 +124,24 @@ describe('POST guard-register', () => {
     h.execFind.mockResolvedValue(undefined);
     expect((await call()).status).toBe(404);
 
-    h.policyFind.mockResolvedValue(undefined);
+    policyAccessState.policy = null;
     expect((await call()).status).toBe(404);
   });
 
-  it('owner-only：策略属于他人时查询带会话用户条件、查不到 → 404，不读执行行', async () => {
-    const owned = { id: 'p1', name: 'Delete customer', teamId: null, userId: 'owner-9' };
-    // 模拟数据库：只有 where 绑定的 userId 与策略所有者一致时才返回该策略
-    h.policyFind.mockImplementation(async ({ where }: { where: { and: unknown[] } }) =>
-      where.and.some((c) => JSON.stringify(c) === JSON.stringify({ eq: ['policies.userId', owned.userId] }))
-        ? owned
-        : undefined
-    );
+  it('他人的个人策略 → 404，不读执行行', async () => {
+    policyAccessState.policy = { id: 'p1', name: 'Delete customer', teamId: null, userId: 'owner-9' };
 
     const res = await call();
 
     expect(res.status).toBe(404);
-    expect(h.policyFind.mock.calls[0][0].where.and).toContainEqual({ eq: ['policies.userId', 'user-1'] });
+    expect(h.execFind).not.toHaveBeenCalled();
+  });
+
+  it('团队策略按当前角色：viewer 403、已被移除的创建者 404，均不读执行行（#670）', async () => {
+    policyAccessState.teamRole = 'viewer';
+    expect((await call()).status).toBe(403);
+    policyAccessState.teamRole = null;
+    expect((await call()).status).toBe(404);
     expect(h.execFind).not.toHaveBeenCalled();
   });
 

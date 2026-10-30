@@ -11,7 +11,9 @@ import { invalidatePlanCache } from '@/lib/plan-gate-client';
 
 // 团队生命周期钩子（ADR 0015 §5）：成员移出 / 角色变更 / 转让 / 删除团队 必须吊销或重推团队 key
 const { mockFindFirst, mockUpdate, mockDelete, mockTransaction, txStub } = vi.hoisted(() => {
-  const chainUpdate = () => ({ set: () => ({ where: vi.fn() }) });
+  const chainUpdate = () => ({
+    set: () => ({ where: vi.fn(() => Object.assign(Promise.resolve(undefined), { returning: vi.fn(async () => []) })) }),
+  });
   const chainDelete = () => ({ where: vi.fn() });
   return {
     mockFindFirst: vi.fn(),

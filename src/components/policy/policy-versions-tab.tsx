@@ -19,6 +19,8 @@ interface PolicyVersionsTabProps {
   retentionDays?: number | null;
   /** 审阅判定上下文（服务端算好），决定批准/驳回是否可见及是否属于自审 */
   review?: Omit<VersionReviewContext, 'reviewerId'>;
+  /** 调用者不是策略创建者：What-If 属主限定（ADR 0034 §4.3），透传给比较面板 */
+  whatIfOwnerOnly?: boolean;
 }
 
 type ViewMode = 'list' | 'detail' | 'compare';
@@ -31,7 +33,7 @@ function failIfNotOk(result: VersionActionResult): void {
   if (!result.ok) throw new VersionActionError(result.message);
 }
 
-export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionDays = null, review }: PolicyVersionsTabProps) {
+export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionDays = null, review, whatIfOwnerOnly = false }: PolicyVersionsTabProps) {
   const { data: session } = useSession();
   const t = useTranslations('policies.versions');
   const tCommon = useTranslations('common');
@@ -243,6 +245,7 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
               createdAt: v.createdAt,
             }))}
             whatIfEntitled={whatIfEntitled}
+            whatIfOwnerOnly={whatIfOwnerOnly}
             retentionDays={retentionDays}
             onClose={handleCloseCompare}
           />

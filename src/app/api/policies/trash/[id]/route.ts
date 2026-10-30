@@ -21,7 +21,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     const result = await restorePolicy(id, session.user.id);
 
     if (!result.success) {
-      return NextResponse.json({ error: result.error }, { status: 404 });
+      return NextResponse.json({ error: result.error, code: result.code }, { status: result.status ?? 404 });
     }
 
     // 响应前完成缓存失效；KV 故障只记录，不把已成功的写操作报成失败。
@@ -58,7 +58,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     const result = await permanentDeletePolicy(id, session.user.id);
 
     if (!result.success) {
-      return NextResponse.json({ error: result.error }, { status: 404 });
+      return NextResponse.json({ error: result.error, code: result.code }, { status: result.status ?? 404 });
     }
 
     await logSecurityAdminAction(session.user.id, 'POLICY_PERMANENTLY_DELETED', { policyId: id });

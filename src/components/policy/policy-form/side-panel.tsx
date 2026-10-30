@@ -85,6 +85,8 @@ export interface SidePanelProps {
   onDescriptionChange: (value: string) => void;
   onGroupIdChange: (value: string | null) => void;
   onIsPublicChange: (value: boolean) => void;
+  /** 透传给 MetaSection：当前用户不能切换公开状态 */
+  visibilityLocked?: boolean;
   aliasSet: Record<string, string[]>;
   reservedSets: ReservedSets;
   allowStructuralAliases: boolean;
@@ -123,6 +125,7 @@ export function SidePanel({
   onDescriptionChange,
   onGroupIdChange,
   onIsPublicChange,
+  visibilityLocked = false,
   aliasSet,
   reservedSets,
   allowStructuralAliases,
@@ -219,6 +222,7 @@ export function SidePanel({
               onDescriptionChange={onDescriptionChange}
               onGroupIdChange={onGroupIdChange}
               onIsPublicChange={onIsPublicChange}
+              visibilityLocked={visibilityLocked}
               nameError={nameError}
             />
           </div>

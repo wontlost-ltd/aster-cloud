@@ -42,8 +42,20 @@ const h = vi.hoisted(() => {
   };
 });
 
+// 授权（policy-access）在本文件只是前置条件：取到策略即视为有删除权限，判定本身见 policy-access-matrix 测试
+vi.mock('@/lib/policy-access', () => ({
+  loadPolicyForAction: vi.fn(async (policyId: string) => {
+    const policy = await h.policyFindFirst({ policyId });
+    return policy
+      ? { ok: true, policy, decision: { allowed: true, via: 'owner', teamRole: null } }
+      : { ok: false, decision: { allowed: false, status: 404, code: 'policy_not_found', error: 'Policy not found' } };
+  }),
+  policiesVisibleTo: vi.fn(() => ({})),
+}));
+
 vi.mock('@/lib/prisma', () => ({
   db: {
+    select: () => ({ from: () => ({ where: () => ({}) }) }),
     delete: h.dbDelete,
     transaction: h.transaction,
     query: {
@@ -190,9 +202,18 @@ describe('policy-lifecycle 永久删除路径（#603）', () => {
 
   it('emptyTrash：同样连同回收站行删除', async () => {
     h.binFindMany.mockResolvedValue([{ policyId: 'p1' }]);
+    h.policyFindFirst.mockResolvedValue({ id: 'p1' });
     const r = await emptyTrash('user-1');
     expect(r).toEqual({ deletedCount: 1, errors: [] });
     expectPurgedInTx(['p1']);
+  });
+
+  it('emptyTrash：逐条复核删除权限，已无权的条目跳过、不永久删除（审查 M3）', async () => {
+    h.binFindMany.mockResolvedValue([{ policyId: 'p1' }]);
+    h.policyFindFirst.mockResolvedValue(undefined);
+    const r = await emptyTrash('user-1');
+    expect(r).toEqual({ deletedCount: 0, errors: [] });
+    expect(h.transaction).not.toHaveBeenCalled();
   });
 
   it('getTrashItems：孤儿行（策略已不存在）跳过并告警，其余正常返回', async () => {

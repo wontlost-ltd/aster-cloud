@@ -155,12 +155,18 @@ export function WhatIfBatchPanel({
    * **那套窗口实际只适用于留存期最长的企业级用户。**
    */
   retentionDays = null,
+  ownerOnly = false,
 }: {
   policyId: string;
   baseVersionId: string;
   targetVersionId: string;
   entitled: boolean;
   retentionDays?: number | null;
+  /**
+   * 调用者不是策略创建者（ADR 0034 §4.3：批次以创建者为租户、只回放创建者本人的执行）。
+   * true → 面板可见但禁用，说明只有创建者能运行，而不是引导升级。
+   */
+  ownerOnly?: boolean;
 }) {
   const t = useTranslations('whatIf');
   // 按留存期裁剪可选窗口。整档超出才隐藏；边缘擦边（日历月导致的 1-2 天）
@@ -259,8 +265,9 @@ export function WhatIfBatchPanel({
       });
 
       if (res.status === 403) {
-        // 无权益——引导升级，不是「稍后再试」
-        setError(t('needsPro'));
+        const body = await res.json().catch(() => ({}));
+        // 属主限定（非创建者）与无权益是两件事：前者说明谁能运行，后者引导升级
+        setError(body.error === 'whatif_owner_only' ? t('ownerOnly') : t('needsPro'));
         return;
       }
       if (res.status === 409) {
@@ -284,6 +291,26 @@ export function WhatIfBatchPanel({
       setStarting(false);
     }
   };
+
+  // ── 非创建者：入口可见但禁用 + 属主限定说明（ADR 0034 §4.3）──────────
+  if (ownerOnly) {
+    return (
+      <Card>
+        <CardBody>
+          <Stack gap={3}>
+            <h3 className="text-base font-semibold">{t('title')}</h3>
+            <p className="text-sm text-muted-foreground">
+              {t('entitlementHint')}
+            </p>
+            <Alert>
+              <AlertDescription>{t('ownerOnly')}</AlertDescription>
+            </Alert>
+            <Button disabled>{t('run')}</Button>
+          </Stack>
+        </CardBody>
+      </Card>
+    );
+  }
 
   // ── free 租户：入口可见但禁用 + 升级引导（§7.5）────────────────────
   if (!entitled) {

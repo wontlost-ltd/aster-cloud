@@ -4,7 +4,7 @@ import { db, policies, policyVersions, executions, users, usageRecords } from '@
 import { eq, sql, desc, asc } from 'drizzle-orm';
 import { PLANS, PlanType } from '@/lib/plans';
 import { upgradeResponse } from '@/lib/plan-quota';
-import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
+import { authorizePolicyAction, policyAccessDeniedResponse } from '@/lib/policy-access';
 import { executionErrorCode, missingInputFieldBody, sanitizeExecutionResult } from '@/lib/execution-error';
 import { executePolicyUnified, getPrimaryError, deriveExecutionDecision, deriveExecutionOutcome } from '@/services/policy/cnl-executor';
 import { buildReplayColumns, buildEvidenceColumns } from '@/lib/policy-execution-log';
@@ -62,8 +62,6 @@ type UnifiedQueryResult = {
   user_trial_ends_at: Date | null;
   // Usage counts
   exec_usage_count: number | null;
-  // Team membership
-  is_team_member: boolean;
   [key: string]: unknown;
 }
 
@@ -82,7 +80,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    const { userId, apiKeyId, quotaOwnerId } = auth;
+    const { userId, apiKeyId, quotaOwnerId, teamId } = auth;
 
     const versionRows = await db.query.policyVersions.findMany({
       where: eq(policyVersions.policyId, id),
@@ -133,8 +131,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         pv."vocabularySnapshotIds" AS policy_vocab_snapshot_ids,
         u.plan AS user_plan,
         u."trialEndsAt" AS user_trial_ends_at,
-        exec_ur.count AS exec_usage_count,
-        CASE WHEN tm.id IS NOT NULL THEN true ELSE false END AS is_team_member
+        exec_ur.count AS exec_usage_count
       FROM "Policy" p
       -- 活跃版本的冻结 aliasSet（版本号 = Policy.version；与 content 同源）。C1（v1）。
       LEFT JOIN "PolicyVersion" pv ON pv."policyId" = p.id AND pv.version = p.version
@@ -142,8 +139,6 @@ export async function POST(req: Request, { params }: RouteParams) {
       LEFT JOIN "UsageRecord" exec_ur ON exec_ur."userId" = ${userId}
         AND exec_ur.type = 'execution'
         AND exec_ur.period = ${period}
-      LEFT JOIN "TeamMember" tm ON tm."userId" = ${userId}
-        AND tm."teamId" = p."teamId"
       WHERE p.id = ${id}
         AND p."deletedAt" IS NULL
         AND u.id = ${userId}
@@ -215,27 +210,17 @@ export async function POST(req: Request, { params }: RouteParams) {
     } : null;
 
     const executionUsage = row?.exec_usage_count ?? 0;
-    const isTeamMember = row?.is_team_member ?? false;
 
     if (!policy) {
       return NextResponse.json({ error: 'Policy not found' }, { status: 404 });
     }
 
-    // 权限检查（快速路径：所有者或公开策略）
-    const isOwner = policy.userId === userId;
-    const isPublic = policy.isPublic;
-
-    // 权限验证（团队成员资格已在 SQL 查询中获取）
-    if (!isOwner && !isPublic && !isTeamMember) {
-      return NextResponse.json({ error: 'Policy not found' }, { status: 404 });
-    }
-
-    // 团队成员权限检查（仅非所有者）
-    if (!isOwner && policy.teamId) {
-      const permCheck = await checkTeamPermission(userId, policy.teamId, TeamPermission.POLICY_EXECUTE);
-      if (!permCheck.allowed) {
-        return NextResponse.json({ error: permCheck.error, code: permCheck.code }, { status: permCheck.status });
-      }
+    // 授权（与会话执行同一矩阵）：团队策略按 key 持有者当前角色；个人策略只认所有者。
+    // 团队作用域 key 只能访问本团队的策略——创建者的个人策略、其他团队策略一律 404（#671）。
+    // 公开策略对个人 key 仍可执行；团队 key 不越出团队（否则调用会计入团队 owner 的配额池）。
+    const access = await authorizePolicyAction({ userId, keyTeamId: teamId }, policy, 'execute');
+    if (!access.allowed && !(policy.isPublic && !teamId)) {
+      return policyAccessDeniedResponse(access);
     }
 
     // 策略冻结检查：冻结取决于「策略所有者」的套餐限制，与调用者是否为所有者无关。

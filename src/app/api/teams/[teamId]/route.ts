@@ -5,6 +5,7 @@ import { eq, and, isNull, not, sql } from 'drizzle-orm';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
 import { validateTeamName, validateSlug } from '@/lib/validation';
 import { revokeTeamKeys } from '@/lib/api-keys';
+import { invalidatePolicyCache } from '@/lib/cache';
 import { logSecurityAdminAction } from '@/services/security/security-event-service';
 
 type RouteParams = { params: Promise<{ teamId: string }> };
@@ -169,7 +170,8 @@ export async function DELETE(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: permission.error, code: permission.code }, { status: permission.status });
     }
 
-    // 删除团队（手动级联删除关联记录）
+    // 删除团队（手动级联删除关联记录）。先记下团队策略 id：事务后要失效执行路径的策略元数据缓存
+    let affectedPolicyIds: string[] = [];
     await db.transaction(async (tx) => {
       // 删除团队成员
       await tx.delete(teamMembers).where(eq(teamMembers.teamId, teamId));
@@ -181,10 +183,12 @@ export async function DELETE(req: Request, { params }: RouteParams) {
       await tx.delete(policyGroups).where(eq(policyGroups.teamId, teamId));
 
       // 注意：不删除 policies，只清除 teamId（保留个人归属）
-      await tx
+      const moved = await tx
         .update(policies)
         .set({ teamId: null })
-        .where(eq(policies.teamId, teamId));
+        .where(eq(policies.teamId, teamId))
+        .returning({ id: policies.id });
+      affectedPolicyIds = moved.map((p) => p.id);
 
       // 最后删除团队本身
       await tx.delete(teams).where(eq(teams.id, teamId));
@@ -194,6 +198,13 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     // 事务失败就不会误吊销仍存在团队的 key。吊销失败不改写删除结果：解析器以 team_not_found 兜底拒绝（ADR 0015 §5）
     await revokeTeamKeys(teamId).catch((err) =>
       console.warn('[teams] revokeTeamKeys after team deletion failed:', err)
+    );
+    // 执行路径缓存的策略元数据带 teamId，授权按它判定：归属变了必须失效，否则缓存期内
+    // 创建者执行已转为个人的策略仍按已删除的团队判成 404（ADR 0016）。失效失败只记录。
+    await Promise.all(
+      affectedPolicyIds.map((policyId) =>
+        invalidatePolicyCache(policyId).catch((err) => console.warn('[Cache] Failed to invalidate policy cache:', err)),
+      ),
     );
     await logSecurityAdminAction(session.user.id, 'TEAM_DELETED', { teamId });
 

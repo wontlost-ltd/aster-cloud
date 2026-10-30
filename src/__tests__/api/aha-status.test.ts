@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/auth', () => ({ getSession: mocks.getSession }));
+vi.mock('@/lib/policy-access', () => ({ ownPoliciesVisibleTo: vi.fn(() => ({})) }));
 vi.mock('@/lib/prisma', () => ({
   db: {
     query: {

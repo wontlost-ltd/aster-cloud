@@ -8,10 +8,11 @@
  *     这类自审在审计事件里标记 selfApproved: true，界面上给出说明。
  * 套餐级的 SOX 要求（approvalRequired）由批准路由的 checkSoxGuard 另行叠加，不在本模块。
  */
-import type { TeamRole } from '@/lib/team-permissions';
+import { rolesWithPermission, TeamPermission, type TeamRole } from '@/lib/team-permission-matrix';
+import { decidePolicyAccess } from '@/lib/policy-access-matrix';
 
-/** 能审批团队策略版本的团队角色。 */
-export const TEAM_REVIEWER_ROLES: readonly TeamRole[] = ['owner', 'admin'];
+/** 能审批团队策略版本的团队角色（来自团队权限矩阵的 policy.approve）。 */
+export const TEAM_REVIEWER_ROLES: readonly TeamRole[] = rolesWithPermission(TeamPermission.POLICY_APPROVE);
 
 export interface VersionReviewContext {
   /** 策略所有者（policies.userId） */
@@ -29,10 +30,12 @@ export interface VersionReviewContext {
  * 无权者对外按「策略不存在」处理（404），不泄露策略是否存在。
  */
 export function canReviewPolicyVersions(ctx: VersionReviewContext): boolean {
-  if (ctx.policyTeamId) {
-    return ctx.reviewerTeamRole !== null && TEAM_REVIEWER_ROLES.includes(ctx.reviewerTeamRole);
-  }
-  return ctx.reviewerId === ctx.policyOwnerId;
+  return decidePolicyAccess({
+    action: 'approve',
+    actorId: ctx.reviewerId,
+    policy: { userId: ctx.policyOwnerId, teamId: ctx.policyTeamId },
+    teamRole: ctx.reviewerTeamRole,
+  }).allowed;
 }
 
 export type VersionApprovalDecision =

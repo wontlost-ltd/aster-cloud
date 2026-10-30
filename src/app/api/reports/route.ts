@@ -4,6 +4,7 @@ import { hasFeatureAccess, recordUsage, EVIDENCE_EXPORT_METRIC } from '@/lib/usa
 import { createEvidenceExport, listEvidenceExports } from '@/lib/evidence';
 import { getEvidencePreview, EvidenceTooLargeError } from '@/lib/evidence-export';
 import type { EvidenceFormat } from '@/services/evidence/types';
+import { loadPolicyForAction } from '@/lib/policy-access';
 
 // GET /api/reports — 列出用户的证据导出历史。
 export async function GET() {
@@ -77,6 +78,10 @@ export async function POST(req: Request) {
     // 预览（dryRun）：回 count + decision 分布 + **覆盖率**（不带 verifiableOnly——预览要展示全量的
     // verifiable/legacy 拆分，让用户据此决定是否勾「仅可验证」）。
     if (body.dryRun) {
+      // 单策略预览与导出同一授权：团队策略任一当前成员，个人策略只认所有者；其余 404
+      if (policyId && !(await loadPolicyForAction(policyId, { userId: session.user.id }, 'view')).ok) {
+        return NextResponse.json({ error: 'Policy not found' }, { status: 404 });
+      }
       const preview = await getEvidencePreview({ userId: session.user.id, policyId, startDate, endDate });
       return NextResponse.json(preview);
     }

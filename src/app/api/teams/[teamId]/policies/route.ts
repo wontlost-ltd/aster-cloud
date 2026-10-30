@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db, policies, executions } from '@/lib/prisma';
-import { eq, desc, sql } from 'drizzle-orm';
+import { and, eq, desc, isNull, sql } from 'drizzle-orm';
+import { loadPolicyForAction } from '@/lib/policy-access';
+import { invalidatePolicyCache } from '@/lib/cache';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
 import { assertCompilable, PolicyCompileError } from '@/services/policy/version-manager';
 import { loadSaveVocabulary, makeCompileValidator } from '@/lib/policy-compile-validator';
@@ -30,8 +32,9 @@ export async function GET(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: permission.error, code: permission.code }, { status: permission.status });
     }
 
+    // 回收站里的策略不列出（与 GET /api/teams/[teamId] 的 policyCount 同一口径，#674）
     const teamPolicies = await db.query.policies.findMany({
-      where: eq(policies.teamId, teamId),
+      where: and(eq(policies.teamId, teamId), isNull(policies.deletedAt)),
       with: {
         user: {
           columns: {
@@ -103,22 +106,14 @@ export async function POST(req: Request, { params }: RouteParams) {
 
     // 如果提供了 policyId，将现有策略分配给团队
     if (policyId) {
-      // 获取策略信息
-      const existingPolicy = await db.query.policies.findFirst({
-        where: eq(policies.id, policyId),
-      });
-
-      if (!existingPolicy || existingPolicy.teamId !== null) {
+      // 只允许把本人的个人策略（未删除）导入团队：已属于团队的策略不能被「再导入」到另一个团队，
+      // 他人的个人策略按不存在处理，防止未经授权泄露策略内容
+      const access = await loadPolicyForAction(policyId, { userId: session.user.id }, 'update');
+      if (!access.ok || access.policy.teamId) {
         return NextResponse.json(
           { error: 'Policy not found or already assigned to another team.', code: 'policy_unavailable' },
           { status: 404 }
         );
-      }
-
-      // 安全检查：只允许策略所有者本人导入自己的策略到团队
-      // 防止未经授权泄露他人策略内容
-      if (existingPolicy.userId !== session.user.id) {
-        return NextResponse.json({ error: 'Only your own policies can be imported.', code: 'policy_owner_required' }, { status: 403 });
       }
 
       // 分配策略到团队
@@ -131,6 +126,8 @@ export async function POST(req: Request, { params }: RouteParams) {
       if (!updatedPolicy) {
         throw new Error('Failed to update policy');
       }
+      // 执行路径缓存了策略元数据（含 teamId）：归属变了必须失效，否则授权按旧归属判定
+      await invalidatePolicyCache(policyId).catch((err) => console.warn('[Cache] Failed to invalidate policy cache:', err));
 
       return NextResponse.json({
         id: updatedPolicy.id,

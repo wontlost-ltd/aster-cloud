@@ -26,6 +26,7 @@ vi.mock('@/lib/api-keys', () => ({ refreshTeamKeySnapshots: m.refresh, revokeTea
 vi.mock('drizzle-orm', () => ({
   eq: (col: unknown, val: unknown) => ({ eq: [col, val] }),
   and: (...c: unknown[]) => ({ and: c }),
+  sql: (strings: TemplateStringsArray) => ({ sql: strings.join('?') }),
 }));
 
 import { PUT } from '@/app/api/teams/[teamId]/members/[memberId]/route';

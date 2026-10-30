@@ -57,7 +57,7 @@ describe('enrichEntries What-If 接线', () => {
     expect(whatIfUnavailable).toBe(2);
   });
 
-  it('What-If 按所有者 userId 查询，收据按团队租户查询', async () => {
+  it('What-If 与收据都按策略租户（团队策略为 teamId）查询（ADR 0016 §2）', async () => {
     const replayTenants: string[] = [];
     const receiptTenants: string[] = [];
     const receipt = async (tenant: string) => {
@@ -74,7 +74,7 @@ describe('enrichEntries What-If 接线', () => {
         return { items: new Map(), unavailable: new Set<string>() };
       },
     } as unknown as EnrichDeps);
-    expect(replayTenants).toEqual(['user-1']);
+    expect(replayTenants).toEqual(['team-1']);
     expect(receiptTenants).toEqual(['team-1', 'team-1']);
   });
 });

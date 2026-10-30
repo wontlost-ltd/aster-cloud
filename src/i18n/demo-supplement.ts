@@ -149,6 +149,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         ERROR: 'Error',
       },
       needsPro: 'This feature requires a Pro plan or above.',
+      // What-If 属主限定（ADR 0034 §4.3）：非创建者看到的说明
+      ownerOnly: 'What-If replays only the executions of the policy creator, so only the creator can run it. Ask the creator, or create your own copy of the policy.',
       // 权益校验超时（503 plan_check_unavailable），区别于 needsPro。
       planCheckUnavailable: 'Plan check is temporarily unavailable — please retry.',
       entitlementHint: 'See how switching to another policy version would have changed past decisions.',
@@ -1000,6 +1002,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         otherDecisionStates: 'Other states: indeterminate/computed and pending approval/escalated.',
       },
       form: {
+        // 团队策略的公开状态只有 owner/admin 可切换（ADR 0016）
+        visibilityOwnerAdminOnly: 'Only team owners and admins can change whether a team policy is public.',
         nameRequired: 'Name is required.',
         // 策略语言与源码识别结果不一致时的提示与显式切换按钮（#627）
         localeMismatch: 'This policy is compiled and executed as {current}, but its source looks like {detected}.',
@@ -1336,6 +1340,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         ERROR: '出错',
       },
       needsPro: '此功能需要 Pro 及以上套餐。',
+      // What-If 属主限定（ADR 0034 §4.3）：非创建者看到的说明
+      ownerOnly: 'What-If 只回放策略创建者本人的执行，因此只有创建者能运行。请联系创建者，或复制一份自己的策略。',
       // 权益校验超时（503 plan_check_unavailable），区别于 needsPro。
       planCheckUnavailable: '权益校验暂不可用，请稍后重试',
       entitlementHint: '看看把策略换成另一个版本，过去的决策会有什么不同。',
@@ -2161,6 +2167,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         pendingLabel: '待处置',
       },
       form: {
+        // 团队策略的公开状态只有 owner/admin 可切换（ADR 0016）
+        visibilityOwnerAdminOnly: '只有团队 owner 和 admin 可以更改团队策略的公开状态。',
         nameRequired: '请填写策略名称。',
         localeMismatch: '该策略按 {current} 编译和执行，但源码看起来是 {detected}。',
         localeMismatchSwitch: '将策略语言切换为 {locale}',
@@ -2498,6 +2506,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         ERROR: 'Fehler',
       },
       needsPro: 'Diese Funktion erfordert mindestens den Pro-Tarif.',
+      // What-If 属主限定（ADR 0034 §4.3）：非创建者看到的说明
+      ownerOnly: 'What-If spielt nur die Ausführungen der Person ab, die die Richtlinie erstellt hat; daher kann nur sie es ausführen. Wenden Sie sich an sie oder erstellen Sie eine eigene Kopie der Richtlinie.',
       // 权益校验超时（503 plan_check_unavailable），区别于 needsPro。
       planCheckUnavailable: 'Die Tarifprüfung ist vorübergehend nicht verfügbar – bitte erneut versuchen.',
       entitlementHint: 'Sehen Sie, wie sich vergangene Entscheidungen mit einer anderen Richtlinienversion geändert hätten.',
@@ -3332,6 +3342,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         pendingLabel: 'Ausstehend',
       },
       form: {
+        // 团队策略的公开状态只有 owner/admin 可切换（ADR 0016）
+        visibilityOwnerAdminOnly: 'Nur Team-Owner und -Admins können ändern, ob eine Team-Richtlinie öffentlich ist.',
         nameRequired: 'Ein Name ist erforderlich.',
         localeMismatch: 'Diese Policy wird als {current} kompiliert und ausgeführt, der Quelltext sieht jedoch nach {detected} aus.',
         localeMismatchSwitch: 'Policy-Sprache auf {locale} umstellen',
@@ -3667,6 +3679,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         ERROR: 'त्रुटि',
       },
       needsPro: 'इस सुविधा के लिए Pro या उससे ऊपर की योजना आवश्यक है।',
+      // What-If 属主限定（ADR 0034 §4.3）：非创建者看到的说明
+      ownerOnly: 'What-If केवल नीति बनाने वाले के अपने निष्पादन दोबारा चलाता है, इसलिए केवल वही इसे चला सकते हैं। नीति बनाने वाले से संपर्क करें, या नीति की अपनी प्रति बनाएँ।',
       // 权益校验超时（503 plan_check_unavailable），区别于 needsPro。
       planCheckUnavailable: 'योजना जाँच अस्थायी रूप से उपलब्ध नहीं है — कृपया पुनः प्रयास करें।',
       entitlementHint: 'देखें कि किसी दूसरे नीति संस्करण पर स्विच करने से पिछले निर्णय कैसे बदलते।',
@@ -4490,6 +4504,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         pendingLabel: 'लंबित',
       },
       form: {
+        // 团队策略的公开状态只有 owner/admin 可切换（ADR 0016）
+        visibilityOwnerAdminOnly: 'केवल टीम के owner और admin ही बदल सकते हैं कि टीम नीति सार्वजनिक है या नहीं।',
         nameRequired: 'नाम आवश्यक है।',
         localeMismatch: 'यह नीति {current} के रूप में संकलित और निष्पादित होती है, लेकिन इसका स्रोत {detected} जैसा दिखता है।',
         localeMismatchSwitch: 'नीति की भाषा {locale} पर बदलें',

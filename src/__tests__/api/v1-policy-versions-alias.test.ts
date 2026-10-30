@@ -20,9 +20,12 @@ vi.mock('@/lib/structural-alias-grants', () => ({
 }));
 vi.mock('@/lib/prisma', () => ({
   db: { query: { policies: { findFirst: vi.fn() } } },
-  policies: { id: {}, userId: {}, deletedAt: {} },
+  policies: { id: {}, userId: {}, deletedAt: {}, isPublic: {} },
 }));
 vi.mock('@/lib/policy-freeze', () => ({ isPolicyFrozen: vi.fn() }));
+// 授权走真实的策略授权矩阵；默认是调用者本人的个人策略
+vi.mock('@/lib/policy-access', async () =>
+  (await import('@/__tests__/helpers/policy-access-mock')).policyAccessModule());
 // 作者词汇每次保存加载一次（ADR 0051 §7），同一份交给编译门禁与 envelope 封印。
 vi.mock('@/lib/policy-compile-validator', () => ({
   loadSaveVocabulary: vi.fn(),
@@ -40,8 +43,8 @@ import {
   getStructuralAliasGrant,
   buildAliasReservedForUser,
 } from '@/lib/structural-alias-grants';
-import { db } from '@/lib/prisma';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
+import { policyAccessState } from '@/__tests__/helpers/policy-access-mock';
 
 function req(body: unknown) {
   return new Request('http://localhost/api/v1/policies/p1/versions', {
@@ -58,7 +61,8 @@ describe('POST /api/v1/policies/[id]/versions — aliasSet 支持', () => {
     vi.mocked(loadSaveVocabulary).mockResolvedValue(SAVE_VOCABULARY);
     vi.mocked(auth).mockResolvedValue({ user: { id: 'user-1' } } as never);
     // 默认：调用者拥有该策略且未冻结（授权通过）。
-    vi.mocked(db.query.policies.findFirst).mockResolvedValue({ id: 'p1' } as never);
+    policyAccessState.policy = { id: 'p1', userId: 'user-1', teamId: null };
+    policyAccessState.teamRole = null;
     vi.mocked(isPolicyFrozen).mockResolvedValue({ isFrozen: false } as never);
     vi.mocked(createVersion).mockResolvedValue({
       id: 'v2', version: 2, sourceHash: 'h', sourceEnvelopeSha256: 'e',
@@ -170,10 +174,23 @@ describe('POST /api/v1/policies/[id]/versions — aliasSet 支持', () => {
   });
 
   it('IDOR：非所有者对他人 policy 建版本 → 404，不建版本', async () => {
-    // 授权校验：findFirst 按 (id, userId=self, 未删) 查不到 → 404。
-    vi.mocked(db.query.policies.findFirst).mockResolvedValue(undefined as never);
+    policyAccessState.policy = { id: 'p1', userId: 'someone-else', teamId: null };
     const r = await POST(req({ source: 'Module X.', aliasSet: { TIMES: ['multiplied by'] } }), params);
     expect(r.status).toBe(404);
+    expect(createVersion).not.toHaveBeenCalled();
+  });
+
+  it('团队策略：非创建者的 member 可建版本；viewer 403；已离队的创建者 404（#669 #670）', async () => {
+    policyAccessState.policy = { id: 'p1', userId: 'creator', teamId: 't1' };
+    policyAccessState.teamRole = 'member';
+    expect((await POST(req({ source: 'Module X.' }), params)).status).toBe(201);
+    expect(isPolicyFrozen).toHaveBeenLastCalledWith('creator', 'p1');
+    vi.mocked(createVersion).mockClear();
+    policyAccessState.teamRole = 'viewer';
+    expect((await POST(req({ source: 'Module X.' }), params)).status).toBe(403);
+    policyAccessState.policy = { id: 'p1', userId: 'user-1', teamId: 't1' };
+    policyAccessState.teamRole = null;
+    expect((await POST(req({ source: 'Module X.' }), params)).status).toBe(404);
     expect(createVersion).not.toHaveBeenCalled();
   });
 

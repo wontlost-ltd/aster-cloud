@@ -9,9 +9,10 @@ import {
   policyReviewers,
   policyShares,
 } from '@/lib/prisma';
-import { eq, isNotNull, isNull, not, and, desc, asc, lte, sql } from 'drizzle-orm';
+import { eq, inArray, isNull, not, and, desc, asc, lte, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { bypassQueryCache } from '@/db/fresh-read';
+import { loadPolicyForAction, policiesVisibleTo, type LoadedPolicy } from '@/lib/policy-access';
 import { releaseSnapshotRefsForPolicy, reportSnapshotRelease } from '@/lib/domain-vocabulary-snapshot';
 // 回收站保留天数
 const RECYCLE_BIN_RETENTION_DAYS = 30;
@@ -20,14 +21,34 @@ export interface SoftDeleteResult {
   success: boolean;
   policyId: string;
   error?: string;
+  /** 失败时的 HTTP 状态：404 不存在 / 无权访问，403 团队角色不够 */
+  status?: 403 | 404;
+  code?: string;
 }
 
 export interface RestoreResult {
   success: boolean;
   policyId: string;
   error?: string;
+  status?: 403 | 404;
+  code?: string;
   nameConflict?: boolean;
   newName?: string;
+}
+
+/** 授权失败 → 生命周期结果（404 沿用原有文案，403 带团队角色原因码）。 */
+function deniedResult(policyId: string, denied: Extract<LoadedPolicy, { ok: false }>, notFoundError: string): SoftDeleteResult {
+  const { status, code, error } = denied.decision;
+  return { success: false, policyId, status, code, error: status === 404 ? notFoundError : error };
+}
+
+/**
+ * 调用者可在回收站里看到并处置的条目：本人的个人策略，加上本人当前有删除权限的团队的策略
+ * （团队 owner/admin 共享同一团队的回收站视图，离队或降级后即不可见）。
+ */
+function trashVisibleTo(userId: string): SQL {
+  const deletable = db.select({ id: policies.id }).from(policies).where(policiesVisibleTo(userId, 'delete'));
+  return inArray(policyRecycleBins.policyId, deletable);
 }
 
 export interface TrashItem {
@@ -100,22 +121,10 @@ export async function softDeletePolicy(
   reason?: string
 ): Promise<SoftDeleteResult> {
   try {
-    // 检查策略是否存在且属于该用户
-    const policy = await db.query.policies.findFirst({
-      where: and(
-        eq(policies.id, policyId),
-        eq(policies.userId, userId),
-        isNull(policies.deletedAt) // 未被删除的策略
-      ),
-    });
-
-    if (!policy) {
-      return {
-        success: false,
-        policyId,
-        error: 'Policy not found or already deleted',
-      };
-    }
+    // 团队策略按当前角色授权（owner/admin），个人策略只认所有者；只处理未删除的策略
+    const access = await loadPolicyForAction(policyId, { userId }, 'delete');
+    if (!access.ok) return deniedResult(policyId, access, 'Policy not found or already deleted');
+    const policy = access.policy;
 
     const now = new Date();
     const expiresAt = new Date(now.getTime() + RECYCLE_BIN_RETENTION_DAYS * 24 * 60 * 60 * 1000);
@@ -174,30 +183,27 @@ export async function softDeletePolicy(
  */
 export async function restorePolicy(policyId: string, userId: string): Promise<RestoreResult> {
   try {
-    // 检查策略是否在回收站中
-    const policy = await db.query.policies.findFirst({
-      where: and(
-        eq(policies.id, policyId),
-        eq(policies.userId, userId),
-        isNotNull(policies.deletedAt) // 已被删除的策略
-      ),
-      with: {
-        recycleBin: true,
-      },
+    // 只处理回收站里的策略；授权与删除同一口径（团队 owner/admin、个人策略所有者）
+    const access = await loadPolicyForAction(policyId, { userId }, 'delete', { deleted: true });
+    if (!access.ok) return deniedResult(policyId, access, 'Policy not found in trash');
+    const policy = access.policy;
+    const recycleBin = await db.query.policyRecycleBins.findFirst({
+      where: eq(policyRecycleBins.policyId, policyId),
+      columns: { id: true },
     });
-
-    if (!policy || !policy.recycleBin) {
+    if (!recycleBin) {
       return {
         success: false,
         policyId,
+        status: 404,
         error: 'Policy not found in trash',
       };
     }
 
-    // 检查名称冲突（与现有未删除策略）
+    // 检查名称冲突（与同一归属范围内的现有未删除策略：团队策略看团队，个人策略看所有者）
     const existingPolicy = await db.query.policies.findFirst({
       where: and(
-        eq(policies.userId, userId),
+        policy.teamId ? eq(policies.teamId, policy.teamId) : eq(policies.userId, policy.userId),
         eq(policies.name, policy.name),
         isNull(policies.deletedAt),
         not(eq(policies.id, policyId))
@@ -255,22 +261,8 @@ export async function permanentDeletePolicy(
   userId: string
 ): Promise<SoftDeleteResult> {
   try {
-    // 检查策略是否在回收站中
-    const policy = await db.query.policies.findFirst({
-      where: and(
-        eq(policies.id, policyId),
-        eq(policies.userId, userId),
-        isNotNull(policies.deletedAt)
-      ),
-    });
-
-    if (!policy) {
-      return {
-        success: false,
-        policyId,
-        error: 'Policy not found in trash',
-      };
-    }
+    const access = await loadPolicyForAction(policyId, { userId }, 'delete', { deleted: true });
+    if (!access.ok) return deniedResult(policyId, access, 'Policy not found in trash');
 
     await purgePolicy(policyId);
 
@@ -291,7 +283,7 @@ export async function permanentDeletePolicy(
  */
 export async function getTrashItems(userId: string): Promise<TrashItem[]> {
   const recycleBinItems = await db.query.policyRecycleBins.findMany({
-    where: and(eq(policyRecycleBins.userId, userId), bypassQueryCache()),
+    where: and(trashVisibleTo(userId), bypassQueryCache()),
     orderBy: [desc(policyRecycleBins.deletedAt)],
     with: {
       policy: {
@@ -408,7 +400,7 @@ export async function getTrashStats(userId: string): Promise<{
   newestDeletedAt: Date | null;
 }> {
   // 与 getTrashItems 同为写后即读，统计须与列表一致，同样绕过 Hyperdrive 缓存。
-  const ownedFresh = and(eq(policyRecycleBins.userId, userId), bypassQueryCache());
+  const ownedFresh = and(trashVisibleTo(userId), bypassQueryCache());
   const [countResult, oldest, newest] = await Promise.all([
     db.select({ count: sql<number>`count(*)::int` })
       .from(policyRecycleBins)
@@ -435,7 +427,7 @@ export async function getTrashStats(userId: string): Promise<{
 }
 
 /**
- * 批量清空回收站
+ * 批量清空回收站：本人删除、且本人当前仍有删除权限的条目。
  */
 export async function emptyTrash(userId: string): Promise<{
   deletedCount: number;
@@ -445,15 +437,18 @@ export async function emptyTrash(userId: string): Promise<{
   let deletedCount = 0;
 
   try {
-    // 查找用户所有回收站项目
+    // 批量清空只处理**本人删除**的条目（个人策略的删除者恒为所有者本人）；同一团队其他成员删除的团队条目
+    // 只能在回收站里逐条永久删除，避免 admin 一键清掉别人刚删、还在恢复窗口里的策略（ADR 0016 §3）。
     const trashItems = await db.query.policyRecycleBins.findMany({
-      where: eq(policyRecycleBins.userId, userId),
+      where: and(trashVisibleTo(userId), eq(policyRecycleBins.deletedBy, userId)),
       columns: { policyId: true },
     });
 
-    // 永久删除所有（连同回收站记录）
+    // 逐条复核删除权限后再永久删除（连同回收站记录）：列表查询与删除之间角色可能已变化
     for (const item of trashItems) {
       try {
+        const access = await loadPolicyForAction(item.policyId, { userId }, 'delete', { deleted: true });
+        if (!access.ok) continue;
         await purgePolicy(item.policyId);
         deletedCount++;
       } catch (err) {

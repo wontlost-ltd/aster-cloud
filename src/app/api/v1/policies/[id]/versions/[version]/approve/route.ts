@@ -66,7 +66,10 @@ export async function POST(
   } catch (error) {
     // 非所有者与「策略不存在」返回同一 404，避免泄露该 policyId 是否存在
     if (error instanceof PolicyAccessDeniedError) {
-      return NextResponse.json({ error: 'Policy not found.', code: 'policy_not_found' }, { status: 404 });
+      // 团队角色不够 → 403（成员知道策略存在）；非成员 / 不存在 → 404
+      return error.status === 403
+        ? NextResponse.json({ error: error.message, code: error.code }, { status: 403 })
+        : NextResponse.json({ error: 'Policy not found.', code: 'policy_not_found' }, { status: 404 });
     }
     // 团队策略的作者自审：与 checkSoxGuard 同一错误码，前端据此显示本地化提示
     if (error instanceof SegregationOfDutiesError) {

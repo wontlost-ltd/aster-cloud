@@ -3,7 +3,8 @@
 // 审计物必须**可复现/可重下载**：导出时把 bundle 持久化，用户下季度还能拉到字节完全一致的同一份
 // （on-demand 重生会因新执行/留存清理而漂移）。替换旧 lib/compliance.ts（假分报告）。
 
-import { db, complianceReports, policies } from '@/lib/prisma';
+import { loadPolicyForAction } from '@/lib/policy-access';
+import { db, complianceReports } from '@/lib/prisma';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import {
   buildBundle,
@@ -119,9 +120,8 @@ export async function enrichEntries(rows: readonly EvidenceRow[], deps: EnrichDe
   const [lookup, guardLookup, replay, proofs, approvals] = await Promise.all([
     lookupByTenant(idsByTenant(rows, (r) => r.evidenceCorrelationId), deps.fetchReceipts, limiter),
     lookupByTenant(idsByTenant(rows, (r) => r.guardDecisionId), deps.fetchDecisionReceipts, limiter),
-    // What-If 批次按策略所有者 userId 作租户（BFF 以会话用户建批次，窗口/版本查询按所有者收窄，ADR 0034 §4.3），
-    // 与收据所用的 policyTenantId（teamId 优先）不同，故此处按 policyOwnerId 分组。
-    replayByTenant(idsByTenant(rows, (r) => r.id, (r) => r.policyOwnerId), deps.fetchReplayItems, limiter),
+    // What-If 批次与收据同一租户口径：策略租户（团队策略为 teamId，个人策略为所有者 userId，ADR 0016 §2）。
+    replayByTenant(idsByTenant(rows, (r) => r.id), deps.fetchReplayItems, limiter),
     loadProofReviewers(versionIds),
     loadVersionApprovalReviewers(versionIds),
   ]);
@@ -155,13 +155,12 @@ export async function createEvidenceExport(
   let policySnapshot: EvidenceManifest['policy'] = { scope: 'all' };
   let titleScope = 'all policies';
   if (request.policyId) {
-    const p = await db.query.policies.findFirst({
-      where: and(eq(policies.id, request.policyId), eq(policies.userId, userId)),
-      columns: { id: true, name: true, version: true },
-    });
-    if (!p) {
+    // 团队策略任一当前成员可导出（覆盖全部成员的执行，#673），个人策略只认所有者
+    const access = await loadPolicyForAction(request.policyId, { userId }, 'view');
+    if (!access.ok) {
       throw new Error('policy_not_found');
     }
+    const p = access.policy;
     // manifest 记策略**当前**版本号（导出时刻）；每条 entry 各自带执行时的版本号（可能不同版本）。
     policySnapshot = { id: p.id, name: p.name, version: p.version ?? null, policyVersionRowId: null };
     titleScope = p.name;

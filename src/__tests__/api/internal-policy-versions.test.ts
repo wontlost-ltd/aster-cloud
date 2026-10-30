@@ -28,7 +28,10 @@ vi.mock('@/lib/prisma', () => {
       captured.where = w;
       return chain;
     },
-    limit: () => Promise.resolve(rows.value),
+    // 未显式给出时默认是调用者（u1）本人的个人策略
+    limit: () => Promise.resolve(
+      (rows.value as Record<string, unknown>[]).map((r) => ({ policyUserId: 'u1', policyTeamId: null, ...r })),
+    ),
   };
   return {
     db: { select: () => chain },
@@ -42,12 +45,17 @@ const loadStoredVersionCompileContext = vi.hoisted(() =>
 );
 vi.mock('@/lib/execution-input', () => ({ loadStoredVersionCompileContext }));
 
+// 团队策略按授权矩阵复核创建者的当前角色（真实判定，只替换角色读取）
+vi.mock('@/lib/policy-access', async () =>
+  (await import('@/__tests__/helpers/policy-access-mock')).policyAccessModule());
+
 vi.mock('drizzle-orm', () => ({
   and: (...xs: unknown[]) => ({ op: 'and', xs: xs.filter(Boolean) }),
   eq: (col: unknown, val: unknown) => ({ op: 'eq', col, val }),
 }));
 
 const { GET } = await import('@/app/api/internal/policy-versions/route');
+const { policyAccessState } = await import('@/__tests__/helpers/policy-access-mock');
 
 const URL_OK =
   'https://x.test/api/internal/policy-versions?versionId=v-uuid&userId=u1';
@@ -168,5 +176,15 @@ describe('内部端点：策略版本源码', () => {
     expect(res.status).toBe(404);
     // 错误体不得泄露该 id 是否存在——否则成了可探测的存在性信号。
     expect(await res.json()).toEqual({ error: 'version_not_found' });
+  });
+
+  it('团队策略：创建者仍有执行权限 → 200；离队（无成员行）或降为 viewer → 404（ADR 0016 §2）', async () => {
+    rows.value = [{ id: 'v-uuid', policyId: 'p1', version: 2, content: 'Module x.', policyTeamId: 't1' }];
+    policyAccessState.teamRole = 'member';
+    expect((await GET(req())).status).toBe(200);
+    policyAccessState.teamRole = 'viewer';
+    expect((await GET(req())).status).toBe(404);
+    policyAccessState.teamRole = null;
+    expect((await GET(req())).status).toBe(404);
   });
 });

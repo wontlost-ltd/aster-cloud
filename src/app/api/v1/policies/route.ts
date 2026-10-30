@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { authenticateApiRequest } from '@/lib/api-keys';
-import { db, policies, executions, teamMembers } from '@/lib/prisma';
-import { eq, and, isNull, desc, sql, ne, inArray } from 'drizzle-orm';
+import { db, policies, executions } from '@/lib/prisma';
+import { eq, and, isNull, desc, sql, inArray } from 'drizzle-orm';
+import { isPersonalPolicy, teamsAllowing } from '@/lib/policy-access';
 import { checkUsageLimit, recordUsage } from '@/lib/usage';
 import { getPolicyFreezeStatus, getBatchPolicyFreezeStatus } from '@/lib/policy-freeze';
 import { upgradeResponse } from '@/lib/plan-quota';
@@ -14,10 +15,11 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    const { userId } = auth;
+    const { userId, teamId: keyTeamId, quotaOwnerId } = auth;
 
-    // 检查 API 调用配额
-    const apiLimitCheck = await checkUsageLimit(userId, 'api_call');
+    // API 调用配额按 key 的配额 owner 计（团队 key 为团队 owner，个人 key 为持有者本人，ADR 0015 §10），
+    // 否则 Free 成员持团队 key 调列表会被自己的 0 额度拦下（#671）。
+    const apiLimitCheck = await checkUsageLimit(quotaOwnerId, 'api_call');
     if (!apiLimitCheck.allowed) {
       return NextResponse.json(
         upgradeResponse('evaluations', { message: apiLimitCheck.message }),
@@ -25,11 +27,29 @@ export async function GET(req: Request) {
       );
     }
 
-    // 获取用户自己的策略
-    const ownPolicies = await db.query.policies.findMany({
+    // 个人策略：只有个人 key 列出持有者本人的个人策略；团队 key 不越出团队（#671）。
+    const ownPolicies = keyTeamId
+      ? []
+      : await db.query.policies.findMany({
+          where: and(eq(policies.userId, userId), isPersonalPolicy(), isNull(policies.deletedAt)),
+          orderBy: desc(policies.updatedAt),
+          columns: {
+            id: true,
+            name: true,
+            description: true,
+            isPublic: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
+
+    // 团队策略：持有者当前可查看的团队（团队 key 只取其所属团队），含本人创建的团队策略。
+    const visibleTeams = teamsAllowing(userId, 'view');
+    const teamPolicies = await db.query.policies.findMany({
       where: and(
-        eq(policies.userId, userId),
-        isNull(policies.deletedAt)
+        isNull(policies.deletedAt),
+        inArray(policies.teamId, visibleTeams),
+        ...(keyTeamId ? [eq(policies.teamId, keyTeamId)] : []),
       ),
       orderBy: desc(policies.updatedAt),
       columns: {
@@ -39,44 +59,18 @@ export async function GET(req: Request) {
         isPublic: true,
         createdAt: true,
         updatedAt: true,
+        userId: true,
+        teamId: true,
       },
-    });
-
-    // 获取用户所在团队的策略(排除自己拥有的)
-    const userTeams = await db.query.teamMembers.findMany({
-      where: eq(teamMembers.userId, userId),
-      columns: { teamId: true },
-    });
-
-    const teamIds = userTeams.map(m => m.teamId);
-    const teamPolicies = teamIds.length > 0
-      ? await db.query.policies.findMany({
-          where: and(
-            isNull(policies.deletedAt),
-            ne(policies.userId, userId),
-            inArray(policies.teamId, teamIds)
-          ),
-          orderBy: desc(policies.updatedAt),
+      with: {
+        team: {
           columns: {
             id: true,
             name: true,
-            description: true,
-            isPublic: true,
-            createdAt: true,
-            updatedAt: true,
-            userId: true,
-            teamId: true,
           },
-          with: {
-            team: {
-              columns: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        })
-      : [];
+        },
+      },
+    });
 
     // 获取冻结状态
     const freezeStatus = await getPolicyFreezeStatus(userId);
@@ -134,8 +128,8 @@ export async function GET(req: Request) {
 
     const policiesWithFreeze = [...ownPoliciesWithCount, ...teamPoliciesWithInfo];
 
-    // 记录 API 调用
-    await recordUsage(userId, 'api_call');
+    // 记录 API 调用（与上方配额检查同一归属）
+    await recordUsage(quotaOwnerId, 'api_call');
 
     return NextResponse.json({
       policies: policiesWithFreeze,

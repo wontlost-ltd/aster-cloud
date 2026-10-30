@@ -6,9 +6,8 @@
  * DELETE /api/policies/:id/reviewers?userId=…   → 撤销复核资格
  *
  * 鉴权：
- *   调用者必须是策略**拥有者**——user-owned 看 policies.userId，
- *   team-owned 看 POLICY_CREATE 权限。与 shares 路由同一套
- *   `loadOwnedPolicy` 语义（此处复刻，保持两条路径行为一致）。
+ *   授权矩阵的 share 动作（src/lib/policy-access-matrix.ts）：个人策略只认所有者，
+ *   团队策略按当前 owner/admin/member 角色。与 shares 路由同一动作。
  *
  * ★为什么邀请走**独立**路径而不是复用 TeamInvitation：
  *   团队邀请的语义是「加入团队」，复核邀请是「复核**这一条**策略」。
@@ -25,14 +24,13 @@ import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { getSession } from '@/lib/auth';
 import {
   db,
-  policies,
   policyReviewers,
   policyReviewInvitations,
   users,
   REVIEWER_SUBJECT_KINDS,
   type ReviewerSubjectKind,
 } from '@/lib/prisma';
-import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
+import { loadPolicyForAction } from '@/lib/policy-access';
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -40,27 +38,12 @@ type RouteParams = { params: Promise<{ id: string }> };
 const INVITATION_TTL_DAYS = 7;
 
 /**
- * 校验调用者是该策略的拥有者。
- *
- * <p>★与 `shares/route.ts` 的 `loadOwnedPolicy` 同语义：team-owned 策略的
- * "拥有者"= 对该团队有 POLICY_CREATE 的人。两条路径必须一致，否则
- * 「谁能分享」与「谁能指派复核人」会出现权限口径分叉。
+ * 校验调用者能管理该策略的复核人：与 shares 路由同一授权动作（policy-access 的 share），
+ * 两条路径共用矩阵，「谁能分享」与「谁能指派复核人」不会分叉。已删除策略不可管理。
  */
 async function loadOwnedPolicy(callerUserId: string, policyId: string) {
-  const policy = await db.query.policies.findFirst({
-    where: eq(policies.id, policyId),
-  });
-  if (!policy) return null;
-
-  if (policy.teamId) {
-    const perm = await checkTeamPermission(
-      callerUserId,
-      policy.teamId,
-      TeamPermission.POLICY_CREATE,
-    );
-    return perm.allowed ? policy : null;
-  }
-  return policy.userId === callerUserId ? policy : null;
+  const access = await loadPolicyForAction(policyId, { userId: callerUserId }, 'share');
+  return access.ok ? access.policy : null;
 }
 
 export async function GET(_req: Request, { params }: RouteParams) {

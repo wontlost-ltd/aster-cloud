@@ -1,5 +1,6 @@
 import { db, teamMembers } from '@/lib/prisma';
 import { eq, and } from 'drizzle-orm';
+import { bypassQueryCache } from '@/db/fresh-read';
 import {
   getRoleLevel,
   hasPermission,
@@ -13,6 +14,7 @@ export {
   TeamPermission,
   getRoleLevel,
   hasPermission,
+  rolesWithPermission,
   type TeamPermissionType,
   type TeamRole,
 } from './team-permission-matrix';
@@ -50,10 +52,16 @@ export type TeamAccessResult = { allowed: true; role: TeamRole; teamId: string }
 
 export type PermissionCheckResult = { allowed: true } | Denied;
 
-// 获取用户在团队中的角色
+/**
+ * 获取用户在团队中的**当前**角色。
+ *
+ * 这是所有团队授权的源头：成员被移除、主动离队或被降级后，下一次请求就必须按新角色判定。
+ * 生产经 Hyperdrive 连库，非变更查询默认缓存约 60s 且写入不会使缓存失效，所以这里绕过
+ * 查询缓存（见 @/db/fresh-read），否则被移除的成员在缓存窗口内仍会被当成成员放行。
+ */
 export async function getTeamMemberRole(userId: string, teamId: string): Promise<TeamRole | null> {
   const membership = await db.query.teamMembers.findFirst({
-    where: and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)),
+    where: and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId), bypassQueryCache()),
     columns: { role: true },
   });
   return (membership?.role as TeamRole) ?? null;

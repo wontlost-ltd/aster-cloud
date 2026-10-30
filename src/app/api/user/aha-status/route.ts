@@ -10,6 +10,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { ownPoliciesVisibleTo } from '@/lib/policy-access';
 import { getSession } from '@/lib/auth';
 import { db, users, auditLogs, policies } from '@/lib/prisma';
 import { and, eq, isNull } from 'drizzle-orm';
@@ -39,8 +40,9 @@ export async function GET() {
       columns: { createdAt: true, metadata: true },
     }),
     // 未达成时卡片的唯一行动是「创建策略」：已有（未删除）策略的用户不该再被引导去建第一条
+    // 离队者在团队里留下的策略不算「已有策略」（ADR 0016：创建者身份不带来团队资源的可见性）
     db.query.policies.findFirst({
-      where: and(eq(policies.userId, userId), isNull(policies.deletedAt)),
+      where: and(ownPoliciesVisibleTo(userId), isNull(policies.deletedAt)),
       columns: { id: true },
     }),
   ]);

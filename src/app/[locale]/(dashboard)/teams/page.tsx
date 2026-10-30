@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { db, teams, teamMembers, policies } from '@/lib/prisma';
-import { eq, desc, sql, inArray } from 'drizzle-orm';
+import { and, eq, desc, isNull, sql, inArray } from 'drizzle-orm';
 import { hasFeatureAccess } from '@/lib/usage';
 import { TeamsContent } from './teams-content';
 
@@ -62,7 +62,8 @@ export default async function TeamsPage() {
             c: sql<number>`count(*)::int`,
           })
           .from(policies)
-          .where(inArray(policies.teamId, teamIdList))
+          // 回收站里的策略不计入（与团队策略列表同一口径，#674）
+          .where(and(inArray(policies.teamId, teamIdList), isNull(policies.deletedAt)))
           .groupBy(policies.teamId),
       ]);
       const memberCountByTeam = new Map<string, number>(

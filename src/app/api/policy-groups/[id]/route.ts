@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
+import { bypassQueryCache } from '@/db/fresh-read';
+import { ownPoliciesVisibleTo } from '@/lib/policy-access';
 import { db, policyGroups, policies, teamMembers } from '@/lib/prisma';
 import { eq, and, or, isNull, sql, desc, inArray } from 'drizzle-orm';
 import { wouldCreateParentCycle } from '@/lib/policy-group-hierarchy';
@@ -30,7 +32,7 @@ export async function GET(req: Request, { params }: RouteParams) {
     // 如果不是用户的分组,检查是否是团队分组
     if (!group) {
       const userTeams = await db.query.teamMembers.findMany({
-        where: eq(teamMembers.userId, session.user.id),
+        where: and(eq(teamMembers.userId, session.user.id), bypassQueryCache()),
         columns: { teamId: true },
       });
 
@@ -69,8 +71,8 @@ export async function GET(req: Request, { params }: RouteParams) {
     //   （GET 查不到、DELETE 也不迁移 → 留下悬挂 groupId）。
     //   故取「我拥有的 OR 我所在团队的」并集——这是实际被强制的可见性边界。
     const policyScope = group.teamId
-      ? or(eq(policies.userId, session.user.id), eq(policies.teamId, group.teamId))
-      : eq(policies.userId, session.user.id);
+      ? or(ownPoliciesVisibleTo(session.user.id), eq(policies.teamId, group.teamId))
+      : ownPoliciesVisibleTo(session.user.id);
     const childScope = group.teamId
       ? or(eq(policyGroups.userId, session.user.id), eq(policyGroups.teamId, group.teamId))
       : eq(policyGroups.userId, session.user.id);
@@ -176,6 +178,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
     if (!existingGroup) {
       const adminTeams = await db.query.teamMembers.findMany({
         where: and(
+          bypassQueryCache(),
           eq(teamMembers.userId, session.user.id),
           sql`${teamMembers.role} IN ('owner', 'admin')`
         ),
@@ -225,7 +228,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
         // 不是自己的分组时，检查是否为其所在团队的分组
         if (!parentGroup) {
           const userTeams = await db.query.teamMembers.findMany({
-            where: eq(teamMembers.userId, session.user.id),
+            where: and(eq(teamMembers.userId, session.user.id), bypassQueryCache()),
             columns: { teamId: true },
           });
 
@@ -282,8 +285,8 @@ export async function PUT(req: Request, { params }: RouteParams) {
       .where(and(
         eq(policies.groupId, group.id),
         group.teamId
-          ? or(eq(policies.userId, session.user.id), eq(policies.teamId, group.teamId))
-          : eq(policies.userId, session.user.id),
+          ? or(ownPoliciesVisibleTo(session.user.id), eq(policies.teamId, group.teamId))
+          : ownPoliciesVisibleTo(session.user.id),
         isNull(policies.deletedAt)
       ));
 
@@ -316,6 +319,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     if (!group) {
       const adminTeams = await db.query.teamMembers.findMany({
         where: and(
+          bypassQueryCache(),
           eq(teamMembers.userId, session.user.id),
           sql`${teamMembers.role} IN ('owner', 'admin')`
         ),
@@ -358,8 +362,8 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     // **不可**假设「团队分组内策略必有相同 teamId」——赋值路径只写 groupId，
     // 个人策略（teamId=null）合法地存在于团队分组中。
     const cascadePolicyScope = group.teamId
-      ? or(eq(policies.userId, session.user.id), eq(policies.teamId, group.teamId))
-      : eq(policies.userId, session.user.id);
+      ? or(ownPoliciesVisibleTo(session.user.id), eq(policies.teamId, group.teamId))
+      : ownPoliciesVisibleTo(session.user.id);
     const cascadeChildScope = group.teamId
       ? or(eq(policyGroups.userId, session.user.id), eq(policyGroups.teamId, group.teamId))
       : eq(policyGroups.userId, session.user.id);

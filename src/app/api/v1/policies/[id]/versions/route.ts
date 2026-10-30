@@ -13,10 +13,8 @@ import {
   createVersion,
   listVersions,
   listExecutableVersions,
-  loadVersionReviewContext,
   PolicyCompileError,
 } from '@/services/policy/version-manager';
-import { canReviewPolicyVersions } from '@/services/policy/version-approval-rules';
 import { loadSaveVocabulary, makeCompileValidator } from '@/lib/policy-compile-validator';
 import {
   aliasInvalidResponse,
@@ -31,6 +29,7 @@ import { db, policies } from '@/lib/prisma';
 import { and, eq, isNull } from 'drizzle-orm';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { parseCompileLocale } from '@/lib/cnl-locale';
+import { loadPolicyForAction } from '@/lib/policy-access';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -51,23 +50,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { id } = await params;
 
-    // 读授权校验（IDOR 修复）：此前任何登录用户可列任意 policy id 的版本历史。
-    // 口径：策略所有者、公开策略，或有权审阅该策略版本的人（团队策略的团队 owner/admin，
-    // 他们要在版本页上批准/驳回）。其余团队成员的共享读暂不在此入口放开。
-    const readable = await db.query.policies.findFirst({
-      where: and(
-        eq(policies.id, id),
-        isNull(policies.deletedAt),
-      ),
-      columns: { userId: true, isPublic: true },
-    });
-    const reviewer = readable && readable.userId !== session.user.id && !readable.isPublic
-      ? await loadVersionReviewContext(id, session.user.id)
-      : null;
-    const allowed = readable
-      && (readable.userId === session.user.id || readable.isPublic || (reviewer && canReviewPolicyVersions(reviewer)));
-    if (!allowed) {
-      return NextResponse.json({ error: 'Policy not found.', code: 'policy_not_found' }, { status: 404 });
+    // 读授权（IDOR 修复）：团队策略的任一当前成员、个人策略所有者，或公开策略。
+    // 团队成员角色按当前成员关系现查，离队 / 被移除后立即 404（#669 #670）。
+    const access = await loadPolicyForAction(id, { userId: session.user.id }, 'view');
+    if (!access.ok) {
+      const publicPolicy = await db.query.policies.findFirst({
+        where: and(eq(policies.id, id), isNull(policies.deletedAt), eq(policies.isPublic, true)),
+        columns: { id: true },
+      });
+      if (!publicPolicy) {
+        return NextResponse.json({ error: 'Policy not found.', code: 'policy_not_found' }, { status: 404 });
+      }
     }
 
     const executableOnly =
@@ -102,21 +95,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const { id } = await params;
 
-    // 授权校验（IDOR 修复）：此前该入口只查登录态，任何登录用户可对任意 policy id 建版本
-    // （现还能携 aliasSet）。与 PUT /api/policies/[id] 同口径——要求是策略所有者且未软删；
-    // 冻结策略只读。团队写权限暂未支持（与 PUT 一致，避免此处口径超前）。
-    const owned = await db.query.policies.findFirst({
-      where: and(
-        eq(policies.id, id),
-        eq(policies.userId, session.user.id),
-        isNull(policies.deletedAt),
-      ),
-      columns: { id: true },
-    });
-    if (!owned) {
-      return NextResponse.json({ error: 'Policy not found.', code: 'policy_not_found' }, { status: 404 });
+    // 授权（IDOR 修复）：与 PUT /api/policies/[id] 同一矩阵——团队策略 member 起可建版本，
+    // viewer 403，非成员 404；个人策略只认所有者。冻结按策略所有者的套餐判定，冻结策略只读。
+    const access = await loadPolicyForAction(id, { userId: session.user.id }, 'update');
+    if (!access.ok) {
+      const { status, code, error } = access.decision;
+      return status === 403
+        ? NextResponse.json({ error, code }, { status })
+        : NextResponse.json({ error: 'Policy not found.', code: 'policy_not_found' }, { status: 404 });
     }
-    const freeze = await isPolicyFrozen(session.user.id, id);
+    const freeze = await isPolicyFrozen(access.policy.userId, id);
     if (freeze.isFrozen) {
       return NextResponse.json(
         { error: 'Policy is frozen.', code: 'policy_frozen', frozen: true },

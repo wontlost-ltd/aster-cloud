@@ -36,6 +36,8 @@ export interface MetaSectionProps {
   onDescriptionChange: (value: string) => void;
   onGroupIdChange: (value: string | null) => void;
   onIsPublicChange: (value: boolean) => void;
+  /** 当前用户不能切换公开状态（团队策略只有 owner/admin 可以，ADR 0016）：复选框只读并给出说明 */
+  visibilityLocked?: boolean;
   /** Optional inline error to render under the name field — used
    *  for "name is required" without spinning up a full Alert. */
   nameError?: string | null;
@@ -53,6 +55,7 @@ export function MetaSection({
   onDescriptionChange,
   onGroupIdChange,
   onIsPublicChange,
+  visibilityLocked = false,
   nameError,
 }: MetaSectionProps) {
   const t = useTranslations('policies.form');
@@ -168,11 +171,15 @@ export function MetaSection({
                 <input
                   type="checkbox"
                   checked={isPublic}
+                  disabled={visibilityLocked}
                   onChange={(e) => onIsPublicChange(e.target.checked)}
                   className="size-4 cursor-pointer rounded border-border-strong text-primary focus:ring-2 focus:ring-primary/20"
                 />
                 <span className="text-sm text-fg">{t('isPublic')}</span>
               </label>
+              {visibilityLocked && (
+                <p className="text-xs text-fg-muted">{t('visibilityOwnerAdminOnly')}</p>
+              )}
               <p className="text-xs text-fg-muted">
                 {isZh
                   ? '勾选后，拥有链接的任何人均可只读查看此策略源代码。不影响执行权限。'

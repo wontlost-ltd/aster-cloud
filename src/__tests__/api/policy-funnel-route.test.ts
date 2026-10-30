@@ -1,9 +1,8 @@
 // 条件漏斗端点测试（Phase 1）。
 //
 // ★重点是**租户隔离**：本仓历史上多次出现"只按资源 id 查、忘了带 userId"
-// 导致的跨租户读（见 audit-crosstenant-2026-07）。这里不满足于"mock 返回空"，
-// 而是捕获真实传给 where() 的条件，断言 userId 过滤确实存在——
-// 否则 mock 掉 db 的测试对这类 bug 完全无感。
+// 导致的跨租户读（见 audit-crosstenant-2026-07）。策略授权走授权矩阵（policy-access，真实判定），
+// 执行查询则捕获真实传给 where() 的条件：个人策略必须带执行人过滤，团队策略统计全部成员的执行（#673）。
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
@@ -13,7 +12,6 @@ vi.mock('@/lib/auth', () => ({ getSession: () => getSession() }));
 
 /** 捕获每次 select().from().where() 的调用参数，供断言。 */
 const captured: { table: unknown; where: unknown }[] = [];
-let ownedRows: unknown[] = [];
 let execRows: unknown[] = [];
 /** count() 查询返回的总数——用于断言 truncated 口径 */
 let totalCount = 0;
@@ -45,9 +43,8 @@ vi.mock('@/lib/prisma', () => {
     db: {
       select: () =>
         makeChain(() => {
-          // 三次查询依次是：归属校验 → 执行行 → count(总数)
-          if (captured.length <= 1) return ownedRows;
-          if (captured.length === 2) return execRows;
+          // 两次查询依次是：执行行 → count(总数)（策略授权走 policy-access）
+          if (captured.length <= 1) return execRows;
           return [{ value: totalCount }];
         }),
     },
@@ -62,6 +59,9 @@ vi.mock('@/lib/prisma', () => {
   };
 });
 
+vi.mock('@/lib/policy-access', async () =>
+  (await import('@/__tests__/helpers/policy-access-mock')).policyAccessModule());
+
 vi.mock('drizzle-orm', () => ({
   and: (...xs: unknown[]) => ({ op: 'and', xs }),
   eq: (col: unknown, val: unknown) => ({ op: 'eq', col, val }),
@@ -73,6 +73,8 @@ vi.mock('drizzle-orm', () => ({
 }));
 
 const { GET } = await import('@/app/api/policies/[id]/funnel/route');
+const { policyAccessState } = await import('@/__tests__/helpers/policy-access-mock');
+const ownPolicy = { id: 'p1', userId: 'u1', teamId: null };
 
 const req = (qs = '') =>
   new NextRequest(`https://x.test/api/policies/p1/funnel${qs}`);
@@ -103,7 +105,8 @@ const skel = (steps: Array<[string, string, boolean, number]>) => ({
 
 beforeEach(() => {
   captured.length = 0;
-  ownedRows = [{ id: 'p1' }];
+  policyAccessState.policy = ownPolicy;
+  policyAccessState.teamRole = null;
   execRows = [];
   getSession.mockResolvedValue({ user: { id: 'u1' } });
 });
@@ -114,24 +117,33 @@ describe('GET /api/policies/:id/funnel', () => {
     expect((await GET(req(), { params })).status).toBe(401);
   });
 
-  it('★策略不属于当前用户 → 404（不泄露存在性）', async () => {
-    ownedRows = [];
+  it('★他人的个人策略 → 404（不泄露存在性），不查执行', async () => {
+    policyAccessState.policy = { id: 'p1', userId: 'someone-else', teamId: null };
     const res = await GET(req(), { params });
     expect(res.status).toBe(404);
+    expect(captured).toHaveLength(0);
   });
 
-  it('★归属查询带 userId 过滤（防跨租户读）', async () => {
+  it('★团队外用户 / 已离队的创建者 → 404', async () => {
+    policyAccessState.policy = { id: 'p1', userId: 'u1', teamId: 't1' };
+    policyAccessState.teamRole = null;
+    expect((await GET(req(), { params })).status).toBe(404);
+  });
+
+  it('★个人策略的执行查询带执行人过滤（不能只按 policyId）', async () => {
     await GET(req(), { params });
     const conds = flatten(captured[0].where);
-    expect(conds).toContainEqual({ col: 'policies.id', val: 'p1' });
-    expect(conds).toContainEqual({ col: 'policies.userId', val: 'u1' });
-  });
-
-  it('★执行查询同样带 userId 过滤（不能只按 policyId）', async () => {
-    await GET(req(), { params });
-    const conds = flatten(captured[1].where);
     expect(conds).toContainEqual({ col: 'executions.policyId', val: 'p1' });
     expect(conds).toContainEqual({ col: 'executions.userId', val: 'u1' });
+  });
+
+  it('团队策略：任一成员可看，统计全部成员的执行（#673）', async () => {
+    policyAccessState.policy = { id: 'p1', userId: 'creator', teamId: 't1' };
+    policyAccessState.teamRole = 'viewer';
+    expect((await GET(req(), { params })).status).toBe(200);
+    const conds = flatten(captured[0].where);
+    expect(conds).toContainEqual({ col: 'executions.policyId', val: 'p1' });
+    expect(conds.some((c) => c.col === 'executions.userId')).toBe(false);
   });
 
   it('聚合骨架并返回漏斗', async () => {
@@ -169,7 +181,7 @@ describe('GET /api/policies/:id/funnel', () => {
 
   it('version 参数转成数值过滤', async () => {
     await GET(req('?version=3'), { params });
-    expect(flatten(captured[1].where)).toContainEqual({
+    expect(flatten(captured[0].where)).toContainEqual({
       col: 'executions.policyVersion',
       val: 3,
     });
@@ -179,7 +191,6 @@ describe('GET /api/policies/:id/funnel', () => {
   // 而实际可能只是它没赶上最近这批样本（第四轮交叉审查）。
   it('★总数大于扫描数时回报 truncated', async () => {
     getSession.mockResolvedValue({ user: { id: 'u1' } });
-    ownedRows = [{ id: 'p1' }];
     execRows = [
       { skeleton: { steps: [{ stepId: '0.1', expression: 'if condition', matched: false, depth: 0 }] } },
     ];
@@ -197,7 +208,6 @@ describe('GET /api/policies/:id/funnel', () => {
 
   it('总数等于扫描数时 truncated=false（这就是全部）', async () => {
     getSession.mockResolvedValue({ user: { id: 'u1' } });
-    ownedRows = [{ id: 'p1' }];
     execRows = [{ skeleton: { steps: [{ stepId: '0.1', expression: 'x', matched: true, depth: 0 }] } }];
     totalCount = 1;
 
@@ -216,14 +226,12 @@ describe('GET /api/policies/:id/funnel', () => {
     ['version 超 int4 上限', '?version=999999999999999999999'],
   ])('%s → 400', async (_label, qs) => {
     getSession.mockResolvedValue({ user: { id: 'u1' } });
-    ownedRows = [{ id: 'p1' }];
     const res = await GET(req(qs), { params });
     expect(res.status).toBe(400);
   });
 
   it('合法参数正常放行', async () => {
     getSession.mockResolvedValue({ user: { id: 'u1' } });
-    ownedRows = [{ id: 'p1' }];
     execRows = [];
     totalCount = 0;
     const res = await GET(req('?from=2026-01-01&to=2026-02-01&version=3'), { params });

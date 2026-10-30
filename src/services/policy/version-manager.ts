@@ -40,6 +40,8 @@ import { RESOLVER_VERSION } from '@aster-cloud/aster-lang-ts/browser';
 import type { DomainVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
 import { getTeamMemberRole } from '@/lib/team-permissions';
 import { VersionStateError } from './version-state-error';
+import { loadPolicyForAction, type PolicyAction } from '@/lib/policy-access';
+import { bypassQueryCache } from '@/db/fresh-read';
 import {
   canReviewPolicyVersions,
   decideVersionApproval,
@@ -53,48 +55,36 @@ type PolicyVersionStatus = PolicyVersion['status'];
 export { VersionStateError };
 
 /**
- * 调用方不是该策略的所有者（或策略不存在/已软删）。路由 catch 后返回 404——
- * 刻意不用 403，避免把「该 policyId 存在」这一事实泄露给非所有者（枚举探测）。
+ * 调用方无权对该策略执行此操作。status=404：策略不存在 / 已软删 / 调用者不是团队成员或个人策略所有者——
+ * 刻意不用 403，避免把「该 policyId 存在」泄露给外人（枚举探测）。status=403：调用者是团队成员但角色不够。
  */
 export class PolicyAccessDeniedError extends Error {
-  constructor(message = 'Policy not found.') {
+  readonly status: 403 | 404;
+  readonly code: string;
+
+  constructor(message = 'Policy not found.', status: 403 | 404 = 404, code = 'policy_not_found') {
     super(message);
     this.name = 'PolicyAccessDeniedError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
+/** 按授权矩阵校验版本操作（policy-access），拒绝时抛 PolicyAccessDeniedError。 */
+export async function assertPolicyAction(policyId: string, userId: string, action: PolicyAction): Promise<void> {
+  const access = await loadPolicyForAction(policyId, { userId }, action);
+  if (!access.ok) {
+    const { status, code, error } = access.decision;
+    throw status === 403 ? new PolicyAccessDeniedError(error, 403, code) : new PolicyAccessDeniedError();
   }
 }
 
 /**
- * 版本操作的**归属校验单一入口**。
- *
- * <h3>为什么放在服务层而不是各路由</h3>
- *
- * 此前 8 个版本路由（submit/approve/reject/set-default/archive/deprecate/
- * 版本详情，以及已下线的 secure-execute）只校验登录态，`policyId` 从 URL 直接进服务层，
- * 而本文件的查询只按 `policyId + version + status` 过滤——**任何登录用户可操作
- * 任意租户的策略版本**。同目录 `versions/route.ts` 早有正确写法，只是没传播到这 8 处。
- *
- * ★最危险的是审批链：`approveVersion` 的四眼原则判的是
- * `targetVersion.createdBy === approverId`，对**外部攻击者恒为 false**
- * （攻击者本就不是创建者）→ SOX 守护不但拦不住，反而主动放行。
- * 配合 submit 可把他人策略从 DRAFT 一路推到 APPROVED。
- *
- * 收口到服务层而非补 8 处路由：路由是会增加的，服务函数是收敛的；
- * 任何新入口只要走这些函数就自动带上校验。
+ * 版本操作的授权收口在服务层而非各路由：此前 8 个版本路由只校验登录态，`policyId` 从 URL
+ * 直接进服务层，任何登录用户可操作任意租户的策略版本；审批链的四眼原则只比较
+ * `createdBy === approverId`，对外部攻击者恒为 false，反而放行。路由会增加，服务函数是收敛的，
+ * 任何新入口只要走这些函数就自动带上校验。动作与团队角色的对应见 policy-access-matrix。
  */
-export async function assertPolicyOwnership(policyId: string, userId: string): Promise<void> {
-  const owned = await db.query.policies.findFirst({
-    where: and(
-      eq(policies.id, policyId),
-      eq(policies.userId, userId),
-      isNull(policies.deletedAt),
-    ),
-    columns: { id: true },
-  });
-  if (!owned) {
-    throw new PolicyAccessDeniedError();
-  }
-}
-
 /**
  * 审批人是版本作者且该策略适用四眼原则（团队策略）。路由 catch 后返回
  * 403 { error: 'segregation_of_duties' }，与 checkSoxGuard 的错误码一致。
@@ -192,22 +182,18 @@ export async function loadVersionReviewContext(
 export async function loadTeamReviewerIds(teamId: string | null): Promise<string[]> {
   if (!teamId) return [];
   const rows = await db.query.teamMembers.findMany({
-    where: and(eq(teamMembers.teamId, teamId), inArray(teamMembers.role, [...TEAM_REVIEWER_ROLES])),
+    where: and(eq(teamMembers.teamId, teamId), inArray(teamMembers.role, [...TEAM_REVIEWER_ROLES]), bypassQueryCache()),
     columns: { userId: true },
   });
   return rows.map((r) => r.userId);
 }
 
 /**
- * 版本只读访问（版本列表、详情、源码）：策略所有者，或有权审阅的人（团队策略的团队 owner/admin）。
- * 审批人必须能看到待审版本的源码与审批历史才能做决定。其余人一律按「策略不存在」处理。
+ * 版本只读访问（版本列表、详情、源码）：团队策略的任一当前成员（审批人要看到待审版本的源码与审批历史，
+ * 其余成员也要看到自己团队策略的版本），个人策略只认所有者。其余人一律按「策略不存在」处理。
  */
-export async function assertVersionReadAccess(policyId: string, userId: string): Promise<VersionReviewContext> {
-  const ctx = await loadVersionReviewContext(policyId, userId);
-  if (!ctx || (ctx.policyOwnerId !== userId && !canReviewPolicyVersions(ctx))) {
-    throw new PolicyAccessDeniedError();
-  }
-  return ctx;
+export async function assertVersionReadAccess(policyId: string, userId: string): Promise<void> {
+  await assertPolicyAction(policyId, userId, 'view');
 }
 
 /**
@@ -596,7 +582,7 @@ export async function submitForApproval(params: {
 }): Promise<void> {
   const { policyId, version, userId, releaseNote } = params;
 
-  await assertPolicyOwnership(policyId, userId);
+  await assertPolicyAction(policyId, userId, 'update');
 
   const targetVersion = await db.query.policyVersions.findFirst({
     where: and(
@@ -653,7 +639,9 @@ export async function approveVersion(params: {
   const { policyId, version, approverId, decision, comment } = params;
 
   // ★审阅权必须在四眼原则之前判定：四眼原则只比较 createdBy === approverId，
-  // 对外部攻击者恒为 false，反而会放行。无审阅权一律按「策略不存在」处理。
+  // 对外部攻击者恒为 false，反而会放行。团队策略要求当前角色为 owner/admin（member/viewer 403），
+  // 非成员与他人个人策略按「策略不存在」处理。
+  await assertPolicyAction(policyId, approverId, 'approve');
   const ctx = await loadVersionReviewContext(policyId, approverId);
   if (!ctx || !canReviewPolicyVersions(ctx)) {
     throw new PolicyAccessDeniedError();
@@ -768,7 +756,7 @@ export async function setDefaultVersion(params: {
 }): Promise<void> {
   const { policyId, version, userId } = params;
 
-  await assertPolicyOwnership(policyId, userId);
+  await assertPolicyAction(policyId, userId, 'update');
 
   // 验证目标版本存在且已批准
   const targetVersion = await db.query.policyVersions.findFirst({
@@ -820,7 +808,7 @@ export async function deprecateVersion(params: {
 }): Promise<void> {
   const { policyId, version, userId, reason } = params;
 
-  await assertPolicyOwnership(policyId, userId);
+  await assertPolicyAction(policyId, userId, 'delete');
 
   const targetVersion = await db.query.policyVersions.findFirst({
     where: and(
@@ -870,7 +858,7 @@ export async function archiveVersion(params: {
 }): Promise<void> {
   const { policyId, version, userId, reason } = params;
 
-  await assertPolicyOwnership(policyId, userId);
+  await assertPolicyAction(policyId, userId, 'delete');
 
   const targetVersion = await db.query.policyVersions.findFirst({
     where: and(

@@ -11,6 +11,8 @@
 import 'server-only';
 
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { isPersonalPolicy } from '@/lib/policy-access';
+import { bypassQueryCache } from '@/db/fresh-read';
 import { db, policies, policyVersions, securityEvents, teamMembers, users } from '@/lib/prisma';
 import type { TeamRole } from '@/lib/team-permissions';
 import {
@@ -85,7 +87,8 @@ async function loadDisplayNames(ids: string[]): Promise<Map<string, string>> {
 /** 用户在各团队的角色，只保留能审批团队策略版本的 owner/admin。 */
 async function loadReviewerTeamRoles(userId: string): Promise<Map<string, TeamRole>> {
   const memberships = await db.query.teamMembers.findMany({
-    where: and(eq(teamMembers.userId, userId), inArray(teamMembers.role, ['owner', 'admin'])),
+    // 成员关系必须新鲜：降级后收件箱立即不再给出可审批项（绕过 Hyperdrive 查询缓存）
+    where: and(eq(teamMembers.userId, userId), inArray(teamMembers.role, ['owner', 'admin']), bypassQueryCache()),
     columns: { teamId: true, role: true },
   });
   return new Map(memberships.map((m) => [m.teamId, m.role as TeamRole]));
@@ -96,7 +99,7 @@ async function loadTeamReviewerIds(teamIds: string[]): Promise<Map<string, strin
   const byTeam = new Map<string, string[]>();
   if (teamIds.length === 0) return byTeam;
   const rows = await db.query.teamMembers.findMany({
-    where: and(inArray(teamMembers.teamId, teamIds), inArray(teamMembers.role, [...TEAM_REVIEWER_ROLES])),
+    where: and(inArray(teamMembers.teamId, teamIds), inArray(teamMembers.role, [...TEAM_REVIEWER_ROLES]), bypassQueryCache()),
     columns: { teamId: true, userId: true },
   });
   for (const r of rows) byTeam.set(r.teamId, [...(byTeam.get(r.teamId) ?? []), r.userId]);
@@ -108,9 +111,10 @@ export async function listPendingVersionApprovals(userId: string): Promise<Pendi
   const reviewerTeams = [...teamRoles.keys()];
   const owned = await db.query.policies.findMany({
     where: and(
+      // 个人策略只看本人的；团队策略只看本人当前有审批权的团队（创建者身份不带入他人或已离开的团队）
       reviewerTeams.length > 0
-        ? or(eq(policies.userId, userId), inArray(policies.teamId, reviewerTeams))
-        : eq(policies.userId, userId),
+        ? or(and(eq(policies.userId, userId), isPersonalPolicy()), inArray(policies.teamId, reviewerTeams))
+        : and(eq(policies.userId, userId), isPersonalPolicy()),
       isNull(policies.deletedAt),
     ),
     columns: { id: true, name: true, userId: true, teamId: true },

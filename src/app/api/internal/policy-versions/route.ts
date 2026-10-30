@@ -32,6 +32,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { authorizePolicyAction } from '@/lib/policy-access';
 import { and, eq } from 'drizzle-orm';
 
 import { verifyInternalSignature } from '@/lib/internal-signature';
@@ -79,6 +80,8 @@ export async function GET(req: Request) {
       sourceEnvelopeSha256: policyVersions.sourceEnvelopeSha256,
       sourceScopesJson: policyVersions.sourceScopesJson,
       sourceToolchainId: policyVersions.sourceToolchainId,
+      policyUserId: policies.userId,
+      policyTeamId: policies.teamId,
     })
     .from(policyVersions)
     .innerJoin(policies, eq(policies.id, policyVersions.policyId))
@@ -86,7 +89,13 @@ export async function GET(req: Request) {
     .limit(1);
 
   const row = rows[0];
-  if (!row) {
+  // What-If 回放取版本（ADR 0016 §2）：aster-api 回调只带批次 userId（= 发起人，即策略创建者），
+  // 上面按 policies.userId 收窄。团队策略另按授权矩阵复核创建者当前仍有 What-If 权限，
+  // 离队 / 降级后在途批次也取不到团队策略的最新源码。
+  const allowed = row
+    ? (await authorizePolicyAction({ userId }, { userId: row.policyUserId, teamId: row.policyTeamId }, 'whatif')).allowed
+    : false;
+  if (!row || !allowed) {
     // ★查不到与"不属于你"合并成同一个 404：不区分二者，避免把
     //   "这个 UUID 存在但不是你的"变成一个可探测的存在性信号。
     return NextResponse.json({ error: 'version_not_found' }, { status: 404 });

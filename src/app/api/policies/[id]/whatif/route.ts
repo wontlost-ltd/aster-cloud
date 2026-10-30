@@ -39,8 +39,7 @@
  */
 import { NextRequest } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { db, policies } from '@/lib/prisma';
-import { and, eq } from 'drizzle-orm';
+import { loadPolicyForAction } from '@/lib/policy-access';
 import { errorEnvelope } from '@/lib/api/error-envelope';
 
 export const dynamic = 'force-dynamic';
@@ -57,12 +56,9 @@ export async function GET(
 
   // ★仍然先做租户隔离校验再拒答：否则本端点会变成一个「策略是否存在」的探针 ——
   //   任何登录用户拿别人的 policyId 来打，都能从 409/404 的差异推断出存在性。
-  const owned = await db
-    .select({ id: policies.id })
-    .from(policies)
-    .where(and(eq(policies.id, id), eq(policies.userId, session.user.id)))
-    .limit(1);
-  if (owned.length === 0) {
+  //   授权口径同其他查看类入口：团队策略看当前成员角色，个人策略只认所有者。
+  const access = await loadPolicyForAction(id, { userId: session.user.id }, 'view');
+  if (!access.ok) {
     // 404 而非 403：不泄露「该 id 存在但不属于你」
     return errorEnvelope({ code: 'NOT_FOUND', message: 'Policy not found.', status: 404 });
   }
