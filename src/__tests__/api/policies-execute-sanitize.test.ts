@@ -36,8 +36,8 @@ vi.mock('@/services/policy/cnl-executor', () => ({
   executePolicyUnified: (o: unknown) => mockExecute(o),
   getPrimaryError: vi.fn((r: { deniedReasons: string[] }) => r.deniedReasons[0]),
   detectCNLLocale: vi.fn(() => 'en-US'),
-  deriveExecutionDecision: vi.fn((r: { metadata?: { engineError?: boolean } }) =>
-    r?.metadata?.engineError ? 'error' : 'denied'),
+  deriveExecutionDecision: vi.fn((r: { metadata?: { engineError?: boolean }; inputError?: unknown }) =>
+    r?.metadata?.engineError || r?.inputError ? 'error' : 'denied'),
   deriveExecutionOutcome: vi.fn((r: { metadata?: { outcome?: string } }) => r?.metadata?.outcome ?? 'ALLOW'),
 }));
 
@@ -181,6 +181,36 @@ describe('POST /api/policies/[id]/execute — 执行失败脱敏（#609）', () 
 
     expect(body.error).toBe('Applicant is under 18');
     expect(body.errorCode).toBeUndefined();
+  });
+
+  it('输入缺少规则读取的字段：照常写执行记录（decision=error）与用量，再回 400 + missing_input_field', async () => {
+    mockExecute.mockResolvedValue({
+      ...execResult({ denyCount: 1 }),
+      deniedReasons: ['The input is missing the field "applicant.creditScore" that the policy reads.'],
+      inputError: { code: 'missing_input_field', field: 'applicant.creditScore' },
+    });
+
+    const res = await POST(request({ input: { applicant: { id: 'A1', age: 35 } } }), params);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.code).toBe('missing_input_field');
+    expect(body.field).toBe('applicant.creditScore');
+    // 无词汇：策略语言写法与规范名相同
+    expect(body.policyField).toBe('applicant.creditScore');
+    expect(body.error).toContain('applicant.creditScore');
+    expect(body.executionId).toEqual(expect.any(String));
+    expect(JSON.stringify(body)).not.toMatch(/java\.lang|Polyglot|execution_failed/);
+    expect(mockInsert).toHaveBeenCalledWith(executions);
+    const persisted = mockValuesInsert.mock.calls.find(
+      ([row]) => (row as { source?: string }).source === 'dashboard',
+    )?.[0] as { id?: string; decision?: string; error?: string; output?: { inputError?: unknown } };
+    expect(persisted.id).toBe(body.executionId);
+    expect(persisted.decision).toBe('error');
+    expect(persisted.error).toContain('applicant.creditScore');
+    expect(persisted.output?.inputError).toEqual({ code: 'missing_input_field', field: 'applicant.creditScore' });
+    // 用量照常计数（usageRecords upsert）
+    expect(mockValuesInsert.mock.calls.some(([row]) => (row as { type?: string }).type === 'execution')).toBe(true);
   });
 
   it('路由内部异常：500 只回稳定码与通用说明', async () => {

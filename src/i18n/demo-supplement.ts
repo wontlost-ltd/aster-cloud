@@ -914,6 +914,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         // 表单模式数字字段无法解析为数字时阻止执行（#635）。
         invalidNumberField: '{field} must be a number.',
         ambiguousInputSpelling: 'The input field "{field}" matches several fields in this policy\'s vocabulary ({candidates}). Use the canonical field name instead.',
+        missingInputField: 'The input is missing the field "{field}" that the policy reads. Add it and run again.',
         ambiguousInputField: 'The input contains the policy field "{field}" twice (under its policy-language name and its canonical name, or two synonyms). Keep only one of them.',
         engineErrorDetail: 'The policy could not run with this input. Check that the input fields match the policy and try again.',
         // 值/计算输出策略（如 greet 返回文本）：执行成功但无 allow/deny 语义。
@@ -2078,6 +2079,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         // 表单模式数字字段无法解析为数字时阻止执行（#635）。
         invalidNumberField: '{field} 必须是数字。',
         ambiguousInputSpelling: '输入字段「{field}」在该策略的词汇中对应多个字段（{candidates}），请改用规范字段名。',
+        missingInputField: '输入缺少策略要读取的字段「{field}」。请补上该字段后重新执行。',
         ambiguousInputField: '输入中策略字段「{field}」出现了两次（策略语言名与规范名同时出现，或两个同义词）。请只保留其中一个。',
         engineErrorDetail: '策略无法用这组输入运行。请检查输入字段是否与策略一致，然后重试。',
         computed: '已计算',
@@ -3252,6 +3254,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         // 表单模式数字字段无法解析为数字时阻止执行（#635）。
         invalidNumberField: '{field} muss eine Zahl sein.',
         ambiguousInputSpelling: 'Das Eingabefeld „{field}“ passt im Vokabular dieser Policy auf mehrere Felder ({candidates}). Verwenden Sie stattdessen den kanonischen Feldnamen.',
+        missingInputField: 'In der Eingabe fehlt das Feld „{field}“, das die Policy liest. Ergänzen Sie es und führen Sie die Policy erneut aus.',
         ambiguousInputField: 'Die Eingabe enthält das Policy-Feld „{field}“ doppelt (unter dem Namen in der Policy-Sprache und dem kanonischen Namen oder als zwei Synonyme). Behalten Sie nur eines davon.',
         engineErrorDetail: 'Die Policy konnte mit dieser Eingabe nicht ausgeführt werden. Prüfen Sie, ob die Eingabefelder zur Policy passen, und versuchen Sie es erneut.',
         computed: 'Berechnet',
@@ -4409,6 +4412,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         // 表单模式数字字段无法解析为数字时阻止执行（#635）。
         invalidNumberField: '{field} एक संख्या होनी चाहिए।',
         ambiguousInputSpelling: 'इनपुट फ़ील्ड "{field}" इस नीति की शब्दावली में कई फ़ील्ड से मेल खाता है ({candidates})। इसके बजाय मानक फ़ील्ड नाम का उपयोग करें।',
+        missingInputField: 'इनपुट में वह फ़ील्ड "{field}" नहीं है जिसे नीति पढ़ती है। उसे जोड़ें और फिर से चलाएँ।',
         ambiguousInputField: 'इनपुट में नीति फ़ील्ड "{field}" दो बार है (नीति-भाषा नाम और मानक नाम दोनों, या दो पर्यायवाची)। इनमें से केवल एक रखें।',
         engineErrorDetail: 'इस इनपुट के साथ नीति नहीं चल सकी। जाँचें कि इनपुट फ़ील्ड नीति से मेल खाते हैं, फिर पुनः प्रयास करें।',
         computed: 'परिकलित',

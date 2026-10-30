@@ -31,6 +31,16 @@ describe('sanitizeExecutionResult（#609）', () => {
     expect(executionErrorCode(safe)).toBe(EXECUTION_FAILED_CODE);
   });
 
+  it('输入缺字段：不脱敏、错误码取 missing_input_field', () => {
+    const result = {
+      deniedReasons: ['The input is missing the field "applicant.creditScore" that the policy reads.'],
+      metadata: {},
+      inputError: { code: 'missing_input_field', field: 'applicant.creditScore' },
+    };
+    expect(sanitizeExecutionResult(result, {})).toBe(result);
+    expect(executionErrorCode(result)).toBe('missing_input_field');
+  });
+
   it('正常拒绝理由不改动、无错误码', () => {
     const result = { deniedReasons: ['Applicant is under 18'], metadata: {} };
     expect(sanitizeExecutionResult(result, {})).toBe(result);

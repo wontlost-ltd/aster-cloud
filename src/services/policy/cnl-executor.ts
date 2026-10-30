@@ -9,6 +9,7 @@ import { createPolicyApiClient, PolicyApiError, type AgentIdentity, type PolicyE
 import { executePolicy as executeSimplePolicy } from './executor';
 import type { Policy } from '@/lib/prisma';
 import type { executionDecisionEnum } from '@/db/schema';
+import { MISSING_INPUT_FIELD_CODE, missingInputFieldMessage } from '@/lib/execution-error';
 
 /** Verdict 四态结果码（ADR 0039 / 0041）。 */
 export type VerdictOutcome = 'ALLOW' | 'DENY' | 'REQUIRE_APPROVAL' | 'ESCALATE';
@@ -179,6 +180,11 @@ export interface PolicyExecutionResult {
   executedFunction?: string;
   /** CNL 引擎诊断，可用于可恢复错误 */
   diagnostics?: PolicyEvaluateDiagnostic[];
+  /**
+   * 输入错误（调用方可修正，不是引擎故障）：目前只有输入缺少规则读取的字段。
+   * 执行路由据此回 400 + 字段路径，不写执行记录；派生决策按失败（error）处理，fail-closed。
+   */
+  inputError?: { code: typeof MISSING_INPUT_FIELD_CODE; field: string };
 }
 
 /**
@@ -657,10 +663,38 @@ export function buildCNLResult(policy: Policy, apiResponse: PolicyEvaluateRespon
   };
 }
 
+/** aster-api 400 missing_input_field 的字段路径；错误体不带字段路径时返回 null（不猜）。 */
+function missingInputFieldOf(error: unknown): string | null {
+  if (!(error instanceof PolicyApiError) || error.code !== MISSING_INPUT_FIELD_CODE) return null;
+  const field = error.details?.field;
+  return typeof field === 'string' && field.trim() !== '' ? field : null;
+}
+
 /**
  * 构建 CNL 执行错误结果
+ *
+ * 输入缺字段是输入错误：带 inputError、说明由 cloud 生成，不标 engineError；其余失败一律按引擎失败。
  */
-function buildCNLErrorResult(policy: Policy, error: unknown): PolicyExecutionResult {
+export function buildCNLErrorResult(policy: Policy, error: unknown): PolicyExecutionResult {
+  const missingField = missingInputFieldOf(error);
+  if (missingField) {
+    return {
+      allowed: false,
+      approved: false,
+      matchedRules: [],
+      deniedReasons: [missingInputFieldMessage(missingField)],
+      metadata: {
+        evaluatedAt: new Date().toISOString(),
+        policyId: policy.id,
+        policyName: policy.name,
+        ruleCount: 0,
+        matchedRuleCount: 0,
+        denyCount: 1,
+        engine: 'aster-cnl',
+      },
+      inputError: { code: MISSING_INPUT_FIELD_CODE, field: missingField },
+    };
+  }
   const errorMessage =
     error instanceof PolicyApiError
       ? `Policy evaluation failed: ${error.message}`
@@ -699,7 +733,7 @@ export type ExecutionDecision = (typeof executionDecisionEnum.enumValues)[number
 
 /**
  * 从执行结果**服务端派生**审计决策（绝不信客户端输入）。六态互斥、按优先级判定：
- *   - engineError → 'error'（执行报错，如编译/运行失败）
+ *   - engineError / inputError → 'error'（执行报错，如编译/运行失败、输入缺少规则读取的字段）
  *   - outcome==='REQUIRE_APPROVAL' → 'require_approval'（需人工批准）
  *   - outcome==='ESCALATE' → 'escalate'（升级处理）
  *   - decision==='indeterminate' → 'indeterminate'（执行成功但无 allow/deny 语义，如值输出）
@@ -707,7 +741,7 @@ export type ExecutionDecision = (typeof executionDecisionEnum.enumValues)[number
  *   - 其余 → 'denied'（真实拒绝）
  */
 export function deriveExecutionDecision(result: PolicyExecutionResult): ExecutionDecision {
-  if (result.metadata.engineError) return 'error';
+  if (result.metadata.engineError || result.inputError) return 'error';
   if (result.metadata.outcome === 'REQUIRE_APPROVAL') return 'require_approval';
   if (result.metadata.outcome === 'ESCALATE') return 'escalate';
   if (result.metadata.decision === 'indeterminate') return 'indeterminate';

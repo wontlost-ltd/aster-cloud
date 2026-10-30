@@ -14,6 +14,7 @@ import {
   EXECUTION_FAILED_CODE,
   EXECUTION_FAILED_MESSAGE,
   executionErrorCode,
+  missingInputFieldBody,
   sanitizeExecutionResult,
 } from '@/lib/execution-error';
 import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
@@ -544,6 +545,18 @@ export async function POST(req: Request, { params }: RouteParams) {
     } catch {
       // 非 Cloudflare 环境，直接执行（不阻塞响应）
       void backgroundTasks;
+    }
+
+    // 输入缺少规则读取的字段：引擎已执行，照常写执行记录（decision=error，output.inputError 带码与路径）
+    // 与用量后，按输入错误回 400；field 为规范名路径，policyField 为策略语言写法。
+    if (executionResult.inputError) {
+      const { field } = executionResult.inputError;
+      return NextResponse.json({
+        ...missingInputFieldBody(field, prepared.localizeFieldPath(field)),
+        executionId,
+        decision,
+        durationMs,
+      }, { status: 400 });
     }
 
     return NextResponse.json({

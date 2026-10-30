@@ -41,6 +41,7 @@ import {
   normalizeNumberFields,
   numberFieldValue,
   numberKind,
+  parameterizedExecuteError,
   parseFormValues,
   parseJsonInput,
   withFormField,
@@ -426,12 +427,6 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
   // 规则选择器此时已显示 ambiguousHint。候选面板只作为前后端判断不一致时的兜底。
   const mustChooseRule = ruleSymbols.length > 1 && !selectedRule;
 
-  // 输入歧义：写法在词汇里撞名（带 candidates）或同一字段写了两次；都按策略语言提示。
-  const ambiguousInputMessage = (data: { field?: string; policyField?: string; candidates?: string[] }) =>
-    data.candidates
-      ? t('ambiguousInputSpelling', { field: data.policyField ?? data.field ?? '', candidates: data.candidates.join(', ') })
-      : t('ambiguousInputField', { field: data.policyField ?? data.field ?? '' });
-
   /**
    * 执行前确定提交的输入（#635）：JSON 不可解析 → 提示并阻止；合法但不是对象的 JSON（数组、字符串、
    * 数字、null）表单展示不了，原样提交，绝不替换。表单模式下数字字段在这里定案：能解析为数字就
@@ -483,11 +478,11 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
         // 优先显示详细消息，支持冻结和配额超限场景
         // 有稳定错误码的按码本地化，不显示服务端英文原文（#634、#638）。
         const codeKey = typeof data.code === 'string' ? EXECUTE_ERROR_KEYS[data.code] : undefined;
-        const errorMessage = data.code === 'ambiguous_input_field'
-          ? ambiguousInputMessage(data)
-          : codeKey
+        // 输入歧义、输入缺字段带参数（字段名 / 路径），按策略语言提示。
+        const errorMessage = parameterizedExecuteError(data, t)
+          ?? (codeKey
             ? t(codeKey)
-            : data.message || extractErrorMessage(data) || t('executionFailed');
+            : data.message || extractErrorMessage(data) || t('executionFailed'));
         setError(errorMessage);
         // 保存是否需要升级的标志
         if (data.upgrade || data.frozen) {

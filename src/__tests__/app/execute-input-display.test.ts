@@ -4,6 +4,7 @@ import {
   EXECUTE_ERROR_KEYS,
   formatResultValue,
   formUnavailableKey,
+  parameterizedExecuteError,
 } from '@/app/[locale]/(dashboard)/policies/[id]/execute/execute-input';
 
 const enumValue = (name: string, member: string) => ({ __type: '?', _enum: name, value: member, variant: member, args: [] });
@@ -39,5 +40,32 @@ describe('EXECUTE_ERROR_KEYS', () => {
       input_type_extraction_failed: 'inputTypeExtractionFailed',
       entry_rule_required: 'entryRuleRequired',
     });
+  });
+});
+
+describe('parameterizedExecuteError', () => {
+  const t = (key: string, values?: Record<string, string>) => `${key}${values ? JSON.stringify(values) : ''}`;
+
+  it('输入缺字段：按 missingInputField 显示字段路径，优先策略语言写法 policyField', () => {
+    expect(parameterizedExecuteError({ code: 'missing_input_field', field: 'person.age', policyField: 'person.alter' }, t))
+      .toBe('missingInputField{"field":"person.alter"}');
+    expect(parameterizedExecuteError({ code: 'missing_input_field', field: 'applicant.creditScore' }, t))
+      .toBe('missingInputField{"field":"applicant.creditScore"}');
+  });
+
+  it('输入缺字段但没有字段路径：不用带参数的文案（交给通用处理）', () => {
+    expect(parameterizedExecuteError({ code: 'missing_input_field' }, t)).toBeNull();
+  });
+
+  it('歧义：写法撞名带候选、重复字段按策略语言名', () => {
+    expect(parameterizedExecuteError({ code: 'ambiguous_input_field', field: 'a', policyField: 'alter', candidates: ['age', 'old'] }, t))
+      .toBe('ambiguousInputSpelling{"field":"alter","candidates":"age, old"}');
+    expect(parameterizedExecuteError({ code: 'ambiguous_input_field', field: 'person.age', policyField: 'alter' }, t))
+      .toBe('ambiguousInputField{"field":"alter"}');
+  });
+
+  it('其它错误码返回 null', () => {
+    expect(parameterizedExecuteError({ code: 'execution_failed' }, t)).toBeNull();
+    expect(parameterizedExecuteError({}, t)).toBeNull();
   });
 });

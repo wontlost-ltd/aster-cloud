@@ -15,6 +15,7 @@ vi.mock('@/services/policy/policy-api', async (importOriginal) => {
 });
 
 import { POST } from '@/app/api/policies/evaluate-source/route';
+import { PolicyApiError } from '@/services/policy/policy-api';
 
 function request(): Request {
   return new Request('http://localhost/api/policies/evaluate-source', {
@@ -53,5 +54,28 @@ describe('POST /api/policies/evaluate-source — 错误脱敏', () => {
     });
     const body = await (await POST(request())).json();
     expect(body.error).toBe('Line 2: Expected newline');
+  });
+
+  it('输入缺字段：400 + missing_input_field + 字段路径，文案由 cloud 生成', async () => {
+    mockEvaluateSource.mockRejectedValue(new PolicyApiError(
+      "Input is missing field 'applicant.creditScore' that the policy reads.", 400, 'missing_input_field', undefined,
+      { code: 'missing_input_field', field: 'applicant.creditScore', error: 'x' },
+    ));
+    const res = await POST(request());
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body.code).toBe('missing_input_field');
+    expect(body.field).toBe('applicant.creditScore');
+    expect(body.policyField).toBe('applicant.creditScore');
+    expect(body.error).toContain('applicant.creditScore');
+  });
+
+  it('其它 aster-api 4xx 仍走原错误处理', async () => {
+    mockEvaluateSource.mockRejectedValue(new PolicyApiError('too deep', 400, 'input_too_deep'));
+    const res = await POST(request());
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body.code).toBeUndefined();
+    expect(body.error).toBe('too deep');
   });
 });

@@ -16,6 +16,25 @@ export const EXECUTION_FAILED_MESSAGE =
   'Policy execution failed. Check that the input fields match the policy and try again.';
 
 /**
+ * 输入缺少规则读取的字段（aster-api 400 missing_input_field）：调用方可修正的输入错误，
+ * 不是引擎故障。响应带字段路径（如 `applicant.creditScore`），前端按码 + 路径本地化。
+ */
+export const MISSING_INPUT_FIELD_CODE = 'missing_input_field';
+
+/** 缺字段的英文说明（无本地化上下文时展示）。文案由 cloud 生成，不转述上游原文。 */
+export function missingInputFieldMessage(field: string): string {
+  return `The input is missing the field "${field}" that the policy reads. Add it to the input and try again.`;
+}
+
+/**
+ * 缺字段的 400 响应体（dashboard / v1 / evaluate-source 共用），与 ambiguous_input_field 同一字段语义：
+ * `field` 为规范名路径（引擎原样，程序据此识别），`policyField` 为策略语言写法（界面展示用，缺省同 field）。
+ */
+export function missingInputFieldBody(field: string, policyField: string = field) {
+  return { error: missingInputFieldMessage(policyField), code: MISSING_INPUT_FIELD_CODE, field, policyField };
+}
+
+/**
  * 内部实现痕迹（命中即不可对外展示）：
  * - 全限定 JVM 类/包名（java.、javax.、jdk.、org.graalvm.、com.oracle.、io.aster.、io.quarkus. 等）；
  * - 栈帧（`at a.b.C.m(...)`）与 `Caused by:`；
@@ -47,6 +66,7 @@ interface EngineResultLike {
   deniedReasons: string[];
   metadata: { engineError?: boolean };
   diagnostics?: DiagnosticLike[];
+  inputError?: { code: string };
 }
 
 /** 单条诊断是否带内部实现细节。 */
@@ -90,7 +110,8 @@ export function sanitizeExecutionResult<T extends EngineResultLike>(
   };
 }
 
-/** 执行结果对应的错误码：仅引擎失败时有值。 */
+/** 执行结果对应的错误码：输入错误取其错误码（如 missing_input_field），引擎失败为 execution_failed，其余无。 */
 export function executionErrorCode(result: EngineResultLike): string | undefined {
+  if (result.inputError) return result.inputError.code;
   return result.metadata.engineError ? EXECUTION_FAILED_CODE : undefined;
 }

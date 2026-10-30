@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
-import { hasInternalDetail, publicErrorText, sanitizeDiagnostics } from '@/lib/execution-error';
+import {
+  hasInternalDetail,
+  MISSING_INPUT_FIELD_CODE,
+  missingInputFieldBody,
+  publicErrorText,
+  sanitizeDiagnostics,
+} from '@/lib/execution-error';
 import { getSession } from '@/lib/auth';
 import { createPolicyApiClient, PolicyApiError, PolicyEvaluateResponse } from '@/services/policy/policy-api';
 import {
@@ -115,10 +121,23 @@ export async function POST(req: Request) {
 
     // 调用 Policy API 执行源代码
     const client = createPolicyApiClient(session.user.id, session.user.id);
-    const response: PolicyEvaluateResponse = await client.evaluateSource(source, context, {
-      locale: locale || 'en-US',
-      functionName,
-    });
+    let response: PolicyEvaluateResponse;
+    try {
+      response = await client.evaluateSource(source, context, {
+        locale: locale || 'en-US',
+        functionName,
+      });
+    } catch (error) {
+      // 输入缺少规则读取的字段（aster-api 400）：引擎已运行，照常计用量，按码 + 字段路径回 400
+      const missingField = error instanceof PolicyApiError && error.code === MISSING_INPUT_FIELD_CODE
+        ? error.details?.field : undefined;
+      if (typeof missingField !== 'string' || missingField === '') throw error;
+      await recordExecutionUsage(session.user.id);
+      return NextResponse.json(
+        { success: false, ...missingInputFieldBody(missingField) },
+        { status: 400, headers: rateLimitHeaders },
+      );
+    }
     // 引擎已运行即计一次（含执行错误），与界面执行同口径；aster-api 拒绝/不可达抛异常，不计。
     await recordExecutionUsage(session.user.id);
 

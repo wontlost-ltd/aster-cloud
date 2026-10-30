@@ -38,6 +38,34 @@ export const EXECUTE_ERROR_KEYS: Readonly<Record<string, string>> = {
   entry_rule_required: 'entryRuleRequired',
 };
 
+/** 执行接口错误体里与带参数文案相关的字段。 */
+export interface ExecuteErrorData {
+  code?: unknown;
+  field?: unknown;
+  policyField?: unknown;
+  candidates?: unknown;
+}
+
+type Translate = (key: string, values?: Record<string, string>) => string;
+
+/**
+ * 需要带参数的执行错误文案（policies.execute 命名空间）：
+ * - ambiguous_input_field：写法撞名（带候选）或同一字段写了两次，按策略语言名提示；
+ * - missing_input_field：输入缺少规则读取的字段，显示策略语言写法的路径（policyField，缺省回退规范名 field）。
+ * 其它错误码（或缺必要字段）返回 null，由调用方按 EXECUTE_ERROR_KEYS / 服务端说明处理。
+ */
+export function parameterizedExecuteError(data: ExecuteErrorData, t: Translate): string | null {
+  const text = (v: unknown) => (typeof v === 'string' ? v : '');
+  const field = text(data.policyField) || text(data.field);
+  if (data.code === 'missing_input_field') {
+    return field ? t('missingInputField', { field }) : null;
+  }
+  if (data.code !== 'ambiguous_input_field') return null;
+  return Array.isArray(data.candidates)
+    ? t('ambiguousInputSpelling', { field, candidates: data.candidates.join(', ') })
+    : t('ambiguousInputField', { field });
+}
+
 /** 解析 JSON 文本（任意 JSON 值）；不可解析时 ok=false。 */
 export function parseJsonInput(text: string): { ok: true; value: unknown } | { ok: false } {
   try {
