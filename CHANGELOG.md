@@ -372,6 +372,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Documentation
 
+- Refresh unreleased (#551) *(changelog)*
 - Refresh unreleased (#549) *(changelog)*
 - Refresh unreleased *(changelog)*
 - Note unpublished registry package and pooled evidence *(credit-pilot)*
@@ -690,6 +691,15 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- 团队流程杂项——同一邮箱注册与邀请、Free 成员门禁、业务角色与转让、审批通知、i18n 与页面细节 (#690) *(teams)*
+- Aster-api 清扫的 cloud 侧跟进（#692 #693 #694） (#700)
+- 团队 key 的执行配额按配额 owner 计，与 API 调用配额同一口径（#653） (#685) *(quota)*
+- 团队策略按当前团队角色授权（#669 #670 #671 #673 #674） (#691) *(authz)*
+- 应用层心跳检测网络静默中断并自动重连 (#689) *(lsp)*
+- 版本操作等路由的兜底分支不再回传原始 error.message（#662） (#668) *(api)*
+- 网关闲置会话 15 分钟后以 4408 关闭，客户端在用户回来时按需重连（#657 闲置超时部分） (#686) *(lsp)*
+- 回收站 30 天清理登记为每日 cron，硬删除不留孤儿访问授权；on-prem 指南列全 cron（#623 #625） (#684) *(trash)*
+- 词条保存时按 aster-api VocabularyBounds 限制别名数与字符串长度（#621） (#683) *(vocab)*
 - 输入缺少规则读取的字段时返回 400 missing_input_field 与字段路径 (#666) *(execute)*
 - LSP logMessage 按级别映射控制台，Info/Log 默认静默 (#667) *(editor)*
 - 生产复测第 6 轮——LSP 断线重连与状态提示、Cedar 导出可选规则、zh E000 句末符号 (#665)
