@@ -5,7 +5,9 @@
  * 绝不影响注册、保存、执行等主流程。
  */
 import { createHmac, randomUUID } from 'node:crypto';
+import { lt } from 'drizzle-orm';
 import { runAfterResponse } from '@/lib/after-response';
+import { IS_SAAS } from '@/lib/deployment-mode';
 import { db, productEvents } from '@/lib/prisma';
 import {
   isOncePerActor,
@@ -14,14 +16,38 @@ import {
 } from './definitions';
 
 /**
- * 假名化密钥。未配置 PRODUCT_ANALYTICS_SALT 时用固定默认值：假名仍不含原始 id，但能拿到用户表的人
- * 可以重算出对应关系；生产应配置独立密钥。更换密钥会让新旧假名无法关联（漏斗按密钥分段）。
+ * 假名化密钥 PRODUCT_ANALYTICS_SALT。
+ *
+ * 仓库是公开的，内置默认值等于公开常量：任何拿到用户 / 团队 id 的人都能重算假名。所以 SaaS 生产环境
+ * 未配置时 **fail closed**：不记录任何事件、只告警一次（不阻断启动）；开发 / 测试与 on-prem 才用默认值。
+ * 更换密钥会让新旧假名无法关联（漏斗按密钥分段），首次上线前就要配好。
  */
-const DEFAULT_KEY = 'aster-product-analytics-v1';
+const DEV_DEFAULT_KEY = 'aster-product-analytics-dev-only';
+let warnedMissingKey = false;
 
-export function pseudonymize(kind: 'user' | 'tenant', id: string): string {
-  const key = process.env.PRODUCT_ANALYTICS_SALT || DEFAULT_KEY;
+function analyticsKey(): string | null {
+  const salt = process.env.PRODUCT_ANALYTICS_SALT;
+  if (salt) return salt;
+  if (IS_SAAS && process.env.NODE_ENV === 'production') {
+    if (!warnedMissingKey) {
+      warnedMissingKey = true;
+      console.warn('[product-events] PRODUCT_ANALYTICS_SALT 未配置：SaaS 生产环境不记录产品事件（fail closed）');
+    }
+    return null;
+  }
+  return DEV_DEFAULT_KEY;
+}
+
+/** 用户 / 租户 id 的 HMAC 假名；密钥不可用（生产未配置）时返回 null。 */
+export function pseudonymize(kind: 'user' | 'tenant', id: string): string | null {
+  const key = analyticsKey();
+  if (!key) return null;
   return createHmac('sha256', key).update(`${kind}:${id}`).digest('hex').slice(0, 32);
+}
+
+/** 当前是否能记录事件（生产缺密钥时为 false）。 */
+export function productEventsEnabled(): boolean {
+  return analyticsKey() !== null;
 }
 
 /** 进程内记住已写过的 once 事件，避免每次执行都打一条必然冲突的 INSERT。 */
@@ -35,6 +61,7 @@ function rememberOnce(key: string): void {
 
 export function resetOnceCacheForTests(): void {
   recordedOnce.clear();
+  warnedMissingKey = false;
 }
 
 export interface RecordProductEventOptions {
@@ -54,6 +81,7 @@ export async function recordProductEvent(
   options: RecordProductEventOptions = {},
 ): Promise<boolean> {
   try {
+    if (!productEventsEnabled()) return false;
     const actorId = options.userId ? pseudonymize('user', options.userId) : null;
     const tenantId = options.tenantId ? pseudonymize('tenant', options.tenantId) : null;
     const once = isOncePerActor(name);
@@ -86,4 +114,17 @@ export function recordProductEventAfterResponse(
   options: RecordProductEventOptions = {},
 ): void {
   runAfterResponse(() => recordProductEvent(name, options));
+}
+
+/** 产品事件保留 13 个月（够做同比与季度回看，隐私政策同口径），由 telemetry-retention-gc 每日清理。 */
+export const PRODUCT_EVENT_RETENTION_MONTHS = 13;
+
+export async function purgeExpiredProductEvents(now = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime());
+  cutoff.setUTCMonth(cutoff.getUTCMonth() - PRODUCT_EVENT_RETENTION_MONTHS);
+  const deleted = await db
+    .delete(productEvents)
+    .where(lt(productEvents.createdAt, cutoff))
+    .returning({ id: productEvents.id });
+  return deleted.length;
 }

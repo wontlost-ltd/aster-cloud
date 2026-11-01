@@ -190,6 +190,13 @@ const ENV_CHECKS: readonly EnvCheck[] = [
     requiredIn: ['saas'],
     description: 'AI 审计原文加密主密钥（≥16 字符，入库后不可轮换，否则旧记录无法解密）',
   },
+  // 产品分析假名化密钥：缺失时 SaaS 生产不记录产品事件（fail closed），不拦启动。
+  {
+    key: 'PRODUCT_ANALYTICS_SALT',
+    required: 'recommended',
+    requiredIn: ['saas'],
+    description: '产品分析事件的用户 / 租户假名化 HMAC 密钥（≥32 字节随机值；缺失时生产不记录产品事件，更换会使新旧假名无法关联）',
+  },
 
   // ── On-Prem-only：License + SSO ─────────────────────────────────
   // 占位字段；PR-8 的 /admin/license 与 /admin/sso 页面会真正消费

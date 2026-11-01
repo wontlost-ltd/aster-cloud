@@ -67,6 +67,7 @@ export const KNOWN_ADMIN_EVENT_IDS = [
   'rule_regression.revoke-transition',
   'aha.first_policy_published',
   'docs.jump',
+  'pilot-application.delete',
 ] as const;
 
 const KNOWN = new Set<string>(KNOWN_ADMIN_EVENT_IDS);

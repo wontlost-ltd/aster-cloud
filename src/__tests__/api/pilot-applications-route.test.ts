@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   rate: vi.fn(),
   insert: vi.fn(),
+  recent: vi.fn(),
   record: vi.fn(),
   isSaas: true,
 }));
@@ -24,7 +25,7 @@ vi.mock('@/lib/rate-limit-distributed', () => ({ checkRateLimitDistributed: mock
 vi.mock('@/lib/product-events/server', () => ({ recordProductEventAfterResponse: mocks.record }));
 vi.mock('@/lib/pilot-applications', async () => {
   const actual = await vi.importActual<typeof import('@/lib/pilot-applications')>('@/lib/pilot-applications');
-  return { ...actual, insertPilotApplication: mocks.insert };
+  return { ...actual, insertPilotApplication: mocks.insert, hasRecentPilotApplication: mocks.recent };
 });
 
 import { POST } from '@/app/api/pilot-applications/route';
@@ -54,6 +55,7 @@ beforeEach(() => {
   mocks.isSaas = true;
   mocks.rate.mockResolvedValue({ allowed: true, remaining: 4, resetAt: Date.now() + 3_600_000 });
   mocks.insert.mockResolvedValue('app-1');
+  mocks.recent.mockResolvedValue(false);
 });
 
 describe('POST /api/pilot-applications', () => {
@@ -118,5 +120,14 @@ describe('POST /api/pilot-applications', () => {
     expect(res.status).toBe(500);
     expect(mocks.record).not.toHaveBeenCalled();
     err.mockRestore();
+  });
+
+  it('同一邮箱 24 小时内重复提交 → 201 但不落新行、不记事件', async () => {
+    mocks.recent.mockResolvedValue(true);
+    const res = await POST(req(valid));
+    expect(res.status).toBe(201);
+    expect(mocks.recent).toHaveBeenCalledWith('jane@insurer.example');
+    expect(mocks.insert).not.toHaveBeenCalled();
+    expect(mocks.record).not.toHaveBeenCalled();
   });
 });

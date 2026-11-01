@@ -4,7 +4,8 @@
  * 防灌表：
  * - 蜜罐：表单里有一个对真人隐藏的 `website` 字段，非空即判定为脚本，返回与成功同形的 200 但不落库，
  *   避免脚本据响应调整；
- * - 按 IP 分布式限流（RateLimitPresets.PILOT_APPLICATION，与注册同一套 checkRateLimitDistributed）。
+ * - 按 IP 分布式限流（RateLimitPresets.PILOT_APPLICATION，与注册同一套 checkRateLimitDistributed）；
+ * - 同一邮箱 24 小时内只收一份，重复提交回成功但不落新行。
  *
  * 落库后记 pilot_application_submitted 事件：只带落地页、语种、是否个人邮箱与来源归因，不带邮箱 / 公司。
  */
@@ -12,7 +13,7 @@ import { NextResponse } from 'next/server';
 import { IS_SAAS } from '@/lib/deployment-mode';
 import { getClientIp, RateLimitPresets } from '@/lib/rate-limit';
 import { checkRateLimitDistributed } from '@/lib/rate-limit-distributed';
-import { insertPilotApplication, parsePilotApplication } from '@/lib/pilot-applications';
+import { hasRecentPilotApplication, insertPilotApplication, parsePilotApplication } from '@/lib/pilot-applications';
 import { recordProductEventAfterResponse } from '@/lib/product-events/server';
 
 export const runtime = 'nodejs';
@@ -59,6 +60,10 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   try {
+    // 同一邮箱 24 小时内重复提交：按成功回复，不落新行、不记事件。
+    if (await hasRecentPilotApplication(parsed.value.email)) {
+      return NextResponse.json({ ok: true }, { status: 201, headers: NO_STORE });
+    }
     await insertPilotApplication(parsed.value);
   } catch (err) {
     console.error('[pilot-applications] insert failed', err);

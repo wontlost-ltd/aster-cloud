@@ -45,7 +45,9 @@ export type AuditAction =
   // Docs surface (Phase 2 docs UX) — writes once when a logged-in
   // reader clicks a cross-domain CTA in /docs into the app surface.
   // Metadata holds { cta_id, target, locale }; never echoes PII.
-  | 'docs.jump';
+  | 'docs.jump'
+  // 管理员删除落地页试点申请（应申请人要求或清理垃圾提交）；metadata 不记邮箱等申请内容。
+  | 'pilot-application.delete';
 
 interface AuditEntry {
   userId: string;

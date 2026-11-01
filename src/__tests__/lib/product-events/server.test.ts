@@ -37,7 +37,14 @@ vi.mock('@/lib/prisma', () => {
   };
 });
 
-import { pseudonymize, recordProductEvent, resetOnceCacheForTests } from '@/lib/product-events/server';
+const mode = vi.hoisted(() => ({ isSaas: true }));
+vi.mock('@/lib/deployment-mode', () => ({
+  get IS_SAAS() {
+    return mode.isSaas;
+  },
+}));
+
+import { pseudonymize, productEventsEnabled, recordProductEvent, resetOnceCacheForTests } from '@/lib/product-events/server';
 
 beforeEach(() => {
   inserted.length = 0;
@@ -46,6 +53,8 @@ beforeEach(() => {
   conflictNext = false;
   resetOnceCacheForTests();
   delete process.env.PRODUCT_ANALYTICS_SALT;
+  mode.isSaas = true;
+  vi.unstubAllEnvs();
 });
 
 describe('pseudonymize', () => {
@@ -111,5 +120,35 @@ describe('recordProductEvent', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     await expect(recordProductEvent('signup_completed', { userId: 'u-3' })).resolves.toBe(false);
     warn.mockRestore();
+  });
+});
+
+describe('PRODUCT_ANALYTICS_SALT 缺失时的生产行为（fail closed）', () => {
+  it('SaaS 生产未配置：不写库、假名为 null、只告警一次', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect(productEventsEnabled()).toBe(false);
+    expect(pseudonymize('user', 'u1')).toBeNull();
+    expect(await recordProductEvent('signup_completed', { userId: 'u1' })).toBe(false);
+    expect(await recordProductEvent('landing_viewed', { properties: { page: 'insurance-rating' } })).toBe(false);
+    expect(inserted).toHaveLength(0);
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes('PRODUCT_ANALYTICS_SALT'))).toHaveLength(1);
+    warn.mockRestore();
+  });
+
+  it('SaaS 生产已配置：正常记录', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    process.env.PRODUCT_ANALYTICS_SALT = 'prod-secret';
+    expect(await recordProductEvent('signup_completed', { userId: 'u1' })).toBe(true);
+    expect(inserted).toHaveLength(1);
+  });
+
+  it('on-prem 生产与非生产环境可用开发默认密钥', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    mode.isSaas = false;
+    expect(productEventsEnabled()).toBe(true);
+    mode.isSaas = true;
+    vi.stubEnv('NODE_ENV', 'development');
+    expect(productEventsEnabled()).toBe(true);
   });
 });

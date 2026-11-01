@@ -5,7 +5,7 @@
  * 管理端据此区分企业线索。
  */
 import { randomUUID } from 'node:crypto';
-import { desc } from 'drizzle-orm';
+import { and, desc, eq, gte, lt } from 'drizzle-orm';
 import { db, pilotApplications, type PilotApplication } from '@/lib/prisma';
 import { locales } from '@/i18n/config';
 import { isDisposableEmail } from '@/lib/email-disposable';
@@ -103,6 +103,20 @@ export function parsePilotApplication(raw: unknown): ParseResult {
   };
 }
 
+/** 同一邮箱 24 小时内只收一份申请；重复提交按成功回复但不落新行。 */
+export const DUPLICATE_WINDOW_MS = 24 * 3600 * 1000;
+
+export async function hasRecentPilotApplication(email: string, now = new Date()): Promise<boolean> {
+  const row = await db.query.pilotApplications.findFirst({
+    where: and(
+      eq(pilotApplications.email, email),
+      gte(pilotApplications.createdAt, new Date(now.getTime() - DUPLICATE_WINDOW_MS)),
+    ),
+    columns: { id: true },
+  });
+  return Boolean(row);
+}
+
 export async function insertPilotApplication(input: PilotApplicationInput, now = new Date()): Promise<string> {
   const id = randomUUID();
   await db.insert(pilotApplications).values({ id, ...input, consentAt: now, createdAt: now });
@@ -129,14 +143,42 @@ function csvCell(value: unknown): string {
   else if (value instanceof Date) text = value.toISOString();
   else if (Array.isArray(value)) text = value.join('|');
   else text = String(value);
+  // 表格软件会把以 = + - @ 或制表 / 回车开头的单元格当公式执行；表单字段来自匿名提交，一律加 ' 前缀。
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-/** RFC 4180 CSV（CRLF 行尾）；多选用例以 `|` 连接。 */
+/** RFC 4180 CSV（CRLF 行尾）；多选用例以 `|` 连接；公式前缀字符一律转义。 */
 export function pilotApplicationsToCsv(rows: PilotApplication[]): string {
   const lines = [CSV_COLUMNS.join(',')];
   for (const row of rows) {
     lines.push(CSV_COLUMNS.map((col) => csvCell(row[col])).join(','));
   }
   return `${lines.join('\r\n')}\r\n`;
+}
+
+/** 试点申请保留 24 个月（隐私政策同口径），由 telemetry-retention-gc 每日清理。 */
+export const PILOT_APPLICATION_RETENTION_MONTHS = 24;
+
+export function monthsBefore(now: Date, months: number): Date {
+  const d = new Date(now.getTime());
+  d.setUTCMonth(d.getUTCMonth() - months);
+  return d;
+}
+
+export async function purgeExpiredPilotApplications(now = new Date()): Promise<number> {
+  const deleted = await db
+    .delete(pilotApplications)
+    .where(lt(pilotApplications.createdAt, monthsBefore(now, PILOT_APPLICATION_RETENTION_MONTHS)))
+    .returning({ id: pilotApplications.id });
+  return deleted.length;
+}
+
+/** 管理端删除单条申请（应申请人要求等）。返回是否删到了行。 */
+export async function deletePilotApplication(id: string): Promise<boolean> {
+  const deleted = await db
+    .delete(pilotApplications)
+    .where(eq(pilotApplications.id, id))
+    .returning({ id: pilotApplications.id });
+  return deleted.length > 0;
 }

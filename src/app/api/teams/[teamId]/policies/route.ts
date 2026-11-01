@@ -8,6 +8,7 @@ import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
 import { assertCompilable, createVersion, PolicyCompileError } from '@/services/policy/version-manager';
 import { loadSaveVocabulary, makeCompileValidator } from '@/lib/policy-compile-validator';
 import { compileGateErrorResponse, vocabularyScopeInvalidResponse } from '@/lib/policy-compile-response';
+import { recordProductEventAfterResponse } from '@/lib/product-events/server';
 
 
 type RouteParams = { params: Promise<{ teamId: string }> };
@@ -191,6 +192,8 @@ export async function POST(req: Request, { params }: RouteParams) {
       return inserted;
     });
     await invalidatePolicyCache(newPolicy.id).catch((err) => console.warn('[Cache] Failed to invalidate policy cache:', err));
+    // 需求验证漏斗：团队策略的创建同样算「首次保存」（once 事件，与 /api/policies 同口径）。
+    recordProductEventAfterResponse('policy_first_saved', { userId: session.user.id, tenantId: teamId });
 
     return NextResponse.json(
       {

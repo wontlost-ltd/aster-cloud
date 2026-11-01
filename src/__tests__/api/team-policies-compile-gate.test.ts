@@ -63,6 +63,9 @@ vi.mock('@/lib/policy-compile-validator', () => ({
   makeCompileValidator: vi.fn().mockReturnValue(vi.fn()),
 }));
 
+const mockRecordProductEvent = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/product-events/server', () => ({ recordProductEventAfterResponse: mockRecordProductEvent }));
+
 const { POST } = await import('@/app/api/teams/[teamId]/policies/route');
 const { loadSaveVocabulary } = await import('@/lib/policy-compile-validator');
 const { VocabularyScopeError } = await import('@aster-cloud/aster-lang-ts/browser');
@@ -103,6 +106,18 @@ describe('POST /api/teams/{teamId}/policies 编译门禁', () => {
         dbClient: expect.anything(),
       }),
     );
+  });
+
+  it('需求验证：新建团队策略记 policy_first_saved（tenant=团队），被门禁拒绝时不记', async () => {
+    mockRecordProductEvent.mockClear();
+    const res = await POST(req(VALID), ctx);
+    expect(res.status).toBe(201);
+    expect(mockRecordProductEvent).toHaveBeenCalledWith('policy_first_saved', { userId: 'user-1', tenantId: 't1' });
+
+    mockRecordProductEvent.mockClear();
+    mockAssertCompilable.mockRejectedValueOnce(new mockPolicyCompileError());
+    await POST(req(VALID), ctx);
+    expect(mockRecordProductEvent).not.toHaveBeenCalled();
   });
 
   it('★不可解析的源码必须 400 compile_error 且**不落库**', async () => {

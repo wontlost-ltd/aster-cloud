@@ -5,7 +5,7 @@
  *   不给客户端伪造漏斗的入口。
  * - actor 只取会话用户（假名化后落库），body 里的任何身份字段都被忽略；匿名访问 actor 为空。
  * - 属性由 recordProductEvent 按事件白名单过滤；这里只做大小与形状的前置拦截。
- * - 按 IP 走分布式限流（与登录 / 注册同一套 checkRateLimitDistributed）。
+ * - 按 IP 走分布式限流（与登录 / 注册同一套 checkRateLimitDistributed）；常见爬虫 UA 不记录；仅 SaaS。
  */
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
@@ -13,6 +13,8 @@ import { getClientIp, RateLimitPresets } from '@/lib/rate-limit';
 import { checkRateLimitDistributed } from '@/lib/rate-limit-distributed';
 import { CLIENT_PRODUCT_EVENTS, isProductEventName } from '@/lib/product-events/definitions';
 import { recordProductEventAfterResponse } from '@/lib/product-events/server';
+import { isBotUserAgent } from '@/lib/product-events/bot-filter';
+import { IS_SAAS } from '@/lib/deployment-mode';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,6 +32,9 @@ async function sessionUserId(): Promise<string | null> {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  // 需求验证只在 SaaS 进行；on-prem 部署不提供上报入口。
+  if (!IS_SAAS) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+
   const rate = await checkRateLimitDistributed(
     `product-events:${getClientIp(request)}`,
     RateLimitPresets.API_RELAXED,
@@ -51,6 +56,11 @@ export async function POST(request: Request): Promise<NextResponse> {
   const name = body?.name;
   if (!isProductEventName(name) || !CLIENT_PRODUCT_EVENTS.includes(name)) {
     return NextResponse.json({ error: 'unknown_event' }, { status: 400, headers: NO_STORE });
+  }
+
+  // 爬虫 / 预览 / 自动化客户端：同形 202 但不记录，避免把机器访问算进需求指标。
+  if (isBotUserAgent(request.headers.get('user-agent'))) {
+    return NextResponse.json({ ok: true }, { status: 202, headers: NO_STORE });
   }
 
   recordProductEventAfterResponse(name, { userId: await sessionUserId(), properties: body.properties });

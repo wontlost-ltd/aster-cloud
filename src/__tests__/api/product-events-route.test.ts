@@ -11,7 +11,13 @@ const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   rate: vi.fn(),
   record: vi.fn(),
+  isSaas: true,
 }));
+
+vi.mock('@/lib/deployment-mode', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/deployment-mode')>('@/lib/deployment-mode');
+  return { ...actual, get IS_SAAS() { return mocks.isSaas; } };
+});
 
 vi.mock('@/auth', () => ({ auth: mocks.auth }));
 vi.mock('@/lib/rate-limit-distributed', () => ({ checkRateLimitDistributed: mocks.rate }));
@@ -22,7 +28,12 @@ import { POST } from '@/app/api/product-events/route';
 function req(body: unknown, headers: Record<string, string> = {}) {
   return new Request('https://aster-lang.cloud/api/product-events', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'cf-connecting-ip': '203.0.113.9', ...headers },
+    headers: {
+      'content-type': 'application/json',
+      'cf-connecting-ip': '203.0.113.9',
+      'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+      ...headers,
+    },
     body: typeof body === 'string' ? body : JSON.stringify(body),
   });
 }
@@ -31,6 +42,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.rate.mockResolvedValue({ allowed: true, remaining: 100, resetAt: Date.now() + 60_000 });
   mocks.auth.mockResolvedValue(null);
+  mocks.isSaas = true;
 });
 
 describe('POST /api/product-events', () => {
@@ -84,5 +96,18 @@ describe('POST /api/product-events', () => {
     const res = await POST(req({ name: 'approvals_inbox_viewed' }));
     expect(res.status).toBe(202);
     expect(mocks.record).toHaveBeenCalledWith('approvals_inbox_viewed', { userId: null, properties: undefined });
+  });
+
+  it('爬虫 UA → 同形 202 但不记录', async () => {
+    const res = await POST(req({ name: 'landing_viewed' }, { 'user-agent': 'Mozilla/5.0 (compatible; Googlebot/2.1)' }));
+    expect(res.status).toBe(202);
+    expect(mocks.record).not.toHaveBeenCalled();
+  });
+
+  it('on-prem → 404', async () => {
+    mocks.isSaas = false;
+    const res = await POST(req({ name: 'landing_viewed' }));
+    expect(res.status).toBe(404);
+    expect(mocks.rate).not.toHaveBeenCalled();
   });
 });

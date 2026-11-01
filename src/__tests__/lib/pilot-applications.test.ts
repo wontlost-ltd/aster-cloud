@@ -94,4 +94,36 @@ describe('pilotApplicationsToCsv', () => {
       '2026-11-01T10:00:00.000Z,j@corp.example,corp.example,false,"Corp, ""Inc""",credit_risk,credit_decisions|other,"line1\nline2",credit-decisions,de,,,,,,,2026-11-01T10:00:00.000Z\r\n',
     );
   });
+
+  const base = {
+    id: 'a2', createdAt: new Date('2026-11-01T10:00:00Z'), email: 'j@corp.example', emailDomain: 'corp.example',
+    freeMailDomain: false, company: 'Corp', role: 'other', useCases: ['other'], painPoint: null,
+    consentAt: new Date('2026-11-01T10:00:00Z'), landingPage: 'credit-decisions', locale: 'en',
+    utmSource: null, utmMedium: null, utmCampaign: null, utmTerm: null, utmContent: null, referrerHost: null,
+  } as Parameters<typeof pilotApplicationsToCsv>[0][number];
+
+  it.each(['=', '+', '-', '@', '\t', '\r'])('以 %j 开头的单元格加单引号前缀，防表格公式注入', (lead) => {
+    const csv = pilotApplicationsToCsv([{ ...base, company: `${lead}SUM(1,2)` }]);
+    const row = csv.split('\r\n')[1];
+    expect(row).toContain(`"'${lead}SUM(1,2)"`);
+  });
+
+  it('所有列都转义：邮箱、UTM、痛点', () => {
+    const csv = pilotApplicationsToCsv([{
+      ...base,
+      email: '=HYPERLINK("http://x","y")@a.co',
+      utmSource: '+cmd',
+      painPoint: '-2+3',
+    }]);
+    const row = csv.split('\r\n')[1];
+    expect(row).toContain(`"'=HYPERLINK(""http://x"",""y"")@a.co"`);
+    expect(row).toContain(`'+cmd`);
+    expect(row).toContain(`'-2+3`);
+    expect(row).not.toMatch(/(^|,)[=+\-@]/);
+  });
+
+  it('普通取值不加前缀', () => {
+    const row = pilotApplicationsToCsv([base]).split('\r\n')[1];
+    expect(row.startsWith('2026-11-01T10:00:00.000Z,j@corp.example,')).toBe(true);
+  });
 });

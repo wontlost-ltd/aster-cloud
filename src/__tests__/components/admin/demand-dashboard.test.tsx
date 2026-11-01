@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+
+const nav = vi.hoisted(() => ({ refresh: vi.fn() }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: nav.refresh }) }));
 import { DemandDashboard } from '@/app/[locale]/(dashboard)/admin/demand/demand-dashboard';
 import type { DemandReport } from '@/lib/product-events/report';
 import type { PilotApplication } from '@/lib/prisma';
@@ -15,7 +18,7 @@ const report: DemandReport = {
     { week: '2026-10-19', name: 'landing_viewed', count: 9 },
   ],
   templates: [{ templateId: 'auto-insurance-quote', count: 3 }],
-  funnel: { signups: 4, firstSaved: 3, firstExecuted: 1, evidenceExported: 0 },
+  funnel: { signups: 6, verifiedSignups: 4, firstSaved: 3, firstExecuted: 1, evidenceExported: 0 },
   landing: [{ page: 'insurance-rating', views: 8, submissions: 2 }],
   sources: [{ source: 'linkedin', views: 5 }],
   guardByTenant: [{ tenant: 'abc123', count: 120 }],
@@ -29,7 +32,7 @@ const application: PilotApplication = {
 };
 
 describe('DemandDashboard', () => {
-  it('漏斗：各步人数与占注册比例', () => {
+  it('漏斗：分母为已验证注册，各步人数与占比', () => {
     render(<DemandDashboard report={report} applications={[]} t={t} exportHref="/x.csv" />);
     expect(screen.getByText('funnel.ofSignups(75%)')).toBeTruthy();
     expect(screen.getByText('funnel.ofSignups(25%)')).toBeTruthy();
@@ -71,5 +74,22 @@ describe('DemandDashboard', () => {
       />,
     );
     expect(screen.getAllByText('empty').length).toBe(6);
+  });
+
+  it('落地页标注为方向性指标；页首说明保留期', () => {
+    render(<DemandDashboard report={report} applications={[]} t={t} exportHref="/x.csv" />);
+    expect(screen.getByText('landing.note')).toBeTruthy();
+    expect(screen.getByText(/retentionNote/)).toBeTruthy();
+  });
+
+  it('删除申请：确认后调用 DELETE 并刷新列表', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(<DemandDashboard report={report} applications={[application]} t={t} exportHref="/x.csv" />);
+    fireEvent.click(screen.getByRole('button', { name: 'applications.delete' }));
+    await waitFor(() => expect(nav.refresh).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/pilot-applications/a1', { method: 'DELETE' });
+    vi.unstubAllGlobals();
   });
 });

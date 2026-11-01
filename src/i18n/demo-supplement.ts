@@ -101,18 +101,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       pages: {
         insuranceRating: {
-          seoTitle: 'Rating rules that match the filing | Aster Cloud',
-          seoDescription: 'When a rate or rule version drifts from what was filed, find out quickly which quotes it touched. Readable, versioned rating rules with per-quote evidence. Pilot programme.',
+          seoTitle: 'Pilot: map filed rate versions to production rating rules | Aster Cloud',
+          seoDescription: 'A pilot for insurers: map filed rate and rule versions to the rating rule versions that ran in production, and test how affected quotes could be identified. Readable, versioned rating rules are available today; filing mapping and impact queries are in development.',
           eyebrow: 'Insurance rating · Pilot',
-          title: 'When a rating rule drifts from the filing, find out quickly which quotes it touched',
-          subtitle: 'Keep rating rules in a readable, versioned form that actuarial and compliance staff can review and sign off. Each quote records the rule version it ran and the inputs needed to recompute it.',
+          title: 'Pilot: map filed rate versions to the rating rules that actually ran',
+          subtitle: 'Today Aster keeps rating rules in a readable, versioned form that actuarial and compliance staff can review and approve, and records which version each execution ran. In this pilot we want to test with you whether filed versions can be mapped to production versions, and how the quotes affected by a mismatch could be identified.',
           facts: {
             filings: {
               text: 'US personal auto insurance sees roughly 10,200 rate filings a year.',
               source: 'Insurance Research Council, 2024',
             },
             refund: {
-              text: 'In Texas, a rating-system error went on for about three years; the insurer refunded more than $18 million on over 80,000 policies.',
+              text: 'In Texas, an insurer charged rates that differed from those on file for about three years; it refunded more than $18 million on over 80,000 policies.',
               source: 'Texas Department of Insurance, Order 2025-9142',
             },
             factorTable: {
@@ -121,13 +121,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
             },
             regulation57: {
               text: 'New York Regulation 57 requires insurers to charge approved rates and to keep procedures that prevent the use of incorrect rates.',
-              source: 'NY DFS consent order, March 2024 (11 NYCRR 160)',
+              source: 'NY DFS disciplinary action list, March 2024 (order dated 30 January 2024; 11 NYCRR 160)',
             },
           },
           available: {
             readable: 'Rating rules in a readable policy language, so actuarial and compliance staff can read the rules that actually run.',
             sealed: 'Sealed versions: a hash of each version\'s compile inputs shows whether anything changed after approval.',
-            approval: 'Four-eyes approval before a version goes live, with approver and time recorded.',
+            approval: 'An approval workflow that records approver and time. For team policies on plans that require approval, the approver must be someone other than the author (four-eyes).',
             evidence: 'Each execution in Aster Cloud is logged with the version it ran and its decision, and can be exported as an evidence package.',
             template: 'An auto-insurance quote template to try the workflow. It is a demo, not a production rate manual.',
           },
@@ -139,11 +139,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           },
         },
         creditDecisions: {
-          seoTitle: 'Adverse-action reasons traceable to the rule version | Aster Cloud',
-          seoDescription: 'Every decline traceable to the credit rule version and the conditions that fired. Readable rules that risk and compliance can sign off. Pilot programme.',
+          seoTitle: 'Pilot: link adverse-action reasons to credit rule versions | Aster Cloud',
+          seoDescription: 'A pilot for lenders: link each adverse-action reason to the credit rule version and conditions behind it. Readable rules that risk and compliance can review and approve are available today; reason-code mapping and version queries are in development.',
           eyebrow: 'Credit decisioning · Pilot',
-          title: 'Every adverse-action reason, traceable to the rule version that produced it',
-          subtitle: 'Keep credit policy in readable rules that risk and compliance staff can review and sign off. Each decline records which rule version ran and which conditions fired, so the reason can be explained and reproduced later.',
+          title: 'Pilot: link each adverse-action reason to the rule version behind it',
+          subtitle: 'Today Aster keeps credit policy in readable rules that risk and compliance staff can review and approve, and each execution records the rule version, the rules that matched and the denial reasons. In this pilot we want to test with you how those records can become notice reasons through an approved reason-code mapping, and how past decisions can be reviewed by rule version.',
           demoLink: 'Try the credit decision replay demo',
           facts: {
             regB: {
@@ -162,7 +162,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           available: {
             readable: 'Credit rules in a readable policy language that risk and compliance staff can review and sign off.',
             sealed: 'Sealed versions: a hash of each version\'s compile inputs shows whether anything changed after approval.',
-            approval: 'Four-eyes approval before a version goes live, with approver and time recorded.',
+            approval: 'An approval workflow that records approver and time. For team policies on plans that require approval, the approver must be someone other than the author (four-eyes).',
             trace: 'Each execution records the rule version, the decision, the rules that matched and the reasons for a denial.',
             evidence: 'Evidence export (JSON or JSONL) with hashes for each execution.',
             demo: 'A loan application template and an interactive decision replay demo.',
@@ -174,10 +174,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           },
         },
         agentGuardrails: {
-          seoTitle: 'Human approval and audit trail for high-risk agent actions | Aster Cloud',
-          seoDescription: 'High-risk AI agent actions go through human approval first, with an audit trail. A readable policy and evidence layer upstream of Cedar runtimes. Pilot programme.',
+          seoTitle: 'Pilot: human approval and audit trail for high-risk agent actions | Aster Cloud',
+          seoDescription: 'A pilot for teams running AI agents: send high-risk actions to human approval with an audit trail, using a readable policy and evidence layer upstream of Cedar runtimes. Framework and MCP adapters are in development.',
           eyebrow: 'AI agent guardrails · Pilot',
-          title: 'High-risk agent actions go through human approval first, with an audit trail',
+          title: 'Pilot: send high-risk agent actions to human approval, with an audit trail',
           subtitle: 'Write what an agent may do as readable rules that risk and compliance staff can sign off. Aster returns ALLOW, DENY or REQUIRE_APPROVAL, sends approvals to the right business role and keeps the evidence of who decided what under which policy version.',
           positioning: {
             title: 'Upstream of Cedar runtimes, not instead of them',
@@ -207,11 +207,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           },
         },
         eligibilityRules: {
-          seoTitle: 'Eligibility decisions traceable to the rules in force | Aster Cloud',
-          seoDescription: 'Rules as Code for public-sector eligibility: every determination traceable to the rule version in force, its inputs and the rules that fired, with rules policy staff can read and sign off. Pilot programme.',
+          seoTitle: 'Pilot: tie eligibility determinations to the rule version in force | Aster Cloud',
+          seoDescription: 'A Rules as Code pilot for public-sector eligibility: readable rules that policy staff can review and approve, with each determination recording the rule version, inputs and matched rules. Point-in-time queries are in development.',
           eyebrow: 'Public-sector eligibility · Rules as Code · Pilot',
-          title: 'Every eligibility decision, traceable to the rules in force at the time',
-          subtitle: 'Keep eligibility policy as readable rules that policy staff can read, review and sign off. Each determination records the rule version in force, the inputs it used and the rules that fired.',
+          title: 'Pilot: tie each eligibility determination to the rule version in force at the time',
+          subtitle: 'Today Aster keeps eligibility policy as readable rules that policy staff can read, review and approve, and each determination records the rule version, the inputs it used and the rules that matched. In this pilot we want to test point-in-time review with you: which determinations were made under which rule version.',
           facts: {
             louisiana: {
               text: 'Louisiana\'s 2025 request for information on eligibility systems asks about a Rules as Code architecture and about systems that state and federal agencies can audit fully and easily.',
@@ -225,7 +225,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           available: {
             readable: 'Eligibility rules in a readable policy language that policy and legal staff can read, review and sign off.',
             sealed: 'Sealed versions: a hash of each version\'s compile inputs shows whether anything changed after approval.',
-            approval: 'Four-eyes approval before a version takes effect, with approver and time recorded.',
+            approval: 'An approval workflow that records approver and time. For team policies on plans that require approval, the approver must be someone other than the author (four-eyes).',
             trace: 'Each determination records the rule version, the inputs, the decision and the rules that matched.',
             evidence: 'Evidence export (JSON or JSONL) with hashes for each determination.',
             languages: 'Rules can be read in the native language in non-English settings (English, Chinese, German and Hindi today).',
@@ -234,6 +234,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
             pointInTime: 'Point-in-time queries: which determinations were made under which rule version, and recomputing them under another.',
             documentView: 'A business-readable policy view linking each rule to execution traces, exportable as an audit pack.',
             deployment: 'Deployment and data-residency arrangements for public-sector pilots, scoped case by case.',
+          },
+        },
+      },
+    },
+    // 隐私政策补充：试点申请与第一方产品分析（保留期与用途）。
+    legal: {
+      privacy: {
+        sections: {
+          demandValidation: {
+            title: '4a. Pilot applications and product analytics',
+            content: 'If you apply for a pilot on one of our solution pages, we store the details you submit (work email, company, role, selected use cases and the optional description), the page you applied from and campaign tags (UTM parameters and the host name of the referring site), so that we can evaluate and answer your application. We do not store your IP address with the application. Applications are deleted automatically 24 months after submission, and you can ask us to delete yours earlier using the contact details below. Separately, we record first-party product usage events (for example sign-up completed, first policy saved, evidence exported and landing-page views) to understand which features are used. These events carry pseudonymous user and team identifiers and contain no policy content, inputs, email addresses or names; they are deleted automatically after 13 months.',
           },
         },
       },
@@ -877,16 +888,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         count: 'Count',
         funnel: {
           heading: 'Funnel',
-          note: 'Users who signed up in the window, and how many of them reached each step (at any time).',
+          note: 'Users who signed up in the window. Steps are counted among verified sign-ups only (verified email), at any time.',
           signups: 'Signed up',
           firstSaved: 'First policy saved',
           firstExecuted: 'First execution',
           evidenceExported: 'Evidence exported',
-          ofSignups: '{pct} of sign-ups',
+          ofSignups: '{pct} of verified sign-ups',
+          verifiedSignups: 'Verified sign-ups',
         },
         weekly: {
           heading: 'Weekly event counts',
-          note: 'Weeks start on Monday (UTC). guard_api_called comes from API usage records, counted per call.',
+          note: 'Weeks start on Monday (UTC). policy_first_saved / policy_first_executed count only users who signed up after tracking began. guard_api_called counts successful direct Guard decision calls (POST /api/v1/guard/*) from API usage records.',
           week: 'Week',
         },
         templates: {
@@ -899,13 +911,14 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           views: 'Views',
           submissions: 'Applications',
           rate: 'Rate',
+          note: 'Directional only: views exclude common bots and repeat views of the same page in one browser tab within 30 minutes, but remain an upper bound.',
         },
         sources: {
           heading: 'Landing-page sources',
           source: 'Source (utm_source or referrer)',
         },
         guard: {
-          heading: 'Guard API calls by tenant',
+          heading: 'Successful Guard API decision calls by tenant',
           note: 'Tenant ids are pseudonymous. API usage records are kept for 90 days.',
           tenant: 'Tenant',
         },
@@ -923,7 +936,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           page: 'Landing page',
           source: 'Source',
           painPoint: 'Pain point',
+          delete: 'Delete',
+          deleteConfirm: 'Delete this application permanently?',
+          deleteFailed: 'Could not delete the application. Please try again.',
         },
+        retentionNote: 'Pilot applications are deleted after 24 months and product events after 13 months.',
       },
       nav: { aiWorkspaceAccess: 'AI workspace access', revalidation: 'Policy revalidation', demand: 'Demand validation' },
       // 概览卡与其它 *Card 同构（title/description/cta），页面按 `${cardKey}.title` 动态取键。
@@ -1019,6 +1036,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       pulse: {
         audit: {
           events: {
+            pilotApplicationDelete: 'Pilot application deleted',
             policyCreate: 'Policy created',
             policyUpdate: 'Policy updated',
             policyDelete: 'Policy deleted',
@@ -1601,18 +1619,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       pages: {
         insuranceRating: {
-          seoTitle: '定价规则与备案一致 | Aster Cloud',
-          seoDescription: '费率或规则版本与备案不一致时，快速确定影响了哪些报价。可读、带版本的定价规则与逐笔报价证据。试点中。',
+          seoTitle: '试点：把备案费率版本映射到生产定价规则 | Aster Cloud',
+          seoDescription: '面向保险公司的试点：把已备案的费率与规则版本映射到生产中实际运行的定价规则版本，并验证如何找出受影响的报价。可读、带版本的定价规则现已可用；备案映射与影响查询开发中。',
           eyebrow: '保险定价 · 试点',
-          title: '定价规则与备案不一致时，快速查清影响了哪些报价',
-          subtitle: '把定价规则写成可读、带版本的形式，供精算与合规人员审阅和签字。每笔报价记录所用的规则版本，以及重算所需的输入。',
+          title: '试点：把备案费率版本映射到实际运行的定价规则',
+          subtitle: '目前 Aster 以可读、带版本的形式保存定价规则，供精算与合规人员审阅和审批，并记录每次执行所用的版本。本次试点想和你一起验证：备案版本能否映射到生产版本，以及出现不一致时如何找出受影响的报价。',
           facts: {
             filings: {
               text: '美国个人车险每年约有 10,200 份费率备案。',
               source: 'Insurance Research Council，2024',
             },
             refund: {
-              text: '在得州，一处费率系统错误持续约三年，保险公司对 8 万多张保单退款逾 1,800 万美元。',
+              text: '在得州，一家保险公司约三年间收取了与备案不同的费率，对 8 万多张保单退款逾 1,800 万美元。',
               source: '得州保险局 Order 2025-9142',
             },
             factorTable: {
@@ -1621,13 +1639,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
             },
             regulation57: {
               text: '纽约 Regulation 57 要求保险公司按已批准费率收费，并建立防止使用错误费率的程序。',
-              source: '纽约金融服务局和解令，2024 年 3 月（11 NYCRR 160）',
+              source: '纽约金融服务局处罚公告，2024 年 3 月（命令日期 2024 年 1 月 30 日；11 NYCRR 160）',
             },
           },
           available: {
             readable: '定价规则以可读的策略语言编写，精算与合规人员能读懂实际执行的规则。',
             sealed: '版本封存：对每个版本的编译输入做哈希，可核对审批后是否被改动。',
-            approval: '版本上线前四眼审批，记录审批人与时间。',
+            approval: '审批流程记录审批人与时间；对于套餐要求审批的团队策略，审批人必须不是作者本人（四眼）。',
             evidence: '在 Aster Cloud 中的每次执行都记录所用版本与决策结果，可导出为证据包。',
             template: '提供车险报价模板用于体验流程；它是演示，不是生产费率手册。',
           },
@@ -1639,11 +1657,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           },
         },
         creditDecisions: {
-          seoTitle: '拒贷理由可追溯到规则版本 | Aster Cloud',
-          seoDescription: '每次拒贷都可追溯到所用的信贷规则版本与触发条件。风控与合规可审阅签字的可读规则。试点中。',
+          seoTitle: '试点：把拒贷理由关联到信贷规则版本 | Aster Cloud',
+          seoDescription: '面向放贷机构的试点：把每条拒贷理由关联到其背后的信贷规则版本与条件。风控与合规可审阅审批的可读规则现已可用；理由代码映射与按版本查询开发中。',
           eyebrow: '信贷决策 · 试点',
-          title: '每条拒贷理由，都能追溯到产生它的规则版本',
-          subtitle: '把信贷政策写成可读规则，供风控与合规人员审阅和签字。每次拒贷记录所用规则版本与触发的条件，事后可以解释、可以复现。',
+          title: '试点：把每条拒贷理由关联到其背后的规则版本',
+          subtitle: '目前 Aster 把信贷政策写成可读规则，供风控与合规人员审阅和审批，每次执行记录规则版本、命中的规则与拒绝理由。本次试点想和你一起验证：如何通过已审批的理由代码映射把这些记录转成通知理由，以及如何按规则版本回看过往决策。',
           demoLink: '体验信贷决策回放演示',
           facts: {
             regB: {
@@ -1662,7 +1680,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           available: {
             readable: '信贷规则以可读的策略语言编写，风控与合规人员可审阅并签字。',
             sealed: '版本封存：对每个版本的编译输入做哈希，可核对审批后是否被改动。',
-            approval: '版本上线前四眼审批，记录审批人与时间。',
+            approval: '审批流程记录审批人与时间；对于套餐要求审批的团队策略，审批人必须不是作者本人（四眼）。',
             trace: '每次执行记录规则版本、决策、命中的规则与拒绝理由。',
             evidence: '证据导出（JSON / JSONL），每次执行附哈希。',
             demo: '贷款申请模板与可交互的决策回放演示。',
@@ -1674,10 +1692,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           },
         },
         agentGuardrails: {
-          seoTitle: '高风险智能体动作先经人工审批并留痕 | Aster Cloud',
-          seoDescription: '高风险 AI 智能体动作先经人工审批并留下审计记录。位于 Cedar 运行时上游的可读策略与证据层。试点中。',
+          seoTitle: '试点：高风险智能体动作的人工审批与审计记录 | Aster Cloud',
+          seoDescription: '面向运行 AI 智能体团队的试点：高风险动作先送人工审批并留下审计记录，由位于 Cedar 运行时上游的可读策略与证据层提供。框架与 MCP 适配器开发中。',
           eyebrow: 'AI 智能体护栏 · 试点',
-          title: '高风险的智能体动作，先经人工审批，并留下审计记录',
+          title: '试点：高风险智能体动作先送人工审批，并留下审计记录',
           subtitle: '把智能体可以做什么写成可读规则，由风控与合规人员签字。Aster 返回 ALLOW、DENY 或 REQUIRE_APPROVAL，把审批派给对应业务角色，并保留「谁在哪个策略版本下决定了什么」的证据。',
           positioning: {
             title: '位于 Cedar 运行时上游，而不是取代它',
@@ -1707,11 +1725,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           },
         },
         eligibilityRules: {
-          seoTitle: '资格判定可追溯到当时生效的规则 | Aster Cloud',
-          seoDescription: '面向公共部门资格判定的 Rules as Code：每次判定可追溯到当时生效的规则版本、输入与命中规则，政策人员能读懂并签字。试点中。',
+          seoTitle: '试点：把资格判定关联到当时生效的规则版本 | Aster Cloud',
+          seoDescription: '面向公共部门资格判定的 Rules as Code 试点：政策人员可审阅审批的可读规则，每次判定记录规则版本、输入与命中规则。时点查询开发中。',
           eyebrow: '公共部门资格判定 · Rules as Code · 试点',
-          title: '每次资格判定，都能追溯到当时生效的规则',
-          subtitle: '把资格政策写成可读规则，由政策人员阅读、审阅并签字。每次判定记录当时生效的规则版本、所用输入与命中的规则。',
+          title: '试点：把每次资格判定关联到当时生效的规则版本',
+          subtitle: '目前 Aster 把资格政策写成可读规则，供政策人员阅读、审阅和审批，每次判定记录规则版本、所用输入与命中的规则。本次试点想和你一起验证时点回看：哪些判定是在哪个规则版本下做出的。',
           facts: {
             louisiana: {
               text: '路易斯安那州 2025 年资格系统 RFI 询问 Rules as Code 架构，以及可供州和联邦机构完整、方便审计的系统。',
@@ -1725,7 +1743,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           available: {
             readable: '资格规则以可读的策略语言编写，政策与法务人员可阅读、审阅并签字。',
             sealed: '版本封存：对每个版本的编译输入做哈希，可核对审批后是否被改动。',
-            approval: '版本生效前四眼审批，记录审批人与时间。',
+            approval: '审批流程记录审批人与时间；对于套餐要求审批的团队策略，审批人必须不是作者本人（四眼）。',
             trace: '每次判定记录规则版本、输入、决策与命中的规则。',
             evidence: '证据导出（JSON / JSONL），每次判定附哈希。',
             languages: '在非英语环境中可用母语阅读规则（目前支持英语、中文、德语、印地语）。',
@@ -1734,6 +1752,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
             pointInTime: '时点查询：哪些判定是在哪个规则版本下做出的，并按另一版本重算。',
             documentView: '业务可读的政策视图，每条规则关联执行轨迹，可导出审计包。',
             deployment: '公共部门试点的部署与数据驻留安排，逐案确定。',
+          },
+        },
+      },
+    },
+    // 隐私政策补充：试点申请与第一方产品分析（保留期与用途）。
+    legal: {
+      privacy: {
+        sections: {
+          demandValidation: {
+            title: '4a. 试点申请与产品分析',
+            content: '如果你在我们的解决方案页面申请试点，我们会保存你提交的信息（工作邮箱、公司、角色、所选场景与选填说明）、提交所在页面以及来源标记（UTM 参数与来源网站的主机名），用于评估并回复你的申请。申请不保存你的 IP 地址。申请在提交 24 个月后自动删除，你也可以通过下方联系方式要求提前删除。此外，我们记录第一方产品使用事件（例如完成注册、首次保存策略、导出证据、落地页访问），以了解哪些功能被使用。这些事件只带假名化的用户与团队标识，不含策略内容、输入、邮箱或姓名，13 个月后自动删除。',
           },
         },
       },
@@ -2350,16 +2379,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         count: '次数',
         funnel: {
           heading: '漏斗',
-          note: '窗口内注册的用户，以及其中到达各步骤的人数（不限时间）。',
+          note: '窗口内注册的用户；各步骤只在已验证邮箱的注册中统计（不限时间）。',
           signups: '注册',
           firstSaved: '首次保存策略',
           firstExecuted: '首次执行',
           evidenceExported: '导出证据',
-          ofSignups: '占注册 {pct}',
+          ofSignups: '占已验证注册 {pct}',
+          verifiedSignups: '已验证注册',
         },
         weekly: {
           heading: '每周事件数',
-          note: '按周一起算（UTC）。guard_api_called 来自 API 用量记录，按调用计数。',
+          note: '按周一起算（UTC）。policy_first_saved / policy_first_executed 只计埋点上线后注册的用户。guard_api_called 为成功的 Guard 直连判定调用（POST /api/v1/guard/*），来自 API 用量记录。',
           week: '周',
         },
         templates: {
@@ -2372,13 +2402,14 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           views: '访问',
           submissions: '申请',
           rate: '转化率',
+          note: '仅作方向参考：访问量已排除常见爬虫与同一标签页 30 分钟内对同一页面的重复访问，但仍是上界。',
         },
         sources: {
           heading: '落地页来源',
           source: '来源（utm_source 或 referrer）',
         },
         guard: {
-          heading: 'Guard API 调用（按租户）',
+          heading: '成功的 Guard API 判定调用（按租户）',
           note: '租户 id 为假名；API 用量记录保留 90 天。',
           tenant: '租户',
         },
@@ -2396,7 +2427,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           page: '落地页',
           source: '来源',
           painPoint: '痛点',
+          delete: '删除',
+          deleteConfirm: '永久删除这条申请？',
+          deleteFailed: '删除失败，请重试。',
         },
+        retentionNote: '试点申请保留 24 个月，产品事件保留 13 个月，到期自动删除。',
       },
       nav: { aiWorkspaceAccess: 'AI 工作台授权', revalidation: '策略重验', demand: '需求验证' },
       overview: {
@@ -2491,6 +2526,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       pulse: {
         audit: {
           events: {
+            pilotApplicationDelete: '试点申请已删除',
             policyCreate: '创建策略',
             policyUpdate: '更新策略',
             policyDelete: '删除策略',
@@ -3067,18 +3103,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       pages: {
         insuranceRating: {
-          seoTitle: 'Tarifregeln, die zur Einreichung passen | Aster Cloud',
-          seoDescription: 'Weicht eine Tarif- oder Regelversion von der Einreichung ab, schnell herausfinden, welche Angebote betroffen sind. Lesbare, versionierte Tarifregeln mit Nachweis je Angebot. Pilotprogramm.',
+          seoTitle: 'Pilot: eingereichte Tarifversionen produktiven Tarifregeln zuordnen | Aster Cloud',
+          seoDescription: 'Ein Pilot für Versicherer: eingereichte Tarif- und Regelversionen den produktiv ausgeführten Tarifregelversionen zuordnen und prüfen, wie betroffene Angebote gefunden werden können. Lesbare, versionierte Tarifregeln sind heute verfügbar; Zuordnung und Wirkungsabfragen sind in Entwicklung.',
           eyebrow: 'Versicherungstarifierung · Pilot',
-          title: 'Weicht eine Tarifregel von der Einreichung ab: schnell wissen, welche Angebote betroffen sind',
-          subtitle: 'Halten Sie Tarifregeln in einer lesbaren, versionierten Form, die Aktuariat und Compliance prüfen und freigeben können. Jedes Angebot hält die verwendete Regelversion und die zur Neuberechnung nötigen Eingaben fest.',
+          title: 'Pilot: eingereichte Tarifversionen den tatsächlich ausgeführten Tarifregeln zuordnen',
+          subtitle: 'Heute hält Aster Tarifregeln in einer lesbaren, versionierten Form, die Aktuariat und Compliance prüfen und freigeben können, und protokolliert, welche Version jede Ausführung verwendet hat. Im Pilot möchten wir mit Ihnen prüfen, ob sich eingereichte Versionen den Produktionsversionen zuordnen lassen und wie die von einer Abweichung betroffenen Angebote gefunden werden können.',
           facts: {
             filings: {
               text: 'In der US-Kfz-Versicherung für Privatkunden gibt es jährlich rund 10.200 Tarifeinreichungen.',
               source: 'Insurance Research Council, 2024',
             },
             refund: {
-              text: 'In Texas blieb ein Fehler im Tarifsystem etwa drei Jahre unentdeckt; der Versicherer erstattete über 18 Mio. US-Dollar für mehr als 80.000 Policen.',
+              text: 'In Texas berechnete ein Versicherer etwa drei Jahre lang Tarife, die von den eingereichten abwichen; er erstattete über 18 Mio. US-Dollar für mehr als 80.000 Policen.',
               source: 'Texas Department of Insurance, Order 2025-9142',
             },
             factorTable: {
@@ -3087,13 +3123,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
             },
             regulation57: {
               text: 'Die New Yorker Regulation 57 verlangt, genehmigte Tarife zu berechnen und Verfahren vorzuhalten, die den Einsatz falscher Tarife verhindern.',
-              source: 'NY DFS, Vergleichsanordnung März 2024 (11 NYCRR 160)',
+              source: 'NY DFS, Liste der Aufsichtsmaßnahmen, März 2024 (Anordnung vom 30. Januar 2024; 11 NYCRR 160)',
             },
           },
           available: {
             readable: 'Tarifregeln in einer lesbaren Richtliniensprache, sodass Aktuariat und Compliance die tatsächlich ausgeführten Regeln lesen können.',
             sealed: 'Versiegelte Versionen: Ein Hash über die Kompilierungseingaben jeder Version zeigt, ob nach der Freigabe etwas geändert wurde.',
-            approval: 'Vier-Augen-Freigabe, bevor eine Version live geht, mit Freigebendem und Zeitpunkt.',
+            approval: 'Ein Freigabeablauf, der Freigebenden und Zeitpunkt festhält. Bei Team-Richtlinien in Tarifen mit Freigabepflicht muss die freigebende Person eine andere als die verfassende sein (Vier-Augen-Prinzip).',
             evidence: 'Jede Ausführung in Aster Cloud wird mit der verwendeten Version und dem Ergebnis protokolliert und lässt sich als Nachweispaket exportieren.',
             template: 'Eine Vorlage für Kfz-Angebote zum Ausprobieren des Ablaufs. Sie ist eine Demo, kein produktives Tarifhandbuch.',
           },
@@ -3105,11 +3141,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           },
         },
         creditDecisions: {
-          seoTitle: 'Ablehnungsgründe, rückverfolgbar zur Regelversion | Aster Cloud',
-          seoDescription: 'Jede Ablehnung rückverfolgbar zur Kreditregelversion und zu den ausgelösten Bedingungen. Lesbare Regeln, die Risiko und Compliance freigeben können. Pilotprogramm.',
+          seoTitle: 'Pilot: Ablehnungsgründe mit Kreditregelversionen verknüpfen | Aster Cloud',
+          seoDescription: 'Ein Pilot für Kreditgeber: jeden Ablehnungsgrund mit der Kreditregelversion und den Bedingungen dahinter verknüpfen. Lesbare Regeln, die Risiko und Compliance prüfen und freigeben, sind heute verfügbar; Zuordnung von Gründen und Versionsabfragen sind in Entwicklung.',
           eyebrow: 'Kreditentscheidungen · Pilot',
-          title: 'Jeder Ablehnungsgrund, rückverfolgbar zur Regelversion, die ihn erzeugt hat',
-          subtitle: 'Halten Sie Kreditrichtlinien in lesbaren Regeln, die Risiko und Compliance prüfen und freigeben können. Jede Ablehnung hält fest, welche Regelversion lief und welche Bedingungen ausgelöst wurden, sodass sich der Grund später erklären und reproduzieren lässt.',
+          title: 'Pilot: jeden Ablehnungsgrund mit der Regelversion dahinter verknüpfen',
+          subtitle: 'Heute hält Aster Kreditrichtlinien in lesbaren Regeln, die Risiko und Compliance prüfen und freigeben können; jede Ausführung protokolliert Regelversion, zutreffende Regeln und Ablehnungsgründe. Im Pilot möchten wir mit Ihnen prüfen, wie daraus über eine freigegebene Zuordnung Gründe für die Ablehnungsmitteilung werden und wie sich frühere Entscheidungen nach Regelversion prüfen lassen.',
           demoLink: 'Demo zur Wiedergabe von Kreditentscheidungen ausprobieren',
           facts: {
             regB: {
@@ -3128,7 +3164,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           available: {
             readable: 'Kreditregeln in einer lesbaren Richtliniensprache, die Risiko und Compliance prüfen und freigeben können.',
             sealed: 'Versiegelte Versionen: Ein Hash über die Kompilierungseingaben jeder Version zeigt, ob nach der Freigabe etwas geändert wurde.',
-            approval: 'Vier-Augen-Freigabe, bevor eine Version live geht, mit Freigebendem und Zeitpunkt.',
+            approval: 'Ein Freigabeablauf, der Freigebenden und Zeitpunkt festhält. Bei Team-Richtlinien in Tarifen mit Freigabepflicht muss die freigebende Person eine andere als die verfassende sein (Vier-Augen-Prinzip).',
             trace: 'Jede Ausführung hält Regelversion, Entscheidung, zutreffende Regeln und Ablehnungsgründe fest.',
             evidence: 'Nachweisexport (JSON oder JSONL) mit Hashes je Ausführung.',
             demo: 'Eine Vorlage für Kreditanträge und eine interaktive Demo zur Wiedergabe von Entscheidungen.',
@@ -3140,10 +3176,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           },
         },
         agentGuardrails: {
-          seoTitle: 'Menschliche Freigabe und Prüfpfad für riskante Agentenaktionen | Aster Cloud',
-          seoDescription: 'Riskante Aktionen von KI-Agenten gehen zuerst durch eine menschliche Freigabe, mit Prüfpfad. Eine lesbare Richtlinien- und Nachweisschicht vor Cedar-Laufzeiten. Pilotprogramm.',
+          seoTitle: 'Pilot: menschliche Freigabe und Prüfpfad für riskante Agentenaktionen | Aster Cloud',
+          seoDescription: 'Ein Pilot für Teams mit KI-Agenten: riskante Aktionen zur menschlichen Freigabe schicken, mit Prüfpfad, über eine lesbare Richtlinien- und Nachweisschicht vor Cedar-Laufzeiten. Adapter für Frameworks und MCP sind in Entwicklung.',
           eyebrow: 'Leitplanken für KI-Agenten · Pilot',
-          title: 'Riskante Agentenaktionen gehen zuerst durch eine menschliche Freigabe, mit Prüfpfad',
+          title: 'Pilot: riskante Agentenaktionen zur menschlichen Freigabe schicken, mit Prüfpfad',
           subtitle: 'Legen Sie in lesbaren Regeln fest, was ein Agent tun darf, und lassen Sie sie von Risiko und Compliance freigeben. Aster antwortet mit ALLOW, DENY oder REQUIRE_APPROVAL, leitet Freigaben an die richtige Fachrolle weiter und bewahrt den Nachweis, wer was unter welcher Richtlinienversion entschieden hat.',
           positioning: {
             title: 'Vor Cedar-Laufzeiten, nicht an ihrer Stelle',
@@ -3173,11 +3209,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           },
         },
         eligibilityRules: {
-          seoTitle: 'Anspruchsentscheidungen, rückverfolgbar zu den geltenden Regeln | Aster Cloud',
-          seoDescription: 'Rules as Code für Anspruchsprüfungen im öffentlichen Sektor: jede Entscheidung rückverfolgbar zur damals geltenden Regelversion, zu den Eingaben und den angewendeten Regeln; Fachreferate können die Regeln lesen und freigeben. Pilotprogramm.',
+          seoTitle: 'Pilot: Anspruchsentscheidungen der geltenden Regelversion zuordnen | Aster Cloud',
+          seoDescription: 'Ein Rules-as-Code-Pilot für Anspruchsprüfungen im öffentlichen Sektor: lesbare Regeln, die Fachreferate prüfen und freigeben, und jede Entscheidung protokolliert Regelversion, Eingaben und angewendete Regeln. Stichtagsabfragen sind in Entwicklung.',
           eyebrow: 'Anspruchsprüfung im öffentlichen Sektor · Rules as Code · Pilot',
-          title: 'Jede Anspruchsentscheidung, rückverfolgbar zu den damals geltenden Regeln',
-          subtitle: 'Halten Sie Anspruchsregeln in lesbarer Form, die Fachreferate lesen, prüfen und freigeben können. Jede Entscheidung hält die damals geltende Regelversion, die verwendeten Eingaben und die angewendeten Regeln fest.',
+          title: 'Pilot: jede Anspruchsentscheidung der damals geltenden Regelversion zuordnen',
+          subtitle: 'Heute hält Aster Anspruchsregeln in lesbarer Form, die Fachreferate lesen, prüfen und freigeben können; jede Entscheidung protokolliert Regelversion, verwendete Eingaben und angewendete Regeln. Im Pilot möchten wir mit Ihnen die Prüfung zu einem Stichtag erproben: welche Entscheidungen unter welcher Regelversion getroffen wurden.',
           facts: {
             louisiana: {
               text: 'Die Markterkundung (RFI) von Louisiana zu Anspruchssystemen aus 2025 fragt nach einer Rules-as-Code-Architektur und nach Systemen, die Landes- und Bundesbehörden vollständig und einfach prüfen können.',
@@ -3191,7 +3227,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           available: {
             readable: 'Anspruchsregeln in einer lesbaren Richtliniensprache, die Fach- und Rechtsreferate lesen, prüfen und freigeben können.',
             sealed: 'Versiegelte Versionen: Ein Hash über die Kompilierungseingaben jeder Version zeigt, ob nach der Freigabe etwas geändert wurde.',
-            approval: 'Vier-Augen-Freigabe, bevor eine Version in Kraft tritt, mit Freigebendem und Zeitpunkt.',
+            approval: 'Ein Freigabeablauf, der Freigebenden und Zeitpunkt festhält. Bei Team-Richtlinien in Tarifen mit Freigabepflicht muss die freigebende Person eine andere als die verfassende sein (Vier-Augen-Prinzip).',
             trace: 'Jede Entscheidung hält Regelversion, Eingaben, Ergebnis und angewendete Regeln fest.',
             evidence: 'Nachweisexport (JSON oder JSONL) mit Hashes je Entscheidung.',
             languages: 'Regeln sind außerhalb des englischen Sprachraums in der Landessprache lesbar (derzeit Englisch, Chinesisch, Deutsch und Hindi).',
@@ -3200,6 +3236,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
             pointInTime: 'Stichtagsabfragen: welche Entscheidungen unter welcher Regelversion getroffen wurden, und Neuberechnung unter einer anderen.',
             documentView: 'Eine fachlich lesbare Richtlinienansicht, die jede Regel mit Ausführungsspuren verknüpft und als Prüfpaket exportierbar ist.',
             deployment: 'Betriebs- und Datenresidenzvorgaben für Piloten im öffentlichen Sektor, im Einzelfall abgestimmt.',
+          },
+        },
+      },
+    },
+    // 隐私政策补充：试点申请与第一方产品分析（保留期与用途）。
+    legal: {
+      privacy: {
+        sections: {
+          demandValidation: {
+            title: '4a. Pilotanfragen und Produktanalyse',
+            content: 'Wenn Sie über eine unserer Lösungsseiten einen Pilot anfragen, speichern wir Ihre Angaben (geschäftliche E-Mail, Unternehmen, Rolle, gewählte Anwendungsfälle und die optionale Beschreibung), die Seite, von der aus Sie angefragt haben, sowie Kampagnenmerkmale (UTM-Parameter und den Hostnamen der verweisenden Website), um Ihre Anfrage zu prüfen und zu beantworten. Ihre IP-Adresse speichern wir nicht mit der Anfrage. Anfragen werden 24 Monate nach Eingang automatisch gelöscht; über die unten genannten Kontaktdaten können Sie eine frühere Löschung verlangen. Außerdem erfassen wir eigene Ereignisse zur Produktnutzung (zum Beispiel abgeschlossene Registrierung, erste gespeicherte Richtlinie, Nachweisexport und Aufrufe der Landingpages), um zu verstehen, welche Funktionen genutzt werden. Diese Ereignisse enthalten pseudonymisierte Benutzer- und Teamkennungen, aber keine Richtlinieninhalte, Eingaben, E-Mail-Adressen oder Namen; sie werden nach 13 Monaten automatisch gelöscht.',
           },
         },
       },
@@ -3831,16 +3878,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         count: 'Anzahl',
         funnel: {
           heading: 'Trichter',
-          note: 'Im Zeitraum registrierte Benutzer und wie viele davon jeden Schritt erreicht haben (zu beliebigem Zeitpunkt).',
+          note: 'Im Zeitraum registrierte Benutzer; die Schritte werden nur unter verifizierten Registrierungen (bestätigte E-Mail) gezählt, zu beliebigem Zeitpunkt.',
           signups: 'Registriert',
           firstSaved: 'Erste Richtlinie gespeichert',
           firstExecuted: 'Erste Ausführung',
           evidenceExported: 'Nachweis exportiert',
-          ofSignups: '{pct} der Registrierungen',
+          ofSignups: '{pct} der verifizierten Registrierungen',
+          verifiedSignups: 'Verifizierte Registrierungen',
         },
         weekly: {
           heading: 'Ereignisse pro Woche',
-          note: 'Wochen beginnen montags (UTC). guard_api_called stammt aus den API-Nutzungsdaten und zählt jeden Aufruf.',
+          note: 'Wochen beginnen montags (UTC). policy_first_saved / policy_first_executed zählen nur Benutzer, die sich nach Beginn der Erfassung registriert haben. guard_api_called zählt erfolgreiche direkte Guard-Entscheidungsaufrufe (POST /api/v1/guard/*) aus den API-Nutzungsdaten.',
           week: 'Woche',
         },
         templates: {
@@ -3853,13 +3901,14 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           views: 'Aufrufe',
           submissions: 'Anfragen',
           rate: 'Quote',
+          note: 'Nur als Richtwert: Aufrufe ohne gängige Bots und ohne wiederholte Aufrufe derselben Seite im selben Browser-Tab innerhalb von 30 Minuten, aber weiterhin eine Obergrenze.',
         },
         sources: {
           heading: 'Herkunft der Landingpage-Aufrufe',
           source: 'Quelle (utm_source oder Referrer)',
         },
         guard: {
-          heading: 'Guard-API-Aufrufe nach Mandant',
+          heading: 'Erfolgreiche Guard-API-Entscheidungsaufrufe nach Mandant',
           note: 'Mandanten-IDs sind pseudonymisiert. API-Nutzungsdaten werden 90 Tage aufbewahrt.',
           tenant: 'Mandant',
         },
@@ -3877,7 +3926,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           page: 'Landingpage',
           source: 'Quelle',
           painPoint: 'Problem',
+          delete: 'Löschen',
+          deleteConfirm: 'Diese Anfrage endgültig löschen?',
+          deleteFailed: 'Die Anfrage konnte nicht gelöscht werden. Bitte erneut versuchen.',
         },
+        retentionNote: 'Pilotanfragen werden nach 24 Monaten, Produktereignisse nach 13 Monaten automatisch gelöscht.',
       },
       nav: { aiWorkspaceAccess: 'Zugriff auf den KI-Arbeitsbereich', revalidation: 'Richtlinien erneut prüfen', demand: 'Nachfragevalidierung' },
       overview: {
@@ -3972,6 +4025,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       pulse: {
         audit: {
           events: {
+            pilotApplicationDelete: 'Pilotanfrage gelöscht',
             policyCreate: 'Policy erstellt',
             policyUpdate: 'Policy aktualisiert',
             policyDelete: 'Policy gelöscht',
@@ -4543,18 +4597,18 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       },
       pages: {
         insuranceRating: {
-          seoTitle: 'फाइलिंग से मेल खाते रेटिंग नियम | Aster Cloud',
-          seoDescription: 'जब कोई दर या नियम संस्करण फाइलिंग से अलग हो जाए, तो जल्दी पता करें कि किन कोटों पर असर पड़ा। पठनीय, संस्करणबद्ध रेटिंग नियम और हर कोट का साक्ष्य। पायलट कार्यक्रम।',
+          seoTitle: 'पायलट: फाइल किए गए दर संस्करणों को उत्पादन रेटिंग नियमों से जोड़ना | Aster Cloud',
+          seoDescription: 'बीमाकर्ताओं के लिए पायलट: फाइल किए गए दर और नियम संस्करणों को उत्पादन में चले रेटिंग नियम संस्करणों से जोड़ना, और जाँचना कि प्रभावित कोट कैसे पहचाने जा सकते हैं। पठनीय, संस्करणबद्ध रेटिंग नियम आज उपलब्ध हैं; फाइलिंग मैपिंग और प्रभाव प्रश्न विकास में हैं।',
           eyebrow: 'बीमा रेटिंग · पायलट',
-          title: 'जब कोई रेटिंग नियम फाइलिंग से अलग हो जाए, तो जल्दी पता करें कि किन कोटों पर असर पड़ा',
-          subtitle: 'रेटिंग नियमों को पठनीय, संस्करणबद्ध रूप में रखें जिसकी समीक्षा और स्वीकृति बीमांकिक और अनुपालन टीम कर सके। हर कोट उस नियम संस्करण और पुनर्गणना के लिए ज़रूरी इनपुट को दर्ज करता है।',
+          title: 'पायलट: फाइल किए गए दर संस्करणों को वास्तव में चले रेटिंग नियमों से जोड़ना',
+          subtitle: 'आज Aster रेटिंग नियमों को पठनीय, संस्करणबद्ध रूप में रखता है जिनकी समीक्षा और स्वीकृति बीमांकिक और अनुपालन टीम कर सकती है, और दर्ज करता है कि हर निष्पादन ने कौन-सा संस्करण चलाया। इस पायलट में हम आपके साथ जाँचना चाहते हैं कि क्या फाइल किए गए संस्करण उत्पादन संस्करणों से जोड़े जा सकते हैं, और अंतर होने पर प्रभावित कोट कैसे पहचाने जा सकते हैं।',
           facts: {
             filings: {
               text: 'अमेरिका में निजी ऑटो बीमा में हर साल लगभग 10,200 दर फाइलिंग होती हैं।',
               source: 'Insurance Research Council, 2024',
             },
             refund: {
-              text: 'टेक्सास में एक रेटिंग-सिस्टम त्रुटि लगभग तीन साल चली; बीमाकर्ता ने 80,000 से अधिक पॉलिसियों पर 1.8 करोड़ डॉलर से अधिक लौटाए।',
+              text: 'टेक्सास में एक बीमाकर्ता ने लगभग तीन साल तक फाइल की गई दरों से भिन्न दरें लीं; उसने 80,000 से अधिक पॉलिसियों पर 1.8 करोड़ डॉलर से अधिक लौटाए।',
               source: 'Texas Department of Insurance, Order 2025-9142',
             },
             factorTable: {
@@ -4563,13 +4617,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
             },
             regulation57: {
               text: 'न्यूयॉर्क का Regulation 57 बीमाकर्ताओं से स्वीकृत दरें लेने और गलत दरों के उपयोग को रोकने की प्रक्रियाएँ रखने की अपेक्षा करता है।',
-              source: 'NY DFS सहमति आदेश, मार्च 2024 (11 NYCRR 160)',
+              source: 'NY DFS अनुशासनात्मक कार्रवाई सूची, मार्च 2024 (आदेश दिनांक 30 जनवरी 2024; 11 NYCRR 160)',
             },
           },
           available: {
             readable: 'पठनीय नीति भाषा में रेटिंग नियम, ताकि बीमांकिक और अनुपालन टीम वास्तव में चलने वाले नियम पढ़ सके।',
             sealed: 'सील किए गए संस्करण: हर संस्करण के कंपाइल इनपुट का हैश दिखाता है कि स्वीकृति के बाद कुछ बदला या नहीं।',
-            approval: 'संस्करण लाइव होने से पहले चार-आँख स्वीकृति, स्वीकृतकर्ता और समय सहित।',
+            approval: 'स्वीकृति प्रक्रिया जो स्वीकृतकर्ता और समय दर्ज करती है। जिन प्लान में स्वीकृति अनिवार्य है, उनकी टीम नीतियों के लिए स्वीकृतकर्ता लेखक से अलग व्यक्ति होना चाहिए (चार-आँख)।',
             evidence: 'Aster Cloud में हर निष्पादन उपयोग किए गए संस्करण और निर्णय के साथ दर्ज होता है और साक्ष्य पैकेज के रूप में निर्यात किया जा सकता है।',
             template: 'प्रक्रिया आज़माने के लिए ऑटो-बीमा कोट टेम्पलेट। यह एक डेमो है, उत्पादन दर मैनुअल नहीं।',
           },
@@ -4581,11 +4635,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           },
         },
         creditDecisions: {
-          seoTitle: 'नियम संस्करण तक पता लगाने योग्य अस्वीकृति कारण | Aster Cloud',
-          seoDescription: 'हर अस्वीकृति क्रेडिट नियम संस्करण और सक्रिय हुई शर्तों तक पता लगाने योग्य। ऐसे पठनीय नियम जिन्हें जोखिम और अनुपालन टीम स्वीकृत कर सके। पायलट कार्यक्रम।',
+          seoTitle: 'पायलट: अस्वीकृति कारणों को क्रेडिट नियम संस्करणों से जोड़ना | Aster Cloud',
+          seoDescription: 'ऋणदाताओं के लिए पायलट: हर अस्वीकृति कारण को उसके पीछे के क्रेडिट नियम संस्करण और शर्तों से जोड़ना। जोखिम और अनुपालन टीम द्वारा समीक्षा व स्वीकृति योग्य पठनीय नियम आज उपलब्ध हैं; कारण-कोड मैपिंग और संस्करण प्रश्न विकास में हैं।',
           eyebrow: 'क्रेडिट निर्णय · पायलट',
-          title: 'हर अस्वीकृति कारण, उसे बनाने वाले नियम संस्करण तक पता लगाने योग्य',
-          subtitle: 'क्रेडिट नीति को पठनीय नियमों में रखें जिनकी समीक्षा और स्वीकृति जोखिम और अनुपालन टीम कर सके। हर अस्वीकृति दर्ज करती है कि कौन-सा नियम संस्करण चला और कौन-सी शर्तें सक्रिय हुईं, ताकि कारण बाद में समझाया और दोहराया जा सके।',
+          title: 'पायलट: हर अस्वीकृति कारण को उसके पीछे के नियम संस्करण से जोड़ना',
+          subtitle: 'आज Aster क्रेडिट नीति को पठनीय नियमों में रखता है जिनकी समीक्षा और स्वीकृति जोखिम और अनुपालन टीम कर सकती है; हर निष्पादन नियम संस्करण, मेल खाए नियम और अस्वीकृति के कारण दर्ज करता है। इस पायलट में हम आपके साथ जाँचना चाहते हैं कि स्वीकृत कारण-कोड मैपिंग से ये रिकॉर्ड सूचना के कारण कैसे बन सकते हैं, और पिछले निर्णयों की नियम संस्करण के अनुसार समीक्षा कैसे हो सकती है।',
           demoLink: 'क्रेडिट निर्णय रीप्ले डेमो आज़माएँ',
           facts: {
             regB: {
@@ -4604,7 +4658,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           available: {
             readable: 'पठनीय नीति भाषा में क्रेडिट नियम जिनकी समीक्षा और स्वीकृति जोखिम और अनुपालन टीम कर सके।',
             sealed: 'सील किए गए संस्करण: हर संस्करण के कंपाइल इनपुट का हैश दिखाता है कि स्वीकृति के बाद कुछ बदला या नहीं।',
-            approval: 'संस्करण लाइव होने से पहले चार-आँख स्वीकृति, स्वीकृतकर्ता और समय सहित।',
+            approval: 'स्वीकृति प्रक्रिया जो स्वीकृतकर्ता और समय दर्ज करती है। जिन प्लान में स्वीकृति अनिवार्य है, उनकी टीम नीतियों के लिए स्वीकृतकर्ता लेखक से अलग व्यक्ति होना चाहिए (चार-आँख)।',
             trace: 'हर निष्पादन नियम संस्करण, निर्णय, मेल खाए नियम और अस्वीकृति के कारण दर्ज करता है।',
             evidence: 'हर निष्पादन के हैश सहित साक्ष्य निर्यात (JSON या JSONL)।',
             demo: 'ऋण आवेदन टेम्पलेट और इंटरैक्टिव निर्णय रीप्ले डेमो।',
@@ -4616,10 +4670,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           },
         },
         agentGuardrails: {
-          seoTitle: 'उच्च-जोखिम एजेंट कार्रवाइयों के लिए मानवीय स्वीकृति और ऑडिट ट्रेल | Aster Cloud',
-          seoDescription: 'उच्च-जोखिम AI एजेंट कार्रवाइयाँ पहले मानवीय स्वीकृति से गुज़रती हैं, ऑडिट ट्रेल के साथ। Cedar रनटाइम से पहले की पठनीय नीति और साक्ष्य परत। पायलट कार्यक्रम।',
+          seoTitle: 'पायलट: उच्च-जोखिम एजेंट कार्रवाइयों के लिए मानवीय स्वीकृति और ऑडिट ट्रेल | Aster Cloud',
+          seoDescription: 'AI एजेंट चलाने वाली टीमों के लिए पायलट: उच्च-जोखिम कार्रवाइयों को ऑडिट ट्रेल के साथ मानवीय स्वीकृति के लिए भेजना, Cedar रनटाइम से पहले की पठनीय नीति और साक्ष्य परत के ज़रिए। फ्रेमवर्क और MCP एडेप्टर विकास में हैं।',
           eyebrow: 'AI एजेंट गार्डरेल · पायलट',
-          title: 'उच्च-जोखिम एजेंट कार्रवाइयाँ पहले मानवीय स्वीकृति से गुज़रती हैं, ऑडिट ट्रेल के साथ',
+          title: 'पायलट: उच्च-जोखिम एजेंट कार्रवाइयों को ऑडिट ट्रेल के साथ मानवीय स्वीकृति के लिए भेजना',
           subtitle: 'एजेंट क्या कर सकता है, इसे पठनीय नियमों में लिखें जिन्हें जोखिम और अनुपालन टीम स्वीकृत करे। Aster ALLOW, DENY या REQUIRE_APPROVAL लौटाता है, स्वीकृतियों को सही व्यावसायिक भूमिका तक भेजता है और यह साक्ष्य रखता है कि किस नीति संस्करण के तहत किसने क्या तय किया।',
           positioning: {
             title: 'Cedar रनटाइम से पहले, उनकी जगह नहीं',
@@ -4649,11 +4703,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           },
         },
         eligibilityRules: {
-          seoTitle: 'लागू नियमों तक पता लगाने योग्य पात्रता निर्णय | Aster Cloud',
-          seoDescription: 'सार्वजनिक क्षेत्र की पात्रता के लिए Rules as Code: हर निर्धारण उस समय लागू नियम संस्करण, इनपुट और लागू हुए नियमों तक पता लगाने योग्य; नीति कर्मचारी नियम पढ़ और स्वीकृत कर सकते हैं। पायलट कार्यक्रम।',
+          seoTitle: 'पायलट: पात्रता निर्धारणों को लागू नियम संस्करण से जोड़ना | Aster Cloud',
+          seoDescription: 'सार्वजनिक क्षेत्र की पात्रता के लिए Rules as Code पायलट: नीति कर्मचारियों द्वारा समीक्षा व स्वीकृति योग्य पठनीय नियम, और हर निर्धारण नियम संस्करण, इनपुट और मेल खाए नियम दर्ज करता है। समय-बिंदु प्रश्न विकास में हैं।',
           eyebrow: 'सार्वजनिक क्षेत्र पात्रता · Rules as Code · पायलट',
-          title: 'हर पात्रता निर्णय, उस समय लागू नियमों तक पता लगाने योग्य',
-          subtitle: 'पात्रता नीति को पठनीय नियमों में रखें जिन्हें नीति कर्मचारी पढ़, समीक्षा और स्वीकृत कर सकें। हर निर्धारण उस समय लागू नियम संस्करण, उपयोग किए गए इनपुट और लागू हुए नियमों को दर्ज करता है।',
+          title: 'पायलट: हर पात्रता निर्धारण को उस समय लागू नियम संस्करण से जोड़ना',
+          subtitle: 'आज Aster पात्रता नीति को पठनीय नियमों में रखता है जिन्हें नीति कर्मचारी पढ़, समीक्षा और स्वीकृत कर सकते हैं; हर निर्धारण नियम संस्करण, उपयोग किए गए इनपुट और मेल खाए नियम दर्ज करता है। इस पायलट में हम आपके साथ समय-बिंदु समीक्षा जाँचना चाहते हैं: कौन-से निर्धारण किस नियम संस्करण के तहत हुए।',
           facts: {
             louisiana: {
               text: 'लुइज़ियाना का 2025 का पात्रता प्रणाली RFI Rules as Code आर्किटेक्चर और ऐसी प्रणालियों के बारे में पूछता है जिनका राज्य और संघीय एजेंसियाँ पूरी तरह और आसानी से ऑडिट कर सकें।',
@@ -4667,7 +4721,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           available: {
             readable: 'पठनीय नीति भाषा में पात्रता नियम जिन्हें नीति और विधि कर्मचारी पढ़, समीक्षा और स्वीकृत कर सकें।',
             sealed: 'सील किए गए संस्करण: हर संस्करण के कंपाइल इनपुट का हैश दिखाता है कि स्वीकृति के बाद कुछ बदला या नहीं।',
-            approval: 'संस्करण लागू होने से पहले चार-आँख स्वीकृति, स्वीकृतकर्ता और समय सहित।',
+            approval: 'स्वीकृति प्रक्रिया जो स्वीकृतकर्ता और समय दर्ज करती है। जिन प्लान में स्वीकृति अनिवार्य है, उनकी टीम नीतियों के लिए स्वीकृतकर्ता लेखक से अलग व्यक्ति होना चाहिए (चार-आँख)।',
             trace: 'हर निर्धारण नियम संस्करण, इनपुट, निर्णय और मेल खाए नियम दर्ज करता है।',
             evidence: 'हर निर्धारण के हैश सहित साक्ष्य निर्यात (JSON या JSONL)।',
             languages: 'गैर-अंग्रेज़ी परिवेश में नियम मातृभाषा में पढ़े जा सकते हैं (अभी अंग्रेज़ी, चीनी, जर्मन और हिंदी)।',
@@ -4676,6 +4730,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
             pointInTime: 'समय-बिंदु प्रश्न: कौन-से निर्धारण किस नियम संस्करण के तहत हुए, और दूसरे संस्करण पर दोबारा गणना।',
             documentView: 'व्यवसाय-पठनीय नीति दृश्य जो हर नियम को निष्पादन ट्रेस से जोड़ता है और ऑडिट पैक के रूप में निर्यात होता है।',
             deployment: 'सार्वजनिक क्षेत्र के पायलटों के लिए परिनियोजन और डेटा निवास व्यवस्था, हर मामले में अलग से तय।',
+          },
+        },
+      },
+    },
+    // 隐私政策补充：试点申请与第一方产品分析（保留期与用途）。
+    legal: {
+      privacy: {
+        sections: {
+          demandValidation: {
+            title: '4a. पायलट आवेदन और उत्पाद विश्लेषण',
+            content: 'यदि आप हमारे किसी समाधान पेज पर पायलट के लिए आवेदन करते हैं, तो हम आपके द्वारा भेजे गए विवरण (कार्य ईमेल, कंपनी, भूमिका, चुने गए उपयोग मामले और वैकल्पिक विवरण), जिस पेज से आपने आवेदन किया और अभियान टैग (UTM पैरामीटर और संदर्भित साइट का होस्ट नाम) सहेजते हैं, ताकि आपके आवेदन का आकलन और उत्तर दे सकें। आवेदन के साथ हम आपका IP पता नहीं सहेजते। आवेदन जमा होने के 24 महीने बाद अपने आप हटा दिए जाते हैं, और आप नीचे दिए संपर्क विवरण से पहले हटाने का अनुरोध कर सकते हैं। इसके अलावा, हम यह समझने के लिए कि कौन-सी सुविधाएँ उपयोग होती हैं, प्रथम-पक्ष उत्पाद उपयोग इवेंट दर्ज करते हैं (जैसे साइन अप पूरा होना, पहली नीति सहेजना, साक्ष्य निर्यात और लैंडिंग पेज विज़िट)। इन इवेंट में छद्मनाम उपयोगकर्ता और टीम पहचानकर्ता होते हैं; इनमें नीति सामग्री, इनपुट, ईमेल पते या नाम नहीं होते; ये 13 महीने बाद अपने आप हटा दिए जाते हैं।',
           },
         },
       },
@@ -5295,16 +5360,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         count: 'संख्या',
         funnel: {
           heading: 'फ़नल',
-          note: 'अवधि में साइन अप करने वाले उपयोगकर्ता, और उनमें से कितने हर चरण तक पहुँचे (किसी भी समय)।',
+          note: 'अवधि में साइन अप करने वाले उपयोगकर्ता; चरण केवल सत्यापित साइन अप (सत्यापित ईमेल) में गिने जाते हैं, किसी भी समय।',
           signups: 'साइन अप',
           firstSaved: 'पहली नीति सहेजी',
           firstExecuted: 'पहला निष्पादन',
           evidenceExported: 'साक्ष्य निर्यात',
-          ofSignups: 'साइन अप का {pct}',
+          ofSignups: 'सत्यापित साइन अप का {pct}',
+          verifiedSignups: 'सत्यापित साइन अप',
         },
         weekly: {
           heading: 'साप्ताहिक इवेंट संख्या',
-          note: 'सप्ताह सोमवार से शुरू (UTC)। guard_api_called API उपयोग रिकॉर्ड से आता है, हर कॉल गिनी जाती है।',
+          note: 'सप्ताह सोमवार से शुरू (UTC)। policy_first_saved / policy_first_executed केवल ट्रैकिंग शुरू होने के बाद साइन अप करने वालों को गिनते हैं। guard_api_called API उपयोग रिकॉर्ड से सफल प्रत्यक्ष Guard निर्णय कॉल (POST /api/v1/guard/*) गिनता है।',
           week: 'सप्ताह',
         },
         templates: {
@@ -5317,13 +5383,14 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           views: 'विज़िट',
           submissions: 'आवेदन',
           rate: 'दर',
+          note: 'केवल दिशा-सूचक: विज़िट में सामान्य बॉट और एक ही ब्राउज़र टैब में 30 मिनट के भीतर उसी पेज की दोहराई गई विज़िट शामिल नहीं हैं, फिर भी यह ऊपरी सीमा है।',
         },
         sources: {
           heading: 'लैंडिंग पेज स्रोत',
           source: 'स्रोत (utm_source या referrer)',
         },
         guard: {
-          heading: 'टेनेंट के अनुसार Guard API कॉल',
+          heading: 'टेनेंट के अनुसार सफल Guard API निर्णय कॉल',
           note: 'टेनेंट आईडी छद्मनाम हैं। API उपयोग रिकॉर्ड 90 दिन रखे जाते हैं।',
           tenant: 'टेनेंट',
         },
@@ -5341,7 +5408,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           page: 'लैंडिंग पेज',
           source: 'स्रोत',
           painPoint: 'समस्या',
+          delete: 'हटाएँ',
+          deleteConfirm: 'यह आवेदन स्थायी रूप से हटाएँ?',
+          deleteFailed: 'आवेदन हटाया नहीं जा सका। कृपया फिर से प्रयास करें।',
         },
+        retentionNote: 'पायलट आवेदन 24 महीने बाद और उत्पाद इवेंट 13 महीने बाद अपने आप हटाए जाते हैं।',
       },
       nav: { aiWorkspaceAccess: 'AI कार्यक्षेत्र पहुँच', revalidation: 'नीति पुनःसत्यापन', demand: 'माँग सत्यापन' },
       overview: {
@@ -5436,6 +5507,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       pulse: {
         audit: {
           events: {
+            pilotApplicationDelete: 'पायलट आवेदन हटाया गया',
             policyCreate: 'नीति बनाई गई',
             policyUpdate: 'नीति अपडेट की गई',
             policyDelete: 'नीति हटाई गई',

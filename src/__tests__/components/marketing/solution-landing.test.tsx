@@ -63,4 +63,21 @@ describe('SolutionLanding', () => {
     expect(screen.getByRole('heading', { name: /Upstream of Cedar runtimes/ })).toBeTruthy();
     expect(container.textContent).toMatch(/Cedar export covers only a subset of rules/);
   });
+
+  it('标题与 SEO 文案写成试点目标，不把开发中能力说成已交付结果（四语）', () => {
+    const PILOT = { en: /^Pilot:/, zh: /^试点：/, de: /^Pilot:/, hi: /^पायलट:/ } as const;
+    for (const loc of ['en', 'zh', 'de', 'hi'] as const) {
+      const pages = (DEMO_SUPPLEMENT[loc] as { solutionsPage: { pages: Record<string, Record<string, string>> } })
+        .solutionsPage.pages;
+      for (const page of Object.values(pages)) {
+        expect(page.title).toMatch(PILOT[loc]);
+        expect(page.seoTitle).toMatch(PILOT[loc]);
+      }
+    }
+    const en = DEMO_SUPPLEMENT.en as { solutionsPage: { pages: Record<string, Record<string, string>> } };
+    for (const page of Object.values(en.solutionsPage.pages)) {
+      const headline = [page.title, page.seoTitle, page.seoDescription, page.subtitle].join(' ');
+      expect(headline).not.toMatch(/match the filing|find out quickly|traceable|reproduc/i);
+    }
+  });
 });
