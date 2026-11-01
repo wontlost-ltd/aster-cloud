@@ -22,6 +22,8 @@ function PrivacyContent() {
     'usage',
     'sharing',
     'telemetry',
+    // 4a：落地页试点申请与第一方产品分析（文案在本地补充层 legal.privacy.sections.demandValidation）
+    'demandValidation',
     'transfers',
     'subprocessors',
     'security',
@@ -57,7 +59,7 @@ function PrivacyContent() {
           {t('legal.privacy.title')}
         </h1>
         <p className="text-gray-500 mb-8">
-          {t('legal.privacy.lastUpdated', { date: 'May 19, 2026' })}
+          {t('legal.privacy.lastUpdated', { date: 'November 1, 2026' })}
         </p>
 
         <div className="prose prose-indigo max-w-none">

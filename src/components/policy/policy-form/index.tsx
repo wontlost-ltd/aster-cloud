@@ -86,6 +86,7 @@ import { EditorPalette } from './editor-palette';
 import { EditorRail } from './editor-rail';
 import { CNLSyntaxConverterDialog } from '@/components/policy/cnl-syntax-converter-dialog';
 import { type PolicyExample, getExampleSource } from '@/data/policy-examples';
+import { trackProductEvent } from '@/lib/product-events/client';
 import { extractReservedAliasSets, getLexicon } from '@/lib/aster-lexicon';
 import { validateUserAliases } from '@/lib/policy-alias-shared';
 import { useAliasIssueMessage } from '@/components/policy/use-alias-issue-message';
@@ -362,8 +363,9 @@ export function PolicyForm({
       insertAtCursor(body);
       setName((prev) => prev || tpl.id);
       toast.success(t('templateInsertedAtCursor'));
+      if (mode === 'create') trackProductEvent('template_selected', { templateId: tpl.id, source: 'palette' });
     },
-    [exampleLocale, insertAtCursor, t],
+    [exampleLocale, insertAtCursor, t, mode],
   );
 
   /** 用模板内容整体替换编辑器（清空后写入），非插入到光标。设默认名称仅在
@@ -378,8 +380,9 @@ export function PolicyForm({
       setName((prev) => nextTemplateName(prev, previousAutoName, tpl.id));
       autoTemplateName.current = tpl.id;
       toast.success(t('templateReplaced'));
+      if (mode === 'create') trackProductEvent('template_selected', { templateId: tpl.id, source: 'picker' });
     },
-    [exampleLocale, t],
+    [exampleLocale, t, mode],
   );
 
   /** 侧栏「模板」tab 点击入口：编辑器有内容先弹确认（防误抹未保存草稿），

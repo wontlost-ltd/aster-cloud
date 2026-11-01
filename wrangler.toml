@@ -108,6 +108,7 @@ AI_WORKSPACE_ENABLED_FOR = "784d38c4-f433-4369-b4dc-ab0f4f0cc2b9"
 # 必须配置（认证相关）：
 # wrangler secret put NEXTAUTH_SECRET    # NextAuth JWT 签名密钥，可用 `openssl rand -base64 32` 生成
 # wrangler secret put NEXTAUTH_URL       # 设置为 https://aster-lang.cloud
+# wrangler secret put PRODUCT_ANALYTICS_SALT  # 产品事件假名化密钥（openssl rand -hex 32）；缺失时不记录产品事件，上线后勿更换
 #
 # OAuth 提供者（至少配置一个）：
 # wrangler secret put GITHUB_CLIENT_ID

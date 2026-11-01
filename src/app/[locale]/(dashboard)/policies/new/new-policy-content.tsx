@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { PolicyForm, type PolicySaveContext } from '@/components/policy/policy-form';
 import type { PolicyDraftFields } from '@/components/policy/policy-form/use-policy-draft';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
 import { getSnippetTemplate } from '@/lib/playground/snippet-templates';
+import { trackProductEvent } from '@/lib/product-events/client';
 
 /**
  * /policies/new — thin wrapper around <PolicyForm>.
@@ -56,6 +57,16 @@ export function NewPolicyContent({
     const template = getSnippetTemplate(templateId);
     if (!template) return EMPTY;
     return { ...EMPTY, content: template.source };
+  }, [searchParams]);
+
+  // 文档深链带入的模板也算「新建时选了模板」；只认登记表里存在的 id，每次挂载只记一次。
+  const deeplinkTracked = useRef(false);
+  useEffect(() => {
+    if (deeplinkTracked.current) return;
+    const templateId = searchParams.get('template');
+    if (!templateId || !getSnippetTemplate(templateId)) return;
+    deeplinkTracked.current = true;
+    trackProductEvent('template_selected', { templateId, source: 'deeplink' });
   }, [searchParams]);
 
   const handleSave = useCallback(

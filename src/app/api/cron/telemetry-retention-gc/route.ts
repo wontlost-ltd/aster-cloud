@@ -16,6 +16,10 @@
  * style) so the audit trail has "yes the cleanup actually ran on date X
  * and reaped N rows".
  *
+ * 同一个 tick 还清理需求验证数据（与隐私政策口径一致）：
+ *   ProductEvent        13 个月
+ *   PilotApplication    24 个月
+ *
  * SaaS-only.
  */
 
@@ -25,6 +29,8 @@ import { IS_SAAS } from '@/lib/deployment-mode';
 import { runRetentionGc } from '@/lib/telemetry/access-audit';
 import { runCronOnce } from '@/lib/cron-lease';
 import { parseCronWindow } from '@/lib/cron-window';
+import { purgeExpiredProductEvents } from '@/lib/product-events/server';
+import { purgeExpiredPilotApplications } from '@/lib/pilot-applications';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -54,7 +60,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const { acquiredBy, windowStart } = parseCronWindow(req, 'telemetry-retention-gc');
   const outcome = await runCronOnce(
     'telemetry-retention-gc',
-    () => runRetentionGc({ config: cfg }),
+    async () => ({
+      ...(await runRetentionGc({ config: cfg })),
+      demandValidation: {
+        productEventsDeleted: await purgeExpiredProductEvents(),
+        pilotApplicationsDeleted: await purgeExpiredPilotApplications(),
+      },
+    }),
     { acquiredBy, windowStart },
   );
 

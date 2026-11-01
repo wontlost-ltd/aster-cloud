@@ -33,6 +33,222 @@ type MessageTree = Record<string, unknown>;
  */
 export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
   en: {
+    // 需求验证落地页（/solutions/*）与试点申请表单。
+    solutionsPage: {
+      cta: 'Apply for a pilot',
+      contextHeading: 'Why this matters',
+      sourceLabel: 'Source:',
+      contextNote: 'Public examples for context only. They are not Aster customers and Aster was not involved.',
+      capabilitiesHeading: 'What exists today and what is in development',
+      availableHeading: 'Available today',
+      developmentHeading: 'In development',
+      developmentBadge: 'Pilot',
+      developmentNote: 'Items in this column are being built with pilot partners. They are not generally available and this page does not promise delivery dates.',
+      disclaimer: 'Aster records how each decision was made and keeps the evidence. It does not by itself certify compliance with any law or regulation, and sealing a rule version is internal version control, not a regulatory filing.',
+      pilot: {
+        heading: 'How a pilot works',
+        step1Title: 'Pick one rule set',
+        step1Body: 'Choose one bounded set of rules with us: a rating table, a credit policy, an eligibility rule or an agent action policy.',
+        step2Title: 'Encode it, then review and sign off',
+        step2Body: 'We write it together in Aster. Your compliance, risk or policy staff read the rules that will actually run, then approve the version.',
+        step3Title: 'Run it and inspect the evidence',
+        step3Body: 'Run it on sample or historical inputs and look at what each decision leaves behind. Then tell us what is missing.',
+      },
+      form: {
+        heading: 'Apply for a pilot',
+        intro: 'Tell us about the rules you would like to test. We read every application and reply by email.',
+        email: 'Work email',
+        company: 'Company or organisation',
+        role: 'Your role',
+        rolePlaceholder: 'Choose a role',
+        roles: {
+          compliance_risk_audit: 'Compliance, risk or internal audit',
+          actuarial_pricing: 'Actuarial or pricing',
+          credit_risk: 'Credit risk or lending policy',
+          policy_program: 'Public-sector policy or programme',
+          engineering_it: 'Engineering or IT',
+          product_business: 'Product or business line',
+          executive: 'Executive',
+          other: 'Other',
+        },
+        useCasesLegend: 'Which use cases? (choose any)',
+        useCases: {
+          insurance_rating: 'Insurance rating rules that must match what was filed',
+          credit_decisions: 'Explainable credit decisions and adverse-action reasons',
+          agent_guardrails: 'Human approval and audit for AI agent actions',
+          eligibility_rules: 'Public-sector eligibility rules (Rules as Code)',
+          other: 'Something else',
+        },
+        painPoint: 'What is hardest about this today? (optional)',
+        painPointPlaceholder: 'For example: after a rule change we could not tell which decisions it affected.',
+        consent: 'I agree that Aster may store these details and contact me by email about a pilot.',
+        privacyLink: 'Privacy policy',
+        honeypot: 'Website',
+        submit: 'Apply for a pilot',
+        submitting: 'Sending…',
+        successTitle: 'Application received',
+        successBody: 'Thank you. We will reply by email.',
+        errors: {
+          generic: 'Something went wrong. Please try again.',
+          rateLimited: 'Too many attempts from this network. Please try again later.',
+          email: 'Enter a valid email address. Disposable addresses are not accepted.',
+          company: 'Enter your company or organisation.',
+          role: 'Choose your role.',
+          useCases: 'Choose at least one use case.',
+          painPoint: 'Please keep this under 2,000 characters.',
+          consent: 'Please tick the consent box to continue.',
+        },
+      },
+      pages: {
+        insuranceRating: {
+          seoTitle: 'Pilot: map filed rate versions to production rating rules | Aster Cloud',
+          seoDescription: 'A pilot for insurers: map filed rate and rule versions to the rating rule versions that ran in production, and test how affected quotes could be identified. Readable, versioned rating rules are available today; filing mapping and impact queries are in development.',
+          eyebrow: 'Insurance rating · Pilot',
+          title: 'Pilot: map filed rate versions to the rating rules that actually ran',
+          subtitle: 'Today Aster keeps rating rules in a readable, versioned form that actuarial and compliance staff can review and approve, and records which version each execution ran. In this pilot we want to test with you whether filed versions can be mapped to production versions, and how the quotes affected by a mismatch could be identified.',
+          facts: {
+            filings: {
+              text: 'US personal auto insurance sees roughly 10,200 rate filings a year.',
+              source: 'Insurance Research Council, 2024',
+            },
+            refund: {
+              text: 'In Texas, an insurer charged rates that differed from those on file for about three years; it refunded more than $18 million on over 80,000 policies.',
+              source: 'Texas Department of Insurance, Order 2025-9142',
+            },
+            factorTable: {
+              text: 'In one public enforcement case, the vehicle factor table in a single filing had 287,750 rows.',
+              source: 'Texas Department of Insurance, Order 2025-9237',
+            },
+            regulation57: {
+              text: 'New York Regulation 57 requires insurers to charge approved rates and to keep procedures that prevent the use of incorrect rates.',
+              source: 'NY DFS disciplinary action list, March 2024 (order dated 30 January 2024; 11 NYCRR 160)',
+            },
+          },
+          available: {
+            readable: 'Rating rules in a readable policy language, so actuarial and compliance staff can read the rules that actually run.',
+            sealed: 'Sealed versions: a hash of each version\'s compile inputs shows whether anything changed after approval.',
+            approval: 'An approval workflow that records approver and time. For team policies on plans that require approval, the approver must be someone other than the author (four-eyes).',
+            evidence: 'Each execution in Aster Cloud is logged with the version it ran and its decision, and can be exported as an evidence package.',
+            template: 'An auto-insurance quote template to try the workflow. It is a demo, not a production rate manual.',
+          },
+          development: {
+            filingMap: 'Mapping filed rate and rule versions to the sealed production versions.',
+            impactQuery: 'Finding every quote produced by a given rule version or time window, and recomputing them against another version to see the difference.',
+            documentView: 'A business-readable view of the approved rules, linked to execution traces and exportable as an audit pack.',
+            scale: 'Production-size factor tables and quote latency have not been evaluated yet; we would size them with you in the pilot.',
+          },
+        },
+        creditDecisions: {
+          seoTitle: 'Pilot: link adverse-action reasons to credit rule versions | Aster Cloud',
+          seoDescription: 'A pilot for lenders: link each adverse-action reason to the credit rule version and conditions behind it. Readable rules that risk and compliance can review and approve are available today; reason-code mapping and version queries are in development.',
+          eyebrow: 'Credit decisioning · Pilot',
+          title: 'Pilot: link each adverse-action reason to the rule version behind it',
+          subtitle: 'Today Aster keeps credit policy in readable rules that risk and compliance staff can review and approve, and each execution records the rule version, the rules that matched and the denial reasons. In this pilot we want to test with you how those records can become notice reasons through an approved reason-code mapping, and how past decisions can be reviewed by rule version.',
+          demoLink: 'Try the credit decision replay demo',
+          facts: {
+            regB: {
+              text: 'Regulation B requires creditors to give applicants a statement of the specific reasons for an adverse action.',
+              source: '12 CFR 1002.9 (ECOA / Regulation B)',
+            },
+            supervision: {
+              text: 'CFPB examiners found that auto lenders had not validated whether their process for selecting adverse-action reasons produced accurate results.',
+              source: 'CFPB Supervisory Highlights, Issue 38 (January 2025)',
+            },
+            settlement: {
+              text: 'In July 2025 the Massachusetts Attorney General announced a $2.5 million settlement with a student lender over its lending practices, including its use of AI underwriting models.',
+              source: 'Massachusetts Attorney General, press release',
+            },
+          },
+          available: {
+            readable: 'Credit rules in a readable policy language that risk and compliance staff can review and sign off.',
+            sealed: 'Sealed versions: a hash of each version\'s compile inputs shows whether anything changed after approval.',
+            approval: 'An approval workflow that records approver and time. For team policies on plans that require approval, the approver must be someone other than the author (four-eyes).',
+            trace: 'Each execution records the rule version, the decision, the rules that matched and the reasons for a denial.',
+            evidence: 'Evidence export (JSON or JSONL) with hashes for each execution.',
+            demo: 'A loan application template and an interactive decision replay demo.',
+          },
+          development: {
+            reasonCodes: 'Turning the conditions that fired into adverse-action notice reasons through an approved reason-code mapping.',
+            impactQuery: 'Finding every decision made under a rule version or time window, and recomputing them against another version.',
+            documentView: 'A business-readable view of the approved policy, linking each rule to execution traces.',
+          },
+        },
+        agentGuardrails: {
+          seoTitle: 'Pilot: human approval and audit trail for high-risk agent actions | Aster Cloud',
+          seoDescription: 'A pilot for teams running AI agents: send high-risk actions to human approval with an audit trail, using a readable policy and evidence layer upstream of Cedar runtimes. Framework and MCP adapters are in development.',
+          eyebrow: 'AI agent guardrails · Pilot',
+          title: 'Pilot: send high-risk agent actions to human approval, with an audit trail',
+          subtitle: 'Write what an agent may do as readable rules that risk and compliance staff can sign off. Aster returns ALLOW, DENY or REQUIRE_APPROVAL, sends approvals to the right business role and keeps the evidence of who decided what under which policy version.',
+          positioning: {
+            title: 'Upstream of Cedar runtimes, not instead of them',
+            body: 'Approval steps are now available in several agent platforms, including Amazon Bedrock AgentCore Policy, which enforces Cedar policies at the gateway. Aster is meant to sit upstream: the readable policy your compliance team signed off, the sealed version that made each decision, and the approval record. Where a rule translates cleanly, Aster can export it to Cedar for a runtime such as AgentCore to enforce. Cedar export covers only a subset of rules: rules that cannot be translated are rejected as a whole rather than approximated.',
+          },
+          facts: {
+            gsa: {
+              text: 'From 19 October 2026, GSA contract terms for LLM purchases require means for human oversight, intervention and traceability, including logged steps for agentic systems.',
+              source: 'MeriTalk, on GSA\'s new AI contract safeguards',
+            },
+            agentcore: {
+              text: 'AWS chose Cedar to enforce tool-call policies for agents in Amazon Bedrock AgentCore Policy.',
+              source: 'AWS Security Blog',
+            },
+          },
+          available: {
+            decisions: 'Guard decisions from a sealed policy version: ALLOW, DENY, REQUIRE_APPROVAL or ESCALATE.',
+            inbox: 'An approval inbox where approvers are matched by business role from their team record; the requester cannot approve their own action.',
+            evidence: 'Evidence for each decision and approval, linked to the policy version and exportable.',
+            cedar: 'Cedar export for rules that translate cleanly, with a schema and probe-based comparison. Only a subset of rules is supported.',
+          },
+          development: {
+            adapters: 'Adapters for agent frameworks and MCP. These are not built yet.',
+            latency: 'A low-latency decision service level suitable for inline tool calls.',
+            auditView: 'A combined view of decisions and approvals for audit.',
+            agentcore: 'Validating the path from Cedar export into AgentCore Policy.',
+          },
+        },
+        eligibilityRules: {
+          seoTitle: 'Pilot: tie eligibility determinations to the rule version in force | Aster Cloud',
+          seoDescription: 'A Rules as Code pilot for public-sector eligibility: readable rules that policy staff can review and approve, with each determination recording the rule version, inputs and matched rules. Point-in-time queries are in development.',
+          eyebrow: 'Public-sector eligibility · Rules as Code · Pilot',
+          title: 'Pilot: tie each eligibility determination to the rule version in force at the time',
+          subtitle: 'Today Aster keeps eligibility policy as readable rules that policy staff can read, review and approve, and each determination records the rule version, the inputs it used and the rules that matched. In this pilot we want to test point-in-time review with you: which determinations were made under which rule version.',
+          facts: {
+            louisiana: {
+              text: 'Louisiana\'s 2025 request for information on eligibility systems asks about a Rules as Code architecture and about systems that state and federal agencies can audit fully and easily.',
+              source: 'Louisiana Department of Health, RFI, September 2025',
+            },
+            clauseLogic: {
+              text: 'A US Department of Defense concept for automated contract clause selection includes a business rules engine; its requirements call for an audit trail of which rules were applied to which inputs and what they produced.',
+              source: 'DoD Clause Logic Service sources-sought notice, 2024 (via GovTribe)',
+            },
+          },
+          available: {
+            readable: 'Eligibility rules in a readable policy language that policy and legal staff can read, review and sign off.',
+            sealed: 'Sealed versions: a hash of each version\'s compile inputs shows whether anything changed after approval.',
+            approval: 'An approval workflow that records approver and time. For team policies on plans that require approval, the approver must be someone other than the author (four-eyes).',
+            trace: 'Each determination records the rule version, the inputs, the decision and the rules that matched.',
+            evidence: 'Evidence export (JSON or JSONL) with hashes for each determination.',
+            languages: 'Rules can be read in the native language in non-English settings (English, Chinese, German and Hindi today).',
+          },
+          development: {
+            pointInTime: 'Point-in-time queries: which determinations were made under which rule version, and recomputing them under another.',
+            documentView: 'A business-readable policy view linking each rule to execution traces, exportable as an audit pack.',
+            deployment: 'Deployment and data-residency arrangements for public-sector pilots, scoped case by case.',
+          },
+        },
+      },
+    },
+    // 隐私政策补充：试点申请与第一方产品分析（保留期与用途）。
+    legal: {
+      privacy: {
+        sections: {
+          demandValidation: {
+            title: '4a. Pilot applications and product analytics',
+            content: 'If you apply for a pilot on one of our solution pages, we store the details you submit (work email, company, role, selected use cases and the optional description), the page you applied from and campaign tags (UTM parameters and the host name of the referring site), so that we can evaluate and answer your application. We do not store your IP address with the application. Applications are deleted automatically 24 months after submission, and you can ask us to delete yours earlier using the contact details below. Separately, we record first-party product usage events (for example sign-up completed, first policy saved, evidence exported and landing-page views) to understand which features are used. These events carry pseudonymous user and team identifiers and contain no policy content, inputs, email addresses or names; they are deleted automatically after 13 months. Browser-side events (landing-page views, template selection and approval-inbox views) are also sent to Mixpanel; see section 11.',
+          },
+        },
+      },
+    },
     // 复核面板（ADR 0037 §14/§15，本地补充）。
     policyReview: {
       title: 'Human review',
@@ -662,9 +878,79 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: 'Open AI keys settings',
     },
     admin: {
-      nav: { aiWorkspaceAccess: 'AI workspace access', revalidation: 'Policy revalidation' },
+      // 需求验证看板（/admin/demand）。
+      demand: {
+        eventsDisabled: 'Product events are not being recorded: PRODUCT_ANALYTICS_SALT is not configured. Zeros on this page do not mean there is no demand.',
+        title: 'Demand validation',
+        subtitle: 'Behavioural signals for the 2026-11 demand hypotheses: insurance rating, credit decisions, agent guardrails and eligibility rules.',
+        window: 'Last 12 weeks (since {since}).',
+        privacyNote: 'Events carry no policy content, inputs, email or names; user and tenant ids are pseudonymous.',
+        empty: 'No data yet.',
+        count: 'Count',
+        funnel: {
+          heading: 'Funnel',
+          note: 'Users who signed up in the window. Steps are counted among verified sign-ups only (verified email), at any time.',
+          signups: 'Signed up',
+          firstSaved: 'First policy saved',
+          firstExecuted: 'First execution',
+          evidenceExported: 'Evidence exported',
+          ofSignups: '{pct} of verified sign-ups',
+          verifiedSignups: 'Verified sign-ups',
+        },
+        weekly: {
+          heading: 'Weekly event counts',
+          note: 'Weeks start on Monday (UTC). policy_first_saved / policy_first_executed count only users who signed up after tracking began. guard_api_called counts successful direct Guard decision calls (POST /api/v1/guard/*) from API usage records.',
+          week: 'Week',
+        },
+        templates: {
+          heading: 'Templates chosen when creating a policy',
+          template: 'Template',
+        },
+        landing: {
+          heading: 'Landing pages',
+          page: 'Page',
+          views: 'Views',
+          submissions: 'Applications',
+          rate: 'Rate',
+          note: 'Directional only: views exclude common bots and repeat views of the same page in one browser tab within 30 minutes, but remain an upper bound.',
+        },
+        sources: {
+          heading: 'Landing-page sources',
+          source: 'Source (utm_source or referrer)',
+        },
+        guard: {
+          heading: 'Successful Guard API decision calls by tenant',
+          note: 'Tenant ids are pseudonymous. API usage records are kept for 90 days.',
+          tenant: 'Tenant',
+        },
+        applications: {
+          heading: 'Pilot applications (latest {count})',
+          export: 'Export CSV',
+          createdAt: 'Received',
+          email: 'Email',
+          mailbox: 'Mailbox',
+          personalMailbox: 'Personal',
+          companyDomain: 'Company domain',
+          company: 'Company',
+          role: 'Role',
+          useCases: 'Use cases',
+          page: 'Landing page',
+          source: 'Source',
+          painPoint: 'Pain point',
+          delete: 'Delete',
+          deleteConfirm: 'Delete this application permanently?',
+          deleteFailed: 'Could not delete the application. Please try again.',
+        },
+        retentionNote: 'Pilot applications are deleted after 24 months and product events after 13 months.',
+      },
+      nav: { aiWorkspaceAccess: 'AI workspace access', revalidation: 'Policy revalidation', demand: 'Demand validation' },
       // 概览卡与其它 *Card 同构（title/description/cta），页面按 `${cardKey}.title` 动态取键。
       overview: {
+        demandCard: {
+          title: 'Demand validation',
+          description: 'Product event funnel, template choices, landing-page traffic and pilot applications.',
+          cta: 'Open dashboard',
+        },
         aiWorkspaceAccessCard: {
           title: 'AI workspace access',
           description: 'Grant or revoke AI workspace access per user. Administrators always have access.',
@@ -751,6 +1037,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       pulse: {
         audit: {
           events: {
+            pilotApplicationDelete: 'Pilot application deleted',
             policyCreate: 'Policy created',
             policyUpdate: 'Policy updated',
             policyDelete: 'Policy deleted',
@@ -1265,6 +1552,222 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
   },
   zh: {
+    // 需求验证落地页（/solutions/*）与试点申请表单。
+    solutionsPage: {
+      cta: '申请试点',
+      contextHeading: '为什么重要',
+      sourceLabel: '来源：',
+      contextNote: '以上为公开案例，仅作背景参考；相关机构不是 Aster 客户，Aster 也未参与。',
+      capabilitiesHeading: '现有能力与开发中能力',
+      availableHeading: '现已可用',
+      developmentHeading: '开发中',
+      developmentBadge: '试点',
+      developmentNote: '本栏能力正与试点伙伴共同开发，尚未正式提供，本页不承诺交付日期。',
+      disclaimer: 'Aster 记录每次决策的过程并保留证据，但本身不构成对任何法规的合规认证；规则版本封存是内部版本控制，不等于完成监管备案。',
+      pilot: {
+        heading: '试点怎么做',
+        step1Title: '选定一组规则',
+        step1Body: '和我们一起选定范围明确的一组规则：一张费率表、一份信贷政策、一条资格规则或一份智能体动作策略。',
+        step2Title: '写成规则，审阅并签字',
+        step2Body: '我们一起在 Aster 中写好规则；由合规、风控或政策人员阅读将要实际执行的规则，再审批该版本。',
+        step3Title: '运行并查看证据',
+        step3Body: '用样例或历史输入运行，查看每次决策留下的记录，再告诉我们还缺什么。',
+      },
+      form: {
+        heading: '申请试点',
+        intro: '告诉我们你想验证哪些规则。每份申请都会有人阅读，并通过邮件回复。',
+        email: '工作邮箱',
+        company: '公司或机构',
+        role: '你的角色',
+        rolePlaceholder: '请选择角色',
+        roles: {
+          compliance_risk_audit: '合规、风控或内审',
+          actuarial_pricing: '精算或定价',
+          credit_risk: '信贷风险或授信政策',
+          policy_program: '公共部门政策或项目',
+          engineering_it: '研发或 IT',
+          product_business: '产品或业务线',
+          executive: '管理层',
+          other: '其他',
+        },
+        useCasesLegend: '关注哪些场景？（可多选）',
+        useCases: {
+          insurance_rating: '保险定价规则需与备案一致',
+          credit_decisions: '可解释的信贷决策与拒贷理由',
+          agent_guardrails: 'AI 智能体动作的人工审批与审计',
+          eligibility_rules: '公共部门资格规则（Rules as Code）',
+          other: '其他',
+        },
+        painPoint: '目前最难的是什么？（选填）',
+        painPointPlaceholder: '例如：规则改动后，说不清影响了哪些决策。',
+        consent: '我同意 Aster 保存以上信息，并就试点事宜通过邮件联系我。',
+        privacyLink: '隐私政策',
+        honeypot: '网站',
+        submit: '申请试点',
+        submitting: '正在提交…',
+        successTitle: '已收到申请',
+        successBody: '谢谢，我们会通过邮件回复。',
+        errors: {
+          generic: '提交失败，请重试。',
+          rateLimited: '该网络提交次数过多，请稍后再试。',
+          email: '请输入有效的邮箱地址（不接受一次性邮箱）。',
+          company: '请填写公司或机构名称。',
+          role: '请选择角色。',
+          useCases: '请至少选择一个场景。',
+          painPoint: '请控制在 2000 字以内。',
+          consent: '请勾选同意后再提交。',
+        },
+      },
+      pages: {
+        insuranceRating: {
+          seoTitle: '试点：把备案费率版本映射到生产定价规则 | Aster Cloud',
+          seoDescription: '面向保险公司的试点：把已备案的费率与规则版本映射到生产中实际运行的定价规则版本，并验证如何找出受影响的报价。可读、带版本的定价规则现已可用；备案映射与影响查询开发中。',
+          eyebrow: '保险定价 · 试点',
+          title: '试点：把备案费率版本映射到实际运行的定价规则',
+          subtitle: '目前 Aster 以可读、带版本的形式保存定价规则，供精算与合规人员审阅和审批，并记录每次执行所用的版本。本次试点想和你一起验证：备案版本能否映射到生产版本，以及出现不一致时如何找出受影响的报价。',
+          facts: {
+            filings: {
+              text: '美国个人车险每年约有 10,200 份费率备案。',
+              source: 'Insurance Research Council，2024',
+            },
+            refund: {
+              text: '在得州，一家保险公司约三年间收取了与备案不同的费率，对 8 万多张保单退款逾 1,800 万美元。',
+              source: '得州保险局 Order 2025-9142',
+            },
+            factorTable: {
+              text: '在一起公开执法案例中，单份备案的车型因子表达 287,750 行。',
+              source: '得州保险局 Order 2025-9237',
+            },
+            regulation57: {
+              text: '纽约 Regulation 57 要求保险公司按已批准费率收费，并建立防止使用错误费率的程序。',
+              source: '纽约金融服务局处罚公告，2024 年 3 月（命令日期 2024 年 1 月 30 日；11 NYCRR 160）',
+            },
+          },
+          available: {
+            readable: '定价规则以可读的策略语言编写，精算与合规人员能读懂实际执行的规则。',
+            sealed: '版本封存：对每个版本的编译输入做哈希，可核对审批后是否被改动。',
+            approval: '审批流程记录审批人与时间；对于套餐要求审批的团队策略，审批人必须不是作者本人（四眼）。',
+            evidence: '在 Aster Cloud 中的每次执行都记录所用版本与决策结果，可导出为证据包。',
+            template: '提供车险报价模板用于体验流程；它是演示，不是生产费率手册。',
+          },
+          development: {
+            filingMap: '把已备案的费率与规则版本映射到生产中的封存版本。',
+            impactQuery: '按规则版本或时间窗查出全部受影响报价，并按另一版本重算比较差异。',
+            documentView: '业务可读的已审批规则视图，关联执行轨迹，可导出审计包。',
+            scale: '生产规模的因子表与报价延迟尚未评估，将在试点中与你一起确定。',
+          },
+        },
+        creditDecisions: {
+          seoTitle: '试点：把拒贷理由关联到信贷规则版本 | Aster Cloud',
+          seoDescription: '面向放贷机构的试点：把每条拒贷理由关联到其背后的信贷规则版本与条件。风控与合规可审阅审批的可读规则现已可用；理由代码映射与按版本查询开发中。',
+          eyebrow: '信贷决策 · 试点',
+          title: '试点：把每条拒贷理由关联到其背后的规则版本',
+          subtitle: '目前 Aster 把信贷政策写成可读规则，供风控与合规人员审阅和审批，每次执行记录规则版本、命中的规则与拒绝理由。本次试点想和你一起验证：如何通过已审批的理由代码映射把这些记录转成通知理由，以及如何按规则版本回看过往决策。',
+          demoLink: '体验信贷决策回放演示',
+          facts: {
+            regB: {
+              text: 'Regulation B 要求授信方向申请人说明不利决定的具体理由。',
+              source: '12 CFR 1002.9（ECOA / Regulation B）',
+            },
+            supervision: {
+              text: 'CFPB 检查发现，汽车贷款机构未验证其拒贷理由选择流程能否产生准确结果。',
+              source: 'CFPB Supervisory Highlights 第 38 期（2025 年 1 月）',
+            },
+            settlement: {
+              text: '2025 年 7 月，马萨诸塞州总检察长宣布与一家学生贷款机构就其放贷做法（包括使用 AI 核保模型）达成 250 万美元和解。',
+              source: '马萨诸塞州总检察长新闻稿',
+            },
+          },
+          available: {
+            readable: '信贷规则以可读的策略语言编写，风控与合规人员可审阅并签字。',
+            sealed: '版本封存：对每个版本的编译输入做哈希，可核对审批后是否被改动。',
+            approval: '审批流程记录审批人与时间；对于套餐要求审批的团队策略，审批人必须不是作者本人（四眼）。',
+            trace: '每次执行记录规则版本、决策、命中的规则与拒绝理由。',
+            evidence: '证据导出（JSON / JSONL），每次执行附哈希。',
+            demo: '贷款申请模板与可交互的决策回放演示。',
+          },
+          development: {
+            reasonCodes: '通过已审批的理由代码映射，把触发条件转成拒贷通知理由。',
+            impactQuery: '按规则版本或时间窗查出全部决策，并按另一版本重算。',
+            documentView: '业务可读的已审批政策视图，每条规则关联执行轨迹。',
+          },
+        },
+        agentGuardrails: {
+          seoTitle: '试点：高风险智能体动作的人工审批与审计记录 | Aster Cloud',
+          seoDescription: '面向运行 AI 智能体团队的试点：高风险动作先送人工审批并留下审计记录，由位于 Cedar 运行时上游的可读策略与证据层提供。框架与 MCP 适配器开发中。',
+          eyebrow: 'AI 智能体护栏 · 试点',
+          title: '试点：高风险智能体动作先送人工审批，并留下审计记录',
+          subtitle: '把智能体可以做什么写成可读规则，由风控与合规人员签字。Aster 返回 ALLOW、DENY 或 REQUIRE_APPROVAL，把审批派给对应业务角色，并保留「谁在哪个策略版本下决定了什么」的证据。',
+          positioning: {
+            title: '位于 Cedar 运行时上游，而不是取代它',
+            body: '审批环节已出现在多个智能体平台中，包括在网关层执行 Cedar 策略的 Amazon Bedrock AgentCore Policy。Aster 的位置在上游：合规团队签字的可读策略、做出每次判定的封存版本，以及审批记录。可干净翻译的规则，Aster 能导出为 Cedar，交给 AgentCore 等运行时执行。Cedar 导出只支持部分规则：无法翻译的规则会整体拒绝，而不是近似转换。',
+          },
+          facts: {
+            gsa: {
+              text: '自 2026 年 10 月 19 日起，GSA 的 LLM 采购合同条款要求提供人工监督、干预与可追溯的手段，包括智能体系统的步骤记录。',
+              source: 'MeriTalk 关于 GSA 新 AI 合同条款的报道',
+            },
+            agentcore: {
+              text: 'AWS 选择用 Cedar 在 Amazon Bedrock AgentCore Policy 中执行智能体工具调用策略。',
+              source: 'AWS Security Blog',
+            },
+          },
+          available: {
+            decisions: '基于封存策略版本的 Guard 判定：ALLOW、DENY、REQUIRE_APPROVAL 或 ESCALATE。',
+            inbox: '审批收件箱：按团队记录中的业务角色匹配审批人，发起人不能审批自己的动作。',
+            evidence: '每次判定与审批都有证据，关联策略版本，可导出。',
+            cedar: '可干净翻译的规则可导出为 Cedar（含 schema 与探针比对）；只支持部分规则。',
+          },
+          development: {
+            adapters: '主流智能体框架与 MCP 的适配器（尚未实现）。',
+            latency: '适合内联工具调用的低延迟判定服务水平。',
+            auditView: '判定与审批合并的审计视图。',
+            agentcore: '验证从 Cedar 导出接入 AgentCore Policy 的路径。',
+          },
+        },
+        eligibilityRules: {
+          seoTitle: '试点：把资格判定关联到当时生效的规则版本 | Aster Cloud',
+          seoDescription: '面向公共部门资格判定的 Rules as Code 试点：政策人员可审阅审批的可读规则，每次判定记录规则版本、输入与命中规则。时点查询开发中。',
+          eyebrow: '公共部门资格判定 · Rules as Code · 试点',
+          title: '试点：把每次资格判定关联到当时生效的规则版本',
+          subtitle: '目前 Aster 把资格政策写成可读规则，供政策人员阅读、审阅和审批，每次判定记录规则版本、所用输入与命中的规则。本次试点想和你一起验证时点回看：哪些判定是在哪个规则版本下做出的。',
+          facts: {
+            louisiana: {
+              text: '路易斯安那州 2025 年资格系统 RFI 询问 Rules as Code 架构，以及可供州和联邦机构完整、方便审计的系统。',
+              source: '路易斯安那州卫生部 RFI，2025 年 9 月',
+            },
+            clauseLogic: {
+              text: '美国国防部的合同条款自动选择概念方案包含业务规则引擎，要求记录哪些规则作用于哪些输入、产生了什么输出。',
+              source: 'DoD Clause Logic Service 寻源通知，2024（经 GovTribe）',
+            },
+          },
+          available: {
+            readable: '资格规则以可读的策略语言编写，政策与法务人员可阅读、审阅并签字。',
+            sealed: '版本封存：对每个版本的编译输入做哈希，可核对审批后是否被改动。',
+            approval: '审批流程记录审批人与时间；对于套餐要求审批的团队策略，审批人必须不是作者本人（四眼）。',
+            trace: '每次判定记录规则版本、输入、决策与命中的规则。',
+            evidence: '证据导出（JSON / JSONL），每次判定附哈希。',
+            languages: '在非英语环境中可用母语阅读规则（目前支持英语、中文、德语、印地语）。',
+          },
+          development: {
+            pointInTime: '时点查询：哪些判定是在哪个规则版本下做出的，并按另一版本重算。',
+            documentView: '业务可读的政策视图，每条规则关联执行轨迹，可导出审计包。',
+            deployment: '公共部门试点的部署与数据驻留安排，逐案确定。',
+          },
+        },
+      },
+    },
+    // 隐私政策补充：试点申请与第一方产品分析（保留期与用途）。
+    legal: {
+      privacy: {
+        sections: {
+          demandValidation: {
+            title: '4a. 试点申请与产品分析',
+            content: '如果你在我们的解决方案页面申请试点，我们会保存你提交的信息（工作邮箱、公司、角色、所选场景与选填说明）、提交所在页面以及来源标记（UTM 参数与来源网站的主机名），用于评估并回复你的申请。申请不保存你的 IP 地址。申请在提交 24 个月后自动删除，你也可以通过下方联系方式要求提前删除。此外，我们记录第一方产品使用事件（例如完成注册、首次保存策略、导出证据、落地页访问），以了解哪些功能被使用。这些事件只带假名化的用户与团队标识，不含策略内容、输入、邮箱或姓名，13 个月后自动删除。浏览器端事件（落地页访问、模板选择与审批收件箱访问）同时发送至 Mixpanel，见第 11 节。',
+          },
+        },
+      },
+    },
     // 复核面板（ADR 0037 §14/§15，本地补充）。
     policyReview: {
       title: '人工复核',
@@ -1867,8 +2370,78 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: '前往 AI 密钥设置',
     },
     admin: {
-      nav: { aiWorkspaceAccess: 'AI 工作台授权', revalidation: '策略重验' },
+      // 需求验证看板（/admin/demand）。
+      demand: {
+        eventsDisabled: '产品事件未在记录：PRODUCT_ANALYTICS_SALT 未配置。本页的 0 不代表没有需求。',
+        title: '需求验证',
+        subtitle: '2026-11 需求假设的行为数据：保险定价、信贷决策、智能体护栏、资格规则。',
+        window: '最近 12 周（自 {since} 起）。',
+        privacyNote: '事件不含策略内容、输入、邮箱或姓名；用户与租户 id 为假名。',
+        empty: '暂无数据。',
+        count: '次数',
+        funnel: {
+          heading: '漏斗',
+          note: '窗口内注册的用户；各步骤只在已验证邮箱的注册中统计（不限时间）。',
+          signups: '注册',
+          firstSaved: '首次保存策略',
+          firstExecuted: '首次执行',
+          evidenceExported: '导出证据',
+          ofSignups: '占已验证注册 {pct}',
+          verifiedSignups: '已验证注册',
+        },
+        weekly: {
+          heading: '每周事件数',
+          note: '按周一起算（UTC）。policy_first_saved / policy_first_executed 只计埋点上线后注册的用户。guard_api_called 为成功的 Guard 直连判定调用（POST /api/v1/guard/*），来自 API 用量记录。',
+          week: '周',
+        },
+        templates: {
+          heading: '新建策略时选择的模板',
+          template: '模板',
+        },
+        landing: {
+          heading: '落地页',
+          page: '页面',
+          views: '访问',
+          submissions: '申请',
+          rate: '转化率',
+          note: '仅作方向参考：访问量已排除常见爬虫与同一标签页 30 分钟内对同一页面的重复访问，但仍是上界。',
+        },
+        sources: {
+          heading: '落地页来源',
+          source: '来源（utm_source 或 referrer）',
+        },
+        guard: {
+          heading: '成功的 Guard API 判定调用（按租户）',
+          note: '租户 id 为假名；API 用量记录保留 90 天。',
+          tenant: '租户',
+        },
+        applications: {
+          heading: '试点申请（最近 {count} 条）',
+          export: '导出 CSV',
+          createdAt: '提交时间',
+          email: '邮箱',
+          mailbox: '邮箱类型',
+          personalMailbox: '个人邮箱',
+          companyDomain: '企业域名',
+          company: '公司',
+          role: '角色',
+          useCases: '场景',
+          page: '落地页',
+          source: '来源',
+          painPoint: '痛点',
+          delete: '删除',
+          deleteConfirm: '永久删除这条申请？',
+          deleteFailed: '删除失败，请重试。',
+        },
+        retentionNote: '试点申请保留 24 个月，产品事件保留 13 个月，到期自动删除。',
+      },
+      nav: { aiWorkspaceAccess: 'AI 工作台授权', revalidation: '策略重验', demand: '需求验证' },
       overview: {
+        demandCard: {
+          title: '需求验证',
+          description: '产品事件漏斗、模板选择、落地页流量与试点申请。',
+          cta: '打开看板',
+        },
         aiWorkspaceAccessCard: {
           title: 'AI 工作台授权',
           description: '按用户授予或撤销 AI 工作台访问权限。管理员始终可以访问。',
@@ -1955,6 +2528,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       pulse: {
         audit: {
           events: {
+            pilotApplicationDelete: '试点申请已删除',
             policyCreate: '创建策略',
             policyUpdate: '更新策略',
             policyDelete: '删除策略',
@@ -2463,6 +3037,222 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
   },
   de: {
+    // 需求验证落地页（/solutions/*）与试点申请表单。
+    solutionsPage: {
+      cta: 'Pilot anfragen',
+      contextHeading: 'Warum das wichtig ist',
+      sourceLabel: 'Quelle:',
+      contextNote: 'Öffentliche Beispiele, nur zur Einordnung. Die genannten Unternehmen und Behörden sind keine Aster-Kunden; Aster war nicht beteiligt.',
+      capabilitiesHeading: 'Was es heute gibt und was in Entwicklung ist',
+      availableHeading: 'Heute verfügbar',
+      developmentHeading: 'In Entwicklung',
+      developmentBadge: 'Pilot',
+      developmentNote: 'Die Punkte in dieser Spalte entstehen gemeinsam mit Pilotpartnern. Sie sind noch nicht allgemein verfügbar; diese Seite sagt keine Liefertermine zu.',
+      disclaimer: 'Aster dokumentiert, wie jede Entscheidung zustande kam, und bewahrt die Nachweise auf. Das ist für sich genommen keine Bestätigung der Einhaltung von Gesetzen oder Vorschriften; das Versiegeln einer Regelversion ist interne Versionskontrolle, keine aufsichtsrechtliche Einreichung.',
+      pilot: {
+        heading: 'So läuft ein Pilot ab',
+        step1Title: 'Ein Regelwerk auswählen',
+        step1Body: 'Wir wählen gemeinsam ein klar abgegrenztes Regelwerk: eine Tariftabelle, eine Kreditrichtlinie, eine Anspruchsregel oder eine Richtlinie für Agentenaktionen.',
+        step2Title: 'Abbilden, prüfen, freigeben',
+        step2Body: 'Wir bilden die Regeln gemeinsam in Aster ab. Ihre Compliance-, Risiko- oder Fachabteilung liest die Regeln, die tatsächlich ausgeführt werden, und gibt die Version frei.',
+        step3Title: 'Ausführen und Nachweise ansehen',
+        step3Body: 'Führen Sie die Regeln mit Beispiel- oder historischen Daten aus und sehen Sie sich an, was jede Entscheidung hinterlässt. Sagen Sie uns dann, was fehlt.',
+      },
+      form: {
+        heading: 'Pilot anfragen',
+        intro: 'Erzählen Sie uns, welche Regeln Sie testen möchten. Wir lesen jede Anfrage und antworten per E-Mail.',
+        email: 'Geschäftliche E-Mail',
+        company: 'Unternehmen oder Organisation',
+        role: 'Ihre Rolle',
+        rolePlaceholder: 'Rolle auswählen',
+        roles: {
+          compliance_risk_audit: 'Compliance, Risiko oder Revision',
+          actuarial_pricing: 'Aktuariat oder Tarifierung',
+          credit_risk: 'Kreditrisiko oder Kreditrichtlinien',
+          policy_program: 'Öffentliche Verwaltung: Fachpolitik oder Programm',
+          engineering_it: 'Entwicklung oder IT',
+          product_business: 'Produkt oder Fachbereich',
+          executive: 'Geschäftsleitung',
+          other: 'Sonstiges',
+        },
+        useCasesLegend: 'Welche Anwendungsfälle? (Mehrfachauswahl)',
+        useCases: {
+          insurance_rating: 'Tarifregeln, die mit der Einreichung übereinstimmen müssen',
+          credit_decisions: 'Erklärbare Kreditentscheidungen und Ablehnungsgründe',
+          agent_guardrails: 'Menschliche Freigabe und Audit für Aktionen von KI-Agenten',
+          eligibility_rules: 'Anspruchsregeln im öffentlichen Sektor (Rules as Code)',
+          other: 'Etwas anderes',
+        },
+        painPoint: 'Was ist daran heute am schwierigsten? (optional)',
+        painPointPlaceholder: 'Zum Beispiel: Nach einer Regeländerung konnten wir nicht sagen, welche Entscheidungen betroffen waren.',
+        consent: 'Ich bin einverstanden, dass Aster diese Angaben speichert und mich per E-Mail zu einem Pilot kontaktiert.',
+        privacyLink: 'Datenschutzerklärung',
+        honeypot: 'Website',
+        submit: 'Pilot anfragen',
+        submitting: 'Wird gesendet …',
+        successTitle: 'Anfrage erhalten',
+        successBody: 'Vielen Dank. Wir antworten per E-Mail.',
+        errors: {
+          generic: 'Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.',
+          rateLimited: 'Zu viele Versuche aus diesem Netzwerk. Bitte versuchen Sie es später erneut.',
+          email: 'Bitte geben Sie eine gültige E-Mail-Adresse ein. Wegwerfadressen werden nicht akzeptiert.',
+          company: 'Bitte geben Sie Ihr Unternehmen oder Ihre Organisation an.',
+          role: 'Bitte wählen Sie Ihre Rolle.',
+          useCases: 'Bitte wählen Sie mindestens einen Anwendungsfall.',
+          painPoint: 'Bitte bleiben Sie unter 2.000 Zeichen.',
+          consent: 'Bitte bestätigen Sie die Einwilligung, um fortzufahren.',
+        },
+      },
+      pages: {
+        insuranceRating: {
+          seoTitle: 'Pilot: eingereichte Tarifversionen produktiven Tarifregeln zuordnen | Aster Cloud',
+          seoDescription: 'Ein Pilot für Versicherer: eingereichte Tarif- und Regelversionen den produktiv ausgeführten Tarifregelversionen zuordnen und prüfen, wie betroffene Angebote gefunden werden können. Lesbare, versionierte Tarifregeln sind heute verfügbar; Zuordnung und Wirkungsabfragen sind in Entwicklung.',
+          eyebrow: 'Versicherungstarifierung · Pilot',
+          title: 'Pilot: eingereichte Tarifversionen den tatsächlich ausgeführten Tarifregeln zuordnen',
+          subtitle: 'Heute hält Aster Tarifregeln in einer lesbaren, versionierten Form, die Aktuariat und Compliance prüfen und freigeben können, und protokolliert, welche Version jede Ausführung verwendet hat. Im Pilot möchten wir mit Ihnen prüfen, ob sich eingereichte Versionen den Produktionsversionen zuordnen lassen und wie die von einer Abweichung betroffenen Angebote gefunden werden können.',
+          facts: {
+            filings: {
+              text: 'In der US-Kfz-Versicherung für Privatkunden gibt es jährlich rund 10.200 Tarifeinreichungen.',
+              source: 'Insurance Research Council, 2024',
+            },
+            refund: {
+              text: 'In Texas berechnete ein Versicherer etwa drei Jahre lang Tarife, die von den eingereichten abwichen; er erstattete über 18 Mio. US-Dollar für mehr als 80.000 Policen.',
+              source: 'Texas Department of Insurance, Order 2025-9142',
+            },
+            factorTable: {
+              text: 'In einem öffentlichen Aufsichtsverfahren umfasste die Fahrzeugfaktortabelle einer einzigen Einreichung 287.750 Zeilen.',
+              source: 'Texas Department of Insurance, Order 2025-9237',
+            },
+            regulation57: {
+              text: 'Die New Yorker Regulation 57 verlangt, genehmigte Tarife zu berechnen und Verfahren vorzuhalten, die den Einsatz falscher Tarife verhindern.',
+              source: 'NY DFS, Liste der Aufsichtsmaßnahmen, März 2024 (Anordnung vom 30. Januar 2024; 11 NYCRR 160)',
+            },
+          },
+          available: {
+            readable: 'Tarifregeln in einer lesbaren Richtliniensprache, sodass Aktuariat und Compliance die tatsächlich ausgeführten Regeln lesen können.',
+            sealed: 'Versiegelte Versionen: Ein Hash über die Kompilierungseingaben jeder Version zeigt, ob nach der Freigabe etwas geändert wurde.',
+            approval: 'Ein Freigabeablauf, der Freigebenden und Zeitpunkt festhält. Bei Team-Richtlinien in Tarifen mit Freigabepflicht muss die freigebende Person eine andere als die verfassende sein (Vier-Augen-Prinzip).',
+            evidence: 'Jede Ausführung in Aster Cloud wird mit der verwendeten Version und dem Ergebnis protokolliert und lässt sich als Nachweispaket exportieren.',
+            template: 'Eine Vorlage für Kfz-Angebote zum Ausprobieren des Ablaufs. Sie ist eine Demo, kein produktives Tarifhandbuch.',
+          },
+          development: {
+            filingMap: 'Zuordnung eingereichter Tarif- und Regelversionen zu den versiegelten Produktionsversionen.',
+            impactQuery: 'Alle Angebote einer Regelversion oder eines Zeitraums finden und mit einer anderen Version neu berechnen, um die Unterschiede zu sehen.',
+            documentView: 'Eine fachlich lesbare Ansicht der freigegebenen Regeln, verknüpft mit Ausführungsspuren und als Prüfpaket exportierbar.',
+            scale: 'Faktortabellen in Produktionsgröße und Angebotslatenz sind noch nicht bewertet; das würden wir im Pilot mit Ihnen klären.',
+          },
+        },
+        creditDecisions: {
+          seoTitle: 'Pilot: Ablehnungsgründe mit Kreditregelversionen verknüpfen | Aster Cloud',
+          seoDescription: 'Ein Pilot für Kreditgeber: jeden Ablehnungsgrund mit der Kreditregelversion und den Bedingungen dahinter verknüpfen. Lesbare Regeln, die Risiko und Compliance prüfen und freigeben, sind heute verfügbar; Zuordnung von Gründen und Versionsabfragen sind in Entwicklung.',
+          eyebrow: 'Kreditentscheidungen · Pilot',
+          title: 'Pilot: jeden Ablehnungsgrund mit der Regelversion dahinter verknüpfen',
+          subtitle: 'Heute hält Aster Kreditrichtlinien in lesbaren Regeln, die Risiko und Compliance prüfen und freigeben können; jede Ausführung protokolliert Regelversion, zutreffende Regeln und Ablehnungsgründe. Im Pilot möchten wir mit Ihnen prüfen, wie daraus über eine freigegebene Zuordnung Gründe für die Ablehnungsmitteilung werden und wie sich frühere Entscheidungen nach Regelversion prüfen lassen.',
+          demoLink: 'Demo zur Wiedergabe von Kreditentscheidungen ausprobieren',
+          facts: {
+            regB: {
+              text: 'Regulation B verpflichtet Kreditgeber, Antragstellern die konkreten Gründe für eine ablehnende Entscheidung mitzuteilen.',
+              source: '12 CFR 1002.9 (ECOA / Regulation B)',
+            },
+            supervision: {
+              text: 'Prüfer der CFPB stellten fest, dass Autokreditgeber nicht validiert hatten, ob ihr Verfahren zur Auswahl der Ablehnungsgründe zutreffende Ergebnisse liefert.',
+              source: 'CFPB Supervisory Highlights, Ausgabe 38 (Januar 2025)',
+            },
+            settlement: {
+              text: 'Im Juli 2025 gab die Generalstaatsanwältin von Massachusetts einen Vergleich über 2,5 Mio. US-Dollar mit einem Studienkreditgeber bekannt, der dessen Kreditvergabepraxis einschließlich KI-gestützter Bonitätsmodelle betraf.',
+              source: 'Generalstaatsanwaltschaft Massachusetts, Pressemitteilung',
+            },
+          },
+          available: {
+            readable: 'Kreditregeln in einer lesbaren Richtliniensprache, die Risiko und Compliance prüfen und freigeben können.',
+            sealed: 'Versiegelte Versionen: Ein Hash über die Kompilierungseingaben jeder Version zeigt, ob nach der Freigabe etwas geändert wurde.',
+            approval: 'Ein Freigabeablauf, der Freigebenden und Zeitpunkt festhält. Bei Team-Richtlinien in Tarifen mit Freigabepflicht muss die freigebende Person eine andere als die verfassende sein (Vier-Augen-Prinzip).',
+            trace: 'Jede Ausführung hält Regelversion, Entscheidung, zutreffende Regeln und Ablehnungsgründe fest.',
+            evidence: 'Nachweisexport (JSON oder JSONL) mit Hashes je Ausführung.',
+            demo: 'Eine Vorlage für Kreditanträge und eine interaktive Demo zur Wiedergabe von Entscheidungen.',
+          },
+          development: {
+            reasonCodes: 'Ausgelöste Bedingungen über eine freigegebene Zuordnung von Gründen in Ablehnungsgründe für die Mitteilung überführen.',
+            impactQuery: 'Alle Entscheidungen einer Regelversion oder eines Zeitraums finden und mit einer anderen Version neu berechnen.',
+            documentView: 'Eine fachlich lesbare Ansicht der freigegebenen Richtlinie, die jede Regel mit Ausführungsspuren verknüpft.',
+          },
+        },
+        agentGuardrails: {
+          seoTitle: 'Pilot: menschliche Freigabe und Prüfpfad für riskante Agentenaktionen | Aster Cloud',
+          seoDescription: 'Ein Pilot für Teams mit KI-Agenten: riskante Aktionen zur menschlichen Freigabe schicken, mit Prüfpfad, über eine lesbare Richtlinien- und Nachweisschicht vor Cedar-Laufzeiten. Adapter für Frameworks und MCP sind in Entwicklung.',
+          eyebrow: 'Leitplanken für KI-Agenten · Pilot',
+          title: 'Pilot: riskante Agentenaktionen zur menschlichen Freigabe schicken, mit Prüfpfad',
+          subtitle: 'Legen Sie in lesbaren Regeln fest, was ein Agent tun darf, und lassen Sie sie von Risiko und Compliance freigeben. Aster antwortet mit ALLOW, DENY oder REQUIRE_APPROVAL, leitet Freigaben an die richtige Fachrolle weiter und bewahrt den Nachweis, wer was unter welcher Richtlinienversion entschieden hat.',
+          positioning: {
+            title: 'Vor Cedar-Laufzeiten, nicht an ihrer Stelle',
+            body: 'Freigabeschritte bieten inzwischen mehrere Agentenplattformen, darunter Amazon Bedrock AgentCore Policy, das Cedar-Richtlinien am Gateway durchsetzt. Aster setzt davor an: die lesbare Richtlinie, die Ihre Compliance freigegeben hat, die versiegelte Version hinter jeder Entscheidung und der Freigabenachweis. Regeln, die sich sauber übersetzen lassen, kann Aster nach Cedar exportieren, damit eine Laufzeit wie AgentCore sie durchsetzt. Der Cedar-Export deckt nur einen Teil der Regeln ab: Nicht übersetzbare Regeln werden vollständig abgelehnt statt angenähert.',
+          },
+          facts: {
+            gsa: {
+              text: 'Seit dem 19. Oktober 2026 verlangen die GSA-Vertragsbedingungen für LLM-Beschaffungen Mittel zur menschlichen Aufsicht, zum Eingreifen und zur Nachvollziehbarkeit, einschließlich protokollierter Schritte agentischer Systeme.',
+              source: 'MeriTalk zu den neuen KI-Vertragsklauseln der GSA',
+            },
+            agentcore: {
+              text: 'AWS hat Cedar gewählt, um Richtlinien für Tool-Aufrufe von Agenten in Amazon Bedrock AgentCore Policy durchzusetzen.',
+              source: 'AWS Security Blog',
+            },
+          },
+          available: {
+            decisions: 'Guard-Entscheidungen aus einer versiegelten Richtlinienversion: ALLOW, DENY, REQUIRE_APPROVAL oder ESCALATE.',
+            inbox: 'Ein Freigabe-Eingang, der Freigebende über ihre Fachrolle im Teamdatensatz zuordnet; wer eine Aktion anstößt, kann sie nicht selbst freigeben.',
+            evidence: 'Nachweise zu jeder Entscheidung und Freigabe, verknüpft mit der Richtlinienversion und exportierbar.',
+            cedar: 'Cedar-Export für sauber übersetzbare Regeln, mit Schema und Abgleich über Testanfragen. Unterstützt wird nur ein Teil der Regeln.',
+          },
+          development: {
+            adapters: 'Adapter für Agenten-Frameworks und MCP. Noch nicht gebaut.',
+            latency: 'Ein Service-Level mit niedriger Latenz für Entscheidungen direkt im Tool-Aufruf.',
+            auditView: 'Eine gemeinsame Prüfansicht für Entscheidungen und Freigaben.',
+            agentcore: 'Den Weg vom Cedar-Export in AgentCore Policy validieren.',
+          },
+        },
+        eligibilityRules: {
+          seoTitle: 'Pilot: Anspruchsentscheidungen der geltenden Regelversion zuordnen | Aster Cloud',
+          seoDescription: 'Ein Rules-as-Code-Pilot für Anspruchsprüfungen im öffentlichen Sektor: lesbare Regeln, die Fachreferate prüfen und freigeben, und jede Entscheidung protokolliert Regelversion, Eingaben und angewendete Regeln. Stichtagsabfragen sind in Entwicklung.',
+          eyebrow: 'Anspruchsprüfung im öffentlichen Sektor · Rules as Code · Pilot',
+          title: 'Pilot: jede Anspruchsentscheidung der damals geltenden Regelversion zuordnen',
+          subtitle: 'Heute hält Aster Anspruchsregeln in lesbarer Form, die Fachreferate lesen, prüfen und freigeben können; jede Entscheidung protokolliert Regelversion, verwendete Eingaben und angewendete Regeln. Im Pilot möchten wir mit Ihnen die Prüfung zu einem Stichtag erproben: welche Entscheidungen unter welcher Regelversion getroffen wurden.',
+          facts: {
+            louisiana: {
+              text: 'Die Markterkundung (RFI) von Louisiana zu Anspruchssystemen aus 2025 fragt nach einer Rules-as-Code-Architektur und nach Systemen, die Landes- und Bundesbehörden vollständig und einfach prüfen können.',
+              source: 'Louisiana Department of Health, RFI, September 2025',
+            },
+            clauseLogic: {
+              text: 'Ein Konzept des US-Verteidigungsministeriums zur automatischen Auswahl von Vertragsklauseln sieht eine Regel-Engine vor, deren Prüfpfad festhält, welche Regeln auf welche Eingaben angewendet wurden und was sie ergaben.',
+              source: 'DoD Clause Logic Service, Markterkundung 2024 (über GovTribe)',
+            },
+          },
+          available: {
+            readable: 'Anspruchsregeln in einer lesbaren Richtliniensprache, die Fach- und Rechtsreferate lesen, prüfen und freigeben können.',
+            sealed: 'Versiegelte Versionen: Ein Hash über die Kompilierungseingaben jeder Version zeigt, ob nach der Freigabe etwas geändert wurde.',
+            approval: 'Ein Freigabeablauf, der Freigebenden und Zeitpunkt festhält. Bei Team-Richtlinien in Tarifen mit Freigabepflicht muss die freigebende Person eine andere als die verfassende sein (Vier-Augen-Prinzip).',
+            trace: 'Jede Entscheidung hält Regelversion, Eingaben, Ergebnis und angewendete Regeln fest.',
+            evidence: 'Nachweisexport (JSON oder JSONL) mit Hashes je Entscheidung.',
+            languages: 'Regeln sind außerhalb des englischen Sprachraums in der Landessprache lesbar (derzeit Englisch, Chinesisch, Deutsch und Hindi).',
+          },
+          development: {
+            pointInTime: 'Stichtagsabfragen: welche Entscheidungen unter welcher Regelversion getroffen wurden, und Neuberechnung unter einer anderen.',
+            documentView: 'Eine fachlich lesbare Richtlinienansicht, die jede Regel mit Ausführungsspuren verknüpft und als Prüfpaket exportierbar ist.',
+            deployment: 'Betriebs- und Datenresidenzvorgaben für Piloten im öffentlichen Sektor, im Einzelfall abgestimmt.',
+          },
+        },
+      },
+    },
+    // 隐私政策补充：试点申请与第一方产品分析（保留期与用途）。
+    legal: {
+      privacy: {
+        sections: {
+          demandValidation: {
+            title: '4a. Pilotanfragen und Produktanalyse',
+            content: 'Wenn Sie über eine unserer Lösungsseiten einen Pilot anfragen, speichern wir Ihre Angaben (geschäftliche E-Mail, Unternehmen, Rolle, gewählte Anwendungsfälle und die optionale Beschreibung), die Seite, von der aus Sie angefragt haben, sowie Kampagnenmerkmale (UTM-Parameter und den Hostnamen der verweisenden Website), um Ihre Anfrage zu prüfen und zu beantworten. Ihre IP-Adresse speichern wir nicht mit der Anfrage. Anfragen werden 24 Monate nach Eingang automatisch gelöscht; über die unten genannten Kontaktdaten können Sie eine frühere Löschung verlangen. Außerdem erfassen wir eigene Ereignisse zur Produktnutzung (zum Beispiel abgeschlossene Registrierung, erste gespeicherte Richtlinie, Nachweisexport und Aufrufe der Landingpages), um zu verstehen, welche Funktionen genutzt werden. Diese Ereignisse enthalten pseudonymisierte Benutzer- und Teamkennungen, aber keine Richtlinieninhalte, Eingaben, E-Mail-Adressen oder Namen; sie werden nach 13 Monaten automatisch gelöscht. Ereignisse aus dem Browser (Aufrufe der Landingpages, Vorlagenauswahl und Aufrufe des Freigabe-Eingangs) werden zusätzlich an Mixpanel übermittelt; siehe Abschnitt 11.',
+          },
+        },
+      },
+    },
     // 复核面板（ADR 0037 §14/§15，本地补充）。
     policyReview: {
       title: 'Manuelle Prüfung',
@@ -3080,8 +3870,78 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: 'KI-Schlüssel-Einstellungen öffnen',
     },
     admin: {
-      nav: { aiWorkspaceAccess: 'Zugriff auf den KI-Arbeitsbereich', revalidation: 'Richtlinien erneut prüfen' },
+      // 需求验证看板（/admin/demand）。
+      demand: {
+        eventsDisabled: 'Produktereignisse werden nicht erfasst: PRODUCT_ANALYTICS_SALT ist nicht konfiguriert. Nullwerte auf dieser Seite bedeuten nicht, dass keine Nachfrage besteht.',
+        title: 'Nachfragevalidierung',
+        subtitle: 'Verhaltenssignale zu den Nachfragehypothesen 2026-11: Versicherungstarife, Kreditentscheidungen, Agenten-Leitplanken und Anspruchsregeln.',
+        window: 'Letzte 12 Wochen (seit {since}).',
+        privacyNote: 'Ereignisse enthalten keine Richtlinieninhalte, Eingaben, E-Mail-Adressen oder Namen; Benutzer- und Mandanten-IDs sind pseudonymisiert.',
+        empty: 'Noch keine Daten.',
+        count: 'Anzahl',
+        funnel: {
+          heading: 'Trichter',
+          note: 'Im Zeitraum registrierte Benutzer; die Schritte werden nur unter verifizierten Registrierungen (bestätigte E-Mail) gezählt, zu beliebigem Zeitpunkt.',
+          signups: 'Registriert',
+          firstSaved: 'Erste Richtlinie gespeichert',
+          firstExecuted: 'Erste Ausführung',
+          evidenceExported: 'Nachweis exportiert',
+          ofSignups: '{pct} der verifizierten Registrierungen',
+          verifiedSignups: 'Verifizierte Registrierungen',
+        },
+        weekly: {
+          heading: 'Ereignisse pro Woche',
+          note: 'Wochen beginnen montags (UTC). policy_first_saved / policy_first_executed zählen nur Benutzer, die sich nach Beginn der Erfassung registriert haben. guard_api_called zählt erfolgreiche direkte Guard-Entscheidungsaufrufe (POST /api/v1/guard/*) aus den API-Nutzungsdaten.',
+          week: 'Woche',
+        },
+        templates: {
+          heading: 'Beim Anlegen gewählte Vorlagen',
+          template: 'Vorlage',
+        },
+        landing: {
+          heading: 'Landingpages',
+          page: 'Seite',
+          views: 'Aufrufe',
+          submissions: 'Anfragen',
+          rate: 'Quote',
+          note: 'Nur als Richtwert: Aufrufe ohne gängige Bots und ohne wiederholte Aufrufe derselben Seite im selben Browser-Tab innerhalb von 30 Minuten, aber weiterhin eine Obergrenze.',
+        },
+        sources: {
+          heading: 'Herkunft der Landingpage-Aufrufe',
+          source: 'Quelle (utm_source oder Referrer)',
+        },
+        guard: {
+          heading: 'Erfolgreiche Guard-API-Entscheidungsaufrufe nach Mandant',
+          note: 'Mandanten-IDs sind pseudonymisiert. API-Nutzungsdaten werden 90 Tage aufbewahrt.',
+          tenant: 'Mandant',
+        },
+        applications: {
+          heading: 'Pilotanfragen (neueste {count})',
+          export: 'CSV exportieren',
+          createdAt: 'Eingang',
+          email: 'E-Mail',
+          mailbox: 'Postfach',
+          personalMailbox: 'Privat',
+          companyDomain: 'Firmendomain',
+          company: 'Unternehmen',
+          role: 'Rolle',
+          useCases: 'Anwendungsfälle',
+          page: 'Landingpage',
+          source: 'Quelle',
+          painPoint: 'Problem',
+          delete: 'Löschen',
+          deleteConfirm: 'Diese Anfrage endgültig löschen?',
+          deleteFailed: 'Die Anfrage konnte nicht gelöscht werden. Bitte erneut versuchen.',
+        },
+        retentionNote: 'Pilotanfragen werden nach 24 Monaten, Produktereignisse nach 13 Monaten automatisch gelöscht.',
+      },
+      nav: { aiWorkspaceAccess: 'Zugriff auf den KI-Arbeitsbereich', revalidation: 'Richtlinien erneut prüfen', demand: 'Nachfragevalidierung' },
       overview: {
+        demandCard: {
+          title: 'Nachfragevalidierung',
+          description: 'Trichter der Produktereignisse, gewählte Vorlagen, Landingpage-Zugriffe und Pilotanfragen.',
+          cta: 'Dashboard öffnen',
+        },
         aiWorkspaceAccessCard: {
           title: 'Zugriff auf den KI-Arbeitsbereich',
           description: 'Zugriff auf den KI-Arbeitsbereich pro Benutzer erteilen oder entziehen. Administratoren haben immer Zugriff.',
@@ -3168,6 +4028,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       pulse: {
         audit: {
           events: {
+            pilotApplicationDelete: 'Pilotanfrage gelöscht',
             policyCreate: 'Policy erstellt',
             policyUpdate: 'Policy aktualisiert',
             policyDelete: 'Policy gelöscht',
@@ -3671,6 +4532,222 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
   },
   hi: {
+    // 需求验证落地页（/solutions/*）与试点申请表单。
+    solutionsPage: {
+      cta: 'पायलट के लिए आवेदन करें',
+      contextHeading: 'यह क्यों मायने रखता है',
+      sourceLabel: 'स्रोत:',
+      contextNote: 'ये सार्वजनिक उदाहरण केवल संदर्भ के लिए हैं। संबंधित संस्थाएँ Aster की ग्राहक नहीं हैं और Aster इनमें शामिल नहीं था।',
+      capabilitiesHeading: 'आज क्या उपलब्ध है और क्या विकास में है',
+      availableHeading: 'आज उपलब्ध',
+      developmentHeading: 'विकास में',
+      developmentBadge: 'पायलट',
+      developmentNote: 'इस कॉलम की क्षमताएँ पायलट साझेदारों के साथ बनाई जा रही हैं। ये अभी आम तौर पर उपलब्ध नहीं हैं और यह पेज कोई डिलीवरी तारीख का वादा नहीं करता।',
+      disclaimer: 'Aster हर निर्णय कैसे लिया गया, इसका रिकॉर्ड और साक्ष्य रखता है। यह अपने आप में किसी कानून या नियम के अनुपालन का प्रमाणन नहीं है; किसी नियम संस्करण को सील करना आंतरिक संस्करण नियंत्रण है, नियामक फाइलिंग नहीं।',
+      pilot: {
+        heading: 'पायलट कैसे चलता है',
+        step1Title: 'एक नियम-समूह चुनें',
+        step1Body: 'हमारे साथ एक सीमित नियम-समूह चुनें: एक रेटिंग तालिका, एक क्रेडिट नीति, एक पात्रता नियम या एजेंट कार्रवाई नीति।',
+        step2Title: 'नियम लिखें, समीक्षा करें और स्वीकृत करें',
+        step2Body: 'हम इसे साथ मिलकर Aster में लिखते हैं। आपकी अनुपालन, जोखिम या नीति टीम वही नियम पढ़ती है जो वास्तव में चलेंगे, फिर संस्करण को स्वीकृत करती है।',
+        step3Title: 'चलाएँ और साक्ष्य देखें',
+        step3Body: 'नमूना या ऐतिहासिक इनपुट पर चलाएँ और देखें कि हर निर्णय क्या रिकॉर्ड छोड़ता है। फिर बताइए क्या कमी है।',
+      },
+      form: {
+        heading: 'पायलट के लिए आवेदन करें',
+        intro: 'बताइए आप कौन-से नियम परखना चाहते हैं। हम हर आवेदन पढ़ते हैं और ईमेल से जवाब देते हैं।',
+        email: 'कार्य ईमेल',
+        company: 'कंपनी या संगठन',
+        role: 'आपकी भूमिका',
+        rolePlaceholder: 'भूमिका चुनें',
+        roles: {
+          compliance_risk_audit: 'अनुपालन, जोखिम या आंतरिक ऑडिट',
+          actuarial_pricing: 'बीमांकिक या मूल्य निर्धारण',
+          credit_risk: 'क्रेडिट जोखिम या ऋण नीति',
+          policy_program: 'सार्वजनिक क्षेत्र की नीति या कार्यक्रम',
+          engineering_it: 'इंजीनियरिंग या आईटी',
+          product_business: 'उत्पाद या व्यवसाय इकाई',
+          executive: 'वरिष्ठ प्रबंधन',
+          other: 'अन्य',
+        },
+        useCasesLegend: 'कौन-से उपयोग मामले? (एक से अधिक चुन सकते हैं)',
+        useCases: {
+          insurance_rating: 'बीमा रेटिंग नियम जो फाइल किए गए से मेल खाने चाहिए',
+          credit_decisions: 'समझाने योग्य क्रेडिट निर्णय और अस्वीकृति के कारण',
+          agent_guardrails: 'AI एजेंट की कार्रवाइयों के लिए मानवीय स्वीकृति और ऑडिट',
+          eligibility_rules: 'सार्वजनिक क्षेत्र के पात्रता नियम (Rules as Code)',
+          other: 'कुछ और',
+        },
+        painPoint: 'आज इसमें सबसे कठिन क्या है? (वैकल्पिक)',
+        painPointPlaceholder: 'उदाहरण: नियम बदलने के बाद हम नहीं बता पाए कि किन निर्णयों पर असर पड़ा।',
+        consent: 'मैं सहमत हूँ कि Aster ये विवरण सहेज सकता है और पायलट के बारे में मुझसे ईमेल से संपर्क कर सकता है।',
+        privacyLink: 'गोपनीयता नीति',
+        honeypot: 'वेबसाइट',
+        submit: 'पायलट के लिए आवेदन करें',
+        submitting: 'भेजा जा रहा है…',
+        successTitle: 'आवेदन प्राप्त हुआ',
+        successBody: 'धन्यवाद। हम ईमेल से जवाब देंगे।',
+        errors: {
+          generic: 'कुछ गलत हो गया। कृपया फिर से प्रयास करें।',
+          rateLimited: 'इस नेटवर्क से बहुत अधिक प्रयास हुए। कृपया बाद में प्रयास करें।',
+          email: 'मान्य ईमेल पता दर्ज करें। अस्थायी पते स्वीकार नहीं किए जाते।',
+          company: 'अपनी कंपनी या संगठन का नाम दर्ज करें।',
+          role: 'अपनी भूमिका चुनें।',
+          useCases: 'कम से कम एक उपयोग मामला चुनें।',
+          painPoint: 'कृपया 2,000 अक्षरों से कम रखें।',
+          consent: 'आगे बढ़ने के लिए सहमति बॉक्स पर टिक करें।',
+        },
+      },
+      pages: {
+        insuranceRating: {
+          seoTitle: 'पायलट: फाइल किए गए दर संस्करणों को उत्पादन रेटिंग नियमों से जोड़ना | Aster Cloud',
+          seoDescription: 'बीमाकर्ताओं के लिए पायलट: फाइल किए गए दर और नियम संस्करणों को उत्पादन में चले रेटिंग नियम संस्करणों से जोड़ना, और जाँचना कि प्रभावित कोट कैसे पहचाने जा सकते हैं। पठनीय, संस्करणबद्ध रेटिंग नियम आज उपलब्ध हैं; फाइलिंग मैपिंग और प्रभाव प्रश्न विकास में हैं।',
+          eyebrow: 'बीमा रेटिंग · पायलट',
+          title: 'पायलट: फाइल किए गए दर संस्करणों को वास्तव में चले रेटिंग नियमों से जोड़ना',
+          subtitle: 'आज Aster रेटिंग नियमों को पठनीय, संस्करणबद्ध रूप में रखता है जिनकी समीक्षा और स्वीकृति बीमांकिक और अनुपालन टीम कर सकती है, और दर्ज करता है कि हर निष्पादन ने कौन-सा संस्करण चलाया। इस पायलट में हम आपके साथ जाँचना चाहते हैं कि क्या फाइल किए गए संस्करण उत्पादन संस्करणों से जोड़े जा सकते हैं, और अंतर होने पर प्रभावित कोट कैसे पहचाने जा सकते हैं।',
+          facts: {
+            filings: {
+              text: 'अमेरिका में निजी ऑटो बीमा में हर साल लगभग 10,200 दर फाइलिंग होती हैं।',
+              source: 'Insurance Research Council, 2024',
+            },
+            refund: {
+              text: 'टेक्सास में एक बीमाकर्ता ने लगभग तीन साल तक फाइल की गई दरों से भिन्न दरें लीं; उसने 80,000 से अधिक पॉलिसियों पर 1.8 करोड़ डॉलर से अधिक लौटाए।',
+              source: 'Texas Department of Insurance, Order 2025-9142',
+            },
+            factorTable: {
+              text: 'एक सार्वजनिक प्रवर्तन मामले में, एक ही फाइलिंग की वाहन कारक तालिका में 287,750 पंक्तियाँ थीं।',
+              source: 'Texas Department of Insurance, Order 2025-9237',
+            },
+            regulation57: {
+              text: 'न्यूयॉर्क का Regulation 57 बीमाकर्ताओं से स्वीकृत दरें लेने और गलत दरों के उपयोग को रोकने की प्रक्रियाएँ रखने की अपेक्षा करता है।',
+              source: 'NY DFS अनुशासनात्मक कार्रवाई सूची, मार्च 2024 (आदेश दिनांक 30 जनवरी 2024; 11 NYCRR 160)',
+            },
+          },
+          available: {
+            readable: 'पठनीय नीति भाषा में रेटिंग नियम, ताकि बीमांकिक और अनुपालन टीम वास्तव में चलने वाले नियम पढ़ सके।',
+            sealed: 'सील किए गए संस्करण: हर संस्करण के कंपाइल इनपुट का हैश दिखाता है कि स्वीकृति के बाद कुछ बदला या नहीं।',
+            approval: 'स्वीकृति प्रक्रिया जो स्वीकृतकर्ता और समय दर्ज करती है। जिन प्लान में स्वीकृति अनिवार्य है, उनकी टीम नीतियों के लिए स्वीकृतकर्ता लेखक से अलग व्यक्ति होना चाहिए (चार-आँख)।',
+            evidence: 'Aster Cloud में हर निष्पादन उपयोग किए गए संस्करण और निर्णय के साथ दर्ज होता है और साक्ष्य पैकेज के रूप में निर्यात किया जा सकता है।',
+            template: 'प्रक्रिया आज़माने के लिए ऑटो-बीमा कोट टेम्पलेट। यह एक डेमो है, उत्पादन दर मैनुअल नहीं।',
+          },
+          development: {
+            filingMap: 'फाइल किए गए दर और नियम संस्करणों को उत्पादन के सील किए गए संस्करणों से जोड़ना।',
+            impactQuery: 'किसी नियम संस्करण या समय-अवधि के सभी कोट ढूँढना और अंतर देखने के लिए दूसरे संस्करण पर दोबारा गणना करना।',
+            documentView: 'स्वीकृत नियमों का व्यवसाय-पठनीय दृश्य, निष्पादन ट्रेस से जुड़ा और ऑडिट पैक के रूप में निर्यात योग्य।',
+            scale: 'उत्पादन आकार की कारक तालिकाओं और कोट विलंबता का अभी आकलन नहीं हुआ है; पायलट में इसे आपके साथ तय करेंगे।',
+          },
+        },
+        creditDecisions: {
+          seoTitle: 'पायलट: अस्वीकृति कारणों को क्रेडिट नियम संस्करणों से जोड़ना | Aster Cloud',
+          seoDescription: 'ऋणदाताओं के लिए पायलट: हर अस्वीकृति कारण को उसके पीछे के क्रेडिट नियम संस्करण और शर्तों से जोड़ना। जोखिम और अनुपालन टीम द्वारा समीक्षा व स्वीकृति योग्य पठनीय नियम आज उपलब्ध हैं; कारण-कोड मैपिंग और संस्करण प्रश्न विकास में हैं।',
+          eyebrow: 'क्रेडिट निर्णय · पायलट',
+          title: 'पायलट: हर अस्वीकृति कारण को उसके पीछे के नियम संस्करण से जोड़ना',
+          subtitle: 'आज Aster क्रेडिट नीति को पठनीय नियमों में रखता है जिनकी समीक्षा और स्वीकृति जोखिम और अनुपालन टीम कर सकती है; हर निष्पादन नियम संस्करण, मेल खाए नियम और अस्वीकृति के कारण दर्ज करता है। इस पायलट में हम आपके साथ जाँचना चाहते हैं कि स्वीकृत कारण-कोड मैपिंग से ये रिकॉर्ड सूचना के कारण कैसे बन सकते हैं, और पिछले निर्णयों की नियम संस्करण के अनुसार समीक्षा कैसे हो सकती है।',
+          demoLink: 'क्रेडिट निर्णय रीप्ले डेमो आज़माएँ',
+          facts: {
+            regB: {
+              text: 'Regulation B ऋणदाताओं से आवेदकों को प्रतिकूल निर्णय के विशिष्ट कारण बताने की अपेक्षा करता है।',
+              source: '12 CFR 1002.9 (ECOA / Regulation B)',
+            },
+            supervision: {
+              text: 'CFPB परीक्षकों ने पाया कि ऑटो ऋणदाताओं ने यह सत्यापित नहीं किया था कि अस्वीकृति कारण चुनने की उनकी प्रक्रिया सटीक परिणाम देती है।',
+              source: 'CFPB Supervisory Highlights, अंक 38 (जनवरी 2025)',
+            },
+            settlement: {
+              text: 'जुलाई 2025 में मैसाचुसेट्स की अटॉर्नी जनरल ने एक छात्र ऋणदाता के साथ उसकी ऋण प्रथाओं, जिनमें AI अंडरराइटिंग मॉडल का उपयोग भी शामिल था, पर 25 लाख डॉलर के समझौते की घोषणा की।',
+              source: 'मैसाचुसेट्स अटॉर्नी जनरल, प्रेस विज्ञप्ति',
+            },
+          },
+          available: {
+            readable: 'पठनीय नीति भाषा में क्रेडिट नियम जिनकी समीक्षा और स्वीकृति जोखिम और अनुपालन टीम कर सके।',
+            sealed: 'सील किए गए संस्करण: हर संस्करण के कंपाइल इनपुट का हैश दिखाता है कि स्वीकृति के बाद कुछ बदला या नहीं।',
+            approval: 'स्वीकृति प्रक्रिया जो स्वीकृतकर्ता और समय दर्ज करती है। जिन प्लान में स्वीकृति अनिवार्य है, उनकी टीम नीतियों के लिए स्वीकृतकर्ता लेखक से अलग व्यक्ति होना चाहिए (चार-आँख)।',
+            trace: 'हर निष्पादन नियम संस्करण, निर्णय, मेल खाए नियम और अस्वीकृति के कारण दर्ज करता है।',
+            evidence: 'हर निष्पादन के हैश सहित साक्ष्य निर्यात (JSON या JSONL)।',
+            demo: 'ऋण आवेदन टेम्पलेट और इंटरैक्टिव निर्णय रीप्ले डेमो।',
+          },
+          development: {
+            reasonCodes: 'स्वीकृत कारण-कोड मैपिंग के ज़रिए सक्रिय हुई शर्तों को अस्वीकृति सूचना के कारणों में बदलना।',
+            impactQuery: 'किसी नियम संस्करण या समय-अवधि के सभी निर्णय ढूँढना और दूसरे संस्करण पर दोबारा गणना करना।',
+            documentView: 'स्वीकृत नीति का व्यवसाय-पठनीय दृश्य, जो हर नियम को निष्पादन ट्रेस से जोड़ता है।',
+          },
+        },
+        agentGuardrails: {
+          seoTitle: 'पायलट: उच्च-जोखिम एजेंट कार्रवाइयों के लिए मानवीय स्वीकृति और ऑडिट ट्रेल | Aster Cloud',
+          seoDescription: 'AI एजेंट चलाने वाली टीमों के लिए पायलट: उच्च-जोखिम कार्रवाइयों को ऑडिट ट्रेल के साथ मानवीय स्वीकृति के लिए भेजना, Cedar रनटाइम से पहले की पठनीय नीति और साक्ष्य परत के ज़रिए। फ्रेमवर्क और MCP एडेप्टर विकास में हैं।',
+          eyebrow: 'AI एजेंट गार्डरेल · पायलट',
+          title: 'पायलट: उच्च-जोखिम एजेंट कार्रवाइयों को ऑडिट ट्रेल के साथ मानवीय स्वीकृति के लिए भेजना',
+          subtitle: 'एजेंट क्या कर सकता है, इसे पठनीय नियमों में लिखें जिन्हें जोखिम और अनुपालन टीम स्वीकृत करे। Aster ALLOW, DENY या REQUIRE_APPROVAL लौटाता है, स्वीकृतियों को सही व्यावसायिक भूमिका तक भेजता है और यह साक्ष्य रखता है कि किस नीति संस्करण के तहत किसने क्या तय किया।',
+          positioning: {
+            title: 'Cedar रनटाइम से पहले, उनकी जगह नहीं',
+            body: 'स्वीकृति चरण अब कई एजेंट प्लेटफ़ॉर्म में उपलब्ध हैं, जिनमें Amazon Bedrock AgentCore Policy भी है, जो गेटवे पर Cedar नीतियाँ लागू करता है। Aster की जगह उससे पहले है: आपकी अनुपालन टीम द्वारा स्वीकृत पठनीय नीति, हर निर्णय लेने वाला सील किया गया संस्करण, और स्वीकृति रिकॉर्ड। जो नियम साफ़ अनुवादित हो सकते हैं, उन्हें Aster Cedar में निर्यात कर सकता है ताकि AgentCore जैसा रनटाइम उन्हें लागू करे। Cedar निर्यात केवल कुछ नियमों का समर्थन करता है: जिन नियमों का अनुवाद नहीं हो सकता, उन्हें अनुमानित करने के बजाय पूरी तरह अस्वीकार किया जाता है।',
+          },
+          facts: {
+            gsa: {
+              text: '19 अक्टूबर 2026 से GSA की LLM खरीद अनुबंध शर्तें मानवीय निगरानी, हस्तक्षेप और पता लगाने योग्यता के साधन माँगती हैं, जिनमें एजेंटिक सिस्टम के दर्ज चरण शामिल हैं।',
+              source: 'GSA की नई AI अनुबंध शर्तों पर MeriTalk',
+            },
+            agentcore: {
+              text: 'AWS ने Amazon Bedrock AgentCore Policy में एजेंटों की टूल-कॉल नीतियाँ लागू करने के लिए Cedar को चुना।',
+              source: 'AWS Security Blog',
+            },
+          },
+          available: {
+            decisions: 'सील किए गए नीति संस्करण से Guard निर्णय: ALLOW, DENY, REQUIRE_APPROVAL या ESCALATE।',
+            inbox: 'स्वीकृति इनबॉक्स, जहाँ स्वीकृतकर्ता टीम रिकॉर्ड की व्यावसायिक भूमिका से चुने जाते हैं; अनुरोधकर्ता अपनी ही कार्रवाई स्वीकृत नहीं कर सकता।',
+            evidence: 'हर निर्णय और स्वीकृति का साक्ष्य, नीति संस्करण से जुड़ा और निर्यात योग्य।',
+            cedar: 'साफ़ अनुवादित होने वाले नियमों के लिए Cedar निर्यात, स्कीमा और प्रोब-आधारित तुलना सहित। केवल कुछ नियम समर्थित हैं।',
+          },
+          development: {
+            adapters: 'एजेंट फ्रेमवर्क और MCP के लिए एडेप्टर। ये अभी नहीं बने हैं।',
+            latency: 'इनलाइन टूल कॉल के लिए उपयुक्त कम-विलंबता निर्णय सेवा स्तर।',
+            auditView: 'ऑडिट के लिए निर्णयों और स्वीकृतियों का संयुक्त दृश्य।',
+            agentcore: 'Cedar निर्यात से AgentCore Policy तक के रास्ते का सत्यापन।',
+          },
+        },
+        eligibilityRules: {
+          seoTitle: 'पायलट: पात्रता निर्धारणों को लागू नियम संस्करण से जोड़ना | Aster Cloud',
+          seoDescription: 'सार्वजनिक क्षेत्र की पात्रता के लिए Rules as Code पायलट: नीति कर्मचारियों द्वारा समीक्षा व स्वीकृति योग्य पठनीय नियम, और हर निर्धारण नियम संस्करण, इनपुट और मेल खाए नियम दर्ज करता है। समय-बिंदु प्रश्न विकास में हैं।',
+          eyebrow: 'सार्वजनिक क्षेत्र पात्रता · Rules as Code · पायलट',
+          title: 'पायलट: हर पात्रता निर्धारण को उस समय लागू नियम संस्करण से जोड़ना',
+          subtitle: 'आज Aster पात्रता नीति को पठनीय नियमों में रखता है जिन्हें नीति कर्मचारी पढ़, समीक्षा और स्वीकृत कर सकते हैं; हर निर्धारण नियम संस्करण, उपयोग किए गए इनपुट और मेल खाए नियम दर्ज करता है। इस पायलट में हम आपके साथ समय-बिंदु समीक्षा जाँचना चाहते हैं: कौन-से निर्धारण किस नियम संस्करण के तहत हुए।',
+          facts: {
+            louisiana: {
+              text: 'लुइज़ियाना का 2025 का पात्रता प्रणाली RFI Rules as Code आर्किटेक्चर और ऐसी प्रणालियों के बारे में पूछता है जिनका राज्य और संघीय एजेंसियाँ पूरी तरह और आसानी से ऑडिट कर सकें।',
+              source: 'Louisiana Department of Health, RFI, सितंबर 2025',
+            },
+            clauseLogic: {
+              text: 'अमेरिकी रक्षा विभाग की अनुबंध धाराओं के स्वचालित चयन की एक अवधारणा में बिज़नेस रूल्स इंजन है, जिसकी अपेक्षा है कि कौन-से नियम किन इनपुट पर लागू हुए और क्या परिणाम निकला, इसका ऑडिट ट्रेल रहे।',
+              source: 'DoD Clause Logic Service सूचना, 2024 (GovTribe के माध्यम से)',
+            },
+          },
+          available: {
+            readable: 'पठनीय नीति भाषा में पात्रता नियम जिन्हें नीति और विधि कर्मचारी पढ़, समीक्षा और स्वीकृत कर सकें।',
+            sealed: 'सील किए गए संस्करण: हर संस्करण के कंपाइल इनपुट का हैश दिखाता है कि स्वीकृति के बाद कुछ बदला या नहीं।',
+            approval: 'स्वीकृति प्रक्रिया जो स्वीकृतकर्ता और समय दर्ज करती है। जिन प्लान में स्वीकृति अनिवार्य है, उनकी टीम नीतियों के लिए स्वीकृतकर्ता लेखक से अलग व्यक्ति होना चाहिए (चार-आँख)।',
+            trace: 'हर निर्धारण नियम संस्करण, इनपुट, निर्णय और मेल खाए नियम दर्ज करता है।',
+            evidence: 'हर निर्धारण के हैश सहित साक्ष्य निर्यात (JSON या JSONL)।',
+            languages: 'गैर-अंग्रेज़ी परिवेश में नियम मातृभाषा में पढ़े जा सकते हैं (अभी अंग्रेज़ी, चीनी, जर्मन और हिंदी)।',
+          },
+          development: {
+            pointInTime: 'समय-बिंदु प्रश्न: कौन-से निर्धारण किस नियम संस्करण के तहत हुए, और दूसरे संस्करण पर दोबारा गणना।',
+            documentView: 'व्यवसाय-पठनीय नीति दृश्य जो हर नियम को निष्पादन ट्रेस से जोड़ता है और ऑडिट पैक के रूप में निर्यात होता है।',
+            deployment: 'सार्वजनिक क्षेत्र के पायलटों के लिए परिनियोजन और डेटा निवास व्यवस्था, हर मामले में अलग से तय।',
+          },
+        },
+      },
+    },
+    // 隐私政策补充：试点申请与第一方产品分析（保留期与用途）。
+    legal: {
+      privacy: {
+        sections: {
+          demandValidation: {
+            title: '4a. पायलट आवेदन और उत्पाद विश्लेषण',
+            content: 'यदि आप हमारे किसी समाधान पेज पर पायलट के लिए आवेदन करते हैं, तो हम आपके द्वारा भेजे गए विवरण (कार्य ईमेल, कंपनी, भूमिका, चुने गए उपयोग मामले और वैकल्पिक विवरण), जिस पेज से आपने आवेदन किया और अभियान टैग (UTM पैरामीटर और संदर्भित साइट का होस्ट नाम) सहेजते हैं, ताकि आपके आवेदन का आकलन और उत्तर दे सकें। आवेदन के साथ हम आपका IP पता नहीं सहेजते। आवेदन जमा होने के 24 महीने बाद अपने आप हटा दिए जाते हैं, और आप नीचे दिए संपर्क विवरण से पहले हटाने का अनुरोध कर सकते हैं। इसके अलावा, हम यह समझने के लिए कि कौन-सी सुविधाएँ उपयोग होती हैं, प्रथम-पक्ष उत्पाद उपयोग इवेंट दर्ज करते हैं (जैसे साइन अप पूरा होना, पहली नीति सहेजना, साक्ष्य निर्यात और लैंडिंग पेज विज़िट)। इन इवेंट में छद्मनाम उपयोगकर्ता और टीम पहचानकर्ता होते हैं; इनमें नीति सामग्री, इनपुट, ईमेल पते या नाम नहीं होते; ये 13 महीने बाद अपने आप हटा दिए जाते हैं। ब्राउज़र-साइड इवेंट (लैंडिंग पेज विज़िट, टेम्पलेट चयन और स्वीकृति इनबॉक्स विज़िट) Mixpanel को भी भेजे जाते हैं; खंड 11 देखें।',
+          },
+        },
+      },
+    },
     // 复核面板（ADR 0037 §14/§15，本地补充）。
     policyReview: {
       title: 'मानव समीक्षा',
@@ -4276,8 +5353,78 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       goAiKeys: 'AI कुंजी सेटिंग्स खोलें',
     },
     admin: {
-      nav: { aiWorkspaceAccess: 'AI कार्यक्षेत्र पहुँच', revalidation: 'नीति पुनःसत्यापन' },
+      // 需求验证看板（/admin/demand）。
+      demand: {
+        eventsDisabled: 'उत्पाद इवेंट दर्ज नहीं हो रहे हैं: PRODUCT_ANALYTICS_SALT कॉन्फ़िगर नहीं है। इस पेज पर शून्य का अर्थ यह नहीं है कि माँग नहीं है।',
+        title: 'माँग सत्यापन',
+        subtitle: '2026-11 की माँग परिकल्पनाओं के व्यवहारिक संकेत: बीमा रेटिंग, क्रेडिट निर्णय, एजेंट गार्डरेल और पात्रता नियम।',
+        window: 'पिछले 12 सप्ताह ({since} से)।',
+        privacyNote: 'इवेंट में नीति सामग्री, इनपुट, ईमेल या नाम नहीं होते; उपयोगकर्ता और टेनेंट आईडी छद्मनाम हैं।',
+        empty: 'अभी कोई डेटा नहीं।',
+        count: 'संख्या',
+        funnel: {
+          heading: 'फ़नल',
+          note: 'अवधि में साइन अप करने वाले उपयोगकर्ता; चरण केवल सत्यापित साइन अप (सत्यापित ईमेल) में गिने जाते हैं, किसी भी समय।',
+          signups: 'साइन अप',
+          firstSaved: 'पहली नीति सहेजी',
+          firstExecuted: 'पहला निष्पादन',
+          evidenceExported: 'साक्ष्य निर्यात',
+          ofSignups: 'सत्यापित साइन अप का {pct}',
+          verifiedSignups: 'सत्यापित साइन अप',
+        },
+        weekly: {
+          heading: 'साप्ताहिक इवेंट संख्या',
+          note: 'सप्ताह सोमवार से शुरू (UTC)। policy_first_saved / policy_first_executed केवल ट्रैकिंग शुरू होने के बाद साइन अप करने वालों को गिनते हैं। guard_api_called API उपयोग रिकॉर्ड से सफल प्रत्यक्ष Guard निर्णय कॉल (POST /api/v1/guard/*) गिनता है।',
+          week: 'सप्ताह',
+        },
+        templates: {
+          heading: 'नीति बनाते समय चुने गए टेम्पलेट',
+          template: 'टेम्पलेट',
+        },
+        landing: {
+          heading: 'लैंडिंग पेज',
+          page: 'पेज',
+          views: 'विज़िट',
+          submissions: 'आवेदन',
+          rate: 'दर',
+          note: 'केवल दिशा-सूचक: विज़िट में सामान्य बॉट और एक ही ब्राउज़र टैब में 30 मिनट के भीतर उसी पेज की दोहराई गई विज़िट शामिल नहीं हैं, फिर भी यह ऊपरी सीमा है।',
+        },
+        sources: {
+          heading: 'लैंडिंग पेज स्रोत',
+          source: 'स्रोत (utm_source या referrer)',
+        },
+        guard: {
+          heading: 'टेनेंट के अनुसार सफल Guard API निर्णय कॉल',
+          note: 'टेनेंट आईडी छद्मनाम हैं। API उपयोग रिकॉर्ड 90 दिन रखे जाते हैं।',
+          tenant: 'टेनेंट',
+        },
+        applications: {
+          heading: 'पायलट आवेदन (नवीनतम {count})',
+          export: 'CSV निर्यात करें',
+          createdAt: 'प्राप्त',
+          email: 'ईमेल',
+          mailbox: 'मेलबॉक्स',
+          personalMailbox: 'व्यक्तिगत',
+          companyDomain: 'कंपनी डोमेन',
+          company: 'कंपनी',
+          role: 'भूमिका',
+          useCases: 'उपयोग मामले',
+          page: 'लैंडिंग पेज',
+          source: 'स्रोत',
+          painPoint: 'समस्या',
+          delete: 'हटाएँ',
+          deleteConfirm: 'यह आवेदन स्थायी रूप से हटाएँ?',
+          deleteFailed: 'आवेदन हटाया नहीं जा सका। कृपया फिर से प्रयास करें।',
+        },
+        retentionNote: 'पायलट आवेदन 24 महीने बाद और उत्पाद इवेंट 13 महीने बाद अपने आप हटाए जाते हैं।',
+      },
+      nav: { aiWorkspaceAccess: 'AI कार्यक्षेत्र पहुँच', revalidation: 'नीति पुनःसत्यापन', demand: 'माँग सत्यापन' },
       overview: {
+        demandCard: {
+          title: 'माँग सत्यापन',
+          description: 'उत्पाद इवेंट फ़नल, चुने गए टेम्पलेट, लैंडिंग पेज ट्रैफ़िक और पायलट आवेदन।',
+          cta: 'डैशबोर्ड खोलें',
+        },
         aiWorkspaceAccessCard: {
           title: 'AI कार्यक्षेत्र पहुँच',
           description: 'प्रति उपयोगकर्ता AI कार्यक्षेत्र की पहुँच दें या हटाएँ। प्रशासकों के पास हमेशा पहुँच होती है।',
@@ -4364,6 +5511,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       pulse: {
         audit: {
           events: {
+            pilotApplicationDelete: 'पायलट आवेदन हटाया गया',
             policyCreate: 'नीति बनाई गई',
             policyUpdate: 'नीति अपडेट की गई',
             policyDelete: 'नीति हटाई गई',

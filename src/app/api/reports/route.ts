@@ -6,6 +6,7 @@ import { getEvidencePreview, EvidenceTooLargeError } from '@/lib/evidence-export
 import type { EvidenceFormat } from '@/services/evidence/types';
 import { loadPolicyForAction } from '@/lib/policy-access';
 import { planHolderForTeam } from '@/lib/team-plan';
+import { recordProductEventAfterResponse } from '@/lib/product-events/server';
 
 // GET /api/reports — 列出用户的证据导出历史。
 export async function GET() {
@@ -49,6 +50,7 @@ export async function POST(req: Request) {
     // 单策略预览与导出同一授权：团队策略任一当前成员，个人策略只认所有者；其余 404。
     // 先授权、再决定按谁的套餐判定——无权访问的策略不泄露其套餐门控结果。
     let planHolder = session.user.id;
+    let tenantId = session.user.id;
     if (policyId) {
       const access = await loadPolicyForAction(policyId, { userId: session.user.id }, 'view');
       if (!access.ok) {
@@ -56,6 +58,7 @@ export async function POST(req: Request) {
       }
       // 付费门控：团队策略按团队 owner 的套餐判定并计量到 owner（#672）；不指定策略时按本人套餐。
       planHolder = await planHolderForTeam(session.user.id, access.policy.teamId);
+      tenantId = access.policy.teamId ?? session.user.id;
     }
 
     // 付费门控（证据导出仍限 Pro/Team；能力键=evidenceExport，持久计量值仍 compliance_report）。
@@ -108,6 +111,12 @@ export async function POST(req: Request) {
       });
       // 计量（值仍 compliance_report，向后兼容——见 usage.ts EVIDENCE_EXPORT_METRIC）。
       await recordUsage(planHolder, EVIDENCE_EXPORT_METRIC);
+      // 需求验证漏斗终点：证据导出（只记格式与范围，不记策略 id 与时间窗）。
+      recordProductEventAfterResponse('evidence_exported', {
+        userId: session.user.id,
+        tenantId,
+        properties: { format, scope: policyId ? 'policy' : 'all', verifiableOnly: body.verifiableOnly === true },
+      });
       return NextResponse.json({ id, manifest }, { status: 201 });
     } catch (err) {
       if (err instanceof EvidenceTooLargeError) {

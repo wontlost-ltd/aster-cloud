@@ -29,8 +29,11 @@ const h = vi.hoisted(() => {
     guardFromEvidence: vi.fn(),
     createClient: vi.fn(),
     notifyApprovalRequested: vi.fn(),
+    recordProductEvent: vi.fn(),
   };
 });
+
+vi.mock('@/lib/product-events/server', () => ({ recordProductEventAfterResponse: h.recordProductEvent }));
 
 vi.mock('@/lib/auth', () => ({ getSession: () => h.mockGetSession() }));
 vi.mock('@/lib/api-keys', () => ({ authenticateApiRequest: (r: Request) => h.mockAuthApi(r) }));
@@ -114,8 +117,8 @@ function request(path: string, body: unknown): Request {
 
 const params = { params: Promise.resolve({ id: 'p1' }) };
 const routes = [
-  { name: 'dashboard', post: dashboardPost, path: '/api/policies/p1/execute' },
-  { name: 'v1', post: v1Post, path: '/api/v1/policies/p1/execute' },
+  { name: 'dashboard', post: dashboardPost, path: '/api/policies/p1/execute', source: 'dashboard' },
+  { name: 'v1', post: v1Post, path: '/api/v1/policies/p1/execute', source: 'api' },
 ] as const;
 
 function insertedValues(): Record<string, unknown> {
@@ -135,7 +138,7 @@ const policyRow = {
   is_team_member: true,
 };
 
-describe.each(routes)('POST $name execute — ADR 0042 guard 登记', ({ post, path }) => {
+describe.each(routes)('POST $name execute — ADR 0042 guard 登记', ({ post, path, source }) => {
   beforeEach(() => {
     vi.clearAllMocks();
     h.mockInsert.mockReturnValue({ values: h.mockValuesInsert });
@@ -174,6 +177,20 @@ describe.each(routes)('POST $name execute — ADR 0042 guard 登记', ({ post, p
       tenantId: 'team-1', decisionId: 'd1', approvalId: 'a1', policyId: 'p1', policyName: 'Delete customer',
       requiredRole: 'DPO',
     }));
+  });
+
+  it('需求验证：执行成功记 policy_first_executed（租户=策略团队，只带入口）', async () => {
+    h.mockExecute.mockResolvedValue({ ...execResult({ evidenceCorrelationId: 'c-9' }), allowed: true, approved: true });
+
+    const res = await post(request(path, { input: { secret: 'do-not-log' } }), params);
+
+    expect(res.status).toBe(200);
+    expect(h.recordProductEvent).toHaveBeenCalledWith('policy_first_executed', {
+      userId: 'user-1',
+      tenantId: 'team-1',
+      properties: { source },
+    });
+    expect(JSON.stringify(h.recordProductEvent.mock.calls)).not.toContain('do-not-log');
   });
 
   it('ALLOW：不调 guard，metadata 不含 guard 键', async () => {

@@ -449,6 +449,13 @@
       "when": 1793273868638,
       "tag": "0062_schema_drift_alignment",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1793493662286,
+      "tag": "0063_product_events_and_pilot_applications",
+      "breakpoints": true
     }
   ]
 }

@@ -9,6 +9,7 @@ import { executionErrorCode, missingInputFieldBody, sanitizeExecutionResult } fr
 import { executePolicyUnified, getPrimaryError, deriveExecutionDecision, deriveExecutionOutcome } from '@/services/policy/cnl-executor';
 import { buildReplayColumns, buildEvidenceColumns } from '@/lib/policy-execution-log';
 import { policyTenantId } from '@/lib/policy-tenant';
+import { recordProductEventAfterResponse } from '@/lib/product-events/server';
 import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
 import {
   preparedInputErrorResponse,
@@ -492,6 +493,13 @@ export async function POST(req: Request, { params }: RouteParams) {
         meta: { policyId: id, policyName: policy.name, durationMs, timestamp: new Date().toISOString() },
       }, { status: 400 });
     }
+
+    // 需求验证漏斗：用户第一次成功跑通执行（once 事件，只带入口，不带输入与结果）。
+    recordProductEventAfterResponse('policy_first_executed', {
+      userId,
+      tenantId: policyTenantId(policy),
+      properties: { source: 'api' },
+    });
 
     return NextResponse.json({
       success: executionResult.allowed,

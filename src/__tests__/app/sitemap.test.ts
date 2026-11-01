@@ -68,4 +68,14 @@ describe('sitemap', () => {
     expect(pricing?.alternates?.languages).toHaveProperty('hi', `${SITE}/hi/pricing`);
     expect(entries.some((e) => e.url === `${SITE}/hi/pricing`)).toBe(true);
   });
+
+  it('需求验证落地页（4 个 /solutions/*）：SaaS 全部语种都在 sitemap 中，on-prem 不列', async () => {
+    const entries = await loadSitemap();
+    const saas = process.env.DEPLOYMENT_MODE !== 'on-prem';
+    for (const slug of ['insurance-rating', 'credit-decisions', 'agent-guardrails', 'eligibility-rules']) {
+      for (const prefix of ['', '/zh', '/de', '/hi']) {
+        expect(entries.some((e) => e.url === `${SITE}${prefix}/solutions/${slug}`)).toBe(saas);
+      }
+    }
+  });
 });

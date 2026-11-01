@@ -10,6 +10,7 @@ import { getCachedPolicyMeta, cachePolicyMeta, type CachedPolicyMeta } from '@/l
 import { hydrateExecutableVersion, isCachedVersionCurrent, resolveExecutableVersion, type ExecutableVersionCandidate } from '@/services/policy/executable-version';
 import { buildReplayColumns, buildEvidenceColumns } from '@/lib/policy-execution-log';
 import { policyTenantId } from '@/lib/policy-tenant';
+import { recordProductEventAfterResponse } from '@/lib/product-events/server';
 import {
   EXECUTION_FAILED_CODE,
   EXECUTION_FAILED_MESSAGE,
@@ -531,6 +532,13 @@ export async function POST(req: Request, { params }: RouteParams) {
         durationMs,
       }, { status: 400 });
     }
+
+    // 需求验证漏斗：用户第一次成功跑通执行（once 事件，只带入口，不带输入与结果）。
+    recordProductEventAfterResponse('policy_first_executed', {
+      userId,
+      tenantId: policyTenantId(policy),
+      properties: { source: 'dashboard' },
+    });
 
     return NextResponse.json({
       executionId,

@@ -26,6 +26,9 @@ vi.mock('@/lib/evidence-export', async () => {
   };
 });
 
+const recordProductEvent = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/product-events/server', () => ({ recordProductEventAfterResponse: recordProductEvent }));
+
 import { POST, GET } from '@/app/api/reports/route';
 import { policyAccessState } from '@/__tests__/helpers/policy-access-mock';
 import { getSession } from '@/lib/auth';
@@ -165,5 +168,32 @@ describe('POST /api/reports — 生成', () => {
     vi.mocked(createEvidenceExport).mockResolvedValue({ id: 'x', manifest: {} as never });
     await POST(post({ format: 'weird' }));
     expect(createEvidenceExport).toHaveBeenCalledWith('user-1', expect.objectContaining({ format: 'json' }));
+  });
+
+  it('需求验证：团队策略导出记 evidence_exported（tenant=团队，只带格式与范围）', async () => {
+    vi.mocked(createEvidenceExport).mockResolvedValue({ id: 'exp-2', manifest: {} as never });
+    const r = await POST(post({ policyId: 'team-policy', format: 'jsonl', verifiableOnly: true, startDate: '2026-01-01' }));
+    expect(r.status).toBe(201);
+    expect(recordProductEvent).toHaveBeenCalledWith('evidence_exported', {
+      userId: 'user-1',
+      tenantId: 't1',
+      properties: { format: 'jsonl', scope: 'policy', verifiableOnly: true },
+    });
+  });
+
+  it('需求验证：不指定策略 → scope=all、tenant=本人；预览与失败不记', async () => {
+    vi.mocked(createEvidenceExport).mockResolvedValue({ id: 'exp-3', manifest: {} as never });
+    await POST(post({ format: 'json' }));
+    expect(recordProductEvent).toHaveBeenCalledWith('evidence_exported', {
+      userId: 'user-1',
+      tenantId: 'user-1',
+      properties: { format: 'json', scope: 'all', verifiableOnly: false },
+    });
+    recordProductEvent.mockClear();
+    vi.mocked(getEvidencePreview).mockResolvedValue({} as never);
+    await POST(post({ dryRun: true }));
+    vi.mocked(createEvidenceExport).mockRejectedValue(new EvidenceTooLargeError(99999, 50000));
+    await POST(post({ format: 'json' }));
+    expect(recordProductEvent).not.toHaveBeenCalled();
   });
 });
