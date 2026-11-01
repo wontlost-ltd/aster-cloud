@@ -112,6 +112,10 @@ export function DrizzleAdapter(dbOrGetter: DbOrGetter): Adapter {
         }
       }
 
+      // 需求验证漏斗起点：OAuth 与邮箱密码注册都经由这里建号，只在这一处记 signup_completed。
+      const { recordProductEventAfterResponse } = await import('@/lib/product-events/server');
+      recordProductEventAfterResponse('signup_completed', { userId: id, tenantId: id });
+
       const user = await db.query.users.findFirst({
         where: eq(users.id, id),
       });

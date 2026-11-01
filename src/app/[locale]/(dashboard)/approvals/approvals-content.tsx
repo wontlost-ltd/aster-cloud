@@ -14,6 +14,7 @@ import {
   Textarea,
 } from '@/components/ui';
 import { Link } from '@/i18n/navigation';
+import { trackProductEvent } from '@/lib/product-events/client';
 import type { InboxItem } from '@/lib/approvals-inbox';
 import type { PendingVersionApproval } from '@/lib/version-approvals-inbox';
 import type { GuardApprovalStatus } from '@/services/policy/guard-types';
@@ -258,6 +259,11 @@ export function ApprovalsContent({
   const [picked, setPicked] = useState<{ item: InboxItem; verb: Verb } | null>(null);
   // 当前在途的列表请求：快速切换 tab 时中止旧请求，并丢弃晚到的旧响应
   const inflight = useRef<AbortController | null>(null);
+
+  // 需求验证（B 线）：收件箱访问量是「人工审批」是否被使用的直接信号；每次挂载记一次，不带任何条目信息。
+  useEffect(() => {
+    trackProductEvent('approvals_inbox_viewed');
+  }, []);
 
   // 从通知/日志页跳入时滚动到被定位的那一行
   useEffect(() => {

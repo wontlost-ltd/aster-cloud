@@ -26,6 +26,7 @@ import {
 } from '@/lib/structural-alias-grants';
 import { errorEnvelope } from '@/lib/api/error-envelope';
 import { invalidatePolicyCache } from '@/lib/cache';
+import { recordProductEventAfterResponse } from '@/lib/product-events/server';
 import { eq, isNull, desc, sql, and, inArray } from 'drizzle-orm';
 import { parseCompileLocale } from '@/lib/cnl-locale';
 
@@ -322,6 +323,12 @@ export async function POST(req: Request) {
     // 缓存失效在提交后完成；KV 故障由缓存服务记录，不影响已提交结果。
     // 响应前完成缓存失效；KV 故障只记录，不把已成功的写操作报成失败。
     await invalidatePolicyCache(policy.id).catch((err) => console.warn('[Cache] Failed to invalidate policy cache:', err));
+
+    // 需求验证漏斗：用户第一次成功保存策略（once 事件，之后的保存不再写库）。
+    recordProductEventAfterResponse('policy_first_saved', {
+      userId: session.user.id,
+      tenantId: policy.teamId ?? session.user.id,
+    });
 
     return NextResponse.json(policy, { status: 201 });
   } catch (error: unknown) {

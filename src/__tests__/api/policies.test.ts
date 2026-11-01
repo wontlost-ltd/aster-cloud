@@ -80,6 +80,9 @@ vi.mock('@/lib/auth', () => ({
   getSession: vi.fn(),
 }));
 
+const mockRecordProductEvent = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/product-events/server', () => ({ recordProductEventAfterResponse: mockRecordProductEvent }));
+
 vi.mock('@/lib/policy-lifecycle', () => ({
   softDeletePolicy: vi.fn(),
 }));
@@ -489,6 +492,21 @@ describe('Policies API - Drizzle Migration', () => {
       expect(mockCreateVersion).toHaveBeenCalledWith(
         expect.objectContaining({ scopesJson: '{"scopes":"live"}' }),
       );
+    });
+
+    it('需求验证：成功保存记 policy_first_saved（个人策略 tenant=本人），失败不记', async () => {
+      mockRecordProductEvent.mockClear();
+      const userId = 'user-1';
+      const response = await POST(makeRequest('http://localhost/api/policies', 'POST', validBody));
+      expect(response.status).toBe(201);
+      expect(mockRecordProductEvent).toHaveBeenCalledWith('policy_first_saved', {
+        userId,
+        tenantId: userId,
+      });
+
+      mockRecordProductEvent.mockClear();
+      await POST(makeRequest('http://localhost/api/policies', 'POST', { name: 'Test' }));
+      expect(mockRecordProductEvent).not.toHaveBeenCalled();
     });
 
     it('作者词汇非法（枚举值缺 parent）→ 400 vocabulary_scope_invalid，不编译不落库', async () => {

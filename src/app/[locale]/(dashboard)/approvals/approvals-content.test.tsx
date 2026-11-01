@@ -24,6 +24,9 @@ vi.mock('@/components/ui', () => ({
   Textarea: (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea {...props} />,
 }));
 
+const trackMock = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/product-events/client', () => ({ trackProductEvent: trackMock }));
+
 import { ApprovalsContent } from './approvals-content';
 import type { InboxItem } from '@/lib/approvals-inbox';
 import type { PendingVersionApproval } from '@/lib/version-approvals-inbox';
@@ -241,5 +244,14 @@ describe('ApprovalsContent', () => {
     expect(screen.getByText('empty')).toBeTruthy();
     expect(screen.queryByText('status.APPROVED', { selector: 'span' })).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('ApprovalsContent — 需求验证埋点', () => {
+  it('挂载时记一次收件箱访问，不带条目信息', () => {
+    trackMock.mockClear();
+    renderWith([item('a1')]);
+    expect(trackMock).toHaveBeenCalledTimes(1);
+    expect(trackMock).toHaveBeenCalledWith('approvals_inbox_viewed');
   });
 });

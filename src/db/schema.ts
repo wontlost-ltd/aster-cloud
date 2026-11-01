@@ -2881,3 +2881,83 @@ export type PolicyProof = InferSelectModel<typeof policyProofs>;
 export type NewPolicyProof = InferInsertModel<typeof policyProofs>;
 export type PolicyReviewInvitation = InferSelectModel<typeof policyReviewInvitations>;
 export type NewPolicyReviewInvitation = InferInsertModel<typeof policyReviewInvitations>;
+
+// ============================================
+// 需求验证：产品分析事件与试点申请
+// ============================================
+
+/**
+ * 第一方产品分析事件（需求验证用）。
+ *
+ * 为什么不只用 Mixpanel：Mixpanel 只在浏览器端埋点，服务端事件（注册、首次保存 / 执行、
+ * 证据导出）进不去，且数据在第三方、无法与站内 SQL 聚合（漏斗、模板分布）。本表是
+ * 可直接用 SQL 汇总的事实表，客户端事件同时仍转发 Mixpanel。
+ *
+ * 数据最小化约束（由 `src/lib/product-events.ts` 的白名单强制）：
+ * - 不存策略内容、执行输入、邮箱、姓名；properties 只允许每个事件声明过的键与取值形状；
+ * - actorId / tenantId 是用户 / 租户 id 的 HMAC 假名，不是原始 id；
+ * - dedupeKey 用于「每个用户只记一次」的事件（首次保存 / 首次执行），唯一索引兜住并发重复。
+ */
+export const productEvents = pgTable(
+  'ProductEvent',
+  {
+    id: text('id').primaryKey().notNull(),
+    name: text('name').notNull(),
+    actorId: text('actorId'),
+    tenantId: text('tenantId'),
+    properties: jsonb('properties').default({}).notNull(),
+    dedupeKey: text('dedupeKey'),
+    createdAt: timestamp('createdAt', { mode: 'date', precision: 3 }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('ProductEvent_name_createdAt_idx').on(table.name, table.createdAt),
+    index('ProductEvent_actorId_idx').on(table.actorId),
+    uniqueIndex('ProductEvent_dedupeKey_key').on(table.dedupeKey),
+  ]
+);
+
+/** 试点申请表单的用例选项（多选）。新增取值须同步迁移与落地页文案。 */
+export const pilotUseCaseEnum = pgEnum('PilotUseCase', [
+  'insurance_rating',
+  'credit_decisions',
+  'agent_guardrails',
+  'eligibility_rules',
+  'other',
+]);
+
+/**
+ * 落地页「申请试点」表单提交。
+ *
+ * 只收表单字段本身：不存 IP、不存完整 referrer（只存主机名）；emailDomain 单独存一列，
+ * freeMailDomain 标出 gmail 之类的个人邮箱，便于区分企业线索。
+ */
+export const pilotApplications = pgTable(
+  'PilotApplication',
+  {
+    id: text('id').primaryKey().notNull(),
+    email: text('email').notNull(),
+    emailDomain: text('emailDomain').notNull(),
+    freeMailDomain: boolean('freeMailDomain').notNull(),
+    company: text('company').notNull(),
+    role: text('role').notNull(),
+    useCases: pilotUseCaseEnum('useCases').array().notNull(),
+    painPoint: text('painPoint'),
+    consentAt: timestamp('consentAt', { mode: 'date', precision: 3 }).notNull(),
+    landingPage: text('landingPage').notNull(),
+    locale: text('locale').notNull(),
+    utmSource: text('utmSource'),
+    utmMedium: text('utmMedium'),
+    utmCampaign: text('utmCampaign'),
+    utmTerm: text('utmTerm'),
+    utmContent: text('utmContent'),
+    referrerHost: text('referrerHost'),
+    createdAt: timestamp('createdAt', { mode: 'date', precision: 3 }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('PilotApplication_createdAt_idx').on(table.createdAt),
+    index('PilotApplication_emailDomain_idx').on(table.emailDomain),
+  ]
+);
+
+export type ProductEvent = InferSelectModel<typeof productEvents>;
+export type PilotApplication = InferSelectModel<typeof pilotApplications>;
