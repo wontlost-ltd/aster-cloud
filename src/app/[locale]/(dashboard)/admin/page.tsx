@@ -125,7 +125,8 @@ type OverviewCard = {
     | 'licenseRevokeCard'
     | 'issuedLicensesCard'
     | 'ssoCard'
-    | 'vocabCard';
+    | 'vocabCard'
+    | 'demandCard';
   show: boolean;
   /** true → 卡片显示 "Coming soon" 徽章 + 禁用链接 */
   comingSoon: boolean;
@@ -185,6 +186,13 @@ const CARDS: ReadonlyArray<OverviewCard> = [
   {
     href: '/admin/issued-licenses',
     cardKey: 'issuedLicensesCard',
+    show: IS_SAAS,
+    comingSoon: false,
+  },
+  // 需求验证看板（产品事件漏斗 + 落地页试点申请），SaaS-only。
+  {
+    href: '/admin/demand',
+    cardKey: 'demandCard',
     show: IS_SAAS,
     comingSoon: false,
   },

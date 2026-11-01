@@ -2,6 +2,7 @@ import type { MetadataRoute } from 'next';
 import { locales, defaultLocale } from '@/i18n/config';
 import { selectDocsContentLocale } from '@/lib/docs/locale-content';
 import docsIndexEn from '@/lib/docs/search-index.en.json';
+import { SOLUTION_SLUGS } from '@/lib/solutions';
 
 /**
  * Site-wide sitemap generator.
@@ -71,6 +72,8 @@ const PUBLIC_MARKETING_SLUGS = [
   '/demos/credit',
   '/demos/vocab',
   '/demos/kitten',
+  // 需求验证落地页：不进主导航，但需可被检索与分发（清单见 src/lib/solutions.ts）。
+  ...SOLUTION_SLUGS.map((slug) => `/solutions/${slug}`),
 ];
 
 /**

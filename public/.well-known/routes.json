@@ -51,6 +51,38 @@
       "notes": "Demos index — card grid aggregating the demos (credit / vocab / kitten / poker / poem, plus guardian on SaaS)"
     },
     {
+      "path": "/solutions/insurance-rating",
+      "status": "canonical-here",
+      "owner": "marketing",
+      "source": "src/app/[locale]/solutions/insurance-rating/page.tsx",
+      "locales": "all",
+      "notes": "Demand-validation landing page (direct links only, not in main nav; SaaS-only)"
+    },
+    {
+      "path": "/solutions/credit-decisions",
+      "status": "canonical-here",
+      "owner": "marketing",
+      "source": "src/app/[locale]/solutions/credit-decisions/page.tsx",
+      "locales": "all",
+      "notes": "Demand-validation landing page (direct links only, not in main nav; SaaS-only)"
+    },
+    {
+      "path": "/solutions/agent-guardrails",
+      "status": "canonical-here",
+      "owner": "marketing",
+      "source": "src/app/[locale]/solutions/agent-guardrails/page.tsx",
+      "locales": "all",
+      "notes": "Demand-validation landing page (direct links only, not in main nav; SaaS-only)"
+    },
+    {
+      "path": "/solutions/eligibility-rules",
+      "status": "canonical-here",
+      "owner": "marketing",
+      "source": "src/app/[locale]/solutions/eligibility-rules/page.tsx",
+      "locales": "all",
+      "notes": "Demand-validation landing page (direct links only, not in main nav; SaaS-only)"
+    },
+    {
       "path": "/demos/credit",
       "status": "canonical-here",
       "owner": "marketing",
@@ -313,6 +345,15 @@
       "source": "src/app/[locale]/(dashboard)/admin/domain-vocabularies/page.tsx",
       "auth": "admin",
       "locales": "all"
+    },
+    {
+      "path": "/admin/demand",
+      "status": "canonical-here",
+      "owner": "admin",
+      "source": "src/app/[locale]/(dashboard)/admin/demand/page.tsx",
+      "auth": "admin",
+      "locales": "all",
+      "notes": "Demand-validation dashboard + pilot applications (SaaS-only)"
     },
     {
       "path": "/admin/issued-licenses",
@@ -665,6 +706,24 @@
       "source": "src/app/api/docs/**/route.ts",
       "locales": "none",
       "notes": "Docs session probe + jump-audit; consumed by docs RSC + client probe."
+    },
+    {
+      "path": "/api/product-events",
+      "status": "canonical-here",
+      "owner": "api",
+      "source": "src/app/api/product-events/route.ts",
+      "publicApi": false,
+      "locales": "none",
+      "notes": "Browser-side product analytics ingest (allow-listed events only)"
+    },
+    {
+      "path": "/api/pilot-applications",
+      "status": "canonical-here",
+      "owner": "marketing",
+      "source": "src/app/api/pilot-applications/route.ts",
+      "publicApi": false,
+      "locales": "none",
+      "notes": "Landing-page pilot application form (honeypot + rate limit; SaaS-only)"
     },
     {
       "path": "/api/auth/*",

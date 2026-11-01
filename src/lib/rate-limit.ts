@@ -42,6 +42,8 @@ export const RateLimitPresets = {
   // is meant to deter mass spam (10k rows × 5 = 50k links/h ≈ plan ceiling)
   // without throttling a power user iterating on one file.
   LEXICON_BULK: { windowMs: 3_600_000, maxRequests: 5 },
+  // 落地页试点申请：同一 IP 每小时 5 次足够真人重填 / 同事共用出口，脚本灌表会被挡住。
+  PILOT_APPLICATION: { windowMs: 3_600_000, maxRequests: 5 },
 } as const;
 
 export interface RateLimitResult {

@@ -40,6 +40,8 @@
 | `/billing` | `src/app/[locale]/(dashboard)/billing/page.tsx` | `CAN_BILLING` | 404 |
 | `/billing` 内容 | `src/app/[locale]/(dashboard)/billing/billing-content.tsx` | — | 由 page 守门 |
 | `/signup` | `src/app/[locale]/(auth)/signup/page.tsx`（已确认存在） | `CAN_SIGNUP` | 404 或 "Contact your administrator" |
+| `/solutions/{insurance-rating,credit-decisions,agent-guardrails,eligibility-rules}` | `src/app/[locale]/solutions/*/page.tsx`（需求验证落地页，2026-11） | `IS_SAAS` | 404 |
+| `POST /api/pilot-applications` | `src/app/api/pilot-applications/route.ts`（落地页试点申请） | `IS_SAAS` | 404 |
 
 **marketing home `/`**：不 404，但用变体组件按模式渲染 hero（`SaasMarketingHero` vs `OnPremMarketingHero`）。
 
@@ -52,6 +54,8 @@
 | `/admin/risk-tier` | `src/app/[locale]/(dashboard)/admin/risk-tier/page.tsx` | `CAN_RISKTIER` | 404 |
 | `/admin/risk-tier` 内容 | `src/app/[locale]/(dashboard)/admin/risk-tier/risk-tier-content.tsx` | — | 由 page 守门 |
 | `/admin/ai-circuit-breaker` | `src/app/[locale]/(dashboard)/admin/ai-circuit-breaker/page.tsx` | **两种模式都有** | 200 |
+| `/admin/demand` | `src/app/[locale]/(dashboard)/admin/demand/page.tsx`（需求验证看板 + 试点申请，2026-11） | `IS_SAAS` | 404 |
+| `GET /api/admin/pilot-applications/export` | `src/app/api/admin/pilot-applications/export/route.ts` | `IS_SAAS` | 404 |
 | `/admin/billing`（**未建**） | — | `CAN_BILLING` | 计划 PR-4 新增 |
 | `/admin/license`（**未建**） | — | `CAN_LICENSE` | 占位页（PR-8） |
 | `/admin/sso`（**未建**） | — | `CAN_SSO` | 占位页（PR-8） |
