@@ -2,7 +2,7 @@
  * /admin/demand 的展示层（纯渲染，数据与文案由 page.tsx 注入，便于单测）。
  */
 import type { ReactNode } from 'react';
-import { StatCard, buttonVariants } from '@/components/ui';
+import { Alert, AlertDescription, StatCard, buttonVariants } from '@/components/ui';
 import type { DemandReport } from '@/lib/product-events/report';
 import { GUARD_API_EVENT, PRODUCT_EVENT_NAMES } from '@/lib/product-events/definitions';
 import type { PilotApplication } from '@/lib/prisma';
@@ -58,11 +58,14 @@ export function DemandDashboard({
   applications,
   t,
   exportHref,
+  eventsDisabled = false,
 }: {
   report: DemandReport;
   applications: PilotApplication[];
   t: DemandLabels;
   exportHref: string;
+  /** 生产缺 PRODUCT_ANALYTICS_SALT 时为 true：事件没在记录，0 不代表没有需求。 */
+  eventsDisabled?: boolean;
 }) {
   const { funnel } = report;
   const weeks = [...new Set(report.weekly.map((r) => r.week))];
@@ -71,6 +74,11 @@ export function DemandDashboard({
 
   return (
     <div className="space-y-10">
+      {eventsDisabled && (
+        <Alert variant="danger" role="alert">
+          <AlertDescription>{t('eventsDisabled')}</AlertDescription>
+        </Alert>
+      )}
       <p className="text-sm text-fg-muted">
         {t('window', { since: report.since.toISOString().slice(0, 10) })} {t('privacyNote')} {t('retentionNote')}
       </p>

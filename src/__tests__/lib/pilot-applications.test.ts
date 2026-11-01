@@ -122,6 +122,14 @@ describe('pilotApplicationsToCsv', () => {
     expect(row).not.toMatch(/(^|,)[=+\-@]/);
   });
 
+  it.each([' =1+1', '  +SUM(A1)', '\u00a0-1', '＝1+1', '＋1', '－1', '＠SUM(A1)'])(
+    '前导空白或全角公式字符 %j 也加前缀',
+    (value) => {
+      const row = pilotApplicationsToCsv([{ ...base, company: value }]).split('\r\n')[1];
+      expect(row.split(',')[4]).toBe(`'${value}`);
+    },
+  );
+
   it('普通取值不加前缀', () => {
     const row = pilotApplicationsToCsv([base]).split('\r\n')[1];
     expect(row.startsWith('2026-11-01T10:00:00.000Z,j@corp.example,')).toBe(true);

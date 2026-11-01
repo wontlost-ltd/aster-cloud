@@ -143,8 +143,9 @@ function csvCell(value: unknown): string {
   else if (value instanceof Date) text = value.toISOString();
   else if (Array.isArray(value)) text = value.join('|');
   else text = String(value);
-  // 表格软件会把以 = + - @ 或制表 / 回车开头的单元格当公式执行；表单字段来自匿名提交，一律加 ' 前缀。
-  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  // 表格软件会把以 = + - @（含全角 ＝＋－＠）或制表 / 回车开头、或前导空白后紧跟这些字符的单元格当公式执行；
+  // 表单字段来自匿名提交，一律加 ' 前缀。
+  if (/^\s*[=+\-@＝＋－＠\t\r]/.test(text)) text = `'${text}`;
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 

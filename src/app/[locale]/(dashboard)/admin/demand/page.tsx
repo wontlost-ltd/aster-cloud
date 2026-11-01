@@ -9,6 +9,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { isAdminFromSession } from '@/lib/admin-auth';
 import { IS_SAAS } from '@/lib/deployment-mode';
 import { loadDemandReport } from '@/lib/product-events/report';
+import { productEventsEnabled } from '@/lib/product-events/server';
 import { listPilotApplications } from '@/lib/pilot-applications';
 import { Breadcrumbs, Container, PageHeader } from '@/components/ui';
 import { localizedTitle } from '@/lib/page-metadata';
@@ -52,6 +53,7 @@ export default async function DemandPage({ params }: Props) {
         applications={applications}
         t={(key, values) => t(key, values)}
         exportHref="/api/admin/pilot-applications/export"
+        eventsDisabled={!productEventsEnabled()}
       />
     </Container>
   );

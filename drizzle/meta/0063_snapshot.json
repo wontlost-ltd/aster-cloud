@@ -1,5 +1,5 @@
 {
-  "id": "c8be1485-dbe7-4661-b69a-4f95b228370b",
+  "id": "3be73dee-dbb4-4767-8c61-baf0253caf8d",
   "prevId": "2b8f3913-c2ac-48e8-a62e-3da408dfaf71",
   "version": "7",
   "dialect": "postgresql",
@@ -3759,6 +3759,27 @@
           "columns": [
             {
               "expression": "emailDomain",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "PilotApplication_email_createdAt_idx": {
+          "name": "PilotApplication_email_createdAt_idx",
+          "columns": [
+            {
+              "expression": "email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "createdAt",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

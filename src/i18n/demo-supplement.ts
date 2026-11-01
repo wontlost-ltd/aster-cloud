@@ -244,7 +244,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         sections: {
           demandValidation: {
             title: '4a. Pilot applications and product analytics',
-            content: 'If you apply for a pilot on one of our solution pages, we store the details you submit (work email, company, role, selected use cases and the optional description), the page you applied from and campaign tags (UTM parameters and the host name of the referring site), so that we can evaluate and answer your application. We do not store your IP address with the application. Applications are deleted automatically 24 months after submission, and you can ask us to delete yours earlier using the contact details below. Separately, we record first-party product usage events (for example sign-up completed, first policy saved, evidence exported and landing-page views) to understand which features are used. These events carry pseudonymous user and team identifiers and contain no policy content, inputs, email addresses or names; they are deleted automatically after 13 months.',
+            content: 'If you apply for a pilot on one of our solution pages, we store the details you submit (work email, company, role, selected use cases and the optional description), the page you applied from and campaign tags (UTM parameters and the host name of the referring site), so that we can evaluate and answer your application. We do not store your IP address with the application. Applications are deleted automatically 24 months after submission, and you can ask us to delete yours earlier using the contact details below. Separately, we record first-party product usage events (for example sign-up completed, first policy saved, evidence exported and landing-page views) to understand which features are used. These events carry pseudonymous user and team identifiers and contain no policy content, inputs, email addresses or names; they are deleted automatically after 13 months. Browser-side events (landing-page views, template selection and approval-inbox views) are also sent to Mixpanel; see section 11.',
           },
         },
       },
@@ -880,6 +880,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     admin: {
       // 需求验证看板（/admin/demand）。
       demand: {
+        eventsDisabled: 'Product events are not being recorded: PRODUCT_ANALYTICS_SALT is not configured. Zeros on this page do not mean there is no demand.',
         title: 'Demand validation',
         subtitle: 'Behavioural signals for the 2026-11 demand hypotheses: insurance rating, credit decisions, agent guardrails and eligibility rules.',
         window: 'Last 12 weeks (since {since}).',
@@ -1762,7 +1763,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         sections: {
           demandValidation: {
             title: '4a. 试点申请与产品分析',
-            content: '如果你在我们的解决方案页面申请试点，我们会保存你提交的信息（工作邮箱、公司、角色、所选场景与选填说明）、提交所在页面以及来源标记（UTM 参数与来源网站的主机名），用于评估并回复你的申请。申请不保存你的 IP 地址。申请在提交 24 个月后自动删除，你也可以通过下方联系方式要求提前删除。此外，我们记录第一方产品使用事件（例如完成注册、首次保存策略、导出证据、落地页访问），以了解哪些功能被使用。这些事件只带假名化的用户与团队标识，不含策略内容、输入、邮箱或姓名，13 个月后自动删除。',
+            content: '如果你在我们的解决方案页面申请试点，我们会保存你提交的信息（工作邮箱、公司、角色、所选场景与选填说明）、提交所在页面以及来源标记（UTM 参数与来源网站的主机名），用于评估并回复你的申请。申请不保存你的 IP 地址。申请在提交 24 个月后自动删除，你也可以通过下方联系方式要求提前删除。此外，我们记录第一方产品使用事件（例如完成注册、首次保存策略、导出证据、落地页访问），以了解哪些功能被使用。这些事件只带假名化的用户与团队标识，不含策略内容、输入、邮箱或姓名，13 个月后自动删除。浏览器端事件（落地页访问、模板选择与审批收件箱访问）同时发送至 Mixpanel，见第 11 节。',
           },
         },
       },
@@ -2371,6 +2372,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     admin: {
       // 需求验证看板（/admin/demand）。
       demand: {
+        eventsDisabled: '产品事件未在记录：PRODUCT_ANALYTICS_SALT 未配置。本页的 0 不代表没有需求。',
         title: '需求验证',
         subtitle: '2026-11 需求假设的行为数据：保险定价、信贷决策、智能体护栏、资格规则。',
         window: '最近 12 周（自 {since} 起）。',
@@ -3246,7 +3248,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         sections: {
           demandValidation: {
             title: '4a. Pilotanfragen und Produktanalyse',
-            content: 'Wenn Sie über eine unserer Lösungsseiten einen Pilot anfragen, speichern wir Ihre Angaben (geschäftliche E-Mail, Unternehmen, Rolle, gewählte Anwendungsfälle und die optionale Beschreibung), die Seite, von der aus Sie angefragt haben, sowie Kampagnenmerkmale (UTM-Parameter und den Hostnamen der verweisenden Website), um Ihre Anfrage zu prüfen und zu beantworten. Ihre IP-Adresse speichern wir nicht mit der Anfrage. Anfragen werden 24 Monate nach Eingang automatisch gelöscht; über die unten genannten Kontaktdaten können Sie eine frühere Löschung verlangen. Außerdem erfassen wir eigene Ereignisse zur Produktnutzung (zum Beispiel abgeschlossene Registrierung, erste gespeicherte Richtlinie, Nachweisexport und Aufrufe der Landingpages), um zu verstehen, welche Funktionen genutzt werden. Diese Ereignisse enthalten pseudonymisierte Benutzer- und Teamkennungen, aber keine Richtlinieninhalte, Eingaben, E-Mail-Adressen oder Namen; sie werden nach 13 Monaten automatisch gelöscht.',
+            content: 'Wenn Sie über eine unserer Lösungsseiten einen Pilot anfragen, speichern wir Ihre Angaben (geschäftliche E-Mail, Unternehmen, Rolle, gewählte Anwendungsfälle und die optionale Beschreibung), die Seite, von der aus Sie angefragt haben, sowie Kampagnenmerkmale (UTM-Parameter und den Hostnamen der verweisenden Website), um Ihre Anfrage zu prüfen und zu beantworten. Ihre IP-Adresse speichern wir nicht mit der Anfrage. Anfragen werden 24 Monate nach Eingang automatisch gelöscht; über die unten genannten Kontaktdaten können Sie eine frühere Löschung verlangen. Außerdem erfassen wir eigene Ereignisse zur Produktnutzung (zum Beispiel abgeschlossene Registrierung, erste gespeicherte Richtlinie, Nachweisexport und Aufrufe der Landingpages), um zu verstehen, welche Funktionen genutzt werden. Diese Ereignisse enthalten pseudonymisierte Benutzer- und Teamkennungen, aber keine Richtlinieninhalte, Eingaben, E-Mail-Adressen oder Namen; sie werden nach 13 Monaten automatisch gelöscht. Ereignisse aus dem Browser (Aufrufe der Landingpages, Vorlagenauswahl und Aufrufe des Freigabe-Eingangs) werden zusätzlich an Mixpanel übermittelt; siehe Abschnitt 11.',
           },
         },
       },
@@ -3870,6 +3872,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     admin: {
       // 需求验证看板（/admin/demand）。
       demand: {
+        eventsDisabled: 'Produktereignisse werden nicht erfasst: PRODUCT_ANALYTICS_SALT ist nicht konfiguriert. Nullwerte auf dieser Seite bedeuten nicht, dass keine Nachfrage besteht.',
         title: 'Nachfragevalidierung',
         subtitle: 'Verhaltenssignale zu den Nachfragehypothesen 2026-11: Versicherungstarife, Kreditentscheidungen, Agenten-Leitplanken und Anspruchsregeln.',
         window: 'Letzte 12 Wochen (seit {since}).',
@@ -4740,7 +4743,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         sections: {
           demandValidation: {
             title: '4a. पायलट आवेदन और उत्पाद विश्लेषण',
-            content: 'यदि आप हमारे किसी समाधान पेज पर पायलट के लिए आवेदन करते हैं, तो हम आपके द्वारा भेजे गए विवरण (कार्य ईमेल, कंपनी, भूमिका, चुने गए उपयोग मामले और वैकल्पिक विवरण), जिस पेज से आपने आवेदन किया और अभियान टैग (UTM पैरामीटर और संदर्भित साइट का होस्ट नाम) सहेजते हैं, ताकि आपके आवेदन का आकलन और उत्तर दे सकें। आवेदन के साथ हम आपका IP पता नहीं सहेजते। आवेदन जमा होने के 24 महीने बाद अपने आप हटा दिए जाते हैं, और आप नीचे दिए संपर्क विवरण से पहले हटाने का अनुरोध कर सकते हैं। इसके अलावा, हम यह समझने के लिए कि कौन-सी सुविधाएँ उपयोग होती हैं, प्रथम-पक्ष उत्पाद उपयोग इवेंट दर्ज करते हैं (जैसे साइन अप पूरा होना, पहली नीति सहेजना, साक्ष्य निर्यात और लैंडिंग पेज विज़िट)। इन इवेंट में छद्मनाम उपयोगकर्ता और टीम पहचानकर्ता होते हैं; इनमें नीति सामग्री, इनपुट, ईमेल पते या नाम नहीं होते; ये 13 महीने बाद अपने आप हटा दिए जाते हैं।',
+            content: 'यदि आप हमारे किसी समाधान पेज पर पायलट के लिए आवेदन करते हैं, तो हम आपके द्वारा भेजे गए विवरण (कार्य ईमेल, कंपनी, भूमिका, चुने गए उपयोग मामले और वैकल्पिक विवरण), जिस पेज से आपने आवेदन किया और अभियान टैग (UTM पैरामीटर और संदर्भित साइट का होस्ट नाम) सहेजते हैं, ताकि आपके आवेदन का आकलन और उत्तर दे सकें। आवेदन के साथ हम आपका IP पता नहीं सहेजते। आवेदन जमा होने के 24 महीने बाद अपने आप हटा दिए जाते हैं, और आप नीचे दिए संपर्क विवरण से पहले हटाने का अनुरोध कर सकते हैं। इसके अलावा, हम यह समझने के लिए कि कौन-सी सुविधाएँ उपयोग होती हैं, प्रथम-पक्ष उत्पाद उपयोग इवेंट दर्ज करते हैं (जैसे साइन अप पूरा होना, पहली नीति सहेजना, साक्ष्य निर्यात और लैंडिंग पेज विज़िट)। इन इवेंट में छद्मनाम उपयोगकर्ता और टीम पहचानकर्ता होते हैं; इनमें नीति सामग्री, इनपुट, ईमेल पते या नाम नहीं होते; ये 13 महीने बाद अपने आप हटा दिए जाते हैं। ब्राउज़र-साइड इवेंट (लैंडिंग पेज विज़िट, टेम्पलेट चयन और स्वीकृति इनबॉक्स विज़िट) Mixpanel को भी भेजे जाते हैं; खंड 11 देखें।',
           },
         },
       },
@@ -5352,6 +5355,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     admin: {
       // 需求验证看板（/admin/demand）。
       demand: {
+        eventsDisabled: 'उत्पाद इवेंट दर्ज नहीं हो रहे हैं: PRODUCT_ANALYTICS_SALT कॉन्फ़िगर नहीं है। इस पेज पर शून्य का अर्थ यह नहीं है कि माँग नहीं है।',
         title: 'माँग सत्यापन',
         subtitle: '2026-11 की माँग परिकल्पनाओं के व्यवहारिक संकेत: बीमा रेटिंग, क्रेडिट निर्णय, एजेंट गार्डरेल और पात्रता नियम।',
         window: 'पिछले 12 सप्ताह ({since} से)।',

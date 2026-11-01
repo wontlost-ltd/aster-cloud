@@ -92,4 +92,12 @@ describe('DemandDashboard', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/admin/pilot-applications/a1', { method: 'DELETE' });
     vi.unstubAllGlobals();
   });
+
+  it('事件未在记录（生产缺密钥）时页首显示醒目提示；正常时不显示', () => {
+    const { unmount } = render(<DemandDashboard report={report} applications={[]} t={t} exportHref="/x.csv" eventsDisabled />);
+    expect(screen.getByRole('alert').textContent).toBe('eventsDisabled');
+    unmount();
+    render(<DemandDashboard report={report} applications={[]} t={t} exportHref="/x.csv" />);
+    expect(screen.queryByText('eventsDisabled')).toBeNull();
+  });
 });

@@ -2956,6 +2956,8 @@ export const pilotApplications = pgTable(
   (table) => [
     index('PilotApplication_createdAt_idx').on(table.createdAt),
     index('PilotApplication_emailDomain_idx').on(table.emailDomain),
+    // 同一邮箱 24 小时去重查询（email = ? AND createdAt >= ?）
+    index('PilotApplication_email_createdAt_idx').on(table.email, table.createdAt),
   ]
 );
 
