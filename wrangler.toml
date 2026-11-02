@@ -98,6 +98,9 @@ AUTH_TRUST_HOST = "true"
 # 取你在 dashboard 上设过、且**已实测投递成功**的那个地址；
 # 不擅自改成 noreply@ —— 该地址未经投递验证，换了可能再次被拒。
 RESEND_FROM_EMAIL = "ryan.pang@wontlost.com"
+# 新试点申请的内部通知收件人（逗号分隔，可选）；缺省 support@wontlost.com。
+# 发信复用上面的 RESEND_FROM_EMAIL 与 RESEND_API_KEY，无需额外密钥。
+# PILOT_APPLICATION_NOTIFY_TO = "support@wontlost.com"
 # AI 工作台（ADR 0049）：服务端运行时经 safeEnv 读取。先只对站长开启灰度，
 # 名单仅作兼容回退，授权以数据库为准。
 NEXT_PUBLIC_AI_WORKSPACE_URL = "https://ai.aster-lang.cloud"

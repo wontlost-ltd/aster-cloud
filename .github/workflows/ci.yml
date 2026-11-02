@@ -952,6 +952,10 @@ jobs:
   migration-split:
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
+    # gh pr view 走 GraphQL 读取 PR 文件 / 标签 / 正文，需要 pull-requests: read（顶层默认只有 contents: read）。
+    permissions:
+      contents: read
+      pull-requests: read
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7

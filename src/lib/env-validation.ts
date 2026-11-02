@@ -249,6 +249,10 @@ const ENV_CHECKS: readonly EnvCheck[] = [
   //        不调用；地址已配置而缺此密钥时，导出 / 清除照常完成 cloud 部分并提示工作台部分失败，
   //        不影响启动，因此不放入强校验。
   //
+  //   PILOT_APPLICATION_NOTIFY_TO
+  //     —— 新试点申请内部通知的收件人（逗号分隔）；缺省 support@wontlost.com，
+  //        发信复用 RESEND_API_KEY / RESEND_FROM_EMAIL，因此无需校验。
+  //
   // 增加新 env 时若想强校验，往 ENV_CHECKS 加条目即可；若刻意保持 optional，
   // 务必在本节追加说明便于后续维护者审计。
 ] as const;

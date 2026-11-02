@@ -95,7 +95,7 @@ function appUrl(): string {
 }
 
 // Escape HTML to prevent XSS attacks
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   const htmlEscapes: Record<string, string> = {
     '&': '&amp;',
     '<': '&lt;',
@@ -382,4 +382,35 @@ export async function sendTeamInvitationEmail(
     console.error('Failed to send team invitation email:', error);
     return { success: false, inviteUrl };
   }
+}
+
+/**
+ * 发给内部运营的通知邮件（如新试点申请）。
+ *
+ * 调用方负责构造已转义的 html / text 与已清洗的 subject；本函数只负责投递。
+ * 与验证类邮件同理必须检查返回值里的 error（Resend 对被拒投递不抛异常）。
+ * 未配置 Resend 时静默返回 false：内部通知丢失不应阻断任何用户路径。
+ * 日志只记录错误分类，不带邮件正文。
+ */
+export async function sendInternalNotificationEmail(message: {
+  to: string[];
+  subject: string;
+  html: string;
+  text: string;
+}): Promise<boolean> {
+  const resend = await ensureResend();
+  if (!resend) return false;
+
+  const { error } = await resend.emails.send({
+    from: `Aster Cloud <${fromEmail()}>`,
+    to: message.to,
+    subject: message.subject,
+    html: message.html,
+    text: message.text,
+  });
+  if (error) {
+    console.error('[resend] internal notification rejected:', error.name, error.message);
+    throw new Error(`RESEND_SEND_REJECTED: ${error.name}`);
+  }
+  return true;
 }

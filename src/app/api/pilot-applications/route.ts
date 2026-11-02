@@ -7,6 +7,7 @@
  * - 按 IP 分布式限流（RateLimitPresets.PILOT_APPLICATION，与注册同一套 checkRateLimitDistributed）；
  * - 同一邮箱 24 小时内只收一份，重复提交回成功但不落新行。
  *
+ * 落库后在响应之后异步给运营发一封通知邮件（失败不影响响应；重复 / 蜜罐 / 非法 / 限流均不发）。
  * 落库后记 pilot_application_submitted 事件：只带落地页、语种、是否个人邮箱与来源归因，不带邮箱 / 公司。
  */
 import { NextResponse } from 'next/server';
@@ -14,6 +15,8 @@ import { IS_SAAS } from '@/lib/deployment-mode';
 import { getClientIp, RateLimitPresets } from '@/lib/rate-limit';
 import { checkRateLimitDistributed } from '@/lib/rate-limit-distributed';
 import { hasRecentPilotApplication, insertPilotApplication, parsePilotApplication } from '@/lib/pilot-applications';
+import { runAfterResponse } from '@/lib/after-response';
+import { notifyPilotApplication } from '@/lib/email/pilot-application-notification';
 import { recordProductEventAfterResponse } from '@/lib/product-events/server';
 
 export const runtime = 'nodejs';
@@ -71,6 +74,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   const v = parsed.value;
+  runAfterResponse(() => notifyPilotApplication(v));
   recordProductEventAfterResponse('pilot_application_submitted', {
     properties: {
       page: v.landingPage,

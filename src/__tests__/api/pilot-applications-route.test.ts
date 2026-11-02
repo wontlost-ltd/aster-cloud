@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   insert: vi.fn(),
   recent: vi.fn(),
   record: vi.fn(),
+  notify: vi.fn(),
   isSaas: true,
 }));
 
@@ -22,6 +23,7 @@ vi.mock('@/lib/deployment-mode', async () => {
   };
 });
 vi.mock('@/lib/rate-limit-distributed', () => ({ checkRateLimitDistributed: mocks.rate }));
+vi.mock('@/lib/email/pilot-application-notification', () => ({ notifyPilotApplication: mocks.notify }));
 vi.mock('@/lib/product-events/server', () => ({ recordProductEventAfterResponse: mocks.record }));
 vi.mock('@/lib/pilot-applications', async () => {
   const actual = await vi.importActual<typeof import('@/lib/pilot-applications')>('@/lib/pilot-applications');
@@ -56,6 +58,7 @@ beforeEach(() => {
   mocks.rate.mockResolvedValue({ allowed: true, remaining: 4, resetAt: Date.now() + 3_600_000 });
   mocks.insert.mockResolvedValue('app-1');
   mocks.recent.mockResolvedValue(false);
+  mocks.notify.mockResolvedValue(undefined);
 });
 
 describe('POST /api/pilot-applications', () => {
@@ -129,5 +132,41 @@ describe('POST /api/pilot-applications', () => {
     expect(mocks.recent).toHaveBeenCalledWith('jane@insurer.example');
     expect(mocks.insert).not.toHaveBeenCalled();
     expect(mocks.record).not.toHaveBeenCalled();
+  });
+
+  it('落库成功 → 响应之后发一次内部通知（带完整规范化申请）', async () => {
+    const res = await POST(req(valid));
+    expect(res.status).toBe(201);
+    await vi.waitFor(() => expect(mocks.notify).toHaveBeenCalledTimes(1));
+    expect(mocks.notify).toHaveBeenCalledWith(expect.objectContaining({
+      email: 'jane@insurer.example', company: 'Example Mutual', landingPage: 'insurance-rating',
+    }));
+  });
+
+  it('重复提交 / 蜜罐 / 非法字段 / 限流 / 落库失败 / on-prem → 都不通知', async () => {
+    mocks.recent.mockResolvedValueOnce(true);
+    await POST(req(valid));
+    await POST(req({ ...valid, website: 'http://spam.example' }));
+    await POST(req({ ...valid, consent: false }));
+    mocks.rate.mockResolvedValueOnce({ allowed: false, remaining: 0, resetAt: Date.now() + 1000 });
+    await POST(req(valid));
+    mocks.insert.mockRejectedValueOnce(new Error('db down'));
+    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    await POST(req(valid));
+    err.mockRestore();
+    mocks.isSaas = false;
+    await POST(req(valid));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(mocks.notify).not.toHaveBeenCalled();
+  });
+
+  it('通知失败（同步抛错或拒绝）不影响 201', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    mocks.notify.mockRejectedValueOnce(new Error('resend down'));
+    expect((await POST(req(valid))).status).toBe(201);
+    mocks.notify.mockImplementationOnce(() => { throw new Error('boom'); });
+    expect((await POST(req(valid))).status).toBe(201);
+    await vi.waitFor(() => expect(mocks.notify).toHaveBeenCalledTimes(2));
+    err.mockRestore();
   });
 });
