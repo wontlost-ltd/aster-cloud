@@ -183,6 +183,7 @@ export default async function PolicyDetailPage({
       verified: t.raw('cedarExport.verified') as string,
       notExportable: t('cedarExport.notExportable'),
       failed: t('cedarExport.failed'),
+      busy: t('cedarExport.busy'),
       noExecutableVersion: t('cedarExport.noExecutableVersion'),
       versionsLink: t('detail.versionHistory'),
       schemaNote: t('cedarExport.schemaNote'),

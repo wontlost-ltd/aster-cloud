@@ -99,6 +99,8 @@ describe('版本操作的状态错误（#662）', () => {
     expect(err).toBeInstanceOf(VersionStateError);
     expect((err as VersionStateError).code).toBe(code);
     expect((err as VersionStateError).message).toContain('v3');
+    // 接口 message 一律英文，界面按 code 本地化（#697）
+    expect((err as VersionStateError).message).not.toMatch(/[\u4e00-\u9fff]/);
   });
 
   it.each([
@@ -111,5 +113,8 @@ describe('版本操作的状态错误（#662）', () => {
     const err = await captureError(run());
     expect(err).toBeInstanceOf(VersionStateError);
     expect((err as VersionStateError).code).toBe('default_version_locked');
+    expect((err as VersionStateError).message).toBe(
+      'Version v3 is the default version. Set another version as the default first.',
+    );
   });
 });

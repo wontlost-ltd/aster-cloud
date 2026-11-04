@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useTranslations } from 'next-intl';
 import { PolicyVersionList, VersionActionError, type PolicyVersionInfo } from './policy-version-list';
-import type { VersionActionResult } from '@/hooks/use-policy-versions';
+import type { ApproveResult, VersionActionResult } from '@/hooks/use-policy-versions';
 import { VersionDetailPanel } from './version-detail-panel';
 import { VersionComparePanel } from './version-compare-panel';
 import { usePolicyVersions } from '@/hooks/use-policy-versions';
@@ -24,14 +24,6 @@ interface PolicyVersionsTabProps {
 }
 
 type ViewMode = 'list' | 'detail' | 'compare';
-
-/**
- * 所有版本操作失败都抛 VersionActionError：列表据此显示原因（只提示一次）并保持对话框打开，
- * 用户填写的说明 / 原因不丢（第 4 轮生产复测：批准失败时对话框关闭、说明丢失）。
- */
-function failIfNotOk(result: VersionActionResult): void {
-  if (!result.ok) throw new VersionActionError(result.message);
-}
 
 export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionDays = null, review, whatIfOwnerOnly = false }: PolicyVersionsTabProps) {
   const { data: session } = useSession();
@@ -59,6 +51,20 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
     | { open: true; message: string; cta: { label: string; href: string } }
   >({ open: false });
 
+  /**
+   * 所有版本操作失败都抛 VersionActionError：列表据此显示原因（只提示一次）并保持对话框打开，
+   * 用户填写的说明 / 原因不丢（第 4 轮生产复测：批准失败时对话框关闭、说明丢失）。
+   * 版本状态错误按稳定 code 本地化（#697），其余显示服务端原因。
+   */
+  const failIfNotOk = useCallback(
+    (result: VersionActionResult | ApproveResult, version: number, fallback?: string): void => {
+      if (result.ok) return;
+      if (result.code) throw new VersionActionError(t(`versionErrorCodes.${result.code}`, { version }));
+      throw new VersionActionError(result.message ?? fallback ?? tCommon('somethingWrong'));
+    },
+    [t, tCommon]
+  );
+
   const handleViewSource = useCallback((version: number) => {
     setSelectedVersion(version);
     setViewMode('detail');
@@ -80,26 +86,26 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
   // 将 version 传递给基于 version number 的 API
   const handleSetDefault = useCallback(
     async (version: number) => {
-      failIfNotOk(await setDefault(version));
+      failIfNotOk(await setDefault(version), version);
       toast.success(t('versionDefaulted', { version }));
     },
-    [setDefault, t]
+    [setDefault, failIfNotOk, t]
   );
 
   const handleDeprecate = useCallback(
     async (version: number, reason?: string) => {
-      failIfNotOk(await deprecate(version, reason));
+      failIfNotOk(await deprecate(version, reason), version);
       toast.success(t('versionDeprecated', { version }));
     },
-    [deprecate, t]
+    [deprecate, failIfNotOk, t]
   );
 
   const handleArchive = useCallback(
     async (version: number, reason?: string) => {
-      failIfNotOk(await archive(version, reason));
+      failIfNotOk(await archive(version, reason), version);
       toast.success(t('versionArchived', { version }));
     },
-    [archive, t]
+    [archive, failIfNotOk, t]
   );
 
   // 这些 API 现在需要 version number 而不是 versionId
@@ -109,12 +115,11 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
       const ver = (versions as PolicyVersionInfo[]).find((v) => v.id === versionId);
       if (ver) {
         // 失败抛 VersionActionError：列表显示服务端原因（只提示一次）并保持对话框打开，发布说明不丢
-        const result = await submitForApproval(ver.version, releaseNote);
-        if (!result.ok) throw new VersionActionError(result.message);
+        failIfNotOk(await submitForApproval(ver.version, releaseNote), ver.version);
         toast.success(t('versionSubmitted', { version: ver.version }));
       }
     },
-    [versions, submitForApproval, t]
+    [versions, submitForApproval, failIfNotOk, t]
   );
 
   const handleApprove = useCallback(
@@ -139,11 +144,10 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
       }
       // 其余失败：按错误码给本地化原因，抛出后由列表提示一次并保持对话框打开（批准说明不丢）
       const known = result.errorCode === 'segregation_of_duties' || result.errorCode === 'vocabulary_changed_since_save';
-      throw new VersionActionError(
-        known ? t(`approvalErrorCodes.${result.errorCode}`) : result.message ?? t('approvalErrorCodes.other'),
-      );
+      if (known) throw new VersionActionError(t(`approvalErrorCodes.${result.errorCode}`));
+      failIfNotOk(result, ver.version, t('approvalErrorCodes.other'));
     },
-    [versions, approve, t]
+    [versions, approve, failIfNotOk, t]
   );
 
   const closeInviteModal = useCallback(() => setInviteModal({ open: false }), []);
@@ -153,12 +157,11 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
       const ver = (versions as PolicyVersionInfo[]).find((v) => v.id === versionId);
       if (ver && comment) {
         // 同上：失败时保留驳回意见，只提示一次
-        const result = await reject(ver.version, comment);
-        if (!result.ok) throw new VersionActionError(result.message);
+        failIfNotOk(await reject(ver.version, comment), ver.version);
         toast.success(t('versionRejected', { version: ver.version }));
       }
     },
-    [versions, reject, t]
+    [versions, reject, failIfNotOk, t]
   );
 
   // 只有列表本身没加载出来才整块替换；操作失败见下方 actionError 提示。

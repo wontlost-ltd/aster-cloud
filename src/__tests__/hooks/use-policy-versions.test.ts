@@ -55,6 +55,19 @@ describe('usePolicyVersions 操作失败', () => {
     expect(result.current.versions).toHaveLength(2);
   });
 
+  // #697：版本状态错误码随结果返回，由界面按 code 本地化
+  it.each([
+    ['setDefault', 'version_not_approved'],
+    ['deprecate', 'default_version_locked'],
+    ['archive', 'version_not_archivable'],
+  ] as const)('%s 失败带版本状态错误码 %s：结果带 code 与服务端 message', async (fn, code) => {
+    const { result } = await mountLoaded();
+    fetchMock.mockResolvedValueOnce(json({ error: 'Version v2 …', code, message: 'Version v2 …' }, 400));
+    let outcome: Awaited<ReturnType<typeof result.current.setDefault>> | undefined;
+    await act(async () => { outcome = await result.current[fn](2); });
+    expect(outcome).toEqual({ ok: false, code, message: 'Version v2 …' });
+  });
+
   it('★提交失败：响应带 message 时用 message，而不是 error 里的错误码', async () => {
     const { result } = await mountLoaded();
     fetchMock.mockResolvedValueOnce(json({ error: 'simulated_failure', message: 'Service unavailable' }, 503));

@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { PolicyVersionStatus } from '@/lib/prisma';
 import { actionErrorCode, actionErrorMessage, extractErrorMessage } from '@/lib/api/error-envelope';
+import { isVersionStateErrorCode, type VersionStateErrorCode } from '@/services/policy/version-state-error';
 
 /**
  * 版本信息
@@ -67,12 +68,24 @@ function failureMessage(data: unknown, fallback: string): string {
   return actionErrorMessage(data) ?? fallback;
 }
 
-/** 版本操作（设默认 / 废弃 / 归档 / 提交 / 驳回）的结果：失败时带可直接展示的原因。 */
-export type VersionActionResult = { ok: true } | { ok: false; message: string };
+/**
+ * 版本操作（设默认 / 废弃 / 归档 / 提交 / 驳回）的结果：失败时带可直接展示的原因；
+ * 版本状态错误另带稳定 code，界面按 code 本地化（#697）。
+ */
+export type VersionActionResult = { ok: true } | { ok: false; message: string; code?: VersionStateErrorCode };
+
+/** 失败结果：服务端 message（或回退文案），是版本状态错误时附上 code。 */
+function failedResult(data: unknown, fallback: string): Extract<VersionActionResult, { ok: false }> {
+  const code = actionErrorCode(data);
+  const message = failureMessage(data, fallback);
+  return isVersionStateErrorCode(code) ? { ok: false, code, message } : { ok: false, message };
+}
 
 export interface ApproveResult {
   ok: boolean;
   errorCode?: ApproveErrorCode;
+  /** 版本状态错误（如已不在待审批）的稳定 code，界面按 code 本地化（#697） */
+  code?: VersionStateErrorCode;
   message?: string;
   cta?: { label: string; href: string };
 }
@@ -224,7 +237,7 @@ export function usePolicyVersions({
           await refresh();
           return { ok: true };
         } else {
-          return { ok: false, message: failureMessage(data, '设置默认版本失败') };
+          return failedResult(data, '设置默认版本失败');
         }
       } catch (err) {
         return { ok: false, message: err instanceof Error ? err.message : '未知错误' };
@@ -254,7 +267,7 @@ export function usePolicyVersions({
           await refresh();
           return { ok: true };
         } else {
-          return { ok: false, message: failureMessage(data, '废弃版本失败') };
+          return failedResult(data, '废弃版本失败');
         }
       } catch (err) {
         return { ok: false, message: err instanceof Error ? err.message : '未知错误' };
@@ -284,7 +297,7 @@ export function usePolicyVersions({
           await refresh();
           return { ok: true };
         } else {
-          return { ok: false, message: failureMessage(data, '归档版本失败') };
+          return failedResult(data, '归档版本失败');
         }
       } catch (err) {
         return { ok: false, message: err instanceof Error ? err.message : '未知错误' };
@@ -314,7 +327,7 @@ export function usePolicyVersions({
           await refresh();
           return { ok: true };
         } else {
-          return { ok: false, message: failureMessage(data, '提交审批失败') };
+          return failedResult(data, '提交审批失败');
         }
       } catch (err) {
         return { ok: false, message: err instanceof Error ? err.message : '未知错误' };
@@ -352,7 +365,7 @@ export function usePolicyVersions({
           code === 'vocabulary_changed_since_save'
             ? code
             : 'other';
-        return { ok: false, errorCode, message: failureMessage(data, '批准失败'), cta: data?.cta };
+        return { ...failedResult(data, '批准失败'), errorCode, cta: data?.cta };
       } catch (err) {
         const message = err instanceof Error ? err.message : '未知错误';
         return { ok: false, errorCode: 'other', message };
@@ -382,7 +395,7 @@ export function usePolicyVersions({
           await refresh();
           return { ok: true };
         } else {
-          return { ok: false, message: failureMessage(data, '拒绝失败') };
+          return failedResult(data, '拒绝失败');
         }
       } catch (err) {
         return { ok: false, message: err instanceof Error ? err.message : '未知错误' };

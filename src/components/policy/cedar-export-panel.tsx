@@ -9,6 +9,7 @@
 import { useCallback, useId, useState } from 'react';
 import type { PolicyCedarExportResponse, PolicyDiagnostic } from '@/services/policy/policy-api';
 import { cedarRuleCandidates } from '@/lib/cedar-export-rules';
+import { actionErrorCode } from '@/lib/api/error-envelope';
 
 export interface CedarExportLabels {
   button: string;
@@ -17,6 +18,8 @@ export interface CedarExportLabels {
   verified: string;
   notExportable: string;
   failed: string;
+  /** 服务端导出并发已满（503 cedar_export_busy），提示稍后重试 */
+  busy: string;
   noExecutableVersion: string;
   /** 无可执行版本时引导去版本页的链接文案 */
   versionsLink: string;
@@ -59,12 +62,12 @@ function downloadFile(name: string, text: string, type: string): void {
   URL.revokeObjectURL(url);
 }
 
-// 409 为无可执行版本，提示先批准；503 为服务端导出并发已满，显示服务端消息提示稍后重试；其余失败统一显示 failed
+// 失败文案按状态与稳定错误码在客户端本地化（#688），不显示服务端原文：409 为无可执行版本，提示先批准；
+// cedar_export_busy 为服务端导出并发已满，提示稍后重试；其余失败统一显示 failed
 async function failureMessage(res: Response, labels: CedarExportLabels): Promise<string> {
   if (res.status === 409) return labels.noExecutableVersion;
-  if (res.status !== 503) return labels.failed;
-  const body = (await res.json().catch(() => null)) as { message?: unknown } | null;
-  return typeof body?.message === 'string' && body.message ? body.message : labels.failed;
+  const body: unknown = await res.json().catch(() => null);
+  return actionErrorCode(body) === 'cedar_export_busy' ? labels.busy : labels.failed;
 }
 
 // 未指定规则时不带请求体（服务端按唯一候选导出）；指定时带 functionName

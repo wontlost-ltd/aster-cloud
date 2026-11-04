@@ -1,5 +1,5 @@
 // 策略详情页「导出为 Cedar」面板（ADR 0047 §6）：可导出时按响应原样下载两个文件（文件名取编译器给出的模块名）
-// 并报告探针比对数；不可导出时列出诊断；无可执行版本（409）时提示先批准；忙时显示服务端消息；其余失败显示通用失败文案。
+// 并报告探针比对数；不可导出时列出诊断；无可执行版本（409）时提示先批准；忙时按错误码显示本地化的稍后重试文案；其余失败显示通用失败文案（#688）。
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { CedarExportPanel } from '@/components/policy/cedar-export-panel';
@@ -10,6 +10,7 @@ const labels = {
   verified: 'Verified against Cedar on {count} probes',
   notExportable: 'This policy cannot be exported to Cedar',
   failed: 'Export failed',
+  busy: 'Too many exports are running. Try again in a moment.',
   noExecutableVersion: 'Approve a version before exporting to Cedar',
   versionsLink: 'Version history',
   schemaNote: 'Schema covers only what the rule mentions',
@@ -122,14 +123,23 @@ describe('CedarExportPanel', () => {
     expect(createObjectURL).not.toHaveBeenCalled();
   });
 
-  it('503 busy: shows the server message', async () => {
+  it('503 cedar_export_busy: shows the localized busy label, not the server message', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(503, {
       error: 'cedar_export_busy', message: 'Cedar export is busy, retry shortly', concurrencyLimit: 2,
     })));
 
     renderPanel();
 
-    expect(await screen.findByText('Cedar export is busy, retry shortly')).toBeDefined();
+    expect((await screen.findByRole('alert')).textContent).toBe(labels.busy);
+    expect(screen.queryByText('Cedar export is busy, retry shortly')).toBeNull();
+  });
+
+  it('503 without the busy code: shows the generic failed label', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(503, { error: 'vocabulary_unavailable', message: 'x' })));
+
+    renderPanel();
+
+    expect((await screen.findByRole('alert')).textContent).toBe('Export failed');
   });
 
   it('no approved version at render time: button disabled, hint explains approval and links to versions; no request', async () => {
@@ -155,7 +165,10 @@ describe('CedarExportPanel', () => {
   });
 
   it('502 upstream failure: shows the failed label', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(502, { success: false, error: 'upstream down' })));
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(502, {
+      success: false, error: 'cedar_export_failed', code: 'cedar_export_failed',
+      message: 'Cedar export failed. Please try again later.', requestId: '00000000-0000-4000-8000-000000000000',
+    })));
 
     renderPanel();
 

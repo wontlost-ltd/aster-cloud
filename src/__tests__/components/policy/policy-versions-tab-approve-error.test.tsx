@@ -135,6 +135,24 @@ describe('PolicyVersionsTab 其余操作失败：显示服务端原因一次，�
   });
 });
 
+// #697：版本状态错误（不存在、状态不符、默认版本）按稳定 code 本地化，不显示服务端英文原文
+describe('PolicyVersionsTab 版本状态错误码本地化（#697）', () => {
+  it.each([
+    ['default-v1', 'setDefault', 'version_not_approved'],
+    ['deprecate-v1', 'deprecate', 'default_version_locked'],
+    ['archive-v1', 'archive', 'version_not_archivable'],
+    ['submit-v1', 'submit', 'version_not_submittable'],
+    ['reject-v1', 'reject', 'version_not_pending'],
+  ] as const)('%s 失败（%s → %s）：显示本地化文案一次，对话框保持打开', async (button, fn, code) => {
+    h[fn].mockResolvedValue({ ok: false, code, message: 'Version v2 …' });
+    render(<PolicyVersionsTab policyId="p1" />);
+    click(button);
+    await waitFor(() => expect(h.toastError).toHaveBeenCalledTimes(1));
+    expect(h.toastError).toHaveBeenCalledWith(`policies.versions.versionErrorCodes.${code}`);
+    expect(h.dialogClosed).not.toHaveBeenCalled();
+  });
+});
+
 describe('PolicyVersionsTab 创建失败横幅', () => {
   it('actionError 显示在列表上方，版本列表仍在，可关闭', () => {
     h.actionError = 'Create failed';

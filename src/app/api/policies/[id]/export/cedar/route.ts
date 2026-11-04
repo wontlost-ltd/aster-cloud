@@ -21,6 +21,7 @@ import { versionVocabularyErrorResponse } from '@/lib/policy-compile-response';
 import { PolicyApiError } from '@/services/policy/policy-api';
 import { findDefaultExecutableVersion } from '@/services/policy/default-executable-version';
 import { resolvePolicyRuleName } from '@/lib/cedar-export-rules';
+import { upstreamErrorMessage } from '@/lib/upstream-error-messages';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -44,16 +45,42 @@ function parseAliasSet(aliasSet: string | null): Record<string, string[]> | null
   }
 }
 
-// 上游忙（503 cedar_export_busy）原样透传给面板以便提示重试；其余上游错误（含 401/403 身份配置问题）一律 502
+const EXPORT_FAILED_MESSAGE = 'Cedar export failed. Please try again later.';
+
+/**
+ * 上游拒绝了这次导出（4xx，带稳定 code）：aster-api 的 message 面向用户，按 code 换成英文后保留。
+ * 401/403 是 cloud 与 api 之间的身份配置问题、408 / UNKNOWN 是客户端包装的超时与网络异常，都不算。
+ */
+function upstreamRejection(error: unknown): PolicyApiError | null {
+  if (!(error instanceof PolicyApiError) || !error.code) return null;
+  const s = error.statusCode;
+  return s >= 400 && s < 500 && s !== 401 && s !== 403 && s !== 408 ? error : null;
+}
+
+/**
+ * 上游忙（503 cedar_export_busy）原样透传给面板以便提示重试；上游 4xx 拒绝保留其 code 与面向用户的文案；
+ * 其余（5xx、身份配置、网络异常、内部异常）一律 502 通用文案（#688）：原文可能含内部主机名、IP 或端口，
+ * 只写服务端日志并以 requestId 关联。
+ */
 function upstreamError(error: unknown, headers: Headers): NextResponse {
   const busy = error instanceof PolicyApiError && error.statusCode === 503 && error.code === 'cedar_export_busy';
   if (busy) {
     if (error.retryAfter) headers.set('Retry-After', error.retryAfter);
     return NextResponse.json(error.details ?? { error: error.code, message: error.message }, { status: 503, headers });
   }
-  console.error('[api/policies/export/cedar] upstream error', error);
-  const message = error instanceof Error ? error.message : 'Failed to export policy';
-  return NextResponse.json({ success: false, error: message }, { status: 502, headers });
+  const rejected = upstreamRejection(error);
+  if (rejected) {
+    console.warn('[api/policies/export/cedar] upstream rejected', rejected.statusCode, rejected.code);
+    const message = upstreamErrorMessage(rejected.code, rejected.message);
+    return NextResponse.json({ success: false, error: rejected.code, code: rejected.code, message }, { status: 502, headers });
+  }
+  const requestId = crypto.randomUUID();
+  console.error(`[api/policies/export/cedar] upstream error requestId=${requestId}`, error);
+  headers.set('x-request-id', requestId);
+  return NextResponse.json(
+    { success: false, error: 'cedar_export_failed', code: 'cedar_export_failed', message: EXPORT_FAILED_MESSAGE, requestId },
+    { status: 502, headers },
+  );
 }
 
 /** 可选的请求体 `{ functionName }`：无请求体或不带该键视为未指定；形状不对返回 null。 */
