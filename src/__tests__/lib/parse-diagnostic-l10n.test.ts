@@ -1,26 +1,34 @@
 // E000（解析错误兜底）按策略 lexicon 语言本地化（第 4 轮生产复测：中文源码的语法错误仍是英文）。
 // 解析器只在关键词槽位用作者语言（如 '返回'），句子骨架恒为英文；这里按句型翻译骨架与常见名词，
-// 引号内的符号 / 关键词原样保留。aster-lang-ts 给解析错误补错误码与 overlay 后应改走引擎译文。
+// 引号内的符号 / 关键词原样保留。文案来自 aster-lang-locales 的 syntax-diagnostics 目录（随
+// @aster-cloud/ui-messages 分发，与服务端 aster-api 同一份，wontlost-ltd/aster-api#423）。
 import { describe, it, expect } from 'vitest';
-import { localizeParseMessage } from '@/lib/parse-diagnostic-l10n';
+import enCatalog from '@aster-cloud/ui-messages/syntax-diagnostics/en-US.json';
+import zhCatalog from '@aster-cloud/ui-messages/syntax-diagnostics/zh-CN.json';
+import deCatalog from '@aster-cloud/ui-messages/syntax-diagnostics/de-DE.json';
+import hiCatalog from '@aster-cloud/ui-messages/syntax-diagnostics/hi-IN.json';
+import { localizeParseMessage, PARSE_MESSAGE_KEYS } from '@/lib/parse-diagnostic-l10n';
 import { collectCompileDiagnostics } from '@/hooks/useAsterCompiler';
 
 describe('localizeParseMessage', () => {
   it.each([
-    ["Expected '.' at end of statement", "语句末尾应为 '。'", "Am Ende der Anweisung wird '.' erwartet"],
-    ["Expected '.' or ':' after return type", "返回类型之后应为 '。' 或 '：'", "Nach Rückgabetyp wird '.' oder ':' erwartet"],
-    ["Expected '返回' after '那么'", "'那么' 之后应为 '返回'", "Nach '那么' wird '返回' erwartet"],
-    ["Expected 'set to' in construction", "构造中应为 'set to'", "In Konstruktion wird 'set to' erwartet"],
-    ['Expected identifier', '此处应为标识符', 'Bezeichner erwartet'],
-    ['Expected identifier after dot', '点之后应为标识符', 'Nach Punkt wird Bezeichner erwartet'],
-    ['Unknown statement', '无法识别的语句', 'Unbekannte Anweisung'],
-    ['Unexpected token at top level', '顶层出现意外的记号', 'Unerwartetes Token auf oberster Ebene'],
-    ["Unexpected ')'", "意外的 ')'", "Unerwartet: ')'"],
-    ["Expected ','", "此处应为 '，'", "',' erwartet"],
-    ["Expected ':' after '那么'", "'那么' 之后应为 '：'", "Nach '那么' wird ':' erwartet"],
-  ])('%s', (en, zh, de) => {
+    ["Expected '.' at end of statement", "语句末尾应为 '。'", "Am Ende der Anweisung wird '.' erwartet", "कथन के अंत में '।' अपेक्षित है"],
+    ["Expected '.' or ':' after return type", "返回类型之后应为 '。' 或 '：'", "Nach Rückgabetyp wird '.' oder ':' erwartet", "रिटर्न प्रकार के बाद '।' या ':' अपेक्षित है"],
+    ["Expected '返回' after '那么'", "'那么' 之后应为 '返回'", "Nach '那么' wird '返回' erwartet", "'那么' के बाद '返回' अपेक्षित है"],
+    ["Expected 'set to' in construction", "构造中应为 'set to'", "In Konstruktion wird 'set to' erwartet", "निर्माण में 'set to' अपेक्षित है"],
+    ['Expected identifier', '此处应为标识符', 'Bezeichner erwartet', 'पहचानकर्ता अपेक्षित है'],
+    ['Expected identifier after dot', '点之后应为标识符', 'Nach Punkt wird Bezeichner erwartet', 'बिंदु के बाद पहचानकर्ता अपेक्षित है'],
+    ['Expected type', '此处应为类型', 'Typ erwartet', 'प्रकार अपेक्षित है'],
+    ['Unknown statement', '无法识别的语句', 'Unbekannte Anweisung', 'अज्ञात कथन'],
+    ['Unexpected token at top level', '顶层出现意外的记号', 'Unerwartetes Token auf oberster Ebene', 'शीर्ष स्तर पर अप्रत्याशित टोकन'],
+    ['Unexpected expression', '意外的表达式', 'Unerwarteter Ausdruck', 'अप्रत्याशित व्यंजक'],
+    ["Unexpected ')'", "意外的 ')'", "Unerwartet: ')'", "अप्रत्याशित ')'"],
+    ["Expected ','", "此处应为 '，'", "',' erwartet", "',' अपेक्षित है"],
+    ["Expected ':' after '那么'", "'那么' 之后应为 '：'", "Nach '那么' wird ':' erwartet", "'那么' के बाद ':' अपेक्षित है"],
+  ])('%s', (en, zh, de, hi) => {
     expect(localizeParseMessage(en, 'zh-CN')).toBe(zh);
     expect(localizeParseMessage(en, 'de-DE')).toBe(de);
+    expect(localizeParseMessage(en, 'hi-IN')).toBe(hi);
   });
 
   it('★zh 词法下引号里的标点按 zh 实际写法显示（句末 。、块起始 ：、列表分隔 ，），多字符引号片段与括号不动', () => {
@@ -45,7 +53,16 @@ describe('localizeParseMessage', () => {
 
   it('en-US 与未收录的语言原样返回', () => {
     expect(localizeParseMessage("Expected '.' at end of statement", 'en-US')).toBe("Expected '.' at end of statement");
-    expect(localizeParseMessage("Expected '.' at end of statement", 'hi-IN')).toBe("Expected '.' at end of statement");
+    expect(localizeParseMessage("Expected '.' at end of statement", 'fr-FR')).toBe("Expected '.' at end of statement");
+    expect(localizeParseMessage("Expected '.' at end of statement", undefined)).toBe("Expected '.' at end of statement");
+  });
+
+  it('★hi 有编辑器文案（此前只有 zh/de，hi 策略在编辑器里是英文、服务端却是印地语）', () => {
+    expect(localizeParseMessage("Expected '.' at end of statement", 'hi-IN')).toBe("कथन के अंत में '।' अपेक्षित है");
+  });
+
+  it('用户文本里的 {占位符} 不会被二次替换', () => {
+    expect(localizeParseMessage("Expected '{after}' after '{token}'", 'de-DE')).toBe("Nach '{token}' wird '{after}' erwartet");
   });
 
   it('不认识的句型原样返回（不产生半中半英的拼接）', () => {
@@ -74,5 +91,19 @@ describe('collectCompileDiagnostics 按 locale 本地化 E000', () => {
   it('不传 locale 时保持原文', () => {
     const out = collectCompileDiagnostics({ parseErrors: [{ message: 'Expected identifier' }] } as never);
     expect(out[0]!.message).toBe('Expected identifier');
+  });
+});
+
+describe('syntax-diagnostics 目录（aster-lang-locales 唯一真相源）', () => {
+  it.each([
+    ['en-US', enCatalog],
+    ['zh-CN', zhCatalog],
+    ['de-DE', deCatalog],
+    ['hi-IN', hiCatalog],
+  ])('%s 含编辑器用到的全部 key', (_locale, catalog) => {
+    for (const key of PARSE_MESSAGE_KEYS) {
+      expect(catalog, key).toHaveProperty([key]);
+      expect((catalog as Record<string, string>)[key], key).not.toBe('');
+    }
   });
 });

@@ -126,6 +126,13 @@ describe('快照页文案（#640）', () => {
     expect(translator('de', 'domainVocabularies.snapshotsView')('diff.rollback')).toBe('Auf diesen Snapshot zurücksetzen');
   });
 
+  it('de diff 面板的软删除提示与加载文案用 Sie 形式，来自语言包本身（aster-lang-locales#114，cloud 不再覆盖）', () => {
+    const t = translator('de', 'domainVocabularies.snapshotsView');
+    expect(t('diff.removedNotice', { n: 3 })).toBe('3 Ihrer aktuellen Begriffe würden beim Rollback soft-gelöscht. Innerhalb von 90 Tagen wiederherstellbar.');
+    expect(t('diff.loading')).toBe('Snapshot wird geladen…');
+    expect(JSON.stringify(DEMO_SUPPLEMENT.de)).not.toContain('snapshotsView');
+  });
+
   it.each(['zh', 'hi'] as const)('%s 回滚按钮是本地化文案', (locale) => {
     const text = translator(locale, 'domainVocabularies.snapshotsView')('diff.rollback');
     expect(text).not.toBe(translator('en', 'domainVocabularies.snapshotsView')('diff.rollback'));
