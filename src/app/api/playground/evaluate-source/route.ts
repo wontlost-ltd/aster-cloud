@@ -249,13 +249,18 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     recordTrialOutcome('upstream_error');
+    // 匿名端点：fetch 异常原文可能含内部主机名 / IP / 端口（如 connect ECONNREFUSED 10.x.x.x:8080），
+    // 只写服务端日志并以 requestId 关联；响应只给稳定 code、通用文案与 requestId（#688）。
+    const requestId = crypto.randomUUID();
+    console.error(`[playground/evaluate-source] upstream unreachable requestId=${requestId}`, err);
     return NextResponse.json(
       {
         error: 'upstream_unreachable',
-        message: 'aster-api could not be reached',
-        detail: err instanceof Error ? err.message : String(err),
+        code: 'upstream_unreachable',
+        message: 'The policy engine could not be reached. Please try again later.',
+        requestId,
       },
-      { status: 502, headers: { ...baseCors, ...rlHeaders } },
+      { status: 502, headers: { ...baseCors, ...rlHeaders, 'x-request-id': requestId } },
     );
   }
 

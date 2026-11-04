@@ -203,6 +203,36 @@ describe('VersionsContent 审批操作', () => {
   });
 });
 
+/* #697：设默认 / 废弃 / 归档（及提交、审批）的版本状态错误按稳定 code 本地化，不显示服务端英文原文 */
+describe('VersionsContent 版本状态错误码本地化（#697）', () => {
+  const APPROVED_ROW = { ...PENDING_ROW, status: 'APPROVED', isDefault: false };
+  const runAs = async (row: typeof PENDING_ROW, kind: string, body: unknown) => {
+    h.versions = [row];
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(body), { status: 400 }));
+    renderAs('author', { policyOwnerId: 'author', policyTeamId: null, reviewerTeamRole: null });
+    fireEvent.click(screen.getByRole('button', { name: `policies.versions.actions.${kind}` }));
+    fireEvent.click(screen.getByRole('button', { name: `policies.versions.${kind}Dialog.confirm` }));
+    await waitFor(() => expect(h.toastError).toHaveBeenCalledTimes(1));
+    return h.toastError.mock.calls[0]![0] as unknown;
+  };
+
+  it.each([
+    ['setDefault', 'version_not_approved', APPROVED_ROW],
+    ['deprecate', 'default_version_locked', { ...APPROVED_ROW, isDefault: true }],
+    ['archive', 'default_version_locked', { ...APPROVED_ROW, isDefault: true }],
+    ['archive', 'version_not_archivable', { ...APPROVED_ROW, status: 'DEPRECATED' }],
+    ['submit', 'version_not_submittable', { ...PENDING_ROW, status: 'DRAFT' }],
+  ] as const)('%s 失败（%s）：toast 显示本地化文案', async (kind, code, row) => {
+    const shown = await runAs(row, kind, { error: 'Version v2 is the default version.', code, message: 'Version v2 is the default version.' });
+    expect(shown).toBe(`policies.versions.versionErrorCodes.${code}`);
+  });
+
+  it('未登记的错误码：仍显示服务端 message', async () => {
+    const shown = await runAs(APPROVED_ROW, 'setDefault', { error: 'x', code: 'something_new', message: 'Server says no.' });
+    expect(shown).toBe('Server says no.');
+  });
+});
+
 describe('VersionsContent 驳回理由（#678）', () => {
   it('被驳回的版本在状态旁显示驳回理由', () => {
     h.versions = [{ ...PENDING_ROW, status: 'REJECTED', rejectionComment: 'too risky' }];

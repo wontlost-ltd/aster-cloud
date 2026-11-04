@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { actionErrorCode, actionErrorMessage } from '@/lib/api/error-envelope';
+import { isVersionStateErrorCode } from '@/services/policy/version-state-error';
 import {
   Breadcrumbs,
   ConfirmDialog,
@@ -200,6 +201,9 @@ export function VersionsContent({
         toast.error(t('sox.inviteReviewerRequired'));
       } else if (errorCode === 'vocabulary_changed_since_save') {
         toast.error(t('approvalErrorCodes.vocabulary_changed_since_save'));
+      } else if (isVersionStateErrorCode(errorCode)) {
+        // 版本状态错误（不存在、状态不符、默认版本）按稳定 code 本地化（#697）
+        toast.error(t(`versionErrorCodes.${errorCode}`, { version }));
       } else {
         // 优先显示服务端的人读 message；error 多为错误码（第 4 轮生产复测：toast 显示 simulated_failure）。
         // 只把字符串交给 toast：envelope 的 error 是对象，直接传会让 sonner 渲染时抛错（#662 审查）。

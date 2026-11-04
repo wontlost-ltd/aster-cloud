@@ -771,7 +771,7 @@ export async function setDefaultVersion(params: {
   });
 
   if (!targetVersion) {
-    throw new VersionStateError('version_not_approved', `版本 v${version} 不存在或未批准，无法设为默认`);
+    throw new VersionStateError('version_not_approved', `Version v${version} does not exist or is not approved, so it cannot be set as the default.`);
   }
 
   // 原子操作：清除旧默认 + 设置新默认
@@ -822,12 +822,12 @@ export async function deprecateVersion(params: {
   });
 
   if (!targetVersion) {
-    throw new VersionStateError('version_not_approved', `版本 v${version} 不存在或未批准，无法废弃`);
+    throw new VersionStateError('version_not_approved', `Version v${version} does not exist or is not approved, so it cannot be deprecated.`);
   }
 
   // 如果是默认版本，不允许废弃
   if (targetVersion.isDefault) {
-    throw new VersionStateError('default_version_locked', `版本 v${version} 是默认版本，请先设置其他版本为默认`);
+    throw new VersionStateError('default_version_locked', `Version v${version} is the default version. Set another version as the default first.`);
   }
 
   await db.update(policyVersions)
@@ -872,12 +872,12 @@ export async function archiveVersion(params: {
   });
 
   if (!targetVersion) {
-    throw new VersionStateError('version_not_archivable', `版本 v${version} 不存在或状态不允许归档`);
+    throw new VersionStateError('version_not_archivable', `Version v${version} does not exist or cannot be archived in its current status.`);
   }
 
   // 如果是默认版本，不允许归档
   if (targetVersion.isDefault) {
-    throw new VersionStateError('default_version_locked', `版本 v${version} 是默认版本，请先设置其他版本为默认`);
+    throw new VersionStateError('default_version_locked', `Version v${version} is the default version. Set another version as the default first.`);
   }
 
   await db.update(policyVersions)

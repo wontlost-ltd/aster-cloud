@@ -76,6 +76,7 @@ beforeEach(() => {
   policyAccessState.teamRole = 'viewer';
   h.checkRateLimit.mockReturnValue({ allowed: true, remaining: 19, resetAt: Date.now() + 60_000 });
   h.createClient.mockResolvedValue({ exportCedar });
+  vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
 describe('POST /api/policies/[id]/export/cedar', () => {
@@ -239,22 +240,65 @@ describe('POST /api/policies/[id]/export/cedar', () => {
     expect(exportCedar.mock.calls[0][0]).not.toHaveProperty('claimedRef');
   });
 
-  it('502 on upstream error', async () => {
+  // #688：上游 / 内部错误只给稳定 code、通用英文文案与 requestId；原文只写服务端日志
+  async function expectGenericFailure(res: Response, leaked: string): Promise<void> {
+    expect(res.status).toBe(502);
+    const text = await res.text();
+    expect(text).not.toContain(leaked);
+    const body = JSON.parse(text);
+    expect(body).toEqual({
+      success: false,
+      error: 'cedar_export_failed',
+      code: 'cedar_export_failed',
+      message: 'Cedar export failed. Please try again later.',
+      requestId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    });
+    expect(res.headers.get('x-request-id')).toBe(body.requestId);
+    const logged = vi.mocked(console.error).mock.calls.map((c) => c.map((x) => (x instanceof Error ? x.message : String(x))).join(' '));
+    expect(logged.some((line) => line.includes(body.requestId) && line.includes(leaked))).toBe(true);
+  }
+
+  it('502 on upstream 5xx error: generic message, raw message only in the log', async () => {
     findFirst.mockResolvedValue(owned());
     findExecutable.mockResolvedValue(executable());
     exportCedar.mockRejectedValue(new PolicyApiError('upstream down', 503));
-    const res = await POST(req(), ctx('p1'));
-    expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({ success: false, error: 'upstream down' });
+    await expectGenericFailure(await POST(req(), ctx('p1')), 'upstream down');
   });
 
   it('502 when upstream rejects our identity (401/403 is a server misconfiguration)', async () => {
     findFirst.mockResolvedValue(owned());
     findExecutable.mockResolvedValue(executable());
-    exportCedar.mockRejectedValue(new PolicyApiError('unauthenticated', 401));
+    exportCedar.mockRejectedValue(new PolicyApiError('HMAC signature mismatch for cloud-bff', 401));
+    await expectGenericFailure(await POST(req(), ctx('p1')), 'HMAC signature');
+  });
+
+  it('502 when aster-api is unreachable: internal host / IP never reaches the client', async () => {
+    findFirst.mockResolvedValue(owned());
+    findExecutable.mockResolvedValue(executable());
+    // 客户端把 fetch 异常包成 PolicyApiError(…, 500, 'UNKNOWN')，原文含内部地址
+    exportCedar.mockRejectedValue(new PolicyApiError('connect ECONNREFUSED 10.42.0.7:8080', 500, 'UNKNOWN'));
+    await expectGenericFailure(await POST(req(), ctx('p1')), '10.42.0.7');
+  });
+
+  it('502 on a non-PolicyApiError internal exception', async () => {
+    findFirst.mockResolvedValue(owned());
+    findExecutable.mockResolvedValue(executable());
+    exportCedar.mockRejectedValue(new TypeError("Cannot read properties of undefined (reading 'policies')"));
+    await expectGenericFailure(await POST(req(), ctx('p1')), 'Cannot read properties');
+  });
+
+  it('502 keeps the user-facing message and code of an upstream 4xx rejection', async () => {
+    findFirst.mockResolvedValue(owned());
+    findExecutable.mockResolvedValue(executable());
+    exportCedar.mockRejectedValue(new PolicyApiError('Source exceeds the 64 KiB export limit', 413, 'source_too_large'));
     const res = await POST(req(), ctx('p1'));
     expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({ success: false, error: 'unauthenticated' });
+    expect(await res.json()).toEqual({
+      success: false,
+      error: 'source_too_large',
+      code: 'source_too_large',
+      message: 'Source exceeds the 64 KiB export limit',
+    });
   });
 
   // #661：多条规则可导出（E720 several rules … choose one）时，调用方指定导出哪一条
