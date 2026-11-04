@@ -68,7 +68,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const versions = executableOnly
       ? await listExecutableVersions(id)
-      : await listVersions(id);
+      : await listVersions(id, { includeRejectionComments: access.ok });
 
     return NextResponse.json({ versions });
   } catch (error) {

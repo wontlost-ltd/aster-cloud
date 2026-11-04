@@ -1,12 +1,23 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { authorizeGroupPlacement, authorizePolicyAction } from '@/lib/policy-access';
+import { authorizePolicyActions, canPlaceInGroup } from '@/lib/policy-access';
 import { bypassQueryCache } from '@/db/fresh-read';
 import { db, policyGroups, policies, teamMembers } from '@/lib/prisma';
 import { eq, and, inArray, isNull } from 'drizzle-orm';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
+}
+
+/** 一次批量放入 / 移出的策略数上限（#699）：每条策略都要授权，上限约束单次请求的查询与写入规模。 */
+const MAX_POLICY_IDS = 100;
+
+/** 请求体的 policyIds：1–100 条非空字符串（去重）；不合规返回 null。 */
+function parsePolicyIds(body: unknown): string[] | null {
+  const raw = (body as { policyIds?: unknown } | null)?.policyIds;
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_POLICY_IDS) return null;
+  if (!raw.every((id) => typeof id === 'string' && id.length > 0)) return null;
+  return [...new Set(raw as string[])];
 }
 
 // POST /api/policy-groups/[id]/policies - 批量添加策略到分组
@@ -18,10 +29,12 @@ export async function POST(req: Request, { params }: RouteParams) {
     }
 
     const { id: groupId } = await params;
-    const { policyIds } = await req.json();
-
-    if (!Array.isArray(policyIds) || policyIds.length === 0) {
-      return NextResponse.json({ error: 'Policy IDs array is required' }, { status: 400 });
+    const policyIds = parsePolicyIds(await req.json());
+    if (!policyIds) {
+      return NextResponse.json(
+        { error: `policyIds must be an array of 1 to ${MAX_POLICY_IDS} policy IDs.`, code: 'invalid_policy_ids' },
+        { status: 400 },
+      );
     }
 
     // 验证分组存在且用户有权限
@@ -47,16 +60,16 @@ export async function POST(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'Group not found' }, { status: 404 });
     }
 
-    // 逐条授权（ADR 0016）：对策略有 update 权限；他人创建的团队策略只能放进同一团队的分组。
+    // 逐条判定、批量取角色（ADR 0016，#699）：对策略有 update 权限；团队策略只能放进同一团队的分组。
     // 不存在 / 无权 / 不可放置的策略统一按「找不到」报告，不泄露存在性。
     const candidates = await db.query.policies.findMany({
       where: and(inArray(policies.id, policyIds), isNull(policies.deletedAt)),
     });
-    const allowedIds = new Set<string>();
-    for (const policy of candidates) {
-      if (await authorizeGroupPlacement({ userId: session.user.id }, policy, group)) allowedIds.add(policy.id);
-    }
-    const notFoundIds = policyIds.filter((id: string) => !allowedIds.has(id));
+    const decisions = await authorizePolicyActions({ userId: session.user.id }, candidates, 'update');
+    const allowedIds = new Set(
+      candidates.filter((policy) => canPlaceInGroup(decisions.get(policy.id)!, policy, group)).map((policy) => policy.id),
+    );
+    const notFoundIds = policyIds.filter((id) => !allowedIds.has(id));
 
     if (notFoundIds.length > 0) {
       return NextResponse.json(
@@ -103,10 +116,12 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     }
 
     const { id: groupId } = await params;
-    const { policyIds } = await req.json();
-
-    if (!Array.isArray(policyIds) || policyIds.length === 0) {
-      return NextResponse.json({ error: 'Policy IDs array is required' }, { status: 400 });
+    const policyIds = parsePolicyIds(await req.json());
+    if (!policyIds) {
+      return NextResponse.json(
+        { error: `policyIds must be an array of 1 to ${MAX_POLICY_IDS} policy IDs.`, code: 'invalid_policy_ids' },
+        { status: 400 },
+      );
     }
 
     // 验证分组存在且用户有权限
@@ -136,10 +151,8 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     const inGroup = await db.query.policies.findMany({
       where: and(inArray(policies.id, policyIds), eq(policies.groupId, groupId)),
     });
-    const removable: string[] = [];
-    for (const policy of inGroup) {
-      if ((await authorizePolicyAction({ userId: session.user.id }, policy, 'update')).allowed) removable.push(policy.id);
-    }
+    const decisions = await authorizePolicyActions({ userId: session.user.id }, inGroup, 'update');
+    const removable = inGroup.filter((policy) => decisions.get(policy.id)!.allowed).map((policy) => policy.id);
     if (removable.length > 0) {
       await db
         .update(policies)

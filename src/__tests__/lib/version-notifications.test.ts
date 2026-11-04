@@ -2,8 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
  * 策略版本审批通知（#678）：
- *   - 提交审批：通知团队里能审批的人（owner / admin），不含提交者；个人策略不通知（所有者自审）。
- *   - 批准 / 驳回：通知版本作者（驳回带理由）；审批人就是作者（个人策略自审）时不通知。
+ *   - 提交审批：通知团队里能审批的人（owner / admin），不含提交者与版本作者（作者不能审自己的版本，#701）；
+ *     个人策略不通知（所有者自审）。
+ *   - 批准 / 驳回：通知版本作者（驳回带理由）；审批人就是作者（个人策略自审）、或作者已无权查看该策略
+ *     （离队 / 被移除，#701）时不通知。
  *   - 通知失败只记日志，不抛出。
  */
 const h = vi.hoisted(() => ({
@@ -11,6 +13,7 @@ const h = vi.hoisted(() => ({
   versionFindFirst: vi.fn(),
   reviewerIds: vi.fn(),
   createNotification: vi.fn(),
+  loadPolicyForAction: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => ({
@@ -20,6 +23,7 @@ vi.mock('@/lib/prisma', () => ({
 }));
 vi.mock('@/services/policy/version-manager', () => ({ loadTeamReviewerIds: h.reviewerIds }));
 vi.mock('@/lib/notifications', () => ({ createNotification: h.createNotification }));
+vi.mock('@/lib/policy-access', () => ({ loadPolicyForAction: h.loadPolicyForAction }));
 
 import { notifyVersionDecided, notifyVersionSubmitted } from '@/lib/version-notifications';
 
@@ -33,6 +37,7 @@ describe('notifyVersionSubmitted', () => {
     h.policyFindFirst.mockResolvedValue({ name: 'Loan', teamId: 't1' });
     h.reviewerIds.mockResolvedValue(['owner', 'admin', 'submitter']);
 
+    h.versionFindFirst.mockResolvedValue({ createdBy: 'submitter' });
     await notifyVersionSubmitted({ policyId: 'p1', version: 2, submitterId: 'submitter' });
 
     expect(h.reviewerIds).toHaveBeenCalledWith('t1');
@@ -43,6 +48,16 @@ describe('notifyVersionSubmitted', () => {
       kind: 'policy.version_submitted',
       data: { policyId: 'p1', policyName: 'Loan', version: 2, teamId: 't1' },
     });
+  });
+
+  it('版本作者不是提交者时，作者本人（即使是 owner / admin）也不通知（#701）', async () => {
+    h.policyFindFirst.mockResolvedValue({ name: 'Loan', teamId: 't1' });
+    h.versionFindFirst.mockResolvedValue({ createdBy: 'admin' });
+    h.reviewerIds.mockResolvedValue(['owner', 'admin']);
+
+    await notifyVersionSubmitted({ policyId: 'p1', version: 2, submitterId: 'member' });
+
+    expect(h.createNotification.mock.calls.map(([a]) => a.userId)).toEqual(['owner']);
   });
 
   it('个人策略不通知', async () => {
@@ -61,7 +76,15 @@ describe('notifyVersionDecided', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     h.createNotification.mockResolvedValue('n1');
-    h.policyFindFirst.mockResolvedValue({ name: 'Loan', teamId: 't1' });
+    h.loadPolicyForAction.mockResolvedValue({ ok: true, policy: { id: 'p1', name: 'Loan', teamId: 't1' } });
+  });
+
+  it('作者已无权查看该策略（离队 / 被移除）：不通知（#701）', async () => {
+    h.versionFindFirst.mockResolvedValue({ createdBy: 'author' });
+    h.loadPolicyForAction.mockResolvedValue({ ok: false, decision: { allowed: false, status: 404 } });
+    await notifyVersionDecided({ policyId: 'p1', version: 2, reviewerId: 'owner', outcome: 'REJECTED', comment: 'no' });
+    expect(h.loadPolicyForAction).toHaveBeenCalledWith('p1', { userId: 'author' }, 'view');
+    expect(h.createNotification).not.toHaveBeenCalled();
   });
 
   it('驳回：通知作者并带驳回理由', async () => {

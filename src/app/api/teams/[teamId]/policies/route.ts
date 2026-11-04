@@ -119,10 +119,11 @@ export async function POST(req: Request, { params }: RouteParams) {
         );
       }
 
-      // 分配策略到团队
+      // 分配策略到团队。公开状态一律重置为 false（#699）：公开团队策略要求 policy.publish（ADR 0016 §2 第 8 条），
+      // 导入只要求 update，不能借导入把已公开的个人策略直接变成公开的团队策略；需要公开时由 owner / admin 另行打开。
       const [updatedPolicy] = await db
         .update(policies)
-        .set({ teamId })
+        .set({ teamId, isPublic: false })
         .where(eq(policies.id, policyId))
         .returning();
 
@@ -136,6 +137,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         id: updatedPolicy.id,
         name: updatedPolicy.name,
         teamId: updatedPolicy.teamId,
+        isPublic: updatedPolicy.isPublic,
       });
     }
 
