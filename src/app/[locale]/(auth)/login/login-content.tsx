@@ -9,6 +9,7 @@ import { useLocale } from 'next-intl';
 import { defaultLocale } from '@/i18n/config';
 import { CLIENT_CAPABILITIES } from '@/hooks/use-deployment-mode';
 import { Turnstile, TurnstilePlaceholder } from '@/components/turnstile';
+import { safeRedirectPath } from '@/lib/safe-redirect';
 import {
   Alert,
   AlertDescription,
@@ -144,14 +145,17 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
   // Build locale-aware default callback URL
   const localePrefix = locale === defaultLocale ? '' : `/${locale}`;
   const defaultCallbackUrl = `${localePrefix}/dashboard`;
-  const explicitCallback = searchParams.get('callbackUrl');
+  // callbackUrl 来自地址栏，必须先收敛为站内路径（#695）：不安全 / 站外写法一律当作没给。
+  // 浏览器端带上本站 origin，让同源绝对地址（Auth.js 有时会这样回传）也能用。
+  const siteOrigin = typeof window === 'undefined' ? undefined : window.location.origin;
+  const explicitCallback = safeRedirectPath(searchParams.get('callbackUrl'), null, siteOrigin);
   const callbackUrl = explicitCallback || defaultCallbackUrl;
   const errorParam = searchParams.get('error');
 
   /**
    * Pick the post-login landing route based on the just-authenticated
-   * session. Honour an explicit `?callbackUrl=` (deep link from a
-   * protected page) verbatim — admins clicking a policy link want to
+   * session. Honour an explicit (already sanitised) `?callbackUrl=` (deep link from a
+   * protected page) — admins clicking a policy link want to
    * land on that policy, not be hijacked to /admin. Only override the
    * default destination.
    */
@@ -358,7 +362,7 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
         );
         window.location.href = target;
       } catch {
-        window.location.href = result.url;
+        window.location.href = safeRedirectPath(result.url, defaultCallbackUrl, siteOrigin);
       }
     }
   };

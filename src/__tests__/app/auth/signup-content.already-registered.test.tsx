@@ -99,6 +99,16 @@ describe('SignupContent — 邮箱已注册', () => {
     submit('a@example.com');
     await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
     expect(loginLinkHref()).toBe('/login');
+    cleanup();
+
+    // #695：反斜杠写法浏览器按 // 解析，必须同样视为站外
+    for (const evil of ['/\\evil.example', '/.//evil.example', 'javascript:alert(1)']) {
+      render(<SignupContent returnTo={evil} />);
+      submit('a@example.com');
+      await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+      expect(loginLinkHref()).toBe('/login');
+      cleanup();
+    }
   });
 
   it('新账号：进入「账号已就绪」状态', async () => {

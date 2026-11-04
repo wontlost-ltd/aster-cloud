@@ -18,6 +18,7 @@ import { checkAccountLockout, recordFailedAttempt, resetFailedAttempts } from '@
 import { markDenial } from '@/lib/auth-denial';
 import type { NextAuthConfig } from 'next-auth';
 import { getSettingUncached, PLATFORM_SETTING_KEYS } from '@/lib/platform-settings';
+import { resolveAuthRedirect } from '@/lib/safe-redirect';
 
 // Password utilities
 export async function hashPassword(password: string): Promise<string> {
@@ -175,6 +176,11 @@ export const authConfig: NextAuthConfig = {
 
   // Callbacks
   callbacks: {
+    // signIn / signOut / OAuth 回调携带的 callbackUrl 都经此收敛（#695）：与页面侧共用站内回跳判定，
+    // 站外或可疑写法一律回到站点首页。
+    redirect(params) {
+      return resolveAuthRedirect(params);
+    },
     async jwt({ token, user }) {
       if (user) {
         token.dbEpoch = await getSettingUncached<number>(PLATFORM_SETTING_KEYS.AUTH_DB_EPOCH) ?? 0;
