@@ -88,8 +88,13 @@ Companions: 0015（团队作用域 API key）、`aster-api/docs/adr/0034-whatif-
   避免 admin 一键清掉别人刚删、仍在恢复窗口里的策略。
 - 仪表盘「常用策略」、首个策略引导（aha-status）、个人分组的列表与计数：与「我的策略」同一口径，离队者不再看到其在团队里
   留下的策略的名称、描述、PII 字段与执行计数。
-- 分组：放入分组要求对策略有 update 权限；他人创建的团队策略只能放进同一团队的分组，不能挪进个人私有分组
-  （`authorizeGroupPlacement`，分组路由与 PUT `groupId` 同一规则）。移出分组同样要求 update 权限。
+- 分组：放入分组要求对策略有 update 权限；团队策略（含本人创建的）只能放进同一团队的分组，不能挪进个人私有分组
+  或其他团队的分组，创建者身份不放行（`canPlaceInGroup` / `authorizeGroupPlacement`，分组路由与 PUT `groupId` 同一规则）。
+  个人策略由所有者放进其可访问的分组。移出分组同样要求 update 权限。批量放入 / 移出一次最多 100 条，
+  调用者在各团队的角色一次查出（`authorizePolicyActions`），不逐条查成员。
+- 导入：个人策略导入团队（update）后公开状态一律重置为 false；公开团队策略仍须 owner / admin 经 publish 另行打开。
+- 版本列表的驳回理由只给有 view 授权的调用者，经公开放行的其他用户拿不到；审批结论通知只发给当前仍能查看该策略的作者，
+  提交审批通知不发给提交者与版本作者。
 
 不在本矩阵内：规则回归工具（`/api/admin/rule-regression`）只对平台管理员开放，不属于团队授权。
 

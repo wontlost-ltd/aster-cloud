@@ -159,16 +159,49 @@ export function teamMemberIds(teamId: string) {
 }
 
 /**
- * 能否把策略放进某分组（ADR 0016）：要求对策略有 update 权限；他人创建的团队策略只能放进同一团队的分组，
- * 不能挪进调用者的个人私有分组（否则策略的组织结构被个人分组「劫持」）。
+ * 批量授权：一次查询取调用者在这些策略所属团队的当前角色（绕过查询缓存），再逐条按矩阵判定。
+ * 批量入口（分组放入 / 移出）用它代替逐条 `authorizePolicyAction`，避免每条策略一次成员查询（#699）。
  */
+export async function authorizePolicyActions<T extends PolicyAccessSubject & { id: string }>(
+  actor: PolicyActor,
+  list: readonly T[],
+  action: PolicyAction,
+): Promise<Map<string, PolicyAccessDecision>> {
+  const teamIds = [...new Set(list.map(policyTeamIdOf).filter((id): id is string => Boolean(id)))];
+  const rows = teamIds.length === 0
+    ? []
+    : await db
+        .select({ teamId: teamMembers.teamId, role: teamMembers.role })
+        .from(teamMembers)
+        .where(and(eq(teamMembers.userId, actor.userId), inArray(teamMembers.teamId, teamIds), bypassQueryCache()));
+  const roles = new Map(rows.map((r) => [r.teamId, r.role as TeamRole]));
+  return new Map(list.map((policy) => {
+    const teamId = policyTeamIdOf(policy);
+    const teamRole = teamId ? roles.get(teamId) ?? null : null;
+    return [policy.id, decidePolicyAccess({ action, actorId: actor.userId, policy, teamRole, keyTeamId: actor.keyTeamId })];
+  }));
+}
+
+/**
+ * 分组放置规则（ADR 0016）：要求对策略有 update 权限；团队策略只能放进同一团队的分组，创建者也不例外
+ * （创建者身份不放行任何动作），否则团队策略的组织结构会被个人分组或别的团队分组「劫持」。
+ * 个人策略只有所有者有 update，可放进其可访问的分组（分组本身的访问由路由另行校验）。
+ */
+export function canPlaceInGroup(
+  decision: PolicyAccessDecision,
+  policy: PolicyAccessSubject,
+  group: { teamId: string | null },
+): boolean {
+  if (!decision.allowed) return false;
+  const teamId = policyTeamIdOf(policy);
+  return !teamId || group.teamId === teamId;
+}
+
+/** 单条策略能否放进某分组：update 授权 + `canPlaceInGroup`。 */
 export async function authorizeGroupPlacement(
   actor: PolicyActor,
   policy: PolicyAccessSubject,
   group: { teamId: string | null },
 ): Promise<boolean> {
-  const decision = await authorizePolicyAction(actor, policy, 'update');
-  if (!decision.allowed) return false;
-  if (policy.userId === actor.userId) return true;
-  return Boolean(group.teamId) && policyTeamIdOf(policy) === group.teamId;
+  return canPlaceInGroup(await authorizePolicyAction(actor, policy, 'update'), policy, group);
 }

@@ -85,6 +85,7 @@ import { hashApiKey } from '@/lib/api-keys';
 import { createPolicyApiClient } from '@/services/policy/policy-api';
 import { invalidatePolicyCache } from '@/lib/cache';
 import { PLATFORM_SETTING_KEYS, setSetting } from '@/lib/platform-settings';
+import { notifyVersionDecided, notifyVersionSubmitted } from '@/lib/version-notifications';
 import * as sharesRoute from '@/app/api/policies/[id]/shares/route';
 import * as reviewersRoute from '@/app/api/policies/[id]/reviewers/route';
 import * as groupPoliciesRoute from '@/app/api/policy-groups/[id]/policies/route';
@@ -821,19 +822,132 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('团队策略授权矩阵（真
       expect(JSON.stringify(data)).not.toContain(POL.ex);
     });
 
-    it('member 不能把他人创建的团队策略挪进自己的私有分组；自己创建的可以', async () => {
-      await db.insert(policyGroups).values({ id: `${P}-grp-member`, userId: U.member, name: 'mine', updatedAt: new Date() } as typeof policyGroups.$inferInsert);
-      const move = (id: string) =>
+    it('团队策略只能放进同一团队的分组，创建者也不例外（#699 A）', async () => {
+      await db.insert(policyGroups).values([
+        { id: `${P}-grp-member`, userId: U.member, name: 'mine', updatedAt: new Date() },
+        { id: `${P}-grp-team`, userId: U.owner, teamId: TEAM, name: 'team', updatedAt: new Date() },
+      ] as Array<typeof policyGroups.$inferInsert>);
+      const move = (id: string, groupId = `${P}-grp-member`) =>
         (as('member'),
-        groupPoliciesRoute.POST(jsonRequest('POST', `/api/policy-groups/${P}-grp-member/policies`, { policyIds: [id] }), {
-          params: Promise.resolve({ id: `${P}-grp-member` }),
+        groupPoliciesRoute.POST(jsonRequest('POST', `/api/policy-groups/${groupId}/policies`, { policyIds: [id] }), {
+          params: Promise.resolve({ id: groupId }),
         }));
       expect(await statusOf(move(POL.own))).toBe(404);
-      expect(await statusOf(move(POL.mem))).toBe(200);
+      // 自己创建的团队策略同样不能挪进个人私有分组
+      expect(await statusOf(move(POL.mem))).toBe(404);
+      expect(await statusOf(move(POL.mem, `${P}-grp-team`))).toBe(200);
+      expect(await statusOf(move(POL.own, `${P}-grp-team`))).toBe(200);
+      const viaPutOwn = (as('member'), policyRoute.PUT(jsonRequest('PUT', `/api/policies/${POL.mem}`, { groupId: `${P}-grp-member` }), idParams(POL.mem)));
+      expect(await statusOf(viaPutOwn)).toBe(404);
+      const placed = await db.select({ id: policies.id, groupId: policies.groupId }).from(policies).where(inArray(policies.id, [POL.own, POL.mem]));
+      expect(placed.every((r) => r.groupId === `${P}-grp-team`)).toBe(true);
+      await db.update(policies).set({ groupId: null }).where(inArray(policies.id, [POL.own, POL.mem]));
       const viaPut = (as('member'), policyRoute.PUT(jsonRequest('PUT', `/api/policies/${POL.own}`, { groupId: `${P}-grp-member` }), idParams(POL.own)));
       expect(await statusOf(viaPut)).toBe(404);
       const [row] = await db.select({ groupId: policies.groupId }).from(policies).where(eq(policies.id, POL.own));
       expect(row.groupId).toBeNull();
+    });
+  });
+
+  describe('分组批量放置（#699 A / C）', () => {
+    const batch = (actor: Actor, groupId: string, policyIds: unknown, method: 'POST' | 'DELETE' = 'POST') =>
+      (as(actor),
+      groupPoliciesRoute[method](jsonRequest(method, `/api/policy-groups/${groupId}/policies`, { policyIds }), {
+        params: Promise.resolve({ id: groupId }),
+      }));
+
+    beforeEach(async () => {
+      await db.insert(policyGroups).values([
+        { id: `${P}-grp-owner`, userId: U.owner, name: 'owner private', updatedAt: new Date() },
+        { id: `${P}-grp-team`, userId: U.owner, teamId: TEAM, name: 'team', updatedAt: new Date() },
+      ] as Array<typeof policyGroups.$inferInsert>);
+    });
+
+    it('个人策略所有者仍可把个人策略放进自己的私有分组', async () => {
+      expect(await statusOf(batch('owner', `${P}-grp-owner`, [POL.personal]))).toBe(200);
+      const [row] = await db.select({ groupId: policies.groupId }).from(policies).where(eq(policies.id, POL.personal));
+      expect(row.groupId).toBe(`${P}-grp-owner`);
+    });
+
+    it('一批里混有不可放置的策略：整批 404，一条都不写', async () => {
+      expect(await statusOf(batch('owner', `${P}-grp-owner`, [POL.personal, POL.own]))).toBe(404);
+      const rows = await db.select({ groupId: policies.groupId }).from(policies).where(inArray(policies.id, [POL.personal, POL.own]));
+      expect(rows.every((r) => r.groupId === null)).toBe(true);
+    });
+
+    it('多条团队策略一次放入同一团队分组，再一次移出；viewer 不能移出', async () => {
+      const ids = [POL.own, POL.mem, POL.view];
+      expect(await statusOf(batch('member', `${P}-grp-team`, ids))).toBe(200);
+      expect(await statusOf(batch('viewer', `${P}-grp-team`, ids, 'DELETE'))).toBe(200);
+      let rows = await db.select({ groupId: policies.groupId }).from(policies).where(inArray(policies.id, ids));
+      expect(rows.every((r) => r.groupId === `${P}-grp-team`)).toBe(true);
+      expect(await statusOf(batch('admin', `${P}-grp-team`, ids, 'DELETE'))).toBe(200);
+      rows = await db.select({ groupId: policies.groupId }).from(policies).where(inArray(policies.id, ids));
+      expect(rows.every((r) => r.groupId === null)).toBe(true);
+    });
+
+    it('policyIds 超过 100 条或不是字符串数组：400', async () => {
+      const tooMany = Array.from({ length: 101 }, (_, i) => `${P}-x-${i}`);
+      expect(await statusOf(batch('owner', `${P}-grp-team`, tooMany))).toBe(400);
+      expect(await statusOf(batch('owner', `${P}-grp-team`, tooMany, 'DELETE'))).toBe(400);
+      expect(await statusOf(batch('owner', `${P}-grp-team`, [1, 2]))).toBe(400);
+    });
+  });
+
+  describe('导入个人策略到团队（#699 B）', () => {
+    const importPolicy = (actor: Actor, policyId: string) =>
+      (as(actor),
+      teamPoliciesRoute.POST(jsonRequest('POST', `/api/teams/${TEAM}/policies`, { policyId }), {
+        params: Promise.resolve({ teamId: TEAM }),
+      }));
+
+    it('导入已公开的个人策略：成为团队策略，公开状态重置为 false', async () => {
+      await db.update(policies).set({ userId: U.member, isPublic: true }).where(eq(policies.id, POL.personal));
+      const res = await importPolicy('member', POL.personal);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ id: POL.personal, teamId: TEAM, isPublic: false });
+      const [row] = await db.select({ teamId: policies.teamId, isPublic: policies.isPublic }).from(policies).where(eq(policies.id, POL.personal));
+      expect(row).toEqual({ teamId: TEAM, isPublic: false });
+    });
+  });
+
+  describe('版本驳回理由与审批通知的可见性（#701）', () => {
+    const rejectedComment = 'internal: pricing too aggressive';
+    async function rejectOwnV1(): Promise<void> {
+      // POL.own 的 v1 由 owner 创建；改为已驳回并留下驳回意见
+      await db.update(policyVersions).set({ status: 'REJECTED' }).where(eq(policyVersions.id, `${POL.own}-v1`));
+      await db.insert(policyApprovals).values({
+        id: `${P}-appr-own-v1`, versionId: `${POL.own}-v1`, approverId: U.admin, decision: 'REJECTED', comment: rejectedComment,
+      });
+    }
+
+    it('版本列表：团队成员看得到驳回理由，经公开放行的团队外用户看不到', async () => {
+      await rejectOwnV1();
+      await db.update(policies).set({ isPublic: true }).where(eq(policies.id, POL.own));
+      const forViewer = await bodyOf<{ versions: Array<{ version: number; rejectionComment?: string | null }> }>(call.versions('viewer', POL.own));
+      expect(forViewer.versions.find((v) => v.version === 1)?.rejectionComment).toBe(rejectedComment);
+      const outsiderRes = await call.versions('outsider', POL.own);
+      expect(outsiderRes.status).toBe(200);
+      const text = await outsiderRes.text();
+      expect(text).not.toContain(rejectedComment);
+      const forOutsider = JSON.parse(text) as { versions: Array<Record<string, unknown>> };
+      expect(forOutsider.versions.length).toBeGreaterThan(0);
+      expect(forOutsider.versions.every((v) => !('rejectionComment' in v))).toBe(true);
+    });
+
+    it('审批结论：作者已离队时不发通知；仍在队时照常通知', async () => {
+      await notifyVersionDecided({ policyId: POL.ex, version: 1, reviewerId: U.owner, outcome: 'REJECTED', comment: rejectedComment });
+      expect(await db.select().from(notifications).where(eq(notifications.userId, U.ex))).toHaveLength(0);
+      await notifyVersionDecided({ policyId: POL.mem, version: 1, reviewerId: U.owner, outcome: 'REJECTED', comment: 'no' });
+      expect(await db.select().from(notifications).where(eq(notifications.userId, U.member))).toHaveLength(1);
+    });
+
+    it('提交审批：不通知提交者，也不通知版本作者本人（#701 D）', async () => {
+      // POL.own 的 v2 由 admin 创建，由 member 提交：只通知 owner
+      await notifyVersionSubmitted({ policyId: POL.own, version: 2, submitterId: U.member });
+      const rows = await db.select({ userId: notifications.userId }).from(notifications)
+        .where(and(inArray(notifications.userId, USER_IDS), eq(notifications.kind, 'policy.version_submitted')));
+      expect(rows.map((r) => r.userId)).toEqual([U.owner]);
     });
   });
 

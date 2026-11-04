@@ -73,10 +73,12 @@ export class PolicyAccessDeniedError extends Error {
 /** 按授权矩阵校验版本操作（policy-access），拒绝时抛 PolicyAccessDeniedError。 */
 export async function assertPolicyAction(policyId: string, userId: string, action: PolicyAction): Promise<void> {
   const access = await loadPolicyForAction(policyId, { userId }, action);
-  if (!access.ok) {
-    const { status, code, error } = access.decision;
-    throw status === 403 ? new PolicyAccessDeniedError(error, 403, code) : new PolicyAccessDeniedError();
-  }
+  if (!access.ok) throw accessDeniedError(access.decision);
+}
+
+/** 拒绝判定 → PolicyAccessDeniedError（403 带角色错误码；其余一律按「策略不存在」）。 */
+function accessDeniedError(decision: { status: number; code: string; error: string }): PolicyAccessDeniedError {
+  return decision.status === 403 ? new PolicyAccessDeniedError(decision.error, 403, decision.code) : new PolicyAccessDeniedError();
 }
 
 /**
@@ -644,9 +646,16 @@ export async function approveVersion(params: {
   // ★审阅权必须在四眼原则之前判定：四眼原则只比较 createdBy === approverId，
   // 对外部攻击者恒为 false，反而会放行。团队策略要求当前角色为 owner/admin（member/viewer 403），
   // 非成员与他人个人策略按「策略不存在」处理。
-  await assertPolicyAction(policyId, approverId, 'approve');
-  const ctx = await loadVersionReviewContext(policyId, approverId);
-  if (!ctx || !canReviewPolicyVersions(ctx)) {
+  // 授权结果里已带策略行与审批人的当前团队角色，审阅上下文直接由它构造，不再重复查策略与成员（#699）。
+  const access = await loadPolicyForAction(policyId, { userId: approverId }, 'approve');
+  if (!access.ok) throw accessDeniedError(access.decision);
+  const ctx: VersionReviewContext = {
+    policyOwnerId: access.policy.userId,
+    policyTeamId: access.policy.teamId,
+    reviewerId: approverId,
+    reviewerTeamRole: access.decision.teamRole,
+  };
+  if (!canReviewPolicyVersions(ctx)) {
     throw new PolicyAccessDeniedError();
   }
 
@@ -903,7 +912,11 @@ export async function archiveVersion(params: {
 /**
  * 获取策略的所有版本
  */
-export async function listVersions(policyId: string) {
+/**
+ * 版本列表。驳回理由是审批人的内部意见，只给对该策略有 view 授权的调用者（团队成员、个人策略所有者）；
+ * 经公开放行的其他登录用户拿不到该字段（#701）。
+ */
+export async function listVersions(policyId: string, opts: { includeRejectionComments: boolean }) {
   const versions = await db.query.policyVersions.findMany({
     where: eq(policyVersions.policyId, policyId),
     orderBy: [desc(policyVersions.version)],
@@ -930,6 +943,8 @@ export async function listVersions(policyId: string) {
         .select({ count: sql<number>`count(*)::int` })
         .from(policyApprovals)
         .where(eq(policyApprovals.versionId, v.id));
+      const withCount = { ...v, _count: { approvals: approvalCount[0]?.count || 0 } };
+      if (!opts.includeRejectionComments) return withCount;
       const rejection = v.status === 'REJECTED'
         ? await db.query.policyApprovals.findFirst({
             where: and(eq(policyApprovals.versionId, v.id), eq(policyApprovals.decision, 'REJECTED')),
@@ -937,12 +952,7 @@ export async function listVersions(policyId: string) {
             columns: { comment: true },
           })
         : undefined;
-
-      return {
-        ...v,
-        _count: { approvals: approvalCount[0]?.count || 0 },
-        rejectionComment: rejection?.comment ?? null,
-      };
+      return { ...withCount, rejectionComment: rejection?.comment ?? null };
     })
   );
 
