@@ -35,6 +35,9 @@ export const RateLimitPresets = {
   LOGIN: { windowMs: 60_000, maxRequests: 5 },
   SIGNUP: { windowMs: 3_600_000, maxRequests: 10 },
   PASSWORD_RESET: { windowMs: 3_600_000, maxRequests: 3 },
+  // 找回密码按账号再限一层（#696）：别名 / 点号 / 换 IP 都绕不开，同一账号每小时 3 封、每天 10 封。
+  PASSWORD_RESET_ACCOUNT_HOURLY: { windowMs: 3_600_000, maxRequests: 3 },
+  PASSWORD_RESET_ACCOUNT_DAILY: { windowMs: 86_400_000, maxRequests: 10 },
   API: { windowMs: 60_000, maxRequests: 60 },
   API_RELAXED: { windowMs: 60_000, maxRequests: 120 },
   EVALUATE_SOURCE: { windowMs: 60_000, maxRequests: 20 },
