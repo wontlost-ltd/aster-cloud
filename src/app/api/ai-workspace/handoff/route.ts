@@ -31,7 +31,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   if (!session || !userId) {
     // 未登录：先登录，登录后回到本路由继续交接
     const login = new URL(`/${locale}/login`, req.nextUrl.origin);
-    login.searchParams.set('callbackUrl', req.nextUrl.toString());
+    // 只带站内相对路径（#695）：登录页只放行站内回跳，且集群内 req 的 host 未必等于浏览器看到的 origin
+    login.searchParams.set('callbackUrl', `${req.nextUrl.pathname}${req.nextUrl.search}`);
     return NextResponse.redirect(login, 302);
   }
   const user = await db.query.users.findFirst({

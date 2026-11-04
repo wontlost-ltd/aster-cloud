@@ -14,6 +14,20 @@ function randomBytes(length: number): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/** 账号维度的找回密码限流：每小时、每天两档都未超限才放行。 */
+async function accountResetAllowed(userId: string): Promise<boolean> {
+  const hourly = await checkRateLimitDistributed(
+    `forgot-password:account:hourly:${userId}`,
+    RateLimitPresets.PASSWORD_RESET_ACCOUNT_HOURLY,
+  );
+  if (!hourly.allowed) return false;
+  const daily = await checkRateLimitDistributed(
+    `forgot-password:account:daily:${userId}`,
+    RateLimitPresets.PASSWORD_RESET_ACCOUNT_DAILY,
+  );
+  return daily.allowed;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { email } = await request.json();
@@ -50,6 +64,12 @@ export async function POST(request: NextRequest) {
 
     // Always return success to prevent email enumeration attacks
     if (!user?.email) {
+      return NextResponse.json({ success: true });
+    }
+    // 按账号再限一层（#696）：上面那层按「IP + 输入地址」计，换 +别名 / Gmail 点号写法或换出口 IP
+    // 都会落到新键，却经 emailNormalized 命中同一账号。超限时与「查无此号」同形返回、不发信、不动令牌，
+    // 不给账号枚举留差异。小时额度先查：被小时额度挡下的请求不占用当天额度。
+    if (!(await accountResetAllowed(user.id))) {
       return NextResponse.json({ success: true });
     }
     const accountEmail = user.email.toLowerCase();

@@ -35,6 +35,7 @@ import {
 } from '@/components/ui';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
 import { getSignupPlanSummary } from '@/lib/signup-plan-summary';
+import { safeRedirectPath } from '@/lib/safe-redirect';
 
 export function SignupContent({ returnTo = null }: { returnTo?: string | null } = {}) {
   const t = useTranslations('auth.signup');
@@ -47,8 +48,8 @@ export function SignupContent({ returnTo = null }: { returnTo?: string | null } 
   // 邮箱已注册（409 email_already_registered）：错误下方给出登录 / 重置密码入口
   const [alreadyRegistered, setAlreadyRegistered] = useState(false);
   // 从邀请等深链经登录页来注册时带着 callbackUrl：已注册时的「登录」入口原样带回，登录后回到原页面。
-  // 只接受站内相对路径，防开放重定向。
-  const safeReturnTo = returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : null;
+  // 只接受站内相对路径，防开放重定向（#695：与登录页共用同一判定）。
+  const safeReturnTo = safeRedirectPath(returnTo, null);
   const loginHref = safeReturnTo ? `/login?callbackUrl=${encodeURIComponent(safeReturnTo)}` : '/login';
 
   // Locale-aware callback URL: defaultLocale = no prefix; others get /<locale>.

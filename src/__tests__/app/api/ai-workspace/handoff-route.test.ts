@@ -62,6 +62,9 @@ describe('GET /api/ai-workspace/handoff', () => {
     const res = await GET(req('?next=%2F&locale=de'));
     expect(res.status).toBe(302);
     expect(res.headers.get('location')).toMatch(/^https:\/\/aster-lang\.cloud\/de\/login\?callbackUrl=/);
+    // 回调只带站内相对路径（#695）：登录页只认相对路径，绝对地址会因内部 host 与浏览器 origin 不一致被丢弃
+    const callbackUrl = new URL(res.headers.get('location')!).searchParams.get('callbackUrl');
+    expect(callbackUrl).toBe('/api/ai-workspace/handoff?next=%2F&locale=de');
   });
   it('非法 next：400', async () => {
     const { GET } = await import('@/app/api/ai-workspace/handoff/route');
