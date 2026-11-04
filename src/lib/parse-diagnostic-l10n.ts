@@ -6,16 +6,78 @@
  * （如 `Expected '返回' after '那么'`），句子骨架恒为英文。
  *
  * 这里按解析器的固定句型翻译骨架与常见名词。引号内的关键词解析器已按作者语言给出，原样保留；
- * 引号内的标点解析器恒报英文写法（`'.'`），按目标词法的实际写法改写（zh：`'。'`、`'：'`、`'，'`）。
+ * 引号内的标点解析器恒报英文写法（`'.'`），按目标词法的实际写法改写（zh：`'。'`、`'：'`、`'，'`；hi：`'।'`）。
  * 句型或名词任一不认识时返回原文，避免半中半英的拼接。
  *
- * ★依赖：这是过渡层。aster-lang-ts 给解析错误补上错误码与 diagnostic overlay 译文后，编辑器应改走引擎
- *   的 localizeDiagnostics，并删除本模块（服务端 aster-api 的解析错误同样需要引擎侧译文）。
+ * 文案来自 aster-lang-locales 的 `syntax-diagnostics/<locale-id>.json`（随 @aster-cloud/ui-messages 分发），
+ * 与服务端 aster-api 的 ANTLR 解析错误共用同一份目录（wontlost-ltd/aster-api#423）。改文案改 locales，不改这里。
+ * en-US 目录里的句子与名词就是解析器的英文原文，这里按 en 值反查 key。
  */
 
-import { DE_DE, EN_US, ZH_CN, type Lexicon } from '@aster-cloud/aster-lang-ts/browser';
+import { DE_DE, EN_US, HI_IN, ZH_CN, type Lexicon } from '@aster-cloud/aster-lang-ts/browser';
+import enCatalog from '@aster-cloud/ui-messages/syntax-diagnostics/en-US.json';
+import zhCatalog from '@aster-cloud/ui-messages/syntax-diagnostics/zh-CN.json';
+import deCatalog from '@aster-cloud/ui-messages/syntax-diagnostics/de-DE.json';
+import hiCatalog from '@aster-cloud/ui-messages/syntax-diagnostics/hi-IN.json';
 
-type Lang = 'zh-CN' | 'de-DE';
+type Catalog = Readonly<Record<string, string>>;
+
+/** 解析器消息里出现的名词短语对应的目录 key（英文原文取 en-US 目录的值）。 */
+const NOUN_KEYS = [
+  'token.identifier',
+  'token.type',
+  'token.typeName',
+  'token.returnType',
+  'token.construction',
+  'token.dot',
+  'token.newline',
+  'token.indent',
+  'token.dedent',
+  'token.expression',
+  'token.statement',
+  'token.dataDefinition',
+  'token.enumDefinition',
+  'token.ifExpression',
+  'token.inlineIf',
+  'token.functionBody',
+  'token.explicitBlock',
+  'token.annotationArgumentValue',
+  'token.integer',
+  'token.atLeastOneStatement',
+  'token.workflowHeader',
+  'token.workflowBody',
+  'token.cases',
+  'token.retryPolicy',
+] as const;
+
+/** 整句固定的消息 */
+const FIXED_KEYS = ['unknownStatement', 'unexpectedAtTopLevel', 'unexpectedExpression'] as const;
+
+interface Rule {
+  re: RegExp;
+  key: string;
+  /** 依次对应正则捕获组的占位符名 */
+  slots: readonly string[];
+}
+
+// 顺序有意义：更具体的句型在前
+const RULES: readonly Rule[] = [
+  { re: /^Expected (.+) at end of statement$/, key: 'expectedAtEndOfStatement', slots: ['token'] },
+  { re: /^Expected (.+) after (.+) in (.+)$/, key: 'expectedAfterIn', slots: ['token', 'after', 'context'] },
+  { re: /^Expected (.+) after (.+)$/, key: 'expectedAfter', slots: ['token', 'after'] },
+  { re: /^Expected (.+) in (.+)$/, key: 'expectedIn', slots: ['token', 'context'] },
+  { re: /^Expected (.+)$/, key: 'expected', slots: ['token'] },
+  { re: /^Unexpected ('.*')$/, key: 'unexpected', slots: ['token'] },
+];
+
+/** 本模块从目录里取的全部 key（测试据此核对四种语言的目录都齐全）。 */
+export const PARSE_MESSAGE_KEYS: readonly string[] = [
+  ...RULES.map((rule) => rule.key),
+  ...FIXED_KEYS,
+  ...NOUN_KEYS,
+  'or',
+  'style.spaceQuotesAfterHan',
+];
 
 /**
  * 解析器消息里的英文标点 → 目标词法的写法，按词法的 punctuation 表逐项对应。
@@ -33,107 +95,77 @@ function punctuationMap(target: Lexicon): Map<string, string> {
   return map;
 }
 
-const PUNCTUATION: Record<Lang, Map<string, string>> = {
-  'zh-CN': punctuationMap(ZH_CN),
-  'de-DE': punctuationMap(DE_DE),
-};
+interface Target {
+  catalog: Catalog;
+  punctuation: Map<string, string>;
+}
 
-/** 解析器消息里出现的名词短语 → [中文, 德文] */
-const NOUNS: Record<string, [string, string]> = {
-  identifier: ['标识符', 'Bezeichner'],
-  type: ['类型', 'Typ'],
-  'type name': ['类型名', 'Typname'],
-  'return type': ['返回类型', 'Rückgabetyp'],
-  construction: ['构造', 'Konstruktion'],
-  dot: ['点', 'Punkt'],
-  newline: ['换行', 'Zeilenumbruch'],
-  indent: ['缩进', 'Einrückung'],
-  dedent: ['缩进结束', 'Ausrückung'],
-  expression: ['表达式', 'Ausdruck'],
-  statement: ['语句', 'Anweisung'],
-  'data definition': ['数据定义', 'Datendefinition'],
-  'enum definition': ['枚举定义', 'Enum-Definition'],
-  'if-expression': ['条件表达式', 'If-Ausdruck'],
-  'inline if': ['行内条件', 'Inline-If'],
-  'function body': ['函数体', 'Funktionsrumpf'],
-  'explicit block': ['显式块', 'expliziter Block'],
-  'annotation argument value': ['注解参数值', 'Annotationsargument'],
-  integer: ['整数', 'Ganzzahl'],
-  'at least one statement': ['至少一条语句', 'mindestens eine Anweisung'],
-  'workflow header': ['工作流头', 'Workflow-Kopf'],
-  'workflow body': ['工作流体', 'Workflow-Rumpf'],
-  cases: ['分支', 'Fälle'],
-  'retry policy': ['重试策略', 'Wiederholungsrichtlinie'],
-};
+const TARGETS: ReadonlyMap<string, Target> = new Map([
+  ['zh-CN', { catalog: zhCatalog, punctuation: punctuationMap(ZH_CN) }],
+  ['de-DE', { catalog: deCatalog, punctuation: punctuationMap(DE_DE) }],
+  ['hi-IN', { catalog: hiCatalog, punctuation: punctuationMap(HI_IN) }],
+]);
 
-/** 整句固定的消息 */
-const FIXED: Record<string, [string, string]> = {
-  'Unknown statement': ['无法识别的语句', 'Unbekannte Anweisung'],
-  'Unexpected token at top level': ['顶层出现意外的记号', 'Unerwartetes Token auf oberster Ebene'],
-  'Unexpected expression': ['意外的表达式', 'Unerwarteter Ausdruck'],
-  'Expected type': ['此处应为类型', 'Typ erwartet'],
-};
+const en: Catalog = enCatalog;
+
+/** 英文原文 → key：名词短语与整句消息都按 en-US 目录的值反查。 */
+const NOUN_KEY_BY_ENGLISH = new Map<string, string>(NOUN_KEYS.map((key) => [en[key]!, key]));
+const FIXED_KEY_BY_ENGLISH = new Map<string, string>(FIXED_KEYS.map((key) => [en[key]!, key]));
 
 const QUOTED_LIST = /^'[^']*'(?: or '[^']*')*$/;
 
 /** 引号片段整体是一个英文标点时换成目标词法的写法；关键词与其余符号原样保留。 */
-function quoted(fragment: string, lang: Lang): string {
-  const inner = fragment.slice(1, -1);
-  const mapped = PUNCTUATION[lang].get(inner);
+function quoted(fragment: string, target: Target): string {
+  const mapped = target.punctuation.get(fragment.slice(1, -1));
   return mapped ? `'${mapped}'` : fragment;
 }
 
 /** 翻译一个槽位：引号列表（'a' or 'b'）只翻连接词与标点，名词短语查表；不认识返回 null。 */
-function slot(text: string, lang: Lang): string | null {
+function slot(text: string, target: Target): string | null {
   const t = text.trim();
   if (QUOTED_LIST.test(t)) {
-    return t.split(' or ').map((q) => quoted(q, lang)).join(lang === 'zh-CN' ? '或' : ' oder ');
+    return t.split(' or ').map((q) => quoted(q, target)).join(target.catalog.or);
   }
-  const noun = NOUNS[t];
-  return noun ? noun[lang === 'zh-CN' ? 0 : 1] : null;
+  const key = NOUN_KEY_BY_ENGLISH.get(t);
+  return key ? target.catalog[key] ?? null : null;
 }
 
-/** 中文与引号片段相邻处补空格（`应为 '.'`、`'那么' 之后`），与引擎中文诊断的排版一致；引号内不动。 */
+/** 按名称一次性填充 `{name}` 占位符；填进去的文本不会再被替换。 */
+function fill(template: string, values: Readonly<Record<string, string>>): string {
+  return template.replace(/\{(\w+)\}/g, (whole, name: string) => values[name] ?? whole);
+}
+
+/** 汉字与引号片段相邻处补空格（`应为 '.'`、`'那么' 之后`），与引擎中文诊断的排版一致；引号内不动。 */
 function spaceQuotes(s: string): string {
   // 只对汉字补空格：全角标点（，。：）与引号相邻时不加空格
   const cjk = /\p{Script=Han}/u;
-  return s.replace(/'[^']*'/g, (quoted, offset: number) => {
+  return s.replace(/'[^']*'/g, (fragment, offset: number) => {
     const before = s[offset - 1];
-    const after = s[offset + quoted.length];
-    return `${before && cjk.test(before) ? ' ' : ''}${quoted}${after && cjk.test(after) ? ' ' : ''}`;
+    const after = s[offset + fragment.length];
+    return `${before && cjk.test(before) ? ' ' : ''}${fragment}${after && cjk.test(after) ? ' ' : ''}`;
   });
 }
 
-interface Rule {
-  re: RegExp;
-  zh: (s: string[]) => string;
-  de: (s: string[]) => string;
+function styled(text: string, target: Target): string {
+  return target.catalog['style.spaceQuotesAfterHan'] === 'true' ? spaceQuotes(text) : text;
 }
-
-// 顺序有意义：更具体的句型在前
-const RULES: Rule[] = [
-  { re: /^Expected (.+) at end of statement$/, zh: ([a]) => `语句末尾应为${a}`, de: ([a]) => `Am Ende der Anweisung wird ${a} erwartet` },
-  { re: /^Expected (.+) after (.+) in (.+)$/, zh: ([a, b, c]) => `${c}中，${b}之后应为${a}`, de: ([a, b, c]) => `In ${c} wird nach ${b} ${a} erwartet` },
-  { re: /^Expected (.+) after (.+)$/, zh: ([a, b]) => `${b}之后应为${a}`, de: ([a, b]) => `Nach ${b} wird ${a} erwartet` },
-  { re: /^Expected (.+) in (.+)$/, zh: ([a, b]) => `${b}中应为${a}`, de: ([a, b]) => `In ${b} wird ${a} erwartet` },
-  { re: /^Expected (.+)$/, zh: ([a]) => `此处应为${a}`, de: ([a]) => `${a} erwartet` },
-  { re: /^Unexpected ('.*')$/, zh: ([a]) => `意外的${a}`, de: ([a]) => `Unerwartet: ${a}` },
-];
 
 /** 按策略 lexicon 语言翻译解析错误消息；en-US、未收录语言、不认识的句型均返回原文。 */
 export function localizeParseMessage(message: string, locale: string | undefined): string {
-  if (locale !== 'zh-CN' && locale !== 'de-DE') return message;
-  const lang: Lang = locale;
-  const fixed = FIXED[message];
-  if (fixed) return fixed[lang === 'zh-CN' ? 0 : 1];
+  const target = locale ? TARGETS.get(locale) : undefined;
+  if (!target) return message;
+  const fixedKey = FIXED_KEY_BY_ENGLISH.get(message);
+  const fixed = fixedKey ? target.catalog[fixedKey] : undefined;
+  if (fixed) return fixed;
   for (const rule of RULES) {
     const m = rule.re.exec(message);
-    if (!m) continue;
-    const slots = m.slice(1).map((s) => slot(s, lang));
+    const template = target.catalog[rule.key];
+    if (!m || !template) continue;
+    const slots = m.slice(1).map((s) => slot(s, target));
     // 槽位不认识时试下一条句型（如 `after 'y in z'` 先被三槽句型误切，两槽句型可以译）
     if (slots.some((s) => s === null)) continue;
-    const out = (lang === 'zh-CN' ? rule.zh : rule.de)(slots as string[]);
-    return lang === 'zh-CN' ? spaceQuotes(out) : out;
+    const values = Object.fromEntries(rule.slots.map((name, i) => [name, slots[i]!]));
+    return styled(fill(template, values), target);
   }
   return message;
 }
