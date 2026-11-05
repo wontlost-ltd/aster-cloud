@@ -7,7 +7,7 @@
  */
 import { NextResponse } from 'next/server';
 import { and, eq, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
-import { db, policies, teamMembers } from '@/lib/prisma';
+import { db, executions, policies, teamMembers } from '@/lib/prisma';
 import { bypassQueryCache } from '@/db/fresh-read';
 import { getTeamMemberRole, rolesWithPermission, type TeamRole } from '@/lib/team-permissions';
 import {
@@ -128,26 +128,50 @@ export function ownPoliciesVisibleTo(userId: string): SQL {
 }
 
 /**
- * 执行记录的执行人范围。执行记录（含原始 input/output）属于执行人（ADR 0016 §3）：
+ * 执行记录的可见范围。执行记录（含原始 input/output）属于执行时的租户（ADR 0016 §3，#698）：
  *   - user：个人策略只看所有者本人的执行（公开 / 分享给他人执行的记录属于执行人自己）；
- *   - teamMembers：团队策略的明细（日志列表、最近执行、证据导出）只含执行人为团队**现任**成员的执行，
- *     经公开 / 分享由团队外用户留下的记录不进入明细；
+ *   - team：团队策略的明细（日志列表、最近执行、证据导出）只含记在该团队名下的执行（执行时是团队成员或团队 key），
+ *     离队成员的历史保留，经公开 / 分享由团队外用户留下的记录不进入明细；
  *   - all：团队策略的聚合（统计、条件漏斗）计入该策略的全部执行，只输出计数，不暴露原始记录。
  */
 export type ExecutionExecutors =
   | { kind: 'user'; userId: string }
-  | { kind: 'teamMembers'; teamId: string }
+  | { kind: 'team'; teamId: string }
   | { kind: 'all' };
 
-/** 明细（日志列表、最近执行、证据）可见的执行人范围。 */
+/** 明细（日志列表、最近执行、证据）可见的执行范围。 */
 export function executionDetailScope(policy: PolicyAccessSubject): ExecutionExecutors {
   const teamId = policyTeamIdOf(policy);
-  return teamId ? { kind: 'teamMembers', teamId } : { kind: 'user', userId: policy.userId };
+  return teamId ? { kind: 'team', teamId } : { kind: 'user', userId: policy.userId };
 }
 
 /** 聚合（统计、条件漏斗）计入的执行人范围。 */
 export function executionAggregateScope(policy: PolicyAccessSubject): ExecutionExecutors {
   return policyTeamIdOf(policy) ? { kind: 'all' } : { kind: 'user', userId: policy.userId };
+}
+
+/**
+ * 执行记录落库时的租户（#698）：团队策略由该团队成员（会话，或该团队的团队 key）执行 → 团队 id；
+ * 其余（团队外用户经公开 / 分享执行、个人策略）→ 执行人自己的租户：团队 key 的团队，否则 userId。
+ * 成员关系按执行时的当前状态判定（绕过查询缓存），与授权同一口径；只要是成员（含 viewer 经公开执行）就记团队。
+ */
+export async function executionTenantId(actor: PolicyActor, policy: PolicyAccessSubject): Promise<string> {
+  const teamId = policyTeamIdOf(policy);
+  const keyTeamId = actor.keyTeamId || null;
+  if (teamId && keyTeamId === teamId) return teamId;
+  if (teamId && !keyTeamId && (await teamRoleFor(actor, policy))) return teamId;
+  return keyTeamId ?? actor.userId;
+}
+
+/**
+ * 记在某团队名下的执行（#698）。tenantId 为空的行（迁移前无法推导、或迁移与新代码上线之间旧实例写入）
+ * 回退到按执行人是否为现任成员判定，与 #698 之前的口径一致。
+ */
+export function executionsOfTeam(teamId: string): SQL {
+  return or(
+    eq(executions.tenantId, teamId),
+    and(isNull(executions.tenantId), inArray(executions.userId, teamMemberIds(teamId))),
+  )!;
 }
 
 /** 团队现任成员的 userId 子查询（绕过查询缓存，离队即刻生效）。 */

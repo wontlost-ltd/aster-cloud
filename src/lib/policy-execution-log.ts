@@ -2,8 +2,8 @@
 // 策略执行日志服务：查询、分页、统计
 
 import { db, executions } from '@/lib/prisma';
-import { eq, and, or, inArray, isNull, gte, lte, desc, sql, type SQL } from 'drizzle-orm';
-import { teamMemberIds, type ExecutionExecutors } from '@/lib/policy-access';
+import { eq, and, or, isNull, gte, lte, desc, sql, type SQL } from 'drizzle-orm';
+import { executionsOfTeam, type ExecutionExecutors } from '@/lib/policy-access';
 import type { InferSelectModel } from 'drizzle-orm';
 import type { ExecutionMetadata } from '@/lib/guard-register';
 import type { AgentIdentity, PolicyReplayMetadata, PolicyTraceSkeleton } from '@/services/policy/policy-api';
@@ -394,7 +394,7 @@ export function deriveDecisionStats(counts: {
 }
 
 /**
- * 执行人 × 策略过滤条件。不按单个执行人收窄（teamMembers / all）时必须限定 policyId。
+ * 执行人 × 策略过滤条件。不按单个执行人收窄（team / all）时必须限定 policyId。
  */
 function executionScope(executors: ExecutionExecutors, policyId: string | undefined): SQL {
   if (executors.kind === 'user') {
@@ -403,8 +403,8 @@ function executionScope(executors: ExecutionExecutors, policyId: string | undefi
       : eq(executions.userId, executors.userId);
   }
   if (!policyId) throw new Error(`executionScope: executors=${executors.kind} requires a policyId`);
-  return executors.kind === 'teamMembers'
-    ? and(eq(executions.policyId, policyId), inArray(executions.userId, teamMemberIds(executors.teamId)))!
+  return executors.kind === 'team'
+    ? and(eq(executions.policyId, policyId), executionsOfTeam(executors.teamId))!
     : eq(executions.policyId, policyId);
 }
 
