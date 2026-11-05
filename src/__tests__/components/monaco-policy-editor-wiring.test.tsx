@@ -112,8 +112,14 @@ vi.mock('@/hooks/useAsterLSP', () => ({
 }));
 
 // 编译器不参与本文件的断言，桩掉以免拉起真实 wasm/worker
+const compilerCalls: Array<Record<string, unknown>> = [];
+const vocabRegCalls: Array<Record<string, unknown>> = [];
+const invalidateCalls: Array<Record<string, unknown>> = [];
 vi.mock('@/hooks/useAsterCompiler', () => ({
-  useAsterCompiler: () => ({ diagnostics: [], compileResult: null }),
+  useAsterCompiler: (opts: Record<string, unknown>) => {
+    compilerCalls.push(opts);
+    return { diagnostics: [], compileResult: null };
+  },
 }));
 
 const TENANT = 'tenant-under-test';
@@ -128,10 +134,16 @@ vi.mock('next-intl', () => ({ useTranslations: () => (k: string) => k }));
  * ★不自造形状——DomainVocabulary 有 structs 等被真实代码迭代的字段，
  *   随手编一个 `{terms: []}` 会以 "structs is not iterable" 炸在无关的地方。 */
 vi.mock('@/hooks/useUserVocabularyRegistration', () => ({
-  useUserVocabularyRegistration: () => ({ vocabulary: undefined, domain: undefined, registrationKey: '' }),
+  useUserVocabularyRegistration: (opts: Record<string, unknown>) => {
+    vocabRegCalls.push(opts);
+    return { vocabulary: undefined, domain: undefined, registrationKey: '' };
+  },
 }));
 vi.mock('@/hooks/useDomainVocabularyInvalidate', () => ({
-  useDomainVocabularyInvalidate: () => 0,
+  useDomainVocabularyInvalidate: (opts: Record<string, unknown>) => {
+    invalidateCalls.push(opts);
+    return 0;
+  },
 }));
 vi.mock('@/hooks/useAsterModuleCatalog', () => ({
   useAsterModuleCatalog: () => ({ modules: [], error: null }),
@@ -331,5 +343,32 @@ describe('编辑器接线：LSP 断开 / 重连提示', () => {
     withLsp('disconnected', { readOnly: true });
     await waitFor(() => expect(lspCalls.length).toBeGreaterThan(0));
     expect(screen.queryByText('lspDisconnected')).toBeNull();
+  });
+});
+
+
+/* #708：同一个 CNL 语言值同时用于浏览器编译、作者词汇注册、词汇失效订阅与 LSP 初始化，
+ * hi 必须一路是 hi-IN（此前被映射成 en-US，hi 策略按英文词法编译）。 */
+describe('MonacoPolicyEditor — CNL 语言贯穿各调用点（#708）', () => {
+  it.each([
+    ['hi', 'hi-IN'],
+    ['hi-IN', 'hi-IN'],
+    ['zh', 'zh-CN'],
+    ['de-DE', 'de-DE'],
+    ['en', 'en-US'],
+    ['fr-FR', 'en-US'],
+  ])('locale=%s → %s', async (locale, expected) => {
+    process.env.NEXT_PUBLIC_LSP_HOST = 'localhost:3001';
+    compilerCalls.length = 0;
+    vocabRegCalls.length = 0;
+    invalidateCalls.length = 0;
+    lspCalls.length = 0;
+    render(<MonacoPolicyEditor value="" onChange={() => {}} locale={locale} domain="insurance.auto" />);
+    await waitFor(() => expect(lspCalls.length).toBeGreaterThan(0));
+    expect(compilerCalls.at(-1)!.locale).toBe(expected);
+    expect(vocabRegCalls.at(-1)!.locale).toBe(expected);
+    expect((invalidateCalls.at(-1)!.match as { locale: string }).locale).toBe(expected);
+    expect(lspCalls.at(-1)!.locale).toBe(expected);
+    delete process.env.NEXT_PUBLIC_LSP_HOST;
   });
 });

@@ -27,6 +27,17 @@ export function normalizeCnlLocale(raw: string): string | null {
   return byLanguage.length === 1 ? byLanguage[0]! : null;
 }
 
+/** 编辑器侧 CNL 语言（浏览器编译、词汇注册与失效、LSP 初始化共用同一个值）。 */
+export type EditorCnlLocale = 'en-US' | 'zh-CN' | 'de-DE' | 'hi-IN';
+
+/**
+ * 编辑器 locale 属性（短码或完整标签）→ 编辑器 CNL 语言（#708）。与保存入口同一规范化
+ * （normalizeCnlLocale），保证编辑器编译用的词法与保存后服务端编译用的一致；不受支持的回落 en-US。
+ */
+export function toEditorCnlLocale(locale: string): EditorCnlLocale {
+  return (normalizeCnlLocale(locale) ?? DEFAULT_CNL_LOCALE) as EditorCnlLocale;
+}
+
 export type CompileLocaleResult = { ok: true; locale: string } | { ok: false; error: UnsupportedLocaleBody };
 
 export interface UnsupportedLocaleBody {
