@@ -63,7 +63,10 @@ describe('safeRedirectPath — 恶意样本一律回落默认页', () => {
     ['NUL', '/\u0000/evil.com'],
     ['DEL', '/\u007f/evil.com'],
     ['前导空格协议相对', ' //evil.com'],
-    ['零宽/不换行等 Unicode 空白前缀', ' //evil.com'],
+    ['不换行空格（NBSP）前缀', '\u00A0//evil.com'],
+    ['零宽空格前缀', '\u200B//evil.com'],
+    ['BOM 前缀', '\uFEFF//evil.com'],
+    ['全角空格前缀', '\u3000//evil.com'],
     ['编码的协议相对（非 / 开头）', '%2F%2Fevil.com'],
     ['相对片段（非 / 开头）', 'evil.com'],
     ['仅查询串', '?x=1'],
@@ -114,7 +117,11 @@ describe('resolveAuthRedirect — Auth.js redirect 回调', () => {
     },
   );
 
-  it('baseUrl 带 basePath 时保留站点 origin 判定', () => {
+  it('baseUrl 带尾斜杠时按 origin 拼接', () => {
     expect(resolveAuthRedirect({ url: '/x', baseUrl: 'https://cloud.example/' })).toBe('https://cloud.example/x');
+  });
+
+  it('baseUrl 带 basePath 时只取 origin 拼接站内路径', () => {
+    expect(resolveAuthRedirect({ url: '/x', baseUrl: 'https://cloud.example/app' })).toBe('https://cloud.example/x');
   });
 });

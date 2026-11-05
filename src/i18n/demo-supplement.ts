@@ -3583,7 +3583,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         scopePersonal: 'Persönlich',
         scopeTeam: 'Team · {team}',
         scopeColumn: 'Geltungsbereich',
-        errorNotMember: 'Du bist kein Mitglied dieses Teams.',
+        errorNotMember: 'Sie sind kein Mitglied dieses Teams.',
         errorPlanNoApiAccess: 'Der Tarif des Team-Owners enthält keinen API-Zugang.',
         examples: {
           decisionDescription: 'success gibt an, ob die Ausführung erfolgreich war; decision bezeichnet das fachliche Ergebnis.',

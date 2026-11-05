@@ -10,6 +10,7 @@ import { defaultLocale } from '@/i18n/config';
 import { CLIENT_CAPABILITIES } from '@/hooks/use-deployment-mode';
 import { Turnstile, TurnstilePlaceholder } from '@/components/turnstile';
 import { safeRedirectPath } from '@/lib/safe-redirect';
+import { useSiteOrigin } from '@/hooks/use-site-origin';
 import {
   Alert,
   AlertDescription,
@@ -146,8 +147,9 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
   const localePrefix = locale === defaultLocale ? '' : `/${locale}`;
   const defaultCallbackUrl = `${localePrefix}/dashboard`;
   // callbackUrl 来自地址栏，必须先收敛为站内路径（#695）：不安全 / 站外写法一律当作没给。
-  // 浏览器端带上本站 origin，让同源绝对地址（Auth.js 有时会这样回传）也能用。
-  const siteOrigin = typeof window === 'undefined' ? undefined : window.location.origin;
+  // 浏览器端带上本站 origin，让同源绝对地址（Auth.js 有时会这样回传）也能用；
+  // useSiteOrigin 保证 SSR 与 hydration 首帧一致（#714），hydration 后再带上 origin。
+  const siteOrigin = useSiteOrigin();
   const explicitCallback = safeRedirectPath(searchParams.get('callbackUrl'), null, siteOrigin);
   const callbackUrl = explicitCallback || defaultCallbackUrl;
   const errorParam = searchParams.get('error');

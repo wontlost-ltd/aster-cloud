@@ -15,6 +15,8 @@ function sha256(raw: string): string {
 
 const {
   mockUserFindFirst,
+  mockUserFindMany,
+  deferred,
   mockResetFindFirst,
   mockInsertValues,
   mockDeleteWhere,
@@ -23,6 +25,8 @@ const {
   mockHashPassword,
 } = vi.hoisted(() => ({
   mockUserFindFirst: vi.fn(),
+  mockUserFindMany: vi.fn(),
+  deferred: [] as Array<() => Promise<void>>,
   mockResetFindFirst: vi.fn(),
   mockInsertValues: vi.fn(),
   mockDeleteWhere: vi.fn(),
@@ -33,12 +37,13 @@ const {
 
 vi.mock('drizzle-orm', () => ({
   eq: (col: unknown, val: unknown) => ({ op: 'eq', col, val }),
+  or: (...conds: unknown[]) => ({ op: 'or', conds }),
 }));
 
 vi.mock('@/lib/prisma', () => ({
   db: {
     query: {
-      users: { findFirst: mockUserFindFirst },
+      users: { findFirst: mockUserFindFirst, findMany: mockUserFindMany },
       passwordResetTokens: { findFirst: mockResetFindFirst },
     },
     insert: () => ({ values: mockInsertValues }),
@@ -51,11 +56,23 @@ vi.mock('@/lib/prisma', () => ({
 
 vi.mock('@/lib/resend', () => ({ sendPasswordResetEmail: mockSendEmail }));
 vi.mock('@/lib/auth', () => ({ hashPassword: mockHashPassword }));
+// 找回密码的查库 / 发信在响应之后执行（#714）：测试收集任务，响应后统一执行
+vi.mock('@/lib/after-response', () => ({
+  runAfterResponse: (task: () => Promise<void>) => {
+    deferred.push(task);
+  },
+}));
+
+async function flushDeferred() {
+  while (deferred.length) await deferred.shift()!();
+}
 
 const originalKey = process.env.ASTER_PLAN_GATE_HMAC_KEY;
 
 function reset() {
   mockUserFindFirst.mockReset();
+  mockUserFindMany.mockReset().mockResolvedValue([]);
+  deferred.length = 0;
   mockResetFindFirst.mockReset();
   mockInsertValues.mockReset().mockResolvedValue(undefined);
   mockDeleteWhere.mockReset().mockResolvedValue(undefined);
@@ -73,7 +90,7 @@ describe('forgot-password — stores hashed token, emails raw (audit #168)', () 
   });
 
   it('persists sha256(token) and never the raw token', async () => {
-    mockUserFindFirst.mockResolvedValue({ id: 'u1', email: 'a@b.com' });
+    mockUserFindMany.mockResolvedValue([{ id: 'u1', email: 'a@b.com', emailNormalized: 'a@b.com' }]);
     const { POST } = await import('@/app/api/auth/forgot-password/route');
     const req = new Request('http://cloud.test/api/auth/forgot-password', {
       method: 'POST',
@@ -83,6 +100,7 @@ describe('forgot-password — stores hashed token, emails raw (audit #168)', () 
     // NextRequest is compatible with Request for this handler.
     const res = await POST(req as never);
     expect(res.status).toBe(200);
+    await flushDeferred();
 
     // Raw token was emailed.
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
@@ -102,38 +120,39 @@ describe('forgot-password — 按同一邮箱找账号，发到账号登记的�
 
   const forgot = async (email: string) => {
     const { POST } = await import('@/app/api/auth/forgot-password/route');
-    return POST(new Request('http://cloud.test/api/auth/forgot-password', {
+    const res = await POST(new Request('http://cloud.test/api/auth/forgot-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),
     }) as never);
+    await flushDeferred();
+    return res;
   };
 
   it('精确地址找不到时按 emailNormalized 找到另一个 +别名的账号，信与令牌都用账号地址', async () => {
-    mockUserFindFirst.mockImplementation((arg: { where: { col: string; val: string } }) =>
-      Promise.resolve(
-        arg.where.col === 'users.emailNormalized' && arg.where.val === 'ryan.pang@wontlost.com'
-          ? { id: 'u1', email: 'ryan.pang+adr0051-retest@wontlost.com' }
-          : undefined,
-      ),
-    );
+    mockUserFindMany.mockResolvedValue([
+      { id: 'u1', email: 'ryan.pang+adr0051-retest@wontlost.com', emailNormalized: 'ryan.pang@wontlost.com' },
+    ]);
     const res = await forgot('Ryan.Pang+adr0051-member1@wontlost.com');
     expect(res.status).toBe(200);
+    // 一次查询同时按精确地址与 emailNormalized 匹配（#714 统一查库路径）
+    expect(mockUserFindMany).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(mockUserFindMany.mock.calls[0][0].where)).toContain('ryan.pang@wontlost.com');
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
     expect(mockSendEmail.mock.calls[0][0]).toBe('ryan.pang+adr0051-retest@wontlost.com');
     expect(mockInsertValues.mock.calls[0][0].email).toBe('ryan.pang+adr0051-retest@wontlost.com');
     expect(mockDeleteWhere).toHaveBeenCalledWith({ op: 'eq', col: 'prt.email', val: 'ryan.pang+adr0051-retest@wontlost.com' });
   });
 
-  it('精确地址命中时不再按别名查', async () => {
-    mockUserFindFirst.mockResolvedValue({ id: 'u1', email: 'a@b.com' });
+  it('精确地址命中时用精确地址的账号，且只查一次库', async () => {
+    mockUserFindMany.mockResolvedValue([{ id: 'u1', email: 'a@b.com', emailNormalized: 'a@b.com' }]);
     await forgot('a@b.com');
-    expect(mockUserFindFirst).toHaveBeenCalledTimes(1);
+    expect(mockUserFindMany).toHaveBeenCalledTimes(1);
     expect(mockSendEmail.mock.calls[0][0]).toBe('a@b.com');
   });
 
   it('同一邮箱也找不到：仍返回 200，不发信（防枚举不变）', async () => {
-    mockUserFindFirst.mockResolvedValue(undefined);
+    mockUserFindMany.mockResolvedValue([]);
     const res = await forgot('nobody+x@example.com');
     expect(res.status).toBe(200);
     expect(mockSendEmail).not.toHaveBeenCalled();
