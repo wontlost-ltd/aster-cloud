@@ -5,7 +5,7 @@
  * 这里用与编辑器同一份 aster-lang-ts 做编译 + 类型检查（两侧检查器已按 parity 门对齐），
  * 任一 error 级诊断都让种子脚本在写库前失败，避免清库重建后把类型不正确的策略再灌一遍。
  */
-export type SeedLocale = 'en-US' | 'zh-CN' | 'de-DE';
+export type SeedLocale = 'en-US' | 'zh-CN' | 'de-DE' | 'hi-IN';
 
 type Engine = typeof import('@aster-cloud/aster-lang-ts/browser');
 
@@ -25,8 +25,8 @@ export interface SeedCompileProblem {
 
 /** 返回 error 级问题列表；空数组表示源码可编译且类型检查通过。 */
 export async function seedCompileProblems(source: string, locale: SeedLocale): Promise<SeedCompileProblem[]> {
-  const { compileAndTypecheck, EN_US, ZH_CN, DE_DE } = await engine();
-  const lexicons = { 'en-US': EN_US, 'zh-CN': ZH_CN, 'de-DE': DE_DE } as const;
+  const { compileAndTypecheck, EN_US, ZH_CN, DE_DE, HI_IN } = await engine();
+  const lexicons = { 'en-US': EN_US, 'zh-CN': ZH_CN, 'de-DE': DE_DE, 'hi-IN': HI_IN } as const;
   const result = compileAndTypecheck(source, { lexicon: lexicons[locale] });
   const problems: SeedCompileProblem[] = [];
   for (const err of result.parseErrors ?? []) {

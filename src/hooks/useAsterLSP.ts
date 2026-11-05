@@ -27,6 +27,7 @@ import { logLspMessage, type LspMessageParams } from '@/lib/lsp-log-message';
 import { splitJsonMessages } from '@/lib/lsp-json-frames';
 import { selectLspFeatures, type LspFeatures, type LspServerCapabilities } from '@/lib/lsp-features';
 import { isMemberAccessPosition } from '@/lib/aster-keyword-completions';
+import type { EditorCnlLocale } from '@/lib/cnl-locale';
 import {
   HandshakeBudget,
   LSP_IDLE_CLOSE_CODE,
@@ -44,7 +45,7 @@ import {
 
 type MonacoNamespace = typeof import('monaco-editor');
 
-export type CNLLocale = 'en-US' | 'zh-CN' | 'de-DE';
+export type CNLLocale = EditorCnlLocale;
 
 export interface UseAsterLSPOptions {
   /** Monaco editor instance */
@@ -247,6 +248,7 @@ const RENAME_REJECT_REASON: Record<CNLLocale, string> = {
   'en-US': 'This element cannot be renamed.',
   'zh-CN': '此处无法重命名。',
   'de-DE': 'Dieses Element kann nicht umbenannt werden.',
+  'hi-IN': 'इस तत्व का नाम नहीं बदला जा सकता।',
 };
 function renameRejectReason(locale: CNLLocale): string {
   return RENAME_REJECT_REASON[locale] ?? RENAME_REJECT_REASON['en-US'];

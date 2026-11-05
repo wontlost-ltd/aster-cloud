@@ -19,6 +19,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { editor } from 'monaco-editor';
 import { localizeParseMessage } from '@/lib/parse-diagnostic-l10n';
+import type { EditorCnlLocale } from '@/lib/cnl-locale';
 import {
   compileAndTypecheck,
   extractSchema,
@@ -26,6 +27,7 @@ import {
   EN_US,
   ZH_CN,
   DE_DE,
+  HI_IN,
   type CompileResult,
   type DomainVocabulary,
   type SchemaResult,
@@ -33,13 +35,14 @@ import {
   type TypecheckDiagnostic,
 } from '@aster-cloud/aster-lang-ts/browser';
 
-export type CNLLocale = 'en-US' | 'zh-CN' | 'de-DE';
+export type CNLLocale = EditorCnlLocale;
 
 /** Map locale strings to Lexicon objects */
-const LEXICON_MAP: Record<CNLLocale, Lexicon> = {
+export const LEXICON_MAP: Record<CNLLocale, Lexicon> = {
   'en-US': EN_US,
   'zh-CN': ZH_CN,
   'de-DE': DE_DE,
+  'hi-IN': HI_IN,
 };
 
 export interface UseAsterCompilerOptions {

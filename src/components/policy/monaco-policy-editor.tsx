@@ -17,6 +17,7 @@ import {
 } from '@/lib/aster-lexicon';
 import { useSession } from 'next-auth/react';
 import { useAsterCompiler, type CNLLocale } from '@/hooks/useAsterCompiler';
+import { toEditorCnlLocale } from '@/lib/cnl-locale';
 import { buildKeywordSuggestions, isMemberAccessPosition } from '@/lib/aster-keyword-completions';
 import { useAsterModuleCatalog } from '@/hooks/useAsterModuleCatalog';
 import { useDomainVocabularyInvalidate } from '@/hooks/useDomainVocabularyInvalidate';
@@ -494,9 +495,9 @@ export function MonacoPolicyEditor({
     } as Lexicon;
   }, [baseLexicon, aliasSet]);
 
-  // Map locale string to CNLLocale type for compiler
-  // Handle both short ('zh', 'de') and full ('zh-CN', 'de-DE') locale formats
-  const compilerLocale: CNLLocale = locale.startsWith('zh') ? 'zh-CN' : locale.startsWith('de') ? 'de-DE' : 'en-US';
+  // 编辑器 CNL 语言（短码或完整标签均可）：编译、作者词汇注册、词汇失效与 LSP 初始化共用，
+  // 与保存入口同一规范化（#708：此前 hi 被映射成 en-US，hi 策略按英文词法编译）。
+  const compilerLocale: CNLLocale = toEditorCnlLocale(locale);
 
   // 租户标识符 = 当前会话用户 id（cloud tenantId === userId）。仅作为引擎
   // registry 的自定义词汇分区键；服务端 API 已用 session.user.id 鉴权，
