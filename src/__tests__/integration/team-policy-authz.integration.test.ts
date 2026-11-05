@@ -9,6 +9,8 @@
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq, inArray, sql } from 'drizzle-orm';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { NextRequest } from 'next/server';
 
 const current = vi.hoisted(() => ({ userId: null as string | null }));
@@ -235,10 +237,11 @@ async function seed(db: Db): Promise<void> {
     version(POL.personal, U.owner, 'DRAFT'),
   ]);
 
-  const exec = (id: string, policyId: string, userId: string) => ({
+  const exec = (id: string, policyId: string, userId: string, tenantId: string) => ({
     id: `${P}-exec-${id}`,
     policyId,
     userId,
+    tenantId,
     input: { x: 1 },
     output: { allowed: true },
     durationMs: 3,
@@ -248,12 +251,12 @@ async function seed(db: Db): Promise<void> {
     canonicalInputHash: 'h'.repeat(64),
   });
   await db.insert(executions).values([
-    exec('own-1', POL.own, U.owner),
-    exec('own-2', POL.own, U.owner),
-    exec('own-3', POL.own, U.member),
-    exec('mem-1', POL.mem, U.member),
-    exec('mem-2', POL.mem, U.owner),
-    exec('personal-1', POL.personal, U.owner),
+    exec('own-1', POL.own, U.owner, TEAM),
+    exec('own-2', POL.own, U.owner, TEAM),
+    exec('own-3', POL.own, U.member, TEAM),
+    exec('mem-1', POL.mem, U.member, TEAM),
+    exec('mem-2', POL.mem, U.owner, TEAM),
+    exec('personal-1', POL.personal, U.owner, U.owner),
   ] as Array<typeof executions.$inferInsert>);
 
   await db.insert(apiKeys).values([
@@ -678,6 +681,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('团队策略授权矩阵（真
         id: `${P}-exec-outsider`,
         policyId: POL.own,
         userId: U.outsider,
+        tenantId: U.outsider,
         input: { secret: 'outsider-pii' },
         output: { allowed: true },
         durationMs: 3,
@@ -707,10 +711,142 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('团队策略授权矩阵（真
       expect((await bodyOf<{ count: number }>(call.evidence('owner'))).count).toBe(6);
     });
 
-    it('离队成员留下的历史执行同样不再出现在明细里', async () => {
+    // #698：按执行时所属租户过滤——离队成员的历史留在团队审计里，团队外执行人的记录仍不进入
+    it('离队成员留下的历史执行仍在日志、最近执行与证据导出里', async () => {
       await db.delete(teamMembers).where(and(eq(teamMembers.teamId, TEAM), eq(teamMembers.userId, U.member)));
-      const logs = await bodyOf<{ total: number }>(call.logs('owner', POL.own));
-      expect(logs.total).toBe(2);
+      const logs = await bodyOf<{ total: number; items: Array<{ id: string }> }>(call.logs('owner', POL.own));
+      expect(logs.total).toBe(3);
+      expect(logs.items.map((i) => i.id)).toContain(`${P}-exec-own-3`);
+      expect(logs.items.map((i) => i.id)).not.toContain(`${P}-exec-outsider`);
+      const recent = await bodyOf<{ items: Array<{ id: string }> }>(call.logsRecent('owner', POL.own));
+      expect(recent.items.map((i) => i.id)).toContain(`${P}-exec-own-3`);
+      expect((await bodyOf<{ count: number }>(call.evidence('owner', POL.own))).count).toBe(3);
+      expect((await bodyOf<{ count: number }>(call.evidence('owner'))).count).toBe(6);
+    });
+
+    it('同一时间窗的证据数量不随成员变动而变', async () => {
+      const before = (await bodyOf<{ count: number }>(call.evidence('admin', POL.mem))).count;
+      await db.delete(teamMembers).where(and(eq(teamMembers.teamId, TEAM), eq(teamMembers.userId, U.member)));
+      expect((await bodyOf<{ count: number }>(call.evidence('admin', POL.mem))).count).toBe(before);
+    });
+
+    it('迁移前写入的行（tenantId 为空）回退到按现任成员判定', async () => {
+      await db.update(executions).set({ tenantId: null }).where(inArray(executions.id, [`${P}-exec-own-3`, `${P}-exec-outsider`]));
+      const logs = await bodyOf<{ items: Array<{ id: string }> }>(call.logs('owner', POL.own));
+      const ids = logs.items.map((i) => i.id);
+      expect(ids).toContain(`${P}-exec-own-3`);
+      expect(ids).not.toContain(`${P}-exec-outsider`);
+      expect((await bodyOf<{ count: number }>(call.evidence('owner', POL.own))).count).toBe(3);
+    });
+  });
+
+  describe('执行记录落库时写入租户（#698）', () => {
+    const tenantOfNewest = async (policyId: string, userId: string) => {
+      for (let i = 0; i < 50; i++) {
+        const rows = await db
+          .select({ tenantId: executions.tenantId })
+          .from(executions)
+          .where(and(eq(executions.policyId, policyId), eq(executions.userId, userId), sql`${executions.id} NOT LIKE ${`${P}-exec-%`}`));
+        if (rows.length > 0) return rows.map((r) => r.tenantId);
+        await new Promise((r) => setTimeout(r, 40));
+      }
+      throw new Error('execution row not written');
+    };
+
+    it('团队成员会话执行团队策略 → 团队；viewer 经公开执行也记为团队', async () => {
+      expect(await statusOf(call.execute('member', POL.own))).toBe(200);
+      expect(await tenantOfNewest(POL.own, U.member)).toEqual([TEAM]);
+      await db.update(policies).set({ isPublic: true }).where(eq(policies.id, POL.view));
+      expect(await statusOf(call.execute('viewer', POL.view))).toBe(200);
+      expect(await tenantOfNewest(POL.view, U.viewer)).toEqual([TEAM]);
+    });
+
+    it('团队外用户经公开执行团队策略 → 执行人自己的租户', async () => {
+      await db.update(policies).set({ isPublic: true }).where(eq(policies.id, POL.own));
+      expect(await statusOf(call.execute('outsider', POL.own))).toBe(200);
+      expect(await tenantOfNewest(POL.own, U.outsider)).toEqual([U.outsider]);
+    });
+
+    it('个人策略所有者执行 → 本人；团队 key 执行团队策略 → 团队', async () => {
+      expect(await statusOf(call.execute('owner', POL.personal))).toBe(200);
+      expect(await tenantOfNewest(POL.personal, U.owner)).toEqual([U.owner]);
+      expect(await statusOf(call.v1Execute(KEY.memberTeam, POL.own))).toBe(200);
+      expect(await tenantOfNewest(POL.own, U.member)).toEqual([TEAM]);
+    });
+  });
+
+  describe('历史执行记录的租户回填（#698 迁移）', () => {
+    // 直接执行迁移文件里的回填语句，保证测的就是上线的 SQL
+    const backfill = async () => {
+      const file = readFileSync(path.resolve(__dirname, '../../../drizzle/0064_execution_tenant.sql'), 'utf8');
+      for (const stmt of file.split('--> statement-breakpoint').map((x) => x.trim()).filter(Boolean)) {
+        await db.execute(sql.raw(stmt));
+      }
+    };
+    const tenantOf = async (id: string) =>
+      (await db.select({ tenantId: executions.tenantId }).from(executions).where(eq(executions.id, id)))[0].tenantId;
+    const raw = (id: string, policyId: string, userId: string, createdAt: Date, apiKeyId: string | null = null) => ({
+      id: `${P}-exec-bf-${id}`,
+      policyId,
+      userId,
+      apiKeyId,
+      input: {},
+      output: {},
+      durationMs: 1,
+      success: true,
+      source: 'dashboard' as const,
+      createdAt,
+    });
+
+    it('按可证明的成员关系回填；其余记为执行人自己的租户；重复执行幂等', async () => {
+      const now = Date.now();
+      const longAgo = new Date(now - 86_400_000 * 30);
+      await db.update(policies).set({ createdAt: new Date(now - 86_400_000 * 60) }).where(inArray(policies.id, [POL.own, POL.ex]));
+      await db.update(teamMembers).set({ createdAt: new Date(now - 86_400_000 * 10) }).where(and(eq(teamMembers.teamId, TEAM), eq(teamMembers.userId, U.admin)));
+      await db.insert(executions).values([
+        raw('member', POL.own, U.member, new Date(now - 1000)), // 现任成员，入队早于执行
+        raw('admin-before-join', POL.own, U.admin, longAgo), // 入队前执行：团队外
+        raw('ex-creator', POL.ex, U.ex, longAgo), // 已离队的创建者，期间无移出记录
+        raw('outsider', POL.own, U.outsider, new Date(now - 1000)), // 团队外
+        raw('team-key', POL.own, U.outsider, new Date(now - 1000), `${P}-key-member-team`), // 团队 key
+        raw('personal', POL.personal, U.owner, new Date(now - 1000)),
+        raw('personal-key', POL.personal, U.owner, new Date(now - 1000), `${P}-key-owner-team`),
+      ] as Array<typeof executions.$inferInsert>);
+
+      await backfill();
+      expect(await tenantOf(`${P}-exec-bf-member`)).toBe(TEAM);
+      expect(await tenantOf(`${P}-exec-bf-admin-before-join`)).toBe(U.admin);
+      expect(await tenantOf(`${P}-exec-bf-ex-creator`)).toBe(TEAM);
+      expect(await tenantOf(`${P}-exec-bf-outsider`)).toBe(U.outsider);
+      expect(await tenantOf(`${P}-exec-bf-team-key`)).toBe(TEAM);
+      expect(await tenantOf(`${P}-exec-bf-personal`)).toBe(U.owner);
+      expect(await tenantOf(`${P}-exec-bf-personal-key`)).toBe(TEAM);
+      // 已有值不被覆盖
+      expect(await tenantOf(`${P}-exec-own-3`)).toBe(TEAM);
+
+      await db.update(executions).set({ tenantId: 'manual' }).where(eq(executions.id, `${P}-exec-bf-outsider`));
+      await backfill();
+      expect(await tenantOf(`${P}-exec-bf-outsider`)).toBe('manual');
+    });
+
+    it('创建者在执行前被移出过团队：不按创建者推断', async () => {
+      const now = Date.now();
+      await db.update(policies).set({ createdAt: new Date(now - 86_400_000 * 60) }).where(eq(policies.id, POL.ex));
+      await db.insert(securityEvents).values({
+        id: `${P}-se-removed-ex`,
+        eventType: 'VERSION_CREATED',
+        severity: 'INFO',
+        userId: U.owner,
+        details: { action: 'TEAM_MEMBER_REMOVED', teamId: TEAM, removedUserId: U.ex },
+        createdAt: new Date(now - 86_400_000 * 20),
+      } as typeof securityEvents.$inferInsert);
+      await db.insert(executions).values([
+        raw('ex-before-removal', POL.ex, U.ex, new Date(now - 86_400_000 * 30)),
+        raw('ex-after-removal', POL.ex, U.ex, new Date(now - 86_400_000 * 5)),
+      ] as Array<typeof executions.$inferInsert>);
+      await backfill();
+      expect(await tenantOf(`${P}-exec-bf-ex-before-removal`)).toBe(TEAM);
+      expect(await tenantOf(`${P}-exec-bf-ex-after-removal`)).toBe(U.ex);
     });
   });
 

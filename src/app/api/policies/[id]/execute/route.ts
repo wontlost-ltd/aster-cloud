@@ -4,7 +4,7 @@ import { db, policies, policyVersions, executions, users, usageRecords } from '@
 import { eq, sql, desc, asc } from 'drizzle-orm';
 import { PLANS, PlanType } from '@/lib/plans';
 import { upgradeResponse } from '@/lib/plan-quota';
-import { authorizePolicyAction, policyAccessDeniedResponse } from '@/lib/policy-access';
+import { authorizePolicyAction, executionTenantId, policyAccessDeniedResponse } from '@/lib/policy-access';
 import { executePolicyUnified, getPrimaryError, deriveExecutionDecision, deriveExecutionOutcome } from '@/services/policy/cnl-executor';
 import { getCachedPolicyMeta, cachePolicyMeta, type CachedPolicyMeta } from '@/lib/cache';
 import { hydrateExecutableVersion, isCachedVersionCurrent, resolveExecutableVersion, type ExecutableVersionCandidate } from '@/services/policy/executable-version';
@@ -437,9 +437,12 @@ export async function POST(req: Request, { params }: RouteParams) {
     //   （那是多写 fail-fast 聚合，其 catch 恢复不保证 execution insert 已 settle）。
     // ★Promise.resolve 包裹：drizzle insert builder 原生 thenable，但为让 .then 链在测试 mock（返回
     //   query-builder 非 thenable）与真库下均可靠，统一 Promise.resolve（thenable 被 adopt，非 promise 被 wrap）。
+    // 执行时所属租户（#698）：团队成员 / 团队 key 记团队，团队外经公开 / 分享执行记执行人自己的租户
+    const tenantId = await executionTenantId({ userId }, policy);
     const executionInsertPromise = Promise.resolve(db.insert(executions).values({
       id: executionId,
       userId,
+      tenantId,
       policyId: id,
       input: engineInput as object,
       output: executionResult as object,

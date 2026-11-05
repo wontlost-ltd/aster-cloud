@@ -876,6 +876,13 @@ export const executions = pgTable(
     policyVersion: integer('policyVersion'),
     source: executionSourceEnum('source').default('dashboard').notNull(),
     apiKeyId: text('apiKeyId'),
+    /**
+     * 执行发生时所属租户（#698，ADR 0016 §3）：团队策略由该团队成员（或团队 key）执行时为团队 id；
+     * 团队外用户经公开 / 分享执行、以及个人策略的执行，为执行人自己的租户（团队 key 的团队，否则 userId）。
+     * 团队策略的日志 / 证据按它过滤：离队成员的历史留在团队审计里，团队外执行人的原始记录不进入。
+     * 可空：迁移前写入且无法推导的行，以及迁移与新代码上线之间旧实例写入的行；读侧对 NULL 回退到按现任成员判定。
+     */
+    tenantId: text('tenantId'),
     metadata: jsonb('metadata'),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
 
@@ -957,6 +964,7 @@ export const executions = pgTable(
   (table) => [
     index('Execution_userId_idx').on(table.userId),
     index('Execution_policyId_idx').on(table.policyId),
+    index('Execution_policyId_tenantId_idx').on(table.policyId, table.tenantId),
     index('Execution_createdAt_idx').on(table.createdAt),
     index('Execution_success_idx').on(table.success),
     index('Execution_decision_idx').on(table.decision),

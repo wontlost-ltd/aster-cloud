@@ -6,7 +6,7 @@
 import { db, executions, policies } from '@/lib/prisma';
 import { and, eq, gte, lte, asc, isNull, isNotNull, inArray, or, sql } from 'drizzle-orm';
 import { policyTenantId } from '@/lib/policy-tenant';
-import { isPersonalPolicy, teamMemberIds, teamsAllowing } from '@/lib/policy-access';
+import { executionsOfTeam, isPersonalPolicy, teamsAllowing } from '@/lib/policy-access';
 import { EMPTY_TALLY, type EvidenceRow } from '@/services/evidence/bundle';
 import type { DecisionTally, EvidenceAgent, EvidenceDecision, EvidencePreview } from '@/services/evidence/types';
 
@@ -38,9 +38,10 @@ export interface EvidenceQuery {
  * 统一 WHERE（count/preview/query 三处共用，保证语义一致——Codex 审查：否则预览计数会高于实际
  * 导出、已删策略行还会误触发 413）。
  *
- * 可见范围（#673，ADR 0016 §3）：个人策略只含所有者本人的执行；团队策略只含执行人为该团队**现任**成员的
- * 执行（团队外用户经公开 / 分享留下的原始记录属于执行人，不进证据），团队按请求人当前成员关系与查看权限收窄。
- * 每个可见团队一个分支：策略属于该团队且执行人是该团队成员——不能把「A 队成员执行了 B 队公开策略」算进 B 队。
+ * 可见范围（#673 / #698，ADR 0016 §3）：个人策略只含所有者本人的执行；团队策略只含记在该团队名下的执行
+ * （执行时是团队成员或团队 key；离队成员的历史保留，团队外用户经公开 / 分享留下的原始记录属于执行人，不进证据），
+ * 团队按请求人当前成员关系与查看权限收窄。每个可见团队一个分支：策略属于该团队且执行记在该团队名下——
+ * 不能把「A 队成员执行了 B 队公开策略」算进 B 队。
  *
  * 用**非相关**子查询排除已删策略与不可见策略：policyId IN (SELECT id FROM Policy WHERE … AND deletedAt
  * IS NULL)。刻意不用相关 EXISTS——drizzle 的 findMany 把主表 alias 成 "executions" 而 db.select 用
@@ -61,7 +62,7 @@ async function buildConditions(q: EvidenceQuery) {
         executions.policyId,
         db.select({ id: policies.id }).from(policies).where(and(eq(policies.teamId, teamId), isNull(policies.deletedAt))),
       ),
-      inArray(executions.userId, teamMemberIds(teamId)),
+      executionsOfTeam(teamId),
     )!,
   );
 

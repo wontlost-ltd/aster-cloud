@@ -4,7 +4,7 @@ import { db, policies, policyVersions, executions, users, usageRecords } from '@
 import { and, eq, sql, desc, asc } from 'drizzle-orm';
 import { PLANS, PlanType } from '@/lib/plans';
 import { upgradeResponse } from '@/lib/plan-quota';
-import { authorizePolicyAction, policyAccessDeniedResponse } from '@/lib/policy-access';
+import { authorizePolicyAction, executionTenantId, policyAccessDeniedResponse } from '@/lib/policy-access';
 import { executionErrorCode, missingInputFieldBody, sanitizeExecutionResult } from '@/lib/execution-error';
 import { executePolicyUnified, getPrimaryError, deriveExecutionDecision, deriveExecutionOutcome } from '@/services/policy/cnl-executor';
 import { buildReplayColumns, buildEvidenceColumns } from '@/lib/policy-execution-log';
@@ -388,9 +388,12 @@ export async function POST(req: Request, { params }: RouteParams) {
     // ★execution INSERT 单独保存（Codex 抓竞态）：parity UPDATE 须链在本行 INSERT 提交后，否则并行下
     //   UPDATE 可能先到→0 行匹配→parity 结果静默丢。
     // ★Promise.resolve 包裹（同 dashboard route）：让 .then 链在测试 mock 与真库下均可靠。
+    // 执行时所属租户（#698）：团队成员 / 团队 key 记团队，团队外经公开 / 分享执行记执行人自己的租户
+    const tenantId = await executionTenantId({ userId, keyTeamId: teamId }, policy);
     const executionInsertPromise = Promise.resolve(db.insert(executions).values({
       id: executionId,
       userId,
+      tenantId,
       policyId: id,
       input: engineInput as object,
       output: executionResult as object,
