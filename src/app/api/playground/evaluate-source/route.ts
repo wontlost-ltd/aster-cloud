@@ -95,28 +95,62 @@ function corsHeadersFor(origin: string | null): HeadersInit {
   return { 'Vary': 'Origin' };
 }
 
-// 上游错误体里形如 snake_case 的 code 才算稳定码；有的 4xx 把句子放在 error 字段
-const STABLE_CODE = /^[a-z][a-z0-9_]{0,63}$/;
+/**
+ * aster-api evaluate-source 链路登记过的稳定错误码（TrialEndpointGuard、PolicyEvaluationResource、
+ * ModuleResolutionException.Code、入口诊断）。只透传这些；未登记的（含把句子放进 error 字段的）用 http_<status>。
+ */
+const UPSTREAM_CODES: ReadonlySet<string> = new Set([
+  // TrialEndpointGuard
+  'origin_not_allowed', 'transfer_encoding_not_allowed', 'content_length_required', 'invalid_content_length',
+  'payload_too_large', 'turnstile_failed', 'too_many_concurrent', 'too_many_requests',
+  // PolicyEvaluationResource
+  'evaluate_source_busy', 'alias_set_too_large', 'vocabulary_too_large', 'invalid_agent', 'missing_input_field',
+  'api_access_denied', 'rate_limit_exceeded', 'api_quota_hard_exceeded',
+  // 入口 / 模块诊断
+  'ENTRY_AMBIGUOUS', 'IMPORT_VERSION_REQUIRED', 'MODULE_VERSION_NOT_FOUND', 'MODULE_NOT_VISIBLE', 'MODULE_CYCLE',
+]);
 
-function upstreamCode(body: unknown): string | undefined {
-  if (!body || typeof body !== 'object') return undefined;
-  const { code, error } = body as { code?: unknown; error?: unknown };
-  const raw = typeof code === 'string' ? code : typeof error === 'string' ? error : undefined;
-  return raw && STABLE_CODE.test(raw) ? raw : undefined;
+const MAX_DIAGNOSTICS = 20;
+const MAX_CANDIDATES = 50;
+const MAX_TEXT = 500;
+
+type PlaygroundDiagnostic = { code: string; message: string; candidates: string[] };
+
+const shortText = (v: unknown): string | undefined =>
+  typeof v === 'string' && v.length <= MAX_TEXT ? v : undefined;
+
+/** 诊断条目只保留 code / message / candidates（审查 Medium-1）；code 未登记的整条丢弃。 */
+function allowlistedDiagnostics(raw: unknown): PlaygroundDiagnostic[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, MAX_DIAGNOSTICS).flatMap((d) => {
+    if (!d || typeof d !== 'object') return [];
+    const { code, message, candidates } = d as Record<string, unknown>;
+    if (typeof code !== 'string' || !UPSTREAM_CODES.has(code)) return [];
+    const list = Array.isArray(candidates)
+      ? candidates.filter((c): c is string => typeof c === 'string' && c.length <= 200).slice(0, MAX_CANDIDATES)
+      : [];
+    return [{ code, message: shortText(message) ?? '', candidates: list }];
+  });
+}
+
+function registeredCode(v: unknown): string | undefined {
+  return typeof v === 'string' && UPSTREAM_CODES.has(v) ? v : undefined;
 }
 
 /**
- * 上游非 2xx（#711）：业务文案可能是中文或带内部细节，只写服务端日志；响应给稳定 code、英文文案与
- * requestId。4xx 保留状态码与上游 code（不是稳定码时用 http_<status>），5xx 统一 502 upstream_error。
+ * 上游非 2xx（#711）：业务原文只写服务端日志，响应给稳定 code、英文文案与 requestId。
+ * 4xx 保留状态码，并按字段白名单透传面向用户的结构化诊断（code / message / candidates，及缺字段的 field），
+ * 429 透传 Retry-After；5xx 统一 502 upstream_error。
  */
 async function upstreamFailure(upstream: Response, headers: HeadersInit): Promise<NextResponse> {
   const requestId = crypto.randomUUID();
   const text = await upstream.text().catch(() => '');
-  let parsed: unknown;
+  let parsed: Record<string, unknown> = {};
   try {
-    parsed = JSON.parse(text);
+    const value: unknown = JSON.parse(text);
+    if (value && typeof value === 'object' && !Array.isArray(value)) parsed = value as Record<string, unknown>;
   } catch {
-    parsed = undefined;
+    // 非 JSON 错误体：按无结构处理
   }
   const responseHeaders = new Headers(headers);
   responseHeaders.set('x-request-id', requestId);
@@ -132,10 +166,21 @@ async function upstreamFailure(upstream: Response, headers: HeadersInit): Promis
       { status: 502, headers: responseHeaders },
     );
   }
-  const code = upstreamCode(parsed) ?? `http_${upstream.status}`;
+  const diagnostics = allowlistedDiagnostics(parsed.diagnostics);
+  const code = registeredCode(parsed.code) ?? registeredCode(parsed.error) ?? diagnostics[0]?.code ?? `http_${upstream.status}`;
+  const field = typeof parsed.field === 'string' && parsed.field.length <= 200 ? parsed.field : undefined;
+  const retryAfter = upstream.headers.get('retry-after');
+  if (upstream.status === 429 && retryAfter && /^\d{1,6}$/.test(retryAfter)) responseHeaders.set('Retry-After', retryAfter);
   console.warn(`[playground/evaluate-source] upstream ${upstream.status} ${code} requestId=${requestId}`, text.slice(0, 2000));
   return NextResponse.json(
-    { error: code, code, message: 'The policy engine rejected this trial request.', requestId },
+    {
+      error: code,
+      code,
+      message: 'The policy engine rejected this trial request.',
+      requestId,
+      ...(field ? { field } : {}),
+      ...(diagnostics.length > 0 ? { diagnostics } : {}),
+    },
     { status: upstream.status, headers: responseHeaders },
   );
 }
