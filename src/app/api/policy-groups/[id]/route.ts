@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { bypassQueryCache } from '@/db/fresh-read';
-import { ownPoliciesVisibleTo } from '@/lib/policy-access';
+import { authorizePolicyActions, canPlaceInGroup, ownPoliciesVisibleTo } from '@/lib/policy-access';
 import { db, policyGroups, policies, teamMembers } from '@/lib/prisma';
 import { eq, and, or, isNull, sql, desc, inArray } from 'drizzle-orm';
 import { wouldCreateParentCycle } from '@/lib/policy-group-hierarchy';
@@ -9,6 +9,35 @@ import { lookupGroupParent } from '@/lib/policy-group-parent-lookup';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
+}
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * 删除分组时可迁进父分组的策略 id（#712）：先按归属谓词取候选，再与分组放入同一口径——
+ * 批量 update 授权 + `canPlaceInGroup(父分组)`。父分组不存在时一律不迁移。
+ */
+async function placeableInParent(
+  tx: Tx,
+  groupId: string,
+  parentId: string,
+  scope: ReturnType<typeof ownPoliciesVisibleTo> | ReturnType<typeof or>,
+  userId: string,
+): Promise<string[]> {
+  const parent = await tx.query.policyGroups.findFirst({
+    where: eq(policyGroups.id, parentId),
+    columns: { teamId: true },
+  });
+  if (!parent) return [];
+  const candidates = await tx
+    .select({ id: policies.id, userId: policies.userId, teamId: policies.teamId })
+    .from(policies)
+    .where(and(eq(policies.groupId, groupId), scope));
+  if (candidates.length === 0) return [];
+  const decisions = await authorizePolicyActions({ userId }, candidates, 'update');
+  return candidates
+    .filter((policy) => canPlaceInGroup(decisions.get(policy.id)!, policy, parent))
+    .map((policy) => policy.id);
 }
 
 // GET /api/policy-groups/[id] - 获取单个分组详情
@@ -406,14 +435,16 @@ export async function DELETE(req: Request, { params }: RouteParams) {
       //   在分组删除后留下悬挂 groupId。故：
       //     第 1 段：我有权处置的行 → 迁到目标父分组（或清空）
       //     第 2 段：剩余仍指向本组的行 → 一律清空（仅解引用，不投放）
+      //   第 1 段还要逐条走放置规则（#712）：团队策略只有在调用者有 update 权限、且父分组属于同一团队时
+      //   才迁进父分组；否则（如私有父分组）由第 2 段移到「未分组」。
       if (movePoliciesToParent && group.parentId) {
-        await tx
-          .update(policies)
-          .set({ groupId: group.parentId })
-          .where(and(
-            eq(policies.groupId, id),
-            cascadePolicyScope
-          ));
+        const movable = await placeableInParent(tx, id, group.parentId, cascadePolicyScope, session.user.id);
+        if (movable.length > 0) {
+          await tx
+            .update(policies)
+            .set({ groupId: group.parentId })
+            .where(and(eq(policies.groupId, id), inArray(policies.id, movable), cascadePolicyScope));
+        }
       }
       // 解引用兜底：无论归属，凡仍指向本组的一律清空，杜绝悬挂引用。
       await tx

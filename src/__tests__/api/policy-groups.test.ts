@@ -622,6 +622,13 @@ describe('Policy Groups API - Drizzle Migration', () => {
       const updateCalls: Array<{ set: unknown; where: unknown }> = [];
       mockTransactionFn.mockImplementation(async (fn: (tx: unknown) => Promise<void>) => {
         const txMock = {
+          // #712：迁移前按归属取候选、查父分组，再逐条走放置规则（个人策略 → 可放进团队父分组）
+          query: { policyGroups: { findFirst: vi.fn().mockResolvedValue({ teamId: 'team-1' }) } },
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue([{ id: 'pol-1', userId: 'user-1', teamId: null }]),
+            }),
+          }),
           update: vi.fn().mockReturnValue({
             set: vi.fn().mockImplementation((setArg: unknown) => ({
               where: vi.fn().mockImplementation((whereArg: unknown) => {

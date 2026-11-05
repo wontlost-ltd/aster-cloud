@@ -89,6 +89,11 @@ import { notifyVersionDecided, notifyVersionSubmitted } from '@/lib/version-noti
 import * as sharesRoute from '@/app/api/policies/[id]/shares/route';
 import * as reviewersRoute from '@/app/api/policies/[id]/reviewers/route';
 import * as groupPoliciesRoute from '@/app/api/policy-groups/[id]/policies/route';
+import * as groupRoute from '@/app/api/policy-groups/[id]/route';
+import { authorizePolicyAction, authorizePolicyActions } from '@/lib/policy-access';
+import { POLICY_ACTIONS } from '@/lib/policy-access-matrix';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import * as teamRoute from '@/app/api/teams/[teamId]/route';
 import { getDashboardData } from '@/app/[locale]/(dashboard)/dashboard/dashboard-data';
 import * as policyRoute from '@/app/api/policies/[id]/route';
@@ -132,6 +137,7 @@ const POL = {
   own: `${P}-pol-own`, // owner 创建的团队策略
   mem: `${P}-pol-mem`, // member 创建的团队策略，v1 待审批
   ex: `${P}-pol-ex`, // 已被移除的 ex 创建、仍留在团队里的策略
+  blankTeam: `${P}-pol-blank-team`, // teamId 为空串的历史行（按个人策略处理）
   view: `${P}-pol-view`, // 被降为 viewer 的成员当初创建的团队策略
   personal: `${P}-pol-personal`, // owner 的个人策略
   deleted: `${P}-pol-deleted`, // 已移入回收站的团队策略
@@ -205,6 +211,7 @@ async function seed(db: Db): Promise<void> {
     policy(POL.ex, U.ex, TEAM),
     policy(POL.view, U.viewer, TEAM),
     policy(POL.personal, U.owner, null),
+    policy(POL.blankTeam, U.member, ''),
     policy(POL.deleted, U.owner, TEAM, { deletedAt: now, deletedBy: U.owner }),
   ] as Array<typeof policies.$inferInsert>);
   await db.insert(policyRecycleBins).values({
@@ -891,6 +898,119 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('团队策略授权矩阵（真
       expect(await statusOf(batch('owner', `${P}-grp-team`, tooMany))).toBe(400);
       expect(await statusOf(batch('owner', `${P}-grp-team`, tooMany, 'DELETE'))).toBe(400);
       expect(await statusOf(batch('owner', `${P}-grp-team`, [1, 2]))).toBe(400);
+    });
+  });
+
+  describe('删除分组的级联迁移走放置规则（#712）', () => {
+    const del = (actor: Actor, groupId: string) =>
+      (as(actor), groupRoute.DELETE(jsonRequest('DELETE', `/api/policy-groups/${groupId}`, {}), idParams(groupId)));
+    const groupOf = async (id: string) =>
+      (await db.select({ groupId: policies.groupId }).from(policies).where(eq(policies.id, id)))[0].groupId;
+    const g = (id: string, userId: string, teamId: string | null, parentId: string | null = null) =>
+      ({ id: `${P}-${id}`, userId, teamId, parentId: parentId && `${P}-${parentId}`, name: id, updatedAt: new Date() });
+
+    it('删除私有子分组：个人策略迁进私有父分组，团队策略移到未分组', async () => {
+      await db.insert(policyGroups).values([
+        g('op', U.owner, null),
+        g('oc', U.owner, null, 'op'),
+      ] as Array<typeof policyGroups.$inferInsert>);
+      await db.update(policies).set({ groupId: `${P}-oc` }).where(inArray(policies.id, [POL.own, POL.personal]));
+      expect(await statusOf(del('owner', `${P}-oc`))).toBe(200);
+      expect(await groupOf(POL.personal)).toBe(`${P}-op`);
+      expect(await groupOf(POL.own)).toBeNull();
+    });
+
+    it('删除团队父分组下的私有子分组：同团队的团队策略迁进团队父分组', async () => {
+      await db.insert(policyGroups).values([
+        g('tp', U.owner, TEAM),
+        g('oc2', U.owner, null, 'tp'),
+      ] as Array<typeof policyGroups.$inferInsert>);
+      await db.update(policies).set({ groupId: `${P}-oc2` }).where(inArray(policies.id, [POL.own, POL.personal]));
+      expect(await statusOf(del('owner', `${P}-oc2`))).toBe(200);
+      expect(await groupOf(POL.own)).toBe(`${P}-tp`);
+      expect(await groupOf(POL.personal)).toBe(`${P}-tp`);
+    });
+
+    it('删除私有子分组时，无 update 权限的团队策略（viewer 创建者）不迁移', async () => {
+      await db.insert(policyGroups).values([
+        g('tp3', U.owner, TEAM),
+        g('vc', U.viewer, null, 'tp3'),
+      ] as Array<typeof policyGroups.$inferInsert>);
+      await db.update(policies).set({ groupId: `${P}-vc` }).where(eq(policies.id, POL.view));
+      expect(await statusOf(del('viewer', `${P}-vc`))).toBe(200);
+      expect(await groupOf(POL.view)).toBeNull();
+    });
+
+    it('删除团队子分组：本团队策略迁进团队父分组；他人的个人策略只解引用', async () => {
+      await db.insert(policyGroups).values([
+        g('tp2', U.owner, TEAM),
+        g('tc2', U.owner, TEAM, 'tp2'),
+      ] as Array<typeof policyGroups.$inferInsert>);
+      await db.update(policies).set({ groupId: `${P}-tc2` }).where(inArray(policies.id, [POL.mem, POL.personal]));
+      expect(await statusOf(del('admin', `${P}-tc2`))).toBe(200);
+      expect(await groupOf(POL.mem)).toBe(`${P}-tp2`);
+      expect(await groupOf(POL.personal)).toBeNull();
+    });
+  });
+
+  describe('历史违规放置的核查与清理（#712）', () => {
+    // 直接执行 runbook 里交给运维的 SQL 文件，保证文档与测试同一份
+    const runbookSql = (name: string) =>
+      readFileSync(path.resolve(__dirname, '../../../docs/runbooks/sql', name), 'utf8');
+    type Misplaced = { policyId: string; teamId: string; groupId: string; groupTeamId: string | null };
+    const findMisplacedTeamPolicies = async (d: Db) =>
+      [...(await d.execute(sql.raw(runbookSql('policy-group-misplaced-check.sql'))))] as unknown as Misplaced[];
+    const ungroupMisplacedTeamPolicies = async (d: Db) =>
+      Number((await d.execute(sql.raw(runbookSql('policy-group-misplaced-cleanup.sql'))) as unknown as { count: number }).count);
+
+    it('只列出团队策略放在私有分组或他队分组的行；清理后移到未分组且幂等', async () => {
+      await db.insert(teams).values({ id: TEAM2, name: 'Other', slug: TEAM2, ownerId: U.outsider });
+      await db.insert(policyGroups).values([
+        { id: `${P}-a-private`, userId: U.owner, name: 'p', updatedAt: new Date() },
+        { id: `${P}-a-team`, userId: U.owner, teamId: TEAM, name: 't', updatedAt: new Date() },
+        { id: `${P}-a-other`, userId: U.outsider, teamId: TEAM2, name: 'o', updatedAt: new Date() },
+      ] as Array<typeof policyGroups.$inferInsert>);
+      await db.update(policies).set({ groupId: `${P}-a-private` }).where(eq(policies.id, POL.own));
+      await db.update(policies).set({ groupId: `${P}-a-other` }).where(eq(policies.id, POL.mem));
+      await db.update(policies).set({ groupId: `${P}-a-team` }).where(eq(policies.id, POL.view));
+      await db.update(policies).set({ groupId: `${P}-a-private` }).where(inArray(policies.id, [POL.personal, POL.blankTeam]));
+
+      const found = (await findMisplacedTeamPolicies(db)).filter((r) => r.policyId.startsWith(P));
+      expect(found.map((r) => r.policyId).sort()).toEqual([POL.mem, POL.own].sort());
+      expect(found.find((r) => r.policyId === POL.own)).toMatchObject({ teamId: TEAM, groupId: `${P}-a-private`, groupTeamId: null });
+
+      const fixed = await ungroupMisplacedTeamPolicies(db);
+      expect(fixed).toBeGreaterThanOrEqual(2);
+      expect((await findMisplacedTeamPolicies(db)).filter((r) => r.policyId.startsWith(P))).toEqual([]);
+      const rows = await db.select({ id: policies.id, groupId: policies.groupId }).from(policies).where(inArray(policies.id, [POL.own, POL.mem, POL.view, POL.personal]));
+      const byId = Object.fromEntries(rows.map((r) => [r.id, r.groupId]));
+      expect(byId).toEqual({ [POL.own]: null, [POL.mem]: null, [POL.view]: `${P}-a-team`, [POL.personal]: `${P}-a-private` });
+      expect(await ungroupMisplacedTeamPolicies(db)).toBe(0);
+    });
+  });
+
+  describe('批量授权与逐条授权逐格等价（#712）', () => {
+    it('全部执行人 × 全部策略（含空串 teamId、已删除）× 全部动作 × 个人 / 团队 / 他队 / 空串 key', async () => {
+      await db.insert(teams).values({ id: TEAM2, name: 'Other', slug: TEAM2, ownerId: U.outsider });
+      await db.insert(teamMembers).values({ id: `${P}-tm2-outsider`, teamId: TEAM2, userId: U.outsider, role: 'owner' });
+      const list = await db.select().from(policies).where(inArray(policies.id, POLICY_IDS));
+      expect(list).toHaveLength(POLICY_IDS.length);
+      const mismatches: string[] = [];
+      for (const userId of USER_IDS) {
+        for (const keyTeamId of [undefined, null, TEAM, TEAM2, '']) {
+          for (const action of POLICY_ACTIONS) {
+            const actor = { userId, keyTeamId };
+            const batch = await authorizePolicyActions(actor, list, action);
+            for (const policy of list) {
+              const single = await authorizePolicyAction(actor, policy, action);
+              if (JSON.stringify(batch.get(policy.id)) !== JSON.stringify(single)) {
+                mismatches.push(`${userId} key=${String(keyTeamId)} ${action} ${policy.id}`);
+              }
+            }
+          }
+        }
+      }
+      expect(mismatches).toEqual([]);
     });
   });
 
