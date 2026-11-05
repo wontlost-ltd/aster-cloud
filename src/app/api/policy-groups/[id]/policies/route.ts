@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { authorizePolicyActions, canPlaceInGroup } from '@/lib/policy-access';
-import { bypassQueryCache } from '@/db/fresh-read';
+import { bypassQueryCache, freshDb } from '@/db/fresh-read';
 import { db, policyGroups, policies, teamMembers } from '@/lib/prisma';
 import { eq, and, inArray, isNull } from 'drizzle-orm';
 
@@ -48,7 +48,7 @@ export async function POST(req: Request, { params }: RouteParams) {
 
     // 检查用户权限
     const hasPermission = group.userId === session.user.id ||
-      (group.teamId && await db.query.teamMembers.findFirst({
+      (group.teamId && await freshDb.query.teamMembers.findFirst({
         where: and(
           bypassQueryCache(),
           eq(teamMembers.teamId, group.teamId),
@@ -135,7 +135,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
 
     // 检查用户权限
     const hasPermission = group.userId === session.user.id ||
-      (group.teamId && await db.query.teamMembers.findFirst({
+      (group.teamId && await freshDb.query.teamMembers.findFirst({
         where: and(
           bypassQueryCache(),
           eq(teamMembers.teamId, group.teamId),

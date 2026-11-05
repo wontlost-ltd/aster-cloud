@@ -12,7 +12,7 @@ import 'server-only';
 
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { isPersonalPolicy } from '@/lib/policy-access';
-import { bypassQueryCache } from '@/db/fresh-read';
+import { bypassQueryCache, freshDb } from '@/db/fresh-read';
 import { db, policies, policyVersions, securityEvents, teamMembers, users } from '@/lib/prisma';
 import type { TeamRole } from '@/lib/team-permissions';
 import {
@@ -86,7 +86,7 @@ async function loadDisplayNames(ids: string[]): Promise<Map<string, string>> {
 
 /** 用户在各团队的角色，只保留能审批团队策略版本的 owner/admin。 */
 async function loadReviewerTeamRoles(userId: string): Promise<Map<string, TeamRole>> {
-  const memberships = await db.query.teamMembers.findMany({
+  const memberships = await freshDb.query.teamMembers.findMany({
     // 成员关系必须新鲜：降级后收件箱立即不再给出可审批项（绕过 Hyperdrive 查询缓存）
     where: and(eq(teamMembers.userId, userId), inArray(teamMembers.role, ['owner', 'admin']), bypassQueryCache()),
     columns: { teamId: true, role: true },
@@ -98,7 +98,7 @@ async function loadReviewerTeamRoles(userId: string): Promise<Map<string, TeamRo
 async function loadTeamReviewerIds(teamIds: string[]): Promise<Map<string, string[]>> {
   const byTeam = new Map<string, string[]>();
   if (teamIds.length === 0) return byTeam;
-  const rows = await db.query.teamMembers.findMany({
+  const rows = await freshDb.query.teamMembers.findMany({
     where: and(inArray(teamMembers.teamId, teamIds), inArray(teamMembers.role, [...TEAM_REVIEWER_ROLES]), bypassQueryCache()),
     columns: { teamId: true, userId: true },
   });

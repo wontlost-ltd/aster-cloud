@@ -41,7 +41,7 @@ import type { DomainVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/ident
 import { getTeamMemberRole } from '@/lib/team-permissions';
 import { VersionStateError } from './version-state-error';
 import { loadPolicyForAction, type PolicyAction } from '@/lib/policy-access';
-import { bypassQueryCache } from '@/db/fresh-read';
+import { bypassQueryCache, freshDb } from '@/db/fresh-read';
 import {
   canReviewPolicyVersions,
   decideVersionApproval,
@@ -183,7 +183,7 @@ export async function loadVersionReviewContext(
 /** 团队全部 owner/admin 的用户 id（判断团队策略是否还有合格审批人）；个人策略返回空数组。 */
 export async function loadTeamReviewerIds(teamId: string | null): Promise<string[]> {
   if (!teamId) return [];
-  const rows = await db.query.teamMembers.findMany({
+  const rows = await freshDb.query.teamMembers.findMany({
     where: and(eq(teamMembers.teamId, teamId), inArray(teamMembers.role, [...TEAM_REVIEWER_ROLES]), bypassQueryCache()),
     columns: { userId: true },
   });

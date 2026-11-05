@@ -186,6 +186,26 @@ export function getDb() {
 }
 
 /**
+ * 获取一致性敏感读用的数据库实例（#624）。
+ *
+ * Hyperdrive 默认缓存只读查询（60s + 15s stale），写入不会让缓存失效。权限、成员关系、
+ * 写后即读等场景必须读到最新数据，因此走第二个关闭缓存的绑定 HYPERDRIVE_FRESH：
+ * - 真实 Workers 且有 HYPERDRIVE_FRESH：用它的连接串新建 client。不复用 withRequestDb
+ *   的请求级连接（那条走的是带缓存的配置）。
+ * - 其余情况（Node 运行时、本地 dev 代理、on-prem、绑定尚未配置）：等同 getDb()。
+ *   这些环境要么没有 Hyperdrive 缓存，要么由调用点的 bypassQueryCache() 兜底。
+ *
+ * 只能用于事务之外的读：它是另一条连接，看不到当前事务里未提交的写入。
+ */
+export function getFreshDb() {
+  const env = getCloudflareEnvSync();
+  if (env?.HYPERDRIVE_FRESH?.connectionString && !isNodeRuntime()) {
+    return createDb({ HYPERDRIVE: env.HYPERDRIVE_FRESH });
+  }
+  return getDb();
+}
+
+/**
  * 在请求上下文中运行函数，复用同一数据库连接
  * 用于需要在单个请求中多次访问数据库的场景
  *

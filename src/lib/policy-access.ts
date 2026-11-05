@@ -8,7 +8,7 @@
 import { NextResponse } from 'next/server';
 import { and, eq, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { db, executions, policies, teamMembers } from '@/lib/prisma';
-import { bypassQueryCache } from '@/db/fresh-read';
+import { bypassQueryCache, freshDb } from '@/db/fresh-read';
 import { getTeamMemberRole, rolesWithPermission, type TeamRole } from '@/lib/team-permissions';
 import {
   decidePolicyAccess,
@@ -194,7 +194,7 @@ export async function authorizePolicyActions<T extends PolicyAccessSubject & { i
   const teamIds = [...new Set(list.map(policyTeamIdOf).filter((id): id is string => Boolean(id)))];
   const rows = teamIds.length === 0
     ? []
-    : await db
+    : await freshDb
         .select({ teamId: teamMembers.teamId, role: teamMembers.role })
         .from(teamMembers)
         .where(and(eq(teamMembers.userId, actor.userId), inArray(teamMembers.teamId, teamIds), bypassQueryCache()));

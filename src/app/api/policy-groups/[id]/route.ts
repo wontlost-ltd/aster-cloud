@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { bypassQueryCache } from '@/db/fresh-read';
+import { bypassQueryCache, freshDb } from '@/db/fresh-read';
 import { authorizePolicyActions, canPlaceInGroup, ownPoliciesVisibleTo } from '@/lib/policy-access';
 import { db, policyGroups, policies, teamMembers } from '@/lib/prisma';
 import { eq, and, or, isNull, sql, desc, inArray } from 'drizzle-orm';
@@ -60,7 +60,7 @@ export async function GET(req: Request, { params }: RouteParams) {
 
     // 如果不是用户的分组,检查是否是团队分组
     if (!group) {
-      const userTeams = await db.query.teamMembers.findMany({
+      const userTeams = await freshDb.query.teamMembers.findMany({
         where: and(eq(teamMembers.userId, session.user.id), bypassQueryCache()),
         columns: { teamId: true },
       });
@@ -205,7 +205,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
 
     // 如果不是用户的分组,检查团队权限(owner/admin)
     if (!existingGroup) {
-      const adminTeams = await db.query.teamMembers.findMany({
+      const adminTeams = await freshDb.query.teamMembers.findMany({
         where: and(
           bypassQueryCache(),
           eq(teamMembers.userId, session.user.id),
@@ -256,7 +256,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
 
         // 不是自己的分组时，检查是否为其所在团队的分组
         if (!parentGroup) {
-          const userTeams = await db.query.teamMembers.findMany({
+          const userTeams = await freshDb.query.teamMembers.findMany({
             where: and(eq(teamMembers.userId, session.user.id), bypassQueryCache()),
             columns: { teamId: true },
           });
@@ -346,7 +346,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
 
     // 如果不是用户的分组,检查团队权限
     if (!group) {
-      const adminTeams = await db.query.teamMembers.findMany({
+      const adminTeams = await freshDb.query.teamMembers.findMany({
         where: and(
           bypassQueryCache(),
           eq(teamMembers.userId, session.user.id),

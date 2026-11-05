@@ -15,7 +15,11 @@ vi.mock('@/lib/prisma', () => {
     teamMembers: { teamId: 'tm.teamId', userId: 'tm.userId', role: 'tm.role' },
   };
 });
-vi.mock('@/db/fresh-read', () => ({ bypassQueryCache: () => ({ op: 'fresh' }) }));
+// freshDb 在无 HYPERDRIVE_FRESH 绑定时等同全局 db（#624），这里同样指向上面的 db 桩
+vi.mock('@/db/fresh-read', async () => ({
+  bypassQueryCache: () => ({ op: 'fresh' }),
+  freshDb: (await import('@/lib/prisma')).db,
+}));
 vi.mock('@/lib/team-permissions', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/team-permissions')>()),
   getTeamMemberRole: h.getTeamMemberRole,

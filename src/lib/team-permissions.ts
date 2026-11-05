@@ -1,6 +1,6 @@
-import { db, teamMembers } from '@/lib/prisma';
+import { teamMembers } from '@/lib/prisma';
 import { eq, and } from 'drizzle-orm';
-import { bypassQueryCache } from '@/db/fresh-read';
+import { bypassQueryCache, freshDb } from '@/db/fresh-read';
 import {
   getRoleLevel,
   hasPermission,
@@ -60,7 +60,7 @@ export type PermissionCheckResult = { allowed: true } | Denied;
  * 查询缓存（见 @/db/fresh-read），否则被移除的成员在缓存窗口内仍会被当成成员放行。
  */
 export async function getTeamMemberRole(userId: string, teamId: string): Promise<TeamRole | null> {
-  const membership = await db.query.teamMembers.findFirst({
+  const membership = await freshDb.query.teamMembers.findFirst({
     where: and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId), bypassQueryCache()),
     columns: { role: true },
   });

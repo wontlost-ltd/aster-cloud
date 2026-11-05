@@ -9,7 +9,7 @@
  * - 在 API 路由和服务器组件中，调用发生在请求处理期间，所以可以正常工作
  */
 
-import { getDb, getDbAsync, createDb, type Database } from '@/db';
+import { getDb, getDbAsync, getFreshDb, createDb, type Database } from '@/db';
 
 /**
  * 获取数据库实例
@@ -28,7 +28,7 @@ export const db = new Proxy({} as Database, {
 });
 
 // 导出 getDb 函数用于需要显式控制的场景
-export { getDb, getDbAsync };
+export { getDb, getDbAsync, getFreshDb };
 
 // 导出类型
 export type { Database };
