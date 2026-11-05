@@ -94,8 +94,6 @@ import * as groupPoliciesRoute from '@/app/api/policy-groups/[id]/policies/route
 import * as groupRoute from '@/app/api/policy-groups/[id]/route';
 import { authorizePolicyAction, authorizePolicyActions } from '@/lib/policy-access';
 import { POLICY_ACTIONS } from '@/lib/policy-access-matrix';
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import * as teamRoute from '@/app/api/teams/[teamId]/route';
 import { getDashboardData } from '@/app/[locale]/(dashboard)/dashboard/dashboard-data';
 import * as policyRoute from '@/app/api/policies/[id]/route';
