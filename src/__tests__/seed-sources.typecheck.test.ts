@@ -32,8 +32,9 @@ describe('种子策略源码必须通过编译与类型检查', () => {
     expect((await seedCompileProblems(bad, 'en-US')).map((p) => p.code)).toContain('E802');
   });
 
-  it('未标类型字段被赋枚举值的源码被拒绝（E012）', async () => {
-    const bad = 'Module m.\nDefine S as one of A, B.\nDefine D has status, reason.\nRule r given x as Int, produce D:\n  Return D with status set to A, reason set to "x".\n';
+  // aster-lang-ts 1.2.5 起未写类型的字段按未知类型处理、不再报 E012，故夹具显式标注 Text。
+  it('Text 字段被赋枚举值的源码被拒绝（E012）', async () => {
+    const bad = 'Module m.\nDefine S as one of A, B.\nDefine D has status as Text, reason.\nRule r given x as Int, produce D:\n  Return D with status set to A, reason set to "x".\n';
     expect((await seedCompileProblems(bad, 'en-US')).map((p) => p.code)).toContain('E012');
     await expect(assertSeedCompiles(bad, 'en-US', 'bad')).rejects.toThrow(/E012/);
   });
