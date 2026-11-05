@@ -14,7 +14,7 @@ import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
 import { checkTeamAccess } from '@/lib/team-permissions';
 import type { GuardDecision } from '@/services/policy/guard-types';
 import { PolicyApiError } from '@/services/policy/policy-api';
-import { upstreamErrorMessage } from '@/lib/upstream-error-messages';
+import { registeredUpstreamMessage } from '@/lib/upstream-error-messages';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -40,15 +40,29 @@ function isUpstreamUnavailable(e: PolicyApiError): boolean {
   return e.statusCode === 408 || e.statusCode >= 500 || !e.statusCode;
 }
 
+const UNAVAILABLE_MESSAGE = 'The approval service is temporarily unavailable. Please try again later.';
+const FAILED_MESSAGE = 'The approval action could not be completed.';
+
+/**
+ * 上游错误 → 稳定 code + 英文文案（#711）：上游原文可能含内部主机 / IP / 端口或中文、内部类名，
+ * 只写服务端日志；不可用时附 requestId 供排查。界面按 code 本地化。
+ */
 function apiErrorResponse(e: PolicyApiError): NextResponse {
   if (isUpstreamUnavailable(e)) {
-    return NextResponse.json({ error: 'upstream_unavailable', message: e.message }, { status: 502 });
+    const requestId = crypto.randomUUID();
+    console.error(`[approvals] upstream unavailable requestId=${requestId}`, e.statusCode, e.code, e.message);
+    return NextResponse.json(
+      { error: 'upstream_unavailable', code: 'upstream_unavailable', message: UNAVAILABLE_MESSAGE, requestId },
+      { status: 502, headers: { 'x-request-id': requestId } },
+    );
   }
+  const message = registeredUpstreamMessage(e.code);
+  if (!message) console.warn('[approvals] upstream rejected', e.statusCode, e.code, e.message);
   const verifiedRoles = e.details?.verifiedRoles;
   return NextResponse.json(
     {
       error: e.code ?? `http_${e.statusCode}`,
-      message: upstreamErrorMessage(e.code, e.message),
+      message: message ?? FAILED_MESSAGE,
       ...(Array.isArray(verifiedRoles) ? { verifiedRoles } : {}),
     },
     { status: e.statusCode }

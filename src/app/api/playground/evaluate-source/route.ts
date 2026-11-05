@@ -95,6 +95,51 @@ function corsHeadersFor(origin: string | null): HeadersInit {
   return { 'Vary': 'Origin' };
 }
 
+// 上游错误体里形如 snake_case 的 code 才算稳定码；有的 4xx 把句子放在 error 字段
+const STABLE_CODE = /^[a-z][a-z0-9_]{0,63}$/;
+
+function upstreamCode(body: unknown): string | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const { code, error } = body as { code?: unknown; error?: unknown };
+  const raw = typeof code === 'string' ? code : typeof error === 'string' ? error : undefined;
+  return raw && STABLE_CODE.test(raw) ? raw : undefined;
+}
+
+/**
+ * 上游非 2xx（#711）：业务文案可能是中文或带内部细节，只写服务端日志；响应给稳定 code、英文文案与
+ * requestId。4xx 保留状态码与上游 code（不是稳定码时用 http_<status>），5xx 统一 502 upstream_error。
+ */
+async function upstreamFailure(upstream: Response, headers: HeadersInit): Promise<NextResponse> {
+  const requestId = crypto.randomUUID();
+  const text = await upstream.text().catch(() => '');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = undefined;
+  }
+  const responseHeaders = new Headers(headers);
+  responseHeaders.set('x-request-id', requestId);
+  if (upstream.status >= 500) {
+    console.error(`[playground/evaluate-source] upstream ${upstream.status} requestId=${requestId}`, text.slice(0, 2000));
+    return NextResponse.json(
+      {
+        error: 'upstream_error',
+        code: 'upstream_error',
+        message: 'The policy engine failed to evaluate this request. Please try again later.',
+        requestId,
+      },
+      { status: 502, headers: responseHeaders },
+    );
+  }
+  const code = upstreamCode(parsed) ?? `http_${upstream.status}`;
+  console.warn(`[playground/evaluate-source] upstream ${upstream.status} ${code} requestId=${requestId}`, text.slice(0, 2000));
+  return NextResponse.json(
+    { error: code, code, message: 'The policy engine rejected this trial request.', requestId },
+    { status: upstream.status, headers: responseHeaders },
+  );
+}
+
 export function OPTIONS(req: NextRequest) {
   // CORS preflight: marketing site (different origin) does this before POST.
   const origin = req.headers.get('origin');
@@ -203,14 +248,19 @@ export async function POST(req: NextRequest) {
       // v3：匿名试用无 query、不发 X-User-Id / 业务角色，按空串签。
       { query: '', userId: '' },
     );
-  } catch {
+  } catch (err) {
     recordTrialOutcome('upstream_misconfigured');
+    // 匿名端点：不向调用方暴露环境变量名等部署细节（#711），原因只写服务端日志
+    const requestId = crypto.randomUUID();
+    console.error(`[playground/evaluate-source] signing failed requestId=${requestId}`, err);
     return NextResponse.json(
       {
         error: 'cloud_misconfigured',
-        message: 'ASTER_PLAN_GATE_HMAC_KEY missing on cloud server',
+        code: 'cloud_misconfigured',
+        message: 'The trial service is not available right now. Please try again later.',
+        requestId,
       },
-      { status: 503, headers: { ...baseCors, ...rlHeaders } },
+      { status: 503, headers: { ...baseCors, ...rlHeaders, 'x-request-id': requestId } },
     );
   }
 
@@ -268,6 +318,10 @@ export async function POST(req: NextRequest) {
   observeTrialLatency(elapsedSec);
   recordTrialUpstreamStatus(upstream.status);
   recordTrialOutcome('accept');
+
+  if (!upstream.ok) {
+    return upstreamFailure(upstream, { ...baseCors, ...rlHeaders });
+  }
 
   // Stream the upstream response body straight through. Content-Type
   // is mirrored so the marketing client gets the same JSON shape it

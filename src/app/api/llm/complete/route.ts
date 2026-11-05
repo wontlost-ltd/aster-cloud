@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error: 'cloud_misconfigured',
-        message: 'ASTER_PLAN_GATE_HMAC_KEY missing on cloud server',
+        message: 'The AI service is not configured on this server. Please contact support.',
       },
       { status: 503 }
     );

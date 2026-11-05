@@ -18,7 +18,17 @@ const UPSTREAM_MESSAGES: Readonly<Record<string, string>> = {
   receipt_unavailable: 'The decision could not be written to the audit chain. Please try again later.',
   invalid_approval: 'The approver identifier or the comment is too long.',
   user_required: 'Deciding an approval requires a verified user identity.',
+  // cloud 客户端本地校验（policy-api.ts）
+  invalid_id: 'Invalid approval id.',
+  // aster-api CedarExportResource 的稳定 4xx 错误码（#711：Cedar 导出只透传这些）
+  alias_set_too_large: 'The alias set of this version is too large to export.',
+  vocabulary_too_large: 'The domain vocabulary of this version is too large to export.',
 };
+
+/** 已登记错误码的英文提示；未登记返回 undefined（调用方给通用文案，原文只进日志，#711）。 */
+export function registeredUpstreamMessage(code: string | undefined): string | undefined {
+  return code && Object.prototype.hasOwnProperty.call(UPSTREAM_MESSAGES, code) ? UPSTREAM_MESSAGES[code] : undefined;
+}
 
 /** 已登记错误码返回英文提示，否则返回上游原文。 */
 export function upstreamErrorMessage(code: string | undefined, upstreamMessage: string): string {

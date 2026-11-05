@@ -116,3 +116,54 @@ describe('usePolicyVersions 操作失败', () => {
     await waitFor(() => expect(result.current.error).toBe('load failed'));
   });
 });
+
+// #711：hook 不再带中文兜底文案。服务端没给 message 时，操作结果的 message 为空、由界面按场景本地化；
+// 列表 / 创建失败写稳定 code，界面按 code 本地化；网络异常原文不进界面。
+describe('usePolicyVersions 兜底文案（#711）', () => {
+  it.each(['setDefault', 'deprecate', 'archive', 'submitForApproval'] as const)('%s 失败且无 message：message 为空', async (op) => {
+    const { result } = await mountLoaded();
+    fetchMock.mockResolvedValueOnce(json({}, 500));
+    let outcome: { ok: boolean; message?: string } | undefined;
+    await act(async () => { outcome = await (result.current[op] as (v: number) => Promise<{ ok: boolean; message?: string }>)(2); });
+    expect(outcome).toEqual({ ok: false });
+  });
+
+  it('网络异常：不回传异常原文', async () => {
+    const { result } = await mountLoaded();
+    fetchMock.mockRejectedValueOnce(new TypeError('connect ECONNREFUSED 10.0.0.5:8080'));
+    let outcome: { ok: boolean; message?: string } | undefined;
+    await act(async () => { outcome = await result.current.reject(2, 'why'); });
+    expect(outcome).toEqual({ ok: false });
+    fetchMock.mockRejectedValueOnce(new TypeError('connect ECONNREFUSED 10.0.0.5:8080'));
+    let approved: Awaited<ReturnType<typeof result.current.approve>> | undefined;
+    await act(async () => { approved = await result.current.approve(2); });
+    expect(approved).toEqual({ ok: false, errorCode: 'other' });
+  });
+
+  it('列表加载失败且无 message：error 为稳定 code', async () => {
+    fetchMock.mockResolvedValueOnce(json({}, 500));
+    const { result } = renderHook(() => usePolicyVersions({ policyId: 'pol-1' }));
+    await waitFor(() => expect(result.current.error).toBe('versions_load_failed'));
+  });
+
+  it('列表加载网络异常：error 为稳定 code', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
+    const { result } = renderHook(() => usePolicyVersions({ policyId: 'pol-1' }));
+    await waitFor(() => expect(result.current.error).toBe('versions_load_failed'));
+  });
+
+  it('创建失败且无 message：actionError 为稳定 code', async () => {
+    const { result } = await mountLoaded();
+    fetchMock.mockResolvedValueOnce(json({}, 500));
+    await act(async () => { await result.current.createVersion('src'); });
+    expect(result.current.actionError).toBe('version_create_failed');
+  });
+
+  it('hook 源码不含中文字符串字面量', async () => {
+    const { readFileSync } = await import('node:fs');
+    const path = await import('node:path');
+    const src = readFileSync(path.resolve(__dirname, '../../hooks/use-policy-versions.ts'), 'utf8');
+    const literals = src.match(/(['"`])(?:(?!\1)[^\\\n]|\\.)*\1/g) ?? [];
+    expect(literals.filter((l) => /[一-鿿]/.test(l))).toEqual([]);
+  });
+});

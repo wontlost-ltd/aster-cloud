@@ -688,6 +688,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         user_required: 'Your identity could not be verified. Sign in again and retry.',
         invalid_approval: 'The comment is too long. Shorten it and try again.',
         receipt_unavailable: 'The decision could not be recorded in the audit chain. Please try again shortly.',
+        upstream_unavailable: 'The approval service is temporarily unavailable. Please try again later.',
         approval_not_found: 'This approval no longer exists.',
         role_mismatch: 'Your verified roles ({roles}) do not include the required role {role}.',
         segregation_of_duties: 'You requested this action, so someone else must decide it.',
@@ -1291,6 +1292,12 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           version_not_approved: 'Version {version} does not exist or is not approved.',
           version_not_archivable: 'Version {version} does not exist or cannot be archived in its current status.',
           default_version_locked: 'Version {version} is the default version. Set another version as the default first.',
+        },
+        // 版本 hook 的兜底错误按稳定 code 本地化（#711）
+        hookErrorCodes: {
+          versions_load_failed: 'Could not load versions.',
+          version_load_failed: 'Could not load the version.',
+          version_create_failed: 'Could not create the version.',
         },
         approvalCount: '{count} approval records',
         // 个人策略所有者审批自己提交的版本时的说明（审计里记为自审）。
@@ -2202,6 +2209,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         user_required: '无法验证你的身份，请重新登录后重试。',
         invalid_approval: '说明过长，请缩短后重试。',
         receipt_unavailable: '审批结论未能写入审计链，请稍后重试。',
+        upstream_unavailable: '审批服务暂时不可用，请稍后重试。',
         approval_not_found: '该审批已不存在。',
         role_mismatch: '你的已验证角色（{roles}）不包含所需角色 {role}。',
         segregation_of_duties: '该动作由你发起，须由他人审批。',
@@ -2787,6 +2795,12 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           version_not_approved: '版本 {version} 不存在或尚未批准。',
           version_not_archivable: '版本 {version} 不存在，或当前状态不能归档。',
           default_version_locked: '版本 {version} 是默认版本，请先把其他版本设为默认。',
+        },
+        // 版本 hook 的兜底错误按稳定 code 本地化（#711）
+        hookErrorCodes: {
+          versions_load_failed: '无法加载版本列表。',
+          version_load_failed: '无法加载版本。',
+          version_create_failed: '无法创建版本。',
         },
         approvalCount: '{count} 条审批记录',
         selfApproveNote: '你正在审批自己提交的版本。个人策略没有第二位审批人，因此允许自审；本次决定会在审计日志中标记为自审。',
@@ -3702,6 +3716,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         user_required: 'Ihre Identität konnte nicht bestätigt werden. Melden Sie sich erneut an und versuchen Sie es noch einmal.',
         invalid_approval: 'Der Kommentar ist zu lang. Bitte kürzen Sie ihn.',
         receipt_unavailable: 'Die Entscheidung konnte nicht in der Audit-Kette gespeichert werden. Bitte versuchen Sie es gleich erneut.',
+        upstream_unavailable: 'Der Freigabedienst ist vorübergehend nicht verfügbar. Bitte versuchen Sie es später erneut.',
         approval_not_found: 'Diese Freigabe existiert nicht mehr.',
         role_mismatch: 'Ihre verifizierten Rollen ({roles}) enthalten die erforderliche Rolle {role} nicht.',
         segregation_of_duties: 'Sie haben diese Aktion angefragt; jemand anderes muss entscheiden.',
@@ -4293,6 +4308,12 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           version_not_approved: 'Version {version} existiert nicht oder ist nicht freigegeben.',
           version_not_archivable: 'Version {version} existiert nicht oder kann in ihrem aktuellen Status nicht archiviert werden.',
           default_version_locked: 'Version {version} ist die Standardversion. Legen Sie zuerst eine andere Version als Standard fest.',
+        },
+        // 版本 hook 的兜底错误按稳定 code 本地化（#711）
+        hookErrorCodes: {
+          versions_load_failed: 'Die Versionen konnten nicht geladen werden.',
+          version_load_failed: 'Die Version konnte nicht geladen werden.',
+          version_create_failed: 'Die Version konnte nicht erstellt werden.',
         },
         approvalCount: '{count} Freigabeeinträge',
         selfApproveNote: 'Sie prüfen Ihre eigene Einreichung. Persönliche Richtlinien haben keine zweite prüfende Person, daher ist das erlaubt; die Entscheidung wird im Audit-Protokoll als Selbstfreigabe vermerkt.',
@@ -5198,6 +5219,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         user_required: 'आपकी पहचान सत्यापित नहीं हो सकी। फिर से साइन इन करके प्रयास करें।',
         invalid_approval: 'टिप्पणी बहुत लंबी है। उसे छोटा करके पुनः प्रयास करें।',
         receipt_unavailable: 'निर्णय ऑडिट शृंखला में दर्ज नहीं हो सका। कृपया थोड़ी देर बाद पुनः प्रयास करें।',
+        upstream_unavailable: 'अनुमोदन सेवा अस्थायी रूप से उपलब्ध नहीं है। कृपया बाद में पुनः प्रयास करें।',
         approval_not_found: 'यह अनुमोदन अब मौजूद नहीं है।',
         role_mismatch: 'आपकी सत्यापित भूमिकाओं ({roles}) में आवश्यक भूमिका {role} शामिल नहीं है।',
         segregation_of_duties: 'यह कार्रवाई आपने अनुरोधित की है, इसलिए निर्णय किसी और को लेना होगा।',
@@ -5784,6 +5806,12 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           version_not_approved: 'संस्करण {version} मौजूद नहीं है या अनुमोदित नहीं है।',
           version_not_archivable: 'संस्करण {version} मौजूद नहीं है, या अपनी मौजूदा स्थिति में संग्रहीत नहीं किया जा सकता।',
           default_version_locked: 'संस्करण {version} डिफ़ॉल्ट संस्करण है। पहले किसी दूसरे संस्करण को डिफ़ॉल्ट बनाएँ।',
+        },
+        // 版本 hook 的兜底错误按稳定 code 本地化（#711）
+        hookErrorCodes: {
+          versions_load_failed: 'संस्करण लोड नहीं हो सके।',
+          version_load_failed: 'संस्करण लोड नहीं हो सका।',
+          version_create_failed: 'संस्करण नहीं बनाया जा सका।',
         },
         approvalCount: '{count} अनुमोदन रिकॉर्ड',
         selfApproveNote: 'आप अपना ही जमा किया गया संस्करण जाँच रहे हैं। व्यक्तिगत नीतियों में कोई दूसरा समीक्षक नहीं होता, इसलिए इसकी अनुमति है; यह निर्णय ऑडिट लॉग में स्व-अनुमोदन के रूप में दर्ज होगा।',

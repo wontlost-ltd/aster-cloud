@@ -287,18 +287,28 @@ describe('POST /api/policies/[id]/export/cedar', () => {
     await expectGenericFailure(await POST(req(), ctx('p1')), 'Cannot read properties');
   });
 
-  it('502 keeps the user-facing message and code of an upstream 4xx rejection', async () => {
+  // #711：只透传登记过的 4xx code（aster-api CedarExportResource 的稳定码），文案按 code 换成英文
+  it.each([
+    ['alias_set_too_large', 'The alias set of this version is too large to export.'],
+    ['vocabulary_too_large', 'The domain vocabulary of this version is too large to export.'],
+  ])('502 keeps a registered upstream 4xx code (%s) with its English message', async (code, message) => {
     findFirst.mockResolvedValue(owned());
     findExecutable.mockResolvedValue(executable());
-    exportCedar.mockRejectedValue(new PolicyApiError('Source exceeds the 64 KiB export limit', 413, 'source_too_large'));
+    exportCedar.mockRejectedValue(new PolicyApiError('别名集过大：12345 > 1000', 400, code));
     const res = await POST(req(), ctx('p1'));
     expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({
-      success: false,
-      error: 'source_too_large',
-      code: 'source_too_large',
-      message: 'Source exceeds the 64 KiB export limit',
-    });
+    expect(await res.json()).toEqual({ success: false, error: code, code, message });
+  });
+
+  it.each([
+    ['a sentence in the code field', 'source too large', 'source too large'],
+    ['an internal class name', 'io.aster.policy.SomeException', 'io.aster.policy.SomeException'],
+    ['an unregistered code', 'source_too_large', 'Source exceeds the 64 KiB export limit'],
+  ])('502 cedar_export_failed for an upstream 4xx with %s', async (_n, code, msg) => {
+    findFirst.mockResolvedValue(owned());
+    findExecutable.mockResolvedValue(executable());
+    exportCedar.mockRejectedValue(new PolicyApiError(msg, 400, code));
+    await expectGenericFailure(await POST(req(), ctx('p1')), msg);
   });
 
   // #661：多条规则可导出（E720 several rules … choose one）时，调用方指定导出哪一条

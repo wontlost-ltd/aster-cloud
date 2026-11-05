@@ -57,7 +57,7 @@ function statusVariant(status: GuardApprovalStatus): 'success' | 'danger' | 'war
   return 'neutral';
 }
 
-/** api 错误码 → 本地化文案；未知码回退到 api 原文，保证用户总能看到拒绝原因。 */
+/** api 错误码 → 本地化文案；未知码显示通用文案，不显示 api 原文（#711：原文可能是中文或内部细节）。 */
 function errorText(t: T, body: ApiErrorBody, item: InboxItem): string {
   switch (body.error) {
     case 'role_mismatch':
@@ -81,8 +81,10 @@ function errorText(t: T, body: ApiErrorBody, item: InboxItem): string {
       return t('errors.invalid_approval');
     case 'user_required':
       return t('errors.user_required');
+    case 'upstream_unavailable':
+      return t('errors.upstream_unavailable');
     default:
-      return body.message || t('errors.generic');
+      return t('errors.generic');
   }
 }
 
