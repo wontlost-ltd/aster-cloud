@@ -149,3 +149,22 @@ describe('快照页文案（#640）', () => {
     expect(translator('de', 'domainVocabularies.snapshotsView')('title')).toBe('Vokabular-Snapshots');
   });
 });
+
+describe('de 领域词汇 Sie 形式文案改取 ui-messages 1.0.27（aster-lang-locales#119）', () => {
+  it('demo-supplement 不再覆盖 needsUpgrade / bulk.tooManySync / errors.quota_exceeded', () => {
+    const vocab = (DEMO_SUPPLEMENT.de as Record<string, Record<string, Record<string, unknown>>>).domainVocabularies;
+    expect(vocab?.needsUpgrade).toBeUndefined();
+    expect(vocab?.bulk?.tooManySync).toBeUndefined();
+    expect(vocab?.errors?.quota_exceeded).toBeUndefined();
+  });
+
+  it('合并后的 de 文案仍为 Sie 形式', () => {
+    const t = translator('de', 'domainVocabularies');
+    expect(t('needsUpgrade.description')).toBe('Wechseln Sie zu Pro, um eigene Structs / Felder / Funktionen / Enum-Werte zu verwalten.');
+    expect(t('needsUpgrade.trialEndedTitle')).toBe('Ihre Pro-Testphase ist abgelaufen');
+    expect(t('needsUpgrade.featureCatalog')).toBe('Verwalten Sie Structs / Felder / Funktionen / Enum-Werte pro Sprache');
+    expect(t('needsUpgrade.contactAdmin')).toBe('Bitten Sie Ihren Administrator um ein Plan-Upgrade');
+    expect(t('bulk.tooManySync', { syncLimit: 500 })).toBe('Wechseln Sie zu Async — das Limit von 500 Zeilen wird überschritten.');
+    expect(t('errors.quota_exceeded')).toBe('Sie haben das Vokabular-Kontingent Ihres Plans erreicht.');
+  });
+});
