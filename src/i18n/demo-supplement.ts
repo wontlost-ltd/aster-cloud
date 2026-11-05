@@ -1212,6 +1212,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 编辑器状态栏的 LSP 断开 / 重连提示（生产复测第 6 轮）。
     diagnostics: { lspReconnecting: 'LSP disconnected, reconnecting…', lspDisconnected: 'LSP disconnected', lspTooManySessions: 'Too many editors open on this network; LSP will reconnect shortly' },
     policies: {
+      // /policies 列表的团队筛选与无权限操作提示（列表含团队策略后新增）
+      teamFilter: { label: 'Owner', all: 'All', personal: 'Personal' },
+      teamBadge: 'Team: {team}',
+      actionNotPermitted: 'Your team role does not allow this action',
       // 回收站永久删除确认：点名被删除的策略（{name} 由客户端替换）。
       trash: { confirmPermanentDeleteNamed: 'Permanently delete "{name}"? This action cannot be undone.' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
@@ -2719,6 +2723,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 编辑器状态栏的 LSP 断开 / 重连提示（生产复测第 6 轮）。
     diagnostics: { lspReconnecting: 'LSP 已断开，正在重连…', lspDisconnected: 'LSP 已断开', lspTooManySessions: '同一网络打开的编辑器过多，LSP 稍后重连' },
     policies: {
+      teamFilter: { label: '归属', all: '全部', personal: '个人' },
+      teamBadge: '团队：{team}',
+      actionNotPermitted: '你在该团队的角色不允许此操作',
       trash: { confirmPermanentDeleteNamed: '确定要永久删除策略「{name}」吗？此操作无法撤销。' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
       detail: { teamBadge: '团队：{name}', profile: '治理档案' },
@@ -4231,6 +4238,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 编辑器状态栏的 LSP 断开 / 重连提示（生产复测第 6 轮）。
     diagnostics: { lspReconnecting: 'LSP getrennt, Verbindung wird wiederhergestellt…', lspDisconnected: 'LSP getrennt', lspTooManySessions: 'Zu viele Editoren in diesem Netzwerk geöffnet; LSP verbindet sich gleich erneut' },
     policies: {
+      teamFilter: { label: 'Zuordnung', all: 'Alle', personal: 'Persönlich' },
+      teamBadge: 'Team: {team}',
+      actionNotPermitted: 'Ihre Teamrolle erlaubt diese Aktion nicht',
       trash: { confirmPermanentDeleteNamed: 'Richtlinie „{name}“ endgültig löschen? Diese Aktion kann nicht rückgängig gemacht werden.' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
       detail: { teamBadge: 'Team: {name}', profile: 'Profil' },
@@ -5729,6 +5739,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 编辑器状态栏的 LSP 断开 / 重连提示（生产复测第 6 轮）。
     diagnostics: { lspReconnecting: 'LSP डिस्कनेक्ट हो गया, फिर से कनेक्ट हो रहा है…', lspDisconnected: 'LSP डिस्कनेक्ट हो गया', lspTooManySessions: 'इस नेटवर्क पर बहुत अधिक एडिटर खुले हैं; LSP थोड़ी देर में फिर से कनेक्ट होगा' },
     policies: {
+      teamFilter: { label: 'स्वामित्व', all: 'सभी', personal: 'व्यक्तिगत' },
+      teamBadge: 'टीम: {team}',
+      actionNotPermitted: 'टीम में आपकी भूमिका इस क्रिया की अनुमति नहीं देती',
       trash: { confirmPermanentDeleteNamed: 'नीति "{name}" को स्थायी रूप से हटाएँ? यह क्रिया पूर्ववत नहीं की जा सकती।' },
       // 策略详情页治理档案徽标（ADR 0046 §6）。
       detail: { teamBadge: 'टीम: {name}', profile: 'Profile' },

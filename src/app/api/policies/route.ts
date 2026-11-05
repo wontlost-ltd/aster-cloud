@@ -6,7 +6,7 @@ import { upgradeResponse, UPGRADE_HTTP_STATUS } from '@/lib/plan-quota';
 import { detectPII } from '@/services/pii/detector';
 import { getPolicyFreezeStatus } from '@/lib/policy-freeze';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
-import { ownPoliciesVisibleTo } from '@/lib/policy-access';
+import { policyListPredicate, policyRowMeta } from '@/lib/policies';
 import {
   createVersion,
   assertCompilable,
@@ -30,7 +30,7 @@ import { recordProductEventAfterResponse } from '@/lib/product-events/server';
 import { eq, isNull, desc, sql, and, inArray } from 'drizzle-orm';
 import { parseCompileLocale } from '@/lib/cnl-locale';
 
-// GET /api/policies - List user's policies
+// GET /api/policies - 本人个人策略 + 本人可查看团队的团队策略（与团队页同一可见口径）
 export async function GET() {
   try {
     const session = await getSession();
@@ -40,8 +40,8 @@ export async function GET() {
 
     const [policiesData, freezeStatus] = await Promise.all([
       db.query.policies.findMany({
-        // 本人创建的策略；团队策略只保留本人当前仍是成员的（离队 / 被移除后不再出现，#670）
-        where: and(ownPoliciesVisibleTo(session.user.id), isNull(policies.deletedAt)),
+        // 离队 / 被移除后团队策略即不再出现（#670）；回收站里的不列出
+        where: and(policyListPredicate(session.user.id), isNull(policies.deletedAt)),
         orderBy: [desc(policies.updatedAt)],
         with: {
           group: {
@@ -52,8 +52,10 @@ export async function GET() {
               parentId: true,
             },
           },
+          team: { columns: { id: true, name: true } },
         },
       }),
+      // 顶部冻结提示只描述本人配额；各行的冻结状态按创建者配额计算（见 policyRowMeta）
       getPolicyFreezeStatus(session.user.id),
     ]);
 
@@ -73,15 +75,13 @@ export async function GET() {
         executionCounts[row.policyId] = row.count;
       }
     }
-    const policiesWithCount = policiesData.map((policy) => ({
+    const rowMeta = await policyRowMeta(session.user.id, policiesData);
+    const policiesWithFreeze = policiesData.map((policy) => ({
       ...policy,
+      team: policy.team ?? null,
       _count: { executions: executionCounts[policy.id] ?? 0 },
-    }));
-
-    // 添加冻结状态到每个策略
-    const policiesWithFreeze = policiesWithCount.map((policy) => ({
-      ...policy,
-      isFrozen: freezeStatus.frozenPolicyIds.has(policy.id),
+      isFrozen: rowMeta.get(policy.id)?.isFrozen ?? false,
+      capabilities: rowMeta.get(policy.id)?.capabilities,
     }));
 
     return NextResponse.json({
