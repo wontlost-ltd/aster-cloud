@@ -634,6 +634,14 @@ routes:
     locales: none
     notes: ADR 0015 阶段3d — tenant-scoped 可引用 library 模块目录（Monaco Use 补全/hover）
 
+  - path: /api/lsp/ticket
+    status: canonical-here
+    owner: api
+    source: src/app/api/lsp/ticket/route.ts
+    publicApi: false
+    locales: none
+    notes: '#657 — 登录用户取 LSP 网关一次性短时 ticket'
+
   - path: /api/playground/*
     status: canonical-here
     owner: api
