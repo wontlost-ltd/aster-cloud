@@ -167,6 +167,34 @@ describe('POST /api/approvals/:tenantId/:approvalId/:verb', () => {
     expect((await bad.json()).error).toBe('invalid_id');
   });
 
+  // #711：上游不可用的原文（可能含内部主机 / IP / 端口）只进服务端日志，响应给稳定 code + 英文文案 + requestId
+  it('上游不可用：不回传原文，带 requestId（响应体与 x-request-id 一致）', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    h.approveGuard.mockRejectedValueOnce(new FakePolicyApiError('connect ECONNREFUSED 10.43.0.12:8080', 500, 'UNKNOWN'));
+    const res = await post('team1', 'approve');
+    const body = await res.json();
+    expect(res.status).toBe(502);
+    expect(body).toMatchObject({ error: 'upstream_unavailable', code: 'upstream_unavailable' });
+    expect(body.message).toBe('The approval service is temporarily unavailable. Please try again later.');
+    expect(JSON.stringify(body)).not.toContain('10.43.0.12');
+    expect(body.requestId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(res.headers.get('x-request-id')).toBe(body.requestId);
+    expect(JSON.stringify(spy.mock.calls)).toContain(body.requestId);
+    spy.mockRestore();
+  });
+
+  it('未登记错误码的 4xx：保留 code 与状态码，文案换成英文通用句，不回传上游原文', async () => {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    h.approveGuard.mockRejectedValueOnce(new FakePolicyApiError('审批记录已被锁定 io.aster.Foo', 409, 'approval_locked'));
+    const res = await post('team1', 'approve');
+    const body = await res.json();
+    expect(res.status).toBe(409);
+    expect(body.error).toBe('approval_locked');
+    expect(body.message).toBe('The approval action could not be completed.');
+    expect(JSON.stringify(body)).not.toMatch(/锁定|io\.aster/);
+    spy.mockRestore();
+  });
+
   it('未知动词 → 404', async () => {
     const res = await post('team1', 'delete');
     expect(res.status).toBe(404);

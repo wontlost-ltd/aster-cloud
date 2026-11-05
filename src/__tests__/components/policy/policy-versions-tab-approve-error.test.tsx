@@ -14,16 +14,18 @@ const h = vi.hoisted(() => ({
   approve: vi.fn(), submit: vi.fn(), reject: vi.fn(), setDefault: vi.fn(), deprecate: vi.fn(), archive: vi.fn(),
   toastError: vi.fn(), toastSuccess: vi.fn(), dialogClosed: vi.fn(), clearActionError: vi.fn(),
   actionError: null as string | null,
+  listError: null as string | null,
 }));
 
 vi.mock('next-intl', () => ({
   useTranslations: (ns: string) => (key: string) => `${ns}.${key}`,
 }));
 vi.mock('@/components/ui', () => ({ toast: { error: h.toastError, success: h.toastSuccess } }));
-vi.mock('@/hooks/use-policy-versions', () => ({
+vi.mock('@/hooks/use-policy-versions', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/hooks/use-policy-versions')>()),
   usePolicyVersions: () => ({
     versions: [{ id: 'v1', version: 2, status: 'PENDING_APPROVAL', createdBy: 'author' }],
-    loading: false, error: null, actionError: h.actionError, clearActionError: h.clearActionError, refresh: vi.fn(),
+    loading: false, error: h.listError, actionError: h.actionError, clearActionError: h.clearActionError, refresh: vi.fn(),
     setDefault: h.setDefault, deprecate: h.deprecate, archive: h.archive,
     submitForApproval: h.submit, approve: h.approve, reject: h.reject,
   }),
@@ -59,6 +61,7 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   h.actionError = null;
+  h.listError = null;
 });
 
 const click = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
@@ -161,5 +164,31 @@ describe('PolicyVersionsTab 创建失败横幅', () => {
     expect(screen.getByRole('button', { name: 'approve-v1' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'policies.versions.actionErrorDismiss' }));
     expect(h.clearActionError).toHaveBeenCalled();
+  });
+});
+
+// #711：hook 不带界面文案，兜底场景给稳定 code，由标签页本地化
+describe('PolicyVersionsTab 兜底错误按 code 本地化（#711）', () => {
+  it('列表加载失败 code → 本地化文案', () => {
+    h.listError = 'versions_load_failed';
+    render(<PolicyVersionsTab policyId="p1" />);
+    expect(screen.getByText('policies.versions.hookErrorCodes.versions_load_failed')).toBeTruthy();
+  });
+
+  it('创建失败 code → 本地化文案；服务端原文照常显示', () => {
+    h.actionError = 'version_create_failed';
+    const { unmount } = render(<PolicyVersionsTab policyId="p1" />);
+    expect(screen.getByRole('alert').textContent).toContain('policies.versions.hookErrorCodes.version_create_failed');
+    unmount();
+    h.actionError = 'Source too large';
+    render(<PolicyVersionsTab policyId="p1" />);
+    expect(screen.getByRole('alert').textContent).toContain('Source too large');
+  });
+
+  it('操作失败且无 message → 通用提示', async () => {
+    h.setDefault.mockResolvedValue({ ok: false });
+    render(<PolicyVersionsTab policyId="p1" />);
+    click('default-v1');
+    await waitFor(() => expect(h.toastError).toHaveBeenCalledWith('common.somethingWrong'));
   });
 });

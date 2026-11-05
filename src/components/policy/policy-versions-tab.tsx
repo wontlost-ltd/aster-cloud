@@ -7,7 +7,7 @@ import { PolicyVersionList, VersionActionError, type PolicyVersionInfo } from '.
 import type { ApproveResult, VersionActionResult } from '@/hooks/use-policy-versions';
 import { VersionDetailPanel } from './version-detail-panel';
 import { VersionComparePanel } from './version-compare-panel';
-import { usePolicyVersions } from '@/hooks/use-policy-versions';
+import { usePolicyVersions, isVersionHookErrorCode } from '@/hooks/use-policy-versions';
 import { toast } from '@/components/ui';
 import type { VersionReviewContext } from '@/services/policy/version-approval-rules';
 
@@ -164,11 +164,14 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
     [versions, reject, failIfNotOk, t]
   );
 
+  // hook 兜底给的是稳定 code（#711），按 code 本地化；服务端 message 原样显示
+  const errorText = (value: string) => (isVersionHookErrorCode(value) ? t(`hookErrorCodes.${value}`) : value);
+
   // 只有列表本身没加载出来才整块替换；操作失败见下方 actionError 提示。
   if (error) {
     return (
       <div className="bg-bg dark:bg-gray-800 shadow sm:rounded-lg p-6">
-        <div className="text-red-500 dark:text-red-400">{error}</div>
+        <div className="text-red-500 dark:text-red-400">{errorText(error)}</div>
         <button
           onClick={refresh}
           className="mt-4 text-primary dark:text-primary hover:underline"
@@ -203,7 +206,7 @@ export function PolicyVersionsTab({ policyId, whatIfEntitled = false, retentionD
             role="alert"
             className="mb-4 flex items-start justify-between gap-3 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
           >
-            <span>{actionError}</span>
+            <span>{errorText(actionError)}</span>
             <button type="button" onClick={clearActionError} className="shrink-0 underline hover:no-underline">
               {t('actionErrorDismiss')}
             </button>

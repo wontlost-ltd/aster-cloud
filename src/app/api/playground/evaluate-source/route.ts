@@ -95,6 +95,96 @@ function corsHeadersFor(origin: string | null): HeadersInit {
   return { 'Vary': 'Origin' };
 }
 
+/**
+ * aster-api evaluate-source 链路登记过的稳定错误码（TrialEndpointGuard、PolicyEvaluationResource、
+ * ModuleResolutionException.Code、入口诊断）。只透传这些；未登记的（含把句子放进 error 字段的）用 http_<status>。
+ */
+const UPSTREAM_CODES: ReadonlySet<string> = new Set([
+  // TrialEndpointGuard
+  'origin_not_allowed', 'transfer_encoding_not_allowed', 'content_length_required', 'invalid_content_length',
+  'payload_too_large', 'turnstile_failed', 'too_many_concurrent', 'too_many_requests',
+  // PolicyEvaluationResource
+  'evaluate_source_busy', 'alias_set_too_large', 'vocabulary_too_large', 'invalid_agent', 'missing_input_field',
+  'api_access_denied', 'rate_limit_exceeded', 'api_quota_hard_exceeded',
+  // 入口 / 模块诊断
+  'ENTRY_AMBIGUOUS', 'IMPORT_VERSION_REQUIRED', 'MODULE_VERSION_NOT_FOUND', 'MODULE_NOT_VISIBLE', 'MODULE_CYCLE',
+]);
+
+const MAX_DIAGNOSTICS = 20;
+const MAX_CANDIDATES = 50;
+const MAX_TEXT = 500;
+
+type PlaygroundDiagnostic = { code: string; message: string; candidates: string[] };
+
+const shortText = (v: unknown): string | undefined =>
+  typeof v === 'string' && v.length <= MAX_TEXT ? v : undefined;
+
+/** 诊断条目只保留 code / message / candidates（审查 Medium-1）；code 未登记的整条丢弃。 */
+function allowlistedDiagnostics(raw: unknown): PlaygroundDiagnostic[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, MAX_DIAGNOSTICS).flatMap((d) => {
+    if (!d || typeof d !== 'object') return [];
+    const { code, message, candidates } = d as Record<string, unknown>;
+    if (typeof code !== 'string' || !UPSTREAM_CODES.has(code)) return [];
+    const list = Array.isArray(candidates)
+      ? candidates.filter((c): c is string => typeof c === 'string' && c.length <= 200).slice(0, MAX_CANDIDATES)
+      : [];
+    return [{ code, message: shortText(message) ?? '', candidates: list }];
+  });
+}
+
+function registeredCode(v: unknown): string | undefined {
+  return typeof v === 'string' && UPSTREAM_CODES.has(v) ? v : undefined;
+}
+
+/**
+ * 上游非 2xx（#711）：业务原文只写服务端日志，响应给稳定 code、英文文案与 requestId。
+ * 4xx 保留状态码，并按字段白名单透传面向用户的结构化诊断（code / message / candidates，及缺字段的 field），
+ * 429 透传 Retry-After；5xx 统一 502 upstream_error。
+ */
+async function upstreamFailure(upstream: Response, headers: HeadersInit): Promise<NextResponse> {
+  const requestId = crypto.randomUUID();
+  const text = await upstream.text().catch(() => '');
+  let parsed: Record<string, unknown> = {};
+  try {
+    const value: unknown = JSON.parse(text);
+    if (value && typeof value === 'object' && !Array.isArray(value)) parsed = value as Record<string, unknown>;
+  } catch {
+    // 非 JSON 错误体：按无结构处理
+  }
+  const responseHeaders = new Headers(headers);
+  responseHeaders.set('x-request-id', requestId);
+  if (upstream.status >= 500) {
+    console.error(`[playground/evaluate-source] upstream ${upstream.status} requestId=${requestId}`, text.slice(0, 2000));
+    return NextResponse.json(
+      {
+        error: 'upstream_error',
+        code: 'upstream_error',
+        message: 'The policy engine failed to evaluate this request. Please try again later.',
+        requestId,
+      },
+      { status: 502, headers: responseHeaders },
+    );
+  }
+  const diagnostics = allowlistedDiagnostics(parsed.diagnostics);
+  const code = registeredCode(parsed.code) ?? registeredCode(parsed.error) ?? diagnostics[0]?.code ?? `http_${upstream.status}`;
+  const field = typeof parsed.field === 'string' && parsed.field.length <= 200 ? parsed.field : undefined;
+  const retryAfter = upstream.headers.get('retry-after');
+  if (upstream.status === 429 && retryAfter && /^\d{1,6}$/.test(retryAfter)) responseHeaders.set('Retry-After', retryAfter);
+  console.warn(`[playground/evaluate-source] upstream ${upstream.status} ${code} requestId=${requestId}`, text.slice(0, 2000));
+  return NextResponse.json(
+    {
+      error: code,
+      code,
+      message: 'The policy engine rejected this trial request.',
+      requestId,
+      ...(field ? { field } : {}),
+      ...(diagnostics.length > 0 ? { diagnostics } : {}),
+    },
+    { status: upstream.status, headers: responseHeaders },
+  );
+}
+
 export function OPTIONS(req: NextRequest) {
   // CORS preflight: marketing site (different origin) does this before POST.
   const origin = req.headers.get('origin');
@@ -203,14 +293,19 @@ export async function POST(req: NextRequest) {
       // v3：匿名试用无 query、不发 X-User-Id / 业务角色，按空串签。
       { query: '', userId: '' },
     );
-  } catch {
+  } catch (err) {
     recordTrialOutcome('upstream_misconfigured');
+    // 匿名端点：不向调用方暴露环境变量名等部署细节（#711），原因只写服务端日志
+    const requestId = crypto.randomUUID();
+    console.error(`[playground/evaluate-source] signing failed requestId=${requestId}`, err);
     return NextResponse.json(
       {
         error: 'cloud_misconfigured',
-        message: 'ASTER_PLAN_GATE_HMAC_KEY missing on cloud server',
+        code: 'cloud_misconfigured',
+        message: 'The trial service is not available right now. Please try again later.',
+        requestId,
       },
-      { status: 503, headers: { ...baseCors, ...rlHeaders } },
+      { status: 503, headers: { ...baseCors, ...rlHeaders, 'x-request-id': requestId } },
     );
   }
 
@@ -268,6 +363,10 @@ export async function POST(req: NextRequest) {
   observeTrialLatency(elapsedSec);
   recordTrialUpstreamStatus(upstream.status);
   recordTrialOutcome('accept');
+
+  if (!upstream.ok) {
+    return upstreamFailure(upstream, { ...baseCors, ...rlHeaders });
+  }
 
   // Stream the upstream response body straight through. Content-Type
   // is mirrored so the marketing client gets the same JSON shape it

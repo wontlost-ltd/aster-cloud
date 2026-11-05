@@ -21,7 +21,7 @@ import { versionVocabularyErrorResponse } from '@/lib/policy-compile-response';
 import { PolicyApiError } from '@/services/policy/policy-api';
 import { findDefaultExecutableVersion } from '@/services/policy/default-executable-version';
 import { resolvePolicyRuleName } from '@/lib/cedar-export-rules';
-import { upstreamErrorMessage } from '@/lib/upstream-error-messages';
+import { registeredUpstreamMessage } from '@/lib/upstream-error-messages';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -47,14 +47,19 @@ function parseAliasSet(aliasSet: string | null): Record<string, string[]> | null
 
 const EXPORT_FAILED_MESSAGE = 'Cedar export failed. Please try again later.';
 
+/** aster-api CedarExportResource 的稳定 4xx 错误码：只透传这些（#711），文案按 code 换成英文。 */
+const CEDAR_REJECTION_CODES: ReadonlySet<string> = new Set(['alias_set_too_large', 'vocabulary_too_large']);
+
 /**
- * 上游拒绝了这次导出（4xx，带稳定 code）：aster-api 的 message 面向用户，按 code 换成英文后保留。
+ * 上游拒绝了这次导出（4xx，且 code 已登记）。aster-api 的部分 4xx 把句子放在 code 字段，
+ * GlobalExceptionMapper 的 4xx 可能带内部类名，这些都不透传，按通用失败处理（#711）。
  * 401/403 是 cloud 与 api 之间的身份配置问题、408 / UNKNOWN 是客户端包装的超时与网络异常，都不算。
  */
-function upstreamRejection(error: unknown): PolicyApiError | null {
-  if (!(error instanceof PolicyApiError) || !error.code) return null;
+function upstreamRejection(error: unknown): { code: string; message: string } | null {
+  if (!(error instanceof PolicyApiError) || !error.code || !CEDAR_REJECTION_CODES.has(error.code)) return null;
   const s = error.statusCode;
-  return s >= 400 && s < 500 && s !== 401 && s !== 403 && s !== 408 ? error : null;
+  const message = registeredUpstreamMessage(error.code);
+  return s >= 400 && s < 500 && s !== 401 && s !== 403 && s !== 408 && message ? { code: error.code, message } : null;
 }
 
 /**
@@ -70,9 +75,11 @@ function upstreamError(error: unknown, headers: Headers): NextResponse {
   }
   const rejected = upstreamRejection(error);
   if (rejected) {
-    console.warn('[api/policies/export/cedar] upstream rejected', rejected.statusCode, rejected.code);
-    const message = upstreamErrorMessage(rejected.code, rejected.message);
-    return NextResponse.json({ success: false, error: rejected.code, code: rejected.code, message }, { status: 502, headers });
+    console.warn('[api/policies/export/cedar] upstream rejected', rejected.code);
+    return NextResponse.json(
+      { success: false, error: rejected.code, code: rejected.code, message: rejected.message },
+      { status: 502, headers },
+    );
   }
   const requestId = crypto.randomUUID();
   console.error(`[api/policies/export/cedar] upstream error requestId=${requestId}`, error);

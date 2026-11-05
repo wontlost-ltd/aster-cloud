@@ -64,21 +64,42 @@ export type ApproveErrorCode =
  * 失败响应里可直接展示的原因：优先服务端的 message（人读文案），其次 error 等字段，最后兜底文案。
  * error 字段多为错误码（如 vocabulary_changed_since_save），直接展示没有意义。
  */
-function failureMessage(data: unknown, fallback: string): string {
-  return actionErrorMessage(data) ?? fallback;
+function failureMessage(data: unknown): string | undefined {
+  return actionErrorMessage(data) ?? undefined;
 }
 
 /**
  * 版本操作（设默认 / 废弃 / 归档 / 提交 / 驳回）的结果：失败时带可直接展示的原因；
  * 版本状态错误另带稳定 code，界面按 code 本地化（#697）。
  */
-export type VersionActionResult = { ok: true } | { ok: false; message: string; code?: VersionStateErrorCode };
+export type VersionActionResult = { ok: true } | { ok: false; message?: string; code?: VersionStateErrorCode };
 
-/** 失败结果：服务端 message（或回退文案），是版本状态错误时附上 code。 */
-function failedResult(data: unknown, fallback: string): Extract<VersionActionResult, { ok: false }> {
+/**
+ * 列表 / 单版本加载失败、创建失败且服务端没给 message 时写入的稳定 code（#711），界面按 code 本地化；
+ * hook 本身不带任何界面文案。
+ */
+export const VERSION_HOOK_ERROR_CODES = ['versions_load_failed', 'version_load_failed', 'version_create_failed'] as const;
+export type VersionHookErrorCode = (typeof VERSION_HOOK_ERROR_CODES)[number];
+
+export function isVersionHookErrorCode(value: unknown): value is VersionHookErrorCode {
+  return typeof value === 'string' && (VERSION_HOOK_ERROR_CODES as readonly string[]).includes(value);
+}
+
+/** 失败结果：服务端 message（没有则不带，由界面兜底），是版本状态错误时附上 code。 */
+function failedResult(data: unknown): Extract<VersionActionResult, { ok: false }> {
   const code = actionErrorCode(data);
-  const message = failureMessage(data, fallback);
-  return isVersionStateErrorCode(code) ? { ok: false, code, message } : { ok: false, message };
+  const message = failureMessage(data);
+  return {
+    ok: false,
+    ...(isVersionStateErrorCode(code) ? { code } : {}),
+    ...(message ? { message } : {}),
+  };
+}
+
+/** 网络异常：原文可能含内部地址，只记控制台，不进界面（#711）。 */
+function networkFailure(err: unknown): { ok: false } {
+  console.error('[use-policy-versions] request failed', err);
+  return { ok: false };
 }
 
 export interface ApproveResult {
@@ -169,10 +190,11 @@ export function usePolicyVersions({
       if (response.ok) {
         setVersions(data.versions || []);
       } else {
-        setError(extractErrorMessage(data) || '获取版本列表失败');
+        setError(extractErrorMessage(data) || 'versions_load_failed');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '未知错误');
+      networkFailure(err);
+      setError('versions_load_failed');
     } finally {
       setLoading(false);
     }
@@ -209,11 +231,12 @@ export function usePolicyVersions({
           await refresh();
           return data;
         } else {
-          setActionError(extractErrorMessage(data) || '创建版本失败');
+          setActionError(extractErrorMessage(data) || 'version_create_failed');
           return null;
         }
       } catch (err) {
-        setActionError(err instanceof Error ? err.message : '未知错误');
+        networkFailure(err);
+        setActionError('version_create_failed');
         return null;
       }
     },
@@ -237,10 +260,10 @@ export function usePolicyVersions({
           await refresh();
           return { ok: true };
         } else {
-          return failedResult(data, '设置默认版本失败');
+          return failedResult(data);
         }
       } catch (err) {
-        return { ok: false, message: err instanceof Error ? err.message : '未知错误' };
+        return networkFailure(err);
       }
     },
     [policyId, refresh]
@@ -267,10 +290,10 @@ export function usePolicyVersions({
           await refresh();
           return { ok: true };
         } else {
-          return failedResult(data, '废弃版本失败');
+          return failedResult(data);
         }
       } catch (err) {
-        return { ok: false, message: err instanceof Error ? err.message : '未知错误' };
+        return networkFailure(err);
       }
     },
     [policyId, refresh]
@@ -297,10 +320,10 @@ export function usePolicyVersions({
           await refresh();
           return { ok: true };
         } else {
-          return failedResult(data, '归档版本失败');
+          return failedResult(data);
         }
       } catch (err) {
-        return { ok: false, message: err instanceof Error ? err.message : '未知错误' };
+        return networkFailure(err);
       }
     },
     [policyId, refresh]
@@ -327,10 +350,10 @@ export function usePolicyVersions({
           await refresh();
           return { ok: true };
         } else {
-          return failedResult(data, '提交审批失败');
+          return failedResult(data);
         }
       } catch (err) {
-        return { ok: false, message: err instanceof Error ? err.message : '未知错误' };
+        return networkFailure(err);
       }
     },
     [policyId, refresh]
@@ -365,10 +388,9 @@ export function usePolicyVersions({
           code === 'vocabulary_changed_since_save'
             ? code
             : 'other';
-        return { ...failedResult(data, '批准失败'), errorCode, cta: data?.cta };
+        return { ...failedResult(data), errorCode, cta: data?.cta };
       } catch (err) {
-        const message = err instanceof Error ? err.message : '未知错误';
-        return { ok: false, errorCode: 'other', message };
+        return { ...networkFailure(err), errorCode: 'other' };
       }
     },
     [policyId, refresh]
@@ -395,10 +417,10 @@ export function usePolicyVersions({
           await refresh();
           return { ok: true };
         } else {
-          return failedResult(data, '拒绝失败');
+          return failedResult(data);
         }
       } catch (err) {
-        return { ok: false, message: err instanceof Error ? err.message : '未知错误' };
+        return networkFailure(err);
       }
     },
     [policyId, refresh]
@@ -448,10 +470,11 @@ export function useDefaultVersion(policyId: string) {
           versions.find((v) => v.isDefault) || versions[0] || null;
         setDefaultVersion(defaultVer);
       } else {
-        setError(extractErrorMessage(data) || '获取版本失败');
+        setError(extractErrorMessage(data) || 'version_load_failed');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '未知错误');
+      networkFailure(err);
+      setError('version_load_failed');
     } finally {
       setLoading(false);
     }

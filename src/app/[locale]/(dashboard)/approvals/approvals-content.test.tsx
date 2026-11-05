@@ -217,6 +217,18 @@ describe('ApprovalsContent', () => {
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('errors.forbidden'));
   });
 
+  // #711：上游不可用按 code 本地化；未登记 code 显示通用文案，不显示 api 原文
+  it.each([
+    [502, { error: 'upstream_unavailable', message: 'The approval service is temporarily unavailable.', requestId: 'r1' }, 'errors.upstream_unavailable'],
+    [409, { error: 'approval_locked', message: '审批记录已被锁定' }, 'errors.generic'],
+  ])('api %s %o → 本地化文案', async (status, body, text) => {
+    fetchMock.mockResolvedValue({ ok: false, status, json: async () => body });
+    renderWith([item('a1')]);
+    fireEvent.click(screen.getByRole('button', { name: 'approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'confirmApprove' }));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(text));
+  });
+
   it('切换 tab 时网络异常：提示 loadFailed', async () => {
     fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
     renderWith([item('a1')]);
