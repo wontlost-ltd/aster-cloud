@@ -35,9 +35,10 @@ export const RateLimitPresets = {
   LOGIN: { windowMs: 60_000, maxRequests: 5 },
   SIGNUP: { windowMs: 3_600_000, maxRequests: 10 },
   PASSWORD_RESET: { windowMs: 3_600_000, maxRequests: 3 },
-  // 找回密码按账号再限一层（#696）：别名 / 点号 / 换 IP 都绕不开，同一账号每小时 3 封、每天 10 封。
-  PASSWORD_RESET_ACCOUNT_HOURLY: { windowMs: 3_600_000, maxRequests: 3 },
-  PASSWORD_RESET_ACCOUNT_DAILY: { windowMs: 86_400_000, maxRequests: 10 },
+  // 找回密码按账号再限一层（#696 / #714）：别名 / 点号 / 换 IP 都绕不开。同一账号 5 分钟内只发 1 封
+  // （短窗去重，不会把受害者锁在门外），每天 50 封只作防轰炸兜底。
+  PASSWORD_RESET_ACCOUNT_DEDUP: { windowMs: 300_000, maxRequests: 1 },
+  PASSWORD_RESET_ACCOUNT_DAILY: { windowMs: 86_400_000, maxRequests: 50 },
   API: { windowMs: 60_000, maxRequests: 60 },
   API_RELAXED: { windowMs: 60_000, maxRequests: 120 },
   EVALUATE_SOURCE: { windowMs: 60_000, maxRequests: 20 },
