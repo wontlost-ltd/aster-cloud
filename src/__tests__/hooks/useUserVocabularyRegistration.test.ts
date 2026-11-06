@@ -244,7 +244,7 @@ describe('useUserVocabularyRegistration', () => {
         const items = team === 'team-b' ? B_ITEMS : ITEMS;
         return { ok: true, json: async () => ({ items, total: items.length }) };
       });
-      const structs = (r: { current: { vocabulary?: { structs: Array<{ canonical: string }> } } }) =>
+      const structs = (r: { current: ReturnType<typeof useUserVocabularyRegistration> }) =>
         r.current.vocabulary?.structs.map((m) => m.canonical);
       const { result, rerender } = renderHook(
         ({ teamId }) => useUserVocabularyRegistration({ tenantId: 'tenant-hook', locale: 'de-DE', source: SOURCE, teamId }),
