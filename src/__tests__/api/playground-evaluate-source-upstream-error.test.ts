@@ -165,6 +165,30 @@ describe('POST /api/playground/evaluate-source — 上游非 2xx 与配置缺失
     ]);
   });
 
+  it('reason 映射：每个对外原因只在所属 code 下透传；MODULE_NOT_VISIBLE 的服务端细分原因（ADR 0015）即使 code 匹配也丢弃', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const passed: Array<[string, string]> = [
+      ['IMPORT_VERSION_REQUIRED', 'VERSION_REQUIRED'],
+      ['MODULE_VERSION_NOT_FOUND', 'EMPTY_PATH'],
+      ['MODULE_VERSION_NOT_FOUND', 'VERSION_NOT_FOUND'],
+      ['MODULE_NOT_VISIBLE', 'NOT_VISIBLE'],
+      ['MODULE_CYCLE', 'IMPORT_CYCLE'],
+      ['MODULE_CYCLE', 'LINK_FAILED'],
+    ];
+    const hidden = ['TENANT_REQUIRED', 'ALIASES_UNSUPPORTED', 'PARSE_FAILED', 'RESOLVER_UNAVAILABLE'];
+    upstream(400, {
+      diagnostics: [
+        ...passed.map(([code, reason]) => ({ code, message: 'm', candidates: [], reason })),
+        ...hidden.map((reason) => ({ code: 'MODULE_NOT_VISIBLE', message: 'm', candidates: [], reason })),
+      ],
+    });
+    const body = await (await POST(request())).json();
+    expect(body.diagnostics).toEqual([
+      ...passed.map(([code, reason]) => ({ code, message: 'm', candidates: [], reason })),
+      ...hidden.map(() => ({ code: 'MODULE_NOT_VISIBLE', message: 'm', candidates: [] })),
+    ]);
+  });
+
   it('上游 429：透传 Retry-After', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'too_many_requests' }), {
