@@ -37,6 +37,7 @@ function compileDiagnosticsFrom(error: PolicyApiError) {
     .map((diagnostic) => ({
       severity: 'error' as const,
       code: typeof diagnostic.code === 'string' ? diagnostic.code : 'compile_error',
+      ...(typeof diagnostic.legacyCode === 'string' ? { legacyCode: diagnostic.legacyCode } : {}),
       message: typeof diagnostic.message === 'string'
         ? diagnostic.message
         : 'Policy source could not be compiled.',

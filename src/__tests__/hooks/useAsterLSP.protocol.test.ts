@@ -288,6 +288,30 @@ describe('useAsterLSP 协议', () => {
     expect(res!.suggestions.map((x) => x.label)).toEqual(['alter']);
   });
 
+  /* ts 1.2.6 起服务端在补全预算截断时返回 CompletionList（isIncomplete=true），需透传给 Monaco 以便继续输入时重新请求 */
+  it('★服务端返回 CompletionList 且 isIncomplete=true：渲染 items 并标记 incomplete=true', async () => {
+    FakeWebSocket.completion = { isIncomplete: true, items: [{ label: 'alter', kind: 5 }] };
+    const monaco = mount('en-US');
+    await opened();
+    await waitFor(() => expect(monaco.providers.completion).toBeDefined());
+    const res = await complete(monaco, '  Return fahrer. plus 1.', 17, { triggerKind: 1, triggerCharacter: '.' });
+    expect(res!.suggestions.map((x) => x.label)).toEqual(['alter']);
+    expect(res!.incomplete).toBe(true);
+  });
+
+  it('服务端返回数组 / isIncomplete=false 的 CompletionList：incomplete=false', async () => {
+    const monaco = mount('en-US');
+    await opened();
+    await waitFor(() => expect(monaco.providers.completion).toBeDefined());
+    FakeWebSocket.completion = [{ label: 'alter', kind: 5 }];
+    const arr = await complete(monaco, '  Return fahrer. plus 1.', 17, { triggerKind: 1, triggerCharacter: '.' });
+    expect(arr!.incomplete).toBe(false);
+    FakeWebSocket.completion = { isIncomplete: false, items: [{ label: 'alter', kind: 5 }] };
+    const list = await complete(monaco, '  Return fahrer. plus 1.', 17, { triggerKind: 1, triggerCharacter: '.' });
+    expect(list!.suggestions.map((x) => x.label)).toEqual(['alter']);
+    expect(list!.incomplete).toBe(false);
+  });
+
   /* 审查 M4：en / de 的句末 "." 不是成员访问——`Return applicant.` 后回车必须换行，不能接受字段补全 */
   it('★行尾刚输入 "."（可能是句末）：不发请求、不给建议，标记 incomplete 以便继续输入时再查', async () => {
     FakeWebSocket.completion = [{ label: 'age', kind: 5 }];
