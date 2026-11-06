@@ -1,16 +1,16 @@
 /**
- * 解析错误（编辑器里的 E000）按策略 lexicon 语言本地化。
+ * 无码 / 按码渲染不了的解析类消息按英文句型本地化（兜底）。
  *
- * 引擎的语义诊断（E1xx / E8xx …）已按 lexicon 的 diagnostic overlay 本地化，诊断跟随策略的 CNL 语言
- * 是设计；但 aster-lang-ts 的解析错误没有错误码、也不走 overlay：只有关键词槽位用作者语言
- * （如 `Expected '返回' after '那么'`），句子骨架恒为英文。
+ * 解析错误优先按 code + params 渲染（syntax-diagnostic-message）；以下两类仍走这里：
+ * - 降级错误（loweringErrors）：引擎尚未给它们加码，只有英文字符串；
+ * - 按码渲染缺模板 / 缺名词的解析错误：保证 zh/de/hi 看到的英文不多于按句型翻译时。
+ * 引擎给降级错误加码后可删除本模块。
  *
- * 这里按解析器的固定句型翻译骨架与常见名词。引号内的关键词解析器已按作者语言给出，原样保留；
- * 引号内的标点解析器恒报英文写法（`'.'`），按目标词法的实际写法改写（zh：`'。'`、`'：'`、`'，'`；hi：`'।'`）。
+ * 按解析器的固定句型翻译骨架与常见名词。引号内的关键词原样保留；
+ * 引号内的标点按目标词法的实际写法改写（zh：`'。'`、`'：'`、`'，'`；hi：`'।'`）。
  * 句型或名词任一不认识时返回原文，避免半中半英的拼接。
  *
- * 文案来自 aster-lang-locales 的 `syntax-diagnostics/<locale-id>.json`（随 @aster-cloud/ui-messages 分发），
- * 与服务端 aster-api 的 ANTLR 解析错误共用同一份目录（wontlost-ltd/aster-api#423）。改文案改 locales，不改这里。
+ * 文案来自 aster-lang-locales 的 `syntax-diagnostics/<locale-id>.json`（随 @aster-cloud/ui-messages 分发）。
  * en-US 目录里的句子与名词就是解析器的英文原文，这里按 en 值反查 key。
  */
 

@@ -78,22 +78,6 @@ describe('localizeParseMessage', () => {
   });
 });
 
-describe('collectCompileDiagnostics 按 locale 本地化 E000', () => {
-  it('★解析错误与降级错误按 zh-CN 译出，其他诊断不动', () => {
-    const out = collectCompileDiagnostics({
-      parseErrors: [{ message: "Expected '.' at end of statement" }],
-      loweringErrors: ['Unknown statement'],
-      typeErrors: [{ severity: 'error', code: 'E003', message: 'Undefined variable: x' }],
-    } as never, 'zh-CN');
-    expect(out.map((d) => d.message)).toEqual(["语句末尾应为 '。'", '无法识别的语句', 'Undefined variable: x']);
-  });
-
-  it('不传 locale 时保持原文', () => {
-    const out = collectCompileDiagnostics({ parseErrors: [{ message: 'Expected identifier' }] } as never);
-    expect(out[0]!.message).toBe('Expected identifier');
-  });
-});
-
 describe('syntax-diagnostics 目录（aster-lang-locales 唯一真相源）', () => {
   it.each([
     ['en-US', enCatalog],
@@ -105,5 +89,16 @@ describe('syntax-diagnostics 目录（aster-lang-locales 唯一真相源）', ()
       expect(catalog, key).toHaveProperty([key]);
       expect((catalog as Record<string, string>)[key], key).not.toBe('');
     }
+  });
+});
+
+describe('降级错误（无码）经 collectCompileDiagnostics 仍按英文句型翻译', () => {
+  it.each([
+    ['zh-CN', '无法识别的语句'],
+    ['de-DE', 'Unbekannte Anweisung'],
+    ['hi-IN', 'अज्ञात कथन'],
+  ])('%s', (locale, expected) => {
+    const out = collectCompileDiagnostics({ loweringErrors: ['Unknown statement'] } as never, locale);
+    expect(out[0]!.message).toBe(expected);
   });
 });

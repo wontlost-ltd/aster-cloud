@@ -13,13 +13,13 @@ vi.mock('@/lib/metrics/aha-detection', () => ({ recordAhaMomentIfFirst: vi.fn(as
 
 type Outcome =
   | { kind: 'ok' }
-  | { kind: 'diagnostics'; code: string; message?: string; legacyCode?: string }
+  | { kind: 'diagnostics'; code: string; message?: string }
   | { kind: 'unavailable' }
   /** 上游 HTTP 拒绝；diagnostics 给出时为编译资源的源码/别名输入错误形态。 */
   | { kind: 'http'; status: number; code: string; diagnostics?: unknown[] }
   /** 编译挂起直到 release：让迁移事务持有行锁，制造并发窗口。 */
   | { kind: 'gate'; released: Promise<void> }
-  /** 用真实 ts 引擎解析该源码，返回其解析诊断原样（code / legacyCode / message），不注入码。 */
+  /** 用真实 ts 引擎解析该源码，返回其解析诊断原样（code / message），不注入码。 */
   | { kind: 'real-ts'; locale: string };
 
 const compileState = vi.hoisted(() => ({
@@ -54,7 +54,6 @@ vi.mock('@/services/policy/policy-api', async (importOriginal) => {
             success: false,
             diagnostics: [{
               severity: 'error', code: outcome.code, message: outcome.message ?? `${outcome.code} failure`,
-              ...(outcome.legacyCode ? { legacyCode: outcome.legacyCode } : {}),
               startLine: 1, startColumn: 1, endLine: 1, endColumn: 2,
             }],
           };
@@ -190,8 +189,8 @@ function src(name: string): string {
   return `Module resolver.mig.\n\nRule ${name} given x as Int, produce Int:\n  Return x.\n`;
 }
 
-function fail(source: string, code: string, message?: string, legacyCode?: string): void {
-  compileState.outcomes.set(source, { kind: 'diagnostics', code, message, legacyCode });
+function fail(source: string, code: string, message?: string): void {
+  compileState.outcomes.set(source, { kind: 'diagnostics', code, message });
 }
 
 async function run(policyId: string, batchSize = 50): Promise<ResolverMigrationReport> {
@@ -651,19 +650,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('resolver 迁移（ADR 0051 §9
     expect((await rowsOf(db, vocab))[0]!.resolverMigrationError).toContain('field_parent_required');
   });
 
-  it('无效构造写法分诊：过渡车次（code=E055、legacyCode=P005）按 legacyCode 仍归入 invalidConstructForm', async () => {
-    const construct = `${PREFIX}r56-construct`;
-    const constructSource = `Modul m.\n\nRegel r56 gegeben x als Ganzzahl, liefert Fahrer:\n  gib zurück Fahrer mit alter = x.\n`;
-    await seed(db, construct, [{ source: constructSource, locale: 'de-DE' }]);
-    fail(constructSource, 'E055', "Unexpected token '='", 'P005');
-
-    const report = await runResolverMigration({ batchSize: 50, policyIdPrefix: `${PREFIX}r56-` });
-
-    expect(report).toMatchObject({ processed: 1, succeeded: 0, failed: 1 });
-    expect(report.triage.invalidConstructForm.map((f) => f.id)).toEqual([`${construct}-v1`]);
-  });
-
-  it('无效构造写法分诊：引擎删除 legacyCode 后仅有新码 E057 / E064 仍归入 invalidConstructForm，其他新码不归入', async () => {
+  it('无效构造写法分诊：仅新码 E057 / E064 归入 invalidConstructForm，其他新码不归入', async () => {
     const e057 = `${PREFIX}r56b-e057`;
     const e064 = `${PREFIX}r56b-e064`;
     const e055 = `${PREFIX}r56b-e055`;
