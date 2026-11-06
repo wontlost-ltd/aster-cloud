@@ -625,6 +625,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       subtitle: 'Which rule sets reference each regulatory control. Lists @control references in policy sources; it is not a compliance conclusion.',
       breadcrumb: 'Governance',
       registryVersion: 'Controls registry {version}',
+      countsNote: 'Executions count the last 30 days (team policies: all executions; personal policies: the owner only). Pending approvals are counted per policy: the number of versions awaiting approval.',
       article: 'Article {article}',
       policyCount: '{count, plural, =1 {1 policy} other {# policies}}',
       noPolicies: 'No visible policy references this control.',
@@ -651,6 +652,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       unregistered: {
         title: 'Unregistered controls',
         hint: 'Keys referenced in policy sources that the controls registry does not list (compile warning W704).',
+      },
+      unparsed: {
+        title: 'Versions that could not be parsed',
+        hint: 'These versions mention @control but do not parse with the version\'s language and aliases, so their references are unknown. They are listed here instead of being treated as unlinked.',
       },
       unlinked: {
         title: 'Not linked to any control',
@@ -2190,6 +2195,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       subtitle: '每个法规控制项被哪些规则集引用。只列出策略源码里的 @control 引用，不是合规结论。',
       breadcrumb: '治理',
       registryVersion: '控制注册表 {version}',
+      countsNote: '执行数取近 30 天（团队策略计全部执行；个人策略只计所有者本人）。待审批数按策略汇总：该策略处于待审批状态的版本数。',
       article: '第 {article} 条',
       policyCount: '{count} 个策略',
       noPolicies: '没有可见策略引用该控制项。',
@@ -2216,6 +2222,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       unregistered: {
         title: '未登记的控制项',
         hint: '策略源码里引用、但控制注册表未登记的键（编译期警告 W704）。',
+      },
+      unparsed: {
+        title: '无法解析的版本',
+        hint: '这些版本含 @control 字样，但按版本的语言与别名无法解析，引用关系未知；在此如实列出，不当作未关联。',
       },
       unlinked: {
         title: '未关联任何控制项',
@@ -3738,6 +3748,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       subtitle: 'Welche Regelwerke auf welche regulatorische Kontrolle verweisen. Listet @control-Verweise im Richtlinienquelltext; keine Compliance-Aussage.',
       breadcrumb: 'Governance',
       registryVersion: 'Kontrollregister {version}',
+      countsNote: 'Ausführungen zählen die letzten 30 Tage (Team-Richtlinien: alle Ausführungen; persönliche Richtlinien: nur der Eigentümer). Offene Freigaben werden je Richtlinie gezählt: Anzahl der Versionen, die auf Freigabe warten.',
       article: 'Artikel {article}',
       policyCount: '{count, plural, =1 {1 Richtlinie} other {# Richtlinien}}',
       noPolicies: 'Keine sichtbare Richtlinie verweist auf diese Kontrolle.',
@@ -3764,6 +3775,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       unregistered: {
         title: 'Nicht registrierte Kontrollen',
         hint: 'Schlüssel aus dem Richtlinienquelltext, die das Kontrollregister nicht führt (Compiler-Warnung W704).',
+      },
+      unparsed: {
+        title: 'Nicht parsbare Versionen',
+        hint: 'Diese Versionen enthalten @control, lassen sich mit Sprache und Aliasen der Version aber nicht parsen; ihre Verweise sind unbekannt. Sie werden hier gelistet statt als nicht zugeordnet zu gelten.',
       },
       unlinked: {
         title: 'Keiner Kontrolle zugeordnet',
@@ -5283,6 +5298,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       subtitle: 'कौन से नियम-समूह किस नियामक नियंत्रण का संदर्भ देते हैं। नीति स्रोत में @control संदर्भ सूचीबद्ध करता है; यह अनुपालन का निष्कर्ष नहीं है।',
       breadcrumb: 'शासन',
       registryVersion: 'नियंत्रण रजिस्ट्री {version}',
+      countsNote: 'निष्पादन पिछले 30 दिनों के हैं (टीम नीतियाँ: सभी निष्पादन; व्यक्तिगत नीतियाँ: केवल स्वामी)। लंबित अनुमोदन प्रति नीति गिने जाते हैं: अनुमोदन की प्रतीक्षा में संस्करणों की संख्या।',
       article: 'अनुच्छेद {article}',
       policyCount: '{count} नीतियाँ',
       noPolicies: 'कोई दृश्य नीति इस नियंत्रण का संदर्भ नहीं देती।',
@@ -5309,6 +5325,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       unregistered: {
         title: 'अपंजीकृत नियंत्रण',
         hint: 'नीति स्रोत में संदर्भित कुंजियाँ जो नियंत्रण रजिस्ट्री में नहीं हैं (कंपाइलर चेतावनी W704)।',
+      },
+      unparsed: {
+        title: 'पार्स न हो सकने वाले संस्करण',
+        hint: 'इन संस्करणों में @control है, पर संस्करण की भाषा और उपनामों से पार्स नहीं होते; इनके संदर्भ अज्ञात हैं। इन्हें असंबद्ध मानने के बजाय यहाँ सूचीबद्ध किया गया है।',
       },
       unlinked: {
         title: 'किसी नियंत्रण से संबद्ध नहीं',

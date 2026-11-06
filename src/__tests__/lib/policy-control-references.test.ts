@@ -1,9 +1,12 @@
-// @control 引用扫描（#739）：从版本源码取出规则挂接的控制键，跳过注释与普通字符串字面量。
+// @control 引用（#739）：经 aster-lang-ts parseSource 取 AST 注解值（与编译器同源，含转义解码），
+// 子串预筛只决定哪些版本值得解析。
 import { describe, it, expect } from 'vitest';
-import { extractControlReferences } from '@/lib/policy-control-references';
+import { mayReferenceControls, parseControlReferences } from '@/lib/policy-control-references';
 import { creditPilotSource } from '@/config/credit-pilot-source';
 
-describe('extractControlReferences', () => {
+const en = (source: string) => parseControlReferences({ source, locale: 'en-US', aliasSet: null });
+
+describe('parseControlReferences', () => {
   it('按源码顺序去重返回控制键', () => {
     const source = [
       'Module a.b.',
@@ -20,35 +23,50 @@ describe('extractControlReferences', () => {
       '  Return Verdict.allow().',
       '',
     ].join('\n');
-    expect(extractControlReferences(source)).toEqual(['EU_AI_ACT:ART14', 'GDPR:ART22']);
+    expect(en(source)).toEqual({ ok: true, controls: ['EU_AI_ACT:ART14', 'GDPR:ART22'] });
   });
 
-  it('信贷试点源码挂接 EU_AI_ACT:ART14 与 GDPR:ART22', () => {
-    expect(extractControlReferences(creditPilotSource('en', 50000))).toEqual(['EU_AI_ACT:ART14', 'GDPR:ART22']);
+  it('转义序列按编译器规则解码（扫描原串会得到 GDPR:ART\\u0036）', () => {
+    const source = 'Module a.\n\n@control("GDPR:ART\\u0036")\nRule r given x as Int, produce Verdict:\n  Return Verdict.allow().\n';
+    expect(en(source)).toEqual({ ok: true, controls: ['GDPR:ART6'] });
+  });
+
+  it.each([['en', 'en-US'], ['zh', 'zh-CN'], ['de', 'de-DE']] as const)('信贷试点源码（%s）挂接 EU_AI_ACT:ART14 与 GDPR:ART22', (pilot, locale) => {
+    const source = creditPilotSource(pilot, 50000);
+    expect(parseControlReferences({ source, locale, aliasSet: null })).toEqual({ ok: true, controls: ['EU_AI_ACT:ART14', 'GDPR:ART22'] });
+  });
+
+  it('版本记录里的短码 locale（de）与完整标签（de-DE）同样可解析', () => {
+    const source = creditPilotSource('de', 50000);
+    expect(parseControlReferences({ source, locale: 'de', aliasSet: null })).toEqual({ ok: true, controls: ['EU_AI_ACT:ART14', 'GDPR:ART22'] });
+  });
+
+  it('版本冻结的关键词别名随 lexicon 生效', () => {
+    const source = 'Module a.\n\n@control("SOX:404")\nRule r given x as Int, produce Verdict:\n  Give back Verdict.allow().\n';
+    expect(en(source).ok).toBe(false);
+    expect(parseControlReferences({ source, locale: 'en-US', aliasSet: { RETURN: ['give back'] } })).toEqual({ ok: true, controls: ['SOX:404'] });
   });
 
   it.each([
-    ['zh 直角引号', '模块 a。\n@control(「GDPR:ART6」)\n规则 r：\n', ['GDPR:ART6']],
-    ['弯引号', 'Module a.\n@control(“SOX:404”)\nRule r:\n', ['SOX:404']],
-    ['括号内空白', 'Module a.\n@control( "GDPR:ART17" )\nRule r:\n', ['GDPR:ART17']],
-    ['CRLF', 'Module a.\r\n@control("GDPR:ART17")\r\nRule r:\r\n', ['GDPR:ART17']],
-  ])('%s', (_label, source, expected) => {
-    expect(extractControlReferences(source)).toEqual(expected);
-  });
-
-  it.each([
-    ['# 注释里的注解', 'Module a.\n# @control("GDPR:ART6")\nRule r:\n'],
-    ['// 注释里的注解', 'Module a.\n// @control("GDPR:ART6")\nRule r:\n'],
-    ['普通字符串里的注解', 'Module a.\nRule r:\n  Return "@control(\\"GDPR:ART6\\")".\n'],
-    ['非 control 注解', 'Module a.\n@controls("GDPR:ART6")\n@id("GDPR:ART6")\nRule r:\n'],
-    ['无参数', 'Module a.\n@control\n@control()\nRule r:\n'],
-    ['空白键', 'Module a.\n@control("  ")\nRule r:\n'],
+    ['# 注释里的注解', 'Module a.\n# @control("GDPR:ART6")\nRule r given x as Int, produce Bool:\n  Return x at least 1.\n'],
+    ['普通字符串里的注解', 'Module a.\nRule r given x as Int, produce Text:\n  Return "@control(\\"GDPR:ART6\\")".\n'],
+    ['非 control 注解', 'Module a.\n@controls("GDPR:ART6")\n@id("GDPR:ART6")\nRule r given x as Int, produce Bool:\n  Return x at least 1.\n'],
+    ['空白键', 'Module a.\n@control("  ")\nRule r given x as Int, produce Bool:\n  Return x at least 1.\n'],
     ['无注解', 'Module m.\n\nRule r given x as Int, produce Bool:\n  Return x at least 1.\n'],
-  ])('%s：不计入', (_label, source) => {
-    expect(extractControlReferences(source)).toEqual([]);
+  ])('%s：预筛可能命中但解析后无引用', (_label, source) => {
+    expect(en(source)).toEqual({ ok: true, controls: [] });
   });
 
-  it('行尾注释不吞掉下一行的注解', () => {
-    expect(extractControlReferences('Module a. # note\n@control("GDPR:ART6")\nRule r:\n')).toEqual(['GDPR:ART6']);
+  it('解析失败（语法错误）如实返回诊断码，而不是空引用', () => {
+    const result = en('Module a.\n@control("GDPR:ART6")\nRule r given x as Int, produce Bool:\n  Return x at least .\n');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+});
+
+describe('mayReferenceControls', () => {
+  it('与 SQL 预筛同口径：源码含 @control 字样即为候选', () => {
+    expect(mayReferenceControls('Module a.\n# @control("X:1")\n')).toBe(true);
+    expect(mayReferenceControls('Module a.\n@id("X")\n')).toBe(false);
   });
 });

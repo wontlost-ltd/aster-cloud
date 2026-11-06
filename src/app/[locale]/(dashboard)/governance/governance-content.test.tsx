@@ -61,6 +61,7 @@ const overview: GovernanceOverview = {
   ],
   unregistered: [{ key: 'ACME:ART1', policies: [policy('p3', { active: false, versions: [{ version: 1, status: 'DRAFT', isDefault: false }] })] }],
   unlinked: [{ id: 'p4', name: 'Policy p4', teamId: 'team1', teamName: 'Team One', executions30d: 7, pendingApprovals: 1 }],
+  unparsed: [{ policyId: 'p1', version: 3, diagnostics: ['E064'] }, { policyId: 'p9', version: 1, diagnostics: ['E056'] }],
 };
 
 afterEach(cleanup);
@@ -109,9 +110,18 @@ describe('GovernanceContent', () => {
     expect(unlinked.getByText('1')).toBeTruthy();
   });
 
-  it('没有未登记键时不渲染该分组；没有未关联策略时显示空态', () => {
-    render(<GovernanceContent locale="en" overview={{ ...overview, unregistered: [], unlinked: [] }} />);
+  it('无法解析的版本单列：能反查到名字的用名字，否则显示 id，并链接到版本页', () => {
+    render(<GovernanceContent locale="en" overview={overview} />);
+    const known = within(screen.getByTestId('unparsed-p1-3'));
+    expect(known.getByRole('link', { name: 'Policy p1' }).getAttribute('href')).toBe('/policies/p1/versions');
+    expect(known.getByText('E064')).toBeTruthy();
+    expect(within(screen.getByTestId('unparsed-p9-1')).getByRole('link', { name: 'p9' })).toBeTruthy();
+  });
+
+  it('没有未登记键 / 未解析版本时不渲染这两组；没有未关联策略时显示空态', () => {
+    render(<GovernanceContent locale="en" overview={{ ...overview, unregistered: [], unlinked: [], unparsed: [] }} />);
     expect(screen.queryByTestId('unregistered')).toBeNull();
+    expect(screen.queryByTestId('unparsed')).toBeNull();
     expect(within(screen.getByTestId('unlinked')).getByText('unlinked.empty')).toBeTruthy();
   });
 });

@@ -42,12 +42,16 @@ const POL = {
   outsider: `${P}-pol-outsider`, // outsider 的个人策略，引用 ART14
   ownerPersonal: `${P}-pol-owner-personal`, // owner 的个人策略，引用 ART14
   archived: `${P}-pol-archived`, // 团队策略：只有已归档版本引用 ART14
+  escaped: `${P}-pol-escaped`, // 团队策略：以转义写法 @control("GDPR:ART\\u0036") 引用 GDPR:ART6
+  broken: `${P}-pol-broken`, // 团队策略：v1 含 @control 字样但语法错误（无法解析）
 } as const;
 const POLICY_IDS = Object.values(POL);
 
 const withControls = (...keys: string[]) =>
   `Module m.\n\n${keys.map((k) => `@control("${k}")`).join('\n')}\nRule r given x as Int, produce Verdict:\n  Return Verdict.allow().\n`;
 const PLAIN = 'Module m.\n\nRule r given x as Int, produce Bool:\n  Return x at least 1.\n';
+const ESCAPED = 'Module m.\n\n@control("GDPR:ART\\u0036")\nRule r given x as Int, produce Verdict:\n  Return Verdict.allow().\n';
+const BROKEN = 'Module m.\n\n@control("GDPR:ART6")\nRule r given x as Int, produce Bool:\n  Return x at least .\n';
 
 type Db = ReturnType<typeof createDb>;
 const globalForDb = globalThis as unknown as { __asterLocalDevDb?: Db | null };
@@ -85,6 +89,8 @@ async function seed(db: Db): Promise<void> {
     policy(POL.outsider, U.outsider, null, withControls('EU_AI_ACT:ART14')),
     policy(POL.ownerPersonal, U.owner, null, withControls('EU_AI_ACT:ART14')),
     policy(POL.archived, U.ex, TEAM, withControls('EU_AI_ACT:ART14')),
+    policy(POL.escaped, U.member, TEAM, ESCAPED),
+    policy(POL.broken, U.member, TEAM, BROKEN),
   ] as Array<typeof policies.$inferInsert>);
 
   const version = (
@@ -105,6 +111,8 @@ async function seed(db: Db): Promise<void> {
     version(POL.outsider, 1, withControls('EU_AI_ACT:ART14'), 'APPROVED', true),
     version(POL.ownerPersonal, 1, withControls('EU_AI_ACT:ART14'), 'DRAFT'),
     version(POL.archived, 1, withControls('EU_AI_ACT:ART14'), 'ARCHIVED'),
+    version(POL.escaped, 1, ESCAPED, 'APPROVED', true),
+    version(POL.broken, 1, BROKEN, 'DRAFT'),
   ]);
 
   const day = 86_400_000;
@@ -184,6 +192,19 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('控制项影响分析（真实
     expect(personal.executions30d).toBe(1); // 他人对个人策略的执行不计
   });
 
+  it('转义写法按编译器规则解码；无法解析的版本记入 unparsed 而不是静默丢弃', async () => {
+    const impact = await loadControlImpact(U.member, 'GDPR:ART6');
+    expect(impact.policies.map((p) => p.id)).toEqual([POL.escaped]);
+    expect(impact.policies[0].active).toBe(true);
+    expect(impact.unparsed).toEqual([{ policyId: POL.broken, version: 1, diagnostics: expect.arrayContaining([expect.any(String)]) }]);
+
+    const overview = await loadGovernanceOverview(U.member);
+    expect(overview.unparsed.map((u) => u.policyId)).toEqual([POL.broken]);
+    // 无法解析的策略既不进控制项清单也不进未关联桶
+    expect(overview.unlinked.map((p) => p.id)).not.toContain(POL.broken);
+    expect(overview.frameworks.flatMap((f) => f.controls.flatMap((c) => c.policies.map((p) => p.id)))).not.toContain(POL.broken);
+  });
+
   it('待审批数按策略汇总', async () => {
     const impact = await loadControlImpact(U.member, 'SOX:404');
     expect(impact.policies.map((p) => p.id)).toEqual([POL.pending]);
@@ -211,7 +232,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('控制项影响分析（真实
     expect(gdpr22.policies.map((p) => p.id).sort()).toEqual([POL.art14, POL.gdpr].sort());
     expect(gdpr22.policies.find((p) => p.id === POL.gdpr)!.active).toBe(true);
     // 注册表里没有策略引用的控制项照样列出（空清单）
-    expect(overview.frameworks.find((f) => f.id === 'GDPR')!.controls.find((c) => c.key === 'GDPR:ART6')!.policies).toEqual([]);
+    expect(overview.frameworks.find((f) => f.id === 'GDPR')!.controls.find((c) => c.key === 'GDPR:ART6')!.policies.map((p) => p.id)).toEqual([POL.escaped]);
     // 只有归档版本引用、以及完全没有 @control 的策略 → 未关联
     expect(overview.unlinked.map((p) => p.id).sort()).toEqual([POL.plain, POL.archived].sort());
     expect(overview.unregistered).toEqual([]);

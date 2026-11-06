@@ -100,6 +100,12 @@ function ControlSection({ control, locale, t }: { control: ControlGroup; locale:
 
 export function GovernanceContent({ locale, overview }: Props) {
   const t = useTranslations('governancePage');
+  // 未解析版本只带 policyId：名字从各清单里反查，查不到（该策略没有任何可解析版本）时显示 id
+  const policyNames = new Map<string, string>();
+  for (const p of overview.unlinked) policyNames.set(p.id, p.name);
+  for (const group of [...overview.frameworks.flatMap((f) => f.controls), ...overview.unregistered]) {
+    for (const p of group.policies) policyNames.set(p.id, p.name);
+  }
 
   return (
     <Container size="xl" className="py-6 sm:py-10">
@@ -114,6 +120,7 @@ export function GovernanceContent({ locale, overview }: Props) {
         <p className="text-sm text-muted-foreground" data-testid="registry-version">
           {t('registryVersion', { version: overview.registryVersion })}
         </p>
+        <p className="text-sm text-muted-foreground">{t('countsNote')}</p>
 
         {overview.frameworks.map((framework) => (
           <Card key={framework.id} data-testid={`framework-${framework.id}`}>
@@ -150,6 +157,27 @@ export function GovernanceContent({ locale, overview }: Props) {
                   </details>
                 ))}
               </Stack>
+            </CardBody>
+          </Card>
+        )}
+
+        {overview.unparsed.length > 0 && (
+          <Card data-testid="unparsed">
+            <CardHeader>
+              <CardTitle>{t('unparsed.title')}</CardTitle>
+            </CardHeader>
+            <CardBody>
+              <p className="mb-2 text-sm text-muted-foreground">{t('unparsed.hint')}</p>
+              <ul className="list-disc space-y-0.5 pl-5 text-sm">
+                {overview.unparsed.map((u) => (
+                  <li key={`${u.policyId}:${u.version}`} data-testid={`unparsed-${u.policyId}-${u.version}`}>
+                    <Link href={`/policies/${u.policyId}/versions`} className="font-medium text-primary hover:underline">
+                      {policyNames.get(u.policyId) ?? u.policyId}
+                    </Link>
+                    {' '}v{u.version} · <code className="text-xs">{u.diagnostics.join(', ')}</code>
+                  </li>
+                ))}
+              </ul>
             </CardBody>
           </Card>
         )}

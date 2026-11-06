@@ -6,74 +6,70 @@
  * 影响分析要回答「哪些策略的哪些版本引用了这个控制项」，源码是编译器读的同一份输入，也是唯一覆盖
  * 全部版本与全部规则的来源。
  *
- * 口径与 policy-profile-declaration 一致：注释（`#`、`//`）与普通字符串字面量之外出现的
- * `@control(<字符串字面量>)` 才算引用；注解名在四种词表里都是字面量 `control`（不本地化）。
+ * 取值走 aster-lang-ts `parseSource` 的 AST 注解（与编译器同源：同一 lexicon、同一份版本别名、
+ * 同一套字符串转义解码），不自写扫描器——自写扫描会把 `@control("GDPR:ART6")` 读成原串，
+ * 与编译器得到的 `GDPR:ART6` 不一致。`mayReferenceControls` 只是「哪些版本值得解析」的子串预筛，
+ * 与 governance-impact 的 SQL `LIKE '%@control%'` 同口径。
  */
+import { parseSource, type Lexicon } from '@aster-cloud/aster-lang-ts/browser';
+import { getLexicon } from '@/lib/aster-lexicon';
 
-// 字符串字面量的开闭引号：ASCII 双引号、zh 词表的直角引号、弯引号
-const STRING_CLOSERS: Readonly<Record<string, string>> = { '"': '"', '「': '」', '“': '”' };
+export type AliasSet = Record<string, readonly string[]> | null | undefined;
 
-const ANNOTATION = '@control';
-
-/** 跳过字符串字面量（支持反斜杠转义，不跨行），返回闭引号之后的位置。 */
-function skipString(text: string, start: number, closer: string): number {
-  let i = start;
-  while (i < text.length && text[i] !== closer && text[i] !== '\n') {
-    i += text[i] === '\\' ? 2 : 1;
-  }
-  return i + 1;
+export interface ControlReferenceSource {
+  readonly source: string;
+  /** 版本的 CNL 语言（resolveStoredVersionLocale 的结果；短码与完整标签都可）。 */
+  readonly locale: string;
+  /** 版本冻结的关键词别名。 */
+  readonly aliasSet: AliasSet;
 }
 
-/** 跳到行尾（保留换行符本身）。 */
-function skipLine(text: string, start: number): number {
-  const newline = text.indexOf('\n', start);
-  return newline === -1 ? text.length : newline;
+export type ControlReferenceResult =
+  | { readonly ok: true; readonly controls: string[] }
+  | { readonly ok: false; readonly diagnostics: string[] };
+
+const ANNOTATION = 'control';
+const PREFILTER = `@${ANNOTATION}`;
+
+/** 预筛：源码含 `@control` 字样才可能有引用（注释 / 字符串里的也算候选，交给解析判定）。 */
+export function mayReferenceControls(source: string): boolean {
+  return source.includes(PREFILTER);
 }
 
-function skipSpaces(text: string, start: number): number {
-  let i = start;
-  while (i < text.length && (text[i] === ' ' || text[i] === '\t')) i += 1;
-  return i;
+/** 与引擎 resolvePolicyTypes 同一合并规则：版本别名叠加在 lexicon 自带别名之上。 */
+function lexiconFor(locale: string, aliasSet: AliasSet): Lexicon {
+  const base = getLexicon(locale);
+  if (!aliasSet || Object.keys(aliasSet).length === 0) return base;
+  return { ...base, aliases: { ...base.aliases, ...aliasSet } } as Lexicon;
 }
 
-/**
- * 在 `@control` 之后尝试读取 `( "<key>" )`；成功返回键与结束位置，失败返回 null（扫描从注解名之后继续）。
- */
-function readAnnotationArg(text: string, start: number): { key: string; end: number } | null {
-  let i = skipSpaces(text, start);
-  if (text[i] !== '(') return null;
-  i = skipSpaces(text, i + 1);
-  const closer = STRING_CLOSERS[text[i]];
-  if (!closer) return null;
-  const valueStart = i + 1;
-  const end = skipString(text, valueStart, closer);
-  if (text[end - 1] !== closer) return null;
-  const key = text.slice(valueStart, end - 1).trim();
-  return key ? { key, end } : null;
+/** 规则级 `@control` 注解的字符串参数（治理检查同口径：恰好一个字符串参数，空白视为无效）。 */
+function controlArg(annotation: { name: string; args?: readonly { value: unknown }[] }): string | null {
+  if (annotation.name !== ANNOTATION || annotation.args?.length !== 1) return null;
+  const value = annotation.args[0].value;
+  if (typeof value !== 'string') return null;
+  const key = value.trim();
+  return key || null;
 }
 
-/** 源码引用的控制键，按首次出现顺序去重；无引用返回空数组。 */
-export function extractControlReferences(source: string): string[] {
-  const text = source.normalize('NFC');
-  const keys: string[] = [];
-  let i = 0;
-  while (i < text.length) {
-    const closer = STRING_CLOSERS[text[i]];
-    if (closer) {
-      i = skipString(text, i + 1, closer);
-    } else if (text[i] === '#' || text.startsWith('//', i)) {
-      i = skipLine(text, i);
-    } else if (text.startsWith(ANNOTATION, i)) {
-      const arg = readAnnotationArg(text, i + ANNOTATION.length);
-      if (arg) {
-        if (!keys.includes(arg.key)) keys.push(arg.key);
-        i = arg.end;
-      } else {
-        i += ANNOTATION.length;
+/** 解析源码，按首次出现顺序去重返回控制键；语法 / 词法错误时返回诊断码（调用方记入 unparsed）。 */
+export function parseControlReferences(input: ControlReferenceSource): ControlReferenceResult {
+  try {
+    const { ast, diagnostics } = parseSource(input.source, lexiconFor(input.locale, input.aliasSet));
+    const errors = diagnostics.filter((d) => d.severity === 'error').map((d) => String(d.code));
+    if (errors.length > 0) return { ok: false, diagnostics: [...new Set(errors)] };
+    const controls: string[] = [];
+    for (const decl of ast.decls) {
+      if (decl.kind !== 'Func') continue;
+      for (const annotation of decl.annotations ?? []) {
+        const key = controlArg(annotation);
+        if (key && !controls.includes(key)) controls.push(key);
       }
-    } else {
-      i += 1;
     }
+    return { ok: true, controls };
+  } catch (err) {
+    // 词法错误以 DiagnosticError 抛出；没有码的异常用 E000 占位，与 seed-compile-gate 一致
+    const code = (err as { code?: unknown } | null)?.code;
+    return { ok: false, diagnostics: [code ? String(code) : 'E000'] };
   }
-  return keys;
 }
