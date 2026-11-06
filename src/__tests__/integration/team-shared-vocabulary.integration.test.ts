@@ -249,22 +249,45 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('团队共享领域词汇（#67
     expect(localizedOf(teamList.body.items)).toEqual(['Auto', 'Fahrer']);
   });
 
-  it('并发：同一团队并发新增在 advisory lock 下不超过 owner 套餐额度', async () => {
-    quota.cap = 2;
-    const actors: Actor[] = ['member', 'admin', 'owner', 'member', 'admin', 'owner'];
-    const results = await Promise.all(actors.map((actor, i) => {
-      // 不经 as()：并发时 current.userId 会被互相覆盖，这里直接调服务层并显式传归属
-      return import('@/lib/domain-vocabulary').then(({ addUserVocabularyTerm, teamOwner }) =>
-        addUserVocabularyTerm(U[actor], struct(`Thing${i}`, `Ding${i}`) as never, teamOwner(TEAM))
-          .then(() => 'ok', (err: { code?: string }) => err.code));
-    }));
-    expect(results.filter((r) => r === 'ok')).toHaveLength(2);
-    expect(results.filter((r) => r === 'quota_exceeded')).toHaveLength(4);
+  /** 直接调服务层并显式传归属：并发时路由的会话替身（current.userId）会被互相覆盖。 */
+  async function concurrentAdds(teamId: string, actors: readonly string[], prefix: string): Promise<string[]> {
+    const { addUserVocabularyTerm, teamOwner } = await import('@/lib/domain-vocabulary');
+    return Promise.all(actors.map((userId, i) =>
+      addUserVocabularyTerm(userId, struct(`${prefix}${i}`, `${prefix}Wort${i}`) as never, teamOwner(teamId))
+        .then(() => 'ok', (err: { code?: string }) => err.code ?? 'error')));
+  }
+
+  async function activeTeamCount(teamId: string): Promise<number> {
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(userDomainTerms)
-      .where(sql`${userDomainTerms.teamId} = ${TEAM} AND ${userDomainTerms.deletedAt} IS NULL`);
-    expect(count).toBe(2);
+      .where(sql`${userDomainTerms.ownerType} = 'team' AND ${userDomainTerms.teamId} = ${teamId} AND ${userDomainTerms.deletedAt} IS NULL`);
+    return count;
+  }
+
+  it('并发：额度只剩 N=2 条时同一团队并发 N+k=6 个新增，恰好 2 个成功、其余 quota_exceeded，库内不超额', async () => {
+    quota.cap = 3;
+    // 先占掉 1 条，剩余 N = 2
+    expect((await addTerm('owner', struct('Seed', 'Saat'), TEAM)).status).toBe(201);
+    const results = await concurrentAdds(TEAM, [U.member, U.admin, U.owner, U.member, U.admin, U.owner], 'Par');
+    expect(results.filter((r) => r === 'ok')).toHaveLength(2);
+    expect(results.filter((r) => r !== 'ok')).toEqual(Array(4).fill('quota_exceeded'));
+    expect(await activeTeamCount(TEAM)).toBe(3);
+  });
+
+  it('并发：不同团队各自计额度、互不阻塞，两个团队同时并发都恰好填满自己的额度', async () => {
+    quota.cap = 2;
+    // T2 的 owner 升为 Pro，使两个团队都有额度
+    await db.update(users).set({ plan: 'pro' }).where(eq(users.id, U.outsider));
+    const [a, b] = await Promise.all([
+      concurrentAdds(TEAM, [U.member, U.admin, U.owner, U.member], 'TeamA'),
+      concurrentAdds(TEAM2, [U.outsider, U.outsider, U.outsider, U.outsider], 'TeamB'),
+    ]);
+    expect(a.filter((r) => r === 'ok')).toHaveLength(2);
+    expect(b.filter((r) => r === 'ok')).toHaveLength(2);
+    expect([...a, ...b].filter((r) => r !== 'ok').every((r) => r === 'quota_exceeded')).toBe(true);
+    expect(await activeTeamCount(TEAM)).toBe(2);
+    expect(await activeTeamCount(TEAM2)).toBe(2);
   });
 
   it('团队词条与创建者个人视图互不混入：个人列表不含自己创建的团队词条，同一词条可同时为个人与团队所有', async () => {
