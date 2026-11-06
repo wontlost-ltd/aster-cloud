@@ -22,6 +22,7 @@ import {
   Ban,
   BookText,
   ClipboardCheck,
+  Scale,
   ChevronsLeft,
   ChevronsRight,
   Menu,
@@ -308,6 +309,7 @@ interface DashboardSidebarProps {
     policies: string;
     reports: string;
     approvals: string;
+    governance: string;
     teams: string;
     domainVocabularies: string;
     security: string;
@@ -421,6 +423,7 @@ export function DashboardSidebar({
     { href: '/policies',  label: labels.policies,  icon: FileText },
     { href: '/reports',   label: labels.reports,   icon: BarChart3 },
     { href: '/approvals', label: labels.approvals, icon: ClipboardCheck },
+    { href: '/governance', label: labels.governance, icon: Scale },
     { href: '/teams',     label: labels.teams,     icon: Users },
     { href: '/domain-vocabularies', label: labels.domainVocabularies, icon: BookOpen },
     { href: '/security',  label: labels.security,  icon: Shield },
