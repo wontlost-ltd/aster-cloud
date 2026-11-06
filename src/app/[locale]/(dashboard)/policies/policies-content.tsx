@@ -21,6 +21,7 @@ import {
   ListChecks,
   Circle,
   FileText,
+  Users,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import {
@@ -37,7 +38,7 @@ import {
 const POLICIES_URL_OPTS: ListUrlOptions = {
   defaultPageSize: 25,
   allowedPageSizes: [25, 50, 100],
-  filterKeys: ['group'],
+  filterKeys: ['group', 'scope'],
 };
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -57,6 +58,10 @@ import {
 
 interface Policy {
   id: string;
+  /** 所属团队；个人策略为 null */
+  team: { id: string; name: string } | null;
+  /** 服务端按调用者当前团队角色判定的操作授权（authorizePolicyActions），按钮据此禁用 */
+  capabilities: { execute: boolean; update: boolean; delete: boolean };
   name: string;
   description: string | null;
   content: string;
@@ -190,6 +195,10 @@ function DraggablePolicyItem({
 
   // 判断该项是否应显示为占位符（当前正在拖拽且被选中）
   const showPlaceholder = isBeingDragged && isSelected;
+  const tPolicies = useTranslations('policies');
+  const can = policy.capabilities;
+  // 侧栏只有个人 / 系统分组：团队策略不能放进去（canPlaceInGroup），个人策略也要有 update 权限
+  const canDrag = !policy.team && can.update;
 
   const style = transform ? {
     transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
@@ -235,14 +244,19 @@ function DraggablePolicyItem({
             </div>
           )}
 
-          {/* 拖拽手柄 — 默认隐藏，行 hover 显形 */}
-          <div
-            {...listeners}
-            {...attributes}
-            className="mr-3 flex-shrink-0 cursor-grab rounded p-1 opacity-0 transition-opacity hover:bg-bg-muted group-hover:opacity-100 active:cursor-grabbing"
-          >
-            <GripVertical className="size-4 text-fg-subtle" />
-          </div>
+          {/* 拖拽手柄 — 默认隐藏，行 hover 显形；不可移动分组的策略占位不渲染手柄 */}
+          {canDrag ? (
+            <div
+              {...listeners}
+              {...attributes}
+              data-drag-handle
+              className="mr-3 flex-shrink-0 cursor-grab rounded p-1 opacity-0 transition-opacity hover:bg-bg-muted group-hover:opacity-100 active:cursor-grabbing"
+            >
+              <GripVertical className="size-4 text-fg-subtle" />
+            </div>
+          ) : (
+            <div className="mr-3 size-6 flex-shrink-0" aria-hidden />
+          )}
 
           <div className="min-w-0 flex-1">
             <Link href={`/${locale}/policies/${policy.id}`} className="block">
@@ -257,6 +271,12 @@ function DraggablePolicyItem({
             </Link>
           </div>
           <div className="ml-4 flex items-center space-x-3">
+            {policy.team && (
+              <Badge variant="primary" title={tPolicies('teamBadge', { team: policy.team.name })}>
+                <Users className="size-3" aria-hidden />
+                {policy.team.name}
+              </Badge>
+            )}
             {/* 分组信息仅桌面端（≥ sm）：移动端策略行只留名称/CTA/更新时间。 */}
             {policy.group && (
               <Badge variant="neutral" className="hidden sm:inline-flex">
@@ -286,10 +306,10 @@ function DraggablePolicyItem({
                 the row chrome. Frozen state renders as muted, non-clickable
                 so users see the affordance is gated. */}
             <div className="flex items-center space-x-3">
-              {policy.isFrozen ? (
+              {policy.isFrozen || !can.execute ? (
                 <span
                   className="cursor-not-allowed text-sm text-fg-subtle"
-                  title={t.freeze.cannotExecute}
+                  title={policy.isFrozen ? t.freeze.cannotExecute : tPolicies('actionNotPermitted')}
                 >
                   {t.executeAction}
                 </span>
@@ -304,7 +324,7 @@ function DraggablePolicyItem({
               {/* 编辑：仅当策略可编辑（未冻结）时显示——不可编辑时直接隐藏，不再置灰。
                   且仅桌面端（≥ lg）：编辑用 Monaco 代码编辑器，窄屏（< lg，如 661px）点进去无法
                   编辑，故与分组侧栏/多选/New Policy 同断点隐藏。 */}
-              {!policy.isFrozen && (
+              {!policy.isFrozen && can.update && (
                 <Link
                   href={`/${locale}/policies/${policy.id}/edit`}
                   className="hidden text-sm text-fg-muted hover:text-fg lg:inline"
@@ -313,8 +333,11 @@ function DraggablePolicyItem({
                 </Link>
               )}
               <button
+                type="button"
                 onClick={() => onDelete(policy)}
-                className="text-sm text-danger hover:opacity-80"
+                disabled={!can.delete}
+                title={can.delete ? undefined : tPolicies('actionNotPermitted')}
+                className="text-sm text-danger hover:opacity-80 disabled:cursor-not-allowed disabled:text-fg-subtle disabled:hover:opacity-100"
               >
                 {t.delete}
               </button>
@@ -372,12 +395,16 @@ interface PoliciesContentProps {
   locale: string;
   /** 平台开关 policy_sharing.enabled（服务端读取）；关着时不渲染、不请求共享区块。 */
   sharingEnabled: boolean;
+  /** 本人可查看策略的团队（归属筛选选项） */
+  teams: { id: string; name: string }[];
   pagination: {
     page: number;
     pageSize: number;
     total: number;
     selectedGroupId: string | null;
     query: string;
+    /** 归属筛选：null = 全部，'personal' = 个人，其余为团队 id */
+    scope: string | null;
   };
 }
 
@@ -388,6 +415,7 @@ export function PoliciesContent({
   translations: t,
   locale,
   sharingEnabled,
+  teams,
   pagination,
 }: PoliciesContentProps) {
   // 延迟挂载 DndContext，避免 @dnd-kit aria 属性导致的 hydration mismatch (#418)
@@ -440,6 +468,7 @@ export function PoliciesContent({
   const currentUrlState = useMemo(() => {
     const filters: Record<string, string> = {};
     if (pagination.selectedGroupId) filters.group = pagination.selectedGroupId;
+    if (pagination.scope) filters.scope = pagination.scope;
     return {
       page: pagination.page,
       pageSize: pagination.pageSize,
@@ -503,7 +532,7 @@ export function PoliciesContent({
   // Clear the selection on every pagination-key change and tell the
   // user so they don't wonder why their selection vanished.
   const tPolicies = useTranslations('policies');
-  const paginationKey = `${pagination.page}-${pagination.pageSize}-${pagination.selectedGroupId ?? ''}-${pagination.query}`;
+  const paginationKey = `${pagination.page}-${pagination.pageSize}-${pagination.selectedGroupId ?? ''}-${pagination.scope ?? ''}-${pagination.query}`;
   const previousPaginationKeyRef = useRef(paginationKey);
   useEffect(() => {
     if (previousPaginationKeyRef.current === paginationKey) return;
@@ -949,15 +978,32 @@ export function PoliciesContent({
           </Alert>
         )}
 
-        {policies.length > 0 && (
-          <div className="mt-4">
-            <ListSearchInput
-              value={searchInput}
-              onChange={handleSearchChange}
-              placeholder={tCommon('searchPlaceholder')}
-            />
-          </div>
-        )}
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+          {policies.length > 0 && (
+            <div className="flex-1">
+              <ListSearchInput
+                value={searchInput}
+                onChange={handleSearchChange}
+                placeholder={tCommon('searchPlaceholder')}
+              />
+            </div>
+          )}
+          {/* 归属筛选：全部 / 个人 / 各团队，写入 URL 参数 scope（与 group 筛选同一模式） */}
+          {teams.length > 0 && (
+            <select
+              aria-label={tPolicies('teamFilter.label')}
+              value={pagination.scope ?? ''}
+              onChange={(e) => navigate({ filters: { scope: e.target.value || undefined } })}
+              className="h-9 rounded-md border border-border bg-bg px-3 text-sm text-fg focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="">{tPolicies('teamFilter.all')}</option>
+              <option value="personal">{tPolicies('teamFilter.personal')}</option>
+              {teams.map((team) => (
+                <option key={team.id} value={team.id}>{team.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
 
         {policies.length === 0 ? (
           <div className="mt-8 text-center">

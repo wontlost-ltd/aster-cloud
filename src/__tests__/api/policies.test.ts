@@ -93,6 +93,7 @@ vi.mock('@/lib/cache', () => ({
 
 vi.mock('@/lib/policy-freeze', () => ({
   getPolicyFreezeStatus: vi.fn(),
+  getBatchPolicyFreezeStatus: vi.fn(async () => new Map()),
   isPolicyFrozen: vi.fn(),
 }));
 
@@ -186,7 +187,7 @@ import { GET, POST } from '@/app/api/policies/route';
 import { GET as GET_ID, PUT, DELETE } from '@/app/api/policies/[id]/route';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/prisma';
-import { getPolicyFreezeStatus, isPolicyFrozen } from '@/lib/policy-freeze';
+import { getBatchPolicyFreezeStatus, getPolicyFreezeStatus, isPolicyFrozen } from '@/lib/policy-freeze';
 import { softDeletePolicy } from '@/lib/policy-lifecycle';
 import { invalidatePolicyCache } from '@/lib/cache';
 import { detectPII } from '@/services/pii/detector';
@@ -367,6 +368,8 @@ describe('Policies API - Drizzle Migration', () => {
         frozenCount: 1,
         frozenPolicyIds: new Set(['p2']),
       });
+      // 行冻结按创建者配额批量计算（getBatchPolicyFreezeStatus）
+      vi.mocked(getBatchPolicyFreezeStatus).mockResolvedValueOnce(new Map([['user-1', new Set(['p2'])]]));
 
       const response = await GET();
       const body = await response.json();

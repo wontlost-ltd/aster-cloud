@@ -71,6 +71,8 @@ export function policyAccessModule() {
       (policy.teamId ? { kind: 'all' } : { kind: 'user', userId: policy.userId }),
     teamMemberIds: vi.fn((teamId: string) => ({ __teamMembers: teamId })),
     authorizeGroupPlacement: vi.fn(async () => true),
+    authorizePolicyActions: vi.fn(async (actor: Actor, list: ReadonlyArray<PolicyAccessSubject & { id: string }>, action: PolicyAction) =>
+      new Map(list.map((policy) => [policy.id, decide(actor, policy, action)]))),
     teamsAllowing: vi.fn(() => ({ __teamsAllowing: true })),
     isPersonalPolicy: vi.fn(() => ({ __personal: true })),
     policiesVisibleTo: vi.fn(() => ({ __visible: true })),

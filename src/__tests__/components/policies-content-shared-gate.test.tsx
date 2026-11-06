@@ -48,7 +48,8 @@ function renderContent(sharingEnabled: boolean) {
       translations={anyStrings()}
       locale="zh"
       sharingEnabled={sharingEnabled}
-      pagination={{ page: 1, pageSize: 25, total: 0, selectedGroupId: null, query: '' }}
+      teams={[]}
+      pagination={{ page: 1, pageSize: 25, total: 0, selectedGroupId: null, query: '', scope: null }}
     />,
   );
 }

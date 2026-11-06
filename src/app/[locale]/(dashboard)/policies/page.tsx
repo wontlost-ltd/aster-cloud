@@ -6,6 +6,8 @@ import { isPolicySharingEnabled } from '@/lib/platform-settings';
 import {
   listPolicyGroupsWithCounts,
   listUserPolicies,
+  listViewablePolicyTeams,
+  policyRowMeta,
   type PolicyGroupWithCount,
 } from '@/lib/policies';
 import {
@@ -24,7 +26,7 @@ export const generateMetadata = localizedTitle('dashboardNav', 'policies');
 const POLICIES_URL_OPTS: ListUrlOptions = {
   defaultPageSize: 25,
   allowedPageSizes: [25, 50, 100],
-  filterKeys: ['group'],
+  filterKeys: ['group', 'scope'],
 };
 
 type SidebarGroup = PolicyGroupWithCount & { _count: { policies: number } };
@@ -66,16 +68,19 @@ export default async function PoliciesPage({
   // execution-count query doesn't gate the sidebar render.
   // 共享开关在服务端读一次并下发：关着时客户端不再去请求 shared-with-me（该路由对关闭态
   // 有意回 404，会在浏览器控制台留下 404 噪音）。
-  const [groupsRaw, freezeStatus, sharingEnabled] = await Promise.all([
+  const [groupsRaw, freezeStatus, sharingEnabled, teams] = await Promise.all([
     listPolicyGroupsWithCounts(userId),
     getPolicyFreezeStatus(userId),
     isPolicySharingEnabled(),
+    listViewablePolicyTeams(userId),
   ]);
 
   // ★文件夹式导航（2026-07-15）：选中某组时，右侧只显示**直属该组**的策略（不再把子分组
   // 的策略递归带进父视图）——子分组作为可下钻的项显示在右侧顶部（见 policies-content）。
   // 故不再传 descendantIds（listUserPolicies 只按 groupId 精确过滤）。ungrouped 语义不变。
   const groupFilter = urlState.filters.group;
+  // 归属筛选：全部 / personal / 团队 id（列表查询只在可见集合内收窄）
+  const scopeFilter = urlState.filters.scope;
 
   const { items: pagePolicies, total, page, pageSize } = await listUserPolicies(
     userId,
@@ -85,6 +90,7 @@ export default async function PoliciesPage({
       groupId: groupFilter ?? null,
       descendantIds: [],
       q: urlState.q,
+      scope: scopeFilter ?? null,
     },
   );
 
@@ -111,8 +117,11 @@ export default async function PoliciesPage({
   // Reshape the policies into the shape PoliciesContent currently
   // expects — keeping the wire format stable means we don't have to
   // touch every renderer that reads `_count.executions` and `isFrozen`.
+  const rowMeta = await policyRowMeta(userId, pagePolicies);
   const policiesForClient = pagePolicies.map((p) => ({
     id: p.id,
+    team: p.team,
+    capabilities: rowMeta.get(p.id)!.capabilities,
     name: p.name,
     description: p.description,
     content: p.content,
@@ -122,7 +131,7 @@ export default async function PoliciesPage({
     group: p.group,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
-    isFrozen: freezeStatus.frozenPolicyIds.has(p.id),
+    isFrozen: rowMeta.get(p.id)!.isFrozen,
     _count: { executions: p.executionCount },
   }));
 
@@ -196,12 +205,14 @@ export default async function PoliciesPage({
       translations={translations}
       locale={locale}
       sharingEnabled={sharingEnabled}
+      teams={teams}
       pagination={{
         page,
         pageSize,
         total,
         selectedGroupId: groupFilter ?? null,
         query: urlState.q ?? '',
+        scope: scopeFilter ?? null,
       }}
     />
   );

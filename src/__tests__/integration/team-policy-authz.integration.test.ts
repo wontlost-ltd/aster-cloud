@@ -116,6 +116,7 @@ import * as archiveRoute from '@/app/api/v1/policies/[id]/versions/[version]/arc
 import * as whatifBatchesRoute from '@/app/api/v1/policies/[id]/whatif-batches/route';
 import * as whatifBatchRoute from '@/app/api/v1/policies/[id]/whatif-batches/[batchId]/route';
 import * as v1ListRoute from '@/app/api/v1/policies/route';
+import { listUserPolicies } from '@/lib/policies';
 import * as v1ExecuteRoute from '@/app/api/v1/policies/[id]/execute/route';
 
 const P = 'it-tpa';
@@ -609,8 +610,57 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('团队策略授权矩阵（真
     it('被移除的创建者的「我的策略」不再含团队策略', async () => {
       const ex = await bodyOf<{ policies: Array<{ id: string }> }>(call.myList('ex'));
       expect(ex.policies.map((p) => p.id)).toEqual([]);
-      const owner = await bodyOf<{ policies: Array<{ id: string }> }>(call.myList('owner'));
-      expect(owner.policies.map((p) => p.id).sort()).toEqual([POL.own, POL.personal].sort());
+    });
+
+    type MyListItem = { id: string; team: { id: string; name: string } | null; isFrozen: boolean };
+    const TEAM_VISIBLE: string[] = [POL.ex, POL.mem, POL.own, POL.view];
+
+    it('/policies 列表：本人个人策略 + 可查看团队的全部团队策略（含队友创建），各带 team', async () => {
+      for (const actor of ['owner', 'admin', 'member', 'viewer'] as const) {
+        const body = await bodyOf<{ policies: MyListItem[] }>(call.myList(actor));
+        const personal = actor === 'owner' ? [POL.personal] : actor === 'member' ? [POL.blankTeam] : [];
+        expect(body.policies.map((p) => p.id).sort(), actor).toEqual([...TEAM_VISIBLE, ...personal].sort());
+        for (const p of body.policies) {
+          expect(p.team, p.id).toEqual(TEAM_VISIBLE.includes(p.id) ? { id: TEAM, name: 'Authz Team' } : null);
+        }
+      }
+    });
+
+    it('/policies 列表：离队后队友的团队策略不再出现；非成员看不到团队策略与他人个人策略；已删除不出现', async () => {
+      await db.delete(teamMembers).where(eq(teamMembers.id, `${P}-tm-admin`));
+      expect((await bodyOf<{ policies: MyListItem[] }>(call.myList('admin'))).policies).toEqual([]);
+      const outsider = await bodyOf<{ policies: MyListItem[] }>(call.myList('outsider'));
+      expect(outsider.policies).toEqual([]);
+      const owner = await bodyOf<{ policies: MyListItem[] }>(call.myList('owner'));
+      expect(owner.policies.map((p) => p.id)).not.toContain(POL.deleted);
+      expect(owner.policies.map((p) => p.id)).not.toContain(POL.blankTeam);
+    });
+
+    it('/policies 列表：冻结状态按策略创建者的套餐配额计算（与详情页 isPolicyFrozen(policy.userId) 一致）', async () => {
+      // member 为 Free（策略上限 5）：给 member 补足个人策略使其最旧的一条（POL.mem）超限被冻结
+      const old = new Date(Date.now() - 86_400_000);
+      await db.update(policies).set({ updatedAt: old }).where(eq(policies.id, POL.mem));
+      const extra = [1, 2, 3, 4].map((i) => `${P}-pol-extra-${i}`);
+      await db.insert(policies).values(extra.map((id) => ({ id, userId: U.member, teamId: null, name: id, content: SOURCE, version: 1, updatedAt: new Date() })) as Array<typeof policies.$inferInsert>);
+      try {
+        const owner = await bodyOf<{ policies: MyListItem[] }>(call.myList('owner'));
+        expect(owner.policies.find((p) => p.id === POL.mem)?.isFrozen).toBe(true);
+        expect(owner.policies.find((p) => p.id === POL.own)?.isFrozen).toBe(false);
+      } finally {
+        await db.delete(policies).where(inArray(policies.id, extra));
+      }
+    });
+
+    it('/policies 页面数据（listUserPolicies）与 API 同一口径，并支持按个人 / 团队筛选', async () => {
+      const all = await listUserPolicies(U.viewer);
+      expect(all.items.map((p) => p.id).sort()).toEqual([...TEAM_VISIBLE].sort());
+      expect(all.items.every((p) => p.team?.id === TEAM)).toBe(true);
+      const owner = await listUserPolicies(U.owner, { scope: 'personal' });
+      expect(owner.items.map((p) => p.id)).toEqual([POL.personal]);
+      const team = await listUserPolicies(U.owner, { scope: TEAM });
+      expect(team.items.map((p) => p.id).sort()).toEqual([...TEAM_VISIBLE].sort());
+      // 筛选不授予访问：非成员按团队 id 筛选仍为空
+      expect((await listUserPolicies(U.outsider, { scope: TEAM })).total).toBe(0);
     });
   });
 

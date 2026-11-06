@@ -20,9 +20,17 @@ import {
   sql,
   type SQL,
 } from 'drizzle-orm';
-import { db, executions, policies, policyGroups } from '@/lib/prisma';
+import { db, executions, policies, policyGroups, teams } from '@/lib/prisma';
 import { escapeLikePattern } from '@/lib/sql-escape';
-import { ownPoliciesVisibleTo } from '@/lib/policy-access';
+import {
+  authorizePolicyActions,
+  isPersonalPolicy,
+  ownPoliciesVisibleTo,
+  policiesVisibleTo,
+  teamsAllowing,
+  type PolicyAction,
+} from '@/lib/policy-access';
+import { getBatchPolicyFreezeStatus } from '@/lib/policy-freeze';
 
 export interface PolicyGroupRef {
   id: string;
@@ -31,8 +39,21 @@ export interface PolicyGroupRef {
   parentId: string | null;
 }
 
+/** 列表行所属团队；个人策略为 null。 */
+export interface PolicyTeamRef {
+  id: string;
+  name: string;
+}
+
+/** 列表行上的操作按钮所需的授权结果（authorizePolicyActions 判定，页面据此禁用按钮）。 */
+export type PolicyRowCapabilities = Record<'execute' | 'update' | 'delete', boolean>;
+
 export interface PolicyListEntry {
   id: string;
+  /** 创建者；团队策略的冻结状态按创建者的套餐配额计算 */
+  userId: string;
+  teamId: string | null;
+  team: PolicyTeamRef | null;
   name: string;
   description: string | null;
   content: string;
@@ -70,6 +91,56 @@ export interface ListPoliciesOptions {
   descendantIds?: readonly string[];
   /** Free-text search across policy name + description. */
   q?: string;
+  /**
+   * 归属筛选：undefined = 全部，'personal' = 仅本人个人策略，其余值 = 该团队的团队策略。
+   * 只在可见集合内收窄，不授予访问。
+   */
+  scope?: string | null;
+}
+
+/** 归属筛选的「仅个人策略」取值（URL 参数 scope=personal）。 */
+export const PERSONAL_SCOPE = 'personal';
+
+/**
+ * 「策略」列表的可见集合：本人的个人策略 + 本人当前角色可查看的团队的全部团队策略（含队友创建的）。
+ * 与团队页 /api/teams/[teamId]/policies 的可见口径一致（policiesVisibleTo(view)）；离队即不可见。
+ */
+export function policyListPredicate(userId: string, scope?: string | null): SQL {
+  const visible = policiesVisibleTo(userId, 'view');
+  if (!scope) return visible;
+  return and(visible, scope === PERSONAL_SCOPE ? isPersonalPolicy() : eq(policies.teamId, scope))!;
+}
+
+/** 本人当前角色可查看策略的团队（归属筛选的选项），按名称排序。 */
+export async function listViewablePolicyTeams(userId: string): Promise<PolicyTeamRef[]> {
+  return db
+    .select({ id: teams.id, name: teams.name })
+    .from(teams)
+    .where(inArray(teams.id, teamsAllowing(userId, 'view')))
+    .orderBy(teams.name);
+}
+
+const ROW_ACTIONS = ['execute', 'update', 'delete'] as const satisfies readonly PolicyAction[];
+
+/**
+ * 列表行的冻结状态与操作授权。
+ * 冻结按**创建者**的套餐配额计算（getBatchPolicyFreezeStatus），与详情 / 编辑 / 执行页的
+ * isPolicyFrozen(policy.userId) 同一口径：队友创建的团队策略是否冻结取决于队友的配额，而非查看者。
+ */
+export async function policyRowMeta(
+  userId: string,
+  rows: ReadonlyArray<{ id: string; userId: string; teamId: string | null }>,
+): Promise<Map<string, { isFrozen: boolean; capabilities: PolicyRowCapabilities }>> {
+  const [frozenByOwner, ...decisions] = await Promise.all([
+    getBatchPolicyFreezeStatus(rows.map((r) => r.userId)),
+    ...ROW_ACTIONS.map((action) => authorizePolicyActions({ userId }, rows, action)),
+  ]);
+  return new Map(rows.map((row) => {
+    const capabilities = Object.fromEntries(
+      ROW_ACTIONS.map((action, i) => [action, decisions[i].get(row.id)?.allowed ?? false]),
+    ) as PolicyRowCapabilities;
+    return [row.id, { isFrozen: frozenByOwner.get(row.userId)?.has(row.id) ?? false, capabilities }];
+  }));
 }
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -97,9 +168,8 @@ export async function listUserPolicies(
   const page = normalizePage(opts.page);
   const pageSize = normalizePageSize(opts.pageSize);
 
-  // 本人创建的策略；团队策略只保留本人当前仍是成员的（离队 / 被移除后不再出现，#670）
   const conditions: SQL[] = [
-    ownPoliciesVisibleTo(userId),
+    policyListPredicate(userId, opts.scope),
     isNull(policies.deletedAt),
   ];
 
@@ -139,6 +209,7 @@ export async function listUserPolicies(
             parentId: true,
           },
         },
+        team: { columns: { id: true, name: true } },
       },
     }),
     db
@@ -167,6 +238,9 @@ export async function listUserPolicies(
 
   const items: PolicyListEntry[] = rows.map((policy) => ({
     id: policy.id,
+    userId: policy.userId,
+    teamId: policy.teamId,
+    team: policy.team ?? null,
     name: policy.name,
     description: policy.description,
     content: policy.content,
