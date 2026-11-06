@@ -3,13 +3,13 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { requireAdmin } from '@/lib/admin-auth';
 import { requireLicenseWriteOk } from '@/lib/license-write-gate';
 import { db, structuralAliasGrants, users } from '@/lib/prisma';
-import { bypassQueryCache } from '@/db/fresh-read';
+import { bypassQueryCache, freshDb } from '@/db/fresh-read';
 
 export async function GET() {
   const check = await requireAdmin();
   if (check instanceof NextResponse) return check;
 
-  const rows = await db
+  const rows = await freshDb
     .select({
       userId: users.id,
       email: users.email,

@@ -13,6 +13,11 @@ export interface HyperdriveBinding {
 
 export interface CloudflareEnv {
   HYPERDRIVE?: HyperdriveBinding;
+  /**
+   * 关闭查询缓存（--caching-disabled）的第二个 Hyperdrive 配置（#624）。
+   * 只给一致性敏感的读用（见 getFreshDb）；未配置时回落到 HYPERDRIVE。
+   */
+  HYPERDRIVE_FRESH?: HyperdriveBinding;
 }
 
 /**

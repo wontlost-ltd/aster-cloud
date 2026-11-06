@@ -29,7 +29,7 @@ import {
   userVocabularyVersions,
   type DomainTerm,
 } from '@/lib/prisma';
-import { bypassQueryCache } from '@/db/fresh-read';
+import { bypassQueryCache, freshDb } from '@/db/fresh-read';
 import { escapeLikePattern } from '@/lib/sql-escape';
 import { logAuditEvent } from '@/lib/audit-log';
 import {
@@ -542,7 +542,7 @@ export async function countActiveUserVocabularyTerms(userId: string): Promise<nu
  */
 export async function getUserVocabularyVersion(userId: string): Promise<string> {
   try {
-    const [row] = await db
+    const [row] = await freshDb
       .select({ version: userVocabularyVersions.version })
       .from(userVocabularyVersions)
       .where(and(eq(userVocabularyVersions.userId, userId), bypassQueryCache()));
@@ -564,7 +564,7 @@ export async function getUserVocabularyVersion(userId: string): Promise<string> 
  * 走 UserDomainTerm 的 userId 前缀索引，用户词条有配额上限，代价可控；同样绕过 Hyperdrive 缓存。
  */
 async function getUserVocabularyFingerprint(userId: string): Promise<string> {
-  const [row] = await db
+  const [row] = await freshDb
     .select({
       count: sql<number>`count(*)::int`,
       lastChange: sql<string | null>`(floor(extract(epoch from greatest(max(${userDomainTerms.updatedAt}), max(${userDomainTerms.deletedAt}), max(${userDomainTerms.archivedAt}))) * 1000))::bigint::text`,

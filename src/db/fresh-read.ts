@@ -14,10 +14,27 @@
  * 不要用，否则白白放弃缓存收益。
  *
  * 不靠 SQL 注释做缓存控制：Hyperdrive 文档明确说注释不是受支持的缓存开关。
- * 若将来需要成批的新鲜读，官方推荐的长期方案是再建一个 `--caching-disabled` 的
- * Hyperdrive 配置并绑定为第二个 binding（需人工在 Cloudflare 侧创建）。
+ * 长期方案（#624）：一致性敏感的读改用 freshDb，走关闭缓存的第二个 Hyperdrive 绑定
+ * HYPERDRIVE_FRESH（需人工在 Cloudflare 侧创建）。绑定上线并在 Hyperdrive 指标里确认
+ * 这些查询不再命中缓存之前，调用点同时保留 bypassQueryCache() 兜底。
  */
 import { sql, type SQL } from 'drizzle-orm';
+import { getCloudflareEnvSync } from '@/db/binding';
+import { db, getFreshDb, type Database } from '@/lib/prisma';
+
+/**
+ * 一致性敏感读用的数据库实例：有 HYPERDRIVE_FRESH 绑定时经 getFreshDb() 走关闭缓存的配置，
+ * 否则就是全局 db。只用于事务之外的读：它是另一条连接，看不到当前事务里未提交的写入。
+ *
+ * 不直接引入 @/db：本模块被大量单测间接加载，这些单测只 mock 了 @/lib/prisma，
+ * 引入 @/db 会连带加载 schema 与 postgres 驱动。
+ */
+export const freshDb = new Proxy({} as Database, {
+  get(_target, prop) {
+    const actual = getCloudflareEnvSync()?.HYPERDRIVE_FRESH?.connectionString ? getFreshDb() : db;
+    return Reflect.get(actual, prop, actual);
+  },
+});
 
 export function bypassQueryCache(): SQL {
   return sql`NOW() IS NOT NULL`;

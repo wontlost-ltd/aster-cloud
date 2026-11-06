@@ -59,6 +59,15 @@ binding = "HYPERDRIVE"
 id = "b712d2c83ffe41f0b4d0ec615314a935"
 localConnectionString = "postgres://placeholder:placeholder@localhost:5432/aster_cloud_dev"
 
+# 关闭查询缓存的第二个 Hyperdrive 配置（#624）：一致性敏感的读（成员关系、权限、写后即读）
+# 经 @/db/fresh-read 的 freshDb 走这个绑定；未配置时回落到 HYPERDRIVE + bypassQueryCache()。
+# 需人工先创建配置再取消注释（id 不存在会让部署失败）：
+#   wrangler hyperdrive create aster-cloud-fresh --connection-string=<生产串> --caching-disabled
+# [[hyperdrive]]
+# binding = "HYPERDRIVE_FRESH"
+# id = "<上面命令输出的 id>"
+# localConnectionString = "postgres://placeholder:placeholder@localhost:5432/aster_cloud_dev"
+
 # Cron triggers
 # 这些表达式由 worker.js 的 scheduled() 处理函数派发到对应路由，详见
 # src/lib/cron-registry.ts。同一窗口的并发触发（Workers + 外部 curl）
