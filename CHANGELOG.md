@@ -6,6 +6,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- Evaluate-source 400 诊断透传模块 reason（已登记枚举） (#734) *(playground)*
 - 团队共享领域词汇（#672，ADR 0017） (#730) *(vocab)*
 - 一致性敏感读改走 freshDb，支持关闭缓存的 HYPERDRIVE_FRESH 绑定（#624 PR A） (#729) *(db)*
 - Cloud 签发短时 ticket，网关验签（#657 过渡阶段） (#728) *(lsp)*
@@ -346,7 +347,6 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
-- **API v1 兼容性变化**：执行 422（`input_type_extraction_failed`）的 `diagnostics` 解析码由 P0xx / L0xx 改为 E050–E069（ADR 0051 §16 R56，对照见 docs/api/policy-execute-input.md §3b）；resolver 迁移构造分诊改认 E057 / E064 (#732) *(api)*
 - PROFILE_KEYWORDS 仅模块内使用，取消导出 *(policy)*
 - 存储 manifest 定型为 EvidenceManifestV1 | EvidenceManifest，读取侧按 schemaVersion 收窄（ADR 0041 §5） *(evidence)*
 - 策略租户 id 统一经 policyTenantId 推导（teamId || userId） *(evidence)*
@@ -378,6 +378,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Documentation
 
+- Refresh unreleased (#687) *(changelog)*
 - Refresh unreleased (#551) *(changelog)*
 - Refresh unreleased (#549) *(changelog)*
 - Refresh unreleased *(changelog)*
@@ -697,6 +698,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- 解析诊断改读新码 E05x，为 ts 1.0.42 删除 legacyCode 做准备 (#732) *(policy)*
 - /policies 列表显示本人可查看团队的团队策略 (#727) *(policies)*
 - 去掉 team-policy-authz 集成测试合并 #721 / #723 后重复的 node:fs / node:path 导入 (#724) *(test)*
 - 上游错误原文不再回传——审批动作 / schema / Cedar 4xx 白名单 / playground；版本 hook 去中文兜底（#711） (#720) *(api)*
