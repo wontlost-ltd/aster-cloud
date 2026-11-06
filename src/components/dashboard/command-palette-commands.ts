@@ -102,6 +102,7 @@ export interface BuildCommandsArgs {
     newPolicy: string;
     reports: string;
     approvals: string;
+    governance: string;
     teams: string;
     security: string;
     billing: string;
@@ -138,6 +139,7 @@ export function buildCommands({
     { id: 'domain-vocabularies', group: 'navigate', icon: 'book-text', label: labels.domainVocabularies, href: `${p}/domain-vocabularies`, keywords: ['vocabulary', 'terms', '词汇', 'Fachbegriffe'] },
     { id: 'reports',    group: 'navigate', icon: 'file-text',    label: labels.reports,   href: `${p}/reports`,           keywords: ['report', '报告', 'berichte'] },
     { id: 'approvals',  group: 'navigate', icon: 'clipboard-check', label: labels.approvals, href: `${p}/approvals`,       keywords: ['approval', 'approve', '审批', 'genehmigung', 'अनुमोदन'] },
+    { id: 'governance', group: 'navigate', icon: 'shield-check', label: labels.governance, href: `${p}/governance`,     keywords: ['governance', 'control', 'regulation', '治理', '控制项', 'kontrolle', 'शासन'] },
     { id: 'teams',      group: 'navigate', icon: 'users',        label: labels.teams,     href: `${p}/teams`,             keywords: ['team', '团队'] },
     { id: 'security',   group: 'navigate', icon: 'shield-check', label: labels.security,  href: `${p}/security`,          keywords: ['security', '安全'] },
     ...(aiWorkspace

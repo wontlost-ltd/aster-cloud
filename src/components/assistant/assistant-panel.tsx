@@ -53,6 +53,7 @@ export function AssistantPanel() {
           domainVocabularies: tNav('domainVocabularies'),
           reports: tNav('reports'),
           approvals: tNav('approvals'),
+          governance: tNav('governance'),
           teams: tNav('teams'),
           security: tNav('security'),
           billing: tNav('billing'),

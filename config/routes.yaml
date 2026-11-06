@@ -296,6 +296,13 @@ routes:
     auth: required
     locales: all
 
+  - path: /governance
+    status: canonical-here
+    owner: app
+    source: src/app/[locale]/(dashboard)/governance/page.tsx
+    auth: required
+    locales: all
+
   - path: /domain-vocabularies
     status: canonical-here
     owner: app
