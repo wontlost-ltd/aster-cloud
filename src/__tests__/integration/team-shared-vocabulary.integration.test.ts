@@ -249,6 +249,24 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('团队共享领域词汇（#67
     expect(localizedOf(teamList.body.items)).toEqual(['Auto', 'Fahrer']);
   });
 
+  it('并发：同一团队并发新增在 advisory lock 下不超过 owner 套餐额度', async () => {
+    quota.cap = 2;
+    const actors: Actor[] = ['member', 'admin', 'owner', 'member', 'admin', 'owner'];
+    const results = await Promise.all(actors.map((actor, i) => {
+      // 不经 as()：并发时 current.userId 会被互相覆盖，这里直接调服务层并显式传归属
+      return import('@/lib/domain-vocabulary').then(({ addUserVocabularyTerm, teamOwner }) =>
+        addUserVocabularyTerm(U[actor], struct(`Thing${i}`, `Ding${i}`) as never, teamOwner(TEAM))
+          .then(() => 'ok', (err: { code?: string }) => err.code));
+    }));
+    expect(results.filter((r) => r === 'ok')).toHaveLength(2);
+    expect(results.filter((r) => r === 'quota_exceeded')).toHaveLength(4);
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(userDomainTerms)
+      .where(sql`${userDomainTerms.teamId} = ${TEAM} AND ${userDomainTerms.deletedAt} IS NULL`);
+    expect(count).toBe(2);
+  });
+
   it('团队词条与创建者个人视图互不混入：个人列表不含自己创建的团队词条，同一词条可同时为个人与团队所有', async () => {
     expect((await addTerm('owner', struct('Driver', 'Fahrer'), TEAM)).status).toBe(201);
     expect((await addTerm('owner', struct('Driver', 'Fahrer'))).status).toBe(201);

@@ -171,7 +171,8 @@ export function useUserVocabularyRegistration({
   teamId = null,
 }: UseUserVocabularyRegistrationOptions): UseUserVocabularyRegistrationResult {
   const [authorRows, setAuthorRows] = useState<TermLikeRow[]>([]);
-  const [teamRows, setTeamRows] = useState<TermLikeRow[]>([]);
+  // 团队词条连同所属团队一起存：只有与当前 teamId 一致时才参与合并，切换团队期间不会混入上一团队的词条。
+  const [teamState, setTeamState] = useState<{ teamId: string; rows: TermLikeRow[] } | null>(null);
   const active = Boolean(enabled && tenantId);
   const teamActive = active && Boolean(teamId);
 
@@ -201,22 +202,25 @@ export function useUserVocabularyRegistration({
   useEffect(() => {
     if (!teamActive) return;
     let cancelled = false;
-    void fetchAllTermRows(teamId)
-      .then((next) => {
-        if (!cancelled && next) setTeamRows(next);
-      })
-      .catch(() => {
-        // 同上：失败保持上一次结果。
-      });
+    const requested = teamId!;
+    // 失败（含 403：已离队 / 权限失效）时清空团队词条，不沿用旧数据——宁可退回作者词汇，
+    // 也不能让编辑器继续用已无权访问的团队词汇编译。
+    const settle = (rows: TermLikeRow[]) => {
+      if (!cancelled) setTeamState({ teamId: requested, rows });
+    };
+    void fetchAllTermRows(requested)
+      .then((next) => settle(next ?? []))
+      .catch(() => settle([]));
     return () => {
       cancelled = true;
     };
-  }, [teamActive, teamId, teamTick]);
+  }, [teamActive, teamId, tenantId, teamTick]);
 
   // 团队策略：团队词条 + 作者词条，冲突时团队优先（与服务端保存 / 冻结同一合并）。
+  const teamRows = teamActive && teamState?.teamId === teamId ? teamState.rows : null;
   const merged = useMemo(
-    () => (teamActive ? mergeTeamAndAuthorRows(teamRows, authorRows) : { rows: authorRows, shadowed: [] }),
-    [teamActive, teamRows, authorRows],
+    () => (teamRows ? mergeTeamAndAuthorRows(teamRows, authorRows) : { rows: authorRows, shadowed: [] }),
+    [teamRows, authorRows],
   );
 
   // 作用域随源码变化；延迟值避免每次按键都同步扫描全部词条。

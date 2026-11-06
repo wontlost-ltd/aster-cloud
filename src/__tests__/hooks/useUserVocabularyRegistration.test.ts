@@ -186,6 +186,47 @@ describe('useUserVocabularyRegistration', () => {
       expect(result.current.registrationKey).toBe(server);
     });
 
+    it('切换团队期间不使用上一团队的词条（新团队请求未返回前）', async () => {
+      let releaseTeam2!: () => void;
+      fetchMock.mockImplementation(async (url: string) => {
+        const team = new URL(url, 'http://x').searchParams.get('teamId');
+        if (team === 'team-2') {
+          await new Promise<void>((resolve) => { releaseTeam2 = resolve; });
+          return { ok: true, json: async () => ({ items: [], total: 0 }) };
+        }
+        const items = team === 'team-1' ? TEAM_ITEMS : ITEMS;
+        return { ok: true, json: async () => ({ items, total: items.length }) };
+      });
+      const { result, rerender } = renderHook(
+        ({ teamId }) => useUserVocabularyRegistration({ tenantId: 'tenant-hook', locale: 'de-DE', source: SOURCE, teamId }),
+        { initialProps: { teamId: 'team-1' } },
+      );
+      await waitFor(() => expect(result.current.vocabulary?.structs.map((m) => m.canonical)).toEqual(['Vehicle']));
+      rerender({ teamId: 'team-2' });
+      await waitFor(() => expect(result.current.vocabulary?.structs.map((m) => m.canonical)).toEqual(['Driver']));
+      expect(result.current.shadowed).toEqual([]);
+      releaseTeam2();
+    });
+
+    it('团队词条请求失败或 403（离队）后移除团队词汇，编辑器回到作者词汇', async () => {
+      let teamStatus = 200;
+      fetchMock.mockImplementation(async (url: string) => {
+        const team = new URL(url, 'http://x').searchParams.get('teamId');
+        if (team === 'team-1' && teamStatus !== 200) return { ok: false, status: teamStatus, json: async () => ({}) };
+        const items = team === 'team-1' ? TEAM_ITEMS : ITEMS;
+        return { ok: true, json: async () => ({ items, total: items.length }) };
+      });
+      const { result, rerender } = renderHook(
+        ({ tick }) => useUserVocabularyRegistration({ tenantId: `tenant-${tick}`, locale: 'de-DE', source: SOURCE, teamId: 'team-1' }),
+        { initialProps: { tick: 0 } },
+      );
+      await waitFor(() => expect(result.current.vocabulary?.structs.map((m) => m.canonical)).toEqual(['Vehicle']));
+      teamStatus = 403;
+      rerender({ tick: 1 });
+      await waitFor(() => expect(result.current.vocabulary?.structs.map((m) => m.canonical)).toEqual(['Driver']));
+      expect(result.current.shadowed).toEqual([]);
+    });
+
     it('个人策略不拉团队词条，也没有遮蔽提示', async () => {
       const { result } = renderHook(() =>
         useUserVocabularyRegistration({ tenantId: 'tenant-hook', locale: 'de-DE', source: SOURCE }),
