@@ -10,9 +10,9 @@
  */
 
 import { createHash } from 'node:crypto';
-import { canonicalScopesJson, parseSource, resolvePolicyTypes, type PolicyTypes } from '@aster-cloud/aster-lang-ts/browser';
-import { getLexicon, type Lexicon } from '@/lib/aster-lexicon';
-import { buildSpellingTable, candidatesOf, lookupSpelling, type ExecutionVocabulary, type PolicyInputTypes } from './mapper';
+import { canonicalScopesJson, resolvePolicyTypes, resolveSpelling, type PolicyTypes } from '@aster-cloud/aster-lang-ts/browser';
+import { getLexicon } from '@/lib/aster-lexicon';
+import { candidatesOf, slotSpellingIndex, type ExecutionVocabulary, type PolicyInputTypes } from './mapper';
 
 type AliasSet = Record<string, readonly string[]> | null | undefined;
 type PolicyFunction = PolicyTypes['functions'][number];
@@ -28,7 +28,7 @@ export interface PolicyTypeSource {
 }
 
 type Resolved =
-  | { readonly ok: true; readonly types: PolicyTypes; /** 每个函数是否带 @entry（与 functions 同序）。 */ readonly entries: readonly boolean[] }
+  | { readonly ok: true; readonly types: PolicyTypes }
   | { readonly ok: false; readonly diagnostics: readonly string[] };
 
 /** 每个 isolate 最多缓存的版本数；单条只含声明骨架，体积很小。 */
@@ -38,14 +38,6 @@ const cache = new Map<string, Resolved>();
 function mutableAliases(aliasSet: AliasSet): Record<string, string[]> | undefined {
   if (!aliasSet || Object.keys(aliasSet).length === 0) return undefined;
   return Object.fromEntries(Object.entries(aliasSet).map(([k, v]) => [k, [...v]]));
-}
-
-function lexiconWithAliases(locale: string, aliasSet: AliasSet): Lexicon {
-  const base = getLexicon(locale);
-  const aliases = mutableAliases(aliasSet);
-  if (!aliases) return base;
-  const baseAliases = (base as { aliases?: Record<string, readonly string[]> }).aliases ?? {};
-  return { ...base, aliases: { ...baseAliases, ...aliases } } as Lexicon;
 }
 
 function sha256(...parts: string[]): string {
@@ -62,18 +54,6 @@ function cacheKey(input: PolicyTypeSource): string {
 }
 
 /* ---------------------------------------------------------------- 解析 */
-
-/**
- * 各函数是否带 @entry：PolicyTypes 不含注解，只在需要选入口（多于一个函数）时再解析一次 AST。
- * 词汇不影响 AST 结构（标识符保持原写法），函数声明顺序与 PolicyTypes.functions 一致。
- */
-function entryFlags(input: PolicyTypeSource, functionCount: number): boolean[] {
-  if (functionCount <= 1) return new Array<boolean>(functionCount).fill(false);
-  const { ast } = parseSource(input.source, lexiconWithAliases(input.locale, input.aliasSet), input.vocabulary?.scopes);
-  return ast.decls
-    .filter((d) => d.kind === 'Func')
-    .map((d) => ((d as { annotations?: ReadonlyArray<{ name?: string }> }).annotations ?? []).some((a) => a?.name === 'entry'));
-}
 
 /**
  * 对外展示引擎的共享诊断码（解析错误为 E050–E069，ADR 0051 §16 R56），与编辑器一致。
@@ -95,7 +75,7 @@ function resolveTypes(input: PolicyTypeSource): Resolved {
       console.warn('[execution-input] failed to extract policy types', { locale: input.locale, diagnostics: result.diagnostics });
       return { ok: false, diagnostics };
     }
-    return { ok: true, types: result.types, entries: entryFlags(input, result.types.functions.length) };
+    return { ok: true, types: result.types };
   } catch (err) {
     console.warn('[execution-input] failed to extract policy types', err);
     return { ok: false, diagnostics: [] };
@@ -123,9 +103,9 @@ type EntryChoice = { func: PolicyFunction | undefined } | { ambiguous: readonly 
 
 /** 指定函数名：与引擎同口径匹配作者写法 / 规范名 / 词汇函数词条（精确优先，再折叠）。 */
 function namedFunction(types: PolicyTypes, name: string, vocabulary: ExecutionVocabulary | null | undefined): PolicyFunction | undefined {
-  const table = buildSpellingTable(types.functions, candidatesOf(vocabulary?.scopes.functions));
-  const found = lookupSpelling(table, name);
-  return found.kind === 'one' ? types.functions.find((f) => f.canonical === found.slot.canonical) : undefined;
+  const index = slotSpellingIndex(types.functions, candidatesOf(vocabulary?.scopes.functions));
+  const found = resolveSpelling(index, name);
+  return found.kind === 'one' ? found.item : undefined;
 }
 
 /**
@@ -136,7 +116,7 @@ function namedFunction(types: PolicyTypes, name: string, vocabulary: ExecutionVo
 function pickFunction(resolved: Extract<Resolved, { ok: true }>, functionName: string | undefined, input: PolicyTypeSource): EntryChoice {
   const { functions } = resolved.types;
   if (functionName) return { func: namedFunction(resolved.types, functionName, input.vocabulary) };
-  const entry = functions.find((_, i) => resolved.entries[i]);
+  const entry = functions.find((f) => f.entry);
   if (entry || functions.length <= 1) return { func: entry ?? functions[0] };
   return { ambiguous: functions.map((f) => f.written) };
 }
