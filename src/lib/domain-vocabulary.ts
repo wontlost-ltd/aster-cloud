@@ -25,6 +25,7 @@ import {
   db,
   domainTerms,
   lexiconBulkJobs,
+  teams,
   userDomainTerms,
   userVocabularyVersions,
   type DomainTerm,
@@ -59,6 +60,11 @@ function createHashSync(value: string): string {
   return nodeCreateHash('sha256').update(value).digest('hex');
 }
 
+
+/** 团队词条的审计附加字段（个人词条不加，保持既有审计行形状）。 */
+function ownerAuditMetadata(owner: VocabularyOwner): Record<string, string> {
+  return owner.type === 'team' ? { ownerType: 'team', teamId: owner.teamId } : {};
+}
 
 function truncateForAudit(value: string | null | undefined, max = 256): string | null {
   if (!value) return null;
@@ -106,7 +112,10 @@ export interface TermInput {
 export interface TermLink {
   id: string;
   termId: string;
+  /** 个人词条为所有者；团队词条为创建者。 */
   userId: string;
+  ownerType: 'user' | 'team';
+  teamId: string | null;
   domain: string;
   locale: string;
   kind: string;
@@ -154,6 +163,44 @@ export class VocabularyError extends Error {
   }
 }
 
+/**
+ * 词汇归属（ADR 0017）：个人词条按 userId，团队共享词条按 teamId（团队行的 userId 只记创建者）。
+ * 所有读写都经 {@link ownerPredicate} 限定归属——只按 userId 过滤会把该用户创建的团队词条混进个人视图。
+ */
+export type VocabularyOwner =
+  | { type: 'user'; userId: string }
+  | { type: 'team'; teamId: string };
+
+export function userOwner(userId: string): VocabularyOwner {
+  return { type: 'user', userId };
+}
+
+export function teamOwner(teamId: string): VocabularyOwner {
+  return { type: 'team', teamId };
+}
+
+/** 归属谓词：个人 = ownerType='user' AND userId；团队 = ownerType='team' AND teamId。 */
+export function ownerPredicate(owner: VocabularyOwner): SQL {
+  const predicate = owner.type === 'user'
+    ? and(eq(userDomainTerms.ownerType, 'user'), eq(userDomainTerms.userId, owner.userId))
+    : and(eq(userDomainTerms.ownerType, 'team'), eq(userDomainTerms.teamId, owner.teamId));
+  if (!predicate) throw new VocabularyError('internal_error', 'Failed to build owner predicate');
+  return predicate;
+}
+
+/**
+ * 词条额度按谁的套餐计：个人词条看本人，团队词条看团队 owner（ADR 0017 §3）。
+ * 团队不存在时返回 null，调用方按无额度处理。
+ */
+async function quotaHolderOf(owner: VocabularyOwner): Promise<string | null> {
+  if (owner.type === 'user') return owner.userId;
+  const team = await db.query.teams.findFirst({
+    where: eq(teams.id, owner.teamId),
+    columns: { ownerId: true },
+  });
+  return team?.ownerId ?? null;
+}
+
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = VOCABULARY_LIST_MAX_PAGE_SIZE;
 
@@ -186,6 +233,8 @@ interface JoinedTermRow {
   id: string;
   termId: string;
   userId: string;
+  ownerType: string;
+  teamId: string | null;
   domain: string;
   locale: string;
   kind: string;
@@ -206,6 +255,8 @@ function mapJoinedRow(row: JoinedTermRow): TermLink {
     id: row.id,
     termId: row.termId,
     userId: row.userId,
+    ownerType: row.ownerType === 'team' ? 'team' : 'user',
+    teamId: row.teamId,
     domain: row.domain,
     locale: row.locale,
     kind: row.kind,
@@ -227,6 +278,8 @@ function selectTermLinkFields() {
     id: userDomainTerms.id,
     termId: userDomainTerms.termId,
     userId: userDomainTerms.userId,
+    ownerType: userDomainTerms.ownerType,
+    teamId: userDomainTerms.teamId,
     domain: userDomainTerms.domain,
     locale: userDomainTerms.locale,
     kind: userDomainTerms.kind,
@@ -244,12 +297,12 @@ function selectTermLinkFields() {
 }
 
 async function getTermLink(
-  userId: string,
+  owner: VocabularyOwner,
   linkId: string,
   options: { includeDeleted?: boolean } = {},
 ): Promise<TermLink | null> {
   const conditions: SQL[] = [
-    eq(userDomainTerms.userId, userId),
+    ownerPredicate(owner),
     eq(userDomainTerms.id, linkId),
   ];
   if (!options.includeDeleted) {
@@ -334,7 +387,7 @@ interface ScopedTerm {
 /** 用户在某 (domain, locale) 分组内的活跃词条（作用域冲突校验用）。 */
 async function loadGroupTermRows(
   reader: Tx | typeof db,
-  userId: string,
+  owner: VocabularyOwner,
   group: { domain: string; locale: string },
 ): Promise<Array<TermLikeRow & { linkId: string }>> {
   const rows = (await reader
@@ -343,7 +396,7 @@ async function loadGroupTermRows(
     .innerJoin(domainTerms, eq(userDomainTerms.termId, domainTerms.id))
     .where(
       and(
-        eq(userDomainTerms.userId, userId),
+        ownerPredicate(owner),
         eq(userDomainTerms.domain, group.domain),
         eq(userDomainTerms.locale, group.locale),
         activeLinkPredicate(),
@@ -363,11 +416,11 @@ function scopeConflictMessage(conflicts: ReturnType<typeof findTermScopeConflict
  */
 async function assertNoScopeConflict(
   reader: Tx | typeof db,
-  userId: string,
+  owner: VocabularyOwner,
   term: ScopedTerm,
   excludeLinkId?: string,
 ): Promise<void> {
-  const existing = (await loadGroupTermRows(reader, userId, term)).filter((row) => row.linkId !== excludeLinkId);
+  const existing = (await loadGroupTermRows(reader, owner, term)).filter((row) => row.linkId !== excludeLinkId);
   const message = scopeConflictMessage(findTermScopeConflicts(existing, { ...term, domainTermId: 'candidate' }));
   if (message) throw new VocabularyError('validation_failed', message);
 }
@@ -388,7 +441,7 @@ async function screenBulkScopeConflicts(
   for (const chunkRow of rows) {
     const { normalized } = chunkRow;
     const groupKey = JSON.stringify([normalized.domain, normalized.locale]);
-    const known = groups.get(groupKey) ?? (await loadGroupTermRows(tx, userId, normalized));
+    const known = groups.get(groupKey) ?? (await loadGroupTermRows(tx, userOwner(userId), normalized));
     groups.set(groupKey, known);
     const candidate: TermLikeRow = { ...normalized, domainTermId: `row-${chunkRow.row}` };
     const message = scopeConflictMessage(findTermScopeConflicts(known, candidate));
@@ -439,8 +492,9 @@ export async function getUserVocabularyTerm(
   userId: string,
   linkId: string,
   opts: { includeDeleted?: boolean } = {},
+  owner: VocabularyOwner = userOwner(userId),
 ): Promise<TermLink | null> {
-  return getTermLink(userId, linkId, opts);
+  return getTermLink(owner, linkId, opts);
 }
 
 /**
@@ -449,10 +503,11 @@ export async function getUserVocabularyTerm(
 export async function listUserVocabularyTerms(
   userId: string,
   opts: ListOptions = {},
+  owner: VocabularyOwner = userOwner(userId),
 ): Promise<ListResult> {
   const page = normalizePage(opts.page);
   const pageSize = normalizePageSize(opts.pageSize);
-  const conditions: SQL[] = [eq(userDomainTerms.userId, userId)];
+  const conditions: SQL[] = [ownerPredicate(owner)];
   if (opts.deletedOnly) {
     conditions.push(isNotNull(userDomainTerms.deletedAt), isNull(userDomainTerms.archivedAt), sql`${userDomainTerms.deletedAt} >= now() - interval '90 days'`);
   } else if (!opts.includeDeleted) conditions.push(activeLinkPredicate());
@@ -506,7 +561,7 @@ export async function listUserVocabularyTerms(
       .from(userDomainTerms)
       .where(
         and(
-          eq(userDomainTerms.userId, userId),
+          ownerPredicate(owner),
           isNotNull(userDomainTerms.archivedAt),
         ),
       ),
@@ -522,11 +577,14 @@ export async function listUserVocabularyTerms(
 }
 
 /** 用户全部活跃词条数（不受列表筛选影响），配额卡用（#616）。 */
-export async function countActiveUserVocabularyTerms(userId: string): Promise<number> {
+export async function countActiveUserVocabularyTerms(
+  userId: string,
+  owner: VocabularyOwner = userOwner(userId),
+): Promise<number> {
   const [row] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(userDomainTerms)
-    .where(and(eq(userDomainTerms.userId, userId), activeLinkPredicate()));
+    .where(and(ownerPredicate(owner), activeLinkPredicate()));
   return row?.count ?? 0;
 }
 
@@ -564,13 +622,25 @@ export async function getUserVocabularyVersion(userId: string): Promise<string> 
  * 走 UserDomainTerm 的 userId 前缀索引，用户词条有配额上限，代价可控；同样绕过 Hyperdrive 缓存。
  */
 async function getUserVocabularyFingerprint(userId: string): Promise<string> {
+  return getVocabularyFingerprint(ownerPredicate(userOwner(userId)));
+}
+
+/**
+ * 团队词汇的版本号（ADR 0017）：团队行没有版本表，用与迁移窗口替身同一口径的指纹
+ * （行数 + 最近一次增改删 / 归档时间）。团队词条受 owner 套餐额度约束，走 teamId 前缀索引。
+ */
+export async function getTeamVocabularyVersion(teamId: string): Promise<string> {
+  return getVocabularyFingerprint(ownerPredicate(teamOwner(teamId)));
+}
+
+async function getVocabularyFingerprint(scope: SQL): Promise<string> {
   const [row] = await freshDb
     .select({
       count: sql<number>`count(*)::int`,
       lastChange: sql<string | null>`(floor(extract(epoch from greatest(max(${userDomainTerms.updatedAt}), max(${userDomainTerms.deletedAt}), max(${userDomainTerms.archivedAt}))) * 1000))::bigint::text`,
     })
     .from(userDomainTerms)
-    .where(and(eq(userDomainTerms.userId, userId), bypassQueryCache()));
+    .where(and(scope, bypassQueryCache()));
   return `fp:${row?.count ?? 0}:${row?.lastChange ?? 0}`;
 }
 
@@ -582,7 +652,18 @@ async function getUserVocabularyFingerprint(userId: string): Promise<string> {
  * accidental collisions with other features.
  */
 function userQuotaLockKey(userId: string): bigint {
-  const hash = createHashSync(`lexicon-quota:${userId}`);
+  return quotaLockKey(`lexicon-quota:${userId}`);
+}
+
+/** 写锁 key：个人沿用原 key（与既有写路径同一把锁），团队按 teamId 单独一把。 */
+function ownerLockKey(owner: VocabularyOwner): bigint {
+  return owner.type === 'user'
+    ? userQuotaLockKey(owner.userId)
+    : quotaLockKey(`lexicon-quota:team:${owner.teamId}`);
+}
+
+function quotaLockKey(seed: string): bigint {
+  const hash = createHashSync(seed);
   // Take the first 16 hex chars (64 bits) and parse as a signed bigint for
   // pg_advisory_xact_lock(bigint).
   return BigInt.asIntN(64, BigInt(`0x${hash.slice(0, 16)}`));
@@ -594,7 +675,12 @@ function userQuotaLockKey(userId: string): bigint {
  * 会各自通过后在同一分组里形成冲突词条。
  */
 export async function lockUserVocabularyWrites(tx: Tx, userId: string): Promise<void> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(${userQuotaLockKey(userId)})`);
+  await lockVocabularyWrites(tx, userOwner(userId));
+}
+
+/** 按归属拿词汇写锁（个人与 {@link lockUserVocabularyWrites} 同一把）。 */
+export async function lockVocabularyWrites(tx: Tx, owner: VocabularyOwner): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(${ownerLockKey(owner)})`);
 }
 
 /**
@@ -607,13 +693,14 @@ export async function lockUserQuotaAndCountRemaining(
   tx: Tx,
   userId: string,
   maxTerms: number,
+  owner: VocabularyOwner = userOwner(userId),
 ): Promise<number> {
-  await lockUserVocabularyWrites(tx, userId);
+  await lockVocabularyWrites(tx, owner);
   if (maxTerms === -1) return Number.POSITIVE_INFINITY;
   const [{ count }] = await tx
     .select({ count: sql<number>`count(*)::int` })
     .from(userDomainTerms)
-    .where(and(eq(userDomainTerms.userId, userId), activeLinkPredicate()));
+    .where(and(ownerPredicate(owner), activeLinkPredicate()));
   return Math.max(0, maxTerms - (count ?? 0));
 }
 
@@ -628,19 +715,25 @@ export async function lockUserQuotaAndCountRemaining(
 export async function addUserVocabularyTerm(
   userId: string,
   input: TermInput,
+  owner: VocabularyOwner = userOwner(userId),
 ): Promise<{ link: TermLink; createdGlobalTerm: boolean }> {
   return withOpMetrics(
     'term.add',
-    () => addUserVocabularyTermInner(userId, input),
+    () => addUserVocabularyTermInner(userId, input, owner),
   );
 }
 
 async function addUserVocabularyTermInner(
   userId: string,
   input: TermInput,
+  owner: VocabularyOwner,
 ): Promise<{ link: TermLink; createdGlobalTerm: boolean }> {
   const normalized = validateInput(input);
-  const quota = await getLexiconQuota(userId);
+  // 额度按归属的套餐持有人计：团队词条看团队 owner，不占创建者个人额度（ADR 0017 §3）。
+  const holder = await quotaHolderOf(owner);
+  const quota = holder
+    ? await getLexiconQuota(holder)
+    : { maxTerms: 0, bulkAsync: false, allowed: false };
   if (!quota.allowed) {
     throw new VocabularyError(
       'plan_gate_required',
@@ -651,7 +744,7 @@ async function addUserVocabularyTermInner(
   const transactionResult = await db.transaction(async (tx) => {
     // Per-user advisory lock prevents concurrent adds from both passing the
     // quota check. The lock auto-releases at transaction end.
-    const remaining = await lockUserQuotaAndCountRemaining(tx, userId, quota.maxTerms);
+    const remaining = await lockUserQuotaAndCountRemaining(tx, userId, quota.maxTerms, owner);
     if (remaining <= 0) {
       throw new VocabularyError(
         'quota_exceeded',
@@ -659,8 +752,8 @@ async function addUserVocabularyTermInner(
       );
     }
 
-    // 在用户级 advisory lock 内校验，并发新增不会各自通过后形成冲突。
-    await assertNoScopeConflict(tx, userId, normalized);
+    // 在归属级 advisory lock 内校验，并发新增不会各自通过后形成冲突。
+    await assertNoScopeConflict(tx, owner, normalized);
     const upserted = await upsertDomainTerm(tx, normalized);
 
     let created: { id: string } | undefined;
@@ -671,7 +764,8 @@ async function addUserVocabularyTermInner(
           id: crypto.randomUUID(),
           userId,
           termId: upserted.term.id,
-          ownerType: 'user',
+          ownerType: owner.type,
+          teamId: owner.type === 'team' ? owner.teamId : null,
           domain: normalized.domain,
           locale: normalized.locale,
           kind: normalized.kind,
@@ -696,7 +790,7 @@ async function addUserVocabularyTermInner(
     return { linkId: created.id, createdGlobalTerm: upserted.created };
   });
 
-  const link = await getTermLink(userId, transactionResult.linkId);
+  const link = await getTermLink(owner, transactionResult.linkId);
   if (!link) {
     throw new VocabularyError(
       'link_create_failed',
@@ -715,6 +809,7 @@ async function addUserVocabularyTermInner(
       locale: link.locale,
       kind: link.kind,
       createdGlobalTerm: transactionResult.createdGlobalTerm,
+      ...ownerAuditMetadata(owner),
     },
   });
 
@@ -729,10 +824,11 @@ export async function modifyUserVocabularyTerm(
   userId: string,
   linkId: string,
   input: TermInput,
+  owner: VocabularyOwner = userOwner(userId),
 ): Promise<{ link: TermLink; repointed: boolean; createdGlobalTerm: boolean }> {
   return withOpMetrics(
     'term.modify',
-    () => modifyUserVocabularyTermInner(userId, linkId, input),
+    () => modifyUserVocabularyTermInner(userId, linkId, input, owner),
   );
 }
 
@@ -740,8 +836,9 @@ async function modifyUserVocabularyTermInner(
   userId: string,
   linkId: string,
   input: TermInput,
+  owner: VocabularyOwner,
 ): Promise<{ link: TermLink; repointed: boolean; createdGlobalTerm: boolean }> {
-  const existing = await getTermLink(userId, linkId);
+  const existing = await getTermLink(owner, linkId);
   if (!existing) {
     throw new VocabularyError('not_found', 'Vocabulary term link not found');
   }
@@ -754,8 +851,8 @@ async function modifyUserVocabularyTermInner(
 
   const transactionResult = await db.transaction(async (tx) => {
     // 与新增同一把用户锁内校验并写入：并发新增 / 修改不会各自通过后形成冲突词条。
-    await lockUserVocabularyWrites(tx, userId);
-    await assertNoScopeConflict(tx, userId, normalized, linkId);
+    await lockVocabularyWrites(tx, owner);
+    await assertNoScopeConflict(tx, owner, normalized, linkId);
     const upserted = await upsertDomainTerm(tx, normalized);
     await tx
       .update(userDomainTerms)
@@ -768,7 +865,7 @@ async function modifyUserVocabularyTermInner(
       })
       .where(
         and(
-          eq(userDomainTerms.userId, userId),
+          ownerPredicate(owner),
           eq(userDomainTerms.id, linkId),
           activeLinkPredicate(),
         ),
@@ -780,7 +877,7 @@ async function modifyUserVocabularyTermInner(
     };
   });
 
-  const link = await getTermLink(userId, linkId);
+  const link = await getTermLink(owner, linkId);
   if (!link) {
     throw new VocabularyError(
       'not_found',
@@ -799,6 +896,7 @@ async function modifyUserVocabularyTermInner(
       newTermId: transactionResult.newTermId,
       repointed: transactionResult.repointed,
       createdGlobalTerm: transactionResult.createdGlobalTerm,
+      ...ownerAuditMetadata(owner),
     },
   });
 
@@ -817,19 +915,21 @@ export async function softDeleteUserVocabularyTerm(
   userId: string,
   linkId: string,
   reason?: string,
+  owner: VocabularyOwner = userOwner(userId),
 ): Promise<{ deletedAt: Date }> {
   return withOpMetrics(
     'term.delete',
-    () => softDeleteUserVocabularyTermInner(userId, linkId, reason),
+    () => softDeleteUserVocabularyTermInner(userId, linkId, reason, owner),
   );
 }
 
 async function softDeleteUserVocabularyTermInner(
   userId: string,
   linkId: string,
-  reason?: string,
+  reason: string | undefined,
+  owner: VocabularyOwner,
 ): Promise<{ deletedAt: Date }> {
-  const existing = await getTermLink(userId, linkId);
+  const existing = await getTermLink(owner, linkId);
   if (!existing) {
     throw new VocabularyError('not_found', 'Vocabulary term link not found');
   }
@@ -848,7 +948,7 @@ async function softDeleteUserVocabularyTermInner(
     })
     .where(
       and(
-        eq(userDomainTerms.userId, userId),
+        ownerPredicate(owner),
         eq(userDomainTerms.id, linkId),
         activeLinkPredicate(),
       ),
@@ -872,6 +972,7 @@ async function softDeleteUserVocabularyTermInner(
       locale: existing.locale,
       kind: existing.kind,
       reasonProvided: Boolean(safeReason),
+      ...ownerAuditMetadata(owner),
     },
   });
 
@@ -885,26 +986,28 @@ async function softDeleteUserVocabularyTermInner(
 export async function restoreUserVocabularyTerm(
   userId: string,
   linkId: string,
+  owner: VocabularyOwner = userOwner(userId),
 ): Promise<{ link: TermLink }> {
   return withOpMetrics(
     'term.restore',
-    () => restoreUserVocabularyTermInner(userId, linkId),
+    () => restoreUserVocabularyTermInner(userId, linkId, owner),
   );
 }
 
 async function restoreUserVocabularyTermInner(
   userId: string,
   linkId: string,
+  owner: VocabularyOwner,
 ): Promise<{ link: TermLink }> {
-  const deleted = await getTermLink(userId, linkId, { includeDeleted: true });
+  const deleted = await getTermLink(owner, linkId, { includeDeleted: true });
   if (!deleted) {
     throw new VocabularyError('not_found', 'Vocabulary term link not found');
   }
   await db.transaction(async (tx) => {
     // 删除期间同一分组可能新增了同写法的条目，恢复同样不得引入作用域冲突；
     // 与新增同一把用户锁内校验并写入，并发写入对校验可见。
-    await lockUserVocabularyWrites(tx, userId);
-    await assertNoScopeConflict(tx, userId, deleted, linkId);
+    await lockVocabularyWrites(tx, owner);
+    await assertNoScopeConflict(tx, owner, deleted, linkId);
     await tx
       .update(userDomainTerms)
       .set({
@@ -915,7 +1018,7 @@ async function restoreUserVocabularyTermInner(
       })
       .where(
         and(
-          eq(userDomainTerms.userId, userId),
+          ownerPredicate(owner),
           eq(userDomainTerms.id, linkId),
           isNotNull(userDomainTerms.deletedAt),
           isNull(userDomainTerms.archivedAt),
@@ -923,7 +1026,7 @@ async function restoreUserVocabularyTermInner(
       );
   });
 
-  const link = await getTermLink(userId, linkId);
+  const link = await getTermLink(owner, linkId);
   if (!link) {
     throw new VocabularyError(
       'restore_failed',
@@ -936,7 +1039,7 @@ async function restoreUserVocabularyTermInner(
     action: 'lexicon.term.restore',
     resource: 'domain-term',
     resourceId: link.termId,
-    metadata: { linkId },
+    metadata: { linkId, ...ownerAuditMetadata(owner) },
   });
 
   return { link };
@@ -949,6 +1052,7 @@ async function restoreUserVocabularyTermInner(
 export async function previewAddTerm(
   userId: string,
   input: TermInput,
+  owner: VocabularyOwner = userOwner(userId),
 ): Promise<{
   existsInGlobal: boolean;
   existingTermId: string | null;
@@ -965,7 +1069,7 @@ export async function previewAddTerm(
   // 组装按行序追加，预览词条在末尾，已有词条的诊断文本（含位置）前后一致，可直接按文本求差。
   // 已知边界：预览词条引入的诊断若与组内已有诊断文本完全相同，会被当作旧问题隐藏（诊断含位置，实际极少）。
   const group = { domain: normalized.domain, locale: normalized.locale };
-  const current = await loadGroupTermRows(db, userId, group);
+  const current = await loadGroupTermRows(db, owner, group);
   const previewRow: TermLikeRow = { ...normalized, domainTermId: 'preview' };
   const before = validateDomainVocabulary(assembleDomainVocabularyFromLinks(current, group));
   const after = validateDomainVocabulary(assembleDomainVocabularyFromLinks([...current, previewRow], group));
@@ -1191,7 +1295,7 @@ async function loadExistingTermsAndLinks(
         .from(userDomainTerms)
         .where(
           and(
-            eq(userDomainTerms.userId, userId),
+            ownerPredicate(userOwner(userId)),
             inArray(userDomainTerms.termId, termIds),
             activeLinkPredicate(),
           ),

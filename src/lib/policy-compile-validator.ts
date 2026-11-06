@@ -76,10 +76,12 @@ export interface SaveVocabulary {
 export async function loadSaveVocabulary(
   userId: string,
   policy: PolicyVocabularyContext,
+  /** 团队策略所属团队：词汇为团队词汇 + 作者词汇（ADR 0017 §2）。 */
+  opts: { teamId?: string | null } = {},
 ): Promise<SaveVocabulary> {
   let vocabulary: DomainVocabulary | null;
   try {
-    vocabulary = await loadLiveVocabularyForPolicy(userId, policy);
+    vocabulary = await loadLiveVocabularyForPolicy(userId, policy, { teamId: opts.teamId });
   } catch (err) {
     console.warn('[compile-gate] failed to load domain vocabulary', err);
     throw new PolicyCompileUnavailableError(

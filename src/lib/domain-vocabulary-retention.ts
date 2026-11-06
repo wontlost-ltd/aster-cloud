@@ -144,6 +144,7 @@ async function archiveLinksForUser(
         FROM "UserDomainTerm" udt
         JOIN "DomainTerm" dt ON dt.id = udt."termId"
        WHERE udt."userId"    = ${userId}
+         AND udt."ownerType" = 'user'
          AND udt."deletedAt" IS NULL
          AND udt."archivedAt" IS NULL
        ORDER BY udt.id

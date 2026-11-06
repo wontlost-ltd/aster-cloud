@@ -37,6 +37,7 @@ export default async function EditPolicyPage({ params }: PageProps) {
         groupId: access.policy.groupId,
         version: access.policy.version,
         ownerId: access.policy.userId,
+        teamId: access.policy.teamId || null,
       }
     : null;
   // 切换公开状态需要 publish（团队策略 owner/admin），member 编辑时复选框只读
@@ -97,6 +98,7 @@ export default async function EditPolicyPage({ params }: PageProps) {
     content: policyData.content,
     isPublic: policyData.isPublic,
     groupId: policyData.groupId,
+    teamId: policyData.teamId,
     aliasSet: initialAliasSet,
   };
 

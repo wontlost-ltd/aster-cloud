@@ -432,7 +432,7 @@ describe('POST /api/policies/[id]/execute — 团队策略的草稿词汇归属�
     const { body } = await execute({ person: { alter: 21 } });
 
     expect(mockLoadLive).toHaveBeenCalledTimes(1);
-    expect(mockLoadLive).toHaveBeenCalledWith('member-2', { source: DE_POLICY, locale: 'de-DE' });
+    expect(mockLoadLive).toHaveBeenCalledWith('member-2', { source: DE_POLICY, locale: 'de-DE' }, expect.objectContaining({ teamId: expect.anything() }));
     expect(body.output.result).toBe(42);
   });
 
@@ -468,7 +468,7 @@ describe('POST /api/policies/[id]/execute — 草稿按作者现行词汇执行�
 
     expect(status).toBe(200);
     expect(body.output.result).toBe(42);
-    expect(mockLoadLive).toHaveBeenCalledWith('author-1', { source: DE_POLICY, locale: 'de-DE' });
+    expect(mockLoadLive).toHaveBeenCalledWith('author-1', { source: DE_POLICY, locale: 'de-DE' }, expect.any(Object));
     expect(mockLoadFrozen).not.toHaveBeenCalled();
     // 同一份词汇也透传给引擎规范化源码。
     expect(mockEvaluateSource.mock.calls[0]![2].vocabulary).toMatchObject({ fields: [expect.objectContaining({ localized: 'alter' })] });

@@ -40,6 +40,9 @@ vi.mock('@/lib/domain-vocabulary', async (orig) => {
   };
 });
 
+/** 未带 ?teamId= 时路由解析出的个人归属（ADR 0017）。 */
+const PERSONAL = { type: 'user', userId: 'user-1' };
+
 import { GET as listTerms, POST as createTerm } from '@/app/api/v1/domain-vocabularies/terms/route';
 import {
   GET as getTerm,
@@ -126,7 +129,7 @@ describe('GET /api/v1/domain-vocabularies/terms', () => {
     expect(vi.mocked(listUserVocabularyTerms)).toHaveBeenCalledWith('user-1', expect.objectContaining({
       domain: 'finance.loan',
       page: 1,
-    }));
+    }), PERSONAL);
   });
 
   it('passes the deleted-only 90-day view through the session-authenticated list route', async () => {
@@ -139,7 +142,7 @@ describe('GET /api/v1/domain-vocabularies/terms', () => {
       deletedOnly: true,
       page: 2,
       pageSize: 200,
-    }));
+    }), PERSONAL);
   });
 
   it('maps service failure to a 500 envelope', async () => {
@@ -189,6 +192,8 @@ describe('POST /api/v1/domain-vocabularies/terms', () => {
         id: 'link-1',
         termId: 'term-1',
         userId: 'user-1',
+        ownerType: 'user',
+        teamId: null,
         domain: 'finance.loan',
         locale: 'en-US',
         kind: 'struct',
@@ -276,6 +281,8 @@ describe('PATCH /api/v1/domain-vocabularies/terms/[id]', () => {
         id: 'link-1',
         termId: 'term-new',
         userId: 'user-1',
+        ownerType: 'user',
+        teamId: null,
         domain: 'finance.loan',
         locale: 'en-US',
         kind: 'struct',
@@ -358,7 +365,7 @@ describe('DELETE /api/v1/domain-vocabularies/terms/[id]', () => {
     expect(res.status).toBe(200);
     expect(body.success).toBe(true);
     expect(body.deletedAt).toBe('2026-01-01T00:00:00.000Z');
-    expect(vi.mocked(softDeleteUserVocabularyTerm)).toHaveBeenCalledWith('user-1', 'link-1', 'cleanup');
+    expect(vi.mocked(softDeleteUserVocabularyTerm)).toHaveBeenCalledWith('user-1', 'link-1', 'cleanup', PERSONAL);
   });
 
   it('returns 404 when the link is not found', async () => {
@@ -381,6 +388,8 @@ describe('GET /api/v1/domain-vocabularies/terms/[id]', () => {
       id: 'link-1',
       termId: 'term-1',
       userId: 'user-1',
+      ownerType: 'user' as const,
+      teamId: null,
       domain: 'finance.loan',
       locale: 'en-US',
       kind: 'struct',
@@ -404,7 +413,7 @@ describe('GET /api/v1/domain-vocabularies/terms/[id]', () => {
     expect(body.term.id).toBe('link-1');
     expect(vi.mocked(getUserVocabularyTerm)).toHaveBeenCalledWith('user-1', 'link-1', {
       includeDeleted: true,
-    });
+    }, PERSONAL);
   });
 
   it('returns 404 when the link is missing', async () => {
@@ -426,6 +435,8 @@ describe('POST /api/v1/domain-vocabularies/terms/[id]/restore', () => {
         id: 'link-1',
         termId: 'term-1',
         userId: 'user-1',
+        ownerType: 'user',
+        teamId: null,
         domain: 'finance.loan',
         locale: 'en-US',
         kind: 'struct',

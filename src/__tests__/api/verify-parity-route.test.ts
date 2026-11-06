@@ -178,7 +178,7 @@ describe('POST verify-parity', () => {
 
     expect(runParityForExecutionNow.mock.calls[0][0].vocabulary).toEqual(vocabulary);
     expect(loadVersionExecutionVocabulary).toHaveBeenCalledWith({
-      status: 'APPROVED', vocabularySnapshotIds: [{ snapshotId: 's1' }], authorId: 'a1', source: 'Rule x is 1.', locale: 'en',
+      status: 'APPROVED', vocabularySnapshotIds: [{ snapshotId: 's1' }], authorId: 'a1', teamId: null, source: 'Rule x is 1.', locale: 'en',
     });
 
     await call();

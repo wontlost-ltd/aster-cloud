@@ -7,6 +7,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { resolveVocabularyOwner, teamIdFromRequest } from '@/lib/domain-vocabulary-team';
 import { getSession } from '@/lib/auth';
 import { errorEnvelope } from '@/lib/api/error-envelope';
 import {
@@ -87,7 +88,10 @@ function parseTermInput(raw: TermBody): TermInput {
 function vocabErrorToEnvelope(error: VocabularyError): NextResponse {
   switch (error.code) {
     case 'plan_gate_required':
+    case 'team_forbidden':
+    case 'team_role_insufficient':
       return errorEnvelope({ status: 403, code: error.code, message: error.message });
+
     case 'quota_exceeded':
     case 'duplicate_link':
       return errorEnvelope({ status: 422, code: error.code, message: error.message });
@@ -104,7 +108,7 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-export async function GET(_req: Request, { params }: RouteContext) {
+export async function GET(req: Request, { params }: RouteContext) {
   try {
     const session = await getSession();
     if (!session?.user?.id) {
@@ -119,9 +123,10 @@ export async function GET(_req: Request, { params }: RouteContext) {
       });
     }
 
+    const owner = await resolveVocabularyOwner(session.user.id, teamIdFromRequest(req), 'view');
     const term = await getUserVocabularyTerm(session.user.id, linkId, {
       includeDeleted: true,
-    });
+    }, owner);
     if (!term) {
       return errorEnvelope({
         status: 404,
@@ -131,6 +136,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
     }
     return NextResponse.json({ term });
   } catch (error) {
+    if (error instanceof VocabularyError) return vocabErrorToEnvelope(error);
     console.error('[domain-vocabularies GET id]', error);
     return errorEnvelope({
       status: 500,
@@ -186,11 +192,12 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
   try {
     const userId = session.user.id;
+    const owner = await resolveVocabularyOwner(userId, teamIdFromRequest(req), 'edit', linkId);
     const idem = await withIdempotency(
       req,
       { userId, routeKey: `PATCH /api/v1/domain-vocabularies/terms/${linkId}` },
       async () => {
-        const result = await modifyUserVocabularyTerm(userId, linkId, input);
+        const result = await modifyUserVocabularyTerm(userId, linkId, input, owner);
         return { status: 200, body: result };
       },
     );
@@ -250,11 +257,12 @@ export async function DELETE(req: Request, { params }: RouteContext) {
 
   try {
     const userId = session.user.id;
+    const owner = await resolveVocabularyOwner(userId, teamIdFromRequest(req), 'edit', linkId);
     const idem = await withIdempotency(
       req,
       { userId, routeKey: `DELETE /api/v1/domain-vocabularies/terms/${linkId}` },
       async () => {
-        const result = await softDeleteUserVocabularyTerm(userId, linkId, reason);
+        const result = await softDeleteUserVocabularyTerm(userId, linkId, reason, owner);
         return { status: 200, body: { success: true, deletedAt: result.deletedAt.toISOString() } };
       },
     );

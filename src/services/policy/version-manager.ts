@@ -151,8 +151,9 @@ async function freezeApprovalVocabulary(
       if (vocabularyScopesJson(vocabulary) !== sealed) throw new VocabularyChangedSinceSaveError();
     };
   try {
+    // 团队策略同时冻结团队词汇（ADR 0017 §2）：团队归属由冻结在审批事务内按策略行读取。
     return await freezeVocabularyForApproval(
-      { policyAuthorId: version.createdBy, policy: { source, locale } },
+      { policyAuthorId: version.createdBy, policyId: version.policyId, policy: { source, locale } },
       tx,
       { verifyVocabulary },
     );

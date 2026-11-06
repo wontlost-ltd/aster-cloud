@@ -40,7 +40,14 @@ import {
   selectVocabulariesForPolicy,
   type PolicyVocabularyContext,
 } from '@/lib/domain-vocabulary-scope';
-import { VocabularyError } from '@/lib/domain-vocabulary';
+import {
+  VocabularyError,
+  ownerPredicate,
+  teamOwner,
+  userOwner,
+  type VocabularyOwner,
+} from '@/lib/domain-vocabulary';
+import { mergeTeamAndAuthorRows } from '@/lib/domain-vocabulary-team-merge';
 import { bypassQueryCache } from '@/db/fresh-read';
 
 export interface SnapshotRef {
@@ -49,9 +56,14 @@ export interface SnapshotRef {
   locale: string;
 }
 
+/** 快照归属：个人 ownerId=userId，团队 ownerId=teamId（ADR 0017）。 */
 interface OwnerScope {
-  ownerType: 'user';
+  ownerType: 'user' | 'team';
   ownerId: string;
+}
+
+function ownerOfScope(scope: OwnerScope): VocabularyOwner {
+  return scope.ownerType === 'team' ? teamOwner(scope.ownerId) : userOwner(scope.ownerId);
 }
 
 interface JoinedTermRow {
@@ -100,10 +112,21 @@ function toTermLikeRow(r: JoinedTermRow): TermLikeRow {
 /** drizzle 事务句柄：审批把冻结与审批写入放在同一事务里。 */
 export type SnapshotTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-async function loadActiveLinksGroupedByDomainLocale(
+function groupJoinedRows(rows: readonly JoinedTermRow[]): Map<string, JoinedTermRow[]> {
+  const groups = new Map<string, JoinedTermRow[]>();
+  for (const r of rows) {
+    const key = `${r.domain}|${r.locale}`;
+    const existing = groups.get(key);
+    if (existing) existing.push(r);
+    else groups.set(key, [r]);
+  }
+  return groups;
+}
+
+async function loadActiveLinkRows(
   scope: OwnerScope,
   exec: Pick<SnapshotTx, 'select'> = db,
-): Promise<Map<string, JoinedTermRow[]>> {
+): Promise<JoinedTermRow[]> {
   const rows = await exec
     .select({
       termId: userDomainTerms.termId,
@@ -120,7 +143,7 @@ async function loadActiveLinksGroupedByDomainLocale(
     .innerJoin(domainTerms, eq(userDomainTerms.termId, domainTerms.id))
     .where(
       and(
-        eq(userDomainTerms.userId, scope.ownerId),
+        ownerPredicate(ownerOfScope(scope)),
         isNull(userDomainTerms.deletedAt),
         isNull(userDomainTerms.archivedAt),
         // 草稿执行按作者现行词汇编译（#626）：编辑词条后下一次执行必须立即生效，
@@ -129,15 +152,38 @@ async function loadActiveLinksGroupedByDomainLocale(
       ),
     )
     .orderBy(asc(userDomainTerms.termId));
+  return rows as unknown as JoinedTermRow[];
+}
 
-  const groups = new Map<string, JoinedTermRow[]>();
-  for (const r of rows) {
-    const key = `${r.domain}|${r.locale}`;
-    const existing = groups.get(key);
-    if (existing) existing.push(r as unknown as JoinedTermRow);
-    else groups.set(key, [r as unknown as JoinedTermRow]);
-  }
-  return groups;
+/**
+ * 一条策略可见的词条来源（ADR 0017 §2）：个人策略只有作者；团队策略为团队词条 + 作者词条，
+ * 作者词条中与团队词条冲突的剔除（团队优先）。返回按归属分开的行，冻结时各自写入自己的快照。
+ */
+async function loadPolicyVocabularySources(
+  authorId: string | null | undefined,
+  teamId: string | null | undefined,
+  exec: Pick<SnapshotTx, 'select'> = db,
+): Promise<Array<{ scope: OwnerScope; rows: JoinedTermRow[] }>> {
+  const authorScope: OwnerScope | null = authorId ? { ownerType: 'user', ownerId: authorId } : null;
+  const authorRows = authorScope ? await loadActiveLinkRows(authorScope, exec) : [];
+  if (!teamId) return authorScope ? [{ scope: authorScope, rows: authorRows }] : [];
+  const teamScope: OwnerScope = { ownerType: 'team', ownerId: teamId };
+  const teamRows = await loadActiveLinkRows(teamScope, exec);
+  const kept = new Set(
+    mergeTeamAndAuthorRows(
+      teamRows.map((r) => toTermLikeRowKeyed({ ...r, ownerTag: 'team' })),
+      authorRows.map((r) => toTermLikeRowKeyed(r)),
+    )
+      .rows.map((r) => r.key),
+  );
+  const sources = [{ scope: teamScope, rows: teamRows }];
+  if (authorScope) sources.push({ scope: authorScope, rows: authorRows.filter((r) => kept.has(`user:${r.termId}`)) });
+  return sources;
+}
+
+/** 合并判定用的行：带归属前缀的 key，便于把结果映射回原行。 */
+function toTermLikeRowKeyed(r: JoinedTermRow & { ownerTag?: string }): TermLikeRow & { key: string } {
+  return { ...toTermLikeRow(r), key: `${r.ownerTag ?? 'user'}:${r.termId}` };
 }
 
 /**
@@ -218,20 +264,31 @@ export async function createSnapshotsForOwner(
   tx: SnapshotTx,
   opts: FreezeOptions = {},
 ): Promise<SnapshotRef[]> {
-  const groups = await loadActiveLinksGroupedByDomainLocale(scope, tx);
+  const rows = await loadActiveLinkRows(scope, tx);
+  return createSnapshotsForSources([{ scope, rows }], policy, tx, opts);
+}
+
+async function createSnapshotsForSources(
+  sources: ReadonlyArray<{ scope: OwnerScope; rows: readonly JoinedTermRow[] }>,
+  policy: PolicyVocabularyContext,
+  tx: SnapshotTx,
+  opts: FreezeOptions,
+): Promise<SnapshotRef[]> {
   const inScope = policyScopeMatcher(policy);
-  const selected: Array<{ domain: string; locale: string; vocabJson: DomainVocabulary; termIds: string[] }> = [];
-  for (const [key, rows] of groups) {
-    const [domain, locale] = key.split('|') as [string, string];
-    const vocabJson = assembleDomainVocabularyFromLinks(rows.map(toTermLikeRow), { domain, locale });
-    if (inScope(vocabJson)) selected.push({ domain, locale, vocabJson, termIds: rows.map((r) => r.termId) });
+  const selected: Array<{ scope: OwnerScope; domain: string; locale: string; vocabJson: DomainVocabulary; termIds: string[] }> = [];
+  for (const { scope, rows } of sources) {
+    for (const [key, groupRows] of groupJoinedRows(rows)) {
+      const [domain, locale] = key.split('|') as [string, string];
+      const vocabJson = assembleDomainVocabularyFromLinks(groupRows.map(toTermLikeRow), { domain, locale });
+      if (inScope(vocabJson)) selected.push({ scope, domain, locale, vocabJson, termIds: groupRows.map((r) => r.termId) });
+    }
   }
 
   // 写快照之前先交给调用方校验：校验失败时不产生任何快照或 refCount 变化。
   opts.verifyVocabulary?.(frozenExecutionVocabulary(selected.map((g) => g.vocabJson), policy));
 
   const refs: SnapshotRef[] = [];
-  for (const { domain, locale, vocabJson, termIds } of selected) {
+  for (const { scope, domain, locale, vocabJson, termIds } of selected) {
     const ref = await upsertSnapshot(tx, scope, { domain, locale, vocabJson, termIds });
     refs.push({ snapshotId: ref.snapshotId, domain, locale });
     recordSnapshotCreate({ dedupHit: ref.dedupHit });
@@ -247,6 +304,12 @@ export async function createSnapshotsForOwner(
  * callers can't both observe `version = N` and unique-violate; the unique index on
  * (ownerType, ownerId, domain, locale, contentHash) still gives us dedup.
  */
+/** 个人沿用原锁 key（与既有审批 / 归档路径同一把），团队带 ownerType 前缀避免与个人 id 撞键。 */
+function snapshotLockSeed(scope: OwnerScope, domain: string, locale: string): string {
+  const owner = scope.ownerType === 'user' ? scope.ownerId : `team:${scope.ownerId}`;
+  return `vocab-snap:${owner}:${domain}:${locale}`;
+}
+
 async function upsertSnapshot(
   tx: SnapshotTx,
   scope: OwnerScope,
@@ -255,7 +318,7 @@ async function upsertSnapshot(
   const { domain, locale, vocabJson, termIds } = group;
   const contentHash = hashContent(termIds);
   await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtext(${`vocab-snap:${scope.ownerId}:${domain}:${locale}`}))`,
+    sql`SELECT pg_advisory_xact_lock(hashtext(${snapshotLockSeed(scope, domain, locale)}))`,
   );
   const existing = await tx.query.userVocabularySnapshots.findFirst({
     where: and(
@@ -343,12 +406,36 @@ export async function loadExecutionVocabulary(
  * 与编辑器注册的词汇同源同规则，保证「编辑器无错 ⇔ 服务端编译通过」。
  */
 export async function loadLiveVocabularyForPolicy(
-  ownerId: string,
+  ownerId: string | null | undefined,
   policy: PolicyVocabularyContext,
+  opts: PolicyTeamRef = {},
 ): Promise<DomainVocabulary | null> {
-  const groups = await loadActiveLinksGroupedByDomainLocale({ ownerType: 'user', ownerId });
-  const rows = [...groups.values()].flat().map(toTermLikeRow);
+  // 团队策略：团队词条 + 作者词条（冲突时团队优先，ADR 0017 §2）；个人策略只读作者词条。
+  const sources = await loadPolicyVocabularySources(ownerId, await resolvePolicyTeamId(opts));
+  const rows = sources.flatMap((source) => source.rows).map(toTermLikeRow);
   return resolvePolicyVocabularyFromRows(rows, policy);
+}
+
+/**
+ * 策略所属团队的引用：已知 teamId 直接给（null = 个人策略）；只知道 policyId 时按策略行查。
+ * 两者都缺省视为个人策略。
+ */
+export interface PolicyTeamRef {
+  teamId?: string | null;
+  policyId?: string | null;
+}
+
+export async function resolvePolicyTeamId(
+  ref: PolicyTeamRef,
+  exec: Pick<SnapshotTx, 'select'> = db,
+): Promise<string | null> {
+  if (ref.teamId !== undefined) return ref.teamId || null;
+  if (!ref.policyId) return null;
+  const [row] = await exec
+    .select({ teamId: policies.teamId })
+    .from(policies)
+    .where(eq(policies.id, ref.policyId));
+  return row?.teamId || null;
 }
 
 /**
@@ -359,18 +446,21 @@ export async function loadLiveVocabularyForPolicy(
 export async function freezeVocabularyForApproval(
   params: {
     policyAuthorId: string;
+    /**
+     * 团队策略所属团队（或由 policyId 在事务内查得）：团队词条冻进团队快照，
+     * 作者词条（剔除被团队遮蔽的）冻进作者快照。
+     */
+    teamId?: string | null;
+    policyId?: string | null;
     /** 被审批版本的源码与 CNL 语言。 */
     policy: PolicyVocabularyContext;
   },
   tx: SnapshotTx,
   opts: FreezeOptions = {},
 ): Promise<SnapshotRef[]> {
-  return createSnapshotsForOwner(
-    { ownerType: 'user', ownerId: params.policyAuthorId },
-    params.policy,
-    tx,
-    opts,
-  );
+  const teamId = await resolvePolicyTeamId({ teamId: params.teamId, policyId: params.policyId }, tx);
+  const sources = await loadPolicyVocabularySources(params.policyAuthorId, teamId, tx);
+  return createSnapshotsForSources(sources, params.policy, tx, opts);
 }
 
 /**
@@ -563,7 +653,7 @@ async function rollbackToSnapshotInner(
       .from(userDomainTerms)
       .where(
         and(
-          eq(userDomainTerms.userId, userId),
+          ownerPredicate(userOwner(userId)),
           eq(userDomainTerms.domain, snapDomain),
           eq(userDomainTerms.locale, snapLocale),
           isNull(userDomainTerms.deletedAt),
@@ -597,7 +687,7 @@ async function rollbackToSnapshotInner(
       // preserve the historical linkId. Insert a fresh row if no row exists.
       const dormant = await tx.query.userDomainTerms.findFirst({
         where: and(
-          eq(userDomainTerms.userId, userId),
+          ownerPredicate(userOwner(userId)),
           eq(userDomainTerms.termId, termId),
           eq(userDomainTerms.domain, snapDomain),
           eq(userDomainTerms.locale, snapLocale),
@@ -856,7 +946,7 @@ export async function getSnapshotDiff(
     .from(userDomainTerms)
     .where(
       and(
-        eq(userDomainTerms.userId, userId),
+        ownerPredicate(userOwner(userId)),
         eq(userDomainTerms.domain, snap.domain),
         eq(userDomainTerms.locale, snap.locale),
         isNull(userDomainTerms.deletedAt),

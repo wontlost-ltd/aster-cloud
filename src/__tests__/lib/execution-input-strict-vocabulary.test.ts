@@ -39,7 +39,7 @@ describe('loadStoredVersionCompileContext — 严格加载词汇', () => {
     snapshot.loadLiveVocabularyForPolicy.mockResolvedValueOnce(null);
     const ctx = await loadStoredVersionCompileContext(stored('DRAFT'));
     expect(ctx.vocabulary).toBeUndefined();
-    expect(snapshot.loadLiveVocabularyForPolicy).toHaveBeenCalledWith('a1', expect.objectContaining({ source: 'Modul m.\n' }));
+    expect(snapshot.loadLiveVocabularyForPolicy).toHaveBeenCalledWith('a1', expect.objectContaining({ source: 'Modul m.\n' }), expect.any(Object));
   });
 
   it('草稿无作者：不带词汇（与审批冻结同口径），不报错', async () => {

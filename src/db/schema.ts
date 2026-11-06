@@ -2392,7 +2392,7 @@ export type NewCronJobLease = InferInsertModel<typeof cronJobLease>;
 //   - DomainTerm: global deduplicated catalogue. Never mutated by user edits;
 //     a modify operation creates a new row (if needed) and repoints the link.
 //   - UserDomainTerm: per-user active link with soft-delete + 90-day archive.
-//     v1 enforces ownerType='user'; teamId reserved for v2 team-shared vocab.
+//     ownerType='user'（个人，teamId 为空）或 'team'（团队共享，ADR 0017；userId 记创建者）。
 //   - UserVocabularySnapshot: publish-time frozen content, ref-counted,
 //     content-hash deduped. policyVersions.vocabularySnapshotIds points here
 //     so rollback can reproduce the exact term set used to compile a version.
@@ -2533,12 +2533,18 @@ export const userDomainTerms = pgTable(
   },
   (table) => [
     check(
-      'UserDomainTerm_owner_v1_check',
-      sql`${table.ownerType} = 'user' AND ${table.userId} IS NOT NULL AND ${table.teamId} IS NULL`,
+      'UserDomainTerm_owner_check',
+      sql`(${table.ownerType} = 'user' AND ${table.teamId} IS NULL) OR (${table.ownerType} = 'team' AND ${table.teamId} IS NOT NULL)`,
     ),
     uniqueIndex('UserDomainTerm_active_unique')
       .on(table.userId, table.termId)
-      .where(sql`${table.deletedAt} IS NULL AND ${table.archivedAt} IS NULL`),
+      .where(sql`${table.ownerType} = 'user' AND ${table.deletedAt} IS NULL AND ${table.archivedAt} IS NULL`),
+    uniqueIndex('UserDomainTerm_team_active_unique')
+      .on(table.teamId, table.termId)
+      .where(sql`${table.ownerType} = 'team' AND ${table.deletedAt} IS NULL AND ${table.archivedAt} IS NULL`),
+    index('UserDomainTerm_team_domain_idx')
+      .on(table.teamId, table.domain, table.locale)
+      .where(sql`${table.ownerType} = 'team' AND ${table.deletedAt} IS NULL AND ${table.archivedAt} IS NULL`),
     index('UserDomainTerm_user_domain_idx')
       .on(table.userId, table.domain, table.locale)
       .where(sql`${table.deletedAt} IS NULL AND ${table.archivedAt} IS NULL`),

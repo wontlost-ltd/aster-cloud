@@ -946,6 +946,8 @@ export interface VersionVocabularyRow {
   status: string | null;
   createdBy: string | null;
   vocabularySnapshotIds: unknown;
+  /** 版本所属策略：团队策略草稿按「团队词汇 + 作者词汇」取词（ADR 0017）。 */
+  policyId?: string | null;
 }
 
 /**
@@ -964,6 +966,7 @@ export function versionVocabularyLoader(
       status: pv.status,
       vocabularySnapshotIds: pv.vocabularySnapshotIds,
       authorId: pv.createdBy,
+      policyId: pv.policyId,
       source: pv.content,
       locale,
     }, { strict: true });

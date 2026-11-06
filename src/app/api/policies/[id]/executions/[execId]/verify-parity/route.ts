@@ -111,6 +111,7 @@ export async function POST(_req: Request, { params }: RouteParams) {
       status: version.status,
       vocabularySnapshotIds: version.vocabularySnapshotIds,
       authorId: version.createdBy,
+      teamId: policy.teamId ?? null,
       source: version.content,
       locale: exec.locale ?? '',
     });

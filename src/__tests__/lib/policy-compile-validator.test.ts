@@ -48,7 +48,7 @@ describe('makeCompileValidator / loadSaveVocabulary — 领域词汇（#602，AD
     await makeCompileValidator('u1', save.vocabulary)({ source, locale: 'de-DE' });
 
     expect(mockLoadVocabulary).toHaveBeenCalledTimes(1);
-    expect(mockLoadVocabulary).toHaveBeenCalledWith('u1', { source, locale: 'de-DE' });
+    expect(mockLoadVocabulary).toHaveBeenCalledWith('u1', { source, locale: 'de-DE' }, { teamId: undefined });
     expect(save.scopesJson).toBe(vocabularyScopesJson(vocabulary));
     expect(save.scopesJson).not.toBe('');
     expect(mockCompile).toHaveBeenCalledWith(expect.objectContaining({ source, locale: 'de-DE', vocabulary }));

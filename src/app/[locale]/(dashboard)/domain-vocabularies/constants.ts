@@ -13,4 +13,7 @@ export const KNOWN_ERROR_CODES = new Set([
   'not_found',
   'plan_gate_required',
   'internal_error',
+  // 团队共享词汇（ADR 0017）：非成员 / 角色不足。
+  'team_forbidden',
+  'team_role_insufficient',
 ]);

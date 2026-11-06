@@ -68,6 +68,12 @@ export interface ExecutionVocabularyTarget {
    * （团队策略里作者可不是所有者）；作者为空时审批也不冻结任何词汇，这里同样不带词汇。
    */
   authorId: string | null | undefined;
+  /**
+   * 团队策略所属团队（草稿取「团队词汇 + 作者词汇」，ADR 0017 §2）：已知就给 teamId（null = 个人策略），
+   * 否则给 policyId 由词汇层按策略行查；都缺省按个人策略。冻结版本不看它（快照已含团队词汇）。
+   */
+  teamId?: string | null;
+  policyId?: string | null;
   source: string;
   locale: string;
 }
@@ -95,6 +101,10 @@ function isVocabularyScopeError(err: unknown): boolean {
   return err instanceof Error && err.name === 'VocabularyScopeError';
 }
 
+function teamRefOf(target: ExecutionVocabularyTarget): { teamId?: string | null; policyId?: string | null } {
+  return { teamId: target.teamId, policyId: target.policyId };
+}
+
 async function loadVersionVocabularyStrict(
   target: ExecutionVocabularyTarget,
 ): Promise<Record<string, unknown> | undefined> {
@@ -103,7 +113,7 @@ async function loadVersionVocabularyStrict(
   try {
     const vocab = executionVocabularySource(target.status) === 'frozen'
       ? await loadVocabularyForExecution(target.vocabularySnapshotIds as SnapshotRef[] | null, policy)
-      : await loadLiveVocabularyForPolicy(target.authorId!, policy);
+      : await loadLiveVocabularyForPolicy(target.authorId!, policy, teamRefOf(target));
     return vocab ? (vocab as unknown as Record<string, unknown>) : undefined;
   } catch (err) {
     if (isVocabularyScopeError(err)) throw err;
@@ -131,7 +141,7 @@ export async function loadVersionExecutionVocabulary(
     return undefined;
   }
   try {
-    const vocab = await loadLiveVocabularyForPolicy(target.authorId, policy);
+    const vocab = await loadLiveVocabularyForPolicy(target.authorId, policy, teamRefOf(target));
     return vocab ? (vocab as unknown as Record<string, unknown>) : undefined;
   } catch (err) {
     console.warn('[vocabulary] failed to load live vocabulary for draft execution', err);
@@ -143,6 +153,9 @@ export async function loadVersionExecutionVocabulary(
 export interface StoredVersionCompileInput extends StoredVersionLocaleInput {
   status: string | null | undefined;
   createdBy: string | null | undefined;
+  /** 团队策略的团队 / 版本所属策略，见 {@link ExecutionVocabularyTarget.teamId}。 */
+  teamId?: string | null;
+  policyId?: string | null;
 }
 
 export interface StoredVersionCompileContext {
@@ -165,6 +178,8 @@ export async function loadStoredVersionCompileContext(
     status: version.status,
     vocabularySnapshotIds: version.vocabularySnapshotIds,
     authorId: version.createdBy,
+    teamId: version.teamId,
+    policyId: version.policyId,
     source: version.source,
     locale,
   }, { strict: true });

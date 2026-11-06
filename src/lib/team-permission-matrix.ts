@@ -30,6 +30,10 @@ export const TeamPermission = {
   INVITATION_VIEW: 'invitation.view',
   INVITATION_CREATE: 'invitation.create',
   INVITATION_REVOKE: 'invitation.revoke',
+  // 团队共享领域词汇（ADR 0017）：查看 / 新增（含改自己创建的）/ 管理他人创建的。
+  VOCABULARY_VIEW: 'vocabulary.view',
+  VOCABULARY_CREATE: 'vocabulary.create',
+  VOCABULARY_MANAGE: 'vocabulary.manage',
 } as const;
 
 export type TeamPermissionType = (typeof TeamPermission)[keyof typeof TeamPermission];
@@ -59,6 +63,9 @@ export const ROLE_PERMISSIONS: Record<string, TeamPermissionType[]> = {
     TeamPermission.INVITATION_VIEW,
     TeamPermission.INVITATION_CREATE,
     TeamPermission.INVITATION_REVOKE,
+    TeamPermission.VOCABULARY_VIEW,
+    TeamPermission.VOCABULARY_CREATE,
+    TeamPermission.VOCABULARY_MANAGE,
   ],
   member: [
     TeamPermission.TEAM_VIEW,
@@ -67,8 +74,15 @@ export const ROLE_PERMISSIONS: Record<string, TeamPermissionType[]> = {
     TeamPermission.POLICY_CREATE,
     TeamPermission.POLICY_UPDATE,
     TeamPermission.POLICY_EXECUTE,
+    TeamPermission.VOCABULARY_VIEW,
+    TeamPermission.VOCABULARY_CREATE,
   ],
-  viewer: [TeamPermission.TEAM_VIEW, TeamPermission.MEMBER_VIEW, TeamPermission.POLICY_VIEW],
+  viewer: [
+    TeamPermission.TEAM_VIEW,
+    TeamPermission.MEMBER_VIEW,
+    TeamPermission.POLICY_VIEW,
+    TeamPermission.VOCABULARY_VIEW,
+  ],
 };
 
 // 检查角色是否拥有指定权限

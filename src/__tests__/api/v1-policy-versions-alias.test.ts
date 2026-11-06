@@ -112,7 +112,7 @@ describe('POST /api/v1/policies/[id]/versions — aliasSet 支持', () => {
   it('作者词汇只加载一次（按源码与编译 locale），同一份交给编译门禁与 envelope 封印', async () => {
     await POST(req({ source: 'Module X.', locale: 'de' }), params);
     expect(loadSaveVocabulary).toHaveBeenCalledTimes(1);
-    expect(loadSaveVocabulary).toHaveBeenCalledWith('user-1', { source: 'Module X.', locale: 'de-DE' });
+    expect(loadSaveVocabulary).toHaveBeenCalledWith('user-1', { source: 'Module X.', locale: 'de-DE' }, expect.any(Object));
     expect(makeCompileValidator).toHaveBeenCalledWith('user-1', { id: 'v' });
     expect(createVersion).toHaveBeenCalledWith(expect.objectContaining({ scopesJson: '{"scopes":"live"}' }));
   });

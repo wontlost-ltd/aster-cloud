@@ -104,6 +104,7 @@ export function NewPolicyContent({
       subtitle={t('form.createSubtitle')}
       onSave={handleSave}
       allowStructuralAliases={allowStructuralAliases}
+      teamId={teamId ?? null}
       cancelHref={`/${locale}/policies`}
       detailHrefFor={(id) => `/${locale}/policies/${id}`}
       breadcrumbs={[
