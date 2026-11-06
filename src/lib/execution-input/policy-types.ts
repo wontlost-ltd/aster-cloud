@@ -75,8 +75,12 @@ function entryFlags(input: PolicyTypeSource, functionCount: number): boolean[] {
     .map((d) => ((d as { annotations?: ReadonlyArray<{ name?: string }> }).annotations ?? []).some((a) => a?.name === 'entry'));
 }
 
-function diagnosticCodes(diagnostics: ReadonlyArray<{ code: unknown }>): string[] {
-  return [...new Set(diagnostics.map((d) => String(d.code)))];
+/**
+ * 诊断码优先读过渡字段 legacyCode（ts 1.2.6 起解析错误 code 改为共享码表 E05x，原 P0xx / L0xx 转入 legacyCode，
+ * ADR 0051 §16 R56），保持界面拿到的码一个车次内不变；下一车次删除 legacyCode 读取。
+ */
+function diagnosticCodes(diagnostics: ReadonlyArray<{ code: unknown; legacyCode?: unknown }>): string[] {
+  return [...new Set(diagnostics.map((d) => String(d.legacyCode ?? d.code)))];
 }
 
 function resolveTypes(input: PolicyTypeSource): Resolved {

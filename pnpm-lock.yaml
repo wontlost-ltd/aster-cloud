@@ -42,8 +42,8 @@ importers:
   .:
     dependencies:
       '@aster-cloud/aster-lang-ts':
-        specifier: 1.2.5
-        version: 1.2.5(cac@6.7.14)(ora@9.4.0)(p-limit@7.3.0)(vscode-languageserver-textdocument@1.0.12)(vscode-languageserver-types@3.17.5)(vscode-languageserver@9.0.1)(ws@8.21.1)(zod@4.6.7)
+        specifier: 1.2.6
+        version: 1.2.6(cac@6.7.14)(ora@9.4.0)(p-limit@7.3.0)(vscode-languageserver-textdocument@1.0.12)(vscode-languageserver-types@3.17.5)(vscode-languageserver@9.0.1)(ws@8.21.1)(zod@4.6.7)
       '@aster-cloud/tokens':
         specifier: ^0.2.1
         version: 0.2.1
@@ -51,8 +51,8 @@ importers:
         specifier: ^0.3.1
         version: 0.3.1(@types/react@19.2.18)(react@19.2.8)(sonner@2.0.8(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))
       '@aster-cloud/ui-messages':
-        specifier: 1.0.27
-        version: 1.0.27
+        specifier: 1.0.28
+        version: 1.0.28
       '@aster-cloud/ui-messages-hi':
         specifier: 1.0.24
         version: 1.0.24
@@ -367,8 +367,8 @@ packages:
     resolution: {integrity: sha512-bjJsUt0g3UCwbn9bjv7MnoR15rszSm79yPCXn4DWWK0NuYUUqBU/srtNMR4WnpfR7TnfBRdYFoqSNx0pGCNWJg==}
     engines: {node: '>= 10'}
 
-  '@aster-cloud/aster-lang-ts@1.2.5':
-    resolution: {integrity: sha512-3ctL2KHKA2MSsv0ngxt0VpbLjKnUSlDhli6J8iXjZpdTtgqKaTMlrHA4CEgpEuRutPrF188HnmD0+Q7QzGxnMA==}
+  '@aster-cloud/aster-lang-ts@1.2.6':
+    resolution: {integrity: sha512-lBI2SrEUoKWelQ/ZGxGEPxy9WF/cREcDk9AS52JGqLovDHAehwE682lL+1nqtjazX/PEBXS/EjYVvdmUg/K0PQ==}
     engines: {node: '>=24.0.0'}
     hasBin: true
     peerDependencies:
@@ -405,8 +405,8 @@ packages:
   '@aster-cloud/ui-messages-hi@1.0.24':
     resolution: {integrity: sha512-o/Fl3z6jbATryTTh3Vx3kleLetpiFSN/1Dzpxt63RjNWp/uDL1sXAkKn/c5lNhPPQMHfNRyfDudiSRMPrgPf9A==}
 
-  '@aster-cloud/ui-messages@1.0.27':
-    resolution: {integrity: sha512-kDsv4SQQ6AD3R0vVtku1GJ5Bwpm//PcuAWvOepmChHTSTEfE0sRGHNAGUSIIHvo3vuORvpEO6DoUI2wf1r2CQw==}
+  '@aster-cloud/ui-messages@1.0.28':
+    resolution: {integrity: sha512-XSi/jrStlQ65duY+8IZ7UtckMQbIH65reNS3sxZCjEToA5O7PegWDvSScWliwj9BVyN8J3aK7dzGsc01c6MCjA==}
 
   '@aster-cloud/ui@0.3.1':
     resolution: {integrity: sha512-qfF3BG93g6Iq5fs6XV06H9NDgvq8EDT7RP/BovI9kWbSW+Zy4gJEoAjbk8fgyH5gr7XRIJrdA+CYjYeV9ZBHug==}
@@ -6051,7 +6051,7 @@ snapshots:
       '@ast-grep/napi-win32-ia32-msvc': 0.45.3
       '@ast-grep/napi-win32-x64-msvc': 0.45.3
 
-  '@aster-cloud/aster-lang-ts@1.2.5(cac@6.7.14)(ora@9.4.0)(p-limit@7.3.0)(vscode-languageserver-textdocument@1.0.12)(vscode-languageserver-types@3.17.5)(vscode-languageserver@9.0.1)(ws@8.21.1)(zod@4.6.7)':
+  '@aster-cloud/aster-lang-ts@1.2.6(cac@6.7.14)(ora@9.4.0)(p-limit@7.3.0)(vscode-languageserver-textdocument@1.0.12)(vscode-languageserver-types@3.17.5)(vscode-languageserver@9.0.1)(ws@8.21.1)(zod@4.6.7)':
     dependencies:
       '@types/semver': 7.7.1
       decimal.js: 10.4.3
@@ -6084,7 +6084,7 @@ snapshots:
 
   '@aster-cloud/ui-messages-hi@1.0.24': {}
 
-  '@aster-cloud/ui-messages@1.0.27': {}
+  '@aster-cloud/ui-messages@1.0.28': {}
 
   '@aster-cloud/ui@0.3.1(@types/react@19.2.18)(react@19.2.8)(sonner@2.0.8(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))':
     dependencies:

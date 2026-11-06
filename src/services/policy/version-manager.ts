@@ -251,6 +251,8 @@ export const DEFAULT_COMPILE_RETRY_AFTER_SECONDS = 60;
 export interface CompileDiagnostic {
   severity: 'error' | 'warning' | 'info' | 'hint';
   code?: string;
+  /** 过渡字段：引擎改码（R56）前的本地码（P0xx / L0xx），保留一个发版车次。 */
+  legacyCode?: string;
   message?: string;
   startLine?: number;
   startColumn?: number;

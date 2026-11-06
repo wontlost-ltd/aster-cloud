@@ -696,7 +696,7 @@ export function useAsterLSP({
             return { suggestions: [], incomplete: true };
           }
           try {
-            const result = await sendRequest<LSPCompletionItem[] | { items: LSPCompletionItem[] } | null>('textDocument/completion', {
+            const result = await sendRequest<LSPCompletionItem[] | { items: LSPCompletionItem[]; isIncomplete?: boolean } | null>('textDocument/completion', {
               ...makeTextDocumentPositionParams(position),
               // Monaco 的 triggerKind 从 0 起（Invoke=0），LSP 从 1 起（Invoked=1）
               context: {
@@ -706,6 +706,8 @@ export function useAsterLSP({
             }, { timeoutMs: COMPLETION_TIMEOUT_MS });
             if (token?.isCancellationRequested) return null;
             const items = Array.isArray(result) ? result : result?.items ?? [];
+            // CompletionList.isIncomplete（服务端预算截断）透传给 Monaco：继续输入时重新请求而不是本地过滤
+            const incomplete = !Array.isArray(result) && result?.isIncomplete === true;
             const word = model.getWordUntilPosition(position);
             const wordRange = {
               startLineNumber: position.lineNumber,
@@ -725,6 +727,7 @@ export function useAsterLSP({
                   ...(item.detail ? { detail: item.detail } : {}),
                   range: completionRange(item.textEdit) ?? wordRange,
                 })),
+              incomplete,
             };
           } catch (e) {
             // 超时（服务端卡住）或连接问题：补全不可用时静默返回，本地关键字补全照常

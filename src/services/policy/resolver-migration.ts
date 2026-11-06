@@ -253,7 +253,8 @@ function compileFailure(errors: readonly CompileDiagnostic[], source: string, fa
   const codes = [...new Set(errors.map((d) => d.code ?? 'compile_error'))];
   const message = errors.map((d) => `${d.code ?? 'compile_error'}: ${d.message ?? ''}`).join('; ');
   const error = truncateMigrationError(message || fallback || 'compile failed');
-  const invalidConstructForm = codes.includes('P005') && INVALID_CONSTRUCT_FORM.test(source);
+  // 分诊按 legacyCode ?? code 判 P005：引擎 R56 起解析错误 code 为 E05x，原码转入 legacyCode（过渡一个车次）
+  const invalidConstructForm = errors.some((d) => (d.legacyCode ?? d.code) === 'P005') && INVALID_CONSTRUCT_FORM.test(source);
   return { ok: false, failure: { category: 'compile', error, codes, invalidConstructForm } };
 }
 
