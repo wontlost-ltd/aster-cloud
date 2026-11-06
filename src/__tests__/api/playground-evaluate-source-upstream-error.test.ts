@@ -142,6 +142,29 @@ describe('POST /api/playground/evaluate-source — 上游非 2xx 与配置缺失
     expect(body).not.toHaveProperty('diagnostics');
   });
 
+  it('模块诊断的 reason（aster-api#455）：已知且与 code 对应的透传，未知 / 与 code 不符的丢弃，无 reason 时不出现该字段', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    upstream(400, {
+      diagnostics: [
+        { code: 'MODULE_VERSION_NOT_FOUND', message: 'Module m@2 not found', candidates: ['1'], reason: 'VERSION_NOT_FOUND' },
+        { code: 'MODULE_CYCLE', message: 'cycle', candidates: [], reason: 'IMPORT_CYCLE' },
+        { code: 'MODULE_NOT_VISIBLE', message: 'not visible', candidates: [], reason: 'SOMETHING_NEW' },
+        { code: 'MODULE_NOT_VISIBLE', message: 'not visible', candidates: [], reason: 'IMPORT_CYCLE' },
+        { code: 'MODULE_NOT_VISIBLE', message: 'not visible', candidates: [], reason: 42 },
+        { code: 'ENTRY_AMBIGUOUS', message: 'ambiguous', candidates: ['a', 'b'] },
+      ],
+    });
+    const body = await (await POST(request())).json();
+    expect(body.diagnostics).toEqual([
+      { code: 'MODULE_VERSION_NOT_FOUND', message: 'Module m@2 not found', candidates: ['1'], reason: 'VERSION_NOT_FOUND' },
+      { code: 'MODULE_CYCLE', message: 'cycle', candidates: [], reason: 'IMPORT_CYCLE' },
+      { code: 'MODULE_NOT_VISIBLE', message: 'not visible', candidates: [] },
+      { code: 'MODULE_NOT_VISIBLE', message: 'not visible', candidates: [] },
+      { code: 'MODULE_NOT_VISIBLE', message: 'not visible', candidates: [] },
+      { code: 'ENTRY_AMBIGUOUS', message: 'ambiguous', candidates: ['a', 'b'] },
+    ]);
+  });
+
   it('上游 429：透传 Retry-After', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'too_many_requests' }), {
