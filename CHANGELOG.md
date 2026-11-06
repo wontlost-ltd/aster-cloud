@@ -341,6 +341,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
+- **API v1 兼容性变化**：执行 422（`input_type_extraction_failed`）的 `diagnostics` 解析码由 P0xx / L0xx 改为 E050–E069（ADR 0051 §16 R56，对照见 docs/api/policy-execute-input.md §3b）；resolver 迁移构造分诊改认 E057 / E064 (#732) *(api)*
 - PROFILE_KEYWORDS 仅模块内使用，取消导出 *(policy)*
 - 存储 manifest 定型为 EvidenceManifestV1 | EvidenceManifest，读取侧按 schemaVersion 收窄（ADR 0041 §5） *(evidence)*
 - 策略租户 id 统一经 policyTenantId 推导（teamId || userId） *(evidence)*

@@ -18,7 +18,9 @@ type Outcome =
   /** 上游 HTTP 拒绝；diagnostics 给出时为编译资源的源码/别名输入错误形态。 */
   | { kind: 'http'; status: number; code: string; diagnostics?: unknown[] }
   /** 编译挂起直到 release：让迁移事务持有行锁，制造并发窗口。 */
-  | { kind: 'gate'; released: Promise<void> };
+  | { kind: 'gate'; released: Promise<void> }
+  /** 用真实 ts 引擎解析该源码，返回其解析诊断原样（code / legacyCode / message），不注入码。 */
+  | { kind: 'real-ts'; locale: string };
 
 const compileState = vi.hoisted(() => ({
   outcomes: new Map<string, unknown>(),
@@ -40,6 +42,12 @@ vi.mock('@/services/policy/policy-api', async (importOriginal) => {
         }
         if (outcome.kind === 'unavailable') {
           throw new actual.PolicyApiError('Service Unavailable', 503, 'UNAVAILABLE');
+        }
+        if (outcome.kind === 'real-ts') {
+          const { resolvePolicyTypes } = await import('@aster-cloud/aster-lang-ts/browser');
+          const { getLexicon } = await import('@/lib/aster-lexicon');
+          const result = resolvePolicyTypes(request.source as string, { locale: getLexicon(outcome.locale).id });
+          return { success: false, diagnostics: (result.ok ? [] : result.diagnostics).map((d) => ({ ...d, severity: 'error' })) };
         }
         if (outcome.kind === 'diagnostics') {
           return {
@@ -671,5 +679,24 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('resolver 迁移（ADR 0051 §9
 
     expect(report).toMatchObject({ processed: 3, succeeded: 0, failed: 3 });
     expect(report.triage.invalidConstructForm.map((f) => f.id).sort()).toEqual([`${e057}-v1`, `${e064}-v1`].sort());
+  });
+
+  it('真实 ts 引擎：`mit f = v` 产出 E057 并归入 invalidConstructForm；位置式构造产出 E064，但无 `with f =` 写法不归入', async () => {
+    const named = `${PREFIX}real-named`;
+    const positional = `${PREFIX}real-positional`;
+    const namedSource = `Modul m.\n\nRegel echt gegeben x als Ganzzahl, liefert Fahrer:\n  gib zurück Fahrer mit alter = x.\n`;
+    const positionalSource = 'Module m.\n\nDefine User has name as Text.\n\nRule r given x as Text, produce User:\n  Return User(x).\n';
+    await seed(db, named, [{ source: namedSource, locale: 'de-DE' }]);
+    await seed(db, positional, [{ source: positionalSource }]);
+    compileState.outcomes.set(namedSource, { kind: 'real-ts', locale: 'de-DE' });
+    compileState.outcomes.set(positionalSource, { kind: 'real-ts', locale: 'en-US' });
+
+    const report = await runResolverMigration({ batchSize: 50, policyIdPrefix: `${PREFIX}real-` });
+
+    expect(report).toMatchObject({ processed: 2, succeeded: 0, failed: 2 });
+    const all = [...report.triage.invalidConstructForm, ...report.triage.otherCompile];
+    expect(all.find((f) => f.id === `${named}-v1`)?.codes).toEqual(['E057']);
+    expect(all.find((f) => f.id === `${positional}-v1`)?.codes).toEqual(['E064']);
+    expect(report.triage.invalidConstructForm.map((f) => f.id)).toEqual([`${named}-v1`]);
   });
 });
