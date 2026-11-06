@@ -59,12 +59,12 @@ const INVALID_CONSTRUCT_FORM = /(?:\bwith|\bmit|包含|सहित)\s*[\p{L}_][
 
 /**
  * 构造类解析诊断码（ADR 0051 §16 R56，映射见 aster-lang-ts#291）：E057 构造缺 `set to`、E064 构造写法非法。
- * 旧引擎（R56 前）只发兜底码 P005；过渡车次内 P005 在 legacyCode。两种都认，引擎删除 legacyCode 后结果不变。
+ * 旧引擎（R56 前）在 code 里发兜底码 P005，一并认。只看 `code`：ts 1.3.0 起已删除过渡字段 legacyCode。
  */
 const CONSTRUCT_PARSE_CODES: ReadonlySet<string> = new Set(['E057', 'E064', 'P005']);
 
 function isConstructParseError(d: CompileDiagnostic): boolean {
-  return [d.code, d.legacyCode].some((c) => c !== undefined && CONSTRUCT_PARSE_CODES.has(c));
+  return d.code !== undefined && CONSTRUCT_PARSE_CODES.has(d.code);
 }
 
 type VersionRow = typeof policyVersions.$inferSelect;

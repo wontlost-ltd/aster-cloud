@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { editor } from 'monaco-editor';
-import { localizeParseMessage } from '@/lib/parse-diagnostic-l10n';
+import { localizeSyntaxDiagnostic, type SyntaxDiagnosticLike } from '@/lib/syntax-diagnostic-message';
 import type { EditorCnlLocale } from '@/lib/cnl-locale';
 import {
   compileAndTypecheck,
@@ -117,20 +117,22 @@ export function collectCompileDiagnostics(
   const all: TypecheckDiagnostic[] = [];
 
   for (const err of result.parseErrors ?? []) {
-    const parseError = err as { message: string; span?: TypecheckDiagnostic['span'] };
+    const parseError = err as SyntaxDiagnosticLike & { span?: TypecheckDiagnostic['span'] };
     all.push({
       severity: 'error',
+      // 编辑器标记码保持 E000，与服务端编译门（seed-compile）一致；引擎码只用于取文案
       code: 'E000' as DiagnosticCode,
-      // 解析错误按策略语言译出句子骨架（引擎尚无解析错误 overlay，见 parse-diagnostic-l10n）
-      message: localizeParseMessage(parseError.message, locale),
+      // 按 code + params 取策略语言文案（见 syntax-diagnostic-message），不反查英文消息
+      message: localizeSyntaxDiagnostic(parseError, locale),
       span: parseError.span,
     });
   }
 
   all.push(...(result.resolutionDiagnostics ?? []));
 
+  // 降级错误只有英文字符串、没有码，原样透传
   for (const message of result.loweringErrors ?? []) {
-    all.push({ severity: 'error', code: 'E000' as DiagnosticCode, message: localizeParseMessage(message, locale) });
+    all.push({ severity: 'error', code: 'E000' as DiagnosticCode, message });
   }
 
   all.push(...(result.typeErrors ?? []));

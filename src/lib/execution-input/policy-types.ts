@@ -76,8 +76,7 @@ function entryFlags(input: PolicyTypeSource, functionCount: number): boolean[] {
 }
 
 /**
- * 对外展示引擎的共享诊断码（解析错误为 E050–E069，ADR 0051 §16 R56），与编辑器一致；
- * 不读过渡字段 legacyCode（旧 P0xx / L0xx），引擎移除该字段后结果不变。
+ * 对外展示引擎的共享诊断码（解析错误为 E050–E069，ADR 0051 §16 R56），与编辑器一致。
  */
 function diagnosticCodes(diagnostics: ReadonlyArray<{ code: unknown }>): string[] {
   return [...new Set(diagnostics.map((d) => String(d.code)))];
