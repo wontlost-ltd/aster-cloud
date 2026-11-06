@@ -7,7 +7,7 @@
  *   - 源码不再引用用户词时清空。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
 vi.mock('@/hooks/useDomainVocabularyInvalidate', () => ({
   useDomainVocabularyInvalidate: () => 0,
@@ -222,6 +222,63 @@ describe('useUserVocabularyRegistration', () => {
       );
       await waitFor(() => expect(result.current.vocabulary?.structs.map((m) => m.canonical)).toEqual(['Vehicle']));
       teamStatus = 403;
+      rerender({ tick: 1 });
+      await waitFor(() => expect(result.current.vocabulary?.structs.map((m) => m.canonical)).toEqual(['Driver']));
+      expect(result.current.shadowed).toEqual([]);
+    });
+
+    it('竞态：A 挂起时切到 B，B 先返回、A 迟到，A 的词条不进入合并；切回 A 只用新响应', async () => {
+      const B_ITEMS = [{ termId: 'tb1', domain: 'team', locale: 'de', kind: 'struct', canonical: 'Bus', localized: 'Fahrer' }];
+      const A_NEW = [{ termId: 'ta2', domain: 'team', locale: 'de', kind: 'struct', canonical: 'Auto', localized: 'Fahrer' }];
+      const pendingA: Array<() => void> = [];
+      let aCalls = 0;
+      fetchMock.mockImplementation(async (url: string) => {
+        const team = new URL(url, 'http://x').searchParams.get('teamId');
+        if (team === 'team-a') {
+          aCalls += 1;
+          // 第一次 A 请求挂起并在之后迟到，返回旧数据；第二次立即返回新数据
+          const items = aCalls === 1 ? TEAM_ITEMS : A_NEW;
+          if (aCalls === 1) await new Promise<void>((resolve) => pendingA.push(resolve));
+          return { ok: true, json: async () => ({ items, total: items.length }) };
+        }
+        const items = team === 'team-b' ? B_ITEMS : ITEMS;
+        return { ok: true, json: async () => ({ items, total: items.length }) };
+      });
+      const structs = (r: { current: { vocabulary?: { structs: Array<{ canonical: string }> } } }) =>
+        r.current.vocabulary?.structs.map((m) => m.canonical);
+      const { result, rerender } = renderHook(
+        ({ teamId }) => useUserVocabularyRegistration({ tenantId: 'tenant-hook', locale: 'de-DE', source: SOURCE, teamId }),
+        { initialProps: { teamId: 'team-a' } },
+      );
+      await waitFor(() => expect(pendingA).toHaveLength(1));
+      rerender({ teamId: 'team-b' });
+      await waitFor(() => expect(structs(result)).toEqual(['Bus']));
+      // A 的旧响应迟到
+      await act(async () => { pendingA[0]!(); await Promise.resolve(); });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(structs(result)).toEqual(['Bus']);
+      // 切回 A：只用新响应
+      rerender({ teamId: 'team-a' });
+      await waitFor(() => expect(structs(result)).toEqual(['Auto']));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(structs(result)).toEqual(['Auto']);
+      expect(aCalls).toBe(2);
+    });
+
+    it('团队词条请求网络失败（fetch reject）时清空团队词条，退回作者词汇', async () => {
+      let reject = false;
+      fetchMock.mockImplementation(async (url: string) => {
+        const team = new URL(url, 'http://x').searchParams.get('teamId');
+        if (team === 'team-1' && reject) throw new TypeError('Failed to fetch');
+        const items = team === 'team-1' ? TEAM_ITEMS : ITEMS;
+        return { ok: true, json: async () => ({ items, total: items.length }) };
+      });
+      const { result, rerender } = renderHook(
+        ({ tick }) => useUserVocabularyRegistration({ tenantId: `tenant-${tick}`, locale: 'de-DE', source: SOURCE, teamId: 'team-1' }),
+        { initialProps: { tick: 0 } },
+      );
+      await waitFor(() => expect(result.current.vocabulary?.structs.map((m) => m.canonical)).toEqual(['Vehicle']));
+      reject = true;
       rerender({ tick: 1 });
       await waitFor(() => expect(result.current.vocabulary?.structs.map((m) => m.canonical)).toEqual(['Driver']));
       expect(result.current.shadowed).toEqual([]);
