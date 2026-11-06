@@ -97,8 +97,7 @@ describe('降级错误（无码）经 collectCompileDiagnostics 仍按英文句�
     ['zh-CN', '无法识别的语句'],
     ['de-DE', 'Unbekannte Anweisung'],
     ['hi-IN', 'अज्ञात कथन'],
-  ])('%s', async (locale, expected) => {
-    const { collectCompileDiagnostics } = await import('@/hooks/useAsterCompiler');
+  ])('%s', (locale, expected) => {
     const out = collectCompileDiagnostics({ loweringErrors: ['Unknown statement'] } as never, locale);
     expect(out[0]!.message).toBe(expected);
   });
