@@ -23,13 +23,16 @@
  */
 
 import {
+  buildSpellingIndex,
   buildVocabularyScopes,
-  foldKey,
   IdentifierKind,
+  resolveSpelling,
   type Candidate,
   type DomainVocabulary,
   type IdentifierMapping,
   type PolicyTypes,
+  type SpellingIndex,
+  type SpellingMatch,
   type VocabularyScopes,
 } from '@aster-cloud/aster-lang-ts/browser';
 
@@ -146,51 +149,30 @@ export interface Slot {
   readonly type?: PolicyTypeNode;
 }
 
-/** 写法 → 声明项：NFC 精确键与折叠键各一张；规范名 → 声明项供输出方向直接还原。 */
-export interface SpellingTable {
-  readonly exact: ReadonlyMap<string, readonly Slot[]>;
-  readonly folded: ReadonlyMap<string, readonly Slot[]>;
+/**
+ * 某作用域（一个结构的字段 / 一个枚举的成员 / 全部类型名 / 全部函数）的写法索引（引擎 buildSpellingIndex，
+ * 精确优先、再折叠，与引擎名称解析同口径）：每个声明项接受作者写法、规范名，以及作用域内规范名与之相同的
+ * 词条写法（本地化名与同义词）。只认引擎解析出的声明项：词汇里有、策略里没声明的词条不参与，也就不会制造假撞名。
+ */
+export function slotSpellingIndex<S extends Slot>(slots: readonly S[], candidates: readonly Candidate[]): SpellingIndex<S> {
+  return buildSpellingIndex(
+    slots,
+    (slot) => [slot.written, slot.canonical, ...candidates.filter((c) => c.canonical === slot.canonical).map((c) => c.written)],
+    (slot) => slot.canonical,
+  );
+}
+
+/** 写法索引 + 规范名 → 声明项（输出方向直接还原作者写法）。 */
+interface SpellingTable {
+  readonly index: SpellingIndex<Slot>;
   readonly byCanonical: ReadonlyMap<string, Slot>;
 }
 
-export type Lookup = { kind: 'none' } | { kind: 'one'; slot: Slot } | { kind: 'conflict'; targets: string[] };
-
-function addSpelling(table: Map<string, Slot[]>, key: string, slot: Slot): void {
-  const slots = table.get(key) ?? [];
-  if (!slots.some((s) => s.canonical === slot.canonical)) slots.push(slot);
-  table.set(key, slots);
+function spellingTable(slots: readonly Slot[], candidates: readonly Candidate[]): SpellingTable {
+  return { index: slotSpellingIndex(slots, candidates), byCanonical: new Map(slots.map((s) => [s.canonical, s])) };
 }
 
-/**
- * 某作用域（一个结构的字段 / 一个枚举的成员 / 全部类型名 / 全部函数）的写法表：
- * 每个声明项接受作者写法、规范名，以及作用域内规范名与之相同的词条写法（本地化名与同义词）。
- * 只认引擎解析出的声明项：词汇里有、策略里没声明的词条不参与，也就不会制造假撞名。
- */
-export function buildSpellingTable(slots: readonly Slot[], candidates: readonly Candidate[]): SpellingTable {
-  const exact = new Map<string, Slot[]>();
-  const folded = new Map<string, Slot[]>();
-  for (const slot of slots) {
-    const synonyms = candidates.filter((c) => c.canonical === slot.canonical).map((c) => c.written);
-    for (const spelling of [slot.written, slot.canonical, ...synonyms]) {
-      addSpelling(exact, spelling.normalize('NFC'), slot);
-      addSpelling(folded, foldKey(spelling), slot);
-    }
-  }
-  return { exact, folded, byCanonical: new Map(slots.map((s) => [s.canonical, s])) };
-}
-
-function lookupSlots(slots: readonly Slot[] | undefined): Lookup | null {
-  if (!slots || slots.length === 0) return null;
-  if (slots.length === 1) return { kind: 'one', slot: slots[0]! };
-  return { kind: 'conflict', targets: slots.map((s) => s.canonical).sort() };
-}
-
-/** 与引擎同口径：NFC 精确匹配优先，其次折叠匹配；同一层多个不同规范名即撞名。 */
-export function lookupSpelling(table: SpellingTable, key: string): Lookup {
-  return lookupSlots(table.exact.get(key.normalize('NFC')))
-    ?? lookupSlots(table.folded.get(foldKey(key)))
-    ?? { kind: 'none' };
-}
+type Lookup = SpellingMatch<Slot>;
 
 /** 折叠索引里的全部候选（按父名分组的取该组）。 */
 export function candidatesOf(index: ReadonlyMap<string, Candidate[]> | undefined): Candidate[] {
@@ -227,17 +209,17 @@ export function buildMappingModel(vocab: ExecutionVocabulary | null, types: Poli
   const effective: PolicyInputTypes = types ?? { params: [], structs: [], enums: [] };
   const byName = new Map<string, TypeModel>();
   for (const s of effective.structs) {
-    byName.set(s.canonical, { kind: 'Data', fields: buildSpellingTable(s.fields, candidatesOf(scopes.fields.get(s.canonical))) });
+    byName.set(s.canonical, { kind: 'Data', fields: spellingTable(s.fields, candidatesOf(scopes.fields.get(s.canonical))) });
   }
   for (const e of effective.enums) {
-    byName.set(e.canonical, { kind: 'Enum', members: buildSpellingTable(e.members, candidatesOf(scopes.enumMembers.get(e.canonical))) });
+    byName.set(e.canonical, { kind: 'Enum', members: spellingTable(e.members, candidatesOf(scopes.enumMembers.get(e.canonical))) });
   }
   const typeCandidates = candidatesOf(scopes.types);
   return {
     types: effective,
     byName,
-    structs: buildSpellingTable(effective.structs, typeCandidates),
-    enums: buildSpellingTable(effective.enums, typeCandidates),
+    structs: spellingTable(effective.structs, typeCandidates),
+    enums: spellingTable(effective.enums, typeCandidates),
   };
 }
 
@@ -276,16 +258,16 @@ function conflict(path: string, written: string, targets: string[]): Walked {
 
 /** 按方向查写法：输入按写法表（精确优先、再折叠），输出按规范名直接还原。 */
 function find(ctx: WalkContext, table: SpellingTable, key: string): Lookup {
-  if (ctx.direction === 'input') return lookupSpelling(table, key);
-  const slot = table.byCanonical.get(key);
-  return slot ? { kind: 'one', slot } : { kind: 'none' };
+  if (ctx.direction === 'input') return resolveSpelling(table.index, key);
+  const item = table.byCanonical.get(key);
+  return item ? { kind: 'one', item } : { kind: 'none' };
 }
 
 /** 按方向把查到的声明项换成输出写法（输入 → 规范名，输出 → 作者写法）。 */
 function rewrite(ctx: WalkContext, found: Lookup, written: string, path: string): Walked {
   if (found.kind === 'none') return PASS(written);
-  if (found.kind === 'conflict') return conflict(path, written, found.targets);
-  const out = ctx.direction === 'input' ? found.slot.canonical : found.slot.written;
+  if (found.kind === 'conflict') return conflict(path, written, found.items.map((s) => s.canonical));
+  const out = ctx.direction === 'input' ? found.item.canonical : found.item.written;
   if (out !== written && ctx.direction === 'input') ctx.renames.push({ path, from: written, to: out });
   return PASS(out);
 }
@@ -309,7 +291,7 @@ function resolveTag(
   const found = find(ctx, table, tag);
   const rewritten = rewrite(ctx, found, tag, joinPath(path, tagKey));
   if (!rewritten.ok) return rewritten;
-  const tagged = found.kind === 'one' ? ctx.model.byName.get(found.slot.canonical) : undefined;
+  const tagged = found.kind === 'one' ? ctx.model.byName.get(found.item.canonical) : undefined;
   return { ok: true, model: tagged ?? declared, tag: rewritten.value };
 }
 
@@ -333,7 +315,7 @@ function walkStruct(ctx: WalkContext, value: Record<string, unknown>, declared: 
     const prior = seen.get(outKey);
     if (prior !== undefined) return duplicate(prior, childPath, found);
     seen.set(outKey, childPath);
-    const walked = walkValue(ctx, child, found.kind === 'one' ? found.slot.type : undefined, childPath);
+    const walked = walkValue(ctx, child, found.kind === 'one' ? found.item.type : undefined, childPath);
     if (!walked.ok) return walked;
     entries.push([outKey, walked.value]);
   }
@@ -370,7 +352,7 @@ function walkEnumObject(ctx: WalkContext, value: Record<string, unknown>, path: 
 
 /** 同一对象内两个键落到同一字段：输入方向报歧义；输出方向不会发生（规范键唯一）。 */
 function duplicate(prior: string, path: string, found: Lookup): Walked {
-  const policyName = found.kind === 'one' ? found.slot.written : path;
+  const policyName = found.kind === 'one' ? found.item.written : path;
   return { ok: false, ambiguous: { field: path, fields: [prior, path], policyName } };
 }
 

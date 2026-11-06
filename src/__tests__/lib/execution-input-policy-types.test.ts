@@ -10,7 +10,7 @@ import { clearPolicyInputTypesCache, extractPolicyInputTypes } from '@/lib/execu
 
 vi.mock('@aster-cloud/aster-lang-ts/browser', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@aster-cloud/aster-lang-ts/browser')>();
-  return { ...actual, resolvePolicyTypes: vi.fn(actual.resolvePolicyTypes) };
+  return { ...actual, resolvePolicyTypes: vi.fn(actual.resolvePolicyTypes), parseSource: vi.fn(actual.parseSource) };
 });
 
 function row(kind: string, canonical: string, localized: string, parent: string | null = null): TermLikeRow {
@@ -147,5 +147,16 @@ describe('未指定 Rule 时的入口（与执行端 EntryPointSelector 同一�
 
   it('指定了 Rule：按名取，多条 Rule 也不报歧义', () => {
     expect(params(two, 'second')).toEqual(['n']);
+  });
+  it('#650：入口取引擎 functions[].entry，不再二次 parseSource', () => {
+    clearPolicyInputTypesCache();
+    vi.mocked(engine.parseSource).mockClear();
+    expect(params(withEntry)).toEqual(['n']);
+    expect(engine.parseSource).not.toHaveBeenCalled();
+  });
+
+  it('#650：多条 @entry 时取第一条', () => {
+    const both = `${head}\n@entry\nRule first given p as Person, produce Int:\n  Return p.age.\n\n@entry\nRule second given n as Int, produce Int:\n  Return n.\n`;
+    expect(params(both)).toEqual(['p']);
   });
 });
