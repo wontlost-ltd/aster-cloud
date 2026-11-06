@@ -315,7 +315,7 @@ describe('POST /api/policies/[id]/execute — 类型提取与执行同一词汇�
     const { status, body } = await executeRule({ person: { alter: 35, niveau: 'Hoch' } }, 'einstufen');
 
     expect(status).toBe(422);
-    expect(body).toMatchObject({ code: 'input_type_extraction_failed', diagnostics: ['P005'] });
+    expect(body).toMatchObject({ code: 'input_type_extraction_failed', diagnostics: ['E057'] });
     expect(mockEvaluateSource).not.toHaveBeenCalled();
     expect(mockInsertValues).not.toHaveBeenCalled();
   });

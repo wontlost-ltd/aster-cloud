@@ -38,7 +38,7 @@ describe('scripts/resolver-migration.ts', () => {
     const result = runCli(['--help'], {});
     expect(result.status).toBe(0);
     for (const text of [
-      '--conditions=import', 'no fallback', 'Success means', 'integrityMismatch', 'heuristic', 'P005',
+      '--conditions=import', 'no fallback', 'Success means', 'integrityMismatch', 'heuristic', 'E057 / E064',
       'pg_dump', 'HASH_MISMATCH', 'without\n    diagnostics', 'COMPILE_INTERNAL_ERROR',
       'ASTER_CLOUD_INTERNAL_URL', '/api/internal/policies/<id>/invalidate-cache',
     ]) {

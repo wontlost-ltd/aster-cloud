@@ -41,8 +41,8 @@ Known limits:
   - Success means "recompiled through aster-api with the version's vocabulary and resealed"; cloud stores no Core IR.
   - The cloud row has no locale column: the old seal is checked by guessing the locale from the supported candidates.
     A row saved with any other locale is reported under triage.integrityMismatch (left untouched for manual review).
-  - triage.invalidConstructForm (\`X mit f = v\`, aster-lang-ts#244) is a heuristic: P005 plus a regex on the source;
-    other P005 failures are listed under triage.otherCompile.
+  - triage.invalidConstructForm (\`X mit f = v\`, aster-lang-ts#244) is a heuristic: a construction parse code (E057 / E064, legacy P005) plus a regex on the source;
+    other parse failures are listed under triage.otherCompile.
   - Only upstream rejections that carry source-error diagnostics archive a row. 401/403/404/413 and other 4xx without
     diagnostics (or with only COMPILE_INTERNAL_ERROR), 5xx and transport errors are infrastructure failures: nothing
     is changed, re-run after fixing config.

@@ -93,6 +93,32 @@
 
 执行记录与用量计数在变更前后都会写入（decision=`error`）。按 HTTP 状态码区分成功/失败的 API 集成方需要处理新的 400 分支。
 
+## 3b. 类型提取失败 → 422：`diagnostics` 改为共享码（兼容性变化）
+
+`POST /api/v1/policies/{id}/execute` 与控制台 `POST /api/policies/{id}/execute` 共用此响应：
+
+```json
+{ "error": "...", "code": "input_type_extraction_failed", "diagnostics": ["E057"] }
+```
+
+`diagnostics` 是引擎诊断码的字符串数组（去重）。**自 aster-cloud#732 部署起**（须早于引擎 1.0.42 发版列车），解析类诊断码由
+引擎本地旧码 P0xx / L0xx 改为共享码表 E050–E069（ADR 0051 §16 R56，与编辑器一致）；E8xx 等非解析码不变。
+完整映射见 [aster-lang-ts#291](https://github.com/aster-cloud/aster-lang-ts/pull/291)，要点：
+
+| 旧码 | 新码 | 含义 |
+|---|---|---|
+| L001 | E050 | 非法字符 |
+| L002 | E051 | 字符串未闭合 |
+| L003 / L004 | E052 | 缩进错误 |
+| L005–L008 | E053 | 数字字面量越界 / 位数过多 |
+| P015 | E054 | 嵌套过深 |
+| P001 / P003 | E055 | 缺少标识符 / 记号 |
+| P006 | E059 | 缺少标点 |
+| P004 | 按调用点（如 E056、E057） | 缺少关键词 |
+| P005（兜底） | 按句型拆为 E055–E069，如构造写法 `X with f = v` → E057、位置式构造 `X(a)` → E064 | 其他解析错误 |
+
+按诊断码分支的集成方需改认新码；只看 HTTP 状态与 `code` 的不受影响。
+
 ## 4. 用哪份词汇
 
 | 被执行的版本 | 词汇 |

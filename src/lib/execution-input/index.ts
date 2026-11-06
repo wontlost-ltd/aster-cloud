@@ -211,7 +211,7 @@ export type PreparedExecutionInput =
       localizeFieldPath: (path: string) => string;
     }
   | { ok: false; reason: 'ambiguous'; ambiguous: AmbiguousInputField }
-  /** diagnostics：引擎诊断码（如 P005、E802），供界面与排障定位。 */
+  /** diagnostics：引擎诊断码（如 E057、E802），供界面与排障定位。 */
   | { ok: false; reason: 'type_extraction_failed'; diagnostics: readonly string[] }
   | { ok: false; reason: 'entry_ambiguous'; rules: readonly string[] };
 

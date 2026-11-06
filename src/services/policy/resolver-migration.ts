@@ -52,10 +52,20 @@ export const INTEGRITY_MISMATCH_ERROR = 'pre-migration integrity mismatch';
 const MAX_ERROR_LENGTH = 4000;
 
 /**
- * 无效构造写法 `X mit f = v`（aster-lang-ts#244）的启发式：P005 且源码里有「构造关键词 + 字段 + 单个 =」。
+ * 无效构造写法 `X mit f = v`（aster-lang-ts#244）的启发式：构造类解析码且源码里有「构造关键词 + 字段 + 单个 =」。
  * 关键词取各语言词表的 TYPE_WITH（with / mit / 包含 / सहित）。只用于分诊归类，不影响迁移结果。
  */
 const INVALID_CONSTRUCT_FORM = /(?:\bwith|\bmit|包含|सहित)\s*[\p{L}_][\p{L}\p{N}_]*\s*=(?!=)/u;
+
+/**
+ * 构造类解析诊断码（ADR 0051 §16 R56，映射见 aster-lang-ts#291）：E057 构造缺 `set to`、E064 构造写法非法。
+ * 旧引擎（R56 前）只发兜底码 P005；过渡车次内 P005 在 legacyCode。两种都认，引擎删除 legacyCode 后结果不变。
+ */
+const CONSTRUCT_PARSE_CODES: ReadonlySet<string> = new Set(['E057', 'E064', 'P005']);
+
+function isConstructParseError(d: CompileDiagnostic): boolean {
+  return [d.code, d.legacyCode].some((c) => c !== undefined && CONSTRUCT_PARSE_CODES.has(c));
+}
 
 type VersionRow = typeof policyVersions.$inferSelect;
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -86,7 +96,7 @@ export type RowResult =
 export interface ResolverMigrationTriage {
   /** 名称解析 E8xx（E801 单列）：多为依赖旧全局替换的本地化策略。 */
   e8xx: MigrationFailure[];
-  /** 无效构造写法 `X mit f = v`（P005，aster-lang-ts#244）。 */
+  /** 无效构造写法 `X mit f = v`（E057 / E064，旧引擎 P005；aster-lang-ts#244）。 */
   invalidConstructForm: MigrationFailure[];
   /** E801：未标类型参数上的字段访问等无法解析的字段。 */
   untypedFieldAccess: MigrationFailure[];
@@ -253,8 +263,7 @@ function compileFailure(errors: readonly CompileDiagnostic[], source: string, fa
   const codes = [...new Set(errors.map((d) => d.code ?? 'compile_error'))];
   const message = errors.map((d) => `${d.code ?? 'compile_error'}: ${d.message ?? ''}`).join('; ');
   const error = truncateMigrationError(message || fallback || 'compile failed');
-  // 分诊按 legacyCode ?? code 判 P005：引擎 R56 起解析错误 code 为 E05x，原码转入 legacyCode（过渡一个车次）
-  const invalidConstructForm = errors.some((d) => (d.legacyCode ?? d.code) === 'P005') && INVALID_CONSTRUCT_FORM.test(source);
+  const invalidConstructForm = errors.some(isConstructParseError) && INVALID_CONSTRUCT_FORM.test(source);
   return { ok: false, failure: { category: 'compile', error, codes, invalidConstructForm } };
 }
 
