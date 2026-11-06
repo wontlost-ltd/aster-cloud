@@ -114,22 +114,40 @@ const MAX_DIAGNOSTICS = 20;
 const MAX_CANDIDATES = 50;
 const MAX_TEXT = 500;
 
-type PlaygroundDiagnostic = { code: string; message: string; candidates: string[] };
+/**
+ * 模块诊断的结构化原因（aster-api#455 ModuleResolutionException.Reason）→ 所属 code。
+ * 只透传已登记且与 code 对应的原因；未知值或与 code 不符的丢弃（上游未带 reason 时同样不出现该字段）。
+ */
+const MODULE_REASON_CODE: ReadonlyMap<string, string> = new Map([
+  ['VERSION_REQUIRED', 'IMPORT_VERSION_REQUIRED'],
+  ['EMPTY_PATH', 'MODULE_VERSION_NOT_FOUND'],
+  ['VERSION_NOT_FOUND', 'MODULE_VERSION_NOT_FOUND'],
+  ['TENANT_REQUIRED', 'MODULE_NOT_VISIBLE'],
+  ['NOT_VISIBLE', 'MODULE_NOT_VISIBLE'],
+  ['ALIASES_UNSUPPORTED', 'MODULE_NOT_VISIBLE'],
+  ['PARSE_FAILED', 'MODULE_NOT_VISIBLE'],
+  ['RESOLVER_UNAVAILABLE', 'MODULE_NOT_VISIBLE'],
+  ['IMPORT_CYCLE', 'MODULE_CYCLE'],
+  ['LINK_FAILED', 'MODULE_CYCLE'],
+]);
+
+type PlaygroundDiagnostic = { code: string; message: string; candidates: string[]; reason?: string };
 
 const shortText = (v: unknown): string | undefined =>
   typeof v === 'string' && v.length <= MAX_TEXT ? v : undefined;
 
-/** 诊断条目只保留 code / message / candidates（审查 Medium-1）；code 未登记的整条丢弃。 */
+/** 诊断条目只保留 code / message / candidates / reason（审查 Medium-1）；code 未登记的整条丢弃。 */
 function allowlistedDiagnostics(raw: unknown): PlaygroundDiagnostic[] {
   if (!Array.isArray(raw)) return [];
   return raw.slice(0, MAX_DIAGNOSTICS).flatMap((d) => {
     if (!d || typeof d !== 'object') return [];
-    const { code, message, candidates } = d as Record<string, unknown>;
+    const { code, message, candidates, reason } = d as Record<string, unknown>;
     if (typeof code !== 'string' || !UPSTREAM_CODES.has(code)) return [];
     const list = Array.isArray(candidates)
       ? candidates.filter((c): c is string => typeof c === 'string' && c.length <= 200).slice(0, MAX_CANDIDATES)
       : [];
-    return [{ code, message: shortText(message) ?? '', candidates: list }];
+    const known = typeof reason === 'string' && MODULE_REASON_CODE.get(reason) === code;
+    return [{ code, message: shortText(message) ?? '', candidates: list, ...(known ? { reason } : {}) }];
   });
 }
 
