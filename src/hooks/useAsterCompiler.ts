@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { editor } from 'monaco-editor';
+import { localizeParseMessage } from '@/lib/parse-diagnostic-l10n';
 import { localizeSyntaxDiagnostic, type SyntaxDiagnosticLike } from '@/lib/syntax-diagnostic-message';
 import type { EditorCnlLocale } from '@/lib/cnl-locale';
 import {
@@ -130,9 +131,9 @@ export function collectCompileDiagnostics(
 
   all.push(...(result.resolutionDiagnostics ?? []));
 
-  // 降级错误只有英文字符串、没有码，原样透传
+  // 降级错误尚无码，只能按英文句型翻译（见 parse-diagnostic-l10n）
   for (const message of result.loweringErrors ?? []) {
-    all.push({ severity: 'error', code: 'E000' as DiagnosticCode, message });
+    all.push({ severity: 'error', code: 'E000' as DiagnosticCode, message: localizeParseMessage(message, locale) });
   }
 
   all.push(...(result.typeErrors ?? []));

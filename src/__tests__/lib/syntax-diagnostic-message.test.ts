@@ -51,35 +51,39 @@ describe('localizeSyntaxDiagnostic 边界', () => {
       .toBe("Nach '{token}' wird '{after}' erwartet");
   });
 
-  it('缺译文回退英文：名词未收录、码无模板、无 code、未收录语言', () => {
+  it('缺译文回退：名词未收录、码无模板、无 code、未收录语言', () => {
     expect(localizeSyntaxDiagnostic(d('E056', { token: 'token.dotOrColon', after: 'token.effectClause' }, "Expected '.' or ':' after effect clause"), 'zh-CN'))
       .toBe("Expected '.' or ':' after effect clause");
     expect(localizeSyntaxDiagnostic(d('E069', { kind: 'token.retryDirective', name: "'x'" }, 'Unknown retry directive'), 'zh-CN'))
       .toBe('Unknown retry directive');
-    expect(localizeSyntaxDiagnostic({ message: 'Expected identifier' }, 'zh-CN')).toBe('Expected identifier');
+    // 无码时退回英文句型翻译
+    expect(localizeSyntaxDiagnostic({ message: 'Expected identifier' }, 'zh-CN')).toBe('此处应为标识符');
+    expect(localizeSyntaxDiagnostic({ message: 'Profile id must match /x/: y' }, 'zh-CN')).toBe('Profile id must match /x/: y');
     expect(localizeSyntaxDiagnostic(d('E055', { token: 'token.identifier' }, 'Expected identifier'), 'fr-FR')).toBe('Expected identifier');
     expect(localizeSyntaxDiagnostic(d('E055', { token: 'token.identifier' }, 'Expected identifier'), undefined)).toBe('Expected identifier');
   });
 
   it('未知关键词参数回退英文', () => {
-    expect(localizeSyntaxDiagnostic(d('E055', { token: 'kw.nosuchword' }, "Expected 'nosuchword'"), 'zh-CN')).toBe("Expected 'nosuchword'");
+    // 按码渲染失败后退回英文句型：引号片段原样保留
+    expect(localizeSyntaxDiagnostic(d('E055', { token: 'kw.nosuchword' }, "Expected 'nosuchword'"), 'zh-CN')).toBe("此处应为 'nosuchword'");
+    expect(localizeSyntaxDiagnostic(d('E055', { token: 'kw.nosuchword' }, 'Expected nosuchword'), 'zh-CN')).toBe('Expected nosuchword');
   });
 });
 
 describe('collectCompileDiagnostics 按 code + params 本地化解析错误', () => {
-  it('★解析错误按 zh-CN 译出（标记码仍为 E000，与服务端编译门一致），降级与类型诊断原样', () => {
+  it('★解析错误按 zh-CN 译出（标记码仍为 E000，与服务端编译门一致），降级错误按英文句型翻译，类型诊断原样', () => {
     const out = collectCompileDiagnostics({
       parseErrors: [d('E059', { token: "'.'" }, "Expected '.' at end of statement")],
       loweringErrors: ['Unknown statement'],
       typeErrors: [{ severity: 'error', code: 'E003', message: 'Undefined variable: x' }],
     } as never, 'zh-CN');
-    expect(out.map((x) => x.message)).toEqual(["语句末尾应为 '。'", 'Unknown statement', 'Undefined variable: x']);
+    expect(out.map((x) => x.message)).toEqual(["语句末尾应为 '。'", '无法识别的语句', 'Undefined variable: x']);
     expect(out.map((x) => x.code)).toEqual(['E000', 'E000', 'E003']);
   });
 
-  it('无 code 的解析错误码为 E000、消息原样', () => {
+  it('无 code 的解析错误码为 E000、按英文句型翻译', () => {
     const out = collectCompileDiagnostics({ parseErrors: [{ message: 'Expected identifier' }] } as never, 'zh-CN');
-    expect(out[0]).toMatchObject({ code: 'E000', message: 'Expected identifier' });
+    expect(out[0]).toMatchObject({ code: 'E000', message: '此处应为标识符' });
   });
 });
 
@@ -92,6 +96,46 @@ describe('syntax-diagnostics 目录（aster-lang-locales 唯一真相源）', ()
   ])('%s 含按码取用的全部 key', (_locale, catalog) => {
     for (const key of SYNTAX_MESSAGE_KEYS) {
       expect((catalog as Record<string, string>)[key], key).toBeTruthy();
+    }
+  });
+});
+
+// E050–E069 每个码一条代表性诊断（参数与英文原句取自 aster-lang-ts 1.3.0 解析器 / 词法器）
+const BY_CODE: ReadonlyArray<readonly [string, Record<string, string | number>, string]> = [
+  ['E050', { char: "'§'" }, "Unexpected character '§'"],
+  ['E051', {}, 'Unterminated string literal'],
+  ['E052', {}, 'Incorrect indentation: one level too deep or inconsistent. Indent with 2 spaces'],
+  ['E053', { kind: 'Int', literal: '99999999999' }, 'Int literal 99999999999 is out of range'],
+  ['E054', { limit: 64 }, 'Nesting is too deep (limit 64)'],
+  ['E055', { token: 'token.identifier' }, 'Expected identifier'],
+  ['E056', { token: 'token.identifier', after: 'token.dot' }, 'Expected identifier after dot'],
+  ['E057', { token: "'set to'", context: 'token.construction' }, "Expected 'set to' in construction"],
+  ['E058', { token: 'kw.then', after: 'kw.if', context: 'token.construction' }, "Expected 'then' after 'if' in construction"],
+  ['E059', { token: "'.'" }, "Expected '.' at end of statement"],
+  ['E060', { token: "'.'", before: 'token.newline' }, "Expected '.' before newline"],
+  ['E061', { token: "')'" }, "Unexpected ')'"],
+  ['E062', { token: "')'", expected: 'token.expression' }, "Unexpected ')'; expected expression"],
+  ['E063', { token: "'='" }, "Cannot parse the syntax near '='"],
+  ['E064', { construct: 'token.statement' }, 'Unknown statement'],
+  ['E065', { construct: 'kw.otherwise', position: 'token.lastInBlock' }, 'Otherwise must be the last statement of its block'],
+  ['E066', { block: 'token.functionBody', item: 'token.statement' }, 'Expected at least one statement in function body'],
+  ['E067', { construct: 'kw.timeout', value: -1, allowed: 'token.nonNegativeInteger' }, 'Timeout value must be non-negative'],
+  ['E068', { callee: "'+'", expected: 2, actual: 3 }, "'+' takes exactly 2 argument(s), got 3"],
+  ['E069', { kind: 'token.retryDirective', name: "'x'" }, 'Unknown retry directive'],
+];
+
+/**
+ * syntax-diagnostics 目录（ui-messages 1.0.29）尚无下列码的句子模板，英文句型也不认识，只能回退英文；
+ * 补齐要在 aster-lang-locales 加 key。码一旦有了译文，这里的断言会失败，提醒移出名单。
+ */
+const ENGLISH_ONLY = new Set(['E051', 'E053', 'E054', 'E065', 'E067', 'E068', 'E069']);
+
+describe('E050–E069 逐码覆盖（zh / de / hi）', () => {
+  it.each(BY_CODE)('%s', (code, params, message) => {
+    for (const locale of ['zh-CN', 'de-DE', 'hi-IN']) {
+      const out = localizeSyntaxDiagnostic({ code, params, message }, locale);
+      if (ENGLISH_ONLY.has(code)) expect(out, locale).toBe(message);
+      else expect(out, locale).not.toBe(message);
     }
   });
 });

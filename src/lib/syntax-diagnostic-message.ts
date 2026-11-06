@@ -8,7 +8,7 @@
  * - `token.<名称>`：取目录里的名词短语；
  * - 带单引号的字面片段：整体是英文标点时换成目标词法写法（zh `'。'`、hi `'।'`），其余原样；
  * - 数字原样。
- * 码没有模板、任一参数缺译文、无码或语言未收录时返回引擎英文消息，避免半中半英的拼接。
+ * 码没有模板、任一参数缺译文或无码时退回按英文句型翻译（parse-diagnostic-l10n），仍不认识才返回英文。
  * en-US 直接用引擎英文消息。改文案改 locales，不改这里。
  */
 
@@ -16,6 +16,7 @@ import { DE_DE, EN_US, HI_IN, ZH_CN, type Lexicon } from '@aster-cloud/aster-lan
 import zhCatalog from '@aster-cloud/ui-messages/syntax-diagnostics/zh-CN.json';
 import deCatalog from '@aster-cloud/ui-messages/syntax-diagnostics/de-DE.json';
 import hiCatalog from '@aster-cloud/ui-messages/syntax-diagnostics/hi-IN.json';
+import { localizeParseMessage } from './parse-diagnostic-l10n';
 
 type Catalog = Readonly<Record<string, string>>;
 
@@ -34,6 +35,8 @@ interface Template {
 
 /** 码 → 目录模板。E064 的几种固定构造另有整句文案，见 FIXED_CONSTRUCT_KEYS。 */
 const TEMPLATES: Readonly<Record<string, Template>> = {
+  // 目录句子不带 {char}：丢掉字符本身，但整句本地化
+  E050: { key: 'unrecognizedCharacter' },
   E052: { key: 'indentation' },
   E055: { key: 'expected' },
   E056: { key: 'expectedAfter' },
@@ -146,8 +149,8 @@ function render(d: SyntaxDiagnosticLike, t: Target): string | null {
   return t.catalog['style.spaceQuotesAfterHan'] === 'true' ? spaceQuotes(text) : text;
 }
 
-/** 按策略 lexicon 语言渲染解析诊断；en-US、未收录语言、缺译文均返回引擎英文消息。 */
+/** 按策略 lexicon 语言渲染解析诊断；按码渲染不了时退回英文句型翻译；en-US 与未收录语言返回英文。 */
 export function localizeSyntaxDiagnostic(d: SyntaxDiagnosticLike, locale: string | undefined): string {
   const t = locale ? TARGETS.get(locale) : undefined;
-  return (t && render(d, t)) ?? d.message;
+  return (t && render(d, t)) ?? localizeParseMessage(d.message, locale);
 }
