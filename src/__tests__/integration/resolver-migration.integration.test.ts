@@ -643,7 +643,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('resolver 迁移（ADR 0051 §9
     expect((await rowsOf(db, vocab))[0]!.resolverMigrationError).toContain('field_parent_required');
   });
 
-  it('无效构造写法分诊：引擎 R56 改码后（code=E055、legacyCode=P005）按 legacyCode 仍归入 invalidConstructForm', async () => {
+  it('无效构造写法分诊：过渡车次（code=E055、legacyCode=P005）按 legacyCode 仍归入 invalidConstructForm', async () => {
     const construct = `${PREFIX}r56-construct`;
     const constructSource = `Modul m.\n\nRegel r56 gegeben x als Ganzzahl, liefert Fahrer:\n  gib zurück Fahrer mit alter = x.\n`;
     await seed(db, construct, [{ source: constructSource, locale: 'de-DE' }]);
@@ -653,5 +653,23 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('resolver 迁移（ADR 0051 §9
 
     expect(report).toMatchObject({ processed: 1, succeeded: 0, failed: 1 });
     expect(report.triage.invalidConstructForm.map((f) => f.id)).toEqual([`${construct}-v1`]);
+  });
+
+  it('无效构造写法分诊：引擎删除 legacyCode 后仅有新码 E057 / E064 仍归入 invalidConstructForm，其他新码不归入', async () => {
+    const e057 = `${PREFIX}r56b-e057`;
+    const e064 = `${PREFIX}r56b-e064`;
+    const e055 = `${PREFIX}r56b-e055`;
+    const body = (name: string) => `Modul m.\n\nRegel ${name} gegeben x als Ganzzahl, liefert Fahrer:\n  gib zurück Fahrer mit alter = x.\n`;
+    await seed(db, e057, [{ source: body('a'), locale: 'de-DE' }]);
+    await seed(db, e064, [{ source: body('b'), locale: 'de-DE' }]);
+    await seed(db, e055, [{ source: body('c'), locale: 'de-DE' }]);
+    fail(body('a'), 'E057', "Expected 'set to' in construction");
+    fail(body('b'), 'E064', 'Invalid construction');
+    fail(body('c'), 'E055', 'Expected identifier');
+
+    const report = await runResolverMigration({ batchSize: 50, policyIdPrefix: `${PREFIX}r56b-` });
+
+    expect(report).toMatchObject({ processed: 3, succeeded: 0, failed: 3 });
+    expect(report.triage.invalidConstructForm.map((f) => f.id).sort()).toEqual([`${e057}-v1`, `${e064}-v1`].sort());
   });
 });

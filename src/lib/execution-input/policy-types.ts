@@ -76,11 +76,11 @@ function entryFlags(input: PolicyTypeSource, functionCount: number): boolean[] {
 }
 
 /**
- * 诊断码优先读过渡字段 legacyCode（ts 1.2.6 起解析错误 code 改为共享码表 E05x，原 P0xx / L0xx 转入 legacyCode，
- * ADR 0051 §16 R56），保持界面拿到的码一个车次内不变；下一车次删除 legacyCode 读取。
+ * 对外展示引擎的共享诊断码（解析错误为 E050–E069，ADR 0051 §16 R56），与编辑器一致；
+ * 不读过渡字段 legacyCode（旧 P0xx / L0xx），引擎移除该字段后结果不变。
  */
-function diagnosticCodes(diagnostics: ReadonlyArray<{ code: unknown; legacyCode?: unknown }>): string[] {
-  return [...new Set(diagnostics.map((d) => String(d.legacyCode ?? d.code)))];
+function diagnosticCodes(diagnostics: ReadonlyArray<{ code: unknown }>): string[] {
+  return [...new Set(diagnostics.map((d) => String(d.code)))];
 }
 
 function resolveTypes(input: PolicyTypeSource): Resolved {
@@ -149,7 +149,7 @@ export type PolicyTypesResult =
       /** 交给引擎的函数名：找到时为规范名，找不到或未指定时原样。 */
       readonly functionName: string | undefined;
     }
-  /** 引擎解析失败；diagnostics 为引擎诊断码（如 P005、E802）。 */
+  /** 引擎解析失败；diagnostics 为引擎诊断码（如 E057、E802）。 */
   | { readonly ok: false; readonly reason: 'extraction_failed'; readonly diagnostics: readonly string[] }
   /** 未指定函数名且有多个 Rule、没有 @entry：不知道引擎会执行哪条（作者写法的 Rule 名）。 */
   | { readonly ok: false; readonly reason: 'entry_ambiguous'; readonly rules: readonly string[] };

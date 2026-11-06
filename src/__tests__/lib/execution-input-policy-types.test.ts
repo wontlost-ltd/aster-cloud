@@ -83,7 +83,7 @@ describe('extractPolicyInputTypes — 引擎按位置解析（ADR 0051）', () =
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const result = extractPolicyInputTypes(withVocab('Modul x.\n\nRegel kaputt gegeben'), undefined);
     expect(result).toMatchObject({ ok: false, reason: 'extraction_failed' });
-    expect(result.ok ? [] : 'diagnostics' in result ? result.diagnostics : []).toEqual(['P005']);
+    expect(result.ok ? [] : 'diagnostics' in result ? result.diagnostics : []).toEqual(['E055']);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('failed to extract policy types'), expect.anything());
   });
 
@@ -93,7 +93,7 @@ describe('extractPolicyInputTypes — 引擎按位置解析（ADR 0051）', () =
 Regel nachbauen gegeben fahrer als Fahrer liefert Fahrer:
   gib zurück Fahrer mit alter = fahrer.alter, stufe = Niedrig.
 `;
-    expect(extractPolicyInputTypes(withVocab(source), 'bewerten')).toMatchObject({ ok: false, reason: 'extraction_failed', diagnostics: ['P005'] });
+    expect(extractPolicyInputTypes(withVocab(source), 'bewerten')).toMatchObject({ ok: false, reason: 'extraction_failed', diagnostics: ['E057'] });
   });
 
   it('缓存键含词汇作用域：同一份词汇命中缓存，换一份词汇重新解析', () => {
