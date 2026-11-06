@@ -35,8 +35,9 @@ interface Template {
 
 /** 码 → 目录模板。E064 的几种固定构造另有整句文案，见 FIXED_CONSTRUCT_KEYS。 */
 const TEMPLATES: Readonly<Record<string, Template>> = {
-  // 目录句子不带 {char}：丢掉字符本身，但整句本地化
-  E050: { key: 'unrecognizedCharacter' },
+  // unrecognizedCharacter 不带占位符，会丢掉具体字符；改用 unexpected 模板以 {char} 代入（意外的 '§'）
+  E050: { key: 'unexpected', rename: { token: 'char' } },
+  // 引擎 E052 不带参数，英文仅两句（2 空格倍数 / 反缩进不一致）；目录整句同时覆盖两者并写明 2 空格
   E052: { key: 'indentation' },
   E055: { key: 'expected' },
   E056: { key: 'expectedAfter' },
