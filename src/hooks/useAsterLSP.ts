@@ -42,6 +42,7 @@ import {
   parseRetryAfter,
   sharedHandshakeBudget,
 } from '@/lib/lsp-reconnect';
+import { lspAuthQuery } from '@/lib/lsp-ticket-client';
 
 type MonacoNamespace = typeof import('monaco-editor');
 
@@ -320,23 +321,13 @@ export function useAsterLSP({
   /**
    * Get the WebSocket URL for LSP connection
    */
-  const getWebSocketUrl = useCallback((): string => {
+  const getWebSocketUrl = useCallback((tokenParam: string): string => {
     if (typeof window === 'undefined') return '';
 
     const lspHost = process.env.NEXT_PUBLIC_LSP_HOST;
-    // LSP WS 网关的 token（#98）。浏览器无法为 WebSocket 设置自定义头，故只能作为
-    // query param 附加——这是该协议的固有约束，不是可以简单去掉的实现选择。
-    //
-    // ★因此这个值**不是密钥，也不能当密钥用**：NEXT_PUBLIC_ 前缀在构建期内联，
-    // 任何访客都能在 devtools / 打包产物里读到它，它还会进代理与访问日志。
-    // 它能提供的只是「挡住无差别扫描」这种程度的门槛。
-    //
-    // 结论：LSP 服务端**不得**把它当作唯一鉴权依据。真正的访问控制应放在
-    // 网络层（只允许来自应用域的 Origin / 内网可达性 / 反向代理鉴权），
-    // 或改用一次性、短时效、由服务端签发并与会话绑定的 ticket。
-    // 见审计报告 2026-07-29。
-    const lspToken = process.env.NEXT_PUBLIC_LSP_TOKEN;
-    const tokenParam = lspToken ? `&token=${encodeURIComponent(lspToken)}` : '';
+    // 鉴权参数（tokenParam）由 connect 每次连接前经 lspAuthQuery 取得：优先 cloud 签发的
+    // 一次性短时 ticket（#657），取不到时回落到构建期内联的共享 token NEXT_PUBLIC_LSP_TOKEN。
+    // 共享 token 不是密钥（任何访客都能在打包产物里读到），过渡期结束后删除。
 
     if (lspHost) {
       let host = lspHost;
@@ -1152,7 +1143,10 @@ export function useAsterLSP({
     if (isDisposedRef.current) return;
     if (wsRef.current) return;
 
-    const wsUrl = getWebSocketUrl();
+    // 每次连接 / 重连都取一张新 ticket（一次性）；取票期间若已被别处连上或卸载则放弃
+    const authParam = await lspAuthQuery({ legacyToken: process.env.NEXT_PUBLIC_LSP_TOKEN });
+    if (isDisposedRef.current || wsRef.current) return;
+    const wsUrl = getWebSocketUrl(authParam);
     if (!wsUrl) {
       setError('LSP WebSocket URL not available');
       return;

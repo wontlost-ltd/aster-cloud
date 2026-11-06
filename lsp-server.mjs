@@ -11,7 +11,7 @@
 
 import { createServer } from 'http';
 import { parse } from 'url';
-import { timingSafeEqual } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
@@ -77,6 +77,12 @@ const warnMissingClientIp = createThrottledWarner({
 const authToken = (process.env.LSP_AUTH_TOKEN || '').trim();
 // Escape hatch for local/dev where no token is provisioned. Never set in prod.
 const authDisabled = process.env.LSP_AUTH_DISABLED === 'true';
+// cloud 签发的短时 ticket（#657）。密钥与 cloud Worker 的 LSP_TICKET_SECRET 相同。
+// 过渡期旧 token 与 ticket 都接受；LSP_TICKET_REQUIRED=true 后只接受 ticket。
+const ticketSecret = (process.env.LSP_TICKET_SECRET || '').trim();
+const ticketRequired = process.env.LSP_TICKET_REQUIRED === 'true';
+
+const ticketNonces = createNonceCache();
 
 // Track active LSP connections for cleanup
 const activeConnections = new Map();
@@ -317,6 +323,54 @@ function safeTokenEquals(a, b) {
 }
 
 /**
+ * 已用过的 ticket nonce（#657）：有效期内只能用一次。进程内即可——多副本时 ticket 只有
+ * 60 秒有效期，跨副本重放的窗口由短 exp 兜底。条目在过期后清理，数量不会无限增长。
+ */
+export function createNonceCache() {
+  /** @type {Map<string, number>} nonce → exp */
+  const seen = new Map();
+  return {
+    /** 首次使用返回 true；有效期内重复使用返回 false */
+    claim(nonce, exp, now) {
+      for (const [n, e] of seen) {
+        if (e < now) seen.delete(n);
+      }
+      if (seen.has(nonce)) return false;
+      seen.set(nonce, exp);
+      return true;
+    },
+    size: () => seen.size,
+  };
+}
+
+/**
+ * 校验 cloud 签发的 ticket：`base64url(payload).base64url(HMAC-SHA256(secret, payload 段))`，
+ * payload = `{ v: 1, sub, exp, nonce }`。签发端见 src/lib/lsp-ticket.ts。
+ *
+ * @returns {{ ok: true, sub: string } | { ok: false, reason: 'malformed' | 'bad_signature' | 'expired' | 'replayed' }}
+ */
+export function verifyLspTicket(ticket, { secret, now = Date.now(), nonces }) {
+  const parts = typeof ticket === 'string' ? ticket.split('.') : [];
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return { ok: false, reason: 'malformed' };
+  const [payloadPart, sigPart] = parts;
+  const expected = createHmac('sha256', secret).update(payloadPart).digest('base64url');
+  if (!safeTokenEquals(sigPart, expected)) return { ok: false, reason: 'bad_signature' };
+  let payload;
+  try {
+    payload = JSON.parse(Buffer.from(payloadPart, 'base64url').toString('utf8'));
+  } catch {
+    return { ok: false, reason: 'malformed' };
+  }
+  const { v, sub, exp, nonce } = payload ?? {};
+  if (v !== 1 || typeof sub !== 'string' || !sub || typeof exp !== 'number' || typeof nonce !== 'string' || !nonce) {
+    return { ok: false, reason: 'malformed' };
+  }
+  if (exp < now) return { ok: false, reason: 'expired' };
+  if (!nonces.claim(nonce, exp, now)) return { ok: false, reason: 'replayed' };
+  return { ok: true, sub };
+}
+
+/**
  * Pure, testable WebSocket-upgrade gate.
  *
  * Decides whether an incoming upgrade request is allowed. Extracted so the
@@ -324,8 +378,9 @@ function safeTokenEquals(a, b) {
  *
  * @param {object} input
  * @param {string|undefined} input.origin          - request Origin header
- * @param {string|undefined} input.headerToken     - x-lsp-token header value
- * @param {string|undefined} input.queryToken      - ?token= query value
+ * @param {string} [input.headerToken]    - x-lsp-token header value
+ * @param {string} [input.queryToken]     - ?token= query value
+ * @param {string} [input.queryTicket]    - ?ticket= query value（#657）
  * @param {number} input.activeCount               - current active connections
  * @param {object} config
  * @param {string[]} config.allowedOrigins
@@ -333,11 +388,16 @@ function safeTokenEquals(a, b) {
  * @param {string} config.authToken                - '' means "no token configured"
  * @param {boolean} config.authDisabled
  * @param {boolean} config.isProduction
- * @returns {{ ok: true } | { ok: false, code: number, reason: string }}
+ * @param {string} [config.ticketSecret]           - '' 表示未配置 ticket 校验
+ * @param {boolean} [config.ticketRequired]        - true 时拒绝旧共享 token
+ * @param {ReturnType<typeof createNonceCache>} [config.nonces]
+ * @param {number} [config.now]
+ * @returns {{ ok: true, sub?: string } | { ok: false, code: number, reason: string }}
  */
 export function evaluateUpgrade(input, config) {
-  const { origin, headerToken, queryToken, activeCount } = input;
+  const { origin, headerToken, queryToken, queryTicket, activeCount } = input;
   const { allowedOrigins, maxConnections, authToken, authDisabled, isProduction } = config;
+  const { ticketSecret = '', ticketRequired = false, nonces, now = Date.now() } = config;
 
   // 1) Connection cap (DoS guard) — checked first so we reject cheaply.
   if (activeCount >= maxConnections) {
@@ -350,7 +410,17 @@ export function evaluateUpgrade(input, config) {
     return { ok: false, code: 403, reason: 'Forbidden origin' };
   }
 
-  // 3) Shared-secret token.
+  // 3) 带了 ticket 就只按 ticket 判定，失败不回落到共享 token（#657）。
+  if (queryTicket !== undefined) {
+    if (!ticketSecret || !nonces) return { ok: false, code: 401, reason: 'Ticket not accepted' };
+    const verdict = verifyLspTicket(queryTicket, { secret: ticketSecret, now, nonces });
+    return verdict.ok ? { ok: true, sub: verdict.sub } : { ok: false, code: 401, reason: 'Invalid ticket' };
+  }
+  if (ticketRequired) {
+    return { ok: false, code: 401, reason: 'Missing ticket' };
+  }
+
+  // 4) Shared-secret token（过渡期保留，ticket 全量后删除）。
   if (authToken) {
     const provided = headerToken || queryToken;
     if (!provided || !safeTokenEquals(provided, authToken)) {
@@ -551,9 +621,10 @@ server.on('upgrade', (request, socket, head) => {
       origin: request.headers.origin,
       headerToken: request.headers['x-lsp-token'],
       queryToken: typeof query.token === 'string' ? query.token : undefined,
+      queryTicket: typeof query.ticket === 'string' ? query.ticket : undefined,
       activeCount: activeConnections.size,
     },
-    { allowedOrigins, maxConnections, authToken, authDisabled, isProduction },
+    { allowedOrigins, maxConnections, authToken, authDisabled, isProduction, ticketSecret, ticketRequired, nonces: ticketNonces },
   );
 
   if (!decision.ok) {
@@ -564,10 +635,13 @@ server.on('upgrade', (request, socket, head) => {
     return;
   }
 
-  // 按客户端限流在通过 Origin/token 门之后做：只有可能真正 spawn 子进程的握手才计数
-  const { key: client, missingHeader } = clientIdentity(request.headers, request.socket.remoteAddress, isProduction);
-  if (missingHeader) warnMissingClientIp();
-  const limiter = missingHeader ? missingIpLimiter : clientLimiter;
+  // 按客户端限流在通过 Origin/token 门之后做：只有可能真正 spawn 子进程的握手才计数。
+  // 持 ticket 的会话按用户（sub）计，比按 IP 准（同一 NAT 后的多个用户互不挤占）；日志只记 sub。
+  const { key: ipKey, missingHeader } = clientIdentity(request.headers, request.socket.remoteAddress, isProduction);
+  const client = decision.sub ? `sub:${decision.sub}` : ipKey;
+  if (decision.sub) console.log(`[LSP] Ticket accepted for sub=${decision.sub}`);
+  else if (missingHeader) warnMissingClientIp();
+  const limiter = missingHeader && !decision.sub ? missingIpLimiter : clientLimiter;
   const limited = limiter.acquire(client);
   if (!limited.ok) {
     console.log(`[LSP] Rejected upgrade (${limited.code}): ${limited.reason}`);
