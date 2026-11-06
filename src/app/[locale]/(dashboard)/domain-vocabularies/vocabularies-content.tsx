@@ -30,7 +30,7 @@ import { VocabularyDialog, type VocabularyDialogValues } from './vocabulary-dial
 const VOCAB_URL_OPTS: ListUrlOptions = {
   defaultPageSize: 50,
   allowedPageSizes: [25, 50, 100],
-  filterKeys: ['domain', 'locale', 'kind'],
+  filterKeys: ['domain', 'locale', 'kind', 'teamId'],
 };
 
 type KindKey = `kinds.${Kind}`;
@@ -42,7 +42,10 @@ type KindKey = `kinds.${Kind}`;
 export interface SerializableTermLink {
   id: string;
   termId: string;
+  /** 个人词条为所有者；团队词条为创建者（member 只能改自己创建的，ADR 0017）。 */
   userId: string;
+  ownerType?: 'user' | 'team';
+  teamId?: string | null;
   domain: string;
   locale: string;
   kind: string;
@@ -74,6 +77,20 @@ export interface VocabFilters {
   domain: string;
   locale: string;
   kind: string;
+  /** 团队作用域（空串 = 个人词汇）。 */
+  teamId: string;
+}
+
+/**
+ * 词汇页的归属作用域（ADR 0017）：个人或某个团队的共享词汇。
+ * canCreate / canManage 只用于隐藏按钮，服务端逐请求按当前角色判定。
+ */
+export interface VocabularyScope {
+  teamId: string | null;
+  teams: Array<{ id: string; name: string }>;
+  currentUserId: string;
+  canCreate: boolean;
+  canManage: boolean;
 }
 
 interface VocabulariesContentProps {
@@ -91,6 +108,7 @@ interface VocabulariesContentProps {
   initialFilters: VocabFilters;
   initialQuery: string;
   quota: VocabularyQuota;
+  scope: VocabularyScope;
 }
 
 interface ErrorEnvelope {
@@ -127,6 +145,7 @@ export function VocabulariesContent({
   initialFilters,
   initialQuery,
   quota,
+  scope,
 }: VocabulariesContentProps) {
   const t = useTranslations('domainVocabularies');
   const tNav = useTranslations('dashboardNav');
@@ -134,6 +153,17 @@ export function VocabulariesContent({
   const router = useRouter();
   const pathname = usePathname();
   const [, startTransition] = useTransition();
+  const isTeam = scope.teamId !== null;
+  // 团队作用域下所有词条请求都带 ?teamId=，服务端据此切换归属并按团队角色授权。
+  const teamQuery = scope.teamId ? `teamId=${encodeURIComponent(scope.teamId)}` : '';
+  const withTeam = useCallback(
+    (url: string) => (teamQuery ? `${url}${url.includes('?') ? '&' : '?'}${teamQuery}` : url),
+    [teamQuery],
+  );
+  const canEditRow = useCallback(
+    (row: SerializableTermLink) => scope.canManage || (scope.canCreate && row.userId === scope.currentUserId),
+    [scope.canCreate, scope.canManage, scope.currentUserId],
+  );
 
   // The list, total, and archivedCount are all server-owned now: every
   // mutation routes through router.refresh() and the page.tsx re-runs.
@@ -235,7 +265,7 @@ export function VocabulariesContent({
           ? `/api/v1/domain-vocabularies/terms/${editing.id}`
           : '/api/v1/domain-vocabularies/terms';
         const method = editing ? 'PATCH' : 'POST';
-        const res = await fetch(url, {
+        const res = await fetch(withTeam(url), {
           method,
           headers: {
             'Content-Type': 'application/json',
@@ -263,7 +293,7 @@ export function VocabulariesContent({
         setBusy(false);
       }
     },
-    [editing, errorMessage, refreshRsc, t],
+    [editing, errorMessage, refreshRsc, t, withTeam],
   );
 
   const handleDelete = useCallback(async () => {
@@ -271,7 +301,7 @@ export function VocabulariesContent({
     setBusy(true);
     try {
       const res = await fetch(
-        `/api/v1/domain-vocabularies/terms/${deleting.id}`,
+        withTeam(`/api/v1/domain-vocabularies/terms/${deleting.id}`),
         {
           method: 'DELETE',
           headers: { 'Idempotency-Key': crypto.randomUUID() },
@@ -290,12 +320,12 @@ export function VocabulariesContent({
     } finally {
       setBusy(false);
     }
-  }, [deleting, errorMessage, refreshRsc, t]);
+  }, [deleting, errorMessage, refreshRsc, t, withTeam]);
 
   const handleRestore = useCallback(async (term: SerializableTermLink) => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/v1/domain-vocabularies/terms/${term.id}/restore`, {
+      const res = await fetch(withTeam(`/api/v1/domain-vocabularies/terms/${term.id}/restore`), {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Idempotency-Key': crypto.randomUUID() },
       });
@@ -311,7 +341,32 @@ export function VocabulariesContent({
     } finally {
       setBusy(false);
     }
-  }, [errorMessage, refreshRsc, t]);
+  }, [errorMessage, refreshRsc, t, withTeam]);
+
+  const scopeSwitcher = scope.teams.length > 0 ? (
+    <div className="mb-4 flex flex-wrap items-center gap-2">
+      <Select
+        aria-label={t('team.scopeLabel')}
+        value={scope.teamId ?? ''}
+        onChange={(e) => navigate({ filters: { teamId: e.target.value || undefined } })}
+      >
+        <option value="">{t('team.personal')}</option>
+        {scope.teams.map((team) => (
+          <option key={team.id} value={team.id}>
+            {t('team.teamOption', { name: team.name })}
+          </option>
+        ))}
+      </Select>
+      {isTeam ? (
+        <Badge variant="accent">{t('team.badge')}</Badge>
+      ) : null}
+      {isTeam ? (
+        <span className="text-sm text-fg-muted">
+          {scope.canCreate ? t('team.quotaHint') : t('team.readOnly')}
+        </span>
+      ) : null}
+    </div>
+  ) : null;
 
   // Pro-gate. Full lock-screen carries the upgrade CTA + a downgrade
   // narrative when applicable so the user can tell why the page is
@@ -326,6 +381,7 @@ export function VocabulariesContent({
             { label: tNav('domainVocabularies') },
           ]}
         />
+        {scopeSwitcher}
         <ProGate
           trialExpired={quota.downgraded}
           trialEndsAt={quota.trialEndsAt}
@@ -392,7 +448,7 @@ export function VocabulariesContent({
       header: t('table.actions'),
       srHeader: true,
       className: 'text-right',
-      cell: (row) => (
+      cell: (row) => (canEditRow(row) ? (
         <div className="flex items-center justify-end gap-2">
           <Button
             variant="ghost"
@@ -412,7 +468,7 @@ export function VocabulariesContent({
             {t('actions.delete')}
           </Button>
         </div>
-      ),
+      ) : null),
     },
   ];
 
@@ -448,6 +504,7 @@ export function VocabulariesContent({
         trialExpired={quota.downgraded}
         trialEndsAt={quota.trialEndsAt}
       />
+      {scopeSwitcher}
 
       <PageHeader
         title={t('title')}
@@ -462,31 +519,38 @@ export function VocabulariesContent({
         }
         action={
           <div className="flex flex-wrap gap-2">
-            <Link
-              href="/domain-vocabularies/snapshots"
-              className="inline-flex items-center rounded-md border border-border bg-bg px-3 py-2 text-sm font-medium text-fg hover:bg-bg-subtle"
-            >
-              {t('snapshots')}
-            </Link>
-            <Button
-              variant="outline"
-              onClick={() => setBulkOpen(true)}
-              disabled={atLimit}
-              title={atLimit ? t('quota.atLimit') : undefined}
-            >
-              {t('bulkUpload')}
-            </Button>
-            <Button
-              onClick={() => {
-                setEditing(null);
-                setDialogOpen(true);
-              }}
-              disabled={atLimit}
-              aria-disabled={atLimit}
-              title={atLimit ? t('quota.atLimit') : undefined}
-            >
-              {t('newTerm')}
-            </Button>
+            {/* 快照与批量导入只作用于个人词汇（ADR 0017 §4）。 */}
+            {isTeam ? null : (
+              <Link
+                href="/domain-vocabularies/snapshots"
+                className="inline-flex items-center rounded-md border border-border bg-bg px-3 py-2 text-sm font-medium text-fg hover:bg-bg-subtle"
+              >
+                {t('snapshots')}
+              </Link>
+            )}
+            {isTeam ? null : (
+              <Button
+                variant="outline"
+                onClick={() => setBulkOpen(true)}
+                disabled={atLimit}
+                title={atLimit ? t('quota.atLimit') : undefined}
+              >
+                {t('bulkUpload')}
+              </Button>
+            )}
+            {scope.canCreate ? (
+              <Button
+                onClick={() => {
+                  setEditing(null);
+                  setDialogOpen(true);
+                }}
+                disabled={atLimit}
+                aria-disabled={atLimit}
+                title={atLimit ? t('quota.atLimit') : undefined}
+              >
+                {t('newTerm')}
+              </Button>
+            ) : null}
           </div>
         }
       />
@@ -579,14 +643,14 @@ export function VocabulariesContent({
         {showDeleted ? (
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-left text-sm"><thead><tr><th className="p-3">{t('table.canonical')}</th><th className="p-3">{t('table.localized')}</th><th className="p-3">{t('table.domain')}</th><th className="p-3">{t('table.actions')}</th></tr></thead>
-              <tbody>{deletedTerms.map((term) => <tr key={term.id} className="border-t border-border"><td className="p-3 font-mono">{term.canonical}</td><td className="p-3">{term.localized}</td><td className="p-3">{term.domain}</td><td className="p-3"><Button size="sm" disabled={busy} onClick={() => handleRestore(term)}>{t('actions.restore')}</Button></td></tr>)}</tbody>
+              <tbody>{deletedTerms.map((term) => <tr key={term.id} className="border-t border-border"><td className="p-3 font-mono">{term.canonical}</td><td className="p-3">{term.localized}</td><td className="p-3">{term.domain}</td><td className="p-3">{canEditRow(term) ? <Button size="sm" disabled={busy} onClick={() => handleRestore(term)}>{t('actions.restore')}</Button> : null}</td></tr>)}</tbody>
             </table>
             {deletedTerms.length === 0 ? <p className="p-6 text-center text-sm text-fg-muted">{t('actions.noRecentlyDeleted')}</p> : null}
             {deletedTerms.length < initialDeletedCount ? <div className="p-3 text-center"><Button variant="outline" disabled={loadingDeletedPage} onClick={async () => {
               setLoadingDeletedPage(true);
               try {
                 const page = Math.floor(deletedTerms.length / 200) + 1;
-                const res = await fetch(`/api/v1/domain-vocabularies/terms?deletedOnly=true&page=${page}&pageSize=200`, { credentials: 'same-origin' });
+                const res = await fetch(withTeam(`/api/v1/domain-vocabularies/terms?deletedOnly=true&page=${page}&pageSize=200`), { credentials: 'same-origin' });
                 if (!res.ok) throw new Error(t('dialog.errorGeneric'));
                 const result = await res.json() as { items: SerializableTermLink[] };
                 setDeletedTerms((current) => [...current, ...result.items]);
@@ -606,7 +670,7 @@ export function VocabulariesContent({
             <EmptyState
               title={t('empty.title')}
               description={t('empty.description')}
-              action={
+              action={scope.canCreate ? (
                 <Button
                   onClick={() => {
                     setEditing(null);
@@ -616,7 +680,7 @@ export function VocabulariesContent({
                 >
                   {t('newTerm')}
                 </Button>
-              }
+              ) : undefined}
             />
           }
         />}
@@ -687,6 +751,7 @@ function stripEmpty(filters: VocabFilters): Record<string, string> {
   if (filters.domain) out.domain = filters.domain;
   if (filters.locale) out.locale = filters.locale;
   if (filters.kind) out.kind = filters.kind;
+  if (filters.teamId) out.teamId = filters.teamId;
   return out;
 }
 

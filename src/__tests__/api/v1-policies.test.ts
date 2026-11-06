@@ -968,7 +968,7 @@ Regel bewerten gegeben person als Fahrer liefert Ganzzahl:
 
         expect(response.status).toBe(200);
         // 本文件桩掉了 cnl-executor（含 locale 识别），这里只钉住「按版本作者 + 源码」取现行词汇。
-        expect(mockLoadLiveVocabulary).toHaveBeenCalledWith('author-1', expect.objectContaining({ source: DE_SOURCE }));
+        expect(mockLoadLiveVocabulary).toHaveBeenCalledWith('author-1', expect.objectContaining({ source: DE_SOURCE }), expect.any(Object));
         expect(mockLoadExecutionVocabulary).not.toHaveBeenCalled();
         expect(mockExecutePolicyUnified).toHaveBeenCalledWith(
           expect.objectContaining({ input: { person: { age: 21 } }, vocabulary: deVocab }),

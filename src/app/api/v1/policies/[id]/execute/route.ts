@@ -328,6 +328,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       vocabularySnapshotIds: policy.vocabSnapshotIds,
       // 与审批冻结同口径：取版本作者（团队策略里可不是所有者）。
       authorId: executedVersionRow?.createdBy,
+      teamId: policy.teamId ?? null,
       source: policy.content,
       locale: policyLocale,
     });

@@ -164,7 +164,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       : undefined;
 
     // 作者词汇只加载一次，编译门禁与 envelope 封印共用（ADR 0051 §7）。
-    const saveVocabulary = await loadSaveVocabulary(session.user.id, { source, locale: compileLocale });
+    const saveVocabulary = await loadSaveVocabulary(session.user.id, { source, locale: compileLocale }, { teamId: access.policy.teamId });
 
     const result = await createVersion({
       policyId: id,

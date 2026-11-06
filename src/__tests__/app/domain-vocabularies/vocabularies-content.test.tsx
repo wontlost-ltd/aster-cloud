@@ -57,8 +57,9 @@ const baseProps = {
   initialDeletedCount: 1,
   initialPage: 1,
   initialPageSize: 50,
-  initialFilters: { domain: 'finance', locale: '', kind: '' },
+  initialFilters: { domain: 'finance', locale: '', kind: '', teamId: '' },
   initialQuery: '',
+  scope: { teamId: null, teams: [], currentUserId: 'user-1', canCreate: true, canManage: true },
   quota: {
     maxTerms: 5000,
     bulkAsync: true,
@@ -185,5 +186,65 @@ describe('VocabulariesContent — 编辑对话框回填别名与描述', () => {
     const body = JSON.parse(String((patch![1] as RequestInit).body));
     expect(body.aliases).toEqual([]);
     expect(body.description).toBeNull();
+  });
+});
+
+/* #672 / ADR 0017：团队共享词汇作用域。 */
+describe('VocabulariesContent — 团队词汇作用域', () => {
+  const TEAMS = [{ id: 'team-1', name: 'Risk' }];
+  const teamScope = (role: { canCreate: boolean; canManage: boolean }) => ({
+    teamId: 'team-1', teams: TEAMS, currentUserId: 'user-1', ...role,
+  });
+  const teamFilters = { domain: '', locale: '', kind: '', teamId: 'team-1' };
+
+  it('所在团队时显示作用域切换；个人作用域不显示团队标签', () => {
+    render(<VocabulariesContent {...baseProps} scope={{ ...baseProps.scope, teams: TEAMS }} />);
+    expect(screen.getByRole('combobox', { name: 'team.scopeLabel' })).toBeInTheDocument();
+    expect(screen.getByText('team.teamOption:{"name":"Risk"}')).toBeInTheDocument();
+    expect(screen.queryByText('team.badge')).toBeNull();
+  });
+
+  it('viewer：只读，不显示新增 / 编辑 / 删除，也不显示快照与批量导入', () => {
+    render(<VocabulariesContent {...baseProps} initialFilters={teamFilters} scope={teamScope({ canCreate: false, canManage: false })} />);
+    expect(screen.getByText('team.badge')).toBeInTheDocument();
+    expect(screen.getByText('team.readOnly')).toBeInTheDocument();
+    expect(screen.queryByText('newTerm')).toBeNull();
+    expect(screen.queryByText('actions.edit')).toBeNull();
+    expect(screen.queryByText('snapshots')).toBeNull();
+    expect(screen.queryByText('bulkUpload')).toBeNull();
+  });
+
+  it('member：只能编辑自己创建的团队词条，保存请求带 ?teamId=', async () => {
+    const mine = term('1', { ownerType: 'team', teamId: 'team-1' });
+    const others = term('2', { ownerType: 'team', teamId: 'team-1', userId: 'user-2' });
+    vi.mocked(global.fetch).mockResolvedValue(new Response(JSON.stringify({ link: mine }), { status: 200 }));
+    render(
+      <VocabulariesContent
+        {...baseProps}
+        initialTerms={[mine, others]}
+        initialFilters={teamFilters}
+        scope={teamScope({ canCreate: true, canManage: false })}
+      />,
+    );
+    expect(screen.getAllByText('actions.edit')).toHaveLength(1);
+    fireEvent.click(screen.getByText('actions.edit'));
+    const form = document.getElementById('vd-aliases')!.closest('form')!;
+    await act(async () => { fireEvent.submit(form); });
+    const patch = vi.mocked(global.fetch).mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'PATCH');
+    expect(String(patch![0])).toBe('/api/v1/domain-vocabularies/terms/1?teamId=team-1');
+  });
+
+  it('admin / owner：可编辑任何团队词条', () => {
+    const others = term('2', { ownerType: 'team', teamId: 'team-1', userId: 'user-2' });
+    render(
+      <VocabulariesContent
+        {...baseProps}
+        initialTerms={[others]}
+        initialFilters={teamFilters}
+        scope={teamScope({ canCreate: true, canManage: true })}
+      />,
+    );
+    expect(screen.getAllByText('actions.edit')).toHaveLength(1);
+    expect(screen.getByText('newTerm')).toBeInTheDocument();
   });
 });

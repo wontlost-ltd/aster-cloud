@@ -107,6 +107,7 @@ export async function GET(req: Request) {
       source: row.content,
       status: row.status,
       createdBy: row.createdBy,
+      teamId: row.policyTeamId ?? null,
       aliasSet: row.aliasSet ?? null,
       vocabularySnapshotIds: row.vocabularySnapshotIds,
       sourceEnvelopeSha256: row.sourceEnvelopeSha256 ?? null,

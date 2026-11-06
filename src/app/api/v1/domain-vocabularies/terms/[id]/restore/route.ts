@@ -18,11 +18,15 @@ import {
   VocabularyError,
   restoreUserVocabularyTerm,
 } from '@/lib/domain-vocabulary';
+import { resolveVocabularyOwner, teamIdFromRequest } from '@/lib/domain-vocabulary-team';
 
 function vocabErrorToEnvelope(error: VocabularyError): NextResponse {
   switch (error.code) {
     case 'not_found':
       return errorEnvelope({ status: 404, code: error.code, message: error.message });
+    case 'team_forbidden':
+    case 'team_role_insufficient':
+      return errorEnvelope({ status: 403, code: error.code, message: error.message });
     case 'restore_failed':
       return errorEnvelope({ status: 409, code: error.code, message: error.message });
     default:
@@ -61,11 +65,12 @@ export async function POST(req: Request, { params }: RouteContext) {
 
   try {
     const userId = session.user.id;
+    const owner = await resolveVocabularyOwner(userId, teamIdFromRequest(req), 'edit', linkId);
     const idem = await withIdempotency(
       req,
       { userId, routeKey: `POST /api/v1/domain-vocabularies/terms/${linkId}/restore` },
       async () => {
-        const result = await restoreUserVocabularyTerm(userId, linkId);
+        const result = await restoreUserVocabularyTerm(userId, linkId, owner);
         return {
           status: 200,
           body: { link: result.link, restoredAt: new Date().toISOString() },

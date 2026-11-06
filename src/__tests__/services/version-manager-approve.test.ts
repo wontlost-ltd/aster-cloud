@@ -217,7 +217,7 @@ describe('approveVersion — 词汇快照（#610）', () => {
     await approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' });
 
     expect(h.snapshot).toHaveBeenCalledWith(
-      { policyAuthorId: 'owner', policy: { source: GERMAN_SOURCE, locale: 'de-DE' } },
+      { policyAuthorId: 'owner', policyId: expect.any(String), policy: { source: GERMAN_SOURCE, locale: 'de-DE' } },
       expect.objectContaining({ staged: expect.any(Array) }),
       { verifyVocabulary: undefined },
     );
@@ -241,7 +241,7 @@ describe('approveVersion — 词汇快照（#610）', () => {
     await approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' });
 
     expect(h.snapshot).toHaveBeenCalledWith(
-      { policyAuthorId: 'owner', policy: { source: GERMAN_SOURCE, locale: 'en-US' } },
+      { policyAuthorId: 'owner', policyId: expect.any(String), policy: { source: GERMAN_SOURCE, locale: 'en-US' } },
       expect.anything(),
       expect.anything(),
     );

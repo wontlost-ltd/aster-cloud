@@ -25,6 +25,8 @@ interface Policy {
   content: string;
   isPublic: boolean;
   groupId: string | null;
+  /** 团队策略所属团队（编辑器按团队 + 作者词汇编译，ADR 0017）；个人策略为 null。 */
+  teamId?: string | null;
   /** 活跃版本冻结的关键词别名（ADR 0022），编辑器预填用。 */
   aliasSet?: Record<string, string[]> | null;
 }
@@ -151,6 +153,7 @@ export function EditPolicyContent({
       onSave={handleSave}
       allowStructuralAliases={allowStructuralAliases}
       visibilityLocked={visibilityLocked}
+      teamId={policy.teamId ?? null}
       cancelHref={`/${locale}/policies/${policy.id}`}
       detailHrefFor={(id) => `/${locale}/policies/${id}`}
       breadcrumbs={[

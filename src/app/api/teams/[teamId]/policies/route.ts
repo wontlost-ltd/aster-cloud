@@ -155,7 +155,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     //   实测事故：AI 生成的 `is < 18`（is 后接符号）由此入口存入，
     //   用户在执行页才看到「行 15 第 25 列」的报错。
     //   放在插入**之前**（事务外）：避免事务内网络调用持锁。
-    const saveVocabulary = await loadSaveVocabulary(session.user.id, { source: content, locale: 'en-US' });
+    const saveVocabulary = await loadSaveVocabulary(session.user.id, { source: content, locale: 'en-US' }, { teamId });
     const profile = await assertCompilable(makeCompileValidator(session.user.id, saveVocabulary.vocabulary), {
       source: content,
       locale: 'en-US',

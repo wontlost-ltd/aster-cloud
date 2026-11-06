@@ -217,7 +217,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
     const inputsChanged = contentChanged || aliasChanged;
     const checkVocabulary = !inputsChanged && content !== undefined && sealedScopesJson !== null;
     const saveVocabulary = inputsChanged || checkVocabulary
-      ? await loadSaveVocabulary(session.user.id, { source: versionSource, locale: compileLocale })
+      ? await loadSaveVocabulary(session.user.id, { source: versionSource, locale: compileLocale }, { teamId: existingPolicy.teamId })
       : null;
     const vocabularyChanged = checkVocabulary && saveVocabulary!.scopesJson !== sealedScopesJson;
     const newVersion = inputsChanged || vocabularyChanged;

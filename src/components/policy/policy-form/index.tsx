@@ -188,6 +188,8 @@ export interface PolicyFormProps {
   allowStructuralAliases?: boolean;
   /** 当前用户不能切换公开状态（团队策略只有 owner/admin 可以，ADR 0016）。 */
   visibilityLocked?: boolean;
+  /** 团队策略所属团队：编辑器按团队词汇 + 作者词汇编译（ADR 0017）。 */
+  teamId?: string | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -208,6 +210,7 @@ export function PolicyForm({
   breadcrumbs,
   allowStructuralAliases = false,
   visibilityLocked = false,
+  teamId = null,
 }: PolicyFormProps) {
   const router = useRouter();
   const t = useTranslations('policies.form');
@@ -821,6 +824,7 @@ export function PolicyForm({
                 onChange={setContent}
                 locale={cnlLocale}
                 userVocabulary
+                vocabularyTeamId={teamId}
                 height="100%"
                 placeholder={t('contentPlaceholder')}
                 aliasSet={fields.aliasSet ?? undefined}

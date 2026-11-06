@@ -246,7 +246,7 @@ async function loadVersionVocabulary(row: VersionRow, policy: PolicyVocabularyCo
   if (executionVocabularySource(status) === 'frozen') {
     return loadVocabularyForExecution(row.vocabularySnapshotIds as SnapshotRef[], policy);
   }
-  return row.createdBy ? loadLiveVocabularyForPolicy(row.createdBy, policy) : null;
+  return row.createdBy ? loadLiveVocabularyForPolicy(row.createdBy, policy, { policyId: row.policyId }) : null;
 }
 
 function compileFailure(errors: readonly CompileDiagnostic[], source: string, fallback?: string): Recompiled {

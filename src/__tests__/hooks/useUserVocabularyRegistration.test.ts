@@ -21,6 +21,7 @@ import {
   resolvePolicyVocabularyFromRows,
 } from '@/lib/domain-vocabulary-scope';
 import { vocabularyScopesJson } from '@/lib/policy-alias';
+import { mergeTeamAndAuthorRows } from '@/lib/domain-vocabulary-team-merge';
 
 const ITEMS = [
   { termId: 't1', domain: 'e2e1026', locale: 'de', kind: 'struct', canonical: 'Driver', localized: 'Fahrer' },
@@ -148,5 +149,50 @@ describe('useUserVocabularyRegistration', () => {
       useUserVocabularyRegistration({ tenantId: 'tenant-hook', locale: 'de-DE', source: SOURCE, enabled: false }),
     );
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  describe('团队策略（ADR 0017）：团队词汇 + 作者词汇，冲突时团队优先', () => {
+    const TEAM_ITEMS = [
+      { termId: 'tt1', domain: 'team', locale: 'de', kind: 'struct', canonical: 'Vehicle', localized: 'Fahrer' },
+    ];
+
+    beforeEach(() => {
+      fetchMock.mockImplementation(async (url: string) => {
+        const team = new URL(url, 'http://x').searchParams.get('teamId');
+        const items = team === 'team-1' ? TEAM_ITEMS : ITEMS;
+        return { ok: true, json: async () => ({ items, total: items.length }) };
+      });
+    });
+
+    it('同时拉取团队词条与个人词条，团队词条遮蔽冲突的个人词条并报告给编辑器', async () => {
+      const { result } = renderHook(() =>
+        useUserVocabularyRegistration({ tenantId: 'tenant-hook', locale: 'de-DE', source: SOURCE, teamId: 'team-1' }),
+      );
+      await waitFor(() => expect(result.current.scopes).toBeDefined());
+      const teamCalls = fetchMock.mock.calls.filter((c) => String(c[0]).includes('teamId=team-1'));
+      expect(teamCalls).toHaveLength(1);
+      expect(result.current.vocabulary!.structs.map((m) => m.canonical)).toEqual(['Vehicle']);
+      expect(result.current.shadowed).toEqual([{ canonical: 'Driver', localized: 'Fahrer' }]);
+    });
+
+    it('与服务端保存时（团队 + 作者合并）的 scopesJson 一致', async () => {
+      const { result } = renderHook(() =>
+        useUserVocabularyRegistration({ tenantId: 'tenant-hook', locale: 'de-DE', source: SOURCE, teamId: 'team-1' }),
+      );
+      await waitFor(() => expect(result.current.scopes).toBeDefined());
+      const toRows = (items: typeof ITEMS) => items.map((i) => ({ ...i, domainTermId: i.termId }));
+      const merged = mergeTeamAndAuthorRows(toRows(TEAM_ITEMS), toRows(ITEMS)).rows;
+      const server = vocabularyScopesJson(resolvePolicyVocabularyFromRows(merged, { source: SOURCE, locale: 'de-DE' }));
+      expect(result.current.registrationKey).toBe(server);
+    });
+
+    it('个人策略不拉团队词条，也没有遮蔽提示', async () => {
+      const { result } = renderHook(() =>
+        useUserVocabularyRegistration({ tenantId: 'tenant-hook', locale: 'de-DE', source: SOURCE }),
+      );
+      await waitFor(() => expect(result.current.scopes).toBeDefined());
+      expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('teamId='))).toBe(false);
+      expect(result.current.shadowed).toEqual([]);
+    });
   });
 });

@@ -15,7 +15,9 @@ type ErrorKey = `errors.${
   | 'validation_failed'
   | 'not_found'
   | 'plan_gate_required'
-  | 'internal_error'}`;
+  | 'internal_error'
+  | 'team_forbidden'
+  | 'team_role_insufficient'}`;
 
 export interface VocabularyErrorTexts {
   /** validation_failed 的文案：具体原因，识别不了时为通用提示。 */

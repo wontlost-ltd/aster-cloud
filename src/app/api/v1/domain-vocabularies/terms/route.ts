@@ -2,6 +2,7 @@
  * /api/v1/domain-vocabularies/terms
  *
  * GET — list the caller's active vocabulary links (filter + paginate).
+ * `?teamId=` 切到团队共享词汇（ADR 0017）：查看需团队成员，新增需 member 及以上，额度按团队 owner 套餐。
  * POST — add a new term link; supports ?dryRun=true to preview without
  *        writing, and the Idempotency-Key header for safe retries.
  *
@@ -24,6 +25,7 @@ import {
   previewAddTerm,
   type TermInput,
 } from '@/lib/domain-vocabulary';
+import { resolveVocabularyOwner, teamIdFromRequest } from '@/lib/domain-vocabulary-team';
 import { parsePositiveInt } from '@/lib/api/query-params';
 
 const TERM_KINDS = ['struct', 'field', 'function', 'enum_value'] as const;
@@ -84,6 +86,8 @@ function parseTermInput(raw: TermBody): TermInput {
 function vocabErrorToEnvelope(error: VocabularyError): NextResponse {
   switch (error.code) {
     case 'plan_gate_required':
+    case 'team_forbidden':
+    case 'team_role_insufficient':
       return errorEnvelope({ status: 403, code: error.code, message: error.message });
     case 'quota_exceeded':
     case 'duplicate_link':
@@ -111,6 +115,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const includeDeleted = url.searchParams.get('includeDeleted') === 'true';
     const deletedOnly = url.searchParams.get('deletedOnly') === 'true';
+    const owner = await resolveVocabularyOwner(session.user.id, teamIdFromRequest(req), 'view');
     const result = await listUserVocabularyTerms(session.user.id, {
       domain: url.searchParams.get('domain') ?? undefined,
       locale: url.searchParams.get('locale') ?? undefined,
@@ -120,10 +125,11 @@ export async function GET(req: Request) {
       deletedOnly,
       page: parsePositiveInt(url.searchParams.get('page'), 1),
       pageSize: parsePositiveInt(url.searchParams.get('pageSize'), 50),
-    });
+    }, owner);
 
     return NextResponse.json(result);
   } catch (error) {
+    if (error instanceof VocabularyError) return vocabErrorToEnvelope(error);
     console.error('[domain-vocabularies GET]', error);
     return errorEnvelope({
       status: 500,
@@ -169,9 +175,11 @@ export async function POST(req: Request) {
   }
 
   const url = new URL(req.url);
+  const teamId = teamIdFromRequest(req);
   if (url.searchParams.get('dryRun') === 'true') {
     try {
-      const preview = await previewAddTerm(session.user.id, input);
+      const owner = await resolveVocabularyOwner(session.user.id, teamId, 'view');
+      const preview = await previewAddTerm(session.user.id, input, owner);
       return NextResponse.json({ dryRun: true, ...preview });
     } catch (error) {
       if (error instanceof VocabularyError) return vocabErrorToEnvelope(error);
@@ -186,11 +194,12 @@ export async function POST(req: Request) {
 
   try {
     const userId = session.user.id;
+    const owner = await resolveVocabularyOwner(userId, teamId, 'create');
     const idem = await withIdempotency(
       req,
-      { userId, routeKey: 'POST /api/v1/domain-vocabularies/terms' },
+      { userId, routeKey: `POST /api/v1/domain-vocabularies/terms${teamId ? `?teamId=${teamId}` : ''}` },
       async () => {
-        const result = await addUserVocabularyTerm(userId, input);
+        const result = await addUserVocabularyTerm(userId, input, owner);
         return { status: 201, body: result };
       },
     );

@@ -52,6 +52,11 @@ interface MonacoPolicyEditorProps {
    * 与服务端编译门禁、审批冻结、执行同一规则。策略编辑场景开启。
    */
   userVocabulary?: boolean;
+  /**
+   * 团队策略所属团队（ADR 0017）：词汇为团队共享词汇 + 作者个人词汇，冲突时团队优先，
+   * 被遮蔽的个人词条在状态栏下方提示。个人策略缺省。
+   */
+  vocabularyTeamId?: string | null;
   /** 用户策略层关键词别名，kind → 多词别名。 */
   aliasSet?: Readonly<Record<string, readonly string[]>>;
   height?: string;
@@ -438,6 +443,7 @@ export function MonacoPolicyEditor({
   locale = 'en',
   domain,
   userVocabulary: userVocabularyEnabled = false,
+  vocabularyTeamId = null,
   aliasSet,
   height = '400px',
   readOnly = false,
@@ -560,11 +566,13 @@ export function MonacoPolicyEditor({
   const {
     vocabulary: userVocabulary,
     registrationKey: userVocabKey,
+    shadowed: shadowedVocabulary = [],
   } = useUserVocabularyRegistration({
     tenantId,
     locale: compilerLocale,
     source: value,
     enabled: userVocabularyEnabled,
+    teamId: vocabularyTeamId,
   });
 
   // F10：订阅词汇版本失效（轮询 /api/v1/domain-vocabularies/version，见
@@ -1214,6 +1222,13 @@ export function MonacoPolicyEditor({
           </button>
         )}
       </div>
+      {shadowedVocabulary.length > 0 && (
+        <p data-testid="team-vocabulary-shadowed" className="mt-2 text-xs text-amber-700 dark:text-amber-300" role="note">
+          {t('teamVocabularyShadowed', {
+            terms: shadowedVocabulary.map((term) => term.localized).join(', '),
+          })}
+        </p>
+      )}
       {showProblems && diagnostics.length > 0 && (
         <ul role="list" className="mt-2 rounded-lg border border-border bg-bg divide-y divide-border dark:border-gray-700 dark:bg-gray-900 dark:divide-gray-800">
           {diagnostics

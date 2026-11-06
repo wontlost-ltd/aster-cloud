@@ -136,7 +136,7 @@ export async function POST(req: Request, { params }: RouteParams) {
   const source = version.source ?? version.content;
 
   try {
-    const { locale, vocabulary } = await loadStoredVersionCompileContext({ ...version, source });
+    const { locale, vocabulary } = await loadStoredVersionCompileContext({ ...version, source, teamId: policy.teamId ?? null });
     const functionName = requested.functionName && resolvePolicyRuleName(source, vocabulary, requested.functionName);
     if (functionName === null) {
       return NextResponse.json({ error: 'unknown_function', message: 'functionName is not a rule of this policy version' }, { status: 400, headers });

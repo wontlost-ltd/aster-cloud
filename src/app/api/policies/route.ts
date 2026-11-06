@@ -289,7 +289,7 @@ export async function POST(req: Request) {
     // + 挂着已插入行等 30s）。有 error 诊断抛 PolicyCompileError → 下方 catch 转 400（检查不可用时 503）。
     // 通过时得到的治理档案 id 随首个版本落库。
     // 作者词汇只加载一次，编译门禁与 envelope 封印共用（ADR 0051 §7）；同在事务外。
-    const saveVocabulary = await loadSaveVocabulary(session.user.id, { source: content, locale: compileLocale });
+    const saveVocabulary = await loadSaveVocabulary(session.user.id, { source: content, locale: compileLocale }, { teamId: teamId || null });
     const profile = await assertCompilable(makeCompileValidator(session.user.id, saveVocabulary.vocabulary), {
       source: content,
       locale: compileLocale,

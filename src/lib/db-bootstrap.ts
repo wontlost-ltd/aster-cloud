@@ -375,17 +375,27 @@ async function runSchemaPatch(): Promise<void> {
         FOREIGN KEY ("teamId") REFERENCES "Team" ("id") ON DELETE CASCADE,
       CONSTRAINT "UserDomainTerm_archiveSnapshotId_UserVocabularySnapshot_id_fk"
         FOREIGN KEY ("archiveSnapshotId") REFERENCES "UserVocabularySnapshot" ("id"),
-      CONSTRAINT "UserDomainTerm_owner_v1_check" CHECK (
-        "ownerType" = 'user'
-        AND "userId" IS NOT NULL
-        AND "teamId" IS NULL
+      CONSTRAINT "UserDomainTerm_owner_check" CHECK (
+        ("ownerType" = 'user' AND "teamId" IS NULL)
+        OR ("ownerType" = 'team' AND "teamId" IS NOT NULL)
       )
     )
   `);
   await db.execute(sql`
     CREATE UNIQUE INDEX IF NOT EXISTS "UserDomainTerm_active_unique"
       ON "UserDomainTerm" ("userId", "termId")
-      WHERE "deletedAt" IS NULL AND "archivedAt" IS NULL
+      WHERE "ownerType" = 'user' AND "deletedAt" IS NULL AND "archivedAt" IS NULL
+  `);
+  // 团队共享词汇（迁移 0065，ADR 0017）。
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS "UserDomainTerm_team_active_unique"
+      ON "UserDomainTerm" ("teamId", "termId")
+      WHERE "ownerType" = 'team' AND "deletedAt" IS NULL AND "archivedAt" IS NULL
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "UserDomainTerm_team_domain_idx"
+      ON "UserDomainTerm" ("teamId", "domain", "locale")
+      WHERE "ownerType" = 'team' AND "deletedAt" IS NULL AND "archivedAt" IS NULL
   `);
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS "UserDomainTerm_user_domain_idx"

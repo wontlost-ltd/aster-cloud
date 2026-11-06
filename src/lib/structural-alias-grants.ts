@@ -35,6 +35,7 @@ export async function buildAliasReservedForUser(
     .from(userDomainTerms)
     .innerJoin(domainTerms, eq(userDomainTerms.termId, domainTerms.id))
     .where(and(
+      eq(userDomainTerms.ownerType, 'user'),
       eq(userDomainTerms.userId, userId),
       isNull(userDomainTerms.deletedAt),
       isNull(userDomainTerms.archivedAt),
