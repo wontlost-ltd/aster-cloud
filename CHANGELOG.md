@@ -6,6 +6,11 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- 团队共享领域词汇（#672，ADR 0017） (#730) *(vocab)*
+- 一致性敏感读改走 freshDb，支持关闭缓存的 HYPERDRIVE_FRESH 绑定（#624 PR A） (#729) *(db)*
+- Cloud 签发短时 ticket，网关验签（#657 过渡阶段） (#728) *(lsp)*
+- 新试点申请落库后邮件通知运营 (#706)
+- 需求验证——第一方产品事件、四个落地页与试点申请 (#705)
 - ADR 0051 按位置的领域词汇解析（cloud PR-B） (#643)
 - PolicyVersion 增加 sourceScopesJson 与 resolver 迁移列（ADR 0051） (#642) *(db)*
 - ExecutionSource 枚举增加 cli（expand-only，先于读取代码上线） *(db)*
@@ -372,6 +377,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Documentation
 
+- Refresh unreleased (#551) *(changelog)*
 - Refresh unreleased (#549) *(changelog)*
 - Refresh unreleased *(changelog)*
 - Note unpublished registry package and pooled evidence *(credit-pilot)*
@@ -690,6 +696,28 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- /policies 列表显示本人可查看团队的团队策略 (#727) *(policies)*
+- 去掉 team-policy-authz 集成测试合并 #721 / #723 后重复的 node:fs / node:path 导入 (#724) *(test)*
+- 上游错误原文不再回传——审批动作 / schema / Cedar 4xx 白名单 / playground；版本 hook 去中文兜底（#711） (#720) *(api)*
+- Hi 策略按 hi-IN 词法编译，语言值贯穿编译 / 词汇注册 / 失效订阅 / LSP 初始化（#708） (#722) *(editor)*
+- 找回密码改为按账号短窗去重并在响应后发信；登录页 SSR origin 一致（#714） (#719) *(auth)*
+- 删除分组的级联迁移走放置规则；补历史违规放置的核查 / 清理 SQL 与批量授权等价测试（#712） (#721) *(groups)*
+- 执行记录落库写入所属租户，团队策略日志 / 证据按租户过滤，离队成员历史不再消失（#698） (#723) *(audit)*
+- 升级 vite/vitest 并扩展 pnpm overrides，修复传递依赖安全告警 (#717) *(deps)*
+- Next 16.3.4 → 16.4.5 修复 3 个 Critical RCE 等 11 条安全告警，@opennextjs/cloudflare 同步升至 1.20.16 (#715) *(deps)*
+- 编辑器语法错误文案改读 aster-lang-locales 目录，补 hi (#707) *(i18n)*
+- 团队策略授权遗留项——分组放置不再放行创建者、导入重置公开状态、分组批量 N+1；驳回理由与审批通知可见性（#699 #701） (#710) *(authz)*
+- Playground / Cedar 导出的上游错误与版本状态错误改为稳定 code + 英文文案，界面按 code 本地化（#688 #697） (#709) *(api)*
+- 共用站内回跳校验（#695）+ 找回密码按账号限流（#696） (#713) *(auth)*
+- 团队流程杂项——同一邮箱注册与邀请、Free 成员门禁、业务角色与转让、审批通知、i18n 与页面细节 (#690) *(teams)*
+- Aster-api 清扫的 cloud 侧跟进（#692 #693 #694） (#700)
+- 团队 key 的执行配额按配额 owner 计，与 API 调用配额同一口径（#653） (#685) *(quota)*
+- 团队策略按当前团队角色授权（#669 #670 #671 #673 #674） (#691) *(authz)*
+- 应用层心跳检测网络静默中断并自动重连 (#689) *(lsp)*
+- 版本操作等路由的兜底分支不再回传原始 error.message（#662） (#668) *(api)*
+- 网关闲置会话 15 分钟后以 4408 关闭，客户端在用户回来时按需重连（#657 闲置超时部分） (#686) *(lsp)*
+- 回收站 30 天清理登记为每日 cron，硬删除不留孤儿访问授权；on-prem 指南列全 cron（#623 #625） (#684) *(trash)*
+- 词条保存时按 aster-api VocabularyBounds 限制别名数与字符串长度（#621） (#683) *(vocab)*
 - 输入缺少规则读取的字段时返回 400 missing_input_field 与字段路径 (#666) *(execute)*
 - LSP logMessage 按级别映射控制台，Info/Log 默认静默 (#667) *(editor)*
 - 生产复测第 6 轮——LSP 断线重连与状态提示、Cedar 导出可选规则、zh E000 句末符号 (#665)
