@@ -52,10 +52,11 @@ describe('localizeSyntaxDiagnostic 边界', () => {
   });
 
   it('缺译文回退：名词未收录、码无模板、无 code、未收录语言', () => {
-    expect(localizeSyntaxDiagnostic(d('E056', { token: 'token.dotOrColon', after: 'token.effectClause' }, "Expected '.' or ':' after effect clause"), 'zh-CN'))
-      .toBe("Expected '.' or ':' after effect clause");
-    expect(localizeSyntaxDiagnostic(d('E069', { kind: 'token.retryDirective', name: "'x'" }, 'Unknown retry directive'), 'zh-CN'))
-      .toBe('Unknown retry directive');
+    expect(localizeSyntaxDiagnostic(d('E056', { token: 'token.noSuchNoun', after: 'token.effectClause' }, "Expected no such noun after effect clause"), 'zh-CN'))
+      .toBe('Expected no such noun after effect clause');
+    // E050–E069 已全部有模板（ui-messages 1.0.30），用码表外的码代表「码无模板」
+    expect(localizeSyntaxDiagnostic(d('E099', { name: "'x'" }, 'Some future diagnostic'), 'zh-CN'))
+      .toBe('Some future diagnostic');
     // 无码时退回英文句型翻译
     expect(localizeSyntaxDiagnostic({ message: 'Expected identifier' }, 'zh-CN')).toBe('此处应为标识符');
     expect(localizeSyntaxDiagnostic({ message: 'Profile id must match /x/: y' }, 'zh-CN')).toBe('Profile id must match /x/: y');
@@ -71,14 +72,16 @@ describe('localizeSyntaxDiagnostic 边界', () => {
 });
 
 describe('collectCompileDiagnostics 按 code + params 本地化解析错误', () => {
-  it('★解析错误按 zh-CN 译出（标记码仍为 E000，与服务端编译门一致），降级错误按英文句型翻译，类型诊断原样', () => {
+  it('★解析错误按 zh-CN 译出并保留引擎码，降级诊断（引擎已按 lexicon 本地化）与类型诊断原样', () => {
+    const lowering = { severity: 'error', code: 'E602', message: 'lowerStmt：未处理的语句种类 \'X\'', data: { kind: 'X' } };
     const out = collectCompileDiagnostics({
       parseErrors: [d('E059', { token: "'.'" }, "Expected '.' at end of statement")],
-      loweringErrors: ['Unknown statement'],
+      loweringErrors: ['legacy string must be ignored'],
+      loweringDiagnostics: [lowering],
       typeErrors: [{ severity: 'error', code: 'E003', message: 'Undefined variable: x' }],
     } as never, 'zh-CN');
-    expect(out.map((x) => x.message)).toEqual(["语句末尾应为 '。'", '无法识别的语句', 'Undefined variable: x']);
-    expect(out.map((x) => x.code)).toEqual(['E000', 'E000', 'E003']);
+    expect(out.map((x) => x.message)).toEqual(["语句末尾应为 '。'", lowering.message, 'Undefined variable: x']);
+    expect(out.map((x) => x.code)).toEqual(['E059', 'E602', 'E003']);
   });
 
   it('无 code 的解析错误码为 E000、按英文句型翻译', () => {
@@ -100,7 +103,7 @@ describe('syntax-diagnostics 目录（aster-lang-locales 唯一真相源）', ()
   });
 });
 
-// E050–E069 每个码一条代表性诊断（参数与英文原句取自 aster-lang-ts 1.3.0 解析器 / 词法器）
+// E050–E069 每个码一条代表性诊断（参数与英文原句取自 aster-lang-ts 1.4.0 解析器 / 词法器）
 const BY_CODE: ReadonlyArray<readonly [string, Record<string, string | number>, string]> = [
   ['E050', { char: "'§'" }, "Unexpected character '§'"],
   ['E051', {}, 'Unterminated string literal'],
@@ -124,18 +127,11 @@ const BY_CODE: ReadonlyArray<readonly [string, Record<string, string | number>, 
   ['E069', { kind: 'token.retryDirective', name: "'x'" }, 'Unknown retry directive'],
 ];
 
-/**
- * syntax-diagnostics 目录（ui-messages 1.0.29）尚无下列码的句子模板，英文句型也不认识，只能回退英文；
- * 补齐要在 aster-lang-locales 加 key。码一旦有了译文，这里的断言会失败，提醒移出名单。
- */
-const ENGLISH_ONLY = new Set(['E051', 'E053', 'E054', 'E065', 'E067', 'E068', 'E069']);
-
 describe('E050–E069 逐码覆盖（zh / de / hi）', () => {
   it.each(BY_CODE)('%s', (code, params, message) => {
     for (const locale of ['zh-CN', 'de-DE', 'hi-IN']) {
       const out = localizeSyntaxDiagnostic({ code, params, message }, locale);
-      if (ENGLISH_ONLY.has(code)) expect(out, locale).toBe(message);
-      else expect(out, locale).not.toBe(message);
+      expect(out, locale).not.toBe(message);
     }
   });
 });
