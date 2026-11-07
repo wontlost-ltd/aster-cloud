@@ -30,16 +30,22 @@ export async function seedCompileProblems(source: string, locale: SeedLocale): P
   const result = compileAndTypecheck(source, { lexicon: lexicons[locale] });
   const problems: SeedCompileProblem[] = [];
   for (const err of result.parseErrors ?? []) {
-    const e = err as { message?: string; span?: { start?: { line?: number } } } | string;
+    // 解析诊断带共享码 E050–E069；无码（字符串或非诊断异常）才用 E000 占位，与编辑器一致
+    const e = err as { code?: string; message?: string; span?: { start?: { line?: number } } } | string;
     problems.push(
       typeof e === 'string'
         ? { code: 'E000', message: e }
-        : { code: 'E000', message: e.message ?? String(err), line: e.span?.start?.line },
+        : { code: e.code ?? 'E000', message: e.message ?? String(err), line: e.span?.start?.line },
     );
   }
-  for (const err of result.loweringErrors ?? []) problems.push({ code: 'E000', message: String(err) });
-  // 名称解析错误（ADR 0051 E8xx）只出现在 resolutionDiagnostics，且此时引擎不做类型检查。
-  for (const d of [...(result.resolutionDiagnostics ?? []), ...(result.typeErrors ?? [])]) {
+  // 名称解析错误（ADR 0051 E8xx）只出现在 resolutionDiagnostics，且此时引擎不做类型检查；
+  // 降级诊断（E600–E606）在 loweringDiagnostics，已按 lexicon 本地化。
+  const diagnostics = [
+    ...(result.resolutionDiagnostics ?? []),
+    ...(result.loweringDiagnostics ?? []),
+    ...(result.typeErrors ?? []),
+  ];
+  for (const d of diagnostics) {
     if (d.severity === 'error') problems.push({ code: String(d.code), message: d.message, line: d.span?.start.line });
   }
   return problems;

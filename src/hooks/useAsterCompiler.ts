@@ -18,7 +18,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { editor } from 'monaco-editor';
-import { localizeParseMessage } from '@/lib/parse-diagnostic-l10n';
 import { localizeSyntaxDiagnostic, type SyntaxDiagnosticLike } from '@/lib/syntax-diagnostic-message';
 import type { EditorCnlLocale } from '@/lib/cnl-locale';
 import {
@@ -121,8 +120,8 @@ export function collectCompileDiagnostics(
     const parseError = err as SyntaxDiagnosticLike & { span?: TypecheckDiagnostic['span'] };
     all.push({
       severity: 'error',
-      // 编辑器标记码保持 E000，与服务端编译门（seed-compile）一致；引擎码只用于取文案
-      code: 'E000' as DiagnosticCode,
+      // 直接用引擎码（E050–E069），与服务端编译门（seed-compile）一致；无码的异常才用 E000 占位
+      code: (parseError.code ?? 'E000') as DiagnosticCode,
       // 按 code + params 取策略语言文案（见 syntax-diagnostic-message），不反查英文消息
       message: localizeSyntaxDiagnostic(parseError, locale),
       span: parseError.span,
@@ -131,10 +130,8 @@ export function collectCompileDiagnostics(
 
   all.push(...(result.resolutionDiagnostics ?? []));
 
-  // 降级错误尚无码，只能按英文句型翻译（见 parse-diagnostic-l10n）
-  for (const message of result.loweringErrors ?? []) {
-    all.push({ severity: 'error', code: 'E000' as DiagnosticCode, message: localizeParseMessage(message, locale) });
-  }
+  // 降级诊断（E600–E606）：引擎按传入的 lexicon 经语言包 overlay 本地化过，原样透传
+  all.push(...(result.loweringDiagnostics ?? []));
 
   all.push(...(result.typeErrors ?? []));
   return all;

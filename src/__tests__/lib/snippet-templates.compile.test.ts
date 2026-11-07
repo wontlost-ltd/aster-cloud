@@ -59,7 +59,7 @@ describe('snippet template engine contract', () => {
       expect(
         result.success,
         `template "${id}" failed to compile: ${JSON.stringify(
-          result.parseErrors ?? result.loweringErrors ?? result,
+          result.parseErrors ?? result.loweringDiagnostics ?? result,
         )}`,
       ).toBe(true);
 

@@ -39,6 +39,9 @@ const TEMPLATES: Readonly<Record<string, Template>> = {
   E050: { key: 'unexpected', rename: { token: 'char' } },
   // 引擎 E052 不带参数，英文仅两句（2 空格倍数 / 反缩进不一致）；目录整句同时覆盖两者并写明 2 空格
   E052: { key: 'indentation' },
+  E051: { key: 'unterminatedString' },
+  E053: { key: 'literalOutOfRange' },
+  E054: { key: 'nestingTooDeep' },
   E055: { key: 'expected' },
   E056: { key: 'expectedAfter' },
   E057: { key: 'expectedIn' },
@@ -49,6 +52,11 @@ const TEMPLATES: Readonly<Record<string, Template>> = {
   E062: { key: 'unexpectedExpecting' },
   E063: { key: 'noViable' },
   E064: { key: 'unexpected', rename: { token: 'construct' } },
+  E065: { key: 'misplaced' },
+  E066: { key: 'emptyBlock' },
+  E067: { key: 'invalidValue' },
+  E068: { key: 'callArity' },
+  E069: { key: 'unknownName' },
 };
 
 const FIXED_CONSTRUCT_KEYS: Readonly<Record<string, string>> = {

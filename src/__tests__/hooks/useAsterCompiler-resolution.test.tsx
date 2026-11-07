@@ -108,7 +108,7 @@ describe('collectCompileDiagnostics', () => {
       success: false,
       parseErrors: [{ message: 'p' } as never],
       resolutionDiagnostics: [W801],
-      loweringErrors: ['l'],
+      loweringDiagnostics: [{ severity: 'error', code: 'E606' as TypecheckDiagnostic['code'], message: 'l' }],
       typeErrors: [typeErr],
     });
     expect(out.map((d) => d.message)).toEqual(['p', W801.message, 'l', 't']);

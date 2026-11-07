@@ -23,7 +23,7 @@ describe('getting-started overview 策略示例', () => {
     expect(source).not.toMatch(/\b(?:Number|Boolean|String)\b/);
 
     const result = compileAndTypecheck(source);
-    expect(result.success, JSON.stringify(result.parseErrors ?? result.loweringErrors)).toBe(true);
+    expect(result.success, JSON.stringify(result.parseErrors ?? result.loweringDiagnostics)).toBe(true);
     expect(result.typeErrors.filter((d) => d.severity === 'error')).toEqual([]);
 
     const core = result.core!;

@@ -8,7 +8,6 @@ import zhCatalog from '@aster-cloud/ui-messages/syntax-diagnostics/zh-CN.json';
 import deCatalog from '@aster-cloud/ui-messages/syntax-diagnostics/de-DE.json';
 import hiCatalog from '@aster-cloud/ui-messages/syntax-diagnostics/hi-IN.json';
 import { localizeParseMessage, PARSE_MESSAGE_KEYS } from '@/lib/parse-diagnostic-l10n';
-import { collectCompileDiagnostics } from '@/hooks/useAsterCompiler';
 
 describe('localizeParseMessage', () => {
   it.each([
@@ -89,16 +88,5 @@ describe('syntax-diagnostics 目录（aster-lang-locales 唯一真相源）', ()
       expect(catalog, key).toHaveProperty([key]);
       expect((catalog as Record<string, string>)[key], key).not.toBe('');
     }
-  });
-});
-
-describe('降级错误（无码）经 collectCompileDiagnostics 仍按英文句型翻译', () => {
-  it.each([
-    ['zh-CN', '无法识别的语句'],
-    ['de-DE', 'Unbekannte Anweisung'],
-    ['hi-IN', 'अज्ञात कथन'],
-  ])('%s', (locale, expected) => {
-    const out = collectCompileDiagnostics({ loweringErrors: ['Unknown statement'] } as never, locale);
-    expect(out[0]!.message).toBe(expected);
   });
 });
