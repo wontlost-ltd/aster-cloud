@@ -2,7 +2,7 @@
 // 审批收件箱「策略版本审批」（生产 E2E Q1）：范围与 approveVersion 同口径——名下未删除策略 ∪ 担任 owner/admin
 // 的团队的策略；canAct 走 decideVersionApproval（团队 admin 非作者可审、作者只读、个人策略所有者可自审）；
 // 提交人/提交时间取最近一次提交审批事件，缺事件时退回版本作者与创建时间。
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 
@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   eventsQuery: vi.fn(),
   eventsChain: {} as Record<string, unknown>,
   usersFindMany: vi.fn(),
+  cachedMembersFindMany: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => {
@@ -21,7 +22,8 @@ vi.mock('@/lib/prisma', () => {
     db: {
       query: {
         policies: { findMany: h.policiesFindMany },
-        teamMembers: { findMany: h.membersFindMany },
+        // 成员关系不得走带缓存的全局 db（见下方 freshDb 桩）
+        teamMembers: { findMany: h.cachedMembersFindMany },
         policyVersions: { findMany: h.versionsFindMany },
         users: { findMany: h.usersFindMany },
       },
@@ -50,6 +52,11 @@ vi.mock('@/lib/prisma', () => {
     users: { id: col('users.id') },
   };
 });
+// 成员关系读走 freshDb（关闭缓存的 HYPERDRIVE_FRESH，#624）
+vi.mock('@/db/fresh-read', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/db/fresh-read')>()),
+  freshDb: { query: { teamMembers: { findMany: h.membersFindMany } } },
+}));
 vi.mock('drizzle-orm', () => ({
   and: (...c: unknown[]) => ({ and: c }),
   or: (...c: unknown[]) => ({ or: c }),
@@ -70,6 +77,11 @@ const T0 = new Date('2026-10-20T00:00:00Z');
 const T1 = new Date('2026-10-21T00:00:00Z');
 const T2 = new Date('2026-10-22T00:00:00Z');
 
+// 成员关系一律经 freshDb 读，任何用例都不应碰带缓存的全局 db.query.teamMembers
+afterEach(() => {
+  expect(h.cachedMembersFindMany).not.toHaveBeenCalled();
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   h.membersFindMany.mockResolvedValue([]);
@@ -82,8 +94,6 @@ beforeEach(() => {
 });
 
 /** 个人策略谓词（policy-access 的 isPersonalPolicy，经模板标签替身渲染） */
-/** 成员关系读取绕过查询缓存（@/db/fresh-read） */
-const FRESH = { sql: 'NOW() IS NOT NULL', values: [] };
 const PERSONAL = { sql: "coalesce(?, '') = ''", values: [{ name: 'policies.teamId' }] };
 
 describe('listPendingVersionApprovals', () => {
@@ -131,7 +141,7 @@ describe('listPendingVersionApprovals', () => {
     const items = await listPendingVersionApprovals('admin1');
 
     expect(h.membersFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { and: [{ eq: ['teamMembers.userId', 'admin1'] }, { inArray: ['teamMembers.role', ['owner', 'admin']] }, FRESH] },
+      where: { and: [{ eq: ['teamMembers.userId', 'admin1'] }, { inArray: ['teamMembers.role', ['owner', 'admin']] }] },
     }));
     expect(h.policiesFindMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { and: [
@@ -165,7 +175,7 @@ describe('listPendingVersionApprovals', () => {
     const items = await listPendingVersionApprovals('owner');
 
     expect(h.membersFindMany).toHaveBeenLastCalledWith(expect.objectContaining({
-      where: { and: [{ inArray: ['teamMembers.teamId', ['team1']] }, { inArray: ['teamMembers.role', ['admin', 'owner']] }, FRESH] },
+      where: { and: [{ inArray: ['teamMembers.teamId', ['team1']] }, { inArray: ['teamMembers.role', ['admin', 'owner']] }] },
     }));
     expect(items.map((i) => [i.canAct, i.noEligibleReviewer, i.teamId])).toEqual([[false, true, 'team1']]);
   });

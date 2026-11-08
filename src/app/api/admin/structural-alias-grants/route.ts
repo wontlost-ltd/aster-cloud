@@ -3,7 +3,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { requireAdmin } from '@/lib/admin-auth';
 import { requireLicenseWriteOk } from '@/lib/license-write-gate';
 import { db, structuralAliasGrants, users } from '@/lib/prisma';
-import { bypassQueryCache, freshDb } from '@/db/fresh-read';
+import { freshDb } from '@/db/fresh-read';
 
 export async function GET() {
   const check = await requireAdmin();
@@ -26,9 +26,7 @@ export async function GET() {
         isNull(structuralAliasGrants.revokedAt),
       ),
     )
-    // 管理卡在授予 / 撤销后立刻重新拉取，必须读到刚写入的状态。此前这条无参数的固定 SQL
-    // 被 Hyperdrive 缓存，授予后约 100 秒仍显示未授权（#614）。
-    .where(bypassQueryCache())
+    // 管理卡在授予 / 撤销后立刻重新拉取，必须读到刚写入的状态（#614）：经 freshDb 走关闭缓存的绑定。
     .orderBy(desc(users.createdAt));
 
   return NextResponse.json({

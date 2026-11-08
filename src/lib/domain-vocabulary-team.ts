@@ -17,9 +17,9 @@ import {
   userOwner,
   type VocabularyOwner,
 } from '@/lib/domain-vocabulary';
-import { and, asc, eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { teamMembers, teams } from '@/lib/prisma';
-import { bypassQueryCache, freshDb } from '@/db/fresh-read';
+import { freshDb } from '@/db/fresh-read';
 import { checkTeamAccess, hasPermission, TeamPermission, type TeamRole } from '@/lib/team-permissions';
 
 export type TeamVocabularyAction = 'view' | 'create' | 'edit';
@@ -79,7 +79,7 @@ export async function listVocabularyTeams(userId: string): Promise<VocabularyTea
     .select({ id: teams.id, name: teams.name, role: teamMembers.role })
     .from(teamMembers)
     .innerJoin(teams, eq(teams.id, teamMembers.teamId))
-    .where(and(eq(teamMembers.userId, userId), bypassQueryCache()))
+    .where(eq(teamMembers.userId, userId))
     .orderBy(asc(teams.name));
   return rows.map((row) => ({ id: row.id, name: row.name, role: row.role as TeamRole }));
 }

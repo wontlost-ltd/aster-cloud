@@ -11,7 +11,7 @@ import {
 } from '@/lib/prisma';
 import { eq, inArray, isNull, not, and, desc, asc, lte, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
-import { bypassQueryCache, freshDb } from '@/db/fresh-read';
+import { freshDb } from '@/db/fresh-read';
 import { loadPolicyForAction, policiesVisibleTo, type LoadedPolicy } from '@/lib/policy-access';
 import { releaseSnapshotRefsForPolicy, reportSnapshotRelease } from '@/lib/domain-vocabulary-snapshot';
 // 回收站保留天数
@@ -283,7 +283,7 @@ export async function permanentDeletePolicy(
  */
 export async function getTrashItems(userId: string): Promise<TrashItem[]> {
   const recycleBinItems = await freshDb.query.policyRecycleBins.findMany({
-    where: and(trashVisibleTo(userId), bypassQueryCache()),
+    where: trashVisibleTo(userId),
     orderBy: [desc(policyRecycleBins.deletedAt)],
     with: {
       policy: {
@@ -399,8 +399,8 @@ export async function getTrashStats(userId: string): Promise<{
   oldestExpiresAt: Date | null;
   newestDeletedAt: Date | null;
 }> {
-  // 与 getTrashItems 同为写后即读，统计须与列表一致，同样绕过 Hyperdrive 缓存。
-  const ownedFresh = and(trashVisibleTo(userId), bypassQueryCache());
+  // 与 getTrashItems 同为写后即读，统计须与列表一致，同样经 freshDb 读。
+  const ownedFresh = trashVisibleTo(userId);
   const [countResult, oldest, newest] = await Promise.all([
     freshDb.select({ count: sql<number>`count(*)::int` })
       .from(policyRecycleBins)

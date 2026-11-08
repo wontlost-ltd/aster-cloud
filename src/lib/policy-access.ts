@@ -197,7 +197,7 @@ export async function authorizePolicyActions<T extends PolicyAccessSubject & { i
     : await freshDb
         .select({ teamId: teamMembers.teamId, role: teamMembers.role })
         .from(teamMembers)
-        .where(and(eq(teamMembers.userId, actor.userId), inArray(teamMembers.teamId, teamIds), bypassQueryCache()));
+        .where(and(eq(teamMembers.userId, actor.userId), inArray(teamMembers.teamId, teamIds)));
   const roles = new Map(rows.map((r) => [r.teamId, r.role as TeamRole]));
   return new Map(list.map((policy) => {
     const teamId = policyTeamIdOf(policy);

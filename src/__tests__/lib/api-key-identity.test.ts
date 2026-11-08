@@ -6,6 +6,7 @@ const m = vi.hoisted(() => ({
   usersFindMany: vi.fn(),
   teamsFindMany: vi.fn(),
   teamMembersFindMany: vi.fn(),
+  cachedTeamMembersFindMany: vi.fn(),
 }));
 vi.mock('@/lib/prisma', () => ({
   db: {
@@ -13,13 +14,18 @@ vi.mock('@/lib/prisma', () => ({
       apiKeys: { findFirst: m.apiKeysFindFirst },
       users: { findMany: m.usersFindMany },
       teams: { findMany: m.teamsFindMany },
-      teamMembers: { findMany: m.teamMembersFindMany },
+      // 成员关系不得走带缓存的全局 db（见下方 freshDb 桩）
+      teamMembers: { findMany: m.cachedTeamMembersFindMany },
     },
   },
   apiKeys: { key: 'apiKeys.key' },
   users: { id: 'users.id' },
   teams: { id: 'teams.id' },
   teamMembers: { teamId: 'teamMembers.teamId', userId: 'teamMembers.userId' },
+}));
+// 成员关系读走 freshDb（关闭缓存的 HYPERDRIVE_FRESH，#624）
+vi.mock('@/db/fresh-read', () => ({
+  freshDb: { query: { teamMembers: { findMany: m.teamMembersFindMany } } },
 }));
 vi.mock('drizzle-orm', () => ({
   eq: (col: unknown, val: unknown) => ({ op: 'eq', col, val }),
@@ -124,7 +130,7 @@ describe('resolveApiKeyIdentities', () => {
     expect((await resolveApiKeyIdentities([], NOW)).size).toBe(0);
     expect(m.usersFindMany).not.toHaveBeenCalled();
   });
-  it('成员查询同时按 teamId 与持有者 userId 过滤，且绕过查询缓存（移除即失效）', async () => {
+  it('成员查询同时按 teamId 与持有者 userId 过滤，且经 freshDb 读（不吃 Hyperdrive 缓存）', async () => {
     const { resolveApiKeyIdentities } = await import('@/lib/api-key-identity');
     await resolveApiKeyIdentities([personal, teamKey], NOW);
     expect(m.teamMembersFindMany).toHaveBeenCalledWith(
@@ -134,11 +140,11 @@ describe('resolveApiKeyIdentities', () => {
           c: [
             { op: 'in', col: 'teamMembers.teamId', vals: ['t1'] },
             { op: 'in', col: 'teamMembers.userId', vals: ['u1', 'u2'] },
-            { op: 'sql', text: 'NOW() IS NOT NULL' },
           ],
         },
       })
     );
+    expect(m.cachedTeamMembersFindMany).not.toHaveBeenCalled();
   });
   it('只有个人 key 时不查 teams / teamMembers', async () => {
     const { resolveApiKeyIdentities } = await import('@/lib/api-key-identity');
