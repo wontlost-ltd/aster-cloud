@@ -75,7 +75,8 @@ function getConnectionString(env?: CloudflareEnv): string {
  *
  * 背景：本地 dev 下 @opennextjs/cloudflare 会经 getPlatformProxy 懒启动 workerd，
  * getCloudflareContext() 返回的 env **也带 HYPERDRIVE binding**（connectionString
- * 由 WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE 覆盖为直连 PG）。
+ * 由 WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE 覆盖为直连 PG；HYPERDRIVE_FRESH 同理，
+ * 变量名后缀为 _HYPERDRIVE_FRESH）。
  * 这个本地代理不做连接池，若按 Workers 路径每次调用新建 client，连接会打满
  * max_connections（实测 202/200 → too many clients）。`next start`、CI e2e、docker
  * 等任何真实 Node 进程同理，都必须复用单例；只有 workerd 内才有 Hyperdrive 池化。
@@ -130,7 +131,14 @@ export function createDb(env?: CloudflareEnv, options?: { max?: number }) {
   const client = postgres(connectionString, {
     // Hyperdrive 处理连接池，Workers 限制并发连接数
     max,
-    // 禁用 prepared statements（Hyperdrive 不支持）
+    // prepare: false（#624 调研结论，行为本次不改）：
+    // - 原注释「Hyperdrive 不支持 prepared statements」已过时：Hyperdrive 自 2024-06 起支持 postgres-js 的
+    //   具名 prepared statement，官方 Postgres.js 示例反而建议保持 prepare: true。
+    // - 官方文档称 prepare: false 时 Hyperdrive 不缓存这类（参数化 / extended 协议）查询，且需额外往返；
+    //   无参数的固定 SQL 仍可能被缓存（#614 的授权列表即此类）。所以它既不是可靠的「关缓存」手段，
+    //   也说明默认绑定的实际命中率可能偏低——一致性敏感的读一律走 HYPERDRIVE_FRESH（getFreshDb / freshDb）。
+    // - 是否改回 prepare: true 以提升缓存命中，需结合 Hyperdrive 指标另行评估（文档还提示 prepare: false
+    //   在事务池化模式下可能偶发挂起）。
     prepare: false,
     // ★空闲连接自动归还：这是**兜底**，不是主修法。
     // 主修法是 getDb() 的 globalThis 单例（见上方注释）。但单例只覆盖本地 dev 路径，
@@ -193,7 +201,7 @@ export function getDb() {
  * - 真实 Workers 且有 HYPERDRIVE_FRESH：用它的连接串新建 client。不复用 withRequestDb
  *   的请求级连接（那条走的是带缓存的配置）。
  * - 其余情况（Node 运行时、本地 dev 代理、on-prem、绑定尚未配置）：等同 getDb()。
- *   这些环境要么没有 Hyperdrive 缓存，要么由调用点的 bypassQueryCache() 兜底。
+ *   这些环境没有 Hyperdrive 查询缓存（本地代理直连 PG），或绑定缺失时属于部署配置错误。
  *
  * 只能用于事务之外的读：它是另一条连接，看不到当前事务里未提交的写入。
  */

@@ -30,7 +30,7 @@ import {
   userVocabularyVersions,
   type DomainTerm,
 } from '@/lib/prisma';
-import { bypassQueryCache, freshDb } from '@/db/fresh-read';
+import { freshDb } from '@/db/fresh-read';
 import { escapeLikePattern } from '@/lib/sql-escape';
 import { logAuditEvent } from '@/lib/audit-log';
 import {
@@ -603,7 +603,7 @@ export async function getUserVocabularyVersion(userId: string): Promise<string> 
     const [row] = await freshDb
       .select({ version: userVocabularyVersions.version })
       .from(userVocabularyVersions)
-      .where(and(eq(userVocabularyVersions.userId, userId), bypassQueryCache()));
+      .where(eq(userVocabularyVersions.userId, userId));
     return String(row?.version ?? 0);
   } catch (error) {
     if (!isUndefinedTable(error)) throw error;
@@ -640,7 +640,7 @@ async function getVocabularyFingerprint(scope: SQL): Promise<string> {
       lastChange: sql<string | null>`(floor(extract(epoch from greatest(max(${userDomainTerms.updatedAt}), max(${userDomainTerms.deletedAt}), max(${userDomainTerms.archivedAt}))) * 1000))::bigint::text`,
     })
     .from(userDomainTerms)
-    .where(and(scope, bypassQueryCache()));
+    .where(and(scope));
   return `fp:${row?.count ?? 0}:${row?.lastChange ?? 0}`;
 }
 

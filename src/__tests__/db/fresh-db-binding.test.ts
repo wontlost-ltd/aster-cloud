@@ -91,3 +91,30 @@ describe('getFreshDb 选择关闭缓存的 Hyperdrive 绑定', () => {
     expect(databaseOf(freshDb)).toBe('cached_db');
   });
 });
+
+// wrangler.toml 必须真的声明 HYPERDRIVE_FRESH，否则生产里 getFreshDb() 会静默回落到带缓存的配置。
+describe('wrangler.toml 声明关闭缓存的 Hyperdrive 绑定', () => {
+  it('HYPERDRIVE 与 HYPERDRIVE_FRESH 各自独立，且都有 localConnectionString（部署预检要求）', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const toml = readFileSync(resolve(__dirname, '../../../wrangler.toml'), 'utf8');
+    // 只取未注释的 [[hyperdrive]] 段
+    const blocks = toml
+      .split(/^\[\[hyperdrive\]\]\s*$/m)
+      .slice(1)
+      .map((b) => b.split(/^\[/m)[0]);
+    const parse = (b: string) => ({
+      binding: /^binding\s*=\s*"([^"]+)"/m.exec(b)?.[1],
+      id: /^id\s*=\s*"([^"]+)"/m.exec(b)?.[1],
+      local: /^localConnectionString\s*=\s*"([^"]+)"/m.test(b),
+    });
+    const byName = new Map(blocks.map(parse).map((b) => [b.binding, b]));
+    const cached = byName.get('HYPERDRIVE');
+    const fresh = byName.get('HYPERDRIVE_FRESH');
+    expect(cached?.id).toMatch(/^[0-9a-f]{32}$/);
+    expect(fresh?.id).toMatch(/^[0-9a-f]{32}$/);
+    expect(fresh?.id).not.toBe(cached?.id);
+    expect(cached?.local).toBe(true);
+    expect(fresh?.local).toBe(true);
+  });
+});

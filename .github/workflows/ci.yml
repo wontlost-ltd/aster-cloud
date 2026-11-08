@@ -433,6 +433,7 @@ jobs:
   # Operator: configure deploys at
   # https://dash.cloudflare.com/?to=/:account/workers/services/view/aster-cloud
   # The git build must set CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE
+  # (and, since #624, CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_FRESH)
   # to any non-empty placeholder (e.g. postgres://placeholder) — wrangler
   # 4.92's deploy preflight reads it even though prod uses the bound
   # Hyperdrive at runtime. Without this dummy value, OpenNext's deploy

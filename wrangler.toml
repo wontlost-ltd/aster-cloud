@@ -59,14 +59,15 @@ binding = "HYPERDRIVE"
 id = "b712d2c83ffe41f0b4d0ec615314a935"
 localConnectionString = "postgres://placeholder:placeholder@localhost:5432/aster_cloud_dev"
 
-# 关闭查询缓存的第二个 Hyperdrive 配置（#624）：一致性敏感的读（成员关系、权限、写后即读）
-# 经 @/db/fresh-read 的 freshDb 走这个绑定；未配置时回落到 HYPERDRIVE + bypassQueryCache()。
-# 需人工先创建配置再取消注释（id 不存在会让部署失败）：
-#   wrangler hyperdrive create aster-cloud-fresh --connection-string=<生产串> --caching-disabled
-# [[hyperdrive]]
-# binding = "HYPERDRIVE_FRESH"
-# id = "<上面命令输出的 id>"
-# localConnectionString = "postgres://placeholder:placeholder@localhost:5432/aster_cloud_dev"
+# 关闭查询缓存的第二个 Hyperdrive 配置（#624，名称 aster-cloud-postgres-fresh，caching disabled）：
+# 一致性敏感的读（成员关系、权限、写后即读）经 @/db/fresh-read 的 freshDb 走这个绑定。
+# localConnectionString 同上：OpenNext 部署预检要求每个 Hyperdrive 绑定都有本地回落串，仅为占位；
+# Cloudflare git 构建同样需要 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_FRESH（见 ci.yml 注释）。
+# 本地 `wrangler dev` 可用 WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_FRESH 覆盖为直连 PG。
+[[hyperdrive]]
+binding = "HYPERDRIVE_FRESH"
+id = "feb172116df94b47a93c758d451613ac"
+localConnectionString = "postgres://placeholder:placeholder@localhost:5432/aster_cloud_dev"
 
 # Cron triggers
 # 这些表达式由 worker.js 的 scheduled() 处理函数派发到对应路由，详见

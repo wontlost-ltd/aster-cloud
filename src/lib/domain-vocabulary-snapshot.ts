@@ -48,7 +48,7 @@ import {
   type VocabularyOwner,
 } from '@/lib/domain-vocabulary';
 import { mergeTeamAndAuthorRows } from '@/lib/domain-vocabulary-team-merge';
-import { bypassQueryCache } from '@/db/fresh-read';
+import { freshDb } from '@/db/fresh-read';
 
 export interface SnapshotRef {
   snapshotId: string;
@@ -125,7 +125,7 @@ function groupJoinedRows(rows: readonly JoinedTermRow[]): Map<string, JoinedTerm
 
 async function loadActiveLinkRows(
   scope: OwnerScope,
-  exec: Pick<SnapshotTx, 'select'> = db,
+  exec: Pick<SnapshotTx, 'select'> = freshDb,
 ): Promise<JoinedTermRow[]> {
   const rows = await exec
     .select({
@@ -146,9 +146,6 @@ async function loadActiveLinkRows(
         ownerPredicate(ownerOfScope(scope)),
         isNull(userDomainTerms.deletedAt),
         isNull(userDomainTerms.archivedAt),
-        // 草稿执行按作者现行词汇编译（#626）：编辑词条后下一次执行必须立即生效，
-        // 不能读到 Hyperdrive 缓存的旧词条；审批冻结在事务内，同样要最新值。
-        bypassQueryCache(),
       ),
     )
     .orderBy(asc(userDomainTerms.termId));
@@ -162,7 +159,7 @@ async function loadActiveLinkRows(
 async function loadPolicyVocabularySources(
   authorId: string | null | undefined,
   teamId: string | null | undefined,
-  exec: Pick<SnapshotTx, 'select'> = db,
+  exec: Pick<SnapshotTx, 'select'> = freshDb,
 ): Promise<Array<{ scope: OwnerScope; rows: JoinedTermRow[] }>> {
   const authorScope: OwnerScope | null = authorId ? { ownerType: 'user', ownerId: authorId } : null;
   const authorRows = authorScope ? await loadActiveLinkRows(authorScope, exec) : [];

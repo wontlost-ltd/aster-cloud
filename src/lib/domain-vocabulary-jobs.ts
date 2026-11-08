@@ -21,7 +21,7 @@
 import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import { db, lexiconBulkJobs } from '@/lib/prisma';
 import { logAuditEvent } from '@/lib/audit-log';
-import { bypassQueryCache, freshDb } from '@/db/fresh-read';
+import { freshDb } from '@/db/fresh-read';
 import { getLexiconQuota } from '@/lib/usage';
 import {
   BULK_ASYNC_MAX_ROWS,
@@ -131,7 +131,7 @@ export async function enqueueBulkJob(
 export async function getBulkJob(userId: string, jobId: string): Promise<JobView | null> {
   const row = await freshDb.query.lexiconBulkJobs.findFirst({
     // 进度轮询是写后读：绕过 Hyperdrive 查询缓存，否则进度会卡在 60s 前的值。
-    where: and(eq(lexiconBulkJobs.id, jobId), eq(lexiconBulkJobs.userId, userId), bypassQueryCache()),
+    where: and(eq(lexiconBulkJobs.id, jobId), eq(lexiconBulkJobs.userId, userId)),
   });
   if (!row) return null;
   return mapJob(row);
@@ -156,7 +156,7 @@ export async function listBulkJobs(
     Math.max(1, opts.limit ?? BULK_JOB_LIST_DEFAULT_LIMIT),
   );
   // 刷新后找回任务同样是写后读，必须绕过 Hyperdrive 查询缓存。
-  const conditions = [eq(lexiconBulkJobs.userId, userId), bypassQueryCache()];
+  const conditions = [eq(lexiconBulkJobs.userId, userId)];
   if (opts.activeOnly) conditions.push(inArray(lexiconBulkJobs.status, ['queued', 'running']));
   const rows = await freshDb.query.lexiconBulkJobs.findMany({
     where: and(...conditions),

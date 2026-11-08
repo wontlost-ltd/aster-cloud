@@ -1,6 +1,6 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { db, domainTerms, structuralAliasGrants, userDomainTerms } from '@/lib/prisma';
-import { bypassQueryCache, freshDb } from '@/db/fresh-read';
+import { freshDb } from '@/db/fresh-read';
 import { extractReservedAliasSets, getLexicon } from '@/lib/aster-lexicon';
 import { normalizeAliasToken, type ReservedSets } from '@/lib/policy-alias-shared';
 
@@ -13,7 +13,6 @@ export async function getStructuralAliasGrant(userId: string): Promise<boolean> 
     where: and(
       eq(structuralAliasGrants.userId, userId),
       isNull(structuralAliasGrants.revokedAt),
-      bypassQueryCache(),
     ),
     columns: { id: true },
   });

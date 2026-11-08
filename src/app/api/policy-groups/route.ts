@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { bypassQueryCache, freshDb } from '@/db/fresh-read';
+import { freshDb } from '@/db/fresh-read';
 import { ownPoliciesVisibleTo } from '@/lib/policy-access';
 import { db, policyGroups, policies, teamMembers } from '@/lib/prisma';
 import { eq, and, or, isNull, sql, asc, inArray } from 'drizzle-orm';
@@ -30,7 +30,7 @@ export async function GET() {
 
     // 查询用户所在团队的分组
     const userTeamMemberships = await freshDb.query.teamMembers.findMany({
-      where: and(eq(teamMembers.userId, session.user.id), bypassQueryCache()),
+      where: eq(teamMembers.userId, session.user.id),
       columns: { teamId: true },
     });
 
@@ -149,7 +149,7 @@ export async function POST(req: Request) {
       // 如果不是用户的分组,检查是否是团队分组
       if (!parentGroup) {
         const userTeams = await freshDb.query.teamMembers.findMany({
-          where: and(eq(teamMembers.userId, session.user.id), bypassQueryCache()),
+          where: eq(teamMembers.userId, session.user.id),
           columns: { teamId: true },
         });
 
@@ -173,7 +173,6 @@ export async function POST(req: Request) {
     if (teamId) {
       const membership = await freshDb.query.teamMembers.findFirst({
         where: and(
-          bypassQueryCache(),
           eq(teamMembers.teamId, teamId),
           eq(teamMembers.userId, session.user.id)
         ),

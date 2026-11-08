@@ -49,7 +49,8 @@ Companions: 0015（团队作用域 API key）、`aster-api/docs/adr/0034-whatif-
    注意：此前团队策略的批次以创建者 userId 为租户建立，那些历史批次在新口径下查不到（它们本来也回放不到团队执行）。
 5. **四眼**：批准 / 驳回要求 `policy.approve`（owner / admin），再叠加 `decideVersionApproval` 的作者不能自审。
 6. **成员关系必须新鲜**：`getTeamMemberRole`、`teamsAllowing`、`teamMemberIds`、API key 身份解析、审批收件箱、
-   审批人列表与策略分组路由的成员查询都并入 `bypassQueryCache()`，不吃 Hyperdrive 约 60 s 的查询缓存，
+   审批人列表与策略分组路由的成员查询都经 `freshDb`（关闭缓存的 `HYPERDRIVE_FRESH` 绑定，#624）读取；
+   作为子查询嵌进缓存连接外层查询的 `teamsAllowing` / `teamMemberIds` 仍并入 `bypassQueryCache()`。都不吃 Hyperdrive 约 60 s 的查询缓存，
    移除 / 降级在下一次请求即生效。会话 JWT 不携带团队信息，无需失效会话。执行路径缓存的策略元数据带 teamId，
    归属变化时（导入团队、删除团队）都失效该缓存。
 7. **执行记录属于执行时的租户**：原始执行记录（input / output）只在其所属租户的范围内出现，租户在落库时确定

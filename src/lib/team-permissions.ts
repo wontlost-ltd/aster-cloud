@@ -1,6 +1,6 @@
 import { teamMembers } from '@/lib/prisma';
 import { eq, and } from 'drizzle-orm';
-import { bypassQueryCache, freshDb } from '@/db/fresh-read';
+import { freshDb } from '@/db/fresh-read';
 import {
   getRoleLevel,
   hasPermission,
@@ -61,7 +61,7 @@ export type PermissionCheckResult = { allowed: true } | Denied;
  */
 export async function getTeamMemberRole(userId: string, teamId: string): Promise<TeamRole | null> {
   const membership = await freshDb.query.teamMembers.findFirst({
-    where: and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId), bypassQueryCache()),
+    where: and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)),
     columns: { role: true },
   });
   return (membership?.role as TeamRole) ?? null;
