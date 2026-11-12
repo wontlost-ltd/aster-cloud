@@ -72,13 +72,13 @@ const warnMissingClientIp = createThrottledWarner({
 // the browser the token is necessarily a NEXT_PUBLIC_* value and therefore NOT
 // secret from end users — it is a coarse anti-drive-by control layered on top of
 // the (primary) fail-closed Origin allowlist, not a substitute for real auth.
-// See docs / .env.example: NEXT_PUBLIC_LSP_TOKEN (client) must equal
-// LSP_AUTH_TOKEN (server).
+// 浏览器端已改用 ticket（#657），共享 token 仅供本地 / 服务端调用方使用；
+// 生产设置 LSP_TICKET_REQUIRED=true 后本网关不再接受它。
 const authToken = (process.env.LSP_AUTH_TOKEN || '').trim();
 // Escape hatch for local/dev where no token is provisioned. Never set in prod.
 const authDisabled = process.env.LSP_AUTH_DISABLED === 'true';
 // cloud 签发的短时 ticket（#657）。密钥与 cloud Worker 的 LSP_TICKET_SECRET 相同。
-// 过渡期旧 token 与 ticket 都接受；LSP_TICKET_REQUIRED=true 后只接受 ticket。
+// LSP_TICKET_REQUIRED=true 后只接受 ticket（此时 LSP_AUTH_TOKEN 可不配）。
 const ticketSecret = (process.env.LSP_TICKET_SECRET || '').trim();
 const ticketRequired = process.env.LSP_TICKET_REQUIRED === 'true';
 
@@ -818,12 +818,14 @@ if (isMain) {
     console.log(`> Aster LSP Server ready on http://${hostname}:${port}`);
     console.log(`> WebSocket endpoint: ws://${hostname}:${port}/lsp`);
     console.log(`> Health check: http://${hostname}:${port}/health`);
-    if (!authToken && !authDisabled) {
+    if (ticketRequired && !ticketSecret) {
+      console.warn('[LSP] WARNING: LSP_TICKET_REQUIRED=true but LSP_TICKET_SECRET is not set. All upgrades will be REJECTED.');
+    } else if (!ticketRequired && !authToken && !authDisabled) {
       console.warn(
         '[LSP] WARNING: LSP_AUTH_TOKEN is not set. ' +
           (isProduction
-            ? 'Upgrades will be REJECTED (fail-closed) in production.'
-            : 'Token gate disabled in non-production; set LSP_AUTH_TOKEN before deploy.'),
+            ? 'Upgrades without a ticket will be REJECTED (fail-closed) in production.'
+            : 'Token gate disabled in non-production; set LSP_AUTH_TOKEN or LSP_TICKET_REQUIRED=true before deploy.'),
       );
     }
   });

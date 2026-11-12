@@ -325,9 +325,7 @@ export function useAsterLSP({
     if (typeof window === 'undefined') return '';
 
     const lspHost = process.env.NEXT_PUBLIC_LSP_HOST;
-    // 鉴权参数（tokenParam）由 connect 每次连接前经 lspAuthQuery 取得：优先 cloud 签发的
-    // 一次性短时 ticket（#657），取不到时回落到构建期内联的共享 token NEXT_PUBLIC_LSP_TOKEN。
-    // 共享 token 不是密钥（任何访客都能在打包产物里读到），过渡期结束后删除。
+    // 鉴权参数（tokenParam）由 connect 每次连接前经 lspAuthQuery 取得：cloud 签发的一次性短时 ticket（#657）。
 
     if (lspHost) {
       let host = lspHost;
@@ -1147,7 +1145,7 @@ export function useAsterLSP({
     if (wsRef.current) return;
 
     // 每次连接 / 重连都取一张新 ticket（一次性）；取票期间若已被别处连上或卸载则放弃
-    const authParam = await lspAuthQuery({ legacyToken: process.env.NEXT_PUBLIC_LSP_TOKEN });
+    const authParam = await lspAuthQuery();
     if (isDisposedRef.current || wsRef.current) return;
     const wsUrl = getWebSocketUrl(authParam);
     if (!wsUrl) {

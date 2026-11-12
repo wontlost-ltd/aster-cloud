@@ -245,14 +245,11 @@ describe('编辑器接线：LSP 参数下发', () => {
    *   第二份实例，provider 全注册在它上面——编辑器永远不会调用，hover/跳转等全部失效
    *   （生产实测：showHover 不发 textDocument/hover）。 */
   it('★LSP hook 收到编辑器自己的 monaco 实例', async () => {
-    // 远端网关要配齐 token 才会启用 LSP，这里只验证 monaco 实例的传递
     process.env.NEXT_PUBLIC_LSP_HOST = 'lsp.example.test';
-    process.env.NEXT_PUBLIC_LSP_TOKEN = 'tok';
     render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" />);
     await waitFor(() => expect(lspCalls.some((c) => c.editor)).toBe(true));
     expect(lspCalls.filter((c) => c.editor).at(-1)!.monaco).toBe(fakeMonaco);
     delete process.env.NEXT_PUBLIC_LSP_HOST;
-    delete process.env.NEXT_PUBLIC_LSP_TOKEN;
   });
 
   /* ★lspEnabled 恒 true 会让生产站（Cloudflare Workers，无 /api/lsp 路由）
@@ -264,30 +261,16 @@ describe('编辑器接线：LSP 参数下发', () => {
     expect(lspCalls.at(-1)!.autoConnect).toBe(false);
   });
 
-  /* ★远端网关强制 token：构建期没内联 NEXT_PUBLIC_LSP_TOKEN 时，握手必然 401，
-   *   浏览器会把失败原样打进控制台（JS 拦不住）。缺 token 就不该连。 */
-  it('★远端 LSP_HOST 缺 token 时不自动连接', async () => {
+  it('远端 LSP_HOST 配置后自动连接（凭据为运行时 ticket，不需构建期 token）', async () => {
     process.env.NEXT_PUBLIC_LSP_HOST = 'lsp.example.test';
-    delete process.env.NEXT_PUBLIC_LSP_TOKEN;
-    render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" />);
-    await waitFor(() => expect(lspCalls.length).toBeGreaterThan(0));
-    expect(lspCalls.at(-1)!.autoConnect).toBe(false);
-    delete process.env.NEXT_PUBLIC_LSP_HOST;
-  });
-
-  it('远端 LSP_HOST 配齐 token 时自动连接', async () => {
-    process.env.NEXT_PUBLIC_LSP_HOST = 'lsp.example.test';
-    process.env.NEXT_PUBLIC_LSP_TOKEN = 'tok';
     render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" />);
     await waitFor(() => expect(lspCalls.length).toBeGreaterThan(0));
     expect(lspCalls.at(-1)!.autoConnect).toBe(true);
     delete process.env.NEXT_PUBLIC_LSP_HOST;
-    delete process.env.NEXT_PUBLIC_LSP_TOKEN;
   });
 
-  it('本地 LSP_HOST 无 token 也自动连接（本地网关非生产模式放行）', async () => {
+  it('本地 LSP_HOST 也自动连接', async () => {
     process.env.NEXT_PUBLIC_LSP_HOST = 'localhost:3001';
-    delete process.env.NEXT_PUBLIC_LSP_TOKEN;
     render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" />);
     await waitFor(() => expect(lspCalls.length).toBeGreaterThan(0));
     expect(lspCalls.at(-1)!.autoConnect).toBe(true);
@@ -295,14 +278,11 @@ describe('编辑器接线：LSP 参数下发', () => {
   });
 
   it('★readOnly 视图不连接 LSP', async () => {
-    // 配齐 token，确保这里只由 readOnly 决定，而不是被缺 token 顺带挡掉
     process.env.NEXT_PUBLIC_LSP_HOST = 'lsp.example.test';
-    process.env.NEXT_PUBLIC_LSP_TOKEN = 'tok';
     render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" readOnly />);
     await waitFor(() => expect(lspCalls.length).toBeGreaterThan(0));
     expect(lspCalls.at(-1)!.autoConnect).toBe(false);
     delete process.env.NEXT_PUBLIC_LSP_HOST;
-    delete process.env.NEXT_PUBLIC_LSP_TOKEN;
   });
 });
 
@@ -310,11 +290,9 @@ describe('编辑器接线：LSP 参数下发', () => {
 describe('编辑器接线：LSP 断开 / 重连提示', () => {
   const withLsp = (status: string, props: Record<string, unknown> = {}) => {
     process.env.NEXT_PUBLIC_LSP_HOST = 'lsp.example.test';
-    process.env.NEXT_PUBLIC_LSP_TOKEN = 'tok';
     lspState.status = status;
     render(<MonacoPolicyEditor value="" onChange={() => {}} locale="zh" {...props} />);
     delete process.env.NEXT_PUBLIC_LSP_HOST;
-    delete process.env.NEXT_PUBLIC_LSP_TOKEN;
   };
 
   it('★重连中：状态栏显示「LSP 已断开，正在重连」', async () => {

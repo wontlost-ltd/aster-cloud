@@ -186,14 +186,14 @@ describe('useAsterLSP 协议', () => {
     expect(methods.indexOf('workspace/didChangeConfiguration')).toBeLessThan(methods.indexOf('textDocument/didOpen'));
   });
 
-  /* ★生产配置（2026-10-30 复测 A4）：host 取自已提交的 .env.production，token 由构建期内联。
-   *   两者齐备时必须真的向 wss://<host>/lsp 发起握手，并带上 locale 与 token。 */
-  it('★生产配置（.env.production 的 host + 构建期 token）发起 wss 握手', async () => {
+  /* ★生产配置（2026-10-30 复测 A4）：host 取自已提交的 .env.production。
+   *   host 配置后必须真的向 wss://<host>/lsp 发起握手，并带上 locale 与 ticket。 */
+  it('★生产配置（.env.production 的 host）发起 wss 握手', async () => {
     const envProduction = readFileSync(join(__dirname, '..', '..', '..', '.env.production'), 'utf-8');
     const host = /^NEXT_PUBLIC_LSP_HOST=(.+)$/m.exec(envProduction)?.[1]?.trim();
     expect(host).toBe('lsp.aster-lang.dev');
     process.env.NEXT_PUBLIC_LSP_HOST = host;
-    process.env.NEXT_PUBLIC_LSP_TOKEN = 'tok/+=';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ ticket: 'p.s+/=' }), { status: 200 })));
     try {
       const monaco = makeFakeMonaco();
       renderHook(() => useAsterLSP({
@@ -203,9 +203,9 @@ describe('useAsterLSP 协议', () => {
         locale: 'de-DE',
       }));
       await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-      expect(FakeWebSocket.instances[0].url).toBe('wss://lsp.aster-lang.dev/lsp?locale=de-DE&token=tok%2F%2B%3D');
+      expect(FakeWebSocket.instances[0].url).toBe('wss://lsp.aster-lang.dev/lsp?locale=de-DE&ticket=p.s%2B%2F%3D');
     } finally {
-      delete process.env.NEXT_PUBLIC_LSP_TOKEN;
+      vi.unstubAllGlobals();
     }
   });
 

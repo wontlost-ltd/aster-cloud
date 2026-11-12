@@ -3,7 +3,7 @@
  *
  * lsp.aster-lang.dev 的 Cloudflare tunnel 直连 aster-lsp Service、不经 Traefik，入口中间件不会生效，
  * 故按 IP 的限制必须在网关进程内做。Service 是 ClusterIP、只有 cloudflared 能到达，CF-Connecting-IP 可信。
- * 前端 bundle 内联 NEXT_PUBLIC_LSP_TOKEN 后共享 token 公开，每个会话又 spawn 一个约 80 MiB 的子进程，
+ * ticket 由任何访客都能取得，每个会话又 spawn 一个约 80 MiB 的子进程，
  * 需要：单 IP 并发会话上限、单 IP 握手速率（令牌桶）、子进程堆上限。
  */
 import { describe, it, expect } from 'vitest';
