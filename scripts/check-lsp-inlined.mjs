@@ -2,21 +2,18 @@
  * check-lsp-inlined.mjs
  *
  * 构建产物检查：策略编辑器的 LSP 接线（悬停 / 跳转 / 签名帮助等）只在
- * NEXT_PUBLIC_LSP_HOST 与 NEXT_PUBLIC_LSP_TOKEN **都在构建期内联**进客户端 chunk 时才会启用
- * （见 src/components/policy/monaco-policy-editor.tsx 的 isLspConfigured：远端网关强制 token，
- * 缺 token 时编辑器不发起连接）。
+ * NEXT_PUBLIC_LSP_HOST **在构建期内联**进客户端 chunk 时才会启用
+ * （见 src/components/policy/monaco-policy-editor.tsx 的 isLspConfigured）。
+ * 鉴权不再依赖构建期变量：握手凭据是运行时向 /api/lsp/ticket 取的一次性 ticket。
  *
  * 为什么要查产物而不是查环境变量：NEXT_PUBLIC_* 只在 `next build` 时被替换成字面量，
  * 运行时（Cloudflare Worker 的 vars / secrets）再设置也无效。构建环境缺变量时，chunk 里会残留
- * `process.env.NEXT_PUBLIC_LSP_TOKEN`（压缩后形如 `B.env.NEXT_PUBLIC_LSP_TOKEN`），浏览器里
- * 读到 undefined —— 2026-10-30 生产复测 A4 就是这样：host 已内联、token 残留，编辑页从不建立 WebSocket。
+ * `process.env.NEXT_PUBLIC_LSP_HOST`（压缩后形如 `B.env.NEXT_PUBLIC_LSP_HOST`），浏览器里
+ * 读到 undefined，编辑页从不建立 WebSocket（2026-10-30 生产复测 A4 即此类问题）。
  *
  * 判定：
  *   - 产物中必须存在 LSP 客户端（含 `/lsp?locale=` 的 chunk），否则视为检查空转；
- *   - 任何 .js 产物中都不得残留 `env.NEXT_PUBLIC_LSP_HOST` / `env.NEXT_PUBLIC_LSP_TOKEN`；
- *   - 构建环境里的 NEXT_PUBLIC_LSP_TOKEN 不得为空白：Next 会把空串原样内联（`r=""`），产物检查看不出来，
- *     编辑器的 isLspConfigured 却仍判为未配置。本脚本与 next build 在同一环境中运行，故直接核对环境变量。
- * 只输出变量名，绝不打印 token 值。
+ *   - 任何 .js 产物中都不得残留 `env.NEXT_PUBLIC_LSP_HOST`。
  *
  * 退出码：0 = 通过；1 = 未内联或产物缺失。
  *
@@ -28,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 /** 必须在构建期内联的变量（顺序即报告顺序）。 */
-export const REQUIRED_LSP_ENV = ['NEXT_PUBLIC_LSP_HOST', 'NEXT_PUBLIC_LSP_TOKEN'];
+export const REQUIRED_LSP_ENV = ['NEXT_PUBLIC_LSP_HOST'];
 
 /** LSP 客户端 URL 拼接处的稳定特征（useAsterLSP 的 `/lsp?locale=`）。 */
 const LSP_CLIENT_MARKER = '/lsp?locale=';
@@ -42,11 +39,6 @@ export function inspectLspInlining(sources) {
   const hasLspClient = sources.some((s) => s.includes(LSP_CLIENT_MARKER));
   const missing = REQUIRED_LSP_ENV.filter((name) => sources.some((s) => s.includes(`env.${name}`)));
   return { ok: hasLspClient && missing.length === 0, hasLspClient, missing };
-}
-
-/** 构建环境中的 token 是否为空白（未设置或仅空白都算）。 */
-export function isBlankToken(env) {
-  return !(env.NEXT_PUBLIC_LSP_TOKEN ?? '').trim();
 }
 
 function listJsFiles(dir) {
@@ -77,10 +69,6 @@ if (isMain) {
     console.error(`::error::找不到构建产物目录 ${dir}，请先运行 next build`);
     process.exit(1);
   }
-  if (isBlankToken(process.env)) {
-    console.error('::error::构建环境中 NEXT_PUBLIC_LSP_TOKEN 未设置或为空白，编辑器不会连接 LSP（悬停/跳转不可用）');
-    process.exit(1);
-  }
   const result = inspectChunkDir(dir);
   if (!result.hasLspClient) {
     console.error('::error::构建产物中没有 LSP 客户端（未找到 /lsp?locale=），检查无法进行');
@@ -93,5 +81,5 @@ if (isMain) {
     );
     process.exit(1);
   }
-  console.log('✓ LSP host 与 token 已内联进客户端产物，编辑器会发起 LSP 连接');
+  console.log('✓ LSP host 已内联进客户端产物，编辑器会发起 LSP 连接');
 }
