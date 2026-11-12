@@ -428,7 +428,7 @@ export function evaluateUpgrade(input, config) {
     }
   } else if (!authDisabled) {
     // No token configured. Fail closed in production; allow in dev so local
-    // setups keep working. Operators MUST set LSP_AUTH_TOKEN before deploy.
+    // setups keep working. Only reached when LSP_TICKET_REQUIRED is not "true" (legacy token mode); then operators MUST set LSP_AUTH_TOKEN.
     if (isProduction) {
       return { ok: false, code: 401, reason: 'Token gate not configured' };
     }

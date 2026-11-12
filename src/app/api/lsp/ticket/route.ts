@@ -2,7 +2,7 @@
  * POST /api/lsp/ticket —— 为登录用户签发连接 LSP 网关的一次性短时 ticket（#657）。
  *
  * 取代构建期内联进前端的共享 token：ticket 用服务端密钥 LSP_TICKET_SECRET 签名，
- * 绑定用户、60 秒过期、网关侧只能用一次。未配置密钥时返回 503，客户端回落到旧 token（过渡期）。
+ * 绑定用户、60 秒过期、网关侧只能用一次。未配置密钥时返回 503，客户端不带凭据连接，生产网关（LSP_TICKET_REQUIRED=true）返回 401。
  */
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
