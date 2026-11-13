@@ -29,10 +29,10 @@ describe('summarizeCoreModule', () => {
     expect(summarizeCoreModule(null)).toBeUndefined();
   });
 
-  it('Func 带 inputRefs 数组 → 摘要按函数名给出，原样保留（含空数组）', () => {
+  it('Func 带 inputRefs 数组 → 摘要按函数名给出，原样保留（含空数组）；v2 的 null（未计算）不出现', () => {
     const decls = [
       { kind: 'Func', name: 'decide', inputRefs: ['applicant.creditScore'] },
-      { kind: 'Func', name: 'helper' },
+      { kind: 'Func', name: 'helper', inputRefs: null },
       { kind: 'Func', name: 'constant', inputRefs: [] },
       { kind: 'Data', name: 'Applicant' },
     ];

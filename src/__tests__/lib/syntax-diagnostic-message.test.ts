@@ -46,6 +46,14 @@ describe('localizeSyntaxDiagnostic 边界', () => {
       .toBe('Unerwartetes Token auf oberster Ebene');
   });
 
+  it('ADR 0055 注解诊断：E900 参数重复、E067 参数值类型非法', () => {
+    expect(localizeSyntaxDiagnostic(d('E900', { annotation: 'id', name: 'name' }, 'Annotation @id repeats the argument name'), 'zh-CN'))
+      .toBe('注解 @id 重复给出了参数 name');
+    expect(localizeSyntaxDiagnostic(
+      d('E067', { construct: 'token.annotationArgumentValue', value: '1.5', allowed: 'string, Int or Bool' }, 'x'), 'zh-CN'))
+      .toBe('无效的注解参数值 1.5；允许的取值：string, Int or Bool');
+  });
+
   it('数字参数原样代入；用户文本里的 {占位符} 不二次替换', () => {
     expect(localizeSyntaxDiagnostic(d('E056', { token: "'{after}'", after: "'{token}'" }, 'x'), 'de-DE'))
       .toBe("Nach '{token}' wird '{after}' erwartet");
@@ -125,9 +133,12 @@ const BY_CODE: ReadonlyArray<readonly [string, Record<string, string | number>, 
   ['E067', { construct: 'kw.timeout', value: -1, allowed: 'token.nonNegativeInteger' }, 'Timeout value must be non-negative'],
   ['E068', { callee: "'+'", expected: 2, actual: 3 }, "'+' takes exactly 2 argument(s), got 3"],
   ['E069', { kind: 'token.retryDirective', name: "'x'" }, 'Unknown retry directive'],
+  // ADR 0055：注解参数值只允许字符串 / Int / Bool（E067），同名参数重复（E900）；取自 aster-lang-ts 2.0.0
+  ['E067', { construct: 'token.annotationArgumentValue', value: '1.5', allowed: 'string, Int or Bool' }, 'Annotation argument value must be a string, Int or Bool: 1.5'],
+  ['E900', { annotation: 'id', name: 'name' }, 'Annotation @id repeats the argument name'],
 ];
 
-describe('E050–E069 逐码覆盖（zh / de / hi）', () => {
+describe('E050–E069 与 E900 逐码覆盖（zh / de / hi）', () => {
   it.each(BY_CODE)('%s', (code, params, message) => {
     for (const locale of ['zh-CN', 'de-DE', 'hi-IN']) {
       const out = localizeSyntaxDiagnostic({ code, params, message }, locale);
