@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { Breadcrumbs, ConfirmDialog, Container, Input, Label, PageHeader, Select, toast } from '@/components/ui';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
 import { TeamLanguageCard } from '@/components/teams/team-language-card';
+import { FactIssuersPanel } from '@/components/guard/fact-issuers-panel';
 
 interface Team {
   id: string;
@@ -309,6 +310,11 @@ export default function TeamSettingsPage() {
 
       {/* 语言可用性 — owner/admin 设置开放给团队用户的 UI 语言（ADR 0017）。 */}
       <TeamLanguageCard teamId={teamId} />
+
+      {/* 签名事实签发方（ADR 0040 §11 D3）：面板按 MEMBER_UPDATE_ROLE 自行决定是否渲染写操作。 */}
+      <div className="my-8">
+        <FactIssuersPanel tenantId={teamId} />
+      </div>
 
       {/* Ownership transfer — owner-only, separate card so it doesn't
           look like part of the destructive zone. */}
