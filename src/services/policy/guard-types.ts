@@ -103,6 +103,18 @@ export interface GuardFactIssuer {
   publicKey: string;
 }
 
+/** 登记人的展示信息（cloud 侧按 createdBy 解析，只限本租户当前成员）；离队成员、已注销、anonymous 为 null。 */
+export interface FactIssuerUser {
+  name: string | null;
+  email: string | null;
+  image: string | null;
+}
+
+/** cloud `GET /api/fact-issuers/[tenantId]` 的列表行：api 视图 + 登记人展示信息。 */
+export interface FactIssuerListItem extends GuardFactIssuer {
+  createdByUser: FactIssuerUser | null;
+}
+
 /** 登记 / 更新签发方的请求体：enabled 缺省 true（false 即吊销）；notAfter 为 ISO-8601 时刻。 */
 export interface GuardFactIssuerPut {
   publicKey: string;

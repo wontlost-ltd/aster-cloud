@@ -15,6 +15,7 @@ const h = vi.hoisted(() => ({
   putFactIssuer: vi.fn(),
   deleteFactIssuer: vi.fn(),
   loadFactSigningKey: vi.fn(),
+  loadUserProfiles: vi.fn(),
 }));
 
 vi.mock('@/lib/auth', () => ({ getSession: () => h.getSession() }));
@@ -35,6 +36,9 @@ vi.mock('@/lib/policy-api-identity', () => ({
   createPolicyApiClientForUser: (tenantId: string, userId: string) => h.createClient(tenantId, userId),
 }));
 vi.mock('@/services/guard/fact-signing-key', () => ({ loadFactSigningKey: () => h.loadFactSigningKey() }));
+vi.mock('@/lib/user-profiles', () => ({
+  loadTenantMemberProfiles: (tenantId: string, ids: string[], userId: string) => h.loadUserProfiles(tenantId, ids, userId),
+}));
 
 const { PolicyApiError } = await import('@/services/policy/policy-api');
 const { GET } = await import('@/app/api/fact-issuers/[tenantId]/route');
@@ -45,6 +49,9 @@ const ROW = {
   alg: 'Ed25519', createdAt: '2026-11-13T00:00:00Z', createdBy: 'u-admin', enabled: true,
   issuer: 'idp.example.com', kid: '2026-11', publicKey: PUBLIC_KEY,
 };
+
+const ADMIN_PROFILE = { name: 'Ada Admin', email: 'ada@acme.test', image: null };
+const LISTED = { ...ROW, createdByUser: ADMIN_PROFILE };
 
 function list(tenantId: string) {
   return GET(new Request(`https://x.test/api/fact-issuers/${tenantId}`), { params: Promise.resolve({ tenantId }) });
@@ -82,6 +89,7 @@ describe('/api/fact-issuers', () => {
       deleteFactIssuer: h.deleteFactIssuer,
     });
     h.listFactIssuers.mockResolvedValue({ issuers: [ROW] });
+    h.loadUserProfiles.mockResolvedValue(new Map([['u-admin', ADMIN_PROFILE]]));
     h.putFactIssuer.mockResolvedValue(ROW);
     h.deleteFactIssuer.mockResolvedValue(undefined);
     h.loadFactSigningKey.mockResolvedValue({
@@ -104,7 +112,7 @@ describe('/api/fact-issuers', () => {
     const res = await list('team1');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
-      issuers: [ROW],
+      issuers: [LISTED],
       cloudIssuer: { issuer: 'aster-cloud', kid: 'k-2026-11', publicKey: 'c'.repeat(43) },
       canManage: false,
     });
@@ -256,11 +264,59 @@ describe('/api/fact-issuers', () => {
     expect((await put('team1', 'idp', 'k1')).status).toBe(502);
   });
 
+  it('GET 把 createdBy 解析为成员资料：只批量查列表里出现的去重 id；已删除用户与 anonymous 为 null', async () => {
+    asUser('u-viewer');
+    h.listFactIssuers.mockResolvedValue({
+      issuers: [
+        ROW,
+        { ...ROW, kid: '2026-12', createdBy: 'u-admin' },
+        { ...ROW, kid: '2026-10', createdBy: 'u-deleted' },
+        { ...ROW, kid: '2026-09', createdBy: 'anonymous' },
+      ],
+    });
+    const res = await list('team1');
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(h.loadUserProfiles).toHaveBeenCalledTimes(1);
+    // 只传列表里出现的 createdBy（去重在 loadUserProfiles 内一次完成）
+    // 按本租户（team1）的当前成员范围解析，离队成员与 anonymous 由 helper 返回缺省
+    expect(h.loadUserProfiles.mock.calls[0][0]).toBe('team1');
+    expect(new Set(h.loadUserProfiles.mock.calls[0][1])).toEqual(new Set(['u-admin', 'u-deleted', 'anonymous']));
+    expect(h.loadUserProfiles.mock.calls[0][2]).toBe('u-viewer');
+    expect(body.issuers.map((r: { kid: string; createdBy: string; createdByUser: unknown }) => [r.kid, r.createdBy, r.createdByUser]))
+      .toEqual([
+        ['2026-11', 'u-admin', ADMIN_PROFILE],
+        ['2026-12', 'u-admin', ADMIN_PROFILE],
+        ['2026-10', 'u-deleted', null],
+        ['2026-09', 'anonymous', null],
+      ]);
+  });
+
+  it('用户资料查询失败 → 列表照常返回，createdByUser 为 null', async () => {
+    asUser('u-admin');
+    h.loadUserProfiles.mockRejectedValueOnce(new Error('db down'));
+    const res = await list('team1');
+    expect(res.status).toBe(200);
+    expect((await res.json()).issuers).toEqual([{ ...ROW, createdByUser: null }]);
+  });
+
+  it('空列表不查用户；无权读取时不查用户（不能借此枚举用户）', async () => {
+    asUser('u-admin');
+    h.listFactIssuers.mockResolvedValue({ issuers: [] });
+    expect((await (await list('team1')).json()).issuers).toEqual([]);
+    expect(h.loadUserProfiles).toHaveBeenCalledWith('team1', [], 'u-admin');
+
+    h.loadUserProfiles.mockClear();
+    asUser('u-solo');
+    expect((await list('team1')).status).toBe(403);
+    expect(h.loadUserProfiles).not.toHaveBeenCalled();
+  });
+
   it('cloudIssuerNullWithoutSigningKey：未配置或自检失败的平台密钥 → cloudIssuer null，列表照常', async () => {
     asUser('u-admin');
     h.loadFactSigningKey.mockResolvedValue(null);
     const res = await list('team1');
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ issuers: [ROW], cloudIssuer: null, canManage: true });
+    expect(await res.json()).toEqual({ issuers: [LISTED], cloudIssuer: null, canManage: true });
   });
 });
