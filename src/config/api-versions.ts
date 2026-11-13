@@ -38,6 +38,13 @@ export const API_ENDPOINTS = {
   guardApprovals: `${prefix}/guard/approvals`,
   guardApprovalAction: (id: string, action: 'approve' | 'reject') =>
     `${prefix}/guard/approvals/${encodeURIComponent(id)}/${action}`,
+  /**
+   * 签名事实签发方（ADR 0040 §11 D3）。issuer / kid 须先过 isFactIssuerSegment：合规段全是 URL 非保留字符，
+   * encodeURIComponent 不改变它们，签名取的 pathname 与 api 解码后的 path 逐字相同。
+   */
+  guardFactIssuers: `${prefix}/guard/fact-issuers`,
+  guardFactIssuer: (issuer: string, kid: string) =>
+    `${prefix}/guard/fact-issuers/${encodeURIComponent(issuer)}/${encodeURIComponent(kid)}`,
 
   // 健康检查
   healthLive: '/q/health/live',
