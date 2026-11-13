@@ -42,8 +42,8 @@ importers:
   .:
     dependencies:
       '@aster-cloud/aster-lang-ts':
-        specifier: 1.5.0
-        version: 1.5.0(cac@6.7.14)(ora@9.4.0)(p-limit@7.3.0)(vscode-languageserver-textdocument@1.0.12)(vscode-languageserver-types@3.17.5)(vscode-languageserver@9.0.1)(ws@8.21.1)(zod@4.6.7)
+        specifier: 1.6.0
+        version: 1.6.0(cac@6.7.14)(ora@9.4.0)(p-limit@7.3.0)(vscode-languageserver-textdocument@1.0.12)(vscode-languageserver-types@3.17.5)(vscode-languageserver@9.0.1)(ws@8.21.1)(zod@4.6.7)
       '@aster-cloud/tokens':
         specifier: ^0.2.1
         version: 0.2.1
@@ -367,8 +367,8 @@ packages:
     resolution: {integrity: sha512-bjJsUt0g3UCwbn9bjv7MnoR15rszSm79yPCXn4DWWK0NuYUUqBU/srtNMR4WnpfR7TnfBRdYFoqSNx0pGCNWJg==}
     engines: {node: '>= 10'}
 
-  '@aster-cloud/aster-lang-ts@1.5.0':
-    resolution: {integrity: sha512-zFrwc1UiRiZAy+3odtZSYi2ODa1zg9sjMrkH2RuyYiLD5qJ+JQfTCRpKb3poM+swLisGSg3wQw8rxJCvqiZ7Dg==}
+  '@aster-cloud/aster-lang-ts@1.6.0':
+    resolution: {integrity: sha512-quO/+5I9eOrqXU3HqeNwpKKo0JzsU5J7mesrrOt/+6oHNK7rqSixcpWmZtcahOqKmTZ+Y9hnATFAugeD6BkRyg==}
     engines: {node: '>=24.0.0'}
     hasBin: true
     peerDependencies:
@@ -6051,7 +6051,7 @@ snapshots:
       '@ast-grep/napi-win32-ia32-msvc': 0.45.3
       '@ast-grep/napi-win32-x64-msvc': 0.45.3
 
-  '@aster-cloud/aster-lang-ts@1.5.0(cac@6.7.14)(ora@9.4.0)(p-limit@7.3.0)(vscode-languageserver-textdocument@1.0.12)(vscode-languageserver-types@3.17.5)(vscode-languageserver@9.0.1)(ws@8.21.1)(zod@4.6.7)':
+  '@aster-cloud/aster-lang-ts@1.6.0(cac@6.7.14)(ora@9.4.0)(p-limit@7.3.0)(vscode-languageserver-textdocument@1.0.12)(vscode-languageserver-types@3.17.5)(vscode-languageserver@9.0.1)(ws@8.21.1)(zod@4.6.7)':
     dependencies:
       '@types/semver': 7.7.1
       decimal.js: 10.4.3

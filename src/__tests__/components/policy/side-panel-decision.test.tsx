@@ -93,8 +93,19 @@ describe('DecisionTab 规则输入引用', () => {
     expect(screen.queryByText(HINT)).toBeNull();
   });
 
-  it('默认注册表 1.2.0 不要求 verifiedInputs → 不显示签名提示', () => {
-    renderZh({ ...base, profile: 'eu-ai-act-high-risk', inputRefs: { decide: ['applicant.creditScore'] } });
+  it('★默认注册表 1.3.0：eu-ai-act-high-risk 显示签名提示，governed 不显示', () => {
+    const refs = { decide: ['applicant.creditScore'] };
+    renderZh({ ...base, profile: 'eu-ai-act-high-risk', inputRefs: refs });
+    expect(screen.getByText(HINT)).toBeTruthy();
+    cleanup();
+    renderZh({ ...base, profile: 'governed', inputRefs: refs });
+    expect(screen.queryByText(HINT)).toBeNull();
+  });
+
+  it('注册表回到不要求 verifiedInputs（1.2.0 口径）→ 不显示签名提示', () => {
+    const relaxed = structuredClone(defaultControlRegistry);
+    relaxed.profiles.find((p) => p.id === 'eu-ai-act-high-risk')!.requires.verifiedInputs = false;
+    renderZh({ ...base, profile: 'eu-ai-act-high-risk', inputRefs: { decide: ['applicant.creditScore'] } }, relaxed);
     expect(screen.queryByText(HINT)).toBeNull();
   });
 
