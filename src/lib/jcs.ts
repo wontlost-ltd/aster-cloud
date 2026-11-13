@@ -72,6 +72,7 @@ function writeArray(items: unknown[]): string {
 
 function writeObject(value: object): string {
   if (!isPlainObject(value)) throw new JcsError('unsupported_value', '不是普通 JSON 对象');
+  if (Object.getOwnPropertySymbols(value).length > 0) throw new JcsError('unsupported_value', '对象含 symbol 键');
   const keys = Object.keys(value).sort();
   return `{${keys.map((k) => `${writeString(k)}:${write(value[k])}`).join(',')}}`;
 }

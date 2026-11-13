@@ -68,6 +68,10 @@ describe('jcsCanonicalize — JS 值专有情形', () => {
     expect(codeOf(() => jcsCanonicalize(Symbol('x')))).toBe('unsupported_value');
   });
 
+  it('带 symbol 键的对象 → unsupported_value（不静默丢弃）', () => {
+    expect(codeOf(() => jcsCanonicalize({ a: 1, [Symbol('s')]: 2 }))).toBe('unsupported_value');
+  });
+
   it('非有限数 → unsafe_integer', () => {
     expect(codeOf(() => jcsCanonicalize(Number.NaN))).toBe('unsafe_integer');
     expect(codeOf(() => jcsCanonicalize({ n: Number.POSITIVE_INFINITY }))).toBe('unsafe_integer');
