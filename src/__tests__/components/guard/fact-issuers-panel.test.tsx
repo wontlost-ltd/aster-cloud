@@ -15,8 +15,10 @@ vi.mock('next-intl', () => ({
 import { FactIssuersPanel } from '@/components/guard/fact-issuers-panel';
 
 const CLOUD = { issuer: 'aster-cloud', kid: 'k-2026-11', publicKey: 'c'.repeat(43) };
+const OWNER_ID = '784d38c4-f433-4369-b4dc-ab0f4f0cc2b9';
 const EXTERNAL = {
-  alg: 'Ed25519', createdAt: '2026-11-01T00:00:00Z', createdBy: 'owner@example.com', enabled: true,
+  alg: 'Ed25519', createdAt: '2026-11-01T00:00:00Z', createdBy: OWNER_ID, enabled: true,
+  createdByUser: { name: 'Olivia Owner', email: 'owner@example.com', image: null },
   issuer: 'idp.example.com', kid: '2026-11', notAfter: '2027-01-01T00:00:00Z', publicKey: 'e'.repeat(43),
 };
 const REVOKED = { ...EXTERNAL, kid: '2026-10', enabled: false, notAfter: undefined };
@@ -65,13 +67,34 @@ describe('FactIssuersPanel', () => {
     expect(row.textContent).toContain('2026-11');
     expect(row.textContent).toContain('statusEnabled');
     expect(row.textContent).toContain('01/01/2027');
+    expect(row.textContent).toContain('Olivia Owner');
     expect(row.textContent).toContain('owner@example.com');
+    expect(row.innerHTML).not.toContain(OWNER_ID);
 
     const revoked = screen.getByTestId('fact-issuer-idp.example.com#2026-10');
     expect(revoked.textContent).toContain('statusRevoked');
     expect(revoked.textContent).toContain('noExpiry');
     // 已吊销的不再提供吊销按钮
     expect(within(revoked).queryByRole('button', { name: 'revoke' })).toBeNull();
+  });
+
+  it('登记人：无姓名显示邮箱；查不到（已删除 / anonymous）显示 unknownUser，任何情况都不显示原始 id', async () => {
+    fetchMock.mockResolvedValueOnce(listResponse({
+      issuers: [
+        { ...EXTERNAL, kid: 'a', createdByUser: { name: null, email: 'mail-only@example.com', image: null } },
+        { ...EXTERNAL, kid: 'b', createdByUser: null },
+        { ...EXTERNAL, kid: 'c', createdBy: 'anonymous', createdByUser: null },
+        { ...EXTERNAL, kid: 'd', createdByUser: undefined },
+      ],
+    }));
+    const { container } = render(<FactIssuersPanel tenantId="team1" />);
+    const a = await screen.findByTestId('fact-issuer-idp.example.com#a');
+    expect(a.textContent).toContain('mail-only@example.com');
+    for (const kid of ['b', 'c', 'd']) {
+      expect(screen.getByTestId(`fact-issuer-idp.example.com#${kid}`).textContent).toContain('unknownUser');
+    }
+    expect(container.innerHTML).not.toContain(OWNER_ID);
+    expect(container.innerHTML).not.toContain('anonymous');
   });
 
   it('enableCloudIssuerPutsConfiguredPublicKey：PUT 平台签发方的 issuer / kid 与公钥，成功后重新拉取', async () => {

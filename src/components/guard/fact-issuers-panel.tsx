@@ -16,7 +16,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Badge, Button, Card, CardBody, ConfirmDialog, Input, Label, Stack } from '@/components/ui';
 import { formatDate } from '@/lib/format';
-import type { GuardFactIssuer } from '@/services/policy/guard-types';
+import type { FactIssuerListItem, FactIssuerUser, GuardFactIssuer } from '@/services/policy/guard-types';
 
 interface CloudIssuer {
   issuer: string;
@@ -25,7 +25,7 @@ interface CloudIssuer {
 }
 
 interface IssuersState {
-  issuers: GuardFactIssuer[];
+  issuers: FactIssuerListItem[];
   cloudIssuer: CloudIssuer | null;
   canManage: boolean;
 }
@@ -238,7 +238,7 @@ function CloudIssuerRow({
 function IssuerTable({
   issuers, cloud, canManage, busy, locale, onRevoke,
 }: {
-  issuers: GuardFactIssuer[];
+  issuers: FactIssuerListItem[];
   cloud: CloudIssuer | null;
   canManage: boolean;
   busy: boolean;
@@ -276,7 +276,7 @@ function IssuerTable({
                 </Badge>
               </td>
               <td className="px-4 py-3 text-fg-muted">{row.notAfter ? formatDate(row.notAfter, locale) : t('noExpiry')}</td>
-              <td className="px-4 py-3 text-fg-muted">{row.createdBy}</td>
+              <td className="px-4 py-3"><AddedBy user={row.createdByUser} /></td>
               {canManage && (
                 <td className="px-4 py-3">
                   {row.enabled && (
@@ -290,6 +290,27 @@ function IssuerTable({
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/**
+ * 登记人：与团队成员列表同一展示方式（首字母圆标 + 姓名，姓名下方小字邮箱；无姓名时只显示邮箱）。
+ * 查不到资料（已注销、anonymous）显示「未知用户」，从不显示原始用户 id。
+ */
+function AddedBy({ user }: { user: FactIssuerUser | null | undefined }) {
+  const t = useTranslations('factIssuers');
+  const label = user?.name || user?.email;
+  if (!label) return <span className="text-fg-muted">{t('unknownUser')}</span>;
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-subtle" aria-hidden="true">
+        <span className="text-xs font-medium text-primary">{label.charAt(0).toUpperCase()}</span>
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-sm text-fg">{label}</p>
+        {user?.name && user.email && <p className="truncate text-xs text-fg-muted">{user.email}</p>}
+      </div>
     </div>
   );
 }

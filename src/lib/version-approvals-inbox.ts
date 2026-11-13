@@ -13,7 +13,8 @@ import 'server-only';
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { isPersonalPolicy } from '@/lib/policy-access';
 import { freshDb } from '@/db/fresh-read';
-import { db, policies, policyVersions, securityEvents, teamMembers, users } from '@/lib/prisma';
+import { db, policies, policyVersions, securityEvents, teamMembers } from '@/lib/prisma';
+import { loadUserProfiles } from '@/lib/user-profiles';
 import type { TeamRole } from '@/lib/team-permissions';
 import {
   decideVersionApproval,
@@ -76,12 +77,8 @@ async function loadSubmitEvents(
 }
 
 async function loadDisplayNames(ids: string[]): Promise<Map<string, string>> {
-  if (ids.length === 0) return new Map();
-  const rows = await db.query.users.findMany({
-    where: inArray(users.id, ids),
-    columns: { id: true, name: true, email: true },
-  });
-  return new Map(rows.map((u) => [u.id, u.name || u.email || u.id]));
+  const profiles = await loadUserProfiles(ids);
+  return new Map([...profiles].map(([id, u]) => [id, u.name || u.email || id]));
 }
 
 /** 用户在各团队的角色，只保留能审批团队策略版本的 owner/admin。 */

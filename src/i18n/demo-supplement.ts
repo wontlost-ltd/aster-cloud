@@ -687,6 +687,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       enableCloud: 'Enable Aster Cloud issuer',
       cloudBadge: 'Aster Cloud',
       empty: 'No issuers registered.',
+      // 登记人资料查不到（已注销或非 cloud 用户）时的占位，不显示原始用户 id
+      unknownUser: 'Unknown user',
       thIssuer: 'Issuer',
       thKid: 'Key id',
       thStatus: 'Status',
@@ -2316,6 +2318,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       enableCloud: '启用 Aster Cloud 签发方',
       cloudBadge: 'Aster Cloud',
       empty: '尚未登记签发方。',
+      // 登记人资料查不到（已注销或非 cloud 用户）时的占位，不显示原始用户 id
+      unknownUser: '未知用户',
       thIssuer: '签发方',
       thKid: '密钥 ID',
       thStatus: '状态',
@@ -3928,6 +3932,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       enableCloud: 'Aster-Cloud-Aussteller aktivieren',
       cloudBadge: 'Aster Cloud',
       empty: 'Keine Aussteller registriert.',
+      // 登记人资料查不到（已注销或非 cloud 用户）时的占位，不显示原始用户 id
+      unknownUser: 'Unbekannter Benutzer',
       thIssuer: 'Aussteller',
       thKid: 'Schlüssel-ID',
       thStatus: 'Status',
@@ -5537,6 +5543,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       enableCloud: 'Aster Cloud जारीकर्ता सक्षम करें',
       cloudBadge: 'Aster Cloud',
       empty: 'कोई जारीकर्ता पंजीकृत नहीं है।',
+      // 登记人资料查不到（已注销或非 cloud 用户）时的占位，不显示原始用户 id
+      unknownUser: 'अज्ञात उपयोगकर्ता',
       thIssuer: 'जारीकर्ता',
       thKid: 'कुंजी ID',
       thStatus: 'स्थिति',
