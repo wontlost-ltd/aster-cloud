@@ -27,6 +27,8 @@ export interface CompileModuleSummary {
   types: string[];
   /** 模块声明的治理档案 id（ADR 0046）；未声明时缺省。 */
   profile?: string;
+  /** 规则名 → Core IR Func.inputRefs 原样（ADR 0046 §11 D4）；无任何规则带该字段时缺省。 */
+  inputRefs?: Record<string, readonly string[]>;
 }
 
 export type CompileState = 'idle' | 'pending' | 'ok' | 'error';

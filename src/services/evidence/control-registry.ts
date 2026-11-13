@@ -13,7 +13,8 @@ export interface RegistryClause {
 export interface RegistryProfile {
   id: string;
   title: LocalizedTitle;
-  requires: { ruleId: boolean; registeredControls: boolean; frameworks: string[] };
+  /** verifiedInputs（ADR 0046 §11 D1，注册表 1.2.0 起）：运行期规则读取的输入须由已登记签发方签名；旧版副本缺该键。 */
+  requires: { ruleId: boolean; registeredControls: boolean; frameworks: string[]; verifiedInputs?: boolean };
 }
 export interface ControlRegistryData {
   version: string;
@@ -28,6 +29,15 @@ export const defaultControlRegistry = raw as ControlRegistryData;
 /** 档案标题：注册表未登记的 id（如更新版编译器带来的新档案）三语都如实显示 id 本身。 */
 export function profileTitle(id: string, registry: ControlRegistryData = defaultControlRegistry): LocalizedTitle {
   return registry.profiles.find((p) => p.id === id)?.title ?? { en: id, zh: id, de: id };
+}
+
+/** 档案是否要求输入经签名核实：未知档案、未声明档案或缺该键一律 false（ADR 0046 §11.6 第 6 条）。 */
+export function requiresVerifiedInputs(
+  profileId: string | undefined,
+  registry: ControlRegistryData = defaultControlRegistry,
+): boolean {
+  if (!profileId) return false;
+  return registry.profiles.find((p) => p.id === profileId)?.requires.verifiedInputs === true;
 }
 
 // 注册表标题只有 en/zh/de 三语，其余 locale（如 hi）回退英文

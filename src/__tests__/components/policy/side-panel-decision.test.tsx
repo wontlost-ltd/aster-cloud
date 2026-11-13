@@ -12,14 +12,18 @@ vi.mock('@/components/policy/cnl-syntax-reference-panel', () => ({ CNLSyntaxRefe
 vi.mock('@/components/policy/policy-alias-panel', () => ({ PolicyAliasPanel: () => null }));
 
 import { DecisionTab } from '@/components/policy/policy-form/side-panel';
+import { defaultControlRegistry, type ControlRegistryData } from '@/services/evidence/control-registry';
 
 const messages = deepMergeMessages(zhBase as Record<string, unknown>, DEMO_SUPPLEMENT.zh);
 const base = { name: 'credit.pilot', functions: ['decide'], types: [] };
 
-function renderZh(module: typeof base & { profile?: string }) {
+function renderZh(
+  module: typeof base & { profile?: string; inputRefs?: Record<string, readonly string[]> },
+  registry?: ControlRegistryData,
+) {
   return render(
     <IntlClientProvider locale="zh" messages={messages as never}>
-      <DecisionTab state="ok" diagnostics={[]} module={module} locale="zh" />
+      <DecisionTab state="ok" diagnostics={[]} module={module} locale="zh" registry={registry} />
     </IntlClientProvider>,
   );
 }
@@ -37,6 +41,66 @@ describe('DecisionTab 治理档案', () => {
     renderZh(base);
     expect(screen.getByText('credit.pilot')).toBeTruthy();
     expect(screen.queryByText(/治理档案/)).toBeNull();
+  });
+});
+
+/* ADR 0046 §11 D4 / X4 Task C2：规则输入引用取自浏览器 Core IR 的 Func.inputRefs。 */
+describe('DecisionTab 规则输入引用', () => {
+  const HINT = /运行时这些字段须由已登记签发方签名/;
+  const requiring = (id: string): ControlRegistryData => {
+    const r = structuredClone(defaultControlRegistry);
+    r.profiles.find((p) => p.id === id)!.requires.verifiedInputs = true;
+    return r;
+  };
+
+  it('★列出规则读取的输入字段路径', () => {
+    renderZh({ ...base, profile: 'eu-ai-act-high-risk', inputRefs: { decide: ['applicant.creditScore', 'applicant.requestedAmount'] } });
+    expect(screen.getByText(/规则读取的输入字段/)).toBeTruthy();
+    expect(screen.getByText('applicant.creditScore')).toBeTruthy();
+    expect(screen.getByText('applicant.requestedAmount')).toBeTruthy();
+  });
+
+  it('["*"] → 无法静态确定', () => {
+    renderZh({ ...base, profile: 'eu-ai-act-high-risk', inputRefs: { decide: ['*'] } });
+    expect(screen.getByText(/无法静态确定/)).toBeTruthy();
+    expect(screen.queryByText('*')).toBeNull();
+  });
+
+  it('[""] → 整个输入', () => {
+    renderZh({ ...base, profile: 'eu-ai-act-high-risk', inputRefs: { decide: [''] } });
+    expect(screen.getByText('整个输入')).toBeTruthy();
+  });
+
+  it('[] → 不读取输入', () => {
+    renderZh({ ...base, profile: 'eu-ai-act-high-risk', inputRefs: { decide: [] } });
+    expect(screen.getByText('不读取输入')).toBeTruthy();
+  });
+
+  it('多个规则 → 按函数名分组', () => {
+    renderZh({ ...base, functions: ['decide', 'score'], profile: 'governed', inputRefs: { decide: ['a.b'], score: ['c'] } });
+    expect(screen.getByText('decide:')).toBeTruthy();
+    expect(screen.getByText('score:')).toBeTruthy();
+    expect(screen.getByText('a.b')).toBeTruthy();
+    expect(screen.getByText('c')).toBeTruthy();
+  });
+
+  it('★档案要求 verifiedInputs → 显示签名提示；governed 档案不显示', () => {
+    const refs = { decide: ['applicant.creditScore'] };
+    renderZh({ ...base, profile: 'eu-ai-act-high-risk', inputRefs: refs }, requiring('eu-ai-act-high-risk'));
+    expect(screen.getByText(HINT)).toBeTruthy();
+    cleanup();
+    renderZh({ ...base, profile: 'governed', inputRefs: refs }, requiring('eu-ai-act-high-risk'));
+    expect(screen.queryByText(HINT)).toBeNull();
+  });
+
+  it('默认注册表 1.2.0 不要求 verifiedInputs → 不显示签名提示', () => {
+    renderZh({ ...base, profile: 'eu-ai-act-high-risk', inputRefs: { decide: ['applicant.creditScore'] } });
+    expect(screen.queryByText(HINT)).toBeNull();
+  });
+
+  it('摘要无 inputRefs（未声明档案的模块）→ 不显示输入字段块', () => {
+    renderZh(base);
+    expect(screen.queryByText(/规则读取的输入字段/)).toBeNull();
   });
 });
 
@@ -81,6 +145,14 @@ describe('编辑器新增文案四语齐全（F6 / F30）', () => {
     const form = (DEMO_SUPPLEMENT[locale] as { policies: { form: Record<string, unknown> } }).policies.form;
     expect(typeof form.decisionEmpty === 'string' && form.decisionEmpty.length > 0).toBe(true);
     expect(typeof form.mobileReadOnlyNotice === 'string' && form.mobileReadOnlyNotice.length > 0).toBe(true);
+  });
+
+  const INPUT_REFS_KEYS = [
+    'decisionInputRefs', 'decisionInputRefsUnknown', 'decisionInputRefsWholeInput', 'decisionInputRefsNone', 'decisionInputRefsVerifiedHint',
+  ] as const;
+  it.each(['en', 'zh', 'de', 'hi'] as const)('%s 含 decisionInputRefs* 全部文案', (locale) => {
+    const form = (DEMO_SUPPLEMENT[locale] as { policies: { form: Record<string, unknown> } }).policies.form;
+    expect(INPUT_REFS_KEYS.filter((k) => !(typeof form[k] === 'string' && (form[k] as string).length > 0))).toEqual([]);
   });
 });
 

@@ -1416,6 +1416,12 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         decisionEmpty: 'Nothing to preview yet. This panel shows compile errors and warnings, and once the policy compiles, its module, functions and types. Write a policy starting with a Module declaration and the result appears here.',
         // 手机宽度下编辑器降级为只读视图时的提示
         mobileReadOnlyNotice: 'Read-only on small screens. The policy editor needs a wider screen (at least 768 px): open this page on a tablet or desktop to edit and save.',
+        // 决策预览：规则读取的输入字段（Core IR Func.inputRefs，ADR 0046 §11 D4）
+        decisionInputRefs: 'Input fields read by rules',
+        decisionInputRefsUnknown: 'Cannot be determined statically',
+        decisionInputRefsWholeInput: 'The entire input',
+        decisionInputRefsNone: 'Reads no input',
+        decisionInputRefsVerifiedHint: 'At run time these fields must be signed by a registered issuer.',
         aliases: {
           title: 'Keyword aliases',
           errors: { tooManyKinds: 'Aliases are set for {count} keywords; the limit is {limit}.', kindNotAllowed: 'Aliases cannot be defined for {kind}.', structuralNotGranted: 'Aliases for the structure keyword {kind} need admin authorization.', tooManyAliases: '{kind} has {count} aliases; the limit is {limit}.', empty: 'An alias for {kind} is empty.', tooLong: 'An alias for {kind} has {count} characters; the limit is {limit}.', nonCanonical: 'Alias "{alias}" ({kind}) has extra spaces or capital letters. Use "{normalized}".', singleWord: 'Alias "{alias}" ({kind}) must have at least two words, so it cannot be confused with a field or variable name.', shadowsKeyword: 'Alias "{alias}" ({kind}) is the same as a built-in keyword.', shadowsBaseAlias: 'Alias "{alias}" ({kind}) is the same as a built-in alias.', collidesVocabulary: 'Alias "{alias}" ({kind}) is the same as a term in your domain vocabulary.', duplicate: 'Alias "{alias}" is used for both {otherKind} and {kind}. Each alias can belong to only one keyword.' },
@@ -2963,6 +2969,12 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         decisionEmpty: '暂无可预览的内容。这里会显示编译错误与警告，以及策略编译通过后的模块、函数和类型。在编辑器中写出以 Module 声明开头的策略后，结果会出现在这里。',
         // 手机宽度下编辑器降级为只读视图时的提示
         mobileReadOnlyNotice: '小屏幕下仅可查看。编辑策略需要更宽的屏幕（至少 768 像素）：请在平板或电脑上打开此页面进行编辑和保存。',
+        // 决策预览：规则读取的输入字段（Core IR Func.inputRefs，ADR 0046 §11 D4）
+        decisionInputRefs: '规则读取的输入字段',
+        decisionInputRefsUnknown: '无法静态确定',
+        decisionInputRefsWholeInput: '整个输入',
+        decisionInputRefsNone: '不读取输入',
+        decisionInputRefsVerifiedHint: '运行时这些字段须由已登记签发方签名。',
         aliases: {
           title: '关键词别名',
           errors: { tooManyKinds: '已为 {count} 个关键词设置别名，上限为 {limit} 个。', kindNotAllowed: '不能为“{kind}”设置别名。', structuralNotGranted: '为结构关键词“{kind}”设置别名需要管理员授权。', tooManyAliases: '“{kind}”有 {count} 个别名，上限为 {limit} 个。', empty: '“{kind}”的别名不能为空。', tooLong: '“{kind}”的一个别名有 {count} 个字符，上限为 {limit} 个。', nonCanonical: '别名“{alias}”（{kind}）含多余空格或大写字母，请改为“{normalized}”。', singleWord: '别名“{alias}”（{kind}）至少要包含两个词，以免与字段名或变量名混淆。', shadowsKeyword: '别名“{alias}”（{kind}）与内置关键词相同。', shadowsBaseAlias: '别名“{alias}”（{kind}）与内置别名相同。', collidesVocabulary: '别名“{alias}”（{kind}）与你的领域词汇中的词条相同。', duplicate: '别名“{alias}”同时用于“{otherKind}”和“{kind}”，每个别名只能对应一个关键词。' },
@@ -4518,6 +4530,12 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         decisionEmpty: 'Noch nichts in der Vorschau. Hier erscheinen Kompilierfehler und Warnungen sowie – sobald die Policy kompiliert – Modul, Funktionen und Typen. Schreiben Sie eine Policy, die mit einer Module-Deklaration beginnt, dann erscheint das Ergebnis hier.',
         // 手机宽度下编辑器降级为只读视图时的提示
         mobileReadOnlyNotice: 'Auf kleinen Bildschirmen nur lesbar. Der Policy-Editor braucht einen breiteren Bildschirm (mindestens 768 px): Öffnen Sie diese Seite auf einem Tablet oder Desktop, um zu bearbeiten und zu speichern.',
+        // 决策预览：规则读取的输入字段（Core IR Func.inputRefs，ADR 0046 §11 D4）
+        decisionInputRefs: 'Von Regeln gelesene Eingabefelder',
+        decisionInputRefsUnknown: 'Statisch nicht bestimmbar',
+        decisionInputRefsWholeInput: 'Die gesamte Eingabe',
+        decisionInputRefsNone: 'Liest keine Eingabe',
+        decisionInputRefsVerifiedHint: 'Zur Laufzeit müssen diese Felder von einem registrierten Aussteller signiert sein.',
         aliases: {
           title: 'Keyword-Aliase',
           errors: { tooManyKinds: 'Für {count} Schlüsselwörter sind Aliase festgelegt; das Limit ist {limit}.', kindNotAllowed: 'Für {kind} können keine Aliase festgelegt werden.', structuralNotGranted: 'Aliase für das Strukturwort {kind} erfordern eine Freigabe durch einen Administrator.', tooManyAliases: '{kind} hat {count} Aliase; das Limit ist {limit}.', empty: 'Ein Alias für {kind} ist leer.', tooLong: 'Ein Alias für {kind} hat {count} Zeichen; das Limit ist {limit}.', nonCanonical: 'Der Alias „{alias}“ ({kind}) enthält zusätzliche Leerzeichen oder Großbuchstaben. Verwenden Sie „{normalized}“.', singleWord: 'Der Alias „{alias}“ ({kind}) muss aus mindestens zwei Wörtern bestehen, damit er nicht mit einem Feld- oder Variablennamen verwechselt wird.', shadowsKeyword: 'Der Alias „{alias}“ ({kind}) entspricht einem eingebauten Schlüsselwort.', shadowsBaseAlias: 'Der Alias „{alias}“ ({kind}) entspricht einem eingebauten Alias.', collidesVocabulary: 'Der Alias „{alias}“ ({kind}) entspricht einem Begriff in Ihrem Fachvokabular.', duplicate: 'Der Alias „{alias}“ wird für {otherKind} und {kind} verwendet. Jeder Alias darf nur zu einem Schlüsselwort gehören.' },
@@ -6063,6 +6081,12 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         decisionEmpty: 'अभी पूर्वावलोकन के लिए कुछ नहीं है। यहाँ संकलन त्रुटियाँ और चेतावनियाँ दिखती हैं, और Policy संकलित होने के बाद उसका मॉड्यूल, फ़ंक्शन और प्रकार। Module घोषणा से शुरू होने वाली Policy लिखें, परिणाम यहाँ दिखेगा।',
         // 手机宽度下编辑器降级为只读视图时的提示
         mobileReadOnlyNotice: 'छोटी स्क्रीन पर केवल देखा जा सकता है। Policy संपादक के लिए चौड़ी स्क्रीन (कम से कम 768 px) चाहिए: संपादित और सहेजने के लिए यह पेज टैबलेट या डेस्कटॉप पर खोलें।',
+        // 决策预览：规则读取的输入字段（Core IR Func.inputRefs，ADR 0046 §11 D4）
+        decisionInputRefs: 'नियमों द्वारा पढ़े गए इनपुट फ़ील्ड',
+        decisionInputRefsUnknown: 'स्थिर रूप से निर्धारित नहीं किया जा सकता',
+        decisionInputRefsWholeInput: 'पूरा इनपुट',
+        decisionInputRefsNone: 'कोई इनपुट नहीं पढ़ता',
+        decisionInputRefsVerifiedHint: 'रनटाइम पर इन फ़ील्ड पर किसी पंजीकृत जारीकर्ता के हस्ताक्षर होने चाहिए।',
         aliases: {
           title: 'कीवर्ड उपनाम',
           errors: { tooManyKinds: '{count} कीवर्ड के लिए उपनाम सेट हैं; सीमा {limit} है।', kindNotAllowed: '{kind} के लिए उपनाम नहीं बनाए जा सकते।', structuralNotGranted: 'संरचना कीवर्ड {kind} के लिए उपनाम बनाने हेतु व्यवस्थापक की अनुमति चाहिए।', tooManyAliases: '{kind} के {count} उपनाम हैं; सीमा {limit} है।', empty: '{kind} का एक उपनाम खाली है।', tooLong: '{kind} के एक उपनाम में {count} अक्षर हैं; सीमा {limit} है।', nonCanonical: 'उपनाम "{alias}" ({kind}) में अतिरिक्त रिक्त स्थान या बड़े अक्षर हैं। "{normalized}" का उपयोग करें।', singleWord: 'उपनाम "{alias}" ({kind}) में कम से कम दो शब्द होने चाहिए, ताकि वह किसी फ़ील्ड या वेरिएबल के नाम से न टकराए।', shadowsKeyword: 'उपनाम "{alias}" ({kind}) एक अंतर्निहित कीवर्ड के समान है।', shadowsBaseAlias: 'उपनाम "{alias}" ({kind}) एक अंतर्निहित उपनाम के समान है।', collidesVocabulary: 'उपनाम "{alias}" ({kind}) आपकी डोमेन शब्दावली के एक शब्द के समान है।', duplicate: 'उपनाम "{alias}" का उपयोग {otherKind} और {kind} दोनों के लिए हो रहा है। हर उपनाम केवल एक कीवर्ड का हो सकता है।' },
