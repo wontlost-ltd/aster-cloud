@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { mapRegulatory } from '@/services/evidence/regulatory-mapping';
+import { defaultControlRegistry } from '@/services/evidence/control-registry';
 import type { EvidenceEntry } from '@/services/evidence/types';
 import type { Reviewer } from '@/services/evidence/reviewers';
 
@@ -105,7 +106,7 @@ describe('mapRegulatory：EU AI Act 第 14 条', () => {
 describe('mapRegulatory：注册表驱动', () => {
   it('entries 为空：所有带条款的组全部 none，并写注册表版本', () => {
     const m = mapRegulatory([]);
-    expect(m.registryVersion).toBe('1.1.0');
+    expect(m.registryVersion).toBe(defaultControlRegistry.version);
     expect(m.frameworks.map((f) => f.control)).toEqual(['EU_AI_ACT:ART14']);
     expect(m.frameworks[0]!.clauses.every((c) => c.status === 'none' && c.evidence.length === 0)).toBe(true);
   });

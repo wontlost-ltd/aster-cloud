@@ -14,6 +14,7 @@ import {
   type EvidenceRow,
 } from '@/services/evidence/bundle';
 import { canonicalHash, CANONICALIZATION_VERSION } from '@/lib/canonical-json';
+import { defaultControlRegistry } from '@/services/evidence/control-registry';
 import type { ReceiptLookup } from '@/services/evidence/receipts-client';
 import type { Reviewer } from '@/services/evidence/reviewers';
 import type { EvidenceEntry, EvidenceWhatIf, ReceiptRef } from '@/services/evidence/types';
@@ -342,7 +343,7 @@ describe('v5：What-If 与法规对照', () => {
     const m = buildManifest({ policy, range: { start: null, end: null }, entries: [e, e2], generatedAt: gen, whatIfUnavailable: 1 });
     expect(m.schemaVersion).toBe('5');
     expect(m.notes.whatIfUnavailable).toBe(1);
-    expect(m.regulatoryMapping.registryVersion).toBe('1.1.0');
+    expect(m.regulatoryMapping.registryVersion).toBe(defaultControlRegistry.version);
     const art14 = m.regulatoryMapping.frameworks.find((f) => f.control === 'EU_AI_ACT:ART14')!;
     expect(art14).toMatchObject({ framework: 'EU_AI_ACT', article: '14' });
     expect(art14.clauses.map((c) => c.clause)).toEqual(['14(1)', '14(2)', '14(3)', '14(4)(a)', '14(4)(b)', '14(4)(c)', '14(4)(d)', '14(4)(e)', '14(5)']);
