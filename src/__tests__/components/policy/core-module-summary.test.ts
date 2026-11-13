@@ -45,6 +45,8 @@ describe('summarizeCoreModule', () => {
     expect(summarizeCoreModule({ success: true, core })).not.toHaveProperty('inputRefs');
     const bad = { ...core, decls: [{ kind: 'Func', name: 'decide', inputRefs: 'x' }] };
     expect(summarizeCoreModule({ success: true, core: bad })).not.toHaveProperty('inputRefs');
+    const mixed = { ...core, decls: [{ kind: 'Func', name: 'decide', inputRefs: ['a', 1] }] };
+    expect(summarizeCoreModule({ success: true, core: mixed })).not.toHaveProperty('inputRefs');
   });
 });
 

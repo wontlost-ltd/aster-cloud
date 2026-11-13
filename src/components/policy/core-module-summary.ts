@@ -25,10 +25,13 @@ interface CoreModuleLike {
 const declNames = (decls: ReadonlyArray<DeclLike>, kinds: readonly string[]) =>
   decls.filter((d) => kinds.includes(d.kind ?? '')).map((d) => d.name ?? '').filter(Boolean);
 
+const isStringArray = (v: unknown): v is readonly string[] =>
+  Array.isArray(v) && v.every((x) => typeof x === 'string');
+
 const funcInputRefs = (decls: ReadonlyArray<DeclLike>): Record<string, readonly string[]> =>
   Object.fromEntries(
     decls
-      .filter((d) => d.kind === 'Func' && d.name && Array.isArray(d.inputRefs))
+      .filter((d) => d.kind === 'Func' && d.name && isStringArray(d.inputRefs))
       .map((d) => [d.name!, d.inputRefs as readonly string[]]),
   );
 

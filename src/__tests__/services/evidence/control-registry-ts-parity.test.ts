@@ -1,6 +1,6 @@
 // 不依赖兄弟仓、在 CI 中必跑：cloud 注册表副本必须与已安装 aster-lang-ts 内置副本深度相等（ADR 0046 §11 D1）。
-// 兄弟仓 aster-lang-locales 真相源的比对见 control-registry-parity.test.ts（CI 中跳过）；
-// ts 副本本身由 ts 仓的 parity 测试锁定到真相源，故本用例在 CI 中传递地守护 cloud 副本。
+// 兄弟仓 aster-lang-locales 真相源的比对见 control-registry-parity.test.ts（CI 中跳过）。
+// 本用例只证明 cloud 副本与已安装的 ts 发布物一致；ts 副本与真相源一致由 ts 仓自己的 parity 测试与发布流程保证。
 import { describe, it, expect } from 'vitest';
 import { CONTROLS_REGISTRY } from '@aster-cloud/aster-lang-ts/browser';
 import { defaultControlRegistry, requiresVerifiedInputs } from '@/services/evidence/control-registry';
