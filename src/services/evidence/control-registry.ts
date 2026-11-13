@@ -13,7 +13,7 @@ export interface RegistryClause {
 export interface RegistryProfile {
   id: string;
   title: LocalizedTitle;
-  /** verifiedInputs（ADR 0046 §11 D1，注册表 1.2.0 起）：运行期规则读取的输入须由已登记签发方签名；旧版副本缺该键。 */
+  /** verifiedInputs（ADR 0046 §11 D1，1.2.0 起有该键；1.3.0 起 eu-ai-act-high-risk 为 true）：运行期规则读取的输入须由已登记签发方签名；旧版副本缺该键。 */
   requires: { ruleId: boolean; registeredControls: boolean; frameworks: string[]; verifiedInputs?: boolean };
 }
 export interface ControlRegistryData {

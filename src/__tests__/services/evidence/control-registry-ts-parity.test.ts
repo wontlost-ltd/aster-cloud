@@ -13,12 +13,15 @@ describe('cloud 注册表副本与 aster-lang-ts', () => {
 
 describe('requiresVerifiedInputs', () => {
   it('requiresVerifiedInputs 按档案判定', () => {
-    expect(requiresVerifiedInputs('eu-ai-act-high-risk')).toBe(false); // 1.2.0
+    // 1.3.0（ADR 0046 §11.4 ⑦）：仅 eu-ai-act-high-risk 要求 verifiedInputs
+    expect(defaultControlRegistry.version).toBe('1.3.0');
+    expect(requiresVerifiedInputs('eu-ai-act-high-risk')).toBe(true);
+    expect(requiresVerifiedInputs('governed')).toBe(false);
     expect(requiresVerifiedInputs('nope')).toBe(false);
     expect(requiresVerifiedInputs(undefined)).toBe(false);
-    const flipped = structuredClone(defaultControlRegistry);
-    flipped.profiles.find((p) => p.id === 'eu-ai-act-high-risk')!.requires.verifiedInputs = true;
-    expect(requiresVerifiedInputs('eu-ai-act-high-risk', flipped)).toBe(true);
+    const relaxed = structuredClone(defaultControlRegistry);
+    relaxed.profiles.find((p) => p.id === 'eu-ai-act-high-risk')!.requires.verifiedInputs = false;
+    expect(requiresVerifiedInputs('eu-ai-act-high-risk', relaxed)).toBe(false);
   });
 
   it('档案 requires 缺 verifiedInputs 键 → false（ADR 0046 §11.6 第 6 条）', () => {
