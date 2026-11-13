@@ -491,6 +491,14 @@
       "locales": "all"
     },
     {
+      "path": "/settings/fact-issuers",
+      "status": "canonical-here",
+      "owner": "app",
+      "source": "src/app/[locale]/(dashboard)/settings/fact-issuers/page.tsx",
+      "auth": "required",
+      "locales": "all"
+    },
+    {
       "path": "/teams/:teamId",
       "status": "canonical-here",
       "owner": "app",
