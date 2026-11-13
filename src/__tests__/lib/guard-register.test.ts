@@ -1,14 +1,17 @@
 // @vitest-environment node
 // 执行结果 → guard 决策登记（ADR 0042 §5.1）：成功记决策/审批 id、失败记错误码、无证据不调 api、动作映射。
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { notifyApprovalRequested, isPolicyTenantMember, dbUpdate, dbSet, dbWhere } = vi.hoisted(() => {
+const { notifyApprovalRequested, isPolicyTenantMember, loadBusinessRoles, dbUpdate, dbSet, dbWhere } = vi.hoisted(() => {
   const dbWhere = vi.fn();
   const dbSet = vi.fn(() => ({ where: dbWhere }));
-  return { notifyApprovalRequested: vi.fn(), isPolicyTenantMember: vi.fn(), dbUpdate: vi.fn(() => ({ set: dbSet })), dbSet, dbWhere };
+  return {
+    notifyApprovalRequested: vi.fn(), isPolicyTenantMember: vi.fn(), loadBusinessRoles: vi.fn(),
+    dbUpdate: vi.fn(() => ({ set: dbSet })), dbSet, dbWhere,
+  };
 });
 vi.mock('@/lib/guard-notifications', () => ({ notifyApprovalRequested }));
-vi.mock('@/lib/business-roles', () => ({ isPolicyTenantMember }));
+vi.mock('@/lib/business-roles', () => ({ isPolicyTenantMember, loadBusinessRoles }));
 vi.mock('@/lib/prisma', () => ({ db: { update: dbUpdate }, executions: { id: { name: 'id' } } }));
 vi.mock('drizzle-orm', () => ({ eq: (col: { name: string }, v: unknown) => ({ eq: [col.name, v] }) }));
 
@@ -21,9 +24,11 @@ import {
 } from '@/lib/guard-register';
 import { PolicyApiError, type PolicyApiClient } from '@/services/policy/policy-api';
 import type { PolicyExecutionResult } from '@/services/policy/cnl-executor';
+import { resetFactSigningKeyCacheForTests } from '@/services/guard/fact-signing-key';
 
 const guardFromEvidence = vi.fn();
-const client = { guardFromEvidence } as unknown as PolicyApiClient;
+const listFactIssuers = vi.fn();
+const client = { guardFromEvidence, listFactIssuers } as unknown as PolicyApiClient;
 const policy = { id: 'p1', name: 'Delete customer', teamId: 'team-1', userId: 'owner-1' };
 
 function result(evidenceCorrelationId?: string): PolicyExecutionResult {
@@ -224,5 +229,94 @@ describe('toGuardAction', () => {
       resource: { type: '', id: '' },
       context: { amount: 5 },
     });
+  });
+});
+
+/**
+ * from-evidence 首次请求即附签名事实（ADR 0046 §11.6 第 11 条；§11.7 裁定 6）：未配置密钥 / 本租户未启用 cloud 签发方时
+ * 请求体与今天逐字节相同；附事实失败（invalid_fact）不去掉事实重试——翻转后那会用一次 DENY 消耗证据。
+ */
+describe('registerGuardDecision — 签名事实', () => {
+  let secret: string;
+  let publicKey: string;
+
+  beforeEach(async () => {
+    guardFromEvidence.mockReset();
+    listFactIssuers.mockReset();
+    notifyApprovalRequested.mockReset();
+    isPolicyTenantMember.mockReset();
+    isPolicyTenantMember.mockResolvedValue(true);
+    resetFactSigningKeyCacheForTests();
+    const pair = (await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])) as CryptoKeyPair;
+    const privateKey = Buffer.from(await crypto.subtle.exportKey('pkcs8', pair.privateKey)).toString('base64');
+    publicKey = Buffer.from(await crypto.subtle.exportKey('raw', pair.publicKey)).toString('base64url');
+    secret = JSON.stringify({ issuer: 'aster-cloud', kid: 'k-test', privateKey, publicKey });
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const enabledIssuer = () => ({
+    issuers: [{ alg: 'Ed25519', createdAt: '2026-11-01T00:00:00Z', createdBy: 'owner-1', enabled: true,
+      issuer: 'aster-cloud', kid: 'k-test', publicKey }],
+  });
+
+  it('noFactsWhenSigningKeyMissing：请求体与未引入签发前相同，action 不含 facts 键', async () => {
+    vi.stubEnv('ASTER_FACT_SIGNING_KEY', '');
+    guardFromEvidence.mockResolvedValue({ decisionId: 'd1' });
+
+    await registerGuardDecision(args());
+
+    const req = guardFromEvidence.mock.calls[0][0];
+    expect(req).toEqual({ correlationId: 'c-1', action: toGuardAction({ a: 1 }, 'deleteCustomer', null, 'user-1') });
+    expect(req.action).not.toHaveProperty('facts');
+    expect(listFactIssuers).not.toHaveBeenCalled();
+  });
+
+  it('noFactsWhenCloudIssuerNotEnabled：签发方已吊销 → 照常登记、不附事实', async () => {
+    vi.stubEnv('ASTER_FACT_SIGNING_KEY', secret);
+    listFactIssuers.mockResolvedValue({ issuers: [{ ...enabledIssuer().issuers[0], enabled: false }] });
+    guardFromEvidence.mockResolvedValue({ decisionId: 'd1', approval: { id: 'a1', status: 'PENDING' } });
+
+    await expect(registerGuardDecision(args())).resolves.toEqual({ guardDecisionId: 'd1', guardApprovalId: 'a1' });
+    expect(guardFromEvidence.mock.calls[0][0].action).not.toHaveProperty('facts');
+  });
+
+  it('attachesOneFactWithPrincipalId：audience 为策略租户，claim 为发起人', async () => {
+    vi.stubEnv('ASTER_FACT_SIGNING_KEY', secret);
+    listFactIssuers.mockResolvedValue(enabledIssuer());
+    guardFromEvidence.mockResolvedValue({ decisionId: 'd1', approval: { id: 'a1', status: 'PENDING' } });
+
+    await registerGuardDecision(args());
+
+    const { action } = guardFromEvidence.mock.calls[0][0];
+    expect(action.facts).toHaveLength(1);
+    expect(action.facts[0].audience).toBe('team-1');
+    expect(action.facts[0].claims['principal.id']).toBe('user-1');
+    expect(action.facts[0].sources['principal.id']).toBe('hmac.userId');
+  });
+
+  it('reRegisterRouteAlsoAttachesFacts：经 registerGuardDecisionWith（重新登记路由的入口）同样附事实', async () => {
+    vi.stubEnv('ASTER_FACT_SIGNING_KEY', secret);
+    listFactIssuers.mockResolvedValue(enabledIssuer());
+    guardFromEvidence.mockResolvedValue({ decisionId: 'd1' });
+    const { client: _c, ...rest } = args();
+
+    await registerGuardDecisionWith(async () => client, rest);
+
+    expect(listFactIssuers).toHaveBeenCalledTimes(1);
+    expect(guardFromEvidence.mock.calls[0][0].action.facts).toHaveLength(1);
+  });
+
+  it('invalidFactIsNotRetriedWithoutFacts', async () => {
+    vi.stubEnv('ASTER_FACT_SIGNING_KEY', secret);
+    listFactIssuers.mockResolvedValue(enabledIssuer());
+    guardFromEvidence.mockRejectedValue(new PolicyApiError('bad fact', 400, 'invalid_fact'));
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(registerGuardDecision(args())).resolves.toEqual({ guardError: 'invalid_fact' });
+    expect(guardFromEvidence).toHaveBeenCalledTimes(1);
+    expect(guardFromEvidence.mock.calls[0][0].action.facts).toHaveLength(1);
+    err.mockRestore();
   });
 });
