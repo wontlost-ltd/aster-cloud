@@ -103,7 +103,7 @@ export interface GuardFactIssuer {
   publicKey: string;
 }
 
-/** 登记人的展示信息（cloud 侧按 createdBy 解析）；查不到（已注销、anonymous）为 null。 */
+/** 登记人的展示信息（cloud 侧按 createdBy 解析，只限本租户当前成员）；离队成员、已注销、anonymous 为 null。 */
 export interface FactIssuerUser {
   name: string | null;
   email: string | null;

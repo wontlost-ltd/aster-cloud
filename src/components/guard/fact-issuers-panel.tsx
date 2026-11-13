@@ -296,7 +296,7 @@ function IssuerTable({
 
 /**
  * 登记人：与团队成员列表同一展示方式（首字母圆标 + 姓名，姓名下方小字邮箱；无姓名时只显示邮箱）。
- * 查不到资料（已注销、anonymous）显示「未知用户」，从不显示原始用户 id。
+ * 登记人不是本租户当前成员（已离开、已注销、anonymous）时服务端不返回资料，显示占位文案，从不显示原始用户 id。
  */
 function AddedBy({ user }: { user: FactIssuerUser | null | undefined }) {
   const t = useTranslations('factIssuers');

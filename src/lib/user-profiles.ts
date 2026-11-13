@@ -7,8 +7,10 @@
  */
 import 'server-only';
 
-import { inArray } from 'drizzle-orm';
-import { db, users } from '@/lib/prisma';
+import { and, eq, inArray } from 'drizzle-orm';
+import { freshDb } from '@/db/fresh-read';
+import { db, teamMembers, users } from '@/lib/prisma';
+import { isPersonalTenant } from '@/lib/policy-tenant';
 
 export interface UserProfile {
   name: string | null;
@@ -24,4 +26,25 @@ export async function loadUserProfiles(ids: readonly string[]): Promise<Map<stri
     columns: { id: true, name: true, email: true, image: true },
   });
   return new Map(rows.map((u) => [u.id, { name: u.name ?? null, email: u.email ?? null, image: u.image ?? null }]));
+}
+
+/**
+ * 只解析「本租户当前成员」的资料，与团队成员列表的可见范围一致：团队租户按成员表过滤（离队成员、非成员与
+ * anonymous 不返回），个人租户只解析租户本人。成员关系走 freshDb，离队后立即不再展示其姓名与邮箱。
+ */
+export async function loadTenantMemberProfiles(
+  tenantId: string,
+  ids: readonly string[],
+  viewerUserId?: string,
+): Promise<Map<string, UserProfile>> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return new Map();
+  if (viewerUserId !== undefined && isPersonalTenant(tenantId, viewerUserId)) {
+    return loadUserProfiles(unique.filter((id) => id === tenantId));
+  }
+  const members = await freshDb.query.teamMembers.findMany({
+    where: and(eq(teamMembers.teamId, tenantId), inArray(teamMembers.userId, unique)),
+    columns: { userId: true },
+  });
+  return loadUserProfiles(members.map((m) => m.userId));
 }

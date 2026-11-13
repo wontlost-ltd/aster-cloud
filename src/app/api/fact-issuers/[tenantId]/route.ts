@@ -4,13 +4,13 @@
  *
  * 读要求个人租户本人或团队 TEAM_VIEW；列表取自 aster-api（唯一真相源，cloud 不存签发方状态）。
  * 每行附 createdByUser（登记人的姓名 / 邮箱 / 头像）：只按本租户列表里出现的 createdBy 去重批量查询，
- * 调用方无法借此查询任意用户；与团队成员列表同口径，能读团队的成员都能看到彼此的邮箱。
+ * 且只解析本租户当前成员（个人租户只解析本人），与团队成员列表的可见范围一致；离队成员显示为未知用户。
  * cloudIssuer 是平台签发方的公开身份，供设置页「启用 Aster Cloud 签发方」；平台密钥未配置或自检失败时为 null。
  */
 import { NextResponse } from 'next/server';
 import { canManageFactIssuers, canViewFactIssuers } from '@/lib/fact-issuer-access';
 import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
-import { loadUserProfiles } from '@/lib/user-profiles';
+import { loadTenantMemberProfiles } from '@/lib/user-profiles';
 import { loadFactSigningKey } from '@/services/guard/fact-signing-key';
 import { forbidden, sessionUserId, unauthorized, upstreamErrorResponse } from '../_shared';
 
@@ -35,7 +35,7 @@ export async function GET(_req: Request, { params }: RouteParams) {
       canManageFactIssuers(userId, tenantId),
     ]);
     // 登记人资料只是展示：查库失败时降级为「未知用户」，不影响列表本身
-    const profiles = await loadUserProfiles(issuers.map((row) => row.createdBy)).catch((e: unknown) => {
+    const profiles = await loadTenantMemberProfiles(tenantId, issuers.map((row) => row.createdBy), userId).catch((e: unknown) => {
       console.error('[fact-issuers] 登记人资料查询失败', e);
       return new Map<string, never>();
     });

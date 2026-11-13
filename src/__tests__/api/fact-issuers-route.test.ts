@@ -36,7 +36,9 @@ vi.mock('@/lib/policy-api-identity', () => ({
   createPolicyApiClientForUser: (tenantId: string, userId: string) => h.createClient(tenantId, userId),
 }));
 vi.mock('@/services/guard/fact-signing-key', () => ({ loadFactSigningKey: () => h.loadFactSigningKey() }));
-vi.mock('@/lib/user-profiles', () => ({ loadUserProfiles: (ids: string[]) => h.loadUserProfiles(ids) }));
+vi.mock('@/lib/user-profiles', () => ({
+  loadTenantMemberProfiles: (tenantId: string, ids: string[], userId: string) => h.loadUserProfiles(tenantId, ids, userId),
+}));
 
 const { PolicyApiError } = await import('@/services/policy/policy-api');
 const { GET } = await import('@/app/api/fact-issuers/[tenantId]/route');
@@ -277,7 +279,10 @@ describe('/api/fact-issuers', () => {
     const body = await res.json();
     expect(h.loadUserProfiles).toHaveBeenCalledTimes(1);
     // 只传列表里出现的 createdBy（去重在 loadUserProfiles 内一次完成）
-    expect(new Set(h.loadUserProfiles.mock.calls[0][0])).toEqual(new Set(['u-admin', 'u-deleted', 'anonymous']));
+    // 按本租户（team1）的当前成员范围解析，离队成员与 anonymous 由 helper 返回缺省
+    expect(h.loadUserProfiles.mock.calls[0][0]).toBe('team1');
+    expect(new Set(h.loadUserProfiles.mock.calls[0][1])).toEqual(new Set(['u-admin', 'u-deleted', 'anonymous']));
+    expect(h.loadUserProfiles.mock.calls[0][2]).toBe('u-viewer');
     expect(body.issuers.map((r: { kid: string; createdBy: string; createdByUser: unknown }) => [r.kid, r.createdBy, r.createdByUser]))
       .toEqual([
         ['2026-11', 'u-admin', ADMIN_PROFILE],
@@ -299,7 +304,7 @@ describe('/api/fact-issuers', () => {
     asUser('u-admin');
     h.listFactIssuers.mockResolvedValue({ issuers: [] });
     expect((await (await list('team1')).json()).issuers).toEqual([]);
-    expect(h.loadUserProfiles).toHaveBeenCalledWith([]);
+    expect(h.loadUserProfiles).toHaveBeenCalledWith('team1', [], 'u-admin');
 
     h.loadUserProfiles.mockClear();
     asUser('u-solo');
