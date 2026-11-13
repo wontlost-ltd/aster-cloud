@@ -60,10 +60,32 @@ export interface GuardApprovalItem {
   controls?: string[] | null;
   reason?: string | null;
   evidenceCorrelationId?: string | null;
+  /** 转 EXPIRED 的原因（ADR 0040 §11 D4）：自然过期不出现，签发方吊销为 `fact_issuer_revoked`。 */
+  expiredReason?: string | null;
 }
 
 export interface GuardApprovalPage {
   items: GuardApprovalItem[];
   page: number;
   size: number;
+}
+
+/** 签名事实签发方（api GuardFactIssuerResource 视图，ADR 0040 §11 D3）；notAfter 为空时 api 不写出。 */
+export interface GuardFactIssuer {
+  alg: 'Ed25519';
+  createdAt: string;
+  createdBy: string;
+  enabled: boolean;
+  issuer: string;
+  kid: string;
+  notAfter?: string;
+  /** base64url 无填充的 32 字节 Ed25519 原始公钥 */
+  publicKey: string;
+}
+
+/** 登记 / 更新签发方的请求体：enabled 缺省 true（false 即吊销）；notAfter 为 ISO-8601 时刻。 */
+export interface GuardFactIssuerPut {
+  publicKey: string;
+  enabled?: boolean;
+  notAfter?: string;
 }

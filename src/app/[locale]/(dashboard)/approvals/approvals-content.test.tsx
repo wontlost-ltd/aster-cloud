@@ -147,6 +147,18 @@ describe('ApprovalsContent', () => {
     expect(screen.getByText('personalTenant')).toBeTruthy();
   });
 
+  it('expiredReasonFactIssuerRevokedShowsBadge：签发方吊销导致的 EXPIRED 显示原因徽标，自然过期不显示（ADR 0040 §11 D4）', () => {
+    const { container } = renderWith([
+      item('a1', { status: 'EXPIRED', canAct: false, expiredReason: 'fact_issuer_revoked' }),
+      item('a2', { status: 'EXPIRED', canAct: false }),
+    ]);
+    const rows = container.querySelectorAll('tbody tr');
+    expect(rows[0].textContent).toContain('status.EXPIRED');
+    expect(rows[0].textContent).toContain('expiredReason.fact_issuer_revoked');
+    expect(rows[1].textContent).toContain('status.EXPIRED');
+    expect(rows[1].textContent).not.toContain('expiredReason');
+  });
+
   it('驳回无理由：本地提示 commentRequired，不发请求', () => {
     renderWith([item('a1')]);
     fireEvent.click(screen.getByRole('button', { name: 'reject' }));

@@ -11,6 +11,8 @@ import type {
   GuardApprovalPage,
   GuardApprovalStatus,
   GuardDecision,
+  GuardFactIssuer,
+  GuardFactIssuerPut,
   GuardFromEvidenceRequest,
 } from './guard-types';
 
@@ -363,6 +365,23 @@ function assertGuardPathId(id: string): void {
   }
 }
 
+// 签发方名段（ADR 0040 §11 D3）：只允许 URL 非保留字符，且不得恰为 `.` / `..`（会被 URL 规范化吞掉）。
+// 比 api 的校验（非空、无 # 与控制字符）更严：需编码的字符会让签名路径（编码后）与 api 验签路径（解码后）
+// 不一致而必然 invalid_signature，故在本地以 400 invalid_issuer_name 拒绝，不发请求。
+const FACT_ISSUER_SEGMENT_RE = /^[A-Za-z0-9._~-]+$/;
+export const FACT_ISSUER_MAX_LENGTH = 255;
+export const FACT_KID_MAX_LENGTH = 64;
+
+export function isFactIssuerSegment(value: string, maxLength: number): boolean {
+  return value.length <= maxLength && FACT_ISSUER_SEGMENT_RE.test(value) && value !== '.' && value !== '..';
+}
+
+function assertFactIssuerPath(issuer: string, kid: string): void {
+  if (!isFactIssuerSegment(issuer, FACT_ISSUER_MAX_LENGTH) || !isFactIssuerSegment(kid, FACT_KID_MAX_LENGTH)) {
+    throw new PolicyApiError('Invalid issuer name', 400, 'invalid_issuer_name');
+  }
+}
+
 /**
  * api RateLimitFilter 对 /q/ 管理端点豁免限流，其余路径的已验签内部调用都按租户分桶，
  * 因此除 /q/ 外一律签名。
@@ -481,6 +500,8 @@ export class PolicyApiClient {
         );
       }
 
+      // 204 无体（如签发方 DELETE）：不读 json，否则成功的调用会被当成解析失败
+      if (response.status === 204) return undefined as T;
       return response.json();
     } catch (error) {
       if (error instanceof PolicyApiError) {
@@ -547,6 +568,26 @@ export class PolicyApiClient {
     return this.request<GuardDecision>(
       'POST', API_ENDPOINTS.guardApprovalAction(id, 'approve'), { comment }, GUARD_TIMEOUT_MS
     );
+  }
+
+  /** 本租户签发方列表（含已吊销），租户取自签名内的 X-Tenant-Id。 */
+  async listFactIssuers(): Promise<{ issuers: GuardFactIssuer[] }> {
+    return this.request<{ issuers: GuardFactIssuer[] }>('GET', API_ENDPOINTS.guardFactIssuers, undefined, GUARD_TIMEOUT_MS);
+  }
+
+  /**
+   * 登记签发方：同键同公钥为幂等更新；同键异公钥 409 issuer_key_conflict；已吊销的再启用 409 issuer_revoked；
+   * enabled=false 即吊销（联动未完成时 503 receipt_unavailable）。
+   */
+  async putFactIssuer(issuer: string, kid: string, body: GuardFactIssuerPut): Promise<GuardFactIssuer> {
+    assertFactIssuerPath(issuer, kid);
+    return this.request<GuardFactIssuer>('PUT', API_ENDPOINTS.guardFactIssuer(issuer, kid), body, GUARD_TIMEOUT_MS);
+  }
+
+  /** 吊销（软删）：成功 204；本租户不存在 404；联动未完成 503 receipt_unavailable（签发方已禁用，可重试）。 */
+  async deleteFactIssuer(issuer: string, kid: string): Promise<void> {
+    assertFactIssuerPath(issuer, kid);
+    await this.request<void>('DELETE', API_ENDPOINTS.guardFactIssuer(issuer, kid), undefined, GUARD_TIMEOUT_MS);
   }
 
   /** 驳回：comment 必填（api 侧 400）。 */

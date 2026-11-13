@@ -18,8 +18,14 @@ const UPSTREAM_MESSAGES: Readonly<Record<string, string>> = {
   receipt_unavailable: 'The decision could not be written to the audit chain. Please try again later.',
   invalid_approval: 'The approver identifier or the comment is too long.',
   user_required: 'Deciding an approval requires a verified user identity.',
+  // aster-api GuardFactIssuerResource（ADR 0040 §11 D3）
+  invalid_issuer: 'The issuer name, public key or expiry is not valid. The public key must be a 32-byte Ed25519 key in base64url.',
+  issuer_key_conflict: 'This key id is already registered with a different public key. Use a new key id to rotate keys.',
+  issuer_revoked: 'This issuer key has been revoked and cannot be re-enabled. Register a new key id instead.',
+  issuer_not_found: 'This issuer is not registered for the workspace.',
   // cloud 客户端本地校验（policy-api.ts）
   invalid_id: 'Invalid approval id.',
+  invalid_issuer_name: 'Issuer and key id may only contain letters, digits, ".", "_", "~" and "-" (issuer up to 255, key id up to 64 characters).',
   // aster-api CedarExportResource 的稳定 4xx 错误码（#711：Cedar 导出只透传这些）
   alias_set_too_large: 'The alias set of this version is too large to export.',
   vocabulary_too_large: 'The domain vocabulary of this version is too large to export.',

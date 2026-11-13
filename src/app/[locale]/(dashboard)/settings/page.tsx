@@ -68,6 +68,7 @@ export default async function SettingsPage({ params }: PageProps) {
   const t = await getTranslations('settings');
   // 助手文案是顶层命名空间（面板/设置共用同一套），故单独绑一个 translator。
   const tAssistant = await getTranslations('assistant');
+  const tFactIssuers = await getTranslations('factIssuers');
   // 助手说明要与管理员的「启用助手回答」开关一致（开启时回答可能由 AI 生成）。
   // getSetting 带 60s 进程内缓存，读失败回落默认值，不会拖慢或打断设置页。
   const assistantHintKey = assistantSettingsHintKey(
@@ -135,6 +136,20 @@ export default async function SettingsPage({ params }: PageProps) {
               className={buttonVariants({ variant: 'secondary', size: 'md' })}
             >
               {t('dataCard.open')}
+            </Link>
+          }
+        />
+
+        {/* 个人租户的签名事实签发方（ADR 0040 §11 D3）：团队的在团队设置页。 */}
+        <SettingCard
+          title={tFactIssuers('settingsCard.title')}
+          description={tFactIssuers('settingsCard.subtitle')}
+          action={
+            <Link
+              href="/settings/fact-issuers"
+              className={buttonVariants({ variant: 'secondary', size: 'md' })}
+            >
+              {tFactIssuers('settingsCard.open')}
             </Link>
           }
         />

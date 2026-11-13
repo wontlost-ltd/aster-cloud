@@ -355,6 +355,12 @@ export function ApprovalsContent({
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant={statusVariant(item.status)}>{t(`status.${item.status}`)}</Badge>
+                      {/* 签发方吊销导致的过期（ADR 0040 §11 D4）：只在收件箱标注原因，不另发通知（ADR 0046 §11.7 裁定 15） */}
+                      {item.status === 'EXPIRED' && item.expiredReason === 'fact_issuer_revoked' && (
+                        <div className="mt-1">
+                          <Badge variant="danger">{t('expiredReason.fact_issuer_revoked')}</Badge>
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <RowActions item={item} t={t} onPick={(it, verb) => setPicked({ item: it, verb })} />
