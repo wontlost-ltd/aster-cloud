@@ -1,13 +1,13 @@
 ---
 title: "Core-IR-JSON-Policy evaluieren"
-description: "Evaluieren Sie eine Policy direkt als Core-IR-JSON-Objekt, ohne CNL-Parsen oder Kompilierung."
-updated: 2026-06-03
+description: "Evaluieren Sie eine Policy direkt als Core-IR-v2-JSON-Dokument, ohne CNL-Parsen oder Kompilierung."
+updated: 2026-11-14
 apiVersion: v1
 ---
 
 # Core-IR-JSON-Policy evaluieren
 
-Evaluieren Sie eine Policy direkt als Core-IR-JSON-Objekt, ohne CNL-Parsen oder Kompilierung. Nutzen Sie diesen Endpunkt, wenn Ihre Anwendung ihre eigene Kompilierungs-Pipeline verwaltet und vorkompilierte Policy-Repräsentationen an die Engine sendet.
+Evaluieren Sie eine Policy direkt als Core-IR-JSON-Dokument, ohne CNL-Parsen oder Kompilierung. Nutzen Sie diesen Endpunkt, wenn Ihre Anwendung Policies selbst kompiliert (zum Beispiel im Browser mit `@aster-cloud/aster-lang-ts`) und das Kompilat an die Engine sendet.
 
 ## Endpunkt
 
@@ -23,49 +23,168 @@ Evaluieren Sie eine Policy direkt als Core-IR-JSON-Objekt, ohne CNL-Parsen oder 
 |--------|-------|----------|
 | `Authorization` | `Bearer <token>` | Ja |
 | `Content-Type` | `application/json` | Ja |
-| `X-Tenant-ID` | Mandanten-Identifikator-String | Ja |
+| `X-Tenant-ID` | Mandanten-Kennung als String | Ja |
 
 ## Request-Body
 
 ```json
 {
-  "policy": "string (Core IR JSON)",
+  "policy": "string (Core IR v2 JSON)",
   "context": {}
 }
 ```
 
 | Feld | Typ | Erforderlich | Beschreibung |
 |-------|------|----------|-------------|
-| `policy` | `string` | Ja | Ein JSON-kodierter String, der die Core-IR-Repräsentation der Policy enthält. Dies ist die serialisierte Form, die von der IR-Emission-Stufe des Aster-Compilers erzeugt wird. Die Engine deserialisiert und führt diese IR direkt aus und überspringt alle CNL-Parsing-Schritte. |
+| `policy` | `string` | Ja | Ein JSON-kodierter String mit einem **Core-IR-v2**-Modul (`"schemaVersion": 2`). Senden Sie den von `compile()` aus `@aster-cloud/aster-lang-ts` 2.x gelieferten `coreJson`-String unverändert. Die Engine liest ihn strikt gegen das Core-IR-v2-Schema ein und führt ihn aus, ohne CNL zu parsen. |
 | `context` | `object` | Ja | Ein einzelnes Objekt, dessen Schlüssel den deklarierten Parameternamen der Einstiegsfunktion in der Core IR entsprechen. |
 
 ### Core-IR-JSON-Format
 
-Das `policy`-Feld muss ein als String serialisiertes JSON-Objekt sein, das dem Core-IR-Schema entspricht. Ein minimales Beispiel mit einer einzelnen Funktion:
+Der `policy`-String muss ein Core-IR-v2-Dokument gemäß dem Core-IR-v2-JSON-Schema sein: Das Wurzelobjekt enthält `"schemaVersion": 2` (eine JSON-Ganzzahl), `"kind": "Module"`, `name`, `profile`, `origin` und `decls`. Alle Felder sind immer vorhanden – fehlende Skalare und Objekte sind `null`, fehlende Listen `[]` –, unbekannte Felder werden abgelehnt. Schreiben Sie dieses JSON nicht von Hand: Kompilieren Sie den CNL-Quelltext und senden Sie `coreJson` unverändert.
+
+Das folgende Beispiel ist genau das `coreJson`, das `compile()` für diesen Quelltext erzeugt:
+
+```text
+Module Discount.
+
+Define Order has total as Int.
+
+Rule calculate given order as Order, produce Int:
+  If order.total greater than 100
+    Return 10.
+  Otherwise
+    Return 0.
+```
+
+Zur besseren Lesbarkeit formatiert (jedes `origin`-Objekt auf eine Zeile gefaltet; gesendet wird der kompakte `coreJson`-String):
 
 ```json
 {
-  "moduleName": "Discount",
-  "functions": [
+  "decls": [
     {
-      "name": "calculate",
-      "params": [{ "name": "order", "type": "Order" }],
-      "rules": [
+      "fields": [
         {
-          "condition": { "op": "gt", "left": { "ref": "order.total" }, "right": { "lit": 100 } },
-          "result": { "lit": 10 }
-        },
-        {
-          "condition": null,
-          "result": { "lit": 0 }
+          "annotations": [],
+          "constraints": [],
+          "name": "total",
+          "type": {
+            "kind": "TypeName",
+            "name": "Int",
+            "origin": { "end": { "col": 30, "line": 3 }, "file": null, "role": null, "start": { "col": 27, "line": 3 }, "written": null }
+          },
+          "typeInferred": false
         }
-      ]
+      ],
+      "kind": "Data",
+      "name": "Order",
+      "origin": { "end": { "col": 31, "line": 3 }, "file": null, "role": null, "start": { "col": 1, "line": 3 }, "written": null }
+    },
+    {
+      "annotations": [],
+      "body": {
+        "kind": "Block",
+        "origin": { "end": { "col": 14, "line": 9 }, "file": null, "role": null, "start": { "col": 3, "line": 6 }, "written": null },
+        "statements": [
+          {
+            "cond": {
+              "args": [
+                {
+                  "kind": "Name",
+                  "name": "order.total",
+                  "origin": { "end": { "col": 17, "line": 6 }, "file": null, "role": null, "start": { "col": 6, "line": 6 }, "written": null }
+                },
+                {
+                  "kind": "Int",
+                  "origin": { "end": { "col": 34, "line": 6 }, "file": null, "role": null, "start": { "col": 31, "line": 6 }, "written": null },
+                  "value": 100
+                }
+              ],
+              "kind": "Call",
+              "origin": { "end": { "col": 34, "line": 6 }, "file": null, "role": null, "start": { "col": 6, "line": 6 }, "written": null },
+              "target": {
+                "kind": "Name",
+                "name": ">",
+                "origin": { "end": { "col": 25, "line": 6 }, "file": null, "role": null, "start": { "col": 18, "line": 6 }, "written": null }
+              }
+            },
+            "elseBlock": {
+              "kind": "Block",
+              "origin": { "end": { "col": 14, "line": 9 }, "file": null, "role": null, "start": { "col": 5, "line": 9 }, "written": null },
+              "statements": [
+                {
+                  "expr": {
+                    "kind": "Int",
+                    "origin": { "end": { "col": 13, "line": 9 }, "file": null, "role": null, "start": { "col": 12, "line": 9 }, "written": null },
+                    "value": 0
+                  },
+                  "kind": "Return",
+                  "origin": { "end": { "col": 14, "line": 9 }, "file": null, "role": null, "start": { "col": 5, "line": 9 }, "written": null }
+                }
+              ]
+            },
+            "kind": "If",
+            "origin": { "end": { "col": 14, "line": 9 }, "file": null, "role": null, "start": { "col": 3, "line": 6 }, "written": null },
+            "thenBlock": {
+              "kind": "Block",
+              "origin": { "end": { "col": 15, "line": 7 }, "file": null, "role": null, "start": { "col": 5, "line": 7 }, "written": null },
+              "statements": [
+                {
+                  "expr": {
+                    "kind": "Int",
+                    "origin": { "end": { "col": 14, "line": 7 }, "file": null, "role": null, "start": { "col": 12, "line": 7 }, "written": null },
+                    "value": 10
+                  },
+                  "kind": "Return",
+                  "origin": { "end": { "col": 15, "line": 7 }, "file": null, "role": null, "start": { "col": 5, "line": 7 }, "written": null }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "effectCaps": [],
+      "effectCapsExplicit": false,
+      "effectParams": [],
+      "effects": [],
+      "inputRefs": null,
+      "kind": "Func",
+      "name": "calculate",
+      "origin": { "end": { "col": 14, "line": 9 }, "file": null, "role": null, "start": { "col": 1, "line": 5 }, "written": null },
+      "params": [
+        {
+          "annotations": [],
+          "constraints": [],
+          "name": "order",
+          "type": {
+            "kind": "TypeName",
+            "name": "Order",
+            "origin": { "end": { "col": 36, "line": 5 }, "file": null, "role": null, "start": { "col": 31, "line": 5 }, "written": null }
+          },
+          "typeInferred": false
+        }
+      ],
+      "ret": {
+        "kind": "TypeName",
+        "name": "Int",
+        "origin": { "end": { "col": 49, "line": 5 }, "file": null, "role": null, "start": { "col": 46, "line": 5 }, "written": null }
+      },
+      "retAnnotations": [],
+      "retTypeInferred": false,
+      "typeParams": []
     }
-  ]
+  ],
+  "kind": "Module",
+  "name": "Discount",
+  "origin": { "end": { "col": 1, "line": 10 }, "file": null, "role": null, "start": { "col": 1, "line": 1 }, "written": null },
+  "profile": null,
+  "schemaVersion": 2
 }
 ```
 
-Wenn dies als `policy`-Feld in die Anfrage eingebettet wird, muss das Objekt JSON-stringifiziert werden (d. h. das gesamte Objekt wird zu einem String-Wert).
+Core IR älterer Compiler-Versionen (ohne `schemaVersion`) und handgeschriebene IR in anderen Formen werden mit `400` und `code: "unsupported_schema_version"` bzw. `code: "invalid_request"` abgelehnt und nie ausgeführt.
+
+Beim Einbetten als `policy`-Feld im Request muss die IR ein JSON-String sein (das gesamte Dokument wird zu einem String-Wert).
 
 ## Response-Body
 
@@ -74,7 +193,7 @@ Wenn dies als `policy`-Feld in die Anfrage eingebettet wird, muss das Objekt JSO
   "result": "<any>",
   "executionTimeMs": 0,
   "error": null,
-  "decisionTrace": null
+  "evidence": { "correlationId": "<uuid>" }
 }
 ```
 
@@ -82,18 +201,22 @@ Wenn dies als `policy`-Feld in die Anfrage eingebettet wird, muss das Objekt JSO
 |-------|------|-------------|
 | `result` | `any` | Der von der Einstiegsfunktion in der Core IR zurückgegebene Wert. |
 | `executionTimeMs` | `number` | Wanduhrzeit in Millisekunden von der IR-Deserialisierung bis zum Versand der Antwort. |
-| `error` | `string \| null` | IR-Deserialisierungs- oder Laufzeit-Fehlermeldung; `null` bei Erfolg. |
-| `decisionTrace` | `object \| null` | Für diesen Endpunkt immer `null`. Tracing wird für Core-IR-Evaluierung nicht unterstützt. |
+| `error` | `string \| null` | Fehlermeldung; `null` bei Erfolg. |
+| `code` | `string` | Maschinenlesbarer Fehlercode; nur bei Fehlern vorhanden (siehe Statustabelle). |
+| `evidence` | `object` | Evidenzreferenz dieser Evaluierung; `correlationId` verknüpft die Antwort mit der Audit-Kette. |
+
+Policies, deren Einstiegsregel ein `Verdict` liefert, geben zusätzlich `decision` zurück, und `ruleId` / `controls`, wenn die Regel `@id`- / `@control`-Annotationen trägt.
 
 ## HTTP-Statuscodes
 
 | Status | Bedeutung |
 |--------|---------|
-| `200 OK` | Evaluierung versucht. Prüfen Sie `error` auf IR-Parsing- oder Laufzeit-Fehler. |
-| `400 Bad Request` | Fehlerhafter Request-Body, ungültiges Core-IR-JSON oder fehlende Pflichtfelder. |
+| `200 OK` | Evaluierung erfolgreich. |
+| `400 Bad Request` | `code: "unsupported_schema_version"` – `policy` ist keine Core IR v2 (`schemaVersion` fehlt oder ist nicht die Ganzzahl `2`). `code: "invalid_request"` – die Core IR besteht die Schema- oder Invariantenprüfung nicht (etwa ein unbekanntes oder fehlendes Feld), oder `context` passt nicht zu den Parametern der Einstiegsfunktion. |
 | `401 Unauthorized` | Fehlender oder ungültiger Bearer-Token. |
 | `403 Forbidden` | Token ist gültig, dem Aufrufer fehlt jedoch die `MEMBER`-Rolle. |
-| `500 Internal Server Error` | Unerwarteter Engine-Fehler. |
+| `404 Not Found` | `code: "function_not_found"` – die Core IR enthält keine ausführbare Funktion. |
+| `500 Internal Server Error` | `code: "evaluation_failed"` – die Policy ist zur Laufzeit fehlgeschlagen (ohne interne Details). |
 
 ## Beispiele
 
@@ -105,7 +228,7 @@ curl -X POST https://policy.aster-lang.dev/api/v1/policies/evaluate-json \
   -H "Content-Type: application/json" \
   -H "X-Tenant-ID: acme-corp" \
   -d '{
-    "policy": "{\"moduleName\":\"Discount\",\"functions\":[{\"name\":\"calculate\",\"params\":[{\"name\":\"order\",\"type\":\"Order\"}],\"rules\":[{\"condition\":{\"op\":\"gt\",\"left\":{\"ref\":\"order.total\"},\"right\":{\"lit\":100}},\"result\":{\"lit\":10}},{\"condition\":null,\"result\":{\"lit\":0}}]}]}",
+    "policy": "{\"decls\":[{\"fields\":[{\"annotations\":[],\"constraints\":[],\"name\":\"total\",\"type\":{\"kind\":\"TypeName\",\"name\":\"Int\",\"origin\":{\"end\":{\"col\":30,\"line\":3},\"file\":null,\"role\":null,\"start\":{\"col\":27,\"line\":3},\"written\":null}},\"typeInferred\":false}],\"kind\":\"Data\",\"name\":\"Order\",\"origin\":{\"end\":{\"col\":31,\"line\":3},\"file\":null,\"role\":null,\"start\":{\"col\":1,\"line\":3},\"written\":null}},{\"annotations\":[],\"body\":{\"kind\":\"Block\",\"origin\":{\"end\":{\"col\":14,\"line\":9},\"file\":null,\"role\":null,\"start\":{\"col\":3,\"line\":6},\"written\":null},\"statements\":[{\"cond\":{\"args\":[{\"kind\":\"Name\",\"name\":\"order.total\",\"origin\":{\"end\":{\"col\":17,\"line\":6},\"file\":null,\"role\":null,\"start\":{\"col\":6,\"line\":6},\"written\":null}},{\"kind\":\"Int\",\"origin\":{\"end\":{\"col\":34,\"line\":6},\"file\":null,\"role\":null,\"start\":{\"col\":31,\"line\":6},\"written\":null},\"value\":100}],\"kind\":\"Call\",\"origin\":{\"end\":{\"col\":34,\"line\":6},\"file\":null,\"role\":null,\"start\":{\"col\":6,\"line\":6},\"written\":null},\"target\":{\"kind\":\"Name\",\"name\":\">\",\"origin\":{\"end\":{\"col\":25,\"line\":6},\"file\":null,\"role\":null,\"start\":{\"col\":18,\"line\":6},\"written\":null}}},\"elseBlock\":{\"kind\":\"Block\",\"origin\":{\"end\":{\"col\":14,\"line\":9},\"file\":null,\"role\":null,\"start\":{\"col\":5,\"line\":9},\"written\":null},\"statements\":[{\"expr\":{\"kind\":\"Int\",\"origin\":{\"end\":{\"col\":13,\"line\":9},\"file\":null,\"role\":null,\"start\":{\"col\":12,\"line\":9},\"written\":null},\"value\":0},\"kind\":\"Return\",\"origin\":{\"end\":{\"col\":14,\"line\":9},\"file\":null,\"role\":null,\"start\":{\"col\":5,\"line\":9},\"written\":null}}]},\"kind\":\"If\",\"origin\":{\"end\":{\"col\":14,\"line\":9},\"file\":null,\"role\":null,\"start\":{\"col\":3,\"line\":6},\"written\":null},\"thenBlock\":{\"kind\":\"Block\",\"origin\":{\"end\":{\"col\":15,\"line\":7},\"file\":null,\"role\":null,\"start\":{\"col\":5,\"line\":7},\"written\":null},\"statements\":[{\"expr\":{\"kind\":\"Int\",\"origin\":{\"end\":{\"col\":14,\"line\":7},\"file\":null,\"role\":null,\"start\":{\"col\":12,\"line\":7},\"written\":null},\"value\":10},\"kind\":\"Return\",\"origin\":{\"end\":{\"col\":15,\"line\":7},\"file\":null,\"role\":null,\"start\":{\"col\":5,\"line\":7},\"written\":null}}]}}]},\"effectCaps\":[],\"effectCapsExplicit\":false,\"effectParams\":[],\"effects\":[],\"inputRefs\":null,\"kind\":\"Func\",\"name\":\"calculate\",\"origin\":{\"end\":{\"col\":14,\"line\":9},\"file\":null,\"role\":null,\"start\":{\"col\":1,\"line\":5},\"written\":null},\"params\":[{\"annotations\":[],\"constraints\":[],\"name\":\"order\",\"type\":{\"kind\":\"TypeName\",\"name\":\"Order\",\"origin\":{\"end\":{\"col\":36,\"line\":5},\"file\":null,\"role\":null,\"start\":{\"col\":31,\"line\":5},\"written\":null}},\"typeInferred\":false}],\"ret\":{\"kind\":\"TypeName\",\"name\":\"Int\",\"origin\":{\"end\":{\"col\":49,\"line\":5},\"file\":null,\"role\":null,\"start\":{\"col\":46,\"line\":5},\"written\":null}},\"retAnnotations\":[],\"retTypeInferred\":false,\"typeParams\":[]}],\"kind\":\"Module\",\"name\":\"Discount\",\"origin\":{\"end\":{\"col\":1,\"line\":10},\"file\":null,\"role\":null,\"start\":{\"col\":1,\"line\":1},\"written\":null},\"profile\":null,\"schemaVersion\":2}",
     "context": {
       "order": { "total": 150 }
     }
@@ -113,26 +236,11 @@ curl -X POST https://policy.aster-lang.dev/api/v1/policies/evaluate-json \
 ```
 
 ```js [JavaScript]
-// Build the Core IR object
-const coreIR = {
-  moduleName: 'Discount',
-  functions: [
-    {
-      name: 'calculate',
-      params: [{ name: 'order', type: 'Order' }],
-      rules: [
-        {
-          condition: { op: 'gt', left: { ref: 'order.total' }, right: { lit: 100 } },
-          result: { lit: 10 },
-        },
-        {
-          condition: null,
-          result: { lit: 0 },
-        },
-      ],
-    },
-  ],
-};
+import { compile } from '@aster-cloud/aster-lang-ts/browser';
+
+// CNL-Quelltext in Ihrer Anwendung kompilieren
+const compiled = compile("Module Discount.\n\nDefine Order has total as Int.\n\nRule calculate given order as Order, produce Int:\n  If order.total greater than 100\n    Return 10.\n  Otherwise\n    Return 0.\n");
+if (!compiled.success) throw new Error(JSON.stringify(compiled.parseErrors));
 
 const response = await fetch(
   'https://policy.aster-lang.dev/api/v1/policies/evaluate-json',
@@ -144,8 +252,9 @@ const response = await fetch(
       'X-Tenant-ID': 'acme-corp',
     },
     body: JSON.stringify({
-      // Core IR must be serialized as a string
-      policy: JSON.stringify(coreIR),
+      // Core IR v2, kanonische Bytes – unverändert senden
+      // Die Core IR wird als String gesendet
+      policy: compiled.coreJson,
       context: {
         order: { total: 150 },
       },
@@ -164,8 +273,19 @@ const data = await response.json();
 ```json
 {
   "result": 10,
-  "executionTimeMs": 3,
+  "executionTimeMs": 8,
   "error": null,
-  "decisionTrace": null
+  "evidence": { "correlationId": "b20c5d25-f288-4ccd-bf30-f5b289556a54" }
+}
+```
+
+Ein Core-IR-Dokument ohne `schemaVersion` (etwa von aster-lang-ts 1.x) wird abgelehnt:
+
+```json
+{
+  "result": null,
+  "executionTimeMs": 3,
+  "error": "Core IR JSON 解析失败: Core IR 不符合 v2 契约：[CoreIrProblem[path=/schemaVersion, code=unsupported_schema_version]]",
+  "code": "unsupported_schema_version"
 }
 ```
