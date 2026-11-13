@@ -83,7 +83,6 @@ describe('jcsCanonicalize — JS 值专有情形', () => {
   });
 
   it('稀疏数组的空位 → unsupported_value', () => {
-    // eslint-disable-next-line no-sparse-arrays
     expect(codeOf(() => jcsCanonicalize([1, , 2]))).toBe('unsupported_value');
   });
 

@@ -9,6 +9,7 @@ Quarterly cadence (or immediately on suspected compromise). One operator can do 
 | `AUTH_SECRET` / `NEXTAUTH_SECRET` | Cloudflare Worker secret | All sessions invalidated → users sign in again | Attacker can forge sessions for any user |
 | `CRON_SECRET` | Cloudflare Worker secret + each cron caller | Cron jobs fail until both sides rotated | Attacker can drive cron endpoints (telemetry, license refresh, dunning) |
 | `ASTER_PLAN_GATE_HMAC_KEY` | Worker secret + aster-api k8s ExternalSecret | PlanGate snapshot push fails until both sides match | Attacker can forge plan-tier upgrades |
+| `ASTER_FACT_SIGNING_KEY` | Cloudflare Worker secret | 只换 secret 而不在各租户启用新 kid → cloud 停止附签名事实（登记照常；1.3.0 后高风险模块 DENY） | 可为任何已启用 cloud 签发方的租户伪造 `principal.*` 事实 |
 | `AI_KEY_ENCRYPTION_SECRET` | Worker secret | **All BYOK keys must be re-encrypted** | Attacker can decrypt every customer's stored OpenAI/Anthropic/Vertex key |
 | `LICENSE_KEY` (on-prem only) | Per-customer K8s Secret | On-prem deployment immediate re-verify | Attacker on prem can sign their own licenses |
 | `STRIPE_WEBHOOK_SECRET` | Worker secret + Stripe dashboard | Stripe webhooks fail until both sides match | Attacker can forge subscription state changes |
@@ -108,6 +109,24 @@ echo "$NEW" | wrangler secret put AI_KEY_ENCRYPTION_SECRET --name aster-cloud
 **Rollback**: if you've already flipped the Worker secret, re-run rotation with OLD and NEW swapped to undo. If you haven't yet flipped — abort, do nothing, BYOK keeps working on the old secret.
 
 > **Important**: A clean install (zero BYOK rows yet) has no rotation cost — just `wrangler secret put` and ship. Confirm with `psql -c "SELECT count(*) FROM \"AiKeyBinding\";"` before assuming you need the script.
+
+---
+
+### `ASTER_FACT_SIGNING_KEY`（cloud 平台签发方，ADR 0040 §11 D3 / ADR 0046 §11.7 裁定 4）
+
+一行 JSON `{"issuer","kid","privateKey","publicKey"}`。aster-api 按 `issuer#kid` 存公钥，所以轮换 = 换 kid，顺序不可反：
+
+```bash
+# 1. 生成新 kid 的密钥并直接写入 Worker（输出含私钥，不落盘、不贴工单）
+pnpm --silent fact-key:gen --kid <new-kid> | wrangler secret put ASTER_FACT_SIGNING_KEY --name aster-cloud
+# 2. 各租户 owner 在 /teams/<id>/settings（个人：/settings/fact-issuers）「启用 Aster Cloud 签发方」登记新 kid
+#    —— 未启用新 kid 的租户从此刻起不再收到事实（cloud 只在 issuer#kid 已启用且公钥一致时附）
+# 3. 确认各租户已启用新 kid 后，再在同一页面吊销旧 kid
+```
+
+**为什么先启用后吊销**：吊销会让 aster-api 联动过期依赖该签发方事实的待审批（`expiredReason: fact_issuer_revoked`）。先吊销旧 kid 会让仍在审批中的决策过期。
+
+**泄露时**：立即在所有租户吊销旧 kid（接受待审批过期），再按 1–2 步换新 kid。
 
 ---
 

@@ -72,6 +72,8 @@ test('信贷试点：执行、审批、What-If、证据导出与 Article 14 对�
     asUser(browser, 'cp-officer', async (page) => {
       await page.goto('/en/approvals');
       const row = page.locator(`tr[data-decision-id="${decisionId}"]`);
+      // 高风险档案（ADR 0046 §11.6 第 11 条）：大额申请的审批须出现在信贷员收件箱（cloud 签发方附了签名事实）
+      await expect(row).toBeVisible();
       await row.getByRole('button', { name: 'Approve' }).click();
       const dialog = page.getByRole('dialog', { name: 'Approve' });
       await dialog.getByLabel('Comment (optional)').fill('E2E 信贷试点：合规官批准');
