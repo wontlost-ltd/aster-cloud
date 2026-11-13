@@ -20,7 +20,13 @@ import type { AiWorkspaceConfig } from '@/components/ai-workspace-context';
 import { CNLSyntaxReferencePanel } from '@/components/policy/cnl-syntax-reference-panel';
 import { PolicyAliasPanel } from '@/components/policy/policy-alias-panel';
 import type { ReservedSets } from '@/lib/policy-alias-shared';
-import { localizedTitle, profileTitle } from '@/services/evidence/control-registry';
+import {
+  defaultControlRegistry,
+  localizedTitle,
+  profileTitle,
+  requiresVerifiedInputs,
+  type ControlRegistryData,
+} from '@/services/evidence/control-registry';
 import type {
   CompileDiagnostic,
   CompileModuleSummary,
@@ -324,6 +330,7 @@ export function DecisionTab({
   module: moduleInfo,
   locale,
   onJumpToLine,
+  registry = defaultControlRegistry,
 }: {
   state?: CompileState;
   diagnostics: CompileDiagnostic[];
@@ -331,6 +338,8 @@ export function DecisionTab({
   /** 界面 locale，决定治理档案标题语言。 */
   locale: string;
   onJumpToLine?: (line: number, column: number) => void;
+  /** 控制注册表；缺省为内置副本，仅供测试注入（如模拟 verifiedInputs 翻转后的注册表）。 */
+  registry?: ControlRegistryData;
 }) {
   const t = useTranslations('policies.form');
   const tDetail = useTranslations('policies.detail');
@@ -394,7 +403,7 @@ export function DecisionTab({
           {moduleInfo.profile && (
             <div>
               <span className="font-semibold text-fg">{tDetail('profile')}: </span>
-              <span className="text-fg-muted">{localizedTitle(profileTitle(moduleInfo.profile), locale)}</span>
+              <span className="text-fg-muted">{localizedTitle(profileTitle(moduleInfo.profile, registry), locale)}</span>
             </div>
           )}
           {moduleInfo.functions.length > 0 && (
@@ -415,8 +424,53 @@ export function DecisionTab({
               </span>
             </div>
           )}
+          {moduleInfo.inputRefs && (
+            <DecisionInputRefs
+              inputRefs={moduleInfo.inputRefs}
+              requiresSignature={requiresVerifiedInputs(moduleInfo.profile, registry)}
+            />
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * 规则输入引用（ADR 0046 §11 D4）：按规则列出 Core IR Func.inputRefs 的引擎路径。
+ * "*" 独占且表示无法静态确定，"" 表示整个参数，空数组表示不读取输入；
+ * 档案要求 verifiedInputs 时提示这些字段在运行期须由已登记签发方签名。
+ */
+function DecisionInputRefs({
+  inputRefs,
+  requiresSignature,
+}: {
+  inputRefs: Record<string, readonly string[]>;
+  requiresSignature: boolean;
+}) {
+  const t = useTranslations('policies.form');
+  const chip = 'rounded bg-bg px-1 py-0.5';
+  const items = (refs: readonly string[]) => {
+    if (refs.includes('*')) return [<span key="*" className={chip}>{t('decisionInputRefsUnknown')}</span>];
+    if (refs.length === 0) return [<span key="none" className={chip}>{t('decisionInputRefsNone')}</span>];
+    return refs.map((ref) =>
+      ref === ''
+        ? <span key="" className={chip}>{t('decisionInputRefsWholeInput')}</span>
+        : <span key={ref} className={cn(chip, 'font-mono')}>{ref}</span>,
+    );
+  };
+  return (
+    <div>
+      <div className="font-semibold text-fg">{t('decisionInputRefs')}:</div>
+      <ul className="mt-1 space-y-1">
+        {Object.entries(inputRefs).map(([fn, refs]) => (
+          <li key={fn} className="flex flex-wrap items-baseline gap-1 text-fg-muted">
+            <span className="font-mono">{fn}:</span>
+            {items(refs)}
+          </li>
+        ))}
+      </ul>
+      {requiresSignature && <p className="mt-1.5 text-fg-muted">{t('decisionInputRefsVerifiedHint')}</p>}
     </div>
   );
 }
