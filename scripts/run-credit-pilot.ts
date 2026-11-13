@@ -1,5 +1,5 @@
 /**
- * 信贷试点端到端跑通脚本（ADR 0044 §5）：执行四组申请 → 信贷员审批 → What-If 批量 →
+ * 信贷试点端到端跑通脚本（ADR 0044 §5）：执行四组申请 → 核对 guard 决策为 PENDING → 信贷员审批 → What-If 批量 →
  * 导出证据包 → 核对 Article 14 九款状态。执行走在线默认版本 v3（ADR 0046 §6），What-If 对比 v1→v2。
  *
  *   BASE_CLOUD=http://localhost:3100 CP_API_KEY=... NEXTAUTH_SECRET=... npx tsx scripts/run-credit-pilot.ts
@@ -25,6 +25,11 @@ const PLANS: Record<Who, string> = { ownerId: 'team', officerId: 'pro', analystI
 type Auth = Record<string, string>;
 interface Execution { outcome: string; correlationId: string }
 interface InboxItem { id: string; evidenceCorrelationId: string | null }
+interface LogItem {
+  id: string;
+  output?: { metadata?: { evidenceCorrelationId?: string } } | null;
+  metadata?: { guardDecisionId?: string; guardApprovalId?: string; guardError?: string } | null;
+}
 
 function log(step: number, msg: string): void {
   console.log(`[pilot] step ${step} ${msg}`);
@@ -97,6 +102,27 @@ async function stepExecute(): Promise<Record<keyof typeof PILOT_APPLICANTS, Exec
   return results;
 }
 
+// 第 1b 步：require_approval 那条执行的 guard 决策须为 PENDING（有 guardApprovalId）。registry 1.3.0 起高风险档案
+// 要求 verifiedInputs，未附签名事实时 from-evidence 为 DENY unverified_input、无审批行（ADR 0046 §11.6 第 11 条）。
+// 执行行 metadata 在登记后回写，日志按策略属主限定，故以 cp-owner 读取并短暂轮询。
+async function assertGuardOutcome(correlationId: string, expected: 'PENDING'): Promise<void> {
+  const auth = await cookieAuth('ownerId');
+  const deadline = Date.now() + 30_000;
+  let last: LogItem | undefined;
+  while (Date.now() < deadline) {
+    const page = await call<{ items: LogItem[] }>(auth, 'GET', `/api/policies/${POLICY}/logs?decision=require_approval&pageSize=50`, 200);
+    last = page.items.find((i) => i.output?.metadata?.evidenceCorrelationId === correlationId);
+    // metadata 在登记完成后才回写（之前为 null）
+    if (last?.metadata) break;
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+  }
+  const meta = last?.metadata;
+  if (!meta?.guardApprovalId) {
+    throw new Error(`guard 决策期望 ${expected}（有 guardApprovalId），实际 metadata=${JSON.stringify(meta ?? null)}`);
+  }
+  log(1, `guard 决策 ${meta.guardDecisionId} → ${expected}（审批 ${meta.guardApprovalId}）`);
+}
+
 // 第 2 步：信贷员在收件箱找到待审项并批准
 async function stepApprove(correlationId: string): Promise<void> {
   const auth = await cookieAuth('officerId');
@@ -155,6 +181,7 @@ async function warmRoutes(): Promise<void> {
 async function main(): Promise<number> {
   await warmRoutes();
   const executions = await stepExecute();
+  await assertGuardOutcome(executions.requireApproval.correlationId, 'PENDING');
   await stepApprove(executions.requireApproval.correlationId);
   await stepWhatIf();
   const bundle = await stepExport();

@@ -10,6 +10,9 @@
  *     由属主经 API key 执行：What-If / 日志 / 导出均按策略属主限定（ADR 0034 §4.3），
  *     团队成员执行的记录当前无法被 What-If 回放；cp-analyst 仅作普通成员
  *
+ *   - 试点测试签发方：把 ASTER_FACT_SIGNING_KEY 的公钥以 cp-owner 身份登记到 credit-pilot 租户
+ *     （ADR 0046 §11.7 裁定 5：密钥由 `pnpm fact-key:gen` 生成，seed 不生成）；未配置或公钥冲突时非零退出
+ *
  * 幂等：按 id / key 名查有则更新、无则插入；多次运行不会重复创建
  *
  * 版本行与保存路径（createVersion）同构（ADR 0051）：链式 sourceHash/prevHash、5 段 envelope、
@@ -18,6 +21,7 @@
  * 环境变量：
  *   DATABASE_URL       必须
  *   CP_SEED_PASSWORD   可选（默认 Aster2026!）
+ *   ASTER_FACT_SIGNING_KEY  必须（`pnpm --silent fact-key:gen --kid <kid>` 的输出，与 cloud 进程配置的相同）
  *
  * 用法：pnpm seed:credit-pilot（经 `node --conditions=import --import tsx` 运行：
  *   引擎的 ./browser 子路径只有 ESM 导出，封印所需的工具链常量要静态导入）
@@ -35,6 +39,9 @@ import { assertSeedCompiles } from '@/lib/seed-compile-gate';
 import { sealSeedVersionChain, type SealedSeedVersionFields } from '@/lib/seed-version-seal';
 import { cloudToolchainId } from '@/lib/policy-alias';
 import { loadSaveVocabulary } from '@/lib/policy-compile-validator';
+import { registerPilotFactIssuer } from '@/scripts/pilot-fact-issuer';
+import { loadFactSigningKey } from '@/services/guard/fact-signing-key';
+import { PolicyApiClient } from '@/services/policy/policy-api';
 
 type Db = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -279,6 +286,14 @@ async function main(): Promise<void> {
   await revokeLegacyKey(db);
   await ensureOwnerKey(db);
   await refreshSnapshots();
+
+  console.log(LOG, '登记试点测试签发方');
+  await registerPilotFactIssuer({
+    loadKey: () => loadFactSigningKey(),
+    // seed 以 node 直接运行，不能导入 server-only 的 createPolicyApiClientForUser；签发方端点不看业务角色
+    client: new PolicyApiClient(CREDIT_PILOT.teamId, CREDIT_PILOT.ownerId),
+    log: (...args) => console.log(LOG, ...args),
+  });
 
   await sql.end();
   console.log(LOG, '完成');

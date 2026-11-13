@@ -21,6 +21,7 @@ cookie 过期（1 天）后重新执行即可。
 | `E2E_STATE_DIR` | 可选，storageState 目录，默认 `.superpowers/e2e-local` |
 | `E2E_LOCAL_STACK` | 设在 **aster-cloud 容器**上（`-e E2E_LOCAL_STACK=1`），不是 Playwright 进程；开启 dev 入口长缓冲，保证预热在整轮用例内有效 |
 | `CP_API_KEY` | 可选，信贷试点租户的 API key；`credit-pilot` 用它经 `/api/v1/policies/pol-credit-pilot/execute` 执行一笔 REQUIRE_APPROVAL 申请，缺失时该用例跳过 |
+| `ASTER_FACT_SIGNING_KEY` | 设在 **aster-cloud 容器**上，同时供容器内 `pnpm seed:credit-pilot` 读取；取值为 `pnpm --silent fact-key:gen --kid <kid>` 的输出（一行 JSON，含私钥，勿落盘）。seed 把其公钥登记为 `credit-pilot` 租户的签发方，执行时 cloud 为 `principal.id` 与 `context.applicant`（`fixture.creditPilot`，仅非生产）附签名事实；缺失时 seed 非零退出 |
 | `E2E_GUARD_API_KEY` | `approvals-inbox` 必填：team1 成员的 API key（如 m-free 的 key），用于经 aster-api 自补待审批；缺失时该文件跳过。预热阶段也用它预热 aster-api → cloud 的 API key 校验回调 |
 | `BASE_API` | 可选，aster-api 根地址，默认 `http://localhost:8080` |
 | `PODMAN_BIN` | 可选，podman 路径，默认 `/opt/podman/bin/podman`（用例用 psql 校验落库结果） |

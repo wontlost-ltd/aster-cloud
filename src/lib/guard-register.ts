@@ -11,6 +11,7 @@ import { isPolicyTenantMember } from '@/lib/business-roles';
 import { notifyApprovalRequested } from '@/lib/guard-notifications';
 import { policyTenantId } from '@/lib/policy-tenant';
 import { db, executions } from '@/lib/prisma';
+import { attachFacts } from '@/services/guard/fact-plan';
 import type { PolicyExecutionResult } from '@/services/policy/cnl-executor';
 import type { GuardAction } from '@/services/policy/guard-types';
 import { PolicyApiError, type AgentIdentity, type PolicyApiClient } from '@/services/policy/policy-api';
@@ -79,10 +80,15 @@ export async function registerGuardDecision(args: RegisterGuardArgs): Promise<Ex
   if (!correlationId) return { guardError: 'no_evidence' };
 
   try {
-    const decision = await args.client.guardFromEvidence({
-      correlationId,
-      action: toGuardAction(args.input, args.functionName, args.agent, args.requesterUserId),
-    });
+    // 事实随首次请求附上（ADR 0046 §11.6 第 11 条）；未启用 cloud 签发方时 action 原样不变。
+    // invalid_fact 400 照常记 guardError，不去掉事实重试：翻转后那会用一次 DENY 消耗证据（§11.7 裁定 6）。
+    const action = await attachFacts(
+      args.client,
+      toGuardAction(args.input, args.functionName, args.agent, args.requesterUserId),
+      { tenantId: policyTenantId(args.policy), userId: args.requesterUserId, input: args.input },
+      new Date(),
+    );
+    const decision = await args.client.guardFromEvidence({ correlationId, action });
     const approvalId = decision.approval?.id;
     if (!approvalId) return { guardDecisionId: decision.decisionId };
 
