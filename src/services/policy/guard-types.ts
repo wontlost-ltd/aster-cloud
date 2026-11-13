@@ -15,6 +15,24 @@ export interface GuardAction {
   resource?: { type?: string; id?: string };
   context?: Record<string, unknown>;
   agent?: { provider?: string; model?: string; version?: string; session?: string };
+  /** 签名事实片段（ADR 0040 §11 D3）；cloud 至多附 1 条，未登记 / 未启用 cloud 签发方时不出现该键。 */
+  facts?: GuardFact[];
+}
+
+/**
+ * 签名事实（ADR 0040 §11 D3）：除 signature 外八个成员的 RFC 8785 字节串由 Ed25519 签名，
+ * signature 为 base64url 无填充的 64 字节。claims 键为点路径，值须与 action 对应路径 JCS 字节相等。
+ */
+export interface GuardFact {
+  alg: 'Ed25519';
+  audience: string;
+  claims: Record<string, unknown>;
+  expiresAt: string;
+  issuedAt: string;
+  issuer: string;
+  kid: string;
+  sources: Record<string, string>;
+  signature: string;
 }
 
 /** 以链上评估事件为锚开决策：api 读 correlationId 对应的已上链评估结论，不重新评估。 */
@@ -36,6 +54,8 @@ export interface GuardDecision {
   receipt?: { auditId?: number; hash?: string; prevHash?: string };
   role?: string;
   ruleId?: string;
+  /** 输入来源（ADR 0040 §11 D2）：verified 路径、参与背书的 issuer#kid、事实是否已过期。 */
+  inputSources?: { verified?: string[]; factIssuers?: string[]; factsStale?: boolean };
 }
 
 /** 审批列表项：基础字段 + ADR 0042 §4.3 取自关联决策的扩展字段。 */
