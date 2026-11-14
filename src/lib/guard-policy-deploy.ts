@@ -74,25 +74,38 @@ export function setGuardDeployDepsForTest(deps: Partial<GuardDeployDeps> | undef
   activeDeps = deps ? { ...defaultDeps, ...deps } : defaultDeps;
 }
 
-/** 在独立事务里预留下一代际并记下期望状态；返回预留的代际。 */
+/**
+ * 同一策略的部署状态变更互斥：预留、提交、「从未部署」的删除都先取这把事务级 advisory 锁（再取行锁）。
+ * 键带固定前缀，与其它 advisory 锁的键空间不重叠。
+ */
+async function lockPolicyGuard(tx: Tx, policyId: string): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${'guard-deploy:' + policyId}, 0))`);
+}
+
+/**
+ * 在独立事务里原子地预留下一代际并记下期望状态（不存在则以 1 插入，存在则加一）；返回预留的代际。
+ * 期望部署时策略须未删除——与「从未部署」的删除在同一把锁下互斥，删除先提交则这里 404 policy_deleted、不会部署。
+ */
 export async function reserveGuardGeneration(policyId: string, tenantId: string, desired: GuardDesired): Promise<number> {
   const desiredVersionId = 'withdrawn' in desired ? null : desired.cloudVersionId;
   return db.transaction(async (tx) => {
-    const [row] = await tx
-      .select({ generation: guardPolicyDeployments.generation })
-      .from(guardPolicyDeployments)
-      .where(eq(guardPolicyDeployments.policyId, policyId))
-      .for('update');
-    const generation = (row?.generation ?? 0) + 1;
-    if (row) {
-      await tx
-        .update(guardPolicyDeployments)
-        .set({ generation, desiredVersionId, tenantId })
-        .where(eq(guardPolicyDeployments.policyId, policyId));
-    } else {
-      await tx.insert(guardPolicyDeployments).values({ policyId, tenantId, generation, desiredVersionId });
+    await lockPolicyGuard(tx, policyId);
+    if (desiredVersionId !== null) {
+      const [live] = await tx
+        .select({ id: policies.id })
+        .from(policies)
+        .where(and(eq(policies.id, policyId), isNull(policies.deletedAt)));
+      if (!live) throw new GuardDeployError(404, 'policy_deleted', '策略已删除，不再部署到 Guard');
     }
-    return generation;
+    const [row] = await tx
+      .insert(guardPolicyDeployments)
+      .values({ policyId, tenantId, generation: 1, desiredVersionId })
+      .onConflictDoUpdate({
+        target: guardPolicyDeployments.policyId,
+        set: { generation: sql`${guardPolicyDeployments.generation} + 1`, desiredVersionId, tenantId },
+      })
+      .returning({ generation: guardPolicyDeployments.generation });
+    return row.generation;
   });
 }
 
@@ -143,13 +156,20 @@ export async function deployThenCommit(params: {
   commit: (tx: Tx) => Promise<void>;
   deps?: GuardDeployDeps;
 }): Promise<void> {
-  if ('withdrawn' in params.desired && !(await db.query.guardPolicyDeployments.findFirst({
-    where: eq(guardPolicyDeployments.policyId, params.policyId),
-    columns: { policyId: true },
-  }))) {
-    // 从未部署过的策略没有可撤回的 Guard 版本：不依赖 aster-api 可用性。与并发设默认的竞态由 cron 收敛。
-    await db.transaction(params.commit);
-    return;
+  if ('withdrawn' in params.desired) {
+    // 从未部署过的策略没有可撤回的 Guard 版本：在锁内确认仍无部署行后直接提交删除，不依赖 aster-api 可用性。
+    // 锁内看到部署行（并发的首次设默认已预留）则走完整的撤回路径。
+    const committed = await db.transaction(async (tx) => {
+      await lockPolicyGuard(tx, params.policyId);
+      const [row] = await tx
+        .select({ policyId: guardPolicyDeployments.policyId })
+        .from(guardPolicyDeployments)
+        .where(eq(guardPolicyDeployments.policyId, params.policyId));
+      if (row) return false;
+      await params.commit(tx);
+      return true;
+    });
+    if (committed) return;
   }
   const generation = await reserveGuardGeneration(params.policyId, params.tenantId, params.desired);
   const pushed = await pushGuardDeployment(params.policyId, generation, params.actor, params.deps ?? activeDeps);
@@ -161,6 +181,7 @@ export async function deployThenCommit(params: {
     );
   }
   await db.transaction(async (tx) => {
+    await lockPolicyGuard(tx, params.policyId);
     const [row] = await tx
       .select({ generation: guardPolicyDeployments.generation })
       .from(guardPolicyDeployments)
