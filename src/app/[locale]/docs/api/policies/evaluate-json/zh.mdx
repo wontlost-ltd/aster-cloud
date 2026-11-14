@@ -204,7 +204,7 @@ Rule calculate given order as Order, produce Int:
 | `error` | `string \| null` | 错误消息；成功时为 `null`。 |
 | `code` | `string` | 机器可读的错误码；仅失败时出现（见状态码表）。 |
 | `field` | `string` | 缺少的输入字段路径；仅在 `code: "missing_input_field"` 时出现。 |
-| `evidence` | `object \| absent` | 本次评估的证据引用；`correlationId` 把响应与审计链关联起来。仅在评估已执行并入链时出现（成功，或执行过程中失败）；请求在执行前被拒收时（例如 `unsupported_schema_version`、`invalid_request`、`function_not_found`）没有该字段。 |
+| `evidence` | `object \| absent` | 本次评估的证据引用；`correlationId` 把响应与审计链关联起来。成功时总会返回。错误响应（包括 `execution_timeout` 与 `evaluation_failed`）不带该字段，也不入审计链；唯一例外是策略已执行完、处理结果时才发生的失败，这种失败会入链并返回 `evidence`。 |
 
 入口规则返回 `Verdict` 的策略还会返回 `decision`；规则带 `@id` / `@control` 注解时另返回 `ruleId` / `controls`。
 
