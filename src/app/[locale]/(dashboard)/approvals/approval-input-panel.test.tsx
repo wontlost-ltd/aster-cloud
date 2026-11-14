@@ -109,12 +109,47 @@ describe('ApprovalInputPanel', () => {
     }
   });
 
-  it('取不到视图（旧 api / 网络错误）：显示不可用并交 null，收件箱照常审批', async () => {
-    fetchMock.mockResolvedValueOnce(fail(502, { error: 'upstream_unavailable' }));
+  it('非临时错误（如 403 / 404 未知码）：显示不可用并交 null，收件箱照常审批（ADR 0042 §12 D10）', async () => {
+    fetchMock.mockResolvedValueOnce(fail(403, { error: 'forbidden' }));
     const onViewLoaded = vi.fn();
     render(<ApprovalInputPanel tenantId="team1" approvalId="a1" canReveal onViewLoaded={onViewLoaded} />);
     expect((await screen.findByTestId('input-status')).textContent).toBe('input.status.unavailable');
-    expect(onViewLoaded).toHaveBeenCalledWith(null);
+    expect(onViewLoaded).toHaveBeenLastCalledWith(null);
+  });
+
+  it('临时失败（502 / 网络错误）：显示重试，不交视图（批准 / 拒绝保持禁用）；重试成功后交视图', async () => {
+    fetchMock.mockResolvedValueOnce(fail(502, { error: 'upstream_unavailable' }));
+    const onViewLoaded = vi.fn();
+    render(<ApprovalInputPanel tenantId="team1" approvalId="a1" canReveal onViewLoaded={onViewLoaded} />);
+    await screen.findByTestId('input-failed');
+    expect(onViewLoaded.mock.calls.every(([v]) => v === undefined)).toBe(true);
+
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    fireEvent.click(screen.getByText('input.retry'));
+    await screen.findByTestId('input-failed');
+
+    fetchMock.mockResolvedValueOnce(ok(VIEW));
+    fireEvent.click(screen.getByText('input.retry'));
+    await screen.findByTestId('pii-masked');
+    expect(onViewLoaded).toHaveBeenLastCalledWith(VIEW);
+  });
+
+  it('只有 unknown 占位、没有可解除的 @pii 值时不提供「显示原值」', async () => {
+    renderPanel({ ...VIEW, input: { context: { applicant: { extra: { $pii: { level: 'unknown' } } } } } });
+    await screen.findByTestId('pii-unknown');
+    expect(screen.queryByText('input.reveal')).toBeNull();
+  });
+
+  it('解除时 input_not_available：视图作废并重新拉取（期间交 undefined）', async () => {
+    const onViewLoaded = renderPanel(VIEW);
+    fireEvent.click(await screen.findByText('input.reveal'));
+    fetchMock.mockResolvedValueOnce(fail(409, { error: 'input_not_available' }));
+    const purged = { approvalId: 'a1', decisionId: 'd1', status: 'purged', maskRules: 'v1', revealed: false, revealedByMe: false };
+    fetchMock.mockResolvedValueOnce(ok(purged));
+    fireEvent.click(screen.getByText('input.revealConfirmButton'));
+    await waitFor(() => expect(onViewLoaded).toHaveBeenLastCalledWith(purged));
+    expect(onViewLoaded).toHaveBeenCalledWith(undefined);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it('revealButtonHiddenWithoutRole', async () => {

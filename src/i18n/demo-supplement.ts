@@ -799,6 +799,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       // 审批行展开的「决策输入」面板（ADR 0042 §12 D10）
       input: {
         toggleShow: 'Show decision input',
+        loadFailed: 'Could not load the decision input.',
+        retry: 'Retry',
         toggleHide: 'Hide decision input',
         loading: 'Loading the decision input…',
         reviewFirst: 'Open the decision input before deciding.',
@@ -2461,6 +2463,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       // 审批行展开的「决策输入」面板（ADR 0042 §12 D10）
       input: {
         toggleShow: '查看决策输入',
+        loadFailed: '无法加载决策输入。',
+        retry: '重试',
         toggleHide: '收起决策输入',
         loading: '正在加载决策输入…',
         reviewFirst: '请先查看决策输入再作出结论。',
@@ -4107,6 +4111,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       // 审批行展开的「决策输入」面板（ADR 0042 §12 D10）
       input: {
         toggleShow: 'Entscheidungseingabe anzeigen',
+        loadFailed: 'Die Entscheidungseingabe konnte nicht geladen werden.',
+        retry: 'Erneut versuchen',
         toggleHide: 'Entscheidungseingabe ausblenden',
         loading: 'Entscheidungseingabe wird geladen…',
         reviewFirst: 'Öffnen Sie zuerst die Entscheidungseingabe.',
@@ -5750,6 +5756,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       // 审批行展开的「决策输入」面板（ADR 0042 §12 D10）
       input: {
         toggleShow: 'निर्णय इनपुट दिखाएँ',
+        loadFailed: 'निर्णय इनपुट लोड नहीं हो सका।',
+        retry: 'पुनः प्रयास करें',
         toggleHide: 'निर्णय इनपुट छिपाएँ',
         loading: 'निर्णय इनपुट लोड हो रहा है…',
         reviewFirst: 'निर्णय लेने से पहले निर्णय इनपुट खोलें।',

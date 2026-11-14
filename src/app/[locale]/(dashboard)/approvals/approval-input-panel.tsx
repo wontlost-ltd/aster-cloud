@@ -13,8 +13,11 @@ import type { GuardApprovalInput } from '@/services/policy/guard-types';
  * （路径 ∈ `inputSources.verified` 为「已验证」，悬停显示对应的 factSources 条目，其余为「自报」）。
  * 「显示原值」只对 `canReveal` 且存在已声明 `@pii` 字段的可用视图出现，先确认再调用解除（按人记入审计链）。
  *
- * `onViewLoaded` 把当前展示的视图交给收件箱：批准 / 拒绝据此提交 `inputSnapshotHash`；
- * 取不到视图（旧 api、网络错误）时交 null，收件箱照常审批、不带哈希。
+ * `onViewLoaded` 把当前展示的视图交给收件箱：批准 / 拒绝据此提交 `inputSnapshotHash`。
+ * - 旧 api（代理把无输入端点的 404 转为 `status: unavailable`）与其他非临时错误：交 null，收件箱照常审批、不带哈希
+ *   （ADR 0042 §12 D10「对 api 的 404 / 未知错误一律按输入不可用」）；
+ * - 临时失败（网络错误、502 / 503 / 504）：不交视图，显示重试；此时审批服务同样不可用，不应放行无哈希审批；
+ * - 重新拉取期间交 undefined，收件箱随之禁用批准 / 拒绝。
  */
 
 type T = ReturnType<typeof useTranslations>;
@@ -24,8 +27,10 @@ interface Props {
   approvalId: string;
   /** 持所需业务角色的可审者（`canAct && requiredRole != null`）；ESCALATE 无所需角色，不可解除。 */
   canReveal: boolean;
-  onViewLoaded: (view: GuardApprovalInput | null) => void;
+  onViewLoaded: (view: GuardApprovalInput | null | undefined) => void;
 }
+
+const TRANSIENT_STATUSES = new Set([502, 503, 504]);
 
 type PiiValue = { $pii: { level: string; category?: string } };
 
@@ -88,6 +93,7 @@ function Node({ name, value, path, view, t }: { name: string; value: unknown; pa
       <li>
         <span className="font-medium text-fg">{name}</span>
         <ul className="ml-4 border-l border-border pl-3">
+          {/* path 与 api 同一语法：数组元素不带下标（`items[]`），来源徽标按它匹配 inputSources.verified；key 带下标保证唯一 */}
           {entries.map(([k, v, p]) => (
             <Node key={k} name={k} value={v} path={p} view={view} t={t} />
           ))}
@@ -102,6 +108,15 @@ function Node({ name, value, path, view, t }: { name: string; value: unknown; pa
       <SourceBadge path={path} view={view} t={t} />
     </li>
   );
+}
+
+/** 输入中是否有可解除的 `@pii` 占位（级别不是 unknown）；没有就不提供「显示原值」，免得留下无意义的审计记录。 */
+function hasMaskedPii(value: unknown): boolean {
+  const pii = piiOf(value);
+  if (pii) return pii.level !== 'unknown';
+  if (Array.isArray(value)) return value.some(hasMaskedPii);
+  if (typeof value === 'object' && value !== null) return Object.values(value).some(hasMaskedPii);
+  return false;
 }
 
 function revealErrorText(t: T, code: string | undefined): string {
@@ -133,19 +148,29 @@ function Banners({ view, t }: { view: GuardApprovalInput; t: T }) {
 export function ApprovalInputPanel({ tenantId, approvalId, canReveal, onViewLoaded }: Props) {
   const t = useTranslations('approvals');
   const [view, setView] = useState<GuardApprovalInput | null | undefined>(undefined);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const [revealing, setRevealing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    setView(undefined);
+    setFailed(false);
+    onViewLoaded(undefined);
     (async () => {
-      let loaded: GuardApprovalInput | null = null;
+      let loaded: GuardApprovalInput | null;
       try {
         const r = await fetch(inputUrl(tenantId, approvalId));
+        if (TRANSIENT_STATUSES.has(r.status)) {
+          if (!cancelled) setFailed(true);
+          return;
+        }
         loaded = r.ok ? ((await r.json()) as GuardApprovalInput) : null;
       } catch {
-        loaded = null;
+        if (!cancelled) setFailed(true);
+        return;
       }
       if (cancelled) return;
       setView(loaded);
@@ -154,9 +179,9 @@ export function ApprovalInputPanel({ tenantId, approvalId, canReveal, onViewLoad
     return () => {
       cancelled = true;
     };
-    // onViewLoaded 由父组件按行生成；只在审批身份变化时重新拉取
+    // onViewLoaded 由父组件按行生成；只在审批身份变化或重试时重新拉取
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, approvalId]);
+  }, [tenantId, approvalId, attempt]);
 
   const reveal = async () => {
     setRevealing(true);
@@ -166,6 +191,11 @@ export function ApprovalInputPanel({ tenantId, approvalId, canReveal, onViewLoad
       const body = (await r.json().catch(() => ({}))) as GuardApprovalInput & { error?: string };
       if (!r.ok) {
         setError(revealErrorText(t, body.error));
+        // 审批已不再待审 / 输入已不可用：手里的视图已过时，重新拉取，收件箱在此期间禁用批准 / 拒绝
+        if (body.error === 'approval_not_pending' || body.error === 'input_not_available') {
+          setConfirming(false);
+          setAttempt((n) => n + 1);
+        }
         return;
       }
       setView(body);
@@ -178,13 +208,21 @@ export function ApprovalInputPanel({ tenantId, approvalId, canReveal, onViewLoad
     }
   };
 
+  if (failed) {
+    return (
+      <div className="flex items-center gap-2 text-sm" data-testid="input-failed">
+        <Alert variant="danger">{t('input.loadFailed')}</Alert>
+        <Button size="sm" variant="secondary" onClick={() => setAttempt((n) => n + 1)}>{t('input.retry')}</Button>
+      </div>
+    );
+  }
   if (view === undefined) {
     return <p className="text-sm text-fg-muted" data-testid="input-loading">{t('input.loading')}</p>;
   }
   if (view === null) {
     return <Alert variant="warning" data-testid="input-status">{t('input.status.unavailable')}</Alert>;
   }
-  const hasDeclaredPii = (view.piiMarks ?? []).length > 0;
+  const hasDeclaredPii = (view.piiMarks ?? []).length > 0 && hasMaskedPii(view.input);
   const showReveal = canReveal && view.status === 'available' && hasDeclaredPii && !view.revealed;
 
   return (

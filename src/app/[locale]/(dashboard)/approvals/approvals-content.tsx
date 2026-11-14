@@ -161,6 +161,7 @@ function DecisionDialog({
   t,
   onCancel,
   onDone,
+  onStaleInput,
 }: {
   item: InboxItem;
   verb: Verb;
@@ -168,6 +169,8 @@ function DecisionDialog({
   t: T;
   onCancel: () => void;
   onDone: () => void;
+  /** 409 input_snapshot_mismatch：所见视图已过时，让输入面板重新拉取 */
+  onStaleInput: () => void;
 }) {
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -189,7 +192,9 @@ function DecisionDialog({
         body: JSON.stringify({ comment: comment.trim() || undefined, inputSnapshotHash }),
       });
       if (r.ok) return onDone();
-      setError(errorText(t, (await r.json().catch(() => ({}))) as ApiErrorBody, item));
+      const body = (await r.json().catch(() => ({}))) as ApiErrorBody;
+      setError(errorText(t, body, item));
+      if (body.error === 'input_snapshot_mismatch') onStaleInput();
     } catch {
       // 网络异常（离线、连接被重置）：不暴露底层报错，给通用提示
       setError(t('errors.generic'));
@@ -292,6 +297,8 @@ export function ApprovalsContent({
   // 展开的行与各行已加载的输入视图（键为 tenantId:approvalId）；输入只在展开时拉取，不随列表首屏加载
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [views, setViews] = useState<Record<string, LoadedView>>({});
+  // 每行输入面板的重载计数：作为面板 key 的一部分，递增即重新挂载并重新拉取
+  const [reloads, setReloads] = useState<Record<string, number>>({});
   // 当前在途的列表请求：快速切换 tab 时中止旧请求，并丢弃晚到的旧响应
   const inflight = useRef<AbortController | null>(null);
 
@@ -412,7 +419,7 @@ export function ApprovalsContent({
                   {open && (
                     <tr className="border-b border-border bg-bg-subtle" data-input-row={key}>
                       <td colSpan={7} className="px-4 py-3">
-                        <ApprovalInputPanel tenantId={item.tenantId} approvalId={item.id}
+                        <ApprovalInputPanel key={reloads[key] ?? 0} tenantId={item.tenantId} approvalId={item.id}
                           canReveal={item.canAct && item.requiredRole != null}
                           onViewLoaded={(view) => setViews((v) => ({ ...v, [key]: view }))} />
                       </td>
@@ -429,6 +436,11 @@ export function ApprovalsContent({
       {picked && (
         <DecisionDialog key={`${picked.item.id}:${picked.verb}`} item={picked.item} verb={picked.verb}
           inputSnapshotHash={snapshotHashOf(views[keyOf(picked.item)])} t={t}
+          onStaleInput={() => {
+            const key = keyOf(picked.item);
+            setViews((v) => ({ ...v, [key]: undefined }));
+            setReloads((r) => ({ ...r, [key]: (r[key] ?? 0) + 1 }));
+          }}
           onCancel={() => setPicked(null)} onDone={() => load(status)} />
       )}
     </Container>

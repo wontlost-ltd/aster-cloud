@@ -27,13 +27,17 @@ vi.mock('@/components/ui', () => ({
 const trackMock = vi.hoisted(() => vi.fn());
 // 输入面板单独测（approval-input-panel.test.tsx）；这里用桩把「展开后加载出的视图」交给收件箱
 const panelView = vi.hoisted(() => ({ current: null as unknown }));
+const panelMounts = vi.hoisted(() => ({ count: 0 }));
 vi.mock('./approval-input-panel', async () => {
   const { useEffect } = await import('react');
   return {
     ApprovalInputPanel: ({ onViewLoaded }: { onViewLoaded: (v: unknown) => void }) => {
       // 与真实面板一致：只在挂载时交一次视图（父组件每次渲染都会新建回调）
       // eslint-disable-next-line react-hooks/exhaustive-deps
-      useEffect(() => onViewLoaded(panelView.current), []);
+      useEffect(() => {
+        panelMounts.count += 1;
+        onViewLoaded(panelView.current);
+      }, []);
       return <div data-testid="panel-stub" />;
     },
   };
@@ -48,6 +52,7 @@ const fetchMock = vi.fn();
 beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
   panelView.current = null;
+  panelMounts.count = 0;
 });
 
 /** 展开第一行的决策输入（批准 / 拒绝要等视图加载出来）。 */
@@ -369,6 +374,8 @@ describe('ApprovalsContent — 需求验证埋点', () => {
       fireEvent.click(screen.getByRole('button', { name: 'approve' }));
       fireEvent.click(screen.getByRole('button', { name: 'confirmApprove' }));
       await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('errors.input_snapshot_mismatch'));
+      // 所见视图已过时：面板重新挂载拉取
+      expect(panelMounts.count).toBe(2);
     });
 
     it('只读行同样可以展开输入（无解除权限由面板判定）', () => {
