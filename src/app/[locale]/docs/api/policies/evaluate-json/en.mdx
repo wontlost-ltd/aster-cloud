@@ -213,12 +213,12 @@ Policies whose entry rule returns a `Verdict` additionally return `decision`, an
 | Status | Meaning |
 |--------|---------|
 | `200 OK` | Evaluation succeeded. |
-| `400 Bad Request` | `code: "unsupported_schema_version"` — `policy` is not Core IR v2 (missing `schemaVersion`, or not the integer `2`). `code: "invalid_request"` — the Core IR fails schema or invariant checks (for example an unknown or missing field), the `agent` block is invalid, or `context` cannot be mapped to the entry function parameters. `code: "missing_input_field"` — `context` lacks a field the rule reads (`field` names the path). `code: "input_too_deep"`, `"input_cyclic"`, `"input_invalid_key"` or `"input_unsupported_value"` — the shape of `context` is not supported. |
+| `400 Bad Request` | `code: "unsupported_schema_version"` — `policy` is not Core IR v2 (missing `schemaVersion`, or not the integer `2`). `code: "invalid_request"` — the Core IR fails schema or invariant checks (for example an unknown or missing field), the `agent` block is invalid, or `context` cannot be mapped to the entry function parameters. `code: "function_not_executable"` — the function selected as entry point cannot be executed directly (the message says which function to call). `code: "missing_input_field"` — `context` lacks a field the rule reads (`field` names the path). `code: "input_too_deep"`, `"input_cyclic"`, `"input_invalid_key"` or `"input_unsupported_value"` — the shape of `context` is not supported. |
 | `401 Unauthorized` | Missing or invalid bearer token. |
 | `403 Forbidden` | Token is valid but the caller lacks the `MEMBER` role, or the plan does not include the Policy Execution API (`error: "api_access_denied"`, body with `error` / `message` only). |
 | `404 Not Found` | `code: "function_not_found"` — the Core IR has no function to execute. |
 | `422 Unprocessable Entity` | `code: "execution_timeout"` — the evaluation exceeded the wall-clock limit. `code: "output_too_deep"`, `"output_cyclic"` or `"output_invalid_key"` — the result cannot be returned as JSON. |
-| `429 Too Many Requests` | `error: "rate_limit_exceeded"` — the per-key requests-per-second limit was exceeded; retry after the `Retry-After` header. This body has `error` / `message` instead of the evaluation response fields. |
+| `429 Too Many Requests` | `error: "rate_limit_exceeded"` — the per-key requests-per-second limit was exceeded; retry after the `Retry-After` header (body: `error`, `message`, `rps_limit`, `rps_used`). `error: "api_quota_hard_exceeded"` — the monthly API quota hard limit was exceeded; there is no `Retry-After` and retrying does not help until the quota resets or the plan changes (body: `error`, `message`, `limit`, `used`). Neither body has the evaluation response fields. |
 | `500 Internal Server Error` | `code: "evaluation_failed"` — the policy failed at run time (no internal details are returned). |
 
 ## Examples

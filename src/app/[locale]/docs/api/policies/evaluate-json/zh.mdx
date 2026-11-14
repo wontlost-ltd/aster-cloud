@@ -213,12 +213,12 @@ Rule calculate given order as Order, produce Int:
 | 状态 | 含义 |
 |--------|---------|
 | `200 OK` | 评估成功。 |
-| `400 Bad Request` | `code: "unsupported_schema_version"`——`policy` 不是 Core IR v2（缺少 `schemaVersion`，或不是整数 `2`）。`code: "invalid_request"`——Core IR 未通过 schema 或不变式检查（例如有未知字段或缺字段）、`agent` 不合法，或 `context` 无法映射到入口函数参数。`code: "missing_input_field"`——`context` 缺少规则读取的字段（`field` 给出路径）。`code: "input_too_deep"`、`"input_cyclic"`、`"input_invalid_key"` 或 `"input_unsupported_value"`——`context` 的形态不受支持。 |
+| `400 Bad Request` | `code: "unsupported_schema_version"`——`policy` 不是 Core IR v2（缺少 `schemaVersion`，或不是整数 `2`）。`code: "invalid_request"`——Core IR 未通过 schema 或不变式检查（例如有未知字段或缺字段）、`agent` 不合法，或 `context` 无法映射到入口函数参数。`code: "function_not_executable"`——被选为入口的函数不能直接执行（消息中说明应调用哪个函数）。`code: "missing_input_field"`——`context` 缺少规则读取的字段（`field` 给出路径）。`code: "input_too_deep"`、`"input_cyclic"`、`"input_invalid_key"` 或 `"input_unsupported_value"`——`context` 的形态不受支持。 |
 | `401 Unauthorized` | 缺少或无效的 Bearer token。 |
 | `403 Forbidden` | Token 有效但调用者缺少 `MEMBER` 角色，或所在套餐不含 Policy Execution API（`error: "api_access_denied"`，响应体只有 `error` / `message`）。 |
 | `404 Not Found` | `code: "function_not_found"`——Core IR 中没有可执行的函数。 |
 | `422 Unprocessable Entity` | `code: "execution_timeout"`——评估超过墙钟时限。`code: "output_too_deep"`、`"output_cyclic"` 或 `"output_invalid_key"`——结果无法以 JSON 返回。 |
-| `429 Too Many Requests` | `error: "rate_limit_exceeded"`——超过单个 key 的每秒请求上限，按 `Retry-After` 头重试。此时响应体只有 `error` / `message`，不是评估响应。 |
+| `429 Too Many Requests` | `error: "rate_limit_exceeded"`——超过单个 key 的每秒请求上限，按 `Retry-After` 头重试（响应体：`error`、`message`、`rps_limit`、`rps_used`）。`error: "api_quota_hard_exceeded"`——超过本月 API 配额硬上限，不带 `Retry-After`，在配额重置或升级套餐之前重试无效（响应体：`error`、`message`、`limit`、`used`）。两者都不是评估响应。 |
 | `500 Internal Server Error` | `code: "evaluation_failed"`——策略运行时失败（不返回内部细节）。 |
 
 ## 示例
