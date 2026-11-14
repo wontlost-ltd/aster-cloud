@@ -632,6 +632,26 @@ export const policies = pgTable(
   ]
 );
 
+/**
+ * Guard 策略部署状态（aster-api ADR 0054 §11 D1，R66）：每个策略一行。
+ * 设默认版本 / 删除时先在独立事务里把 generation 加一并记下期望状态，同步部署到 aster-api 成功后才提交默认版本变更；
+ * appliedGeneration 落后于 generation 或期望与实际默认版本不符时，cron guard-deploy-sync 以 generation+1 收敛。
+ * 不设指向 Policy 的外键：策略硬删除后仍需凭 tenantId 撤回。
+ */
+export const guardPolicyDeployments = pgTable('GuardPolicyDeployment', {
+  policyId: text('policyId').primaryKey().notNull(),
+  /** aster-api 部署的租户（团队策略为团队 id，个人策略为用户 id）。 */
+  tenantId: text('tenantId').notNull(),
+  /** 最近一次预留的部署代际。 */
+  generation: bigint('generation', { mode: 'number' }).notNull(),
+  /** 期望部署的 cloud 版本 id；NULL = 期望撤回。 */
+  desiredVersionId: text('desiredVersionId'),
+  /** 已被 aster-api 接受的最大代际；NULL = 从未成功。 */
+  appliedGeneration: bigint('appliedGeneration', { mode: 'number' }),
+  lastError: text('lastError'),
+  updatedAt: timestamp('updatedAt', { mode: 'date', precision: 3 }).defaultNow().notNull().$onUpdate(() => new Date()),
+});
+
 // ============================================
 // Policy Version
 // ============================================
