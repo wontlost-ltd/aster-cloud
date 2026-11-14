@@ -82,6 +82,45 @@ export interface GuardApprovalItem {
   evidenceCorrelationId?: string | null;
   /** 转 EXPIRED 的原因（ADR 0040 §11 D4）：自然过期不出现，签发方吊销为 `fact_issuer_revoked`。 */
   expiredReason?: string | null;
+  /** 审批输入状态（ADR 0042 §12 D8）：PENDING 按输入快照是否存在；已决为审批时记下的值。旧 api 不返回。 */
+  inputStatus?: GuardApprovalInputStatus | null;
+  /** 以下三项仅已决且有记录时出现。 */
+  inputSnapshotHash?: string | null;
+  inputSnapshotMatched?: boolean | null;
+  inputRevealed?: boolean | null;
+}
+
+/** 审批输入视图状态（ADR 0042 §12 D8）。 */
+export type GuardApprovalInputStatus = 'available' | 'unavailable' | 'purged' | 'integrity_failed' | 'too_large';
+
+/** 输入视图中一个 `@pii` 字段的标记。 */
+export interface GuardPiiMark {
+  path: string;
+  level: string;
+  category?: string;
+  source: string;
+}
+
+/**
+ * 审批输入视图（aster-api `GuardApprovalInputView`，ADR 0042 §12 D8，与 aster-guard SDK 同形）。
+ * `input` 中 `@pii` 字段为 `{ $pii: { level, category } }`，未声明子树为 `{ $pii: { level: 'unknown' } }`；
+ * `status ≠ available` 时没有 `input / piiMarks / inputSnapshotHash`。
+ */
+export interface GuardApprovalInput {
+  approvalId: string;
+  decisionId: string;
+  contextHash?: string;
+  status: GuardApprovalInputStatus;
+  marksSource?: 'version' | 'evaluation' | 'none';
+  inputBinding?: 'direct' | 'evaluated' | 'unbound';
+  maskRules?: string;
+  revealed: boolean;
+  revealedByMe: boolean;
+  input?: Record<string, unknown>;
+  piiMarks?: GuardPiiMark[];
+  inputSnapshotHash?: string;
+  inputSources?: { verified: string[]; factIssuers: string[]; factSources: string[] };
+  factsStale?: boolean;
 }
 
 export interface GuardApprovalPage {

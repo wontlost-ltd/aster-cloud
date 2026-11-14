@@ -11,6 +11,8 @@ const h = vi.hoisted(() => ({
   checkTeamAccess: vi.fn(),
   approveGuard: vi.fn(),
   rejectGuard: vi.fn(),
+  getGuardApprovalInput: vi.fn(),
+  revealGuardApprovalInput: vi.fn(),
   createClient: vi.fn(),
   notifyApprovalDecided: vi.fn(),
   listUserApprovals: vi.fn(),
@@ -44,6 +46,8 @@ vi.mock('@/lib/approvals-inbox', () => ({
 
 const { POST } = await import('@/app/api/approvals/[tenantId]/[approvalId]/[verb]/route');
 const { GET } = await import('@/app/api/approvals/route');
+const { GET: GET_INPUT } = await import('@/app/api/approvals/[tenantId]/[approvalId]/input/route');
+const { POST: POST_REVEAL } = await import('@/app/api/approvals/[tenantId]/[approvalId]/input/reveal/route');
 
 function post(tenantId: string, verb: string, body: unknown = {}) {
   const req = new Request(`https://x.test/api/approvals/${tenantId}/a1/${verb}`, {
@@ -84,7 +88,7 @@ describe('POST /api/approvals/:tenantId/:approvalId/:verb', () => {
     expect(res.status).toBe(200);
     expect(h.checkTeamAccess).not.toHaveBeenCalled();
     expect(h.createClient).toHaveBeenCalledWith('u1', 'u1');
-    expect(h.approveGuard).toHaveBeenCalledWith('a1', 'ok');
+    expect(h.approveGuard).toHaveBeenCalledWith('a1', 'ok', undefined);
   });
 
   it('api 403 role_mismatch → 原样 403 并带 verifiedRoles；中文 message 换成英文（审查 L1）', async () => {
@@ -123,7 +127,7 @@ describe('POST /api/approvals/:tenantId/:approvalId/:verb', () => {
   it('reject 成功 → 200，通知发起人 outcome=REJECTED', async () => {
     const res = await post('team1', 'reject', { comment: 'no' });
     expect(res.status).toBe(200);
-    expect(h.rejectGuard).toHaveBeenCalledWith('a1', 'no');
+    expect(h.rejectGuard).toHaveBeenCalledWith('a1', 'no', undefined);
     expect(h.notifyApprovalDecided).toHaveBeenCalledWith({
       tenantId: 'team1', decisionId: 'd1', approvalId: 'a1', requiredRole: null, outcome: 'REJECTED',
     });
@@ -224,5 +228,106 @@ describe('GET /api/approvals', () => {
     const res = await GET(new Request('https://x.test/api/approvals?status=BOGUS'));
     expect(res.status).toBe(400);
     expect(h.listUserApprovals).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('审批输入代理（ADR 0042 §12 D10）', () => {
+  const VIEW = {
+    approvalId: 'a1', decisionId: 'd1', status: 'available', revealed: false, revealedByMe: false,
+    inputSnapshotHash: 'b'.repeat(64), input: { context: { email: { $pii: { level: 'L2', category: 'email' } } } },
+  };
+  const params = (tenantId: string) => ({ params: Promise.resolve({ tenantId, approvalId: 'a1' }) });
+  const getInput = (tenantId = 'team1') => GET_INPUT(new Request('https://x.test/i'), params(tenantId));
+  const reveal = (tenantId = 'team1') => POST_REVEAL(new Request('https://x.test/r', { method: 'POST' }), params(tenantId));
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    h.getSession.mockResolvedValue({ user: { id: 'u1' } });
+    h.checkTeamAccess.mockResolvedValue({ allowed: true, role: 'member', teamId: 'team1' });
+    h.createClient.mockResolvedValue({
+      approveGuard: h.approveGuard, rejectGuard: h.rejectGuard,
+      getGuardApprovalInput: h.getGuardApprovalInput, revealGuardApprovalInput: h.revealGuardApprovalInput,
+    });
+    h.getGuardApprovalInput.mockResolvedValue(VIEW);
+    h.revealGuardApprovalInput.mockResolvedValue({ ...VIEW, revealed: true, revealedByMe: true });
+    h.approveGuard.mockResolvedValue({ decisionId: 'd1', approval: { id: 'a1', status: 'APPROVED' } });
+  });
+
+  it('GET 以当前用户身份转发（团队租户 + 会话用户装配客户端），视图原样返回且不缓存', async () => {
+    const res = await getInput();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(VIEW);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(h.createClient).toHaveBeenCalledWith('team1', 'u1');
+    expect(h.getGuardApprovalInput).toHaveBeenCalledWith('a1');
+  });
+
+  it('未登录 401、非成员 403，均不调 api', async () => {
+    h.getSession.mockResolvedValueOnce(null);
+    expect((await getInput()).status).toBe(401);
+    h.checkTeamAccess.mockResolvedValueOnce({ allowed: false });
+    expect((await reveal()).status).toBe(403);
+    expect(h.createClient).not.toHaveBeenCalled();
+  });
+
+  it('上游 403 reveal_not_permitted / 409 input_snapshot_mismatch·input_not_available / 503 receipt_unavailable 原样映射', async () => {
+    const cases: Array<[number, string]> = [
+      [403, 'reveal_not_permitted'], [409, 'input_not_available'], [503, 'receipt_unavailable'],
+    ];
+    for (const [status, code] of cases) {
+      h.revealGuardApprovalInput.mockRejectedValueOnce(new FakePolicyApiError('上游中文', status, code, undefined,
+        status === 403 ? { verifiedRoles: ['Analyst'] } : undefined));
+      const res = await reveal();
+      const body = await res.json();
+      expect(res.status).toBe(status);
+      expect(body.error).toBe(code);
+      expect(body.message).not.toContain('上游中文');
+      if (status === 403) expect(body.verifiedRoles).toEqual(['Analyst']);
+    }
+    h.approveGuard.mockRejectedValueOnce(new FakePolicyApiError('changed', 409, 'input_snapshot_mismatch'));
+    const mismatch = await post('team1', 'approve', { inputSnapshotHash: 'c'.repeat(64) });
+    expect(mismatch.status).toBe(409);
+    expect((await mismatch.json()).error).toBe('input_snapshot_mismatch');
+  });
+
+  it('旧 api（无输入端点）404 → 200 { status: unavailable }；新 api 的 404 approval_not_found 原样透传', async () => {
+    h.getGuardApprovalInput.mockRejectedValueOnce(new FakePolicyApiError('Not Found', 404));
+    const legacy = await getInput();
+    expect(legacy.status).toBe(200);
+    expect(await legacy.json()).toMatchObject({ status: 'unavailable', approvalId: 'a1' });
+
+    h.getGuardApprovalInput.mockRejectedValueOnce(new FakePolicyApiError('审批不存在', 404, 'approval_not_found'));
+    const missing = await getInput();
+    expect(missing.status).toBe(404);
+    expect((await missing.json()).error).toBe('approval_not_found');
+  });
+
+  it('上游 408 / 5xx / 超时 → 502 upstream_unavailable', async () => {
+    for (const err of [new FakePolicyApiError('timeout', 408, 'TIMEOUT'), new FakePolicyApiError('boom', 500)]) {
+      h.getGuardApprovalInput.mockRejectedValueOnce(err);
+      const res = await getInput();
+      expect(res.status).toBe(502);
+      expect((await res.json()).error).toBe('upstream_unavailable');
+    }
+  });
+
+  it('approve / reject 透传合法 inputSnapshotHash；非法格式 400 invalid_approval，不调 api', async () => {
+    const hash = 'd'.repeat(64);
+    expect((await post('team1', 'approve', { inputSnapshotHash: hash })).status).toBe(200);
+    expect(h.approveGuard).toHaveBeenCalledWith('a1', undefined, hash);
+    await post('team1', 'reject', { comment: 'no', inputSnapshotHash: hash });
+    expect(h.rejectGuard).toHaveBeenCalledWith('a1', 'no', hash);
+
+    h.approveGuard.mockClear();
+    for (const bad of ['D'.repeat(64), 'x', 42, 'a'.repeat(63)]) {
+      const res = await post('team1', 'approve', { inputSnapshotHash: bad });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe('invalid_approval');
+    }
+    expect(h.approveGuard).not.toHaveBeenCalled();
+    // 不带哈希（旧客户端 / 输入不可用）照常
+    expect((await post('team1', 'approve', {})).status).toBe(200);
+    expect(h.approveGuard).toHaveBeenCalledWith('a1', undefined, undefined);
   });
 });
