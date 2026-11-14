@@ -8,6 +8,7 @@
 import { signRequest, signInternalCallerHeaders, type InternalCallerHeaders } from '@/lib/api-signing';
 import { API_ENDPOINTS } from '@/config/api-versions';
 import type {
+  GuardApprovalInput,
   GuardApprovalPage,
   GuardApprovalStatus,
   GuardDecision,
@@ -563,11 +564,29 @@ export class PolicyApiClient {
   }
 
   /** 批准：api 以签名过的 userId 与业务角色判定四眼与角色匹配（403 role_mismatch 时 details 带 verifiedRoles）。 */
-  async approveGuard(id: string, comment?: string): Promise<GuardDecision> {
+  async approveGuard(id: string, comment?: string, inputSnapshotHash?: string): Promise<GuardDecision> {
     assertGuardPathId(id);
     return this.request<GuardDecision>(
-      'POST', API_ENDPOINTS.guardApprovalAction(id, 'approve'), { comment }, GUARD_TIMEOUT_MS
+      'POST', API_ENDPOINTS.guardApprovalAction(id, 'approve'), { comment, inputSnapshotHash }, GUARD_TIMEOUT_MS
     );
+  }
+
+  /**
+   * 审批输入的打码视图（ADR 0042 §12 D8）：以当前用户身份签名；无副作用。
+   * 旧 api 没有该端点时为 404（调用方按「输入不可用」处理）。
+   */
+  async getGuardApprovalInput(id: string): Promise<GuardApprovalInput> {
+    assertGuardPathId(id);
+    return this.request<GuardApprovalInput>('GET', API_ENDPOINTS.guardApprovalInput(id), undefined, GUARD_TIMEOUT_MS);
+  }
+
+  /**
+   * 解除原值（ADR 0042 §12 D5）：api 以签名内的用户与业务角色判定，首次解除按人入链；
+   * 403 reveal_not_permitted / 409 input_not_available / 503 receipt_unavailable 时不含原值。
+   */
+  async revealGuardApprovalInput(id: string): Promise<GuardApprovalInput> {
+    assertGuardPathId(id);
+    return this.request<GuardApprovalInput>('POST', API_ENDPOINTS.guardApprovalInputReveal(id), {}, GUARD_TIMEOUT_MS);
   }
 
   /** 本租户签发方列表（含已吊销），租户取自签名内的 X-Tenant-Id。 */
@@ -591,10 +610,10 @@ export class PolicyApiClient {
   }
 
   /** 驳回：comment 必填（api 侧 400）。 */
-  async rejectGuard(id: string, comment: string): Promise<GuardDecision> {
+  async rejectGuard(id: string, comment: string, inputSnapshotHash?: string): Promise<GuardDecision> {
     assertGuardPathId(id);
     return this.request<GuardDecision>(
-      'POST', API_ENDPOINTS.guardApprovalAction(id, 'reject'), { comment }, GUARD_TIMEOUT_MS
+      'POST', API_ENDPOINTS.guardApprovalAction(id, 'reject'), { comment, inputSnapshotHash }, GUARD_TIMEOUT_MS
     );
   }
 

@@ -18,6 +18,10 @@ const UPSTREAM_MESSAGES: Readonly<Record<string, string>> = {
   receipt_unavailable: 'The decision could not be written to the audit chain. Please try again later.',
   invalid_approval: 'The approver identifier or the comment is too long.',
   user_required: 'Deciding an approval requires a verified user identity.',
+  // 审批输入视图与解除（ADR 0042 §12 D8）
+  reveal_not_permitted: 'Revealing original values requires the business role this approval asks for.',
+  input_not_available: 'The decision input is not available for this approval.',
+  input_snapshot_mismatch: 'The input view has changed. Refresh it and review again.',
   // aster-api GuardFactIssuerResource（ADR 0040 §11 D3）
   invalid_issuer: 'The issuer name, public key or expiry is not valid. The public key must be a 32-byte Ed25519 key in base64url.',
   issuer_key_conflict: 'This key id is already registered with a different public key. Use a new key id to rotate keys.',

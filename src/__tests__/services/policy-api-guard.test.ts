@@ -107,6 +107,35 @@ describe('PolicyApiClient guard 方法', () => {
     expect(JSON.parse(lastCall().init.body as string)).toEqual({ comment: 'no' });
   });
 
+  it('审批输入：GET /input、POST /input/reveal（空对象体）与 approve/reject 透传快照哈希（ADR 0042 §12 D10）', async () => {
+    fetchMock.mockImplementation(async () =>
+      jsonResponse(200, { approvalId: 'a-1', decisionId: 'd-1', status: 'unavailable', revealed: false, revealedByMe: false }),
+    );
+    const client = new PolicyApiClient('team1', 'u-1', 'member', 'unknown', ['DPO']);
+
+    await expect(client.getGuardApprovalInput('a-1')).resolves.toMatchObject({ status: 'unavailable' });
+    expect(lastCall().url).toMatch(/\/api\/v1\/guard\/approvals\/a-1\/input$/);
+    expect(lastCall().init.method).toBe('GET');
+    expect(lastCall().headers['X-Internal-Signature']).toBe(
+      recomputeV3('GET', lastCall().url, undefined, lastCall().headers),
+    );
+
+    await client.revealGuardApprovalInput('a-1');
+    expect(lastCall().url).toMatch(/\/api\/v1\/guard\/approvals\/a-1\/input\/reveal$/);
+    expect(lastCall().init.method).toBe('POST');
+    expect(JSON.parse(lastCall().init.body as string)).toEqual({});
+
+    const hash = 'a'.repeat(64);
+    await client.approveGuard('a-1', undefined, hash);
+    expect(JSON.parse(lastCall().init.body as string)).toEqual({ inputSnapshotHash: hash });
+    await client.rejectGuard('a-1', 'no', hash);
+    expect(JSON.parse(lastCall().init.body as string)).toEqual({ comment: 'no', inputSnapshotHash: hash });
+
+    fetchMock.mockClear();
+    await expect(client.getGuardApprovalInput('../x')).rejects.toMatchObject({ statusCode: 400, code: 'invalid_id' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('403 role_mismatch → PolicyApiError.code 取 error 字段，details 保留 verifiedRoles', async () => {
     fetchMock.mockImplementation(async () =>
       jsonResponse(403, { error: 'role_mismatch', message: 'role required', verifiedRoles: [] }),

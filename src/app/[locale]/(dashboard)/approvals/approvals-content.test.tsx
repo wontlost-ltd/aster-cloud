@@ -25,6 +25,23 @@ vi.mock('@/components/ui', () => ({
 }));
 
 const trackMock = vi.hoisted(() => vi.fn());
+// 输入面板单独测（approval-input-panel.test.tsx）；这里用桩把「展开后加载出的视图」交给收件箱
+const panelView = vi.hoisted(() => ({ current: null as unknown }));
+const panelMounts = vi.hoisted(() => ({ count: 0 }));
+vi.mock('./approval-input-panel', async () => {
+  const { useEffect } = await import('react');
+  return {
+    ApprovalInputPanel: ({ onViewLoaded }: { onViewLoaded: (v: unknown) => void }) => {
+      // 与真实面板一致：只在挂载时交一次视图（父组件每次渲染都会新建回调）
+      useEffect(() => {
+        panelMounts.count += 1;
+        onViewLoaded(panelView.current);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, []);
+      return <div data-testid="panel-stub" />;
+    },
+  };
+});
 vi.mock('@/lib/product-events/client', () => ({ trackProductEvent: trackMock }));
 
 import { ApprovalsContent } from './approvals-content';
@@ -32,7 +49,16 @@ import type { InboxItem } from '@/lib/approvals-inbox';
 import type { PendingVersionApproval } from '@/lib/version-approvals-inbox';
 
 const fetchMock = vi.fn();
-beforeEach(() => vi.stubGlobal('fetch', fetchMock));
+beforeEach(() => {
+  vi.stubGlobal('fetch', fetchMock);
+  panelView.current = null;
+  panelMounts.count = 0;
+});
+
+/** 展开第一行的决策输入（批准 / 拒绝要等视图加载出来）。 */
+function openInput() {
+  fireEvent.click(screen.getAllByText('input.toggleShow')[0]);
+}
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -161,6 +187,7 @@ describe('ApprovalsContent', () => {
 
   it('驳回无理由：本地提示 commentRequired，不发请求', () => {
     renderWith([item('a1')]);
+    openInput();
     fireEvent.click(screen.getByRole('button', { name: 'reject' }));
     fireEvent.click(screen.getByRole('button', { name: 'confirmReject' }));
     expect(screen.getByRole('alert').textContent).toBe('commentRequired');
@@ -174,6 +201,7 @@ describe('ApprovalsContent', () => {
       json: async () => ({ error: 'role_mismatch', message: 'x', verifiedRoles: ['CISO'] }),
     });
     renderWith([item('a1')]);
+    openInput();
     fireEvent.click(screen.getByRole('button', { name: 'approve' }));
     fireEvent.click(screen.getByRole('button', { name: 'confirmApprove' }));
 
@@ -186,6 +214,7 @@ describe('ApprovalsContent', () => {
     async (code) => {
       fetchMock.mockResolvedValue({ ok: false, status: 409, json: async () => ({ error: code, message: '中文原文' }) });
       renderWith([item('a1')]);
+      openInput();
       fireEvent.click(screen.getByRole('button', { name: 'approve' }));
       fireEvent.click(screen.getByRole('button', { name: 'confirmApprove' }));
       await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(`errors.${code}`));
@@ -197,6 +226,7 @@ describe('ApprovalsContent', () => {
       .mockResolvedValueOnce({ ok: true, json: async () => ({ decisionId: 'd-a1' }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ items: [], unavailableTenants: [] }) });
     renderWith([item('a1')]);
+    openInput();
     fireEvent.click(screen.getByRole('button', { name: 'reject' }));
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'too risky' } });
     fireEvent.click(screen.getByRole('button', { name: 'confirmReject' }));
@@ -209,6 +239,7 @@ describe('ApprovalsContent', () => {
   it('提交时网络异常：显示通用错误，按钮恢复可用', async () => {
     fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
     renderWith([item('a1')]);
+    openInput();
     fireEvent.click(screen.getByRole('button', { name: 'approve' }));
     fireEvent.click(screen.getByRole('button', { name: 'confirmApprove' }));
 
@@ -223,6 +254,7 @@ describe('ApprovalsContent', () => {
       json: async () => ({ error: 'forbidden', message: 'Not a member of this tenant.' }),
     });
     renderWith([item('a1')]);
+    openInput();
     fireEvent.click(screen.getByRole('button', { name: 'approve' }));
     fireEvent.click(screen.getByRole('button', { name: 'confirmApprove' }));
 
@@ -236,6 +268,7 @@ describe('ApprovalsContent', () => {
   ])('api %s %o → 本地化文案', async (status, body, text) => {
     fetchMock.mockResolvedValue({ ok: false, status, json: async () => body });
     renderWith([item('a1')]);
+    openInput();
     fireEvent.click(screen.getByRole('button', { name: 'approve' }));
     fireEvent.click(screen.getByRole('button', { name: 'confirmApprove' }));
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(text));
@@ -277,5 +310,79 @@ describe('ApprovalsContent — 需求验证埋点', () => {
     renderWith([item('a1')]);
     expect(trackMock).toHaveBeenCalledTimes(1);
     expect(trackMock).toHaveBeenCalledWith('approvals_inbox_viewed');
+  });
+
+  describe('决策输入与快照哈希（ADR 0042 §12 D10）', () => {
+    const AVAILABLE = { approvalId: 'a1', decisionId: 'd-a1', status: 'available', revealed: false, revealedByMe: false,
+      inputSnapshotHash: 'a'.repeat(64) };
+
+    it('approveDisabledUntilViewLoaded：未展开输入时批准 / 拒绝不可用，并提示先查看输入', () => {
+      renderWith([item('a1')]);
+      expect((screen.getByRole('button', { name: 'approve' }) as HTMLButtonElement).disabled).toBe(true);
+      expect((screen.getByRole('button', { name: 'reject' }) as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByText('input.reviewFirst')).toBeTruthy();
+      openInput();
+      expect((screen.getByRole('button', { name: 'approve' }) as HTMLButtonElement).disabled).toBe(false);
+      expect(screen.queryByText('input.reviewFirst')).toBeNull();
+    });
+
+    it('approveSubmitsDisplayedHash：提交当前展示视图的 inputSnapshotHash', async () => {
+      panelView.current = AVAILABLE;
+      fetchMock
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ decisionId: 'd-a1' }) })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ items: [], unavailableTenants: [] }) });
+      renderWith([item('a1')]);
+      openInput();
+      fireEvent.click(screen.getByRole('button', { name: 'approve' }));
+      fireEvent.click(screen.getByRole('button', { name: 'confirmApprove' }));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ inputSnapshotHash: 'a'.repeat(64) });
+    });
+
+    it('approveAfterRevealSubmitsRevealedHash：面板交来解除视图时提交解除视图的哈希', async () => {
+      panelView.current = { ...AVAILABLE, revealed: true, revealedByMe: true, inputSnapshotHash: 'b'.repeat(64) };
+      fetchMock.mockResolvedValue({ ok: true, json: async () => ({ decisionId: 'd-a1', items: [], unavailableTenants: [] }) });
+      renderWith([item('a1')]);
+      openInput();
+      fireEvent.click(screen.getByRole('button', { name: 'reject' }));
+      fireEvent.change(screen.getByRole('textbox'), { target: { value: 'no' } });
+      fireEvent.click(screen.getByRole('button', { name: 'confirmReject' }));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ comment: 'no', inputSnapshotHash: 'b'.repeat(64) });
+    });
+
+    it('approvesWithoutHashWhenInputUnavailable：视图不可用（null / status ≠ available）时可审批且不带哈希', async () => {
+      for (const view of [null, { ...AVAILABLE, status: 'purged', inputSnapshotHash: undefined }]) {
+        panelView.current = view;
+        fetchMock.mockReset();
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({ decisionId: 'd-a1', items: [], unavailableTenants: [] }) });
+        renderWith([item('a1')]);
+        openInput();
+        fireEvent.click(screen.getByRole('button', { name: 'approve' }));
+        fireEvent.click(screen.getByRole('button', { name: 'confirmApprove' }));
+        await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+        expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({});
+        cleanup();
+      }
+    });
+
+    it('snapshotMismatchShowsRefreshMessage：409 input_snapshot_mismatch 提示刷新后重新审阅', async () => {
+      panelView.current = AVAILABLE;
+      fetchMock.mockResolvedValue({ ok: false, status: 409, json: async () => ({ error: 'input_snapshot_mismatch' }) });
+      renderWith([item('a1')]);
+      openInput();
+      fireEvent.click(screen.getByRole('button', { name: 'approve' }));
+      fireEvent.click(screen.getByRole('button', { name: 'confirmApprove' }));
+      await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('errors.input_snapshot_mismatch'));
+      // 所见视图已过时：面板重新挂载拉取（桩立即交回视图后，对话框重新可提交）
+      expect(panelMounts.count).toBe(2);
+      expect((screen.getByRole('button', { name: 'confirmApprove' }) as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it('只读行同样可以展开输入（无解除权限由面板判定）', () => {
+      renderWith([item('a1', { canAct: false })]);
+      openInput();
+      expect(screen.getByTestId('panel-stub')).toBeTruthy();
+    });
   });
 });

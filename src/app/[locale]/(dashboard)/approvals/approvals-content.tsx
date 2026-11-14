@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
@@ -17,7 +17,8 @@ import { Link } from '@/i18n/navigation';
 import { trackProductEvent } from '@/lib/product-events/client';
 import type { InboxItem } from '@/lib/approvals-inbox';
 import type { PendingVersionApproval } from '@/lib/version-approvals-inbox';
-import type { GuardApprovalStatus } from '@/services/policy/guard-types';
+import type { GuardApprovalInput, GuardApprovalStatus } from '@/services/policy/guard-types';
+import { ApprovalInputPanel } from './approval-input-panel';
 
 // 与服务端 GUARD_APPROVAL_STATUSES 同序；客户端组件不能引入 server-only 模块，故在此重列
 const STATUSES: readonly GuardApprovalStatus[] = ['PENDING', 'APPROVED', 'REJECTED', 'EXPIRED'];
@@ -69,6 +70,8 @@ function errorText(t: T, body: ApiErrorBody, item: InboxItem): string {
       return t('errors.segregation_of_duties');
     case 'approval_not_pending':
       return t('errors.approval_not_pending');
+    case 'input_snapshot_mismatch':
+      return t('errors.input_snapshot_mismatch');
     case 'comment_required':
       return t('commentRequired');
     case 'forbidden':
@@ -98,16 +101,36 @@ function actionOf(item: InboxItem): string {
   return [item.actionName, resource].filter(Boolean).join(' → ') || '—';
 }
 
-function RowActions({ item, t, onPick }: { item: InboxItem; t: T; onPick: (item: InboxItem, verb: Verb) => void }) {
+/**
+ * 收件箱对某条审批已取得的输入视图：undefined = 未展开 / 加载中；null = 不可用（旧 api、网络错误）；
+ * 其余为面板当前展示的视图（打码或本人解除后的视图）。
+ */
+type LoadedView = GuardApprovalInput | null | undefined;
+
+function keyOf(item: InboxItem): string {
+  return `${item.tenantId}:${item.id}`;
+}
+
+/**
+ * 批准 / 拒绝要等输入视图加载出来（ADR 0042 §12 D10）：审批人先看过输入再下结论，提交时带上所见视图的哈希。
+ * 视图不可用（null 或 status ≠ available）时直接可用、不带哈希。
+ */
+function RowActions({ item, view, t, onPick }: {
+  item: InboxItem; view: LoadedView; t: T; onPick: (item: InboxItem, verb: Verb) => void;
+}) {
   if (item.canAct) {
+    const ready = view !== undefined;
     return (
-      <div className="flex gap-2">
-        <Button size="sm" variant="primary" onClick={() => onPick(item, 'approve')}>
-          {t('approve')}
-        </Button>
-        <Button size="sm" variant="secondary" onClick={() => onPick(item, 'reject')}>
-          {t('reject')}
-        </Button>
+      <div className="flex flex-col gap-1">
+        <div className="flex gap-2">
+          <Button size="sm" variant="primary" onClick={() => onPick(item, 'approve')} disabled={!ready}>
+            {t('approve')}
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => onPick(item, 'reject')} disabled={!ready}>
+            {t('reject')}
+          </Button>
+        </div>
+        {!ready && <span className="text-xs text-fg-muted">{t('input.reviewFirst')}</span>}
       </div>
     );
   }
@@ -126,18 +149,31 @@ function RowActions({ item, t, onPick }: { item: InboxItem; t: T; onPick: (item:
   );
 }
 
+/** 提交审批时随附的快照哈希：只有可用视图才有。 */
+function snapshotHashOf(view: LoadedView): string | undefined {
+  return view && view.status === 'available' ? view.inputSnapshotHash : undefined;
+}
+
 function DecisionDialog({
   item,
   verb,
+  inputSnapshotHash,
   t,
   onCancel,
   onDone,
+  onStaleInput,
+  ready,
 }: {
   item: InboxItem;
   verb: Verb;
+  inputSnapshotHash: string | undefined;
   t: T;
   onCancel: () => void;
   onDone: () => void;
+  /** 409 input_snapshot_mismatch：所见视图已过时，让输入面板重新拉取 */
+  onStaleInput: () => void;
+  /** 输入视图已就绪（重新拉取期间为 false，此时不得提交——否则会以缺失的哈希提交） */
+  ready: boolean;
 }) {
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -156,10 +192,12 @@ function DecisionDialog({
       const r = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ comment: comment.trim() || undefined }),
+        body: JSON.stringify({ comment: comment.trim() || undefined, inputSnapshotHash }),
       });
       if (r.ok) return onDone();
-      setError(errorText(t, (await r.json().catch(() => ({}))) as ApiErrorBody, item));
+      const body = (await r.json().catch(() => ({}))) as ApiErrorBody;
+      setError(errorText(t, body, item));
+      if (body.error === 'input_snapshot_mismatch') onStaleInput();
     } catch {
       // 网络异常（离线、连接被重置）：不暴露底层报错，给通用提示
       setError(t('errors.generic'));
@@ -181,7 +219,7 @@ function DecisionDialog({
       </div>
       {error && <Alert variant="danger" className="mt-3">{error}</Alert>}
       <div className="mt-3 flex gap-2">
-        <Button variant={verb === 'approve' ? 'primary' : 'destructive'} onClick={submit} disabled={submitting}>
+        <Button variant={verb === 'approve' ? 'primary' : 'destructive'} onClick={submit} disabled={submitting || !ready}>
           {submitting ? t('submitting') : t(verb === 'approve' ? 'confirmApprove' : 'confirmReject')}
         </Button>
         <Button variant="ghost" onClick={onCancel} disabled={submitting}>
@@ -259,6 +297,11 @@ export function ApprovalsContent({
   const [unavailable, setUnavailable] = useState<string[]>(initialUnavailable);
   const [loadError, setLoadError] = useState(false);
   const [picked, setPicked] = useState<{ item: InboxItem; verb: Verb } | null>(null);
+  // 展开的行与各行已加载的输入视图（键为 tenantId:approvalId）；输入只在展开时拉取，不随列表首屏加载
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [views, setViews] = useState<Record<string, LoadedView>>({});
+  // 每行输入面板的重载计数：作为面板 key 的一部分，递增即重新挂载并重新拉取
+  const [reloads, setReloads] = useState<Record<string, number>>({});
   // 当前在途的列表请求：快速切换 tab 时中止旧请求，并丢弃晚到的旧响应
   const inflight = useRef<AbortController | null>(null);
 
@@ -277,6 +320,8 @@ export function ApprovalsContent({
   const load = async (next: GuardApprovalStatus) => {
     setStatus(next);
     setPicked(null);
+    setExpanded({});
+    setViews({});
     inflight.current?.abort();
     const controller = new AbortController();
     inflight.current = controller;
@@ -339,13 +384,20 @@ export function ApprovalsContent({
             <tbody>
               {items.map((item) => {
                 const highlighted = item.decisionId === highlightDecisionId;
+                const key = keyOf(item);
+                const open = !!expanded[key];
                 return (
-                  <tr key={`${item.tenantId}:${item.id}`} data-decision-id={item.decisionId}
+                  <Fragment key={key}>
+                  <tr data-decision-id={item.decisionId}
                     data-highlighted={highlighted ? 'true' : undefined}
                     className={`border-b border-border ${highlighted ? 'bg-primary/10 ring-2 ring-inset ring-primary' : ''}`}>
                     <td className="px-4 py-3">
                       <div className="font-medium text-fg">{subjectOf(item)}</div>
                       {item.reason && <div className="mt-1 text-xs text-fg-muted">{item.reason}</div>}
+                      <button type="button" className="mt-1 text-xs text-primary underline" aria-expanded={open}
+                        onClick={() => setExpanded((e) => ({ ...e, [key]: !open }))}>
+                        {t(open ? 'input.toggleHide' : 'input.toggleShow')}
+                      </button>
                     </td>
                     <td className="px-4 py-3 text-fg-muted">{actionOf(item)}</td>
                     <td className="px-4 py-3">{item.requiredRole ?? t('anyMember')}</td>
@@ -363,9 +415,20 @@ export function ApprovalsContent({
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <RowActions item={item} t={t} onPick={(it, verb) => setPicked({ item: it, verb })} />
+                      <RowActions item={item} view={views[key]} t={t}
+                        onPick={(it, verb) => setPicked({ item: it, verb })} />
                     </td>
                   </tr>
+                  {open && (
+                    <tr className="border-b border-border bg-bg-subtle" data-input-row={key}>
+                      <td colSpan={7} className="px-4 py-3">
+                        <ApprovalInputPanel key={reloads[key] ?? 0} tenantId={item.tenantId} approvalId={item.id}
+                          canReveal={item.canAct && item.requiredRole != null}
+                          onViewLoaded={(view) => setViews((v) => ({ ...v, [key]: view }))} />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -374,7 +437,14 @@ export function ApprovalsContent({
       )}
 
       {picked && (
-        <DecisionDialog key={`${picked.item.id}:${picked.verb}`} item={picked.item} verb={picked.verb} t={t}
+        <DecisionDialog key={`${picked.item.id}:${picked.verb}`} item={picked.item} verb={picked.verb}
+          inputSnapshotHash={snapshotHashOf(views[keyOf(picked.item)])} t={t}
+          ready={views[keyOf(picked.item)] !== undefined}
+          onStaleInput={() => {
+            const key = keyOf(picked.item);
+            setViews((v) => ({ ...v, [key]: undefined }));
+            setReloads((r) => ({ ...r, [key]: (r[key] ?? 0) + 1 }));
+          }}
           onCancel={() => setPicked(null)} onDone={() => load(status)} />
       )}
     </Container>
