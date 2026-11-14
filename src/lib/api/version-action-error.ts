@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { ErrorEnvelopeBody } from '@/lib/api/error-envelope';
+import { GuardDeployError } from '@/lib/guard-policy-deploy';
 import { VersionStateError } from '@/services/policy/version-state-error';
 
 /**
@@ -26,6 +27,13 @@ export function versionActionErrorResponse(logTag: string, error: unknown, fallb
     return NextResponse.json(
       { error: error.message, code: error.code, message: error.message },
       { status: 400 },
+    );
+  }
+  // Guard 部署失败（aster-api ADR 0054 §11 D1）：默认版本未变更；503 可重试，409 / 422 带 aster-api 错误码。
+  if (error instanceof GuardDeployError) {
+    return NextResponse.json(
+      { error: error.message, code: error.error, message: error.message },
+      { status: error.status >= 400 && error.status < 600 ? error.status : 503 },
     );
   }
   return internalErrorResponse(logTag, error, fallbackMessage);

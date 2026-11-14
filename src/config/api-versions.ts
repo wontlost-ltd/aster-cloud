@@ -49,6 +49,10 @@ export const API_ENDPOINTS = {
   guardFactIssuer: (issuer: string, kid: string) =>
     `${prefix}/guard/fact-issuers/${encodeURIComponent(issuer)}/${encodeURIComponent(kid)}`,
 
+  /** cloud 策略部署到 aster-api Guard（ADR 0054 §11 D1）：cloud 策略 id 为 cuid / uuid，URL 安全。 */
+  guardPolicyDeployment: (cloudPolicyId: string) =>
+    `${prefix}/guard/policy-deployments/${encodeURIComponent(cloudPolicyId)}`,
+
   // 健康检查
   healthLive: '/q/health/live',
   healthReady: '/q/health/ready',
