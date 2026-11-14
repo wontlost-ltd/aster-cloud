@@ -220,6 +220,7 @@ Policies, deren Einstiegsregel ein `Verdict` liefert, geben zusätzlich `decisio
 | `422 Unprocessable Entity` | `code: "execution_timeout"` – die Evaluierung hat das Zeitlimit überschritten. `code: "output_too_deep"`, `"output_cyclic"` oder `"output_invalid_key"` – das Ergebnis lässt sich nicht als JSON zurückgeben. |
 | `429 Too Many Requests` | `error: "rate_limit_exceeded"` – das Limit an Anfragen pro Sekunde für den Schlüssel ist überschritten; nach dem `Retry-After`-Header erneut versuchen (Body: `error`, `message`, `rps_limit`, `rps_used`). `error: "api_quota_hard_exceeded"` – das harte monatliche API-Kontingent ist überschritten; ohne `Retry-After`, ein erneuter Versuch hilft erst nach dem Zurücksetzen des Kontingents oder einem Tarifwechsel (Body: `error`, `message`, `limit`, `used`). Beide Bodies enthalten keine Evaluierungsfelder. |
 | `500 Internal Server Error` | `code: "evaluation_failed"` – die Policy ist zur Laufzeit fehlgeschlagen (ohne interne Details). |
+| `503 Service Unavailable` | `error: "plan_check_unavailable"` – die Tarifprüfung ist vorübergehend nicht verfügbar; nach dem `Retry-After`-Header erneut versuchen (Body: `error`, `message`). |
 
 ## Beispiele
 

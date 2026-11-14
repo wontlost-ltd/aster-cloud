@@ -220,6 +220,7 @@ Policies whose entry rule returns a `Verdict` additionally return `decision`, an
 | `422 Unprocessable Entity` | `code: "execution_timeout"` — the evaluation exceeded the wall-clock limit. `code: "output_too_deep"`, `"output_cyclic"` or `"output_invalid_key"` — the result cannot be returned as JSON. |
 | `429 Too Many Requests` | `error: "rate_limit_exceeded"` — the per-key requests-per-second limit was exceeded; retry after the `Retry-After` header (body: `error`, `message`, `rps_limit`, `rps_used`). `error: "api_quota_hard_exceeded"` — the monthly API quota hard limit was exceeded; there is no `Retry-After` and retrying does not help until the quota resets or the plan changes (body: `error`, `message`, `limit`, `used`). Neither body has the evaluation response fields. |
 | `500 Internal Server Error` | `code: "evaluation_failed"` — the policy failed at run time (no internal details are returned). |
+| `503 Service Unavailable` | `error: "plan_check_unavailable"` — the plan entitlement check is temporarily unavailable; retry after the `Retry-After` header (body: `error`, `message`). |
 
 ## Examples
 

@@ -220,6 +220,7 @@ Rule calculate given order as Order, produce Int:
 | `422 Unprocessable Entity` | `code: "execution_timeout"`——评估超过墙钟时限。`code: "output_too_deep"`、`"output_cyclic"` 或 `"output_invalid_key"`——结果无法以 JSON 返回。 |
 | `429 Too Many Requests` | `error: "rate_limit_exceeded"`——超过单个 key 的每秒请求上限，按 `Retry-After` 头重试（响应体：`error`、`message`、`rps_limit`、`rps_used`）。`error: "api_quota_hard_exceeded"`——超过本月 API 配额硬上限，不带 `Retry-After`，在配额重置或升级套餐之前重试无效（响应体：`error`、`message`、`limit`、`used`）。两者都不是评估响应。 |
 | `500 Internal Server Error` | `code: "evaluation_failed"`——策略运行时失败（不返回内部细节）。 |
+| `503 Service Unavailable` | `error: "plan_check_unavailable"`——套餐权益校验暂不可用，按 `Retry-After` 头重试（响应体：`error`、`message`）。 |
 
 ## 示例
 
