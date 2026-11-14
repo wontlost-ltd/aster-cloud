@@ -3,12 +3,22 @@
  * 仅服务于 local-stack 目录下的用例，不得被生产冒烟用例引用。
  */
 import { execFileSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createPublicKey, randomUUID, verify } from 'node:crypto';
 import { join } from 'node:path';
+import { jcsCanonicalize } from '@/lib/jcs';
 
-// 只在 BASE_CLOUD 指向 localhost 时运行，杜绝误打生产
-export const NOT_LOCAL = !process.env.BASE_CLOUD?.includes('localhost');
-export const NOT_LOCAL_REASON = '仅针对本地 aster-cloud 栈（BASE_CLOUD 需包含 localhost）';
+// 只在 BASE_CLOUD（以及显式设置的 BASE_API）指向 localhost 时运行，杜绝误打生产：用例会经 BASE_API 写 guard 收据
+// 按解析后的主机名判断（只认回环主机），子串匹配会放过 https://localhost.attacker.example 之类的地址
+function isLoopback(url: string | undefined): boolean {
+  try {
+    return ['localhost', '127.0.0.1', '[::1]'].includes(new URL(url ?? '').hostname);
+  } catch {
+    return false;
+  }
+}
+export const NOT_LOCAL = !isLoopback(process.env.BASE_CLOUD)
+  || (process.env.BASE_API !== undefined && !isLoopback(process.env.BASE_API));
+export const NOT_LOCAL_REASON = '仅针对本地 aster 栈（BASE_CLOUD 需包含 localhost；设置了 BASE_API 时它也须包含 localhost）';
 
 // 会话夹具目录，由 scripts/e2e-local-session.ts 在容器内生成
 const STATE_DIR = process.env.E2E_STATE_DIR || join(process.cwd(), '.superpowers/e2e-local');
@@ -96,4 +106,103 @@ export async function seedPendingCloudExecution(apiKey: string): Promise<string>
     throw new Error(`执行已记录但未关联 guard decisionId：${JSON.stringify(decisionId)}`);
   }
   return decisionId;
+}
+
+/** aster-api 端点的 Bearer 调用（guard / audit）；返回状态码与原文体（体可能为空，例如 404）。 */
+export async function apiCall(
+  method: 'GET' | 'POST',
+  path: string,
+  apiKey: string,
+  body?: unknown,
+): Promise<{ status: number; text: string; json: Record<string, unknown> | null }> {
+  const res = await fetch(`${BASE_API}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await res.text();
+  let json: Record<string, unknown> | null = null;
+  try {
+    json = text ? (JSON.parse(text) as Record<string, unknown>) : null;
+  } catch {
+    json = null;
+  }
+  return { status: res.status, text, json };
+}
+
+export const apiGet = (path: string, apiKey: string) => apiCall('GET', path, apiKey);
+export const apiPost = (path: string, apiKey: string, body: unknown) => apiCall('POST', path, apiKey, body);
+
+/** aster-api 签发的执行收据（ADR 0040 §12 D1）。 */
+export interface ExecutionReceipt {
+  kid: string;
+  payload: {
+    actionHash: string;
+    decisionId: string;
+    expiresAt: string;
+    issuedAt: string;
+    kid: string;
+    outcome: string;
+    policyVersionId?: number;
+    tenantId: string;
+    v: number;
+  };
+  revision?: number;
+  signature: string;
+}
+
+/** JWKS 中的一把 OKP 公钥（RFC 8037）。 */
+export interface OkpJwk {
+  kid?: string;
+  kty?: string;
+  crv?: string;
+  x?: string;
+}
+
+export type ReceiptVerdict =
+  | 'ok'
+  | 'kid_unknown'
+  | 'bad_signature'
+  | 'tenant_mismatch'
+  | 'decision_mismatch'
+  | 'not_allow'
+  | 'not_yet_valid'
+  | 'expired';
+
+/**
+ * 执行方本地验签（ADR 0040 §12 D6 顺序）：kid ∈ JWKS → Ed25519 作用于 payload 的 JCS 字节串 →
+ * tenantId / decisionId / outcome → 时间窗 {@code issuedAt − 60s <= now < expiresAt}。
+ * 与 aster-api 绕过套件的参考执行方（`io.aster.guard.bypass.ReferenceExecutor`）同一顺序；actionHash 由调用方另行比对。
+ */
+export function verifyExecutionReceipt(
+  receipt: ExecutionReceipt,
+  jwks: { keys: OkpJwk[] },
+  expected: { tenantId: string; decisionId: string; now: Date },
+): ReceiptVerdict {
+  const jwk = jwks.keys.find((k) => k.kid === receipt.kid && k.kty === 'OKP' && k.crv === 'Ed25519');
+  if (!jwk || receipt.payload.kid !== receipt.kid) return 'kid_unknown';
+  let valid = false;
+  try {
+    const key = createPublicKey({ key: { kty: 'OKP', crv: 'Ed25519', x: jwk.x }, format: 'jwk' });
+    // 严格 base64url（无填充、仅 URL 安全字母表）：Buffer 会宽松接受非规范输入
+    if (!/^[A-Za-z0-9_-]{86}$/.test(receipt.signature)) return 'bad_signature';
+    const signature = Buffer.from(receipt.signature, 'base64url');
+    if (signature.toString('base64url') !== receipt.signature) return 'bad_signature';
+    valid = signature.length === 64
+      && verify(null, Buffer.from(jcsCanonicalize(receipt.payload), 'utf8'), key, signature);
+  } catch {
+    valid = false;
+  }
+  if (!valid) return 'bad_signature';
+  const p = receipt.payload;
+  if (p.tenantId !== expected.tenantId) return 'tenant_mismatch';
+  if (p.decisionId !== expected.decisionId) return 'decision_mismatch';
+  if (p.outcome !== 'ALLOW' || p.v !== 1) return 'not_allow';
+  const now = expected.now.getTime();
+  if (now < Date.parse(p.issuedAt) - 60_000) return 'not_yet_valid';
+  if (now >= Date.parse(p.expiresAt)) return 'expired';
+  return 'ok';
 }
