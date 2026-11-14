@@ -90,9 +90,9 @@ describe('vocabularyScopesJson', () => {
 });
 
 describe('cloudToolchainId', () => {
-  it('含 ABI 1.1、resolver 与 casefold 分量', () => {
+  it('含 ABI 2.0（Core IR v2，ADR 0055）、resolver 与 casefold 分量', () => {
     expect(cloudToolchainId()).toMatch(
-      /^abi=1\.1;core=ts;validator=[^;]+;resolver=1;casefold=15\.1;build=[^;]+$/,
+      /^abi=2\.0;core=ts;validator=[^;]+;resolver=1;casefold=15\.1;build=[^;]+$/,
     );
   });
 });

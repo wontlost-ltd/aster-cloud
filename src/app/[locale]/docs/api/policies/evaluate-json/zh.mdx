@@ -1,13 +1,13 @@
 ---
 title: "评估 Core IR JSON 策略"
-description: "直接评估以 Core IR JSON 对象形式表达的策略，无需 CNL 解析或编译。当你的应用自行管理编译流水线并向引擎发送预编译的策略表示时，使用此端点。"
-updated: 2026-06-03
+description: "直接评估以 Core IR v2 JSON 文档表达的策略，无需 CNL 解析或编译。当你的应用自行编译策略并向引擎发送编译结果时，使用此端点。"
+updated: 2026-11-14
 apiVersion: v1
 ---
 
 # 评估 Core IR JSON 策略
 
-直接评估以 Core IR JSON 对象形式表达的策略，无需 CNL 解析或编译。当你的应用自行管理编译流水线并向引擎发送预编译的策略表示时，使用此端点。
+直接评估以 Core IR JSON 文档表达的策略，无需 CNL 解析或编译。当你的应用自行编译策略（例如在浏览器中使用 `@aster-cloud/aster-lang-ts`）并向引擎发送编译结果时，使用此端点。
 
 ## 端点
 
@@ -29,43 +29,162 @@ apiVersion: v1
 
 ```json
 {
-  "policy": "string (Core IR JSON)",
+  "policy": "string (Core IR v2 JSON)",
   "context": {}
 }
 ```
 
 | 字段 | 类型 | 必需 | 描述 |
 |-------|------|----------|-------------|
-| `policy` | `string` | 是 | 包含策略 Core IR 表示的 JSON 编码字符串。这是 Aster 编译器 IR 发射阶段产生的序列化形式。引擎直接反序列化并执行此 IR，跳过所有 CNL 解析步骤。 |
+| `policy` | `string` | 是 | 包含 **Core IR v2** 模块（`"schemaVersion": 2`）的 JSON 编码字符串。直接提交 `@aster-cloud/aster-lang-ts` 2.x 的 `compile()` 返回的 `coreJson` 字符串，不要改动。引擎按 Core IR v2 schema 严格读入后执行，跳过所有 CNL 解析步骤。 |
 | `context` | `object` | 是 | 单个对象，其键映射到 Core IR 中入口函数声明的参数名。 |
 
 ### Core IR JSON 格式
 
-`policy` 字段必须是符合 Core IR schema 的字符串化 JSON 对象。包含单个函数的最小示例：
+`policy` 字符串必须是符合 Core IR v2 JSON Schema 的文档：顶层对象含 `"schemaVersion": 2`（JSON 整数）、`"kind": "Module"`、`name`、`profile`、`origin` 与 `decls`。所有字段恒输出——缺省的标量与对象为 `null`，缺省的列表为 `[]`——未知字段会被拒收。不要手写这份 JSON：编译 CNL 源码后原样发送 `coreJson`。
+
+下例就是 `compile()` 对这段源码产出的 `coreJson`：
+
+```text
+Module Discount.
+
+Define Order has total as Int.
+
+Rule calculate given order as Order, produce Int:
+  If order.total greater than 100
+    Return 10.
+  Otherwise
+    Return 0.
+```
+
+为便于阅读做了格式化（每个 `origin` 对象折叠为一行；实际发送的是紧凑的 `coreJson` 字符串）：
 
 ```json
 {
-  "moduleName": "Discount",
-  "functions": [
+  "decls": [
     {
-      "name": "calculate",
-      "params": [{ "name": "order", "type": "Order" }],
-      "rules": [
+      "fields": [
         {
-          "condition": { "op": "gt", "left": { "ref": "order.total" }, "right": { "lit": 100 } },
-          "result": { "lit": 10 }
-        },
-        {
-          "condition": null,
-          "result": { "lit": 0 }
+          "annotations": [],
+          "constraints": [],
+          "name": "total",
+          "type": {
+            "kind": "TypeName",
+            "name": "Int",
+            "origin": { "end": { "col": 30, "line": 3 }, "file": null, "role": null, "start": { "col": 27, "line": 3 }, "written": null }
+          },
+          "typeInferred": false
         }
-      ]
+      ],
+      "kind": "Data",
+      "name": "Order",
+      "origin": { "end": { "col": 31, "line": 3 }, "file": null, "role": null, "start": { "col": 1, "line": 3 }, "written": null }
+    },
+    {
+      "annotations": [],
+      "body": {
+        "kind": "Block",
+        "origin": { "end": { "col": 14, "line": 9 }, "file": null, "role": null, "start": { "col": 3, "line": 6 }, "written": null },
+        "statements": [
+          {
+            "cond": {
+              "args": [
+                {
+                  "kind": "Name",
+                  "name": "order.total",
+                  "origin": { "end": { "col": 17, "line": 6 }, "file": null, "role": null, "start": { "col": 6, "line": 6 }, "written": null }
+                },
+                {
+                  "kind": "Int",
+                  "origin": { "end": { "col": 34, "line": 6 }, "file": null, "role": null, "start": { "col": 31, "line": 6 }, "written": null },
+                  "value": 100
+                }
+              ],
+              "kind": "Call",
+              "origin": { "end": { "col": 34, "line": 6 }, "file": null, "role": null, "start": { "col": 6, "line": 6 }, "written": null },
+              "target": {
+                "kind": "Name",
+                "name": ">",
+                "origin": { "end": { "col": 25, "line": 6 }, "file": null, "role": null, "start": { "col": 18, "line": 6 }, "written": null }
+              }
+            },
+            "elseBlock": {
+              "kind": "Block",
+              "origin": { "end": { "col": 14, "line": 9 }, "file": null, "role": null, "start": { "col": 5, "line": 9 }, "written": null },
+              "statements": [
+                {
+                  "expr": {
+                    "kind": "Int",
+                    "origin": { "end": { "col": 13, "line": 9 }, "file": null, "role": null, "start": { "col": 12, "line": 9 }, "written": null },
+                    "value": 0
+                  },
+                  "kind": "Return",
+                  "origin": { "end": { "col": 14, "line": 9 }, "file": null, "role": null, "start": { "col": 5, "line": 9 }, "written": null }
+                }
+              ]
+            },
+            "kind": "If",
+            "origin": { "end": { "col": 14, "line": 9 }, "file": null, "role": null, "start": { "col": 3, "line": 6 }, "written": null },
+            "thenBlock": {
+              "kind": "Block",
+              "origin": { "end": { "col": 15, "line": 7 }, "file": null, "role": null, "start": { "col": 5, "line": 7 }, "written": null },
+              "statements": [
+                {
+                  "expr": {
+                    "kind": "Int",
+                    "origin": { "end": { "col": 14, "line": 7 }, "file": null, "role": null, "start": { "col": 12, "line": 7 }, "written": null },
+                    "value": 10
+                  },
+                  "kind": "Return",
+                  "origin": { "end": { "col": 15, "line": 7 }, "file": null, "role": null, "start": { "col": 5, "line": 7 }, "written": null }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "effectCaps": [],
+      "effectCapsExplicit": false,
+      "effectParams": [],
+      "effects": [],
+      "inputRefs": null,
+      "kind": "Func",
+      "name": "calculate",
+      "origin": { "end": { "col": 14, "line": 9 }, "file": null, "role": null, "start": { "col": 1, "line": 5 }, "written": null },
+      "params": [
+        {
+          "annotations": [],
+          "constraints": [],
+          "name": "order",
+          "type": {
+            "kind": "TypeName",
+            "name": "Order",
+            "origin": { "end": { "col": 36, "line": 5 }, "file": null, "role": null, "start": { "col": 31, "line": 5 }, "written": null }
+          },
+          "typeInferred": false
+        }
+      ],
+      "ret": {
+        "kind": "TypeName",
+        "name": "Int",
+        "origin": { "end": { "col": 49, "line": 5 }, "file": null, "role": null, "start": { "col": 46, "line": 5 }, "written": null }
+      },
+      "retAnnotations": [],
+      "retTypeInferred": false,
+      "typeParams": []
     }
-  ]
+  ],
+  "kind": "Module",
+  "name": "Discount",
+  "origin": { "end": { "col": 1, "line": 10 }, "file": null, "role": null, "start": { "col": 1, "line": 1 }, "written": null },
+  "profile": null,
+  "schemaVersion": 2
 }
 ```
 
-将其作为请求中 `policy` 字段嵌入时，对象必须被 JSON 字符串化（即整个对象成为一个字符串值）。
+旧版编译器产出的 Core IR（没有 `schemaVersion`）以及其它形状的手写 IR 都会以 `400` 拒收，`code` 为 `"unsupported_schema_version"` 或 `"invalid_request"`，不会被执行。
+
+将其作为请求中 `policy` 字段嵌入时，IR 必须是 JSON 字符串（即整个文档成为一个字符串值）。
 
 ## 响应体
 
@@ -74,7 +193,7 @@ apiVersion: v1
   "result": "<any>",
   "executionTimeMs": 0,
   "error": null,
-  "decisionTrace": null
+  "evidence": { "correlationId": "<uuid>" }
 }
 ```
 
@@ -82,18 +201,26 @@ apiVersion: v1
 |-------|------|-------------|
 | `result` | `any` | Core IR 中入口函数返回的值。 |
 | `executionTimeMs` | `number` | 从 IR 反序列化到响应分发的挂钟时间（毫秒）。 |
-| `error` | `string \| null` | IR 反序列化或运行时错误消息；成功时为 `null`。 |
-| `decisionTrace` | `object \| null` | 此端点始终为 `null`。Core IR 评估不支持追踪。 |
+| `error` | `string \| null` | 错误消息；成功时为 `null`。 |
+| `code` | `string` | 机器可读的错误码；仅失败时出现（见状态码表）。 |
+| `field` | `string` | 缺少的输入字段路径；仅在 `code: "missing_input_field"` 时出现。 |
+| `evidence` | `object \| absent` | 本次评估的证据引用；`correlationId` 把响应与审计链关联起来。成功时总会返回。错误响应（包括 `execution_timeout` 与 `evaluation_failed`）不带该字段，也不入审计链；唯一例外是策略已执行完、处理结果时才发生的失败，这种失败会入链并返回 `evidence`。 |
+
+入口规则返回 `Verdict` 的策略还会返回 `decision`；规则带 `@id` / `@control` 注解时另返回 `ruleId` / `controls`。
 
 ## HTTP 状态码
 
 | 状态 | 含义 |
 |--------|---------|
-| `200 OK` | 已尝试评估。检查 `error` 确认是否有 IR 解析或运行时故障。 |
-| `400 Bad Request` | 请求体格式错误、Core IR JSON 无效或缺少必需字段。 |
+| `200 OK` | 评估成功。 |
+| `400 Bad Request` | `code: "unsupported_schema_version"`——`policy` 不是 Core IR v2（缺少 `schemaVersion`，或不是整数 `2`）。`code: "invalid_request"`——Core IR 未通过 schema 或不变式检查（例如有未知字段或缺字段）、`agent` 不合法，或 `context` 无法映射到入口函数参数。`code: "function_not_executable"`——被选为入口的函数不能直接执行（消息中说明应调用哪个函数）。`code: "missing_input_field"`——`context` 缺少规则读取的字段（`field` 给出路径）。`code: "input_too_deep"`、`"input_cyclic"`、`"input_invalid_key"` 或 `"input_unsupported_value"`——`context` 的形态不受支持。 |
 | `401 Unauthorized` | 缺少或无效的 Bearer token。 |
-| `403 Forbidden` | Token 有效但调用者缺少 `MEMBER` 角色。 |
-| `500 Internal Server Error` | 非预期的引擎故障。 |
+| `403 Forbidden` | Token 有效但调用者缺少 `MEMBER` 角色，或所在套餐不含 Policy Execution API（`error: "api_access_denied"`，响应体只有 `error` / `message`）。 |
+| `404 Not Found` | `code: "function_not_found"`——Core IR 中没有可执行的函数。 |
+| `422 Unprocessable Entity` | `code: "execution_timeout"`——评估超过墙钟时限。`code: "output_too_deep"`、`"output_cyclic"` 或 `"output_invalid_key"`——结果无法以 JSON 返回。 |
+| `429 Too Many Requests` | `error: "rate_limit_exceeded"`——超过单个 key 的每秒请求上限，按 `Retry-After` 头重试（响应体：`error`、`message`、`rps_limit`、`rps_used`）。`error: "api_quota_hard_exceeded"`——超过本月 API 配额硬上限，不带 `Retry-After`，在配额重置或升级套餐之前重试无效（响应体：`error`、`message`、`limit`、`used`）。两者都不是评估响应。 |
+| `500 Internal Server Error` | `code: "evaluation_failed"`——策略运行时失败（不返回内部细节）。 |
+| `503 Service Unavailable` | `error: "plan_check_unavailable"`——套餐权益校验暂不可用，按 `Retry-After` 头重试（响应体：`error`、`message`）。 |
 
 ## 示例
 
@@ -105,7 +232,7 @@ curl -X POST https://policy.aster-lang.dev/api/v1/policies/evaluate-json \
   -H "Content-Type: application/json" \
   -H "X-Tenant-ID: acme-corp" \
   -d '{
-    "policy": "{\"moduleName\":\"Discount\",\"functions\":[{\"name\":\"calculate\",\"params\":[{\"name\":\"order\",\"type\":\"Order\"}],\"rules\":[{\"condition\":{\"op\":\"gt\",\"left\":{\"ref\":\"order.total\"},\"right\":{\"lit\":100}},\"result\":{\"lit\":10}},{\"condition\":null,\"result\":{\"lit\":0}}]}]}",
+    "policy": "{\"decls\":[{\"fields\":[{\"annotations\":[],\"constraints\":[],\"name\":\"total\",\"type\":{\"kind\":\"TypeName\",\"name\":\"Int\",\"origin\":{\"end\":{\"col\":30,\"line\":3},\"file\":null,\"role\":null,\"start\":{\"col\":27,\"line\":3},\"written\":null}},\"typeInferred\":false}],\"kind\":\"Data\",\"name\":\"Order\",\"origin\":{\"end\":{\"col\":31,\"line\":3},\"file\":null,\"role\":null,\"start\":{\"col\":1,\"line\":3},\"written\":null}},{\"annotations\":[],\"body\":{\"kind\":\"Block\",\"origin\":{\"end\":{\"col\":14,\"line\":9},\"file\":null,\"role\":null,\"start\":{\"col\":3,\"line\":6},\"written\":null},\"statements\":[{\"cond\":{\"args\":[{\"kind\":\"Name\",\"name\":\"order.total\",\"origin\":{\"end\":{\"col\":17,\"line\":6},\"file\":null,\"role\":null,\"start\":{\"col\":6,\"line\":6},\"written\":null}},{\"kind\":\"Int\",\"origin\":{\"end\":{\"col\":34,\"line\":6},\"file\":null,\"role\":null,\"start\":{\"col\":31,\"line\":6},\"written\":null},\"value\":100}],\"kind\":\"Call\",\"origin\":{\"end\":{\"col\":34,\"line\":6},\"file\":null,\"role\":null,\"start\":{\"col\":6,\"line\":6},\"written\":null},\"target\":{\"kind\":\"Name\",\"name\":\">\",\"origin\":{\"end\":{\"col\":25,\"line\":6},\"file\":null,\"role\":null,\"start\":{\"col\":18,\"line\":6},\"written\":null}}},\"elseBlock\":{\"kind\":\"Block\",\"origin\":{\"end\":{\"col\":14,\"line\":9},\"file\":null,\"role\":null,\"start\":{\"col\":5,\"line\":9},\"written\":null},\"statements\":[{\"expr\":{\"kind\":\"Int\",\"origin\":{\"end\":{\"col\":13,\"line\":9},\"file\":null,\"role\":null,\"start\":{\"col\":12,\"line\":9},\"written\":null},\"value\":0},\"kind\":\"Return\",\"origin\":{\"end\":{\"col\":14,\"line\":9},\"file\":null,\"role\":null,\"start\":{\"col\":5,\"line\":9},\"written\":null}}]},\"kind\":\"If\",\"origin\":{\"end\":{\"col\":14,\"line\":9},\"file\":null,\"role\":null,\"start\":{\"col\":3,\"line\":6},\"written\":null},\"thenBlock\":{\"kind\":\"Block\",\"origin\":{\"end\":{\"col\":15,\"line\":7},\"file\":null,\"role\":null,\"start\":{\"col\":5,\"line\":7},\"written\":null},\"statements\":[{\"expr\":{\"kind\":\"Int\",\"origin\":{\"end\":{\"col\":14,\"line\":7},\"file\":null,\"role\":null,\"start\":{\"col\":12,\"line\":7},\"written\":null},\"value\":10},\"kind\":\"Return\",\"origin\":{\"end\":{\"col\":15,\"line\":7},\"file\":null,\"role\":null,\"start\":{\"col\":5,\"line\":7},\"written\":null}}]}}]},\"effectCaps\":[],\"effectCapsExplicit\":false,\"effectParams\":[],\"effects\":[],\"inputRefs\":null,\"kind\":\"Func\",\"name\":\"calculate\",\"origin\":{\"end\":{\"col\":14,\"line\":9},\"file\":null,\"role\":null,\"start\":{\"col\":1,\"line\":5},\"written\":null},\"params\":[{\"annotations\":[],\"constraints\":[],\"name\":\"order\",\"type\":{\"kind\":\"TypeName\",\"name\":\"Order\",\"origin\":{\"end\":{\"col\":36,\"line\":5},\"file\":null,\"role\":null,\"start\":{\"col\":31,\"line\":5},\"written\":null}},\"typeInferred\":false}],\"ret\":{\"kind\":\"TypeName\",\"name\":\"Int\",\"origin\":{\"end\":{\"col\":49,\"line\":5},\"file\":null,\"role\":null,\"start\":{\"col\":46,\"line\":5},\"written\":null}},\"retAnnotations\":[],\"retTypeInferred\":false,\"typeParams\":[]}],\"kind\":\"Module\",\"name\":\"Discount\",\"origin\":{\"end\":{\"col\":1,\"line\":10},\"file\":null,\"role\":null,\"start\":{\"col\":1,\"line\":1},\"written\":null},\"profile\":null,\"schemaVersion\":2}",
     "context": {
       "order": { "total": 150 }
     }
@@ -113,26 +240,11 @@ curl -X POST https://policy.aster-lang.dev/api/v1/policies/evaluate-json \
 ```
 
 ```js [JavaScript]
-// Build the Core IR object
-const coreIR = {
-  moduleName: 'Discount',
-  functions: [
-    {
-      name: 'calculate',
-      params: [{ name: 'order', type: 'Order' }],
-      rules: [
-        {
-          condition: { op: 'gt', left: { ref: 'order.total' }, right: { lit: 100 } },
-          result: { lit: 10 },
-        },
-        {
-          condition: null,
-          result: { lit: 0 },
-        },
-      ],
-    },
-  ],
-};
+import { compile } from '@aster-cloud/aster-lang-ts/browser';
+
+// 在你的应用中编译 CNL 源码
+const compiled = compile("Module Discount.\n\nDefine Order has total as Int.\n\nRule calculate given order as Order, produce Int:\n  If order.total greater than 100\n    Return 10.\n  Otherwise\n    Return 0.\n");
+if (!compiled.success) throw new Error(JSON.stringify(compiled.parseErrors));
 
 const response = await fetch(
   'https://policy.aster-lang.dev/api/v1/policies/evaluate-json',
@@ -144,8 +256,9 @@ const response = await fetch(
       'X-Tenant-ID': 'acme-corp',
     },
     body: JSON.stringify({
-      // Core IR must be serialized as a string
-      policy: JSON.stringify(coreIR),
+      // Core IR v2 规范字节——原样发送
+      // Core IR 以字符串形式发送
+      policy: compiled.coreJson,
       context: {
         order: { total: 150 },
       },
@@ -164,8 +277,19 @@ const data = await response.json();
 ```json
 {
   "result": 10,
-  "executionTimeMs": 3,
+  "executionTimeMs": 8,
   "error": null,
-  "decisionTrace": null
+  "evidence": { "correlationId": "b20c5d25-f288-4ccd-bf30-f5b289556a54" }
+}
+```
+
+没有 `schemaVersion` 的 Core IR 文档（例如 aster-lang-ts 1.x 的产物）会被拒收：
+
+```json
+{
+  "result": null,
+  "executionTimeMs": 3,
+  "error": "Core IR JSON 解析失败: Core IR 不符合 v2 契约：[CoreIrProblem[path=/schemaVersion, code=unsupported_schema_version]]",
+  "code": "unsupported_schema_version"
 }
 ```

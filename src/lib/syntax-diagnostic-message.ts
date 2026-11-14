@@ -1,5 +1,6 @@
 /**
- * 解析 / 词法错误（共享码表 E050–E069，ADR 0051 §16 R56）按策略 lexicon 语言渲染（aster-cloud#660）。
+ * 解析 / 词法错误（共享码表 E050–E069，ADR 0051 §16 R56；另有注解参数重复 E900，ADR 0055）按策略 lexicon
+ * 语言渲染（aster-cloud#660）。
  *
  * aster-lang-ts 的解析诊断给出 `code` + 命名参数 `params`，`message` 只是英文渲染结果。这里按码取
  * aster-lang-locales 的 `syntax-diagnostics/<locale-id>.json` 句子模板（随 @aster-cloud/ui-messages 分发，
@@ -57,6 +58,7 @@ const TEMPLATES: Readonly<Record<string, Template>> = {
   E067: { key: 'invalidValue' },
   E068: { key: 'callArity' },
   E069: { key: 'unknownName' },
+  E900: { key: 'duplicateAnnotationArg' },
 };
 
 const FIXED_CONSTRUCT_KEYS: Readonly<Record<string, string>> = {
