@@ -364,6 +364,7 @@ function GuardAction({
           : 'bg-green-50 text-green-700 ring-green-600/20'}`}
       >
         {denied ? t.logs.guardDenied : t.logs.guardAllowed}
+        {meta.guardReasonCode && <span className="sr-only">{` (${meta.guardReasonCode})`}</span>}
       </span>
     );
   }
