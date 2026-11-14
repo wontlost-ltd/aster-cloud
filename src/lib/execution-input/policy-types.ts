@@ -155,6 +155,20 @@ export function extractPolicyInputTypes(input: PolicyTypeSource, functionName: s
   };
 }
 
+/**
+ * 入口函数的规范名（与 /execute 同一取法：@entry → 唯一 Rule；多 Rule 无 @entry 为 entry_ambiguous）。
+ * Guard 策略部署（ADR 0054 §11 D1）据此确定 aster-api 侧的 policyFunction。
+ */
+export function resolveEntryFunction(
+  input: PolicyTypeSource,
+): { ok: true; functionName: string } | { ok: false; reason: 'extraction_failed' | 'entry_ambiguous' | 'no_rule' } {
+  const resolved = cachedResolve(input);
+  if (!resolved.ok) return { ok: false, reason: 'extraction_failed' };
+  const choice = pickFunction(resolved, undefined, input);
+  if ('ambiguous' in choice) return { ok: false, reason: 'entry_ambiguous' };
+  return choice.func ? { ok: true, functionName: choice.func.canonical } : { ok: false, reason: 'no_rule' };
+}
+
 /** 仅供测试：清空缓存。 */
 export function clearPolicyInputTypesCache(): void {
   cache.clear();

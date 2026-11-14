@@ -210,6 +210,15 @@ export const CRON_REGISTRY: ReadonlyArray<CronJob> = [
     healthcheckEnv: 'HEALTHCHECKS_NONCE_CLEANUP_URL',
   },
   {
+    jobName: 'guard-deploy-sync',
+    cron: '*/5 * * * *',
+    routePath: '/api/cron/guard-deploy-sync',
+    // 每 5 分钟：收敛 Guard 策略部署（aster-api ADR 0054 §11 D1）。设默认版本 / 删除时 aster-api 已切换而 cloud
+    // 提交失败的崩溃窗口，靠它以 generation+1 重发实际默认版本 / 撤回；runCronOnce 租约按 5 分钟窗口去重。
+    windowStartFor: (now) =>
+      new Date(Math.floor(now.getTime() / 300_000) * 300_000),
+  },
+  {
     jobName: 'domain-vocabulary-bulk-worker',
     cron: '* * * * *',
     routePath: '/api/cron/domain-vocabulary-bulk-worker',

@@ -55,7 +55,8 @@
     "check:turbopack-readiness": "bash scripts/check-turbopack-readiness.sh",
     "test:e2e:browser": "playwright test",
     "test:e2e:browser:ui": "playwright test --ui",
-    "docs:external-index": "node scripts/docs-migration/fetch-external-docs-index.mjs"
+    "docs:external-index": "node scripts/docs-migration/fetch-external-docs-index.mjs",
+    "guard:backfill": "tsx src/scripts/backfill-guard-deployments.ts"
   },
   "dependencies": {
     "@aster-cloud/aster-lang-ts": "2.0.0",

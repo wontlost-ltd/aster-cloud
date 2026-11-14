@@ -12,6 +12,8 @@ import {
 import { eq, inArray, isNull, not, and, desc, asc, lte, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { freshDb } from '@/db/fresh-read';
+import { deployThenCommit, GuardDeployError, syncGuardToActual } from '@/lib/guard-policy-deploy';
+import { policyTenantId } from '@/lib/policy-tenant';
 import { loadPolicyForAction, policiesVisibleTo, type LoadedPolicy } from '@/lib/policy-access';
 import { releaseSnapshotRefsForPolicy, reportSnapshotRelease } from '@/lib/domain-vocabulary-snapshot';
 // 回收站保留天数
@@ -21,8 +23,8 @@ export interface SoftDeleteResult {
   success: boolean;
   policyId: string;
   error?: string;
-  /** 失败时的 HTTP 状态：404 不存在 / 无权访问，403 团队角色不够 */
-  status?: 403 | 404;
+  /** 失败时的 HTTP 状态：404 不存在 / 无权访问，403 团队角色不够；Guard 撤回失败时为其状态（503 / 409 等） */
+  status?: number;
   code?: string;
 }
 
@@ -37,7 +39,7 @@ export interface RestoreResult {
 }
 
 /** 授权失败 → 生命周期结果（404 沿用原有文案，403 带团队角色原因码）。 */
-function deniedResult(policyId: string, denied: Extract<LoadedPolicy, { ok: false }>, notFoundError: string): SoftDeleteResult {
+function deniedResult(policyId: string, denied: Extract<LoadedPolicy, { ok: false }>, notFoundError: string): SoftDeleteResult & { status?: 403 | 404 } {
   const { status, code, error } = denied.decision;
   return { success: false, policyId, status, code, error: status === 404 ? notFoundError : error };
 }
@@ -129,8 +131,14 @@ export async function softDeletePolicy(
     const now = new Date();
     const expiresAt = new Date(now.getTime() + RECYCLE_BIN_RETENTION_DAYS * 24 * 60 * 60 * 1000);
 
-    // 创建快照和标记删除（事务）
-    await db.transaction(async (tx) => {
+    // 先撤回 Guard 部署、后提交删除（aster-api ADR 0054 §11 D1）：进回收站的策略不得继续被 Guard 按旧版本放行。
+    // aster-api 不可用时抛 GuardDeployError，删除不发生（下方 catch 转成失败结果）。
+    await deployThenCommit({
+      policyId,
+      tenantId: policyTenantId(policy),
+      desired: { withdrawn: true },
+      actor: userId,
+      commit: async (tx) => {
       // 创建回收站快照
       await tx.insert(policyRecycleBins).values({
         id: crypto.randomUUID(),
@@ -161,11 +169,15 @@ export async function softDeletePolicy(
           deleteReason: reason || null,
         })
         .where(eq(policies.id, policyId));
+      },
     });
 
     return { success: true, policyId };
   } catch (error) {
     console.error('Soft delete policy error:', error);
+    if (error instanceof GuardDeployError) {
+      return { success: false, policyId, status: error.status, error: error.message };
+    }
     return {
       success: false,
       policyId,
@@ -236,6 +248,11 @@ export async function restorePolicy(policyId: string, userId: string): Promise<R
       await tx.delete(policyRecycleBins)
         .where(eq(policyRecycleBins.policyId, policyId));
     });
+
+    // 恢复后让 Guard 回到实际默认版本（ADR 0054 §11 D1）。尽力而为：失败时部署行已预留、applied 落后，
+    // 由 cron guard-deploy-sync 收敛；恢复本身不因 aster-api 不可用而失败。
+    await syncGuardToActual(policyId, userId).catch((e: unknown) =>
+      console.warn('[guard-deploy] restore sync failed; cron will converge', { policyId, error: String(e) }));
 
     return {
       success: true,
