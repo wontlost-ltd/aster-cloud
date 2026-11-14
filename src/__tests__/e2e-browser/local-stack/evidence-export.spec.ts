@@ -1,5 +1,5 @@
 /**
- * ADR 0041 证据包（现行 v5）：导出 JSON，校验 manifest.schemaVersion 与 guard-approval 审阅人。
+ * ADR 0041 证据包（现行 v6）：导出 JSON，校验 manifest.schemaVersion 与 guard-approval 审阅人。
  */
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
@@ -10,10 +10,10 @@ test.skip(NOT_LOCAL, NOT_LOCAL_REASON);
 test.describe.configure({ mode: 'serial' });
 test.use({ storageState: stateFor('m-free') });
 
-interface Reviewer { source: string; role: string; roleVerified: boolean; outcome: string }
+interface Reviewer { source: string; role: string; roleVerified: boolean; outcome: string; inputStatus?: string | null }
 interface Bundle {
-  manifest: { schemaVersion: string; bundleHash: string };
-  entries: Array<{ reviewers?: Reviewer[] }>;
+  manifest: { schemaVersion: string; bundleHash: string; inputSnapshotTally?: Record<string, number> };
+  entries: Array<{ reviewers?: Reviewer[]; inputSource?: string; guardInputSources?: unknown; execution?: unknown }>;
 }
 
 test('导出 JSON 证据包：现行 schemaVersion 且含已验证角色的 guard-approval 审阅人', async ({ page }) => {
@@ -30,12 +30,22 @@ test('导出 JSON 证据包：现行 schemaVersion 且含已验证角色的 guar
   expect(download.suggestedFilename()).toMatch(/^aster-evidence-[0-9a-f]{12}\.json$/);
   const bundle = JSON.parse(readFileSync(await download.path(), 'utf8')) as Bundle;
 
-  expect(bundle.manifest.schemaVersion).toBe('5');
+  expect(bundle.manifest.schemaVersion).toBe('6');
   expect(bundle.manifest.bundleHash).toMatch(/^[0-9a-f]{64}$/);
   const reviewers = bundle.entries.flatMap((e) => e.reviewers ?? []);
   expect(reviewers).toContainEqual(
     expect.objectContaining({ source: 'guard-approval', role: 'Data Protection Officer', roleVerified: true }),
   );
+  // v6（ADR 0042 §12 D9）：复核者带快照四键、条目带三项、manifest 带快照计数
+  for (const r of reviewers) {
+    for (const k of ['inputSnapshotHash', 'inputSnapshotMatched', 'inputRevealed', 'inputStatus']) expect(r).toHaveProperty(k);
+  }
+  for (const e of bundle.entries) {
+    expect(['declared', 'mixed', 'legacy']).toContain(e.inputSource);
+    expect(e).toHaveProperty('guardInputSources');
+    expect(e).toHaveProperty('execution');
+  }
+  expect(Object.keys(bundle.manifest.inputSnapshotTally ?? {}).sort()).toEqual(['matched', 'unavailable', 'unmatched']);
 
   // 历史列表里出现已完成的记录，且下载链接可用同一会话取回同一包
   const firstRow = page.getByRole('row').filter({ hasText: 'Completed' }).first();

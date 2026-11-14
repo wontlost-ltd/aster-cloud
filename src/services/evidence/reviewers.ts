@@ -13,7 +13,8 @@ import { inArray } from 'drizzle-orm';
 import { db, policyProofs, policyApprovals } from '@/lib/prisma';
 import type { ChainApproval } from './receipts-client';
 
-export type Reviewer = {
+/** schemaVersion 2–5 冻结形状：只用于读取已持久化的历史导出，不得修改。 */
+export type ReviewerV5 = {
   userId: string;
   role: string;
   source: 'guard-approval' | 'policy-proof' | 'version-approval';
@@ -22,6 +23,22 @@ export type Reviewer = {
   ref: string;
   roleVerified: boolean;
 };
+
+/**
+ * v6 复核者（ADR 0042 §12 D9）：在 v5 形状上增审批快照四键。
+ * 只有 guard-approval 来源取收据接口 approvals[] 的值；旧 api、旧事件与过期事件没有这些键，归一为 null。
+ * 版本级来源（policy-proof / version-approval）不经过审批输入视图，四键恒为 null。
+ * inputSnapshotMatched=true 只证明提交审批的客户端持有与当前视图一致的哈希，不证明人读过（ADR 0042 §11 D3 证明边界）。
+ */
+export type Reviewer = ReviewerV5 & {
+  inputSnapshotHash: string | null;
+  inputSnapshotMatched: boolean | null;
+  inputRevealed: boolean | null;
+  inputStatus: string | null;
+};
+
+/** 非 guard 来源的四个快照字段。 */
+const NO_SNAPSHOT = { inputSnapshotHash: null, inputSnapshotMatched: null, inputRevealed: null, inputStatus: null } as const;
 
 function push(out: Map<string, Reviewer[]>, key: string, reviewer: Reviewer): void {
   const list = out.get(key) ?? [];
@@ -64,7 +81,7 @@ export async function loadProofReviewers(policyVersionRowIds: string[]): Promise
     if (!r.policyVersionId) continue;
     push(out, r.policyVersionId, {
       userId: r.subjectUserId, role: r.subjectKind, source: 'policy-proof', outcome: r.verdict,
-      decidedAt: r.createdAt.toISOString(), ref: r.id, roleVerified: true,
+      decidedAt: r.createdAt.toISOString(), ref: r.id, roleVerified: true, ...NO_SNAPSHOT,
     });
   }
   return out;
@@ -86,7 +103,7 @@ export async function loadVersionApprovalReviewers(policyVersionRowIds: string[]
   for (const r of rows) {
     push(out, r.versionId, {
       userId: r.approverId, role: 'approver', source: 'version-approval', outcome: r.decision,
-      decidedAt: r.createdAt.toISOString(), ref: r.id, roleVerified: true,
+      decidedAt: r.createdAt.toISOString(), ref: r.id, roleVerified: true, ...NO_SNAPSHOT,
     });
   }
   return out;
@@ -100,5 +117,7 @@ export function guardApprovalReviewers(approvals: ChainApproval[]): Reviewer[] {
   return approvals.map((a) => ({
     userId: a.decidedBy ?? 'unknown', role: a.requiredRole ?? 'unknown', source: 'guard-approval', outcome: a.outcome,
     decidedAt: a.decidedAt, ref: String(a.auditId), roleVerified: true,
+    inputSnapshotHash: a.inputSnapshotHash, inputSnapshotMatched: a.inputSnapshotMatched,
+    inputRevealed: a.inputRevealed, inputStatus: a.inputStatus,
   }));
 }

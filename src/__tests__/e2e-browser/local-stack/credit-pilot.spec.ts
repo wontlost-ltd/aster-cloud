@@ -1,6 +1,6 @@
 /**
  * ADR 0044 §5 信贷试点端到端：执行需审批申请 → 日志 guard 入口 → 合规官批准 →
- * What-If v1→v2 转移 → 证据包 v5 导出、档案 eu-ai-act-high-risk 与 Article 14 款项对照。
+ * What-If v1→v2 转移 → 证据包 v6 导出、档案 eu-ai-act-high-risk 与 Article 14 款项对照。
  * 执行命中在线默认版本 v3（语法糖 + 档案声明，ADR 0046 §6）。
  * 执行走 API（执行页表单由 schema 动态生成，难以稳定驱动），其余步骤全部走页面。
  */
@@ -104,7 +104,7 @@ test('信贷试点：执行、审批、What-If、证据导出与 Article 14 对�
       expect(count).toBeGreaterThanOrEqual(1);
     }));
 
-  await test.step('导出证据包 v5，核对档案并对照 Article 14 款项', () =>
+  await test.step('导出证据包 v6，核对档案并对照 Article 14 款项', () =>
     asUser(browser, 'cp-owner', async (page) => {
       await page.goto('/en/reports');
       await page.getByLabel('Policy').selectOption({ label: 'Credit pilot (ADR 0044)' });
@@ -115,7 +115,7 @@ test('信贷试点：执行、审批、What-If、证据导出与 Article 14 对�
       expect(download.suggestedFilename()).toMatch(/^aster-evidence-[0-9a-f]{12}\.json$/);
       const bundle = JSON.parse(readFileSync(await download.path(), 'utf8')) as Bundle;
 
-      expect(bundle.manifest.schemaVersion).toBe('5');
+      expect(bundle.manifest.schemaVersion).toBe('6');
       expect(bundle.manifest.profilesUsed.map((p) => p.id)).toContain(CREDIT_PILOT.profile);
       expect(diffClauses(articleClauses(bundle.manifest.regulatoryMapping), EXPECTED_CLAUSE_STATUS)).toEqual([]);
       expect(bundle.entries.some((e) => e.whatIf != null)).toBe(true);

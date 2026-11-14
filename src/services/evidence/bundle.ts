@@ -15,9 +15,13 @@ import type {
   EvidenceBundle,
   EvidenceDecision,
   EvidenceEntry,
+  EvidenceExecution,
   EvidenceFormat,
+  EvidenceInputSource,
   EvidenceManifest,
   EvidenceWhatIf,
+  ExecutionResultStatus,
+  GuardInputSources,
   ProfileUsed,
   ReceiptRef,
   StoredEvidenceBundle,
@@ -76,11 +80,93 @@ function compareReviewers(a: Reviewer, b: Reviewer): number {
   return compareCodePoints(a.decidedAt, b.decidedAt) || compareCodePoints(a.ref, b.ref);
 }
 
+/** v6 条目从链收据派生的三项（ADR 0042 §12 D9）。 */
+export type EntryProvenance = Pick<EvidenceEntry, 'inputSource' | 'guardInputSources' | 'execution'>;
+
+/** 无收据可依时的三项：评估来源记 legacy，guard 来源与执行收据为 null。 */
+export const NO_PROVENANCE: EntryProvenance = { inputSource: 'legacy', guardInputSources: null, execution: null };
+
+/**
+ * 评估输入来源（ADR 0041 §11 D2/D4）：取该行评估事件收据的 metadata.inputSource。
+ * 旧事件无键、无关联 id、收据缺失或取不到、或值不在已知集合内 → legacy（收据状态由 entry.receipt 另行如实标注）。
+ */
+export function inputSourceFor(row: Pick<EvidenceRow, 'evidenceCorrelationId'>, lookup: ReceiptLookup): EvidenceInputSource {
+  const cid = row.evidenceCorrelationId;
+  const value = cid == null ? undefined : lookup.receipts.get(cid)?.metadata.inputSource;
+  return value === 'declared' || value === 'mixed' ? value : 'legacy';
+}
+
+/** metadata 中的字符串列表：非数组 → []；非字符串元素丢弃；按码点序排列（链上已是字典序，排序只是兜底，不改写元素）。 */
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is string => typeof v === 'string').sort(compareCodePoints);
+}
+
+/**
+ * guard 决策的逐字段来源（ADR 0041 §11 D1/D4、ADR 0042 §12 D9）：取决策收据 metadata 的
+ * verifiedFields / factIssuers / factSources / unverifiedFields / inputSourcesTruncated。
+ * factSources 元素原样保留，审计方可与收据接口逐字核对。无 guard 决策或决策收据取不到 → null。
+ */
+export function guardInputSourcesFor(
+  row: Pick<EvidenceRow, 'guardDecisionId'>,
+  guardLookup: ReceiptLookup,
+): GuardInputSources | null {
+  const did = row.guardDecisionId;
+  const metadata = did == null ? undefined : guardLookup.receipts.get(did)?.metadata;
+  if (!metadata) return null;
+  return {
+    verified: stringList(metadata.verifiedFields),
+    factIssuers: stringList(metadata.factIssuers),
+    factSources: stringList(metadata.factSources),
+    ...(Array.isArray(metadata.unverifiedFields) ? { unverifiedFields: stringList(metadata.unverifiedFields) } : {}),
+    ...(metadata.inputSourcesTruncated === true ? { truncated: true } : {}),
+  };
+}
+
+const RESULT_STATUSES: ReadonlySet<unknown> = new Set<ExecutionResultStatus>(['executed', 'failed', 'aborted']);
+
+/**
+ * guard 执行收据状态（ADR 0041 §12 D3）。读法遵循 §12 D1：有效消耗只认决策收据的
+ * authoritativeConsumeAuditId（guard_receipts.consume_audit_id），不数尝试事件、不看 success；
+ * executorId / attemptId 取该权威尝试事件，resultStatus 取 authoritative 结果事件（无或未知状态 → null）。
+ * 无 guard 决策或决策收据取不到 → null。旧 api 不返回 authoritativeConsumeAuditId，此时记为未消耗。
+ */
+export function executionFor(
+  row: Pick<EvidenceRow, 'guardDecisionId'>,
+  guardLookup: ReceiptLookup,
+): EvidenceExecution | null {
+  const did = row.guardDecisionId;
+  const receipt = did == null ? undefined : guardLookup.receipts.get(did);
+  if (did == null || !receipt) return null;
+  const consumeAuditId = receipt.authoritativeConsumeAuditId;
+  if (consumeAuditId === null) return { consumed: false };
+  const attempt = (guardLookup.consumes.get(did) ?? []).find((c) => c.auditId === consumeAuditId);
+  const result = (guardLookup.results.get(did) ?? []).find((r) => r.authoritative);
+  const status = result?.status;
+  return {
+    consumed: true,
+    ...(attempt?.executorId ? { executorId: attempt.executorId } : {}),
+    ...(attempt?.attemptId ? { attemptId: attempt.attemptId } : {}),
+    resultStatus: RESULT_STATUSES.has(status) ? (status as ExecutionResultStatus) : null,
+    consumeAuditId,
+  };
+}
+
+/** 一行的 v6 三项：评估来源取评估收据查找，guard 来源与执行收据取决策收据查找。 */
+export function provenanceFor(row: EvidenceRow, lookup: ReceiptLookup, guardLookup: ReceiptLookup): EntryProvenance {
+  return {
+    inputSource: inputSourceFor(row, lookup),
+    guardInputSources: guardInputSourcesFor(row, guardLookup),
+    execution: executionFor(row, guardLookup),
+  };
+}
+
 export function buildEvidenceEntry(
   row: EvidenceRow,
   receipt: ReceiptRef,
   reviewers: Reviewer[],
   whatIf: EvidenceWhatIf | null = null,
+  provenance: EntryProvenance = NO_PROVENANCE,
 ): EvidenceEntry {
   return {
     executionId: row.id,
@@ -108,6 +194,9 @@ export function buildEvidenceEntry(
     reviewers: [...reviewers].sort(compareReviewers),
     whatIf,
     profile: row.profile,
+    inputSource: provenance.inputSource,
+    guardInputSources: provenance.guardInputSources,
+    execution: provenance.execution,
   };
 }
 
@@ -140,14 +229,52 @@ export function tallyReviewers(entries: readonly EvidenceEntry[]): Record<Review
   return tally;
 }
 
+/** 按条目 inputSource 计数（三桶恒出现）。 */
+export function tallyInputSources(entries: readonly EvidenceEntry[]): Record<EvidenceInputSource, number> {
+  const tally: Record<EvidenceInputSource, number> = { declared: 0, mixed: 0, legacy: 0 };
+  for (const e of entries) tally[e.inputSource] += 1;
+  return tally;
+}
+
+/** 决策可执行：结论为 ALLOW，或有 guard 审批 APPROVED（审批通过后才可消耗，ADR 0040 §12）。 */
+function isExecutable(e: EvidenceEntry): boolean {
+  return e.outcome === 'ALLOW' || e.reviewers.some((r) => r.source === 'guard-approval' && r.outcome === 'APPROVED');
+}
+
+/** 执行收据计数（ADR 0041 §12 D3）。 */
+export function tallyExecution(entries: readonly EvidenceEntry[]): EvidenceManifest['executionTally'] {
+  const tally = { consumed: 0, unconsumedAllow: 0, executed: 0, failed: 0, aborted: 0 };
+  for (const e of entries) {
+    if (e.execution === null) continue;
+    if (e.execution.consumed) tally.consumed += 1;
+    else if (isExecutable(e)) tally.unconsumedAllow += 1;
+    if (e.execution.resultStatus) tally[e.execution.resultStatus] += 1;
+  }
+  return tally;
+}
+
+/** 按 guard-approval 复核者计审批快照（ADR 0042 §12 D9）；判定口径与证据来源 reviewers.guard.inputSnapshot 一致。 */
+export function tallyInputSnapshots(entries: readonly EvidenceEntry[]): EvidenceManifest['inputSnapshotTally'] {
+  const tally = { matched: 0, unmatched: 0, unavailable: 0 };
+  for (const r of entries.flatMap((e) => e.reviewers)) {
+    if (r.source !== 'guard-approval') continue;
+    if (r.inputStatus !== 'available') tally.unavailable += 1;
+    else if (r.inputSnapshotMatched === true) tally.matched += 1;
+    else tally.unmatched += 1;
+  }
+  return tally;
+}
+
 function countReceiptStatus(entries: readonly EvidenceEntry[], status: 'missing' | 'legacy' | 'unavailable'): number {
   return entries.filter((e) => 'status' in e.receipt && e.receipt.status === status).length;
 }
 
 const VERIFICATION_RECIPE =
-  'bundleHash = canonicalHash(entries sorted by [createdAt, executionId]) over schemaVersion 5 entries ' +
-  '(includes outcome/ruleId/controls/agent/receipt/reviewers/whatIf/profile); receipts verifiable via GET /api/v1/audit/receipts; ' +
-  'v1 bundles use their own recipe.';
+  'bundleHash = canonicalHash(entries sorted by [createdAt, executionId]) over schemaVersion 6 entries ' +
+  '(includes outcome/ruleId/controls/agent/receipt/reviewers (with inputSnapshotHash/inputSnapshotMatched/inputRevealed/inputStatus)/' +
+  'whatIf/profile/inputSource/guardInputSources/execution); manifest tallies are not hashed; ' +
+  'receipts verifiable via GET /api/v1/audit/receipts, guard decision receipts (factSources verbatim), approvals and ' +
+  'consumes/results via GET /api/v1/audit/receipts?decisionIds=; earlier schemaVersions use the recipe stored in their own manifest.';
 
 /** 统计 decision 分布；decision=null（legacy）计入 unknown 桶。 */
 export function tallyDecisions(entries: readonly { decision: EvidenceDecision | null }[]): DecisionTally {
@@ -209,7 +336,7 @@ export function buildManifest(input: BuildManifestInput): EvidenceManifest {
   ).length;
   return {
     kind: 'evidence-export',
-    schemaVersion: '5',
+    schemaVersion: '6',
     generatedAt: input.generatedAt.toISOString(),
     policy: 'scope' in policy ? policy : {
       ...policy,
@@ -227,6 +354,10 @@ export function buildManifest(input: BuildManifestInput): EvidenceManifest {
     receiptSource: { kind: 'aster-api-hash-chain', verifier: 'GET /api/v1/audit/receipts' },
     agentTally: tallyAgents(sorted),
     reviewerTally: tallyReviewers(sorted),
+    inputSourceTally: tallyInputSources(sorted),
+    verifiedInputsUsed: sorted.filter((e) => (e.guardInputSources?.verified.length ?? 0) > 0).length,
+    executionTally: tallyExecution(sorted),
+    inputSnapshotTally: tallyInputSnapshots(sorted),
     legacyEntries: countReceiptStatus(sorted, 'legacy'),
     regulatoryMapping: mapRegulatory(sorted),
     profilesUsed: collectProfiles(sorted),

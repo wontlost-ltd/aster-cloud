@@ -28,6 +28,7 @@ describe('内置控制注册表副本', () => {
 
   it('isEvidenceSource 拒绝未知名与原型链上的名字', () => {
     expect(isEvidenceSource('reviewers.guard.two')).toBe(true);
+    expect(isEvidenceSource('reviewers.guard.inputSnapshot')).toBe(true);
     expect(isEvidenceSource('reviewers.guard.three')).toBe(false);
     expect(isEvidenceSource('toString')).toBe(false);
   });
@@ -74,6 +75,7 @@ describe('注册表 requires 含未知键时读取结果不变（R62 X1）', () 
       reasonCodes: null, source: 'api', durationMs: 1, createdAt: '2026-10-09T00:00:00.000Z',
       outcome: 'ALLOW', ruleId: 'r1', controls: ['EU_AI_ACT:ART14'], agent: null, evidenceCorrelationId: null,
       receipt: { status: 'legacy' }, reviewers: [], whatIf: null, profile,
+      inputSource: 'legacy', guardInputSources: null, execution: null,
     };
   }
   const entries = [...profileIds.map(entry), entry(null)];

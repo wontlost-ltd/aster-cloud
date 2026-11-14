@@ -1,4 +1,4 @@
-// 法规对照接口（ADR 0045 §5、ADR 0046 §6）：v4/v5 返回注册表驱动的对照（v5 附所用档案），v1–v3 如实返回 null，越权/不存在统一 404。
+// 法规对照接口（ADR 0045 §5、ADR 0046 §6）：v4–v6 返回注册表驱动的对照（v5 起附所用档案），v1–v3 如实返回 null，越权/不存在统一 404。
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@/auth', () => ({ auth: vi.fn() }));
@@ -44,6 +44,12 @@ describe('GET /api/reports/[id]/mapping', () => {
     const r = await call('r1');
     expect(r.status).toBe(200);
     expect((await r.json()).mapping).toEqual({ ...mapping, profilesUsed });
+  });
+
+  it('v6 报告 → 与 v5 相同：regulatoryMapping 附 profilesUsed', async () => {
+    const profilesUsed = [{ id: 'governed', title: { en: 'Governed rules', zh: '受治理规则', de: 'Gesteuerte Regeln' } }];
+    vi.mocked(getEvidenceExport).mockResolvedValue(row({ schemaVersion: '6', regulatoryMapping: mapping, profilesUsed }));
+    expect((await (await call('r1')).json()).mapping).toEqual({ ...mapping, profilesUsed });
   });
 
   it('v4 报告的对照不带 profilesUsed', async () => {

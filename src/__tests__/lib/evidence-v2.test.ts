@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { EvidenceRow } from '@/services/evidence/bundle';
-import type { ReceiptLookup } from '@/services/evidence/receipts-client';
+import type { ChainApproval, ReceiptLookup } from '@/services/evidence/receipts-client';
 import type { Reviewer } from '@/services/evidence/reviewers';
 
 vi.mock('server-only', () => ({}));
@@ -68,7 +68,10 @@ function row(over: Partial<EvidenceRow>): EvidenceRow {
 }
 
 function lookup(): ReceiptLookup {
-  return { receipts: new Map(), approvals: new Map(), missing: new Set(), unavailable: new Set() };
+  return {
+    receipts: new Map(), approvals: new Map(), consumes: new Map(), results: new Map(),
+    missing: new Set(), unavailable: new Set(),
+  };
 }
 
 const ROWS: EvidenceRow[] = [
@@ -87,7 +90,10 @@ const ROWS: EvidenceRow[] = [
 const PROOF: Reviewer = {
   userId: 'u-p', role: 'domain_expert', source: 'policy-proof', outcome: 'VERIFIED',
   decidedAt: '2026-09-30T00:00:00.000Z', ref: 'proof-1', roleVerified: true,
+  inputSnapshotHash: null, inputSnapshotMatched: null, inputRevealed: null, inputStatus: null,
 };
+
+const NO_SNAPSHOT = { inputSnapshotHash: null, inputSnapshotMatched: null, inputRevealed: null, inputStatus: null };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -98,7 +104,7 @@ beforeEach(() => {
     const l = lookup();
     if (tenant === 'team-1' && ids.includes('c-1')) {
       l.receipts.set('c-1', { auditId: 11, currentHash: 'h11', prevHash: 'h10', hashVersion: 2,
-        eventType: 'POLICY_EVALUATION', timestamp: '2026-10-01T00:00:00Z', metadata: {} });
+        eventType: 'POLICY_EVALUATION', timestamp: '2026-10-01T00:00:00Z', metadata: {}, authoritativeConsumeAuditId: null });
     }
     if (tenant === 'user-9') ids.forEach((id) => l.unavailable.add(id));
     return l;
@@ -106,9 +112,10 @@ beforeEach(() => {
   fetchDecisionReceipts.mockImplementation(async (_tenant: string, ids: string[]) => {
     const l = lookup();
     for (const id of ids) {
-      l.approvals.set(id, [{ auditId: 31, decisionId: id, outcome: 'APPROVED', decidedBy: 'u-g',
+      const approval: ChainApproval = { auditId: 31, decisionId: id, outcome: 'APPROVED', decidedBy: 'u-g',
         requiredRole: 'risk_officer', comment: null, decidedAt: '2026-10-03T01:00:00Z',
-        currentHash: 'h31', decisionReceiptHash: null }]);
+        currentHash: 'h31', decisionReceiptHash: null, ...NO_SNAPSHOT };
+      l.approvals.set(id, [approval]);
     }
     return l;
   });
@@ -168,7 +175,7 @@ describe('createEvidenceExport v2', () => {
     expect(e3.receipt).toEqual({ status: 'unavailable' });
     expect(e3.reviewers).toEqual([{
       userId: 'u-g', role: 'risk_officer', source: 'guard-approval', outcome: 'APPROVED',
-      decidedAt: '2026-10-03T01:00:00Z', ref: '31', roleVerified: true,
+      decidedAt: '2026-10-03T01:00:00Z', ref: '31', roleVerified: true, ...NO_SNAPSHOT,
     }]);
     expect(e1).not.toHaveProperty('policyTenantId');
     expect(e1).not.toHaveProperty('policyOwnerId');
@@ -177,7 +184,7 @@ describe('createEvidenceExport v2', () => {
 
   it('★manifest 计数', async () => {
     const { manifest } = await createEvidenceExport('user-1', { format: 'json' });
-    expect(manifest.schemaVersion).toBe('5');
+    expect(manifest.schemaVersion).toBe('6');
     expect(manifest.totals.count).toBe(3);
     expect(manifest.legacyEntries).toBe(1);
     expect(manifest.notes.receiptsUnavailable).toBe(1);
@@ -215,5 +222,91 @@ describe('createEvidenceExport v2', () => {
     expect(fetchDecisionReceipts).not.toHaveBeenCalled();
     expect(loadProofReviewers).toHaveBeenCalledWith([]);
     expect(manifest.legacyEntries).toBe(1);
+  });
+});
+
+describe('createEvidenceExport v6（ADR 0042 §12 D9）', () => {
+  it('★经真实收据客户端解析线上形状：评估来源、guard 逐字段来源、执行收据、复核者快照四键接线到条目与 manifest', async () => {
+    const real = await vi.importActual<typeof import('@/services/evidence/receipts-client')>(
+      '@/services/evidence/receipts-client',
+    );
+    const factSources = ['context.applicant.id=hmac.userId', 'context.applicant.income=fixture.creditPilot'];
+    const evalWire = (async () => new Response(JSON.stringify({
+      receipts: [{ auditId: 11, correlationId: 'c-1', currentHash: 'h11', eventType: 'POLICY_EVALUATION',
+        hashVersion: 2, metadata: { inputSource: 'declared' }, timestamp: '2026-10-01T00:00:00Z' }],
+    }), { status: 200 })) as unknown as typeof fetch;
+    const decisionWire = (async () => new Response(JSON.stringify({
+      approvals: [{ auditId: 31, currentHash: 'h31', decidedAt: '2026-10-03T01:00:00Z', decidedBy: 'u-g',
+        decisionId: 'gd-1', decisionReceiptHash: 'h20', inputRevealed: true, inputSnapshotHash: 'a'.repeat(64),
+        inputSnapshotMatched: true, inputStatus: 'available', outcome: 'APPROVED', requiredRole: 'risk_officer' }],
+      consumes: [{ actionHash: 'ah', auditId: 40, attemptId: 'att-1', authoritative: true, currentHash: 'h40',
+        decisionId: 'gd-1', executorId: 'mcp@host', outcome: 'consumed', timestamp: '2026-10-03T02:00:00Z' }],
+      receipts: [{ auditId: 20, authoritativeConsumeAuditId: 40, currentHash: 'h20', decisionId: 'gd-1',
+        eventType: 'ACTION_GUARD_DECISION', hashVersion: 2, timestamp: '2026-10-03T00:00:00Z',
+        metadata: { decisionId: 'gd-1', factIssuers: ['aster-cloud#k1'], factSources,
+          verifiedFields: ['context.applicant.id', 'context.applicant.income'] } }],
+      results: [{ auditId: 41, attemptId: 'att-1', authoritative: true, consumeReceiptHash: 'h40', currentHash: 'h41',
+        decisionId: 'gd-1', executorId: 'mcp@host', status: 'executed', timestamp: '2026-10-03T03:00:00Z' }],
+      reveals: [{ approvalId: 'ap-1', auditId: 30, currentHash: 'h30', decisionId: 'gd-1', performedBy: 'u-g',
+        timestamp: '2026-10-03T00:30:00Z' }],
+    }), { status: 200 })) as unknown as typeof fetch;
+    fetchReceipts.mockImplementation((t: string, ids: string[], _f: typeof fetch, limiter) =>
+      real.fetchReceipts(t, ids, evalWire, limiter));
+    fetchDecisionReceipts.mockImplementation((t: string, ids: string[], _f: typeof fetch, limiter) =>
+      real.fetchDecisionReceipts(t, ids, decisionWire, limiter));
+    queryEvidenceExecutions.mockResolvedValue([
+      row({ id: 'e1', evidenceCorrelationId: 'c-1', guardDecisionId: 'gd-1', decision: 'require_approval',
+        outcome: 'REQUIRE_APPROVAL' }),
+    ]);
+    loadProofReviewers.mockResolvedValue(new Map());
+
+    const { manifest } = await createEvidenceExport('user-1', { format: 'json' });
+    const [e1] = storedBundle().entries;
+    expect(e1.inputSource).toBe('declared');
+    expect(e1.guardInputSources).toEqual({
+      verified: ['context.applicant.id', 'context.applicant.income'], factIssuers: ['aster-cloud#k1'], factSources,
+    });
+    expect(e1.execution).toEqual({
+      consumed: true, executorId: 'mcp@host', attemptId: 'att-1', resultStatus: 'executed', consumeAuditId: 40,
+    });
+    expect(e1.reviewers).toEqual([expect.objectContaining({
+      source: 'guard-approval', inputSnapshotHash: 'a'.repeat(64), inputSnapshotMatched: true, inputRevealed: true,
+      inputStatus: 'available',
+    })]);
+    // 解除记录不进包（ADR 0042 §12 D9）
+    expect(JSON.stringify(storedBundle())).not.toContain('performedBy');
+    expect(manifest).toMatchObject({
+      schemaVersion: '6',
+      inputSourceTally: { declared: 1, mixed: 0, legacy: 0 },
+      verifiedInputsUsed: 1,
+      executionTally: { consumed: 1, unconsumedAllow: 0, executed: 1, failed: 0, aborted: 0 },
+      inputSnapshotTally: { matched: 1, unmatched: 0, unavailable: 0 },
+    });
+  });
+
+  it('旧 api（无快照键、无 consumes/results/authoritativeConsumeAuditId）→ 字段为 null / 未消耗，导出不报错', async () => {
+    const real = await vi.importActual<typeof import('@/services/evidence/receipts-client')>(
+      '@/services/evidence/receipts-client',
+    );
+    const oldWire = (async () => new Response(JSON.stringify({
+      approvals: [{ auditId: 31, currentHash: 'h31', decidedAt: '2026-10-03T01:00:00Z', decidedBy: 'u-g',
+        decisionId: 'gd-1', outcome: 'APPROVED', requiredRole: 'risk_officer' }],
+      receipts: [{ auditId: 20, currentHash: 'h20', decisionId: 'gd-1', eventType: 'ACTION_GUARD_DECISION',
+        hashVersion: 2, timestamp: '2026-10-03T00:00:00Z', metadata: { decisionId: 'gd-1' } }],
+    }), { status: 200 })) as unknown as typeof fetch;
+    fetchDecisionReceipts.mockImplementation((t: string, ids: string[], _f: typeof fetch, limiter) =>
+      real.fetchDecisionReceipts(t, ids, oldWire, limiter));
+    queryEvidenceExecutions.mockResolvedValue([row({ id: 'e1', guardDecisionId: 'gd-1', outcome: 'REQUIRE_APPROVAL' })]);
+    loadProofReviewers.mockResolvedValue(new Map());
+
+    const { manifest } = await createEvidenceExport('user-1', { format: 'json' });
+    const [e1] = storedBundle().entries;
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }));
+    expect(e1.inputSource).toBe('legacy');
+    expect(e1.guardInputSources).toEqual({ verified: [], factIssuers: [], factSources: [] });
+    expect(e1.execution).toEqual({ consumed: false });
+    expect(e1.reviewers[0]).toMatchObject(NO_SNAPSHOT);
+    expect(manifest.inputSnapshotTally).toEqual({ matched: 0, unmatched: 0, unavailable: 1 });
+    expect(manifest.executionTally.unconsumedAllow).toBe(1);
   });
 });

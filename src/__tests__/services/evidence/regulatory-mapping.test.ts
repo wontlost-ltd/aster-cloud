@@ -12,12 +12,14 @@ function e(over: Partial<EvidenceEntry>): EvidenceEntry {
     toolchain: { source: null, runtime: null }, replayabilityStatus: null, replayabilityReasons: null,
     reasonCodes: null, source: 'api', durationMs: 1, createdAt: '2026-10-09T00:00:00.000Z',
     outcome: 'ALLOW', ruleId: null, controls: ['EU_AI_ACT:ART14'], agent: null, evidenceCorrelationId: null,
-    receipt: { status: 'legacy' }, reviewers: [], whatIf: null, profile: null, ...over,
+    receipt: { status: 'legacy' }, reviewers: [], whatIf: null, profile: null,
+    inputSource: 'legacy', guardInputSources: null, execution: null, ...over,
   };
 }
 const rv = (over: Partial<Reviewer>): Reviewer => ({
   userId: 'u', role: 'Credit Officer', source: 'guard-approval', outcome: 'APPROVED',
-  decidedAt: '2026-10-09T00:00:00.000Z', ref: 'r', roleVerified: true, ...over,
+  decidedAt: '2026-10-09T00:00:00.000Z', ref: 'r', roleVerified: true,
+  inputSnapshotHash: null, inputSnapshotMatched: null, inputRevealed: null, inputStatus: null, ...over,
 });
 const art14 = (entries: EvidenceEntry[]) =>
   mapRegulatory(entries).frameworks.find((f) => f.control === 'EU_AI_ACT:ART14')!.clauses;

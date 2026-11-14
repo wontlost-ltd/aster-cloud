@@ -18,6 +18,8 @@ export type ChainReceipt = {
   eventType: string;
   timestamp: string;
   metadata: Record<string, unknown>;
+  /** 决策收据专有（ADR 0041 §12 D2）：guard_receipts.consume_audit_id，即权威消耗尝试事件；未消耗或非决策收据为 null。 */
+  authoritativeConsumeAuditId: number | null;
 };
 
 export type ChainApproval = {
@@ -30,15 +32,47 @@ export type ChainApproval = {
   decidedAt: string;
   currentHash: string;
   decisionReceiptHash: string | null;
+  /** 审批快照四键（ADR 0042 §12 D6）：旧 api、旧事件与过期事件没有，归一为 null。 */
+  inputSnapshotHash: string | null;
+  inputSnapshotMatched: boolean | null;
+  inputRevealed: boolean | null;
+  inputStatus: string | null;
 };
 
 /**
- * receipts 以请求 id（correlationId 或 decisionId）为键；approvals 以 decisionId 聚合，
- * 且只有 fetchDecisionReceipts 会填充——fetchReceipts（按 correlationId 查）的 approvals 恒为空。
+ * 一次 consume 尝试（ADR 0041 §12 D2）。只有 guard_receipts.consume_audit_id 所指的那条 authoritative=true；
+ * 判定是否消耗只看决策收据的 authoritativeConsumeAuditId，不数尝试事件、不看 outcome。
+ */
+export type ChainConsume = {
+  auditId: number;
+  currentHash: string;
+  decisionId: string;
+  authoritative: boolean;
+  attemptId: string | null;
+  executorId: string | null;
+  outcome: string | null;
+};
+
+/** 一次执行结果回写（ADR 0041 §12 D2）；authoritative 表示是否为 guard_receipts.result_audit_id 所指。 */
+export type ChainResult = {
+  auditId: number;
+  currentHash: string;
+  decisionId: string;
+  authoritative: boolean;
+  attemptId: string | null;
+  executorId: string | null;
+  status: string | null;
+};
+
+/**
+ * receipts 以请求 id（correlationId 或 decisionId）为键；approvals / consumes / results 以 decisionId 聚合，
+ * 且只有 fetchDecisionReceipts 会填充——fetchReceipts（按 correlationId 查）的这三项恒为空。
  */
 export type ReceiptLookup = {
   receipts: Map<string, ChainReceipt>;
   approvals: Map<string, ChainApproval[]>;
+  consumes: Map<string, ChainConsume[]>;
+  results: Map<string, ChainResult[]>;
   missing: Set<string>;
   unavailable: Set<string>;
 };
@@ -79,15 +113,25 @@ export async function fetchDecisionReceipts(
   return lookup(tenantId, 'decisionIds', decisionIds, fetchImpl, limiter);
 }
 
+/** 空查找结果。 */
+export function emptyLookup(): ReceiptLookup {
+  return {
+    receipts: new Map(), approvals: new Map(), consumes: new Map(), results: new Map(),
+    missing: new Set(), unavailable: new Set(),
+  };
+}
+
 /**
  * 合并多个租户各自的查找结果（导出按租户分组查询后拼回一份）。
  * 各租户的 id 互不相交，故直接并集；同一 decisionId 的审批列表按出现顺序拼接。
  */
 export function mergeLookups(lookups: readonly ReceiptLookup[]): ReceiptLookup {
-  const out: ReceiptLookup = { receipts: new Map(), approvals: new Map(), missing: new Set(), unavailable: new Set() };
+  const out = emptyLookup();
   for (const l of lookups) {
     for (const [id, r] of l.receipts) out.receipts.set(id, r);
     for (const [id, list] of l.approvals) out.approvals.set(id, [...(out.approvals.get(id) ?? []), ...list]);
+    for (const [id, list] of l.consumes) out.consumes.set(id, [...(out.consumes.get(id) ?? []), ...list]);
+    for (const [id, list] of l.results) out.results.set(id, [...(out.results.get(id) ?? []), ...list]);
     for (const id of l.missing) out.missing.add(id);
     for (const id of l.unavailable) out.unavailable.add(id);
   }
@@ -127,7 +171,7 @@ async function lookup(
   fetchImpl: typeof fetch,
   limiter: Limiter,
 ): Promise<ReceiptLookup> {
-  const out: ReceiptLookup = { receipts: new Map(), approvals: new Map(), missing: new Set(), unavailable: new Set() };
+  const out = emptyLookup();
   const unique = [...new Set(ids.filter(Boolean))];
   const batches: string[][] = [];
   for (let i = 0; i < unique.length; i += RECEIPT_BATCH) batches.push(unique.slice(i, i + RECEIPT_BATCH));
@@ -200,7 +244,13 @@ function markUnavailable(out: ReceiptLookup, batch: string[]): void {
   for (const id of batch) out.unavailable.add(id);
 }
 
-type BatchResult = { receipts: Map<string, ChainReceipt>; approvals: ChainApproval[]; missing: string[] };
+type BatchResult = {
+  receipts: Map<string, ChainReceipt>;
+  approvals: ChainApproval[];
+  consumes: ChainConsume[];
+  results: ChainResult[];
+  missing: string[];
+};
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -237,6 +287,27 @@ function optStr(item: Record<string, unknown>, field: string): string | null {
   return v;
 }
 
+/** 可空有限数字字段：缺省归一为 null。 */
+function optNum(item: Record<string, unknown>, field: string): number | null {
+  const v = item[field] ?? null;
+  if (v !== null && (typeof v !== 'number' || !Number.isFinite(v))) malformed(`${field} is not a number`);
+  return v;
+}
+
+/** 可空布尔字段：缺省归一为 null。 */
+function optBool(item: Record<string, unknown>, field: string): boolean | null {
+  const v = item[field] ?? null;
+  if (v !== null && typeof v !== 'boolean') malformed(`${field} is not a boolean`);
+  return v;
+}
+
+/** 必填布尔字段；缺失或类型不符即畸形。 */
+function bool(item: Record<string, unknown>, field: string): boolean {
+  const v = item[field];
+  if (typeof v !== 'boolean') malformed(`${field} is not a boolean`);
+  return v;
+}
+
 /**
  * 线上收据 → 精确的 ChainReceipt（不透传多余键，不留 undefined，保证 canonicalHash 可算）。
  * prevHash 缺省 = 链首行，归一为 null；hashVersion 缺省 = 链前旧行，无法校验 ⇒ 畸形。
@@ -252,6 +323,7 @@ function toReceipt(item: Record<string, unknown>): ChainReceipt {
     eventType: str(item, 'eventType'),
     timestamp: str(item, 'timestamp'),
     metadata,
+    authoritativeConsumeAuditId: optNum(item, 'authoritativeConsumeAuditId'),
   };
 }
 
@@ -267,7 +339,53 @@ function toApproval(item: Record<string, unknown>): ChainApproval {
     decidedAt: str(item, 'decidedAt'),
     currentHash: str(item, 'currentHash'),
     decisionReceiptHash: optStr(item, 'decisionReceiptHash'),
+    inputSnapshotHash: optStr(item, 'inputSnapshotHash'),
+    inputSnapshotMatched: optBool(item, 'inputSnapshotMatched'),
+    inputRevealed: optBool(item, 'inputRevealed'),
+    inputStatus: optStr(item, 'inputStatus'),
   };
+}
+
+/** 线上 consume 尝试 → 精确的 ChainConsume；可空字段缺省归一为 null。 */
+function toConsume(item: Record<string, unknown>): ChainConsume {
+  return {
+    auditId: num(item, 'auditId'),
+    currentHash: str(item, 'currentHash'),
+    decisionId: str(item, 'decisionId'),
+    authoritative: bool(item, 'authoritative'),
+    attemptId: optStr(item, 'attemptId'),
+    executorId: optStr(item, 'executorId'),
+    outcome: optStr(item, 'outcome'),
+  };
+}
+
+/** 线上执行结果 → 精确的 ChainResult；可空字段缺省归一为 null。 */
+function toResult(item: Record<string, unknown>): ChainResult {
+  return {
+    auditId: num(item, 'auditId'),
+    currentHash: str(item, 'currentHash'),
+    decisionId: str(item, 'decisionId'),
+    authoritative: bool(item, 'authoritative'),
+    attemptId: optStr(item, 'attemptId'),
+    executorId: optStr(item, 'executorId'),
+    status: optStr(item, 'status'),
+  };
+}
+
+/** 解析一个按 decisionId 归属的数组字段，只保留本批请求过的 decisionId。 */
+function decisionItems<T extends { decisionId: string }>(
+  body: Record<string, unknown>,
+  field: string,
+  wanted: ReadonlySet<string>,
+  parse: (item: Record<string, unknown>) => T,
+): T[] {
+  const out: T[] = [];
+  for (const item of arrayField(body, field)) {
+    if (!isRecord(item)) malformed(`${field} item is not an object`);
+    const parsed = parse(item);
+    if (wanted.has(parsed.decisionId)) out.push(parsed);
+  }
+  return out;
 }
 
 /**
@@ -285,24 +403,28 @@ function parseBatch(key: 'correlationId' | 'decisionId', batch: string[], body: 
     const id = optStr(item, key);
     if (id !== null && wanted.has(id)) receipts.set(id, receipt);
   }
-  // 审批按 decisionId 归属：只保留本批请求过的 decisionId（即仅 decisionIds 查询有意义）。
-  const approvals: ChainApproval[] = [];
-  for (const item of arrayField(body, 'approvals')) {
-    if (!isRecord(item)) malformed('approval is not an object');
-    const a = toApproval(item);
-    if (wanted.has(a.decisionId)) approvals.push(a);
-  }
+  // 审批 / 消耗 / 结果按 decisionId 归属：只保留本批请求过的 decisionId（即仅 decisionIds 查询有意义）。
+  // reveals[] 不解析：解除记录不进证据包（ADR 0042 §12 D9），留在链上经收据接口可查。
+  const approvals = decisionItems(body, 'approvals', wanted, toApproval);
+  const consumes = decisionItems(body, 'consumes', wanted, toConsume);
+  const results = decisionItems(body, 'results', wanted, toResult);
   arrayField(body, 'missing');
   const missing = batch.filter((id) => !receipts.has(id));
-  return { receipts, approvals, missing };
+  return { receipts, approvals, consumes, results, missing };
+}
+
+function groupInto<T extends { decisionId: string }>(target: Map<string, T[]>, items: readonly T[]): void {
+  for (const item of items) {
+    const list = target.get(item.decisionId) ?? [];
+    list.push(item);
+    target.set(item.decisionId, list);
+  }
 }
 
 function commitBatch(out: ReceiptLookup, result: BatchResult): void {
   for (const [id, r] of result.receipts) out.receipts.set(id, r);
-  for (const a of result.approvals) {
-    const list = out.approvals.get(a.decisionId) ?? [];
-    list.push(a);
-    out.approvals.set(a.decisionId, list);
-  }
+  groupInto(out.approvals, result.approvals);
+  groupInto(out.consumes, result.consumes);
+  groupInto(out.results, result.results);
   for (const id of result.missing) out.missing.add(id);
 }

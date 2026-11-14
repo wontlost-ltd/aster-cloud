@@ -9,6 +9,7 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import {
   buildBundle,
   buildEvidenceEntry,
+  provenanceFor,
   receiptFor,
   serializeBundle,
   type EvidenceRow,
@@ -39,7 +40,7 @@ import type {
 } from '@/services/evidence/types';
 
 /**
- * 本次写入的存储形态：只产 v5；历史 v1–v4 行由 readStoredEvidenceExport 按 schemaVersion 收窄读取，不做重算或升级。
+ * 本次写入的存储形态：只产 v6；历史 v1–v5 行由 readStoredEvidenceExport 按 schemaVersion 收窄读取，不做重算或升级。
  */
 interface EvidenceExportData extends StoredEvidenceExport {
   manifest: EvidenceManifest;
@@ -109,7 +110,7 @@ async function replayByTenant(
 }
 
 /**
- * 为每行拼装链收据、三来源复核者与 What-If 结论，生成 v3 条目。
+ * 为每行拼装链收据、三来源复核者、What-If 结论与 v6 三项（评估输入来源、guard 逐字段来源、执行收据），生成 v6 条目。
  * What-If 取不到不阻断导出（与收据同口径）：条目 whatIf 置 null，数量计入 whatIfUnavailable。
  * ★租户前置：版本 id 只取自已按 userId 过滤的 rows，满足 loadProofReviewers/loadVersionApprovalReviewers 的约定。
  */
@@ -135,6 +136,7 @@ export async function enrichEntries(rows: readonly EvidenceRow[], deps: EnrichDe
       receiptFor(r, lookup),
       [...versionReviewers(r.policyVersionRowId), ...guardReviewers(r.guardDecisionId)],
       replay.items.get(r.id) ?? null,
+      provenanceFor(r, lookup, guardLookup),
     ),
   );
   const whatIfUnavailable = rows.filter((r) => replay.unavailable.has(r.id)).length;
@@ -142,7 +144,7 @@ export async function enrichEntries(rows: readonly EvidenceRow[], deps: EnrichDe
 }
 
 /**
- * 创建证据导出：查真实执行 → 取链收据/复核者 → 组装 v3 bundle → 持久化（generating→completed/failed）。
+ * 创建证据导出：查真实执行 → 取链收据/复核者 → 组装 v6 bundle → 持久化（generating→completed/failed）。
  * 收据取不到不使导出失败：条目如实标 unavailable，manifest.notes 计数。
  * 返回 { id, manifest }（不回整个 bundle，下载走 getEvidenceExportBundle）。
  */

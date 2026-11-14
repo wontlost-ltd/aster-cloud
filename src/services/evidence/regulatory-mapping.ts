@@ -29,6 +29,11 @@ const SOURCES: Record<EvidenceSource, SourceFn> = {
   'reviewers.guard.approved': pick('reviewers', (e) => guardReviewers(e).some((r) => r.outcome === 'APPROVED')),
   'reviewers.guard.rejected': pick('reviewers', (e) => guardReviewers(e).some((r) => r.outcome === 'REJECTED')),
   'reviewers.guard.two': pick('reviewers', (e) => guardReviewers(e).length >= 2),
+  // ADR 0042 §12 D9：审批人提交了与当前输入视图一致的快照哈希。只认 matched === true 且视图可用——
+  // 旧 SDK 不取视图时服务端照样记哈希（matched=false），不能把没看过输入的审批算成证据（F6）。
+  // 注册表引用此名之前它不影响任何条款判定（14(4)(a) 改判随注册表 1.4.0）。
+  'reviewers.guard.inputSnapshot': pick('reviewers', (e) =>
+    guardReviewers(e).some((r) => r.inputSnapshotMatched === true && r.inputStatus === 'available')),
   // 在途批次（targetOutcome 为 null）与失败项（ERROR）不是完成的比对结论
   'whatIf.comparable': pick('whatIf', (e) => e.whatIf !== null && e.whatIf.targetOutcome !== null && e.whatIf.targetOutcome !== 'ERROR'),
   'rule.reason': (entries) => entries

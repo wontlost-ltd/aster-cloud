@@ -66,12 +66,16 @@ function entry(
 function reviewer(over: Partial<Reviewer>): Reviewer {
   return {
     userId: 'u-1', role: 'engineer', source: 'policy-proof', outcome: 'VERIFIED',
-    decidedAt: '2026-07-01T00:00:00.000Z', ref: 'r-1', roleVerified: true, ...over,
+    decidedAt: '2026-07-01T00:00:00.000Z', ref: 'r-1', roleVerified: true,
+    inputSnapshotHash: null, inputSnapshotMatched: null, inputRevealed: null, inputStatus: null, ...over,
   };
 }
 
 function emptyLookup(): ReceiptLookup {
-  return { receipts: new Map(), approvals: new Map(), missing: new Set(), unavailable: new Set() };
+  return {
+    receipts: new Map(), approvals: new Map(), consumes: new Map(), results: new Map(),
+    missing: new Set(), unavailable: new Set(),
+  };
 }
 
 const policy = { id: 'pol-1', name: 'Loan', version: 3, policyVersionRowId: 'pv-1' } as const;
@@ -246,7 +250,7 @@ describe('receiptFor', () => {
   const lookup = emptyLookup();
   lookup.receipts.set('c-hit', {
     auditId: 7, currentHash: 'h7', prevHash: 'h6', hashVersion: 2,
-    eventType: 'POLICY_EVALUATION', timestamp: '2026-07-01T00:00:00Z', metadata: { x: 1 },
+    eventType: 'POLICY_EVALUATION', timestamp: '2026-07-01T00:00:00Z', metadata: { x: 1 }, authoritativeConsumeAuditId: null,
   });
   lookup.unavailable.add('c-down');
   lookup.missing.add('c-miss');
@@ -299,7 +303,7 @@ describe('v2 bundleHash', () => {
   });
 });
 
-describe('v5 manifest', () => {
+describe('v6 manifest（v2 起的计数）', () => {
   const entries = [
     entry({ id: 'a', evidenceCorrelationId: 'c-a', decision: 'require_approval' },
       { auditId: 1, currentHash: 'h1', prevHash: null, hashVersion: 2 },
@@ -310,9 +314,9 @@ describe('v5 manifest', () => {
     entry({ id: 'd', evidenceCorrelationId: 'c-d' }, { status: 'missing' }),
   ];
 
-  it('schemaVersion=5、receiptSource、agentTally、reviewerTally、legacy/unavailable/missing 计数', () => {
+  it('schemaVersion=6、receiptSource、agentTally、reviewerTally、legacy/unavailable/missing 计数', () => {
     const m = buildManifest({ policy, range, entries, generatedAt: gen });
-    expect(m.schemaVersion).toBe('5');
+    expect(m.schemaVersion).toBe('6');
     expect(m.receiptSource).toEqual({ kind: 'aster-api-hash-chain', verifier: 'GET /api/v1/audit/receipts' });
     expect(m.agentTally).toEqual({ 'anthropic/claude': 2, unknown: 1, 'openai/gpt': 1 });
     expect(m.reviewerTally).toEqual({ 'guard-approval': 1, 'policy-proof': 1, 'version-approval': 1 });
@@ -321,9 +325,11 @@ describe('v5 manifest', () => {
     expect(m.notes.receiptsMissing).toBe(1);
     expect(m.decisionTally).toMatchObject({ require_approval: 1, escalate: 1, approved: 2 });
     expect(m.notes.verification).toBe(
-      'bundleHash = canonicalHash(entries sorted by [createdAt, executionId]) over schemaVersion 5 entries ' +
-      '(includes outcome/ruleId/controls/agent/receipt/reviewers/whatIf/profile); receipts verifiable via GET /api/v1/audit/receipts; ' +
-      'v1 bundles use their own recipe.',
+      'bundleHash = canonicalHash(entries sorted by [createdAt, executionId]) over schemaVersion 6 entries ' +
+      '(includes outcome/ruleId/controls/agent/receipt/reviewers (with inputSnapshotHash/inputSnapshotMatched/inputRevealed/inputStatus)/' +
+      'whatIf/profile/inputSource/guardInputSources/execution); manifest tallies are not hashed; ' +
+      'receipts verifiable via GET /api/v1/audit/receipts, guard decision receipts (factSources verbatim), approvals and ' +
+      'consumes/results via GET /api/v1/audit/receipts?decisionIds=; earlier schemaVersions use the recipe stored in their own manifest.',
     );
   });
 
@@ -333,7 +339,7 @@ describe('v5 manifest', () => {
   });
 });
 
-describe('v5：What-If 与法规对照', () => {
+describe('v3 起：What-If 与法规对照', () => {
   it('entry 带 whatIf、manifest 带 regulatoryMapping 与 whatIfUnavailable', () => {
     const e = entry({}, LEGACY, [], null);
     expect(e.whatIf).toBeNull();
@@ -341,7 +347,7 @@ describe('v5：What-If 与法规对照', () => {
     const e2 = buildEvidenceEntry(row({ id: 'exec-2', controls: ['EU_AI_ACT:ART14'] }), LEGACY, [], wi);
     expect(e2.whatIf).toEqual(wi);
     const m = buildManifest({ policy, range: { start: null, end: null }, entries: [e, e2], generatedAt: gen, whatIfUnavailable: 1 });
-    expect(m.schemaVersion).toBe('5');
+    expect(m.schemaVersion).toBe('6');
     expect(m.notes.whatIfUnavailable).toBe(1);
     expect(m.regulatoryMapping.registryVersion).toBe(defaultControlRegistry.version);
     const art14 = m.regulatoryMapping.frameworks.find((f) => f.control === 'EU_AI_ACT:ART14')!;
@@ -359,7 +365,7 @@ describe('v5：What-If 与法规对照', () => {
   });
 });
 
-describe('v5：治理档案（ADR 0046 §6）', () => {
+describe('v5 起：治理档案（ADR 0046 §6）', () => {
   const build = (profiles: Array<string | null>) => buildManifest({
     policy, range, generatedAt: gen,
     entries: profiles.map((profile, i) => entry({ id: `p-${i}`, profile })),
@@ -372,7 +378,7 @@ describe('v5：治理档案（ADR 0046 §6）', () => {
 
   it('profilesUsed 去重并按注册表顺序，标题取自注册表', () => {
     const m = build(['eu-ai-act-high-risk', 'governed', null, 'governed']);
-    expect(m.schemaVersion).toBe('5');
+    expect(m.schemaVersion).toBe('6');
     expect(m.profilesUsed).toEqual([
       { id: 'governed', title: { en: 'Governed rules', zh: '受治理规则', de: 'Gesteuerte Regeln' } },
       {

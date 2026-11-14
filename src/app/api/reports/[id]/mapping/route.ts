@@ -3,10 +3,10 @@ import { auth } from '@/auth';
 import { getEvidenceExport } from '@/lib/evidence';
 import { readStoredEvidenceExport, type StoredEvidenceExport } from '@/services/evidence/stored';
 
-// v1–v3 不含注册表驱动的对照：如实返回 null，由 UI 显示「此版本不含对照」；v5 另附所用治理档案（ADR 0046 §6）
+// v1–v3 不含注册表驱动的对照：如实返回 null，由 UI 显示「此版本不含对照」；v5 起另附所用治理档案（ADR 0046 §6）
 function mappingOf(stored: StoredEvidenceExport | null) {
   const manifest = stored?.manifest;
-  if (manifest?.schemaVersion === '5') return { ...manifest.regulatoryMapping, profilesUsed: manifest.profilesUsed };
+  if (manifest?.schemaVersion === '5' || manifest?.schemaVersion === '6') return { ...manifest.regulatoryMapping, profilesUsed: manifest.profilesUsed };
   return manifest?.schemaVersion === '4' ? manifest.regulatoryMapping : null;
 }
 
