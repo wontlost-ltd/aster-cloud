@@ -203,6 +203,7 @@ Beim Einbetten als `policy`-Feld im Request muss die IR ein JSON-String sein (da
 | `executionTimeMs` | `number` | Wanduhrzeit in Millisekunden von der IR-Deserialisierung bis zum Versand der Antwort. |
 | `error` | `string \| null` | Fehlermeldung; `null` bei Erfolg. |
 | `code` | `string` | Maschinenlesbarer Fehlercode; nur bei Fehlern vorhanden (siehe Statustabelle). |
+| `field` | `string` | Pfad des fehlenden Eingabefelds; nur bei `code: "missing_input_field"` vorhanden. |
 | `evidence` | `object` | Evidenzreferenz dieser Evaluierung; `correlationId` verknüpft die Antwort mit der Audit-Kette. |
 
 Policies, deren Einstiegsregel ein `Verdict` liefert, geben zusätzlich `decision` zurück, und `ruleId` / `controls`, wenn die Regel `@id`- / `@control`-Annotationen trägt.
@@ -212,10 +213,12 @@ Policies, deren Einstiegsregel ein `Verdict` liefert, geben zusätzlich `decisio
 | Status | Bedeutung |
 |--------|---------|
 | `200 OK` | Evaluierung erfolgreich. |
-| `400 Bad Request` | `code: "unsupported_schema_version"` – `policy` ist keine Core IR v2 (`schemaVersion` fehlt oder ist nicht die Ganzzahl `2`). `code: "invalid_request"` – die Core IR besteht die Schema- oder Invariantenprüfung nicht (etwa ein unbekanntes oder fehlendes Feld), oder `context` passt nicht zu den Parametern der Einstiegsfunktion. |
+| `400 Bad Request` | `code: "unsupported_schema_version"` – `policy` ist keine Core IR v2 (`schemaVersion` fehlt oder ist nicht die Ganzzahl `2`). `code: "invalid_request"` – die Core IR besteht die Schema- oder Invariantenprüfung nicht (etwa ein unbekanntes oder fehlendes Feld), der `agent`-Block ist ungültig, oder `context` lässt sich nicht auf die Parameter der Einstiegsfunktion abbilden. `code: "missing_input_field"` – `context` fehlt ein Feld, das die Regel liest (`field` nennt den Pfad). `code: "input_too_deep"`, `"input_cyclic"`, `"input_invalid_key"` oder `"input_unsupported_value"` – die Form von `context` wird nicht unterstützt. |
 | `401 Unauthorized` | Fehlender oder ungültiger Bearer-Token. |
-| `403 Forbidden` | Token ist gültig, dem Aufrufer fehlt jedoch die `MEMBER`-Rolle. |
+| `403 Forbidden` | Token ist gültig, dem Aufrufer fehlt jedoch die `MEMBER`-Rolle, oder der Tarif enthält die Policy Execution API nicht (`error: "api_access_denied"`, Body nur mit `error` / `message`). |
 | `404 Not Found` | `code: "function_not_found"` – die Core IR enthält keine ausführbare Funktion. |
+| `422 Unprocessable Entity` | `code: "execution_timeout"` – die Evaluierung hat das Zeitlimit überschritten. `code: "output_too_deep"`, `"output_cyclic"` oder `"output_invalid_key"` – das Ergebnis lässt sich nicht als JSON zurückgeben. |
+| `429 Too Many Requests` | `error: "rate_limit_exceeded"` – das Limit an Anfragen pro Sekunde für den Schlüssel ist überschritten; nach dem `Retry-After`-Header erneut versuchen. Der Body enthält dann nur `error` / `message`, keine Evaluierungsfelder. |
 | `500 Internal Server Error` | `code: "evaluation_failed"` – die Policy ist zur Laufzeit fehlgeschlagen (ohne interne Details). |
 
 ## Beispiele

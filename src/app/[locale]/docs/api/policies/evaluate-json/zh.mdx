@@ -203,6 +203,7 @@ Rule calculate given order as Order, produce Int:
 | `executionTimeMs` | `number` | 从 IR 反序列化到响应分发的挂钟时间（毫秒）。 |
 | `error` | `string \| null` | 错误消息；成功时为 `null`。 |
 | `code` | `string` | 机器可读的错误码；仅失败时出现（见状态码表）。 |
+| `field` | `string` | 缺少的输入字段路径；仅在 `code: "missing_input_field"` 时出现。 |
 | `evidence` | `object` | 本次评估的证据引用；`correlationId` 把响应与审计链关联起来。 |
 
 入口规则返回 `Verdict` 的策略还会返回 `decision`；规则带 `@id` / `@control` 注解时另返回 `ruleId` / `controls`。
@@ -212,10 +213,12 @@ Rule calculate given order as Order, produce Int:
 | 状态 | 含义 |
 |--------|---------|
 | `200 OK` | 评估成功。 |
-| `400 Bad Request` | `code: "unsupported_schema_version"`——`policy` 不是 Core IR v2（缺少 `schemaVersion`，或不是整数 `2`）。`code: "invalid_request"`——Core IR 未通过 schema 或不变式检查（例如有未知字段或缺字段），或 `context` 与入口函数参数不匹配。 |
+| `400 Bad Request` | `code: "unsupported_schema_version"`——`policy` 不是 Core IR v2（缺少 `schemaVersion`，或不是整数 `2`）。`code: "invalid_request"`——Core IR 未通过 schema 或不变式检查（例如有未知字段或缺字段）、`agent` 不合法，或 `context` 无法映射到入口函数参数。`code: "missing_input_field"`——`context` 缺少规则读取的字段（`field` 给出路径）。`code: "input_too_deep"`、`"input_cyclic"`、`"input_invalid_key"` 或 `"input_unsupported_value"`——`context` 的形态不受支持。 |
 | `401 Unauthorized` | 缺少或无效的 Bearer token。 |
-| `403 Forbidden` | Token 有效但调用者缺少 `MEMBER` 角色。 |
+| `403 Forbidden` | Token 有效但调用者缺少 `MEMBER` 角色，或所在套餐不含 Policy Execution API（`error: "api_access_denied"`，响应体只有 `error` / `message`）。 |
 | `404 Not Found` | `code: "function_not_found"`——Core IR 中没有可执行的函数。 |
+| `422 Unprocessable Entity` | `code: "execution_timeout"`——评估超过墙钟时限。`code: "output_too_deep"`、`"output_cyclic"` 或 `"output_invalid_key"`——结果无法以 JSON 返回。 |
+| `429 Too Many Requests` | `error: "rate_limit_exceeded"`——超过单个 key 的每秒请求上限，按 `Retry-After` 头重试。此时响应体只有 `error` / `message`，不是评估响应。 |
 | `500 Internal Server Error` | `code: "evaluation_failed"`——策略运行时失败（不返回内部细节）。 |
 
 ## 示例
