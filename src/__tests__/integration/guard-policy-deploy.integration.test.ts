@@ -183,6 +183,33 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('Guard 策略部署（真实 Po
     expect(calls).toEqual([]);
   });
 
+  it('concurrentFirstReservationsGetDistinctGenerations（原子预留，不撞主键）', async () => {
+    await seed(1);
+    const gens = await Promise.all(
+      Array.from({ length: 5 }, () => reserveGuardGeneration(POLICY, OWNER, { cloudVersionId: `${POLICY}-v1` })),
+    );
+    expect([...gens].sort()).toEqual([1, 2, 3, 4, 5]);
+    expect((await state())?.generation).toBe(5);
+  });
+
+  it('deleteFencesFirstDeploy：从未部署的删除先提交后，并发的首次设默认不会部署（404 policy_deleted）', async () => {
+    await seed(1);
+    expect((await softDeletePolicy(POLICY, OWNER)).success).toBe(true);
+    await expect(
+      reserveGuardGeneration(POLICY, OWNER, { cloudVersionId: `${POLICY}-v2` }),
+    ).rejects.toMatchObject({ status: 404, error: 'policy_deleted' });
+    expect(calls).toEqual([]);
+    expect(await state()).toBeUndefined();
+  });
+
+  it('deleteAfterConcurrentReservationWithdraws：锁内看到部署行 → 走撤回路径', async () => {
+    await seed(1);
+    await reserveGuardGeneration(POLICY, OWNER, { cloudVersionId: `${POLICY}-v2` });
+    expect((await softDeletePolicy(POLICY, OWNER)).success).toBe(true);
+    expect(calls.map((c) => c.kind)).toEqual(['withdraw']);
+    expect(await state()).toMatchObject({ generation: 2, desiredVersionId: null, appliedGeneration: 2 });
+  });
+
   it('staleGenerationTreatedAsSuperseded', async () => {
     await seed(1);
     const generation = await reserveGuardGeneration(POLICY, OWNER, { cloudVersionId: `${POLICY}-v1` });
