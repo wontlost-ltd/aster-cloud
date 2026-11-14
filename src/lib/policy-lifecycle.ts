@@ -12,7 +12,7 @@ import {
 import { eq, inArray, isNull, not, and, desc, asc, lte, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { freshDb } from '@/db/fresh-read';
-import { deployThenCommit, GuardDeployError } from '@/lib/guard-policy-deploy';
+import { deployThenCommit, GuardDeployError, syncGuardToActual } from '@/lib/guard-policy-deploy';
 import { policyTenantId } from '@/lib/policy-tenant';
 import { loadPolicyForAction, policiesVisibleTo, type LoadedPolicy } from '@/lib/policy-access';
 import { releaseSnapshotRefsForPolicy, reportSnapshotRelease } from '@/lib/domain-vocabulary-snapshot';
@@ -248,6 +248,11 @@ export async function restorePolicy(policyId: string, userId: string): Promise<R
       await tx.delete(policyRecycleBins)
         .where(eq(policyRecycleBins.policyId, policyId));
     });
+
+    // 恢复后让 Guard 回到实际默认版本（ADR 0054 §11 D1）。尽力而为：失败时部署行已预留、applied 落后，
+    // 由 cron guard-deploy-sync 收敛；恢复本身不因 aster-api 不可用而失败。
+    await syncGuardToActual(policyId, userId).catch((e: unknown) =>
+      console.warn('[guard-deploy] restore sync failed; cron will converge', { policyId, error: String(e) }));
 
     return {
       success: true,

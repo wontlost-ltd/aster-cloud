@@ -208,6 +208,26 @@ export async function actualDesired(policyId: string): Promise<GuardDesired> {
   return version ? { cloudVersionId: version.id } : { withdrawn: true };
 }
 
+/**
+ * 按策略此刻的实际状态预留一代并同步一次（恢复回收站后调用）：从未部署且无已批准默认版本时什么也不做；
+ * 其余情况预留后即被 cron 跟踪，推送失败由 cron 收敛。
+ */
+export async function syncGuardToActual(policyId: string, actor: string): Promise<PushResult | undefined> {
+  const actual = await actualDesired(policyId);
+  const existing = await db.query.guardPolicyDeployments.findFirst({
+    where: eq(guardPolicyDeployments.policyId, policyId),
+    columns: { policyId: true },
+  });
+  if (!existing && 'withdrawn' in actual) return undefined;
+  const policy = await db.query.policies.findFirst({
+    where: eq(policies.id, policyId),
+    columns: { teamId: true, userId: true },
+  });
+  if (!policy) return undefined;
+  const generation = await reserveGuardGeneration(policyId, policyTenantId(policy), actual);
+  return pushGuardDeployment(policyId, generation, actor);
+}
+
 export interface ReconcileReport {
   checked: number;
   pushed: number;
