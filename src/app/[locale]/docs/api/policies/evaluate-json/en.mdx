@@ -204,7 +204,7 @@ When embedding this as the `policy` field in the request, the IR must be a JSON 
 | `error` | `string \| null` | Error message; `null` on success. |
 | `code` | `string` | Machine-readable error code; only present on failure (see the status table). |
 | `field` | `string` | Path of the missing input field; only present with `code: "missing_input_field"`. |
-| `evidence` | `object` | Evidence reference for this evaluation; `correlationId` links the response to the audit chain. |
+| `evidence` | `object \| absent` | Evidence reference for this evaluation; `correlationId` links the response to the audit chain. Present when the evaluation was executed and recorded (on success and on failures during execution); absent when the request is rejected before execution, for example with `unsupported_schema_version`, `invalid_request` or `function_not_found`. |
 
 Policies whose entry rule returns a `Verdict` additionally return `decision`, and `ruleId` / `controls` when the rule carries `@id` / `@control` annotations.
 

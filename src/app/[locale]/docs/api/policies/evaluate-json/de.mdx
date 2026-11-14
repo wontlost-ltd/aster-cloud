@@ -204,7 +204,7 @@ Beim Einbetten als `policy`-Feld im Request muss die IR ein JSON-String sein (da
 | `error` | `string \| null` | Fehlermeldung; `null` bei Erfolg. |
 | `code` | `string` | Maschinenlesbarer Fehlercode; nur bei Fehlern vorhanden (siehe Statustabelle). |
 | `field` | `string` | Pfad des fehlenden Eingabefelds; nur bei `code: "missing_input_field"` vorhanden. |
-| `evidence` | `object` | Evidenzreferenz dieser Evaluierung; `correlationId` verknüpft die Antwort mit der Audit-Kette. |
+| `evidence` | `object \| absent` | Evidenzreferenz dieser Evaluierung; `correlationId` verknüpft die Antwort mit der Audit-Kette. Nur vorhanden, wenn die Evaluierung ausgeführt und protokolliert wurde (bei Erfolg und bei Fehlern während der Ausführung); fehlt, wenn die Anfrage vor der Ausführung abgelehnt wird, etwa mit `unsupported_schema_version`, `invalid_request` oder `function_not_found`. |
 
 Policies, deren Einstiegsregel ein `Verdict` liefert, geben zusätzlich `decision` zurück, und `ruleId` / `controls`, wenn die Regel `@id`- / `@control`-Annotationen trägt.
 
