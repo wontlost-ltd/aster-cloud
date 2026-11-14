@@ -162,6 +162,7 @@ function DecisionDialog({
   onCancel,
   onDone,
   onStaleInput,
+  ready,
 }: {
   item: InboxItem;
   verb: Verb;
@@ -171,6 +172,8 @@ function DecisionDialog({
   onDone: () => void;
   /** 409 input_snapshot_mismatch：所见视图已过时，让输入面板重新拉取 */
   onStaleInput: () => void;
+  /** 输入视图已就绪（重新拉取期间为 false，此时不得提交——否则会以缺失的哈希提交） */
+  ready: boolean;
 }) {
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -216,7 +219,7 @@ function DecisionDialog({
       </div>
       {error && <Alert variant="danger" className="mt-3">{error}</Alert>}
       <div className="mt-3 flex gap-2">
-        <Button variant={verb === 'approve' ? 'primary' : 'destructive'} onClick={submit} disabled={submitting}>
+        <Button variant={verb === 'approve' ? 'primary' : 'destructive'} onClick={submit} disabled={submitting || !ready}>
           {submitting ? t('submitting') : t(verb === 'approve' ? 'confirmApprove' : 'confirmReject')}
         </Button>
         <Button variant="ghost" onClick={onCancel} disabled={submitting}>
@@ -436,6 +439,7 @@ export function ApprovalsContent({
       {picked && (
         <DecisionDialog key={`${picked.item.id}:${picked.verb}`} item={picked.item} verb={picked.verb}
           inputSnapshotHash={snapshotHashOf(views[keyOf(picked.item)])} t={t}
+          ready={views[keyOf(picked.item)] !== undefined}
           onStaleInput={() => {
             const key = keyOf(picked.item);
             setViews((v) => ({ ...v, [key]: undefined }));

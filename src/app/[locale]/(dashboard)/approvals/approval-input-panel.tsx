@@ -154,11 +154,17 @@ export function ApprovalInputPanel({ tenantId, approvalId, canReveal, onViewLoad
   const [revealing, setRevealing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  /** 作废当前视图并重新拉取；期间交 undefined，收件箱随之禁用批准 / 拒绝。 */
+  const reload = () => {
     setView(undefined);
     setFailed(false);
+    setConfirming(false);
     onViewLoaded(undefined);
+    setAttempt((n) => n + 1);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
     (async () => {
       let loaded: GuardApprovalInput | null;
       try {
@@ -193,8 +199,7 @@ export function ApprovalInputPanel({ tenantId, approvalId, canReveal, onViewLoad
         setError(revealErrorText(t, body.error));
         // 审批已不再待审 / 输入已不可用：手里的视图已过时，重新拉取，收件箱在此期间禁用批准 / 拒绝
         if (body.error === 'approval_not_pending' || body.error === 'input_not_available') {
-          setConfirming(false);
-          setAttempt((n) => n + 1);
+          reload();
         }
         return;
       }
@@ -212,7 +217,7 @@ export function ApprovalInputPanel({ tenantId, approvalId, canReveal, onViewLoad
     return (
       <div className="flex items-center gap-2 text-sm" data-testid="input-failed">
         <Alert variant="danger">{t('input.loadFailed')}</Alert>
-        <Button size="sm" variant="secondary" onClick={() => setAttempt((n) => n + 1)}>{t('input.retry')}</Button>
+        <Button size="sm" variant="secondary" onClick={reload}>{t('input.retry')}</Button>
       </div>
     );
   }

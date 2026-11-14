@@ -33,10 +33,10 @@ vi.mock('./approval-input-panel', async () => {
   return {
     ApprovalInputPanel: ({ onViewLoaded }: { onViewLoaded: (v: unknown) => void }) => {
       // 与真实面板一致：只在挂载时交一次视图（父组件每次渲染都会新建回调）
-      // eslint-disable-next-line react-hooks/exhaustive-deps
       useEffect(() => {
         panelMounts.count += 1;
         onViewLoaded(panelView.current);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
       }, []);
       return <div data-testid="panel-stub" />;
     },
@@ -374,8 +374,9 @@ describe('ApprovalsContent — 需求验证埋点', () => {
       fireEvent.click(screen.getByRole('button', { name: 'approve' }));
       fireEvent.click(screen.getByRole('button', { name: 'confirmApprove' }));
       await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('errors.input_snapshot_mismatch'));
-      // 所见视图已过时：面板重新挂载拉取
+      // 所见视图已过时：面板重新挂载拉取（桩立即交回视图后，对话框重新可提交）
       expect(panelMounts.count).toBe(2);
+      expect((screen.getByRole('button', { name: 'confirmApprove' }) as HTMLButtonElement).disabled).toBe(false);
     });
 
     it('只读行同样可以展开输入（无解除权限由面板判定）', () => {
