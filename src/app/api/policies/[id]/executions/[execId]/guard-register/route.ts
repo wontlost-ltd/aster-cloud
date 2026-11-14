@@ -44,15 +44,16 @@ export async function POST(_req: Request, { params }: RouteParams) {
       },
     });
     if (!exec) return NextResponse.json({ error: 'Execution not found' }, { status: 404 });
-    if (!needsGuardDecision(exec.decision)) {
-      return NextResponse.json({ error: 'Execution does not require approval', code: 'not_approvable' }, { status: 409 });
+    // 登记条件与执行时同一判定：待处置结论，或档案要求 verifiedInputs 的 Verdict ALLOW（ADR 0046 §11.8）
+    const output = (exec.output ?? {}) as PolicyExecutionResult;
+    if (!needsGuardDecision(exec.decision, output.metadata)) {
+      return NextResponse.json({ error: 'Execution does not require a guard decision', code: 'not_approvable' }, { status: 409 });
     }
 
     const existing = (exec.metadata ?? {}) as ExecutionMetadata;
     if (existing.guardDecisionId) return NextResponse.json({ metadata: existing });
 
     // 证据关联 id 以落库列为准（output 内的副本可能缺失于旧行）
-    const output = (exec.output ?? {}) as PolicyExecutionResult;
     const correlationId = exec.evidenceCorrelationId ?? output.metadata?.evidenceCorrelationId;
     // 无证据锚的行重试永远不会成功：直接 409，不改写行
     if (!correlationId) {
@@ -73,7 +74,9 @@ export async function POST(_req: Request, { params }: RouteParams) {
     );
 
     // 新结果整体替换旧的 guard 键：成功时清掉上次的 guardError
-    const { guardDecisionId: _d, guardApprovalId: _a, guardError: _e, ...rest } = existing;
+    const {
+      guardDecisionId: _d, guardApprovalId: _a, guardOutcome: _o, guardReasonCode: _r, guardError: _e, ...rest
+    } = existing;
     const metadata: ExecutionMetadata = { ...rest, ...guardMeta };
     await db.update(executions).set({ metadata }).where(where);
 

@@ -128,6 +128,8 @@ export default async function PolicyLogsPage({
       viewApproval: t('logs.viewApproval'),
       registerGuard: t('logs.registerGuard'),
       guardError: t('logs.guardError'),
+      guardDenied: t('logs.guardDenied'),
+      guardAllowed: t('logs.guardAllowed'),
       // ★parity 徽章文案：i18n 消息由外部 @aster-cloud/ui-messages 包发布（ADR 0018，cloud 不手维护
       //   messages/*）。为避免 t('logs.parity.*') 在包尚未发布该 key 时 throw missing-message，这里用
       //   t.has 探测——存在则本地化，否则留空由 LogsContent 的 `?? 默认英文` 兜底。ui-messages 发布该

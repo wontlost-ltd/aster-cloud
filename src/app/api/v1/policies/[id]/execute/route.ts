@@ -16,7 +16,14 @@ import {
   loadVersionExecutionVocabulary,
   prepareExecutionInput,
 } from '@/lib/execution-input';
-import { needsGuardDecision, registerGuardAfterInsert, registerGuardDecisionWith } from '@/lib/guard-register';
+import {
+  executionSuccess,
+  guardRequirement,
+  guardSummary,
+  registerGuardAfterInsert,
+  registerGuardDecisionWith,
+  type ExecutionMetadata,
+} from '@/lib/guard-register';
 import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
 import { parseAgentIdentity } from '@/services/policy/policy-api';
 import { hydrateExecutableVersion, resolveExecutableVersion, type ExecutableVersionCandidate } from '@/services/policy/executable-version';
@@ -441,11 +448,14 @@ export async function POST(req: Request, { params }: RouteParams) {
         }),
     ]).catch(err => console.error('Failed to record execution:', err));
 
-    // 需审批/升级的执行以证据锚定开 guard 决策（ADR 0042 §5.1），以 API key 持有者及其在策略租户的业务角色调用。
+    // 需审批/升级的执行，以及档案要求 verifiedInputs 的 ALLOW（ADR 0046 §11.8），以证据锚定开 guard 决策
+    // （ADR 0042 §5.1），以 API key 持有者及其在策略租户的业务角色调用。
     // 先等执行行落库再登记、再回写 metadata：api 挂起（guard 专用 8 s 超时）也不会丢执行行；
     // 失败只记 guardError，日志页可重新登记。
-    if (needsGuardDecision(decision)) {
-      await registerGuardAfterInsert(executionInsertPromise, executionId, () =>
+    const guardRequired = guardRequirement(decision, executionResult.metadata);
+    let guardMeta: ExecutionMetadata | null = null;
+    if (guardRequired) {
+      guardMeta = await registerGuardAfterInsert(executionInsertPromise, executionId, () =>
         registerGuardDecisionWith(() => createPolicyApiClientForUser(policyTenantId(policy), userId), {
           policy: { id: policy.id, name: policy.name, teamId: policy.teamId, userId: policy.userId },
           functionName: executionResult.executedFunction ?? policy.name,
@@ -506,8 +516,10 @@ export async function POST(req: Request, { params }: RouteParams) {
     });
 
     return NextResponse.json({
-      success: executionResult.allowed,
+      // 「调用方可据此继续」：来源门要求下取 guard 结论（ADR 0046 §11.8 第 5 条）；data.decision 仍是策略结论
+      success: executionSuccess(executionResult.allowed, guardRequired, guardMeta),
       data: { ...executionResult, decision },
+      ...(guardRequired ? { guard: guardSummary(guardRequired, guardMeta) } : {}),
       error: primaryError,
       errorCode: executionErrorCode(executionResult),
       meta: {

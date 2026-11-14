@@ -89,6 +89,20 @@ interface ExecutionResult {
   localizedResult?: unknown;
   executedFunction?: string;
   diagnostics?: ExecutionDiagnostic[];
+  /**
+   * guard 决策（ADR 0042 §5.1、ADR 0046 §11.8）：只在需要 guard 时出现。required=provenance 表示策略结论为 ALLOW
+   * 但档案要求输入经签名核实，结论须过来源门；guard 未放行时 success 为 false，不得据此执行。
+   */
+  guard?: ExecutionGuard;
+}
+
+interface ExecutionGuard {
+  required: 'approval' | 'provenance';
+  decisionId?: string;
+  approvalId?: string;
+  effectiveOutcome?: string;
+  reasonCode?: string;
+  error?: string;
 }
 
 /** 待人工处置的 Verdict 结果码 → 文案 key；非待处置返回 null。 */
@@ -99,6 +113,22 @@ function pendingOutcomeKey(outcome: string | undefined): 'require_approval' | 'e
 }
 
 const PENDING_BADGE_CLASS = 'inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-sm font-medium text-amber-800';
+const ALLOW_BADGE_CLASS = 'inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-sm font-medium text-green-800';
+const DENY_BADGE_CLASS = 'inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-sm font-medium text-red-800';
+
+/** guard 结论 → 徽章样式与文案 key（登记失败与 DENY 同为红色：都不构成执行授权）。 */
+export function guardBadge(guard: ExecutionGuard): { className: string; key: string; values?: Record<string, string> } {
+  if (guard.error) return { className: DENY_BADGE_CLASS, key: 'guardFailed', values: { code: guard.error } };
+  if (guard.effectiveOutcome === 'ALLOW') return { className: ALLOW_BADGE_CLASS, key: 'guardAllowed' };
+  if (guard.effectiveOutcome === 'PENDING') return { className: PENDING_BADGE_CLASS, key: 'guardPending' };
+  if (guard.reasonCode === 'unverified_input') return { className: DENY_BADGE_CLASS, key: 'guardDeniedUnverified' };
+  return { className: DENY_BADGE_CLASS, key: 'guardDenied', values: { code: guard.reasonCode ?? 'DENY' } };
+}
+
+function GuardBadge({ guard, t }: { guard: ExecutionGuard; t: (key: string, values?: Record<string, string>) => string }) {
+  const badge = guardBadge(guard);
+  return <span className={badge.className}>{t(badge.key, badge.values)}</span>;
+}
 
 /** 某个 Rule 上次留下的输入（JSON 文本；表单只是它的视图，不另存）。 */
 interface RuleDraft {
@@ -939,6 +969,17 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
                       </span>
                     )}
                   </div>
+                )}
+
+                {/* Guard（ADR 0046 §11.8）：Decision 行是策略结论；高风险档案下 ALLOW 还须过来源门，结论在此单列。 */}
+                {result.guard && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-fg-muted">{t('guard')}</span>
+                    <GuardBadge guard={result.guard} t={t} />
+                  </div>
+                )}
+                {result.guard?.required === 'provenance' && !result.success && (
+                  <p role="alert" className="text-sm text-danger">{t('guardNotAuthorizedHint')}</p>
                 )}
 
                 {/* 计算值输出（indeterminate=值/计算策略）：突出展示 result，

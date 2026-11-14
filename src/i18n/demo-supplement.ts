@@ -1387,6 +1387,14 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         // Verdict 待处置态（ADR 0041 §4）。
         require_approval: 'Needs approval',
         escalate: 'Escalated',
+        // guard 结论（ADR 0046 §11.8）：Decision 行是策略结论，高风险档案下 ALLOW 还须过来源门。
+        guard: 'Guard',
+        guardAllowed: 'Allowed (inputs verified)',
+        guardPending: 'Pending approval',
+        guardDenied: 'Denied ({code})',
+        guardDeniedUnverified: 'Denied: inputs not verified',
+        guardFailed: 'Not registered ({code})',
+        guardNotAuthorizedHint: 'The policy allowed this request, but its governance profile requires verified inputs and the guard did not authorize it. Do not act on this result.',
       },
       // 版本对比面板（原硬编码中文，/en 等页面需本地化）。
       versionCompare: {
@@ -1471,6 +1479,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         viewApproval: 'Pending approval · View',
         registerGuard: 'Register again',
         guardError: 'Approval registration failed',
+        guardDenied: 'Guard denied',
+        guardAllowed: 'Guard allowed',
         // 统计卡：待处置数量与通过率口径说明。
         pendingLabel: 'Pending',
         rateNote: 'Approval rate = approved / (approved + rejected). Execution errors are counted separately.',
@@ -3033,6 +3043,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         error: '执行错误',
         require_approval: '需人工批准',
         escalate: '已升级',
+        guard: 'Guard',
+        guardAllowed: '放行（输入已核实）',
+        guardPending: '待审批',
+        guardDenied: '拒绝（{code}）',
+        guardDeniedUnverified: '拒绝：输入未经核实',
+        guardFailed: '未登记（{code}）',
+        guardNotAuthorizedHint: '策略允许了该请求，但其治理档案要求输入经签名核实，Guard 未予放行。请勿据此结果执行。',
       },
       // 版本对比面板（原硬编码中文，/en 等页面需本地化）。
       versionCompare: {
@@ -3116,6 +3133,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         viewApproval: '待审批 · 查看',
         registerGuard: '重新登记',
         guardError: '审批登记失败',
+        guardDenied: 'Guard 已拒绝',
+        guardAllowed: 'Guard 已放行',
         // 统计卡：待处置数量与通过率口径说明。
         pendingLabel: '待处置',
       },
@@ -4687,6 +4706,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         error: 'Ausführungsfehler',
         require_approval: 'Freigabe nötig',
         escalate: 'Eskaliert',
+        guard: 'Guard',
+        guardAllowed: 'Erlaubt (Eingaben verifiziert)',
+        guardPending: 'Freigabe ausstehend',
+        guardDenied: 'Abgelehnt ({code})',
+        guardDeniedUnverified: 'Abgelehnt: Eingaben nicht verifiziert',
+        guardFailed: 'Nicht registriert ({code})',
+        guardNotAuthorizedHint: 'Die Richtlinie hat diese Anfrage erlaubt, aber ihr Governance-Profil verlangt verifizierte Eingaben und der Guard hat sie nicht freigegeben. Handeln Sie nicht auf Grundlage dieses Ergebnisses.',
       },
       // 版本对比面板（原硬编码中文，/en 等页面需本地化）。
       versionCompare: {
@@ -4766,6 +4792,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         viewApproval: 'Freigabe ausstehend · Ansehen',
         registerGuard: 'Erneut registrieren',
         guardError: 'Freigabe-Registrierung fehlgeschlagen',
+        guardDenied: 'Guard abgelehnt',
+        guardAllowed: 'Guard erlaubt',
         // 统计卡：待处置数量与通过率口径说明。
         pendingLabel: 'Ausstehend',
       },
@@ -6327,6 +6355,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         error: 'निष्पादन त्रुटि',
         require_approval: 'अनुमोदन आवश्यक',
         escalate: 'एस्केलेट किया गया',
+        guard: 'Guard',
+        guardAllowed: 'अनुमत (इनपुट सत्यापित)',
+        guardPending: 'अनुमोदन लंबित',
+        guardDenied: 'अस्वीकृत ({code})',
+        guardDeniedUnverified: 'अस्वीकृत: इनपुट सत्यापित नहीं',
+        guardFailed: 'पंजीकृत नहीं ({code})',
+        guardNotAuthorizedHint: 'नीति ने इस अनुरोध की अनुमति दी, लेकिन इसकी गवर्नेंस प्रोफ़ाइल को सत्यापित इनपुट चाहिए और Guard ने इसे अधिकृत नहीं किया। इस परिणाम के आधार पर कार्रवाई न करें।',
       },
       // 版本对比面板（原硬编码中文，/en 等页面需本地化）。
       versionCompare: {
@@ -6406,6 +6441,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         viewApproval: 'अनुमोदन लंबित · देखें',
         registerGuard: 'फिर से पंजीकृत करें',
         guardError: 'अनुमोदन पंजीकरण विफल',
+        guardDenied: 'Guard ने अस्वीकार किया',
+        guardAllowed: 'Guard ने अनुमति दी',
         // 统计卡：待处置数量与通过率口径说明。
         pendingLabel: 'लंबित',
       },
