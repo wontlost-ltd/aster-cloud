@@ -169,7 +169,7 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
       }>;
       setExports(
         rows.map((e) => {
-          // 历史行可能是 v1–v5 manifest：经 summarizeStoredExport 按 schemaVersion 收窄，未知版本显示占位。
+          // 历史行可能是 v1–v6 manifest：经 summarizeStoredExport 按 schemaVersion 收窄，未知版本显示占位。
           const summary = summarizeStoredExport(e.data);
           return {
             id: e.id,
@@ -452,7 +452,7 @@ function defaultStart(): string {
   return d.toISOString().slice(0, 10);
 }
 
-const MAPPING_SCHEMA_VERSIONS: ReadonlySet<string | null> = new Set(['4', '5']);
+const MAPPING_SCHEMA_VERSIONS: ReadonlySet<string | null> = new Set(['4', '5', '6']);
 const hasMapping = (schemaVersion: string | null) => MAPPING_SCHEMA_VERSIONS.has(schemaVersion);
 
 // 拉取单个导出的对照；非 2xx（含会话过期）或网络失败返回 'error'，与「无对照」区分

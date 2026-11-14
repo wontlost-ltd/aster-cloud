@@ -29,7 +29,9 @@ const row = (id: string): EvidenceRow =>
 const whatIf = { marker: 'stub' } as unknown as EvidenceWhatIf;
 
 function deps(replay: { items?: Map<string, EvidenceWhatIf>; unavailable?: Set<string> }): EnrichDeps {
-  const empty = async () => ({ receipts: new Map(), unavailable: new Set<string>(), approvals: new Map() });
+  const empty = async () => ({
+    receipts: new Map(), unavailable: new Set<string>(), approvals: new Map(), consumes: new Map(), results: new Map(),
+  });
   return {
     fetchReceipts: empty,
     fetchDecisionReceipts: empty,
@@ -62,7 +64,10 @@ describe('enrichEntries What-If 接线', () => {
     const receiptTenants: string[] = [];
     const receipt = async (tenant: string) => {
       receiptTenants.push(tenant);
-      return { receipts: new Map(), missing: new Set<string>(), unavailable: new Set<string>(), approvals: new Map() };
+      return {
+        receipts: new Map(), missing: new Set<string>(), unavailable: new Set<string>(), approvals: new Map(),
+        consumes: new Map(), results: new Map(),
+      };
     };
     const r = { ...row('exec-1'), policyTenantId: 'team-1', policyOwnerId: 'user-1',
       evidenceCorrelationId: 'c-1', guardDecisionId: 'gd-1' } as EvidenceRow;

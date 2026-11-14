@@ -3,7 +3,8 @@ import raw from '@/config/controls-registry.json';
 
 export type EvidenceSource =
   | 'control' | 'outcome.pending' | 'outcome.requireApproval' | 'reviewers.any' | 'reviewers.guard.any'
-  | 'reviewers.guard.approved' | 'reviewers.guard.rejected' | 'reviewers.guard.two' | 'whatIf.comparable' | 'rule.reason';
+  | 'reviewers.guard.approved' | 'reviewers.guard.rejected' | 'reviewers.guard.two' | 'reviewers.guard.inputSnapshot'
+  | 'whatIf.comparable' | 'rule.reason';
 
 export interface LocalizedTitle { en: string; zh: string; de: string }
 export interface RegistryClause {

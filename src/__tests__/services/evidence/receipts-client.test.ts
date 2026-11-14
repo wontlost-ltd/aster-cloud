@@ -294,6 +294,7 @@ describe('receipts-client：线上形状归一', () => {
     expect(out.receipts.get('c-0')).toEqual({
       auditId: 1, currentHash: 'h1', prevHash: null, hashVersion: 2,
       eventType: 'POLICY_EVALUATION', timestamp: '2026-10-01T00:00:00Z', metadata: { a: 1 },
+      authoritativeConsumeAuditId: null,
     });
     const ref = receiptFor({ evidenceCorrelationId: 'c-0' }, out);
     expect(ref).toEqual({ auditId: 1, currentHash: 'h1', prevHash: null, hashVersion: 2 });
@@ -341,11 +342,66 @@ describe('receipts-client：线上形状归一', () => {
     expect(out.approvals.get('d-1')).toEqual([{
       auditId: 8, decisionId: 'd-1', outcome: 'APPROVED', decidedBy: null, requiredRole: null, comment: null,
       decidedAt: '2026-10-01T01:00:00Z', currentHash: 'ha', decisionReceiptHash: null,
+      inputSnapshotHash: null, inputSnapshotMatched: null, inputRevealed: null, inputStatus: null,
     }]);
     expect([...out.missing]).toEqual(['d-1']);
     const [reviewer] = guardApprovalReviewers(out.approvals.get('d-1')!);
     expect(Object.values(reviewer).every((v) => v !== undefined)).toBe(true);
     expect(reviewer.userId).toBe('unknown');
+  });
+
+  it('★审批快照四键（ADR 0042 §12 D6）、consumes / results、authoritativeConsumeAuditId 按线上形状解析；reveals 忽略', async () => {
+    const fetchImpl = (async () => jsonResponse({
+      approvals: [{ auditId: 8, currentHash: 'ha', decidedAt: '2026-10-01T01:00:00Z', decisionId: 'd-1', outcome: 'APPROVED',
+        inputRevealed: false, inputSnapshotHash: 'f'.repeat(64), inputSnapshotMatched: true, inputStatus: 'available' }],
+      consumes: [
+        { actionHash: 'ah', auditId: 20, attemptId: 'a-0', authoritative: false, currentHash: 'h20', decisionId: 'd-1',
+          executorId: 'x@h', outcome: 'rejected:receipt_consumed', timestamp: '2026-10-01T02:00:00Z' },
+        { auditId: 21, authoritative: true, currentHash: 'h21', decisionId: 'd-1', timestamp: '2026-10-01T02:00:00Z' },
+        { auditId: 99, authoritative: true, currentHash: 'h99', decisionId: 'd-other', timestamp: '2026-10-01T02:00:00Z' },
+      ],
+      receipts: [{ ...GENESIS, correlationId: undefined, decisionId: 'd-1', eventType: 'ACTION_GUARD_DECISION',
+        authoritativeConsumeAuditId: 21, authoritativeResultAuditId: 30 }],
+      results: [{ auditId: 30, attemptId: 'a-1', authoritative: true, consumeReceiptHash: 'h21', currentHash: 'h30',
+        decisionId: 'd-1', status: 'executed', timestamp: '2026-10-01T03:00:00Z' }],
+      reveals: [{ approvalId: 'ap', auditId: 7, currentHash: 'h7', decisionId: 'd-1', performedBy: 'u', timestamp: 't' }],
+    })) as unknown as typeof fetch;
+    const out = await fetchDecisionReceipts('t-1', ['d-1'], fetchImpl);
+    expect(out.unavailable.size).toBe(0);
+    expect(out.receipts.get('d-1')?.authoritativeConsumeAuditId).toBe(21);
+    expect(out.approvals.get('d-1')?.[0]).toMatchObject({
+      inputSnapshotHash: 'f'.repeat(64), inputSnapshotMatched: true, inputRevealed: false, inputStatus: 'available',
+    });
+    expect(out.consumes.get('d-1')).toEqual([
+      { auditId: 20, currentHash: 'h20', decisionId: 'd-1', authoritative: false, attemptId: 'a-0', executorId: 'x@h',
+        outcome: 'rejected:receipt_consumed' },
+      { auditId: 21, currentHash: 'h21', decisionId: 'd-1', authoritative: true, attemptId: null, executorId: null, outcome: null },
+    ]);
+    expect(out.consumes.has('d-other')).toBe(false);
+    expect(out.results.get('d-1')).toEqual([
+      { auditId: 30, currentHash: 'h30', decisionId: 'd-1', authoritative: true, attemptId: 'a-1', executorId: null, status: 'executed' },
+    ]);
+    expect(out).not.toHaveProperty('reveals');
+  });
+
+  it('新键类型不符（matched 为字符串 / authoritative 缺失 / consumeAuditId 为字符串）⇒ 整批 unavailable', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const approval = { auditId: 8, currentHash: 'ha', decidedAt: 't', decisionId: 'd-1', outcome: 'APPROVED' };
+    const bodies = [
+      { approvals: [{ ...approval, inputSnapshotMatched: 'true' }] },
+      { consumes: [{ auditId: 1, currentHash: 'h', decisionId: 'd-1' }] },
+      { results: [{ auditId: 1, currentHash: 'h', decisionId: 'd-1', authoritative: 'yes' }] },
+      { receipts: [{ ...GENESIS, decisionId: 'd-1', authoritativeConsumeAuditId: '21' }] },
+      { consumes: {} },
+      { receipts: [{ ...GENESIS, decisionId: 'd-1', metadata: { factSources: 'context.a=s' } }] },
+      { receipts: [{ ...GENESIS, decisionId: 'd-1', metadata: { verifiedFields: ['context.a', 7] } }] },
+      { receipts: [{ ...GENESIS, decisionId: 'd-1', metadata: { inputSourcesTruncated: 'true' } }] },
+      { receipts: [{ ...GENESIS, decisionId: 'd-1', metadata: { inputSource: 1 } }] },
+    ];
+    for (const body of bodies) {
+      const out = await fetchDecisionReceipts('t-1', ['d-1'], (async () => jsonResponse(body)) as unknown as typeof fetch);
+      expect([...out.unavailable], JSON.stringify(body)).toEqual(['d-1']);
+    }
   });
 
   it('审批缺 decidedAt / outcome ⇒ 整批 unavailable', async () => {
@@ -413,7 +469,7 @@ describe('receipts-client：失败诊断', () => {
     const out = await fetchReceipts('t-1', ids(3), (async (url: string | URL | Request) =>
       okFor(batchOf(String(url)))) as unknown as typeof fetch);
     expect(warn).not.toHaveBeenCalled();
-    expect(Object.keys(out).sort()).toEqual(['approvals', 'missing', 'receipts', 'unavailable']);
+    expect(Object.keys(out).sort()).toEqual(['approvals', 'consumes', 'missing', 'receipts', 'results', 'unavailable']);
   });
 });
 
@@ -464,20 +520,35 @@ describe('mergeLookups', () => {
     const approval = (auditId: number) => ({
       auditId, decisionId: 'd-1', outcome: 'APPROVED', decidedBy: 'u', requiredRole: null, comment: null,
       decidedAt: '2026-10-01T00:00:00Z', currentHash: `h${auditId}`, decisionReceiptHash: null,
+      inputSnapshotHash: null, inputSnapshotMatched: null, inputRevealed: null, inputStatus: null,
     });
-    const receipt = { auditId: 1, currentHash: 'h1', prevHash: null, hashVersion: 2, eventType: 'E', timestamp: 't', metadata: {} };
+    const consume = (auditId: number) => ({
+      auditId, currentHash: `h${auditId}`, decisionId: 'd-1', authoritative: false, attemptId: null, executorId: null, outcome: null,
+    });
+    const result = (auditId: number) => ({
+      auditId, currentHash: `h${auditId}`, decisionId: 'd-1', authoritative: false, attemptId: null, executorId: null, status: null,
+    });
+    const receipt = {
+      auditId: 1, currentHash: 'h1', prevHash: null, hashVersion: 2, eventType: 'E', timestamp: 't', metadata: {},
+      authoritativeConsumeAuditId: null,
+    };
     const merged = mergeLookups([
-      { receipts: new Map([['c-1', receipt]]), approvals: new Map([['d-1', [approval(1)]]]), missing: new Set(['c-2']), unavailable: new Set() },
-      { receipts: new Map(), approvals: new Map([['d-1', [approval(2)]]]), missing: new Set(), unavailable: new Set(['c-3']) },
+      { receipts: new Map([['c-1', receipt]]), approvals: new Map([['d-1', [approval(1)]]]),
+        consumes: new Map([['d-1', [consume(5)]]]), results: new Map(), missing: new Set(['c-2']), unavailable: new Set() },
+      { receipts: new Map(), approvals: new Map([['d-1', [approval(2)]]]), consumes: new Map([['d-1', [consume(6)]]]),
+        results: new Map([['d-1', [result(7)]]]), missing: new Set(), unavailable: new Set(['c-3']) },
     ]);
     expect(merged.receipts.get('c-1')).toBe(receipt);
     expect(merged.approvals.get('d-1')!.map((a) => a.auditId)).toEqual([1, 2]);
+    expect(merged.consumes.get('d-1')!.map((c) => c.auditId)).toEqual([5, 6]);
+    expect(merged.results.get('d-1')!.map((r) => r.auditId)).toEqual([7]);
     expect([...merged.missing]).toEqual(['c-2']);
     expect([...merged.unavailable]).toEqual(['c-3']);
   });
 
   it('空输入 → 空查找结果', () => {
     const merged = mergeLookups([]);
-    expect(merged.receipts.size + merged.approvals.size + merged.missing.size + merged.unavailable.size).toBe(0);
+    expect(merged.receipts.size + merged.approvals.size + merged.consumes.size + merged.results.size
+      + merged.missing.size + merged.unavailable.size).toBe(0);
   });
 });

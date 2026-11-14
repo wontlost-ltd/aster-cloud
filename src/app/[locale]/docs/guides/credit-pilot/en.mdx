@@ -94,7 +94,7 @@ Do everything except the approval as the policy owner `cp-owner` (logs page, **C
 
 The mapping is driven by controls registry 1.1.0 (ADR 0045; the `@aster-cloud/controls` package is not published yet, so a copy of the registry ships inside this repository): every registered control that has mapped clauses brings its own clause list and judging rules, and every export applies the same rules. On `/reports`, click **Regulatory mapping** on a completed export to view the table directly; the bundle file carries the same data.
 
-The bundle (manifest `schemaVersion: "5"`) contains `manifest.regulatoryMapping` and `manifest.profilesUsed`:
+The bundle (manifest `schemaVersion: "6"`) contains `manifest.regulatoryMapping` and `manifest.profilesUsed`:
 
 ```json
 {

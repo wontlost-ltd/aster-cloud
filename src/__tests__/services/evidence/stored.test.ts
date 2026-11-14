@@ -1,4 +1,4 @@
-// 已持久化证据导出读取侧单测（ADR 0041 §5）：v1–v5 按 schemaVersion 收窄，未知版本与非证据行不可读。
+// 已持久化证据导出读取侧单测（ADR 0041 §5）：v1–v6 按 schemaVersion 收窄，未知版本与非证据行不可读。
 
 import { describe, it, expect } from 'vitest';
 import { readStoredEvidenceExport, summarizeManifest, summarizeStoredExport } from '@/services/evidence/stored';
@@ -26,19 +26,34 @@ const V4_MANIFEST = { ...V3_MANIFEST, schemaVersion: '4', totals: { count: 2 }, 
 
 const V5_MANIFEST = { ...V4_MANIFEST, schemaVersion: '5', totals: { count: 4 }, bundleHash: 'm', profilesUsed: [] };
 
+const V6_MANIFEST = {
+  ...V5_MANIFEST, schemaVersion: '6', totals: { count: 6 }, bundleHash: 'n',
+  inputSourceTally: { declared: 6, mixed: 0, legacy: 0 }, verifiedInputsUsed: 0,
+  executionTally: { consumed: 0, unconsumedAllow: 0, executed: 0, failed: 0, aborted: 0 },
+  inputSnapshotTally: { matched: 0, unmatched: 0, unavailable: 0 },
+};
+
 const stored = (manifest: unknown) => ({ kind: 'evidence-export', manifest, bundle: { manifest, entries: [] }, format: 'json' });
 
 describe('readStoredEvidenceExport', () => {
-  it('★v1–v5 行均可读，manifest 原样返回', () => {
+  it('★storedReadsV5AndV6：v1–v6 行均可读，manifest 原样返回', () => {
     expect(readStoredEvidenceExport(stored(V1))?.manifest).toBe(V1);
     expect(readStoredEvidenceExport(stored(V2_MANIFEST))?.manifest).toBe(V2_MANIFEST);
     expect(readStoredEvidenceExport(stored(V3_MANIFEST))?.manifest).toBe(V3_MANIFEST);
     expect(readStoredEvidenceExport(stored(V4_MANIFEST))?.manifest).toBe(V4_MANIFEST);
     expect(readStoredEvidenceExport(stored(V5_MANIFEST))?.manifest).toBe(V5_MANIFEST);
+    expect(readStoredEvidenceExport(stored(V6_MANIFEST))?.manifest).toBe(V6_MANIFEST);
+  });
+
+  it('v5 包在 v6 上线后原样下载（不升级、不补 v6 字段）', () => {
+    const entry = { executionId: 'e', reviewers: [{ userId: 'u', source: 'guard-approval' }] };
+    const row = { ...stored(V5_MANIFEST), bundle: { manifest: V5_MANIFEST, entries: [entry] } };
+    const s = readStoredEvidenceExport(row)!;
+    expect(JSON.parse(serializeBundle(s.bundle, 'json'))).toEqual({ manifest: V5_MANIFEST, entries: [entry] });
   });
 
   it('★未知 schemaVersion / 缺 manifest / 非证据行 / null ⇒ null', () => {
-    expect(readStoredEvidenceExport(stored({ ...V1, schemaVersion: '6' }))).toBeNull();
+    expect(readStoredEvidenceExport(stored({ ...V1, schemaVersion: '7' }))).toBeNull();
     expect(readStoredEvidenceExport({ kind: 'evidence-export' })).toBeNull();
     expect(readStoredEvidenceExport({ ...stored(V1), kind: 'compliance' })).toBeNull();
     expect(readStoredEvidenceExport(null)).toBeNull();
@@ -56,6 +71,7 @@ describe('summarizeManifest / summarizeStoredExport', () => {
     expect(summarizeStoredExport(stored(V3_MANIFEST))).toEqual({ schemaVersion: '3', count: 1, bundleHash: 'h' });
     expect(summarizeStoredExport(stored(V4_MANIFEST))).toEqual({ schemaVersion: '4', count: 2, bundleHash: 'k' });
     expect(summarizeStoredExport(stored(V5_MANIFEST))).toEqual({ schemaVersion: '5', count: 4, bundleHash: 'm' });
+    expect(summarizeStoredExport(stored(V6_MANIFEST))).toEqual({ schemaVersion: '6', count: 6, bundleHash: 'n' });
     expect(summarizeStoredExport(stored(V2_MANIFEST))).toEqual({ schemaVersion: '2', count: 5, bundleHash: 'b'.repeat(64) });
   });
 

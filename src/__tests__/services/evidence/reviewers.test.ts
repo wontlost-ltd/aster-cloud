@@ -48,6 +48,7 @@ describe('loadProofReviewers', () => {
     expect(out.get('pv-1')).toEqual([{
       userId: 'u-2', role: 'domain_expert', source: 'policy-proof', outcome: 'VERIFIED',
       decidedAt: '2026-10-02T00:00:00.000Z', ref: 'p-new', roleVerified: true,
+      inputSnapshotHash: null, inputSnapshotMatched: null, inputRevealed: null, inputStatus: null,
     }]);
   });
 
@@ -101,9 +102,11 @@ describe('loadVersionApprovalReviewers', () => {
     }));
     expect(out.get('pv-1')).toEqual([
       { userId: 'u-1', role: 'approver', source: 'version-approval', outcome: 'APPROVED',
-        decidedAt: '2026-10-01T00:00:00.000Z', ref: 'a1', roleVerified: true },
+        decidedAt: '2026-10-01T00:00:00.000Z', ref: 'a1', roleVerified: true,
+        inputSnapshotHash: null, inputSnapshotMatched: null, inputRevealed: null, inputStatus: null },
       { userId: 'u-2', role: 'approver', source: 'version-approval', outcome: 'REJECTED',
-        decidedAt: '2026-10-02T00:00:00.000Z', ref: 'a2', roleVerified: true },
+        decidedAt: '2026-10-02T00:00:00.000Z', ref: 'a2', roleVerified: true,
+        inputSnapshotHash: null, inputSnapshotMatched: null, inputRevealed: null, inputStatus: null },
     ]);
   });
 
@@ -117,15 +120,19 @@ describe('guardApprovalReviewers', () => {
   it('映射字段；requiredRole 缺省为 unknown；roleVerified=true', () => {
     const approvals: ChainApproval[] = [
       { auditId: 8, decisionId: 'd-1', outcome: 'APPROVED', decidedBy: 'u-1', requiredRole: 'risk', comment: null,
-        decidedAt: '2026-10-01T01:00:00Z', currentHash: 'h1', decisionReceiptHash: 'hd' },
+        decidedAt: '2026-10-01T01:00:00Z', currentHash: 'h1', decisionReceiptHash: 'hd',
+        inputSnapshotHash: 'e'.repeat(64), inputSnapshotMatched: true, inputRevealed: false, inputStatus: 'available' },
       { auditId: 9, decisionId: 'd-1', outcome: 'REJECTED', decidedBy: 'u-2', requiredRole: null, comment: 'no',
-        decidedAt: '2026-10-01T02:00:00Z', currentHash: 'h2', decisionReceiptHash: null },
+        decidedAt: '2026-10-01T02:00:00Z', currentHash: 'h2', decisionReceiptHash: null,
+        inputSnapshotHash: null, inputSnapshotMatched: null, inputRevealed: null, inputStatus: null },
     ];
     expect(guardApprovalReviewers(approvals)).toEqual([
       { userId: 'u-1', role: 'risk', source: 'guard-approval', outcome: 'APPROVED',
-        decidedAt: '2026-10-01T01:00:00Z', ref: '8', roleVerified: true },
+        decidedAt: '2026-10-01T01:00:00Z', ref: '8', roleVerified: true,
+        inputSnapshotHash: 'e'.repeat(64), inputSnapshotMatched: true, inputRevealed: false, inputStatus: 'available' },
       { userId: 'u-2', role: 'unknown', source: 'guard-approval', outcome: 'REJECTED',
-        decidedAt: '2026-10-01T02:00:00Z', ref: '9', roleVerified: true },
+        decidedAt: '2026-10-01T02:00:00Z', ref: '9', roleVerified: true,
+        inputSnapshotHash: null, inputSnapshotMatched: null, inputRevealed: null, inputStatus: null },
     ]);
   });
 });
