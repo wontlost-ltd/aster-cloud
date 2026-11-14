@@ -402,6 +402,32 @@ function warnMissingInternalKeyOnce(): void {
   );
 }
 
+/** PUT /guard/policy-deployments/{id} 请求体（ADR 0054 §11 D1）。 */
+export interface GuardPolicyDeploymentBody {
+  generation: number;
+  cloudVersionId: string;
+  cloudVersion: number;
+  moduleName: string;
+  functionName: string;
+  source: string;
+  locale: string;
+  aliasSet?: Record<string, string[]>;
+  vocabulary?: Record<string, unknown>;
+  /** 源码 UTF-8 字节的 sha256 小写 hex；aster-api 自算比对。 */
+  sourceSha256: string;
+}
+
+export interface GuardPolicyDeploymentResult {
+  cloudPolicyId: string;
+  cloudVersionId: string;
+  created: boolean;
+  functionName: string;
+  moduleName: string;
+  policyVersionId: number;
+  sourceHash: string;
+  version: number;
+}
+
 /**
  * Policy API 客户端类
  */
@@ -546,6 +572,21 @@ export class PolicyApiClient {
    */
   async guardFromEvidence(req: GuardFromEvidenceRequest): Promise<GuardDecision> {
     return this.request<GuardDecision>('POST', API_ENDPOINTS.guardFromEvidence, req, GUARD_TIMEOUT_MS);
+  }
+
+  /**
+   * 把策略的默认版本部署为 aster-api 的活跃版本（ADR 0054 §11 D1，仅 HMAC）。409 stale_generation /
+   * generation_conflict、422 compile_failed 等以 PolicyApiError（code = 错误码）抛出。
+   */
+  async deployGuardPolicy(cloudPolicyId: string, body: GuardPolicyDeploymentBody): Promise<GuardPolicyDeploymentResult> {
+    return this.request<GuardPolicyDeploymentResult>(
+      'PUT', API_ENDPOINTS.guardPolicyDeployment(cloudPolicyId), body, GUARD_TIMEOUT_MS);
+  }
+
+  /** 撤回该策略在 aster-api 的部署；204 成功，404（从未部署）以 PolicyApiError 抛出。 */
+  async withdrawGuardPolicy(cloudPolicyId: string, generation: number): Promise<void> {
+    await this.request<void>(
+      'DELETE', `${API_ENDPOINTS.guardPolicyDeployment(cloudPolicyId)}?generation=${generation}`, undefined, GUARD_TIMEOUT_MS);
   }
 
   async getGuardDecision(id: string): Promise<GuardDecision> {
