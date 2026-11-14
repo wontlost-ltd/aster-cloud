@@ -53,6 +53,7 @@ const CRON_DISPATCH = {
   "15 4 * * *": "/api/cron/two-factor-code-gc",
   "45 4 * * *": "/api/cron/policy-trash-cleanup",
   "25 * * * *": "/api/cron/cleanup-nonces",
+  "*/5 * * * *": "/api/cron/guard-deploy-sync",
   "* * * * *": "/api/cron/domain-vocabulary-bulk-worker",
 };
 

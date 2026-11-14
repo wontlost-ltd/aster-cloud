@@ -11,6 +11,8 @@
  */
 
 import { db, policies, policyVersions, policyApprovals, teamMembers } from '@/lib/prisma';
+import { deployThenCommit } from '@/lib/guard-policy-deploy';
+import { policyTenantId } from '@/lib/policy-tenant';
 import { eq, and, inArray, isNull, desc, sql } from 'drizzle-orm';
 import type { InferSelectModel } from 'drizzle-orm';
 import { computeChainedHash, computeSourceHash } from '../security/policy-security';
@@ -784,18 +786,33 @@ export async function setDefaultVersion(params: {
     throw new VersionStateError('version_not_approved', `Version v${version} does not exist or is not approved, so it cannot be set as the default.`);
   }
 
-  // 原子操作：清除旧默认 + 设置新默认
-  await db.transaction(async (tx) => {
-    await tx.update(policyVersions)
-      .set({ isDefault: false })
-      .where(and(
-        eq(policyVersions.policyId, policyId),
-        eq(policyVersions.isDefault, true)
-      ));
+  // 先部署、后提交（aster-api ADR 0054 §11 D1）：Guard 先切到该版本，成功后才在同一代际的锁内提交默认版本变更；
+  // aster-api 不可用或拒绝时抛 GuardDeployError，默认版本不变。
+  const policy = await db.query.policies.findFirst({
+    where: eq(policies.id, policyId),
+    columns: { teamId: true, userId: true },
+  });
+  if (!policy) {
+    throw new PolicyAccessDeniedError();
+  }
+  await deployThenCommit({
+    policyId,
+    tenantId: policyTenantId(policy),
+    desired: { cloudVersionId: targetVersion.id },
+    actor: userId,
+    commit: async (tx) => {
+      // 原子操作：清除旧默认 + 设置新默认
+      await tx.update(policyVersions)
+        .set({ isDefault: false })
+        .where(and(
+          eq(policyVersions.policyId, policyId),
+          eq(policyVersions.isDefault, true)
+        ));
 
-    await tx.update(policyVersions)
-      .set({ isDefault: true })
-      .where(eq(policyVersions.id, targetVersion.id));
+      await tx.update(policyVersions)
+        .set({ isDefault: true })
+        .where(eq(policyVersions.id, targetVersion.id));
+    },
   });
 
   await logSecurityEvent({
