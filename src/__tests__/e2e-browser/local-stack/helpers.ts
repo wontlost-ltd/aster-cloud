@@ -8,8 +8,16 @@ import { join } from 'node:path';
 import { jcsCanonicalize } from '@/lib/jcs';
 
 // 只在 BASE_CLOUD（以及显式设置的 BASE_API）指向 localhost 时运行，杜绝误打生产：用例会经 BASE_API 写 guard 收据
-export const NOT_LOCAL = !process.env.BASE_CLOUD?.includes('localhost')
-  || (process.env.BASE_API !== undefined && !process.env.BASE_API.includes('localhost'));
+// 按解析后的主机名判断（只认回环主机），子串匹配会放过 https://localhost.attacker.example 之类的地址
+function isLoopback(url: string | undefined): boolean {
+  try {
+    return ['localhost', '127.0.0.1', '[::1]'].includes(new URL(url ?? '').hostname);
+  } catch {
+    return false;
+  }
+}
+export const NOT_LOCAL = !isLoopback(process.env.BASE_CLOUD)
+  || (process.env.BASE_API !== undefined && !isLoopback(process.env.BASE_API));
 export const NOT_LOCAL_REASON = '仅针对本地 aster 栈（BASE_CLOUD 需包含 localhost；设置了 BASE_API 时它也须包含 localhost）';
 
 // 会话夹具目录，由 scripts/e2e-local-session.ts 在容器内生成
@@ -182,6 +190,7 @@ export function verifyExecutionReceipt(
     // 严格 base64url（无填充、仅 URL 安全字母表）：Buffer 会宽松接受非规范输入
     if (!/^[A-Za-z0-9_-]{86}$/.test(receipt.signature)) return 'bad_signature';
     const signature = Buffer.from(receipt.signature, 'base64url');
+    if (signature.toString('base64url') !== receipt.signature) return 'bad_signature';
     valid = signature.length === 64
       && verify(null, Buffer.from(jcsCanonicalize(receipt.payload), 'utf8'), key, signature);
   } catch {
