@@ -24,8 +24,17 @@ interface ExecutionLog {
   createdAt: string;
   /** runner-parity 影子校验状态（null=未跑）。match|divergent|runner-unavailable|runner-error|authority-failure。 */
   runnerParityStatus: string | null;
-  /** guard 登记结果（ADR 0042 §5.1）：成功带决策 id，失败带错误码；旧行/无需审批为 null。 */
-  metadata?: { guardDecisionId?: string; guardApprovalId?: string; guardError?: string } | null;
+  /**
+   * guard 登记结果（ADR 0042 §5.1）：成功带决策 id，失败带错误码；旧行/无需审批为 null。
+   * 无审批的决策（来源门 DENY、高风险档案的 ALLOW，ADR 0046 §11.8）另带终态结论与原因码。
+   */
+  metadata?: {
+    guardDecisionId?: string;
+    guardApprovalId?: string;
+    guardOutcome?: string;
+    guardReasonCode?: string;
+    guardError?: string;
+  } | null;
 }
 
 interface Stats {
@@ -176,6 +185,9 @@ interface Translations {
     registerGuard: string;
     /** guard 登记失败提示（按钮 title）。 */
     guardError: string;
+    /** guard 终态结论徽章（ADR 0046 §11.8）：来源门拒绝 / 放行。 */
+    guardDenied: string;
+    guardAllowed: string;
     /** runner-parity 影子校验徽章文案（可选——旧翻译包无此键时降级默认英文）。 */
     parity?: {
       tooltip: string;
@@ -313,7 +325,10 @@ export function sourceFilterToQuery(value: string): string {
   return value.toLowerCase();
 }
 
-/** 状态徽章旁的 guard 入口：有决策 id → 收件箱链接；有可重试的 guardError → 重新登记按钮；其余不渲染。 */
+/**
+ * 状态徽章旁的 guard 入口：终态结论（无审批的 DENY / ALLOW）→ 静态徽章；有待审批 → 收件箱链接；
+ * 有可重试的 guardError → 重新登记按钮；其余不渲染。
+ */
 function GuardAction({
   log,
   policyId,
@@ -339,6 +354,20 @@ function GuardAction({
     }
   };
 
+  if (meta?.guardDecisionId && meta.guardOutcome && !meta.guardApprovalId) {
+    const denied = meta.guardOutcome !== 'ALLOW';
+    return (
+      <span
+        title={meta.guardReasonCode}
+        className={`${GUARD_PILL} ${denied
+          ? 'bg-red-50 text-red-700 ring-red-600/20'
+          : 'bg-green-50 text-green-700 ring-green-600/20'}`}
+      >
+        {denied ? t.logs.guardDenied : t.logs.guardAllowed}
+        {meta.guardReasonCode && <span className="sr-only">{` (${meta.guardReasonCode})`}</span>}
+      </span>
+    );
+  }
   if (meta?.guardDecisionId) {
     return (
       <Link

@@ -9,10 +9,12 @@
  *   C2  对 C7a 的 DENY 决策 consume → 409 not_allowed
  *   C3/C4/C5 审批通过的 from-evidence 收据：本地验签 ok、篡改载荷 bad_signature、改哈希 409 action_mismatch、
  *       正确哈希 200、重放 409 receipt_consumed、结果回写 200
- *   C7b （fixme，aster-api#510）自报金额填小使规则 ALLOW：裁定 (a)「ALLOW 也须过来源门」落地后应 DENY unverified_input
+ *   C7b 自报金额填小使规则 ALLOW（aster-api#510 裁定 (a)，ADR 0046 §11.8）：ALLOW 也须过来源门 → DENY unverified_input，
+ *       执行响应 success=false、guard 块带原因码，策略结论仍为 approved
+ *   C7c 正向对照：fixture 来源为真实申请人签事实 → 同一条 ALLOW 路径 guard 放行并签执行收据
  *
  * 前置同 credit-pilot.spec.ts：`pnpm seed:credit-pilot`、容器设 `ASTER_FACT_SIGNING_KEY`、`CP_API_KEY` 为 cp-owner 的 key、
- * 会话夹具含 cp-officer。会新增 2 次执行（C7b 启用后 3 次）、批准一条 credit-pilot 待审批，并消耗其执行收据。
+ * 会话夹具含 cp-officer。会新增 4 次执行、批准一条 credit-pilot 待审批，并消耗其执行收据。
  */
 import { test, expect, type Browser, type Page } from '@playwright/test';
 import { PILOT_APPLICANTS, type PilotApplicant } from '@/config/credit-pilot-source';
@@ -49,21 +51,35 @@ async function asUser<T>(browser: Browser, user: Parameters<typeof stateFor>[0],
   }
 }
 
-/** 经 cloud v1 执行端点执行一笔申请，返回执行元数据（outcome、证据关联号）。 */
-async function execute(
+/** v1 执行响应中本套件关心的部分（ADR 0046 §11.8 第 5 条：success 与 guard 块）。 */
+interface ExecuteBody {
+  success: boolean;
+  data: { decision: string; metadata: { outcome: string; evidenceCorrelationId: string } };
+  guard?: { required: string; decisionId?: string; effectiveOutcome?: string; reasonCode?: string; error?: string };
+}
+
+/** 经 cloud v1 执行端点执行一笔申请，返回完整响应体。 */
+async function executeBody(
   request: import('@playwright/test').APIRequestContext,
   applicant: PilotApplicant,
-): Promise<{ outcome: string; evidenceCorrelationId: string }> {
+): Promise<ExecuteBody> {
   const res = await request.post(`/api/v1/policies/${POLICY}/execute`, {
     headers: { Authorization: `Bearer ${API_KEY}` },
     data: { input: { applicant } },
   });
   expect(res.ok(), await res.text()).toBeTruthy();
-  const body = await res.json();
-  const metadata = body.data.metadata as { outcome: string; evidenceCorrelationId: string };
+  const body = (await res.json()) as ExecuteBody;
   // 关联号随后拼进 psql 查询：先校验为 UUID，响应异常时不会把任意文本带进 SQL
-  expect(metadata.evidenceCorrelationId).toMatch(UUID_RE);
-  return metadata;
+  expect(body.data.metadata.evidenceCorrelationId).toMatch(UUID_RE);
+  return body;
+}
+
+/** 执行一笔申请，返回执行元数据（outcome、证据关联号）。 */
+async function execute(
+  request: import('@playwright/test').APIRequestContext,
+  applicant: PilotApplicant,
+): Promise<{ outcome: string; evidenceCorrelationId: string }> {
+  return (await executeBody(request, applicant)).data.metadata;
 }
 
 function decisionByCorrelation(corr: string): string {
@@ -119,6 +135,9 @@ test('C3/C4/C5 审批通过的 from-evidence 收据：验签、改哈希、重�
       await page.goto('/en/approvals');
       const row = page.locator(`tr[data-decision-id="${decisionId}"]`);
       await expect(row).toBeVisible();
+      // #460（aster-cloud#756）起批准须先展开并加载输入视图（ADR 0042 §12 D10），Approve 在此之前禁用
+      await row.locator('button[aria-expanded="false"]').click();
+      await expect(row.getByRole('button', { name: 'Approve' })).toBeEnabled({ timeout: 20_000 });
       await row.getByRole('button', { name: 'Approve' }).click();
       const dialog = page.getByRole('dialog', { name: 'Approve' });
       await dialog.getByLabel('Comment (optional)').fill('E2E Guard 绕过套件：合规官批准');
@@ -175,18 +194,43 @@ test('C3/C4/C5 审批通过的 from-evidence 收据：验签、改哈希、重�
 });
 
 /**
- * aster-api#510（用户裁定 (a)：ALLOW 也须过来源门）。现状：cloud 的 `needsGuardDecision` 只对 require_approval / escalate
- * 开 guard 决策，高风险档案策略在自报金额「填小」后规则直接 ALLOW、不经来源门；下游若把这个 ALLOW 当作执行授权即绕过来源门。
- * #510 实施后删除 fixme：期望该执行开出 guard 决策并被来源门 DENY unverified_input。
+ * aster-api#510（用户裁定 (a)：ALLOW 也须过来源门，ADR 0046 §11.8）。高风险档案策略在自报金额「填小」后规则直接 ALLOW；
+ * cloud 对这类 ALLOW 同样以证据登记 guard 决策，未附可验证事实即 DENY unverified_input。执行响应保留策略结论
+ * （data.decision=approved、metadata.outcome=ALLOW），success=false，guard 块给出 guard 结论。
  *
  * 金额取 19999 而不是计划草稿里的 20000：`{ ...requireApproval, requestedAmount: 20000 }` 与 `PILOT_APPLICANTS.allow`
  * 逐字段相等，fixture 来源会为它签事实（输入被证实），那就不是「自报篡改」了。
  */
-test.fixme('C7b 自报金额填小使规则 ALLOW：须过来源门 → DENY unverified_input（aster-api#510 裁定 (a)）', async ({ request }) => {
+test('C7b 自报金额填小使规则 ALLOW：须过来源门 → DENY unverified_input（aster-api#510 裁定 (a)）', async ({ request }) => {
   const tampered = { ...PILOT_APPLICANTS.requireApproval, requestedAmount: 19999 };
-  const metadata = await execute(request, tampered);
+  const body = await executeBody(request, tampered);
+  expect(body.data.metadata.outcome).toBe('ALLOW');
+  expect(body.data.decision).toBe('approved');
+  expect(body.success, '高风险档案下 guard 未放行的 ALLOW 不构成执行授权').toBe(false);
+  expect(body.guard).toEqual(expect.objectContaining({
+    required: 'provenance', effectiveOutcome: 'DENY', reasonCode: 'unverified_input',
+  }));
+
   const row = psql('aster_policy',
-    `select (response_json->>'effectiveOutcome') || '|' || coalesce(reason_code, '') from guard_decisions `
-    + `where tenant_id='${TENANT}' and evidence_correlation_id='${metadata.evidenceCorrelationId}'`);
-  expect(row, 'ALLOW 结论也须开 guard 决策并过来源门').toBe('DENY|unverified_input');
+    `select id || '|' || (response_json->>'effectiveOutcome') || '|' || coalesce(reason_code, '') from guard_decisions `
+    + `where tenant_id='${TENANT}' and evidence_correlation_id='${body.data.metadata.evidenceCorrelationId}'`);
+  const [id, effective, reasonCode] = row.split('|');
+  expect(id, 'ALLOW 结论也须开 guard 决策并过来源门').toMatch(UUID_RE);
+  expect(`${effective}|${reasonCode}`).toBe('DENY|unverified_input');
+  expect(body.guard?.decisionId).toBe(id);
+  expect(psql('aster_policy', `select count(*) from guard_receipts where decision_id='${id}'`)).toBe('0');
+  const r = await apiPost(`/api/v1/guard/receipts/${id}/consume`, API_KEY, consumeBody('a'.repeat(64)));
+  expect(r.status, r.text).toBe(409);
+  expect(r.json).toEqual({ error: 'not_allowed', effectiveOutcome: 'DENY' });
+});
+
+/** 正向对照：真实申请人（fixture 来源签 context.applicant）走同一条 ALLOW 路径 → guard ALLOW 并签执行收据。 */
+test('C7c 已核实的 ALLOW → guard ALLOW，签发执行收据', async ({ request }) => {
+  const body = await executeBody(request, PILOT_APPLICANTS.allow);
+  expect(body.data.metadata.outcome).toBe('ALLOW');
+  expect(body.success).toBe(true);
+  expect(body.guard).toEqual(expect.objectContaining({ required: 'provenance', effectiveOutcome: 'ALLOW' }));
+  const id = body.guard?.decisionId ?? '';
+  expect(id).toMatch(UUID_RE);
+  expect(psql('aster_policy', `select count(*) from guard_receipts where decision_id='${id}'`)).toBe('1');
 });

@@ -16,6 +16,9 @@ vi.mock('@/lib/prisma', () => ({ db: { update: dbUpdate }, executions: { id: { n
 vi.mock('drizzle-orm', () => ({ eq: (col: { name: string }, v: unknown) => ({ eq: [col.name, v] }) }));
 
 import {
+  executionSuccess,
+  guardRequirement,
+  guardSummary,
   needsGuardDecision,
   registerGuardAfterInsert,
   registerGuardDecision,
@@ -202,6 +205,96 @@ describe('needsGuardDecision', () => {
     for (const d of ['approved', 'denied', 'indeterminate', 'error', null, undefined]) {
       expect(needsGuardDecision(d)).toBe(false);
     }
+  });
+
+  it('ADR 0046 §11.8：Verdict ALLOW 且档案要求 verifiedInputs 时同样需要（重新登记路由据此放行）', () => {
+    expect(needsGuardDecision('approved', { outcome: 'ALLOW', profile: 'eu-ai-act-high-risk' })).toBe(true);
+    expect(needsGuardDecision('approved', { outcome: 'ALLOW', profile: 'governed' })).toBe(false);
+  });
+});
+
+describe('guardRequirement（ADR 0046 §11.8）', () => {
+  const highRisk = { outcome: 'ALLOW', profile: 'eu-ai-act-high-risk' };
+
+  it('待处置结论 → approval，与档案无关', () => {
+    expect(guardRequirement('require_approval', {})).toBe('approval');
+    expect(guardRequirement('escalate', highRisk)).toBe('approval');
+  });
+
+  it('Verdict ALLOW 且档案要求 verifiedInputs → provenance', () => {
+    expect(guardRequirement('approved', highRisk)).toBe('provenance');
+  });
+
+  it('其余 ALLOW 不登记：档案不要求、未声明档案、未知档案、非 Verdict 结论', () => {
+    expect(guardRequirement('approved', { outcome: 'ALLOW', profile: 'governed' })).toBeNull();
+    expect(guardRequirement('approved', { outcome: 'ALLOW' })).toBeNull();
+    expect(guardRequirement('approved', { outcome: 'ALLOW', profile: 'no-such-profile' })).toBeNull();
+    expect(guardRequirement('approved', { profile: 'eu-ai-act-high-risk' })).toBeNull();
+    expect(guardRequirement('approved', undefined)).toBeNull();
+  });
+
+  it('DENY、无决策、错误一律不登记', () => {
+    for (const d of ['denied', 'indeterminate', 'error', null, undefined]) {
+      expect(guardRequirement(d, highRisk)).toBeNull();
+    }
+  });
+});
+
+describe('registerGuardDecision — 无审批的决策记终态结论', () => {
+  beforeEach(() => {
+    guardFromEvidence.mockReset();
+    notifyApprovalRequested.mockReset();
+  });
+
+  it('来源门 DENY → 记 guardOutcome / guardReasonCode，不通知', async () => {
+    guardFromEvidence.mockResolvedValue({ decisionId: 'd3', outcome: 'DENY', effectiveOutcome: 'DENY', reasonCode: 'unverified_input' });
+
+    await expect(registerGuardDecision(args())).resolves.toEqual({
+      guardDecisionId: 'd3', guardOutcome: 'DENY', guardReasonCode: 'unverified_input',
+    });
+    expect(notifyApprovalRequested).not.toHaveBeenCalled();
+  });
+
+  it('过门 ALLOW → 记 guardOutcome=ALLOW，无原因码', async () => {
+    guardFromEvidence.mockResolvedValue({ decisionId: 'd4', outcome: 'ALLOW', effectiveOutcome: 'ALLOW' });
+
+    await expect(registerGuardDecision(args())).resolves.toEqual({ guardDecisionId: 'd4', guardOutcome: 'ALLOW' });
+  });
+});
+
+describe('guardSummary / executionSuccess（执行响应的 guard 块与 success 口径，ADR 0046 §11.8 第 5 条）', () => {
+  it('provenance：DENY 原样带出原因码，success=false', () => {
+    const meta = { guardDecisionId: 'd', guardOutcome: 'DENY', guardReasonCode: 'unverified_input' };
+    expect(guardSummary('provenance', meta)).toEqual({
+      required: 'provenance', decisionId: 'd', effectiveOutcome: 'DENY', reasonCode: 'unverified_input',
+    });
+    expect(executionSuccess(true, 'provenance', meta)).toBe(false);
+  });
+
+  it('provenance：guard ALLOW 才 success=true', () => {
+    const meta = { guardDecisionId: 'd', guardOutcome: 'ALLOW' };
+    expect(guardSummary('provenance', meta)).toEqual({ required: 'provenance', decisionId: 'd', effectiveOutcome: 'ALLOW' });
+    expect(executionSuccess(true, 'provenance', meta)).toBe(true);
+  });
+
+  it('provenance：登记失败或未登记（执行行插入失败）→ error，success=false（fail-closed）', () => {
+    expect(guardSummary('provenance', { guardError: 'invalid_fact' })).toEqual({ required: 'provenance', error: 'invalid_fact' });
+    expect(executionSuccess(true, 'provenance', { guardError: 'invalid_fact' })).toBe(false);
+    expect(guardSummary('provenance', null)).toEqual({ required: 'provenance', error: 'not_registered' });
+    expect(executionSuccess(true, 'provenance', null)).toBe(false);
+  });
+
+  it('approval：待审批显示 PENDING；success 保持评估的 allowed（待处置恒为 false）', () => {
+    expect(guardSummary('approval', { guardDecisionId: 'd', guardApprovalId: 'a' })).toEqual({
+      required: 'approval', decisionId: 'd', approvalId: 'a', effectiveOutcome: 'PENDING',
+    });
+    expect(executionSuccess(false, 'approval', { guardDecisionId: 'd', guardApprovalId: 'a' })).toBe(false);
+  });
+
+  it('不需要 guard 时 success 与今天相同', () => {
+    expect(executionSuccess(true, null, null)).toBe(true);
+    expect(executionSuccess(false, null, null)).toBe(false);
+    expect(executionSuccess(undefined, null, null)).toBe(false);
   });
 });
 
