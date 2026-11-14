@@ -135,6 +135,9 @@ test('C3/C4/C5 审批通过的 from-evidence 收据：验签、改哈希、重�
       await page.goto('/en/approvals');
       const row = page.locator(`tr[data-decision-id="${decisionId}"]`);
       await expect(row).toBeVisible();
+      // #460（aster-cloud#756）起批准须先展开并加载输入视图（ADR 0042 §12 D10），Approve 在此之前禁用
+      await row.locator('button[aria-expanded="false"]').click();
+      await expect(row.getByRole('button', { name: 'Approve' })).toBeEnabled({ timeout: 20_000 });
       await row.getByRole('button', { name: 'Approve' }).click();
       const dialog = page.getByRole('dialog', { name: 'Approve' });
       await dialog.getByLabel('Comment (optional)').fill('E2E Guard 绕过套件：合规官批准');
