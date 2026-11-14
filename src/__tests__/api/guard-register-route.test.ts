@@ -117,6 +117,32 @@ describe('POST guard-register', () => {
     expect(h.update).not.toHaveBeenCalled();
   });
 
+  it('ADR 0046 §11.8：高风险档案 ALLOW 行登记失败可重新登记，回写终态结论（清掉旧 guardError）', async () => {
+    h.execFind.mockResolvedValue(execRow({
+      decision: 'approved',
+      output: { allowed: true, metadata: { outcome: 'ALLOW', profile: 'eu-ai-act-high-risk' } },
+    }));
+    h.guardFromEvidence.mockResolvedValue({ decisionId: 'd7', effectiveOutcome: 'DENY', reasonCode: 'unverified_input' });
+
+    const res = await call();
+
+    expect(res.status).toBe(200);
+    expect(h.set).toHaveBeenCalledWith({
+      metadata: { guardDecisionId: 'd7', guardOutcome: 'DENY', guardReasonCode: 'unverified_input' },
+    });
+    expect(h.notify).not.toHaveBeenCalled();
+  });
+
+  it('档案不要求 verifiedInputs 的 ALLOW 行 → 409 not_approvable', async () => {
+    h.execFind.mockResolvedValue(execRow({
+      decision: 'approved', output: { allowed: true, metadata: { outcome: 'ALLOW', profile: 'governed' } },
+    }));
+    const res = await call();
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('not_approvable');
+    expect(h.createClient).not.toHaveBeenCalled();
+  });
+
   it('非待审批行 → 409；策略或执行不存在 → 404', async () => {
     h.execFind.mockResolvedValue(execRow({ decision: 'approved' }));
     expect((await call()).status).toBe(409);

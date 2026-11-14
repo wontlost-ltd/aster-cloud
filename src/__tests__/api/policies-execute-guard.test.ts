@@ -5,7 +5,9 @@
 //      然后按执行 id 回写 metadata（决策/审批 id），并发待审批通知；
 //   2. outcome ALLOW → 不调 guard，不回写 metadata；
 //   3. guard 失败 → 执行照常 200 落库，回写的 metadata 只记 guardError；
-//   4. 执行人不属于策略租户（公开/共享策略的外部执行人）→ not_tenant_member，不调 api、不通知。
+//   4. 执行人不属于策略租户（公开/共享策略的外部执行人）→ not_tenant_member，不调 api、不通知；
+//   5. ADR 0046 §11.8（#510）：档案要求 verifiedInputs 的 Verdict ALLOW 同样登记；响应 decision 仍为策略结论，
+//      新增 guard 块，success 取 guard 结论（DENY / 登记失败 → false）。
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const h = vi.hoisted(() => {
@@ -191,6 +193,86 @@ describe.each(routes)('POST $name execute — ADR 0042 guard 登记', ({ post, p
       properties: { source },
     });
     expect(JSON.stringify(h.recordProductEvent.mock.calls)).not.toContain('do-not-log');
+  });
+
+  /** 响应体里的策略结论（dashboard 顶层 decision，v1 在 data.decision）。 */
+  async function body(res: Response): Promise<{ success: boolean; decision: string; guard?: unknown }> {
+    const json = await res.json();
+    return { success: json.success, decision: json.decision ?? json.data?.decision, guard: json.guard };
+  }
+
+  const highRiskAllow = (cid: string) => ({
+    ...execResult({ outcome: 'ALLOW', profile: 'eu-ai-act-high-risk', evidenceCorrelationId: cid }),
+    allowed: true, approved: true,
+  });
+
+  it('高风险档案 ALLOW 未附事实 → 登记得 DENY：success=false、guard 带原因码，策略结论仍为 approved', async () => {
+    h.mockExecute.mockResolvedValue(highRiskAllow('c-7b'));
+    h.guardFromEvidence.mockResolvedValue({
+      decisionId: 'd7', outcome: 'DENY', effectiveOutcome: 'DENY', reasonCode: 'unverified_input',
+    });
+
+    const res = await post(request(path, { input: { applicant: { requestedAmount: 19999 } } }), params);
+
+    expect(res.status).toBe(200);
+    expect(h.guardFromEvidence).toHaveBeenCalledWith(expect.objectContaining({ correlationId: 'c-7b' }));
+    expect(insertedValues()).toEqual(expect.objectContaining({ decision: 'approved', success: true, metadata: null }));
+    expect(updatedMetadata()).toEqual({ guardDecisionId: 'd7', guardOutcome: 'DENY', guardReasonCode: 'unverified_input' });
+    expect(await body(res)).toEqual({
+      success: false,
+      decision: 'approved',
+      guard: { required: 'provenance', decisionId: 'd7', effectiveOutcome: 'DENY', reasonCode: 'unverified_input' },
+    });
+    expect(h.notifyApprovalRequested).not.toHaveBeenCalled();
+  });
+
+  it('高风险档案 ALLOW 且 guard ALLOW（事实覆盖输入）→ success=true', async () => {
+    h.mockExecute.mockResolvedValue(highRiskAllow('c-ok'));
+    h.guardFromEvidence.mockResolvedValue({ decisionId: 'd8', outcome: 'ALLOW', effectiveOutcome: 'ALLOW' });
+
+    const res = await post(request(path, { input: { a: 1 } }), params);
+
+    expect(await body(res)).toEqual({
+      success: true, decision: 'approved',
+      guard: { required: 'provenance', decisionId: 'd8', effectiveOutcome: 'ALLOW' },
+    });
+  });
+
+  it('高风险档案 ALLOW 登记失败 → success=false（fail-closed），guard.error 为错误码', async () => {
+    h.mockExecute.mockResolvedValue(highRiskAllow('c-err'));
+    h.guardFromEvidence.mockRejectedValue(new PolicyApiError('down', 503));
+
+    const res = await post(request(path, { input: { a: 1 } }), params);
+
+    expect(res.status).toBe(200);
+    expect(updatedMetadata()).toEqual({ guardError: 'http_503' });
+    expect(await body(res)).toEqual({
+      success: false, decision: 'approved', guard: { required: 'provenance', error: 'http_503' },
+    });
+  });
+
+  it('档案不要求 verifiedInputs 的 ALLOW 不登记：响应无 guard 块，success 不变', async () => {
+    h.mockExecute.mockResolvedValue({
+      ...execResult({ outcome: 'ALLOW', profile: 'governed', evidenceCorrelationId: 'c-gov' }), allowed: true, approved: true,
+    });
+
+    const res = await post(request(path, { input: { a: 1 } }), params);
+
+    expect(h.guardFromEvidence).not.toHaveBeenCalled();
+    expect(h.mockUpdate).not.toHaveBeenCalled();
+    expect(await body(res)).toEqual({ success: true, decision: 'approved', guard: undefined });
+  });
+
+  it('REQUIRE_APPROVAL 的响应同样带 guard 块（待审批），success 仍为 false', async () => {
+    h.mockExecute.mockResolvedValue(execResult({ outcome: 'REQUIRE_APPROVAL', evidenceCorrelationId: 'c-ra' }));
+    h.guardFromEvidence.mockResolvedValue({ decisionId: 'd9', approval: { id: 'a9', status: 'PENDING' } });
+
+    const res = await post(request(path, { input: { a: 1 } }), params);
+
+    expect(await body(res)).toEqual({
+      success: false, decision: 'require_approval',
+      guard: { required: 'approval', decisionId: 'd9', approvalId: 'a9', effectiveOutcome: 'PENDING' },
+    });
   });
 
   it('ALLOW：不调 guard，metadata 不含 guard 键', async () => {

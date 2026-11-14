@@ -39,6 +39,7 @@ const translations = {
     successRate: 'Rate', avgDuration: 'Avg', recentActivity: 'Recent', loadError: 'Load error',
     pendingLabel: 'Pending', rateNote: 'Settled decisions only', otherDecisionStates: 'Other states',
     viewApproval: 'Pending approval · View', registerGuard: 'Register again', guardError: 'Registration failed',
+    guardDenied: 'Guard denied', guardAllowed: 'Guard allowed',
   },
 } as unknown as Parameters<typeof LogsContent>[0]['translations'];
 
@@ -83,6 +84,19 @@ describe('日志页 guard 入口', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('/api/policies/p1/executions/e2/guard-register', { method: 'POST' });
     await waitFor(() => expect(screen.getByText('Pending approval · View').getAttribute('href')).toContain('decisionId=d9'));
+  });
+
+  it('ADR 0046 §11.8：无审批的终态 DENY → 红色「Guard denied」徽章（title 为原因码），不是待审批链接', () => {
+    renderWith([mkLog('e5', { guardDecisionId: 'd5', guardOutcome: 'DENY', guardReasonCode: 'unverified_input' })]);
+    const pill = screen.getByText('Guard denied');
+    expect(pill.tagName).toBe('SPAN');
+    expect(pill.getAttribute('title')).toBe('unverified_input');
+    expect(screen.queryByText('Pending approval · View')).toBeNull();
+  });
+
+  it('无审批的终态 ALLOW → 「Guard allowed」徽章', () => {
+    renderWith([mkLog('e6', { guardDecisionId: 'd6', guardOutcome: 'ALLOW' })]);
+    expect(screen.getByText('Guard allowed').tagName).toBe('SPAN');
   });
 
   it('guardError=no_evidence（重试永不成功）→ 不渲染重新登记按钮', () => {
