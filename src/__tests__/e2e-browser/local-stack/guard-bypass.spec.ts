@@ -35,7 +35,7 @@ test.describe.configure({ mode: 'serial' });
 const POLICY = 'pol-credit-pilot';
 const TENANT = 'credit-pilot';
 const API_KEY = process.env.CP_API_KEY ?? '';
-const UUID_RE = /^[0-9a-f-]{36}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** C7a 的 DENY 决策，供 C2 使用。 */
 let deniedDecisionId = '';
@@ -61,7 +61,8 @@ async function execute(
   expect(res.ok(), await res.text()).toBeTruthy();
   const body = await res.json();
   const metadata = body.data.metadata as { outcome: string; evidenceCorrelationId: string };
-  expect(metadata.evidenceCorrelationId).toBeTruthy();
+  // 关联号随后拼进 psql 查询：先校验为 UUID，响应异常时不会把任意文本带进 SQL
+  expect(metadata.evidenceCorrelationId).toMatch(UUID_RE);
   return metadata;
 }
 
