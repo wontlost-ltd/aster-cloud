@@ -6,6 +6,13 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- 证据包 v6——审批快照键、逐字段来源与执行收据（aster-api#460 C3） (#758) *(evidence)*
+- 审批收件箱展示脱敏决策输入、解除原值与快照哈希（aster-api#460 C1/C2） (#756) *(approvals)*
+- Cloud 签发事实 — JCS、fact-signer、from-evidence 附事实、信贷试点签发方（X4 C6–C9） (#750) *(guard)*
+- 签发方管理（PolicyApiClient、代理路由与权限、设置页与收件箱吊销原因）— X4 C3–C5 (#749) *(guard)*
+- 注册表副本 1.2.0 与编辑器 Decision 页签展示 inputRefs（X4 C1+C2） (#748) *(governance)*
+- 启用关闭缓存的 HYPERDRIVE_FRESH 绑定，一致性敏感读不再逐条并入 NOW() 守卫（#624） (#742) *(db)*
+- 按 @control 查询受影响策略与治理视图（#739） (#740) *(governance)*
 - Evaluate-source 400 诊断透传模块 reason（已登记枚举） (#734) *(playground)*
 - 团队共享领域词汇（#672，ADR 0017） (#730) *(vocab)*
 - 一致性敏感读改走 freshDb，支持关闭缓存的 HYPERDRIVE_FRESH 绑定（#624 PR A） (#729) *(db)*
@@ -347,6 +354,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
+- 入口与写法匹配改用 aster-lang-ts 导出（#650） (#738) *(execution-input)*
 - PROFILE_KEYWORDS 仅模块内使用，取消导出 *(policy)*
 - 存储 manifest 定型为 EvidenceManifestV1 | EvidenceManifest，读取侧按 schemaVersion 收窄（ADR 0041 §5） *(evidence)*
 - 策略租户 id 统一经 policyTenantId 推导（teamId || userId） *(evidence)*
@@ -378,6 +386,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Documentation
 
+- Refresh unreleased (#733) *(changelog)*
 - Refresh unreleased (#687) *(changelog)*
 - Refresh unreleased (#551) *(changelog)*
 - Refresh unreleased (#549) *(changelog)*
@@ -698,6 +707,8 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- 签发方列表登记人显示成员姓名 / 邮箱而非用户 id (#751) *(settings)*
+- MODULE_NOT_VISIBLE 只透传 reason=NOT_VISIBLE（ADR 0015） (#735) *(playground)*
 - 解析诊断改读新码 E05x，为 ts 1.0.42 删除 legacyCode 做准备 (#732) *(policy)*
 - /policies 列表显示本人可查看团队的团队策略 (#727) *(policies)*
 - 去掉 team-policy-authz 集成测试合并 #721 / #723 后重复的 node:fs / node:path 导入 (#724) *(test)*
