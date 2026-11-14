@@ -96,7 +96,10 @@ export function inputSourceFor(row: Pick<EvidenceRow, 'evidenceCorrelationId'>, 
   return value === 'declared' || value === 'mixed' ? value : 'legacy';
 }
 
-/** metadata 中的字符串列表：非数组 → []；非字符串元素丢弃；按码点序排列（链上已是字典序，排序只是兜底，不改写元素）。 */
+/**
+ * metadata 中的字符串列表，按码点序排列（链上已是字典序，排序只是兜底，不改写元素）。
+ * 类型已由收据客户端校验（错类型整批 unavailable）；此处的过滤只防御直接构造的查找结果。
+ */
 function stringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((v): v is string => typeof v === 'string').sort(compareCodePoints);
@@ -105,7 +108,8 @@ function stringList(value: unknown): string[] {
 /**
  * guard 决策的逐字段来源（ADR 0041 §11 D1/D4、ADR 0042 §12 D9）：取决策收据 metadata 的
  * verifiedFields / factIssuers / factSources / unverifiedFields / inputSourcesTruncated。
- * factSources 元素原样保留，审计方可与收据接口逐字核对。无 guard 决策或决策收据取不到 → null。
+ * factSources 元素原样保留，审计方可与收据接口逐字核对。无 guard 决策或决策收据取不到 → null；
+ * 链上旧行 metadata 无法解析（收据接口以 `_raw` 原文返回）→ null，不把「读不出」说成「没有来源」。
  */
 export function guardInputSourcesFor(
   row: Pick<EvidenceRow, 'guardDecisionId'>,
@@ -113,7 +117,7 @@ export function guardInputSourcesFor(
 ): GuardInputSources | null {
   const did = row.guardDecisionId;
   const metadata = did == null ? undefined : guardLookup.receipts.get(did)?.metadata;
-  if (!metadata) return null;
+  if (!metadata || Object.hasOwn(metadata, '_raw')) return null;
   return {
     verified: stringList(metadata.verifiedFields),
     factIssuers: stringList(metadata.factIssuers),
@@ -236,7 +240,11 @@ export function tallyInputSources(entries: readonly EvidenceEntry[]): Record<Evi
   return tally;
 }
 
-/** 决策可执行：结论为 ALLOW，或有 guard 审批 APPROVED（审批通过后才可消耗，ADR 0040 §12）。 */
+/**
+ * 决策可执行 = 对 Agent 的 effectiveOutcome 为 ALLOW：结论本身为 ALLOW，或 guard 审批 APPROVED
+ * （aster-api GuardApprovalStatus.APPROVED 的 effectiveOutcome 即 ALLOW，批准后才可消耗）。
+ * cloud 只为 REQUIRE_APPROVAL / ESCALATE 登记 guard 决策，若只认结论 ALLOW，此计数在 cloud 恒为 0。
+ */
 function isExecutable(e: EvidenceEntry): boolean {
   return e.outcome === 'ALLOW' || e.reviewers.some((r) => r.source === 'guard-approval' && r.outcome === 'APPROVED');
 }

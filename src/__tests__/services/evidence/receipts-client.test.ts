@@ -393,6 +393,10 @@ describe('receipts-client：线上形状归一', () => {
       { results: [{ auditId: 1, currentHash: 'h', decisionId: 'd-1', authoritative: 'yes' }] },
       { receipts: [{ ...GENESIS, decisionId: 'd-1', authoritativeConsumeAuditId: '21' }] },
       { consumes: {} },
+      { receipts: [{ ...GENESIS, decisionId: 'd-1', metadata: { factSources: 'context.a=s' } }] },
+      { receipts: [{ ...GENESIS, decisionId: 'd-1', metadata: { verifiedFields: ['context.a', 7] } }] },
+      { receipts: [{ ...GENESIS, decisionId: 'd-1', metadata: { inputSourcesTruncated: 'true' } }] },
+      { receipts: [{ ...GENESIS, decisionId: 'd-1', metadata: { inputSource: 1 } }] },
     ];
     for (const body of bodies) {
       const out = await fetchDecisionReceipts('t-1', ['d-1'], (async () => jsonResponse(body)) as unknown as typeof fetch);

@@ -176,7 +176,7 @@ export interface EvidenceManifest {
   verifiedInputsUsed: number;
   /**
    * 执行收据计数：consumed / executed / failed / aborted 按条目 execution；
-   * unconsumedAllow = 有 execution、未消耗、且决策可执行（结论 ALLOW，或有 guard 审批 APPROVED）的条目数。
+   * unconsumedAllow = 有 execution、未消耗、且 effectiveOutcome 为 ALLOW（结论 ALLOW，或 guard 审批 APPROVED）的条目数。
    */
   executionTally: { consumed: number; unconsumedAllow: number; executed: number; failed: number; aborted: number };
   /**

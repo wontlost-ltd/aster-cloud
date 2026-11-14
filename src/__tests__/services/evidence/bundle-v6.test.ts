@@ -99,7 +99,13 @@ describe('guardInputSources（ADR 0041 §11 D4 + ADR 0042 §12 D9）', () => {
     });
   });
 
-  it('无 guardDecisionId、决策收据缺失或不可用 → null；非字符串元素丢弃', () => {
+  it('链上旧行 metadata 无法解析（_raw）→ null，不说成「没有来源」', () => {
+    const guard = emptyLookup();
+    guard.receipts.set('gd-1', receipt({ _raw: '{"decisionId":"gd-1","factSo' }));
+    expect(guardInputSourcesFor(row(), guard)).toBeNull();
+  });
+
+  it('无 guardDecisionId、决策收据缺失或不可用 → null；直接构造的错类型元素被防御性丢弃', () => {
     const guard = emptyLookup();
     expect(guardInputSourcesFor(row({ guardDecisionId: null }), guard)).toBeNull();
     expect(guardInputSourcesFor(row(), guard)).toBeNull();

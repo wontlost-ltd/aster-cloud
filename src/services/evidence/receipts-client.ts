@@ -308,6 +308,28 @@ function bool(item: Record<string, unknown>, field: string): boolean {
   return v;
 }
 
+/** 决策收据 metadata 中进证据包的来源列表键（ADR 0041 §11 D1）。 */
+const INPUT_SOURCE_LIST_KEYS = ['verifiedFields', 'factIssuers', 'factSources', 'unverifiedFields'] as const;
+
+/**
+ * 证据包会读取的 metadata 键做类型校验（ADR 0042 §12 D9）：存在却类型不符即畸形，整批记 unavailable，
+ * 不静默丢元素——否则 guardInputSources 会少项而审计方无从察觉。键缺省（旧事件）照常放行。
+ */
+function checkEvidenceMetadata(metadata: Record<string, unknown>): void {
+  for (const key of INPUT_SOURCE_LIST_KEYS) {
+    const v = metadata[key];
+    if (v !== undefined && !(Array.isArray(v) && v.every((x) => typeof x === 'string'))) {
+      malformed(`metadata.${key} is not a string array`);
+    }
+  }
+  if (metadata.inputSourcesTruncated !== undefined && typeof metadata.inputSourcesTruncated !== 'boolean') {
+    malformed('metadata.inputSourcesTruncated is not a boolean');
+  }
+  if (metadata.inputSource !== undefined && typeof metadata.inputSource !== 'string') {
+    malformed('metadata.inputSource is not a string');
+  }
+}
+
 /**
  * 线上收据 → 精确的 ChainReceipt（不透传多余键，不留 undefined，保证 canonicalHash 可算）。
  * prevHash 缺省 = 链首行，归一为 null；hashVersion 缺省 = 链前旧行，无法校验 ⇒ 畸形。
@@ -315,6 +337,7 @@ function bool(item: Record<string, unknown>, field: string): boolean {
 function toReceipt(item: Record<string, unknown>): ChainReceipt {
   const metadata = item.metadata ?? {};
   if (!isRecord(metadata)) malformed('metadata is not an object');
+  checkEvidenceMetadata(metadata);
   return {
     auditId: num(item, 'auditId'),
     currentHash: str(item, 'currentHash'),
