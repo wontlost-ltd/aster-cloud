@@ -9,7 +9,7 @@
  * - `fixture.creditPilot`：`context.applicant` = 试点 fixture 常量（ADR 0044 §5），仅非生产且租户为 `credit-pilot`
  *   时登记。请求体里的 `applicant` 只用来**选出**哪一组 fixture（JCS 字节相等），claim 值取自常量本身；
  *   与任何一组都不相等时不签。
- * `catalog.piiMark` 推迟到 #460（裁定 2）。
+ * `catalog.piiMark` 已撤销（ADR 0042 §12 D3）：PII 标记由 aster-api 从被执行的 Core IR 推导，不经签名事实。
  */
 import { loadBusinessRoles } from '@/lib/business-roles';
 import { jcsCanonicalize } from '@/lib/jcs';
