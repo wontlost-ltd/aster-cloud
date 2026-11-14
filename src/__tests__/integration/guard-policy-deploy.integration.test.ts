@@ -20,7 +20,7 @@ import {
   pushGuardDeployment,
   setGuardDeployDepsForTest,
 } from '@/lib/guard-policy-deploy';
-import { softDeletePolicy } from '@/lib/policy-lifecycle';
+import { restorePolicy, softDeletePolicy } from '@/lib/policy-lifecycle';
 import { PolicyApiError, type GuardPolicyDeploymentBody } from '@/services/policy/policy-api';
 import { setDefaultVersion } from '@/services/policy/version-manager';
 
@@ -208,6 +208,15 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('Guard 策略部署（真实 Po
     expect((await softDeletePolicy(POLICY, OWNER)).success).toBe(true);
     expect(calls.map((c) => c.kind)).toEqual(['withdraw']);
     expect(await state()).toMatchObject({ generation: 2, desiredVersionId: null, appliedGeneration: 2 });
+  });
+
+  it('restoreRedeploysDefault：从未部署的策略删除后恢复 → 部署其默认版本，之后由 cron 跟踪', async () => {
+    await seed(2);
+    expect((await softDeletePolicy(POLICY, OWNER)).success).toBe(true);
+    expect(calls).toEqual([]);
+    expect((await restorePolicy(POLICY, OWNER)).success).toBe(true);
+    expect(calls.map((c) => [c.kind, c.body?.cloudVersionId])).toEqual([['deploy', `${POLICY}-v2`]]);
+    expect(await state()).toMatchObject({ desiredVersionId: `${POLICY}-v2`, appliedGeneration: 1 });
   });
 
   it('staleGenerationTreatedAsSuperseded', async () => {
