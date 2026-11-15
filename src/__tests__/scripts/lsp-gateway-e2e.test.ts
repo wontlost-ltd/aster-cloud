@@ -7,6 +7,8 @@
  *     且一帧恰好一条消息。
  *   - 每个连接独立的工作目录 / HOME（语言服务器把工作区索引写在 cwd 下），
  *     两个连接互不相同，连接关闭后目录被删除。
+ *   - 生产模式只认 cloud 签发的 ticket（#657）：不带 / 旧共享 token / 重放 / 过期 / 伪造均 401，按用户（sub）限并发。
+ *     非生产网关不带 ticket 放行（本地开发），其余用例以此直连。
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { ChildProcess } from 'node:child_process';
@@ -17,13 +19,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
 import { killAllGateways, killGateways, spawnGateway } from './fixtures/gateway-process';
+import { issueLspTicket, LSP_TICKET_TTL_MS } from '@/lib/lsp-ticket';
 import { connect as netConnect } from 'node:net';
 import { randomBytes } from 'node:crypto';
 import { REJECTED_CLOSE_TIMEOUT_MS, SESSION_LIMIT_RETRY_AFTER_SECONDS } from '../../../lsp-server.mjs';
 
 const ROOT = join(__dirname, '..', '..', '..');
 const ORIGIN = 'http://localhost:3000';
-const TOKEN = 'gateway-e2e-token';
+const TICKET_SECRET = 'gateway-e2e-ticket-secret';
 let gateway: ChildProcess;
 let port: number;
 let tmpRoot: string;
@@ -44,7 +47,7 @@ beforeAll(async () => {
       PORT: String(port),
       HOSTNAME: '127.0.0.1',
       NODE_ENV: 'test',
-      LSP_AUTH_TOKEN: TOKEN,
+      LSP_TICKET_SECRET: TICKET_SECRET,
       ALLOWED_ORIGINS: ORIGIN,
       TMPDIR: tmpRoot,
       LSP_SERVER_SCRIPT: join(__dirname, 'fixtures', 'fake-lsp-server.mjs'),
@@ -71,7 +74,7 @@ function connect(clientIp?: string): Promise<{ ws: WebSocket; frames: Frame[]; r
   return new Promise((resolve, reject) => {
     const headers: Record<string, string> = { Origin: ORIGIN };
     if (clientIp) headers['CF-Connecting-IP'] = clientIp;
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/lsp?locale=zh-CN&token=${TOKEN}`, { headers });
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/lsp?locale=zh-CN`, { headers });
     const frames: Frame[] = []; const raw: string[] = [];
     let gotEnv: (f: Frame) => void;
     const env = new Promise<Frame>((r) => { gotEnv = r; });
@@ -128,7 +131,7 @@ describe('LSP 网关：按客户端限流与子进程堆上限', () => {
     const ip = '198.51.100.7';
     const open = await Promise.all([connect(ip), connect(ip), connect(ip)]);
     const closed = await new Promise<{ code: number; reason: string; messages: number }>((resolve, reject) => {
-      const ws = new WebSocket(`ws://127.0.0.1:${port}/lsp?locale=zh-CN&token=${TOKEN}`, { headers: { Origin: ORIGIN, 'CF-Connecting-IP': ip } });
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/lsp?locale=zh-CN`, { headers: { Origin: ORIGIN, 'CF-Connecting-IP': ip } });
       let messages = 0;
       ws.on('message', () => { messages++; });
       ws.on('unexpected-response', (_req, res) => reject(new Error(`status ${res.statusCode}`)));
@@ -162,7 +165,7 @@ describe('LSP 网关：被拒连接不滞留', () => {
     sock.on('close', () => (closeFrameAt ? resolve({ ms: Date.now() - closeFrameAt, data }) : reject(new Error(`no close frame: ${data}`))));
     sock.on('error', () => {});
     sock.write([
-      `GET /lsp?locale=zh-CN&token=${TOKEN} HTTP/1.1`, `Host: 127.0.0.1:${port}`, 'Upgrade: websocket', 'Connection: Upgrade',
+      `GET /lsp?locale=zh-CN HTTP/1.1`, `Host: 127.0.0.1:${port}`, 'Upgrade: websocket', 'Connection: Upgrade',
       `Sec-WebSocket-Key: ${randomBytes(16).toString('base64')}`, 'Sec-WebSocket-Version: 13', `Origin: ${ORIGIN}`,
       `CF-Connecting-IP: ${ip}`, '', '',
     ].join('\r\n'));
@@ -192,7 +195,7 @@ describe('网关生命周期：工作目录清理', () => {
   const startGateway = async (tmp: string, nodeEnv: 'test' | 'production' = 'test', extraEnv: Record<string, string> = {}) => {
     const p = await freePort();
     const gw = spawnGateway([join(ROOT, 'lsp-server.mjs')], {
-      env: { PATH: process.env.PATH, PORT: String(p), HOSTNAME: '127.0.0.1', NODE_ENV: nodeEnv, LSP_AUTH_TOKEN: TOKEN,
+      env: { PATH: process.env.PATH, PORT: String(p), HOSTNAME: '127.0.0.1', NODE_ENV: nodeEnv, LSP_TICKET_SECRET: TICKET_SECRET,
         ALLOWED_ORIGINS: ORIGIN, TMPDIR: tmp, LSP_SERVER_SCRIPT: join(__dirname, 'fixtures', 'fake-lsp-server.mjs'), ...extraEnv },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -207,7 +210,7 @@ describe('网关生命周期：工作目录清理', () => {
   it('★SIGTERM 关闭网关后不留下每连接工作目录', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'lsp-gw-term-'));
     const { gw, port: p } = await startGateway(tmp);
-    const ws = new WebSocket(`ws://127.0.0.1:${p}/lsp?locale=zh-CN&token=${TOKEN}`, { headers: { Origin: ORIGIN } });
+    const ws = new WebSocket(`ws://127.0.0.1:${p}/lsp?locale=zh-CN`, { headers: { Origin: ORIGIN } });
     const env = await new Promise<Frame>((resolve, reject) => {
       ws.on('message', (d) => { const f = JSON.parse(String(d)) as Frame; if (f.method === 'test/env') resolve(f); });
       ws.on('open', () => ws.send(JSON.stringify({ jsonrpc: '2.0', method: 'initialized', params: {} })));
@@ -222,24 +225,63 @@ describe('网关生命周期：工作目录清理', () => {
     rmSync(tmp, { recursive: true, force: true });
   }, 20_000);
 
-  /* 复审 M1：生产缺 CF-Connecting-IP 是配置异常——告警（节流），归入单独的共享桶，不受单 IP 3 会话限制 */
-  it('★生产缺 CF-Connecting-IP：共享桶不受单 IP 3 会话限制，告警只记一次', async () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'lsp-gw-nocf-'));
+  /** 握手结果：成功打开为 101，被拒为 HTTP 状态码；打开后立即关闭（不占会话）。 */
+  const handshake = (p: number, query: string): Promise<number> => new Promise((resolve, reject) => {
+    const ws = new WebSocket(`ws://127.0.0.1:${p}/lsp?locale=zh-CN${query}`, { headers: { Origin: ORIGIN, 'CF-Connecting-IP': '203.0.113.5' } });
+    ws.on('open', () => { ws.close(); resolve(101); });
+    ws.on('unexpected-response', (_q, res) => resolve(res.statusCode ?? 0));
+    ws.on('error', reject);
+  });
+  const ticketFor = async (sub: string, opts: { secret?: string; now?: number } = {}) =>
+    `&ticket=${encodeURIComponent(await issueLspTicket({ secret: opts.secret ?? TICKET_SECRET, sub, now: opts.now }))}`;
+
+  // #657：生产网关只认 cloud 签发的一次性 ticket；旧共享 token 不再被读取
+  it('★生产：不带 ticket、旧 ?token=、重放、过期、签名错误均 401；合法 ticket 握手成功', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'lsp-gw-ticket-'));
     const { gw, port: p } = await startGateway(tmp, 'production');
-    let stderr = '';
-    gw.stderr!.on('data', (d) => { stderr += String(d); });
-    const open = (): Promise<WebSocket> => new Promise((resolve, reject) => {
-      const ws = new WebSocket(`ws://127.0.0.1:${p}/lsp?locale=zh-CN&token=${TOKEN}`, { headers: { Origin: ORIGIN } });
-      ws.on('open', () => resolve(ws));
-      ws.on('unexpected-response', (_q, res) => reject(new Error(`status ${res.statusCode}`)));
-      ws.on('error', reject);
-    });
-    const sockets = [await open(), await open(), await open(), await open()];
-    await new Promise((r) => setTimeout(r, 200));
-    expect(stderr.match(/without CF-Connecting-IP/g)).toHaveLength(1);
-    sockets.forEach((ws) => ws.close());
-    gw.kill('SIGTERM');
-    rmSync(tmp, { recursive: true, force: true });
+    let logs = '';
+    gw.stdout!.on('data', (d) => { logs += String(d); });
+    try {
+      expect(await handshake(p, '')).toBe(401);
+      expect(await handshake(p, '&token=gateway-e2e-legacy-token')).toBe(401);
+      const ticket = await ticketFor('user-a');
+      expect(await handshake(p, ticket)).toBe(101);
+      expect(await handshake(p, ticket)).toBe(401);
+      expect(await handshake(p, await ticketFor('user-a', { now: Date.now() - LSP_TICKET_TTL_MS - 1_000 }))).toBe(401);
+      expect(await handshake(p, await ticketFor('user-a', { secret: 'not-the-gateway-secret' }))).toBe(401);
+      // 日志只记 sub，不记 ticket
+      expect(logs).toContain('Ticket accepted for sub=user-a');
+      expect(logs).not.toContain(decodeURIComponent(ticket.slice('&ticket='.length)));
+    } finally {
+      gw.kill('SIGTERM');
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it('★生产：按用户（sub）限并发——同一用户第 4 个会话以 4429 关闭，其他用户不受影响', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'lsp-gw-sub-'));
+    const { gw, port: p } = await startGateway(tmp, 'production');
+    const open = async (sub: string): Promise<{ ws: WebSocket; closed: Promise<number> }> => {
+      const query = await ticketFor(sub);
+      return new Promise((resolve, reject) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${p}/lsp?locale=zh-CN${query}`, { headers: { Origin: ORIGIN, 'CF-Connecting-IP': '203.0.113.9' } });
+        const closed = new Promise<number>((r) => ws.once('close', (code) => r(code)));
+        ws.on('open', () => resolve({ ws, closed }));
+        ws.on('unexpected-response', (_q, res) => reject(new Error(`status ${res.statusCode}`)));
+        ws.on('error', reject);
+      });
+    };
+    try {
+      const sessions = [await open('user-b'), await open('user-b'), await open('user-b')];
+      const fourth = await open('user-b');
+      expect(await fourth.closed).toBe(4429);
+      const other = await open('user-c');
+      expect(other.ws.readyState).toBe(WebSocket.OPEN);
+      [...sessions, other].forEach((c) => c.ws.close());
+    } finally {
+      gw.kill('SIGTERM');
+      rmSync(tmp, { recursive: true, force: true });
+    }
   }, 20_000);
 
   // #657：闲置会话被关闭（4408），子进程退出、工作目录删除；持续有消息的会话不受影响
@@ -247,7 +289,7 @@ describe('网关生命周期：工作目录清理', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'lsp-gw-idle-'));
     const { gw, port: p } = await startGateway(tmp, 'test', { LSP_IDLE_TIMEOUT_MS: '1000' });
     const open = async () => {
-      const ws = new WebSocket(`ws://127.0.0.1:${p}/lsp?locale=zh-CN&token=${TOKEN}`, { headers: { Origin: ORIGIN } });
+      const ws = new WebSocket(`ws://127.0.0.1:${p}/lsp?locale=zh-CN`, { headers: { Origin: ORIGIN } });
       const closed = new Promise<number>((r) => ws.once('close', (code) => r(code)));
       const env = await new Promise<Frame>((resolve, reject) => {
         ws.on('message', (d) => { const f = JSON.parse(String(d)) as Frame; if (f.method === 'test/env') resolve(f); });

@@ -13,9 +13,11 @@
  *
  * 判定：
  *   - 产物中必须存在 LSP 客户端（含 `/lsp?locale=` 的 chunk），否则视为检查空转；
- *   - 任何 .js 产物中都不得残留 `env.NEXT_PUBLIC_LSP_HOST`。
+ *   - 任何 .js 产物中都不得残留 `env.NEXT_PUBLIC_LSP_HOST`；
+ *   - 前端 bundle 里不得出现任何 LSP 凭据（#657 验收）：不得出现 `NEXT_PUBLIC_LSP_TOKEN`（引用或变量名），
+ *     LSP 客户端 chunk 不得再拼 `&token=`（旧共享 token 的握手参数；握手凭据只能是运行时取的 `&ticket=`）。
  *
- * 退出码：0 = 通过；1 = 未内联或产物缺失。
+ * 退出码：0 = 通过；1 = 未内联、残留凭据或产物缺失。
  *
  * 用法：node scripts/check-lsp-inlined.mjs [chunk 目录，默认 .next/static/chunks]
  */
@@ -30,15 +32,25 @@ export const REQUIRED_LSP_ENV = ['NEXT_PUBLIC_LSP_HOST'];
 /** LSP 客户端 URL 拼接处的稳定特征（useAsterLSP 的 `/lsp?locale=`）。 */
 const LSP_CLIENT_MARKER = '/lsp?locale=';
 
+/** 已下线的构建期共享凭据变量：出现在 bundle 任何位置都算泄露。 */
+const LEGACY_CREDENTIAL_ENV = 'NEXT_PUBLIC_LSP_TOKEN';
+/** 旧共享 token 的握手参数：只在 LSP 客户端 chunk 里检查（团队邀请等链接用 `?token=`，与 LSP 无关）。 */
+const LEGACY_TOKEN_PARAM = '&token=';
+
 /**
  * 检查一组 chunk 源码。
  * @param {readonly string[]} sources
- * @returns {{ ok: boolean, hasLspClient: boolean, missing: string[] }}
+ * @returns {{ ok: boolean, hasLspClient: boolean, missing: string[], credentialLeaks: string[] }}
  */
 export function inspectLspInlining(sources) {
-  const hasLspClient = sources.some((s) => s.includes(LSP_CLIENT_MARKER));
+  const lspClients = sources.filter((s) => s.includes(LSP_CLIENT_MARKER));
+  const hasLspClient = lspClients.length > 0;
   const missing = REQUIRED_LSP_ENV.filter((name) => sources.some((s) => s.includes(`env.${name}`)));
-  return { ok: hasLspClient && missing.length === 0, hasLspClient, missing };
+  const credentialLeaks = [
+    ...(sources.some((s) => s.includes(LEGACY_CREDENTIAL_ENV)) ? [LEGACY_CREDENTIAL_ENV] : []),
+    ...(lspClients.some((s) => s.includes(LEGACY_TOKEN_PARAM)) ? [LEGACY_TOKEN_PARAM] : []),
+  ];
+  return { ok: hasLspClient && missing.length === 0 && credentialLeaks.length === 0, hasLspClient, missing, credentialLeaks };
 }
 
 function listJsFiles(dir) {
@@ -81,5 +93,12 @@ if (isMain) {
     );
     process.exit(1);
   }
-  console.log('✓ LSP host 已内联进客户端产物，编辑器会发起 LSP 连接');
+  if (result.credentialLeaks.length > 0) {
+    console.error(
+      `::error::前端产物里仍有 LSP 共享凭据的痕迹：${result.credentialLeaks.join(', ')}。` +
+        'LSP 握手只能用运行时向 /api/lsp/ticket 取的 ticket（#657），检查构建环境与 useAsterLSP。',
+    );
+    process.exit(1);
+  }
+  console.log('✓ LSP host 已内联进客户端产物且不含 LSP 凭据，编辑器会发起 LSP 连接');
 }

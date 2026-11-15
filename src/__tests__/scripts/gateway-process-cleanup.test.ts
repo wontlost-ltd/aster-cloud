@@ -64,7 +64,7 @@ describe('killGateways 杀整个进程组', () => {
     dirs.push(tmp);
     const port = await freePort();
     const gw = spawnGateway([join(ROOT, 'lsp-server.mjs')], {
-      env: { PATH: process.env.PATH, PORT: String(port), HOSTNAME: '127.0.0.1', NODE_ENV: 'test', LSP_AUTH_TOKEN: 't',
+      env: { PATH: process.env.PATH, PORT: String(port), HOSTNAME: '127.0.0.1', NODE_ENV: 'test',
         ALLOWED_ORIGINS: 'http://localhost:3000', TMPDIR: tmp, ASTER_FAKE_STUBBORN: '1',
         LSP_SERVER_SCRIPT: join(__dirname, 'fixtures', 'fake-lsp-server.mjs') },
       stdio: ['ignore', 'pipe', 'inherit'],
@@ -75,7 +75,7 @@ describe('killGateways 杀整个进程组', () => {
       gw.stdout!.on('data', (d) => { if (String(d).includes('ready on')) { clearTimeout(timer); resolve(); } });
     });
     const childPid = await new Promise<number>((resolve, reject) => {
-      const ws = new WebSocket(`ws://127.0.0.1:${port}/lsp?locale=zh-CN&token=t`, { headers: { Origin: 'http://localhost:3000' } });
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/lsp?locale=zh-CN`, { headers: { Origin: 'http://localhost:3000' } });
       ws.on('open', () => ws.send(JSON.stringify({ jsonrpc: '2.0', method: 'initialized', params: {} })));
       ws.on('message', (m) => { const f = JSON.parse(String(m)); if (f.method === 'test/env') resolve(f.params.pid); });
       ws.on('error', reject);

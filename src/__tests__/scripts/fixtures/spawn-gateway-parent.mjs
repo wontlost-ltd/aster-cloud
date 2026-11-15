@@ -10,7 +10,7 @@ import WebSocket from 'ws';
 const [root, port, tmp, logFile] = process.argv.slice(2);
 const here = new URL('.', import.meta.url).pathname;
 const gw = spawn('node', ['--import', pathToFileURL(join(here, 'die-with-parent.mjs')).href, join(root, 'lsp-server.mjs')], {
-  env: { PATH: process.env.PATH, PORT: port, HOSTNAME: '127.0.0.1', NODE_ENV: 'test', LSP_AUTH_TOKEN: 't',
+  env: { PATH: process.env.PATH, PORT: port, HOSTNAME: '127.0.0.1', NODE_ENV: 'test',
     ALLOWED_ORIGINS: 'http://localhost:3000', TMPDIR: tmp, LSP_SERVER_SCRIPT: join(here, 'fake-lsp-server.mjs') },
   // 网关日志写文件而不是管道：父进程死后写管道会 EPIPE 崩溃，会掩盖「是否走了正常 shutdown」
   stdio: ['ignore', openSync(logFile, 'a'), 'inherit'],
@@ -20,7 +20,7 @@ const waitReady = setInterval(() => {
   try { log = readFileSync(logFile, 'utf-8'); } catch { return; }
   if (!log.includes('ready on')) return;
   clearInterval(waitReady);
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/lsp?locale=zh-CN&token=t`, { headers: { Origin: 'http://localhost:3000' } });
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/lsp?locale=zh-CN`, { headers: { Origin: 'http://localhost:3000' } });
   ws.on('open', () => ws.send(JSON.stringify({ jsonrpc: '2.0', method: 'initialized', params: {} })));
   ws.on('message', (m) => {
     const f = JSON.parse(String(m));

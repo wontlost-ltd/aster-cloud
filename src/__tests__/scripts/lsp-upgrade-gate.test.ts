@@ -4,15 +4,15 @@
  * Locks the security policy in lsp-server.mjs `evaluateUpgrade`:
  *   - connection cap (DoS guard)
  *   - FAIL-CLOSED origin (missing/unlisted origin rejected)
- *   - shared-secret token requirement (header or query)
- *   - fail-closed when no token configured in production
+ *   - 鉴权只认 cloud 签发的 ticket（#657），细节见 lsp-ticket-gate.test.ts；本文件用非生产配置隔离
+ *     连接上限与 Origin 两道门
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 // Importing the .mjs only pulls in the pure export; the listener bootstrap is
 // guarded behind an isMain check so no socket is bound under test.
-import { evaluateUpgrade } from '../../../lsp-server.mjs';
+import { createNonceCache, evaluateUpgrade } from '../../../lsp-server.mjs';
 
 const ORIGINS = ['https://aster-lang.cloud', 'http://localhost:3000'];
 
@@ -20,9 +20,9 @@ function cfg(overrides: Partial<Parameters<typeof evaluateUpgrade>[1]> = {}) {
   return {
     allowedOrigins: ORIGINS,
     maxConnections: 2,
-    authToken: 'sekret',
-    authDisabled: false,
-    isProduction: true,
+    isProduction: false,
+    ticketSecret: 's',
+    nonces: createNonceCache(),
     ...overrides,
   };
 }
@@ -30,8 +30,6 @@ function cfg(overrides: Partial<Parameters<typeof evaluateUpgrade>[1]> = {}) {
 function input(overrides: Partial<Parameters<typeof evaluateUpgrade>[0]> = {}) {
   return {
     origin: 'https://aster-lang.cloud',
-    headerToken: undefined,
-    queryToken: 'sekret',
     activeCount: 0,
     ...overrides,
   };
@@ -73,54 +71,15 @@ describe('evaluateUpgrade — origin (fail closed)', () => {
   });
 });
 
-describe('evaluateUpgrade — token', () => {
-  it('rejects (401) when token missing', () => {
-    expect(
-      evaluateUpgrade(input({ queryToken: undefined, headerToken: undefined }), cfg()),
-    ).toMatchObject({ ok: false, code: 401 });
-  });
-
-  it('rejects (401) when token wrong', () => {
-    expect(evaluateUpgrade(input({ queryToken: 'nope' }), cfg())).toMatchObject({
-      ok: false,
-      code: 401,
-    });
-  });
-
-  it('accepts token via query param', () => {
-    expect(evaluateUpgrade(input({ queryToken: 'sekret' }), cfg())).toEqual({ ok: true });
-  });
-
-  it('accepts token via x-lsp-token header', () => {
-    expect(
-      evaluateUpgrade(input({ queryToken: undefined, headerToken: 'sekret' }), cfg()),
-    ).toEqual({ ok: true });
-  });
-});
-
-describe('evaluateUpgrade — token gate not configured', () => {
-  it('fails closed (401) in production when no token configured', () => {
-    expect(
-      evaluateUpgrade(input({ queryToken: undefined }), cfg({ authToken: '' })),
-    ).toMatchObject({ ok: false, code: 401, reason: 'Token gate not configured' });
-  });
-
-  it('allows in non-production when no token configured (dev convenience)', () => {
-    expect(
-      evaluateUpgrade(
-        input({ queryToken: undefined }),
-        cfg({ authToken: '', isProduction: false }),
-      ),
-    ).toEqual({ ok: true });
-  });
-
-  it('allows when no token configured but auth explicitly disabled', () => {
-    expect(
-      evaluateUpgrade(
-        input({ queryToken: undefined }),
-        cfg({ authToken: '', authDisabled: true }),
-      ),
-    ).toEqual({ ok: true });
+describe('evaluateUpgrade — 旧共享 token 已移除（#657 ③）', () => {
+  it('★源码不再读取 LSP_AUTH_TOKEN / LSP_AUTH_DISABLED / LSP_TICKET_REQUIRED / x-lsp-token / ?token=', () => {
+    const code = readFileSync(join(process.cwd(), 'lsp-server.mjs'), 'utf-8')
+      .split('\n')
+      .filter((l) => !/^\s*(\/\/|\*)/.test(l))
+      .join('\n');
+    for (const legacy of ['LSP_AUTH_TOKEN', 'LSP_AUTH_DISABLED', 'LSP_TICKET_REQUIRED', 'x-lsp-token', 'query.token']) {
+      expect(code, legacy).not.toContain(legacy);
+    }
   });
 });
 
@@ -131,9 +90,9 @@ describe('evaluateUpgrade — precedence', () => {
     ).toMatchObject({ code: 503 });
   });
 
-  it('origin is checked before token', () => {
+  it('origin is checked before ticket', () => {
     expect(
-      evaluateUpgrade(input({ origin: 'https://evil.example', queryToken: undefined }), cfg()),
+      evaluateUpgrade(input({ origin: 'https://evil.example' }), cfg({ isProduction: true })),
     ).toMatchObject({ code: 403 });
   });
 });
