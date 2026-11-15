@@ -119,6 +119,9 @@ async function upsertTeamMember(db: Db, spec: (typeof USERS)[number]): Promise<v
   const id = `${TEAM_ID}-${spec.id}`;
   const existing = await db.query.teamMembers.findFirst({ where: eq(schema.teamMembers.id, id) });
   if (existing) {
+    if (existing.teamId !== TEAM_ID || existing.userId !== spec.id) {
+      throw new Error(`团队成员记录 ${id} 已被占用（${existing.teamId} / ${existing.userId}），拒绝改动`);
+    }
     await db.update(schema.teamMembers).set({ role: spec.role }).where(eq(schema.teamMembers.id, id));
     return;
   }

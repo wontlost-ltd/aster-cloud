@@ -43,7 +43,8 @@
 
 ## 本地栈（local-stack）
 
-前提：podman 机器运行中、Node ≥ 24、仓库根目录 `pnpm install --frozen-lockfile`。下面用非默认端口，避免碰到常驻栈。
+前提：podman 机器运行中、Node ≥ 24、仓库根目录 `pnpm install --frozen-lockfile`。下面用非默认端口，避免碰到常驻栈；
+数据库凭据与密钥只用于这套一次性容器，不要把它们或这两个库复用到共享环境。
 
 ```bash
 # 1. 生成本地密钥（只用于本地）
