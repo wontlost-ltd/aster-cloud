@@ -1,0 +1,10 @@
+Module demo.billing.
+
+Define GuardRequest has principal_id, principal_type, principal_roles, action, resource_type, resource_id, context, agent_model.
+
+@id("DEMO-REFUND-001")
+Rule decide given req as GuardRequest, produce Verdict:
+  If req.action equals to "refund_payment":
+    Return Verdict.deny("代理不得发起退款，须由财务人工处理").
+  Otherwise:
+    Return Verdict.allow().

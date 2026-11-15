@@ -28,6 +28,8 @@
     "db:studio": "drizzle-kit studio",
     "seed:usability": "tsx src/scripts/seed-usability-tenant.ts",
     "seed:credit-pilot": "node --conditions=import --import tsx src/scripts/seed-credit-pilot.ts",
+    "seed:agent-guard-demo": "node --conditions=import --import tsx src/scripts/seed-agent-guard-demo.ts",
+    "demo:agent-guard": "tsx scripts/agent-guard-demo/adversarial-agent.ts",
     "fact-key:gen": "tsx scripts/gen-fact-signing-key.ts",
     "seed:admin": "tsx src/scripts/seed-admin.ts",
     "check:locales": "tsx scripts/check-locales.ts",
@@ -98,9 +100,11 @@
     "ws": "8.21.1"
   },
   "devDependencies": {
+    "@aster-cloud/aster-guard": "0.2.0",
     "@aster-cloud/glossary": "^0.1.3",
     "@mdx-js/loader": "3.1.1",
     "@mdx-js/react": "3.1.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@next/eslint-plugin-next": "16.4.5",
     "@next/mdx": "16.4.5",
     "@opennextjs/cloudflare": "^1.20.16",

@@ -41,6 +41,7 @@ const sharedTestOptions = {
   exclude: [
     'src/__tests__/integration/**',
     'src/__tests__/e2e/**',
+    'src/__tests__/e2e-agent-guard/**',
     'src/__tests__/e2e-browser/**',
     'node_modules/**',
   ],
