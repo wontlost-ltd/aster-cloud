@@ -23,15 +23,19 @@ export const NOT_LOCAL_REASON = '仅针对本地 aster 栈（BASE_CLOUD 需包�
 // 会话夹具目录，由 scripts/e2e-local-session.ts 在容器内生成
 const STATE_DIR = process.env.E2E_STATE_DIR || join(process.cwd(), '.superpowers/e2e-local');
 
-export function stateFor(user: 'm-free' | 'm-dpo' | 'owner1' | 't1' | 'cp-owner' | 'cp-officer' | 'cp-analyst'): string {
+export function stateFor(
+  user: 'm-free' | 'm-dpo' | 'owner1' | 't1' | 'cp-owner' | 'cp-officer' | 'cp-analyst' | 'pii-officer',
+): string {
   return join(STATE_DIR, `state-${user}.json`);
 }
 
 const PODMAN = process.env.PODMAN_BIN || '/opt/podman/bin/podman';
+// 栈的 Postgres 容器名；另起一套隔离栈（不同容器前缀）时用 E2E_PG_CONTAINER 指定
+const PG_CONTAINER = process.env.E2E_PG_CONTAINER || 'aster-pg';
 
-/** 在 aster-pg 容器里执行只读/校验用 SQL，返回去空白的单行文本结果。 */
+/** 在栈的 Postgres 容器里执行只读/校验用 SQL，返回去空白的单行文本结果。 */
 export function psql(db: 'aster_cloud' | 'aster_policy', sql: string): string {
-  return execFileSync(PODMAN, ['exec', 'aster-pg', 'psql', '-U', 'postgres', '-d', db, '-Atc', sql], {
+  return execFileSync(PODMAN, ['exec', PG_CONTAINER, 'psql', '-U', 'postgres', '-d', db, '-Atc', sql], {
     encoding: 'utf8',
   }).trim();
 }

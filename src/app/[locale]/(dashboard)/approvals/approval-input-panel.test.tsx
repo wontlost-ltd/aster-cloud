@@ -183,6 +183,60 @@ describe('ApprovalInputPanel', () => {
     expect(screen.queryByText('input.reveal')).toBeNull();
   });
 
+  // aster-api#460 生产缺陷：本人已解除后面板重新挂载（收起再展开、刷新页面），GET 只回打码视图，
+  // 收件箱随之提交打码哈希，审批被记为 inputRevealed=false，而链上已有本人的解除记录
+  it('restoresOwnRevealOnRemount：GET 视图 revealedByMe 时自动取回本人的解除视图（幂等，不再入链），交给收件箱', async () => {
+    const revealed = {
+      ...VIEW, revealed: true, revealedByMe: true, inputSnapshotHash: 'r'.repeat(64),
+      input: { context: { applicant: { amount: 250000, email: 'a@b.cc' } } },
+    };
+    fetchMock.mockResolvedValueOnce(ok({ ...VIEW, revealedByMe: true }));
+    fetchMock.mockResolvedValueOnce(ok(revealed));
+    const onViewLoaded = vi.fn();
+    render(<ApprovalInputPanel tenantId="team1" approvalId="a1" canReveal onViewLoaded={onViewLoaded} />);
+    await waitFor(() => expect(screen.getByText('a@b.cc')).toBeTruthy());
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/approvals/team1/a1/input/reveal', { method: 'POST' });
+    // 打码视图不得先交给收件箱，否则此间点批准会提交打码哈希
+    expect(onViewLoaded).toHaveBeenCalledTimes(1);
+    expect(onViewLoaded).toHaveBeenCalledWith(revealed);
+    expect(screen.getByTestId('banner-revealed')).toBeTruthy();
+  });
+
+  it('restoreOwnReveal 临时失败：显示重试、不交视图（批准保持禁用）', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ ...VIEW, revealedByMe: true }));
+    fetchMock.mockResolvedValueOnce(fail(503, { error: 'upstream_unavailable' }));
+    const onViewLoaded = vi.fn();
+    render(<ApprovalInputPanel tenantId="team1" approvalId="a1" canReveal onViewLoaded={onViewLoaded} />);
+    await screen.findByTestId('input-failed');
+    expect(onViewLoaded).not.toHaveBeenCalled();
+  });
+
+  it('restoreOwnReveal 非临时失败（如审批已不再待审）：退回打码视图并提示', async () => {
+    const masked = { ...VIEW, revealedByMe: true };
+    fetchMock.mockResolvedValueOnce(ok(masked));
+    fetchMock.mockResolvedValueOnce(fail(403, { error: 'reveal_not_permitted' }));
+    const onViewLoaded = vi.fn();
+    render(<ApprovalInputPanel tenantId="team1" approvalId="a1" canReveal onViewLoaded={onViewLoaded} />);
+    await screen.findByText('input.errors.reveal_not_permitted');
+    expect(onViewLoaded).toHaveBeenCalledWith(masked);
+  });
+
+  it('无解除权限时 revealedByMe 不触发自动取回', async () => {
+    renderPanel({ ...VIEW, revealedByMe: true }, false);
+    await screen.findByTestId('pii-masked');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('revealHintAboveInput：可解除时在输入树之前给出提示与按钮，说明打码字段数与留痕', async () => {
+    renderPanel(VIEW);
+    const hint = await screen.findByTestId('reveal-hint');
+    expect(hint.textContent).toContain('input.revealHint:{"count":1}');
+    const panel = screen.getByTestId('approval-input-panel');
+    const tree = panel.querySelector('ul');
+    // 提示在输入树之前（DOM 顺序），不再埋在长输入树的末尾
+    expect(hint.compareDocumentPosition(tree as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('解除失败：按错误码显示文案，不显示原值', async () => {
     renderPanel(VIEW);
     for (const code of ['reveal_not_permitted', 'receipt_unavailable', 'something_else']) {

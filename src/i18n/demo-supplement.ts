@@ -821,6 +821,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         revealConfirm: 'Viewing original values is recorded in the audit chain under your name.',
         revealConfirmButton: 'Show values',
         revealedNote: 'Showing original values. Your view has been recorded.',
+        revealHint: '{count, plural, one {# field is masked.} other {# fields are masked.}} You hold the required role and can show the original values; this is recorded in the audit chain under your name.',
+        decidingOnMasked: 'You are deciding on the masked input (original values not shown).',
+        decidingOnRevealed: 'You are deciding on the original values you revealed.',
         errors: {
           reveal_not_permitted: 'Only holders of the required role can view original values.',
           input_not_available: 'The decision input is not available.',
@@ -2495,6 +2498,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         revealConfirm: '此次查看会以你的身份记入审计链。',
         revealConfirmButton: '显示原值',
         revealedNote: '正在显示原值，本次查看已记录。',
+        revealHint: '有 {count} 个字段已打码。你持有所需角色，可以显示原值；此次查看会以你的身份记入审计链。',
+        decidingOnMasked: '你正基于打码后的输入作出决定（未显示原值）。',
+        decidingOnRevealed: '你正基于已显示的原值作出决定。',
         errors: {
           reveal_not_permitted: '只有持有所需角色的人才能查看原值。',
           input_not_available: '决策输入不可用。',
@@ -4152,6 +4158,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         revealConfirm: 'Das Anzeigen der Originalwerte wird unter Ihrem Namen in der Audit-Kette protokolliert.',
         revealConfirmButton: 'Werte anzeigen',
         revealedNote: 'Originalwerte werden angezeigt. Ihr Zugriff wurde protokolliert.',
+        revealHint: '{count, plural, one {# Feld ist maskiert.} other {# Felder sind maskiert.}} Sie haben die erforderliche Rolle und können die Originalwerte anzeigen; dies wird unter Ihrem Namen in der Audit-Kette protokolliert.',
+        decidingOnMasked: 'Sie entscheiden auf Grundlage der maskierten Eingabe (Originalwerte nicht angezeigt).',
+        decidingOnRevealed: 'Sie entscheiden auf Grundlage der angezeigten Originalwerte.',
         errors: {
           reveal_not_permitted: 'Nur Inhaber der erforderlichen Rolle können Originalwerte sehen.',
           input_not_available: 'Die Entscheidungseingabe ist nicht verfügbar.',
@@ -5806,6 +5815,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         revealConfirm: 'मूल मान देखना आपके नाम से ऑडिट चेन में दर्ज होगा।',
         revealConfirmButton: 'मान दिखाएँ',
         revealedNote: 'मूल मान दिखाए जा रहे हैं। आपका देखना दर्ज कर लिया गया है।',
+        revealHint: '{count} फ़ील्ड मास्क किए गए हैं। आपके पास आवश्यक भूमिका है और आप मूल मान देख सकते हैं; यह आपके नाम से ऑडिट चेन में दर्ज होगा।',
+        decidingOnMasked: 'आप मास्क किए गए इनपुट के आधार पर निर्णय ले रहे हैं (मूल मान नहीं दिखाए गए)।',
+        decidingOnRevealed: 'आप दिखाए गए मूल मानों के आधार पर निर्णय ले रहे हैं।',
         errors: {
           reveal_not_permitted: 'केवल आवश्यक भूमिका वाले ही मूल मान देख सकते हैं।',
           input_not_available: 'निर्णय इनपुट उपलब्ध नहीं है।',

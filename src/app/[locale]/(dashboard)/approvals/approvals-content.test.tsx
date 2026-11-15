@@ -382,6 +382,28 @@ describe('ApprovalsContent — 需求验证埋点', () => {
       });
     });
 
+    it('decisionViewNote：确认对话框说明本次决定所据的视图（打码 / 原值）', () => {
+      panelView.current = { ...AVAILABLE, piiMarks: [{ path: 'context.a', level: 'L2' }] };
+      renderWith([item('a1')]);
+      openInput();
+      fireEvent.click(screen.getByRole('button', { name: 'approve' }));
+      expect(screen.getByTestId('decision-view-note').textContent).toBe('input.decidingOnMasked');
+      cleanup();
+      panelView.current = { ...AVAILABLE, revealed: true, piiMarks: [{ path: 'context.a', level: 'L2' }] };
+      renderWith([item('a1')]);
+      openInput();
+      fireEvent.click(screen.getByRole('button', { name: 'approve' }));
+      expect(screen.getByTestId('decision-view-note').textContent).toBe('input.decidingOnRevealed');
+    });
+
+    it('无已声明 @pii 的视图不显示视图说明', () => {
+      panelView.current = AVAILABLE;
+      renderWith([item('a1')]);
+      openInput();
+      fireEvent.click(screen.getByRole('button', { name: 'approve' }));
+      expect(screen.queryByTestId('decision-view-note')).toBeNull();
+    });
+
     it('只读行同样可以展开输入（无解除权限由面板判定）', () => {
       renderWith([item('a1', { canAct: false })]);
       openInput();

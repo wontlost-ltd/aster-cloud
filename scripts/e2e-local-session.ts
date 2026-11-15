@@ -25,6 +25,8 @@ const USERS: SeedUser[] = [
   { id: 'cp-owner', email: 'cp-owner@stack.test', plan: 'team' },
   { id: 'cp-officer', email: 'cp-officer@stack.test', plan: 'pro' },
   { id: 'cp-analyst', email: 'cp-analyst@stack.test', plan: 'pro' },
+  // approval-input-reveal 用例自行播种的团队成员（持 Risk Officer）
+  { id: 'pii-officer', email: 'pii-officer@stack.test', plan: 'pro' },
 ];
 
 async function main(): Promise<void> {

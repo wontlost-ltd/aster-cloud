@@ -11,7 +11,12 @@ import type { GuardApprovalInput } from '@/services/policy/guard-types';
  * 只在展开时请求 `GET /api/approvals/[tenantId]/[approvalId]/input`（以当前用户身份转发，api 永远返回打码视图）。
  * 树形展示，结构保留：`$pii` 显示为级别 + 类别徽标，未声明类型显示「不可见」徽标；`context` 叶子旁显示来源徽标
  * （路径 ∈ `inputSources.verified` 为「已验证」，悬停显示对应的 factSources 条目，其余为「自报」）。
- * 「显示原值」只对 `canReveal` 且存在已声明 `@pii` 字段的可用视图出现，先确认再调用解除（按人记入审计链）。
+ * 「显示原值」只对 `canReveal` 且存在已声明 `@pii` 字段的可用视图出现，先确认再调用解除（按人记入审计链）；
+ * 提示与按钮放在输入树之前，并写明打码字段数与留痕，免得与行上的「查看决策输入」混淆。
+ *
+ * api 的 GET 永远回打码视图。本人此前已解除过（`revealedByMe`，例如收起再展开、刷新页面后重新挂载）时，面板自动
+ * 再调一次解除取回本人的解除视图——api 对已解除者幂等、不再入链——再交给收件箱；否则收件箱会提交打码视图的哈希，
+ * 审批被记为未基于原值（aster-api#460 生产缺陷）。取回期间不交视图，批准 / 拒绝保持禁用。
  *
  * `onViewLoaded` 把当前展示的视图交给收件箱：批准 / 拒绝据此提交 `inputSnapshotHash`。
  * - 旧 api（代理把无输入端点的 404 转为 `status: unavailable`）与其他非临时错误：交 null，收件箱照常审批、不带哈希
@@ -110,13 +115,39 @@ function Node({ name, value, path, view, t }: { name: string; value: unknown; pa
   );
 }
 
-/** 输入中是否有可解除的 `@pii` 占位（级别不是 unknown）；没有就不提供「显示原值」，免得留下无意义的审计记录。 */
-function hasMaskedPii(value: unknown): boolean {
+/** 可解除的 `@pii` 占位个数（级别不是 unknown）；为 0 时不提供「显示原值」，免得留下无意义的审计记录。 */
+function countMaskedPii(value: unknown): number {
   const pii = piiOf(value);
-  if (pii) return pii.level !== 'unknown';
-  if (Array.isArray(value)) return value.some(hasMaskedPii);
-  if (typeof value === 'object' && value !== null) return Object.values(value).some(hasMaskedPii);
-  return false;
+  if (pii) return pii.level !== 'unknown' ? 1 : 0;
+  if (Array.isArray(value)) return value.reduce((n: number, v) => n + countMaskedPii(v), 0);
+  if (typeof value === 'object' && value !== null) {
+    return Object.values(value).reduce((n: number, v) => n + countMaskedPii(v), 0);
+  }
+  return 0;
+}
+
+type RevealResult =
+  | { kind: 'ok'; view: GuardApprovalInput }
+  | { kind: 'transient' }
+  | { kind: 'error'; code: string | undefined };
+
+/** POST 解除；api 对已解除者幂等（不再入链），首次解除按人入链。 */
+async function postReveal(tenantId: string, approvalId: string): Promise<RevealResult> {
+  try {
+    const r = await fetch(inputUrl(tenantId, approvalId, true), { method: 'POST' });
+    const body = (await r.json().catch(() => ({}))) as GuardApprovalInput & { error?: string };
+    if (r.ok) return { kind: 'ok', view: body };
+    // 503 receipt_unavailable 是有意义的业务码（解除留痕写入失败），按错误显示；其余 502 / 503 / 504 为上游不可用
+    const transient = TRANSIENT_STATUSES.has(r.status) && body.error !== 'receipt_unavailable';
+    return transient ? { kind: 'transient' } : { kind: 'error', code: body.error };
+  } catch {
+    return { kind: 'transient' };
+  }
+}
+
+/** 本人已解除过、但 GET 回的是打码视图：须取回解除视图。 */
+function needsOwnReveal(view: GuardApprovalInput | null, canReveal: boolean): view is GuardApprovalInput {
+  return canReveal && view !== null && view.status === 'available' && view.revealedByMe && !view.revealed;
 }
 
 function revealErrorText(t: T, code: string | undefined): string {
@@ -179,37 +210,46 @@ export function ApprovalInputPanel({ tenantId, approvalId, canReveal, onViewLoad
         return;
       }
       if (cancelled) return;
+      if (needsOwnReveal(loaded, canReveal)) {
+        const restored = await postReveal(tenantId, approvalId);
+        if (cancelled) return;
+        if (restored.kind === 'transient') {
+          setFailed(true);
+          return;
+        }
+        if (restored.kind === 'ok') {
+          loaded = restored.view;
+        } else {
+          // 非临时失败（如审批已不再待审）：退回打码视图，照实提示；此时提交的是打码视图的哈希
+          setError(revealErrorText(t, restored.code));
+        }
+      }
       setView(loaded);
       onViewLoaded(loaded);
     })();
     return () => {
       cancelled = true;
     };
-    // onViewLoaded 由父组件按行生成；只在审批身份变化或重试时重新拉取
+    // onViewLoaded 由父组件按行生成；canReveal 随行固定。只在审批身份变化或重试时重新拉取
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, approvalId, attempt]);
 
   const reveal = async () => {
     setRevealing(true);
     setError(null);
-    try {
-      const r = await fetch(inputUrl(tenantId, approvalId, true), { method: 'POST' });
-      const body = (await r.json().catch(() => ({}))) as GuardApprovalInput & { error?: string };
-      if (!r.ok) {
-        setError(revealErrorText(t, body.error));
-        // 审批已不再待审 / 输入已不可用：手里的视图已过时，重新拉取，收件箱在此期间禁用批准 / 拒绝
-        if (body.error === 'approval_not_pending' || body.error === 'input_not_available') {
-          reload();
-        }
-        return;
-      }
-      setView(body);
-      onViewLoaded(body);
+    const result = await postReveal(tenantId, approvalId);
+    setRevealing(false);
+    if (result.kind === 'ok') {
+      setView(result.view);
+      onViewLoaded(result.view);
       setConfirming(false);
-    } catch {
-      setError(t('input.errors.generic'));
-    } finally {
-      setRevealing(false);
+      return;
+    }
+    const code = result.kind === 'error' ? result.code : undefined;
+    setError(revealErrorText(t, code));
+    // 审批已不再待审 / 输入已不可用：手里的视图已过时，重新拉取，收件箱在此期间禁用批准 / 拒绝
+    if (code === 'approval_not_pending' || code === 'input_not_available') {
+      reload();
     }
   };
 
@@ -227,22 +267,18 @@ export function ApprovalInputPanel({ tenantId, approvalId, canReveal, onViewLoad
   if (view === null) {
     return <Alert variant="warning" data-testid="input-status">{t('input.status.unavailable')}</Alert>;
   }
-  const hasDeclaredPii = (view.piiMarks ?? []).length > 0 && hasMaskedPii(view.input);
-  const showReveal = canReveal && view.status === 'available' && hasDeclaredPii && !view.revealed;
+  const maskedCount = (view.piiMarks ?? []).length > 0 ? countMaskedPii(view.input) : 0;
+  const showReveal = canReveal && view.status === 'available' && maskedCount > 0 && !view.revealed;
 
   return (
     <div className="flex flex-col gap-2 text-sm" data-testid="approval-input-panel">
       <Banners view={view} t={t} />
-      {view.status === 'available' && view.input && (
-        <ul className="flex flex-col gap-1">
-          {Object.entries(view.input).map(([k, v]) => (
-            <Node key={k} name={k} value={v} path={k} view={view} t={t} />
-          ))}
-        </ul>
-      )}
-      {showReveal && !confirming && (
-        <div>
-          <Button size="sm" variant="secondary" onClick={() => setConfirming(true)}>{t('input.reveal')}</Button>
+      {showReveal && (
+        <div className="flex flex-wrap items-center gap-2 rounded border border-warning/40 bg-warning/5 p-3" data-testid="reveal-hint">
+          <p className="text-fg">{t('input.revealHint', { count: maskedCount })}</p>
+          {!confirming && (
+            <Button size="sm" variant="secondary" onClick={() => setConfirming(true)}>{t('input.reveal')}</Button>
+          )}
         </div>
       )}
       {showReveal && confirming && (
@@ -253,6 +289,13 @@ export function ApprovalInputPanel({ tenantId, approvalId, canReveal, onViewLoad
             <Button size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={revealing}>{t('cancel')}</Button>
           </div>
         </div>
+      )}
+      {view.status === 'available' && view.input && (
+        <ul className="flex flex-col gap-1">
+          {Object.entries(view.input).map(([k, v]) => (
+            <Node key={k} name={k} value={v} path={k} view={view} t={t} />
+          ))}
+        </ul>
       )}
       {error && <Alert variant="danger">{error}</Alert>}
     </div>
