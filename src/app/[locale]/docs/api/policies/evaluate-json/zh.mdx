@@ -36,7 +36,7 @@ apiVersion: v1
 
 | 字段 | 类型 | 必需 | 描述 |
 |-------|------|----------|-------------|
-| `policy` | `string` | 是 | 包含 **Core IR v2** 模块（`"schemaVersion": 2`）的 JSON 编码字符串。直接提交 `@aster-cloud/aster-lang-ts` 2.x 的 `compile()` 返回的 `coreJson` 字符串，不要改动。引擎按 Core IR v2 schema 严格读入后执行，跳过所有 CNL 解析步骤。 |
+| `policy` | `string` | 是 | 包含 **Core IR v2** 模块（`"schemaVersion": 2`）的 JSON 编码字符串。直接提交 `@aster-cloud/aster-lang-ts` 3.x 的 `compile()` 返回的 `coreJson` 字符串，不要改动。引擎按 Core IR v2 schema 严格读入后执行，跳过所有 CNL 解析步骤。 |
 | `context` | `object` | 是 | 单个对象，其键映射到 Core IR 中入口函数声明的参数名。 |
 
 ### Core IR JSON 格式

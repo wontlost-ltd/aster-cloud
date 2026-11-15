@@ -36,7 +36,7 @@ Evaluate a policy expressed as a Core IR JSON document directly, without CNL par
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `policy` | `string` | Yes | A JSON-encoded string containing a **Core IR v2** module (`"schemaVersion": 2`). Submit the `coreJson` string returned by `compile()` from `@aster-cloud/aster-lang-ts` 2.x unchanged. The engine reads it strictly against the Core IR v2 schema and executes it, bypassing all CNL parsing steps. |
+| `policy` | `string` | Yes | A JSON-encoded string containing a **Core IR v2** module (`"schemaVersion": 2`). Submit the `coreJson` string returned by `compile()` from `@aster-cloud/aster-lang-ts` 3.x unchanged. The engine reads it strictly against the Core IR v2 schema and executes it, bypassing all CNL parsing steps. |
 | `context` | `object` | Yes | A single object whose keys map to the declared parameter names of the entry-point function in the Core IR. |
 
 ### Core IR JSON Format
