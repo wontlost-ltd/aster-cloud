@@ -62,15 +62,18 @@ const MASKED = {
     email: { $pii: { level: 'L2', category: 'email' } },
     items: [{ sku: 'SKU-1' }],
   },
-  extra: { $pii: { level: 'unknown' } },
+  $undeclared: { $pii: { level: 'unknown' } },
 };
 
 describe('日志页输入打码渲染', () => {
   it('明文字段原样显示；@pii 显示级别 · 类别徽标；未声明显示不可见徽标；不渲染 $pii 原始 JSON', () => {
     const panel = renderExpanded(mkLog(MASKED, 'version'), {
       note: 'Masked note', piiBadge: '{level} · {category}', unknown: 'Not visible', marksNone: 'All hidden',
+      undeclared: 'Other fields',
     });
     expect(within(panel).getByText('100')).toBeTruthy();
+    expect(within(panel).getByText('Other fields:')).toBeTruthy();
+    expect(panel.textContent).not.toContain('$undeclared');
     expect(within(panel).getByText('SKU-1')).toBeTruthy();
     expect(within(panel).getByTestId('pii-masked').textContent).toBe('L2 · email');
     expect(within(panel).getByTestId('pii-unknown').textContent).toBe('Not visible');
@@ -80,8 +83,9 @@ describe('日志页输入打码渲染', () => {
   });
 
   it('marksSource = none：显示「类型不可用、全部隐藏」说明', () => {
-    const panel = renderExpanded(mkLog({ applicant: { $pii: { level: 'unknown' } } }, 'none'), {
+    const panel = renderExpanded(mkLog({ $undeclared: { $pii: { level: 'unknown' } } }, 'none'), {
       note: 'Masked note', piiBadge: '{level} · {category}', unknown: 'Not visible', marksNone: 'All hidden',
+      undeclared: 'Other fields',
     });
     expect(within(panel).getByText('All hidden')).toBeTruthy();
   });
@@ -95,5 +99,6 @@ describe('日志页输入打码渲染', () => {
     const panel = renderExpanded(mkLog(MASKED, 'version'));
     expect(within(panel).getByTestId('pii-masked').textContent).toBe('L2 · email');
     expect(within(panel).getByTestId('pii-unknown').textContent).toBe('Undeclared type, not visible');
+    expect(within(panel).getByText('Undeclared fields:')).toBeTruthy();
   });
 });

@@ -1464,6 +1464,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         inputMask: {
           note: 'Fields declared @pii and undeclared fields are hidden. Execution logs never show their raw values.',
           piiBadge: '{level} · {category}',
+          undeclared: 'Undeclared fields',
           unknown: 'Undeclared type, not visible',
           marksNone: "The input types of this run's policy version are unavailable, so all values are hidden.",
         },
@@ -3231,6 +3232,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         inputMask: {
           note: '声明为 @pii 的字段与未声明类型的字段已隐藏，执行日志不显示它们的原值。',
           piiBadge: '{level} · {category}',
+          undeclared: '未声明字段',
           unknown: '未声明类型，不可见',
           marksNone: '取不到该次执行所用策略版本的输入类型，全部值已隐藏。',
         },
@@ -4998,6 +5000,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         inputMask: {
           note: 'Mit @pii deklarierte und nicht deklarierte Felder sind ausgeblendet. Ausführungsprotokolle zeigen ihre Originalwerte nie an.',
           piiBadge: '{level} · {category}',
+          undeclared: 'Nicht deklarierte Felder',
           unknown: 'Nicht deklarierter Typ, nicht sichtbar',
           marksNone: 'Die Eingabetypen der bei dieser Ausführung verwendeten Richtlinienversion sind nicht verfügbar, daher sind alle Werte ausgeblendet.',
         },
@@ -6755,6 +6758,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         inputMask: {
           note: '@pii घोषित फ़ील्ड और अघोषित प्रकार वाले फ़ील्ड छिपाए गए हैं। निष्पादन लॉग उनके मूल मान कभी नहीं दिखाते।',
           piiBadge: '{level} · {category}',
+          undeclared: 'अघोषित फ़ील्ड',
           unknown: 'अघोषित प्रकार, दिखाई नहीं देता',
           marksNone: 'इस निष्पादन में उपयोग किए गए नीति संस्करण के इनपुट प्रकार उपलब्ध नहीं हैं, इसलिए सभी मान छिपाए गए हैं।',
         },

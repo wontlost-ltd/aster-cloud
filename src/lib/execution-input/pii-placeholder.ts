@@ -3,6 +3,11 @@
  * 审批输入面板与执行日志共用同一识别口径。纯函数，可在客户端使用。
  */
 
+/**
+ * 执行日志视图里，一个对象的全部未声明键合并后的占位键（键名本身可能是 PII，不下发，cloud#754）。
+ */
+export const UNDECLARED_KEY = '$undeclared';
+
 export interface PiiPlaceholder {
   readonly level: string;
   readonly category?: string;

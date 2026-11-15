@@ -6,8 +6,11 @@
  *     入口 Rule 的参数类型。执行输入就是 `{ 参数名: 值 }`，所以路径前缀是参数名（aster-api 证据形状是
  *     `context.<键>`，这里没有外层 `context`）；
  *   - 打码与 aster-api `InputViewRenderer` 同一规则（§11 D2 表格、递归与路径规则，§12 D4）：
- *     已声明无 `@pii` 明文（字符串再过一遍正则脱敏，规范 UUID 豁免）；`@pii` 替换为 `{ $pii: { level, category } }`；
- *     未声明（多出的键、源码未标注类型、形状不符、超过深度 8）整个子树替换为 `{ $pii: { level: 'unknown' } }`。
+ *     已声明无 `@pii` 明文（字符串再过一遍与 aster-api `PIIRedactor` 相同的正则，规范 UUID 豁免）；
+ *     `@pii` 替换为 `{ $pii: { level, category } }`；形状不符或超过深度 8 的值替换为 `{ $pii: { level: 'unknown' } }`。
+ *   - 未声明的键（多出的键、源码未标注类型的字段、非参数的顶层键）：比 aster-api 视图更严——键名也不展示
+ *     （§11 D2「未声明的键名本身可能是 PII」），同一对象里的全部未声明键合并为一项
+ *     `{ [UNDECLARED_KEY]: { $pii: { level: 'unknown' } } }`。aster-api `InputViewRenderer` 目前仍展示这类键名。
  *
  * 为什么在 cloud 推导而不是调 aster-api 视图：aster-api 只为 REQUIRE_APPROVAL / ESCALATE 决策存输入
  * （§11 D1），日志里绝大多数执行（ALLOW / DENY / 值输出）在 api 侧没有可取的视图。cloud 用同一引擎
@@ -28,7 +31,9 @@ import {
   type VocabularyScopes,
 } from '@aster-cloud/aster-lang-ts/browser';
 import { getLexicon } from '@/lib/aster-lexicon';
-import { redactPii } from '@/lib/ai-pii-redactor';
+import { UNDECLARED_KEY } from './pii-placeholder';
+
+export { UNDECLARED_KEY };
 
 /** 打码规则版本，与 aster-api `InputViewRenderer.MASK_RULES` 同值；规则变化须两边一起升版。 */
 export const INPUT_MASK_RULES = 'v1';
@@ -263,9 +268,25 @@ function scalarShaped(value: unknown): boolean {
   return !Array.isArray(value) || value.every((item) => typeof item !== 'object' || item === null);
 }
 
-/** 第二层正则：只作用于字符串（含标量数组的元素），规范 UUID 整串豁免（同 aster-api F10）。 */
+/**
+ * 第二层正则：与 aster-api `io.aster.policy.common.PIIRedactor` 同一组模式、同一顺序、同一替换串
+ * （SSN → 邮箱 → 电话 → 信用卡 → IP），审批面与日志面对同一字符串得到同一结果。
+ */
+const REDACTION_RULES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/\b\d{3}-?\d{2}-?\d{4}\b/g, '***-**-****'],
+  [/\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/g, '***@***.***'],
+  [/\(\d{3}\)\s*\d{3}[-.]?\d{4}|\b\d{3}[-.]\d{3}[-.]\d{4}\b|\b\d{10}\b/g, '(***) ***-****'],
+  [/\b(?:\d{4}[-\s]?){3}\d{4}(?:\d{3})?\b/g, '****-****-****-****'],
+  [/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '***.***.***.***'],
+];
+
+export function redactInputString(value: string): string {
+  return REDACTION_RULES.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), value);
+}
+
+/** 只作用于字符串（含标量数组的元素）；空白串与规范 UUID 整串豁免（同 aster-api `isRedactionExempt`）。 */
 function plain(value: unknown): unknown {
-  if (typeof value === 'string') return value.trim() === '' || UUID.test(value) ? value : redactPii(value);
+  if (typeof value === 'string') return value.trim() === '' || UUID.test(value) ? value : redactInputString(value);
   if (Array.isArray(value)) return value.map(plain);
   return value;
 }
@@ -292,7 +313,7 @@ class MaskWalker {
     if (depth > MAX_DEPTH) return unknownValue();
     if (this.declared.has(path)) return this.leaf(value, path);
     if (isPlainObject(value) && this.containers.has(path)) {
-      return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, this.node(v, `${path}.${k}`, depth + 1)]));
+      return this.object(value, (k) => `${path}.${k}`, depth + 1);
     }
     if (Array.isArray(value) && this.containers.has(`${path}[]`)) {
       return value.map((item) => (isPlainObject(item) && depth + 1 <= MAX_DEPTH ? this.node(item, `${path}[]`, depth + 1) : unknownValue()));
@@ -300,9 +321,28 @@ class MaskWalker {
     return unknownValue();
   }
 
-  /** 输入根：键是参数名，原样展示；未声明的参数整体 unknown。 */
+  /** 输入根：已声明的参数名原样展示。 */
   root(value: Record<string, unknown>): Record<string, unknown> {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, this.node(v, k, 2)]));
+    return this.object(value, (k) => k, 2);
+  }
+
+  /**
+   * 对象：已声明（叶子或容器）的键保留键名并递归；其余键名不展示，合并为一项 {@link UNDECLARED_KEY}。
+   * 键名含 `.` / `[` / `]` / 控制字符时拼出的路径有歧义（如键 `"a.b"` 会冒充路径 `a.b`），一律按未声明处理。
+   */
+  private object(value: Record<string, unknown>, pathOf: (key: string) => string, depth: number): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    let undeclared = false;
+    for (const [k, v] of Object.entries(value)) {
+      const path = pathOf(k);
+      if (representableKey(k) && (this.declared.has(path) || this.containers.has(path) || this.containers.has(`${path}[]`))) {
+        out[k] = this.node(v, path, depth);
+      } else {
+        undeclared = true;
+      }
+    }
+    if (undeclared) out[UNDECLARED_KEY] = unknownValue();
+    return out;
   }
 
   private leaf(value: unknown, path: string): unknown {
@@ -314,7 +354,8 @@ class MaskWalker {
 }
 
 /**
- * 渲染执行输入的打码视图；分类为 null（`none`）时参数名可见、值全部 unknown。输入根不是对象时整体 unknown。
+ * 渲染执行输入的打码视图；分类为 null（`none`）时没有任何已声明键，整个输入只剩一项 {@link UNDECLARED_KEY}。
+ * 输入根不是对象时整体 unknown。
  * 不提供解除：本函数的输出就是日志面能看到的全部。
  */
 export function renderMaskedExecutionInput(input: unknown, classification: InputClassification | null): unknown {

@@ -105,10 +105,11 @@ describe('GET /api/policies/[id]/logs —— 输入打码（#754）', () => {
     const text = await res.text();
     expect(text).not.toContain(EMAIL);
     expect(text).not.toContain(SECRET_KEY);
+    expect(text).not.toContain('"extra"');
     const body = JSON.parse(text);
     expect(body.items[0].input).toEqual({
       applicant: { amount: 100, email: { $pii: { level: 'L2', category: 'email' } } },
-      extra: { $pii: { level: 'unknown' } },
+      $undeclared: { $pii: { level: 'unknown' } },
     });
     expect(body.items[0].inputMask).toEqual({ maskRules: 'v1', marksSource: 'version' });
   });
@@ -128,10 +129,10 @@ describe('GET /api/policies/[id]/logs —— 输入打码（#754）', () => {
     expect(JSON.parse(text).items[0].inputMask.marksSource).toBe('version');
   });
 
-  it('历史行没有版本引用 → marksSource none：参数名可见，值全部 unknown', async () => {
+  it('历史行没有版本引用 → marksSource none：键名与值全部隐藏', async () => {
     state.rows = [row('e2', { policyVersionRowId: null, functionName: null })];
     const body = await (await call()).json();
-    expect(body.items[0].input).toEqual({ applicant: { $pii: { level: 'unknown' } }, extra: { $pii: { level: 'unknown' } } });
+    expect(body.items[0].input).toEqual({ $undeclared: { $pii: { level: 'unknown' } } });
     expect(body.items[0].inputMask).toEqual({ maskRules: 'v1', marksSource: 'none' });
   });
 

@@ -10,8 +10,10 @@ import {
   classifyExecutionInput,
   clearExecutionInputClassificationCache,
   INPUT_MASK_RULES,
+  redactInputString,
   renderMaskedExecutionInput,
   resolveExecutionInputClassification,
+  UNDECLARED_KEY,
   type InputClassification,
 } from '@/lib/execution-input/input-view';
 
@@ -110,13 +112,27 @@ describe('renderMaskedExecutionInput —— 与 aster-api InputViewRenderer 同�
     expect(view.applicant.items).toEqual([{ sku: 'A' }, UNKNOWN]);
   });
 
-  it('未声明的键（含源码未标注类型的字段、未知参数）整个子树 unknown，子树里的键名不展示', () => {
+  it('★未声明的键（含源码未标注类型的字段、未知参数）键名也不展示：同一对象里合并为一项 $undeclared', () => {
     const view = renderMaskedExecutionInput(
-      { applicant: { extra: { 'k@x.io': 1 }, nick: 'Bob' }, stranger: { email: 'a@b.cc' } },
+      { applicant: { amount: 1, extra: { 'k@x.io': 1 }, nick: 'Bob', 'a@b.cc': true }, stranger: { email: 'a@b.cc' } },
       classify(),
     );
-    expect(view).toEqual({ applicant: { extra: UNKNOWN, nick: UNKNOWN }, stranger: UNKNOWN });
-    expect(JSON.stringify(view)).not.toContain('k@x.io');
+    expect(view).toEqual({ applicant: { amount: 1, [UNDECLARED_KEY]: UNKNOWN }, [UNDECLARED_KEY]: UNKNOWN });
+    const text = JSON.stringify(view);
+    for (const hidden of ['k@x.io', 'extra', 'nick', 'a@b.cc', 'stranger']) expect(text).not.toContain(hidden);
+  });
+
+  it('键名含点 / 方括号不能冒充已声明路径（如顶层键 "applicant.amount"）', () => {
+    expect(renderMaskedExecutionInput({ 'applicant.amount': 'a@b.cc', 'applicant.items[]': 1 }, classify())).toEqual({
+      [UNDECLARED_KEY]: UNKNOWN,
+    });
+  });
+
+  it('输入里自带 $undeclared 键不能冒充占位', () => {
+    expect(renderMaskedExecutionInput({ [UNDECLARED_KEY]: 'a@b.cc', score: 1 }, classify())).toEqual({
+      score: 1,
+      [UNDECLARED_KEY]: UNKNOWN,
+    });
   });
 
   it('标量列表是一个叶子：@pii 列表整体打码（不暴露长度），无 @pii 列表明文', () => {
@@ -134,21 +150,30 @@ describe('renderMaskedExecutionInput —— 与 aster-api InputViewRenderer 同�
     expect(view).toEqual({ applicant: { amount: UNKNOWN, email: { $pii: { level: 'L2', category: 'email' } } } });
   });
 
-  it('第二层正则：明文字符串里的邮箱 / 电话被脱敏；规范 UUID 整串豁免', () => {
+  it('第二层正则：与 aster-api PIIRedactor 同一组模式与替换串；规范 UUID 整串豁免', () => {
     const uuid = '123e4567-e89b-12d3-a456-426614174000';
     const view = renderMaskedExecutionInput(
-      { applicant: { items: [{ sku: 'mail a@b.cc now' }, { sku: uuid }], tags: ['call +86 138 0013 8000'] } },
+      { applicant: { items: [{ sku: 'mail a@b.cc now' }, { sku: uuid }], tags: ['ssn 123-45-6789', 'call 555-010-0100'] } },
       classify(),
     ) as { applicant: { items: Array<{ sku: string }>; tags: string[] } };
-    expect(view.applicant.items[0].sku).toBe('mail [REDACTED:EMAIL] now');
+    expect(view.applicant.items[0].sku).toBe('mail ***@***.*** now');
     expect(view.applicant.items[1].sku).toBe(uuid);
-    expect(view.applicant.tags[0]).not.toContain('138');
+    expect(view.applicant.tags).toEqual(['ssn ***-**-****', 'call (***) ***-****']);
   });
 
-  it('无分类（marksSource = none）：参数名可见，值全部 unknown', () => {
+  it('redactInputString 与 Java PIIRedactor 逐条对照（SSN / 邮箱 / 电话 / 信用卡 / IP）', () => {
+    expect(redactInputString('123456789')).toBe('***-**-****');
+    expect(redactInputString('x john.smith@example.com y')).toBe('x ***@***.*** y');
+    expect(redactInputString('(123) 456-7890')).toBe('(***) ***-****');
+    expect(redactInputString('1234567890')).toBe('(***) ***-****');
+    expect(redactInputString('4111 1111 1111 1111')).toBe('****-****-****-****');
+    expect(redactInputString('host 192.168.1.1')).toBe('host ***.***.***.***');
+    expect(redactInputString('SKU-1')).toBe('SKU-1');
+  });
+
+  it('无分类（marksSource = none）：没有已声明键，整个输入只剩一项 $undeclared', () => {
     expect(renderMaskedExecutionInput({ applicant: { email: 'a@b.cc' }, score: 1 }, null)).toEqual({
-      applicant: UNKNOWN,
-      score: UNKNOWN,
+      [UNDECLARED_KEY]: UNKNOWN,
     });
   });
 

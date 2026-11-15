@@ -142,6 +142,7 @@ export default async function PolicyLogsPage({
             piiBadge: t.raw('logs.inputMask.piiBadge' as never) as string,
             unknown: t('logs.inputMask.unknown'),
             marksNone: t('logs.inputMask.marksNone'),
+            undeclared: t('logs.inputMask.undeclared'),
           }
         : undefined,
       parity: t.has('logs.parity.match')
