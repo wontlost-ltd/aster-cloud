@@ -33,7 +33,7 @@ import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import * as schema from '@/db/schema';
-import { createApiKey, refreshTeamKeySnapshots } from '@/lib/api-keys';
+import { createApiKey, refreshTeamKeySnapshots, revokeApiKey } from '@/lib/api-keys';
 import { assertSeedCompiles } from '@/lib/seed-compile-gate';
 import { loadSaveVocabulary } from '@/lib/policy-compile-validator';
 import { approveVersion, createVersion, setDefaultVersion, submitForApproval } from '@/services/policy/version-manager';
@@ -70,17 +70,22 @@ function assertDemoDatabase(url: string): void {
 /** 最新版本内容相同时可沿用的状态（其余如 DEPRECATED / ARCHIVED 追加新版本）。 */
 const REUSABLE = new Set(['DRAFT', 'REJECTED', 'PENDING_APPROVAL', 'APPROVED']);
 
-/** 新建演示账号；同 id 已存在时只更新套餐（不动邮箱与密码）。返回是否新建。 */
+/**
+ * 新建演示账号；同 id 已存在时只更新套餐（不动邮箱与密码）。返回是否新建。
+ * 已有账号的邮箱不是本种子建的 `<id>@stack.test` 时报错：那不是演示账号，不改它的套餐。
+ */
 async function upsertUser(db: Db, spec: (typeof USERS)[number], passwordHash: string): Promise<boolean> {
+  const email = `${spec.id}@stack.test`;
   const existing = await db.query.users.findFirst({ where: eq(schema.users.id, spec.id) });
   if (existing) {
+    if (existing.email !== email) throw new Error(`用户 ${spec.id} 已存在且不是演示账号（邮箱 ${existing.email}），拒绝改动`);
     await db.update(schema.users).set({ plan: spec.plan, updatedAt: new Date() }).where(eq(schema.users.id, spec.id));
     return false;
   }
   await db.insert(schema.users).values({
     id: spec.id,
     name: spec.id,
-    email: `${spec.id}@stack.test`,
+    email,
     passwordHash,
     plan: spec.plan,
     priceLockedAt: new Date(),
@@ -180,10 +185,17 @@ const memberKeyWhere = () =>
     isNull(schema.apiKeys.revokedAt),
   );
 
+/** 经应用的吊销函数吊销成员的演示 key：同时通知 aster-api，旧 key 立即失效而不是等缓存过期。 */
+async function revokeMemberKeys(db: Db): Promise<number> {
+  const keys = await db.query.apiKeys.findMany({ where: memberKeyWhere(), columns: { id: true } });
+  for (const { id } of keys) await revokeApiKey(MEMBER_ID, id);
+  return keys.length;
+}
+
 /** 明文 key 只能在创建时拿到一次：已存在且未要求轮换则不重签。返回明文或 undefined。 */
 async function ensureMemberKey(db: Db, rotate: boolean): Promise<string | undefined> {
   if (rotate) {
-    await db.update(schema.apiKeys).set({ revokedAt: new Date() }).where(memberKeyWhere());
+    console.log(LOG, `已吊销旧 key ${await revokeMemberKeys(db)} 把`);
   } else if (await db.query.apiKeys.findFirst({ where: memberKeyWhere() })) {
     console.log(LOG, `API key ${API_KEY_NAME} 已存在，明文不可再取（--rotate-key 吊销后重签）`);
     return undefined;
@@ -192,7 +204,7 @@ async function ensureMemberKey(db: Db, rotate: boolean): Promise<string | undefi
     return (await createApiKey(MEMBER_ID, API_KEY_NAME, TEAM_ID)).key;
   } catch (err) {
     // 快照推送依赖 aster-api；失败时行已落库而明文随异常丢失，吊销它，下次重跑才能重新签发。
-    await db.update(schema.apiKeys).set({ revokedAt: new Date() }).where(memberKeyWhere());
+    await revokeMemberKeys(db);
     throw new Error(`创建 API key 失败（aster-api 可能不可达），已吊销本次插入的 key：${String(err)}`);
   }
 }
