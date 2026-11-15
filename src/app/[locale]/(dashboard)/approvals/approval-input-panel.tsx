@@ -170,7 +170,7 @@ function Banners({ view, t }: { view: GuardApprovalInput; t: T }) {
     <>
       {view.inputBinding === 'unbound' && <Alert variant="warning" data-testid="banner-unbound">{t('input.banner.unbound')}</Alert>}
       {view.marksSource === 'none' && <Alert variant="warning" data-testid="banner-marks-none">{t('input.banner.marksNone')}</Alert>}
-      {view.factsStale && <Alert variant="warning" data-testid="banner-facts-stale">{t('input.banner.factsStale')}</Alert>}
+      {view.factsStale && <Alert variant="info" data-testid="banner-facts-stale">{t('input.banner.factsStale')}</Alert>}
       {view.revealed && <Alert variant="info" data-testid="banner-revealed">{t('input.revealedNote')}</Alert>}
     </>
   );

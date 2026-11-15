@@ -812,7 +812,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         banner: {
           unbound: 'This input has not been checked against the evaluation record.',
           marksNone: 'The policy does not declare input types, so all business fields are hidden.',
-          factsStale: 'A signed fact this decision relied on has expired or its issuer was revoked.',
+          // 文中的 10 分钟对应 FACT_TTL_MS（src/services/guard/fact-signer.ts）；面板测试断言二者一致。
+          factsStale:
+            "The signed facts were verified when this decision was made (valid for 10 minutes) and have since expired. This doesn't affect whether you can approve. If the issuer had been revoked, this request would have been rejected automatically.",
         },
         status: {
           unavailable: 'The decision input is not available (this decision predates input snapshots).',
@@ -2588,7 +2590,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         banner: {
           unbound: '输入未与评估记录核对。',
           marksNone: '策略未声明输入类型，业务字段全部隐藏。',
-          factsStale: '该决策依赖的签名事实已过期或签发方已吊销。',
+          factsStale:
+            '签名事实在做出该决策时已通过验证（有效期 10 分钟），现已过期。这不影响你是否可以批准；若签发方已被吊销，该请求早已被自动拒绝。',
         },
         status: {
           unavailable: '决策输入不可用（该决策早于输入快照功能）。',
@@ -4345,7 +4348,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         banner: {
           unbound: 'Diese Eingabe wurde nicht mit dem Bewertungsprotokoll abgeglichen.',
           marksNone: 'Die Richtlinie deklariert keine Eingabetypen, daher sind alle Geschäftsfelder ausgeblendet.',
-          factsStale: 'Ein signierter Fakt dieser Entscheidung ist abgelaufen oder sein Aussteller wurde widerrufen.',
+          factsStale:
+            'Die signierten Fakten wurden bei der Entscheidung geprüft (10 Minuten gültig) und sind inzwischen abgelaufen. Das hat keinen Einfluss darauf, ob Sie genehmigen können. Wäre der Aussteller widerrufen worden, wäre diese Anfrage automatisch abgelehnt worden.',
         },
         status: {
           unavailable: 'Die Entscheidungseingabe ist nicht verfügbar (die Entscheidung ist älter als Eingabe-Snapshots).',
@@ -6099,7 +6103,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         banner: {
           unbound: 'इस इनपुट का मूल्यांकन रिकॉर्ड से मिलान नहीं किया गया है।',
           marksNone: 'नीति इनपुट प्रकार घोषित नहीं करती, इसलिए सभी व्यावसायिक फ़ील्ड छिपे हैं।',
-          factsStale: 'इस निर्णय का आधार बना एक हस्ताक्षरित तथ्य समाप्त हो गया है या उसका जारीकर्ता निरस्त कर दिया गया है।',
+          factsStale:
+            'हस्ताक्षरित तथ्य इस निर्णय के समय सत्यापित हुए थे (10 मिनट तक मान्य) और अब समाप्त हो चुके हैं। इससे आपके अनुमोदन करने की क्षमता पर कोई असर नहीं पड़ता। यदि जारीकर्ता निरस्त हुआ होता, तो यह अनुरोध अपने-आप अस्वीकृत हो चुका होता।',
         },
         status: {
           unavailable: 'निर्णय इनपुट उपलब्ध नहीं है (यह निर्णय इनपुट स्नैपशॉट से पहले का है)।',

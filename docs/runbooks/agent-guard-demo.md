@@ -33,7 +33,7 @@
 
 | 变量 | 必填 | 说明 |
 |---|---|---|
-| `BASE_API` | 是 | aster-api 根地址（本地如 `http://localhost:18964`，生产 `https://api.aster-lang.cloud`） |
+| `BASE_API` | 是 | aster-api 根地址（本地如 `http://localhost:18964`，生产 `https://policy.aster-lang.dev`） |
 | `DEMO_API_KEY` | 是 | 演示团队**成员**的**团队** API key（`ak_…`）；只经环境变量交给代理，不上命令行 |
 | `DEMO_TENANT_ID` | 是 | 演示团队 id（团队 key 的租户 = 团队 id）；代理据此核对收据 `payload.tenantId` |
 | `AGENT_GUARD_DEMO_E2E` | 验收测试 | 设为 `1` 才跑，否则 skip 并打印原因 |
@@ -181,7 +181,7 @@ python3 -c 'import json;print(json.dumps({"source":open("scripts/agent-guard-dem
 
 ```bash
 pnpm install --frozen-lockfile
-export BASE_API=https://api.aster-lang.cloud
+export BASE_API=https://policy.aster-lang.dev
 export DEMO_API_KEY=ak_…            # 第 7 步 U2 的团队 key
 export DEMO_TENANT_ID=<teamId>      # 第 1 步
 OUT=$(mktemp -d)
