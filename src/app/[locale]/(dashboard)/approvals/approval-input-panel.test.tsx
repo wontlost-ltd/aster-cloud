@@ -10,8 +10,8 @@ vi.mock('next-intl', () => ({
     values ? `${key}:${JSON.stringify(values)}` : key,
 }));
 vi.mock('@/components/ui', () => ({
-  Alert: ({ children, ...rest }: { children: React.ReactNode; 'data-testid'?: string }) => (
-    <div role="alert" data-testid={rest['data-testid']}>{children}</div>
+  Alert: ({ children, variant, ...rest }: { children: React.ReactNode; variant?: string; 'data-testid'?: string }) => (
+    <div role="alert" data-variant={variant} data-testid={rest['data-testid']}>{children}</div>
   ),
   Badge: ({ children, title, ...rest }: { children: React.ReactNode; title?: string; 'data-testid'?: string }) => (
     <span title={title} data-testid={rest['data-testid']}>{children}</span>
@@ -23,6 +23,21 @@ vi.mock('@/components/ui', () => ({
 
 import { ApprovalInputPanel } from './approval-input-panel';
 import type { GuardApprovalInput } from '@/services/policy/guard-types';
+import { FACT_TTL_MS } from '@/services/guard/fact-signer';
+import { DEMO_SUPPLEMENT } from '@/i18n/demo-supplement';
+
+/** 在 demoPage 补充文案树里找出 `input.banner.factsStale`（各 locale 的挂载层级一致，不写死父键）。 */
+function findFactsStale(tree: unknown): string | undefined {
+  if (!tree || typeof tree !== 'object') return undefined;
+  const node = tree as Record<string, unknown>;
+  const banner = (node.input as { banner?: { factsStale?: string } } | undefined)?.banner;
+  if (banner?.factsStale) return banner.factsStale;
+  for (const child of Object.values(node)) {
+    const found = findFactsStale(child);
+    if (found) return found;
+  }
+  return undefined;
+}
 
 const fetchMock = vi.fn();
 beforeEach(() => vi.stubGlobal('fetch', fetchMock));
@@ -97,7 +112,30 @@ describe('ApprovalInputPanel', () => {
     renderPanel({ ...VIEW, inputBinding: 'unbound', marksSource: 'none', factsStale: true });
     expect(await screen.findByTestId('banner-unbound')).toBeTruthy();
     expect(screen.getByTestId('banner-marks-none')).toBeTruthy();
-    expect(screen.getByTestId('banner-facts-stale')).toBeTruthy();
+    const stale = screen.getByTestId('banner-facts-stale');
+    expect(stale.getAttribute('data-variant')).toBe('info');
+    expect(stale.textContent).toBe('input.banner.factsStale');
+    expect(screen.getByTestId('banner-unbound').getAttribute('data-variant')).toBe('warning');
+  });
+
+  it('factsStale 文案：四个 locale 都说明事实已过期但不影响批准，且分钟数与 FACT_TTL_MS 一致', () => {
+    const minutes = String(FACT_TTL_MS / 60_000);
+    // 各语言的关键语义：已过期 / 不影响批准 / 吊销则已自动拒绝
+    const keyPhrases = {
+      en: ['expired', "doesn't affect whether you can approve", 'rejected automatically'],
+      zh: ['已过期', '不影响你是否可以批准', '自动拒绝'],
+      de: ['abgelaufen', 'keinen Einfluss darauf, ob Sie genehmigen können', 'automatisch abgelehnt'],
+      hi: ['समाप्त हो चुके हैं', 'कोई असर नहीं पड़ता', 'अपने-आप अस्वीकृत'],
+    } as const;
+    for (const locale of ['en', 'zh', 'de', 'hi'] as const) {
+      const text = findFactsStale(DEMO_SUPPLEMENT[locale]);
+      expect(text, locale).toBeTruthy();
+      expect(text, locale).toContain(minutes);
+      for (const phrase of keyPhrases[locale]) expect(text, `${locale}: ${phrase}`).toContain(phrase);
+    }
+    expect(findFactsStale(DEMO_SUPPLEMENT.en)).toBe(
+      "The signed facts were verified when this decision was made (valid for 10 minutes) and have since expired. This doesn't affect whether you can approve. If the issuer had been revoked, this request would have been rejected automatically.",
+    );
   });
 
   it('statusTexts：四种不可用状态显示对应文案，不渲染输入，也不显示解除按钮', async () => {
