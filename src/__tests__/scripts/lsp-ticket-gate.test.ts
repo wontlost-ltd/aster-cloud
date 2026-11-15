@@ -102,6 +102,12 @@ describe('evaluateUpgrade — ticket', () => {
       .toEqual({ ok: true, sub: 'dev' });
   });
 
+  it('重复的 ?ticket= 参数（解析为数组）算带了 ticket，非生产也按格式错误拒绝', async () => {
+    const ticket = await issueLspTicket({ secret: SECRET, sub: 'u', now: T0 });
+    const input = { origin: ORIGIN, queryTicket: [ticket, ticket], activeCount: 0 } as never;
+    expect(evaluateUpgrade(input, cfg({ isProduction: false }))).toEqual({ ok: false, code: 401, reason: 'Invalid ticket' });
+  });
+
   it('重放：同一 ticket 第二次握手被拒', async () => {
     const c = cfg();
     const ticket = await issueLspTicket({ secret: SECRET, sub: 'u', now: T0 });

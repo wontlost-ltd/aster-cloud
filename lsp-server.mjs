@@ -368,7 +368,7 @@ export function verifyLspTicket(ticket, { secret, now = Date.now(), nonces }) {
  *
  * @param {object} input
  * @param {string|undefined} input.origin          - request Origin header
- * @param {string} [input.queryTicket]             - ?ticket= query value（#657）
+ * @param {string|string[]} [input.queryTicket]    - ?ticket= query value（#657）；重复参数为数组，按格式错误拒绝
  * @param {number} input.activeCount               - current active connections
  * @param {object} config
  * @param {string[]} config.allowedOrigins
@@ -587,7 +587,8 @@ server.on('upgrade', (request, socket, head) => {
   const decision = evaluateUpgrade(
     {
       origin: request.headers.origin,
-      queryTicket: typeof query.ticket === 'string' ? query.ticket : undefined,
+      // 原样传入：重复的 ?ticket= 解析为数组，也算「带了 ticket」，在 verifyLspTicket 里按格式错误拒绝
+      queryTicket: query.ticket,
       activeCount: activeConnections.size,
     },
     { allowedOrigins, maxConnections, isProduction, ticketSecret, nonces: ticketNonces },
