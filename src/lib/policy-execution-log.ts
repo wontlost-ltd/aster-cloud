@@ -6,6 +6,8 @@ import { eq, and, or, isNull, gte, lte, desc, sql, type SQL } from 'drizzle-orm'
 import { executionsOfTeam, type ExecutionExecutors } from '@/lib/policy-access';
 import type { InferSelectModel } from 'drizzle-orm';
 import type { ExecutionMetadata } from '@/lib/guard-register';
+import { maskExecutionInputs } from '@/lib/execution-input/masked-log-input';
+import type { ExecutionInputMask } from '@/lib/execution-input/input-view';
 import type { AgentIdentity, PolicyReplayMetadata, PolicyTraceSkeleton } from '@/services/policy/policy-api';
 
 /** 回放捕获里程碑（M1）——只落漂移检测地基 hash，trace 明文 payload 待 M2 PII envelope。 */
@@ -303,7 +305,12 @@ export interface ExecutionLogItem {
   policyId: string;
   policyName: string;
   policyVersion: number | null;
+  /**
+   * 输入的打码视图（cloud#754，ADR 0042 §12 F9）：`@pii` 字段为 `{ $pii: { level, category } }`，未声明的键为
+   * `{ $pii: { level: 'unknown' } }`。日志面不下发原值，对任何请求者都一样。
+   */
   input: unknown;
+  inputMask: ExecutionInputMask;
   output: unknown;
   error: string | null;
   success: boolean;
@@ -408,6 +415,30 @@ function executionScope(executors: ExecutionExecutors, policyId: string | undefi
     : eq(executions.policyId, policyId);
 }
 
+type ExecutionRowWithPolicy = InferSelectModel<typeof executions> & { policy: { name: string } };
+
+/** 执行行 → 日志项；输入一律换成打码视图（唯一出口，见 maskExecutionInputs）。 */
+async function toLogItems(rows: ExecutionRowWithPolicy[]): Promise<ExecutionLogItem[]> {
+  const masked = await maskExecutionInputs(rows);
+  return rows.map((item, i) => ({
+    id: item.id,
+    policyId: item.policyId,
+    policyName: item.policy.name,
+    policyVersion: item.policyVersion,
+    input: masked[i]!.input,
+    inputMask: masked[i]!.inputMask,
+    output: item.output,
+    error: item.error,
+    success: item.success,
+    decision: item.decision,
+    durationMs: item.durationMs,
+    source: item.source,
+    metadata: item.metadata as ExecutionMetadata | null,
+    createdAt: item.createdAt,
+    runnerParityStatus: item.runnerParityStatus ?? null,
+  }));
+}
+
 /**
  * 查询执行日志（分页）
  */
@@ -463,67 +494,11 @@ export async function queryExecutionLogs(query: ExecutionLogQuery): Promise<Exec
   const filteredItems = items.filter(item => !item.policy.deletedAt);
 
   return {
-    items: filteredItems.map((item) => ({
-      id: item.id,
-      policyId: item.policyId,
-      policyName: item.policy.name,
-      policyVersion: item.policyVersion,
-      input: item.input,
-      output: item.output,
-      error: item.error,
-      success: item.success,
-      decision: item.decision,
-      durationMs: item.durationMs,
-      source: item.source,
-      metadata: item.metadata as ExecutionMetadata | null,
-      createdAt: item.createdAt,
-      runnerParityStatus: item.runnerParityStatus ?? null,
-    })),
+    items: await toLogItems(filteredItems),
     total,
     page,
     pageSize,
     totalPages: Math.ceil(total / pageSize),
-  };
-}
-
-/**
- * 获取单个执行日志详情
- */
-export async function getExecutionLogDetail(
-  executionId: string,
-  userId: string
-): Promise<ExecutionLogItem | null> {
-  const item = await db.query.executions.findFirst({
-    where: and(
-      eq(executions.id, executionId),
-      eq(executions.userId, userId)
-    ),
-    with: {
-      policy: {
-        columns: {
-          name: true,
-        },
-      },
-    },
-  });
-
-  if (!item) return null;
-
-  return {
-    id: item.id,
-    policyId: item.policyId,
-    policyName: item.policy.name,
-    policyVersion: item.policyVersion,
-    input: item.input,
-    output: item.output,
-    error: item.error,
-    success: item.success,
-    decision: item.decision,
-    durationMs: item.durationMs,
-    source: item.source,
-    metadata: item.metadata as ExecutionMetadata | null,
-    createdAt: item.createdAt,
-    runnerParityStatus: item.runnerParityStatus ?? null,
   };
 }
 
@@ -690,22 +665,7 @@ export async function getRecentExecutions(
     },
   });
 
-  return items.map((item) => ({
-    id: item.id,
-    policyId: item.policyId,
-    policyName: item.policy.name,
-    policyVersion: item.policyVersion,
-    input: item.input,
-    output: item.output,
-    error: item.error,
-    success: item.success,
-    decision: item.decision,
-    durationMs: item.durationMs,
-    source: item.source,
-    metadata: item.metadata as ExecutionMetadata | null,
-    createdAt: item.createdAt,
-    runnerParityStatus: item.runnerParityStatus ?? null,
-  }));
+  return toLogItems(items);
 }
 
 /**

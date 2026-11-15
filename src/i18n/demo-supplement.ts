@@ -1460,6 +1460,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noEligibleReviewer: 'No other team owner or admin can approve this — make a member an admin in team settings',
       },
       logs: {
+        // 输入打码面板（cloud#754，ADR 0042 §12 F9）。
+        inputMask: {
+          note: 'Fields declared @pii and undeclared fields are hidden. Execution logs never show their raw values.',
+          piiBadge: '{level} · {category}',
+          unknown: 'Undeclared type, not visible',
+          marksNone: "The input types of this run's policy version are unavailable, so all values are hidden.",
+        },
         approved: 'Approved',
         denied: 'Rejected',
         error: 'Execution error',
@@ -3220,6 +3227,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         },
       },
       logs: {
+        // 输入打码面板（cloud#754，ADR 0042 §12 F9）。
+        inputMask: {
+          note: '声明为 @pii 的字段与未声明类型的字段已隐藏，执行日志不显示它们的原值。',
+          piiBadge: '{level} · {category}',
+          unknown: '未声明类型，不可见',
+          marksNone: '取不到该次执行所用策略版本的输入类型，全部值已隐藏。',
+        },
         approved: '已批准',
         denied: '已拒绝',
         error: '执行错误',
@@ -4980,6 +4994,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noEligibleReviewer: 'Im Team gibt es keine andere Inhaberin, keinen anderen Inhaber und keinen Admin, die freigeben können – machen Sie in den Teameinstellungen ein Mitglied zum Admin',
       },
       logs: {
+        // 输入打码面板（cloud#754，ADR 0042 §12 F9）。
+        inputMask: {
+          note: 'Mit @pii deklarierte und nicht deklarierte Felder sind ausgeblendet. Ausführungsprotokolle zeigen ihre Originalwerte nie an.',
+          piiBadge: '{level} · {category}',
+          unknown: 'Nicht deklarierter Typ, nicht sichtbar',
+          marksNone: 'Die Eingabetypen der bei dieser Ausführung verwendeten Richtlinienversion sind nicht verfügbar, daher sind alle Werte ausgeblendet.',
+        },
         approved: 'Freigegeben',
         denied: 'Abgelehnt',
         error: 'Ausführungsfehler',
@@ -6730,6 +6751,13 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noEligibleReviewer: 'टीम में अनुमोदन के लिए कोई अन्य स्वामी या व्यवस्थापक नहीं है — टीम सेटिंग्स में किसी सदस्य को व्यवस्थापक बनाएँ',
       },
       logs: {
+        // 输入打码面板（cloud#754，ADR 0042 §12 F9）。
+        inputMask: {
+          note: '@pii घोषित फ़ील्ड और अघोषित प्रकार वाले फ़ील्ड छिपाए गए हैं। निष्पादन लॉग उनके मूल मान कभी नहीं दिखाते।',
+          piiBadge: '{level} · {category}',
+          unknown: 'अघोषित प्रकार, दिखाई नहीं देता',
+          marksNone: 'इस निष्पादन में उपयोग किए गए नीति संस्करण के इनपुट प्रकार उपलब्ध नहीं हैं, इसलिए सभी मान छिपाए गए हैं।',
+        },
         approved: 'स्वीकृत',
         denied: 'अस्वीकृत',
         error: 'निष्पादन त्रुटि',
