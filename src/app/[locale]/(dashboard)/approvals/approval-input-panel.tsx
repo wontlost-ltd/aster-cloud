@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Alert, Badge, Button } from '@/components/ui';
 import type { GuardApprovalInput } from '@/services/policy/guard-types';
+import { piiOf, type PiiPlaceholder } from '@/lib/execution-input/pii-placeholder';
 
 /**
  * 审批行展开后的「决策输入」面板（ADR 0042 §12 D10）。
@@ -37,17 +38,7 @@ interface Props {
 
 const TRANSIENT_STATUSES = new Set([502, 503, 504]);
 
-type PiiValue = { $pii: { level: string; category?: string } };
-
-function piiOf(value: unknown): PiiValue['$pii'] | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
-  const keys = Object.keys(value);
-  const pii = (value as Record<string, unknown>).$pii;
-  if (keys.length !== 1 || typeof pii !== 'object' || pii === null) return null;
-  const level = (pii as Record<string, unknown>).level;
-  const category = (pii as Record<string, unknown>).category;
-  return typeof level === 'string' ? { level, ...(typeof category === 'string' ? { category } : {}) } : null;
-}
+type PiiValue = { $pii: PiiPlaceholder };
 
 function inputUrl(tenantId: string, approvalId: string, reveal = false): string {
   return `/api/approvals/${encodeURIComponent(tenantId)}/${encodeURIComponent(approvalId)}/input${reveal ? '/reveal' : ''}`;

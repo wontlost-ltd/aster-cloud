@@ -7,6 +7,7 @@ import { Link } from '@/i18n/navigation';
 import { Breadcrumbs, Container, PageHeader } from '@/components/ui';
 import { toClientLog } from './log-mapping';
 import { decisionLabelKey } from './decision-label';
+import { DEFAULT_INPUT_MASK_TRANSLATIONS, MaskedInput, type InputMaskTranslations } from './masked-input';
 
 type ExecutionSource = 'WEB' | 'API' | 'CLI' | 'dashboard' | 'api' | 'cli' | 'playground';
 
@@ -15,7 +16,10 @@ interface ExecutionLog {
   success: boolean;
   /** 准入决策语义（approved/denied/indeterminate/error/require_approval/escalate）。历史行可能为 null。 */
   decision: 'approved' | 'denied' | 'indeterminate' | 'error' | 'require_approval' | 'escalate' | null;
+  /** 输入的打码视图（cloud#754）：服务端不下发原值。 */
   input: unknown;
+  /** 打码说明；marksSource = none 表示取不到该次执行版本的输入类型，值全部隐藏。 */
+  inputMask?: { maskRules: 'v1'; marksSource: 'version' | 'none' };
   output: unknown;
   error: string | null;
   duration: number;
@@ -188,6 +192,8 @@ interface Translations {
     /** guard 终态结论徽章（ADR 0046 §11.8）：来源门拒绝 / 放行。 */
     guardDenied: string;
     guardAllowed: string;
+    /** 输入打码面板文案（cloud#754；可选——缺翻译时降级默认英文）。 */
+    inputMask?: InputMaskTranslations;
     /** runner-parity 影子校验徽章文案（可选——旧翻译包无此键时降级默认英文）。 */
     parity?: {
       tooltip: string;
@@ -851,9 +857,13 @@ export function LogsContent({
                             {t.logs.input}
                           </h4>
                         </div>
-                        <pre className="bg-bg p-4 text-xs overflow-x-auto font-mono text-fg max-h-48">
-                          {JSON.stringify(log.input, null, 2)}
-                        </pre>
+                        <div data-testid="log-input">
+                          <MaskedInput
+                            input={log.input}
+                            marksSource={log.inputMask?.marksSource}
+                            t={t.logs.inputMask ?? DEFAULT_INPUT_MASK_TRANSLATIONS}
+                          />
+                        </div>
                       </div>
 
                       {/* Output or Error：由 logDetailPanel 按决策分类，待处置行展示输出 */}

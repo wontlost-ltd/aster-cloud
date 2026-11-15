@@ -51,6 +51,7 @@ export default async function PolicyLogsPage({
       success: item.success,
       decision: item.decision,
       input: item.input,
+      inputMask: item.inputMask,
       output: item.output,
       error: item.error,
       durationMs: item.durationMs,
@@ -134,6 +135,16 @@ export default async function PolicyLogsPage({
       //   messages/*）。为避免 t('logs.parity.*') 在包尚未发布该 key 时 throw missing-message，这里用
       //   t.has 探测——存在则本地化，否则留空由 LogsContent 的 `?? 默认英文` 兜底。ui-messages 发布该
       //   namespace 后此处自动本地化，无需改码。
+      // 输入打码面板（cloud#754）：文案在 i18n 本地补充层；piiBadge 含占位符，取原始模板交给客户端逐个替换。
+      inputMask: t.has('logs.inputMask.note')
+        ? {
+            note: t('logs.inputMask.note'),
+            piiBadge: t.raw('logs.inputMask.piiBadge' as never) as string,
+            unknown: t('logs.inputMask.unknown'),
+            marksNone: t('logs.inputMask.marksNone'),
+            undeclared: t('logs.inputMask.undeclared'),
+          }
+        : undefined,
       parity: t.has('logs.parity.match')
         ? {
             tooltip: t('logs.parity.tooltip'),
