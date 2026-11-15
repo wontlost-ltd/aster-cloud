@@ -81,7 +81,9 @@ describe('equivalence 页面区块', () => {
   it('报告过期：保留结论但显示过期警告与天数', async () => {
     await renderAll(base, Date.parse('2026-11-15T00:02:14Z') + STALE_AFTER_MS + 2 * 86_400_000);
     expect(screen.getByText('This report is out of date')).toBeTruthy();
-    expect(screen.getByText(/The newest measurement is 5 days old/)).toBeTruthy();
+    expect(
+      screen.getByText(/The latest measurement for Parsing, Runtime output, Compiled form \(Core IR\) is 5 days old/),
+    ).toBeTruthy();
     expect(screen.getAllByText(/Last measured Nov 15, 2026/).length).toBeGreaterThanOrEqual(3);
   });
 

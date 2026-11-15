@@ -35,6 +35,8 @@ export const STALE_AFTER_MS = 72 * 3_600_000;
  * coverage: value），故按表头列名定位；分母固定取 `total` 列。
  * 非法行（时间戳缺失、计数非整数 / 为负 / 分子大于分母）直接丢弃，不让一行脏数据污染整条曲线。
  */
+const COUNT_RE = /^\d+$/;
+
 export function parseTrendCsv(text: string): TrendPoint[] {
   const rows = text.trim().split(/\r?\n/);
   if (rows.length < 2) return [];
@@ -48,8 +50,12 @@ export function parseTrendCsv(text: string): TrendPoint[] {
   for (const line of rows.slice(1)) {
     const cols = line.split(',');
     const timestamp = cols[tsIdx]?.trim() ?? '';
-    const total = Number(cols[totalIdx]);
-    const value = Number(cols[valueIdx]);
+    const totalRaw = cols[totalIdx]?.trim() ?? '';
+    const valueRaw = cols[valueIdx]?.trim() ?? '';
+    // 只接受十进制非负整数字面量：Number('') === 0 会把空字段误当成合法计数。
+    if (!COUNT_RE.test(totalRaw) || !COUNT_RE.test(valueRaw)) continue;
+    const total = Number(totalRaw);
+    const value = Number(valueRaw);
     if (!timestamp || Number.isNaN(Date.parse(timestamp))) continue;
     // 计数必须是非负整数且分子不超过分母；否则这一行不可信，宁缺毋滥。
     if (!Number.isInteger(total) || !Number.isInteger(value) || value < 0 || value > total) continue;
@@ -104,8 +110,10 @@ export type ParitySummary = {
   lastChecked: string | null;
   /** 没有数据的一致率维度（CSV 拉取失败或为空）。 */
   missing: AgreementDimension[];
-  /** 最新测量距 now 的整天数。 */
-  ageDays: number | null;
+  /** 过期的一致率维度（最新测量超过 STALE_AFTER_MS）。 */
+  staleDimensions: AgreementDimension[];
+  /** 过期维度中最旧的最新测量距 now 的整天数；无过期维度时为 null。 */
+  staleAgeDays: number | null;
   /**
    * 各一致率维度**最新一次测量**的检查数之和（parse 样本 + eval 用例 + IR 样本）。
    * 各维度的最新测量不保证来自同一次运行，故文案称「最新结果」而非「同一次运行」，
@@ -149,6 +157,8 @@ export function summarizeParity(history: ParityHistory, now: number): ParitySumm
   const totalChecks = measured.reduce((n, s) => n + s.latest!.total, 0);
   const divergentChecks = measured.reduce((n, s) => n + s.gap, 0);
 
+  const staleDims = measured.filter((x) => x.stale);
+
   let verdict: ParityVerdict = 'agree';
   if (measured.length === 0) verdict = 'empty';
   else if (divergentChecks > 0) verdict = 'diverged';
@@ -159,7 +169,10 @@ export function summarizeParity(history: ParityHistory, now: number): ParitySumm
     stale: measured.some((s) => s.stale),
     lastChecked,
     missing,
-    ageDays: lastChecked ? Math.floor((now - Date.parse(lastChecked)) / 86_400_000) : null,
+    staleDimensions: staleDims.map((x) => x.dimension as AgreementDimension),
+    staleAgeDays: staleDims.length
+      ? Math.max(...staleDims.map((x) => Math.floor((now - Date.parse(x.latest!.timestamp)) / 86_400_000)))
+      : null,
     totalChecks,
     divergentChecks,
     agreement,

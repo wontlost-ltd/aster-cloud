@@ -103,11 +103,14 @@ export async function ParityVerdict({ summary, locale }: SectionProps) {
             </Alert>
           )}
 
-          {summary.stale && summary.ageDays != null && (
+          {summary.stale && summary.staleAgeDays != null && (
             <Alert variant="warning" className="text-left">
               <div>
                 <AlertTitle>{t('verdict.staleTitle')}</AlertTitle>
-                <AlertDescription>{t('verdict.staleBody', { days: summary.ageDays })}</AlertDescription>
+                <AlertDescription>{t('verdict.staleBody', {
+                    days: summary.staleAgeDays,
+                    dimensions: summary.staleDimensions.map((d) => t(`dimensions.${d}.title`)).join(', '),
+                  })}</AlertDescription>
               </div>
             </Alert>
           )}

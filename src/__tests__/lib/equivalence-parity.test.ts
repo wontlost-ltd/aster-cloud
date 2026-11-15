@@ -66,6 +66,11 @@ describe('parseTrendCsv', () => {
     ].join('\n');
     expect(parseTrendCsv(csv).map((p) => p.timestamp)).toEqual(['2026-11-15T00:00:00Z']);
   });
+
+  it('拒绝空计数字段（Number(\'\') 会得到 0）', () => {
+    const csv = 'timestamp,total,value,rate\n2026-11-13T00:00:00Z,,0,0\n2026-11-14T00:00:00Z,10,,0\n2026-11-15T00:00:00Z,10,10,1';
+    expect(parseTrendCsv(csv)).toHaveLength(1);
+  });
 });
 
 describe('dedupeByDay', () => {
@@ -87,7 +92,8 @@ describe('summarizeParity', () => {
     expect(s.divergentChecks).toBe(0);
     expect(s.stale).toBe(false);
     expect(s.lastChecked).toBe('2026-11-15T00:02:14.000Z');
-    expect(s.ageDays).toBe(0);
+    expect(s.staleAgeDays).toBeNull();
+    expect(s.staleDimensions).toEqual([]);
     expect(s.agreement.parse.first?.total).toBe(290);
   });
 
@@ -125,7 +131,8 @@ describe('summarizeParity', () => {
     const later = Date.parse('2026-11-15T00:02:14.000Z') + STALE_AFTER_MS + 1;
     const s = summarizeParity(history(), later);
     expect(s.stale).toBe(true);
-    expect(s.ageDays).toBe(3);
+    expect(s.staleAgeDays).toBe(3);
+    expect(s.staleDimensions).toEqual(['parse', 'eval', 'ir']);
     expect(s.agreement.ir.stale).toBe(true);
   });
 
@@ -139,6 +146,9 @@ describe('summarizeParity', () => {
     expect(s.stale).toBe(true);
     expect(s.agreement.ir.stale).toBe(true);
     expect(s.agreement.parse.stale).toBe(false);
+    // 天数取过期维度自身的测量，而不是最新的那个维度（否则会出现「过期但 0 天」）
+    expect(s.staleDimensions).toEqual(['ir']);
+    expect(s.staleAgeDays).toBe(14);
   });
 
   it('缺一个维度：verdict=partial（不能宣称全部一致），列出缺失维度', () => {
@@ -164,7 +174,7 @@ describe('summarizeParity', () => {
     const s = summarizeParity(history({ parse: [], eval: [], ir: [] }), NOW);
     expect(s.verdict).toBe('empty');
     expect(s.lastChecked).toBeNull();
-    expect(s.ageDays).toBeNull();
+    expect(s.staleAgeDays).toBeNull();
     expect(s.stale).toBe(false);
   });
 
@@ -204,7 +214,7 @@ describe('equivalencePage 补充文案', () => {
     ) => string;
     expect(t('verdict.agree', { count: 1593 })).toMatch(/1[,.\s  ]?593/);
     expect(t('verdict.diverged', { count: 3, total: 1593 })).toContain('3');
-    expect(t('verdict.staleBody', { days: 4 })).toContain('4');
+    expect(t('verdict.staleBody', { days: 4, dimensions: 'X' })).toContain('4');
     expect(t('dimensions.badgeDiverged', { count: 1 })).toContain('1');
     expect(t('dimensions.growth', { count: 197, date: 'D' })).toContain('197');
     expect(t('coverage.evalCoverage.detail', { value: '215', total: '215' })).toContain('215');
