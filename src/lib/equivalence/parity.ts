@@ -33,7 +33,7 @@ export const STALE_AFTER_MS = 72 * 3_600_000;
 /**
  * 解析 history CSV。各 CSV 列序不同（parse: equivalent，eval/ir: identical，
  * coverage: value），故按表头列名定位；分母固定取 `total` 列。
- * 非法行（时间戳缺失或数值非有限）直接丢弃，不让一行脏数据污染整条曲线。
+ * 非法行（时间戳缺失、计数非整数 / 为负 / 分子大于分母）直接丢弃，不让一行脏数据污染整条曲线。
  */
 export function parseTrendCsv(text: string): TrendPoint[] {
   const rows = text.trim().split(/\r?\n/);
@@ -51,7 +51,8 @@ export function parseTrendCsv(text: string): TrendPoint[] {
     const total = Number(cols[totalIdx]);
     const value = Number(cols[valueIdx]);
     if (!timestamp || Number.isNaN(Date.parse(timestamp))) continue;
-    if (!Number.isFinite(total) || !Number.isFinite(value) || total < 0) continue;
+    // 计数必须是非负整数且分子不超过分母；否则这一行不可信，宁缺毋滥。
+    if (!Number.isInteger(total) || !Number.isInteger(value) || value < 0 || value > total) continue;
     points.push({ timestamp, value, total, rate: total > 0 ? value / total : 0 });
   }
   return points;
@@ -87,19 +88,31 @@ export type DimensionStatus = {
   first: TrendPoint | null;
 };
 
-export type ParityVerdict = 'empty' | 'agree' | 'diverged';
+/**
+ * - empty：三个一致率维度都没有数据
+ * - diverged：任一有数据的维度最新一次有分歧（优先于 partial，分歧必须显式呈现）
+ * - partial：无分歧，但有维度缺数据——只能说「已加载的检查全部一致」
+ * - agree：三个维度都有数据且全部一致
+ */
+export type ParityVerdict = 'empty' | 'agree' | 'partial' | 'diverged';
 
 export type ParitySummary = {
   verdict: ParityVerdict;
   /** 任一有数据的一致率维度过期。 */
   stale: boolean;
-  /** 所有维度中最新的测量时间；无数据时为 null。 */
+  /** 一致率维度中最新的测量时间（覆盖率不参与）；无数据时为 null。 */
   lastChecked: string | null;
+  /** 没有数据的一致率维度（CSV 拉取失败或为空）。 */
+  missing: AgreementDimension[];
   /** 最新测量距 now 的整天数。 */
   ageDays: number | null;
-  /** 最新一次运行中比较的检查总数（parse 样本 + eval 用例 + IR 样本）。 */
+  /**
+   * 各一致率维度**最新一次测量**的检查数之和（parse 样本 + eval 用例 + IR 样本）。
+   * 各维度的最新测量不保证来自同一次运行，故文案称「最新结果」而非「同一次运行」，
+   * 落后于 lastChecked 的维度由卡片单独标出测量日期。
+   */
   totalChecks: number;
-  /** 最新一次运行中结果不同的检查数。 */
+  /** 各维度最新测量中结果不同的检查数之和。 */
   divergentChecks: number;
   agreement: Record<AgreementDimension, DimensionStatus>;
   coverage: Record<CoverageDimension, DimensionStatus>;
@@ -129,24 +142,23 @@ export function summarizeParity(history: ParityHistory, now: number): ParitySumm
     COVERAGE_DIMENSIONS.map((d) => [d, dimensionStatus(d, history[d], now)]),
   ) as Record<CoverageDimension, DimensionStatus>;
 
-  const measured = AGREEMENT_DIMENSIONS.map((d) => agreement[d]).filter((s) => s.latest);
-  const allLatest = [...measured, ...COVERAGE_DIMENSIONS.map((d) => coverage[d])]
-    .map((s) => s.latest?.timestamp)
-    .filter((t): t is string => !!t)
-    .sort();
-  const lastChecked = measured.length > 0 ? (allLatest.at(-1) ?? null) : null;
+  const measured = AGREEMENT_DIMENSIONS.map((d) => agreement[d]).filter((s) => s.latest && s.latest.total > 0);
+  const missing = AGREEMENT_DIMENSIONS.filter((d) => !measured.some((s) => s.dimension === d));
+  const lastChecked = measured.map((s) => s.latest!.timestamp).sort().at(-1) ?? null;
 
   const totalChecks = measured.reduce((n, s) => n + s.latest!.total, 0);
   const divergentChecks = measured.reduce((n, s) => n + s.gap, 0);
 
   let verdict: ParityVerdict = 'agree';
-  if (measured.length === 0 || totalChecks === 0) verdict = 'empty';
+  if (measured.length === 0) verdict = 'empty';
   else if (divergentChecks > 0) verdict = 'diverged';
+  else if (missing.length > 0) verdict = 'partial';
 
   return {
     verdict,
     stale: measured.some((s) => s.stale),
     lastChecked,
+    missing,
     ageDays: lastChecked ? Math.floor((now - Date.parse(lastChecked)) / 86_400_000) : null,
     totalChecks,
     divergentChecks,

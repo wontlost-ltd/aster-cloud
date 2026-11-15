@@ -55,6 +55,17 @@ describe('parseTrendCsv', () => {
     expect(parseTrendCsv('timestamp,total,value,rate')).toEqual([]);
     expect(parseTrendCsv('timestamp,rate\n2026-11-15T00:00:00Z,1')).toEqual([]);
   });
+
+  it('拒绝不可信的计数：分子大于分母、负数、非整数', () => {
+    const csv = [
+      'timestamp,total,identical,divergent,rate',
+      '2026-11-12T00:00:00Z,10,11,0,1.1',
+      '2026-11-13T00:00:00Z,10,-1,0,0',
+      '2026-11-14T00:00:00Z,10.5,10,0,1',
+      '2026-11-15T00:00:00Z,10,10,0,1',
+    ].join('\n');
+    expect(parseTrendCsv(csv).map((p) => p.timestamp)).toEqual(['2026-11-15T00:00:00Z']);
+  });
 });
 
 describe('dedupeByDay', () => {
@@ -130,11 +141,23 @@ describe('summarizeParity', () => {
     expect(s.agreement.parse.stale).toBe(false);
   });
 
-  it('缺一个维度：结论只基于有数据的维度，缺失维度 latest=null', () => {
+  it('缺一个维度：verdict=partial（不能宣称全部一致），列出缺失维度', () => {
     const s = summarizeParity(history({ ir: [] }), NOW);
-    expect(s.verdict).toBe('agree');
+    expect(s.verdict).toBe('partial');
+    expect(s.missing).toEqual(['ir']);
     expect(s.totalChecks).toBe(300 + 960);
     expect(s.agreement.ir.latest).toBeNull();
+  });
+
+  it('缺维度同时有分歧：diverged 优先于 partial', () => {
+    const s = summarizeParity(history({ ir: [], parse: [pt('2026-11-15T00:00:10Z', 299, 300)] }), NOW);
+    expect(s.verdict).toBe('diverged');
+    expect(s.missing).toEqual(['ir']);
+  });
+
+  it('lastChecked 只取一致率维度，覆盖率更晚也不影响', () => {
+    const s = summarizeParity(history({ featureCoverage: [pt('2026-11-15T06:00:00Z', 51, 51)] }), NOW);
+    expect(s.lastChecked).toBe('2026-11-15T00:02:14.000Z');
   });
 
   it('三个一致率维度都没有数据：verdict=empty，即使覆盖率有数据', () => {

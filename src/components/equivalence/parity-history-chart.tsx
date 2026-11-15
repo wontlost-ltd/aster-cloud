@@ -142,7 +142,10 @@ export function ParityHistoryChart({ series, labels, locale }: Props) {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
     e.preventDefault();
     const step = e.key === 'ArrowLeft' ? -1 : 1;
-    setActive((cur) => Math.min(days.length - 1, Math.max(0, (cur ?? days.length) + step)));
+    // 首次按键：← 从最新一天开始，→ 从最早一天开始；之后逐日移动。
+    setActive((cur) =>
+      cur == null ? (step < 0 ? days.length - 1 : 0) : Math.min(days.length - 1, Math.max(0, cur + step)),
+    );
   };
 
   return (

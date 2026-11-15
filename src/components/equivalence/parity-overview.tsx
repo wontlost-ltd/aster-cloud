@@ -23,6 +23,8 @@ type Translator = Awaited<ReturnType<typeof getTranslations<'equivalencePage'>>>
 export async function ParityVerdict({ summary, locale }: SectionProps) {
   const t = await getTranslations('equivalencePage');
   const diverged = summary.verdict === 'diverged';
+  const partial = summary.verdict === 'partial';
+  const missingNames = summary.missing.map((d) => t(`dimensions.${d}.title`)).join(', ');
 
   return (
     <section className="relative overflow-hidden pt-16 pb-12 sm:pt-20" aria-labelledby="parity-verdict">
@@ -53,9 +55,15 @@ export async function ParityVerdict({ summary, locale }: SectionProps) {
             </>
           ) : (
             <>
-              <Badge variant={diverged ? 'danger' : 'success'} className="gap-1.5 px-3 py-1 text-sm">
-                {diverged ? <XCircle className="size-4" aria-hidden /> : <CheckCircle2 className="size-4" aria-hidden />}
-                {diverged ? t('verdict.statusDiverged') : t('verdict.statusAgree')}
+              <Badge variant={diverged ? 'danger' : partial ? 'warning' : 'success'} className="gap-1.5 px-3 py-1 text-sm">
+                {diverged ? (
+                  <XCircle className="size-4" aria-hidden />
+                ) : partial ? (
+                  <AlertTriangle className="size-4" aria-hidden />
+                ) : (
+                  <CheckCircle2 className="size-4" aria-hidden />
+                )}
+                {diverged ? t('verdict.statusDiverged') : partial ? t('verdict.statusPartial') : t('verdict.statusAgree')}
               </Badge>
               <h1
                 id="parity-verdict"
@@ -63,7 +71,9 @@ export async function ParityVerdict({ summary, locale }: SectionProps) {
               >
                 {diverged
                   ? t('verdict.diverged', { count: summary.divergentChecks, total: summary.totalChecks })
-                  : t('verdict.agree', { count: summary.totalChecks })}
+                  : partial
+                    ? t('verdict.partial', { count: summary.totalChecks })
+                    : t('verdict.agree', { count: summary.totalChecks })}
               </h1>
               <p className="max-w-2xl text-lg leading-relaxed text-fg-muted">{t('verdict.lead')}</p>
               {summary.lastChecked && (
@@ -84,6 +94,15 @@ export async function ParityVerdict({ summary, locale }: SectionProps) {
             </>
           )}
 
+          {partial && (
+            <Alert variant="warning" className="text-left">
+              <div>
+                <AlertTitle>{t('verdict.partialTitle')}</AlertTitle>
+                <AlertDescription>{t('verdict.partialBody', { dimensions: missingNames })}</AlertDescription>
+              </div>
+            </Alert>
+          )}
+
           {summary.stale && summary.ageDays != null && (
             <Alert variant="warning" className="text-left">
               <div>
@@ -98,8 +117,20 @@ export async function ParityVerdict({ summary, locale }: SectionProps) {
   );
 }
 
-/** 卡片底部的一行状态：回退 > 过期 > 覆盖范围增长（只显示最重要的一条）。 */
-function StatusLine({ t, status, locale, kind }: { t: Translator; status: DimensionStatus; locale: string; kind: 'dimensions' | 'coverage' }) {
+/** 卡片底部的一行状态：回退 > 过期 > 测量日期落后 > 覆盖范围增长（只显示最重要的一条）。 */
+function StatusLine({
+  t,
+  status,
+  locale,
+  kind,
+  lastChecked,
+}: {
+  t: Translator;
+  status: DimensionStatus;
+  locale: string;
+  kind: 'dimensions' | 'coverage';
+  lastChecked: string | null;
+}) {
   const { latest, previous, first } = status;
   if (!latest) return null;
   if (status.regressed && previous) {
@@ -119,6 +150,12 @@ function StatusLine({ t, status, locale, kind }: { t: Translator; status: Dimens
         <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
         {t('dimensions.staleNote', { date: formatParityDate(latest.timestamp, locale) })}
       </p>
+    );
+  }
+  // 各维度最新测量不一定同一天：落后于结论日期的维度单独标出测量日期，避免被误读为同一次运行。
+  if (lastChecked && latest.timestamp.slice(0, 10) !== lastChecked.slice(0, 10)) {
+    return (
+      <p className="text-xs text-fg-subtle">{t('dimensions.staleNote', { date: formatParityDate(latest.timestamp, locale) })}</p>
     );
   }
   if (kind === 'dimensions' && first && first.total < latest.total) {
@@ -177,7 +214,7 @@ export async function AgreementCards({ summary, locale }: SectionProps) {
                         <p className="text-sm text-fg-subtle">{t('dimensions.noData')}</p>
                       )}
                     </div>
-                    <StatusLine t={t} status={status} locale={locale} kind="dimensions" />
+                    <StatusLine t={t} lastChecked={summary.lastChecked} status={status} locale={locale} kind="dimensions" />
                   </CardBody>
                 </Card>
               </li>
@@ -236,7 +273,7 @@ export async function CoverageMeters({ summary, locale }: SectionProps) {
                       {' — '}
                       {t(`coverage.${dim}.body`)}
                     </p>
-                    <StatusLine t={t} status={status} locale={locale} kind="coverage" />
+                    <StatusLine t={t} lastChecked={summary.lastChecked} status={status} locale={locale} kind="coverage" />
                   </div>
                 );
               })}

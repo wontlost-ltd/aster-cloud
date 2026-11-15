@@ -1728,7 +1728,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     equivalencePage: {
       verdict: {
         agree: 'Both engines agree on all {count, number} checks',
-        diverged: '{count, number} of {total, number} checks gave different results in the latest run',
+        diverged: '{count, number} of {total, number} checks gave different results in the latest measurements',
+        partial: 'Both engines agree on all {count, number} checks that could be loaded',
+        statusPartial: 'Incomplete data',
+        partialTitle: 'Some results could not be loaded',
+        partialBody: 'No data is available for: {dimensions}. The verdict above covers the other layers only.',
         statusAgree: 'No divergences',
         statusDiverged: 'Divergence found',
         lead: 'Aster Lang runs every rule on two independent engines, one written in Java and one in TypeScript. Every night the same test corpus goes through both, and each result is compared.',
@@ -3472,7 +3476,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     equivalencePage: {
       verdict: {
         agree: '两个引擎在全部 {count, number} 项检查中结果一致',
-        diverged: '最新一次运行中，{total, number} 项检查里有 {count, number} 项两个引擎结果不同',
+        diverged: '最新测量中，{total, number} 项检查里有 {count, number} 项两个引擎结果不同',
+        partial: '在已加载的 {count, number} 项检查中，两个引擎结果全部一致',
+        statusPartial: '数据不完整',
+        partialTitle: '部分结果未能加载',
+        partialBody: '以下层级暂无数据：{dimensions}。上方结论仅涵盖其余层级。',
         statusAgree: '无分歧',
         statusDiverged: '发现分歧',
         lead: 'Aster Lang 的每条规则都可以在两个相互独立的引擎上运行：一个用 Java 编写，一个用 TypeScript 编写。每天夜里，同一套测试语料会分别在两个引擎上运行，并逐项比对结果。',
@@ -5223,7 +5231,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     equivalencePage: {
       verdict: {
         agree: 'Beide Engines stimmen in allen {count, number} Prüfungen überein',
-        diverged: '{count, number} von {total, number} Prüfungen lieferten im letzten Lauf unterschiedliche Ergebnisse',
+        diverged: '{count, number} von {total, number} Prüfungen lieferten in den neuesten Messungen unterschiedliche Ergebnisse',
+        partial: 'Beide Engines stimmen in allen {count, number} geladenen Prüfungen überein',
+        statusPartial: 'Unvollständige Daten',
+        partialTitle: 'Einige Ergebnisse konnten nicht geladen werden',
+        partialBody: 'Keine Daten verfügbar für: {dimensions}. Das obige Ergebnis gilt nur für die übrigen Ebenen.',
         statusAgree: 'Keine Abweichungen',
         statusDiverged: 'Abweichung gefunden',
         lead: 'Aster Lang führt jede Regel auf zwei unabhängigen Engines aus – eine in Java, eine in TypeScript geschrieben. Jede Nacht durchläuft dasselbe Test-Corpus beide Engines, und jedes Ergebnis wird verglichen.',
@@ -6962,7 +6974,11 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     equivalencePage: {
       verdict: {
         agree: 'दोनों इंजन सभी {count, number} जाँचों में एक जैसा परिणाम देते हैं',
-        diverged: 'नवीनतम रन में {total, number} में से {count, number} जाँचों में दोनों इंजनों के परिणाम अलग रहे',
+        diverged: 'नवीनतम मापों में {total, number} में से {count, number} जाँचों में दोनों इंजनों के परिणाम अलग रहे',
+        partial: 'लोड हो सकीं सभी {count, number} जाँचों में दोनों इंजन एक जैसा परिणाम देते हैं',
+        statusPartial: 'अधूरा डेटा',
+        partialTitle: 'कुछ परिणाम लोड नहीं हो सके',
+        partialBody: 'इनके लिए डेटा उपलब्ध नहीं है: {dimensions}। ऊपर का निष्कर्ष केवल बाकी परतों पर लागू होता है।',
         statusAgree: 'कोई विचलन नहीं',
         statusDiverged: 'विचलन मिला',
         lead: 'Aster Lang हर नियम को दो स्वतंत्र इंजनों पर चलाता है: एक Java में लिखा है और एक TypeScript में। हर रात वही परीक्षण कॉर्पस दोनों इंजनों से गुज़रता है और हर परिणाम की तुलना की जाती है।',

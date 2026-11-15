@@ -68,7 +68,7 @@ describe('equivalence 页面区块', () => {
   it('最新运行有分歧：结论改为分歧数，卡片标红并显示回退，出现未解决分歧区与报告链接', async () => {
     await renderAll({ ...base, eval: [pt('2026-11-13T09:00:00Z', 937, 937), pt('2026-11-15T00:02:04Z', 958, 960)] });
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
-      '2 of 1,593 checks gave different results in the latest run',
+      '2 of 1,593 checks gave different results in the latest measurements',
     );
     expect(screen.getByText('Divergence found')).toBeTruthy();
     expect(screen.getAllByText('2 differ').length).toBeGreaterThanOrEqual(2);
@@ -85,11 +85,19 @@ describe('equivalence 页面区块', () => {
     expect(screen.getAllByText(/Last measured Nov 15, 2026/).length).toBeGreaterThanOrEqual(3);
   });
 
-  it('缺一个维度：该卡显示暂无数据，不显示徽章', async () => {
+  it('缺一个维度：结论降为「已加载的检查」，警告列出缺失层，该卡显示暂无数据', async () => {
     await renderAll({ ...base, ir: [] });
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Both engines agree on all 1,260 checks');
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Both engines agree on all 1,260 checks that could be loaded');
+    expect(screen.getByText('Incomplete data')).toBeTruthy();
+    expect(screen.getByText(/No data is available for: Compiled form \(Core IR\)/)).toBeTruthy();
     expect(screen.getByText('No data available')).toBeTruthy();
     expect(screen.getAllByText('Agree')).toHaveLength(2);
+  });
+
+  it('某维度最新测量落后于结论日期：该卡标出自己的测量日期', async () => {
+    await renderAll({ ...base, ir: [pt('2026-11-14T00:02:14Z', 333, 333)] });
+    expect(screen.getByText('Last measured Nov 14, 2026')).toBeTruthy();
+    expect(screen.getByText(/Last checked Nov 15, 2026/)).toBeTruthy();
   });
 
   it('完全没有数据：不显示任何数字，给出仓库链接', async () => {
