@@ -85,7 +85,9 @@ AGENT_GUARD_DEMO_E2E=1 pnpm exec vitest run --config vitest.e2e.config.ts src/__
 podman rm -f agd-api agd-pg agd-redis && podman network rm agd-net
 ```
 
-种子是幂等的；`policy.aster` 改动后重跑会追加一个新版本并设为默认（同样先部署到 aster-api 再提交）。
+种子是幂等的，版本走与界面相同的服务层路径（成员保存并提交 → owner 审批 → owner 设默认，设默认即先部署到 aster-api 再提交）；
+`policy.aster` 改动后重跑会追加一个新版本并设为默认，已有版本不改写。种子只写本机数据库（`DATABASE_URL` 主机须为
+localhost / 127.0.0.1 / ::1；容器内本地栈的主机名确属演示库时设 `AGD_SEED_ALLOW_REMOTE=1`），已有同 id 账号不改密码。
 验证策略可编译：`POST $BASE_API/api/v1/policies/compile`（`Authorization: Bearer $DEMO_API_KEY`、`X-Tenant-Id: $DEMO_TENANT_ID`，
 体 `{"source": <policy.aster 全文>, "locale": "en-US"}`）应返回 `success: true`、`functions: ["decide"]`。
 

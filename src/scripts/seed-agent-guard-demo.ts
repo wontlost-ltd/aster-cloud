@@ -9,13 +9,17 @@
  *     先部署到 aster-api Guard（PUT /api/v1/guard/policy-deployments/{id}）、成功后才提交默认版本。
  *   - agd-member 的团队 API key agent-guard-demo-agent（明文仅创建时打印；--rotate-key 吊销旧 key 后重签）
  *
+ * 只写本地库：DATABASE_URL 的主机须为 localhost / 127.0.0.1 / ::1，否则拒绝运行（容器内的本地栈主机名等确属演示库时
+ * 设 AGD_SEED_ALLOW_REMOTE=1）。已有同 id 的用户只更新套餐、不动邮箱与密码；同 id 的团队 / 策略属于别人时报错，不接管。
+ *
  * 幂等：按 id / key 名有则更新、无则插入；已有版本从不改写。最新版本内容与 policy.aster 相同则沿用（只补完未走完的
  * 提交 / 审批），不同则经保存路径追加新版本（链式封印由 createVersion 负责）。
  *
  * 环境变量：
  *   DATABASE_URL                     必须
  *   ASTER_API_INTERNAL_URL 等        与 cloud 进程相同的 aster-api 地址与 ASTER_PLAN_GATE_HMAC_KEY（部署与 key 快照经 HMAC 调用）
- *   AGD_SEED_PASSWORD                可选（默认 Aster2026!）
+ *   AGD_SEED_PASSWORD                可选（默认 Aster2026!，只用于新建的演示账号）
+ *   AGD_SEED_ALLOW_REMOTE=1          可选：允许非本机主机名的 DATABASE_URL（仅限确属演示环境的库）
  *
  * 用法：pnpm seed:agent-guard-demo [--rotate-key]
  * 之后：BASE_API=<aster-api> DEMO_API_KEY=<打印的 key> DEMO_TENANT_ID=agent-guard-demo pnpm demo:agent-guard
@@ -50,42 +54,60 @@ const USERS = [
   { id: MEMBER_ID, plan: 'pro' as const, role: 'member' as const },
 ];
 
+const LOCAL_DB_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+
+/** 种子直接写库：默认只允许本机数据库，防止误连共享 / 生产库。 */
+function assertDemoDatabase(url: string): void {
+  const host = new URL(url).hostname;
+  if (LOCAL_DB_HOSTS.has(host)) return;
+  if (process.env.AGD_SEED_ALLOW_REMOTE === '1') {
+    console.warn(LOG, `DATABASE_URL 主机为 ${host}（AGD_SEED_ALLOW_REMOTE=1 放行）`);
+    return;
+  }
+  throw new Error(`DATABASE_URL 主机 ${host} 不是本机；演示种子只写本地库（确属演示库时设 AGD_SEED_ALLOW_REMOTE=1）`);
+}
+
 /** 最新版本内容相同时可沿用的状态（其余如 DEPRECATED / ARCHIVED 追加新版本）。 */
 const REUSABLE = new Set(['DRAFT', 'REJECTED', 'PENDING_APPROVAL', 'APPROVED']);
 
-async function upsertUser(db: Db, spec: (typeof USERS)[number], passwordHash: string): Promise<void> {
-  const values = {
+/** 新建演示账号；同 id 已存在时只更新套餐（不动邮箱与密码）。返回是否新建。 */
+async function upsertUser(db: Db, spec: (typeof USERS)[number], passwordHash: string): Promise<boolean> {
+  const existing = await db.query.users.findFirst({ where: eq(schema.users.id, spec.id) });
+  if (existing) {
+    await db.update(schema.users).set({ plan: spec.plan, updatedAt: new Date() }).where(eq(schema.users.id, spec.id));
+    return false;
+  }
+  await db.insert(schema.users).values({
+    id: spec.id,
     name: spec.id,
     email: `${spec.id}@stack.test`,
     passwordHash,
     plan: spec.plan,
     priceLockedAt: new Date(),
-    legacyTier: null,
-    updatedAt: new Date(),
-  };
-  const existing = await db.query.users.findFirst({ where: eq(schema.users.id, spec.id) });
-  if (existing) {
-    await db.update(schema.users).set(values).where(eq(schema.users.id, spec.id));
-    return;
-  }
-  await db.insert(schema.users).values({
-    id: spec.id,
-    ...values,
     emailVerified: new Date(),
     failedLoginAttempts: 0,
     lockoutCount: 0,
     createdAt: new Date(),
+    updatedAt: new Date(),
   });
+  return true;
 }
 
+/** 同 id 的团队已存在且属主不是 agd-owner 时报错，不接管别人的团队。 */
 async function upsertTeam(db: Db): Promise<void> {
-  const values = { name: 'Agent Guard demo', slug: TEAM_ID, ownerId: OWNER_ID, updatedAt: new Date() };
   const existing = await db.query.teams.findFirst({ where: eq(schema.teams.id, TEAM_ID) });
   if (existing) {
-    await db.update(schema.teams).set(values).where(eq(schema.teams.id, TEAM_ID));
+    if (existing.ownerId !== OWNER_ID) throw new Error(`团队 ${TEAM_ID} 已存在且属主为 ${existing.ownerId}，拒绝接管`);
     return;
   }
-  await db.insert(schema.teams).values({ id: TEAM_ID, ...values, createdAt: new Date() });
+  await db.insert(schema.teams).values({
+    id: TEAM_ID,
+    name: 'Agent Guard demo',
+    slug: TEAM_ID,
+    ownerId: OWNER_ID,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
 }
 
 async function upsertTeamMember(db: Db, spec: (typeof USERS)[number]): Promise<void> {
@@ -112,6 +134,7 @@ async function upsertPolicy(db: Db, source: string, version: number): Promise<vo
   };
   const existing = await db.query.policies.findFirst({ where: eq(schema.policies.id, POLICY_ID) });
   if (existing) {
+    if (existing.teamId !== TEAM_ID) throw new Error(`策略 ${POLICY_ID} 已存在且不属于团队 ${TEAM_ID}，拒绝改写`);
     await db.update(schema.policies).set(values).where(eq(schema.policies.id, POLICY_ID));
     return;
   }
@@ -176,6 +199,7 @@ async function ensureMemberKey(db: Db, rotate: boolean): Promise<string | undefi
 
 async function main(): Promise<void> {
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
+  assertDemoDatabase(process.env.DATABASE_URL);
   const rotate = process.argv.includes('--rotate-key');
   const source = readFileSync(POLICY_FILE, 'utf8');
   const password = process.env.AGD_SEED_PASSWORD ?? 'Aster2026!';
@@ -185,7 +209,8 @@ async function main(): Promise<void> {
   const db = drizzle(sql, { schema });
   try {
     console.log(LOG, '用户 / 团队', USERS.map((u) => u.id).join(' / '), TEAM_ID);
-    for (const spec of USERS) await upsertUser(db, spec, passwordHash);
+    const created: string[] = [];
+    for (const spec of USERS) if (await upsertUser(db, spec, passwordHash)) created.push(spec.id);
     await upsertTeam(db);
     for (const spec of USERS) await upsertTeamMember(db, spec);
 
@@ -209,7 +234,7 @@ async function main(): Promise<void> {
     console.log(LOG, '完成；演示环境变量：');
     console.log(`  DEMO_TENANT_ID=${TEAM_ID}`);
     if (key) console.log(`  DEMO_API_KEY=${key}   # 仅此一次`);
-    console.log(`  账号 ${USERS.map((u) => u.id).join(' / ')}@stack.test，密码 ${password}`);
+    if (created.length > 0) console.log(`  新建账号 ${created.join(' / ')}（邮箱 <id>@stack.test），密码 ${password}`);
   } finally {
     await sql.end();
   }
