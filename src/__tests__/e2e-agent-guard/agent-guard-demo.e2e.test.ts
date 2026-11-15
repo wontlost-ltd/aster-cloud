@@ -28,8 +28,12 @@ if (!ENABLED) console.warn(`[agent-guard-demo e2e] 跳过：${SKIP_REASON}`);
 
 const suite = ENABLED ? describe : describe.skip;
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** 该决策在审计数组中的行；字段缺失不等于「没有事件」，响应形状不符时直接失败。 */
 function rowsFor(rows: AuditRow[] | undefined, decisionId: string): AuditRow[] {
-  return (rows ?? []).filter((r) => r.decisionId === decisionId);
+  expect(Array.isArray(rows)).toBe(true);
+  return rows!.filter((r) => r.decisionId === decisionId);
 }
 
 suite('Agent 经 aster-guard-mcp 的绕过演示（#464 验收）', () => {
@@ -55,7 +59,7 @@ suite('Agent 经 aster-guard-mcp 的绕过演示（#464 验收）', () => {
       // 规则 DENY：没有客户端 / 服务端故障码
       expect(attempt.asterGuard.reasonCode ?? '').toBe('');
     }
-    expect(deniedIds.every((id) => id !== '')).toBe(true);
+    for (const id of deniedIds) expect(id).toMatch(UUID);
     expect(new Set(deniedIds).size).toBe(2);
     expect(report.sideEffects.filter((e) => e.tool === 'refund_payment')).toEqual([]);
   });
@@ -78,8 +82,8 @@ suite('Agent 经 aster-guard-mcp 的绕过演示（#464 验收）', () => {
     expect(third.tool).toBe('lookup_payment');
     expect(third.isError).toBe(false);
     expect(third.status).toBe('executed');
-    expect(allowedId).not.toBe('');
-    expect(third.asterGuard.attemptId).toEqual(expect.any(String));
+    expect(allowedId).toMatch(UUID);
+    expect(third.asterGuard.attemptId).toMatch(UUID);
     expect(report.sideEffects.map((e) => e.tool)).toEqual(['lookup_payment']);
 
     const consumes = rowsFor(report.audit.consumes, allowedId);

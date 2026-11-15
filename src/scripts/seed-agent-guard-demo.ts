@@ -4,12 +4,13 @@
  * 创建：
  *   - Team agent-guard-demo（owner = agd-owner，成员 agd-member）
  *   - 团队策略 pol-agent-guard-demo：源码取自 scripts/agent-guard-demo/policy.aster（模块 demo.billing、入口 decide，
- *     refund_payment → DENY，@id DEMO-REFUND-001）。版本作者为 agd-member，以 APPROVED 落库（团队四眼由 owner 审批，
- *     种子直接写审批结果，与 seed:credit-pilot 同口径），再由 owner 经 setDefaultVersion 设为默认版本——
- *     这一步就是 #464 A2 的挂点：先部署到 aster-api Guard（PUT /api/v1/guard/policy-deployments/{id}）、成功后才提交。
+ *     refund_payment → DENY，@id DEMO-REFUND-001）。版本走与界面相同的服务层路径：agd-member 保存（createVersion）
+ *     并提交审批 → agd-owner 审批（团队四眼）→ agd-owner 设为默认版本（setDefaultVersion）。最后一步就是 #464 A2 的挂点：
+ *     先部署到 aster-api Guard（PUT /api/v1/guard/policy-deployments/{id}）、成功后才提交默认版本。
  *   - agd-member 的团队 API key agent-guard-demo-agent（明文仅创建时打印；--rotate-key 吊销旧 key 后重签）
  *
- * 幂等：按 id / key 名有则更新、无则插入。policy.aster 内容变化时追加新版本并设为默认（旧版本保留，链式封印同保存路径）。
+ * 幂等：按 id / key 名有则更新、无则插入；已有版本从不改写。最新版本内容与 policy.aster 相同则沿用（只补完未走完的
+ * 提交 / 审批），不同则经保存路径追加新版本（链式封印由 createVersion 负责）。
  *
  * 环境变量：
  *   DATABASE_URL                     必须
@@ -26,14 +27,12 @@ import { join } from 'node:path';
 import bcrypt from 'bcryptjs';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import * as schema from '@/db/schema';
 import { createApiKey, refreshTeamKeySnapshots } from '@/lib/api-keys';
 import { assertSeedCompiles } from '@/lib/seed-compile-gate';
-import { sealSeedVersionChain } from '@/lib/seed-version-seal';
-import { cloudToolchainId } from '@/lib/policy-alias';
 import { loadSaveVocabulary } from '@/lib/policy-compile-validator';
-import { setDefaultVersion } from '@/services/policy/version-manager';
+import { approveVersion, createVersion, setDefaultVersion, submitForApproval } from '@/services/policy/version-manager';
 
 type Db = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -51,7 +50,8 @@ const USERS = [
   { id: MEMBER_ID, plan: 'pro' as const, role: 'member' as const },
 ];
 
-const versionId = (version: number) => `${POLICY_ID}-v${version}`;
+/** 最新版本内容相同时可沿用的状态（其余如 DEPRECATED / ARCHIVED 追加新版本）。 */
+const REUSABLE = new Set(['DRAFT', 'REJECTED', 'PENDING_APPROVAL', 'APPROVED']);
 
 async function upsertUser(db: Db, spec: (typeof USERS)[number], passwordHash: string): Promise<void> {
   const values = {
@@ -98,6 +98,7 @@ async function upsertTeamMember(db: Db, spec: (typeof USERS)[number]): Promise<v
   await db.insert(schema.teamMembers).values({ id, teamId: TEAM_ID, userId: spec.id, role: spec.role, createdAt: new Date() });
 }
 
+/** 策略行（团队策略，owner 为属主）；content / version 跟随演示版本。 */
 async function upsertPolicy(db: Db, source: string, version: number): Promise<void> {
   const values = {
     userId: OWNER_ID,
@@ -118,44 +119,34 @@ async function upsertPolicy(db: Db, source: string, version: number): Promise<vo
 }
 
 /**
- * 写版本链：已有版本原样保留，最新版本内容与 policy.aster 不同时追加一版。返回应设为默认的版本号。
- * 封印与保存路径同构（链式哈希、5 段 envelope、工具链身份）；新版本以 APPROVED、非默认落库，默认由 setDefaultVersion 切换。
+ * 让与 policy.aster 相同内容的版本处于 APPROVED：沿用最新版本或经保存路径新建，再补完提交（作者）与审批（owner）。
+ * 返回该版本号。已有版本只经服务层推进状态，从不改写其内容与封印。
  */
-async function upsertVersions(db: Db, source: string): Promise<number> {
-  const existing = await db.query.policyVersions.findMany({
+async function ensureApprovedVersion(db: Db, source: string): Promise<number> {
+  const latest = await db.query.policyVersions.findFirst({
     where: eq(schema.policyVersions.policyId, POLICY_ID),
-    orderBy: asc(schema.policyVersions.version),
+    orderBy: desc(schema.policyVersions.version),
   });
-  const contents = existing.map((v) => v.content);
-  if (contents.at(-1) !== source) contents.push(source);
-
-  await assertSeedCompiles(source, LOCALE, `${POLICY_ID}@v${contents.length}`);
-  const inputs = [];
-  for (const content of contents) {
-    const { vocabulary, scopesJson } = await loadSaveVocabulary(MEMBER_ID, { source: content, locale: LOCALE });
-    if (vocabulary) throw new Error(`作者 ${MEMBER_ID} 有作用域内的领域词汇，种子不做审批冻结，拒绝写库`);
-    inputs.push({ content, scopesJson });
+  let version: number;
+  let status: string;
+  if (latest && latest.content === source && REUSABLE.has(latest.status)) {
+    ({ version, status } = latest);
+  } else {
+    await assertSeedCompiles(source, LOCALE, `${POLICY_ID}@new`);
+    const { vocabulary, scopesJson } = await loadSaveVocabulary(MEMBER_ID, { source, locale: LOCALE });
+    if (vocabulary) throw new Error(`作者 ${MEMBER_ID} 有作用域内的领域词汇，演示策略不使用词汇，拒绝写库`);
+    ({ version } = await createVersion({ policyId: POLICY_ID, source, createdBy: MEMBER_ID, locale: LOCALE, scopesJson }));
+    status = 'DRAFT';
+    console.log(LOG, `已保存新版本 v${version}`);
   }
-  const sealed = sealSeedVersionChain(inputs, { locale: LOCALE, toolchainId: cloudToolchainId() });
-
-  for (const [i, fields] of sealed.entries()) {
-    const version = i + 1;
-    const row = existing.find((v) => v.version === version);
-    if (row) {
-      await db.update(schema.policyVersions).set(fields).where(eq(schema.policyVersions.id, row.id));
-      continue;
-    }
-    await db.insert(schema.policyVersions).values({
-      id: versionId(version),
-      ...fields,
-      policyId: POLICY_ID,
-      version,
-      status: 'APPROVED',
-      createdBy: MEMBER_ID,
-      isDefault: false,
-    });
+  if (status === 'DRAFT' || status === 'REJECTED') {
+    await submitForApproval({ policyId: POLICY_ID, version, userId: MEMBER_ID, releaseNote: 'Agent Guard demo (#464)' });
+    status = 'PENDING_APPROVAL';
   }
-  return sealed.length;
+  if (status === 'PENDING_APPROVAL') {
+    await approveVersion({ policyId: POLICY_ID, version, approverId: OWNER_ID, decision: 'APPROVED', comment: 'demo seed' });
+  }
+  return version;
 }
 
 const memberKeyWhere = () =>
@@ -198,7 +189,10 @@ async function main(): Promise<void> {
     await upsertTeam(db);
     for (const spec of USERS) await upsertTeamMember(db, spec);
 
-    const version = await upsertVersions(db, source);
+    // 策略行先于版本存在（保存路径要求）；版本号确定后回填。
+    const existingPolicy = await db.query.policies.findFirst({ where: eq(schema.policies.id, POLICY_ID) });
+    await upsertPolicy(db, source, existingPolicy?.version ?? 1);
+    const version = await ensureApprovedVersion(db, source);
     await upsertPolicy(db, source, version);
 
     // #464 A2 挂点：先部署到 aster-api Guard，成功后才提交默认版本（失败抛 GuardDeployError，默认版本不变）。
