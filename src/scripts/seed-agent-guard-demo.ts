@@ -120,25 +120,25 @@ async function upsertTeamMember(db: Db, spec: (typeof USERS)[number]): Promise<v
   await db.insert(schema.teamMembers).values({ id, teamId: TEAM_ID, userId: spec.id, role: spec.role, createdAt: new Date() });
 }
 
-/** 策略行（团队策略，owner 为属主）；content / version 跟随演示版本。 */
-async function upsertPolicy(db: Db, source: string, version: number): Promise<void> {
-  const values = {
+/** 建策略行（团队策略，owner 为属主）；已存在则只核对归属，内容与版本号等默认版本部署成功后再回填。 */
+async function ensurePolicy(db: Db, source: string): Promise<void> {
+  const existing = await db.query.policies.findFirst({ where: eq(schema.policies.id, POLICY_ID) });
+  if (existing) {
+    if (existing.teamId !== TEAM_ID) throw new Error(`策略 ${POLICY_ID} 已存在且不属于团队 ${TEAM_ID}，拒绝改写`);
+    if (existing.deletedAt) throw new Error(`策略 ${POLICY_ID} 在回收站中，先在界面恢复再重跑`);
+    return;
+  }
+  await db.insert(schema.policies).values({
+    id: POLICY_ID,
     userId: OWNER_ID,
     teamId: TEAM_ID,
     name: 'Agent Guard demo — billing (#464)',
     content: source,
-    version,
+    version: 1,
     isPublic: false,
-    deletedAt: null,
+    createdAt: new Date(),
     updatedAt: new Date(),
-  };
-  const existing = await db.query.policies.findFirst({ where: eq(schema.policies.id, POLICY_ID) });
-  if (existing) {
-    if (existing.teamId !== TEAM_ID) throw new Error(`策略 ${POLICY_ID} 已存在且不属于团队 ${TEAM_ID}，拒绝改写`);
-    await db.update(schema.policies).set(values).where(eq(schema.policies.id, POLICY_ID));
-    return;
-  }
-  await db.insert(schema.policies).values({ id: POLICY_ID, ...values, createdAt: new Date() });
+  });
 }
 
 /**
@@ -214,15 +214,17 @@ async function main(): Promise<void> {
     await upsertTeam(db);
     for (const spec of USERS) await upsertTeamMember(db, spec);
 
-    // 策略行先于版本存在（保存路径要求）；版本号确定后回填。
-    const existingPolicy = await db.query.policies.findFirst({ where: eq(schema.policies.id, POLICY_ID) });
-    await upsertPolicy(db, source, existingPolicy?.version ?? 1);
+    // 策略行先于版本存在（保存路径要求）。任一步失败时策略行保持原样，重跑从最新版本的状态接着走。
+    await ensurePolicy(db, source);
     const version = await ensureApprovedVersion(db, source);
-    await upsertPolicy(db, source, version);
 
     // #464 A2 挂点：先部署到 aster-api Guard，成功后才提交默认版本（失败抛 GuardDeployError，默认版本不变）。
     console.log(LOG, `设 ${POLICY_ID} v${version} 为默认版本并部署到 aster-api Guard`);
     await setDefaultVersion({ policyId: POLICY_ID, version, userId: OWNER_ID });
+    await db
+      .update(schema.policies)
+      .set({ content: source, version, updatedAt: new Date() })
+      .where(eq(schema.policies.id, POLICY_ID));
     const deployment = await db.query.guardPolicyDeployments.findFirst({
       where: eq(schema.guardPolicyDeployments.policyId, POLICY_ID),
     });
