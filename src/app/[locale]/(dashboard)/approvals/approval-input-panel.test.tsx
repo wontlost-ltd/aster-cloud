@@ -120,10 +120,18 @@ describe('ApprovalInputPanel', () => {
 
   it('factsStale 文案：四个 locale 都说明事实已过期但不影响批准，且分钟数与 FACT_TTL_MS 一致', () => {
     const minutes = String(FACT_TTL_MS / 60_000);
+    // 各语言的关键语义：已过期 / 不影响批准 / 吊销则已自动拒绝
+    const keyPhrases = {
+      en: ['expired', "doesn't affect whether you can approve", 'rejected automatically'],
+      zh: ['已过期', '不影响你是否可以批准', '自动拒绝'],
+      de: ['abgelaufen', 'keinen Einfluss darauf, ob Sie genehmigen können', 'automatisch abgelehnt'],
+      hi: ['समाप्त हो चुके हैं', 'कोई असर नहीं पड़ता', 'अपने-आप अस्वीकृत'],
+    } as const;
     for (const locale of ['en', 'zh', 'de', 'hi'] as const) {
       const text = findFactsStale(DEMO_SUPPLEMENT[locale]);
       expect(text, locale).toBeTruthy();
       expect(text, locale).toContain(minutes);
+      for (const phrase of keyPhrases[locale]) expect(text, `${locale}: ${phrase}`).toContain(phrase);
     }
     expect(findFactsStale(DEMO_SUPPLEMENT.en)).toBe(
       "The signed facts were verified when this decision was made (valid for 10 minutes) and have since expired. This doesn't affect whether you can approve. If the issuer had been revoked, this request would have been rejected automatically.",
