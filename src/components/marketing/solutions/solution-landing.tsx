@@ -7,9 +7,9 @@
 import { getTranslations } from 'next-intl/server';
 import { ArrowRight, Check, FlaskConical } from 'lucide-react';
 import { Link } from '@/i18n/navigation';
-import { LanguageSwitcher } from '@/components/language-switcher';
+import { PublicTopBar } from '@/components/marketing/public-top-bar';
 import { SkipToContent } from '@/components/skip-to-content';
-import { Badge, Card, CardBody, Container, Stack, Wordmark, buttonVariants, cn } from '@/components/ui';
+import { Badge, Card, CardBody, Container, Stack, buttonVariants, cn } from '@/components/ui';
 import { SOLUTION_PAGES, type SolutionSlug } from '@/lib/solutions';
 import { SOLUTION_CONTENT } from './content';
 import { LandingViewTracker } from './landing-view-tracker';
@@ -28,25 +28,7 @@ export async function SolutionLanding({ slug, locale }: { slug: SolutionSlug; lo
       <SkipToContent targetId="main" />
       <LandingViewTracker page={slug} locale={locale} />
 
-      <header className="border-b border-border bg-bg/80 backdrop-blur-md">
-        <Container size="xl">
-          <div className="flex h-16 items-center justify-between gap-4">
-            <Link href="/" aria-label={tRoot('nav.brand')} className="flex items-center gap-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo.svg" alt="" aria-hidden className="h-8 w-8 shrink-0" />
-              <span className="hidden sm:inline">
-                <Wordmark variant="product" size="md" />
-              </span>
-            </Link>
-            <Stack direction="row" gap={4} align="center">
-              <LanguageSwitcher allowedLocales={null} />
-              <Link href="/login" className="text-sm font-medium text-fg-muted transition-colors hover:text-fg">
-                {tRoot('common.signIn')}
-              </Link>
-            </Stack>
-          </div>
-        </Container>
-      </header>
+      <PublicTopBar brandLabel={tRoot('nav.brand')} signInLabel={tRoot('common.signIn')} />
 
       <main id="main" className="flex flex-col">
         <section className="relative overflow-hidden pt-20 pb-16">
