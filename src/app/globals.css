@@ -155,20 +155,6 @@
 }
 
 /*
- * Grow-up animation for the equivalence parity trend bars (SVG <rect>).
- * Gated behind motion-safe: in the component (with transform-box: fill-box +
- * origin-bottom), so reduced-motion users get the full-height bars immediately.
- */
-@keyframes parity-bar-grow {
-  from {
-    transform: scaleY(0);
-  }
-  to {
-    transform: scaleY(1);
-  }
-}
-
-/*
  * Dashboard shell padding driver.
  *
  * The dashboard sidebar is a client component that toggles between
