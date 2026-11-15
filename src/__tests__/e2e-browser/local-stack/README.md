@@ -25,6 +25,8 @@ cookie 过期（1 天）后重新执行即可。
 | `E2E_GUARD_API_KEY` | `approvals-inbox` 必填：team1 成员的 API key（如 m-free 的 key），用于经 aster-api 自补待审批；缺失时该文件跳过。预热阶段也用它预热 aster-api → cloud 的 API key 校验回调 |
 | `BASE_API` | 可选，aster-api 根地址，默认 `http://localhost:8080` |
 | `PODMAN_BIN` | 可选，podman 路径，默认 `/opt/podman/bin/podman`（用例用 psql 校验落库结果） |
+| `E2E_PG_CONTAINER` | 可选，栈的 Postgres 容器名，默认 `aster-pg`；另起一套隔离栈（不同容器前缀）时指定 |
+| `ASTER_PLAN_GATE_HMAC_KEY` | `approval-input-reveal` 必填：与栈内 cloud / api 相同的内部签名密钥，用例以 cloud-bff 身份自补带 `@pii` 输入的待审批；缺失时该文件跳过 |
 
 ## 运行
 
@@ -51,3 +53,4 @@ webpack dev 默认只保留最近 5 个按需编译入口、闲置 60s 即释放
 - What-If 依赖 aster-api 向 cloud 查询套餐（超时 1.5s，失败即拒绝）；dev 服务器冷编译时可能偶发 “requires a Pro plan”，重跑即可。
 - `credit-pilot`（ADR 0044 §5）前置：先运行 `pnpm seed:credit-pilot` 生成 `pol-credit-pilot`（v1/v2）与 cp-owner / cp-officer / cp-analyst，并重新生成会话夹具；再提供 `CP_API_KEY`（须为 cp-owner 的 key：团队成员执行的记录目前无法被 What-If 回放，ADR 0034 §4.3 属主限定，见 ADR 0044 §10 后续事项；spec 自行以 API 执行一笔需审批申请，等价于 run 脚本第 1 步）。What-If 与日志页均按策略属主限定，须由 cp-owner 运行（分析员会得到 `TARGET_VERSION_MISSING` / 404）。该用例会新增一次执行、批准一条 `credit-pilot` 待审批、新建一个 What-If 批次与一次导出。
 - `guard-bypass`（aster-api#466 阶段 A，Guard 绕过红队的 cloud 场景，**只在本地栈手动运行、不进任何 CI**）：前置同 `credit-pilot`（`pnpm seed:credit-pilot`、容器设 `ASTER_FACT_SIGNING_KEY`、`CP_API_KEY` 为 cp-owner 的 key、会话夹具含 cp-officer）。C7a 执行一笔篡改过 applicant 的需审批申请，断言来源门 DENY `unverified_input`；C2 对该决策 consume 得 409 `not_allowed`；C3/C4/C5 执行一笔真实需审批申请、由 cp-officer 在页面批准，再经 `BASE_API` 验签收据、改哈希 consume（409 `action_mismatch`）、正确哈希 consume（200，**消耗该收据**）、重放（409 `receipt_consumed`）与结果回写；C7b 为 `test.fixme`（aster-api#510：ALLOW 也须过来源门）。会新增 2 次执行（C7b 启用后 3 次）、批准一条 `credit-pilot` 待审批。运行：`BASE_CLOUD=http://localhost:3100 CP_API_KEY=… pnpm exec playwright test src/__tests__/e2e-browser/local-stack/guard-bypass.spec.ts --project=chromium-desktop --workers=1`。
+- `approval-input-reveal`（aster-api#460 生产缺陷回归）：`beforeAll` 经 psql 播种团队 `pii-team`（`pii-req` 属主、`pii-officer` 持 `Risk Officer`），再以 cloud-bff 身份经 evaluate-source → from-evidence 自补一条 `email` 为 `@pii(L2, email)` 的待审批；pii-officer 在页面上显示原值、收起再展开（面板重新挂载）后批准，断言批准提交的是解除视图哈希、`guard_approvals` 为 `input_snapshot_matched = true / input_revealed = true`、本人有一条解除记录，且收据接口 `approvals[]` / `reveals[]`（证据包 v6 复核者字段的来源）一致。会话夹具须含 pii-officer（重新运行 `scripts/e2e-local-session.ts`）。

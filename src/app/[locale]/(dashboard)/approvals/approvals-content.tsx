@@ -154,10 +154,20 @@ function snapshotHashOf(view: LoadedView): string | undefined {
   return view && view.status === 'available' ? view.inputSnapshotHash : undefined;
 }
 
+/**
+ * 本次决定所据的视图说明：有已声明 `@pii` 字段的可用视图才说明是「打码」还是「原值」，
+ * 让审批人在确认前看清自己是否已查看原值（aster-api#460：生产中审批人以为已显示原值，实际据打码视图批准）。
+ */
+function viewNoteKeyOf(view: LoadedView): 'input.decidingOnMasked' | 'input.decidingOnRevealed' | null {
+  if (!view || view.status !== 'available' || (view.piiMarks ?? []).length === 0) return null;
+  return view.revealed ? 'input.decidingOnRevealed' : 'input.decidingOnMasked';
+}
+
 function DecisionDialog({
   item,
   verb,
   inputSnapshotHash,
+  viewNoteKey,
   t,
   onCancel,
   onDone,
@@ -167,6 +177,7 @@ function DecisionDialog({
   item: InboxItem;
   verb: Verb;
   inputSnapshotHash: string | undefined;
+  viewNoteKey: ReturnType<typeof viewNoteKeyOf>;
   t: T;
   onCancel: () => void;
   onDone: () => void;
@@ -212,6 +223,9 @@ function DecisionDialog({
       <h3 className="text-sm font-semibold text-fg">
         {t(verb === 'approve' ? 'approveTitle' : 'rejectTitle')} · {subjectOf(item)}
       </h3>
+      {viewNoteKey && (
+        <p className="mt-2 text-sm text-fg-muted" data-testid="decision-view-note">{t(viewNoteKey)}</p>
+      )}
       <div className="mt-3 flex flex-col gap-2">
         <Label htmlFor="approval-comment">{t(verb === 'approve' ? 'commentOptional' : 'commentLabel')}</Label>
         <Textarea id="approval-comment" value={comment} rows={3} placeholder={t('commentPlaceholder')}
@@ -438,7 +452,8 @@ export function ApprovalsContent({
 
       {picked && (
         <DecisionDialog key={`${picked.item.id}:${picked.verb}`} item={picked.item} verb={picked.verb}
-          inputSnapshotHash={snapshotHashOf(views[keyOf(picked.item)])} t={t}
+          inputSnapshotHash={snapshotHashOf(views[keyOf(picked.item)])}
+          viewNoteKey={viewNoteKeyOf(views[keyOf(picked.item)])} t={t}
           ready={views[keyOf(picked.item)] !== undefined}
           onStaleInput={() => {
             const key = keyOf(picked.item);
