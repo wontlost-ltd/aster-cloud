@@ -42,19 +42,19 @@ Rule evaluateLoan given applicant as Applicant, produce Text:
   'de-DE': `Modul finanz.kredit.
 
 Definiere Antragsteller hat
-  kennung as Text,
-  bonitaet as Ganzzahl,
-  einkommen as Dezimal,
-  kreditbetrag as Dezimal.
+  kennung als Text,
+  bonitaet als Ganzzahl,
+  einkommen als Dezimal,
+  kreditbetrag als Dezimal.
 
-Regel kreditPruefen gegeben antragsteller as Antragsteller:
-  Falls antragsteller.bonitaet größer als 750
-    Gib zurück "Genehmigt mit Vorzugszins".
-  Sonst
-    Falls antragsteller.bonitaet größer als 650
-      Gib zurück "Genehmigt mit Standardzins".
-    Sonst
-      Gib zurück "Erfordert manuelle Prüfung".
+Regel kreditPruefen gegeben antragsteller als Antragsteller liefert Text:
+  wenn antragsteller.bonitaet größer als 750
+    gib zurück "Genehmigt mit Vorzugszins".
+  sonst
+    wenn antragsteller.bonitaet größer als 650
+      gib zurück "Genehmigt mit Standardzins".
+    sonst
+      gib zurück "Erfordert manuelle Prüfung".
 `,
 };
 
