@@ -132,7 +132,9 @@ async function upsertTeamMember(db: Db, spec: (typeof USERS)[number]): Promise<v
 async function ensurePolicy(db: Db, source: string): Promise<void> {
   const existing = await db.query.policies.findFirst({ where: eq(schema.policies.id, POLICY_ID) });
   if (existing) {
-    if (existing.teamId !== TEAM_ID) throw new Error(`策略 ${POLICY_ID} 已存在且不属于团队 ${TEAM_ID}，拒绝改写`);
+    if (existing.teamId !== TEAM_ID || existing.userId !== OWNER_ID) {
+      throw new Error(`策略 ${POLICY_ID} 已存在且不是本种子建的演示策略（${existing.teamId} / ${existing.userId}），拒绝改写`);
+    }
     if (existing.deletedAt) throw new Error(`策略 ${POLICY_ID} 在回收站中，先在界面恢复再重跑`);
     return;
   }
