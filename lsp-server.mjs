@@ -66,21 +66,11 @@ const warnMissingClientIp = createThrottledWarner({
   message: 'upgrade without CF-Connecting-IP in production — check the Cloudflare tunnel ingress; using the shared fallback bucket',
 });
 
-// Shared-secret gate. Browsers can't set custom WS headers, so the token is
-// accepted via header (x-lsp-token, for server-side/proxy callers) OR the
-// `token` query param (for the Monaco browser client). NOTE: when delivered to
-// the browser the token is necessarily a NEXT_PUBLIC_* value and therefore NOT
-// secret from end users — it is a coarse anti-drive-by control layered on top of
-// the (primary) fail-closed Origin allowlist, not a substitute for real auth.
-// 浏览器端已改用 ticket（#657），共享 token 仅供本地 / 服务端调用方使用；
-// 生产设置 LSP_TICKET_REQUIRED=true 后本网关不再接受它。
-const authToken = (process.env.LSP_AUTH_TOKEN || '').trim();
-// Escape hatch for local/dev where no token is provisioned. Never set in prod.
-const authDisabled = process.env.LSP_AUTH_DISABLED === 'true';
-// cloud 签发的短时 ticket（#657）。密钥与 cloud Worker 的 LSP_TICKET_SECRET 相同。
-// LSP_TICKET_REQUIRED=true 后只接受 ticket（此时 LSP_AUTH_TOKEN 可不配）。
+// 握手鉴权只认 cloud 签发的短时 ticket（#657）：`POST /api/lsp/ticket` 为登录用户签发，绑定用户 id（sub），
+// 60 秒过期、本网关内一次性（nonce），HMAC-SHA256 签名。密钥与 cloud Worker 的 LSP_TICKET_SECRET 相同，只在服务端。
+// 原构建期内联进前端 bundle 的共享 token（LSP_AUTH_TOKEN / NEXT_PUBLIC_LSP_TOKEN）已下线，网关不再读取。
+// 生产（NODE_ENV=production，见 Dockerfile.lsp）不带 ticket 一律 401；非生产不带 ticket 放行，供本地开发直连。
 const ticketSecret = (process.env.LSP_TICKET_SECRET || '').trim();
-const ticketRequired = process.env.LSP_TICKET_REQUIRED === 'true';
 
 const ticketNonces = createNonceCache();
 
@@ -312,7 +302,7 @@ export function childNodeArgs(scriptPath) {
 }
 
 /**
- * Constant-time string compare to avoid leaking token length/prefix via timing.
+ * 常量时间比较（ticket 签名）：不经由时序泄露签名长度 / 前缀。
  */
 function safeTokenEquals(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string') return false;
@@ -373,31 +363,25 @@ export function verifyLspTicket(ticket, { secret, now = Date.now(), nonces }) {
 /**
  * Pure, testable WebSocket-upgrade gate.
  *
- * Decides whether an incoming upgrade request is allowed. Extracted so the
- * security policy can be unit-tested without binding a socket.
+ * 顺序：连接上限（503）→ Origin 白名单（fail-closed，403）→ ticket（401）。
+ * Origin 只约束浏览器，非浏览器客户端可以伪造；真正的鉴权是 ticket。
  *
  * @param {object} input
  * @param {string|undefined} input.origin          - request Origin header
- * @param {string} [input.headerToken]    - x-lsp-token header value
- * @param {string} [input.queryToken]     - ?token= query value
- * @param {string} [input.queryTicket]    - ?ticket= query value（#657）
+ * @param {string} [input.queryTicket]             - ?ticket= query value（#657）
  * @param {number} input.activeCount               - current active connections
  * @param {object} config
  * @param {string[]} config.allowedOrigins
  * @param {number} config.maxConnections
- * @param {string} config.authToken                - '' means "no token configured"
- * @param {boolean} config.authDisabled
- * @param {boolean} config.isProduction
- * @param {string} [config.ticketSecret]           - '' 表示未配置 ticket 校验
- * @param {boolean} [config.ticketRequired]        - true 时拒绝旧共享 token
+ * @param {boolean} config.isProduction            - true 时不带 ticket 一律拒绝
+ * @param {string} config.ticketSecret             - '' 表示未配置：带 ticket 的握手一律拒绝
  * @param {ReturnType<typeof createNonceCache>} [config.nonces]
  * @param {number} [config.now]
  * @returns {{ ok: true, sub?: string } | { ok: false, code: number, reason: string }}
  */
 export function evaluateUpgrade(input, config) {
-  const { origin, headerToken, queryToken, queryTicket, activeCount } = input;
-  const { allowedOrigins, maxConnections, authToken, authDisabled, isProduction } = config;
-  const { ticketSecret = '', ticketRequired = false, nonces, now = Date.now() } = config;
+  const { origin, queryTicket, activeCount } = input;
+  const { allowedOrigins, maxConnections, isProduction, ticketSecret = '', nonces, now = Date.now() } = config;
 
   // 1) Connection cap (DoS guard) — checked first so we reject cheaply.
   if (activeCount >= maxConnections) {
@@ -410,31 +394,15 @@ export function evaluateUpgrade(input, config) {
     return { ok: false, code: 403, reason: 'Forbidden origin' };
   }
 
-  // 3) 带了 ticket 就只按 ticket 判定，失败不回落到共享 token（#657）。
+  // 3) 带了 ticket 就严格校验（验签、exp、nonce 一次性），生产与非生产相同。
   if (queryTicket !== undefined) {
     if (!ticketSecret || !nonces) return { ok: false, code: 401, reason: 'Ticket not accepted' };
     const verdict = verifyLspTicket(queryTicket, { secret: ticketSecret, now, nonces });
     return verdict.ok ? { ok: true, sub: verdict.sub } : { ok: false, code: 401, reason: 'Invalid ticket' };
   }
-  if (ticketRequired) {
-    return { ok: false, code: 401, reason: 'Missing ticket' };
-  }
 
-  // 4) Shared-secret token（过渡期保留，ticket 全量后删除）。
-  if (authToken) {
-    const provided = headerToken || queryToken;
-    if (!provided || !safeTokenEquals(provided, authToken)) {
-      return { ok: false, code: 401, reason: 'Missing or invalid token' };
-    }
-  } else if (!authDisabled) {
-    // No token configured. Fail closed in production; allow in dev so local
-    // setups keep working. Only reached when LSP_TICKET_REQUIRED is not "true" (legacy token mode); then operators MUST set LSP_AUTH_TOKEN.
-    if (isProduction) {
-      return { ok: false, code: 401, reason: 'Token gate not configured' };
-    }
-  }
-
-  return { ok: true };
+  // 4) 不带 ticket：生产拒绝；非生产放行（本地开发不连 cloud 取票）。
+  return isProduction ? { ok: false, code: 401, reason: 'Missing ticket' } : { ok: true };
 }
 
 // Create HTTP server for health checks and WebSocket upgrade
@@ -619,23 +587,21 @@ server.on('upgrade', (request, socket, head) => {
   const decision = evaluateUpgrade(
     {
       origin: request.headers.origin,
-      headerToken: request.headers['x-lsp-token'],
-      queryToken: typeof query.token === 'string' ? query.token : undefined,
       queryTicket: typeof query.ticket === 'string' ? query.ticket : undefined,
       activeCount: activeConnections.size,
     },
-    { allowedOrigins, maxConnections, authToken, authDisabled, isProduction, ticketSecret, ticketRequired, nonces: ticketNonces },
+    { allowedOrigins, maxConnections, isProduction, ticketSecret, nonces: ticketNonces },
   );
 
   if (!decision.ok) {
-    // Don't echo the offending origin/token back; just log server-side.
+    // 不回显 origin / ticket，只在服务端记原因（日志里也不记 ticket）。
     console.log(`[LSP] Rejected upgrade (${decision.code}): ${decision.reason}`);
     socket.write(`HTTP/1.1 ${decision.code} ${decision.reason}\r\n\r\n`);
     socket.destroy();
     return;
   }
 
-  // 按客户端限流在通过 Origin/token 门之后做：只有可能真正 spawn 子进程的握手才计数。
+  // 按客户端限流在通过 Origin / ticket 门之后做：只有可能真正 spawn 子进程的握手才计数。
   // 持 ticket 的会话按用户（sub）计，比按 IP 准（同一 NAT 后的多个用户互不挤占）；日志只记 sub。
   const { key: ipKey, missingHeader } = clientIdentity(request.headers, request.socket.remoteAddress, isProduction);
   const client = decision.sub ? `sub:${decision.sub}` : ipKey;
@@ -818,14 +784,12 @@ if (isMain) {
     console.log(`> Aster LSP Server ready on http://${hostname}:${port}`);
     console.log(`> WebSocket endpoint: ws://${hostname}:${port}/lsp`);
     console.log(`> Health check: http://${hostname}:${port}/health`);
-    if (ticketRequired && !ticketSecret) {
-      console.warn('[LSP] WARNING: LSP_TICKET_REQUIRED=true but LSP_TICKET_SECRET is not set. All upgrades will be REJECTED.');
-    } else if (!ticketRequired && !authToken && !authDisabled) {
+    if (!ticketSecret) {
       console.warn(
-        '[LSP] WARNING: LSP_AUTH_TOKEN is not set. ' +
+        '[LSP] WARNING: LSP_TICKET_SECRET is not set. ' +
           (isProduction
-            ? 'Upgrades without a ticket will be REJECTED (fail-closed) in production.'
-            : 'Token gate disabled in non-production; set LSP_AUTH_TOKEN or LSP_TICKET_REQUIRED=true before deploy.'),
+            ? 'All upgrades will be REJECTED (fail-closed) in production.'
+            : 'Upgrades with a ticket are rejected; upgrades without one are allowed in non-production only.'),
       );
     }
   });
@@ -858,7 +822,7 @@ function spawnLSPServer(locale) {
     console.log(`[LSP] Starting LSP server from: ${lspServerPath}`);
 
     // Pass a minimal, explicit env to the child instead of spreading the whole
-    // process environment. The proxy holds secrets (LSP_AUTH_TOKEN, any infra
+    // process environment. The proxy holds secrets (LSP_TICKET_SECRET, any infra
     // creds injected by the orchestrator); the compiler/language-server has no
     // business inheriting them. Only forward what it actually needs to run.
     const childEnv = {

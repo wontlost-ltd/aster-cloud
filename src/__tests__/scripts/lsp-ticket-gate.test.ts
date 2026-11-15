@@ -59,11 +59,8 @@ function cfg(overrides: Record<string, unknown> = {}) {
   return {
     allowedOrigins: [ORIGIN],
     maxConnections: 5,
-    authToken: 'legacy',
-    authDisabled: false,
     isProduction: true,
     ticketSecret: SECRET,
-    ticketRequired: false,
     nonces: createNonceCache(),
     now: T0,
     ...overrides,
@@ -77,19 +74,46 @@ describe('evaluateUpgrade — ticket', () => {
       .toEqual({ ok: true, sub: 'user-9' });
   });
 
-  it('带了无效 ticket 时不回落到共享 token', () => {
-    const r = evaluateUpgrade({ origin: ORIGIN, queryTicket: 'bad', queryToken: 'legacy', activeCount: 0 }, cfg());
-    expect(r).toMatchObject({ ok: false, code: 401 });
+  it('无效 ticket 被拒（401 Invalid ticket）', () => {
+    expect(evaluateUpgrade({ origin: ORIGIN, queryTicket: 'bad', activeCount: 0 }, cfg()))
+      .toEqual({ ok: false, code: 401, reason: 'Invalid ticket' });
   });
 
-  it('过渡期：未带 ticket 时旧 token 仍可用', () => {
-    expect(evaluateUpgrade({ origin: ORIGIN, queryToken: 'legacy', activeCount: 0 }, cfg())).toEqual({ ok: true });
+  it('★生产：不带 ticket 被拒（401 Missing ticket）；旧共享 token 不再是凭据', () => {
+    expect(evaluateUpgrade({ origin: ORIGIN, activeCount: 0 }, cfg()))
+      .toEqual({ ok: false, code: 401, reason: 'Missing ticket' });
+    // 旧客户端只带 ?token= / x-lsp-token：网关已不读取这两个参数，等同于没带凭据
+    expect(evaluateUpgrade({ origin: ORIGIN, activeCount: 0, queryToken: 'legacy', headerToken: 'legacy' } as never, cfg()))
+      .toEqual({ ok: false, code: 401, reason: 'Missing ticket' });
   });
 
-  it('LSP_TICKET_REQUIRED 后：旧 token 被拒、不带 ticket 被拒', () => {
-    const c = cfg({ ticketRequired: true });
-    expect(evaluateUpgrade({ origin: ORIGIN, queryToken: 'legacy', activeCount: 0 }, c)).toMatchObject({ ok: false, code: 401 });
-    expect(evaluateUpgrade({ origin: ORIGIN, activeCount: 0 }, c)).toMatchObject({ ok: false, code: 401 });
+  it('★生产且未配置 ticket 密钥：一律拒绝（fail-closed）', () => {
+    expect(evaluateUpgrade({ origin: ORIGIN, activeCount: 0 }, cfg({ ticketSecret: '' })))
+      .toMatchObject({ ok: false, code: 401 });
+  });
+
+  it('非生产不带 ticket 放行（本地开发不连 cloud）；带了 ticket 仍按 ticket 严格校验', async () => {
+    expect(evaluateUpgrade({ origin: ORIGIN, activeCount: 0 }, cfg({ isProduction: false, ticketSecret: '' })))
+      .toEqual({ ok: true });
+    expect(evaluateUpgrade({ origin: ORIGIN, queryTicket: 'bad', activeCount: 0 }, cfg({ isProduction: false })))
+      .toMatchObject({ ok: false, code: 401 });
+    const ticket = await issueLspTicket({ secret: SECRET, sub: 'dev', now: T0 });
+    expect(evaluateUpgrade({ origin: ORIGIN, queryTicket: ticket, activeCount: 0 }, cfg({ isProduction: false })))
+      .toEqual({ ok: true, sub: 'dev' });
+  });
+
+  it('重放：同一 ticket 第二次握手被拒', async () => {
+    const c = cfg();
+    const ticket = await issueLspTicket({ secret: SECRET, sub: 'u', now: T0 });
+    expect(evaluateUpgrade({ origin: ORIGIN, queryTicket: ticket, activeCount: 0 }, c)).toMatchObject({ ok: true });
+    expect(evaluateUpgrade({ origin: ORIGIN, queryTicket: ticket, activeCount: 0 }, c)).toMatchObject({ ok: false, code: 401 });
+  });
+
+  it('过期 / 签名错误的 ticket 被拒', async () => {
+    const expired = await issueLspTicket({ secret: SECRET, sub: 'u', now: T0 - LSP_TICKET_TTL_MS - 1 });
+    expect(evaluateUpgrade({ origin: ORIGIN, queryTicket: expired, activeCount: 0 }, cfg())).toMatchObject({ ok: false, code: 401 });
+    const forged = await issueLspTicket({ secret: 'other-secret', sub: 'u', now: T0 });
+    expect(evaluateUpgrade({ origin: ORIGIN, queryTicket: forged, activeCount: 0 }, cfg())).toMatchObject({ ok: false, code: 401 });
   });
 
   it('网关未配置 ticket 密钥时带 ticket 被拒（不静默放行）', async () => {
