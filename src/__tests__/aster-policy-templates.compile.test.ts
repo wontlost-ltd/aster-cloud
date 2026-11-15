@@ -7,7 +7,7 @@
  * 并用对应 locale 的 lexicon；新增 locale 却没登记 lexicon、或模板含错误诊断，都会硬失败。
  */
 import { describe, it, expect } from 'vitest';
-import { compile, evaluate, EN_US, ZH_CN, DE_DE } from '@aster-cloud/aster-lang-ts/browser';
+import { compile, compileAndTypecheck, evaluate, EN_US, ZH_CN, DE_DE } from '@aster-cloud/aster-lang-ts/browser';
 import { ASTER_POLICY_TEMPLATES, getTemplateForLocale } from '@/config/aster-policy-templates';
 
 type TemplateLocale = keyof typeof ASTER_POLICY_TEMPLATES;
@@ -73,19 +73,32 @@ describe('built-in editor templates compile in every locale', () => {
   }
 
   for (const loc of LOCALES) {
-    it(`${loc}: 模板可执行，三档信用分得到与 en 模板一致的决策`, () => {
+    it(`${loc}: 模板通过类型检查`, () => {
+      const result = compileAndTypecheck(ASTER_POLICY_TEMPLATES[loc], {
+        lexicon: LEXICONS[loc],
+      } as Parameters<typeof compileAndTypecheck>[1]);
+      const errors = (result.typeErrors ?? []).filter((d) => d.severity !== 'warning');
+      expect(errors, `[${loc}] type errors: ${JSON.stringify(errors)}`).toEqual([]);
+    });
+  }
+
+  for (const loc of LOCALES) {
+    it(`${loc}: 模板可执行，按 750 / 650 阈值得到与 en 模板一致的决策`, () => {
       const result = compile(ASTER_POLICY_TEMPLATES[loc], {
         lexicon: LEXICONS[loc],
       } as Parameters<typeof compile>[1]);
       const { rule, param, score, expect: expected } = SEMANTICS[loc];
-      const scores = [800, 700, 600];
-      scores.forEach((value, i) => {
+      // 含 750 / 650 两个阈值的两侧，锁定「大于」是严格比较
+      const cases: [number, number][] = [
+        [800, 0], [751, 0], [750, 1], [700, 1], [651, 1], [650, 2], [600, 2],
+      ];
+      for (const [value, tier] of cases) {
         const ev = evaluate(result.core!, rule, {
           [param]: { [score]: value },
         });
         expect(ev.success, `[${loc}] score=${value} eval: ${ev.error ?? ''}`).toBe(true);
-        expect(String(ev.value), `[${loc}] score=${value}`).toBe(expected[i]);
-      });
+        expect(String(ev.value), `[${loc}] score=${value}`).toBe(expected[tier]);
+      }
     });
   }
 
