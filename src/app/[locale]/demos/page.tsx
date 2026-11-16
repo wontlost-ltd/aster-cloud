@@ -54,7 +54,7 @@ export default async function DemosIndexPage({ params }: Props) {
         <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {DEMO_CARDS.map((card) => (
             <li key={card.key}>
-              <Link href={card.href} className="block h-full focus:outline-none">
+              <Link href={card.href} className="block h-full rounded-xl focus:outline-none focus-visible:shadow-ring">
                 <Card className="h-full transition-shadow hover:shadow-brand">
                   <CardBody className="flex h-full flex-col gap-3 pt-6">
                     <span className="text-3xl" aria-hidden>{card.emoji}</span>
@@ -75,7 +75,7 @@ export default async function DemosIndexPage({ params }: Props) {
               仅 zh locale 展示;非 zh 不列(歌词是中文的)。 */}
           {locale.toLowerCase().startsWith('zh') && (
             <li key="guyong">
-              <Link href="/demos/guyong" className="block h-full focus:outline-none">
+              <Link href="/demos/guyong" className="block h-full rounded-xl focus:outline-none focus-visible:shadow-ring">
                 <Card className="h-full transition-shadow hover:shadow-brand">
                   <CardBody className="flex h-full flex-col gap-3 pt-6">
                     <span className="text-3xl" aria-hidden>🕯️</span>

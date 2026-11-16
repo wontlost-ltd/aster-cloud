@@ -52,6 +52,8 @@ export default async function ApiKeysPage() {
     keyCreated: t('keyCreated'),
     copyWarning: t('copyWarning'),
     copy: t('copy'),
+    copied: t('copied'),
+    copyFailed: t('copyFailed'),
     dismiss: t('dismiss'),
     createNew: t('createNew'),
     keyPlaceholder: t('keyPlaceholder'),

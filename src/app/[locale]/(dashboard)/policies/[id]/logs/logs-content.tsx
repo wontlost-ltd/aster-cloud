@@ -883,7 +883,7 @@ export function LogsContent({
                               {t.logs.output}
                             </h4>
                           </div>
-                          <pre className="bg-bg p-4 text-xs overflow-x-auto font-mono text-fg max-h-48">
+                          <pre tabIndex={0} className="bg-bg p-4 text-xs overflow-x-auto font-mono text-fg max-h-48">
                             {JSON.stringify(log.output, null, 2)}
                           </pre>
                         </div>
@@ -897,7 +897,7 @@ export function LogsContent({
                               {t.logs.error}
                             </h4>
                           </div>
-                          <pre className="bg-bg p-4 text-xs overflow-x-auto font-mono text-red-600 max-h-48">
+                          <pre tabIndex={0} className="bg-bg p-4 text-xs overflow-x-auto font-mono text-red-600 max-h-48">
                             {log.error}
                           </pre>
                         </div>

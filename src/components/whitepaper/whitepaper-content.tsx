@@ -97,7 +97,7 @@ export function WhitepaperContent({ locale }: WhitepaperContentProps) {
       {/* §4 实例 */}
       <Section heading={w.example.heading}>
         <p className="prose-p">{w.example.intro}</p>
-        <pre className="my-4 overflow-x-auto rounded-lg bg-zinc-900 p-4 text-xs leading-relaxed text-zinc-100 print:border print:border-zinc-300 print:bg-white print:text-zinc-900">
+        <pre tabIndex={0} className="my-4 overflow-x-auto rounded-lg bg-zinc-900 p-4 text-xs leading-relaxed text-zinc-100 print:border print:border-zinc-300 print:bg-white print:text-zinc-900">
           {w.example.ruleCode}
         </pre>
         <p className="prose-p">{w.example.declinedLead}</p>

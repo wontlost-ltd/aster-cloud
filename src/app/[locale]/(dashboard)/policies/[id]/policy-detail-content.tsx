@@ -336,7 +336,7 @@ export function PolicyDetailContent({
       <div className="bg-bg shadow sm:rounded-lg mb-6">
         <div className="px-4 py-5 sm:p-6">
           <h3 className="text-lg font-medium text-fg mb-4">{t.detail.policyContent}</h3>
-          <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm">
+          <pre tabIndex={0} className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm">
             {policy.content}
           </pre>
         </div>

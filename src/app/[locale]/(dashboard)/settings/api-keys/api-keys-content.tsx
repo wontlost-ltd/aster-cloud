@@ -17,6 +17,7 @@ import {
   Select,
   Stack,
   cn,
+  toast,
 } from '@/components/ui';
 import { ConfirmDialog } from '@/components/ui';
 
@@ -39,6 +40,8 @@ interface Translations {
   keyCreated: string;
   copyWarning: string;
   copy: string;
+  copied: string;
+  copyFailed: string;
   dismiss: string;
   createNew: string;
   keyPlaceholder: string;
@@ -213,12 +216,25 @@ export function ApiKeysContent({
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
+  // 复制反馈：成功后按钮短暂显示「已复制」并经 live region 播报；剪贴板不可用或被拒（权限、非安全上下文）
+  // 时提示手动复制，不抛未处理的 Promise 拒绝（#774）。
+  const [copiedText, setCopiedText] = useState<string | null>(null);
+  const copyToClipboard = async (text: string) => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable');
+      await navigator.clipboard.writeText(text);
+      setCopiedText(text);
+      window.setTimeout(() => setCopiedText((cur) => (cur === text ? null : cur)), 2000);
+    } catch {
+      setCopiedText(null);
+      toast.error(t.copyFailed);
+    }
   };
 
   return (
     <Container size="xl" className="py-6 sm:py-10">
+      {/* 复制成功的读屏播报 */}
+      <span role="status" aria-live="polite" className="sr-only">{copiedText ? t.copied : ''}</span>
       <Stack gap={6}>
         {/* 详情页：保留 Breadcrumbs（放进 PageHeader 的 breadcrumbs slot）。 */}
         <PageHeader
@@ -252,10 +268,10 @@ export function ApiKeysContent({
                     type="button"
                     variant="secondary"
                     size="sm"
-                    onClick={() => copyToClipboard(newKeyValue)}
+                    onClick={() => void copyToClipboard(newKeyValue)}
                   >
-                    <Copy className="size-3.5" aria-hidden />
-                    {t.copy}
+                    {copiedText === newKeyValue ? <CheckCircle2 className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
+                    {copiedText === newKeyValue ? t.copied : t.copy}
                   </Button>
                 </Stack>
                 <button
@@ -407,6 +423,8 @@ export function ApiKeysContent({
                 <CodeBlock
                   label="cURL"
                   copyLabel={t.copy}
+                  copiedLabel={t.copied}
+                  copiedText={copiedText}
                   copy={copyToClipboard}
                   code={`curl -X POST https://aster-lang.cloud/api/v1/policies/YOUR_POLICY_ID/execute \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
@@ -423,6 +441,8 @@ export function ApiKeysContent({
                 <CodeBlock
                   label="JavaScript / Node.js"
                   copyLabel={t.copy}
+                  copiedLabel={t.copied}
+                  copiedText={copiedText}
                   copy={copyToClipboard}
                   code={`const response = await fetch('https://aster-lang.cloud/api/v1/policies/YOUR_POLICY_ID/execute', {
   method: 'POST',
@@ -447,6 +467,8 @@ else console.log(result.data.allowed, result.data.deniedReasons, result.data);`}
                 <CodeBlock
                   label="Python"
                   copyLabel={t.copy}
+                  copiedLabel={t.copied}
+                  copiedText={copiedText}
                   copy={copyToClipboard}
                   code={`import requests
 
@@ -483,6 +505,8 @@ else:
                 <CodeBlock
                   label="cURL"
                   copyLabel={t.copy}
+                  copiedLabel={t.copied}
+                  copiedText={copiedText}
                   copy={copyToClipboard}
                   code={`curl -X GET https://aster-lang.cloud/api/v1/policies/YOUR_POLICY_ID/versions \\
   -H "Cookie: YOUR_CLOUD_SESSION_COOKIE"`}
@@ -569,10 +593,14 @@ interface CodeBlockProps {
   code: string;
   label?: string;
   copyLabel?: string;
-  copy?: (text: string) => void;
+  copy?: (text: string) => void | Promise<void>;
+  /** 已复制时按钮显示的文字 */
+  copiedLabel?: string;
+  /** 最近一次复制成功的文本；与本块代码相同时显示「已复制」 */
+  copiedText?: string | null;
 }
 
-function CodeBlock({ code, label, copyLabel, copy }: CodeBlockProps) {
+function CodeBlock({ code, label, copyLabel, copy, copiedLabel, copiedText }: CodeBlockProps) {
   return (
     <Stack gap={1}>
       {(label || (copy && copyLabel)) && (
@@ -583,16 +611,16 @@ function CodeBlock({ code, label, copyLabel, copy }: CodeBlockProps) {
           {copy && copyLabel && (
             <button
               type="button"
-              onClick={() => copy(code)}
+              onClick={() => void copy(code)}
               className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary-hover"
             >
-              <Copy className="size-3" aria-hidden />
-              {copyLabel}
+              {copiedText === code ? <CheckCircle2 className="size-3" aria-hidden /> : <Copy className="size-3" aria-hidden />}
+              {copiedText === code && copiedLabel ? copiedLabel : copyLabel}
             </button>
           )}
         </Stack>
       )}
-      <pre className="overflow-x-auto rounded-md bg-zinc-900 p-3 font-mono text-xs text-zinc-100">
+      <pre tabIndex={0} className="overflow-x-auto rounded-md bg-zinc-900 p-3 font-mono text-xs text-zinc-100">
         {code}
       </pre>
     </Stack>

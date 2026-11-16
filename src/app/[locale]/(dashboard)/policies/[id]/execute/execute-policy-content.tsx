@@ -781,7 +781,7 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
                         <summary className="text-xs text-amber-600 cursor-pointer hover:text-amber-800">
                           {t('viewDetails')}
                         </summary>
-                        <pre className="mt-2 text-xs text-amber-700 bg-amber-100 p-2 rounded overflow-x-auto whitespace-pre-wrap">
+                        <pre tabIndex={0} className="mt-2 text-xs text-amber-700 bg-amber-100 p-2 rounded overflow-x-auto whitespace-pre-wrap">
                           {schemaError.detail}
                         </pre>
                       </details>
@@ -1042,7 +1042,7 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
                   <summary className="text-sm text-fg-muted cursor-pointer hover:text-fg">
                     {t('viewRawOutput')}
                   </summary>
-                  <pre className="mt-2 bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-xs">
+                  <pre tabIndex={0} className="mt-2 bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-xs">
                     {JSON.stringify(result, null, 2)}
                   </pre>
                 </details>

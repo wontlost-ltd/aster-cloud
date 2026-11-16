@@ -235,6 +235,8 @@ body {
   padding: 0.125rem 0.375rem;
   border-radius: 4px;
   background: var(--aster-color-zinc-100, #f4f4f5);
+  /* 长端点路径（如 POST /api/v1/audit/anomalies/{id}/actions/verify）在 390px 下不能撑出横向滚动（#774） */
+  overflow-wrap: anywhere;
 }
 [data-theme="dark"] .docs-article :not(pre) > code {
   background: var(--aster-color-zinc-800, #27272a);
@@ -718,4 +720,14 @@ body {
   }
   /* 无动画时奖杯仍需可见 */
   .poker-trophy.is-show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+/*
+ * 可横向滚动的代码块（<pre tabIndex={0}>）与文档表格容器：键盘聚焦后可用方向键滚动，
+ * 必须有可见焦点指示（WCAG 2.4.7，#774）。用 outline 而非 box-shadow，避免被父级 overflow 裁掉。
+ */
+pre[tabindex="0"]:focus-visible,
+.docs-table-wrap:focus-visible {
+  outline: 2px solid var(--aster-primary-ring);
+  outline-offset: 2px;
 }

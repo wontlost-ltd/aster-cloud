@@ -163,7 +163,7 @@ export function VocabDemoContent({ locale }: { locale: string }) {
       <section className="mb-8">
         <StepHeading n={3} title={t('step3.title')} />
         <p className="mb-3 text-sm text-fg-muted">{t('step3.hint')}</p>
-        <pre className="overflow-x-auto rounded-lg bg-zinc-900 p-4 text-sm leading-relaxed text-zinc-100">
+        <pre tabIndex={0} className="overflow-x-auto rounded-lg bg-zinc-900 p-4 text-sm leading-relaxed text-zinc-100">
           {highlightVocab(rule.source, domain.terms.map((t) => t.localized[loc]))}
         </pre>
         <p className="mt-2 text-xs text-fg-subtle">
