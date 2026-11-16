@@ -485,7 +485,7 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
                       <Label htmlFor="password">{t.password}</Label>
                       <Link
                         href="/forgot-password"
-                        className="text-xs font-medium text-primary hover:text-primary-hover"
+                        className="text-xs font-medium text-primary hover:text-primary-hover max-sm:py-3"
                       >
                         {t.forgotPassword}
                       </Link>
@@ -527,7 +527,7 @@ function LoginForm({ translations: t, turnstileSiteKey, denial }: LoginContentPr
                         // 不进 Tab 序列：键盘用户从密码框应直达"登录"，
                         // 而不是先经过一个装饰性控件。
                         tabIndex={-1}
-                        className="absolute inset-y-0 right-0 flex items-center px-3 text-fg-muted transition-colors hover:text-fg"
+                        className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-fg-muted transition-colors hover:text-fg"
                       >
                         {/* ★用 lucide 图标而非 emoji：emoji 在不同系统上字形/配色
                             各异，与设计系统不统一；且它是文本，会被读屏念成

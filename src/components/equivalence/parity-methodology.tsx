@@ -36,7 +36,7 @@ export async function ParityMethodology() {
                 <ul className="space-y-1.5 text-sm">
                   {Object.values(HISTORY_FILES).map((file) => (
                     <li key={file}>
-                      <a href={repoFileUrl(file)} className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:text-primary-hover">
+                      <a href={repoFileUrl(file)} className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:text-primary-hover max-sm:py-3">
                         {file}
                         <ArrowUpRight className="size-3" aria-hidden />
                       </a>
