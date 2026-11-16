@@ -18,10 +18,14 @@ vi.mock('@/components/ui', () => ({
     <button {...rest}>{children}</button>
   ),
   Container: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  EmptyState: ({ title }: { title: string }) => <div>{title}</div>,
+  EmptyState: ({ title, description, action }: { title: string; description?: React.ReactNode; action?: React.ReactNode }) => (
+    <div><span>{title}</span>{description && <p>{description}</p>}{action}</div>
+  ),
   Label: ({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) => <label htmlFor={htmlFor}>{children}</label>,
   PageHeader: ({ title }: { title: string }) => <h1>{title}</h1>,
   Textarea: (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea {...props} />,
+  buttonVariants: () => 'btn',
+  cn: (...c: unknown[]) => c.filter(Boolean).join(' '),
 }));
 
 const trackMock = vi.hoisted(() => vi.fn());
@@ -138,6 +142,26 @@ describe('ApprovalsContent', () => {
     expect(screen.queryByRole('button', { name: 'approve' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'reject' })).toBeNull();
     expect(screen.getByText('readOnly').getAttribute('title')).toContain('"role":"DPO"');
+  });
+
+  it('#796 空状态带操作与「了解更多」：版本审批指向策略列表，动作审批指向 Guard 接入、业务角色与审批文档', () => {
+    renderWith([]);
+    const hrefs = screen.getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')]);
+    expect(hrefs).toEqual(
+      expect.arrayContaining([
+        ['approvals.openPolicies', '/policies'],
+        ['approvals.connectGuard', '/docs/how-to/guard'],
+        ['approvals.assignRoles', '/teams'],
+        ['learnMore', '/docs/how-to/approvals'],
+      ]),
+    );
+    // 空状态说明审批从哪里来
+    expect(screen.getByText('approvals.versionsEmptyHow')).toBeTruthy();
+    expect(screen.getByText(/approvals\.guardEmptyHow/)).toBeTruthy();
+    // 两个分区标题旁各有一个帮助提示，且不并入标题名称
+    expect(screen.getByRole('link', { name: 'hints.approvalFlow' }).getAttribute('href')).toBe('/docs/how-to/approvals');
+    expect(screen.getByRole('link', { name: 'hints.executionPoint' }).getAttribute('href')).toBe('/docs/how-to/guard');
+    expect(screen.getByRole('heading', { name: 'versions.title' })).toBeTruthy();
   });
 
   it('空列表：渲染空态，无操作按钮', () => {

@@ -3,7 +3,8 @@
 // 治理视图（#739）：按控制注册表展开 框架 → 控制项（条款）→ 策略，并列出未登记键与未关联策略。
 // 只陈述源码里的 @control 引用与活动计数，不做合规判定。
 import { useTranslations } from 'next-intl';
-import { Badge, Card, CardBody, CardHeader, CardTitle, Container, EmptyState, PageHeader, Stack } from '@/components/ui';
+import { Badge, Card, CardBody, CardHeader, CardTitle, Container, EmptyState, PageHeader, Stack, buttonVariants } from '@/components/ui';
+import { DocsLink, EMPTY_STATE_ACTIONS_CLASS } from '@/components/docs/docs-link';
 import { Link } from '@/i18n/navigation';
 import { localizedTitle } from '@/services/evidence/control-registry';
 import type { ControlGroup, GovernanceOverview, ImpactPolicy, ImpactVersion, PolicyActivity } from '@/lib/governance-impact';
@@ -100,6 +101,7 @@ function ControlSection({ control, locale, t }: { control: ControlGroup; locale:
 
 export function GovernanceContent({ locale, overview }: Props) {
   const t = useTranslations('governancePage');
+  const tGuide = useTranslations('guidance');
   // 未解析版本只带 policyId：名字从各清单里反查，查不到（该策略没有任何可解析版本）时显示 id
   const policyNames = new Map<string, string>();
   for (const p of overview.unlinked) policyNames.set(p.id, p.name);
@@ -116,6 +118,21 @@ export function GovernanceContent({ locale, overview }: Props) {
       />
 
       <Stack gap={6}>
+        {/* 还没有任何可见策略（#796）：控制项表格全是 0，先给出建策略的入口与一个带 @control 的完整示例 */}
+        {policyNames.size === 0 && (
+          <EmptyState
+            title={tGuide('governance.emptyTitle')}
+            description={tGuide('governance.emptyDesc')}
+            action={
+              <div className={EMPTY_STATE_ACTIONS_CLASS}>
+                <Link href="/policies" className={buttonVariants({ variant: 'primary', size: 'sm' })}>
+                  {tGuide('governance.openPolicies')}
+                </Link>
+                <DocsLink slug="guides/credit-pilot">{tGuide('governance.seeExample')}</DocsLink>
+              </div>
+            }
+          />
+        )}
         <p className="text-sm text-muted-foreground" data-testid="registry-version">
           {t('registryVersion', { version: overview.registryVersion })}
         </p>

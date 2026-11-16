@@ -17,6 +17,7 @@ import {
   Stack,
 } from '@/components/ui';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
+import { DocsLink } from '@/components/docs/docs-link';
 import { summarizeStoredExport, type StoredEvidenceSummary } from '@/services/evidence/stored';
 import {
   RegulatoryMappingPanel,
@@ -76,6 +77,7 @@ const DECISION_KEYS = [
 
 export function ReportsContent({ locale, policies, initialExports }: Props) {
   const t = useTranslations('evidenceExport');
+  const tGuide = useTranslations('guidance');
   const [policyId, setPolicyId] = useState<string>(''); // '' = 全部
   const [startDate, setStartDate] = useState<string>(defaultStart());
   const [endDate, setEndDate] = useState<string>('');
@@ -341,7 +343,11 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
       <section className="mt-6">
         <h2 className="mb-3 text-lg font-semibold text-fg">{t('historyTitle')}</h2>
         {exports.length === 0 ? (
-          <EmptyState title={t('historyEmpty')} description={t('historyEmptyDesc')} />
+          <EmptyState
+            title={t('historyEmpty')}
+            description={t('historyEmptyDesc')}
+            action={<DocsLink slug="guides/credit-pilot">{tGuide('evidence.learnMore')}</DocsLink>}
+          />
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="min-w-full text-sm">

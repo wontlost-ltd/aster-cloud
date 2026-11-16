@@ -54,6 +54,7 @@ const PUBLIC = [
 const DOCS = [
   'docs', 'docs/getting-started', 'docs/getting-started/overview', 'docs/getting-started/quickstart',
   'docs/getting-started/authentication', 'docs/getting-started/api-keys', 'docs/getting-started/errors',
+  'docs/how-to', 'docs/how-to/teams', 'docs/how-to/approvals', 'docs/how-to/guard',
   'docs/guides', 'docs/guides/credit-pilot', 'docs/guides/guard-approvals', 'docs/guides/workspace',
   'docs/api', 'docs/api/policies', 'docs/api/policies/evaluate', 'docs/api/policies/evaluate-json',
   'docs/api/policies/evaluate-source', 'docs/api/policies/batch', 'docs/api/policies/cache', 'docs/api/policies/rollback',

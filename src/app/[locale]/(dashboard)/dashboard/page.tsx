@@ -1,13 +1,14 @@
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
-import { db, apiKeys, aiKeyBindings, teamMembers } from '@/lib/prisma';
-import { eq, sql, and } from 'drizzle-orm';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { isAdminFromSession } from '@/lib/admin-auth';
 import { DashboardContent } from './dashboard-content';
 import { localizedTitle } from '@/lib/page-metadata';
 import { getDashboardData } from './dashboard-data';
 import { listPendingVersionApprovals } from '@/lib/version-approvals-inbox';
+import { buildGettingStartedItems } from '@/lib/onboarding/getting-started';
+import { CAN_BILLING } from '@/lib/deployment-mode';
+import { loadGettingStartedSignals } from '@/lib/onboarding/getting-started-signals';
 
 export const generateMetadata = localizedTitle('dashboardNav', 'dashboard');
 
@@ -29,48 +30,22 @@ export default async function DashboardPage() {
   const locale = await getLocale();
 
   /*
-   * Admin launchpad signals — five booleans that drive the first-run
-   * checklist component. We resolve them in parallel; each query is a
-   * primary-key / user-id-scoped lookup, so the round trip is cheap.
-   * The launchpad component itself decides whether to render based on
-   * `isAdmin && setupSignals.outstanding > 0`.
-   *
-   * Why server-side: NextAuth's JWT exposes `isAdmin`, but the other
-   * four flags need DB lookups anyway, so co-locating them keeps the
-   * first-paint a single render with no client fetch.
+   * 上手清单（#796）：每个用户都有，条目按是否平台管理员区分。完成信号按当前用户从真实数据派生，
+   * 一条查询算完（见 getting-started-signals.ts）；服务端算好条目，首屏一次渲染、无客户端请求。
    */
   const adminContext = await isAdminFromSession();
   const isAdmin = adminContext !== null;
-  const [aiKeyCount, apiKeyCount, teamMemberCount] = await Promise.all([
-    db
-      .select({ c: sql<number>`count(*)::int` })
-      .from(aiKeyBindings)
-      .where(
-        and(
-          eq(aiKeyBindings.userId, session.user.id),
-          eq(aiKeyBindings.active, true),
-        ),
-      )
-      .then((r) => r[0]?.c ?? 0),
-    db
-      .select({ c: sql<number>`count(*)::int` })
-      .from(apiKeys)
-      .where(eq(apiKeys.userId, session.user.id))
-      .then((r) => r[0]?.c ?? 0),
-    db
-      .select({ c: sql<number>`count(*)::int` })
-      .from(teamMembers)
-      .where(eq(teamMembers.userId, session.user.id))
-      .then((r) => r[0]?.c ?? 0),
-  ]);
-
-  const setupSignals = {
+  const gettingStartedSignals = await loadGettingStartedSignals({
+    userId: session.user.id,
     hasPolicy: (stats.usage.policies ?? 0) > 0,
-    hasApiKey: apiKeyCount > 0,
-    hasAiKey: aiKeyCount > 0,
-    hasTeammate: teamMemberCount > 1, // 1 = solo (just the admin themselves)
-    hasReviewedBilling: stats.plan !== 'trial' && stats.plan !== 'free',
-  };
+    plan: stats.plan,
+  });
+  const gettingStartedItems = buildGettingStartedItems({
+    signals: gettingStartedSignals,
+    isAdmin,
+    billing: CAN_BILLING,
+    firstPolicyId: policies[0]?.id ?? null,
+  });
 
   // 预计算 PII 总数
   const totalPiiFields = policies.reduce(
@@ -118,50 +93,13 @@ export default async function DashboardPage() {
     },
   };
 
-  // adminLaunchpad lives in its own root namespace so it can be shared
-  // by other admin surfaces later without a dashboard.* prefix.
-  const tLaunch = await getTranslations('adminLaunchpad');
-  const launchpadTranslations = {
-    title: tLaunch('title'),
-    body: tLaunch('body'),
-    progressTemplate: tLaunch.raw('progress'),
-    dismiss: tLaunch('dismiss'),
-    steps: {
-      createPolicy: {
-        label: tLaunch('steps.createPolicy.label'),
-        desc: tLaunch('steps.createPolicy.desc'),
-        cta: tLaunch('steps.createPolicy.cta'),
-      },
-      addApiKey: {
-        label: tLaunch('steps.addApiKey.label'),
-        desc: tLaunch('steps.addApiKey.desc'),
-        cta: tLaunch('steps.addApiKey.cta'),
-      },
-      addAiKey: {
-        label: tLaunch('steps.addAiKey.label'),
-        desc: tLaunch('steps.addAiKey.desc'),
-        cta: tLaunch('steps.addAiKey.cta'),
-      },
-      inviteTeam: {
-        label: tLaunch('steps.inviteTeam.label'),
-        desc: tLaunch('steps.inviteTeam.desc'),
-        cta: tLaunch('steps.inviteTeam.cta'),
-      },
-      reviewBilling: {
-        label: tLaunch('steps.reviewBilling.label'),
-        desc: tLaunch('steps.reviewBilling.desc'),
-        cta: tLaunch('steps.reviewBilling.cta'),
-      },
-    },
-  };
-
   return (
     <DashboardContent
       stats={stats}
       policies={policies}
+      userId={session.user.id}
       isAdmin={isAdmin}
-      setupSignals={setupSignals}
-      launchpadTranslations={launchpadTranslations}
+      gettingStartedItems={gettingStartedItems}
       totalPiiFields={totalPiiFields}
       translations={translations}
       locale={locale}

@@ -1,0 +1,93 @@
+---
+title: "Connect Aster Guard to a policy"
+description: "Check AI agent actions against your policy before they run: set a default version, issue an API key, and put aster-guard between the agent and its tools."
+updated: 2026-11-16
+apiVersion: v1
+---
+
+# Connect Aster Guard to a policy
+
+Aster Guard checks an action an AI agent wants to take (delete a customer record, send a payment, email a customer) against one of your policies **before** the action runs. The policy decides: allow, deny, or wait for a person to approve. Every decision is recorded in the audit chain.
+
+The place where this check happens is the **execution point**. It is the `aster-guard` component that sits between the agent and its tools. A tool call is only forwarded when the policy allows it, so the agent cannot skip the check.
+
+## Before you start
+
+- **A policy that decides actions.** The policy's entry function receives the proposed action and returns a verdict: `Verdict.allow()`, `Verdict.deny("<reason>")`, `Verdict.require_approval("<business role>", "<reason>")` or `Verdict.escalate("<reason>")`.
+- **A default version.** Guard always uses the policy's default version. Open the policy's **Versions** page, get a version approved (see [Approvals](/docs/how-to/approvals)) and set it as the default. Changing the default switches Guard to the new version; if that cannot be confirmed, the default stays as it was.
+- **An API key.** Create one in [Settings → API Keys](/settings/api-keys). Choose the team scope when the policy belongs to a team, so decisions and approvals stay in that team. See [Create an API key](/docs/getting-started/api-keys).
+- **Approvers.** If the policy can return `require_approval`, make sure someone in the team holds that business role. See [Invite a team and assign business roles](/docs/how-to/teams).
+
+## Choose how to connect
+
+Install `@aster-cloud/aster-guard` 0.3.0 or later from npm (Node.js 24 or later). It offers two forms of the execution point. Both verify the signed execution receipt and consume it before anything runs, and neither has an option to skip that. The full flag and API reference is in [Action Guard on aster-lang.dev](https://aster-lang.dev/docs/action-guard).
+
+### Wrap an MCP server
+
+If your agent calls tools over MCP, run `aster-guard-mcp` in front of the existing MCP server and point the agent at the proxy instead:
+
+```bash
+ASTER_GUARD_API_KEY=ak_your_key_here \
+aster-guard-mcp \
+  --base-url https://policy.aster-lang.dev \
+  --policy guard.customer/decide \
+  --principal-id support-agent \
+  --tenant-id <team-id> \
+  --isolation network \
+  --tools delete_customer_record,send_refund \
+  --upstream "node ./my-mcp-server.js"
+```
+
+- `--policy` is `<module>/<function>`: the module name declared in your policy and the function that makes the decision.
+- `--tenant-id` is the workspace the API key belongs to. For a team key it is the team ID, which you can see in the team page's address (`/teams/<team-id>`).
+- `--tools` lists the tools the agent may call. Each call becomes an action: the tool name is the action name and its arguments are the context.
+- An allowed call is forwarded. A denied call returns a tool error that names the decision. A call that needs approval waits (300 seconds by default, `--approval-timeout`) and then continues or is blocked.
+
+<Callout type="warning" title="Hide the original tools from the agent">
+Guard can only protect tools the agent reaches through the proxy. Make sure the agent has no other route to the upstream server or its endpoints. `--isolation` states how that is enforced.
+</Callout>
+
+### Call Guard from your code
+
+In a TypeScript service, use `GuardClient.run`. Your callback runs only after the decision is `ALLOW` and its receipt has been verified and consumed:
+
+```ts
+import { GuardClient } from '@aster-cloud/aster-guard';
+
+const guard = new GuardClient({
+  baseUrl: 'https://policy.aster-lang.dev',
+  apiKey: process.env.ASTER_API_KEY!,
+  policyModule: 'guard.customer',
+  policyFunction: 'decide',
+  principal: { id: 'billing-worker', type: 'agent' },
+  tenantId: '<team-id>',
+});
+
+const outcome = await guard.run(
+  { action: { name: 'delete_customer_record' }, resource: { type: 'customer', id: 'C-1001' } },
+  async () => deleteCustomerRecord('C-1001'),
+);
+// outcome.kind: 'executed' | 'blocked' | 'pending' | 'failed'
+```
+
+## When an action needs approval
+
+A `require_approval` or `escalate` verdict creates a request on the [Approvals](/approvals) page under "Action approvals". Members whose business role matches see it there and get a notification. The person or key that requested the action cannot approve it. See [Approvals from start to finish](/docs/how-to/approvals).
+
+## Signed facts for high-risk rules
+
+A policy that declares a high-risk governance profile only trusts input fields that were signed by a registered **fact issuer**. Without valid signed facts the decision is a deny with reason `unverified_input`.
+
+Register issuers in [Settings → Fact issuers](/settings/fact-issuers) for your personal workspace, or in the team's settings for a team. You can enable the Aster Cloud issuer with one click, or register your own issuer's public key. Revoking an issuer automatically rejects pending approvals that relied on it.
+
+## Check that it works
+
+1. Trigger one action that the policy allows and one that it denies. The allowed call reaches the tool; the denied one returns an error with its decision ID.
+2. Trigger an action that needs approval. It appears on the [Approvals](/approvals) page under "Action approvals".
+3. Approve it as a member who holds the required business role, and confirm that the waiting call then runs.
+
+Runs of the same policy from Aster Cloud (the policy's **Run** page or the `/api/v1/policies/.../execute` API) that end in `require_approval` or `escalate` also open a Guard approval. Their **Logs** entry links to the request.
+
+## Learn more
+
+- [Guard, approvals and execution logs](/docs/guides/guard-approvals): how deployment, receipts, masked decision inputs and execution logs work in detail.

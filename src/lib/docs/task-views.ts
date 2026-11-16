@@ -100,6 +100,17 @@ export const TASK_VIEWS: ReadonlyArray<TaskView> = [
     ],
   },
   {
+    // 从个人试用走到受治理部署（#796）：组团队、配审批、把 Agent 动作接到策略上。
+    id: 'govern-a-deployment',
+    titleKey: 'docs.tasks.governDeployment.title',
+    descriptionKey: 'docs.tasks.governDeployment.description',
+    steps: [
+      { slug: 'how-to/teams' },
+      { slug: 'how-to/approvals' },
+      { slug: 'how-to/guard' },
+    ],
+  },
+  {
     id: 'set-up-production-auth',
     titleKey: 'docs.tasks.setUpProductionAuth.title',
     descriptionKey: 'docs.tasks.setUpProductionAuth.description',

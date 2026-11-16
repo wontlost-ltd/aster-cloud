@@ -16,16 +16,30 @@ vi.mock('next/navigation', () => ({ usePathname: () => '/dashboard', useRouter: 
 vi.mock('@/components/docs/docs-overlay-context', () => ({ useDocsOverlay: () => ({ openDocs: vi.fn() }) }));
 vi.mock('lucide-react', async () => ({ ...(await vi.importActual<Record<string, unknown>>('lucide-react')) }));
 
-import { AdminLaunchpad } from '@/components/dashboard/admin-launchpad';
+import fs from 'node:fs';
+import path from 'node:path';
+import { NextIntlClientProvider } from 'next-intl';
+import { DEMO_SUPPLEMENT } from '@/i18n/demo-supplement';
+import { deepMergeMessages } from '@/i18n/request';
+import { GettingStartedCard } from '@/components/dashboard/getting-started-card';
+import type { GettingStartedItem } from '@/lib/onboarding/getting-started';
 
-const step = { label: 'L', desc: 'D', cta: 'C' };
-const props = {
-  signals: { hasPolicy: true, hasApiKey: false, hasAiKey: false, hasTeammate: false, hasReviewedBilling: false },
-  translations: {
-    title: 'Get set up', body: 'b', progressTemplate: '{done}/{total}', dismiss: 'Hide this checklist',
-    steps: { createPolicy: step, addApiKey: step, addAiKey: step, inviteTeam: step, reviewBilling: step },
-  },
-};
+const messages = deepMergeMessages(
+  JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../../node_modules/@aster-cloud/ui-messages/en-US.json'), 'utf8')),
+  DEMO_SUPPLEMENT.en,
+);
+const items: GettingStartedItem[] = [
+  { id: 'createPolicy', done: true, optional: false, action: { kind: 'link', href: '/policies/new' } },
+  { id: 'addApiKey', done: false, optional: false, action: { kind: 'link', href: '/settings/api-keys' } },
+];
+// 上手清单由原 admin 启动板扩展而来（#796）：管理员沿用旧收起键，水合口径不变
+const AdminLaunchpad = () => (
+  <NextIntlClientProvider locale="en" messages={messages}>
+    <GettingStartedCard userId="u1" isAdmin items={items} />
+  </NextIntlClientProvider>
+);
+const props = {};
+const TITLE = 'Set Aster up in 60 seconds';
 
 // 每个用例创建的 React root 在用例结束时卸载，避免残留订阅影响后续用例
 const roots: Array<{ unmount(): void }> = [];
@@ -40,7 +54,7 @@ describe('AdminLaunchpad hydration (#774)', () => {
     // 服务端没有 localStorage：渲染完整清单
     window.localStorage.clear();
     const html = renderToString(<AdminLaunchpad {...props} />);
-    expect(html).toContain('Get set up');
+    expect(html).toContain(TITLE);
 
     window.localStorage.setItem('aster.admin.launchpad.dismissed', '1');
     const container = document.createElement('div');
@@ -51,7 +65,7 @@ describe('AdminLaunchpad hydration (#774)', () => {
       roots.push(hydrateRoot(container, <AdminLaunchpad {...props} />, { onRecoverableError: recoverable }));
     });
     expect(recoverable).not.toHaveBeenCalled();
-    expect(container.textContent).not.toContain('Get set up');
+    expect(container.textContent).not.toContain(TITLE);
   });
 
   it('stays visible when not dismissed', async () => {
@@ -64,7 +78,7 @@ describe('AdminLaunchpad hydration (#774)', () => {
       roots.push(hydrateRoot(container, <AdminLaunchpad {...props} />, { onRecoverableError: recoverable }));
     });
     expect(recoverable).not.toHaveBeenCalled();
-    expect(container.textContent).toContain('Get set up');
+    expect(container.textContent).toContain(TITLE);
   });
 });
 
@@ -129,8 +143,10 @@ describe('persisted toggles after hydration (#774)', () => {
     });
     const hide = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'Hide this checklist') as HTMLButtonElement;
     await act(async () => hide.click());
-    expect(container.textContent).not.toContain('Get set up');
-    expect(window.localStorage.getItem('aster.admin.launchpad.dismissed')).toBe('1');
+    expect(container.textContent).not.toContain(TITLE);
+    // #796：收起按用户记录；旧的管理员键只读（老用户已收起的继续收起），不再写入
+    expect(window.localStorage.getItem('aster.gettingStarted.dismissed.u1')).toBe('1');
+    expect(window.localStorage.getItem('aster.admin.launchpad.dismissed')).toBeNull();
   });
 });
 

@@ -1,47 +1,18 @@
-import { getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
-import { OnboardingContent } from './onboarding-content';
 
+/**
+ * 原注册后的两步偏好向导已并入仪表盘的上手清单（#796）：行业与目标改为清单里可选的「偏好」条目，就地填写。
+ *
+ * <p>路由保留为跳转：注册流程中途的回跳地址、书签或旧邮件里的链接仍会落到这里。
+ * 已完成或跳过旧向导的用户直接进仪表盘，不会被要求补填任何东西。
+ * 未登录访问时先去登录（#589），登录后同样回到仪表盘。
+ */
 export default async function OnboardingPage({ params }: { params: Promise<{ locale: string }> }) {
-  // 引导流程只对已登录用户有意义（注册后经 callbackUrl / Auth.js newUser 进入）；未登录直接访问时
-  // 先去登录（#589：此前未登录也能看到并提交整个向导，提交时才失败）。
   const { locale } = await params;
   const session = await getSession();
   if (!session?.user?.id) {
-    redirect(`/${locale}/login?callbackUrl=${encodeURIComponent(`/${locale}/onboarding`)}`);
+    redirect(`/${locale}/login?callbackUrl=${encodeURIComponent(`/${locale}/dashboard`)}`);
   }
-
-  const t = await getTranslations('auth.onboarding');
-  const tNav = await getTranslations('nav');
-
-  // 预渲染所有翻译字符串
-  const translations = {
-    brand: tNav('brand'),
-    welcome: t('welcome'),
-    industryQuestion: t('industryQuestion'),
-    goalsQuestion: t('goalsQuestion'),
-    continue: t('continue'),
-    back: t('back'),
-    starting: t('starting'),
-    getStarted: t('getStarted'),
-    skipForNow: t('skipForNow'),
-    useCases: {
-      finance: t('useCases.finance'),
-      healthcare: t('useCases.healthcare'),
-      ecommerce: t('useCases.ecommerce'),
-      insurance: t('useCases.insurance'),
-      legal: t('useCases.legal'),
-      other: t('useCases.other'),
-    },
-    goals: {
-      pii: t('goals.pii'),
-      compliance: t('goals.compliance'),
-      automation: t('goals.automation'),
-      team: t('goals.team'),
-      integration: t('goals.integration'),
-    },
-  };
-
-  return <OnboardingContent translations={translations} />;
+  redirect(`/${locale}/dashboard`);
 }

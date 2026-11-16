@@ -1,0 +1,60 @@
+---
+title: "Approvals from start to finish"
+description: "How policy versions and AI agent actions reach the approval inbox, who can approve them, and what happens after a decision."
+updated: 2026-11-16
+apiVersion: v1
+---
+
+# Approvals from start to finish
+
+The [Approvals](/approvals) page collects everything that is waiting for a human decision, across your personal workspace and every team you belong to. Two kinds of request arrive there:
+
+- **Policy version approvals**: someone asks for a saved version of a policy to be approved before it runs.
+- **Action approvals**: a policy connected through Aster Guard decided that an AI agent's action needs a person to approve it first.
+
+## Policy version approvals
+
+Every save of a policy creates a new version. A version starts as a draft.
+
+1. Open the policy and go to **Versions** (the "Versions & approvals" page).
+2. Next to a draft or rejected version, choose "Submit for approval". You can add a release note.
+3. The version is now pending. It appears under "Policy version approvals" on the Approvals page and on the dashboard of everyone who can approve it.
+4. An approver opens the version and approves or rejects it. Each decision is kept in the version's approval history.
+
+Who can approve a version:
+
+- **Personal policy**: you, the owner. You may approve your own submission.
+- **Team policy**: a team owner or admin **other than the author**. This is the four-eyes rule; the author can see the request but not decide it. If the team has no other owner or admin, nobody can approve it. The inbox then says so and links to team settings so you can make someone an admin.
+
+Which version runs: execution uses the default version when one is set; otherwise the highest approved version. If no version has ever been approved, it uses the latest saved content.
+
+## Action approvals
+
+Action approvals come from [Aster Guard](/docs/how-to/guard). An AI agent proposes an action (for example, deleting a customer record). The action is checked against your policy before it runs. When the rule returns `Verdict.require_approval("<business role>", "<reason>")`, the action waits for a person.
+
+1. The request appears under "Action approvals" with the policy, the action, the **required role** and the workspace.
+2. Open "Show decision input" to see what the policy saw. Masked fields stay masked unless you hold the required role and choose to show them. Showing original values is recorded in the audit chain.
+3. Approve, or reject with a reason. The agent's call then continues or is blocked.
+
+Who can decide an action approval:
+
+- only a member whose **verified business role** matches the required role exactly. Business roles are set per team member on the team's Members page; see [Invite a team and assign business roles](/docs/how-to/teams). Others see the request as "View only". When the rule escalates without naming a role (`Verdict.escalate(...)`), any member may decide;
+- never whoever requested the action. Someone else must decide it.
+
+Requests that nobody decides in time expire. A request also expires automatically if the fact issuer its signed inputs relied on is revoked.
+
+<Callout type="tip" title="Use the status tabs">
+Action approvals are grouped by status: Pending, Approved, Rejected and Expired. Decided requests show who decided them.
+</Callout>
+
+## Where to find pending work
+
+- **Dashboard**: "Policy versions awaiting your review" lists versions you can approve now.
+- **Approvals**: both kinds of request, including ones you can only view.
+- **Notifications**: an in-app notification when a new action approval needs your role.
+
+## Next steps
+
+- [Invite a team and assign business roles](/docs/how-to/teams): who holds which team and business role.
+- [Connect Aster Guard to a policy](/docs/how-to/guard): where action approvals come from.
+- [Guard, approvals and execution logs](/docs/guides/guard-approvals): what the masked decision input shows, field by field.

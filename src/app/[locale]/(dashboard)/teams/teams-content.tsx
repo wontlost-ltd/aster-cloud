@@ -3,9 +3,10 @@
 import { useMemo, useState } from 'react';
 import { Link } from '@/i18n/navigation';
 import { useTranslations } from 'next-intl';
-import { Container, PageHeader, ListSearchInput } from '@/components/ui';
+import { Container, PageHeader, ListSearchInput, cn } from '@/components/ui';
 import { CLIENT_CAPABILITIES } from '@/hooks/use-deployment-mode';
 import { PendingInvitationsCard } from '@/components/teams/pending-invitations-card';
+import { DocsLink, EMPTY_STATE_ACTIONS_CLASS } from '@/components/docs/docs-link';
 
 interface Team {
   id: string;
@@ -60,6 +61,7 @@ export function TeamsContent({
   // i18n via useTranslations directly — drops the prerender prop pattern.
   const t = useTranslations('teams');
   const tCommon = useTranslations('common');
+  const tGuide = useTranslations('guidance');
 
   const [teams] = useState<Team[]>(initialTeams);
   const [error] = useState('');
@@ -147,8 +149,9 @@ export function TeamsContent({
               <p className="mt-1 text-sm text-fg-muted">{t('upgradeRequired.description')}</p>
             </>
           )}
-          <div className="mt-6">
+          <div className={cn('mt-6', EMPTY_STATE_ACTIONS_CLASS)}>
             <CreateTeamAction canCreateTeam={canCreateTeam} />
+            <DocsLink slug="how-to/teams">{tGuide('teams.learnMore')}</DocsLink>
           </div>
         </div>
       ) : (

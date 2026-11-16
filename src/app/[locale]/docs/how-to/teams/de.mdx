@@ -1,0 +1,68 @@
+---
+title: "Ein Team einladen und Geschäftsrollen vergeben"
+description: "Team anlegen, Mitglieder per E-Mail einladen, Teamrollen wählen und Freigebenden die Geschäftsrollen geben, die Freigaberegeln verlangen."
+updated: 2026-11-16
+apiVersion: v1
+---
+
+# Ein Team einladen und Geschäftsrollen vergeben
+
+Ein Team ist ein gemeinsamer Arbeitsbereich. Team-Richtlinien, Team-API-Schlüssel und Freigaben gehören dem Team und nicht einer einzelnen Person. So arbeiten Prüfende und Freigebende an denselben Regeln.
+
+## Ein Team anlegen
+
+1. Öffnen Sie [Teams](/teams) und klicken Sie auf „Neues Team“.
+2. Geben Sie einen Namen und eine Team-URL ein (Kleinbuchstaben, Ziffern und einzelne Bindestriche) und klicken Sie auf „Team erstellen“.
+
+Sie werden Eigentümer des Teams. Zum Anlegen brauchen Sie einen Tarif mit Team-Funktionen; der Tarif des Eigentümers legt die Mitgliedergrenze fest. Teams, denen Sie bereits angehören, sehen Sie in jedem Tarif, und Einladungen können Sie in jedem Tarif annehmen.
+
+## Mitglieder einladen
+
+1. Öffnen Sie das Team und gehen Sie zu **Mitglieder**.
+2. Geben Sie unter „Neues Mitglied einladen“ die E-Mail-Adresse ein, wählen Sie eine Rolle und klicken Sie auf „Einladung senden“.
+3. Die Einladung gilt 7 Tage. Bis sie angenommen wird, steht sie unter „Ausstehende Einladungen“, wo Sie sie widerrufen können.
+
+Die eingeladene Person meldet sich mit dem Konto zu dieser E-Mail-Adresse an. Die Einladung erscheint auf ihrem Dashboard und auf der Teams-Seite, wo sie sie annimmt.
+
+<Callout type="tip" title="Annehmen nur mit derselben E-Mail-Adresse">
+Eine Einladung kann nur das Konto annehmen, an dessen E-Mail-Adresse sie ging. Wer mit einer anderen Adresse angemeldet ist, wird gebeten, das Konto zu wechseln.
+</Callout>
+
+## Teamrollen
+
+Jedes Mitglied hat genau eine Teamrolle. Sie bestimmt, was es im Team darf:
+
+| Rolle | Darf |
+|---|---|
+| Eigentümer | Alles, einschließlich Team löschen und Eigentum übertragen. Es gibt einen Eigentümer. |
+| Admin | Mitglieder und Einladungen verwalten, Team-Einstellungen ändern, Team-Richtlinien anlegen, bearbeiten, löschen und freigeben. |
+| Mitglied | Das Team ansehen, Team-Richtlinien anlegen, bearbeiten und ausführen. |
+| Betrachter | Das Team und seine Richtlinien ansehen. |
+
+Admins können niemanden zu einer Rolle einladen oder befördern, die ihrer eigenen entspricht oder höher ist, und keine anderen Admins ändern.
+
+## Geschäftsrollen
+
+Eine Geschäftsrolle ist eine Bezeichnung wie `Credit Officer` oder `Data Protection Officer`. Sie ist unabhängig von der Teamrolle. Eine Richtlinienregel kann eine Entscheidung von einer bestimmten Geschäftsrolle verlangen, etwa `Verdict.require_approval("Credit Officer", "large_exposure")`. Nur ein Mitglied, das genau diese Geschäftsrolle hat, kann die Anfrage freigeben oder ablehnen. Siehe [Freigaben](/docs/how-to/approvals).
+
+So vergeben Sie Geschäftsrollen:
+
+1. Öffnen Sie die Seite **Mitglieder** des Teams.
+2. Klicken Sie bei einem Mitglied neben „Geschäftsrollen“ auf „Bearbeiten“.
+3. Geben Sie die Rollen durch Kommas getrennt ein und klicken Sie auf „Speichern“.
+
+Jede Rolle hat 1 bis 64 druckbare ASCII-Zeichen ohne Komma; ein Mitglied kann bis zu 16 haben. Der Abgleich ist exakt, verwenden Sie also dieselbe Schreibweise wie in der Richtlinie.
+
+Wer Geschäftsrollen ändern darf:
+
+- der Eigentümer bei allen, auch bei sich selbst;
+- ein Admin bei Mitgliedern und Betrachtern, aber nicht bei sich selbst, beim Eigentümer oder bei anderen Admins.
+
+<Callout type="warning" title="Geschäftsrollen sind Freigaberechte">
+Wer eine Geschäftsrolle erhält, darf über Freigaben entscheiden, die diese Rolle verlangen. Vergeben Sie Freigaberollen bewusst und entziehen Sie sie, wenn jemand die Aufgabe wechselt.
+</Callout>
+
+## Nächste Schritte
+
+- [Freigaben](/docs/how-to/approvals): wie Anfragen in den Freigabe-Eingang gelangen und wer darüber entscheidet.
+- [Aster Guard anbinden](/docs/how-to/guard): Aktionen von KI-Agenten über eine Team-Richtlinie prüfen lassen.

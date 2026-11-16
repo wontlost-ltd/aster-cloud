@@ -1,0 +1,68 @@
+---
+title: "Invite a team and assign business roles"
+description: "Create a team, invite members by email, choose each member's team role, and give approvers the business roles that approval rules ask for."
+updated: 2026-11-16
+apiVersion: v1
+---
+
+# Invite a team and assign business roles
+
+A team is a shared workspace. Team policies, team API keys and approvals belong to the team rather than to one person, so reviewers and approvers can work on the same rules.
+
+## Create a team
+
+1. Open [Teams](/teams) and click "New Team".
+2. Enter a name and a team URL (lowercase letters, digits and single hyphens), then click "Create team".
+
+You become the team owner. Creating a team needs a plan that includes team features. The owner's plan sets the member limit for the team. If you already belong to a team, you can still see it and accept invitations on any plan.
+
+## Invite members
+
+1. Open the team and go to **Members**.
+2. Under "Invite New Member", enter the person's email address and choose a role, then click "Send Invitation".
+3. The invitation is valid for 7 days. Until it is accepted it is listed under "Pending Invitations", where you can revoke it.
+
+The invited person signs in with the account for that email address. The invitation appears on their dashboard and on the Teams page, where they accept it.
+
+<Callout type="tip" title="Accepting needs the same email">
+An invitation can only be accepted by the account whose email it was sent to. If someone signs in with a different address, they are asked to switch accounts.
+</Callout>
+
+## Team roles
+
+Each member has one team role. It controls what they can do in the team:
+
+| Role | Can do |
+|---|---|
+| Owner | Everything, including deleting the team and transferring ownership. There is one owner. |
+| Admin | Manage members and invitations, edit team settings, create, edit, delete and approve team policies. |
+| Member | View the team, create, edit and run team policies. |
+| Viewer | View the team and its policies. |
+
+Admins cannot invite or promote anyone to a role equal to or higher than their own, and cannot change other admins.
+
+## Business roles
+
+A business role is a label such as `Credit Officer` or `Data Protection Officer`. It is separate from the team role. A policy rule can ask for a decision from a specific business role, for example `Verdict.require_approval("Credit Officer", "large_exposure")`. Only a member who holds exactly that business role can approve or reject the request. See [Approvals](/docs/how-to/approvals).
+
+To assign business roles:
+
+1. Open the team's **Members** page.
+2. Next to "Business roles" for a member, click "Edit".
+3. Enter the roles, separated by commas, and click "Save".
+
+Each role is 1 to 64 printable ASCII characters without commas, and a member can hold up to 16. The match is exact, so use the same spelling as in the policy.
+
+Who can change business roles:
+
+- the owner can change anyone's, including their own;
+- an admin can change those of members and viewers, but not their own, the owner's, or another admin's.
+
+<Callout type="warning" title="Business roles grant approval rights">
+Giving someone a business role lets them decide approvals that require it. Assign approver roles deliberately, and remove them when a person changes job.
+</Callout>
+
+## Next steps
+
+- [Approvals](/docs/how-to/approvals): how requests reach the approval inbox and who can decide them.
+- [Connect Aster Guard](/docs/how-to/guard): send AI agent actions through a team policy.

@@ -171,7 +171,7 @@ export const authConfig: NextAuthConfig = {
     signIn: '/login',
     signOut: '/logout',
     error: '/login',
-    newUser: '/onboarding',
+    newUser: '/dashboard',
   },
 
   // Callbacks

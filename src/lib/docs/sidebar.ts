@@ -43,6 +43,16 @@ export const docsSidebar = [
       { labelKey: 'docs.sidebar.gettingStarted.errors', href: 'getting-started/errors' },
     ],
   },
+  // 操作指南（#796）：团队、审批、Guard 三个从试用走到受治理部署的关键步骤。
+  // 紧跟入门放置，使其进入控制台 Cmd+K 的文档种子（dashboard-docs-seeds 按本表顺序取前 12 条）。
+  {
+    titleKey: 'docs.sidebar.howTo.title',
+    items: [
+      { labelKey: 'docs.sidebar.howTo.teams', href: 'how-to/teams' },
+      { labelKey: 'docs.sidebar.howTo.approvals', href: 'how-to/approvals' },
+      { labelKey: 'docs.sidebar.howTo.guard', href: 'how-to/guard' },
+    ],
+  },
   {
     titleKey: 'docs.sidebar.apiPolicies.title',
     items: [

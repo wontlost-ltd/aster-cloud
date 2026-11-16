@@ -139,4 +139,13 @@ vi.mock('lucide-react', () => ({
   PieChart: () => null,
   TrendingUp: () => null,
   TrendingDown: () => null,
+  // 文档链接 / 上手清单（#796）
+  HelpCircle: () => null,
+  BookOpen: () => null,
+  SlidersHorizontal: () => null,
+  FileCheck2: () => null,
+  ShieldCheck: () => null,
+  KeyRound: () => null,
+  Users: () => null,
+  CreditCard: () => null,
 }));

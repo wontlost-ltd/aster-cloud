@@ -208,4 +208,22 @@ describe('FactIssuersPanel', () => {
     render(<FactIssuersPanel tenantId="team1" />);
     expect(await screen.findByText('loadFailed')).toBeTruthy();
   });
+
+  it('#796 空状态：说明签发方用途，「添加签发方」聚焦登记表单，并给出 Guard 文档入口', async () => {
+    fetchMock.mockResolvedValueOnce(listResponse({ issuers: [] }));
+    render(<FactIssuersPanel tenantId="team1" />);
+    expect(await screen.findByText('empty')).toBeTruthy();
+    expect(screen.getByText('factIssuers.emptyHow')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'factIssuers.learnMore' }).getAttribute('href')).toBe('/docs/how-to/guard');
+    fireEvent.click(screen.getByRole('button', { name: 'factIssuers.addIssuer' }));
+    expect(document.activeElement).toBe(screen.getByLabelText('issuerLabel'));
+  });
+
+  it('#796 只读成员的空状态只给文档入口，没有「添加签发方」', async () => {
+    fetchMock.mockResolvedValueOnce(listResponse({ issuers: [], canManage: false }));
+    render(<FactIssuersPanel tenantId="team1" />);
+    expect(await screen.findByText('empty')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'factIssuers.addIssuer' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'factIssuers.learnMore' })).toBeTruthy();
+  });
 });

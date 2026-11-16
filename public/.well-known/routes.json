@@ -193,7 +193,8 @@
       "owner": "auth",
       "source": "src/app/[locale]/(auth)/onboarding/page.tsx",
       "auth": "required",
-      "locales": "all"
+      "locales": "all",
+      "notes": "Redirects to /dashboard; the old two-step preference wizard now lives in the dashboard getting-started card (#796)."
     },
     {
       "path": "/logout",
@@ -543,6 +544,35 @@
       "status": "canonical-here",
       "owner": "docs",
       "source": "src/app/[locale]/docs/getting-started/page.tsx",
+      "locales": "all"
+    },
+    {
+      "path": "/docs/how-to",
+      "status": "canonical-here",
+      "owner": "docs",
+      "source": "src/app/[locale]/docs/how-to/page.tsx",
+      "locales": "all",
+      "notes": "Section-parent redirect to the first how-to page (#796), same as /docs/guides."
+    },
+    {
+      "path": "/docs/how-to/teams",
+      "status": "canonical-here",
+      "owner": "docs",
+      "source": "src/app/[locale]/docs/how-to/teams/page.tsx",
+      "locales": "all"
+    },
+    {
+      "path": "/docs/how-to/approvals",
+      "status": "canonical-here",
+      "owner": "docs",
+      "source": "src/app/[locale]/docs/how-to/approvals/page.tsx",
+      "locales": "all"
+    },
+    {
+      "path": "/docs/how-to/guard",
+      "status": "canonical-here",
+      "owner": "docs",
+      "source": "src/app/[locale]/docs/how-to/guard/page.tsx",
       "locales": "all"
     },
     {
