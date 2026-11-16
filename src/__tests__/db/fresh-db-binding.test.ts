@@ -92,6 +92,79 @@ describe('getFreshDb 选择关闭缓存的 Hyperdrive 绑定', () => {
   });
 });
 
+describe('缺少 HYPERDRIVE_FRESH 时的告警（#743）', () => {
+  let warn: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.resetModules();
+    globalForDb.__asterLocalDevDb = null;
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    req.cache[opennextPath] = {
+      id: opennextPath,
+      filename: opennextPath,
+      loaded: true,
+      exports: { getCloudflareContext: () => ({ env: currentEnv }) },
+    } as unknown as NodeJS.Module;
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+    setRelease(originalRelease);
+    delete req.cache[opennextPath];
+    globalForDb.__asterLocalDevDb = null;
+    currentEnv = {};
+  });
+
+  it('workerd + 缺 HYPERDRIVE_FRESH：每个 isolate 只告警一次，含绑定名，且仍回落到 HYPERDRIVE', async () => {
+    setRelease(undefined);
+    currentEnv = { HYPERDRIVE: CACHED };
+    const { getFreshDb } = await import('@/db');
+    expect(databaseOf(getFreshDb())).toBe('cached_db');
+    getFreshDb();
+    getFreshDb();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]![0])).toContain('HYPERDRIVE_FRESH');
+  });
+
+  it('workerd + freshDb 缺绑定：与 getFreshDb 共享同一次告警', async () => {
+    setRelease(undefined);
+    currentEnv = { HYPERDRIVE: CACHED };
+    const { freshDb } = await import('@/db/fresh-read');
+    const { getFreshDb } = await import('@/db');
+    expect(databaseOf(freshDb)).toBe('cached_db');
+    expect(databaseOf(freshDb)).toBe('cached_db');
+    getFreshDb();
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('workerd + 绑定齐全：不告警', async () => {
+    setRelease(undefined);
+    currentEnv = { HYPERDRIVE: CACHED, HYPERDRIVE_FRESH: FRESH };
+    const { getFreshDb } = await import('@/db');
+    getFreshDb();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('workerd + 连 HYPERDRIVE 也没有：不告警（不是缺 FRESH 的场景）', async () => {
+    setRelease(undefined);
+    vi.stubEnv('DATABASE_URL', 'postgres://u:p@127.0.0.1:5432/env_db');
+    currentEnv = {};
+    const { getFreshDb } = await import('@/db');
+    getFreshDb();
+    vi.unstubAllEnvs();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('Node 运行时：缺 HYPERDRIVE_FRESH 也不告警', async () => {
+    currentEnv = { HYPERDRIVE: CACHED };
+    const { getFreshDb } = await import('@/db');
+    const { freshDb } = await import('@/db/fresh-read');
+    getFreshDb();
+    expect(databaseOf(freshDb)).toBe('cached_db');
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
+
 // wrangler.toml 必须真的声明 HYPERDRIVE_FRESH，否则生产里 getFreshDb() 会静默回落到带缓存的配置。
 describe('wrangler.toml 声明关闭缓存的 Hyperdrive 绑定', () => {
   it('HYPERDRIVE 与 HYPERDRIVE_FRESH 各自独立，且都有 localConnectionString（部署预检要求）', async () => {
