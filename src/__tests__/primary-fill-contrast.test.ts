@@ -102,17 +102,24 @@ function offendersIn(file: string): number[] {
   const classAttr = (el: ts.JsxOpeningLikeElement) => el.attributes.properties.find(
     (a): a is ts.JsxAttribute => ts.isJsxAttribute(a) && a.name.getText(sf) === 'className' && !!a.initializer,
   );
-  const visit = (node: ts.Node, inFill: boolean) => {
+  // 底色状态：一个元素可能落在主色填充上（primary）、别的底色上（other），或两者皆有可能（条件分支）。
+  // 用集合表示，任何一种可能违规就判失败：白字只要「可能」在主色上、text-primary-fg 只要「可能」不在主色上。
+  type Fill = 'primary' | 'other';
+  const visit = (node: ts.Node, inherited: ReadonlySet<Fill>) => {
     const opening = ts.isJsxElement(node) ? node.openingElement : ts.isJsxSelfClosingElement(node) ? node : null;
     if (opening) {
       const attr = classAttr(opening);
       const alts = attr?.initializer ? classAlternatives(attr.initializer, scope) : [''];
-      const onPrimary = (c: string) => PRIMARY_FILL.test(c) || (inFill && !OTHER_FILL.test(c));
-      // 白字压在主色填充上；或 text-primary-fg 用在主色填充之外（暗色主题 primary-fg 是 zinc-950，落在别的深色底上看不见）
-      const bad = alts.some((c) => (TEXT_WHITE.test(c) && onPrimary(c)) || (TEXT_PRIMARY_FG.test(c) && !onPrimary(c)));
+      const fillsOf = (c: string): ReadonlySet<Fill> =>
+        PRIMARY_FILL.test(c) ? new Set(['primary']) : OTHER_FILL.test(c) ? new Set(['other']) : inherited;
+      // 白字可能压在主色填充上；或 text-primary-fg 可能落在主色填充之外（暗色主题 primary-fg 是 zinc-950，落在别的深色底上看不见）
+      const bad = alts.some((c) => {
+        const fills = fillsOf(c);
+        return (TEXT_WHITE.test(c) && fills.has('primary')) || (TEXT_PRIMARY_FG.test(c) && fills.has('other'));
+      });
       if (bad && attr) lines.push(line(attr));
-      // 子元素继承：本元素是主色填充则进入填充区；本元素换了别的底色则退出
-      const next = alts.some((c) => PRIMARY_FILL.test(c)) || (inFill && !alts.every((c) => OTHER_FILL.test(c)));
+      // 子元素继承本元素所有分支的底色可能性
+      const next = new Set<Fill>(alts.flatMap((c) => [...fillsOf(c)]));
       ts.forEachChild(node, (child) => {
         if (child === attr) return;
         visit(child, next);
@@ -123,9 +130,9 @@ function offendersIn(file: string): number[] {
     if (ts.isStringLiteralLike(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) {
       if (PRIMARY_FILL.test(node.text) && TEXT_WHITE.test(node.text)) lines.push(line(node));
     }
-    ts.forEachChild(node, (child) => visit(child, inFill));
+    ts.forEachChild(node, (child) => visit(child, inherited));
   };
-  visit(sf, false);
+  visit(sf, new Set<Fill>(['other']));
   return [...new Set(lines)];
 }
 
@@ -157,6 +164,10 @@ describe('primary fill contrast', () => {
     expect(hit(`const X = (p: any) => <a className={p.on ? 'bg-primary text-primary-fg' : 'bg-gray-900 text-primary-fg'} />;`)).toBe(true);
     expect(hit(`const X = () => <p className="text-primary-fg">1</p>;`)).toBe(true);
     expect(hit(`const X = () => <div className="bg-primary"><span className="bg-bg/20"><i className="text-primary-fg" /></span></div>;`)).toBe(false);
+    // 父元素条件底色：子元素的 text-primary-fg / text-white 只要有一个分支不合适就失败
+    expect(hit(`const X = (p: any) => <div className={p.on ? 'bg-primary' : 'bg-bg'}><span className="text-primary-fg">1</span></div>;`)).toBe(true);
+    expect(hit(`const X = (p: any) => <div className={p.on ? 'bg-primary' : 'bg-bg'}><span className="text-white">1</span></div>;`)).toBe(true);
+    expect(hit(`const X = (p: any) => <div className={p.on ? 'bg-primary text-primary-fg' : 'bg-bg text-fg'}><span>1</span></div>;`)).toBe(false);
   });
 
   it('globals.css only references CSS variables that are defined', () => {
