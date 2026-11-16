@@ -18,6 +18,7 @@ const API = '/api/teams/t-1/capabilities/structured_authoring/grants';
 const GRANTS = {
   allotment: { seatCap: 3, ownerGrantingEnabled: true },
   seatsUsed: 2,
+  delegationOpen: true,
   delegations: [
     { grantId: 'g-a', userId: 'u-a', email: 'alice@x.io', name: 'Alice', role: 'member', grantedAt: '2026-11-17T00:00:00.000Z' },
     { grantId: 'g-v', userId: 'u-v', email: 'vic@x.io', name: null, role: 'viewer', grantedAt: '2026-11-17T00:00:00.000Z' },
@@ -132,20 +133,41 @@ describe('StructuredAuthoringSeatsCard', () => {
 
   it('没有额度行 → 显示「未分配座位」，不出现委派按钮', async () => {
     setup('en', (url) =>
-      json(200, url.includes('/members') ? MEMBERS : { allotment: null, seatsUsed: 0, delegations: [] }),
+      json(200, url.includes('/members') ? MEMBERS : { allotment: null, seatsUsed: 0, delegations: [], delegationOpen: false }),
     );
     expect(await screen.findByText(L.noAllotment)).toBeTruthy();
     expect(screen.queryByRole('button', { name: L.delegate })).toBeNull();
   });
 
-  it('额度存在但 ownerGrantingEnabled=false → 显示已暂停委派', async () => {
+  it('额度存在但 ownerGrantingEnabled=false → 显示已暂停委派，委派按钮禁用，撤销仍可用', async () => {
     setup('en', (url) =>
       json(
         200,
-        url.includes('/members') ? MEMBERS : { ...GRANTS, allotment: { seatCap: 3, ownerGrantingEnabled: false } },
+        url.includes('/members')
+          ? MEMBERS
+          : { ...GRANTS, delegationOpen: false, allotment: { seatCap: 3, ownerGrantingEnabled: false } },
       ),
     );
     expect(await screen.findByText(L.delegationDisabled)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: L.delegate })).toBeNull();
+    expect((screen.getByRole('button', { name: L.delegate }) as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      (screen.getByRole('button', { name: L.revokeFor.replace('{name}', 'Alice') }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it('全局委派开关关闭（delegationOpen=false，额度行开放）→ 显示平台级说明，委派按钮禁用', async () => {
+    setup('en', (url) => json(200, url.includes('/members') ? MEMBERS : { ...GRANTS, delegationOpen: false }));
+    expect(await screen.findByText(L.delegationUnavailable)).toBeTruthy();
+    expect((screen.getByRole('button', { name: L.delegate }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('delegation_not_supported → 对应错误文案', async () => {
+    setup('en', (url, init) =>
+      init?.method === 'POST'
+        ? json(400, { code: 'delegation_not_supported' })
+        : json(200, url.includes('/members') ? MEMBERS : GRANTS),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: L.delegate }));
+    expect(await screen.findByText(L.errors.delegationNotSupported)).toBeTruthy();
   });
 });

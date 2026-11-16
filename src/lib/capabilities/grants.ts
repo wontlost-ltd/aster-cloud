@@ -263,6 +263,11 @@ async function teamDelegationOpen(tx: DbClient, capability: CapabilityKey, teamI
   return allotment?.ownerGrantingEnabled ? allotment : null;
 }
 
+/** 供团队 GET 展示用：新委派当前是否可能成功（与委派写服务同一判定，经 freshDb 现读）。 */
+export async function isTeamDelegationOpen(capability: CapabilityKey, teamId: string): Promise<boolean> {
+  return (await teamDelegationOpen(freshDb, capability, teamId)) !== null;
+}
+
 /**
  * 团队 owner 在额度内把能力委派给本团队的非 viewer 成员（§4.6）。
  * 先 lockTeamRow 再做全部判定与计座、再插入：同一团队的委派、额度调整、转让所有权都锁同一行，

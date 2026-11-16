@@ -1,7 +1,7 @@
 /*
  * 团队 owner 的能力委派接口（ADR 0058 §4.6 / §4.10）。只有 Team.ownerId 本人可用，团队 admin 不行。
  *
- * GET                    额度、已用座位、委派名单（不含平台给成员的直接授权）
+ * GET                    额度、已用座位、委派名单（不含平台给成员的直接授权）、delegationOpen（新委派当前是否可行）
  * POST   { userId }      委派给本团队非 viewer 成员；新建 201，已存在 200
  * DELETE { grantId }     撤销本团队的一条委派（reason = manual）；别的行一律 grant_not_found
  *
@@ -15,7 +15,7 @@ import { requireLicenseWriteOk } from '@/lib/license-write-gate';
 import { freshDb } from '@/db/fresh-read';
 import { teams } from '@/lib/prisma';
 import { CapabilityError, capabilityErrorResponse, type CapabilityErrorCode } from '@/lib/capabilities/errors';
-import { delegateToMember, listTeamDelegations, revokeGrant } from '@/lib/capabilities/grants';
+import { delegateToMember, isTeamDelegationOpen, listTeamDelegations, revokeGrant } from '@/lib/capabilities/grants';
 import { isCapabilityKey, type CapabilityKey } from '@/lib/capabilities/registry';
 
 export const runtime = 'nodejs';
@@ -61,7 +61,11 @@ async function readStringField(req: Request, field: 'userId' | 'grantId'): Promi
 export async function GET(_req: Request, ctx: RouteParams) {
   const auth = await authorizeOwner(ctx);
   if (auth instanceof NextResponse) return auth;
-  return NextResponse.json(await listTeamDelegations(auth.capability, auth.teamId));
+  const [view, delegationOpen] = await Promise.all([
+    listTeamDelegations(auth.capability, auth.teamId),
+    isTeamDelegationOpen(auth.capability, auth.teamId),
+  ]);
+  return NextResponse.json({ ...view, delegationOpen });
 }
 
 export async function POST(req: Request, ctx: RouteParams) {

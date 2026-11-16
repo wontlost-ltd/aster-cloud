@@ -158,6 +158,8 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('团队 owner 委派与生命�
   afterAll(async () => {
     await cleanup(db);
     globalForDb.__asterLocalDevDb = previous;
+    // drizzle-orm/postgres-js 的底层 postgres 客户端挂在 $client 上；两个池都要关，否则 vitest 进程挂起
+    await Promise.all([db.$client.end(), db2.$client.end()]);
   });
 
   it('委派成功：source=team_owner、审计 teamId 列 = 团队；重复委派返回同一行 created:false 且不占第二个座', async () => {

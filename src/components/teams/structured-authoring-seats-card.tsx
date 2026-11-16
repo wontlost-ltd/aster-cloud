@@ -25,6 +25,7 @@ interface SeatsView {
   allotment: { seatCap: number; ownerGrantingEnabled: boolean } | null;
   seatsUsed: number;
   delegations: Delegation[];
+  delegationOpen: boolean;
 }
 
 interface Member {
@@ -40,6 +41,7 @@ const ERROR_KEYS: Record<string, string> = {
   not_team_member: 'errors.notTeamMember',
   viewer_not_eligible: 'errors.viewerNotEligible',
   not_team_owner: 'errors.notTeamOwner',
+  delegation_not_supported: 'errors.delegationNotSupported',
 };
 
 export function StructuredAuthoringSeatsCard({ teamId }: { teamId: string }) {
@@ -97,7 +99,7 @@ export function StructuredAuthoringSeatsCard({ teamId }: { teamId: string }) {
   }
 
   const allotment = view?.allotment ?? null;
-  const canDelegate = allotment !== null && allotment.ownerGrantingEnabled;
+  const delegationOpen = view?.delegationOpen === true;
 
   return (
     <div className="bg-bg shadow rounded-lg mb-8">
@@ -117,7 +119,11 @@ export function StructuredAuthoringSeatsCard({ teamId }: { teamId: string }) {
             <p className="text-sm font-medium text-fg">
               {t('seatsUsed', { used: view.seatsUsed, cap: allotment.seatCap })}
             </p>
-            {!allotment.ownerGrantingEnabled && <p className="text-sm text-fg-muted">{t('delegationDisabled')}</p>}
+            {!delegationOpen && (
+              <p className="text-sm text-fg-muted">
+                {t(allotment.ownerGrantingEnabled ? 'delegationUnavailable' : 'delegationDisabled')}
+              </p>
+            )}
           </>
         )}
         {view && view.delegations.length > 0 && (
@@ -150,7 +156,7 @@ export function StructuredAuthoringSeatsCard({ teamId }: { teamId: string }) {
         {view && view.delegations.length === 0 && allotment !== null && (
           <p className="text-sm text-fg-muted">{t('empty')}</p>
         )}
-        {view && canDelegate && (
+        {view && allotment !== null && (
           <div className="flex flex-wrap items-end gap-2">
             <div className="flex min-w-48 flex-col gap-1 text-sm">
               <label htmlFor={selectId} className="font-medium text-fg">
@@ -160,7 +166,7 @@ export function StructuredAuthoringSeatsCard({ teamId }: { teamId: string }) {
                 id={selectId}
                 value={selected}
                 onChange={(e) => setTarget(e.target.value)}
-                disabled={candidates.length === 0}
+                disabled={!delegationOpen || candidates.length === 0}
               >
                 {candidates.map((m) => (
                   <option key={m.userId} value={m.userId}>
@@ -169,7 +175,7 @@ export function StructuredAuthoringSeatsCard({ teamId }: { teamId: string }) {
                 ))}
               </Select>
             </div>
-            <Button size="sm" disabled={busy || !selected} onClick={() => void send('POST', { userId: selected })}>
+            <Button size="sm" disabled={busy || !delegationOpen || !selected} onClick={() => void send('POST', { userId: selected })}>
               {t('delegate')}
             </Button>
           </div>

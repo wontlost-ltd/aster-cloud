@@ -10,6 +10,7 @@ vi.mock('@/lib/capabilities/grants', () => ({
   delegateToMember: vi.fn(),
   revokeGrant: vi.fn(),
   listTeamDelegations: vi.fn(),
+  isTeamDelegationOpen: vi.fn(),
 }));
 const teamLookup = vi.hoisted(() => ({ findFirst: vi.fn() }));
 vi.mock('@/db/fresh-read', () => ({ freshDb: { query: { teams: teamLookup } } }));
@@ -17,7 +18,7 @@ vi.mock('@/db/fresh-read', () => ({ freshDb: { query: { teams: teamLookup } } })
 import { DELETE, GET, POST } from '@/app/api/teams/[teamId]/capabilities/[capability]/grants/route';
 import { getSession } from '@/lib/auth';
 import { requireLicenseWriteOk } from '@/lib/license-write-gate';
-import { delegateToMember, listTeamDelegations, revokeGrant } from '@/lib/capabilities/grants';
+import { delegateToMember, isTeamDelegationOpen, listTeamDelegations, revokeGrant } from '@/lib/capabilities/grants';
 import { CapabilityError } from '@/lib/capabilities/errors';
 
 const CAP = 'structured_authoring';
@@ -105,10 +106,18 @@ describe('/api/teams/[teamId]/capabilities/[capability]/grants', () => {
       ],
     };
     vi.mocked(listTeamDelegations).mockResolvedValue(body as never);
+    vi.mocked(isTeamDelegationOpen).mockResolvedValue(true);
     const res = await GET(req('GET'), params());
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual(body);
+    expect(await res.json()).toEqual({ ...body, delegationOpen: true });
     expect(listTeamDelegations).toHaveBeenCalledWith(CAP, TEAM);
+    expect(isTeamDelegationOpen).toHaveBeenCalledWith(CAP, TEAM);
+  });
+
+  it('GET：委派不可行（全局开关关或额度未开放）→ delegationOpen=false', async () => {
+    vi.mocked(listTeamDelegations).mockResolvedValue({ allotment: null, seatsUsed: 0, delegations: [] });
+    vi.mocked(isTeamDelegationOpen).mockResolvedValue(false);
+    expect((await (await GET(req('GET'), params())).json()).delegationOpen).toBe(false);
   });
 
   it.each([
