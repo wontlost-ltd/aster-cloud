@@ -37,6 +37,8 @@ export interface UseCompileResult {
   state: CompileState;
   diagnostics: CompileDiagnostic[];
   module?: CompileModuleSummary;
+  /** 本次诊断对应的源码，即编辑器 300 ms 防抖编译的输入（模型大纲复用它，不另设防抖）。 */
+  source?: string;
   /** 保留在结果类型上以兼容既有消费者；浏览器编译路径永不设置。 */
   transportError?: string;
 }

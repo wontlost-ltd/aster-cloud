@@ -39,6 +39,19 @@ export function getLexicon(locale: string): Lexicon {
 }
 
 /**
+ * 叠加策略层关键词别名（ADR 0022）：kind → 多词别名覆盖官方同 kind 的别名表。
+ * 无别名时原样返回 base，保证引用稳定（供 useMemo 依赖）。编辑器编译与模型大纲共用此口径。
+ */
+export function withUserAliases<L extends Lexicon>(
+  base: L,
+  userAliasSet: Readonly<Record<string, readonly string[]>> | null | undefined,
+): L {
+  if (!userAliasSet || Object.keys(userAliasSet).length === 0) return base;
+  const baseAliases = (base as { aliases?: Record<string, readonly string[]> }).aliases ?? {};
+  return { ...base, aliases: { ...baseAliases, ...userAliasSet } };
+}
+
+/**
  * 从 lexicon 提取用户别名校验的**占用集**（ADR 0022 关键词别名）：
  * - canonicalKeywordsLower：全部规范关键词拼写（归一小写）
  * - baseAliasesLower：官方已有别名（归一小写）

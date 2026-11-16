@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { editor } from 'monaco-editor';
 import { useTranslations } from 'next-intl';
 import {
@@ -48,6 +48,8 @@ import {
 import { cn } from '@/components/ui';
 import { useIsMobile } from './use-is-mobile';
 import { VocabularyDiagnosticLink } from '@/components/policy/vocabulary-diagnostic-link';
+import { getLexicon, withUserAliases } from '@/lib/aster-lexicon';
+import { ModelTab } from './model-tab';
 
 /** 侧栏容器可见的视口条件，与 index.tsx 中 `lg:flex` 一致。 */
 const PANEL_VISIBLE_QUERY = '(min-width: 1024px)';
@@ -117,6 +119,8 @@ export interface SidePanelProps {
   compileState?: CompileState;
   compileDiagnostics?: CompileDiagnostic[];
   compileModule?: CompileModuleSummary;
+  /** 最近一次防抖编译所用的源码（模型标签页的大纲据此解析）。 */
+  compileSource?: string;
   /** Click a diagnostic row → jump to the offending line in Monaco. */
   onJumpToLine?: (line: number, column: number) => void;
   /** Externally request a specific tab (e.g. compile errored → focus
@@ -154,6 +158,7 @@ export function SidePanel({
   compileState,
   compileDiagnostics,
   compileModule,
+  compileSource = '',
   onJumpToLine,
   initialTab,
   policyId = null,
@@ -180,6 +185,8 @@ export function SidePanel({
   useSuppressAssistantLauncher(tab === 'ai' && panelVisible);
   const errorCount =
     compileDiagnostics?.filter((d) => d.severity === 'error').length ?? 0;
+  // 模型大纲与编辑器编译用同一份 lexicon（含策略关键词别名），否则用了别名的源码大纲为空
+  const modelLexicon = useMemo(() => withUserAliases(getLexicon(cnlLocale), aliasSet), [cnlLocale, aliasSet]);
 
   // header 标题/图标由当前 tab 派生——与左侧 rail 的图标/文案同源，
   // 保证两处一致（含「决策预览」用 AlertTriangle）。
@@ -319,8 +326,9 @@ export function SidePanel({
           </div>
         )}
         {structuredAuthoring.allowed && tab === 'model' && (
-          // 容器由 T8 填充模型大纲与表单
-          <div className="p-3" data-testid="structured-authoring-model" />
+          <div className="p-3" data-testid="structured-authoring-model">
+            <ModelTab editor={editor} source={compileSource} lexicon={modelLexicon} />
+          </div>
         )}
         {structuredAuthoring.allowed && tab === 'vocabulary' && (
           // 容器由 T9 填充词汇列表

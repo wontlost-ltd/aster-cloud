@@ -85,6 +85,8 @@ export interface EditorCompileState {
   state: 'idle' | 'pending' | 'ok' | 'error';
   diagnostics: EditorCompileDiagnostic[];
   module?: EditorCompileModuleSummary;
+  /** 本次诊断对应的源码（300 ms 防抖编译的输入）；模型大纲据此解析，不另设防抖。 */
+  source?: string;
 }
 
 export interface EditorCompileDiagnostic {
@@ -506,7 +508,7 @@ export function MonacoPolicyEditor({
   // Monaco 实例句柄经 ref 持有；isEditorReady state 变化才重跑，读取的是编辑器
   // 就绪后的当前实例（非渲染派生值），传给 hook 属合法用法。
   /* eslint-disable react-hooks/refs */
-  const { diagnostics, compileResult } = useAsterCompiler({
+  const { diagnostics, compileResult, compiledSource } = useAsterCompiler({
     editor: isEditorReady ? editorRef.current : null,
     monaco: isEditorReady ? monacoRef.current : null,
     locale: compilerLocale,
@@ -601,8 +603,8 @@ export function MonacoPolicyEditor({
     // 呈现，StatusBar 的 error 态专用于 transportError（网络编译，此本地路径无）。
     const state: EditorCompileState['state'] =
       value.trim().length === 0 ? 'idle' : 'ok';
-    onCompileChange({ state, diagnostics: mapped, module: moduleSummary });
-  }, [diagnostics, compileResult, value, onCompileChange]);
+    onCompileChange({ state, diagnostics: mapped, module: moduleSummary, source: compiledSource });
+  }, [diagnostics, compileResult, compiledSource, value, onCompileChange]);
 
   const { errorCount, warningCount } = useMemo(() => {
     let errors = 0;

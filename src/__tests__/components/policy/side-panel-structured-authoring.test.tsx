@@ -22,7 +22,11 @@ const EDITOR_TABS = (messages as { policyEditor: { tabModel: string; tabVocabula
 const DENIED: StructuredAuthoringProps = { allowed: false, denial: 'not_granted', sources: [] };
 const ALLOWED: StructuredAuthoringProps = { allowed: true, sources: [{ kind: 'admin' }] };
 
-function panel(structuredAuthoring: StructuredAuthoringProps, initialTab: SidePanelTab = 'ai') {
+function panel(
+  structuredAuthoring: StructuredAuthoringProps,
+  initialTab: SidePanelTab = 'ai',
+  extra: { compileSource?: string; aliasSet?: Record<string, string[]> } = {},
+) {
   return (
     <IntlClientProvider locale="zh" messages={messages as never}>
       <SidePanel
@@ -37,7 +41,7 @@ function panel(structuredAuthoring: StructuredAuthoringProps, initialTab: SidePa
         onDescriptionChange={noop}
         onGroupIdChange={noop}
         onIsPublicChange={noop}
-        aliasSet={{}}
+        aliasSet={extra.aliasSet ?? {}}
         reservedSets={{} as never}
         allowStructuralAliases={false}
         onAliasSetChange={noop}
@@ -48,6 +52,7 @@ function panel(structuredAuthoring: StructuredAuthoringProps, initialTab: SidePa
         policyId="p1"
         aiWorkspace={null}
         structuredAuthoring={structuredAuthoring}
+        compileSource={extra.compileSource}
       />
     </IntlClientProvider>
   );
@@ -94,6 +99,23 @@ describe('SidePanel structuredAuthoring', () => {
     cleanup();
     render(panel(ALLOWED, 'vocabulary'));
     expect(screen.getByTestId('structured-authoring-vocabulary')).toBeTruthy();
+  });
+});
+
+describe('SidePanel 模型标签', () => {
+  it('按 compileSource 与 cnlLocale 渲染大纲', () => {
+    render(panel(ALLOWED, 'model', { compileSource: '模块 演示。\n\n定义 申请人 包含 姓名 作为 文本。\n' }));
+    expect(screen.getByRole('button', { name: /^申请人$/ })).toBeTruthy();
+  });
+
+  it('大纲解析带上策略关键词别名', () => {
+    render(
+      panel(ALLOWED, 'model', {
+        compileSource: '模块 演示。\n\n声明 申请人 包含 姓名 作为 文本。\n',
+        aliasSet: { TYPE_DEF: ['声明'] },
+      }),
+    );
+    expect(screen.getByRole('button', { name: /^申请人$/ })).toBeTruthy();
   });
 });
 

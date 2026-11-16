@@ -920,6 +920,7 @@ export function PolicyForm({
                 }}
                 onClose={() => setSidePanelOpen(false)}
                 compileState={serverError?.diagnostics?.length ? 'error' : compile.state}
+                compileSource={compile.source}
                 compileDiagnostics={[
                   ...compile.diagnostics,
                   ...(serverError?.diagnostics ?? []).map((diagnostic) => ({
