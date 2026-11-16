@@ -10,7 +10,7 @@
  *     `@pii` 替换为 `{ $pii: { level, category } }`；形状不符或超过深度 8 的值替换为 `{ $pii: { level: 'unknown' } }`。
  *   - 未声明的键（多出的键、源码未标注类型的字段、非参数的顶层键）：比 aster-api 视图更严——键名也不展示
  *     （§11 D2「未声明的键名本身可能是 PII」），同一对象里的全部未声明键合并为一项
- *     `{ [UNDECLARED_KEY]: { $pii: { level: 'unknown' } } }`。aster-api `InputViewRenderer` 目前仍展示这类键名。
+ *     `{ [UNDECLARED_KEY]: { $pii: { level: 'unknown' } } }`。aster-api `InputViewRenderer` 已按同一结构收敛（aster-api#541）。
  *
  * 为什么在 cloud 推导而不是调 aster-api 视图：aster-api 只为 REQUIRE_APPROVAL / ESCALATE 决策存输入
  * （§11 D1），日志里绝大多数执行（ALLOW / DENY / 值输出）在 api 侧没有可取的视图。cloud 用同一引擎

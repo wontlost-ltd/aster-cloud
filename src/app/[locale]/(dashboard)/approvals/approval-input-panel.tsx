@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Alert, Badge, Button } from '@/components/ui';
 import type { GuardApprovalInput } from '@/services/policy/guard-types';
-import { piiOf, type PiiPlaceholder } from '@/lib/execution-input/pii-placeholder';
+import { piiOf, UNDECLARED_KEY, type PiiPlaceholder } from '@/lib/execution-input/pii-placeholder';
 
 /**
  * 审批行展开后的「决策输入」面板（ADR 0042 §12 D10）。
@@ -55,9 +55,12 @@ function PiiBadge({ pii, t }: { pii: PiiValue['$pii']; t: T }) {
   );
 }
 
-/** 只给 `context.*` 叶子标来源：principal / action 等结构键不经签名事实判定。 */
+/** 合并后的未声明键（键名不下发，ADR 0042 §12.6）显示为「未声明字段」，不显示字面的 `$undeclared`。 */
+const labelOf = (name: string, t: T) => (name === UNDECLARED_KEY ? t('input.badge.undeclared') : name);
+
+/** 只给 `context.*` 叶子标来源：principal / action 等结构键不经签名事实判定；`$undeclared` 不是字段，没有来源。 */
 function SourceBadge({ path, view, t }: { path: string; view: GuardApprovalInput; t: T }) {
-  if (!path.startsWith('context.')) return null;
+  if (!path.startsWith('context.') || path.endsWith(`.${UNDECLARED_KEY}`)) return null;
   const verified = view.inputSources?.verified ?? [];
   if (!verified.includes(path)) {
     return <Badge variant="neutral" data-testid="source-declared">{t('input.source.declared')}</Badge>;
@@ -87,7 +90,7 @@ function Node({ name, value, path, view, t }: { name: string; value: unknown; pa
       : (value as unknown[]).map((v, i) => [`[${i}]`, v, `${path}[]`]);
     return (
       <li>
-        <span className="font-medium text-fg">{name}</span>
+        <span className="font-medium text-fg">{labelOf(name, t)}</span>
         <ul className="ml-4 border-l border-border pl-3">
           {/* path 与 api 同一语法：数组元素不带下标（`items[]`），来源徽标按它匹配 inputSources.verified；key 带下标保证唯一 */}
           {entries.map(([k, v, p]) => (
@@ -99,7 +102,7 @@ function Node({ name, value, path, view, t }: { name: string; value: unknown; pa
   }
   return (
     <li className="flex flex-wrap items-center gap-2" data-path={path}>
-      <span className="text-fg-muted">{name}:</span>
+      <span className="text-fg-muted">{labelOf(name, t)}:</span>
       {pii ? <PiiBadge pii={pii} t={t} /> : <Leaf value={value} />}
       <SourceBadge path={path} view={view} t={t} />
     </li>
