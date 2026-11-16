@@ -265,7 +265,7 @@ export function CNLSyntaxConverterDialog({
               type="button"
               onClick={handleApply}
               disabled={!conversionResult.success || detectedLocale === targetLocale}
-              className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 text-sm font-medium text-primary-fg bg-primary rounded-lg hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isZh ? '应用转换' : 'Apply Conversion'}
             </button>

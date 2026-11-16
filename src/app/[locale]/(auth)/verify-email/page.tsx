@@ -50,13 +50,13 @@ function VerifyEmailContent() {
   }, [token, t]);
 
   const shell = (title: string, body: React.ReactNode) => (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-bg-subtle py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div>
           <Link href="/" className="flex justify-center">
             <span className="text-3xl font-bold text-primary">{tNav('brand')}</span>
           </Link>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">{title}</h2>
+          <h2 className="mt-6 text-center text-3xl font-extrabold text-fg">{title}</h2>
         </div>
         {body}
       </div>
@@ -82,8 +82,8 @@ function VerifyEmailContent() {
   if (state === 'pending') {
     return shell(
       t('verifying'),
-      <div className="rounded-md bg-gray-100 p-4">
-        <p className="text-sm text-gray-700">{t('verifying')}</p>
+      <div className="rounded-md bg-bg-muted p-4">
+        <p className="text-sm text-fg-muted">{t('verifying')}</p>
       </div>,
     );
   }

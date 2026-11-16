@@ -102,7 +102,7 @@ export function AcceptInviteContent({ invitation = null }: { invitation?: Invita
             <div className="mt-6">
               <Link
                 href="/teams"
-                className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-hover"
+                className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-fg shadow-sm hover:bg-primary-hover"
               >
                 {t('backToTeams')}
               </Link>
@@ -164,12 +164,12 @@ export function AcceptInviteContent({ invitation = null }: { invitation?: Invita
             <button
               onClick={handleAccept}
               disabled={isAccepting || invitation?.expired === true}
-              className="w-full inline-flex justify-center items-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-hover disabled:opacity-50"
+              className="w-full inline-flex justify-center items-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-fg shadow-sm hover:bg-primary-hover disabled:opacity-50"
             >
               {isAccepting ? (
                 <>
                   <svg
-                    className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                    className="animate-spin -ml-1 mr-2 h-4 w-4 text-primary-fg"
                     fill="none"
                     viewBox="0 0 24 24"
                   >

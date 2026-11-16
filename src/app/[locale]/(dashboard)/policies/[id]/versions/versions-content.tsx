@@ -305,8 +305,6 @@ export function VersionsContent({
           />
         ) : (
           <DataTable<VersionRow>
-            // 滚动容器须是定位祖先：sr-only 表头（position:absolute）否则逃出 overflow-x-auto，撑宽移动端整页（#774）
-            className="relative"
             loading={isLoading}
             rows={versions ?? []}
             getRowKey={(v) => v.id}

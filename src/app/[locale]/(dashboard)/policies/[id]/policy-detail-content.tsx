@@ -183,7 +183,7 @@ export function PolicyDetailContent({
             ) : (
               <Link
                 href={`/${locale}/policies/${policy.id}/execute`}
-                className="inline-flex items-center rounded-md bg-primary px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-hover"
+                className="inline-flex items-center rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-fg shadow-sm hover:bg-primary-hover"
               >
                 {t.executeAction}
               </Link>

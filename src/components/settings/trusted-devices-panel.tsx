@@ -147,7 +147,7 @@ export function TrustedDevicesPanel({ labels: t }: { labels: TrustedDevicesLabel
                     <p className="truncate text-sm font-medium text-fg">
                       {d.label ?? t.unknownDevice}
                       {d.current && (
-                        <span className="ml-2 rounded bg-green-100 px-1.5 py-0.5 text-xs font-medium text-green-700">
+                        <span className="ml-2 rounded bg-success-subtle px-1.5 py-0.5 text-xs font-medium text-success">
                           {t.currentDevice}
                         </span>
                       )}

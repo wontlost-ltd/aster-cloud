@@ -164,7 +164,7 @@ export function ChangePasswordPanel({
                   <Button type="submit" disabled={busy}>
                     {busy ? labels.submitting : labels.submit}
                   </Button>
-                  {done && <span className="text-xs text-green-700">{labels.success}</span>}
+                  {done && <span className="text-xs text-success">{labels.success}</span>}
                 </Stack>
 
                 {error && <p className="text-xs text-red-600">{error}</p>}

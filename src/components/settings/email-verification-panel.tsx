@@ -96,7 +96,7 @@ export function EmailVerificationPanel({ labels }: { labels: EmailVerificationLa
               <span
                 className={
                   verified
-                    ? 'text-xs font-medium text-green-700'
+                    ? 'text-xs font-medium text-success'
                     : 'text-xs font-medium text-amber-700'
                 }
               >
@@ -112,7 +112,7 @@ export function EmailVerificationPanel({ labels }: { labels: EmailVerificationLa
           </Stack>
 
           {sent && !verified && (
-            <p className="text-xs text-green-700">{labels.sent}</p>
+            <p className="text-xs text-success">{labels.sent}</p>
           )}
           {error && <p className="text-xs text-red-600">{error}</p>}
         </Stack>

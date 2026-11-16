@@ -147,7 +147,7 @@ export function IssuedLicensesTable({ rows, searchQuery }: Props) {
                         row.latestTelemetry
                           ? 'text-fg-muted'
                           : telemetryOpted
-                            ? 'text-amber-400'
+                            ? 'text-warning'
                             : 'text-fg-subtle'
                       }
                     >

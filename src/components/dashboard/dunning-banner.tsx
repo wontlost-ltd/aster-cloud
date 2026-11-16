@@ -79,7 +79,7 @@ export function DunningBanner() {
           <button
             onClick={openPortal}
             disabled={opening}
-            className="rounded bg-orange-600 px-3 py-1 text-xs font-medium text-white hover:bg-orange-700 disabled:opacity-50"
+            className="rounded bg-orange-700 px-3 py-1 text-xs font-medium text-white hover:bg-orange-800 disabled:opacity-50"
           >
             {t('reactivate')}
           </button>

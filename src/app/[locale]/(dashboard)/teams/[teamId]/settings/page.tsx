@@ -193,7 +193,7 @@ export default function TeamSettingsPage() {
     return (
       <Container size="xl" className="py-6 sm:py-10">
         <div className="text-center py-12">
-          <p className="text-red-600">{error || t('teamNotFound')}</p>
+          <p className="text-danger">{error || t('teamNotFound')}</p>
           <Link href="/teams" className="mt-4 text-primary hover:text-primary-hover">
             {t('backToTeams')}
           </Link>
@@ -300,7 +300,7 @@ export default function TeamSettingsPage() {
             <button
               type="submit"
               disabled={isSaving}
-              className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-hover disabled:opacity-50"
+              className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-fg shadow-sm hover:bg-primary-hover disabled:opacity-50"
             >
               {isSaving ? t('saving') : t('settings.saveChanges')}
             </button>
@@ -341,7 +341,7 @@ export default function TeamSettingsPage() {
       {canDelete && (
         <div className="bg-bg shadow rounded-lg border-2 border-red-200">
           <div className="px-6 py-4 border-b border-border">
-            <h2 className="text-lg font-medium text-red-600">{t('settings.dangerZone')}</h2>
+            <h2 className="text-lg font-medium text-danger">{t('settings.dangerZone')}</h2>
             <p className="mt-1 text-sm text-fg-muted">{t('settings.dangerZoneSubtitle')}</p>
           </div>
           <div className="px-6 py-4">
@@ -366,7 +366,7 @@ export default function TeamSettingsPage() {
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
           <div className="bg-bg rounded-lg shadow-xl max-w-md w-full mx-4">
             <div className="px-6 py-4 border-b border-border">
-              <h3 className="text-lg font-medium text-red-600">{t('settings.confirmDeleteTitle')}</h3>
+              <h3 className="text-lg font-medium text-danger">{t('settings.confirmDeleteTitle')}</h3>
             </div>
             <div className="px-6 py-4 space-y-4">
               <p className="text-sm text-fg-muted">{t('settings.confirmDeleteWarning')}</p>

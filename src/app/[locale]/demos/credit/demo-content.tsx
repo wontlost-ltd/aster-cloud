@@ -237,7 +237,7 @@ export function DemoContent({ locale }: DemoContentProps) {
         <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
           <button
             onClick={rerun}
-            className="inline-flex items-center gap-2 rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-hover"
+            className="inline-flex items-center gap-2 rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-primary-fg shadow-sm hover:bg-primary-hover"
           >
             <svg className="size-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
               <path d="M4 4.5v11l9-5.5-9-5.5z" />
@@ -355,7 +355,7 @@ export function DemoContent({ locale }: DemoContentProps) {
         <p className="mt-1 text-sm text-fg-muted">{t('cta.subtitle')}</p>
         <a
           href={`/${locale}/login`}
-          className="mt-4 inline-flex items-center rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-hover"
+          className="mt-4 inline-flex items-center rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg shadow-sm hover:bg-primary-hover"
         >
           {t('cta.button')}
         </a>
@@ -367,7 +367,7 @@ export function DemoContent({ locale }: DemoContentProps) {
 function StepHeading({ n, title }: { n: number; title: string }) {
   return (
     <h2 className="mb-2 text-sm font-semibold text-fg">
-      <span className="mr-2 inline-flex size-5 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">{n}</span>
+      <span className="mr-2 inline-flex size-5 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-fg">{n}</span>
       {title}
     </h2>
   );

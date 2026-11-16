@@ -243,7 +243,7 @@ export function PolicyGroupDialog({
                 </button>
                 <button
                   onClick={handleSave}
-                  className="px-3 py-2 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary-hover disabled:opacity-50"
+                  className="px-3 py-2 text-sm font-medium text-primary-fg bg-primary rounded-md hover:bg-primary-hover disabled:opacity-50"
                   disabled={saving}
                 >
                   {saving ? t.saving : t.save}

@@ -64,13 +64,13 @@ export function OnboardingContent({ translations: t }: OnboardingContentProps) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-bg-subtle py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-lg w-full space-y-8">
         <div>
           <Link href="/" className="flex justify-center">
             <span className="text-3xl font-bold text-primary">{t.brand}</span>
           </Link>
-          <h2 className="mt-6 text-center text-2xl font-bold text-gray-900">
+          <h2 className="mt-6 text-center text-2xl font-bold text-fg">
             {t.welcome}
           </h2>
 
@@ -80,7 +80,7 @@ export function OnboardingContent({ translations: t }: OnboardingContentProps) {
               <div
                 key={s}
                 className={`h-2 w-16 rounded-full ${
-                  s <= step ? 'bg-primary' : 'bg-gray-200'
+                  s <= step ? 'bg-primary' : 'bg-bg-muted'
                 }`}
               />
             ))}
@@ -89,7 +89,7 @@ export function OnboardingContent({ translations: t }: OnboardingContentProps) {
 
         {step === 1 && (
           <div className="space-y-6">
-            <p className="text-center text-gray-600">{t.industryQuestion}</p>
+            <p className="text-center text-fg-muted">{t.industryQuestion}</p>
 
             <div className="grid grid-cols-2 gap-3">
               {USE_CASE_IDS.map((id) => (
@@ -100,11 +100,11 @@ export function OnboardingContent({ translations: t }: OnboardingContentProps) {
                   className={`flex items-center p-4 rounded-lg border-2 transition-colors ${
                     selectedUseCase === id
                       ? 'border-primary bg-primary-subtle'
-                      : 'border-gray-200 hover:border-gray-300'
+                      : 'border-border hover:border-border-strong'
                   }`}
                 >
                   <span className="text-2xl mr-3">{USE_CASE_ICONS[id]}</span>
-                  <span className="text-sm font-medium text-gray-900">{t.useCases[id]}</span>
+                  <span className="text-sm font-medium text-fg">{t.useCases[id]}</span>
                 </button>
               ))}
             </div>
@@ -113,7 +113,7 @@ export function OnboardingContent({ translations: t }: OnboardingContentProps) {
               type="button"
               onClick={() => setStep(2)}
               disabled={!selectedUseCase}
-              className="w-full py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-primary-fg bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {t.continue}
             </button>
@@ -122,7 +122,7 @@ export function OnboardingContent({ translations: t }: OnboardingContentProps) {
 
         {step === 2 && (
           <div className="space-y-6">
-            <p className="text-center text-gray-600">
+            <p className="text-center text-fg-muted">
               {t.goalsQuestion}
             </p>
 
@@ -135,23 +135,23 @@ export function OnboardingContent({ translations: t }: OnboardingContentProps) {
                   className={`flex items-center w-full p-4 rounded-lg border-2 transition-colors ${
                     selectedGoals.includes(id)
                       ? 'border-primary bg-primary-subtle'
-                      : 'border-gray-200 hover:border-gray-300'
+                      : 'border-border hover:border-border-strong'
                   }`}
                 >
                   <div
                     className={`w-5 h-5 rounded border-2 mr-3 flex items-center justify-center ${
                       selectedGoals.includes(id)
-                        ? 'bg-primary border-primary'
-                        : 'border-gray-300'
+                        ? 'bg-primary border-primary text-primary-fg'
+                        : 'border-border-strong'
                     }`}
                   >
                     {selectedGoals.includes(id) && (
-                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                       </svg>
                     )}
                   </div>
-                  <span className="text-sm font-medium text-gray-900">{t.goals[id]}</span>
+                  <span className="text-sm font-medium text-fg">{t.goals[id]}</span>
                 </button>
               ))}
             </div>
@@ -160,7 +160,7 @@ export function OnboardingContent({ translations: t }: OnboardingContentProps) {
               <button
                 type="button"
                 onClick={() => setStep(1)}
-                className="flex-1 py-3 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                className="flex-1 py-3 px-4 border border-border-strong rounded-md shadow-sm text-sm font-medium text-fg-muted bg-bg hover:bg-bg-subtle"
               >
                 {t.back}
               </button>
@@ -168,7 +168,7 @@ export function OnboardingContent({ translations: t }: OnboardingContentProps) {
                 type="button"
                 onClick={handleComplete}
                 disabled={selectedGoals.length === 0 || isLoading}
-                className="flex-1 py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-primary-fg bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isLoading ? t.starting : t.getStarted}
               </button>
@@ -176,7 +176,7 @@ export function OnboardingContent({ translations: t }: OnboardingContentProps) {
           </div>
         )}
 
-        <p className="text-center text-sm text-gray-500">
+        <p className="text-center text-sm text-fg-subtle">
           <Link href="/dashboard" className="text-primary hover:text-primary">
             {t.skipForNow}
           </Link>

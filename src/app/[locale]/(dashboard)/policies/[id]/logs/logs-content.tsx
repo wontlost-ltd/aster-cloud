@@ -550,18 +550,18 @@ export function LogsContent({
             <div className="relative">
               <div className="flex items-center">
                 <div className="flex-shrink-0 rounded-lg bg-bg/20 p-3">
-                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="h-6 w-6 text-primary-fg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
                 </div>
               </div>
               <p className="mt-4 text-sm font-medium text-primary-fg">{t.logs.totalExecutions}</p>
-              <p className="mt-1 text-3xl font-bold text-white">{stats.totalExecutions.toLocaleString(locale)}</p>
+              <p className="mt-1 text-3xl font-bold text-primary-fg">{stats.totalExecutions.toLocaleString(locale)}</p>
             </div>
           </div>
 
           {/* Success Rate */}
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-6 shadow-lg">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-700 to-emerald-800 p-6 shadow-lg">
             <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-bg/10" />
             <div className="relative">
               <div className="flex items-center">
@@ -571,14 +571,14 @@ export function LogsContent({
                   </svg>
                 </div>
               </div>
-              <p className="mt-4 text-sm font-medium text-emerald-100">{t.logs.successRate}</p>
+              <p className="mt-4 text-sm font-medium text-white">{t.logs.successRate}</p>
               <p className="mt-1 text-3xl font-bold text-white">
                 {Math.round(stats.successRate)}%
               </p>
-              <p className="mt-1 text-xs text-emerald-200">
+              <p className="mt-1 text-xs text-white">
                 {stats.successCount} / {stats.successCount + stats.failureCount}
               </p>
-              <p className="mt-1 text-xs text-emerald-200" data-testid="logs-rate-note">
+              <p className="mt-1 text-xs text-white" data-testid="logs-rate-note">
                 {t.logs.error}: {(stats.errorCount ?? 0).toLocaleString(locale)} · {t.logs.pendingLabel}: {(stats.pendingCount ?? 0).toLocaleString(locale)} · {t.logs.computed}:{' '}
                 {(stats.indeterminateCount ?? 0).toLocaleString(locale)} · {t.logs.rateNote} · {t.logs.otherDecisionStates}
               </p>
@@ -586,7 +586,7 @@ export function LogsContent({
           </div>
 
           {/* Failed */}
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-rose-500 to-rose-600 p-6 shadow-lg">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-rose-700 to-rose-800 p-6 shadow-lg">
             <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-bg/10" />
             <div className="relative">
               <div className="flex items-center">
@@ -596,14 +596,14 @@ export function LogsContent({
                   </svg>
                 </div>
               </div>
-              <p className="mt-4 text-sm font-medium text-rose-100">{t.logs.denied}</p>
+              <p className="mt-4 text-sm font-medium text-white">{t.logs.denied}</p>
               <p className="mt-1 text-3xl font-bold text-white">{stats.failureCount.toLocaleString(locale)}</p>
-              <p className="mt-1 text-xs text-rose-100">{t.logs.error}: {(stats.errorCount ?? 0).toLocaleString(locale)}</p>
+              <p className="mt-1 text-xs text-white">{t.logs.error}: {(stats.errorCount ?? 0).toLocaleString(locale)}</p>
             </div>
           </div>
 
           {/* Avg Duration */}
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 p-6 shadow-lg">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-700 to-amber-800 p-6 shadow-lg">
             <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-bg/10" />
             <div className="relative">
               <div className="flex items-center">
@@ -613,7 +613,7 @@ export function LogsContent({
                   </svg>
                 </div>
               </div>
-              <p className="mt-4 text-sm font-medium text-amber-100">{t.logs.avgDuration}</p>
+              <p className="mt-4 text-sm font-medium text-white">{t.logs.avgDuration}</p>
               <p className="mt-1 text-3xl font-bold text-white">{formatDuration(stats.avgDurationMs)}</p>
             </div>
           </div>

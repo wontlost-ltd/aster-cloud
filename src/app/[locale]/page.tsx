@@ -707,7 +707,7 @@ function Footer({ t }: { t: ReturnType<typeof useTranslations> }) {
               </FooterLink>
             </Stack>
           </Stack>
-          <p className="text-center text-xs text-zinc-500">
+          <p className="text-center text-xs text-zinc-400">
             © {new Date().getFullYear()} {t('nav.brand')}. {t('footer.copyright')}
           </p>
         </Stack>

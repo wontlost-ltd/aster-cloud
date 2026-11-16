@@ -81,8 +81,8 @@ function RenderUpload({
     record.outcome === 'failed'
       ? 'text-rose-400'
       : record.outcome === 'accepted'
-        ? 'text-emerald-400'
-        : 'text-amber-400';
+        ? 'text-success'
+        : 'text-warning';
 
   return (
     <div className="space-y-3">
@@ -97,14 +97,14 @@ function RenderUpload({
       </div>
 
       {record.outcome === 'failed' && (
-        <p role="alert" className="text-xs text-rose-400">
+        <p role="alert" className="text-xs text-danger">
           {record.errorKind}: {record.errorMessage ?? t('unknownError')}
         </p>
       )}
       {record.outcome === 'failed' &&
         record.errorKind === 'unsupported-schema-version' &&
         record.supportedVersions && (
-          <p className="text-xs text-amber-400">
+          <p className="text-xs text-warning">
             {t('schemaVersionUpgradeRequired', {
               versions: record.supportedVersions.join(', '),
             })}

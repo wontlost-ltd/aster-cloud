@@ -143,7 +143,7 @@ export function CatMoodContent({ locale }: { locale: string }) {
           {highlightVocab(rule.source, catVocabTerms(loc))}
         </pre>
         <p className="mt-2 text-xs text-fg-subtle">
-          <span className="font-mono font-semibold text-sky-600 dark:text-sky-400">{t('legendTerm')}</span>
+          <span className="font-mono font-semibold text-sky-700 dark:text-sky-400">{t('legendTerm')}</span>
           {' '}{t('legend')}
         </p>
       </section>

@@ -166,9 +166,9 @@ interface VersionDetailPanelProps {
  * 不重复造 key——同一概念两处文案会漂移。
  */
 const decisionColors: Record<string, string> = {
-  APPROVED: 'text-green-600 dark:text-green-400',
+  APPROVED: 'text-success',
   REJECTED: 'text-red-600 dark:text-red-400',
-  REQUESTED_CHANGES: 'text-yellow-600 dark:text-yellow-400',
+  REQUESTED_CHANGES: 'text-warning',
 };
 
 export function VersionDetailPanel({

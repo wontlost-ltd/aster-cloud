@@ -210,7 +210,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
                 onClick={() => setTimeRange(range)}
                 className={`px-3 py-1 text-sm font-medium first:rounded-l-md last:rounded-r-md border ${
                   timeRange === range
-                    ? 'bg-primary text-white border-primary'
+                    ? 'bg-primary text-primary-fg border-primary'
                     : 'bg-bg dark:bg-gray-800 text-fg dark:text-gray-300 border-border-strong dark:border-gray-600 hover:bg-bg-subtle dark:hover:bg-gray-700'
                 }`}
               >

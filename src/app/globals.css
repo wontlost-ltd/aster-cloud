@@ -221,7 +221,7 @@ body {
 }
 .docs-article pre {
   background: var(--aster-color-zinc-50, #fafafa);
-  border: 1px solid var(--border, var(--aster-color-zinc-200, #e4e4e7));
+  border: 1px solid var(--aster-border);
   border-radius: 8px;
   padding: 1rem 1.25rem;
   overflow-x: auto;
@@ -295,7 +295,8 @@ body {
   margin-top: 0.75rem;
   margin-bottom: 0.75rem;
   line-height: 1.7;
-  color: var(--fg-muted, #52525b);
+  /* 必须引用实际存在的 token：此前写成不存在的 --fg-muted，暗色下回落到浅色主题的 #52525b（2.57:1，#774） */
+  color: var(--aster-fg-muted);
 }
 
 @media print {
@@ -621,7 +622,9 @@ body {
 }
 .poker-card.is-up .poker-card-inner { transform: rotateY(180deg); }
 .poker-card.is-win { box-shadow: 0 0 0 2px #f59e0b, 0 0 14px rgba(245, 158, 11, 0.7); border-radius: 7px; }
-.poker-card.is-dim { opacity: 0.72; }
+/* 非获胜牌：用更深的牌面底色表示「弱化」，而不是整体降透明度——opacity 0.72 会把牌面文字压到 1.9–4.4:1（#774）。
+ * 红色点数在 #ebe6dc 上 6.35:1、黑色 13.99:1。 */
+.poker-card.is-dim .poker-card-face { background: #ebe6dc; border-color: #d6cfc2; }
 
 .poker-card-back, .poker-card-face {
   position: absolute;
@@ -650,7 +653,8 @@ body {
   align-items: center;
   justify-content: center;
 }
-.poker-red { color: #c81e2c; }
+/* 红色点数加深：发牌动画淡入期间（透明度约 0.8）在牌面上仍 ≥4.5:1；静止时 7.8:1，弱化牌面 6.4:1（#774） */
+.poker-red { color: #9f1b26; }
 .poker-black { color: #1a1a1a; }
 .poker-card-pip { font-size: 26px; line-height: 1; }
 @media (min-width: 640px) { .poker-card-pip { font-size: 30px; } }

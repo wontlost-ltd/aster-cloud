@@ -286,7 +286,7 @@ export function PolicyVersionList({
                 </div>
 
                 {version.deprecatedAt && (
-                  <p className="mt-1 text-xs text-orange-600 dark:text-orange-400">
+                  <p className="mt-1 text-xs text-orange-700 dark:text-orange-400">
                     {t('deprecatedOn', { date: new Date(version.deprecatedAt).toLocaleString(locale) })}
                   </p>
                 )}
@@ -313,7 +313,7 @@ export function PolicyVersionList({
                 {version.status === 'DRAFT' && onSubmitForApproval && (
                   <button
                     onClick={() => openActionDialog('submit', version)}
-                    className="text-sm bg-primary hover:bg-primary-hover text-white px-3 py-1.5 rounded-md"
+                    className="text-sm bg-primary hover:bg-primary-hover text-primary-fg px-3 py-1.5 rounded-md"
                   >
                     {t('submitForApproval')}
                   </button>
@@ -323,7 +323,7 @@ export function PolicyVersionList({
                   <>
                     <button
                       onClick={() => openActionDialog('approve', version)}
-                      className="text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-md"
+                      className="text-sm bg-green-700 hover:bg-green-800 text-white px-3 py-1.5 rounded-md"
                     >
                       {t('actions.approve')}
                     </button>
@@ -337,7 +337,7 @@ export function PolicyVersionList({
                 )}
 
                 {version.status === 'PENDING_APPROVAL' && !canApprove(version) && (
-                  <span className="text-xs text-yellow-600 dark:text-yellow-400">
+                  <span className="text-xs text-warning">
                     {t('awaitingOthers')}
                   </span>
                 )}
@@ -354,7 +354,7 @@ export function PolicyVersionList({
                 {version.status === 'APPROVED' && !version.isDefault && onDeprecate && (
                   <button
                     onClick={() => openActionDialog('deprecate', version)}
-                    className="text-sm text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 px-2 py-1"
+                    className="text-sm text-orange-700 dark:text-orange-400 hover:text-orange-800 dark:hover:text-orange-300 px-2 py-1"
                   >
                     {t('actions.deprecate')}
                   </button>

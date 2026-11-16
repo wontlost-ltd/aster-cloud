@@ -167,7 +167,7 @@ export function VocabDemoContent({ locale }: { locale: string }) {
           {highlightVocab(rule.source, domain.terms.map((t) => t.localized[loc]))}
         </pre>
         <p className="mt-2 text-xs text-fg-subtle">
-          <span className="font-mono font-semibold text-sky-600 dark:text-sky-400">{t('step3.legendTerm')}</span>
+          <span className="font-mono font-semibold text-sky-700 dark:text-sky-400">{t('step3.legendTerm')}</span>
           {' '}{t('step3.legend')}
         </p>
       </section>
@@ -237,7 +237,7 @@ export function VocabDemoContent({ locale }: { locale: string }) {
                       {tier.conditions.map((cond, j) => (
                         <li key={j} className="font-mono text-xs text-fg-muted">
                           {cond.expression}{' '}
-                          <span className={cond.matched ? 'text-emerald-600' : 'text-fg-subtle'}>
+                          <span className={cond.matched ? 'text-success' : 'text-fg-subtle'}>
                             {cond.matched ? '✓' : '✗'}
                           </span>
                         </li>
@@ -265,7 +265,7 @@ export function VocabDemoContent({ locale }: { locale: string }) {
 function StepHeading({ n, title }: { n: number; title: string }) {
   return (
     <h2 className="mb-2 text-sm font-semibold text-fg">
-      <span className="mr-2 inline-flex size-5 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">{n}</span>
+      <span className="mr-2 inline-flex size-5 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-fg">{n}</span>
       {title}
     </h2>
   );

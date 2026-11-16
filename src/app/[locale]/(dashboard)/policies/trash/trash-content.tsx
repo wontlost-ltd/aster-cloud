@@ -210,7 +210,7 @@ export function TrashContent({ translations: t, locale }: TrashContentProps) {
           <p className="text-sm text-fg-muted">
             {t.trash.itemCount.replace('{count}', stats.total.toString())}
             {stats.expiringWithin7Days > 0 && (
-              <span className="ml-2 text-orange-600">
+              <span className="ml-2 text-orange-700 dark:text-orange-400">
                 ({stats.expiringWithin7Days} expiring soon)
               </span>
             )}
@@ -292,7 +292,7 @@ export function TrashContent({ translations: t, locale }: TrashContentProps) {
                       <button
                         onClick={() => restorePolicy(item.policyId)}
                         disabled={actionLoading === item.policyId}
-                        className="inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-hover disabled:opacity-50 transition-colors"
+                        className="inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-fg shadow-sm hover:bg-primary-hover disabled:opacity-50 transition-colors"
                       >
                         {actionLoading === item.policyId ? '...' : t.trash.restore}
                       </button>
