@@ -284,9 +284,14 @@ export function redactInputString(value: string): string {
   return REDACTION_RULES.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), value);
 }
 
-/** 只作用于字符串（含标量数组的元素）；空白串与规范 UUID 整串豁免（同 aster-api `isRedactionExempt`）。 */
+/** 空白串与规范 UUID 整串豁免（同 aster-api `isRedactionExempt`），其余过一遍正则。输入面与输出面共用。 */
+export function redactPlainString(value: string): string {
+  return value.trim() === '' || UUID.test(value) ? value : redactInputString(value);
+}
+
+/** 只作用于字符串（含标量数组的元素）。 */
 function plain(value: unknown): unknown {
-  if (typeof value === 'string') return value.trim() === '' || UUID.test(value) ? value : redactInputString(value);
+  if (typeof value === 'string') return redactPlainString(value);
   if (Array.isArray(value)) return value.map(plain);
   return value;
 }

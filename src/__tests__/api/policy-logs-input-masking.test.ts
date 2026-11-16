@@ -149,3 +149,14 @@ describe('GET /api/policies/[id]/logs —— 输入打码（#754）', () => {
     expect(state.versionQueries).toBe(1);
   });
 });
+
+describe('GET /api/policies/[id]/logs —— 输出字符串叶子过 PIIRedactor（#772）', () => {
+  it('★由输入派生的输出（"Hello, " + 姓名 + 邮箱）在响应体里被打码，其他叶子不动', async () => {
+    state.rows = [row('e1', { output: { greeting: `Hello, John Smith (${EMAIL})!`, allowed: true, score: 7 } })];
+    for (const qs of ['', '?mode=recent']) {
+      const text = await (await call(qs)).text();
+      expect(text).not.toContain(EMAIL);
+      expect(JSON.parse(text).items[0].output).toEqual({ greeting: 'Hello, John Smith (***@***.***)!', allowed: true, score: 7 });
+    }
+  });
+});
