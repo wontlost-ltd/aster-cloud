@@ -727,7 +727,8 @@ body {
  * 必须有可见焦点指示（WCAG 2.4.7，#774）。用 outline 而非 box-shadow，避免被父级 overflow 裁掉。
  */
 pre[tabindex="0"]:focus-visible,
-.docs-table-wrap:focus-visible {
+.docs-table-wrap:focus-visible,
+[data-scroll-region]:focus-visible {
   outline: 2px solid var(--aster-primary-ring);
   outline-offset: 2px;
 }

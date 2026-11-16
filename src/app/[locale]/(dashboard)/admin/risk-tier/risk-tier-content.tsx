@@ -172,8 +172,9 @@ export function RiskTierAdminContent() {
       {loading && <p className="text-sm text-fg-muted">{t('loading')}</p>}
       {error && <ErrorBlock error={error} />}
 
+      {/* 可横向滚动的表格容器：键盘可聚焦后用方向键滚动（axe scrollable-region-focusable，#774） */}
       {!loading && !error && (
-        <div className="overflow-x-auto rounded-lg border border-border dark:border-gray-700">
+        <div tabIndex={0} role="region" aria-label={t('title')} data-scroll-region className="overflow-x-auto rounded-lg border border-border dark:border-gray-700">
           <table className="min-w-full divide-y divide-border dark:divide-gray-700">
             <thead className="bg-bg-subtle dark:bg-gray-800">
               <tr>

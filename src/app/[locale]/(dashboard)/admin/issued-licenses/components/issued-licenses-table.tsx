@@ -81,7 +81,8 @@ export function IssuedLicensesTable({ rows, searchQuery }: Props) {
         </button>
       </form>
 
-      <div className="overflow-x-auto rounded-lg border border-border">
+      {/* 可横向滚动的表格容器：键盘可聚焦后用方向键滚动（axe scrollable-region-focusable，#774） */}
+      <div tabIndex={0} role="region" aria-label={t('title')} data-scroll-region className="overflow-x-auto rounded-lg border border-border">
         <table className="min-w-full text-sm">
           <thead className="bg-bg-subtle text-xs uppercase text-fg-muted">
             <tr>
