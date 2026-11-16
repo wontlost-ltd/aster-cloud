@@ -2,12 +2,13 @@
  * UI 审计（#774）的交互探测：逐个点击按钮看是否有可观察效果、键盘打开菜单 / 对话框并检查焦点陷阱与 Esc、
  * Tab 遍历检查焦点可见性。
  *
- * 安全约束：探测期间拦截所有非 GET/HEAD/OPTIONS 请求与已知有副作用的 GET（登出）并回 503；前提是应用的 GET
- * 接口无副作用（REST 约定），在此前提下种子数据不会被改动。破坏性按钮若在没有确认
+ * 安全约束：探测期间所有写请求、所有 API 读请求与已知有副作用的页面都被拦截并回 503（见 request-guard.ts），
+ * 种子数据不会被改动。破坏性按钮若在没有确认
  * 步骤的情况下直接发出写请求，就是一条 serious 发现。
  */
 import type { BrowserContext, Page } from '@playwright/test';
 import { focusIndicator } from './page-checks';
+import { classifyRequest } from './request-guard';
 import type { AuditContext, Finding } from './recorder';
 
 type Emit = (f: Omit<Finding, keyof AuditContext>) => void;
@@ -24,11 +25,6 @@ interface Candidate {
 const DESTRUCTIVE = /\b(delete|remove|revoke|destroy|purge|disable|deactivate|leave|cancel subscription)\b|删除|移除|撤销|吊销|停用|退出团队|清空/i;
 const OPEN_POPUP = '[role=dialog]:visible, [role=alertdialog]:visible, [aria-modal="true"]:visible, [role=menu]:visible, [role=listbox]:visible';
 const MAX_BUTTONS = 30;
-/**
- * 读请求默认放行（假定 GET 无副作用）；已知会改状态的 GET 路径（登出）一并拦截，
- * 否则点到「登出」会让后续用例的伪造会话失效。
- */
-const GET_SIDE_EFFECTS = /^\/(?:[a-z]{2}\/)?(?:logout|api\/auth\/signout)(?:\/|$)/;
 /** 审计拦截写请求时伪造响应带的标记头 */
 export const BLOCKED_HEADER = 'x-ui-audit-blocked';
 const MAX_POPUPS = 10;
@@ -105,9 +101,10 @@ export async function probeButtons(context: BrowserContext, page: Page, includeS
   const mutating: Array<{ method: string; url: string }> = [];
   await page.route('**/*', (route) => {
     const req = route.request();
-    const safeRead = ['GET', 'HEAD', 'OPTIONS'].includes(req.method()) && !GET_SIDE_EFFECTS.test(new URL(req.url()).pathname);
-    if (safeRead) return route.continue();
-    mutating.push({ method: req.method(), url: req.url() });
+    const decision = classifyRequest(req.method(), req.url());
+    if (decision === 'allow') return route.continue();
+    // 只有写请求参与「破坏性操作无确认」判定；被拦的读请求仅阻断副作用
+    if (decision === 'block-write') mutating.push({ method: req.method(), url: req.url() });
     // 带标记头，页面级 5xx 统计据此排除审计自己伪造的响应
     return route.fulfill({
       status: 503,
