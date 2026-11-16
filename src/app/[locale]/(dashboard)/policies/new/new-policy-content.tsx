@@ -7,6 +7,7 @@ import { PolicyForm, type PolicySaveContext } from '@/components/policy/policy-f
 import type { PolicyDraftFields } from '@/components/policy/policy-form/use-policy-draft';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
 import { getSnippetTemplate } from '@/lib/playground/snippet-templates';
+import { getStarterTemplate } from '@/config/aster-policy-templates';
 import { trackProductEvent } from '@/lib/product-events/client';
 
 /**
@@ -51,13 +52,14 @@ export function NewPolicyContent({
   // matching snippet from the server-side allow-list registry. Unknown
   // ids silently fall back to the empty editor — the URL is never
   // trusted to carry raw source.
-  const initial: PolicyDraftFields = useMemo(() => {
+  // 没有深链时按界面语言预填入门模板（starter）：PolicyForm 以它为基线，未改动不算未保存修改，
+  // 已有草稿仍照常提示恢复；深链（含未知 id）只认深链，不叠加入门模板。
+  const { initial, starter } = useMemo((): { initial: PolicyDraftFields; starter: boolean } => {
     const templateId = searchParams.get('template');
-    if (!templateId) return EMPTY;
+    if (!templateId) return { initial: { ...EMPTY, content: getStarterTemplate(locale).source }, starter: true };
     const template = getSnippetTemplate(templateId);
-    if (!template) return EMPTY;
-    return { ...EMPTY, content: template.source };
-  }, [searchParams]);
+    return { initial: template ? { ...EMPTY, content: template.source } : EMPTY, starter: false };
+  }, [searchParams, locale]);
 
   // 文档深链带入的模板也算「新建时选了模板」；只认登记表里存在的 id，每次挂载只记一次。
   const deeplinkTracked = useRef(false);
@@ -100,6 +102,7 @@ export function NewPolicyContent({
       uiLocale={locale}
       policyId={null}
       initial={initial}
+      starter={starter}
       title={t('form.createTitle')}
       subtitle={t('form.createSubtitle')}
       onSave={handleSave}

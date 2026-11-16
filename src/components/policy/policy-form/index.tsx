@@ -84,6 +84,7 @@ import { useFitViewportHeight } from './use-fit-viewport-height';
 import { useSuppressLauncherSafeArea } from '@/components/assistant/assistant-context';
 import { EditorPalette } from './editor-palette';
 import { EditorRail } from './editor-rail';
+import { StarterHint } from './starter-hint';
 import { CNLSyntaxConverterDialog } from '@/components/policy/cnl-syntax-converter-dialog';
 import { type PolicyExample, getExampleSource } from '@/data/policy-examples';
 import { trackProductEvent } from '@/lib/product-events/client';
@@ -170,6 +171,11 @@ export interface PolicyFormProps {
   policyId: string | null;
   /** Seed values for the form. */
   initial: PolicyFormInitialFields;
+  /**
+   * 新建时 initial.content 是按界面语言预填的入门模板（见 @/config/aster-policy-templates）。
+   * 入门模板未改动时显示入门提示条（含「从空白开始」），且 AI 生成不把它当用户源码。
+   */
+  starter?: boolean;
   /** Mode-specific page title. */
   title: string;
   subtitle: string;
@@ -202,6 +208,7 @@ export function PolicyForm({
   policyCnlLocale = null,
   policyId,
   initial,
+  starter = false,
   title,
   subtitle,
   onSave,
@@ -277,6 +284,21 @@ export function PolicyForm({
   );
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [converterOpen, setConverterOpen] = useState(false);
+
+  // 入门模板：「未改动」= 内容仍等于初始内容。任何写入（手动编辑、AI、模板替换、恢复草稿）
+  // 都会让它自然失效，无需在各写入口逐个清标记；入门模板也只作初值，不会再写回编辑器。
+  const starterSource = mode === 'create' && starter && content === initial.content ? initial.content : null;
+  const [starterHintDismissed, setStarterHintDismissed] = useState(false);
+  // 「从空白开始」后以空白为基线：空编辑器不算未保存修改，不自动保存、不触发离开确认。
+  const [startedBlank, setStartedBlank] = useState(false);
+  const baseline = useMemo(
+    () => (startedBlank ? { ...initial, content: '' } : initial),
+    [startedBlank, initial],
+  );
+  const startBlank = useCallback(() => {
+    setContent('');
+    setStartedBlank(true);
+  }, []);
 
   // Editor instance is captured imperatively. We also hold a state
   // boolean so child hooks (markers, jump-to-line) re-run after
@@ -421,7 +443,7 @@ export function PolicyForm({
   } = usePolicyDraft({
     policyId,
     fields,
-    baseline: initial,
+    baseline,
   });
 
   useUnsavedWarning(isDirty && !isSaving);
@@ -738,6 +760,16 @@ export function PolicyForm({
           </div>
         )}
 
+        {/* ----- 入门模板提示（新建且入门模板未改动） ----- */}
+        {starterSource !== null && !starterHintDismissed && (
+          <StarterHint
+            uiLocale={uiLocale}
+            cnlLocale={cnlLocale}
+            onStartBlank={isMobile ? undefined : startBlank}
+            onDismiss={() => setStarterHintDismissed(true)}
+          />
+        )}
+
         {/* ----- 策略语言与源码不一致提示（#627） ----- */}
         {mismatchedLocale && (
           <div
@@ -871,6 +903,7 @@ export function PolicyForm({
                 allowStructuralAliases={allowStructuralAliases}
                 onAliasSetChange={setAliasSet}
                 onApplyContent={(body) => setContent(body)}
+                starterSource={starterSource}
                 onApplyTemplate={(tpl) => {
                   // 侧栏「模板」tab：整体替换编辑器内容（有内容先弹确认）。
                   // 命令面板的「插入到光标」保持 insertTemplateAtCursor 不变。
