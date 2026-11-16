@@ -217,7 +217,7 @@ export default function TeamPoliciesPage() {
                       <span className="text-xs text-fg-subtle">v{policy.version}</span>
                     </div>
                   </div>
-                  <div className="mt-2 flex items-center justify-between">
+                  <div className="mt-2 max-sm:mt-3 flex items-center justify-between">
                     <div className="text-xs text-fg-subtle">
                       {policy.createdBy && (
                         <span>
