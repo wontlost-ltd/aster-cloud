@@ -1,0 +1,54 @@
+# UI 审计套件（#774）
+
+对 `src/app/[locale]/**` 下每个页面做链接、按钮、无障碍、布局与视觉检查，桌面（1440×900）与移动（390×844）各跑一遍，语言 en + zh，浅色 + 深色主题。只针对本地栈：`BASE_CLOUD`（及设置了的 `BASE_API`）必须是回环地址，否则全部跳过。
+
+## 检查项
+
+| 类别 | 内容 | 严重度 |
+| --- | --- | --- |
+| 页面 | HTTP 5xx / 4xx、登录态被拒（跳登录页）、渲染了错误边界或 404、页面内 5xx 请求、未捕获 JS 错误 | critical / serious / moderate |
+| 链接 | 无 href 的 `<a>`、`#` / `javascript:` 假链接、页内锚点无目标、`target=_blank` 缺 `rel`；`links.spec.ts` 以对应角色会话 GET 每个站内链接（含 Next 软 404 识别），HEAD 站外链接 | serious（站内失效）/ moderate / minor |
+| 按钮 | 逐个点击（每页 ≤30 个，按名称去重），无任何可观察效果即「死按钮」；点不到；禁用但不说明原因；破坏性按钮直接发写请求而无确认步骤 | serious / moderate / minor |
+| 键盘 | 菜单 / 对话框可用 Enter 打开、模态层困住焦点、Esc 关闭、焦点回到触发按钮；Tab 遍历前 25 个焦点检查可见焦点指示 | serious / moderate |
+| 无障碍 | axe-core（WCAG 2.0/2.1/2.2 A + AA），深色主题复查对比度 | 按 axe impact |
+| 布局 | 横向溢出（逐个隐藏定位根因）、移动端点击目标 < 24px / < 44px、卡片网格同行等高 / 内边距一致 / 不重叠 / 内容不越界、深色主题是否生效 | serious（移动端溢出）/ moderate / minor |
+| 视觉 | 每个路由 × 视口 × 语言 × 主题一张全页截图，写入输出目录（不入库、不做基线比对） | — |
+
+按钮探测期间拦截所有非 GET/HEAD/OPTIONS 请求并伪造 503（带 `x-ui-audit-blocked` 头，不计入 5xx），种子数据不会被改动。critical / serious 发现会让对应用例 soft 失败；其余只进报告。
+
+## 运行
+
+```bash
+export PATH=/opt/homebrew/opt/node@24/bin:/opt/podman/bin:$PATH
+# 1. 本地栈：Postgres / Redis（非默认端口）、可选 aster-api、cloud 生产构建（推荐，dev 服务器太慢）
+# 2. 播种角色用户（anon 之外：ui-free / ui-pro / ui-owner / ui-teamadmin / ui-member / ui-platform）、团队、策略、执行与 API key，
+#    并写出 storageState 到 .superpowers/ui-audit/（伪造 Auth.js 会话 cookie，需与 cloud 进程相同的 NEXTAUTH_SECRET）
+DATABASE_URL=postgresql://…@localhost:55774/aster_cloud NEXTAUTH_SECRET=… BASE_CLOUD=http://localhost:3774 pnpm ui-audit:seed
+# 3. 全量审计：页面（桌面 + 移动）→ 链接校验 → 报告
+BASE_CLOUD=http://localhost:3774 pnpm test:ui-audit --workers=5
+```
+
+报告在 `test-results/ui-audit/report.md`（`UI_AUDIT_OUT` / `UI_AUDIT_REPORT` 可改），截图在同目录 `screens/<viewport>/<locale>/<theme>/`。
+
+| 变量 | 作用 |
+| --- | --- |
+| `UI_AUDIT_ONLY` | 只跑路径或路由模式匹配该正则的页面，如 `'^docs/'` |
+| `UI_AUDIT_LOCALES` | 默认 `en,zh` |
+| `UI_AUDIT_BUTTONS=0` | 跳过按钮 / 弹出层探测（最耗时的一步） |
+| `UI_AUDIT_SCREENSHOTS=0` | 不截图 |
+| `UI_AUDIT_EXTERNAL=0` | 不探测站外链接（离线时） |
+| `UI_AUDIT_EXTERNAL_SKIP` | 追加不探测的站外主机（逗号分隔） |
+| `UI_AUDIT_CHROMIUM` | 指定本机 Chromium 可执行文件 |
+| `UI_AUDIT_STATE_DIR` | storageState / fixtures.json 目录，默认 `.superpowers/ui-audit` |
+
+新增页面须登记到 `routes.ts`；`src/__tests__/ui-audit-route-inventory.test.ts`（vitest，进 CI）会比对 page.tsx 清单，漏登记即失败。
+
+## 是否适合 CI
+
+目前不适合直接进 CI，原因与前提：
+
+- **会话夹具**：靠伪造 Auth.js JWT cookie（`scripts/lib/session-cookie.ts`），需要与被测 cloud 进程共享 `NEXTAUTH_SECRET`，CI 里可以生成临时密钥，但必须保证被测进程不连任何真实库。
+- **运行时**：需要 Postgres（cloud 迁移）、cloud 生产构建（约 10 分钟、5 GB 内存）；策略 / 审批类页面还要 aster-api。全量 488 个页面用例 + 链接校验在 5 worker 下约 90 分钟。
+- **噪音**：现有 serious 级发现（见 #774 报告）未清零前，任何 CI 闸门都会常红。
+
+建议路径：发现清零后，CI 只跑 `UI_AUDIT_BUTTONS=0 UI_AUDIT_SCREENSHOTS=0 UI_AUDIT_LOCALES=en` 的子集（约 15 分钟），按钮探测与截图留给发版前本地全量运行。

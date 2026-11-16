@@ -73,3 +73,6 @@ playwright-report/
 
 # LSP 本地运行时写出的工作区索引（不应入库）
 .asteri/
+
+# UI 审计（#774）伪造会话的 storageState 与播种夹具：含会话 cookie，切勿提交
+.superpowers/ui-audit/
