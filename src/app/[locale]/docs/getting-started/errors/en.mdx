@@ -109,7 +109,7 @@ Three different limits answer `429`. Tell them apart by the `error` field — th
 
 | `error` | Limit | What to do |
 |---|---|---|
-| `"Too Many Requests"` | Request window, per tenant (per client IP for unauthenticated calls) | Retry after `Retry-After` seconds |
+| `"Too Many Requests"` | Coarse request window at the edge of the API, counted per client IP (per tenant when the tenant is already known) | Retry after `Retry-After` seconds |
 | `"rate_limit_exceeded"` | Requests per second per API key, on evaluation and guard decision endpoints | Retry after `Retry-After` (1 second) |
 | `"api_quota_hard_exceeded"` | Hard limit of the monthly API quota (200% of the plan quota) | Retrying does not help — there is no `Retry-After`; wait for the quota period or change plan |
 

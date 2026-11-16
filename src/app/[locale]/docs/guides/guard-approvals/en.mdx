@@ -13,16 +13,16 @@ Aster Cloud is where Guard policies are written, approved and deployed, and wher
 
 An agent names a policy by module and function, for example `guard.customer/decide`. The version the Guard evaluates is that policy's **default version** in Aster Cloud.
 
-- **Setting a default version deploys it first.** The dashboard commits the new default only after the policy API has accepted the deployment. If the policy API cannot be reached, you get a retryable error and the default stays as it was, so the Guard never runs a different version from the one the dashboard shows.
+- **Setting a default version deploys it first.** The dashboard commits the new default only after the policy API has accepted the deployment. If the policy API cannot be reached, you get a retryable error and the default stays as it was. In the rare case that the dashboard fails between the deployment and the commit, the background check below brings the two back in line.
 - **Concurrent changes.** If someone else changes the default of the same policy at the same time, the slower request is rejected and must be repeated.
 - **Trash and restore.** Moving a policy to the trash withdraws it from the Guard; restoring it deploys it again. A policy that was never deployed can be deleted even while the policy API is unavailable.
-- **Convergence.** A background job checks every five minutes that each policy's deployed version matches its default and repairs any deployment that did not complete.
+- **Convergence.** A background job checks every five minutes that each policy deployed to the Guard still runs its current default version, and finishes any deployment or withdrawal that did not complete.
 
 The Guard evaluates the deployed version with the same source, keyword aliases, language and frozen domain vocabulary that Aster Cloud compiled, and with the same entry rule that dashboard executions use.
 
 ## What agents receive
 
-For an `ALLOW`, the Guard returns a signed execution receipt. The agent must verify it and consume it — once — before it acts. The signature covers the tenant, a hash of the action and the policy module and function, so an `ALLOW` obtained from another, more permissive policy cannot be reused. Use `@aster-cloud/aster-guard` 0.3.0 or later; it performs the verification, consume and result report in a fixed order and has no option to skip them.
+For an `ALLOW`, the Guard returns a signed execution receipt. The agent must verify it and consume it — once — before it acts. The signature covers the tenant, a hash of the action and the policy module and function, so an `ALLOW` obtained from another, more permissive policy cannot be reused. Use `@aster-cloud/aster-guard` 0.3.0 or later (published on npm); it performs the verification, consume and result report in a fixed order and has no option to skip them.
 
 Executions started from Aster Cloud take part too. When an execution of a policy that declares the `eu-ai-act-high-risk` profile returns `ALLOW`, Cloud registers a guard decision for it as it does for `REQUIRE_APPROVAL` and `ESCALATE`, so the input-provenance check applies to every outcome.
 

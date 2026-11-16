@@ -57,7 +57,7 @@ https://policy.aster-lang.dev
 
 ## 速率限制
 
-请求受按租户计的请求窗口限制；求值与守卫决策端点另按每个 API key 每秒请求数限制；月度 API 配额也有硬上限。三者都返回 `429 Too Many Requests`，但 `error` 码不同——如何区分、什么时候重试有用，见[错误处理](/docs/getting-started/errors#429-too-many-requests)。
+请求受粗粒度的请求窗口限制（按客户端 IP 计，已知租户时按租户计）；求值与守卫决策端点另按每个 API key 每秒请求数限制；月度 API 配额也有硬上限。三者都返回 `429 Too Many Requests`，但 `error` 码不同——如何区分、什么时候重试有用，见[错误处理](/zh/docs/getting-started/errors#429-too-many-requests)。
 
 ## 什么是 Aster CNL？
 

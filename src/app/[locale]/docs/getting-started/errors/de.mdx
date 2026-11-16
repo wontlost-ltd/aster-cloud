@@ -71,7 +71,7 @@ Drei verschiedene Limits antworten mit `429`. Unterscheiden Sie sie am Feld `err
 
 | `error` | Limit | Vorgehen |
 |---|---|---|
-| `"Too Many Requests"` | Anfragefenster pro Mandant (bei nicht authentifizierten Aufrufen pro Client-IP) | Nach `Retry-After` Sekunden erneut versuchen |
+| `"Too Many Requests"` | Grobes Anfragefenster am Eingang der API, gezählt pro Client-IP (pro Mandant, wenn der Mandant bereits bekannt ist) | Nach `Retry-After` Sekunden erneut versuchen |
 | `"rate_limit_exceeded"` | Anfragen pro Sekunde je API-Key, an den Auswertungs- und Guard-Entscheidungs-Endpunkten | Nach `Retry-After` (1 Sekunde) erneut versuchen |
 | `"api_quota_hard_exceeded"` | Hartes Limit des monatlichen API-Kontingents (200 % des Plankontingents) | Erneute Versuche helfen nicht — es gibt kein `Retry-After`; auf den neuen Kontingentzeitraum warten oder den Plan wechseln |
 

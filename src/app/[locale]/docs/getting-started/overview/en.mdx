@@ -48,7 +48,7 @@ The current API version is **v1**. The version is encoded in the URL path (`/api
 All request and response bodies use `application/json`. Requests that omit `Content-Type: application/json` on POST or PUT endpoints will receive a `400 Bad Request` response.
 ## Rate Limits
 
-Requests are limited by a request window per tenant and, on the evaluation and guard decision endpoints, by requests per second per API key; the monthly API quota also has a hard limit. Each answers `429 Too Many Requests` with a different `error` code — see [Error Handling](/docs/getting-started/errors#429-too-many-requests) for how to tell them apart and when a retry helps.
+Requests are limited by a coarse request window (per client IP, or per tenant when known) and, on the evaluation and guard decision endpoints, by requests per second per API key; the monthly API quota also has a hard limit. Each answers `429 Too Many Requests` with a different `error` code — see [Error Handling](/docs/getting-started/errors#429-too-many-requests) for how to tell them apart and when a retry helps.
 ## What is Aster CNL?
 
 Aster CNL is a subset of English (with localisation support for other languages such as Simplified Chinese) designed to express business rules unambiguously. A minimal policy looks like this:

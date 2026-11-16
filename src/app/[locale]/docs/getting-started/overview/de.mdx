@@ -57,7 +57,7 @@ Alle Anfrage- und Antwortkörper verwenden `application/json`. Anfragen ohne `Co
 
 ## Ratenbegrenzung
 
-Anfragen werden durch ein Anfragefenster pro Mandant begrenzt und an den Auswertungs- und Guard-Entscheidungs-Endpunkten zusätzlich durch Anfragen pro Sekunde je API-Key; das monatliche API-Kontingent hat außerdem ein hartes Limit. Jedes antwortet mit `429 Too Many Requests` und einem eigenen `error`-Code — wie Sie sie unterscheiden und wann ein erneuter Versuch hilft, steht unter [Fehlerbehandlung](/docs/getting-started/errors#429-too-many-requests).
+Anfragen werden durch ein grobes Anfragefenster (pro Client-IP, bzw. pro Mandant, wenn bekannt) begrenzt und an den Auswertungs- und Guard-Entscheidungs-Endpunkten zusätzlich durch Anfragen pro Sekunde je API-Key; das monatliche API-Kontingent hat außerdem ein hartes Limit. Jedes antwortet mit `429 Too Many Requests` und einem eigenen `error`-Code — wie Sie sie unterscheiden und wann ein erneuter Versuch hilft, steht unter [Fehlerbehandlung](/de/docs/getting-started/errors#429-too-many-requests).
 
 ## Was ist Aster CNL?
 
