@@ -83,8 +83,11 @@ function classAlternatives(node: ts.Node, scope: Scope, seen = new Set<string>()
 }
 
 const PRIMARY_FILL = /(?<![\w:-])(bg|from|via|to)-primary(?![\w-])/;
-const OTHER_FILL = /(?<![\w:-])(bg|from)-(?!primary(?![\w-]))[\w-]+/;
+// 别的实色底会盖住主色；半透明叠色（bg-bg/20 之类）仍透出主色，不算换底
+const OTHER_FILL = /(?<![\w:-])(bg|from)-(?!primary(?![\w-]))(?!gradient)[\w-]+(?![\w-]|\/)/;
 const TEXT_WHITE = /(?<![\w:-])text-white(?![\w-])/;
+// 只认无前缀的 text-primary-fg（hover: / data-[...]: 等状态变体跟着对应状态的底色走，不在静态检查范围）
+const TEXT_PRIMARY_FG = /(?<![\w:\]-])text-primary-fg(?![\w-])/;
 
 /**
  * 找出把白字放在主色填充上的位置：同一 className 里既有主色填充（bg-primary / 渐变 from|via|to-primary）又有 text-white，
@@ -104,7 +107,9 @@ function offendersIn(file: string): number[] {
     if (opening) {
       const attr = classAttr(opening);
       const alts = attr?.initializer ? classAlternatives(attr.initializer, scope) : [''];
-      const bad = alts.some((c) => TEXT_WHITE.test(c) && (PRIMARY_FILL.test(c) || (inFill && !OTHER_FILL.test(c))));
+      const onPrimary = (c: string) => PRIMARY_FILL.test(c) || (inFill && !OTHER_FILL.test(c));
+      // 白字压在主色填充上；或 text-primary-fg 用在主色填充之外（暗色主题 primary-fg 是 zinc-950，落在别的深色底上看不见）
+      const bad = alts.some((c) => (TEXT_WHITE.test(c) && onPrimary(c)) || (TEXT_PRIMARY_FG.test(c) && !onPrimary(c)));
       if (bad && attr) lines.push(line(attr));
       // 子元素继承：本元素是主色填充则进入填充区；本元素换了别的底色则退出
       const next = alts.some((c) => PRIMARY_FILL.test(c)) || (inFill && !alts.every((c) => OTHER_FILL.test(c)));
@@ -126,7 +131,7 @@ function offendersIn(file: string): number[] {
 
 
 describe('primary fill contrast', () => {
-  it('no element puts text-white on a primary fill (itself or an ancestor)', () => {
+  it('text-white never sits on a primary fill, and text-primary-fg only sits on one (itself or an ancestor)', () => {
     const offenders: string[] = [];
     for (const file of files(SRC, '.tsx')) {
       for (const line of offendersIn(file)) offenders.push(`${relative(SRC, file)}:${line}`);
@@ -148,6 +153,10 @@ describe('primary fill contrast', () => {
     expect(hit(`const X = () => <div className="bg-gradient-to-br from-primary to-primary"><p className="text-3xl text-white">1</p></div>;`)).toBe(true);
     expect(hit(`const X = () => <div className="bg-primary"><span className="bg-bg text-white">x</span></div>;`)).toBe(false);
     expect(hit(`const X = () => <div className="bg-primary text-primary-fg"><p className="text-sm">1</p></div>;`)).toBe(false);
+    expect(hit(`const X = () => <div className="bg-primary"><p className="text-primary-fg">1</p></div>;`)).toBe(false);
+    expect(hit(`const X = (p: any) => <a className={p.on ? 'bg-primary text-primary-fg' : 'bg-gray-900 text-primary-fg'} />;`)).toBe(true);
+    expect(hit(`const X = () => <p className="text-primary-fg">1</p>;`)).toBe(true);
+    expect(hit(`const X = () => <div className="bg-primary"><span className="bg-bg/20"><i className="text-primary-fg" /></span></div>;`)).toBe(false);
   });
 
   it('globals.css only references CSS variables that are defined', () => {

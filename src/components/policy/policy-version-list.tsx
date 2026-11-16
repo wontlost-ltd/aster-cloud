@@ -323,7 +323,7 @@ export function PolicyVersionList({
                   <>
                     <button
                       onClick={() => openActionDialog('approve', version)}
-                      className="text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-md"
+                      className="text-sm bg-green-700 hover:bg-green-800 text-white px-3 py-1.5 rounded-md"
                     >
                       {t('actions.approve')}
                     </button>
