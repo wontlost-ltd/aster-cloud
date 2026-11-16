@@ -105,6 +105,11 @@ test.describe('page title structure', () => {
     expect(r.duplicateHeadings).toEqual(['h2 "Reports (beta)"']);
   });
 
+  test('ignores headings inside a closed <details> or an aria-hidden ancestor', async ({ page }) => {
+    await page.setContent(`<h1>Reports</h1><details><summary>More</summary><h2>Reports</h2></details><div aria-hidden="true"><h2>Reports</h2></div>`);
+    expect((await page.evaluate(collectStructure)).duplicateHeadings).toEqual([]);
+  });
+
   test('counts screen-reader-only h1s but not display:none or transparent ones', async ({ page }) => {
     await page.setContent(`<h1>Main</h1><h1 style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Extra</h1><h1 style="display:none">Gone</h1><div style="opacity:0"><h1>Faded</h1></div>`);
     expect((await page.evaluate(collectStructure)).h1).toEqual(['main', 'extra']);
