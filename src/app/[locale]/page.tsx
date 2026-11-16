@@ -303,7 +303,7 @@ function Hero({
           <p className="max-w-2xl text-sm text-fg-subtle">
             <a
               href="https://aster-lang.dev"
-              className="underline-offset-2 hover:text-fg hover:underline"
+              className="underline-offset-2 hover:text-fg hover:underline max-sm:inline-block"
             >
               {t('hero.builtOnAsterLang')}
             </a>

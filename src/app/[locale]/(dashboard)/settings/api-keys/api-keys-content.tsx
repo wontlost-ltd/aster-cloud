@@ -307,11 +307,12 @@ export function ApiKeysContent({
               >
                 {t.createNew}
               </label>
-              <form onSubmit={handleCreateKey} className="flex gap-3">
+              {/* 窄屏纵向排：横排时名称输入框被挤到 26px 宽（#774） */}
+              <form onSubmit={handleCreateKey} className="flex flex-col gap-3 sm:flex-row">
                 <label htmlFor="apiKeyScope" className="sr-only">
                   {t.scope}
                 </label>
-                <div className="w-48 shrink-0">
+                <div className="w-full shrink-0 sm:w-48">
                   <Select id="apiKeyScope" value={scope} onChange={(e) => setScope(e.target.value)}>
                     <option value="personal">{t.scopePersonal}</option>
                     {teams.map((team) => (

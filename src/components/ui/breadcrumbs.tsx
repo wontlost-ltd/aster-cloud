@@ -20,7 +20,8 @@ export function Breadcrumbs(props: BreadcrumbsProps) {
     <DesignSystemBreadcrumbs
       {...props}
       linkComponent={({ href, className, children }) => (
-        <Link href={href} className={className}>
+        // 移动端链接至少 44px 宽：设计系统已把高度撑到 44px，短的中文面包屑（如「设置」）宽度只有 28px（#774）
+        <Link href={href} className={`${className ?? ''} max-sm:min-w-11 max-sm:text-center`}>
           {children}
         </Link>
       )}

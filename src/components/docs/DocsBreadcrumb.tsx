@@ -72,7 +72,8 @@ export function DocsBreadcrumb() {
 
   return (
     <nav aria-label={t('docs.breadcrumb.ariaLabel')} className="mb-6 text-sm text-fg-muted">
-      <ol className="flex flex-wrap items-center gap-1.5">
+      {/* 移动端：链接上下内边距撑到 44px 高的点击区；折行时行高即 44px，上下两行的点击区不重叠（#774） */}
+      <ol className="flex flex-wrap items-center gap-1.5 max-sm:gap-y-0">
         {items.map((it, i) => (
           <li key={it.href} className="flex items-center gap-1.5">
             {i > 0 && <span aria-hidden>/</span>}
@@ -84,7 +85,7 @@ export function DocsBreadcrumb() {
               <Link
                 href={it.href}
                 className={
-                  'hover:text-fg transition-colors rounded-sm ' +
+                  'hover:text-fg transition-colors rounded-sm max-sm:inline-block max-sm:min-w-11 max-sm:py-3 max-sm:text-center ' +
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-bg'
                 }
               >

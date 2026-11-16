@@ -93,7 +93,7 @@ export function DocsTrustFooter({ frontmatter, routeSlug, locale }: Props) {
       {hasPublicContent && (
         <ul
           className={cn(
-            'flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-fg-muted',
+            'flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-fg-muted max-sm:gap-y-4',
           )}
           role="list"
         >
@@ -113,7 +113,7 @@ export function DocsTrustFooter({ frontmatter, routeSlug, locale }: Props) {
             <li>
               <Link
                 href={changelogHref}
-                className="underline hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-bg rounded-sm"
+                className="tap-target underline hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-bg rounded-sm"
               >
                 {t('docs.trustFooter.changelog')}
               </Link>
@@ -124,7 +124,7 @@ export function DocsTrustFooter({ frontmatter, routeSlug, locale }: Props) {
               href={suggestEditUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="underline hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-bg rounded-sm"
+              className="tap-target underline hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-bg rounded-sm"
             >
               {t('docs.trustFooter.suggestEdit')}
             </a>
@@ -137,7 +137,7 @@ export function DocsTrustFooter({ frontmatter, routeSlug, locale }: Props) {
             href={suggestEditUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="underline hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-bg rounded-sm"
+            className="tap-target underline hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-bg rounded-sm"
           >
             {t('docs.trustFooter.suggestEdit')}
           </a>

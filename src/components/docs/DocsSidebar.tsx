@@ -47,8 +47,8 @@ export function DocsSidebar() {
                     locale={locale}
                     className={
                       (isActive
-                        ? 'block rounded-md bg-bg-soft px-3 py-1.5 text-sm font-medium text-fg'
-                        : 'block rounded-md px-3 py-1.5 text-sm text-fg-muted transition-colors hover:bg-bg-soft hover:text-fg') +
+                        ? 'block rounded-md bg-bg-soft px-3 py-1.5 text-sm font-medium text-fg max-sm:py-3'
+                        : 'block rounded-md px-3 py-1.5 text-sm text-fg-muted transition-colors hover:bg-bg-soft hover:text-fg max-sm:py-3') +
                       ' focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-bg'
                     }
                     aria-current={isActive ? 'page' : undefined}

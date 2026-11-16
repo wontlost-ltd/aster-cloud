@@ -63,8 +63,8 @@ export function DocsSidebarTasks() {
                           locale={locale}
                           className={
                             (isActive
-                              ? 'flex items-center gap-2 rounded-md bg-bg-soft px-2 py-1.5 text-sm font-medium text-fg'
-                              : 'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-fg-muted transition-colors hover:bg-bg-soft hover:text-fg') +
+                              ? 'flex items-center gap-2 rounded-md bg-bg-soft px-2 py-1.5 text-sm font-medium text-fg max-sm:py-3'
+                              : 'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-fg-muted transition-colors hover:bg-bg-soft hover:text-fg max-sm:py-3') +
                             ' focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-bg'
                           }
                           aria-current={isActive ? 'page' : undefined}

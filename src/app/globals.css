@@ -144,6 +144,50 @@
  */
 
 /*
+ * 移动端点击目标 ≥ 44×44 CSS px（#774 设计决策：WCAG 2.5.5 AAA / Apple HIG；桌面不变）。
+ *
+ * - 表单控件直接用真实高度 44px：输入框、下拉框本来就是整块可点区域，加高 4px 视觉上仍整齐。
+ * - 按钮、链接、summary 等：用居中的绝对定位 ::after 把点击区撑到 max(自身, 44px)，元素自身的视觉尺寸与布局不变
+ *   （伪元素上的点击落在宿主元素上）。需要定位上下文，所以给它们 position: relative。
+ *   放在 @layer base 里：Tailwind 的 absolute / fixed / sticky 等工具类（utilities 层）与未分层的组件 CSS 都会覆盖这里，
+ *   已经定位的元素保持原样，本身就是伪元素的包含块；已经用 after: 工具类画装饰的元素也保留自己的 ::after。
+ * - 正文内容（.prose / .docs-article / article 的段落、列表、表格单元格）里的行内链接按 WCAG 例外不撑大，免得把周围正文也变成可点区域；
+ *   正文里独立成块的操作链接（不是句中链接）加 .tap-target 显式启用。
+ * - 撑大的点击区与相邻目标重叠、或被元素自身的 overflow 裁掉时并不算数（UI 审计按此判定，见
+ *   src/__tests__/e2e-browser/ui-audit/page-checks.ts）；这类元素用真实内边距处理。
+ */
+@layer base {
+  @media (max-width: 639.98px) {
+    :where(input:not([type="checkbox"], [type="radio"], [type="hidden"], [type="range"], [type="color"], [type="file"], [type="button"], [type="submit"], [type="reset"], [type="image"]), select, textarea) {
+      min-height: 2.75rem;
+    }
+    :where(button, a[href], summary, [role="button"], [role="tab"], [role="switch"], [role="menuitem"]):not(:where(.prose, .docs-article, article) :where(p, li, td) a),
+    .tap-target {
+      position: relative;
+    }
+    :where(button, a[href], summary, [role="button"], [role="tab"], [role="switch"], [role="menuitem"]):not(:where(.prose, .docs-article, article) :where(p, li, td) a)::after,
+    .tap-target::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: max(100%, 2.75rem);
+      height: max(100%, 2.75rem);
+      transform: translate(-50%, -50%);
+    }
+  }
+}
+
+/* 文档里紧挨着的标题（如 h3 下面直接接 h4）：typography 把后一个标题的上边距清零，移动端两个锚点链接的
+ * 44px 点击区会上下重叠。拉开到 1.5rem（仅移动端，未分层以覆盖 typography 的 :where 规则，#774）。 */
+@media (max-width: 639.98px) {
+  .docs-article :is(h2, h3, h4) + :is(h3, h4, h5) {
+    margin-top: 1.5rem;
+  }
+}
+
+
+/*
  * Smooth-scroll for in-page anchor links (e.g. landing nav "Pricing"
  * → #pricing section). prefers-reduced-motion users keep the instant
  * jump so vestibular accessibility is preserved.
