@@ -47,6 +47,13 @@ describe('capability.* 平台开关写入', () => {
     }));
   });
 
+  it('审计写入失败 → 不返回 200 { ok: true }（500）', async () => {
+    auditValues.mockRejectedValueOnce(new Error('db down'));
+    const res = await POST(request({ key: ENABLED, value: true }));
+    expect(res.status).toBe(500);
+    expect(await res.json()).not.toEqual({ ok: true });
+  });
+
   it('团队委派开关同样写审计', async () => {
     getSettingUncached.mockResolvedValue(true);
     const res = await POST(request({ key: DELEGATION, value: false }));

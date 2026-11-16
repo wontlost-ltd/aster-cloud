@@ -21,7 +21,6 @@ import {
   getSettingUncached,
 } from '@/lib/platform-settings';
 import { db, auditLogs } from '@/lib/prisma';
-import { logAuditEvent } from '@/lib/audit-log';
 import { errorEnvelope } from '@/lib/api/error-envelope';
 
 /** 能力类全局开关的键前缀：这类键要求布尔值并写审计。 */
@@ -121,8 +120,9 @@ export async function POST(req: Request) {
       }
       const old = await getSettingUncached<boolean>(body.key);
       await setSetting(body.key, body.value, check.userId);
-      await logAuditEvent({
-        userId: check.userId, action: 'platform_setting.update',
+      // 与 auth.dbEpoch 分支一致：直接写 auditLogs，失败向上抛成 500，避免开关已翻转却无审计。
+      await db.insert(auditLogs).values({
+        id: crypto.randomUUID(), userId: check.userId, action: 'platform_setting.update',
         resource: 'platform-setting', resourceId: body.key,
         metadata: { old, new: body.value },
       });
