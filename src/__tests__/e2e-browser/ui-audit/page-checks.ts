@@ -349,9 +349,9 @@ export function collectStructure(): StructureReport {
   };
 
   // 1. 标题：h1 按读屏可读计数（含 sr-only）；同文判定只看可见标题
-  // 计入读屏能读到的 h1：sr-only 的算，display:none / visibility:hidden / aria-hidden / 收起的 details 里的不算
+  // 计入读屏能读到的 h1：sr-only 的算，display:none / visibility:hidden / 透明祖先 / aria-hidden / 收起的 details 里的不算
   const h1s = Array.from(document.querySelectorAll('h1')).filter((h) => !h.closest('[aria-hidden="true"], [hidden]')
-    && (!('checkVisibility' in h) || h.checkVisibility({ visibilityProperty: true, contentVisibilityAuto: true })));
+    && (!('checkVisibility' in h) || h.checkVisibility({ visibilityProperty: true, opacityProperty: true, contentVisibilityAuto: true })));
   // 按渲染出的文字比较（innerText 不含隐藏子节点）
   const h1 = h1s.map((h) => norm(h.innerText || h.textContent));
   const h1Set = new Set(h1.filter(Boolean));

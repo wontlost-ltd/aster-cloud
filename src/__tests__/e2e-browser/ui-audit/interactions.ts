@@ -105,13 +105,14 @@ export async function probeButtons(context: BrowserContext, page: Page, includeS
   let blocked: string[] = [];
   let mutAtFirstBlock: number | null = null;
   const COUNTED = ['fetch', 'xhr', 'document', 'eventsource', 'websocket'];
-  // 后台请求（轮询、预取等）：在两次点击之间出现过的 方法+路径。点击窗口里再出现的同类「放行」请求不当作按钮的效果
+  // 后台请求（轮询、预取等）：在两次点击之间出现过的 方法+路径+查询串。点击窗口里再出现的同类「放行」请求不当作按钮的效果
   let clicking = false;
   const background = new Set<string>();
   await page.route('**/*', async (route) => {
     const req = route.request();
     const decision = classifyRequest(req.method(), req.url());
-    const key = `${req.method()} ${new URL(req.url()).pathname}`;
+    // 带查询串：同一路径不同参数（如按钮触发的筛选）不会被当成后台轮询
+    const key = (({ pathname, search }) => `${req.method()} ${pathname}${search}`)(new URL(req.url()));
     const counted = COUNTED.includes(req.resourceType());
     if (counted && !clicking) background.add(key);
     const fromClick = counted && clicking && !background.has(key);
