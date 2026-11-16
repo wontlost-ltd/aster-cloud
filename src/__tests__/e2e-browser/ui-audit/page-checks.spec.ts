@@ -203,6 +203,13 @@ test.describe('items in an opened popup', () => {
     expect(await probe(page, TABLE(''), menu)).toEqual([]);
   });
 
+  test('a fixed menu inside a transformed, overflow-clipping ancestor is still reported', async ({ page }) => {
+    const html = TABLE('').replace('<div id="wrap" style="overflow-x:auto;border:1px solid">', '<div id="wrap" style="overflow:hidden;transform:translateZ(0);border:1px solid">');
+    const menu = '<div style="position:fixed;left:1200px;top:70px;width:192px;background:#fff"><button style="display:block;width:100%;height:36px">Submit for approval</button></div>';
+    const r = await probe(page, html, menu);
+    expect(r.map((c) => [c.text, c.kind])).toEqual([['Submit for approval', 'clipped']]);
+  });
+
   test('the popup\'s own scrolling list does not count as clipping', async ({ page }) => {
     const html = `<body style="margin:0;padding:24px"><div style="position:relative;display:inline-block"><button id="t">Group</button></div></body>`;
     const list = `<div style="position:absolute;left:0;top:40px;width:200px;max-height:80px;overflow-y:auto">${Array.from({ length: 6 }, (_, i) => `<button style="display:block;height:30px">Option ${i}</button>`).join('')}</div>`;

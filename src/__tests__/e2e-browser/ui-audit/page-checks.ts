@@ -445,8 +445,8 @@ export interface PopupClip {
  * 被 DataTable 的 overflow-x-auto 外壳裁掉——overflow-x 非 visible 时 overflow-y 也算作 auto，菜单只能在表格里纵向滚动才看得到）。
  *
  * - 裁剪：只看同时包含触发按钮的祖先（弹出层自己的滚动列表不算）；任一轴 overflow 非 visible（含 auto / scroll，
- *   要在容器里滚动才看得到的菜单项同样算看不见）且菜单项越出该轴即报。途经 position:fixed 的祖先即停止——fixed 层已脱离
- *   外层裁剪（collectStructure 同一口径）；
+ *   要在容器里滚动才看得到的菜单项同样算看不见）且菜单项越出该轴即报。途经 position:fixed 的祖先时，fixed 层已脱离
+ *   外层裁剪，只再看建立了包含块（transform / filter / contain 等）的祖先——fixed 逃不出它；
  * - 横向出视口：页面可以纵向滚动，横向不行；
  * - 遮挡：中心点在视口内时做命中测试，命中的不是菜单项自身或其后代即报（z-index 问题）。
  */
@@ -470,9 +470,27 @@ export function collectPopupClipping(args: { trigger: string; attr: string; sele
     let problem: PopupClip | null = null;
     // 滚在弹出层自己的列表视区之外的项（如长下拉的后几项）是正常的，不做视口与遮挡判定
     let inOwnScroller = false;
+    // fixed 层只在祖先建立了包含块（transform / filter / perspective / contain 等）时才仍受其裁剪：
+    // 遇到 fixed 后跳到这样的祖先继续比，没有就停止
+    const containingBlock = (from: HTMLElement | null): HTMLElement | null => {
+      for (let q = from; q && q !== document.body; q = q.parentElement) {
+        const c = getComputedStyle(q);
+        if (c.transform !== 'none' || c.filter !== 'none' || c.perspective !== 'none' || /paint|layout|strict|content/.test(c.contain) || /transform|filter/.test(c.willChange)) return q;
+      }
+      return null;
+    };
     for (let p: HTMLElement | null = el.parentElement; p && p !== document.documentElement && !problem; p = p.parentElement) {
       const pcs = getComputedStyle(p);
-      if (pcs.position === 'fixed') break;
+      if (pcs.position === 'fixed') {
+        const cb = containingBlock(p.parentElement);
+        if (!cb) break;
+        p = cb;
+        const cbs = getComputedStyle(cb);
+        const cr = cb.getBoundingClientRect();
+        const cut = (cbs.overflowX !== 'visible' && (r.left < cr.left - 1 || r.right > cr.right + 1)) || (cbs.overflowY !== 'visible' && (r.top < cr.top - 1 || r.bottom > cr.bottom + 1));
+        if (cut) problem = { text: label(el), kind: 'clipped', detail: `by ${desc(cb)} (fixed popup inside a transformed / contained ancestor)` };
+        continue;
+      }
       // body 的 overflow 作用于视口（页面本身可滚动），不算裁剪
       if (p === document.body) continue;
       const pr = p.getBoundingClientRect();

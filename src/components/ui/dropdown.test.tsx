@@ -89,19 +89,24 @@ describe('Dropdown (fixed popover)', () => {
     expect(panel()?.style.top).toBe(`${800 - 8 - 80}px`);
   });
 
-  it('corrects for a transformed ancestor that becomes the fixed containing block', () => {
+  it.each([
+    ['translated', 1, 20, 50],
+    ['translated and scaled', 0.5, 20, 50],
+  ])('corrects for a %s ancestor that becomes the fixed containing block', (_label, scale, ox, oy) => {
     stubLayout(rect(300, 100, 32, 32));
     const real = HTMLElement.prototype.getBoundingClientRect as unknown as { getMockImplementation(): (this: HTMLElement) => DOMRect };
     const base = real.getMockImplementation();
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
       const r = base.call(this);
-      // 祖先带 transform 时实际落点整体偏移 (+20, +50)
-      return this.hasAttribute('data-dropdown-panel') ? rect(r.left + 20, r.top + 50, r.width, r.height) : r;
+      // 祖先带 transform：实际落点 = 偏移 + 缩放 × CSS 坐标
+      return this.hasAttribute('data-dropdown-panel') ? rect(ox + r.left * scale, oy + r.top * scale, r.width, r.height) : r;
     });
     renderMenu();
     open();
-    expect(panel()?.style.left).toBe(`${140 - 20}px`);
-    expect(panel()?.style.top).toBe(`${140 - 50}px`);
+    const p = panel()!;
+    // 反解后的实际落点正好是期望的 (140, 140)
+    expect(ox + parseFloat(p.style.left) * scale).toBeCloseTo(140);
+    expect(oy + parseFloat(p.style.top) * scale).toBeCloseTo(140);
   });
 
   it('repositions on scroll inside any container (capture)', () => {

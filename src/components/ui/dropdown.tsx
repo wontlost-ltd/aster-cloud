@@ -11,7 +11,8 @@
  * 做法：弹出层改为 `position: fixed`，按触发按钮的视口坐标放置（右对齐 / 左对齐、下方放不下时翻到上方、
  * 左右夹在视口内），打开时在绘制前定位，滚动（含任意内层容器）与窗口尺寸变化时重新定位。
  * 弹出层仍留在 DOM 原位（不用 portal）：Tab 顺序、读屏阅读顺序、点外部关闭的判定都与原组件一致。
- * 若某个祖先有 transform / filter（会成为 fixed 的包含块），定位后按实际偏差校正一次。
+ * 若某个祖先有 transform / filter（会成为 fixed 的包含块），定位后按实际落点反解平移与缩放；这种祖先若同时
+ * overflow 非 visible 仍会裁掉弹出层（fixed 逃不出它），UI 审计的 popup-item-clipped 规则会报出来。
  *
  * 无障碍语义与原组件相同：诚实的 disclosure（触发按钮 aria-expanded，菜单项是普通按钮，按自然 Tab 顺序可达），
  * 不冒充 ARIA menu；Esc 与选中菜单项后焦点回到触发按钮。移动端菜单项用真实内边距撑到 44px 高，
@@ -51,14 +52,18 @@ function placePanel(trigger: HTMLElement, panel: HTMLElement, align: 'left' | 'r
   const top = below + h <= vh - GUTTER ? below : above >= GUTTER ? above : Math.max(GUTTER, Math.min(below, vh - GUTTER - h));
   panel.style.left = `${left}px`;
   panel.style.top = `${top}px`;
-  // 祖先带 transform / filter 时 fixed 相对该祖先定位：按实际落点与期望的差校正
-  const actual = panel.getBoundingClientRect();
-  const dx = actual.left - left;
-  const dy = actual.top - top;
-  if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-    panel.style.left = `${left - dx}px`;
-    panel.style.top = `${top - dy}px`;
-  }
+  // 祖先带 transform / filter 时 fixed 相对该祖先定位（可能平移也可能缩放）：实际落点与期望不符时，
+  // 再放一个已知偏移的点量出缩放比例，按「平移 + 缩放」反解 CSS 坐标。旋转不处理（应用里没有）。
+  const a = panel.getBoundingClientRect();
+  if (Math.abs(a.left - left) <= 0.5 && Math.abs(a.top - top) <= 0.5) return;
+  const PROBE = 100;
+  panel.style.left = `${left + PROBE}px`;
+  panel.style.top = `${top + PROBE}px`;
+  const b = panel.getBoundingClientRect();
+  const sx = (b.left - a.left) / PROBE || 1;
+  const sy = (b.top - a.top) / PROBE || 1;
+  panel.style.left = `${left + (left - a.left) / sx}px`;
+  panel.style.top = `${top + (top - a.top) / sy}px`;
 }
 
 export function Dropdown({ trigger, children, align = 'right', className }: DropdownProps) {
