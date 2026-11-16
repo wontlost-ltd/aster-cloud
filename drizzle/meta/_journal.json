@@ -477,6 +477,13 @@
       "when": 1794654966355,
       "tag": "0066_guard_policy_deployment",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1794826561798,
+      "tag": "0067_capability_grants",
+      "breakpoints": true
     }
   ]
 }
