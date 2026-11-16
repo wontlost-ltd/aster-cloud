@@ -331,6 +331,13 @@ routes:
     auth: admin
     locales: all
 
+  - path: /admin/capabilities/structured-authoring
+    status: canonical-here
+    owner: admin
+    source: src/app/[locale]/(dashboard)/admin/capabilities/structured-authoring/page.tsx
+    auth: admin
+    locales: all
+
   - path: /admin/ai-circuit-breaker
     status: canonical-here
     owner: admin
