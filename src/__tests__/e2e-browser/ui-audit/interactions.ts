@@ -9,6 +9,7 @@
 import type { BrowserContext, Page } from '@playwright/test';
 import { focusIndicator } from './page-checks';
 import { classifyRequest } from './request-guard';
+import { judgeClick } from './click-verdict';
 import type { AuditContext, Finding } from './recorder';
 
 type Emit = (f: Omit<Finding, keyof AuditContext>) => void;
@@ -99,12 +100,22 @@ async function restore(page: Page, url: string, force: boolean): Promise<void> {
  */
 export async function probeButtons(context: BrowserContext, page: Page, includeShell: boolean, emit: Emit): Promise<number> {
   const mutating: Array<{ method: string; url: string }> = [];
-  await page.route('**/*', (route) => {
+  // 每次点击重置：放行的请求数、被拦的读请求、第一个被拦请求时的 DOM 变化数
+  let allowedRequests = 0;
+  let blockedReads: string[] = [];
+  let mutAtFirstBlock: number | null = null;
+  const COUNTED = ['fetch', 'xhr', 'document', 'eventsource', 'websocket'];
+  await page.route('**/*', async (route) => {
     const req = route.request();
     const decision = classifyRequest(req.method(), req.url());
-    if (decision === 'allow') return route.continue();
-    // 只有写请求参与「破坏性操作无确认」判定；被拦的读请求仅阻断副作用
+    if (decision === 'allow') {
+      if (COUNTED.includes(req.resourceType())) allowedRequests += 1;
+      return route.continue();
+    }
+    if (mutAtFirstBlock === null) mutAtFirstBlock = await mutationCount(page);
+    // 只有写请求参与「破坏性操作无确认」判定；被拦的读请求单独记录，不算按钮有效果
     if (decision === 'block-write') mutating.push({ method: req.method(), url: req.url() });
+    else blockedReads.push(new URL(req.url()).pathname);
     // 带标记头，页面级 5xx 统计据此排除审计自己伪造的响应
     return route.fulfill({
       status: 503,
@@ -113,16 +124,11 @@ export async function probeButtons(context: BrowserContext, page: Page, includeS
       body: '{"error":"ui-audit: mutation blocked"}',
     });
   });
-  let requests = 0;
-  const onRequest = (r: { resourceType(): string }) => {
-    if (['fetch', 'xhr', 'document', 'eventsource', 'websocket'].includes(r.resourceType())) requests += 1;
-  };
   let nativeDialog = false;
   const onDialog = (d: { dismiss(): Promise<void> }) => {
     nativeDialog = true;
     void d.dismiss().catch(() => undefined);
   };
-  page.on('request', onRequest);
   page.on('dialog', onDialog);
 
   // window.print() 在无头浏览器里没有可见效果：替换成计数器，打印按钮才不会被误判为死按钮
@@ -152,7 +158,9 @@ export async function probeButtons(context: BrowserContext, page: Page, includeS
       }
       probed += 1;
       await startMutationCounter(page);
-      requests = 0;
+      allowedRequests = 0;
+      blockedReads = [];
+      mutAtFirstBlock = null;
       nativeDialog = false;
       const mutBefore = mutating.length;
       const printsBefore = await prints();
@@ -173,10 +181,22 @@ export async function probeButtons(context: BrowserContext, page: Page, includeS
       const confirmShown = nativeDialog || (await page.locator('[role=dialog]:visible, [role=alertdialog]:visible').count().catch(() => 0)) > 0;
       const wrote = mutating.slice(mutBefore);
 
+      const verdict = judgeClick({
+        active: c.active, urlChanged, popup, downloaded, printed, nativeDialog, invalidForm: invalidForm > 0,
+        allowedRequests, writes: wrote.length, blockedReads,
+        mutationsBeforeBlock: mutAtFirstBlock ?? mut, mutationsTotal: mut,
+      });
       if (clickError) {
         emit({ severity: 'moderate', category: 'button-not-clickable', message: `Button "${c.name}" could not be clicked`, detail: clickError });
-      } else if (!c.active && !printed && !urlChanged && !popup && !downloaded && !nativeDialog && requests === 0 && mut === 0 && wrote.length === 0 && invalidForm === 0) {
+      } else if (verdict === 'dead') {
         emit({ severity: 'moderate', category: 'button-dead', message: `Button "${c.name}" has no observable effect (no navigation, dialog, request or DOM change)` });
+      } else if (verdict === 'unverified') {
+        emit({
+          severity: 'minor',
+          category: 'button-effect-unverified',
+          message: `Button "${c.name}" only triggers API reads that the audit blocks; its effect could not be verified`,
+          detail: Array.from(new Set(blockedReads)).slice(0, 5).join(', '),
+        });
       }
       if (DESTRUCTIVE.test(c.name) && wrote.length > 0 && !confirmShown) {
         emit({
@@ -196,7 +216,6 @@ export async function probeButtons(context: BrowserContext, page: Page, includeS
       }
     }
   } finally {
-    page.off('request', onRequest);
     page.off('dialog', onDialog);
     await page.unroute('**/*').catch(() => undefined);
   }

@@ -4,6 +4,9 @@
  * 每个函数自成一体（不能引用模块内其他符号，Playwright 会把函数源码序列化后注入页面）。
  */
 
+/** 移动端点击目标下限（CSS px）：项目规范 44×44（WCAG 2.5.5 AAA / Apple HIG），#774 设计决策 4 */
+export const MOBILE_MIN_TARGET = 44;
+
 export interface Offender {
   selector: string;
   text: string;
@@ -20,7 +23,7 @@ export interface LayoutReport {
 }
 
 /** 水平溢出、移动端点击目标、卡片网格一致性。 */
-export function collectLayout(opts: { mobile: boolean }): LayoutReport {
+export function collectLayout(opts: { mobile: boolean; minTarget: number }): LayoutReport {
   const vw = document.documentElement.clientWidth;
   const sel = (el: Element): string => {
     const parts: string[] = [];
@@ -81,7 +84,7 @@ export function collectLayout(opts: { mobile: boolean }): LayoutReport {
     }
   }
 
-  // 2. 移动端点击目标：WCAG 2.5.8 要求 ≥24px，平台指南 ≥44px；句中行内链接按 WCAG 例外豁免
+  // 2. 移动端点击目标：项目规范 ≥44×44 CSS px（WCAG 2.5.5 AAA）；句中行内链接按 WCAG 例外豁免
   const smallTargets: LayoutReport['smallTargets'] = [];
   if (opts.mobile) {
     const q = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=tab], [role=checkbox], [role=switch], [role=menuitem]';
@@ -98,7 +101,7 @@ export function collectLayout(opts: { mobile: boolean }): LayoutReport {
       // sr-only 元素（如跳到主内容链接）平时被裁成 1px，聚焦时才展开，不算点击目标
       if (r.width <= 1 || r.height <= 1) continue;
       const min = Math.round(Math.min(r.width, r.height));
-      if (min < 44) smallTargets.push({ selector: sel(el), text: textOf(el), box: boxOf(el), min });
+      if (min < opts.minTarget) smallTargets.push({ selector: sel(el), text: textOf(el), box: boxOf(el), min });
     }
   }
 
