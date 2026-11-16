@@ -18,10 +18,15 @@ import {
   RUNNER_PARITY_MODES,
   getSetting,
   setSetting,
+  setSettingWithClient,
+  invalidateSettingCache,
   getSettingUncached,
 } from '@/lib/platform-settings';
 import { db, auditLogs } from '@/lib/prisma';
 import { errorEnvelope } from '@/lib/api/error-envelope';
+
+/** 能力类全局开关的键前缀：这类键要求布尔值并写审计。 */
+const CAPABILITY_SETTING_PREFIX = 'capability.';
 
 export async function GET() {
   try {
@@ -107,6 +112,29 @@ export async function POST(req: Request) {
           { status: 400 },
         );
       }
+    }
+    if (body.key.startsWith(CAPABILITY_SETTING_PREFIX)) {
+      if (typeof body.value !== 'boolean') {
+        return NextResponse.json(
+          { error: `${body.key} must be a boolean.`, code: 'invalid_capability_setting' },
+          { status: 400 },
+        );
+      }
+      const key = body.key;
+      const value = body.value;
+      // 设置写入与审计同事务：审计失败则整体回滚，避免开关已翻转却无审计。
+      await db.transaction(async (tx) => {
+        const old = await getSettingUncached<boolean>(key, tx);
+        await setSettingWithClient(tx, key, value, check.userId);
+        await tx.insert(auditLogs).values({
+          id: crypto.randomUUID(), userId: check.userId, action: 'platform_setting.update',
+          resource: 'platform-setting', resourceId: key,
+          metadata: { old, new: value },
+        });
+      });
+      // 仅在提交成功后清缓存，回滚时保持原缓存有效。
+      invalidateSettingCache(key);
+      return NextResponse.json({ ok: true });
     }
     await setSetting(body.key, body.value, check.userId);
     return NextResponse.json({ ok: true });

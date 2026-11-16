@@ -120,6 +120,7 @@ type OverviewCard = {
     | 'assistantCard'
     | 'riskTierCard'
     | 'aiWorkspaceAccessCard'
+    | 'structuredAuthoringCard'
     | 'revalidationCard'
     | 'licenseCard'
     | 'licenseRevokeCard'
@@ -148,6 +149,12 @@ const CARDS: ReadonlyArray<OverviewCard> = [
   {
     href: '/admin/ai-workspace-access',
     cardKey: 'aiWorkspaceAccessCard',
+    show: true,
+    comingSoon: false,
+  },
+  {
+    href: '/admin/capabilities/structured-authoring',
+    cardKey: 'structuredAuthoringCard',
     show: true,
     comingSoon: false,
   },

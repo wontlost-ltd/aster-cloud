@@ -208,6 +208,7 @@ export default async function DashboardLayout({
           riskTier: tAdminRisk('title'),
           revalidation: tAdminNav('revalidation'),
           aiWorkspaceAccess: tAdminNav('aiWorkspaceAccess'),
+          structuredAuthoring: tAdminNav('structuredAuthoring'),
           license: tAdminNav('license'),
           licenseRevoke: tAdminNav('licenseRevoke'),
           issuedLicenses: tAdminNav('issuedLicenses'),
@@ -293,6 +294,7 @@ export default async function DashboardLayout({
                     ...(CAN_RISKTIER ? [{ id: 'admin-risk-tier', label: tAdminRisk('title'), href: '/admin/risk-tier' }] : []),
                     { id: 'admin-revalidation', label: tAdminNav('revalidation'), href: '/admin/revalidation' },
                     { id: 'admin-ai-workspace-access', label: tAdminNav('aiWorkspaceAccess'), href: '/admin/ai-workspace-access' },
+                    { id: 'admin-structured-authoring', label: tAdminNav('structuredAuthoring'), href: '/admin/capabilities/structured-authoring' },
                     ...(CAN_LICENSE ? [{ id: 'admin-license', label: tAdminNav('license'), href: '/admin/license' }] : []),
                     ...(IS_SAAS ? [
                       { id: 'admin-license-revoke', label: tAdminNav('licenseRevoke'), href: '/admin/license-revoke' },

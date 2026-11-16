@@ -75,6 +75,8 @@ export type PlanCapabilities = {
   customLexicon: boolean;
   customLexiconMaxTerms: number;
   customLexiconBulkUploadAsync: boolean;
+  /** 结构化编写（ADR 0058）：套餐侧资格；是否放行还要看全局开关与授权。 */
+  structuredAuthoring: boolean;
   customIntegrations?: boolean;
 };
 
@@ -152,6 +154,7 @@ export const PLANS = {
       customLexicon: false,
       customLexiconMaxTerms: 0,
       customLexiconBulkUploadAsync: false,
+      structuredAuthoring: false,
     },
     price: { monthly: 0, yearly: 0 },
     stripePriceId: null,
@@ -175,6 +178,7 @@ export const PLANS = {
       customLexicon: true,
       customLexiconMaxTerms: 500,
       customLexiconBulkUploadAsync: false,
+      structuredAuthoring: true,
     },
     price: { monthly: 0, yearly: 0 },
     stripePriceId: null,
@@ -212,6 +216,7 @@ export const PLANS = {
       customLexicon: true,
       customLexiconMaxTerms: 5000,
       customLexiconBulkUploadAsync: true,
+      structuredAuthoring: true,
     },
     price: PLAN_PRICES.pro.USD,
     stripePriceId: {
@@ -252,6 +257,7 @@ export const PLANS = {
       customLexicon: true,
       customLexiconMaxTerms: 25000,
       customLexiconBulkUploadAsync: true,
+      structuredAuthoring: true,
     },
     price: PLAN_PRICES.pro.USD,
     stripePriceId: null,
@@ -291,6 +297,7 @@ export const PLANS = {
       customLexicon: true,
       customLexiconMaxTerms: -1,
       customLexiconBulkUploadAsync: true,
+      structuredAuthoring: true,
       customIntegrations: true,
     },
     price: { monthly: null, yearly: null },
