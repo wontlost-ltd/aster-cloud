@@ -21,6 +21,10 @@ import type { VocabularyTabTerm } from '@/hooks/useUserVocabularyRegistration';
 export interface VocabularyTabProps {
   editor: MonacoEditor.IStandaloneCodeEditor | null;
   terms: ReadonlyArray<VocabularyTabTerm>;
+  /** 策略所属团队；非空时新术语写入团队词汇（POST 带 ?teamId=），否则写入个人词汇。 */
+  teamId?: string | null;
+  /** 策略的 CNL 语言，用于预填对话框的语言字段。 */
+  policyLocale?: string;
 }
 
 /** executeEdits 的来源标识（与模型标签页区分）。 */
@@ -58,8 +62,9 @@ function insertLocalized(editor: MonacoEditor.IStandaloneCodeEditor, localized: 
 }
 
 /** 提交新术语；失败时抛出可读错误，对话框据此保持打开并显示。 */
-async function createTerm(values: VocabularyDialogValues): Promise<void> {
-  const res = await fetch('/api/v1/domain-vocabularies/terms', {
+async function createTerm(values: VocabularyDialogValues, teamId: string | null): Promise<void> {
+  const url = '/api/v1/domain-vocabularies/terms';
+  const res = await fetch(teamId ? `${url}?teamId=${encodeURIComponent(teamId)}` : url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
     credentials: 'same-origin',
@@ -70,13 +75,20 @@ async function createTerm(values: VocabularyDialogValues): Promise<void> {
   throw new Error(env.error?.message ?? `HTTP ${res.status}`);
 }
 
-export function VocabularyTab({ editor, terms }: VocabularyTabProps) {
+/** 词条全部属于同一领域时返回该领域，否则（无词条或多领域）返回空串，由用户填写。 */
+function singleDomain(terms: ReadonlyArray<VocabularyTabTerm>): string {
+  const domains = new Set(terms.map((term) => term.domain));
+  return domains.size === 1 ? [...domains][0] : '';
+}
+
+export function VocabularyTab({ editor, terms, teamId = null, policyLocale = '' }: VocabularyTabProps) {
   const t = useTranslations('policyEditor.vocabularyTab');
   const uiLocale = useLocale();
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(() => readSelection(editor));
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [dialogSeed, setDialogSeed] = useState('');
+  // 对话框按 initialValues 引用变化重播表单，故种子必须是稳定引用：只在 openDialog 时生成一次
+  const [dialogSeed, setDialogSeed] = useState<{ localized: string; locale: string; domain: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -92,23 +104,26 @@ export function VocabularyTab({ editor, terms }: VocabularyTabProps) {
   const visible = useMemo(() => (needle ? terms.filter((term) => matches(term, needle)) : terms), [terms, needle]);
 
   const openDialog = () => {
-    setDialogSeed(selected);
+    setDialogSeed({ localized: selected, locale: policyLocale, domain: singleDomain(terms) });
     setDialogOpen(true);
   };
 
   const handleSave = useCallback(async (values: VocabularyDialogValues) => {
     setBusy(true);
     try {
-      await createTerm(values);
+      await createTerm(values, teamId);
       setDialogOpen(false);
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [teamId]);
 
   const manageLink = (
     <a
       href={`/${uiLocale}/domain-vocabularies`}
+      // 新标签页打开，避免离开编辑器丢失未保存的编辑
+      target="_blank"
+      rel="noopener noreferrer"
       className="text-xs text-primary underline-offset-2 hover:underline"
     >
       {t('manage')}
@@ -157,7 +172,7 @@ export function VocabularyTab({ editor, terms }: VocabularyTabProps) {
       <VocabularyDialog
         isOpen={dialogOpen}
         mode="create"
-        initialValues={{ localized: dialogSeed }}
+        initialValues={dialogSeed ?? undefined}
         isSaving={busy}
         onClose={() => {
           if (!busy) setDialogOpen(false);

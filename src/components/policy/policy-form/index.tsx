@@ -878,7 +878,8 @@ export function PolicyForm({
                   setEditorReady(true);
                 }}
                 onCompileChange={setCompile}
-                onVocabularyTermsChange={setVocabularyTerms}
+                // 仅在结构化创作可用时同步词条，能力关闭时不产生额外渲染
+                onVocabularyTermsChange={structuredAuthoring.allowed ? setVocabularyTerms : undefined}
                 // 用户在设置页或状态栏关闭后不再发出任何 AI 补全请求；
                 // 读取本地偏好完成前按关闭处理，避免首帧按默认值误发请求。
                 enableAICompletion={aiInlineCompletion.value && !aiInlineCompletion.hydrating}
@@ -926,6 +927,7 @@ export function PolicyForm({
                 compileState={serverError?.diagnostics?.length ? 'error' : compile.state}
                 compileSource={compile.source}
                 vocabularyTerms={vocabularyTerms}
+                teamId={teamId}
                 compileDiagnostics={[
                   ...compile.diagnostics,
                   ...(serverError?.diagnostics ?? []).map((diagnostic) => ({

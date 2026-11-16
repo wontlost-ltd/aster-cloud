@@ -51,12 +51,24 @@ function fakeEditor(selected = '') {
   };
 }
 
-function renderTab(editor: ReturnType<typeof fakeEditor> | null, terms: VocabularyTabTerm[] = TERMS) {
-  return render(
+function tabElement(
+  editor: ReturnType<typeof fakeEditor> | null,
+  terms: VocabularyTabTerm[],
+  extra: { teamId?: string | null; policyLocale?: string } = {},
+) {
+  return (
     <IntlClientProvider locale="zh" messages={messages as never}>
-      <VocabularyTab editor={editor as never} terms={terms} />
-    </IntlClientProvider>,
+      <VocabularyTab editor={editor as never} terms={terms} {...extra} />
+    </IntlClientProvider>
   );
+}
+
+function renderTab(
+  editor: ReturnType<typeof fakeEditor> | null,
+  terms: VocabularyTabTerm[] = TERMS,
+  extra: { teamId?: string | null; policyLocale?: string } = {},
+) {
+  return render(tabElement(editor, terms, extra));
 }
 
 afterEach(cleanup);
@@ -128,6 +140,70 @@ describe('VocabularyTab 加为术语', () => {
   });
 });
 
+describe('VocabularyTab 对话框稳定性与团队作用域', () => {
+  it('对话框打开期间父级重渲染（词条轮询）不清空已输入内容', async () => {
+    const editor = fakeEditor('Fahrer');
+    const { rerender } = renderTab(editor);
+    fireEvent.click(screen.getByRole('button', { name: M.addSelection }));
+    const dialog = await screen.findByRole('dialog');
+    const field = () =>
+      within(dialog).getAllByRole('textbox').find((el) => (el as HTMLInputElement).value === 'Fahrer') as HTMLInputElement;
+    await waitFor(() => expect(field()).toBeTruthy());
+    fireEvent.change(field(), { target: { value: 'Fahrerin' } });
+    rerender(tabElement(editor, [...TERMS]));
+    rerender(tabElement(editor, [...TERMS, term('literal', 'no', 'nein')]));
+    expect(within(dialog).getAllByRole('textbox').some((el) => (el as HTMLInputElement).value === 'Fahrerin')).toBe(true);
+  });
+
+  async function saveAndCaptureUrl(extra: { teamId?: string | null; policyLocale?: string }, terms = TERMS) {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+    renderTab(fakeEditor('Fahrer'), terms, extra);
+    fireEvent.click(screen.getByRole('button', { name: M.addSelection }));
+    const dialog = await screen.findByRole('dialog');
+    const textboxes = within(dialog).getAllByRole('textbox') as HTMLInputElement[];
+    const byValue = (v: string) => textboxes.find((el) => el.value === v);
+    await waitFor(() => expect(byValue('Fahrer')).toBeTruthy());
+    return { fetchMock, dialog, textboxes };
+  }
+
+  it('预填策略语言；词条只有单一领域时预填领域', async () => {
+    const { textboxes } = await saveAndCaptureUrl({ policyLocale: 'de-DE' });
+    expect(textboxes.some((el) => el.value === 'de-DE')).toBe(true);
+    expect(textboxes.some((el) => el.value === 'd')).toBe(true);
+  });
+
+  it('词条跨多个领域时领域留空', async () => {
+    const mixed = [...TERMS, { ...term('struct', 'Car', 'Auto'), domain: 'other' }];
+    const { textboxes } = await saveAndCaptureUrl({ policyLocale: 'de-DE' }, mixed);
+    expect(textboxes.some((el) => el.value === 'd' || el.value === 'other')).toBe(false);
+  });
+
+  it('团队策略的 POST 带 ?teamId=；个人策略不带', async () => {
+    const team = await saveAndCaptureUrl({ teamId: 'team 1', policyLocale: 'de-DE' });
+    // 预填后仍缺 canonical 等必填项，补齐后提交
+    const inputs = team.dialog.querySelectorAll('input');
+    for (const el of Array.from(inputs)) {
+      if (!(el as HTMLInputElement).value) fireEvent.change(el, { target: { value: 'Fahrer' } });
+    }
+    team.dialog.querySelector('form')?.requestSubmit();
+    await waitFor(() => expect(team.fetchMock).toHaveBeenCalled());
+    const calls = team.fetchMock.mock.calls as unknown as Array<[string]>;
+    expect(calls[0][0]).toBe('/api/v1/domain-vocabularies/terms?teamId=team%201');
+  });
+
+  it('个人策略的 POST 不带 teamId', async () => {
+    const personal = await saveAndCaptureUrl({ teamId: null, policyLocale: 'de-DE' });
+    for (const el of Array.from(personal.dialog.querySelectorAll('input'))) {
+      if (!(el as HTMLInputElement).value) fireEvent.change(el, { target: { value: 'Fahrer' } });
+    }
+    personal.dialog.querySelector('form')?.requestSubmit();
+    await waitFor(() => expect(personal.fetchMock).toHaveBeenCalled());
+    const calls = personal.fetchMock.mock.calls as unknown as Array<[string]>;
+    expect(calls[0][0]).toBe('/api/v1/domain-vocabularies/terms');
+  });
+});
+
 describe('VocabularyTab 空状态与链接', () => {
   it('无词条时显示空状态，含管理页链接', () => {
     renderTab(fakeEditor(), []);
@@ -135,8 +211,11 @@ describe('VocabularyTab 空状态与链接', () => {
     expect(screen.getByRole('link', { name: M.manage }).getAttribute('href')).toBe('/zh/domain-vocabularies');
   });
 
-  it('有词条时页脚同样有管理页链接', () => {
+  it('有词条时页脚同样有管理页链接，新标签页打开以保留未保存编辑', () => {
     renderTab(fakeEditor());
-    expect(screen.getByRole('link', { name: M.manage }).getAttribute('href')).toBe('/zh/domain-vocabularies');
+    const link = screen.getByRole('link', { name: M.manage });
+    expect(link.getAttribute('href')).toBe('/zh/domain-vocabularies');
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
   });
 });

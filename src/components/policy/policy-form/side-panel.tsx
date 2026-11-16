@@ -127,6 +127,8 @@ export interface SidePanelProps {
   compileSource?: string;
   /** 词汇标签页的术语（来自编辑器已拉取的词条）。 */
   vocabularyTerms?: ReadonlyArray<VocabularyTabTerm>;
+  /** 策略所属团队（词汇标签页据此把新术语写入团队词汇）。 */
+  teamId?: string | null;
   /** Click a diagnostic row → jump to the offending line in Monaco. */
   onJumpToLine?: (line: number, column: number) => void;
   /** Externally request a specific tab (e.g. compile errored → focus
@@ -166,6 +168,7 @@ export function SidePanel({
   compileModule,
   compileSource = '',
   vocabularyTerms = NO_VOCABULARY_TERMS,
+  teamId = null,
   onJumpToLine,
   initialTab,
   policyId = null,
@@ -339,7 +342,7 @@ export function SidePanel({
         )}
         {structuredAuthoring.allowed && tab === 'vocabulary' && (
           <div className="p-3" data-testid="structured-authoring-vocabulary">
-            <VocabularyTab editor={editor} terms={vocabularyTerms} />
+            <VocabularyTab editor={editor} terms={vocabularyTerms} teamId={teamId} policyLocale={cnlLocale} />
           </div>
         )}
         {tab === 'problems' && (
