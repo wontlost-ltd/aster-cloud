@@ -395,9 +395,13 @@ export function CommandPalette({ commands, labels }: CommandPaletteProps) {
         <Search className="size-3.5" aria-hidden />
         <span className="hidden sm:inline">{labels.placeholder}</span>
         <span className="sr-only sm:hidden">{labels.hintOpen}</span>
-        <kbd aria-hidden className="hidden rounded border border-border bg-bg px-1.5 py-0.5 font-mono text-xs text-fg-muted sm:inline-block">
-          ⌘K
-        </kbd>
+        {/* 快捷键提示用 CSS content 画出，不进入按钮的可见文字：否则可见文字是「Search… ⌘K」，与可访问名称
+            「Search…」不一致，仍触发 WCAG 2.5.3 Label in Name（axe label-content-name-mismatch，#774） */}
+        <kbd
+          aria-hidden
+          data-shortcut="⌘K"
+          className="hidden rounded border border-border bg-bg px-1.5 py-0.5 font-mono text-xs text-fg-muted before:content-[attr(data-shortcut)] sm:inline-block"
+        />
       </button>
     </>
   );

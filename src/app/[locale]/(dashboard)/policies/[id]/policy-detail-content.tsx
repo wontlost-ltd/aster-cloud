@@ -264,33 +264,33 @@ export function PolicyDetailContent({
         </div>
       )}
 
-      {/* Stats */}
+      {/* Stats —— 卡片本身是链接，不能用 <dt>/<dd>（必须在 <dl> 内，axe dlitem，#774），改用普通段落 */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-4 mb-6">
         <Link
           href={`/${locale}/policies/${policy.id}/versions`}
           className="bg-bg overflow-hidden rounded-lg shadow px-4 py-5 hover:bg-bg-subtle transition-colors block"
         >
-          <dt className="text-sm font-medium text-fg-muted truncate">{t.detail.version}</dt>
-          <dd className="mt-1 text-2xl font-semibold text-fg">v{policy.version}</dd>
+          <p className="text-sm font-medium text-fg-muted truncate">{t.detail.version}</p>
+          <div className="mt-1 text-2xl font-semibold text-fg">v{policy.version}</div>
           <p className="mt-1 text-xs text-primary">{t.detail.versionHistory} →</p>
         </Link>
         <Link
           href={`/${locale}/policies/${policy.id}/logs`}
           className="bg-bg overflow-hidden rounded-lg shadow px-4 py-5 hover:bg-bg-subtle transition-colors block"
         >
-          <dt className="text-sm font-medium text-fg-muted truncate">{t.detail.executions}</dt>
-          <dd className="mt-1 text-2xl font-semibold text-fg">{policy._count.executions}</dd>
+          <p className="text-sm font-medium text-fg-muted truncate">{t.detail.executions}</p>
+          <div className="mt-1 text-2xl font-semibold text-fg">{policy._count.executions}</div>
           <p className="mt-1 text-xs text-primary">{t.detail.viewLogs} →</p>
         </Link>
         <div className="bg-bg overflow-hidden rounded-lg shadow px-4 py-5">
-          <dt className="text-sm font-medium text-fg-muted truncate">{t.detail.piiFields}</dt>
-          <dd className="mt-1 text-2xl font-semibold text-fg">
+          <p className="text-sm font-medium text-fg-muted truncate">{t.detail.piiFields}</p>
+          <div className="mt-1 text-2xl font-semibold text-fg">
             {policy.piiFields?.length || 0}
-          </dd>
+          </div>
         </div>
         <div className="bg-bg overflow-hidden rounded-lg shadow px-4 py-5">
-          <dt className="text-sm font-medium text-fg-muted truncate">{t.detail.status}</dt>
-          <dd className="mt-1">
+          <p className="text-sm font-medium text-fg-muted truncate">{t.detail.status}</p>
+          <div className="mt-1">
             {policy.isPublic ? (
               <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-sm font-medium text-green-800">
                 {t.public}
@@ -308,7 +308,7 @@ export function PolicyDetailContent({
                 {team.label}
               </Link>
             )}
-          </dd>
+          </div>
         </div>
       </div>
 

@@ -24,6 +24,11 @@ describe('CommandPalette trigger (#774)', () => {
     expect(trigger.hasAttribute('aria-label')).toBe(false);
     // 移动端占位文字隐藏时仍有名称（sr-only）
     expect(trigger.textContent).toContain('Open command palette');
-    expect(trigger.querySelector('kbd')?.getAttribute('aria-hidden')).toBe('true');
+    const kbd = trigger.querySelector('kbd');
+    expect(kbd?.getAttribute('aria-hidden')).toBe('true');
+    // ⌘K 由 CSS content 画出，不属于按钮的文字内容
+    expect(kbd?.textContent).toBe('');
+    expect(kbd?.getAttribute('data-shortcut')).toBe('⌘K');
+    expect(trigger.textContent).not.toContain('⌘K');
   });
 });
