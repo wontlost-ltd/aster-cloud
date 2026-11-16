@@ -86,3 +86,47 @@ describe('DashboardSidebar hydration (#774)', () => {
     expect(container.querySelector('[aria-label="expandSidebar"]')).not.toBeNull();
   });
 });
+
+describe('useLocalStorageFlag after hydration (#774)', () => {
+  it('toggling writes storage and updates; a later change from another tab still wins', async () => {
+    const { DashboardSidebar } = await import('@/components/dashboard-sidebar');
+    const labels = new Proxy({} as Record<string, string>, { get: (_t, k) => String(k) }) as never;
+    const caps = { riskTier: false, license: false, licenseRevoke: false, issuedLicenses: false, sso: false };
+    const tree = <DashboardSidebar localePrefix="" isAdmin={false} showBilling labels={labels} adminCapabilities={caps} />;
+    window.localStorage.clear();
+    const container = document.createElement('div');
+    container.innerHTML = renderToString(tree);
+    document.body.appendChild(container);
+    await act(async () => {
+      hydrateRoot(container, tree);
+    });
+    const toggle = () => container.querySelector('[aria-label="collapseSidebar"], [aria-label="expandSidebar"]') as HTMLButtonElement;
+    expect(toggle().getAttribute('aria-label')).toBe('collapseSidebar');
+
+    // 本标签页点击：写入存储并收起
+    await act(async () => toggle().click());
+    expect(window.localStorage.getItem('aster.sidebar.collapsed')).toBe('1');
+    expect(toggle().getAttribute('aria-label')).toBe('expandSidebar');
+
+    // 另一个标签页之后改回展开：storage 事件到达后以存储为准（点击不会留下压住外部更新的本地覆盖）
+    window.localStorage.setItem('aster.sidebar.collapsed', '0');
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent('storage', { key: 'aster.sidebar.collapsed', newValue: '0' }));
+    });
+    expect(toggle().getAttribute('aria-label')).toBe('collapseSidebar');
+  });
+
+  it('dismissing the launchpad hides it and persists', async () => {
+    window.localStorage.clear();
+    const container = document.createElement('div');
+    container.innerHTML = renderToString(<AdminLaunchpad {...props} />);
+    document.body.appendChild(container);
+    await act(async () => {
+      hydrateRoot(container, <AdminLaunchpad {...props} />);
+    });
+    const hide = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'Hide this checklist') as HTMLButtonElement;
+    await act(async () => hide.click());
+    expect(container.textContent).not.toContain('Get set up');
+    expect(window.localStorage.getItem('aster.admin.launchpad.dismissed')).toBe('1');
+  });
+});

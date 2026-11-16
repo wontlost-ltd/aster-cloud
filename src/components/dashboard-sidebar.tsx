@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocalStorageFlag } from '@/hooks/use-local-storage-flag';
 import { usePathname } from 'next/navigation';
 import { useFocusTrap } from '@/hooks/use-focus-trap';
 import {
@@ -348,13 +349,6 @@ interface DashboardSidebarProps {
 }
 
 const COLLAPSED_KEY = 'aster.sidebar.collapsed';
-/** 其他标签页改变侧栏收起状态时同步 */
-function subscribeStorage(onChange: () => void): () => void {
-  window.addEventListener('storage', onChange);
-  return () => window.removeEventListener('storage', onChange);
-}
-const readCollapsed = () => window.localStorage.getItem(COLLAPSED_KEY) === '1';
-const serverCollapsed = () => false;
 
 export function DashboardSidebar({
   localePrefix,
@@ -370,11 +364,8 @@ export function DashboardSidebar({
   // Desktop collapse state — persisted to localStorage so a user who
   // chose the rail layout keeps it across reloads. SSR returns the
   // expanded state; the client may collapse on hydrate.
-  // 不能在 useState 惰性初始化里读 localStorage：收起过侧栏的用户客户端首渲与服务端不一致，触发水合错误
-  // #418（#774）。水合期间用服务端快照（展开），水合后切到 localStorage；用户点击后以本地状态为准。
-  const storedCollapsed = useSyncExternalStore(subscribeStorage, readCollapsed, serverCollapsed);
-  const [collapsedOverride, setCollapsedOverride] = useState<boolean | null>(null);
-  const collapsed = collapsedOverride ?? storedCollapsed;
+  // 水合安全地读写 localStorage（见 useLocalStorageFlag）：水合期间与 SSR 一致为展开，水合后才按存储收起（#774 #418）。
+  const [collapsed, setCollapsed] = useLocalStorageFlag(COLLAPSED_KEY);
 
   // Publish the sidebar width as a CSS custom property on <html> so
   // the topbar + main content area can pad-left themselves without
@@ -412,11 +403,7 @@ export function DashboardSidebar({
     closedByNavigation.current = false;
   }, [drawerOpen]);
 
-  const toggleCollapsed = () => {
-    const next = !collapsed;
-    window.localStorage.setItem(COLLAPSED_KEY, next ? '1' : '0');
-    setCollapsedOverride(next);
-  };
+  const toggleCollapsed = () => setCollapsed(!collapsed);
 
   // Strip locale prefix so /zh/policies and /policies both match the
   // sidebar's locale-free hrefs.

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useSyncExternalStore } from 'react';
+import { useLocalStorageFlag } from '@/hooks/use-local-storage-flag';
 import { Plus, Check, Sparkles, KeyRound, Users, CreditCard } from 'lucide-react';
 import { Link } from '@/i18n/navigation';
 import { CLIENT_CAPABILITIES } from '@/hooks/use-deployment-mode';
@@ -60,21 +60,10 @@ interface AdminLaunchpadProps {
 
 const DISMISS_KEY = 'aster.admin.launchpad.dismissed';
 
-/** 其他标签页收起清单时（storage 事件）同步隐藏 */
-function subscribeDismissed(onChange: () => void): () => void {
-  window.addEventListener('storage', onChange);
-  return () => window.removeEventListener('storage', onChange);
-}
-const readDismissed = () => window.localStorage.getItem(DISMISS_KEY) === '1';
-const serverDismissed = () => false;
 
 export function AdminLaunchpad({ signals, translations: t }: AdminLaunchpadProps) {
-  // 收起状态存在 localStorage，服务端读不到。不能在 useState 惰性初始化里读：已收起的用户客户端首渲
-  // 得到 null 而服务端渲染的是完整清单，触发水合错误 #418（#774）。useSyncExternalStore 在水合期间用
-  // 服务端快照（false，与 SSR 一致），水合完成后再切到 localStorage 的真实值。
-  const storedDismissed = useSyncExternalStore(subscribeDismissed, readDismissed, serverDismissed);
-  const [dismissedNow, setDismissedNow] = useState(false);
-  const dismissed = storedDismissed || dismissedNow;
+  // 收起状态存在 localStorage，服务端读不到：水合期间按未收起渲染（与 SSR 一致），水合后才隐藏（#774 #418）。
+  const [dismissed, setDismissed] = useLocalStorageFlag(DISMISS_KEY);
 
   if (dismissed) return null;
 
@@ -155,8 +144,7 @@ export function AdminLaunchpad({ signals, translations: t }: AdminLaunchpadProps
             <button
               type="button"
               onClick={() => {
-                window.localStorage.setItem(DISMISS_KEY, '1');
-                setDismissedNow(true);
+                setDismissed(true);
               }}
               className="text-xs text-fg-subtle hover:text-fg focus-visible:outline-none focus-visible:underline"
             >
