@@ -53,7 +53,7 @@ apiVersion: v1
 | 字段 | 类型 | 描述 |
 |-------|------|-------------|
 | `workflowId` | `string` | 工作流的唯一标识符。 |
-| `status` | `string` | 当前生命周期状态。参见下方 [状态值](#status-values)。 |
+| `status` | `string` | 当前生命周期状态。参见下方 [状态值](#状态值)。 |
 | `lastEventSeq` | `integer` | 最近一次应用事件的序列号。 |
 | `result` | `any \| null` | 工作流产生的最终输出。当 `status` 进入终态（`COMPLETED`、`FAILED`、`COMPENSATED`、`COMPENSATION_FAILED`）时填充。非终态工作流为 `null`。 |
 | `snapshot` | `object \| null` | 用于加速事件重放的不透明中间状态快照。若尚未创建快照则为 `null`。 |

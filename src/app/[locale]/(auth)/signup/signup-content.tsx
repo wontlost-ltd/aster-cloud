@@ -244,11 +244,11 @@ export function SignupContent({ returnTo = null }: { returnTo?: string | null } 
           <Stack gap={4} align="center" className="text-center">
             <p className="text-xs text-fg-subtle">
               {t('termsAgreement')}{' '}
-              <Link href="/terms" className="text-primary hover:text-primary-hover">
+              <Link href="/terms" className="text-primary underline underline-offset-2 hover:text-primary-hover">
                 {t('termsOfService')}
               </Link>{' '}
               {t('and')}{' '}
-              <Link href="/privacy" className="text-primary hover:text-primary-hover">
+              <Link href="/privacy" className="text-primary underline underline-offset-2 hover:text-primary-hover">
                 {t('privacyPolicy')}
               </Link>
             </p>

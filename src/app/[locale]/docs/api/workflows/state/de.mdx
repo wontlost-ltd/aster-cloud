@@ -53,7 +53,7 @@ Rufen Sie den aktuellen materialisierten Status eines Workflows ab. Der Status w
 | Feld | Typ | Beschreibung |
 |-------|------|-------------|
 | `workflowId` | `string` | Eindeutiger Bezeichner des Workflows. |
-| `status` | `string` | Aktueller Lifecycle-Status. Siehe [Statuswerte](#status-values) unten. |
+| `status` | `string` | Aktueller Lifecycle-Status. Siehe [Statuswerte](#statuswerte) unten. |
 | `lastEventSeq` | `integer` | Sequenznummer des zuletzt angewendeten Ereignisses. |
 | `result` | `any \| null` | Vom Workflow erzeugte finale Ausgabe. Befüllt, sobald `status` einen Endzustand erreicht (`COMPLETED`, `FAILED`, `COMPENSATED`, `COMPENSATION_FAILED`). `null` für nicht abgeschlossene Workflows. |
 | `snapshot` | `object \| null` | Opaker Snapshot des Zwischenzustands zur Beschleunigung des Event-Replays. `null`, wenn noch kein Snapshot erstellt wurde. |
