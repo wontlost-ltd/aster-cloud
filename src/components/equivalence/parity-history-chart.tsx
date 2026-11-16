@@ -175,7 +175,7 @@ export function ParityHistoryChart({ series, labels, locale }: Props) {
                   setActive(null);
                 }}
                 className={cn(
-                  'rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:shadow-ring',
+                  'rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:shadow-ring max-sm:min-w-11',
                   r === range ? 'bg-bg text-fg shadow-sm' : 'text-fg-muted hover:text-fg',
                 )}
               >

@@ -178,6 +178,15 @@
   }
 }
 
+/* 文档里紧挨着的标题（如 h3 下面直接接 h4）：typography 把后一个标题的上边距清零，移动端两个锚点链接的
+ * 44px 点击区会上下重叠。拉开到 1.5rem（仅移动端，未分层以覆盖 typography 的 :where 规则，#774）。 */
+@media (max-width: 639.98px) {
+  .docs-article :is(h2, h3, h4) + :is(h3, h4, h5) {
+    margin-top: 1.5rem;
+  }
+}
+
+
 /*
  * Smooth-scroll for in-page anchor links (e.g. landing nav "Pricing"
  * → #pricing section). prefers-reduced-motion users keep the instant

@@ -19,7 +19,7 @@ export function WhitepaperContent({ locale }: WhitepaperContentProps) {
   return (
     <article className="whitepaper mx-auto max-w-3xl px-4 py-12 sm:py-16">
       {/* 操作条（打印时隐藏） */}
-      <div className="no-print mb-10 flex flex-wrap items-center justify-between gap-3">
+      <div className="no-print mb-10 flex flex-wrap items-center justify-between gap-3 max-sm:gap-y-4">
         <a
           href={`/${locale}/equivalence`}
           className="text-sm font-medium text-primary hover:underline"
