@@ -95,10 +95,10 @@ import { useAliasIssueMessage } from '@/components/policy/use-alias-issue-messag
 import { localizedErrorMessage } from '@/lib/api/localized-error-message';
 
 /** 保存时作者词汇非法的错误码（与服务端 policy-compile-response 一致）。 */
+const VOCABULARY_SCOPE_INVALID_CODE = 'vocabulary_scope_invalid';
+
 /** 未传 structuredAuthoring 时的默认值：无权，侧栏与接入前一致。 */
 const STRUCTURED_AUTHORING_DENIED: StructuredAuthoringProps = { allowed: false, sources: [] };
-
-const VOCABULARY_SCOPE_INVALID_CODE = 'vocabulary_scope_invalid';
 
 // 类型-only 导入（不拉入 Monaco 重包；运行时组件仍走下方 dynamic）。
 import type { EditorCompileState } from '@/components/policy/monaco-policy-editor';

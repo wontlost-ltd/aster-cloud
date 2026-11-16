@@ -109,8 +109,43 @@ describe('新建页 structuredAuthoring', () => {
     expect(h.resolve).toHaveBeenCalledWith('u1', 'structured_authoring', { teamId: null });
   });
 
-  it('teamId 重复出现（数组）时传 null', async () => {
+  it('teamId 重复出现（数组）时取第一个，与客户端 searchParams.get 一致', async () => {
     await renderNew({ teamId: ['a', 'b'] });
+    expect(h.resolve).toHaveBeenCalledWith('u1', 'structured_authoring', { teamId: 'a' });
+  });
+
+  it('teamId 为空串时传 null', async () => {
+    await renderNew({ teamId: '' });
     expect(h.resolve).toHaveBeenCalledWith('u1', 'structured_authoring', { teamId: null });
+  });
+
+  it('数组首项为空串时传 null', async () => {
+    await renderNew({ teamId: ['', 'b'] });
+    expect(h.resolve).toHaveBeenCalledWith('u1', 'structured_authoring', { teamId: null });
+  });
+});
+
+describe('无权时不下发授权来源（ADR §5.1）', () => {
+  const DENIED_WITH_SOURCES = {
+    allowed: false,
+    denial: 'plan_required',
+    sources: [{ kind: 'team', grantId: 'g2', teamId: 'team-9' }],
+  };
+
+  it('新建页：保留 allowed / denial，sources 为空', async () => {
+    h.resolve.mockResolvedValue(DENIED_WITH_SOURCES);
+    const props = await renderNew({});
+    expect(props.structuredAuthoring).toEqual({ allowed: false, denial: 'plan_required', sources: [] });
+  });
+
+  it('编辑页：保留 allowed / denial，sources 为空', async () => {
+    h.resolve.mockResolvedValue(DENIED_WITH_SOURCES);
+    const props = await renderEdit();
+    expect(props.structuredAuthoring).toEqual({ allowed: false, denial: 'plan_required', sources: [] });
+  });
+
+  it('有权时 sources 原样下发', async () => {
+    const props = await renderEdit();
+    expect(props.structuredAuthoring).toEqual(ENTITLEMENT);
   });
 });
