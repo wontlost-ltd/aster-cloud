@@ -1541,6 +1541,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     policyEditor: {
       tabModel: 'Model',
       tabVocabulary: 'Vocabulary',
+      vocabularyTab: {
+        hint: 'Terms in scope, grouped by role. Click one to insert its localized spelling.',
+        searchPlaceholder: 'Search terms',
+        groupStruct: 'Types',
+        groupField: 'Fields',
+        groupFunction: 'Functions',
+        groupEnumValue: 'Enum members',
+        groupLiteral: 'Literals',
+        empty: 'No vocabulary terms yet. Add terms to use localized names in your policies.',
+        noMatch: 'No matching terms.',
+        addSelection: 'Add selection as term',
+        manage: 'Manage vocabularies',
+      },
       modelTab: {
         hint: 'Forms generate localized source and insert it into the editor — no keywords to type by hand.',
         structs: 'Structs',
@@ -3524,6 +3537,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     policyEditor: {
       tabModel: '模型',
       tabVocabulary: '词汇',
+      vocabularyTab: {
+        hint: '作用域内的术语，按角色分组。点击即可插入其本地化写法。',
+        searchPlaceholder: '搜索术语',
+        groupStruct: '类型',
+        groupField: '字段',
+        groupFunction: '函数',
+        groupEnumValue: '枚举成员',
+        groupLiteral: '字面量',
+        empty: '还没有词汇术语。添加术语后即可在策略中使用本地化名称。',
+        noMatch: '没有匹配的术语。',
+        addSelection: '把选中文字加为术语',
+        manage: '管理词汇',
+      },
       modelTab: {
         hint: '表单会生成本地化源码并插入编辑器，无需手写关键词。',
         structs: '结构体',
@@ -5508,6 +5534,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     policyEditor: {
       tabModel: 'Modell',
       tabVocabulary: 'Vokabular',
+      vocabularyTab: {
+        hint: 'Begriffe im Geltungsbereich, nach Rolle gruppiert. Klicken Sie, um die lokalisierte Schreibweise einzufügen.',
+        searchPlaceholder: 'Begriffe suchen',
+        groupStruct: 'Typen',
+        groupField: 'Felder',
+        groupFunction: 'Funktionen',
+        groupEnumValue: 'Enum-Werte',
+        groupLiteral: 'Literale',
+        empty: 'Noch keine Vokabelbegriffe. Fügen Sie Begriffe hinzu, um lokalisierte Namen in Richtlinien zu verwenden.',
+        noMatch: 'Keine passenden Begriffe.',
+        addSelection: 'Auswahl als Begriff hinzufügen',
+        manage: 'Vokabulare verwalten',
+      },
       modelTab: {
         hint: 'Formulare erzeugen lokalisierten Quelltext und fügen ihn in den Editor ein – Schlüsselwörter müssen nicht von Hand getippt werden.',
         structs: 'Strukturen',
@@ -7478,6 +7517,19 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     policyEditor: {
       tabModel: 'मॉडल',
       tabVocabulary: 'शब्दावली',
+      vocabularyTab: {
+        hint: 'दायरे में मौजूद शब्द, भूमिका के अनुसार समूहित। स्थानीय वर्तनी डालने के लिए क्लिक करें।',
+        searchPlaceholder: 'शब्द खोजें',
+        groupStruct: 'प्रकार',
+        groupField: 'फ़ील्ड',
+        groupFunction: 'फ़ंक्शन',
+        groupEnumValue: 'एनम सदस्य',
+        groupLiteral: 'लिटरल',
+        empty: 'अभी कोई शब्दावली शब्द नहीं हैं। नीतियों में स्थानीय नाम उपयोग करने के लिए शब्द जोड़ें।',
+        noMatch: 'कोई मेल खाता शब्द नहीं।',
+        addSelection: 'चयन को शब्द के रूप में जोड़ें',
+        manage: 'शब्दावली प्रबंधित करें',
+      },
       modelTab: {
         hint: 'फ़ॉर्म स्थानीयकृत स्रोत बनाकर संपादक में डालते हैं — कीवर्ड हाथ से लिखने की ज़रूरत नहीं।',
         structs: 'संरचनाएँ',

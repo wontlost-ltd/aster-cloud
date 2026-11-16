@@ -50,6 +50,8 @@ import { useIsMobile } from './use-is-mobile';
 import { VocabularyDiagnosticLink } from '@/components/policy/vocabulary-diagnostic-link';
 import { getLexicon, withUserAliases } from '@/lib/aster-lexicon';
 import { ModelTab } from './model-tab';
+import { VocabularyTab } from './vocabulary-tab';
+import type { VocabularyTabTerm } from '@/hooks/useUserVocabularyRegistration';
 
 /** 侧栏容器可见的视口条件，与 index.tsx 中 `lg:flex` 一致。 */
 const PANEL_VISIBLE_QUERY = '(min-width: 1024px)';
@@ -84,6 +86,8 @@ export type SidePanelTab =
   // 以下两个标签仅在 structuredAuthoring.allowed 时出现（ADR 0058 §8.3）
   | 'model'
   | 'vocabulary';
+
+const NO_VOCABULARY_TERMS: ReadonlyArray<VocabularyTabTerm> = [];
 
 export interface SidePanelProps {
   editor: editor.IStandaloneCodeEditor | null;
@@ -121,6 +125,8 @@ export interface SidePanelProps {
   compileModule?: CompileModuleSummary;
   /** 最近一次防抖编译所用的源码（模型标签页的大纲据此解析）。 */
   compileSource?: string;
+  /** 词汇标签页的术语（来自编辑器已拉取的词条）。 */
+  vocabularyTerms?: ReadonlyArray<VocabularyTabTerm>;
   /** Click a diagnostic row → jump to the offending line in Monaco. */
   onJumpToLine?: (line: number, column: number) => void;
   /** Externally request a specific tab (e.g. compile errored → focus
@@ -159,6 +165,7 @@ export function SidePanel({
   compileDiagnostics,
   compileModule,
   compileSource = '',
+  vocabularyTerms = NO_VOCABULARY_TERMS,
   onJumpToLine,
   initialTab,
   policyId = null,
@@ -331,8 +338,9 @@ export function SidePanel({
           </div>
         )}
         {structuredAuthoring.allowed && tab === 'vocabulary' && (
-          // 容器由 T9 填充词汇列表
-          <div className="p-3" data-testid="structured-authoring-vocabulary" />
+          <div className="p-3" data-testid="structured-authoring-vocabulary">
+            <VocabularyTab editor={editor} terms={vocabularyTerms} />
+          </div>
         )}
         {tab === 'problems' && (
           <div className="p-3">

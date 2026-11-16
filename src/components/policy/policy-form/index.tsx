@@ -101,6 +101,7 @@ const VOCABULARY_SCOPE_INVALID_CODE = 'vocabulary_scope_invalid';
 const STRUCTURED_AUTHORING_DENIED: StructuredAuthoringProps = { allowed: false, sources: [] };
 
 // 类型-only 导入（不拉入 Monaco 重包；运行时组件仍走下方 dynamic）。
+import type { VocabularyTabTerm } from '@/hooks/useUserVocabularyRegistration';
 import type { EditorCompileState } from '@/components/policy/monaco-policy-editor';
 
 const MonacoPolicyEditor = dynamic(
@@ -324,6 +325,8 @@ export function PolicyForm({
   // 两条管线的 aliasSet 不同步（编辑器 footer 曾误报解析错误的根因）。StatusBar/SidePanel 直接
   // 消费这份诊断；typecheck 覆盖比原 parse-only 更全（含类型/降级/PII 错误），且 module 摘要
   // 现在能真正填充（原 useCompile 永远返回 undefined，Decision 面板的 module 块从不渲染）。
+  // 词汇标签页的术语：由编辑器内的词汇 hook 上抛，不另发请求。
+  const [vocabularyTerms, setVocabularyTerms] = useState<ReadonlyArray<VocabularyTabTerm>>([]);
   const [compile, setCompile] = useState<EditorCompileState & { transportError?: string }>({
     state: 'idle',
     diagnostics: [],
@@ -875,6 +878,7 @@ export function PolicyForm({
                   setEditorReady(true);
                 }}
                 onCompileChange={setCompile}
+                onVocabularyTermsChange={setVocabularyTerms}
                 // 用户在设置页或状态栏关闭后不再发出任何 AI 补全请求；
                 // 读取本地偏好完成前按关闭处理，避免首帧按默认值误发请求。
                 enableAICompletion={aiInlineCompletion.value && !aiInlineCompletion.hydrating}
@@ -921,6 +925,7 @@ export function PolicyForm({
                 onClose={() => setSidePanelOpen(false)}
                 compileState={serverError?.diagnostics?.length ? 'error' : compile.state}
                 compileSource={compile.source}
+                vocabularyTerms={vocabularyTerms}
                 compileDiagnostics={[
                   ...compile.diagnostics,
                   ...(serverError?.diagnostics ?? []).map((diagnostic) => ({

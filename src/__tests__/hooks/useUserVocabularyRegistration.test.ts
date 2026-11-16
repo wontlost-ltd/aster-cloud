@@ -14,7 +14,7 @@ vi.mock('@/hooks/useDomainVocabularyInvalidate', () => ({
 }));
 
 import { canonicalScopesJson, compileAndTypecheck, DE_DE } from '@aster-cloud/aster-lang-ts/browser';
-import { useUserVocabularyRegistration } from '@/hooks/useUserVocabularyRegistration';
+import { toVocabularyTabTerm, useUserVocabularyRegistration } from '@/hooks/useUserVocabularyRegistration';
 import {
   USER_VOCABULARY_DOMAIN,
   VOCABULARY_LIST_MAX_PAGE_SIZE,
@@ -30,6 +30,31 @@ const ITEMS = [
 ];
 
 const SOURCE = 'Definiere Fahrer hat alter als Ganzzahl.';
+
+describe('toVocabularyTabTerm', () => {
+  const base = { domain: 'd', locale: 'de', canonical: 'c', localized: 'l' };
+
+  it.each(['struct', 'field', 'function', 'enum_value', 'literal'] as const)('保留 %s', (kind) => {
+    expect(toVocabularyTabTerm({ ...base, kind })).toEqual({ ...base, kind });
+  });
+
+  it('parentCanonical 有值 → parent', () => {
+    expect(toVocabularyTabTerm({ ...base, kind: 'field', parentCanonical: 'Driver' })).toEqual({
+      ...base,
+      kind: 'field',
+      parent: 'Driver',
+    });
+  });
+
+  it('parentCanonical 为 null 或缺省 → 省略 parent', () => {
+    expect(toVocabularyTabTerm({ ...base, kind: 'field', parentCanonical: null })).not.toHaveProperty('parent');
+    expect(toVocabularyTabTerm({ ...base, kind: 'field' })).not.toHaveProperty('parent');
+  });
+
+  it('未知 kind 丢弃', () => {
+    expect(toVocabularyTabTerm({ ...base, kind: 'macro' })).toBeNull();
+  });
+});
 
 describe('useUserVocabularyRegistration', () => {
   const fetchMock = vi.fn();
@@ -56,6 +81,16 @@ describe('useUserVocabularyRegistration', () => {
     expect(result.current.vocabulary!.id).toBe(USER_VOCABULARY_DOMAIN);
     expect(result.current.vocabulary!.structs.map((m) => m.canonical)).toEqual(['Driver']);
     expect([...result.current.scopes!.fields.get('Driver')!.keys()]).toEqual(['alter']);
+  });
+
+  it('terms 来自同一次拉取：全部词条（不随作用域过滤），请求次数仍为一次', async () => {
+    const { result } = renderHook(() =>
+      useUserVocabularyRegistration({ tenantId: 'tenant-hook', locale: 'de-DE', source: SOURCE }),
+    );
+    await waitFor(() => expect(result.current.terms).toHaveLength(3));
+    expect(result.current.terms.map((t) => t.canonical)).toEqual(['Driver', 'age', 'Applicant']);
+    expect(result.current.terms[1]!.parent).toBe('Driver');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('editor scopes equal the server canonicalScopesJson for the same rows', async () => {

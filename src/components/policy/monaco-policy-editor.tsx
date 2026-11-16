@@ -21,7 +21,7 @@ import { toEditorCnlLocale } from '@/lib/cnl-locale';
 import { buildKeywordSuggestions, isMemberAccessPosition } from '@/lib/aster-keyword-completions';
 import { useAsterModuleCatalog } from '@/hooks/useAsterModuleCatalog';
 import { useDomainVocabularyInvalidate } from '@/hooks/useDomainVocabularyInvalidate';
-import { useUserVocabularyRegistration } from '@/hooks/useUserVocabularyRegistration';
+import { useUserVocabularyRegistration, type VocabularyTabTerm } from '@/hooks/useUserVocabularyRegistration';
 import type { TypecheckDiagnostic } from '@aster-cloud/aster-lang-ts/browser';
 import { asterEditorTheme } from '@/lib/editor/aster-editor-theme';
 import { useEntryRuleDecorations } from './use-entry-rule-decorations';
@@ -78,6 +78,8 @@ interface MonacoPolicyEditorProps {
    * （消除每次按键的双重解析、双份 Problems 面板、双份红波浪线，并根除两条管线的别名不同步）。
    */
   onCompileChange?: (result: EditorCompileState) => void;
+  /** 词汇标签页用：上抛 hook 已拉取的词条（不另发请求）。 */
+  onVocabularyTermsChange?: (terms: ReadonlyArray<VocabularyTabTerm>) => void;
 }
 
 /** 上抛给父层的编译状态（形状对齐 policy-form 的 StatusBar/SidePanel 消费口径）。 */
@@ -369,6 +371,7 @@ export function MonacoPolicyEditor({
   onToggleAIPanel,
   onExplainSelection,
   onCompileChange,
+  onVocabularyTermsChange,
 }: MonacoPolicyEditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof import('monaco-editor') | null>(null);
@@ -482,6 +485,7 @@ export function MonacoPolicyEditor({
     vocabulary: userVocabulary,
     registrationKey: userVocabKey,
     shadowed: shadowedVocabulary = [],
+    terms: vocabularyTerms,
   } = useUserVocabularyRegistration({
     tenantId,
     locale: compilerLocale,
@@ -489,6 +493,11 @@ export function MonacoPolicyEditor({
     enabled: userVocabularyEnabled,
     teamId: vocabularyTeamId,
   });
+
+  // 词汇标签页的术语：与上面同一次拉取，只上抛不另发请求。
+  useEffect(() => {
+    onVocabularyTermsChange?.(vocabularyTerms);
+  }, [vocabularyTerms, onVocabularyTermsChange]);
 
   // F10：订阅词汇版本失效（轮询 /api/v1/domain-vocabularies/version，见
   // useDomainVocabularyInvalidate），其它标签页增删词后重新取词汇并刷新 Monaco 高亮。

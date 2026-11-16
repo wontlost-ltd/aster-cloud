@@ -84,6 +84,37 @@ export interface UseUserVocabularyRegistrationResult {
   registrationKey: string;
   /** 团队策略中被团队词汇遮蔽、且被当前源码引用的作者个人词条（个人策略恒为空）。 */
   shadowed: readonly ShadowedTerm[];
+  /** 合并（团队优先）后的全部词条，供词汇标签页分组展示；与词汇同一次拉取，不另发请求。 */
+  terms: ReadonlyArray<VocabularyTabTerm>;
+}
+
+/** 词汇标签页可分组的词条种类（ADR 0051 角色）。 */
+export const VOCABULARY_TAB_KINDS = ['struct', 'field', 'function', 'enum_value', 'literal'] as const;
+
+/** 词汇标签页展示的一条术语（来自 hook 已拉取的词条行，不另发请求）。 */
+export interface VocabularyTabTerm {
+  localized: string;
+  canonical: string;
+  kind: (typeof VOCABULARY_TAB_KINDS)[number];
+  parent?: string;
+  domain: string;
+  locale: string;
+}
+
+/** 词条行 → 标签页术语；kind 不在五个取值内返回 null（丢弃）。parentCanonical 为空则省略 parent。 */
+export function toVocabularyTabTerm(
+  link: Pick<TermLink, 'domain' | 'locale' | 'kind' | 'canonical' | 'localized' | 'parentCanonical'>,
+): VocabularyTabTerm | null {
+  const kind = VOCABULARY_TAB_KINDS.find((k) => k === link.kind);
+  if (!kind) return null;
+  return {
+    localized: link.localized,
+    canonical: link.canonical,
+    kind,
+    ...(link.parentCanonical ? { parent: link.parentCanonical } : {}),
+    domain: link.domain,
+    locale: link.locale,
+  };
 }
 
 interface EditorVocabulary {
@@ -162,6 +193,7 @@ function shadowedInScope(rows: readonly TermLikeRow[], source: string, locale: s
 }
 
 const NO_SHADOWED: readonly ShadowedTerm[] = [];
+const NO_TERMS: ReadonlyArray<VocabularyTabTerm> = [];
 
 export function useUserVocabularyRegistration({
   tenantId,
@@ -223,6 +255,11 @@ export function useUserVocabularyRegistration({
     [teamRows, authorRows],
   );
 
+  const terms = useMemo(
+    () => (active ? merged.rows.flatMap((row) => toVocabularyTabTerm(row) ?? []) : NO_TERMS),
+    [active, merged.rows],
+  );
+
   // 作用域随源码变化；延迟值避免每次按键都同步扫描全部词条。
   const deferredSource = useDeferredValue(source);
   const scoped = useMemo(
@@ -242,7 +279,7 @@ export function useUserVocabularyRegistration({
   const stable = useMemo(() => scoped ?? undefined, [registrationKey]);
 
   return useMemo(
-    () => ({ vocabulary: stable?.vocabulary, scopes: stable?.scopes, registrationKey, shadowed }),
-    [stable, registrationKey, shadowed],
+    () => ({ vocabulary: stable?.vocabulary, scopes: stable?.scopes, registrationKey, shadowed, terms }),
+    [stable, registrationKey, shadowed, terms],
   );
 }
