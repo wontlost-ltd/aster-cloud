@@ -210,7 +210,7 @@ export function TrashContent({ translations: t, locale }: TrashContentProps) {
           <p className="text-sm text-fg-muted">
             {t.trash.itemCount.replace('{count}', stats.total.toString())}
             {stats.expiringWithin7Days > 0 && (
-              <span className="ml-2 text-orange-600">
+              <span className="ml-2 text-orange-700 dark:text-orange-400">
                 ({stats.expiringWithin7Days} expiring soon)
               </span>
             )}

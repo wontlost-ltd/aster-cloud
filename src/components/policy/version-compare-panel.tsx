@@ -320,7 +320,7 @@ export function VersionComparePanel({
 
       {/* Stats */}
       <div className="flex items-center gap-4 px-6 py-2 text-sm border-b border-border dark:border-gray-700">
-        <span className="text-green-600 dark:text-green-400">{t('linesAdded', { n: stats.added })}</span>
+        <span className="text-success">{t('linesAdded', { n: stats.added })}</span>
         <span className="text-red-600 dark:text-red-400">{t('linesRemoved', { n: stats.removed })}</span>
       </div>
 
@@ -356,7 +356,7 @@ export function VersionComparePanel({
                 <span
                   className={`w-6 text-center select-none ${
                     line.type === 'added'
-                      ? 'text-green-600 dark:text-green-400'
+                      ? 'text-success'
                       : line.type === 'removed'
                         ? 'text-red-600 dark:text-red-400'
                         : 'text-gray-300 dark:text-fg-muted'

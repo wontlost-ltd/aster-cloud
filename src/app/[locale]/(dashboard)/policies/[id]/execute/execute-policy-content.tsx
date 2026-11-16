@@ -778,7 +778,7 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
                     </p>
                     {schemaError.detail && (
                       <details className="mt-2">
-                        <summary className="text-xs text-amber-600 cursor-pointer hover:text-amber-800">
+                        <summary className="text-xs text-amber-800 cursor-pointer hover:text-amber-900">
                           {t('viewDetails')}
                         </summary>
                         <pre className="mt-2 text-xs text-amber-700 bg-amber-100 p-2 rounded overflow-x-auto whitespace-pre-wrap">

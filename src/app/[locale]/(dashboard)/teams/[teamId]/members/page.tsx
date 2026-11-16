@@ -604,7 +604,7 @@ export default function TeamMembersPage() {
                     {member.userId === currentUserId && member.role !== 'owner' ? (
                       <button
                         onClick={() => handleLeaveTeam(member.id)}
-                        className="text-orange-600 hover:text-orange-800 text-sm"
+                        className="text-orange-700 hover:text-orange-800 dark:text-orange-400 dark:hover:text-orange-300 text-sm"
                       >
                         {t('members.leave')}
                       </button>

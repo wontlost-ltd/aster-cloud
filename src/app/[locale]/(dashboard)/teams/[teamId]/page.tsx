@@ -194,7 +194,7 @@ export default function TeamDashboardPage() {
             </div>
           </div>
           {pendingInvitations.length > 0 && (
-            <p className="mt-3 text-sm text-amber-600">
+            <p className="mt-3 text-sm text-warning">
               {t('dashboard.pendingInvitations', { count: pendingInvitations.length })}
             </p>
           )}

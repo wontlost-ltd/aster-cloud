@@ -237,7 +237,7 @@ export function VocabDemoContent({ locale }: { locale: string }) {
                       {tier.conditions.map((cond, j) => (
                         <li key={j} className="font-mono text-xs text-fg-muted">
                           {cond.expression}{' '}
-                          <span className={cond.matched ? 'text-emerald-600' : 'text-fg-subtle'}>
+                          <span className={cond.matched ? 'text-success' : 'text-fg-subtle'}>
                             {cond.matched ? '✓' : '✗'}
                           </span>
                         </li>
