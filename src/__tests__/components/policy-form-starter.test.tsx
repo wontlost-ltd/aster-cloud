@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { ASTER_POLICY_TEMPLATES } from '@/config/aster-policy-templates';
 
@@ -36,16 +36,30 @@ vi.mock('next-intl', () => ({
   useLocale: () => 'zh',
 }));
 vi.mock('sonner', () => ({ toast: h.toast }));
-vi.mock('@/components/policy/policy-form/side-panel', () => ({
-  SidePanel: (props: { starterSource?: string | null; onApplyContent: (body: string) => void }) => {
-    h.sidePanelProps = props;
-    return (
-      <button type="button" onClick={() => props.onApplyContent('模块 智能.生成。')}>
-        ai-apply
-      </button>
-    );
-  },
-}));
+vi.mock('@/lib/product-events/client', () => ({ trackProductEvent: vi.fn() }));
+vi.mock('@/components/policy/policy-form/side-panel', async () => {
+  const { POLICY_EXAMPLES } = await import('@/data/policy-examples');
+  const loan = POLICY_EXAMPLES.find((e) => e.id === 'loan-evaluation')!;
+  return {
+    SidePanel: (props: {
+      starterSource?: string | null;
+      onApplyContent: (body: string) => void;
+      onApplyTemplate: (tpl: unknown) => void;
+    }) => {
+      h.sidePanelProps = props;
+      return (
+        <>
+          <button type="button" onClick={() => props.onApplyContent('模块 智能.生成。')}>
+            ai-apply
+          </button>
+          <button type="button" onClick={() => props.onApplyTemplate(loan)}>
+            template-loan
+          </button>
+        </>
+      );
+    },
+  };
+});
 vi.mock('@/components/policy/policy-form/editor-palette', () => ({ EditorPalette: () => null }));
 vi.mock('@/components/policy/policy-form/editor-rail', () => ({ EditorRail: () => null }));
 vi.mock('@/components/policy/cnl-syntax-converter-dialog', () => ({ CNLSyntaxConverterDialog: () => null }));
@@ -71,11 +85,27 @@ function renderForm({ starter = true, content = ZH }: { starter?: boolean; conte
   );
 }
 
+/** 触发一次 beforeunload，返回离开确认是否会弹出（未保存修改守卫调用了 preventDefault）。 */
+function leaveWarns(): boolean {
+  const event = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
 const editorValue = () => (screen.getByTestId('editor') as HTMLTextAreaElement).value;
 /** 越过自动保存的 1s 节流窗口。 */
 const passAutosaveWindow = () => act(() => new Promise((r) => setTimeout(r, 1200)));
 
 describe('PolicyForm 入门模板', () => {
+  // jsdom 未实现 <dialog>.showModal/close（模板替换确认用 ConfirmDialog）：补最小桩，只切换 open 属性。
+  beforeAll(() => {
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     h.mobile = false;
@@ -105,6 +135,26 @@ describe('PolicyForm 入门模板', () => {
     expect(screen.queryByTestId('policy-starter-hint')).toBeNull();
     await passAutosaveWindow();
     expect(window.localStorage.getItem(DRAFT_KEY)).toBeNull();
+  });
+
+  it('★未改动的入门模板 / 从空白开始都不触发离开确认；手动改动后触发', () => {
+    renderForm();
+    expect(leaveWarns()).toBe(false);
+    fireEvent.click(screen.getByTestId('policy-starter-blank'));
+    expect(leaveWarns()).toBe(false);
+    fireEvent.change(screen.getByTestId('editor'), { target: { value: '模块 我的.策略。' } });
+    expect(leaveWarns()).toBe(true);
+  });
+
+  it('侧栏模板替换入门模板（确认后）：内容为所选模板、提示条消失、不再视为入门模板', async () => {
+    const { POLICY_EXAMPLES } = await import('@/data/policy-examples');
+    const loanZh = POLICY_EXAMPLES.find((e) => e.id === 'loan-evaluation')!.sources['zh-CN'];
+    renderForm();
+    fireEvent.click(screen.getByText('template-loan'));
+    fireEvent.click(screen.getByRole('button', { name: 'replace' }));
+    expect(editorValue()).toBe(loanZh);
+    expect(screen.queryByTestId('policy-starter-hint')).toBeNull();
+    expect(h.sidePanelProps?.starterSource).toBeNull();
   });
 
   it('关闭提示条只收起提示，保留入门模板内容', () => {
