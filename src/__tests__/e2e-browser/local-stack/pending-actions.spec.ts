@@ -180,8 +180,9 @@ for (const vp of VIEWPORTS) {
       const member = await api(browser, 'ui-member');
       const source = `Module aster.audit.loan.\n\nRule evaluateLoan given tier as Text, produce Text:\n  If tier equals to "gold":\n    Return "allow".\n  Return "s${Date.now()}".\n`;
       const created = await member.post(`/api/v1/policies/${teamPolicyId}/versions`, { source, locale: 'en-US' });
+      expect(created.status()).toBe(201);
       const v = ((await created.json()) as { version: number }).version;
-      await member.post(`/api/v1/policies/${teamPolicyId}/versions/${v}/submit`, {});
+      expect((await member.post(`/api/v1/policies/${teamPolicyId}/versions/${v}/submit`, {})).status()).toBe(200);
       await member.close();
 
       await page.goto('/en/approvals');
