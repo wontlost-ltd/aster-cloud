@@ -19,8 +19,9 @@ describe('design-system mobile fixes (#774)', () => {
         getRowKey={(r) => r.id}
       />,
     );
-    const table = container.querySelector('table') as HTMLElement;
-    const scroller = table.parentElement as HTMLElement;
+    const scroller = container.querySelector('table')?.parentElement;
+    expect(scroller, 'DataTable 应渲染 <table> 及其滚动容器').toBeTruthy();
+    if (!scroller) return;
     expect(scroller.className).toMatch(/(^|\s)overflow-x-auto(\s|$)/);
     expect(scroller.className).toMatch(/(^|\s)relative(\s|$)/);
   });
@@ -29,8 +30,10 @@ describe('design-system mobile fixes (#774)', () => {
     const { container } = render(
       <Breadcrumbs items={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Domain vocabularies', href: '/domain-vocabularies' }, { label: 'Vocabulary snapshots' }]} />,
     );
-    const nav = container.querySelector('nav[aria-label="Breadcrumb"]') as HTMLElement;
-    const ol = nav.querySelector('ol') as HTMLElement;
+    const nav = container.querySelector('nav[aria-label="Breadcrumb"]');
+    const ol = nav?.querySelector('ol');
+    expect(nav && ol, 'Breadcrumbs 应渲染 nav > ol').toBeTruthy();
+    if (!nav || !ol) return;
     expect(nav.className).toContain('min-w-0');
     expect(ol.className).toContain('flex-wrap');
     expect(ol.className).toContain('min-w-0');
