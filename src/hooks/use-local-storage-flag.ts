@@ -12,18 +12,27 @@ import { useCallback, useSyncExternalStore } from 'react';
 const LOCAL_EVENT = 'aster:local-storage-flag';
 
 function subscribe(onChange: () => void): () => void {
-  window.addEventListener('storage', onChange);
+  // 其他标签页写入了存储：以存储为准，丢掉本标签页的内存回退
+  const onStorage = (e: StorageEvent) => {
+    if (e.key) memory.delete(e.key);
+    onChange();
+  };
+  window.addEventListener('storage', onStorage);
   window.addEventListener(LOCAL_EVENT, onChange);
   return () => {
-    window.removeEventListener('storage', onChange);
+    window.removeEventListener('storage', onStorage);
     window.removeEventListener(LOCAL_EVENT, onChange);
   };
 }
 
 const serverSnapshot = () => false;
 
+/** 存储不可用（隐私模式、配额、被禁用）时的会话内回退值，按 key 记；同一个 store，界面照常响应 */
+const memory = new Map<string, boolean>();
+
 export function useLocalStorageFlag(key: string): [boolean, (next: boolean) => void] {
   const read = useCallback(() => {
+    if (memory.has(key)) return memory.get(key) as boolean;
     try {
       return window.localStorage.getItem(key) === '1';
     } catch {
@@ -35,8 +44,10 @@ export function useLocalStorageFlag(key: string): [boolean, (next: boolean) => v
     (next: boolean) => {
       try {
         window.localStorage.setItem(key, next ? '1' : '0');
+        memory.delete(key);
       } catch {
-        // 存储不可用（隐私模式等）：本次会话内不记忆，界面照常
+        // 存储不可用：记在内存里，本次会话内照常生效（刷新后不保留）
+        memory.set(key, next);
       }
       window.dispatchEvent(new Event(LOCAL_EVENT));
     },

@@ -130,3 +130,25 @@ describe('useLocalStorageFlag after hydration (#774)', () => {
     expect(window.localStorage.getItem('aster.admin.launchpad.dismissed')).toBe('1');
   });
 });
+
+describe('useLocalStorageFlag without storage (#774)', () => {
+  it('still toggles for the session when localStorage throws', async () => {
+    const { useLocalStorageFlag } = await import('@/hooks/use-local-storage-flag');
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError');
+    });
+    function Probe() {
+      const [on, setOn] = useLocalStorageFlag('aster.test.flag');
+      return <button type="button" onClick={() => setOn(!on)}>{on ? 'on' : 'off'}</button>;
+    }
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const { createRoot } = await import('react-dom/client');
+    await act(async () => createRoot(container).render(<Probe />));
+    const btn = container.querySelector('button') as HTMLButtonElement;
+    expect(btn.textContent).toBe('off');
+    await act(async () => btn.click());
+    expect(btn.textContent).toBe('on');
+    setItem.mockRestore();
+  });
+});
