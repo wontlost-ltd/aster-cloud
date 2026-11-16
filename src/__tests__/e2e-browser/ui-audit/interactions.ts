@@ -100,9 +100,9 @@ async function restore(page: Page, url: string, force: boolean): Promise<void> {
  */
 export async function probeButtons(context: BrowserContext, page: Page, includeShell: boolean, emit: Emit): Promise<number> {
   const mutating: Array<{ method: string; url: string }> = [];
-  // 每次点击重置：放行的请求数、被拦的读请求、第一个被拦请求时的 DOM 变化数
+  // 每次点击重置：放行的请求数、被拦的 API 请求、第一个被拦请求时的 DOM 变化数
   let allowedRequests = 0;
-  let blockedReads: string[] = [];
+  let blocked: string[] = [];
   let mutAtFirstBlock: number | null = null;
   const COUNTED = ['fetch', 'xhr', 'document', 'eventsource', 'websocket'];
   await page.route('**/*', async (route) => {
@@ -113,9 +113,9 @@ export async function probeButtons(context: BrowserContext, page: Page, includeS
       return route.continue();
     }
     if (mutAtFirstBlock === null) mutAtFirstBlock = await mutationCount(page);
-    // 只有写请求参与「破坏性操作无确认」判定；被拦的读请求单独记录，不算按钮有效果
+    // 被拦的请求（读与写）都不算按钮有效果；写请求另外参与「破坏性操作无确认」判定
     if (decision === 'block-write') mutating.push({ method: req.method(), url: req.url() });
-    else blockedReads.push(new URL(req.url()).pathname);
+    blocked.push(`${req.method()} ${new URL(req.url()).pathname}`);
     // 带标记头，页面级 5xx 统计据此排除审计自己伪造的响应
     return route.fulfill({
       status: 503,
@@ -159,7 +159,7 @@ export async function probeButtons(context: BrowserContext, page: Page, includeS
       probed += 1;
       await startMutationCounter(page);
       allowedRequests = 0;
-      blockedReads = [];
+      blocked = [];
       mutAtFirstBlock = null;
       nativeDialog = false;
       const mutBefore = mutating.length;
@@ -183,7 +183,7 @@ export async function probeButtons(context: BrowserContext, page: Page, includeS
 
       const verdict = judgeClick({
         active: c.active, urlChanged, popup, downloaded, printed, nativeDialog, invalidForm: invalidForm > 0,
-        allowedRequests, writes: wrote.length, blockedReads,
+        allowedRequests, blocked,
         mutationsBeforeBlock: mutAtFirstBlock ?? mut, mutationsTotal: mut,
       });
       if (clickError) {
@@ -194,8 +194,8 @@ export async function probeButtons(context: BrowserContext, page: Page, includeS
         emit({
           severity: 'minor',
           category: 'button-effect-unverified',
-          message: `Button "${c.name}" only triggers API reads that the audit blocks; its effect could not be verified`,
-          detail: Array.from(new Set(blockedReads)).slice(0, 5).join(', '),
+          message: `Button "${c.name}" only triggers API requests that the audit blocks; its effect could not be verified`,
+          detail: Array.from(new Set(blocked)).slice(0, 5).join(', '),
         });
       }
       if (DESTRUCTIVE.test(c.name) && wrote.length > 0 && !confirmShown) {

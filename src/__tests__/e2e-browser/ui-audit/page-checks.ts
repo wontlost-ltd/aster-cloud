@@ -88,8 +88,8 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
   const smallTargets: LayoutReport['smallTargets'] = [];
   if (opts.mobile) {
     const q = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=tab], [role=checkbox], [role=switch], [role=menuitem]';
-    for (const el of Array.from(document.querySelectorAll(q))) {
-      if (!visible(el)) continue;
+    const targets = Array.from(document.querySelectorAll(q)).filter(visible);
+    for (const el of targets) {
       const cs = getComputedStyle(el);
       if (el.tagName === 'A' && cs.display === 'inline') {
         const parentText = (el.parentElement?.textContent || '').trim();
@@ -100,8 +100,29 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
       const r = el.getBoundingClientRect();
       // sr-only 元素（如跳到主内容链接）平时被裁成 1px，聚焦时才展开，不算点击目标
       if (r.width <= 1 || r.height <= 1) continue;
-      const min = Math.round(Math.min(r.width, r.height));
-      if (min < opts.minTarget) smallTargets.push({ selector: sel(el), text: textOf(el), box: boxOf(el), min });
+      const own = Math.min(r.width, r.height);
+      let min = own;
+      // 点击区可以由绝对定位的 ::before / ::after 撑大（伪元素的点击落在宿主元素上，globals.css 的 .tap-target）。
+      // 只在元素自身不裁剪（overflow visible，否则伪元素被裁掉）且撑大后的区域不压到别的点击目标时才承认，
+      // 否则相邻目标的点击区互相重叠，实际可点面积并没有变大。
+      if (own < opts.minTarget && getComputedStyle(el).overflow === 'visible') {
+        for (const pseudo of ['::before', '::after']) {
+          const ps = getComputedStyle(el, pseudo);
+          if (ps.content === 'none' || ps.content === 'normal' || ps.position !== 'absolute' || ps.pointerEvents === 'none') continue;
+          const w = parseFloat(ps.width);
+          const h = parseFloat(ps.height);
+          if (!Number.isFinite(w) || !Number.isFinite(h)) continue;
+          const area = { left: r.left + r.width / 2 - w / 2, right: r.left + r.width / 2 + w / 2, top: r.top + r.height / 2 - h / 2, bottom: r.top + r.height / 2 + h / 2 };
+          const overlaps = targets.some((o) => {
+            if (o === el || el.contains(o) || o.contains(el)) return false;
+            const q = o.getBoundingClientRect();
+            if (q.width <= 1 || q.height <= 1) return false;
+            return q.left < area.right && q.right > area.left && q.top < area.bottom && q.bottom > area.top;
+          });
+          if (!overlaps) min = Math.max(min, Math.min(w, h));
+        }
+      }
+      if (min < opts.minTarget) smallTargets.push({ selector: sel(el), text: textOf(el), box: boxOf(el), min: Math.round(min) });
     }
   }
 
@@ -225,4 +246,69 @@ export function focusIndicator(): { ok: boolean; selector: string; text: string 
   const id = el.id ? `#${el.id}` : '';
   const text = (el.innerText || el.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ').slice(0, 50);
   return { ok: outline || ring || deco || wrapperRing, selector: `${el.tagName.toLowerCase()}${id}`, text };
+}
+
+export interface StructureReport {
+  h1: string[];
+  /** 与 h1 同文的 h2–h6 */
+  duplicateHeadings: string[];
+  /** 没有任何链接的面包屑（只剩当前页名，和 h1 重复） */
+  redundantBreadcrumbs: string[];
+  /** 可操作项被裁剪祖先截掉：hidden/clip 祖先（够不着）或横向滚动容器（滚出视野） */
+  clippedActions: Array<{ selector: string; text: string; by: string; kind: 'hidden' | 'scroll' }>;
+}
+
+/** 页面标题结构与可操作项是否被容器裁掉（#774：重复标题、审批入口「藏在容器里」）。 */
+export function collectStructure(): StructureReport {
+  const norm = (t: string | null | undefined) => (t || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const shown = (el: Element) => {
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) return false;
+    const cs = getComputedStyle(el);
+    return cs.visibility !== 'hidden' && cs.display !== 'none' && Number(cs.opacity) > 0 && !el.closest('[aria-hidden="true"], [inert]');
+  };
+  const desc = (el: Element) => {
+    const cls = (el.getAttribute('class') || '').split(/\s+/).filter((c) => c && !c.includes(':')).slice(0, 4);
+    return `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${cls.length ? `.${cls.join('.')}` : ''}`;
+  };
+
+  // 1. 标题：h1 计数含 sr-only（读屏同样会读到两个一级标题）；同文判定只看可见标题
+  const h1s = Array.from(document.querySelectorAll('h1')).filter((h) => !h.closest('[aria-hidden="true"], [hidden]'));
+  const h1 = h1s.map((h) => norm(h.textContent));
+  const h1Set = new Set(h1.filter(Boolean));
+  const duplicateHeadings = Array.from(document.querySelectorAll('h2, h3, h4, h5, h6'))
+    .filter((h) => shown(h) && h1Set.has(norm(h.textContent)))
+    .map((h) => `${h.tagName.toLowerCase()} "${(h.textContent || '').trim().slice(0, 60)}"`);
+  const redundantBreadcrumbs = Array.from(document.querySelectorAll('nav[aria-label="Breadcrumb"], nav[aria-label="breadcrumb"]'))
+    .filter((n) => shown(n) && n.querySelectorAll('a[href]').length === 0)
+    .map((n) => `"${(n.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 60)}"`);
+
+  // 2. 可操作项被裁剪：逐个祖先比对盒子（只看当前滚动位置下的布局，不滚动任何容器）
+  const clippedActions: StructureReport['clippedActions'] = [];
+  const q = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=tab], [role=menuitem]';
+  for (const el of Array.from(document.querySelectorAll(q))) {
+    if (!shown(el)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width <= 1 || r.height <= 1) continue;
+    for (let p = el.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) {
+      const cs = getComputedStyle(p);
+      if (cs.position === 'fixed') break;
+      const pr = p.getBoundingClientRect();
+      const ox = cs.overflowX;
+      const oy = cs.overflowY;
+      const outX = r.left < pr.left - 1 || r.right > pr.right + 1;
+      const outY = r.top < pr.top - 1 || r.bottom > pr.bottom + 1;
+      // overflow hidden / clip：截掉的部分永远够不着
+      if (((ox === 'hidden' || ox === 'clip') && outX) || ((oy === 'hidden' || oy === 'clip') && outY)) {
+        clippedActions.push({ selector: desc(el), text: ((el as HTMLElement).innerText || el.getAttribute('aria-label') || '').trim().slice(0, 50), by: desc(p), kind: 'hidden' });
+        break;
+      }
+      // 横向滚动容器：操作项在初始视图里完全看不到（要先横向滚动才发现得了）。纵向滚动的列表（侧栏等）是常规模式，不报
+      if ((ox === 'auto' || ox === 'scroll') && (r.left >= pr.right - 1 || r.right <= pr.left + 1)) {
+        clippedActions.push({ selector: desc(el), text: ((el as HTMLElement).innerText || el.getAttribute('aria-label') || '').trim().slice(0, 50), by: desc(p), kind: 'scroll' });
+        break;
+      }
+    }
+  }
+  return { h1, duplicateHeadings, redundantBreadcrumbs, clippedActions };
 }

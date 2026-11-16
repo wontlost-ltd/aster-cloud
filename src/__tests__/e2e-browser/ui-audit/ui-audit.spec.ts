@@ -10,7 +10,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { NOT_LOCAL, NOT_LOCAL_REASON } from '../local-stack/helpers';
-import { MOBILE_MIN_TARGET, collectLayout, collectLinks } from './page-checks';
+import { MOBILE_MIN_TARGET, collectLayout, collectLinks, collectStructure } from './page-checks';
 import { BLOCKED_HEADER, probeButtons, probePopups, walkFocus } from './interactions';
 import { type AuditContext, type Finding, recordCoverage, recordFinding, recordLinks, screenshotPath } from './recorder';
 import { type AuditRoute, buildRoleSweep, buildRoutes, localePath, stateFile } from './routes';
@@ -110,6 +110,28 @@ async function auditPage(page: Page, ctx: AuditContext, route: AuditRoute, deep:
       message: `${layout.smallTargets.length} tap target(s) under 44×44 CSS px on mobile`,
       detail: layout.smallTargets.slice(0, 8).map((t) => `${t.min}px ${t.selector} "${t.text}"`).join('\n'),
     });
+  }
+  // 页面标题结构与被容器裁掉的操作项（#774）
+  const structure = await page.evaluate(collectStructure);
+  checks.push('structure');
+  if (structure.h1.length > 1) {
+    emit({ severity: 'serious', category: 'multiple-h1', message: `${structure.h1.length} <h1> elements on the page`, detail: structure.h1.join('\n') });
+  }
+  if (structure.duplicateHeadings.length || structure.redundantBreadcrumbs.length) {
+    emit({
+      severity: 'serious',
+      category: 'duplicate-title',
+      message: 'Page title is rendered more than once (a heading or a link-less breadcrumb repeats the h1)',
+      detail: [...structure.duplicateHeadings, ...structure.redundantBreadcrumbs.map((b) => `breadcrumb without links ${b}`)].join('\n'),
+    });
+  }
+  const hiddenActions = structure.clippedActions.filter((c) => c.kind === 'hidden');
+  const scrolledActions = structure.clippedActions.filter((c) => c.kind === 'scroll');
+  if (hiddenActions.length) {
+    emit({ severity: 'serious', category: 'action-clipped', message: `${hiddenActions.length} actionable item(s) cut off by an overflow:hidden container`, detail: hiddenActions.slice(0, 8).map((c) => `${c.selector} "${c.text}" in ${c.by}`).join('\n') });
+  }
+  if (scrolledActions.length) {
+    emit({ severity: mobile ? 'serious' : 'moderate', category: 'action-scrolled-out', message: `${scrolledActions.length} actionable item(s) start out of view inside a horizontal scroll container`, detail: scrolledActions.slice(0, 8).map((c) => `${c.selector} "${c.text}" in ${c.by}`).join('\n') });
   }
   for (const c of layout.cardIssues) {
     const sev = c.kind === 'overlap' || c.kind === 'overflow' ? 'moderate' : 'minor';
