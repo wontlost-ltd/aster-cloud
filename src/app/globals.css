@@ -221,7 +221,7 @@ body {
 }
 .docs-article pre {
   background: var(--aster-color-zinc-50, #fafafa);
-  border: 1px solid var(--border, var(--aster-color-zinc-200, #e4e4e7));
+  border: 1px solid var(--aster-border);
   border-radius: 8px;
   padding: 1rem 1.25rem;
   overflow-x: auto;
