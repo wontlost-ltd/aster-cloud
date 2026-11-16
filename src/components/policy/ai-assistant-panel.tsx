@@ -752,7 +752,7 @@ function CodeBlock({
           )}
         </div>
       </div>
-      <pre className="overflow-auto bg-bg-muted p-2 font-mono text-[11px] leading-relaxed text-fg dark:text-gray-200">
+      <pre tabIndex={0} className="overflow-auto bg-bg-muted p-2 font-mono text-[11px] leading-relaxed text-fg dark:text-gray-200">
         {code}
       </pre>
     </div>

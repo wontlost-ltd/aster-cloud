@@ -13,7 +13,7 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Breadcrumbs, Container, PageHeader } from '@/components/ui';
+import { Container, PageHeader } from '@/components/ui';
 import type {
   SsoIntrospection,
   SsoSamlConfig,
@@ -33,7 +33,6 @@ export function SsoConfigContent({ introspection }: Props) {
       <PageHeader
         title={t('title')}
         subtitle={t('subtitle')}
-        breadcrumbs={<Breadcrumbs items={[{ label: t('title') }]} />}
         className="mb-6"
       />
 

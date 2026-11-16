@@ -120,7 +120,7 @@ export function MetaSection({
               className={cn(
                 'mt-1.5 block w-full rounded-lg border bg-bg px-3 py-2 text-sm text-fg shadow-sm transition-colors',
                 'placeholder:text-fg-subtle',
-                'focus:outline-none focus:ring-2 focus:ring-primary/20',
+                'focus:outline-none focus:shadow-ring',
                 nameError
                   ? 'border-danger focus:border-danger'
                   : 'border-border-strong focus:border-primary',
@@ -149,7 +149,7 @@ export function MetaSection({
               className={cn(
                 'mt-1.5 block w-full resize-y rounded-lg border border-border-strong bg-bg px-3 py-2 text-sm text-fg shadow-sm transition-colors',
                 'placeholder:text-fg-subtle',
-                'focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20',
+                'focus:border-primary focus:outline-none focus:shadow-ring',
               )}
               placeholder={t('descriptionPlaceholder')}
             />
@@ -173,7 +173,7 @@ export function MetaSection({
                   checked={isPublic}
                   disabled={visibilityLocked}
                   onChange={(e) => onIsPublicChange(e.target.checked)}
-                  className="size-4 cursor-pointer rounded border-border-strong text-primary focus:ring-2 focus:ring-primary/20"
+                  className="size-4 cursor-pointer rounded border-border-strong text-primary focus:shadow-ring"
                 />
                 <span className="text-sm text-fg">{t('isPublic')}</span>
               </label>

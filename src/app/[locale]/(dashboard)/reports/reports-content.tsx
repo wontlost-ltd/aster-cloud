@@ -5,7 +5,6 @@ import { useTranslations } from 'next-intl';
 import {
   Alert,
   Badge,
-  Breadcrumbs,
   Button,
   Card,
   CardBody,
@@ -217,7 +216,6 @@ export function ReportsContent({ locale, policies, initialExports }: Props) {
       <PageHeader
         title={t('title')}
         subtitle={t('subtitle')}
-        breadcrumbs={<Breadcrumbs items={[{ label: t('breadcrumb') }]} />}
         className="mb-6"
       />
 

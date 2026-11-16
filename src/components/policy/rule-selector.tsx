@@ -27,7 +27,7 @@ export function RuleSelector({ rules, value, onChange }: RuleSelectorProps) {
         disabled={!hasRules}
         aria-describedby={showHint ? `${hintId}-hint` : undefined}
         onChange={(event) => onChange(event.target.value || null)}
-        className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
+        className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:shadow-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
       >
         {!value && (
           <option value="">

@@ -653,7 +653,7 @@ export function LogsContent({
                 setSuccessFilter(e.target.value);
                 setPage(1);
               }}
-              className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none hover:border-gray-400 sm:text-sm cursor-pointer"
+              className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:shadow-ring focus:outline-none hover:border-gray-400 sm:text-sm cursor-pointer"
             >
               <option value="">{t.logs.all}</option>
               <option value="approved">{t.logs.approved}</option>
@@ -675,7 +675,7 @@ export function LogsContent({
                 setSourceFilter(e.target.value);
                 setPage(1);
               }}
-              className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none hover:border-gray-400 sm:text-sm cursor-pointer"
+              className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:shadow-ring focus:outline-none hover:border-gray-400 sm:text-sm cursor-pointer"
             >
               <option value="">{t.logs.all}</option>
               <option value="WEB">{t.logs.web}</option>
@@ -692,7 +692,7 @@ export function LogsContent({
               id={`${filterId}-2`}
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none hover:border-gray-400 sm:text-sm cursor-pointer"
+              className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:shadow-ring focus:outline-none hover:border-gray-400 sm:text-sm cursor-pointer"
             />
           </div>
           <div>
@@ -704,7 +704,7 @@ export function LogsContent({
               id={`${filterId}-3`}
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none hover:border-gray-400 sm:text-sm cursor-pointer"
+              className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:shadow-ring focus:outline-none hover:border-gray-400 sm:text-sm cursor-pointer"
             />
           </div>
         </div>

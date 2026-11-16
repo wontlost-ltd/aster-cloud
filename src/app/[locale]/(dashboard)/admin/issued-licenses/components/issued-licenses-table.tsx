@@ -63,10 +63,8 @@ export function IssuedLicensesTable({ rows, searchQuery }: Props) {
   const t = useTranslations('admin.issuedLicenses');
 
   return (
-    <section aria-labelledby="issued-licenses-heading" className="space-y-3">
-      <h2 id="issued-licenses-heading" className="sr-only">
-        {t('title')}
-      </h2>
+    // 不再放与页面 h1 同名的 sr-only h2（读屏会读到两遍「Issued licenses」标题，#774）；区域名改用 aria-label
+    <section aria-label={t('title')} className="space-y-3">
 
       <form method="GET" className="flex items-center gap-2">
         <input

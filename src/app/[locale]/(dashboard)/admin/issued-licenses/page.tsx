@@ -24,7 +24,7 @@ import { isAdminFromSession } from '@/lib/admin-auth';
 import { IS_SAAS } from '@/lib/deployment-mode';
 import { db, issuedLicenses, licenseTelemetry } from '@/lib/prisma';
 import { appendAccessAudit } from '@/lib/telemetry/access-audit';
-import { Breadcrumbs, Container, PageHeader } from '@/components/ui';
+import { Container, PageHeader } from '@/components/ui';
 import { IssuedLicensesTable } from './components/issued-licenses-table';
 import { localizedTitle } from '@/lib/page-metadata';
 
@@ -50,7 +50,6 @@ export default async function IssuedLicensesPage({ params, searchParams }: Props
 
   const { q, cursor } = await searchParams;
   const t = await getTranslations('admin.issuedLicenses');
-  const tNav = await getTranslations('dashboardNav');
 
   // Pagination via signedAt cursor (rows sorted DESC by signedAt). We
   // don't expose cursor pagination yet for v1 — keep simple top-N + search.
@@ -107,9 +106,6 @@ export default async function IssuedLicensesPage({ params, searchParams }: Props
       <PageHeader
         title={t('title')}
         subtitle={t('subtitle')}
-        breadcrumbs={
-          <Breadcrumbs items={[{ label: tNav('groupAdmin') }, { label: t('title') }]} />
-        }
         className="mb-6"
       />
       <IssuedLicensesTable rows={enriched} searchQuery={q ?? ''} />

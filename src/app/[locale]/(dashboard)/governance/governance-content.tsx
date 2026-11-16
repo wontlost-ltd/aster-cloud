@@ -3,7 +3,7 @@
 // 治理视图（#739）：按控制注册表展开 框架 → 控制项（条款）→ 策略，并列出未登记键与未关联策略。
 // 只陈述源码里的 @control 引用与活动计数，不做合规判定。
 import { useTranslations } from 'next-intl';
-import { Badge, Breadcrumbs, Card, CardBody, CardHeader, CardTitle, Container, EmptyState, PageHeader, Stack } from '@/components/ui';
+import { Badge, Card, CardBody, CardHeader, CardTitle, Container, EmptyState, PageHeader, Stack } from '@/components/ui';
 import { Link } from '@/i18n/navigation';
 import { localizedTitle } from '@/services/evidence/control-registry';
 import type { ControlGroup, GovernanceOverview, ImpactPolicy, ImpactVersion, PolicyActivity } from '@/lib/governance-impact';
@@ -112,7 +112,6 @@ export function GovernanceContent({ locale, overview }: Props) {
       <PageHeader
         title={t('title')}
         subtitle={t('subtitle')}
-        breadcrumbs={<Breadcrumbs items={[{ label: t('breadcrumb') }]} />}
         className="mb-6"
       />
 

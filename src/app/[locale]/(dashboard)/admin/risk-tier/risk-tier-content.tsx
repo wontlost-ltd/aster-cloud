@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Container, PageHeader, Breadcrumbs } from '@/components/ui';
+import { Container, PageHeader } from '@/components/ui';
 import { formatDate } from '@/lib/format';
 
 interface RiskRow {
@@ -47,7 +47,6 @@ const TIER_COLORS: Record<number, string> = {
 
 export function RiskTierAdminContent() {
   const t = useTranslations('admin.riskTier');
-  const tNav = useTranslations('dashboardNav');
   const tierLabel = useTierLabel();
   const locale = useLocale();
   const [rows, setRows] = useState<RiskRow[]>([]);
@@ -112,14 +111,6 @@ export function RiskTierAdminContent() {
       <PageHeader
         title={t('title')}
         subtitle={t('subtitle')}
-        breadcrumbs={
-          <Breadcrumbs
-            items={[
-              { label: tNav('groupAdmin') },
-              { label: t('title') },
-            ]}
-          />
-        }
         className="mb-6"
       />
 

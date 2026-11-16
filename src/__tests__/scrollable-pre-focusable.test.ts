@@ -7,11 +7,6 @@ import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const SRC = join(process.cwd(), 'src');
-// 新建策略流程正由另一项工作改动（策略模板接入），这两处随该工作一并处理，暂不在此强制
-const DEFERRED = new Set([
-  'components/policy/policy-form/index.tsx',
-  'components/policy/ai-assistant-panel.tsx',
-]);
 
 function tsxFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((n) => {
@@ -26,7 +21,6 @@ describe('scrollable <pre> elements are keyboard-focusable', () => {
     const missing: string[] = [];
     for (const file of tsxFiles(SRC)) {
       const rel = relative(SRC, file);
-      if (DEFERRED.has(rel)) continue;
       const src = readFileSync(file, 'utf8');
       for (const m of src.matchAll(/<pre\b[^>]*>/g)) {
         if (/overflow-/.test(m[0]) && !/tabIndex=\{0\}/.test(m[0])) {
