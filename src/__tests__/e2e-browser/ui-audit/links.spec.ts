@@ -25,6 +25,24 @@ interface LinkRow extends AuditContext { links: Array<{ url: string; text: strin
 
 test.skip(NOT_LOCAL, NOT_LOCAL_REASON);
 
+type Ctx = Awaited<ReturnType<typeof request.newContext>>;
+
+/**
+ * 手动跟随重定向（最多 5 跳），一旦跳出本地站点就停下并报错：站内链接校验绝不能被重定向带去访问生产或第三方。
+ */
+async function getStayingLocal(ctx: Ctx, path: string): Promise<Awaited<ReturnType<Ctx['get']>> | Error> {
+  const origin = new URL(process.env.BASE_CLOUD as string).origin;
+  let url = new URL(path, origin).toString();
+  for (let hop = 0; hop <= 5; hop += 1) {
+    const res = await ctx.get(url, { maxRedirects: 0 }).catch((e: Error) => e);
+    if (res instanceof Error || res.status() < 300 || res.status() >= 400) return res;
+    const next = new URL(res.headers().location ?? '', url);
+    if (next.origin !== origin) return new Error(`redirects off-site to ${next.origin}`);
+    url = next.toString();
+  }
+  return new Error('too many redirects');
+}
+
 test('all collected links resolve', async () => {
   test.setTimeout(30 * 60_000);
   const file = join(OUT_DIR, 'links.jsonl');
@@ -61,7 +79,7 @@ test('all collected links resolve', async () => {
 
   for (const item of internal.values()) {
     const ctx = await ctxFor(item.role);
-    const res = await ctx.get(item.url, { maxRedirects: 5 }).catch((e: Error) => e);
+    const res = await getStayingLocal(ctx, item.url);
     let problem: string | null = null;
     if (res instanceof Error) problem = `request failed: ${res.message.split('\n')[0]}`;
     else if (res.status() >= 400) problem = `HTTP ${res.status()}`;

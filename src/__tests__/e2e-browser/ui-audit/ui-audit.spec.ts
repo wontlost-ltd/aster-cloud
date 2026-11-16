@@ -104,11 +104,11 @@ async function auditPage(page: Page, ctx: AuditContext, route: AuditRoute, deep:
   }
   const tiny = layout.smallTargets.filter((t) => t.min < 24);
   if (tiny.length) {
-    emit({ severity: 'moderate', category: 'tap-target-lt-24', message: `${tiny.length} tap target(s) smaller than 24px (WCAG 2.5.8)`, detail: tiny.slice(0, 8).map((t) => `${t.min}px ${t.selector} "${t.text}"`).join('\n') });
+    emit({ severity: 'moderate', category: 'tap-target-lt-24', message: `${tiny.length} tap target(s) under 24×24 CSS px (WCAG 2.5.8 heuristic: size only, spacing exception not evaluated)`, detail: tiny.slice(0, 8).map((t) => `${t.min}px ${t.selector} "${t.text}"`).join('\n') });
   }
   const small = layout.smallTargets.filter((t) => t.min >= 24);
   if (small.length) {
-    emit({ severity: 'minor', category: 'tap-target-lt-44', message: `${small.length} tap target(s) between 24px and 44px`, detail: small.slice(0, 8).map((t) => `${t.min}px ${t.selector} "${t.text}"`).join('\n') });
+    emit({ severity: 'minor', category: 'tap-target-lt-44', message: `${small.length} tap target(s) between 24 and 44 CSS px (below the 44px platform guideline)`, detail: small.slice(0, 8).map((t) => `${t.min}px ${t.selector} "${t.text}"`).join('\n') });
   }
   for (const c of layout.cardIssues) {
     const sev = c.kind === 'overlap' || c.kind === 'overflow' ? 'moderate' : 'minor';

@@ -73,7 +73,8 @@ function writeStates(cookies: Map<string, string>): void {
   const expires = Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS;
   for (const [id, value] of cookies) {
     const state = {
-      cookies: [{ name: SESSION_COOKIE_NAME, value, domain: 'localhost', path: '/', httpOnly: true, secure: false, sameSite: 'Lax', expires }],
+      // cookie 域与 BASE_CLOUD 主机一致（localhost / 127.0.0.1 / [::1]），否则浏览器不会带上会话
+      cookies: [{ name: SESSION_COOKIE_NAME, value, domain: new URL(BASE_CLOUD).hostname, path: '/', httpOnly: true, secure: false, sameSite: 'Lax', expires }],
       origins: [],
     };
     writeFileSync(join(STATE_DIR, `state-${id}.json`), JSON.stringify(state, null, 2));
