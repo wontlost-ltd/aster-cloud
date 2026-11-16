@@ -105,7 +105,7 @@ export async function probeButtons(context: BrowserContext, page: Page, includeS
   let blocked: string[] = [];
   let mutAtFirstBlock: number | null = null;
   const COUNTED = ['fetch', 'xhr', 'document', 'eventsource', 'websocket'];
-  // 后台请求（轮询、预取等）：在两次点击之间出现过的 方法+路径。点击窗口里再出现的同类请求与按钮无关，不计入判定
+  // 后台请求（轮询、预取等）：在两次点击之间出现过的 方法+路径。点击窗口里再出现的同类「放行」请求不当作按钮的效果
   let clicking = false;
   const background = new Set<string>();
   await page.route('**/*', async (route) => {
@@ -116,12 +116,14 @@ export async function probeButtons(context: BrowserContext, page: Page, includeS
     if (counted && !clicking) background.add(key);
     const fromClick = counted && clicking && !background.has(key);
     if (decision === 'allow') {
+      // 放行的请求只有不像后台轮询时才算按钮的效果（偏保守：宁可判「无法确认」也不误判「有效」）
       if (fromClick) allowedRequests += 1;
       return route.continue();
     }
-    // 写请求一律参与「破坏性操作无确认」判定；被拦的请求（读与写）都不算按钮有效果
+    // 写请求一律参与「破坏性操作无确认」判定；点击窗口里被拦的请求（读与写）一律记下、都不算按钮有效果——
+    // 即使与后台轮询同路径也记，避免按钮恰好调用轮询接口时被漏判
     if (decision === 'block-write') mutating.push({ method: req.method(), url: req.url() });
-    if (fromClick || decision === 'block-write') {
+    if (clicking && counted) {
       if (mutAtFirstBlock === null) mutAtFirstBlock = await mutationCount(page);
       blocked.push(key);
     }

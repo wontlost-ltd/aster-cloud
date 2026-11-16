@@ -135,7 +135,7 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
       // 点击区可以由绝对定位、居中的 ::before / ::after 撑大（伪元素的点击落在宿主元素上，globals.css 的移动端规则）。
       // 只在元素自身不裁剪（overflow visible，否则伪元素被裁掉）、撑大后的区域不压到别的点击目标、
       // 且对这块区域逐点做命中测试（elementFromPoint）确实落在本元素上时才承认——不靠假设，
-      // 被祖先裁掉、被别的层盖住、伪元素不可见或并非居中的情况都会在命中测试里暴露。
+      // 伪元素的位置按计算样式求出，被祖先裁掉、被别的层盖住或不可见的情况都会在命中测试里暴露。
       if (own < opts.minTarget && getComputedStyle(el).overflow === 'visible') {
         for (const pseudo of ['::before', '::after']) {
           const ps = getComputedStyle(el, pseudo);
@@ -144,9 +144,26 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
           const w = parseFloat(ps.width);
           const h = parseFloat(ps.height);
           if (!Number.isFinite(w) || !Number.isFinite(h) || Math.min(w, h) <= min) continue;
+          // 伪元素的实际位置：包含块是宿主元素（宿主须已定位）的内边距盒，加上计算出的 left / top 与平移变换；
+          // 只认纯平移（matrix(1, 0, 0, 1, tx, ty)），其他变换或宿主未定位时不承认撑大的点击区
+          const hostCs = getComputedStyle(el);
+          if (hostCs.position === 'static') continue;
+          const m = /^matrix\(1, 0, 0, 1, (-?[\d.]+), (-?[\d.]+)\)$/.exec(ps.transform);
+          if (ps.transform !== 'none' && !m) continue;
+          const tx = m ? parseFloat(m[1]) : 0;
+          const ty = m ? parseFloat(m[2]) : 0;
+          const left = parseFloat(ps.left);
+          const top = parseFloat(ps.top);
+          if (!Number.isFinite(left) || !Number.isFinite(top)) continue;
+          const bl = parseFloat(hostCs.borderLeftWidth) || 0;
+          const bt = parseFloat(hostCs.borderTopWidth) || 0;
+          const area = (q: DOMRect) => {
+            const x = q.left + bl + left + tx;
+            const y = q.top + bt + top + ty;
+            return { left: x, right: x + w, top: y, bottom: y + h };
+          };
           // 浮在页面上的固定定位元素（右下角助手按钮等）随滚动位置盖住不同内容，不算相邻目标；
           // 0.5px 容差吸收亚像素误差（并排的分段按钮恰好相接不算重叠）
-          const area = (q: DOMRect) => ({ left: q.left + q.width / 2 - w / 2, right: q.left + q.width / 2 + w / 2, top: q.top + q.height / 2 - h / 2, bottom: q.top + q.height / 2 + h / 2 });
           const a0 = area(r);
           const overlaps = targets.some((o) => {
             if (o === el || el.contains(o) || o.contains(el) || fixedLayer(o)) return false;
@@ -155,8 +172,15 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
             const e = 0.5;
             return q.left < a0.right - e && q.right > a0.left + e && q.top < a0.bottom - e && q.bottom > a0.top + e;
           });
-          if (overlaps || !hitsWholeArea(el, area)) continue;
-          min = Math.max(min, Math.min(w, h));
+          // 撑大的区域须罩住宿主的内边距盒（百分比宽高按内边距盒算，不含边框），否则谈不上「点击区变大」
+          const br = parseFloat(hostCs.borderRightWidth) || 0;
+          const bb = parseFloat(hostCs.borderBottomWidth) || 0;
+          const covers = a0.left <= r.left + bl + 0.5 && a0.right >= r.right - br - 0.5 && a0.top <= r.top + bt + 0.5 && a0.bottom >= r.bottom - bb - 0.5;
+          if (!covers || overlaps || !hitsWholeArea(el, area)) continue;
+          // 实际可点区域 = 宿主盒与伪元素盒的并集
+          const uw = Math.max(r.right, a0.right) - Math.min(r.left, a0.left);
+          const uh = Math.max(r.bottom, a0.bottom) - Math.min(r.top, a0.top);
+          min = Math.max(min, Math.min(uw, uh));
         }
       }
       // 亚像素宽度（如 43.99px）按 0.5px 容差计

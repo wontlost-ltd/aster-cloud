@@ -55,6 +55,11 @@ test.describe('tap targets (44px on mobile)', () => {
     expect(await small(page, clipped)).toEqual(['Copy']);
   });
 
+  test('an off-centre pseudo-element that does not cover the element does not count', async ({ page }) => {
+    const off = '<style>.o{position:relative}.o::after{content:"";position:absolute;left:60px;top:0;width:44px;height:44px}</style><div style="padding:40px"><button class="o" style="font:12px/16px sans-serif">Copy</button></div>';
+    expect(await small(page, off)).toEqual(['Copy']);
+  });
+
   test('links inside a sentence are exempt', async ({ page }) => {
     expect(await small(page, '<p style="font:14px/20px sans-serif">Read the <a href="/d">docs</a> before you start.</p>')).toEqual([]);
   });
