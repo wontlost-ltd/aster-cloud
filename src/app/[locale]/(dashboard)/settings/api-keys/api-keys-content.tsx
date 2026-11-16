@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Copy, CheckCircle2, X as XIcon } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import {
@@ -219,12 +219,16 @@ export function ApiKeysContent({
   // 复制反馈：成功后按钮短暂显示「已复制」并经 live region 播报；剪贴板不可用或被拒（权限、非安全上下文）
   // 时提示手动复制，不抛未处理的 Promise 拒绝（#774）。
   const [copiedText, setCopiedText] = useState<string | null>(null);
+  // 只保留一个「已复制」计时器：连续复制时先清掉上一个，避免旧计时器提前清除新一轮的反馈
+  const copiedTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(copiedTimer.current), []);
   const copyToClipboard = async (text: string) => {
     try {
       if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable');
       await navigator.clipboard.writeText(text);
       setCopiedText(text);
-      window.setTimeout(() => setCopiedText((cur) => (cur === text ? null : cur)), 2000);
+      window.clearTimeout(copiedTimer.current);
+      copiedTimer.current = window.setTimeout(() => setCopiedText(null), 2000);
     } catch {
       setCopiedText(null);
       toast.error(t.copyFailed);
