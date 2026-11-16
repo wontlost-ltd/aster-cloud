@@ -810,7 +810,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         toggleHide: 'Hide decision input',
         loading: 'Loading the decision input…',
         reviewFirst: 'Open the decision input before deciding.',
-        badge: { pii: '{level} · {category}', unknown: 'Undeclared type, not visible' },
+        badge: { pii: '{level} · {category}', unknown: 'Undeclared type, not visible', undeclared: 'Undeclared fields' },
         source: { verified: 'Verified', declared: 'Self-reported' },
         banner: {
           unbound: 'This input has not been checked against the evaluation record.',
@@ -2612,7 +2612,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         toggleHide: '收起决策输入',
         loading: '正在加载决策输入…',
         reviewFirst: '请先查看决策输入再作出结论。',
-        badge: { pii: '{level} · {category}', unknown: '未声明类型，不可见' },
+        badge: { pii: '{level} · {category}', unknown: '未声明类型，不可见', undeclared: '未声明字段' },
         source: { verified: '已验证', declared: '自报' },
         banner: {
           unbound: '输入未与评估记录核对。',
@@ -4394,7 +4394,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         toggleHide: 'Entscheidungseingabe ausblenden',
         loading: 'Entscheidungseingabe wird geladen…',
         reviewFirst: 'Öffnen Sie zuerst die Entscheidungseingabe.',
-        badge: { pii: '{level} · {category}', unknown: 'Nicht deklarierter Typ, nicht sichtbar' },
+        badge: { pii: '{level} · {category}', unknown: 'Nicht deklarierter Typ, nicht sichtbar', undeclared: 'Nicht deklarierte Felder' },
         source: { verified: 'Verifiziert', declared: 'Selbst angegeben' },
         banner: {
           unbound: 'Diese Eingabe wurde nicht mit dem Bewertungsprotokoll abgeglichen.',
@@ -6173,7 +6173,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         toggleHide: 'निर्णय इनपुट छिपाएँ',
         loading: 'निर्णय इनपुट लोड हो रहा है…',
         reviewFirst: 'निर्णय लेने से पहले निर्णय इनपुट खोलें।',
-        badge: { pii: '{level} · {category}', unknown: 'अघोषित प्रकार, दिखाई नहीं देता' },
+        badge: { pii: '{level} · {category}', unknown: 'अघोषित प्रकार, दिखाई नहीं देता', undeclared: 'अघोषित फ़ील्ड' },
         source: { verified: 'सत्यापित', declared: 'स्व-घोषित' },
         banner: {
           unbound: 'इस इनपुट का मूल्यांकन रिकॉर्ड से मिलान नहीं किया गया है।',

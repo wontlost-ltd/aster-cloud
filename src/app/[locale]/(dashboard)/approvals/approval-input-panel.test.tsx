@@ -101,6 +101,18 @@ describe('ApprovalInputPanel', () => {
     expect((await screen.findByTestId('pii-unknown')).textContent).toBe('input.badge.unknown');
   });
 
+  it('undeclaredEntryShowsLabelWithoutKeyNameOrSourceBadge：$undeclared 显示为「未声明字段」+ 不可见徽标，无来源徽标', async () => {
+    renderPanel({
+      ...VIEW,
+      input: { context: { applicant: { amount: 250000, $undeclared: { $pii: { level: 'unknown' } } }, $undeclared: { $pii: { level: 'unknown' } } } },
+    });
+    const panel = await screen.findByTestId('approval-input-panel');
+    expect(panel.textContent).not.toContain('$undeclared');
+    expect(screen.getAllByText('input.badge.undeclared:').length).toBe(2);
+    expect(screen.getAllByTestId('pii-unknown').length).toBe(2);
+    expect(panel.querySelector('[data-path$="$undeclared"] [data-testid^="source-"]')).toBeNull();
+  });
+
   it('verifiedLeafShowsSourceBadgeWithFactSource：已验证叶子悬停显示 factSources 条目，其余为自报', async () => {
     renderPanel(VIEW);
     const verified = await screen.findByTestId('source-verified');
