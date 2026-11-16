@@ -121,6 +121,7 @@ interface Translations {
     edit: string;
     delete: string;
     policiesCount: string;
+    actions?: string;
     createTitle: string;
     editTitle: string;
     nameLabel: string;
@@ -890,6 +891,7 @@ export function PoliciesContent({
             edit: t.groups.edit,
             delete: t.groups.delete,
             policiesCount: t.groups.policiesCount,
+            actions: t.groups.actions,
           }}
         />
 

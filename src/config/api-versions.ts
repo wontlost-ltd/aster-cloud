@@ -18,6 +18,8 @@ export const API_ENDPOINTS = {
   schema: `${prefix}/policies/schema`,
   // 导出为 Cedar（ADR 0047 §6）：端点要求已验证身份，request() 自动附内部签名
   exportCedar: `${prefix}/policies/export/cedar`,
+  // 可导出性检查（#786）：只编译与翻译，不做等价性探针、不占导出并发、不写审计；详情页据此决定是否显示导出按钮
+  checkCedarExport: `${prefix}/policies/export/cedar/check`,
   /**
    * What-If 批次（ADR 0034）。★路径含 policyId，故用函数而非常量——
    * 签名时只取 pathname（不含 query），与 InternalCallerFilter 的

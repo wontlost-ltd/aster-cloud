@@ -7,7 +7,7 @@
  * 步骤的情况下直接发出写请求，就是一条 serious 发现。
  */
 import type { BrowserContext, Page } from '@playwright/test';
-import { focusIndicator } from './page-checks';
+import { POPUP_ACTIONABLE, PRE_POPUP_ATTR, collectPopupClipping, focusIndicator, markActionables } from './page-checks';
 import { classifyRequest } from './request-guard';
 import { judgeClick } from './click-verdict';
 import type { AuditContext, Finding } from './recorder';
@@ -238,7 +238,8 @@ export async function probeButtons(context: BrowserContext, page: Page, includeS
 }
 
 /**
- * 键盘打开菜单 / 对话框：Enter 打开 → 模态对话框须困住焦点 → Esc 关闭 → 焦点回到触发按钮。
+ * 键盘打开菜单 / 对话框：Enter 打开 → 弹出层里新露出的项须完整可见（不被容器裁掉、不出视口、不被盖住，#786）
+ * → 模态对话框须困住焦点 → Esc 关闭 → 焦点回到触发按钮。
  */
 export async function probePopups(page: Page, includeShell: boolean, emit: Emit): Promise<number> {
   const origin = page.url();
@@ -261,6 +262,8 @@ export async function probePopups(page: Page, includeShell: boolean, emit: Emit)
     const trigger = page.locator(`[data-ui-audit-popup="${t.idx}"]`);
     if (!(await trigger.count())) continue;
     checked += 1;
+    // 打开前给已有的可操作项打标记，打开后没标记的就是弹出层新露出的项（#786）
+    await page.evaluate(markActionables, { attr: PRE_POPUP_ATTR, selector: POPUP_ACTIONABLE }).catch(() => 0);
     await trigger.focus().catch(() => undefined);
     await page.keyboard.press('Enter');
     await page.waitForTimeout(400);
@@ -274,6 +277,19 @@ export async function probePopups(page: Page, includeShell: boolean, emit: Emit)
       emit({ severity: 'moderate', category: 'popup-not-keyboard-operable', message: `"${t.name}" (aria-expanded/haspopup) did not open with Enter` });
       await restore(page, origin, false);
       continue;
+    }
+    // 弹出层里的项必须完整可见、点得到：不被同时包含触发按钮的 overflow 容器裁掉、不出视口、不被盖住（#786）。
+    // 页面加载时菜单是收起的，collectStructure 看不到这些项，只有打开后才能量
+    const clipped = await page.evaluate(collectPopupClipping, {
+      trigger: `[data-ui-audit-popup="${t.idx}"]`, attr: PRE_POPUP_ATTR, selector: POPUP_ACTIONABLE,
+    }).catch(() => []);
+    if (clipped.length) {
+      emit({
+        severity: 'serious',
+        category: 'popup-item-clipped',
+        message: `${clipped.length} item(s) in the popup opened by "${t.name}" are not fully visible`,
+        detail: clipped.slice(0, 8).map((c) => `${c.kind} "${c.text}" ${c.detail}`).join('\n'),
+      });
     }
     // 只有弹出层（对话框 / 菜单 / 列表框）才要求 Esc 关闭；行内折叠面板不要求
     if (popupCount > 0) {
@@ -302,6 +318,7 @@ export async function probePopups(page: Page, includeShell: boolean, emit: Emit)
       }
     }
     await restore(page, origin, false);
+    await page.evaluate((attr) => document.querySelectorAll(`[${attr}]`).forEach((el) => el.removeAttribute(attr)), PRE_POPUP_ATTR).catch(() => undefined);
   }
   return checked;
 }

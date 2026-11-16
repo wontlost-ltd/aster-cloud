@@ -15,8 +15,8 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { test, expect, type Browser, type Locator, type Page } from '@playwright/test';
-import { NOT_LOCAL, NOT_LOCAL_REASON } from './helpers';
+import { test, expect, type Browser, type Page } from '@playwright/test';
+import { NOT_LOCAL, NOT_LOCAL_REASON, expectUnclipped } from './helpers';
 
 const STATE_DIR = process.env.UI_AUDIT_STATE_DIR || join(process.cwd(), '.superpowers/ui-audit');
 const state = (role: string) => join(STATE_DIR, `state-${role}.json`);
@@ -45,34 +45,6 @@ async function api(browser: Browser, role: string) {
     del: (url: string) => ctx.request.delete(url, { headers }),
     close: () => ctx.close(),
   };
-}
-
-/**
- * 可操作项必须完整可见：页面纵向滚到元素处后，元素盒子在视口内、不被任何会裁剪的祖先（overflow 非 visible）截掉，
- * 且中心点命中元素本身（没有被遮挡）。
- */
-async function expectUnclipped(target: Locator): Promise<void> {
-  await expect(target).toBeVisible();
-  const problem = await target.evaluate((el) => {
-    // 只纵向滚动页面把元素带到视口中部；不能用 scrollIntoView——它会顺带横向滚动内层容器，
-    // 把本该被裁掉的操作项「救」回来，正好掩盖这次要抓的缺陷
-    const top = el.getBoundingClientRect().top + window.scrollY;
-    window.scrollTo(0, Math.max(0, top - window.innerHeight / 2));
-    const r = el.getBoundingClientRect();
-    if (r.left < -0.5 || r.right > window.innerWidth + 0.5) return `outside viewport: x=${Math.round(r.left)}..${Math.round(r.right)} vw=${window.innerWidth}`;
-    for (let p = el.parentElement; p; p = p.parentElement) {
-      const cs = getComputedStyle(p);
-      if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
-      const pr = p.getBoundingClientRect();
-      if (r.left < pr.left - 0.5 || r.right > pr.right + 0.5 || r.top < pr.top - 0.5 || r.bottom > pr.bottom + 0.5) {
-        return `clipped by ${p.tagName.toLowerCase()}.${Array.from(p.classList).slice(0, 4).join('.')}`;
-      }
-    }
-    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-    if (!hit || !(hit === el || el.contains(hit))) return `covered by ${hit?.tagName.toLowerCase() ?? 'nothing'}`;
-    return null;
-  });
-  expect(problem, 'actionable item must be fully visible and clickable').toBeNull();
 }
 
 async function openDashboard(page: Page): Promise<void> {

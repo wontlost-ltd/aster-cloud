@@ -46,4 +46,17 @@ describe('PolicyApiClient.exportCedar', () => {
     expect(err).toBeInstanceOf(PolicyApiError);
     expect(err).toMatchObject({ statusCode: 503, code: 'cedar_export_busy', details: body, retryAfter: '1' });
   });
+
+  // #786：可导出性检查走单独路径（旧版 aster-api 不认识的字段会被忽略，若改成导出请求体里的标记，会误触发真实导出与审计）
+  it('checkCedarExport POSTs to /api/v1/policies/export/cedar/check with internal signature', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ exportable: true, rules: ['decide'], diagnostics: [] }), { status: 200 }));
+    const req = { source: 'Module m.', locale: 'en-US', aliasSet: null };
+    const res = await new PolicyApiClient('t1', 'u1').checkCedarExport(req, 2_000);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(new URL(url).pathname).toBe('/api/v1/policies/export/cedar/check');
+    expect(JSON.parse(init.body as string)).toEqual(req);
+    expect((init.headers as Record<string, string>)['X-Internal-Signature']).toBeTruthy();
+    expect(res).toEqual({ exportable: true, rules: ['decide'], diagnostics: [] });
+  });
 });

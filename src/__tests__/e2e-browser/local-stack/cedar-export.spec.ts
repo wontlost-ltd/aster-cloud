@@ -3,7 +3,7 @@
  *
  * 可导出策略的源码与 aster-api `src/test/resources/cedar/guard-cedar-sample.aster` 逐字一致（跨仓不便引用，此处内联）：
  * 导出后应显示与 Cedar 比对过的探针数，并下载 `.cedar` 与 `.cedarschema.json` 两个文件。
- * 另一条规则使用 `Text.length`（Cedar 无对应字符串长度运算），应列出 E721 诊断而不下载任何文件。
+ * 另一条规则使用 `Text.length`（Cedar 无对应字符串长度运算，E721）：详情页按可导出性检查直接不显示导出按钮（#786）。
  * 可导出时还核对 aster-api 审计表的 POLICY_EXPORTED（claimedRef 与文件哈希）。
  * 策略均经 `POST /api/policies` 以 t1 身份新建（与界面新建同一路径，含编译门禁），用例结束软删除。
  * 导出的是执行路径会选中的版本：新建的 v1 为 DRAFT，四眼原则下单用户无法自批，故直接在 aster_cloud
@@ -114,19 +114,13 @@ test('可导出策略：显示 Cedar 比对结果并下载策略与 schema 两�
   }
 });
 
-test('不可导出策略（Text.length）：列出 E721 诊断且不下载文件', async ({ page }) => {
+test('不可导出策略（Text.length）：不显示导出按钮（#786，可导出性由 aster-api 检查端点在服务端判定）', async ({ page }) => {
   test.setTimeout(120_000);
   const id = await createPolicy(page, `e2e-cedar-textlen-${Date.now()}`, TEXT_LENGTH_SOURCE);
   await page.goto(`/en/policies/${id}`);
 
-  const downloads: Download[] = [];
-  page.on('download', (d) => downloads.push(d));
-  await page.getByRole('button', { name: 'Export to Cedar' }).click();
-
-  const alert = page.getByRole('alert').filter({ hasText: 'This policy cannot be exported to Cedar' });
-  await expect(alert).toBeVisible({ timeout: 60_000 });
-  await expect(alert).toContainText('E721');
-  expect(downloads).toHaveLength(0);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole('button', { name: 'Export to Cedar' })).toHaveCount(0);
 });
 
 test('无可执行版本（仅草稿）：按钮禁用并就地说明需先批准，不下载文件', async ({ page }) => {

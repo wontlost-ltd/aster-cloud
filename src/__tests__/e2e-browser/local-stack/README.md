@@ -49,6 +49,7 @@ webpack dev 默认只保留最近 5 个按需编译入口、闲置 60s 即释放
 - `policy-logs-guard-link` 同样在 `beforeAll` 以 `E2E_GUARD_API_KEY` 为 team1 自补一条 `e2e-` 待审批执行（未设置该变量时跳过并注明原因），日志页的「Pending approval · View」行不再依赖 24 小时内的种子数据。
 - `team-business-roles` 会为 m-free 增加再删除 `CISO`，结束时还原。
 - `whatif-matrix` 与 `evidence-export` 各新建一个批次 / 导出记录。`whatif-matrix` 不写死执行数，以批次给出的可回放总数（扣除不可比条数）为期望值。
+- `policy-actions-786`（#786）：以 UI 审计种子（`pnpm ui-audit:seed`，`UI_AUDIT_STATE_DIR`）的 ui-owner 身份新建三条个人策略（可导出 / Text.length 不可导出 / 仅草稿，前两条经 psql 置 v1 为 APPROVED，结束时软删除），桌面与 390px 移动视口各跑一遍：「Export to Cedar」在页头操作组里、同高、移动端点击区 ≥ 44px；导出结果出现在操作组下方的 aria-live 状态区且操作组不移位；不可导出的策略首帧起就没有导出按钮；版本页唯一一行草稿的「⋮ → Submit for approval」完整可见。需要 aster-api 提供 `POST /api/v1/policies/export/cedar/check`；用 `E2E_PG_CONTAINER` 指定栈的 Postgres 容器。
 - `cedar-export`（ADR 0047）以 t1 身份经 `POST /api/policies` 新建三条策略（结束时软删除）；导出的是可执行版本，故前两条经 psql 把 v1 置为 APPROVED（四眼原则下单用户无法自批），第三条保持草稿以断言「先批准」提示。可导出那条会在 aster-api 审计表追加一条 `POLICY_EXPORTED`，用例经 psql 核对其 `claimedRef` 与下载文件哈希；设 `CEDAR_EXPORT_OUT=<目录>` 时另存两个下载文件供 Cedar CLI 交叉核对。
 - What-If 依赖 aster-api 向 cloud 查询套餐（超时 1.5s，失败即拒绝）；dev 服务器冷编译时可能偶发 “requires a Pro plan”，重跑即可。
 - `credit-pilot`（ADR 0044 §5）前置：先运行 `pnpm seed:credit-pilot` 生成 `pol-credit-pilot`（v1/v2）与 cp-owner / cp-officer / cp-analyst，并重新生成会话夹具；再提供 `CP_API_KEY`（须为 cp-owner 的 key：团队成员执行的记录目前无法被 What-If 回放，ADR 0034 §4.3 属主限定，见 ADR 0044 §10 后续事项；spec 自行以 API 执行一笔需审批申请，等价于 run 脚本第 1 步）。What-If 与日志页均按策略属主限定，须由 cp-owner 运行（分析员会得到 `TARGET_VERSION_MISSING` / 404）。该用例会新增一次执行、批准一条 `credit-pilot` 待审批、新建一个 What-If 批次与一次导出。

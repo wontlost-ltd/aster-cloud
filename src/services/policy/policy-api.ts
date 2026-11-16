@@ -255,6 +255,18 @@ export interface PolicyCedarExportResponse {
   sourceHash?: string;
 }
 
+/**
+ * Cedar 可导出性检查响应（#786，aster-api `POST /policies/export/cedar/check`）：编译并翻译，不做探针与审计。
+ * rules 为翻译成功的规则（规范名，声明顺序），exportable 等价于 rules 非空；不可导出时 diagnostics 说明原因。
+ */
+export interface PolicyCedarExportCheckResponse {
+  exportable: boolean;
+  rules: string[];
+  diagnostics: PolicyDiagnostic[];
+  sourceHash?: string;
+  scopesHash?: string;
+}
+
 export interface PolicyDiagnostic {
   /** 严重级别 */
   severity: 'error' | 'warning' | 'info' | 'hint';
@@ -692,6 +704,17 @@ export class PolicyApiClient {
   /** 导出为 Cedar（ADR 0047 §6）：不可导出仍是 200，503 cedar_export_busy 表示服务端并发已满。 */
   async exportCedar(request: PolicyCedarExportRequest): Promise<PolicyCedarExportResponse> {
     return this.request<PolicyCedarExportResponse>('POST', API_ENDPOINTS.exportCedar, request);
+  }
+
+  /**
+   * Cedar 可导出性检查（#786）：请求体与导出相同（claimedRef 无意义，不带），只编译与翻译、不写审计。
+   * 详情页渲染时同步调用，故单独给较短超时，超时按「未知」处理而不是拖住整页。
+   */
+  async checkCedarExport(
+    request: Omit<PolicyCedarExportRequest, 'claimedRef'>,
+    timeoutMs?: number,
+  ): Promise<PolicyCedarExportCheckResponse> {
+    return this.request<PolicyCedarExportCheckResponse>('POST', API_ENDPOINTS.checkCedarExport, request, timeoutMs);
   }
 
   /**
