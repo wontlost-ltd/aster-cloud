@@ -8,8 +8,8 @@ import { Badge, Card, CardBody, Stack, buttonVariants, cn } from '@/components/u
  * Admin feature flags card.
  *
  * Lives on the /admin overview page (above the Tools section).
- * Renders one row per known platform-settings key. Currently the
- * only flag is policy_sharing.enabled — add new flags by extending
+ * Renders one row per known platform-settings key (policy_sharing.enabled
+ * and the two structured-authoring capability switches) — add new flags by extending
  * FLAGS below + adding a key constant + i18n + a row.
  *
  * Optimistic toggle: flips the local state on click, hits POST
@@ -24,6 +24,16 @@ const FLAGS = [
     key: 'policy_sharing.enabled',
     titleKey: 'policySharingTitle',
     descKey: 'policySharingDesc',
+  },
+  {
+    key: 'capability.structured_authoring.enabled',
+    titleKey: 'structuredAuthoringTitle',
+    descKey: 'structuredAuthoringDesc',
+  },
+  {
+    key: 'capability.structured_authoring.team_delegation.enabled',
+    titleKey: 'structuredAuthoringDelegationTitle',
+    descKey: 'structuredAuthoringDelegationDesc',
   },
 ] as const;
 

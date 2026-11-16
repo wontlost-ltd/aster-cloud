@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import { DEMO_SUPPLEMENT } from '@/i18n/demo-supplement';
 import { locales } from '@/i18n/config';
 
-const SUPPLEMENT_CARDS = ['aiWorkspaceAccessCard', 'revalidationCard'] as const;
+const SUPPLEMENT_CARDS = ['aiWorkspaceAccessCard', 'structuredAuthoringCard', 'revalidationCard'] as const;
 
 describe('admin.overview.*Card（本地补充层）', () => {
   it.each(locales)('%s：每张卡都有非空的 title / description / cta', (locale) => {

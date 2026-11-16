@@ -68,7 +68,7 @@ const DOCS = [
 const AUTH = ['login', 'signup', 'forgot-password', 'reset-password', 'verify-email', 'logout'];
 
 const ADMIN = [
-  'admin', 'admin/ai-circuit-breaker', 'admin/ai-workspace-access', 'admin/assistant', 'admin/demand',
+  'admin', 'admin/ai-circuit-breaker', 'admin/ai-workspace-access', 'admin/assistant', 'admin/capabilities/structured-authoring', 'admin/demand',
   'admin/domain-vocabularies', 'admin/issued-licenses', 'admin/license', 'admin/license-revoke',
   'admin/revalidation', 'admin/risk-tier', 'admin/rule-regression', 'admin/sso',
 ];

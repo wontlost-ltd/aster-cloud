@@ -9,7 +9,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { and, desc, eq, ilike, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
 import { requireAdmin } from '@/lib/admin-auth';
 import { requireLicenseWriteOk } from '@/lib/license-write-gate';
 import { freshDb } from '@/db/fresh-read';
@@ -17,7 +17,7 @@ import { capabilityGrants, capabilityTeamAllotments, teams, users } from '@/lib/
 import { CapabilityError, capabilityErrorResponse } from '@/lib/capabilities/errors';
 import { countActiveSeats, grantToSubject, revokeGrant } from '@/lib/capabilities/grants';
 import { isCapabilityKey, type CapabilityKey } from '@/lib/capabilities/registry';
-import { listGrantSources } from '@/lib/capabilities/resolve';
+import { listGrantSources, type GrantSource } from '@/lib/capabilities/resolve';
 
 export const runtime = 'nodejs';
 
@@ -53,7 +53,24 @@ async function listUsers(capability: CapabilityKey, q: string | undefined, limit
     .where(and(...conditions))
     .orderBy(desc(hasGrant), desc(users.createdAt))
     .limit(limit);
-  return Promise.all(rows.map(async (row) => ({ ...row, sources: await listGrantSources(row.id, capability) })));
+  const resolved = await Promise.all(rows.map(async (row) => ({ ...row, sources: await listGrantSources(row.id, capability) })));
+  return withTeamNames(resolved);
+}
+
+/** team / delegated 来源附带团队名，管理页直接显示 `team:<名>`，不必逐行再请求。一次 IN 查询覆盖整页。 */
+async function withTeamNames<T extends { sources: GrantSource[] }>(rows: T[]) {
+  const teamIds = [
+    ...new Set(rows.flatMap((row) => row.sources.flatMap((s) => ('teamId' in s ? [s.teamId] : [])))),
+  ];
+  const names = new Map<string, string>();
+  if (teamIds.length > 0) {
+    const found = await freshDb.select({ id: teams.id, name: teams.name }).from(teams).where(inArray(teams.id, teamIds));
+    for (const t of found) names.set(t.id, t.name);
+  }
+  return rows.map((row) => ({
+    ...row,
+    sources: row.sources.map((s) => ('teamId' in s ? { ...s, teamName: names.get(s.teamId) ?? null } : s)),
+  }));
 }
 
 async function listTeams(capability: CapabilityKey, q: string | undefined, limit: number) {
