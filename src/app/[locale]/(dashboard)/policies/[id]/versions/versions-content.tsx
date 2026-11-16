@@ -341,6 +341,8 @@ export function VersionsContent({
               },
               {
                 key: 'approvals',
+                // 窄屏隐藏次要列，让行尾的「Actions」（批准 / 驳回入口）留在视口内，不必先横滑表格（#774）
+                className: 'max-sm:hidden',
                 header: t('table.approvals'),
                 cell: (v) => (
                   <span className="tabular-nums">
@@ -350,12 +352,14 @@ export function VersionsContent({
               },
               {
                 key: 'releaseNote',
+                className: 'max-sm:hidden',
                 header: t('table.releaseNote'),
                 cell: (v) =>
                   <span className="block max-w-xs truncate text-sm text-fg-muted">{releaseNoteLabel(v)}</span>,
               },
               {
                 key: 'createdAt',
+                className: 'max-sm:hidden',
                 header: t('table.createdAt'),
                 cell: (v) => (
                   <span className="text-sm text-fg-muted">
