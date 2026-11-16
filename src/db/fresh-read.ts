@@ -14,7 +14,7 @@
  * 能直接选择连接的读一律用 freshDb，不要再并入该谓词。
  */
 import { sql, type SQL } from 'drizzle-orm';
-import { getCloudflareEnvSync } from '@/db/binding';
+import { getCloudflareEnvSync, warnFreshBindingMissing } from '@/db/binding';
 import { db, getFreshDb, type Database } from '@/lib/prisma';
 
 /**
@@ -27,7 +27,9 @@ import { db, getFreshDb, type Database } from '@/lib/prisma';
  */
 export const freshDb = new Proxy({} as Database, {
   get(_target, prop) {
-    const actual = getCloudflareEnvSync()?.HYPERDRIVE_FRESH?.connectionString ? getFreshDb() : db;
+    const env = getCloudflareEnvSync();
+    if (!env?.HYPERDRIVE_FRESH?.connectionString) warnFreshBindingMissing(env);
+    const actual = env?.HYPERDRIVE_FRESH?.connectionString ? getFreshDb() : db;
     return Reflect.get(actual, prop, actual);
   },
 });

@@ -53,3 +53,50 @@ export function hasDbBinding(): boolean {
   }
   return Boolean(process.env.HYPERDRIVE_DATABASE_URL || process.env.DATABASE_URL);
 }
+
+/**
+ * 是否运行在真实 Node 运行时（而非 workerd）中。
+ *
+ * 背景：本地 dev 下 @opennextjs/cloudflare 会经 getPlatformProxy 懒启动 workerd，
+ * getCloudflareContext() 返回的 env **也带 HYPERDRIVE binding**（connectionString
+ * 由 WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE 覆盖为直连 PG；HYPERDRIVE_FRESH 同理，
+ * 变量名后缀为 _HYPERDRIVE_FRESH）。
+ * 这个本地代理不做连接池，若按 Workers 路径每次调用新建 client，连接会打满
+ * max_connections（实测 202/200 → too many clients）。`next start`、CI e2e、docker
+ * 等任何真实 Node 进程同理，都必须复用单例；只有 workerd 内才有 Hyperdrive 池化。
+ *
+ * 判定：process.release.name === 'node' 且**不在 workerd 内**。
+ * 不能只看 process.release：较新兼容日期下 workerd 的原生 process v2 也可能报告
+ * release.name === 'node'。workerd 以 navigator.userAgent === 'Cloudflare-Workers'
+ * 或存在全局 WebSocketPair 识别。
+ */
+export function isNodeRuntime(): boolean {
+  const isNode = typeof process !== 'undefined' && process.release?.name === 'node';
+  return isNode && !isWorkerd();
+}
+
+export function isWorkerd(): boolean {
+  const g = globalThis as { navigator?: { userAgent?: string }; WebSocketPair?: unknown };
+  return g.navigator?.userAgent === 'Cloudflare-Workers' || g.WebSocketPair !== undefined;
+}
+
+const FRESH_BINDING_NAME = 'HYPERDRIVE_FRESH';
+
+/** 每个 isolate（模块实例）只告警一次。 */
+let freshBindingWarned = false;
+
+/**
+ * 真实 workerd 里有 HYPERDRIVE 却缺 HYPERDRIVE_FRESH（绑定被删、改名或 env 取不到）时告警一次（#743）。
+ *
+ * 此时一致性敏感读会静默回落到带缓存的 HYPERDRIVE，可能读到约 75 秒旧数据。只发信号，**不改回退行为**；
+ * 只在识别为 workerd 时告警；Node 运行时（本地 dev / on-prem / 测试）本来就没有 Hyperdrive 缓存，不告警。
+ */
+export function warnFreshBindingMissing(env: CloudflareEnv | null | undefined): void {
+  if (freshBindingWarned || !isWorkerd()) return;
+  if (!env?.HYPERDRIVE || env.HYPERDRIVE_FRESH?.connectionString) return;
+  freshBindingWarned = true;
+  console.warn(
+    `[db] ${FRESH_BINDING_NAME} 绑定缺失，一致性敏感读回落到带查询缓存的 HYPERDRIVE，可能读到约 75 秒旧数据；` +
+      `请检查 wrangler 配置中的 ${FRESH_BINDING_NAME} 绑定。`,
+  );
+}
