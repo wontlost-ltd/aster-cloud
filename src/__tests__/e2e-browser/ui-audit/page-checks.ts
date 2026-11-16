@@ -97,15 +97,20 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
     // 每个测点都要命中本元素（或其后代）。只要求这块方块，而不是整个伪元素——宽按钮的伪元素两端被相邻目标盖住不影响
     // 「存在一块 44×44 可点区域」。测完恢复滚动位置。
     const hitsCentralSquare = (el: Element, area: (q: DOMRect) => { left: number; right: number; top: number; bottom: number }) => {
+      // 记下页面与所有可滚动祖先的滚动位置，测完恢复（审计不改变页面状态）
+      const scrollers: Array<[Element, number, number]> = [];
+      for (let p = el.parentElement; p; p = p.parentElement) {
+        if (p.scrollHeight > p.clientHeight || p.scrollWidth > p.clientWidth) scrollers.push([p, p.scrollLeft, p.scrollTop]);
+      }
       const sx = window.scrollX;
       const sy = window.scrollY;
-      const docTop = el.getBoundingClientRect().top + sy;
-      // 依次把元素滚到视口中部、上三分之一处测：固定浮层（右下角助手按钮等）只在某个滚动位置盖住目标时，
-      // 换个位置能点到就算；任一测点落在别的元素（含浮层）上，该位置即不通过
+      // 依次把元素滚到视口（及其滚动容器）中部、再滚到「刚好可见」处测：列表在滚动容器里、或固定浮层（右下角助手按钮等）
+      // 只在某个位置盖住目标时，换个位置能点到就算；任一测点落在别的元素（含浮层）上，该位置即不通过。
+      // 是否被容器裁掉、需要横滑才看得到，由 collectStructure 的 action-clipped / action-scrolled-out 单独判定。
       let ok = false;
-      for (const frac of [0.5, 0.33]) {
-        // behavior: 'instant'：站点开了 scroll-behavior: smooth，普通 scrollTo 会动画滚动，命中测试时位置还没到
-        window.scrollTo({ left: sx, top: Math.max(0, docTop - window.innerHeight * frac), behavior: 'instant' });
+      for (const block of ['center', 'end'] as const) {
+        // behavior: 'instant'：站点开了 scroll-behavior: smooth，平滑滚动时测点位置还没到
+        el.scrollIntoView({ block, inline: 'nearest', behavior: 'instant' });
         const a = area(el.getBoundingClientRect());
         const cx = (a.left + a.right) / 2;
         const cy = (a.top + a.bottom) / 2;
@@ -124,6 +129,7 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
         }
         if (here) { ok = true; break; }
       }
+      for (const [p, l, t] of scrollers) { p.scrollLeft = l; p.scrollTop = t; }
       window.scrollTo({ left: sx, top: sy, behavior: 'instant' });
       return ok;
     };

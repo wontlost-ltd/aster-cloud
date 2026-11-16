@@ -75,6 +75,14 @@ test.describe('tap targets (44px on mobile)', () => {
     expect(await small(page, body)).toEqual(['Copy']);
   });
 
+  test('targets further down an inner scroll list are hit-tested after scrolling the list, which is then restored', async ({ page }) => {
+    const rows = Array.from({ length: 8 }, (_, i) => `<li style="height:66px;display:flex;align-items:center"><button class="tap-target" style="font:12px/16px sans-serif;width:60px">Grant ${i}</button></li>`).join('');
+    await page.setContent(`${HIT_AREA}<body style="margin:0"><div id="box" style="height:200px;overflow-y:auto;margin:40px"><ul style="margin:0;padding:0;list-style:none">${rows}</ul></div></body>`);
+    const res = await page.evaluate(collectLayout, { mobile: true, minTarget: MOBILE_MIN_TARGET });
+    expect(res.smallTargets.map((t) => t.text)).toEqual([]);
+    expect(await page.evaluate(() => (document.getElementById('box') as HTMLElement).scrollTop)).toBe(0);
+  });
+
   test('disabled controls are not tap targets', async ({ page }) => {
     expect(await small(page, '<div style="padding:40px"><button disabled style="font:12px/16px sans-serif">Add</button></div>')).toEqual([]);
   });
