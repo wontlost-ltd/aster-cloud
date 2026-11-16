@@ -91,21 +91,24 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
   if (opts.mobile) {
     const q = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=tab], [role=checkbox], [role=switch], [role=menuitem]';
     const targets = Array.from(document.querySelectorAll(q)).filter(visible);
-    // 把元素纵向滚到视口中部，对给定区域的四角与四边中点做命中测试；命中本元素（或其后代）才算。
-    // 命中落在固定定位浮层上的点不计（浮层随滚动位置变化）。测完恢复滚动位置。
-    const hitsWholeArea = (el: Element, area: (q: DOMRect) => { left: number; right: number; top: number; bottom: number }) => {
+    // 把元素纵向滚到视口中部，对点击区中心那块 minTarget × minTarget 的方块（区域更小时取整块区域）做命中测试：
+    // 四角、四边中点与中心都要命中本元素（或其后代）。只要求这块方块，而不是整个伪元素——宽按钮的伪元素两端
+    // 被相邻目标盖住不影响「存在一块 44×44 可点区域」。命中落在固定定位浮层上的点不计。测完恢复滚动位置。
+    const hitsCentralSquare = (el: Element, area: (q: DOMRect) => { left: number; right: number; top: number; bottom: number }) => {
       const sx = window.scrollX;
       const sy = window.scrollY;
       const r0 = el.getBoundingClientRect();
       // behavior: 'instant'：站点开了 scroll-behavior: smooth，普通 scrollTo 会动画滚动，命中测试时位置还没到
       window.scrollTo({ left: sx, top: Math.max(0, r0.top + sy - window.innerHeight / 2), behavior: 'instant' });
       const a = area(el.getBoundingClientRect());
-      const i = 1.5;
-      const xs = [a.left + i, (a.left + a.right) / 2, a.right - i];
-      const ys = [a.top + i, (a.top + a.bottom) / 2, a.bottom - i];
+      const cx = (a.left + a.right) / 2;
+      const cy = (a.top + a.bottom) / 2;
+      const i = 2.5;
+      const hw = Math.min(opts.minTarget, a.right - a.left) / 2 - i;
+      const hh = Math.min(opts.minTarget, a.bottom - a.top) / 2 - i;
       let ok = true;
-      for (const x of xs) {
-        for (const y of ys) {
+      for (const x of [cx - hw, cx, cx + hw]) {
+        for (const y of [cy - hh, cy, cy + hh]) {
           if (x < 0 || x > window.innerWidth || y < 0 || y > window.innerHeight) { ok = false; continue; }
           const hit = document.elementFromPoint(x, y);
           if (!hit || !(hit === el || el.contains(hit) || fixedLayer(hit))) ok = false;
@@ -128,6 +131,8 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
       }
       // 原生复选框 / 单选框常由外层 label 扩大点击区
       if (el.tagName === 'INPUT' && el.closest('label')) continue;
+      // 禁用的控件无法操作，不算点击目标
+      if ((el as HTMLButtonElement).disabled || el.getAttribute('aria-disabled') === 'true') continue;
       const r = el.getBoundingClientRect();
       // sr-only 元素（如跳到主内容链接）平时被裁成 1px，聚焦时才展开，不算点击目标
       if (r.width <= 1 || r.height <= 1) continue;
@@ -177,7 +182,7 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
           const br = parseFloat(hostCs.borderRightWidth) || 0;
           const bb = parseFloat(hostCs.borderBottomWidth) || 0;
           const covers = a0.left <= r.left + bl + 0.5 && a0.right >= r.right - br - 0.5 && a0.top <= r.top + bt + 0.5 && a0.bottom >= r.bottom - bb - 0.5;
-          if (!covers || overlaps || !hitsWholeArea(el, area)) continue;
+          if (!covers || overlaps || !hitsCentralSquare(el, area)) continue;
           // 实际可点区域 = 宿主盒与伪元素盒的并集
           const uw = Math.max(r.right, a0.right) - Math.min(r.left, a0.left);
           const uh = Math.max(r.bottom, a0.bottom) - Math.min(r.top, a0.top);

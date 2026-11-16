@@ -65,6 +65,10 @@ test.describe('tap targets (44px on mobile)', () => {
     expect(await small(page, body)).toEqual([]);
   });
 
+  test('disabled controls are not tap targets', async ({ page }) => {
+    expect(await small(page, '<div style="padding:40px"><button disabled style="font:12px/16px sans-serif">Add</button></div>')).toEqual([]);
+  });
+
   test('links inside a sentence are exempt', async ({ page }) => {
     expect(await small(page, '<p style="font:14px/20px sans-serif">Read the <a href="/d">docs</a> before you start.</p>')).toEqual([]);
   });

@@ -15,7 +15,7 @@
 | 结构 | 一页多个 `<h1>`；h2–h6 与 h1 同文、或面包屑里没有任何链接（只剩当前页名）——同一标题渲染两次；可操作项被 `overflow:hidden` 祖先截掉（够不着），或在横向滚动容器里初始不可见（移动端 serious） | serious / moderate |
 | 视觉 | 每个路由 × 视口 × 语言 × 主题一张全页截图，写入输出目录（不入库、不做基线比对） | — |
 
-按钮探测期间拦截所有写请求、所有 API 请求（任何源的 `/api/**`，GET 也拦）以及会改状态的页面（登出、邮件验证、重置密码、接受邀请、续期），伪造 503（带 `x-ui-audit-blocked` 头，不计入 5xx）；规则在 `request-guard.ts`，有单测。种子数据不会被改动；被拦的请求（读或写）不算按钮「有效果」，只有被拦请求之前发生的 DOM 变化、导航、弹窗、下载等才算，否则记为「无法确认」（minor，`button-effect-unverified`）。链接校验手动跟随重定向，跳出本地站点即停止并记为失败。点击目标检查只看尺寸（移动端 44×44 CSS px，`page-checks.ts` 的 `MOBILE_MIN_TARGET`），不评估间距例外；绝对定位的 `::before` / `::after` 撑出的点击区（`.tap-target`）在元素自身不裁剪、且不压到相邻点击目标时计入。规则自身的夹具用例在 `page-checks.spec.ts`（不依赖本地栈，随 ui-audit-desktop 项目运行）。critical / serious 发现会让对应用例 soft 失败；其余只进报告。
+按钮探测期间拦截所有写请求、所有 API 请求（任何源的 `/api/**`，GET 也拦）以及会改状态的页面（登出、邮件验证、重置密码、接受邀请、续期），伪造 503（带 `x-ui-audit-blocked` 头，不计入 5xx）；规则在 `request-guard.ts`，有单测。种子数据不会被改动；被拦的请求（读或写）不算按钮「有效果」，只有被拦请求之前发生的 DOM 变化、导航、弹窗、下载等才算，否则记为「无法确认」（minor，`button-effect-unverified`）。链接校验手动跟随重定向，跳出本地站点即停止并记为失败。点击目标检查只看尺寸（移动端 44×44 CSS px，`page-checks.ts` 的 `MOBILE_MIN_TARGET`），不评估间距例外；绝对定位的 `::before` / `::after` 撑出的点击区（`.tap-target`）在元素自身不裁剪、不压到相邻点击目标、且点击区中心 44×44 的方块逐点命中测试都落在该元素上时计入；禁用的控件不算点击目标。规则自身的夹具用例在 `page-checks.spec.ts`（不依赖本地栈，随 ui-audit-desktop 项目运行）。critical / serious 发现会让对应用例 soft 失败；其余只进报告。
 
 ## 运行
 
