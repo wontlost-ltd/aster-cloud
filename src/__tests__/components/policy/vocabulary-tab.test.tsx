@@ -2,6 +2,14 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, within, waitFor } from '@testing-library/react';
 import zhBase from '@aster-cloud/ui-messages/zh-CN.json';
+const toastSuccess = vi.hoisted(() => vi.fn());
+const pollNow = vi.hoisted(() => vi.fn());
+vi.mock('@/components/ui', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/components/ui')>();
+  return { ...actual, toast: { ...actual.toast, success: toastSuccess } };
+});
+vi.mock('@/hooks/useDomainVocabularyInvalidate', () => ({ pollDomainVocabularyNow: pollNow }));
+
 import { IntlClientProvider } from '@/i18n/intl-client-provider';
 import { DEMO_SUPPLEMENT } from '@/i18n/demo-supplement';
 import { deepMergeMessages } from '@/i18n/request';
@@ -201,6 +209,45 @@ describe('VocabularyTab 对话框稳定性与团队作用域', () => {
     await waitFor(() => expect(personal.fetchMock).toHaveBeenCalled());
     const calls = personal.fetchMock.mock.calls as unknown as Array<[string]>;
     expect(calls[0][0]).toBe('/api/v1/domain-vocabularies/terms');
+  });
+});
+
+describe('VocabularyTab 新增术语反馈', () => {
+  async function submitDialog(fetchMock: ReturnType<typeof vi.fn>, teamId: string | null = null) {
+    vi.stubGlobal('fetch', fetchMock);
+    renderTab(fakeEditor('Fahrer'), TERMS, { teamId, policyLocale: 'de-DE' });
+    fireEvent.click(screen.getByRole('button', { name: M.addSelection }));
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() =>
+      expect(within(dialog).getAllByRole('textbox').some((el) => (el as HTMLInputElement).value === 'Fahrer')).toBe(true),
+    );
+    for (const el of Array.from(dialog.querySelectorAll('input'))) {
+      if (!(el as HTMLInputElement).value) fireEvent.change(el, { target: { value: 'Fahrer' } });
+    }
+    dialog.querySelector('form')?.requestSubmit();
+    return dialog;
+  }
+
+  it('保存成功：弹出与管理页相同的成功提示，并立即补一次版本轮询', async () => {
+    toastSuccess.mockClear();
+    pollNow.mockClear();
+    await submitDialog(vi.fn(async () => new Response('{}', { status: 201 })), 'team-1');
+    await waitFor(() => expect(pollNow).toHaveBeenCalledWith('team-1'));
+    const domainVocab = (messages as unknown as { domainVocabularies: { actions: Record<string, string> } }).domainVocabularies;
+    expect(toastSuccess).toHaveBeenCalledWith(domainVocab.actions.termAdded);
+  });
+
+  it('保存失败：按错误码本地化，不显示服务端原文，也不触发轮询', async () => {
+    pollNow.mockClear();
+    const raw = 'RAW SERVER TEXT should not leak';
+    const dialog = await submitDialog(
+      vi.fn(async () => new Response(JSON.stringify({ error: { code: 'quota_exceeded', message: raw } }), { status: 403 })),
+    );
+    const msg = (messages as unknown as { domainVocabularies: { errors: Record<string, string> } }).domainVocabularies.errors
+      .quota_exceeded;
+    await waitFor(() => expect(dialog.textContent).toContain(msg));
+    expect(document.body.textContent).not.toContain(raw);
+    expect(pollNow).not.toHaveBeenCalled();
   });
 });
 

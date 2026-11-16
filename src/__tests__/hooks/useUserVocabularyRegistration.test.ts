@@ -83,13 +83,23 @@ describe('useUserVocabularyRegistration', () => {
     expect([...result.current.scopes!.fields.get('Driver')!.keys()]).toEqual(['alter']);
   });
 
-  it('terms 来自同一次拉取：全部词条（不随作用域过滤），请求次数仍为一次', async () => {
+  it('terms 来自同一次拉取：同语言全部词条（不随源码引用过滤），请求次数仍为一次', async () => {
     const { result } = renderHook(() =>
       useUserVocabularyRegistration({ tenantId: 'tenant-hook', locale: 'de-DE', source: SOURCE }),
     );
-    await waitFor(() => expect(result.current.terms).toHaveLength(3));
-    expect(result.current.terms.map((t) => t.canonical)).toEqual(['Driver', 'age', 'Applicant']);
+    await waitFor(() => expect(result.current.terms).toHaveLength(2));
+    expect(result.current.terms.map((t) => t.canonical)).toEqual(['Driver', 'age']);
     expect(result.current.terms[1]!.parent).toBe('Driver');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('terms 隐藏其他语言的词条：de 词条不出现在 zh 策略里，请求次数不变', async () => {
+    const { result } = renderHook(() =>
+      useUserVocabularyRegistration({ tenantId: 'tenant-hook', locale: 'zh-CN', source: '定义 驾驶员。' }),
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await act(async () => { await fetchMock.mock.results[0]?.value; });
+    expect(result.current.terms).toEqual([]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

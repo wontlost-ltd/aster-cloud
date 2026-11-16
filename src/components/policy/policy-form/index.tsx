@@ -316,6 +316,8 @@ export function PolicyForm({
   // 子组件（SidePanel / palette）在挂载后拿到实例（ref 变化本身不触发 re-render）。
   const [, setEditorReady] = useState(false);
 
+  // 词汇标签页的术语：由编辑器内的词汇 hook 上抛，不另发请求。
+  const [vocabularyTerms, setVocabularyTerms] = useState<ReadonlyArray<VocabularyTabTerm>>([]);
   // ---------------------------------------------------------------
   // Compile-on-type —— 单一真相源
   // ---------------------------------------------------------------
@@ -325,8 +327,6 @@ export function PolicyForm({
   // 两条管线的 aliasSet 不同步（编辑器 footer 曾误报解析错误的根因）。StatusBar/SidePanel 直接
   // 消费这份诊断；typecheck 覆盖比原 parse-only 更全（含类型/降级/PII 错误），且 module 摘要
   // 现在能真正填充（原 useCompile 永远返回 undefined，Decision 面板的 module 块从不渲染）。
-  // 词汇标签页的术语：由编辑器内的词汇 hook 上抛，不另发请求。
-  const [vocabularyTerms, setVocabularyTerms] = useState<ReadonlyArray<VocabularyTabTerm>>([]);
   const [compile, setCompile] = useState<EditorCompileState & { transportError?: string }>({
     state: 'idle',
     diagnostics: [],

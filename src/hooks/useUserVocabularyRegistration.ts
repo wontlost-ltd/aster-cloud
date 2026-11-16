@@ -30,6 +30,7 @@ import type { TermLikeRow } from '@/lib/domain-vocabulary-assemble';
 import {
   USER_VOCABULARY_DOMAIN,
   VOCABULARY_LIST_MAX_PAGE_SIZE,
+  isLocaleCompatible,
   resolvePolicyVocabularyFromRows,
 } from '@/lib/domain-vocabulary-scope';
 import { useDomainVocabularyInvalidate } from '@/hooks/useDomainVocabularyInvalidate';
@@ -256,8 +257,14 @@ export function useUserVocabularyRegistration({
   );
 
   const terms = useMemo(
-    () => (active ? merged.rows.flatMap((row) => toVocabularyTabTerm(row) ?? []) : NO_TERMS),
-    [active, merged.rows],
+    () =>
+      active
+        ? merged.rows
+            // 仅同语言词条可在当前策略中解析；其他语言的词条插入后会成为未解析标识符。
+            .filter((row) => isLocaleCompatible(row.locale, locale))
+            .flatMap((row) => toVocabularyTabTerm(row) ?? [])
+        : NO_TERMS,
+    [active, merged.rows, locale],
   );
 
   // 作用域随源码变化；延迟值避免每次按键都同步扫描全部词条。

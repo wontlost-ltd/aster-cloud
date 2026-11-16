@@ -142,6 +142,23 @@ describe('ModelTab 表单', () => {
     expect(screen.getByText(M.outlineStale)).toBeTruthy();
   });
 
+  it('大纲随源码刷新后，过期提示消失', () => {
+    const editor = fakeEditor(`${SOURCE}\n-- 新输入`);
+    const tree = (source: string) => (
+      <IntlClientProvider locale="zh" messages={messages as never}>
+        <ModelTab editor={editor as never} source={source} lexicon={EN_US} />
+      </IntlClientProvider>
+    );
+    const { rerender } = render(tree(SOURCE));
+    fireEvent.click(screen.getByRole('button', { name: ADD_FIELD_PERSON }));
+    const form = screen.getByRole('form', { name: ADD_FIELD_PERSON });
+    fireEvent.change(within(form).getByLabelText(M.fieldName), { target: { value: 'score' } });
+    fireEvent.click(within(form).getByRole('button', { name: M.insert }));
+    expect(screen.getByText(M.outlineStale)).toBeTruthy();
+    rerender(tree(`${SOURCE}\n-- 新输入`));
+    expect(screen.queryByText(M.outlineStale)).toBeNull();
+  });
+
   it('新建类型别名（zh-CN）：插入本地化源码', () => {
     const zh = '模块 demo。\n\n定义 人员 包含 姓名 作为 文本。\n';
     const editor = fakeEditor(zh);

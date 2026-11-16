@@ -11,11 +11,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { useLocale, useTranslations } from 'next-intl';
-import { Button, Input } from '@/components/ui';
+import { Button, Input, toast } from '@/components/ui';
 import {
   VocabularyDialog,
   type VocabularyDialogValues,
 } from '@/app/[locale]/(dashboard)/domain-vocabularies/vocabulary-dialog';
+import { useVocabularyErrors } from '@/app/[locale]/(dashboard)/domain-vocabularies/use-vocabulary-errors';
+import { pollDomainVocabularyNow } from '@/hooks/useDomainVocabularyInvalidate';
 import type { VocabularyTabTerm } from '@/hooks/useUserVocabularyRegistration';
 
 export interface VocabularyTabProps {
@@ -61,8 +63,12 @@ function insertLocalized(editor: MonacoEditor.IStandaloneCodeEditor, localized: 
   editor.focus();
 }
 
-/** 提交新术语；失败时抛出可读错误，对话框据此保持打开并显示。 */
-async function createTerm(values: VocabularyDialogValues, teamId: string | null): Promise<void> {
+/** 提交新术语；失败时抛出已按错误码本地化的错误，对话框据此保持打开并显示。 */
+async function createTerm(
+  values: VocabularyDialogValues,
+  teamId: string | null,
+  errorMessage: (code: string | undefined, serverMessage: string | undefined) => string,
+): Promise<void> {
   const url = '/api/v1/domain-vocabularies/terms';
   const res = await fetch(teamId ? `${url}?teamId=${encodeURIComponent(teamId)}` : url, {
     method: 'POST',
@@ -71,8 +77,8 @@ async function createTerm(values: VocabularyDialogValues, teamId: string | null)
     body: JSON.stringify(values),
   });
   if (res.ok) return;
-  const env = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-  throw new Error(env.error?.message ?? `HTTP ${res.status}`);
+  const env = (await res.json().catch(() => ({}))) as { error?: { code?: string; message?: string } };
+  throw new Error(errorMessage(env.error?.code ?? 'internal_error', env.error?.message));
 }
 
 /** 词条全部属于同一领域时返回该领域，否则（无词条或多领域）返回空串，由用户填写。 */
@@ -83,6 +89,8 @@ function singleDomain(terms: ReadonlyArray<VocabularyTabTerm>): string {
 
 export function VocabularyTab({ editor, terms, teamId = null, policyLocale = '' }: VocabularyTabProps) {
   const t = useTranslations('policyEditor.vocabularyTab');
+  const tVocab = useTranslations('domainVocabularies');
+  const vocabularyErrors = useVocabularyErrors();
   const uiLocale = useLocale();
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(() => readSelection(editor));
@@ -111,12 +119,17 @@ export function VocabularyTab({ editor, terms, teamId = null, policyLocale = '' 
   const handleSave = useCallback(async (values: VocabularyDialogValues) => {
     setBusy(true);
     try {
-      await createTerm(values, teamId);
+      await createTerm(values, teamId, (code, serverMessage) =>
+        vocabularyErrors.envelope(code, serverMessage, tVocab('dialog.errorGeneric')),
+      );
       setDialogOpen(false);
+      toast.success(tVocab('actions.termAdded'));
+      // 立即补一次版本轮询，新术语无需等下一个轮询周期即出现在列表里
+      pollDomainVocabularyNow(teamId);
     } finally {
       setBusy(false);
     }
-  }, [teamId]);
+  }, [teamId, vocabularyErrors, tVocab]);
 
   const manageLink = (
     <a

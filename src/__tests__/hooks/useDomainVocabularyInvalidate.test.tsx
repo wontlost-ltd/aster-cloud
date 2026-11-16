@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import {
   POLL_INTERVAL_MS,
+  pollDomainVocabularyNow,
   useDomainVocabularyInvalidate,
 } from '@/hooks/useDomainVocabularyInvalidate';
 
@@ -72,6 +73,21 @@ describe('useDomainVocabularyInvalidate', () => {
     b.unmount();
     await advance(POLL_INTERVAL_MS * 3);
     expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('pollDomainVocabularyNow 立即补拉：新版本无需等轮询周期即触发 tick；团队版本走自己的 URL', async () => {
+    const versions = ['1', '2'];
+    vi.mocked(global.fetch).mockImplementation(async () => versionResponse(versions.shift() ?? '2'));
+    const { result } = renderHook(() => useDomainVocabularyInvalidate());
+    await flush();
+    expect(result.current).toBe(0);
+
+    pollDomainVocabularyNow('team-x'); // 无该团队的订阅者：无操作
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    pollDomainVocabularyNow();
+    await flush();
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(result.current).toBe(1);
   });
 
   it('页面隐藏时暂停，重新可见时立即补拉', async () => {

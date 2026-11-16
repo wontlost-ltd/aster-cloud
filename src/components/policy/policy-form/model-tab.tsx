@@ -44,11 +44,13 @@ export function ModelTab({ editor, source, lexicon }: ModelTabProps) {
   const outline = useMemo(() => buildModelOutline(source, lexicon), [source, lexicon]);
   const typeOptions = useMemo(() => collectTypeOptions(lexicon, outline), [lexicon, outline]);
   const [openForm, setOpenForm] = useState<OpenForm>(null);
-  const [stale, setStale] = useState(false);
+  // 记录触发过期提示时的大纲源码：源码变化（大纲已刷新）后提示自动失效
+  const [staleSource, setStaleSource] = useState<string | null>(null);
+  const stale = staleSource === source;
 
   const close = () => {
     setOpenForm(null);
-    setStale(false);
+    setStaleSource(null);
   };
 
   const jump = (span: Span) => {
@@ -66,7 +68,7 @@ export function ModelTab({ editor, source, lexicon }: ModelTabProps) {
     if (!editor || !outline) return;
     // 插入位置来自上一次防抖编译的大纲；编辑器内容已变时位置可能失效，等大纲刷新
     if (editor.getModel()?.getValue() !== source) {
-      setStale(true);
+      setStaleSource(source);
       return;
     }
     const struct = outline.structs.find((s) => s.name === structName);
