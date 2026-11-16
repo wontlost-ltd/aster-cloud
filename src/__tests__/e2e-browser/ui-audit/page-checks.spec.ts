@@ -70,6 +70,11 @@ test.describe('tap targets (44px on mobile)', () => {
     expect(await small(page, body)).toEqual(['Copy']);
   });
 
+  test('a small fixed layer covering part of the hit area between corner samples is caught', async ({ page }) => {
+    const body = '<style>body{margin:0}</style><div style="padding:40px"><button class="tap-target" style="font:12px/16px sans-serif;width:44px">Copy</button></div><div style="position:fixed;inset:0;pointer-events:none"></div><div id="cover" style="position:absolute;width:8px;height:8px"></div><script>const b=document.querySelector("button").getBoundingClientRect();const c=document.getElementById("cover");c.style.left=(b.left+b.width/2-11)+"px";c.style.top=(b.top+b.height/2+6)+"px";</script>';
+    expect(await small(page, body)).toEqual(['Copy']);
+  });
+
   test('disabled controls are not tap targets', async ({ page }) => {
     expect(await small(page, '<div style="padding:40px"><button disabled style="font:12px/16px sans-serif">Add</button></div>')).toEqual([]);
   });

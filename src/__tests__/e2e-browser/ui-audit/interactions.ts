@@ -124,7 +124,8 @@ export async function probeButtons(context: BrowserContext, page: Page, includeS
     // 写请求一律参与「破坏性操作无确认」判定；点击窗口里被拦的请求（读与写）一律记下、都不算按钮有效果——
     // 即使与后台轮询同路径也记，避免按钮恰好调用轮询接口时被漏判
     if (decision === 'block-write') mutating.push({ method: req.method(), url: req.url() });
-    if (clicking && counted) {
+    // 被拦的请求不论资源类型（fetch / beacon / 图片等）都记下
+    if (clicking) {
       if (mutAtFirstBlock === null) mutAtFirstBlock = await mutationCount(page);
       blocked.push(key);
     }

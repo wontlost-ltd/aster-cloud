@@ -91,8 +91,8 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
   if (opts.mobile) {
     const q = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=tab], [role=checkbox], [role=switch], [role=menuitem]';
     const targets = Array.from(document.querySelectorAll(q)).filter(visible);
-    // 对点击区中心那块 minTarget × minTarget 的方块（区域更小时取整块区域）做命中测试：四角、四边中点与中心
-    // 都要命中本元素（或其后代）。只要求这块方块，而不是整个伪元素——宽按钮的伪元素两端被相邻目标盖住不影响
+    // 对点击区中心那块 minTarget × minTarget 的方块（区域更小时取整块区域）做 5×5 网格命中测试：
+    // 每个测点都要命中本元素（或其后代）。只要求这块方块，而不是整个伪元素——宽按钮的伪元素两端被相邻目标盖住不影响
     // 「存在一块 44×44 可点区域」。测完恢复滚动位置。
     const hitsCentralSquare = (el: Element, area: (q: DOMRect) => { left: number; right: number; top: number; bottom: number }) => {
       const sx = window.scrollX;
@@ -111,8 +111,10 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
         const hw = Math.min(opts.minTarget, a.right - a.left) / 2 - i;
         const hh = Math.min(opts.minTarget, a.bottom - a.top) / 2 - i;
         let here = true;
-        for (const x of [cx - hw, cx, cx + hw]) {
-          for (const y of [cy - hh, cy, cy + hh]) {
+        // 5×5 网格采样（含四角、四边与中心），局部遮挡也能测到
+        const steps = [-1, -0.5, 0, 0.5, 1];
+        for (const x of steps.map((k) => cx + k * hw)) {
+          for (const y of steps.map((k) => cy + k * hh)) {
             if (x < 0 || x > window.innerWidth || y < 0 || y > window.innerHeight) { here = false; continue; }
             const hit = document.elementFromPoint(x, y);
             if (!hit || !(hit === el || el.contains(hit))) here = false;
