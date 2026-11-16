@@ -57,6 +57,9 @@
     "check:turbopack-readiness": "bash scripts/check-turbopack-readiness.sh",
     "test:e2e:browser": "playwright test",
     "test:e2e:browser:ui": "playwright test --ui",
+    "test:ui-audit": "node scripts/ui-audit/run.mjs",
+    "ui-audit:seed": "tsx scripts/ui-audit/seed.ts",
+    "ui-audit:report": "tsx scripts/ui-audit/report.ts",
     "docs:external-index": "node scripts/docs-migration/fetch-external-docs-index.mjs",
     "guard:backfill": "tsx src/scripts/backfill-guard-deployments.ts"
   },
@@ -102,6 +105,7 @@
   "devDependencies": {
     "@aster-cloud/aster-guard": "0.2.0",
     "@aster-cloud/glossary": "^0.1.3",
+    "@axe-core/playwright": "^4.14.0",
     "@mdx-js/loader": "3.1.1",
     "@mdx-js/react": "3.1.1",
     "@modelcontextprotocol/sdk": "^1.32.2",
