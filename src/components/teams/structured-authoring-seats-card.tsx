@@ -34,6 +34,26 @@ interface Member {
   user: { name: string | null; email: string };
 }
 
+const MEMBERS_PAGE_SIZE = 100;
+
+interface MembersPage {
+  members?: Member[];
+  pagination?: { hasMore?: boolean };
+}
+
+/** 按 offset 翻页取全部成员（接口单页上限 100）；空页即停，避免 hasMore 异常时死循环。 */
+async function fetchAllMembers(teamId: string): Promise<Member[]> {
+  const all: Member[] = [];
+  for (let offset = 0; ; offset += MEMBERS_PAGE_SIZE) {
+    const res = await fetch(`/api/teams/${teamId}/members?limit=${MEMBERS_PAGE_SIZE}&offset=${offset}`);
+    if (!res.ok) throw new Error(String(res.status));
+    const page = (await res.json()) as MembersPage;
+    const batch = page.members ?? [];
+    all.push(...batch);
+    if (batch.length === 0 || !page.pagination?.hasMore) return all;
+  }
+}
+
 /** 服务端错误码 → 文案键；未列出的码统一用 saveError。 */
 const ERROR_KEYS: Record<string, string> = {
   seat_cap_reached: 'errors.seatCapReached',
@@ -56,10 +76,10 @@ export function StructuredAuthoringSeatsCard({ teamId }: { teamId: string }) {
 
   const load = useCallback(async () => {
     try {
-      const [seatsRes, membersRes] = await Promise.all([fetch(api), fetch(`/api/teams/${teamId}/members?limit=100`)]);
-      if (!seatsRes.ok || !membersRes.ok) throw new Error(String(seatsRes.status));
+      const [seatsRes, allMembers] = await Promise.all([fetch(api), fetchAllMembers(teamId)]);
+      if (!seatsRes.ok) throw new Error(String(seatsRes.status));
       setView((await seatsRes.json()) as SeatsView);
-      setMembers(((await membersRes.json()) as { members?: Member[] }).members ?? []);
+      setMembers(allMembers);
     } catch {
       setError(t('loadError'));
     }

@@ -170,4 +170,26 @@ describe('StructuredAuthoringSeatsCard', () => {
     fireEvent.click(await screen.findByRole('button', { name: L.delegate }));
     expect(await screen.findByText(L.errors.delegationNotSupported)).toBeTruthy();
   });
+
+  it('成员超过 100 人：按 offset 翻页取全，第二页的成员可被选中并委派', async () => {
+    const page1 = Array.from({ length: 100 }, (_, i) => ({
+      id: `m-${i}`,
+      userId: `u-p1-${i}`,
+      role: 'viewer',
+      user: { name: `P1-${i}`, email: `p1-${i}@x.io` },
+    }));
+    const page2 = [{ id: 'm-far', userId: 'u-far', role: 'member', user: { name: 'Far', email: 'far@x.io' } }];
+    setup('en', (url, init) => {
+      if (!url.includes('/members')) return init?.method === 'POST' ? json(200, {}) : json(200, GRANTS);
+      const offset = Number(new URL(url, 'http://x').searchParams.get('offset') ?? '0');
+      return offset === 0
+        ? json(200, { members: page1, pagination: { total: 101, limit: 100, offset: 0, hasMore: true } })
+        : json(200, { members: page2, pagination: { total: 101, limit: 100, offset: 100, hasMore: false } });
+    });
+    const select = (await screen.findByLabelText(L.memberLabel)) as HTMLSelectElement;
+    await waitFor(() => expect(Array.from(select.options).map((o) => o.value)).toEqual(['u-far']));
+    fireEvent.click(screen.getByRole('button', { name: L.delegate }));
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(JSON.parse(String(writes()[0][1]?.body))).toEqual({ userId: 'u-far' });
+  });
 });
