@@ -147,6 +147,11 @@ test.describe('actionable items clipped by a container', () => {
     expect(r.clippedActions.map((c) => [c.text, c.kind])).toEqual([['Accept', 'hidden']]);
   });
 
+  test('clipping is judged per axis: overflow-y hidden with horizontal scrolling only reports vertical cut-offs', async ({ page }) => {
+    await page.setContent(`<div style="overflow-x:auto;overflow-y:hidden;width:300px;height:60px;white-space:nowrap"><span style="display:inline-block;width:200px"></span><button style="width:80px">Wide</button></div>`);
+    expect((await page.evaluate(collectStructure)).clippedActions.filter((c) => c.kind === 'hidden')).toEqual([]);
+  });
+
   test('vertical scroll lists are a normal pattern and not reported', async ({ page }) => {
     await page.setContent(`<nav style="overflow-y:auto;height:60px">${Array.from({ length: 6 }, (_, i) => `<a href="/${i}" style="display:block;height:30px">Item ${i}</a>`).join('')}</nav>`);
     const r = await page.evaluate(collectStructure);
