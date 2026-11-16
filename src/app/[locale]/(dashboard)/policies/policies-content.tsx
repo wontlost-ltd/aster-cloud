@@ -306,7 +306,7 @@ function DraggablePolicyItem({
             {/* Row actions — text-only buttons so they don't overpower
                 the row chrome. Frozen state renders as muted, non-clickable
                 so users see the affordance is gated. */}
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-3 max-sm:space-x-5">
               {policy.isFrozen || !can.execute ? (
                 <span
                   className="cursor-not-allowed text-sm text-fg-subtle"

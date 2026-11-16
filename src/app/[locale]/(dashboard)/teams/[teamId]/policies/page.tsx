@@ -231,7 +231,7 @@ export default function TeamPoliciesPage() {
                         date: formatDate(policy.updatedAt, locale),
                       })}
                     </div>
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-2 max-sm:space-x-5">
                       <Link
                         href={`/policies/${policy.id}/execute`}
                         className="text-primary hover:text-primary-active text-sm"
