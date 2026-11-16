@@ -50,8 +50,8 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
   const visible = (el: Element) => {
     const r = el.getBoundingClientRect();
     if (r.width === 0 || r.height === 0) return false;
-    // 收起的 <details> 里的内容（Chrome 以 content-visibility 隐藏，盒子尺寸仍在）不可见，也不可点
-    if ('checkVisibility' in el && !(el as HTMLElement).checkVisibility({ contentVisibilityAuto: true })) return false;
+    // 收起的 <details> 里的内容（Chrome 以 content-visibility 隐藏，盒子尺寸仍在）、祖先透明度为 0 或不可见的，都不可见也不可点
+    if ('checkVisibility' in el && !(el as HTMLElement).checkVisibility({ contentVisibilityAuto: true, opacityProperty: true, visibilityProperty: true })) return false;
     const cs = getComputedStyle(el);
     return cs.visibility !== 'hidden' && cs.display !== 'none' && Number(cs.opacity) > 0 && !el.closest('[aria-hidden="true"], [inert]');
   };
@@ -91,28 +91,34 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
   if (opts.mobile) {
     const q = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=tab], [role=checkbox], [role=switch], [role=menuitem]';
     const targets = Array.from(document.querySelectorAll(q)).filter(visible);
-    // 把元素纵向滚到视口中部，对点击区中心那块 minTarget × minTarget 的方块（区域更小时取整块区域）做命中测试：
-    // 四角、四边中点与中心都要命中本元素（或其后代）。只要求这块方块，而不是整个伪元素——宽按钮的伪元素两端
-    // 被相邻目标盖住不影响「存在一块 44×44 可点区域」。命中落在固定定位浮层上的点不计。测完恢复滚动位置。
+    // 对点击区中心那块 minTarget × minTarget 的方块（区域更小时取整块区域）做命中测试：四角、四边中点与中心
+    // 都要命中本元素（或其后代）。只要求这块方块，而不是整个伪元素——宽按钮的伪元素两端被相邻目标盖住不影响
+    // 「存在一块 44×44 可点区域」。测完恢复滚动位置。
     const hitsCentralSquare = (el: Element, area: (q: DOMRect) => { left: number; right: number; top: number; bottom: number }) => {
       const sx = window.scrollX;
       const sy = window.scrollY;
-      const r0 = el.getBoundingClientRect();
-      // behavior: 'instant'：站点开了 scroll-behavior: smooth，普通 scrollTo 会动画滚动，命中测试时位置还没到
-      window.scrollTo({ left: sx, top: Math.max(0, r0.top + sy - window.innerHeight / 2), behavior: 'instant' });
-      const a = area(el.getBoundingClientRect());
-      const cx = (a.left + a.right) / 2;
-      const cy = (a.top + a.bottom) / 2;
-      const i = 2.5;
-      const hw = Math.min(opts.minTarget, a.right - a.left) / 2 - i;
-      const hh = Math.min(opts.minTarget, a.bottom - a.top) / 2 - i;
-      let ok = true;
-      for (const x of [cx - hw, cx, cx + hw]) {
-        for (const y of [cy - hh, cy, cy + hh]) {
-          if (x < 0 || x > window.innerWidth || y < 0 || y > window.innerHeight) { ok = false; continue; }
-          const hit = document.elementFromPoint(x, y);
-          if (!hit || !(hit === el || el.contains(hit) || fixedLayer(hit))) ok = false;
+      const docTop = el.getBoundingClientRect().top + sy;
+      // 依次把元素滚到视口中部、上三分之一处测：固定浮层（右下角助手按钮等）只在某个滚动位置盖住目标时，
+      // 换个位置能点到就算；任一测点落在别的元素（含浮层）上，该位置即不通过
+      let ok = false;
+      for (const frac of [0.5, 0.33]) {
+        // behavior: 'instant'：站点开了 scroll-behavior: smooth，普通 scrollTo 会动画滚动，命中测试时位置还没到
+        window.scrollTo({ left: sx, top: Math.max(0, docTop - window.innerHeight * frac), behavior: 'instant' });
+        const a = area(el.getBoundingClientRect());
+        const cx = (a.left + a.right) / 2;
+        const cy = (a.top + a.bottom) / 2;
+        const i = 2.5;
+        const hw = Math.min(opts.minTarget, a.right - a.left) / 2 - i;
+        const hh = Math.min(opts.minTarget, a.bottom - a.top) / 2 - i;
+        let here = true;
+        for (const x of [cx - hw, cx, cx + hw]) {
+          for (const y of [cy - hh, cy, cy + hh]) {
+            if (x < 0 || x > window.innerWidth || y < 0 || y > window.innerHeight) { here = false; continue; }
+            const hit = document.elementFromPoint(x, y);
+            if (!hit || !(hit === el || el.contains(hit))) here = false;
+          }
         }
+        if (here) { ok = true; break; }
       }
       window.scrollTo({ left: sx, top: sy, behavior: 'instant' });
       return ok;
@@ -332,8 +338,8 @@ export function collectStructure(): StructureReport {
   const shown = (el: Element) => {
     const r = el.getBoundingClientRect();
     if (r.width === 0 || r.height === 0) return false;
-    // 收起的 <details> 里的内容（Chrome 以 content-visibility 隐藏，盒子尺寸仍在）不可见，也不可点
-    if ('checkVisibility' in el && !(el as HTMLElement).checkVisibility({ contentVisibilityAuto: true })) return false;
+    // 收起的 <details> 里的内容（Chrome 以 content-visibility 隐藏，盒子尺寸仍在）、祖先透明度为 0 或不可见的，都不可见也不可点
+    if ('checkVisibility' in el && !(el as HTMLElement).checkVisibility({ contentVisibilityAuto: true, opacityProperty: true, visibilityProperty: true })) return false;
     const cs = getComputedStyle(el);
     return cs.visibility !== 'hidden' && cs.display !== 'none' && Number(cs.opacity) > 0 && !el.closest('[aria-hidden="true"], [inert]');
   };
@@ -346,10 +352,11 @@ export function collectStructure(): StructureReport {
   // 计入读屏能读到的 h1：sr-only 的算，display:none / visibility:hidden / aria-hidden / 收起的 details 里的不算
   const h1s = Array.from(document.querySelectorAll('h1')).filter((h) => !h.closest('[aria-hidden="true"], [hidden]')
     && (!('checkVisibility' in h) || h.checkVisibility({ visibilityProperty: true, contentVisibilityAuto: true })));
-  const h1 = h1s.map((h) => norm(h.textContent));
+  // 按渲染出的文字比较（innerText 不含隐藏子节点）
+  const h1 = h1s.map((h) => norm(h.innerText || h.textContent));
   const h1Set = new Set(h1.filter(Boolean));
   const duplicateHeadings = Array.from(document.querySelectorAll('h2, h3, h4, h5, h6'))
-    .filter((h) => shown(h) && h1Set.has(norm(h.textContent)))
+    .filter((h) => shown(h) && h1Set.has(norm((h as HTMLElement).innerText)))
     .map((h) => `${h.tagName.toLowerCase()} "${(h.textContent || '').trim().slice(0, 60)}"`);
   const redundantBreadcrumbs = Array.from(document.querySelectorAll('nav[aria-label="Breadcrumb"], nav[aria-label="breadcrumb"]'))
     .filter((n) => shown(n) && n.querySelectorAll('a[href]').length === 0)

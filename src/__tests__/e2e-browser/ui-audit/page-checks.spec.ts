@@ -65,6 +65,11 @@ test.describe('tap targets (44px on mobile)', () => {
     expect(await small(page, body)).toEqual([]);
   });
 
+  test('a fixed floating layer covering the target at every scroll position does not let it pass', async ({ page }) => {
+    const body = '<style>body{margin:0}</style><div style="padding:40px"><button class="tap-target" style="font:12px/16px sans-serif">Copy</button></div><div style="position:fixed;inset:0;background:transparent"></div>';
+    expect(await small(page, body)).toEqual(['Copy']);
+  });
+
   test('disabled controls are not tap targets', async ({ page }) => {
     expect(await small(page, '<div style="padding:40px"><button disabled style="font:12px/16px sans-serif">Add</button></div>')).toEqual([]);
   });
@@ -81,6 +86,12 @@ test.describe('page title structure', () => {
     expect(r.h1).toEqual(['approvals', 'other']);
     expect(r.duplicateHeadings).toEqual(['h2 "Approvals"']);
     expect(r.redundantBreadcrumbs).toEqual(['"Approvals"']);
+  });
+
+  test('ignores headings and actions inside a transparent ancestor; compares rendered heading text', async ({ page }) => {
+    await page.setContent(`<h1>Reports</h1><div style="opacity:0"><h2>Reports</h2></div><h2>Reports<span style="display:none"> (beta)</span></h2>`);
+    const r = await page.evaluate(collectStructure);
+    expect(r.duplicateHeadings).toEqual(['h2 "Reports (beta)"']);
   });
 
   test('counts screen-reader-only h1s but not display:none ones', async ({ page }) => {
