@@ -21,7 +21,11 @@ import {
   getSettingUncached,
 } from '@/lib/platform-settings';
 import { db, auditLogs } from '@/lib/prisma';
+import { logAuditEvent } from '@/lib/audit-log';
 import { errorEnvelope } from '@/lib/api/error-envelope';
+
+/** 能力类全局开关的键前缀：这类键要求布尔值并写审计。 */
+const CAPABILITY_SETTING_PREFIX = 'capability.';
 
 export async function GET() {
   try {
@@ -107,6 +111,22 @@ export async function POST(req: Request) {
           { status: 400 },
         );
       }
+    }
+    if (body.key.startsWith(CAPABILITY_SETTING_PREFIX)) {
+      if (typeof body.value !== 'boolean') {
+        return NextResponse.json(
+          { error: `${body.key} must be a boolean.`, code: 'invalid_capability_setting' },
+          { status: 400 },
+        );
+      }
+      const old = await getSettingUncached<boolean>(body.key);
+      await setSetting(body.key, body.value, check.userId);
+      await logAuditEvent({
+        userId: check.userId, action: 'platform_setting.update',
+        resource: 'platform-setting', resourceId: body.key,
+        metadata: { old, new: body.value },
+      });
+      return NextResponse.json({ ok: true });
     }
     await setSetting(body.key, body.value, check.userId);
     return NextResponse.json({ ok: true });

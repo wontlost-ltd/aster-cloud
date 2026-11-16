@@ -47,7 +47,9 @@ export type AuditAction =
   // Metadata holds { cta_id, target, locale }; never echoes PII.
   | 'docs.jump'
   // 管理员删除落地页试点申请（应申请人要求或清理垃圾提交）；metadata 不记邮箱等申请内容。
-  | 'pilot-application.delete';
+  | 'pilot-application.delete'
+  // 平台设置变更（仅 capability.* 键写入；旧值与新值进 metadata）。
+  | 'platform_setting.update';
 
 interface AuditEntry {
   userId: string;

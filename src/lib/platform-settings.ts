@@ -36,6 +36,10 @@ export const PLATFORM_SETTING_KEYS = {
   //   见 PromptComposer.buildAssistantContext 与其测试）。
   ASSISTANT_EXTRA_INSTRUCTIONS: 'assistant.extra_instructions',
   AUTH_DB_EPOCH: 'auth.dbEpoch',
+  // 结构化编写（ADR 0058）：全局开关，默认 OFF，须管理员显式打开。
+  STRUCTURED_AUTHORING_ENABLED: 'capability.structured_authoring.enabled',
+  // 团队 owner 委派总开关：一键停掉所有团队的委派，默认 ON。
+  STRUCTURED_AUTHORING_TEAM_DELEGATION: 'capability.structured_authoring.team_delegation.enabled',
 } as const;
 
 /** 管理员附加指令长度上限，与 aster-api AssistantRequest 的 @Size 对齐。 */
@@ -59,6 +63,8 @@ const DEFAULTS: Record<string, unknown> = {
   // 默认空串 = 不附加任何指令，prompt 与未配置时逐字节一致。
   [PLATFORM_SETTING_KEYS.ASSISTANT_EXTRA_INSTRUCTIONS]: '',
   [PLATFORM_SETTING_KEYS.AUTH_DB_EPOCH]: 0,
+  [PLATFORM_SETTING_KEYS.STRUCTURED_AUTHORING_ENABLED]: false,
+  [PLATFORM_SETTING_KEYS.STRUCTURED_AUTHORING_TEAM_DELEGATION]: true,
 };
 
 const CACHE_TTL_MS = 60_000;

@@ -12,6 +12,7 @@ import {
   getPlanPrice,
   getPlanStripePriceId,
   getProPrice,
+  hasCapability,
 } from '@/lib/plans';
 
 describe('Plans Configuration', () => {
@@ -37,6 +38,13 @@ describe('Plans Configuration', () => {
   it('should expose plan capabilities via getPlanConfig', () => {
     const proConfig = getPlanConfig('pro');
     expect(proConfig.capabilities.apiAccess).toBe(true);
+  });
+
+  it('结构化编写：free 关闭，trial / pro / team / enterprise 开启', () => {
+    expect(hasCapability('free', 'structuredAuthoring')).toBe(false);
+    for (const plan of ['trial', 'pro', 'team', 'enterprise'] as const) {
+      expect(hasCapability(plan, 'structuredAuthoring')).toBe(true);
+    }
   });
 
   it('should disable custom domain vocabulary on the free plan', () => {
