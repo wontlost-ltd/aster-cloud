@@ -5,7 +5,8 @@ import type { ComponentPropsWithoutRef } from 'react';
  *
  * 文档里的参数表 / 规则表列多、单元格含长代码，移动端（390px）会把整页撑出横向滚动（#774 审计）。
  * 容器负责滚动，表格本身保持 prose 排版；tabIndex=0 让键盘用户聚焦后可用方向键滚动
- * （axe scrollable-region-focusable）。`relative` 让表内绝对定位的元素也被容器裁剪。
+ * （axe scrollable-region-focusable）。`relative` 让容器成为表内绝对定位元素（如 sr-only 文本）的包含块，
+ * 这样 overflow-x-auto 才会裁剪它们，否则它们按页面定位、照样撑宽整页。
  */
 export function DocsTable(props: ComponentPropsWithoutRef<'table'>) {
   return (

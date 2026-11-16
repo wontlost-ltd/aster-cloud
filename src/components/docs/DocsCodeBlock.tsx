@@ -225,8 +225,8 @@ export function DocsCodeBlock(props: PreProps) {
           radius so globals.css's pre styling doesn't double-frame. */}
       {/* 长代码行会横向滚动：tabIndex=0 让键盘用户能聚焦后用方向键滚动（WCAG 2.1.1，axe scrollable-region-focusable） */}
       <pre
-        tabIndex={0}
         {...props}
+        tabIndex={0}
         className={cn(
           'docs-code !border-0 !bg-transparent !rounded-none !my-0 overflow-x-auto px-4 py-3 text-sm leading-relaxed',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',

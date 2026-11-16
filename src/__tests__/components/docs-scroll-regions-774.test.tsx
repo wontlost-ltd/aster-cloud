@@ -21,6 +21,11 @@ describe('docs scroll regions (#774)', () => {
     expect(pre.className).toContain('overflow-x-auto');
   });
 
+  it('keeps code blocks focusable even if the MDX passes tabIndex', () => {
+    const { container } = render(<DocsCodeBlock tabIndex={-1}><code>x</code></DocsCodeBlock>);
+    expect((container.querySelector('pre') as HTMLElement).tabIndex).toBe(0);
+  });
+
   it('tables scroll inside their own focusable, positioned container', () => {
     const { container } = render(<DocsTable><tbody><tr><td>x</td></tr></tbody></DocsTable>);
     const wrap = container.firstElementChild as HTMLElement;

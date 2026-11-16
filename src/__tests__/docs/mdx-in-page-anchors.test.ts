@@ -28,12 +28,28 @@ function slug(heading: string): string {
 }
 
 describe('docs MDX in-page anchors', () => {
+  it('slugs headings the way rehype-slug does', () => {
+    expect(slug('Get Anomaly Detail')).toBe('get-anomaly-detail');
+    expect(slug('获取异常详情')).toBe('获取异常详情');
+    expect(slug('HTTP 状态码')).toBe('http-状态码');
+    expect(slug('Anomalie-Status aktualisieren')).toBe('anomalie-status-aktualisieren');
+    expect(slug('`policyModule` (string)')).toBe('policymodule-string');
+  });
+
   it('every #anchor link points at a heading on the same page', () => {
     const broken: string[] = [];
     for (const file of mdxFiles(DOCS)) {
       // 去掉代码块，避免把示例里的 # 当成链接 / 标题
       const src = readFileSync(file, 'utf8').replace(/```[\s\S]*?```/g, '');
-      const ids = new Set(Array.from(src.matchAll(/^#{1,6}\s+(.+?)\s*$/gm), (m) => slug(m[1])));
+      // 同名标题按 github-slugger 规则追加 -1、-2…
+      const ids = new Set<string>();
+      const seen = new Map<string, number>();
+      for (const m of src.matchAll(/^#{1,6}\s+(.+?)\s*$/gm)) {
+        const base = slug(m[1]);
+        const n = seen.get(base) ?? 0;
+        seen.set(base, n + 1);
+        ids.add(n === 0 ? base : `${base}-${n}`);
+      }
       for (const m of src.matchAll(/\]\(#([^)\s]+)\)/g)) {
         const target = decodeURIComponent(m[1]);
         if (!ids.has(target)) broken.push(`${relative(DOCS, file)} → #${target}`);
