@@ -91,6 +91,28 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
   if (opts.mobile) {
     const q = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=tab], [role=checkbox], [role=switch], [role=menuitem]';
     const targets = Array.from(document.querySelectorAll(q)).filter(visible);
+    // 把元素纵向滚到视口中部，对给定区域的四角与四边中点做命中测试；命中本元素（或其后代）才算。
+    // 命中落在固定定位浮层上的点不计（浮层随滚动位置变化）。测完恢复滚动位置。
+    const hitsWholeArea = (el: Element, area: (q: DOMRect) => { left: number; right: number; top: number; bottom: number }) => {
+      const sx = window.scrollX;
+      const sy = window.scrollY;
+      const r0 = el.getBoundingClientRect();
+      window.scrollTo(sx, Math.max(0, r0.top + sy - window.innerHeight / 2));
+      const a = area(el.getBoundingClientRect());
+      const i = 1.5;
+      const xs = [a.left + i, (a.left + a.right) / 2, a.right - i];
+      const ys = [a.top + i, (a.top + a.bottom) / 2, a.bottom - i];
+      let ok = true;
+      for (const x of xs) {
+        for (const y of ys) {
+          if (x < 0 || x > window.innerWidth || y < 0 || y > window.innerHeight) { ok = false; continue; }
+          const hit = document.elementFromPoint(x, y);
+          if (!hit || !(hit === el || el.contains(hit) || fixedLayer(hit))) ok = false;
+        }
+      }
+      window.scrollTo(sx, sy);
+      return ok;
+    };
     const fixedLayer = (el: Element) => {
       for (let p: Element | null = el; p && p !== document.body; p = p.parentElement) {
         if (getComputedStyle(p).position === 'fixed') return true;
@@ -110,27 +132,31 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
       if (r.width <= 1 || r.height <= 1) continue;
       const own = Math.min(r.width, r.height);
       let min = own;
-      // 点击区可以由绝对定位的 ::before / ::after 撑大（伪元素的点击落在宿主元素上，globals.css 的 .tap-target）。
-      // 只在元素自身不裁剪（overflow visible，否则伪元素被裁掉）且撑大后的区域不压到别的点击目标时才承认，
-      // 否则相邻目标的点击区互相重叠，实际可点面积并没有变大。
+      // 点击区可以由绝对定位、居中的 ::before / ::after 撑大（伪元素的点击落在宿主元素上，globals.css 的移动端规则）。
+      // 只在元素自身不裁剪（overflow visible，否则伪元素被裁掉）、撑大后的区域不压到别的点击目标、
+      // 且对这块区域逐点做命中测试（elementFromPoint）确实落在本元素上时才承认——不靠假设，
+      // 被祖先裁掉、被别的层盖住、伪元素不可见或并非居中的情况都会在命中测试里暴露。
       if (own < opts.minTarget && getComputedStyle(el).overflow === 'visible') {
         for (const pseudo of ['::before', '::after']) {
           const ps = getComputedStyle(el, pseudo);
           if (ps.content === 'none' || ps.content === 'normal' || ps.position !== 'absolute' || ps.pointerEvents === 'none') continue;
+          if (ps.display === 'none' || ps.visibility === 'hidden') continue;
           const w = parseFloat(ps.width);
           const h = parseFloat(ps.height);
-          if (!Number.isFinite(w) || !Number.isFinite(h)) continue;
-          const area = { left: r.left + r.width / 2 - w / 2, right: r.left + r.width / 2 + w / 2, top: r.top + r.height / 2 - h / 2, bottom: r.top + r.height / 2 + h / 2 };
+          if (!Number.isFinite(w) || !Number.isFinite(h) || Math.min(w, h) <= min) continue;
           // 浮在页面上的固定定位元素（右下角助手按钮等）随滚动位置盖住不同内容，不算相邻目标；
           // 0.5px 容差吸收亚像素误差（并排的分段按钮恰好相接不算重叠）
+          const area = (q: DOMRect) => ({ left: q.left + q.width / 2 - w / 2, right: q.left + q.width / 2 + w / 2, top: q.top + q.height / 2 - h / 2, bottom: q.top + q.height / 2 + h / 2 });
+          const a0 = area(r);
           const overlaps = targets.some((o) => {
             if (o === el || el.contains(o) || o.contains(el) || fixedLayer(o)) return false;
             const q = o.getBoundingClientRect();
             if (q.width <= 1 || q.height <= 1) return false;
             const e = 0.5;
-            return q.left < area.right - e && q.right > area.left + e && q.top < area.bottom - e && q.bottom > area.top + e;
+            return q.left < a0.right - e && q.right > a0.left + e && q.top < a0.bottom - e && q.bottom > a0.top + e;
           });
-          if (!overlaps) min = Math.max(min, Math.min(w, h));
+          if (overlaps || !hitsWholeArea(el, area)) continue;
+          min = Math.max(min, Math.min(w, h));
         }
       }
       // 亚像素宽度（如 43.99px）按 0.5px 容差计
@@ -286,8 +312,10 @@ export function collectStructure(): StructureReport {
     return `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${cls.length ? `.${cls.join('.')}` : ''}`;
   };
 
-  // 1. 标题：h1 计数含 sr-only（读屏同样会读到两个一级标题）；同文判定只看可见标题
-  const h1s = Array.from(document.querySelectorAll('h1')).filter((h) => !h.closest('[aria-hidden="true"], [hidden]'));
+  // 1. 标题：h1 按读屏可读计数（含 sr-only）；同文判定只看可见标题
+  // 计入读屏能读到的 h1：sr-only 的算，display:none / visibility:hidden / aria-hidden / 收起的 details 里的不算
+  const h1s = Array.from(document.querySelectorAll('h1')).filter((h) => !h.closest('[aria-hidden="true"], [hidden]')
+    && (!('checkVisibility' in h) || h.checkVisibility({ visibilityProperty: true, contentVisibilityAuto: true })));
   const h1 = h1s.map((h) => norm(h.textContent));
   const h1Set = new Set(h1.filter(Boolean));
   const duplicateHeadings = Array.from(document.querySelectorAll('h2, h3, h4, h5, h6'))

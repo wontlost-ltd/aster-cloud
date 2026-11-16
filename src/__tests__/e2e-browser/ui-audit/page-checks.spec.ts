@@ -48,6 +48,13 @@ test.describe('tap targets (44px on mobile)', () => {
     expect(await small(page, body)).toEqual([]);
   });
 
+  test('a hidden pseudo-element or one clipped by an ancestor does not count', async ({ page }) => {
+    const hidden = '<style>.h::after{visibility:hidden}</style><div style="padding:40px"><button class="tap-target h" style="font:12px/16px sans-serif">Copy</button></div>';
+    expect(await small(page, hidden)).toEqual(['Copy']);
+    const clipped = '<div style="padding:40px"><div style="overflow:hidden;height:20px"><button class="tap-target" style="font:12px/16px sans-serif">Copy</button></div></div>';
+    expect(await small(page, clipped)).toEqual(['Copy']);
+  });
+
   test('links inside a sentence are exempt', async ({ page }) => {
     expect(await small(page, '<p style="font:14px/20px sans-serif">Read the <a href="/d">docs</a> before you start.</p>')).toEqual([]);
   });
@@ -60,6 +67,11 @@ test.describe('page title structure', () => {
     expect(r.h1).toEqual(['approvals', 'other']);
     expect(r.duplicateHeadings).toEqual(['h2 "Approvals"']);
     expect(r.redundantBreadcrumbs).toEqual(['"Approvals"']);
+  });
+
+  test('counts screen-reader-only h1s but not display:none ones', async ({ page }) => {
+    await page.setContent(`<h1>Main</h1><h1 style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Extra</h1><h1 style="display:none">Gone</h1>`);
+    expect((await page.evaluate(collectStructure)).h1).toEqual(['main', 'extra']);
   });
 
   test('accepts one h1 with a breadcrumb trail that links to its parent', async ({ page }) => {

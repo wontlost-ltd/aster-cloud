@@ -105,17 +105,26 @@ export async function probeButtons(context: BrowserContext, page: Page, includeS
   let blocked: string[] = [];
   let mutAtFirstBlock: number | null = null;
   const COUNTED = ['fetch', 'xhr', 'document', 'eventsource', 'websocket'];
+  // 后台请求（轮询、预取等）：在两次点击之间出现过的 方法+路径。点击窗口里再出现的同类请求与按钮无关，不计入判定
+  let clicking = false;
+  const background = new Set<string>();
   await page.route('**/*', async (route) => {
     const req = route.request();
     const decision = classifyRequest(req.method(), req.url());
+    const key = `${req.method()} ${new URL(req.url()).pathname}`;
+    const counted = COUNTED.includes(req.resourceType());
+    if (counted && !clicking) background.add(key);
+    const fromClick = counted && clicking && !background.has(key);
     if (decision === 'allow') {
-      if (COUNTED.includes(req.resourceType())) allowedRequests += 1;
+      if (fromClick) allowedRequests += 1;
       return route.continue();
     }
-    if (mutAtFirstBlock === null) mutAtFirstBlock = await mutationCount(page);
-    // 被拦的请求（读与写）都不算按钮有效果；写请求另外参与「破坏性操作无确认」判定
+    // 写请求一律参与「破坏性操作无确认」判定；被拦的请求（读与写）都不算按钮有效果
     if (decision === 'block-write') mutating.push({ method: req.method(), url: req.url() });
-    blocked.push(`${req.method()} ${new URL(req.url()).pathname}`);
+    if (fromClick || decision === 'block-write') {
+      if (mutAtFirstBlock === null) mutAtFirstBlock = await mutationCount(page);
+      blocked.push(key);
+    }
     // 带标记头，页面级 5xx 统计据此排除审计自己伪造的响应
     return route.fulfill({
       status: 503,
@@ -170,8 +179,10 @@ export async function probeButtons(context: BrowserContext, page: Page, includeS
       page.once('download', onDownload);
       const target = page.locator(`[data-ui-audit-btn="${k}"]`);
       let clickError: string | null = null;
+      clicking = true;
       await target.click({ timeout: 3_000 }).catch((e: Error) => { clickError = e.message.split('\n')[0]; });
       await page.waitForTimeout(SETTLE_MS);
+      clicking = false;
       page.off('download', onDownload);
       const urlChanged = page.url() !== origin;
       const printed = (await prints()) > printsBefore;
