@@ -7,6 +7,7 @@ import { executionsOfTeam, type ExecutionExecutors } from '@/lib/policy-access';
 import type { InferSelectModel } from 'drizzle-orm';
 import type { ExecutionMetadata } from '@/lib/guard-register';
 import { maskExecutionInputs } from '@/lib/execution-input/masked-log-input';
+import { renderMaskedExecutionOutput } from '@/lib/execution-input/output-view';
 import type { ExecutionInputMask } from '@/lib/execution-input/input-view';
 import type { AgentIdentity, PolicyReplayMetadata, PolicyTraceSkeleton } from '@/services/policy/policy-api';
 
@@ -311,6 +312,7 @@ export interface ExecutionLogItem {
    */
   input: unknown;
   inputMask: ExecutionInputMask;
+  /** 输出的日志面视图（cloud#772）：字符串叶子已过 PIIRedactor 口径的正则，无法识别任意派生；原始输出仍存库。 */
   output: unknown;
   error: string | null;
   success: boolean;
@@ -427,7 +429,7 @@ async function toLogItems(rows: ExecutionRowWithPolicy[]): Promise<ExecutionLogI
     policyVersion: item.policyVersion,
     input: masked[i]!.input,
     inputMask: masked[i]!.inputMask,
-    output: item.output,
+    output: renderMaskedExecutionOutput(item.output),
     error: item.error,
     success: item.success,
     decision: item.decision,
