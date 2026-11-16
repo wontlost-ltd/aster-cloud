@@ -7,6 +7,7 @@ import { localizedTitle } from '@/lib/page-metadata';
 import { getDashboardData } from './dashboard-data';
 import { listPendingVersionApprovals } from '@/lib/version-approvals-inbox';
 import { buildGettingStartedItems } from '@/lib/onboarding/getting-started';
+import { CAN_BILLING } from '@/lib/deployment-mode';
 import { loadGettingStartedSignals } from '@/lib/onboarding/getting-started-signals';
 
 export const generateMetadata = localizedTitle('dashboardNav', 'dashboard');
@@ -42,6 +43,7 @@ export default async function DashboardPage() {
   const gettingStartedItems = buildGettingStartedItems({
     signals: gettingStartedSignals,
     isAdmin,
+    billing: CAN_BILLING,
     firstPolicyId: policies[0]?.id ?? null,
   });
 

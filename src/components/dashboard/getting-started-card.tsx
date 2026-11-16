@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { createBooleanPreference, ONE_ZERO, useBooleanPreference } from '@/lib/preferences/boolean-preference';
 import { Link } from '@/i18n/navigation';
+import { CLIENT_CAPABILITIES } from '@/hooks/use-deployment-mode';
 import { DocsLink } from '@/components/docs/docs-link';
 import {
   summarizeGettingStarted,
@@ -204,6 +205,14 @@ function ItemAction({
         {cta}
       </DocsLink>
     );
+  }
+  if (action.kind === 'billing') {
+    // /billing 仅 SaaS：门控与字面量写在一处，on-prem 产物里整段被折叠掉
+    return CLIENT_CAPABILITIES.billing ? (
+      <Link href="/billing" className={className}>
+        {cta}
+      </Link>
+    ) : null;
   }
   return (
     <Link href={action.href} className={className}>

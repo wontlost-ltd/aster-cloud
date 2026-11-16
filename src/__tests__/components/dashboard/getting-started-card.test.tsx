@@ -23,6 +23,7 @@ const openDocs = vi.fn();
 vi.mock('@/components/docs/docs-overlay-context', () => ({ useOptionalDocsOverlay: () => ({ openDocs }) }));
 
 import { GettingStartedCard } from '@/components/dashboard/getting-started-card';
+import { CLIENT_CAPABILITIES } from '@/hooks/use-deployment-mode';
 
 const messages = deepMergeMessages(
   JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../../../node_modules/@aster-cloud/ui-messages/en-US.json'), 'utf8')),
@@ -176,8 +177,13 @@ describe('GettingStartedCard', () => {
     const admin: GettingStartedItem[] = [
       { id: 'createPolicy', done: false, optional: false, action: { kind: 'link', href: '/policies/new' } },
       { id: 'addApiKey', done: false, optional: false, action: { kind: 'link', href: '/settings/api-keys' } },
+      { id: 'reviewBilling', done: false, optional: false, action: { kind: 'billing' } },
     ];
     renderCard(admin, { isAdmin: true });
+    // 账单入口由卡片在 CLIENT_CAPABILITIES.billing 门控下渲染：SaaS 有链接，on-prem 不渲染
+    const billing = screen.queryByRole('link', { name: 'Open billing' });
+    if (CLIENT_CAPABILITIES.billing) expect(billing?.getAttribute('href')).toBe('/billing');
+    else expect(billing).toBeNull();
     expect(screen.getByRole('heading', { name: 'Set Aster up in 60 seconds' })).toBeTruthy();
     expect(screen.getByText('Issue an API key')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Manage API keys' }).getAttribute('href')).toBe('/settings/api-keys');

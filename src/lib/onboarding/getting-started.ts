@@ -13,8 +13,6 @@
  * <p>完成状态全部来自真实数据（见 getting-started-signals.ts），按用户计算，不新增存储。
  */
 
-import { CLIENT_CAPABILITIES } from '@/hooks/use-deployment-mode';
-
 export interface GettingStartedSignals {
   /** 已保存使用场景与目标（users.onboardingCompletedAt 非空）。 */
   hasPreferences: boolean;
@@ -44,9 +42,14 @@ export type GettingStartedItemId =
   | 'inviteTeam'
   | 'reviewBilling';
 
-/** 条目的入口：站内链接、在文档浮层打开某篇文档、或展开卡片内的偏好表单。 */
+/**
+ * 条目的入口：站内链接、在文档浮层打开某篇文档、展开卡片内的偏好表单，或账单页。
+ * 账单单列一种：/billing 只在 SaaS 存在，链接由客户端卡片在 CLIENT_CAPABILITIES.billing 门控下渲染，
+ * 本模块（服务端与客户端共用）不出现该路径，on-prem 产物扫描（verify-on-prem-ui）据此不会误报。
+ */
 export type GettingStartedAction =
   | { kind: 'link'; href: string }
+  | { kind: 'billing' }
   | { kind: 'docs'; slug: string }
   | { kind: 'preferences' };
 
@@ -60,6 +63,8 @@ export interface GettingStartedItem {
 export interface GettingStartedInput {
   signals: GettingStartedSignals;
   isAdmin: boolean;
+  /** 部署是否有账单页（服务端传 CAN_BILLING）。 */
+  billing: boolean;
   /** 用户最近更新的策略 id，「运行」「提交审批」直接落到它；没有策略时落到策略列表。 */
   firstPolicyId: string | null;
 }
@@ -70,7 +75,7 @@ function policyHref(firstPolicyId: string | null, sub: 'execute' | 'versions'): 
   return link(firstPolicyId ? `/policies/${encodeURIComponent(firstPolicyId)}/${sub}` : '/policies');
 }
 
-export function buildGettingStartedItems({ signals: s, isAdmin, firstPolicyId }: GettingStartedInput): GettingStartedItem[] {
+export function buildGettingStartedItems({ signals: s, isAdmin, billing, firstPolicyId }: GettingStartedInput): GettingStartedItem[] {
   const preferences: GettingStartedItem = { id: 'preferences', done: s.hasPreferences, optional: true, action: { kind: 'preferences' } };
   const createPolicy: GettingStartedItem = { id: 'createPolicy', done: s.hasPolicy, optional: false, action: link('/policies/new') };
 
@@ -82,10 +87,8 @@ export function buildGettingStartedItems({ signals: s, isAdmin, firstPolicyId }:
       { id: 'addAiKey', done: s.hasAiKey, optional: false, action: link('/settings/ai-keys') },
       { id: 'inviteTeam', done: s.hasTeammate, optional: false, action: link('/teams') },
     ];
-    // 账单条目仅 SaaS：on-prem 没有 /billing 路由。直接以 CLIENT_CAPABILITIES 判定（而不是传参），
-    // verify-on-prem-ui 扫描产物时据此把紧随其后的 '/billing' 字面量认作已门控。
-    if (CLIENT_CAPABILITIES.billing) {
-      items.push({ id: 'reviewBilling', done: s.hasReviewedBilling, optional: false, action: link('/billing') });
+    if (billing) {
+      items.push({ id: 'reviewBilling', done: s.hasReviewedBilling, optional: false, action: { kind: 'billing' } });
     }
     return items;
   }
