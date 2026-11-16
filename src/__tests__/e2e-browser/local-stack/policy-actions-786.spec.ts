@@ -90,6 +90,12 @@ test.afterAll(async ({ browser }) => {
   await ctx.close();
 });
 
+/**
+ * 页面主区。详情页在服务端等可导出性检查时会流式渲染：内容先落在一个隐藏的流式容器里、再换进主区，
+ * 换入之前同一个 testid 会出现两份，故一律限定在主区里找。
+ */
+const main = (page: Page) => page.locator('#dashboard-main');
+
 /** 页面一创建就记录导出按钮是否出现过（含水合前后的任何瞬间） */
 async function watchExportButton(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -105,7 +111,7 @@ async function watchExportButton(page: Page): Promise<void> {
 
 /** 操作组里每个按钮 / 链接的盒子（视口坐标，已滚到顶部） */
 async function actionBoxes(page: Page) {
-  return page.getByTestId('policy-actions').evaluate((group) => {
+  return main(page).getByTestId('policy-actions').evaluate((group) => {
     window.scrollTo(0, 0);
     return Array.from(group.querySelectorAll<HTMLElement>('a[href], button')).map((el) => {
       const r = el.getBoundingClientRect();
@@ -132,7 +138,7 @@ for (const vp of VIEWPORTS) {
 
     test('Export to Cedar sits in the top-right action group with matching style and tap targets', async ({ page }) => {
       await page.goto(`/en/policies/${ids.exportable}`);
-      const group = page.getByTestId('policy-actions');
+      const group = main(page).getByTestId('policy-actions');
       const exportButton = group.getByRole('button', { name: 'Export to Cedar' });
       await expect(exportButton).toBeEnabled();
       const boxes = await actionBoxes(page);
@@ -167,20 +173,20 @@ for (const vp of VIEWPORTS) {
     test('the export result appears right under the action group, live-announced, without moving the actions', async ({ page }) => {
       test.setTimeout(120_000);
       await page.goto(`/en/policies/${ids.exportable}`);
-      const status = page.getByTestId('cedar-export-status');
+      const status = main(page).getByTestId('cedar-export-status');
       await expect(status).toHaveAttribute('aria-live', 'polite');
       const before = await actionBoxes(page);
       const downloads: unknown[] = [];
       page.on('download', (d) => downloads.push(d));
-      await page.getByTestId('policy-actions').getByRole('button', { name: 'Export to Cedar' }).click();
+      await main(page).getByTestId('policy-actions').getByRole('button', { name: 'Export to Cedar' }).click();
       const message = status.getByText(/Verified against Cedar on \d+ probes/);
       await expect(message).toBeVisible({ timeout: 60_000 });
       await expect.poll(() => downloads.length).toBe(2);
       // 操作组不受影响：位置不变、仍完整可见
       expect(await actionBoxes(page)).toEqual(before);
-      await expectUnclipped(page.getByTestId('policy-actions').getByRole('button', { name: 'Delete' }));
+      await expectUnclipped(main(page).getByTestId('policy-actions').getByRole('button', { name: 'Delete' }));
       // 状态区紧贴操作组下方
-      const groupBox = (await page.getByTestId('policy-actions').boundingBox())!;
+      const groupBox = (await main(page).getByTestId('policy-actions').boundingBox())!;
       const msgBox = (await message.boundingBox())!;
       expect(msgBox.y).toBeGreaterThanOrEqual(groupBox.y + groupBox.height - 1);
       expect(msgBox.y - (groupBox.y + groupBox.height)).toBeLessThan(48);
@@ -194,9 +200,9 @@ for (const vp of VIEWPORTS) {
       await watchExportButton(page);
       await page.goto(`/en/policies/${ids.notExportable}`);
       await page.waitForLoadState('networkidle');
-      await expect(page.getByTestId('policy-actions').getByRole('link', { name: 'Edit' })).toBeVisible();
+      await expect(main(page).getByTestId('policy-actions').getByRole('link', { name: 'Edit' })).toBeVisible();
       expect(await page.evaluate(() => (window as unknown as { __cedarSeen: boolean }).__cedarSeen)).toBe(false);
-      await expect(page.getByTestId('cedar-export-status')).toHaveCount(0);
+      await expect(main(page).getByTestId('cedar-export-status')).toHaveCount(0);
     });
 
     test('an exportable policy has the button in the server-rendered HTML (no loading state to flash)', async ({ page }) => {
@@ -208,9 +214,9 @@ for (const vp of VIEWPORTS) {
 
     test('draft only: the button is disabled and the approve-first hint sits in the status region', async ({ page }) => {
       await page.goto(`/en/policies/${ids.draft}`);
-      const button = page.getByTestId('policy-actions').getByRole('button', { name: 'Export to Cedar' });
+      const button = main(page).getByTestId('policy-actions').getByRole('button', { name: 'Export to Cedar' });
       await expect(button).toBeDisabled();
-      const hint = page.getByTestId('cedar-export-status').getByText('Approve a version before exporting to Cedar');
+      const hint = main(page).getByTestId('cedar-export-status').getByText('Approve a version before exporting to Cedar');
       await expect(hint).toBeVisible();
       await expect(button).toHaveAttribute('aria-describedby', (await hint.getAttribute('id'))!);
     });
