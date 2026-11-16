@@ -883,6 +883,15 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     //   漏改了这个入口，于是仪表盘仍在向外部用户承诺三套合规框架。
     //   在信贷风控领域「我们支持 SOC2」是有法律分量的说法，故按实际能力改写。
     dashboard: {
+      // 仪表盘「等待你审批的策略版本」卡片（#774）
+      pendingApprovals: {
+        title: 'Policy versions awaiting your review',
+        subtitle: 'Submitted for approval on policies you can approve. Authors can’t approve their own team submissions.',
+        review: 'Review',
+        submittedBy: 'Submitted by {name}',
+        unknownUser: 'Unknown user',
+        viewAll: 'All approvals',
+      },
       // 两个独立计量：cloud 自身 /api/v1 REST 调用（UsageRecord api_call）与 aster-api 的 Policy 执行 API（ApiCallRecord），分开命名免得看似矛盾。
       stats: { restApiCalls: 'Cloud REST API calls' },
       // 首页 AHA 卡片（原为硬编码英文）。
@@ -2662,6 +2671,15 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 见 en 段注释：入口原文承诺 GDPR/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
+      // 仪表盘「等待你审批的策略版本」卡片（#774）
+      pendingApprovals: {
+        title: '等待你审批的策略版本',
+        subtitle: '你有权审批的策略版本已提交审批。团队策略的作者不能审批自己的提交。',
+        review: '审批',
+        submittedBy: '提交人：{name}',
+        unknownUser: '未知用户',
+        viewAll: '全部审批',
+      },
       stats: { restApiCalls: 'Cloud REST API 调用' },
       aha: {
         achievedTitle: '🎉 已发布首个策略',
@@ -4433,6 +4451,15 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 见 en 段注释：入口原文承诺 DSGVO/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
+      // 仪表盘「等待你审批的策略版本」卡片（#774）
+      pendingApprovals: {
+        title: 'Richtlinienversionen zur Prüfung durch Sie',
+        subtitle: 'Zur Freigabe eingereichte Versionen von Richtlinien, die Sie freigeben dürfen. Autor:innen können eigene Team-Einreichungen nicht freigeben.',
+        review: 'Prüfen',
+        submittedBy: 'Eingereicht von {name}',
+        unknownUser: 'Unbekannter Benutzer',
+        viewAll: 'Alle Freigaben',
+      },
       stats: { restApiCalls: 'Cloud-REST-API-Aufrufe' },
       aha: {
         achievedTitle: '🎉 Erste Richtlinie veröffentlicht',
@@ -6200,6 +6227,15 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 见 en 段注释：入口原文承诺 GDPR/HIPAA/SOC2，而实际产出是决策证据包。
     dashboard: {
+      // 仪表盘「等待你审批的策略版本」卡片（#774）
+      pendingApprovals: {
+        title: 'आपकी समीक्षा की प्रतीक्षा में नीति संस्करण',
+        subtitle: 'उन नीतियों के संस्करण जिन्हें आप स्वीकृत कर सकते हैं। लेखक अपनी टीम सबमिशन स्वयं स्वीकृत नहीं कर सकते।',
+        review: 'समीक्षा करें',
+        submittedBy: '{name} द्वारा सबमिट',
+        unknownUser: 'अज्ञात उपयोगकर्ता',
+        viewAll: 'सभी स्वीकृतियाँ',
+      },
       stats: { restApiCalls: 'Cloud REST API कॉल' },
       aha: {
         achievedTitle: '🎉 पहली नीति प्रकाशित',

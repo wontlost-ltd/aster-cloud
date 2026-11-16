@@ -34,6 +34,11 @@ import { ApiUsageCard } from '@/components/dashboard/api-usage-card';
 import { AhaStatusCard } from '@/components/dashboard/aha-status-card';
 import { DunningBanner } from '@/components/dashboard/dunning-banner';
 import {
+  PendingVersionApprovalsCard,
+  type PendingVersionApprovalItem,
+} from '@/components/dashboard/pending-version-approvals-card';
+import { PendingInvitationsCard } from '@/components/teams/pending-invitations-card';
+import {
   AdminLaunchpad,
   type SetupSignals,
   type LaunchpadTranslations,
@@ -138,6 +143,9 @@ interface DashboardContentProps {
   totalPiiFields: number;
   translations: Translations;
   locale: string;
+  /** 当前用户能审批的待审批策略版本（服务端已按四眼规则筛过 canAct） */
+  pendingApprovals: PendingVersionApprovalItem[];
+  pendingApprovalsLabels: React.ComponentProps<typeof PendingVersionApprovalsCard>['labels'];
 }
 
 /** Tiny template interpolator — replaces {count}/{plan}/etc. in i18n
@@ -160,6 +168,8 @@ export function DashboardContent({
   totalPiiFields,
   translations: t,
   locale,
+  pendingApprovals,
+  pendingApprovalsLabels,
 }: DashboardContentProps) {
   return (
     <Container size="xl" className="py-6 sm:py-10">
@@ -180,6 +190,11 @@ export function DashboardContent({
             </Link>
           }
         />
+
+        {/* 待办（#774）：待接受的团队邀请与等你审批的策略版本放在首屏，直接给「接受」/「审批」入口；
+            此前只在 /teams 与 /approvals 能找到。两张卡在没有待办时都不渲染。 */}
+        <PendingInvitationsCard />
+        <PendingVersionApprovalsCard items={pendingApprovals} labels={pendingApprovalsLabels} />
 
         {/* Admin setup launchpad — first viewport for SaaS admins on a
             fresh tenant. The component self-hides when all five signals
