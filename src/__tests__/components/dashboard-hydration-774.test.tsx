@@ -1,0 +1,88 @@
+// @vitest-environment jsdom
+/**
+ * #774：/dashboard 的 React 水合错误 #418。根因：AdminLaunchpad 用 useState 惰性初始化在客户端首渲时读
+ * localStorage，已收起清单的用户在客户端首渲得到 null，而服务端渲染的是完整清单 → 文本 / 结构不一致。
+ * 修复后：水合期间与服务端一致，水合完成后再按 localStorage 隐藏，且不产生可恢复错误。
+ */
+import { act } from 'react';
+import { hydrateRoot } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@/i18n/navigation', () => ({
+  Link: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => <a href={href} {...rest}>{children}</a>,
+}));
+vi.mock('next/navigation', () => ({ usePathname: () => '/dashboard', useRouter: () => ({ push: vi.fn() }) }));
+vi.mock('@/components/docs/docs-overlay-context', () => ({ useDocsOverlay: () => ({ openDocs: vi.fn() }) }));
+vi.mock('lucide-react', async () => ({ ...(await vi.importActual<Record<string, unknown>>('lucide-react')) }));
+
+import { AdminLaunchpad } from '@/components/dashboard/admin-launchpad';
+
+const step = { label: 'L', desc: 'D', cta: 'C' };
+const props = {
+  signals: { hasPolicy: true, hasApiKey: false, hasAiKey: false, hasTeammate: false, hasReviewedBilling: false },
+  translations: {
+    title: 'Get set up', body: 'b', progressTemplate: '{done}/{total}', dismiss: 'Hide this checklist',
+    steps: { createPolicy: step, addApiKey: step, addAiKey: step, inviteTeam: step, reviewBilling: step },
+  },
+};
+
+afterEach(() => {
+  window.localStorage.clear();
+  document.body.innerHTML = '';
+});
+
+describe('AdminLaunchpad hydration (#774)', () => {
+  it('hydrates without a mismatch when the user has dismissed it, then hides', async () => {
+    // 服务端没有 localStorage：渲染完整清单
+    window.localStorage.clear();
+    const html = renderToString(<AdminLaunchpad {...props} />);
+    expect(html).toContain('Get set up');
+
+    window.localStorage.setItem('aster.admin.launchpad.dismissed', '1');
+    const container = document.createElement('div');
+    container.innerHTML = html;
+    document.body.appendChild(container);
+    const recoverable = vi.fn();
+    await act(async () => {
+      hydrateRoot(container, <AdminLaunchpad {...props} />, { onRecoverableError: recoverable });
+    });
+    expect(recoverable).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain('Get set up');
+  });
+
+  it('stays visible when not dismissed', async () => {
+    const html = renderToString(<AdminLaunchpad {...props} />);
+    const container = document.createElement('div');
+    container.innerHTML = html;
+    document.body.appendChild(container);
+    const recoverable = vi.fn();
+    await act(async () => {
+      hydrateRoot(container, <AdminLaunchpad {...props} />, { onRecoverableError: recoverable });
+    });
+    expect(recoverable).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Get set up');
+  });
+});
+
+describe('DashboardSidebar hydration (#774)', () => {
+  it('hydrates without a mismatch when the sidebar was collapsed, then collapses', async () => {
+    const { DashboardSidebar } = await import('@/components/dashboard-sidebar');
+    const labels = new Proxy({} as Record<string, string>, { get: (_t, k) => String(k) }) as never;
+    const caps = { riskTier: false, license: false, licenseRevoke: false, issuedLicenses: false, sso: false };
+    const tree = <DashboardSidebar localePrefix="" isAdmin={false} showBilling labels={labels} adminCapabilities={caps} />;
+    window.localStorage.clear();
+    const html = renderToString(tree);
+    window.localStorage.setItem('aster.sidebar.collapsed', '1');
+    const container = document.createElement('div');
+    container.innerHTML = html;
+    document.body.appendChild(container);
+    const recoverable = vi.fn();
+    await act(async () => {
+      hydrateRoot(container, tree, { onRecoverableError: recoverable });
+    });
+    expect(recoverable).not.toHaveBeenCalled();
+    // 收起后折叠按钮的名称变为「展开」
+    expect(container.querySelector('[aria-label="expandSidebar"]')).not.toBeNull();
+  });
+});
