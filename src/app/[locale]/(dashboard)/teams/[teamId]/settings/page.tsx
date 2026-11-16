@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { Breadcrumbs, ConfirmDialog, Container, Input, Label, PageHeader, Select, toast } from '@/components/ui';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
 import { TeamLanguageCard } from '@/components/teams/team-language-card';
+import { StructuredAuthoringSeatsCard } from '@/components/teams/structured-authoring-seats-card';
 import { FactIssuersPanel } from '@/components/guard/fact-issuers-panel';
 
 interface Team {
@@ -315,6 +316,9 @@ export default function TeamSettingsPage() {
       <div className="my-8">
         <FactIssuersPanel tenantId={teamId} />
       </div>
+
+      {/* 结构化编写座位（ADR 0058 §4.6）：只有 owner 能委派，团队 admin 看不到这一节。 */}
+      {canDelete && <StructuredAuthoringSeatsCard teamId={teamId} />}
 
       {/* Ownership transfer — owner-only, separate card so it doesn't
           look like part of the destructive zone. */}
