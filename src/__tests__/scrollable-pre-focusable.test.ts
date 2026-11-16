@@ -34,5 +34,19 @@ describe('scrollable <pre> elements are keyboard-focusable', () => {
   it('globals.css gives focused scroll regions a visible outline', () => {
     const css = readFileSync(join(SRC, 'app/globals.css'), 'utf8');
     expect(css).toMatch(/pre\[tabindex="0"\]:focus-visible/);
+    expect(css).toMatch(/\[data-scroll-region\]:focus-visible/);
+  });
+
+  it('every data-scroll-region container is focusable and named', () => {
+    const bad: string[] = [];
+    for (const file of tsxFiles(SRC)) {
+      const src = readFileSync(file, 'utf8');
+      for (const m of src.matchAll(/<div\b[^>]*\bdata-scroll-region\b[^>]*>/g)) {
+        if (!/tabIndex=\{0\}/.test(m[0]) || !/role="region"/.test(m[0]) || !/aria-label=/.test(m[0])) {
+          bad.push(`${relative(SRC, file)}:${src.slice(0, m.index).split('\n').length}`);
+        }
+      }
+    }
+    expect(bad).toEqual([]);
   });
 });
