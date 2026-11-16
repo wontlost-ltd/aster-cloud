@@ -18,6 +18,7 @@ import {
   check,
   unique,
   foreignKey,
+  primaryKey,
 } from 'drizzle-orm/pg-core';
 import { desc, relations, sql } from 'drizzle-orm';
 
@@ -541,6 +542,68 @@ export const structuralAliasGrants = pgTable(
     uniqueIndex('StructuralAliasGrant_active_unique')
       .on(table.userId)
       .where(sql`${table.revokedAt} IS NULL`),
+  ],
+);
+
+// ADR 0058 §4.2：能力授权。主体为用户或团队（二选一），来源三类；撤销只写 revokedAt，保留历史。
+// 委派（source='team_owner'）的行同时带 userId 与 delegatingTeamId，与个人授权可共存。
+export const capabilityGrants = pgTable(
+  'CapabilityGrant',
+  {
+    id: text('id').primaryKey().notNull(),
+    capability: text('capability').notNull(),
+    userId: text('userId').references(() => users.id, { onDelete: 'cascade' }),
+    teamId: text('teamId'),
+    delegatingTeamId: text('delegatingTeamId'),
+    source: text('source').notNull(),
+    grantedBy: text('grantedBy').references(() => users.id, { onDelete: 'set null' }),
+    grantedAt: timestamp('grantedAt', { mode: 'date' }).defaultNow().notNull(),
+    revokedAt: timestamp('revokedAt', { mode: 'date' }),
+    revokedBy: text('revokedBy'),
+    revokeReason: text('revokeReason'),
+    note: text('note'),
+  },
+  (table) => [
+    check('CapabilityGrant_subject_ck', sql`num_nonnulls(${table.userId}, ${table.teamId}) = 1`),
+    check(
+      'CapabilityGrant_delegation_ck',
+      sql`(${table.source} = 'team_owner') = (${table.delegatingTeamId} IS NOT NULL) AND (${table.delegatingTeamId} IS NULL OR ${table.userId} IS NOT NULL)`,
+    ),
+    check('CapabilityGrant_source_ck', sql`${table.source} IN ('platform_admin', 'team_owner', 'migration')`),
+    check('CapabilityGrant_note_len_ck', sql`${table.note} IS NULL OR char_length(${table.note}) <= 500`),
+    // 同一用户同一能力：个人授权与每个委派团队各最多一条活跃行（COALESCE 把 NULL 折成 ''，使个人授权也参与唯一）
+    uniqueIndex('CapabilityGrant_active_user_unique')
+      .on(table.capability, table.userId, sql`COALESCE(${table.delegatingTeamId}, '')`)
+      .where(sql`${table.revokedAt} IS NULL AND ${table.userId} IS NOT NULL`),
+    uniqueIndex('CapabilityGrant_active_team_unique')
+      .on(table.capability, table.teamId)
+      .where(sql`${table.revokedAt} IS NULL AND ${table.teamId} IS NOT NULL`),
+    index('CapabilityGrant_user_active_idx')
+      .on(table.capability, table.userId)
+      .where(sql`${table.revokedAt} IS NULL`),
+    index('CapabilityGrant_team_active_idx')
+      .on(table.capability, table.teamId)
+      .where(sql`${table.revokedAt} IS NULL`),
+    index('CapabilityGrant_delegating_active_idx')
+      .on(table.delegatingTeamId)
+      .where(sql`${table.revokedAt} IS NULL`),
+  ],
+);
+
+// ADR 0058 §4.2：团队对某能力的委派额度与开关；无行视为未配置。
+export const capabilityTeamAllotments = pgTable(
+  'CapabilityTeamAllotment',
+  {
+    capability: text('capability').notNull(),
+    teamId: text('teamId').notNull(),
+    seatCap: integer('seatCap').notNull(),
+    ownerGrantingEnabled: boolean('ownerGrantingEnabled').default(true).notNull(),
+    updatedBy: text('updatedBy'),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.capability, table.teamId] }),
+    check('CapabilityTeamAllotment_seatCap_ck', sql`${table.seatCap} BETWEEN 0 AND 10000`),
   ],
 );
 
