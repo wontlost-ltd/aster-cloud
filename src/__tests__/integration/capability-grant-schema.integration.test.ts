@@ -4,7 +4,7 @@
 // Run: LICENSE_E2E=1 DATABASE_URL=… pnpm exec vitest run --config vitest.integration.config.ts capability-grant-schema
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { inArray, like } from 'drizzle-orm';
+import { eq, inArray, like } from 'drizzle-orm';
 
 import { createDb } from '@/db';
 import { capabilityGrants, capabilityTeamAllotments, users } from '@/lib/prisma';
@@ -111,7 +111,10 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('CapabilityGrant 表约束（�
     const dup = await rejection(db.insert(capabilityGrants).values(grant({ userId: USER_A })));
     expect(dup).toContain('CapabilityGrant_active_user_unique');
 
-    await db.update(capabilityGrants).set({ revokedAt: new Date(), revokeReason: 'manual' });
+    await db
+      .update(capabilityGrants)
+      .set({ revokedAt: new Date(), revokeReason: 'manual' })
+      .where(eq(capabilityGrants.id, first.id));
     await db.insert(capabilityGrants).values(grant({ userId: USER_A }));
     // 撤销行可以有多条
     await db.insert(capabilityGrants).values(grant({ userId: USER_A, revokedAt: new Date() }));
