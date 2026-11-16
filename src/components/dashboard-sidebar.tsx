@@ -395,10 +395,13 @@ export function DashboardSidebar({
   const wasDrawerOpen = useRef(false);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
   useFocusTrap(drawerRef, drawerOpen, closeDrawer);
+  // 因路由跳转而关闭时不把焦点拉回汉堡按钮：焦点应留给新页面
+  const closedByNavigation = useRef(false);
   useEffect(() => {
     if (drawerOpen) drawerCloseRef.current?.focus();
-    else if (wasDrawerOpen.current) drawerTriggerRef.current?.focus();
+    else if (wasDrawerOpen.current && !closedByNavigation.current) drawerTriggerRef.current?.focus();
     wasDrawerOpen.current = drawerOpen;
+    closedByNavigation.current = false;
   }, [drawerOpen]);
 
   const toggleCollapsed = () => {
@@ -415,6 +418,17 @@ export function DashboardSidebar({
   const pathname = localePrefix && rawPath.startsWith(localePrefix)
     ? rawPath.slice(localePrefix.length) || '/'
     : rawPath;
+
+  // 在抽屉里点导航链接是客户端跳转，布局（含本组件）不卸载：路径变了就关掉抽屉，
+  // 否则新页面被抽屉盖住且 body 滚动仍被锁定（#774 审计发现）。
+  const lastPath = useRef(rawPath);
+  useEffect(() => {
+    if (lastPath.current === rawPath) return;
+    lastPath.current = rawPath;
+    if (!wasDrawerOpen.current) return;
+    closedByNavigation.current = true;
+    setDrawerOpen(false);
+  }, [rawPath]);
 
   // Build the group lists from labels + capabilities. Workspace
   // absorbs the old "Organization" cluster (Teams / Security / API

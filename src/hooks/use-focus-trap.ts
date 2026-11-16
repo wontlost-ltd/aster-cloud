@@ -35,10 +35,20 @@ export function useFocusTrap(
       const container = containerRef.current;
       if (!container) return;
       const focusable = container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
-      if (focusable.length === 0) return;
+      // 没有可聚焦元素：Tab 一律拦下，焦点不能逃出模态层
+      if (focusable.length === 0) {
+        e.preventDefault();
+        return;
+      }
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
       const current = document.activeElement;
+      // 焦点已在层外（当前元素被移除 / 禁用后落到 body 等）：拉回层内首尾
+      if (!(current instanceof Node) || !container.contains(current)) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+        return;
+      }
       if (e.shiftKey && current === first) {
         e.preventDefault();
         last.focus();

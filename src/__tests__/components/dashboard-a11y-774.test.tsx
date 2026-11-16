@@ -10,7 +10,9 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 vi.mock('next-intl', () => ({
   useTranslations: (ns: string) => (key: string) => `${ns}.${key}`,
 }));
-vi.mock('next/navigation', () => ({ usePathname: () => '/dashboard', useRouter: () => ({ push: vi.fn() }) }));
+// 可变路径：模拟在抽屉里点链接后的客户端路由跳转
+const nav = vi.hoisted(() => ({ path: '/dashboard' }));
+vi.mock('next/navigation', () => ({ usePathname: () => nav.path, useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('@/i18n/navigation', () => ({
   Link: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => <a href={href} {...rest}>{children}</a>,
 }));
@@ -54,8 +56,12 @@ describe('移动端侧栏抽屉的焦点管理', () => {
   const labels = new Proxy({} as Record<string, string>, { get: (_t, k) => String(k) }) as never;
   const caps = { riskTier: false, license: false, licenseRevoke: false, issuedLicenses: false, sso: false };
 
+  afterEach(() => {
+    nav.path = '/dashboard';
+  });
+
   function open() {
-    render(
+    const view = render(
       <>
         <DashboardSidebar localePrefix="" isAdmin={false} showBilling labels={labels} adminCapabilities={caps} />
         <button type="button">page content</button>
@@ -64,7 +70,7 @@ describe('移动端侧栏抽屉的焦点管理', () => {
     const trigger = screen.getByRole('button', { name: 'openMenu' });
     trigger.focus();
     fireEvent.click(trigger);
-    return { trigger, dialog: screen.getByRole('dialog') };
+    return { trigger, dialog: screen.getByRole('dialog'), view };
   }
 
   it('打开后焦点移入抽屉', async () => {
@@ -90,5 +96,28 @@ describe('移动端侧栏抽屉的焦点管理', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(document.activeElement).toBe(trigger);
+  });
+
+  it('点遮罩关闭后焦点同样回到汉堡按钮，并解除 body 滚动锁定', async () => {
+    const { trigger, dialog } = open();
+    expect(document.body.style.overflow).toBe('hidden');
+    fireEvent.click(dialog.querySelector('[aria-hidden="true"]') as HTMLElement);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).toBe(trigger);
+    expect(document.body.style.overflow).toBe('');
+  });
+
+  it('在抽屉里导航到新页面后自动关闭，焦点不被拉回汉堡按钮', async () => {
+    const { trigger, view } = open();
+    nav.path = '/policies';
+    view.rerender(
+      <>
+        <DashboardSidebar localePrefix="" isAdmin={false} showBilling labels={labels} adminCapabilities={caps} />
+        <button type="button">page content</button>
+      </>,
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).not.toBe(trigger);
+    expect(document.body.style.overflow).toBe('');
   });
 });
