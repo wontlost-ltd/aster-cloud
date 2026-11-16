@@ -99,6 +99,8 @@ export interface SidePanelProps {
   onAliasSetChange: (aliasSet: Record<string, string[]>) => void;
   /** Apply a generated/template body to the form's main content. */
   onApplyContent: (content: string) => void;
+  /** 编辑器里未改动的入门模板源码（新建时）；AI 生成据此按从零生成处理。其余情况为 null。 */
+  starterSource?: string | null;
   /** Apply a template — sets name + description + content together. */
   onApplyTemplate: (template: PolicyExample) => void;
   /** Close the entire side panel (parent collapses it). */
@@ -137,6 +139,7 @@ export function SidePanel({
   allowStructuralAliases,
   onAliasSetChange,
   onApplyContent,
+  starterSource = null,
   onApplyTemplate,
   onClose,
   compileState,
@@ -265,6 +268,7 @@ export function SidePanel({
             <AIAssistantPanel
               editor={editor}
               locale={cnlLocale}
+              starterSource={starterSource}
               onApply={onApplyContent}
               // Inside the side panel we don't want the inner X to
               // also close the entire side panel — give it a no-op

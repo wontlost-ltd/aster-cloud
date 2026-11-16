@@ -14,6 +14,7 @@ import {
   parseSegments,
 } from '@/lib/extract-aster-code';
 import type { editor } from 'monaco-editor';
+import { withoutPristineStarter } from '@/config/aster-policy-templates';
 
 // NSM/WAADR 埋点会话上下文：将 ai_draft_generated 与后续 draft_edited 关联
 // 使用全局 window 对象传递，避免穿透多层组件
@@ -37,6 +38,8 @@ interface AIAssistantPanelProps {
   editor: editor.IStandaloneCodeEditor | null;
   locale: string;
   tenantId?: string;
+  /** 编辑器里未改动的入门模板（新建策略时）；生成时不把它当作已有源码。 */
+  starterSource?: string | null;
   onApply: (source: string) => void;
   onClose: () => void;
 }
@@ -45,6 +48,7 @@ export function AIAssistantPanel({
   editor: monacoEditor,
   locale,
   tenantId,
+  starterSource = null,
   onApply,
   onClose,
 }: AIAssistantPanelProps) {
@@ -174,12 +178,13 @@ export function AIAssistantPanel({
       {
         goal: prompt.trim(),
         locale,
-        existingSource: existingSource || undefined,
+        // 编辑器里只有未改动的入门模板 = 从零生成，避免模型去「改写」入门示例
+        existingSource: withoutPristineStarter(existingSource, starterSource) || undefined,
       },
       tenantId,
     );
 
-  }, [prompt, monacoEditor, locale, tenantId, generate]);
+  }, [prompt, monacoEditor, locale, tenantId, generate, starterSource]);
 
   const handleSuggest = useCallback(async () => {
     const source = monacoEditor?.getValue();

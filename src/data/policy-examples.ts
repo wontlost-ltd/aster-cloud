@@ -9,13 +9,15 @@
  * 每个示例都有三种语言的原生 CNL 源码
  */
 
+import { ASTER_POLICY_TEMPLATES, STARTER_TEMPLATE_ID } from '@/config/aster-policy-templates';
+
 // ============================================
 // 类型定义
 // ============================================
 
 export type SupportedLocale = 'en-US' | 'zh-CN' | 'de-DE';
 
-export type PolicyCategory = 'loan' | 'creditcard' | 'fraud' | 'healthcare' | 'auto-insurance';
+export type PolicyCategory = 'starter' | 'loan' | 'creditcard' | 'fraud' | 'healthcare' | 'auto-insurance';
 
 export interface PolicyExampleInput {
   [key: string]: unknown;
@@ -682,6 +684,42 @@ Regel zinsBestimmen gegeben antragsteller als Antragsteller, liefert:
 // 策略示例定义
 // ============================================
 
+/**
+ * 基础入门：新建策略默认预填的入门模板（源码取自 @/config/aster-policy-templates，不复制）。
+ * 放在目录首位，用户「从空白开始」后仍可在侧栏「模板」tab 一键找回。
+ */
+const basicStarterExample: PolicyExample = {
+  id: STARTER_TEMPLATE_ID,
+  category: 'starter',
+  groupId: 'loan',
+  sources: ASTER_POLICY_TEMPLATES,
+  metadata: {
+    'en-US': {
+      name: 'Basic starter',
+      description: 'A short loan rule to learn the syntax: one type, one rule, nested conditions',
+    },
+    'zh-CN': {
+      name: '基础入门',
+      description: '用于熟悉语法的简短贷款规则：一个类型、一条规则、嵌套条件',
+    },
+    'de-DE': {
+      name: 'Einstiegsvorlage',
+      description: 'Kurze Kreditregel zum Kennenlernen der Syntax: ein Typ, eine Regel, verschachtelte Bedingungen',
+    },
+  },
+  defaultInputs: {
+    'en-US': {
+      applicant: { id: 'APP-001', creditScore: 720, income: 75000, requestedAmount: 20000 },
+    },
+    'zh-CN': {
+      申请人: { 编号: 'APP-001', 信用评分: 720, 收入: 75000, 申请金额: 20000 },
+    },
+    'de-DE': {
+      antragsteller: { kennung: 'APP-001', bonitaet: 720, einkommen: 75000, kreditbetrag: 20000 },
+    },
+  },
+};
+
 const loanExample: PolicyExample = {
   id: 'loan-evaluation',
   category: 'loan',
@@ -1011,6 +1049,7 @@ const creditcardExample: PolicyExample = {
 // ============================================
 
 export const POLICY_EXAMPLES: PolicyExample[] = [
+  basicStarterExample,
   loanExample,
   healthcareExample,
   autoInsuranceExample,
@@ -1020,6 +1059,7 @@ export const POLICY_EXAMPLES: PolicyExample[] = [
 
 // 按类别分组
 export const POLICY_EXAMPLES_BY_CATEGORY: Record<PolicyCategory, PolicyExample[]> = {
+  starter: POLICY_EXAMPLES.filter((e) => e.category === 'starter'),
   loan: POLICY_EXAMPLES.filter((e) => e.category === 'loan'),
   creditcard: POLICY_EXAMPLES.filter((e) => e.category === 'creditcard'),
   fraud: POLICY_EXAMPLES.filter((e) => e.category === 'fraud'),
@@ -1109,6 +1149,7 @@ export function normalizeLocale(locale: string): SupportedLocale {
  * 类别标签映射
  */
 export const CATEGORY_LABELS: Record<PolicyCategory, Record<SupportedLocale, string>> = {
+  starter: { 'en-US': 'Getting started', 'zh-CN': '入门', 'de-DE': 'Erste Schritte' },
   loan: { 'en-US': 'Loan', 'zh-CN': '贷款', 'de-DE': 'Kredit' },
   creditcard: { 'en-US': 'Credit Card', 'zh-CN': '信用卡', 'de-DE': 'Kreditkarte' },
   fraud: { 'en-US': 'Fraud Detection', 'zh-CN': '欺诈检测', 'de-DE': 'Betrugserkennung' },
