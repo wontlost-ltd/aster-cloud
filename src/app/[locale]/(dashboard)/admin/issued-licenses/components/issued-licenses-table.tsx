@@ -62,9 +62,10 @@ function telemetryRecencyLabel(received: Date | null, optedIn: boolean, t: Retur
 export function IssuedLicensesTable({ rows, searchQuery }: Props) {
   const t = useTranslations('admin.issuedLicenses');
 
+  // 不再放与页面 h1 同名的 sr-only h2（读屏会读到两遍「Issued licenses」标题，#774）；
+  // 区域名只给下面的表格滚动容器，外层不再重复命名
   return (
-    // 不再放与页面 h1 同名的 sr-only h2（读屏会读到两遍「Issued licenses」标题，#774）；区域名改用 aria-label
-    <section aria-label={t('title')} className="space-y-3">
+    <section className="space-y-3">
       <form method="GET" className="flex items-center gap-2">
         <input
           type="search"
