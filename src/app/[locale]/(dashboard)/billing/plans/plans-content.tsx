@@ -32,6 +32,8 @@ interface Usage {
 
 interface Translations {
   currencies: Record<CurrencyCode, string>;
+  currencyLabel: string;
+  intervalLabel: string;
   title: string;
   subtitle: string;
   subscriptionActivated: string;
@@ -280,9 +282,10 @@ function BillingContentInner({
       {/* Billing Options: Interval Toggle + Currency Selector */}
       <div className="flex flex-col sm:flex-row justify-center items-center gap-4 mb-8">
         {/* Billing Interval Toggle */}
-        <div className="relative flex rounded-lg bg-bg-muted p-1">
+        <div role="group" aria-label={t.intervalLabel} className="relative flex rounded-lg bg-bg-muted p-1">
           <button
             type="button"
+            aria-pressed={interval === 'monthly'}
             onClick={() => setInterval('monthly')}
             className={`relative px-4 py-2 text-sm font-medium rounded-md ${
               interval === 'monthly'
@@ -294,6 +297,7 @@ function BillingContentInner({
           </button>
           <button
             type="button"
+            aria-pressed={interval === 'yearly'}
             onClick={() => setInterval('yearly')}
             className={`relative px-4 py-2 text-sm font-medium rounded-md ${
               interval === 'yearly'
@@ -309,6 +313,7 @@ function BillingContentInner({
         {/* Currency Selector */}
         <div className="relative">
           <select
+            aria-label={t.currencyLabel}
             value={currency}
             onChange={(e) => setCurrency(e.target.value as CurrencyCode)}
             className="appearance-none bg-bg border border-border-strong rounded-lg px-4 py-2 pr-8 text-sm font-medium text-fg hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary cursor-pointer"

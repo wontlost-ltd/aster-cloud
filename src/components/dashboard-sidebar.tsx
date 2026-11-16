@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { useFocusTrap } from '@/hooks/use-focus-trap';
 import {
   LayoutDashboard,
   FileText,
@@ -56,7 +57,8 @@ import { useDocsOverlay } from '@/components/docs/docs-overlay-context';
  *   - active route uses aria-current="page"
  *   - icons aria-hidden so screen readers read the label, not glyph
  *   - collapsed labels still announced via aria-label on the link
- *   - drawer has focus-trap-style escape on backdrop click + ESC
+ *   - drawer is a modal: focus moves in on open, Tab is trapped, ESC /
+ *     backdrop click close it and focus returns to the hamburger
  */
 
 export interface SidebarItem {
@@ -385,19 +387,21 @@ export function DashboardSidebar({
   // would be a useless density compromise on a phone).
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // ESC closes the drawer + body scroll lock while open.
+  // 抽屉是模态对话框：打开时焦点移到关闭按钮，Tab 困在抽屉内，Esc 关闭并锁定 body 滚动；
+  // 关闭后焦点回到汉堡按钮（WCAG 2.4.3 焦点顺序），否则键盘用户会落到页面开头。
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const drawerCloseRef = useRef<HTMLButtonElement>(null);
+  const drawerTriggerRef = useRef<HTMLButtonElement>(null);
+  const wasDrawerOpen = useRef(false);
+  const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+  useFocusTrap(drawerRef, drawerOpen, closeDrawer);
+  // 因路由跳转而关闭时不把焦点拉回汉堡按钮：焦点应留给新页面
+  const closedByNavigation = useRef(false);
   useEffect(() => {
-    if (!drawerOpen) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setDrawerOpen(false);
-    }
-    document.addEventListener('keydown', onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prevOverflow;
-    };
+    if (drawerOpen) drawerCloseRef.current?.focus();
+    else if (wasDrawerOpen.current && !closedByNavigation.current) drawerTriggerRef.current?.focus();
+    wasDrawerOpen.current = drawerOpen;
+    closedByNavigation.current = false;
   }, [drawerOpen]);
 
   const toggleCollapsed = () => {
@@ -414,6 +418,17 @@ export function DashboardSidebar({
   const pathname = localePrefix && rawPath.startsWith(localePrefix)
     ? rawPath.slice(localePrefix.length) || '/'
     : rawPath;
+
+  // 在抽屉里点导航链接是客户端跳转，布局（含本组件）不卸载：路径变了就关掉抽屉，
+  // 否则新页面被抽屉盖住且 body 滚动仍被锁定（#774 审计发现）。
+  const lastPath = useRef(rawPath);
+  useEffect(() => {
+    if (lastPath.current === rawPath) return;
+    lastPath.current = rawPath;
+    if (!wasDrawerOpen.current) return;
+    closedByNavigation.current = true;
+    setDrawerOpen(false);
+  }, [rawPath]);
 
   // Build the group lists from labels + capabilities. Workspace
   // absorbs the old "Organization" cluster (Teams / Security / API
@@ -505,6 +520,7 @@ export function DashboardSidebar({
         by placing a width-9 spacer in the topbar.
        */}
       <button
+        ref={drawerTriggerRef}
         type="button"
         onClick={() => setDrawerOpen(true)}
         aria-label={labels.openMenu}
@@ -524,19 +540,16 @@ export function DashboardSidebar({
           aria-modal="true"
           aria-label={labels.brand}
         >
-          <button
-            type="button"
-            aria-label={labels.closeMenu}
-            onClick={() => setDrawerOpen(false)}
-            className="absolute inset-0 bg-fg/40"
-          />
-          <div className="relative flex h-full w-72 max-w-[85%] flex-col bg-bg shadow-xl">
+          {/* 背景遮罩仅供指针点击关闭；键盘与读屏用户用抽屉内的关闭按钮，避免出现两个同名按钮 */}
+          <div aria-hidden onClick={closeDrawer} className="absolute inset-0 bg-fg/40" />
+          <div ref={drawerRef} className="relative flex h-full w-72 max-w-[85%] flex-col bg-bg shadow-xl">
             {/* Close button sits inside the drawer (top-right) so a user
                 who tapped the hamburger has an obvious way out without
                 hunting for the backdrop. */}
             <button
+              ref={drawerCloseRef}
               type="button"
-              onClick={() => setDrawerOpen(false)}
+              onClick={closeDrawer}
               aria-label={labels.closeMenu}
               className="absolute right-2 top-2 inline-flex size-9 items-center justify-center rounded-md text-fg-muted hover:bg-bg-subtle hover:text-fg focus-visible:outline-none focus-visible:shadow-ring"
             >

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { CheckCircle2, AlertCircle, Loader2, XCircle } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Button, Card, CardBody, toast } from '@/components/ui';
@@ -56,6 +56,8 @@ const POLL_BACKOFF_FACTOR = 1.3;
  */
 export function BulkJobProgress({ jobId, onClear, onTerminal }: BulkJobProgressProps) {
   const t = useTranslations('domainVocabularies.jobProgress');
+  // 进度条以任务状态文字为可访问名称（axe aria-progressbar-name）
+  const statusId = useId();
   const [job, setJob] = useState<BulkJobView | null>(null);
   const [error, setError] = useState('');
   const [cancelling, setCancelling] = useState(false);
@@ -181,7 +183,7 @@ export function BulkJobProgress({ jobId, onClear, onTerminal }: BulkJobProgressP
               aria-hidden="true"
             />
             <div>
-              <p className="text-sm font-semibold text-fg">
+              <p id={statusId} className="text-sm font-semibold text-fg">
                 {t(`status.${job.status}`)}
               </p>
               <p className="text-xs text-fg-muted">
@@ -213,6 +215,7 @@ export function BulkJobProgress({ jobId, onClear, onTerminal }: BulkJobProgressP
         <div
           className="h-2 w-full overflow-hidden rounded-full bg-bg-subtle"
           role="progressbar"
+          aria-labelledby={statusId}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={percent}

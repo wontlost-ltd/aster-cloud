@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react';
+import { useState, useEffect, useCallback, useId, useRef, useSyncExternalStore } from 'react';
 import { useTranslations } from 'next-intl';
 import { formatDate } from '@/lib/format';
 import { Link } from '@/i18n/navigation';
@@ -426,6 +426,8 @@ export function LogsContent({
   }, []);
 
   // Filters
+  // 筛选控件的 label ↔ 控件关联（#774 axe label / select-name）
+  const filterId = useId();
   const [successFilter, setSuccessFilter] = useState<string>('');
   const [sourceFilter, setSourceFilter] = useState<string>('');
   const [startDate, setStartDate] = useState<string>('');
@@ -641,10 +643,11 @@ export function LogsContent({
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
           <div>
-            <label className="block text-xs font-semibold text-fg-muted uppercase tracking-wide mb-2">
+            <label htmlFor={`${filterId}-0`} className="block text-xs font-semibold text-fg-muted uppercase tracking-wide mb-2">
               {t.logs.filter}
             </label>
             <select
+              id={`${filterId}-0`}
               value={successFilter}
               onChange={(e) => {
                 setSuccessFilter(e.target.value);
@@ -662,10 +665,11 @@ export function LogsContent({
             </select>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-fg-muted uppercase tracking-wide mb-2">
+            <label htmlFor={`${filterId}-1`} className="block text-xs font-semibold text-fg-muted uppercase tracking-wide mb-2">
               {t.logs.source}
             </label>
             <select
+              id={`${filterId}-1`}
               value={sourceFilter}
               onChange={(e) => {
                 setSourceFilter(e.target.value);
@@ -680,22 +684,24 @@ export function LogsContent({
             </select>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-fg-muted uppercase tracking-wide mb-2">
+            <label htmlFor={`${filterId}-2`} className="block text-xs font-semibold text-fg-muted uppercase tracking-wide mb-2">
               {t.logs.from}
             </label>
             <input
               type="date"
+              id={`${filterId}-2`}
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
               className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none hover:border-gray-400 sm:text-sm cursor-pointer"
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-fg-muted uppercase tracking-wide mb-2">
+            <label htmlFor={`${filterId}-3`} className="block text-xs font-semibold text-fg-muted uppercase tracking-wide mb-2">
               {t.logs.to}
             </label>
             <input
               type="date"
+              id={`${filterId}-3`}
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
               className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none hover:border-gray-400 sm:text-sm cursor-pointer"

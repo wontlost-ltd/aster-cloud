@@ -249,10 +249,11 @@ function DraggablePolicyItem({
             <div
               {...listeners}
               {...attributes}
+              aria-label={tPolicies('dragHandle', { name: policy.name })}
               data-drag-handle
               className="mr-3 flex-shrink-0 cursor-grab rounded p-1 opacity-0 transition-opacity hover:bg-bg-muted group-hover:opacity-100 active:cursor-grabbing"
             >
-              <GripVertical className="size-4 text-fg-subtle" />
+              <GripVertical className="size-4 text-fg-subtle" aria-hidden />
             </div>
           ) : (
             <div className="mr-3 size-6 flex-shrink-0" aria-hidden />
