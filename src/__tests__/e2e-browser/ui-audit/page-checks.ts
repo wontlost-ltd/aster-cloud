@@ -213,7 +213,16 @@ export function focusIndicator(): { ok: boolean; selector: string; text: string 
   const outline = cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0;
   const ring = cs.boxShadow !== 'none' && cs.boxShadow !== '';
   const deco = cs.textDecorationLine.includes('underline');
+  // 焦点环画在外层包装上（focus-within，如带前缀的输入框）也算：只认 outline 或「0 0 0 Npx」形式的环，
+  // 普通投影（卡片的 shadow-sm）不算
+  let wrapperRing = false;
+  for (let p = el.parentElement, i = 0; p && i < 2 && !wrapperRing; p = p.parentElement, i += 1) {
+    if (!p.matches(':focus-within')) break;
+    const pcs = getComputedStyle(p);
+    wrapperRing = (pcs.outlineStyle !== 'none' && parseFloat(pcs.outlineWidth) > 0)
+      || /0px 0px 0px [1-9]/.test(pcs.boxShadow);
+  }
   const id = el.id ? `#${el.id}` : '';
   const text = (el.innerText || el.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ').slice(0, 50);
-  return { ok: outline || ring || deco, selector: `${el.tagName.toLowerCase()}${id}`, text };
+  return { ok: outline || ring || deco || wrapperRing, selector: `${el.tagName.toLowerCase()}${id}`, text };
 }
