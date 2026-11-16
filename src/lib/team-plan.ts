@@ -32,7 +32,7 @@ export type TeamOwnerEligibility =
   | { eligible: false; code: 'new_owner_plan_ineligible' }
   | { eligible: false; code: 'new_owner_seat_limit'; memberCount: number; limit: number };
 
-type DbClient = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type DbClient = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /**
  * 在事务内锁住团队行（SELECT … FOR UPDATE）。转让所有权与接受邀请都先锁它，
