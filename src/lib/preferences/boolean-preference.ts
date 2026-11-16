@@ -32,7 +32,16 @@ export interface BooleanPreference {
   subscribe(onChange: () => void): () => void;
 }
 
-export function createBooleanPreference(key: string, defaultValue: boolean): BooleanPreference {
+/** 存储里的编码：默认 'true' / 'false'；早已上线、存成 '1' / '0' 的键用 ONE_ZERO 保持兼容。 */
+export interface BooleanCodec {
+  encode(value: boolean): string;
+  decode(raw: string): boolean;
+}
+
+const TRUE_FALSE: BooleanCodec = { encode: String, decode: (raw) => raw === 'true' };
+export const ONE_ZERO: BooleanCodec = { encode: (v) => (v ? '1' : '0'), decode: (raw) => raw === '1' };
+
+export function createBooleanPreference(key: string, defaultValue: boolean, codec: BooleanCodec = TRUE_FALSE): BooleanPreference {
   const listeners = new Set<() => void>();
   // 仅在 localStorage 不可读写时兜底：保证本次会话内写入仍生效。
   let sessionValue: boolean | null = null;
@@ -41,7 +50,7 @@ export function createBooleanPreference(key: string, defaultValue: boolean): Boo
     if (typeof window === 'undefined') return defaultValue;
     try {
       const raw = window.localStorage.getItem(key);
-      if (raw !== null) return raw === 'true';
+      if (raw !== null) return codec.decode(raw);
     } catch {
       /* 存储不可用：落到会话内的值 */
     }
@@ -55,7 +64,7 @@ export function createBooleanPreference(key: string, defaultValue: boolean): Boo
   const write = (value: boolean): void => {
     sessionValue = value;
     try {
-      window.localStorage.setItem(key, String(value));
+      window.localStorage.setItem(key, codec.encode(value));
     } catch {
       /* 存不下也不让 UI 失效：本次会话内仍按 value 生效 */
     }

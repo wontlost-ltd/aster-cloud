@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { createBooleanPreference, ONE_ZERO, useBooleanPreference } from '@/lib/preferences/boolean-preference';
 import { Plus, Check, Sparkles, KeyRound, Users, CreditCard } from 'lucide-react';
 import { Link } from '@/i18n/navigation';
 import { CLIENT_CAPABILITIES } from '@/hooks/use-deployment-mode';
@@ -59,16 +59,13 @@ interface AdminLaunchpadProps {
 }
 
 const DISMISS_KEY = 'aster.admin.launchpad.dismissed';
+// 已上线的键存的是 '1'，沿用该编码
+const dismissedPreference = createBooleanPreference(DISMISS_KEY, false, ONE_ZERO);
+
 
 export function AdminLaunchpad({ signals, translations: t }: AdminLaunchpadProps) {
-  // Lazy init from localStorage; SSR returns false so the launchpad
-  // renders on first paint and the client may hide it on hydrate. A
-  // brief flash is acceptable — preferable to a layout shift toward
-  // *showing* it on rehydrate for a paid admin who dismissed it.
-  const [dismissed, setDismissed] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return window.localStorage.getItem(DISMISS_KEY) === '1';
-  });
+  // 收起状态存在 localStorage，服务端读不到：水合期间按未收起渲染（与 SSR 一致），水合后才隐藏（#774 #418）。
+  const { value: dismissed, setValue: setDismissed } = useBooleanPreference(dismissedPreference);
 
   if (dismissed) return null;
 
@@ -149,7 +146,6 @@ export function AdminLaunchpad({ signals, translations: t }: AdminLaunchpadProps
             <button
               type="button"
               onClick={() => {
-                window.localStorage.setItem(DISMISS_KEY, '1');
                 setDismissed(true);
               }}
               className="text-xs text-fg-subtle hover:text-fg focus-visible:outline-none focus-visible:underline"
