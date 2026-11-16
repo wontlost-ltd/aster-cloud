@@ -108,5 +108,12 @@ export async function resolveEntitlement(
   return { allowed: true, sources };
 }
 
+// React cache 按参数引用比较，ctx 对象每次都是新的；缓存键必须是原始值。
+const resolveCached = cache((userId: string, capability: CapabilityKey, teamId: string | null) =>
+  resolveEntitlement(userId, capability, { teamId }),
+);
+
 /** 同一 RSC 请求内去重（React cache）；API 路由在处理函数内直接调用 resolveEntitlement 一次。 */
-export const resolveEntitlementForRequest = cache(resolveEntitlement);
+export function resolveEntitlementForRequest(userId: string, capability: CapabilityKey, ctx: { teamId: string | null }) {
+  return resolveCached(userId, capability, ctx.teamId);
+}

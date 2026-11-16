@@ -38,7 +38,7 @@ async function handleCapabilityErrors(run: () => Promise<NextResponse>): Promise
 }
 
 function parseLimit(raw: string | null): number {
-  const requested = Number(raw ?? 100);
+  const requested = Number(raw === null || raw.trim() === '' ? 100 : raw);
   return Number.isFinite(requested) ? Math.max(1, Math.min(500, Math.trunc(requested))) : 100;
 }
 

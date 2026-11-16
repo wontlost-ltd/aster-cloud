@@ -95,6 +95,26 @@ describe('CapabilityGrantsContent', () => {
     );
   });
 
+  it('慢响应乱序返回时不覆盖较新搜索词的结果', async () => {
+    const resolvers: Record<string, (r: Response) => void> = {};
+    setup('en', (url: string) => {
+      if (url.includes('q=a&') || url.endsWith('q=a')) {
+        return new Promise<Response>((resolve) => (resolvers.a = resolve));
+      }
+      if (url.includes('q=ab')) return json(200, { users: [{ id: 'u-9', email: 'fresh@x.io', name: null, sources: [] }] });
+      return json(200, USERS);
+    });
+    await screen.findByText('direct@x.io');
+    fireEvent.change(screen.getByLabelText(L.search), { target: { value: 'a' } });
+    await waitFor(() => expect(resolvers.a).toBeDefined());
+    fireEvent.change(screen.getByLabelText(L.search), { target: { value: 'ab' } });
+    await screen.findByText('fresh@x.io');
+    resolvers.a(await json(200, { users: [{ id: 'u-8', email: 'stale@x.io', name: null, sources: [] }] }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByText('stale@x.io')).toBeNull();
+    expect(screen.getByText('fresh@x.io')).toBeTruthy();
+  });
+
   it('点「授予」发 POST {subjectType:user, subjectId}', async () => {
     setup(
       'en',

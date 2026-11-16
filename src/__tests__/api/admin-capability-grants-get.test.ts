@@ -53,3 +53,31 @@ describe('GET grants?subject=user 来源带团队名', () => {
     expect(whereTeams).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('GET grants limit 解析', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(requireAdmin).mockResolvedValue({ userId: 'admin-1' });
+    vi.mocked(listGrantSources).mockResolvedValue([]);
+  });
+
+  async function limitUsed(query: string) {
+    const limit = vi.fn(async (_n: number) => []);
+    selectMock.mockReturnValueOnce({ from: () => ({ where: () => ({ orderBy: () => ({ limit }) }) }) });
+    await GET(new Request(`http://localhost/api/admin/capabilities/${CAP}/grants?subject=user${query}`), {
+      params: Promise.resolve({ capability: CAP }),
+    });
+    return limit.mock.calls[0]?.[0];
+  }
+
+  it.each([
+    ['', 100],
+    ['&limit=', 100],
+    ['&limit=0', 1],
+    ['&limit=501', 500],
+    ['&limit=abc', 100],
+    ['&limit=20', 20],
+  ])('query %j → limit %i', async (query, expected) => {
+    expect(await limitUsed(query)).toBe(expected);
+  });
+});

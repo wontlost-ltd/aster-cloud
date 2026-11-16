@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Badge, Button, Container, Input, PageHeader, Toggle } from '@/components/ui';
 
@@ -12,6 +12,7 @@ import { Badge, Button, Container, Input, PageHeader, Toggle } from '@/component
 
 const CAPABILITY = 'structured_authoring';
 const API = `/api/admin/capabilities/${CAPABILITY}`;
+const SEARCH_DEBOUNCE_MS = 250;
 
 type GrantSource =
   | { kind: 'admin' }
@@ -83,19 +84,29 @@ export function CapabilityGrantsContent() {
   const t = useTranslations('admin.structuredAuthoring');
   const [tab, setTab] = useState<Tab>('users');
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  // 只接受最新一次读取的结果，避免慢响应覆盖新搜索词的列表
+  const loadSeq = useRef(0);
   const [users, setUsers] = useState<GrantUser[]>([]);
   const [teams, setTeams] = useState<GrantTeam[]>([]);
   const [drafts, setDrafts] = useState<Record<string, AllotmentDraft>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [query]);
+
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     setError('');
     try {
       const subject = tab === 'users' ? 'user' : 'team';
-      const response = await fetch(`${API}/grants?subject=${subject}&q=${encodeURIComponent(query)}`);
+      const response = await fetch(`${API}/grants?subject=${subject}&q=${encodeURIComponent(debouncedQuery)}`);
       if (!response.ok) throw new Error(String(response.status));
       const result = (await response.json()) as { users?: GrantUser[]; teams?: GrantTeam[] };
+      if (seq !== loadSeq.current) return;
       if (tab === 'users') {
         setUsers(result.users ?? []);
       } else {
@@ -104,9 +115,9 @@ export function CapabilityGrantsContent() {
         setDrafts(Object.fromEntries(rows.map((team) => [team.id, toDraft(team)])));
       }
     } catch {
-      setError(t('loadError'));
+      if (seq === loadSeq.current) setError(t('loadError'));
     }
-  }, [tab, query, t]);
+  }, [tab, debouncedQuery, t]);
 
   useEffect(() => {
     // 数据加载需随标签与搜索词变化；更新状态发生在异步请求完成后。

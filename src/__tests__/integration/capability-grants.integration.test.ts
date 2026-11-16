@@ -405,7 +405,9 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('平台授权写服务（真实
       name: 'bob',
       sources: [{ kind: 'direct', grantId: direct.grant.id }],
     });
-    expect(byId.get(ALICE)?.sources).toEqual([{ kind: 'team', grantId: team.grant.id, teamId: TEAM }]);
+    expect(byId.get(ALICE)?.sources).toEqual([
+      { kind: 'team', grantId: team.grant.id, teamId: TEAM, teamName: 'Capgr Team' },
+    ]);
     expect(byId.get(VIEWER)?.sources).toEqual([]);
   });
 
