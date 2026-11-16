@@ -50,6 +50,8 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
   const visible = (el: Element) => {
     const r = el.getBoundingClientRect();
     if (r.width === 0 || r.height === 0) return false;
+    // 收起的 <details> 里的内容（Chrome 以 content-visibility 隐藏，盒子尺寸仍在）不可见，也不可点
+    if ('checkVisibility' in el && !(el as HTMLElement).checkVisibility({ contentVisibilityAuto: true })) return false;
     const cs = getComputedStyle(el);
     return cs.visibility !== 'hidden' && cs.display !== 'none' && Number(cs.opacity) > 0 && !el.closest('[aria-hidden="true"], [inert]');
   };
@@ -264,6 +266,8 @@ export function collectStructure(): StructureReport {
   const shown = (el: Element) => {
     const r = el.getBoundingClientRect();
     if (r.width === 0 || r.height === 0) return false;
+    // 收起的 <details> 里的内容（Chrome 以 content-visibility 隐藏，盒子尺寸仍在）不可见，也不可点
+    if ('checkVisibility' in el && !(el as HTMLElement).checkVisibility({ contentVisibilityAuto: true })) return false;
     const cs = getComputedStyle(el);
     return cs.visibility !== 'hidden' && cs.display !== 'none' && Number(cs.opacity) > 0 && !el.closest('[aria-hidden="true"], [inert]');
   };

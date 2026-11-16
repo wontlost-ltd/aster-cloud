@@ -36,6 +36,12 @@ test.describe('tap targets (44px on mobile)', () => {
     expect(await small(page, list)).toEqual(['One', 'Two']);
   });
 
+  test('targets inside a closed <details> neither count nor block a neighbour\'s hit area', async ({ page }) => {
+    const body = `<details><summary style="display:block;height:44px">Sections</summary><a href="/x" style="display:block">Hidden</a></details>
+      <div style="padding:20px 40px"><a href="/y" class="tap-target" style="display:inline-block;font:14px/20px sans-serif">Docs</a></div>`;
+    expect(await small(page, body)).toEqual([]);
+  });
+
   test('links inside a sentence are exempt', async ({ page }) => {
     expect(await small(page, '<p style="font:14px/20px sans-serif">Read the <a href="/d">docs</a> before you start.</p>')).toEqual([]);
   });
