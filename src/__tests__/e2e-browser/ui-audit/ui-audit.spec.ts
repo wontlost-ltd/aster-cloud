@@ -10,7 +10,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { NOT_LOCAL, NOT_LOCAL_REASON } from '../local-stack/helpers';
-import { collectLayout, collectLinks } from './page-checks';
+import { MOBILE_MIN_TARGET, collectLayout, collectLinks, collectStructure } from './page-checks';
 import { BLOCKED_HEADER, probeButtons, probePopups, walkFocus } from './interactions';
 import { type AuditContext, type Finding, recordCoverage, recordFinding, recordLinks, screenshotPath } from './recorder';
 import { type AuditRoute, buildRoleSweep, buildRoutes, localePath, stateFile } from './routes';
@@ -92,7 +92,7 @@ async function auditPage(page: Page, ctx: AuditContext, route: AuditRoute, deep:
   }
 
   // —— 浅色主题：布局 / 链接 / 无障碍 / 焦点 / 截图 ——
-  const layout = await page.evaluate(collectLayout, { mobile });
+  const layout = await page.evaluate(collectLayout, { mobile, minTarget: MOBILE_MIN_TARGET });
   checks.push('layout');
   if (layout.scrollWidth > layout.clientWidth + 1) {
     emit({
@@ -102,13 +102,36 @@ async function auditPage(page: Page, ctx: AuditContext, route: AuditRoute, deep:
       detail: layout.overflowOffenders.map((o) => `${o.selector} "${o.text}" x=${o.box.x} w=${o.box.w}`).join('\n'),
     });
   }
-  const tiny = layout.smallTargets.filter((t) => t.min < 24);
-  if (tiny.length) {
-    emit({ severity: 'moderate', category: 'tap-target-lt-24', message: `${tiny.length} tap target(s) under 24×24 CSS px (WCAG 2.5.8 heuristic: size only, spacing exception not evaluated)`, detail: tiny.slice(0, 8).map((t) => `${t.min}px ${t.selector} "${t.text}"`).join('\n') });
+  // 移动端点击目标下限 44×44 CSS px（项目规范，WCAG 2.5.5 AAA / Apple HIG）；句中行内链接按 WCAG 例外豁免
+  if (layout.smallTargets.length) {
+    emit({
+      severity: 'serious',
+      category: 'tap-target-lt-44',
+      message: `${layout.smallTargets.length} tap target(s) under 44×44 CSS px on mobile`,
+      detail: layout.smallTargets.slice(0, 8).map((t) => `${t.min}px ${t.selector} "${t.text}"`).join('\n'),
+    });
   }
-  const small = layout.smallTargets.filter((t) => t.min >= 24);
-  if (small.length) {
-    emit({ severity: 'minor', category: 'tap-target-lt-44', message: `${small.length} tap target(s) between 24 and 44 CSS px (below the 44px platform guideline)`, detail: small.slice(0, 8).map((t) => `${t.min}px ${t.selector} "${t.text}"`).join('\n') });
+  // 页面标题结构与被容器裁掉的操作项（#774）
+  const structure = await page.evaluate(collectStructure);
+  checks.push('structure');
+  if (structure.h1.length > 1) {
+    emit({ severity: 'serious', category: 'multiple-h1', message: `${structure.h1.length} <h1> elements on the page`, detail: structure.h1.join('\n') });
+  }
+  if (structure.duplicateHeadings.length || structure.redundantBreadcrumbs.length) {
+    emit({
+      severity: 'serious',
+      category: 'duplicate-title',
+      message: 'Page title is rendered more than once (a heading or a link-less breadcrumb repeats the h1)',
+      detail: [...structure.duplicateHeadings, ...structure.redundantBreadcrumbs.map((b) => `breadcrumb without links ${b}`)].join('\n'),
+    });
+  }
+  const hiddenActions = structure.clippedActions.filter((c) => c.kind === 'hidden');
+  const scrolledActions = structure.clippedActions.filter((c) => c.kind === 'scroll');
+  if (hiddenActions.length) {
+    emit({ severity: 'serious', category: 'action-clipped', message: `${hiddenActions.length} actionable item(s) cut off by an overflow:hidden container`, detail: hiddenActions.slice(0, 8).map((c) => `${c.selector} "${c.text}" in ${c.by}`).join('\n') });
+  }
+  if (scrolledActions.length) {
+    emit({ severity: mobile ? 'serious' : 'moderate', category: 'action-scrolled-out', message: `${scrolledActions.length} actionable item(s) start out of view inside a horizontal scroll container`, detail: scrolledActions.slice(0, 8).map((c) => `${c.selector} "${c.text}" in ${c.by}`).join('\n') });
   }
   for (const c of layout.cardIssues) {
     const sev = c.kind === 'overlap' || c.kind === 'overflow' ? 'moderate' : 'minor';
@@ -160,7 +183,7 @@ async function auditPage(page: Page, ctx: AuditContext, route: AuditRoute, deep:
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'dark', null, { timeout: 3_000 }).catch(() => undefined);
   await page.waitForTimeout(200);
-  const darkLayout = await page.evaluate(collectLayout, { mobile: false });
+  const darkLayout = await page.evaluate(collectLayout, { mobile: false, minTarget: MOBILE_MIN_TARGET });
   if (darkLayout.dataTheme !== 'dark') {
     emit({ severity: 'moderate', category: 'theme-not-applied', message: `prefers-color-scheme: dark did not switch data-theme (got ${darkLayout.dataTheme})` });
   }

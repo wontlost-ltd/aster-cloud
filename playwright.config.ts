@@ -45,7 +45,8 @@ export default defineConfig({
     // UI 审计（#774）：同一套页面用例按桌面 / 移动视口各跑一遍；链接校验在页面用例之后单独运行（见 scripts/ui-audit/run.mjs）
     {
       name: 'ui-audit-desktop',
-      testMatch: /ui-audit\/ui-audit\.spec\.ts/,
+      // page-checks.spec.ts：审计规则自身的夹具用例（setContent，不依赖本地栈），随每次审计一起跑
+      testMatch: /ui-audit\/(ui-audit|page-checks)\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, ...UI_AUDIT_USE },
     },
     {
