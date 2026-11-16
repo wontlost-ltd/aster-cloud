@@ -113,7 +113,7 @@ export function DocsTrustFooter({ frontmatter, routeSlug, locale }: Props) {
             <li>
               <Link
                 href={changelogHref}
-                className="underline hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-bg rounded-sm"
+                className="tap-target underline hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-bg rounded-sm"
               >
                 {t('docs.trustFooter.changelog')}
               </Link>

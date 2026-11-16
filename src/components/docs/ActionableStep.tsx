@@ -117,6 +117,8 @@ export function ActionableStep({
             href={ctaHref}
             onClick={onClick}
             className={cn(
+              // 正文列表里独立成块的操作按钮：移动端显式启用 44px 点击区（globals.css .tap-target）
+              'tap-target',
               // `max-w-full` + `whitespace-normal` + `text-left` so the
               // CTA wraps gracefully when future translations expand
               // (German labels can run ~35% longer than English).

@@ -298,7 +298,7 @@ export function PolicyVersionList({
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 sm:flex-shrink-0">
+              <div className="flex flex-wrap items-center gap-2 max-sm:gap-y-4 sm:flex-shrink-0">
                 {/* View Source */}
                 {onViewSource && (
                   <button

@@ -79,8 +79,9 @@ export function AiWorkspaceAccessContent() {
           <thead className="bg-bg-muted">
             <tr>
               <th className="p-3">{t('email')}</th>
-              <th className="p-3">{t('name')}</th>
-              <th className="p-3">{t('administrator')}</th>
+              {/* 窄屏隐藏姓名 / 管理员列，行尾开关留在视口内（#774） */}
+              <th className="p-3 max-sm:hidden">{t('name')}</th>
+              <th className="p-3 max-sm:hidden">{t('administrator')}</th>
               <th className="p-3">{t('enabled')}</th>
             </tr>
           </thead>
@@ -88,8 +89,8 @@ export function AiWorkspaceAccessContent() {
             {users.map((user) => (
               <tr key={user.id} className="border-t border-border">
                 <td className="p-3">{user.email ?? '—'}</td>
-                <td className="p-3">{user.name ?? '—'}</td>
-                <td className="p-3">{user.isAdmin ? <Badge>{t('administrator')}</Badge> : '—'}</td>
+                <td className="p-3 max-sm:hidden">{user.name ?? '—'}</td>
+                <td className="p-3 max-sm:hidden">{user.isAdmin ? <Badge>{t('administrator')}</Badge> : '—'}</td>
                 <td className="p-3">
                   <Toggle
                     checked={user.aiWorkspaceEnabled}
