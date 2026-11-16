@@ -87,7 +87,7 @@ describe('DashboardSidebar hydration (#774)', () => {
   });
 });
 
-describe('useLocalStorageFlag after hydration (#774)', () => {
+describe('persisted toggles after hydration (#774)', () => {
   it('toggling writes storage and updates; a later change from another tab still wins', async () => {
     const { DashboardSidebar } = await import('@/components/dashboard-sidebar');
     const labels = new Proxy({} as Record<string, string>, { get: (_t, k) => String(k) }) as never;
@@ -131,24 +131,31 @@ describe('useLocalStorageFlag after hydration (#774)', () => {
   });
 });
 
-describe('useLocalStorageFlag without storage (#774)', () => {
-  it('still toggles for the session when localStorage throws', async () => {
-    const { useLocalStorageFlag } = await import('@/hooks/use-local-storage-flag');
+describe('boolean preference with the 1/0 codec (#774)', () => {
+  it('reads values stored by earlier releases and still toggles when localStorage throws', async () => {
+    const { createBooleanPreference, ONE_ZERO, useBooleanPreference } = await import('@/lib/preferences/boolean-preference');
+    window.localStorage.setItem('aster.test.flag', '1');
+    const pref = createBooleanPreference('aster.test.flag', false, ONE_ZERO);
+    expect(pref.read()).toBe(true);
+    window.localStorage.removeItem('aster.test.flag');
     const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new DOMException('denied', 'SecurityError');
     });
-    function Probe() {
-      const [on, setOn] = useLocalStorageFlag('aster.test.flag');
-      return <button type="button" onClick={() => setOn(!on)}>{on ? 'on' : 'off'}</button>;
+    try {
+      function Probe() {
+        const { value, setValue } = useBooleanPreference(pref);
+        return <button type="button" onClick={() => setValue(!value)}>{value ? 'on' : 'off'}</button>;
+      }
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+      const { createRoot } = await import('react-dom/client');
+      await act(async () => createRoot(container).render(<Probe />));
+      const btn = container.querySelector('button') as HTMLButtonElement;
+      expect(btn.textContent).toBe('off');
+      await act(async () => btn.click());
+      expect(btn.textContent).toBe('on');
+    } finally {
+      setItem.mockRestore();
     }
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const { createRoot } = await import('react-dom/client');
-    await act(async () => createRoot(container).render(<Probe />));
-    const btn = container.querySelector('button') as HTMLButtonElement;
-    expect(btn.textContent).toBe('off');
-    await act(async () => btn.click());
-    expect(btn.textContent).toBe('on');
-    setItem.mockRestore();
   });
 });

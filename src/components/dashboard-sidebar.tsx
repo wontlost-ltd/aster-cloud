@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useLocalStorageFlag } from '@/hooks/use-local-storage-flag';
+import { createBooleanPreference, ONE_ZERO, useBooleanPreference } from '@/lib/preferences/boolean-preference';
 import { usePathname } from 'next/navigation';
 import { useFocusTrap } from '@/hooks/use-focus-trap';
 import {
@@ -349,6 +349,8 @@ interface DashboardSidebarProps {
 }
 
 const COLLAPSED_KEY = 'aster.sidebar.collapsed';
+// 已上线的键存的是 '1' / '0'，沿用该编码
+const collapsedPreference = createBooleanPreference(COLLAPSED_KEY, false, ONE_ZERO);
 
 export function DashboardSidebar({
   localePrefix,
@@ -364,8 +366,8 @@ export function DashboardSidebar({
   // Desktop collapse state — persisted to localStorage so a user who
   // chose the rail layout keeps it across reloads. SSR returns the
   // expanded state; the client may collapse on hydrate.
-  // 水合安全地读写 localStorage（见 useLocalStorageFlag）：水合期间与 SSR 一致为展开，水合后才按存储收起（#774 #418）。
-  const [collapsed, setCollapsed] = useLocalStorageFlag(COLLAPSED_KEY);
+  // 水合安全地读写 localStorage（boolean-preference 的服务端快照）：水合期间与 SSR 一致为展开，水合后才按存储收起（#774 #418）。
+  const { value: collapsed, setValue: setCollapsed } = useBooleanPreference(collapsedPreference);
 
   // Publish the sidebar width as a CSS custom property on <html> so
   // the topbar + main content area can pad-left themselves without
