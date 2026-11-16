@@ -265,48 +265,6 @@ export function registerAsterLanguage(monaco: Monaco): void {
 }
 
 /**
- * Configure Monaco editor theme for Aster CNL
- */
-export function configureAsterTheme(monaco: Monaco): void {
-  // Define custom theme colors for Aster CNL
-  monaco.editor.defineTheme('aster-light', {
-    base: 'vs',
-    inherit: true,
-    rules: [
-      { token: 'keyword', foreground: '0000FF', fontStyle: 'bold' },
-      { token: 'keyword.control', foreground: 'AF00DB', fontStyle: 'bold' },
-      { token: 'type', foreground: '267F99' },
-      { token: 'identifier', foreground: '001080' },
-      { token: 'number', foreground: '098658' },
-      { token: 'string', foreground: 'A31515' },
-      { token: 'comment', foreground: '008000', fontStyle: 'italic' },
-      { token: 'operator', foreground: '000000' },
-    ],
-    colors: {
-      'editor.background': '#FFFFFF',
-    },
-  });
-
-  monaco.editor.defineTheme('aster-dark', {
-    base: 'vs-dark',
-    inherit: true,
-    rules: [
-      { token: 'keyword', foreground: '569CD6', fontStyle: 'bold' },
-      { token: 'keyword.control', foreground: 'C586C0', fontStyle: 'bold' },
-      { token: 'type', foreground: '4EC9B0' },
-      { token: 'identifier', foreground: '9CDCFE' },
-      { token: 'number', foreground: 'B5CEA8' },
-      { token: 'string', foreground: 'CE9178' },
-      { token: 'comment', foreground: '6A9955', fontStyle: 'italic' },
-      { token: 'operator', foreground: 'D4D4D4' },
-    ],
-    colors: {
-      'editor.background': '#1E1E1E',
-    },
-  });
-}
-
-/**
  * Get recommended editor options for Aster CNL
  */
 export function getAsterEditorOptions(): import('monaco-editor').editor.IStandaloneEditorConstructionOptions {
