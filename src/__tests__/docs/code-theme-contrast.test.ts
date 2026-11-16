@@ -94,7 +94,11 @@ function mdxFiles(dir: string): string[] {
 function docsCodeBlocks(): Array<{ lang: string; code: string }> {
   const out: Array<{ lang: string; code: string }> = [];
   for (const f of mdxFiles(join(process.cwd(), 'src/app/[locale]/docs'))) {
-    for (const m of readFileSync(f, 'utf8').matchAll(/^```([\w-]+)[^\n]*\n([\s\S]*?)^```/gm)) out.push({ lang: m[1], code: m[2] });
+    // 允许缩进的围栏（列表项里的代码块）：开闭围栏缩进相同，代码行去掉同样的缩进
+    for (const m of readFileSync(f, 'utf8').matchAll(/^([ \t]*)```([\w-]+)[^\n]*\n([\s\S]*?)^\1```/gm)) {
+      const indent = m[1].length;
+      out.push({ lang: m[2], code: m[3].split('\n').map((l) => l.slice(Math.min(indent, l.length - l.trimStart().length))).join('\n') });
+    }
   }
   return out;
 }
@@ -118,6 +122,10 @@ describe('docs code highlighting contrast', () => {
   it('every token Shiki renders for the docs code blocks meets 4.5:1 on every surface', async () => {
     const blocks = docsCodeBlocks();
     expect(blocks.length).toBeGreaterThan(100);
+    // 每个围栏都被抽到：抽到的块数 = 文档里开围栏的行数（含缩进的）
+    const fenceLines = mdxFiles(join(process.cwd(), 'src/app/[locale]/docs'))
+      .reduce((n, f) => n + (readFileSync(f, 'utf8').match(/^[ \t]*```[\w-]+/gm)?.length ?? 0), 0);
+    expect(blocks.length).toBe(fenceLines);
     const bad = new Set<string>();
     let tokens = 0;
     for (const { lang, code } of blocks) {
