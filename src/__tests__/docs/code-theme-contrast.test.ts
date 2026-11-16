@@ -1,12 +1,15 @@
 /**
  * #774 设计决策 2：文档代码高亮的每个 token 前景色，在代码块可能落的每个表面上都要 ≥ WCAG AA 4.5:1。
- * 表面取自 @aster-cloud/tokens（浅：bg #fff / bg-subtle zinc-50 / bg-muted zinc-100；暗：zinc-950 / 900 / 800）；
+ * 表面直接从 @aster-cloud/tokens 的 tokens.css 解析（浅 / 暗主题各自的 --aster-bg / -subtle / -muted）；
  * rehype-pretty-code 配置了 keepBackground: false，代码块背景就是这些表面。
  * 带自身背景色的 token（如 diff 的增删行）与其背景配对核对。暗色主题核对的是 next.config.ts 实际使用的修正版主题对象。
  */
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { bundledThemes } from 'shiki';
-import { CODE_THEME } from '@/lib/docs/code-theme';
+import { bundledThemes, codeToTokens, type BundledLanguage, type BundledTheme } from 'shiki';
+import { CODE_THEME, DARK_TOKEN_PATCHES } from '@/lib/docs/code-theme';
 
 type Rgba = [number, number, number, number];
 const hex = (h: string): Rgba => {
@@ -26,10 +29,25 @@ const ratio = (a: Rgba, b: Rgba) => {
   return (x + 0.05) / (y + 0.05);
 };
 
-const SURFACES = {
-  light: ['#ffffff', '#fafafa', '#f4f4f5'],
-  dark: ['#09090b', '#18181b', '#27272a'],
-};
+/** 从 tokens.css 解析某个主题块里的三档表面色，var(--aster-color-*) 按 :root 里的色阶解析 */
+function surfacesFromTokens(): { light: string[]; dark: string[] } {
+  const require = createRequire(import.meta.url);
+  const css = readFileSync(join(dirname(require.resolve('@aster-cloud/tokens/package.json')), 'dist/tokens.css'), 'utf8');
+  const block = (selector: string) => {
+    const i = css.indexOf(`${selector} {`);
+    return css.slice(i, css.indexOf('}', i));
+  };
+  const root = block(':root');
+  const scale = new Map([...root.matchAll(/(--aster-color-[\w-]+):\s*(#[0-9a-fA-F]{6})/g)].map((m) => [m[1], m[2]]));
+  const pick = (b: string) => ['--aster-bg', '--aster-bg-subtle', '--aster-bg-muted'].map((name) => {
+    const raw = new RegExp(`${name}:\\s*([^;]+);`).exec(b)?.[1].trim() ?? '';
+    const ref = /var\((--aster-color-[\w-]+)\)/.exec(raw)?.[1];
+    return (ref ? scale.get(ref) : raw) ?? '';
+  });
+  return { light: pick(root), dark: pick(block('[data-theme="dark"]')) };
+}
+
+const SURFACES = surfacesFromTokens();
 
 interface ThemeJson {
   colors?: Record<string, string>;
@@ -46,8 +64,10 @@ async function failures(themeRef: string | ThemeJson, surfaces: string[]): Promi
   const out: string[] = [];
   const pairs: Array<[string, string]> = [];
   if (theme.colors?.['editor.foreground']) for (const s of surfaces) pairs.push([theme.colors['editor.foreground'], s]);
+  const defaultFg = theme.colors?.['editor.foreground'];
   for (const tc of theme.tokenColors ?? []) {
-    const fg = tc.settings?.foreground;
+    // 只声明了背景的规则：前景沿用编辑器默认前景，同样要和这块背景配对核对
+    const fg = tc.settings?.foreground ?? (tc.settings?.background ? defaultFg : undefined);
     if (!fg) continue;
     if (tc.settings?.background) for (const s of surfaces) pairs.push([fg, `${tc.settings.background}@${s}`]);
     else for (const s of surfaces) pairs.push([fg, s]);
@@ -63,7 +83,63 @@ async function failures(themeRef: string | ThemeJson, surfaces: string[]): Promi
   return out;
 }
 
+function mdxFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((n) => {
+    const full = join(dir, n);
+    return statSync(full).isDirectory() ? mdxFiles(full) : n.endsWith('.mdx') ? [full] : [];
+  });
+}
+
+/** 文档里所有围栏代码块（语言 + 源码），用 Shiki 实际分词核对每个渲染出来的 token */
+function docsCodeBlocks(): Array<{ lang: string; code: string }> {
+  const out: Array<{ lang: string; code: string }> = [];
+  for (const f of mdxFiles(join(process.cwd(), 'src/app/[locale]/docs'))) {
+    for (const m of readFileSync(f, 'utf8').matchAll(/^```([\w-]+)[^\n]*\n([\s\S]*?)^```/gm)) out.push({ lang: m[1], code: m[2] });
+  }
+  return out;
+}
+
 describe('docs code highlighting contrast', () => {
+  it('surfaces are read from the design tokens', () => {
+    expect(SURFACES.light).toEqual(['#ffffff', '#fafafa', '#f4f4f5']);
+    expect(SURFACES.dark).toEqual(['#09090b', '#18181b', '#27272a']);
+  });
+
+  it('every patch in code-theme.ts still matches a rule of the upstream dark theme', async () => {
+    const raw = (await bundledThemes['github-dark-high-contrast']()).default as unknown as ThemeJson;
+    for (const p of DARK_TOKEN_PATCHES) {
+      const rule = (raw.tokenColors ?? []).find((tc) => ([] as string[]).concat(tc.scope ?? []).includes(p.scope));
+      const settings = rule?.settings as { foreground?: string; background?: string } | undefined;
+      if (p.foreground) expect(settings?.foreground?.toLowerCase(), p.scope).toBe(p.foreground[0]);
+      if (p.background) expect(settings?.background?.toLowerCase(), p.scope).toBe(p.background[0]);
+    }
+  });
+
+  it('every token Shiki renders for the docs code blocks meets 4.5:1 on every surface', async () => {
+    const blocks = docsCodeBlocks();
+    expect(blocks.length).toBeGreaterThan(100);
+    const bad = new Set<string>();
+    let tokens = 0;
+    for (const { lang, code } of blocks) {
+      for (const [theme, surfaces] of [[CODE_THEME.light, SURFACES.light], [CODE_THEME.dark, SURFACES.dark]] as const) {
+        const { tokens: lines } = await codeToTokens(code, { lang: (lang === 'text' ? 'text' : lang) as BundledLanguage, theme: theme as BundledTheme });
+        for (const t of lines.flat()) {
+          if (!t.content.trim() || !t.color) continue;
+          tokens += 1;
+          for (const s of surfaces) {
+            const surface = hex(s);
+            const bg = t.bgColor ? over(hex(t.bgColor), surface) : surface;
+            const f = hex(t.color);
+            const r = ratio(f[3] < 1 ? over(f, bg) : f, bg);
+            if (r < 4.5) bad.add(`${lang} ${t.color}${t.bgColor ? ` on ${t.bgColor}` : ''} @${s} = ${r.toFixed(2)}`);
+          }
+        }
+      }
+    }
+    expect(tokens).toBeGreaterThan(1000);
+    expect([...bad]).toEqual([]);
+  }, 120_000);
+
   it('uses the high-contrast GitHub themes (dark one with patched diff colours)', () => {
     expect(CODE_THEME.light).toBe('github-light-high-contrast');
     expect(CODE_THEME.dark.name).toBe('github-dark-high-contrast-aa');
