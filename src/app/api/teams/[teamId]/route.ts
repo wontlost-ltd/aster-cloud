@@ -5,6 +5,7 @@ import { eq, and, isNull, not, sql } from 'drizzle-orm';
 import { checkTeamPermission, TeamPermission } from '@/lib/team-permissions';
 import { validateTeamName, validateSlug } from '@/lib/validation';
 import { revokeTeamKeys } from '@/lib/api-keys';
+import { revokeTeamCascade } from '@/lib/capabilities/grants';
 import { invalidatePolicyCache } from '@/lib/cache';
 import { logSecurityAdminAction } from '@/services/security/security-event-service';
 
@@ -189,6 +190,9 @@ export async function DELETE(req: Request, { params }: RouteParams) {
         .where(eq(policies.teamId, teamId))
         .returning({ id: policies.id });
       affectedPolicyIds = moved.map((p) => p.id);
+
+      // 团队授权、该团队发出的委派与额度行同事务撤销 / 删除（ADR 0058 §4.7），删除失败一起回滚
+      await revokeTeamCascade(tx, teamId, session.user.id);
 
       // 最后删除团队本身
       await tx.delete(teams).where(eq(teams.id, teamId));

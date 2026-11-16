@@ -8,6 +8,7 @@ import {
 } from '@/lib/team-permissions';
 import { revokeTeamKeys, refreshTeamKeySnapshots } from '@/lib/api-keys';
 import { invalidatePlanCache } from '@/lib/plan-gate-client';
+import { revokeMemberDelegations, revokeTeamCascade } from '@/lib/capabilities/grants';
 
 // 团队生命周期钩子（ADR 0015 §5）：成员移出 / 角色变更 / 转让 / 删除团队 必须吊销或重推团队 key
 const { mockFindFirst, mockUpdate, mockDelete, mockTransaction, txStub } = vi.hoisted(() => {
@@ -60,6 +61,12 @@ vi.mock('@/lib/api-keys', () => ({
   refreshTeamKeySnapshots: vi.fn(),
 }));
 
+// 能力委派的级联撤销（ADR 0058 §4.7）真实 SQL 在 capability-delegation.integration.test.ts；这里只钉调用位置
+vi.mock('@/lib/capabilities/grants', () => ({
+  revokeMemberDelegations: vi.fn(),
+  revokeTeamCascade: vi.fn(),
+}));
+
 vi.mock('@/lib/plan-gate-client', () => ({
   invalidatePlanCache: vi.fn(),
 }));
@@ -97,6 +104,8 @@ describe('团队生命周期 → 团队 key 钩子（ADR 0015 §5）', () => {
     mockRevokeTeamKeys.mockResolvedValue(0);
     mockRefreshTeamKeySnapshots.mockResolvedValue(0);
     mockInvalidatePlanCache.mockResolvedValue(undefined);
+    vi.mocked(revokeMemberDelegations).mockResolvedValue(0);
+    vi.mocked(revokeTeamCascade).mockResolvedValue(undefined);
   });
 
   it('DELETE 成员 → revokeTeamKeys("t1","u2")（用 targetMember.userId，不是 memberId）', async () => {
@@ -104,6 +113,7 @@ describe('团队生命周期 → 团队 key 钩子（ADR 0015 §5）', () => {
     const res = await DELETE(new Request('http://cloud.test/x', { method: 'DELETE' }), params({ teamId: 't1', memberId: 'm1' }));
     expect(res.status).toBe(200);
     expect(mockRevokeTeamKeys).toHaveBeenCalledWith('t1', 'u2');
+    expect(revokeMemberDelegations).toHaveBeenCalledWith('t1', 'u2', 'u-admin');
   });
 
   it('PUT 角色 → refreshTeamKeySnapshots("t1","u2")', async () => {
@@ -137,6 +147,8 @@ describe('团队生命周期 → 团队 key 钩子（ADR 0015 §5）', () => {
     expect(res.status).toBe(200);
     expect(mockRevokeTeamKeys).toHaveBeenCalledWith('t1');
     expect(order).toEqual(['tx', 'revoke']);
+    // 能力级联在删除事务内执行：拿到的是事务句柄，不是全局 db
+    expect(revokeTeamCascade).toHaveBeenCalledWith(txStub, 't1', 'u-admin');
   });
 
   it('DELETE 团队事务失败 → 不吊销任何 key（团队仍在，成员 key 照常可用），500', async () => {
@@ -151,6 +163,8 @@ describe('团队生命周期 → 团队 key 钩子（ADR 0015 §5）', () => {
   // 钩子的数据库步骤可能抛错；业务写入已经（或将要）成功，不能被钩子失败改写成 500
   it('钩子抛错不影响业务结果：成员移出仍 200', async () => {
     mockRevokeTeamKeys.mockRejectedValue(new Error('db down'));
+    vi.mocked(revokeMemberDelegations).mockRejectedValue(new Error('db down'));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { DELETE } = await import('@/app/api/teams/[teamId]/members/[memberId]/route');
     const res = await DELETE(new Request('http://cloud.test/x', { method: 'DELETE' }), params({ teamId: 't1', memberId: 'm1' }));
     expect(res.status).toBe(200);

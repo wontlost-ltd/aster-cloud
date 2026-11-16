@@ -1093,6 +1093,30 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      // 团队设置页的结构化编写座位卡片（ADR 0058 §4.6），仅 owner 可见。
+      structuredAuthoringSeats: {
+        title: 'Structured Authoring seats',
+        subtitle: 'Delegate Structured Authoring to team members, within the seats the platform admin has allotted to this team.',
+        seatsUsed: 'Seats used: {used} / {cap}',
+        noAllotment: 'No Structured Authoring seats have been allotted to this team. Ask a platform admin for seats.',
+        delegationDisabled: 'Delegation is paused for this team. Existing delegations stop applying until it is turned back on; you can still revoke them.',
+        paused: 'Paused (viewer)',
+        revoke: 'Revoke',
+        revokeFor: 'Revoke Structured Authoring for {name}',
+        empty: 'No members have been delegated yet.',
+        memberLabel: 'Member',
+        delegate: 'Delegate',
+        viewerNote: 'Viewers cannot be delegated. A member demoted to viewer keeps the seat but loses access until promoted again; revoke the delegation to free the seat.',
+        loadError: 'Could not load Structured Authoring seats.',
+        errors: {
+          seatCapReached: 'All seats are in use. Revoke a delegation or ask a platform admin for more seats.',
+          teamDelegationDisabled: 'Delegation is turned off for this team, so new delegations cannot be added.',
+          notTeamMember: 'This person is not a member of the team.',
+          viewerNotEligible: 'Viewers cannot be delegated. Change their role first.',
+          notTeamOwner: 'Only the team owner can manage Structured Authoring seats.',
+          saveError: 'Could not save the change.',
+        },
+      },
       policies: {
         unknownCreator: 'a former member',
         executionCount: '{count, plural, one {# execution} other {# executions}}',
@@ -3025,6 +3049,30 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      // 团队设置页的结构化编写座位卡片（ADR 0058 §4.6），仅 owner 可见。
+      structuredAuthoringSeats: {
+        title: '结构化编写座位',
+        subtitle: '在平台管理员为本团队分配的座位内，把结构化编写委派给团队成员。',
+        seatsUsed: '已用 {used} / {cap}',
+        noAllotment: '本团队还没有分配结构化编写座位，请联系平台管理员。',
+        delegationDisabled: '本团队的委派已暂停：重新开启前已有委派不生效，但仍可撤销。',
+        paused: '已暂停（viewer）',
+        revoke: '撤销',
+        revokeFor: '撤销 {name} 的结构化编写',
+        empty: '尚未委派任何成员。',
+        memberLabel: '成员',
+        delegate: '委派',
+        viewerNote: '不能委派给 viewer。被降为 viewer 的成员保留座位，但升回前不能使用；撤销委派即可释放座位。',
+        loadError: '无法加载结构化编写座位。',
+        errors: {
+          seatCapReached: '座位已用完。请先撤销一个委派，或联系平台管理员增加座位。',
+          teamDelegationDisabled: '本团队的委派已关闭，不能新增委派。',
+          notTeamMember: '此人不是本团队成员。',
+          viewerNotEligible: '不能委派给 viewer，请先调整其角色。',
+          notTeamOwner: '只有团队 owner 能管理结构化编写座位。',
+          saveError: '无法保存更改。',
+        },
+      },
       policies: {
         unknownCreator: '已离开的成员',
         executionCount: '{count, plural, other {# 次执行}}',
@@ -4957,6 +5005,30 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      // 团队设置页的结构化编写座位卡片（ADR 0058 §4.6），仅 owner 可见。
+      structuredAuthoringSeats: {
+        title: 'Plätze für Strukturiertes Verfassen',
+        subtitle: 'Delegieren Sie Strukturiertes Verfassen an Teammitglieder, im Rahmen der Plätze, die der Plattform-Admin diesem Team zugeteilt hat.',
+        seatsUsed: 'Belegte Plätze: {used} / {cap}',
+        noAllotment: 'Diesem Team sind keine Plätze für Strukturiertes Verfassen zugeteilt. Wenden Sie sich an einen Plattform-Admin.',
+        delegationDisabled: 'Die Delegation ist für dieses Team pausiert. Bestehende Delegationen gelten erst wieder, wenn sie eingeschaltet wird; widerrufen können Sie sie weiterhin.',
+        paused: 'Pausiert (Viewer)',
+        revoke: 'Widerrufen',
+        revokeFor: 'Strukturiertes Verfassen für {name} widerrufen',
+        empty: 'Noch keine Mitglieder delegiert.',
+        memberLabel: 'Mitglied',
+        delegate: 'Delegieren',
+        viewerNote: 'An Viewer kann nicht delegiert werden. Ein zum Viewer herabgestuftes Mitglied behält den Platz, hat aber bis zur erneuten Hochstufung keinen Zugriff; widerrufen Sie die Delegation, um den Platz freizugeben.',
+        loadError: 'Plätze für Strukturiertes Verfassen konnten nicht geladen werden.',
+        errors: {
+          seatCapReached: 'Alle Plätze sind belegt. Widerrufen Sie eine Delegation oder bitten Sie einen Plattform-Admin um weitere Plätze.',
+          teamDelegationDisabled: 'Die Delegation ist für dieses Team ausgeschaltet; neue Delegationen sind nicht möglich.',
+          notTeamMember: 'Diese Person ist kein Mitglied des Teams.',
+          viewerNotEligible: 'An Viewer kann nicht delegiert werden. Ändern Sie zuerst die Rolle.',
+          notTeamOwner: 'Nur der Team-Owner kann die Plätze für Strukturiertes Verfassen verwalten.',
+          saveError: 'Die Änderung konnte nicht gespeichert werden.',
+        },
+      },
       policies: {
         unknownCreator: 'ein ehemaliges Mitglied',
         executionCount: '{count, plural, one {# Ausführung} other {# Ausführungen}}',
@@ -6875,6 +6947,30 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 业务角色（ADR 0042 §2.1）：团队成员行的授予入口；与包内 teams.members 深合并。
     teams: {
+      // 团队设置页的结构化编写座位卡片（ADR 0058 §4.6），仅 owner 可见。
+      structuredAuthoringSeats: {
+        title: 'संरचित लेखन स्थान',
+        subtitle: 'प्लेटफ़ॉर्म एडमिन द्वारा इस टीम को आवंटित स्थानों के भीतर टीम सदस्यों को संरचित लेखन प्रत्यायोजित करें।',
+        seatsUsed: 'उपयोग किए गए स्थान: {used} / {cap}',
+        noAllotment: 'इस टीम को संरचित लेखन के कोई स्थान आवंटित नहीं हैं। किसी प्लेटफ़ॉर्म एडमिन से संपर्क करें।',
+        delegationDisabled: 'इस टीम के लिए प्रत्यायोजन रुका हुआ है। फिर से चालू होने तक मौजूदा प्रत्यायोजन लागू नहीं होते; आप उन्हें अब भी रद्द कर सकते हैं।',
+        paused: 'रुका हुआ (viewer)',
+        revoke: 'रद्द करें',
+        revokeFor: '{name} के लिए संरचित लेखन रद्द करें',
+        empty: 'अभी तक किसी सदस्य को प्रत्यायोजित नहीं किया गया है।',
+        memberLabel: 'सदस्य',
+        delegate: 'प्रत्यायोजित करें',
+        viewerNote: 'viewer को प्रत्यायोजित नहीं किया जा सकता। viewer बनाए गए सदस्य का स्थान बना रहता है, पर फिर से पदोन्नत होने तक पहुँच नहीं रहती; स्थान खाली करने के लिए प्रत्यायोजन रद्द करें।',
+        loadError: 'संरचित लेखन स्थान लोड नहीं हो सके।',
+        errors: {
+          seatCapReached: 'सभी स्थान उपयोग में हैं। कोई प्रत्यायोजन रद्द करें या प्लेटफ़ॉर्म एडमिन से और स्थान माँगें।',
+          teamDelegationDisabled: 'इस टीम के लिए प्रत्यायोजन बंद है, इसलिए नए प्रत्यायोजन नहीं जोड़े जा सकते।',
+          notTeamMember: 'यह व्यक्ति टीम का सदस्य नहीं है।',
+          viewerNotEligible: 'viewer को प्रत्यायोजित नहीं किया जा सकता। पहले उनकी भूमिका बदलें।',
+          notTeamOwner: 'केवल टीम owner ही संरचित लेखन स्थान प्रबंधित कर सकता है।',
+          saveError: 'बदलाव सहेजा नहीं जा सका।',
+        },
+      },
       policies: {
         unknownCreator: 'एक पूर्व सदस्य',
         executionCount: '{count, plural, other {# निष्पादन}}',
