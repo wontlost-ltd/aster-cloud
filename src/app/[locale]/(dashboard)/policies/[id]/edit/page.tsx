@@ -7,6 +7,7 @@ import { eq, and } from 'drizzle-orm';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { EditPolicyContent } from './edit-policy-content';
 import { getStructuralAliasGrant } from '@/lib/structural-alias-grants';
+import { resolveEntitlementForRequest } from '@/lib/capabilities/resolve';
 import { localizedTitle } from '@/lib/page-metadata';
 import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
 
@@ -89,6 +90,10 @@ export default async function EditPolicyPage({ params }: PageProps) {
     redirect(`/${locale}/policies/${id}?frozen=1`);
   }
   const allowStructuralAliases = await getStructuralAliasGrant(session.user.id);
+  // 能力按策略所属团队判定套餐（个人策略为 null）（ADR 0058 §4.10）
+  const structuredAuthoring = await resolveEntitlementForRequest(session.user.id, 'structured_authoring', {
+    teamId: policyData.teamId ?? null,
+  });
 
   // 序列化策略数据
   const policy = {
@@ -129,6 +134,7 @@ export default async function EditPolicyPage({ params }: PageProps) {
       locale={locale}
       policyCnlLocale={policyCnlLocale}
       allowStructuralAliases={allowStructuralAliases}
+      structuredAuthoring={structuredAuthoring}
       visibilityLocked={!canPublish}
     />
   );

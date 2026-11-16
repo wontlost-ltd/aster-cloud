@@ -27,7 +27,7 @@ import { NewPolicyContent } from '@/app/[locale]/(dashboard)/policies/new/new-po
 
 function renderAt(locale: string, query = '') {
   h.params = new URLSearchParams(query);
-  render(<NewPolicyContent locale={locale} allowStructuralAliases={false} />);
+  render(<NewPolicyContent locale={locale} allowStructuralAliases={false} structuredAuthoring={{ allowed: false, sources: [] }} />);
   return h.props!;
 }
 

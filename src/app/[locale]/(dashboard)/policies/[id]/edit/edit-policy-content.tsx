@@ -6,6 +6,7 @@ import { PolicyForm, type PolicySaveContext } from '@/components/policy/policy-f
 import type { PolicyDraftFields } from '@/components/policy/policy-form/use-policy-draft';
 import { track, Events, levenshtein } from '@/lib/mixpanel';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
+import type { StructuredAuthoringProps } from '@/lib/capabilities/types';
 
 /**
  * /policies/[id]/edit — thin wrapper around <PolicyForm>.
@@ -46,6 +47,7 @@ interface EditPolicyContentProps {
   /** 策略的 CNL 语言：服务端用与执行端相同的 resolveStoredVersionLocale 解析，见 policy-form/policy-cnl-locale。 */
   policyCnlLocale: string | null;
   allowStructuralAliases: boolean;
+  structuredAuthoring: StructuredAuthoringProps;
   /** 当前用户不能切换公开状态（团队策略只有 owner/admin 可以） */
   visibilityLocked?: boolean;
 }
@@ -56,6 +58,7 @@ export function EditPolicyContent({
   locale,
   policyCnlLocale,
   allowStructuralAliases,
+  structuredAuthoring,
   visibilityLocked = false,
 }: EditPolicyContentProps) {
   const tPolicies = useTranslations('policies');
@@ -152,6 +155,7 @@ export function EditPolicyContent({
       subtitle={t.form.editSubtitle}
       onSave={handleSave}
       allowStructuralAliases={allowStructuralAliases}
+      structuredAuthoring={structuredAuthoring}
       visibilityLocked={visibilityLocked}
       teamId={policy.teamId ?? null}
       cancelHref={`/${locale}/policies/${policy.id}`}

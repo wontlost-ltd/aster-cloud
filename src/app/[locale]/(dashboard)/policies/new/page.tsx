@@ -2,6 +2,7 @@ import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { NewPolicyContent } from './new-policy-content';
 import { getStructuralAliasGrant } from '@/lib/structural-alias-grants';
+import { resolveEntitlementForRequest } from '@/lib/capabilities/resolve';
 
 interface PageProps {
   params: Promise<{ locale: string }>;
@@ -24,11 +25,15 @@ export default async function NewPolicyPage({ params, searchParams }: PageProps)
   }
 
   const allowStructuralAliases = await getStructuralAliasGrant(session.user.id);
+  // 新建团队策略时 teamId 来自查询串（与客户端 new-policy-content 读取口径一致），决定按谁的套餐判定
+  const teamId = typeof sp.teamId === 'string' && sp.teamId.length > 0 ? sp.teamId : null;
+  const structuredAuthoring = await resolveEntitlementForRequest(session.user.id, 'structured_authoring', { teamId });
 
   return (
     <NewPolicyContent
       locale={locale}
       allowStructuralAliases={allowStructuralAliases}
+      structuredAuthoring={structuredAuthoring}
     />
   );
 }

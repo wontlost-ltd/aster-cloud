@@ -6,6 +6,8 @@ import { useTranslations } from 'next-intl';
 import {
   Sparkles,
   BookOpen,
+  BookMarked,
+  Boxes,
   LayoutTemplate,
   AlertTriangle,
   Settings,
@@ -19,6 +21,7 @@ import { useSuppressAssistantLauncher } from '@/components/assistant/assistant-c
 import type { AiWorkspaceConfig } from '@/components/ai-workspace-context';
 import { CNLSyntaxReferencePanel } from '@/components/policy/cnl-syntax-reference-panel';
 import { PolicyAliasPanel } from '@/components/policy/policy-alias-panel';
+import type { StructuredAuthoringProps } from '@/lib/capabilities/types';
 import type { ReservedSets } from '@/lib/policy-alias-shared';
 import {
   defaultControlRegistry,
@@ -75,7 +78,10 @@ export type SidePanelTab =
   | 'problems'
   | 'ai'
   | 'syntax'
-  | 'templates';
+  | 'templates'
+  // 以下两个标签仅在 structuredAuthoring.allowed 时出现（ADR 0058 §8.3）
+  | 'model'
+  | 'vocabulary';
 
 export interface SidePanelProps {
   editor: editor.IStandaloneCodeEditor | null;
@@ -96,6 +102,8 @@ export interface SidePanelProps {
   aliasSet: Record<string, string[]>;
   reservedSets: ReservedSets;
   allowStructuralAliases: boolean;
+  /** 结构化编写能力的服务端判定；allowed 为假时不渲染「模型 / 词汇」标签及其内容。 */
+  structuredAuthoring: StructuredAuthoringProps;
   onAliasSetChange: (aliasSet: Record<string, string[]>) => void;
   /** Apply a generated/template body to the form's main content. */
   onApplyContent: (content: string) => void;
@@ -137,6 +145,7 @@ export function SidePanel({
   aliasSet,
   reservedSets,
   allowStructuralAliases,
+  structuredAuthoring,
   onAliasSetChange,
   onApplyContent,
   starterSource = null,
@@ -151,6 +160,7 @@ export function SidePanel({
   aiWorkspace = null,
 }: SidePanelProps) {
   const t = useTranslations('policies.form');
+  const tEditor = useTranslations('policyEditor');
   const [tab, setTab] = useState<SidePanelTab>(initialTab ?? 'ai');
   // Whenever the parent bumps the requested tab (e.g. compile errored),
   // honor it without losing user-selected state otherwise.
@@ -180,6 +190,8 @@ export function SidePanel({
     ai: { icon: Sparkles, label: t('sidePanelAI') },
     syntax: { icon: BookOpen, label: t('sidePanelSyntax') },
     templates: { icon: LayoutTemplate, label: t('sidePanelTemplates') },
+    model: { icon: Boxes, label: tEditor('tabModel') },
+    vocabulary: { icon: BookMarked, label: tEditor('tabVocabulary') },
   };
   const HeaderIcon = tabMeta[tab].icon;
   const headerLabel = tabMeta[tab].label;
@@ -305,6 +317,14 @@ export function SidePanel({
               />
             </div>
           </div>
+        )}
+        {structuredAuthoring.allowed && tab === 'model' && (
+          // 容器由 T8 填充模型大纲与表单
+          <div className="p-3" data-testid="structured-authoring-model" />
+        )}
+        {structuredAuthoring.allowed && tab === 'vocabulary' && (
+          // 容器由 T9 填充词汇列表
+          <div className="p-3" data-testid="structured-authoring-vocabulary" />
         )}
         {tab === 'problems' && (
           <div className="p-3">

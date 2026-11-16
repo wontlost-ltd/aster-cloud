@@ -15,14 +15,10 @@ import { getSetting } from '@/lib/platform-settings';
 import { planHolderForTeam } from '@/lib/team-plan';
 import { hasFeatureAccess } from '@/lib/usage';
 import { CAPABILITIES, type CapabilityKey } from './registry';
+import type { EntitlementDenial, GrantSource } from './types';
 
-export type EntitlementDenial = 'unavailable' | 'disabled' | 'plan_required' | 'not_granted';
-
-export type GrantSource =
-  | { kind: 'admin' }
-  | { kind: 'direct'; grantId: string }
-  | { kind: 'team'; grantId: string; teamId: string }
-  | { kind: 'delegated'; grantId: string; teamId: string };
+// 共享类型定义在 types.ts（客户端组件也要引用，不能带上服务端依赖），此处再导出保持原入口。
+export type { EntitlementDenial, GrantSource, StructuredAuthoringProps } from './types';
 
 export interface Entitlement {
   allowed: boolean;

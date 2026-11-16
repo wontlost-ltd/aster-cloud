@@ -15,17 +15,17 @@ describe('/policies/new 文档深链模板埋点', () => {
 
   it('登记过的模板 id → 记一次 deeplink', () => {
     h.params = new URLSearchParams('from=docs&template=policy-batch');
-    const { rerender } = render(<NewPolicyContent locale="en" allowStructuralAliases={false} />);
-    rerender(<NewPolicyContent locale="en" allowStructuralAliases={false} />);
+    const { rerender } = render(<NewPolicyContent locale="en" allowStructuralAliases={false} structuredAuthoring={{ allowed: false, sources: [] }} />);
+    rerender(<NewPolicyContent locale="en" allowStructuralAliases={false} structuredAuthoring={{ allowed: false, sources: [] }} />);
     expect(h.track).toHaveBeenCalledTimes(1);
     expect(h.track).toHaveBeenCalledWith('template_selected', { templateId: 'policy-batch', source: 'deeplink' });
   });
 
   it('未知模板 id 或无模板参数 → 不记', () => {
     h.params = new URLSearchParams('template=../../etc');
-    render(<NewPolicyContent locale="en" allowStructuralAliases={false} />);
+    render(<NewPolicyContent locale="en" allowStructuralAliases={false} structuredAuthoring={{ allowed: false, sources: [] }} />);
     h.params = new URLSearchParams();
-    render(<NewPolicyContent locale="en" allowStructuralAliases={false} />);
+    render(<NewPolicyContent locale="en" allowStructuralAliases={false} structuredAuthoring={{ allowed: false, sources: [] }} />);
     expect(h.track).not.toHaveBeenCalled();
   });
 });

@@ -1537,6 +1537,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 编辑器状态栏的 LSP 断开 / 重连提示（生产复测第 6 轮）。
     diagnostics: { teamVocabularyShadowed: 'Team vocabulary takes precedence: your personal terms {terms} are not used in this team policy.', lspReconnecting: 'LSP disconnected, reconnecting…', lspDisconnected: 'LSP disconnected', lspTooManySessions: 'Too many editors open on this network; LSP will reconnect shortly' },
+    // 编辑器侧栏「结构化编写」两个标签（ADR 0058 §8.3）。
+    policyEditor: { tabModel: 'Model', tabVocabulary: 'Vocabulary' },
     policies: {
       // 拖拽手柄的可访问名称（#774 axe aria-command-name）
       dragHandle: 'Drag {name} to a group',
@@ -3494,6 +3496,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 编辑器状态栏的 LSP 断开 / 重连提示（生产复测第 6 轮）。
     diagnostics: { teamVocabularyShadowed: '团队词汇优先：你的个人词条 {terms} 在此团队策略中不生效。', lspReconnecting: 'LSP 已断开，正在重连…', lspDisconnected: 'LSP 已断开', lspTooManySessions: '同一网络打开的编辑器过多，LSP 稍后重连' },
+    // 编辑器侧栏「结构化编写」两个标签（ADR 0058 §8.3）。
+    policyEditor: { tabModel: '模型', tabVocabulary: '词汇' },
     policies: {
       // 拖拽手柄的可访问名称（#774 axe aria-command-name）
       dragHandle: '拖动“{name}”到分组',
@@ -5452,6 +5456,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 编辑器状态栏的 LSP 断开 / 重连提示（生产复测第 6 轮）。
     diagnostics: { teamVocabularyShadowed: 'Das Team-Vokabular hat Vorrang: Ihre persönlichen Begriffe {terms} werden in dieser Team-Richtlinie nicht verwendet.', lspReconnecting: 'LSP getrennt, Verbindung wird wiederhergestellt…', lspDisconnected: 'LSP getrennt', lspTooManySessions: 'Zu viele Editoren in diesem Netzwerk geöffnet; LSP verbindet sich gleich erneut' },
+    // 编辑器侧栏「结构化编写」两个标签（ADR 0058 §8.3）。
+    policyEditor: { tabModel: 'Modell', tabVocabulary: 'Vokabular' },
     policies: {
       // 拖拽手柄的可访问名称（#774 axe aria-command-name）
       dragHandle: '{name} in eine Gruppe ziehen',
@@ -7396,6 +7402,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
     // 编辑器状态栏的 LSP 断开 / 重连提示（生产复测第 6 轮）。
     diagnostics: { teamVocabularyShadowed: 'टीम शब्दावली को प्राथमिकता मिलती है: आपके व्यक्तिगत शब्द {terms} इस टीम नीति में उपयोग नहीं होते।', lspReconnecting: 'LSP डिस्कनेक्ट हो गया, फिर से कनेक्ट हो रहा है…', lspDisconnected: 'LSP डिस्कनेक्ट हो गया', lspTooManySessions: 'इस नेटवर्क पर बहुत अधिक एडिटर खुले हैं; LSP थोड़ी देर में फिर से कनेक्ट होगा' },
+    // 编辑器侧栏「结构化编写」两个标签（ADR 0058 §8.3）。
+    policyEditor: { tabModel: 'मॉडल', tabVocabulary: 'शब्दावली' },
     policies: {
       // 拖拽手柄的可访问名称（#774 axe aria-command-name）
       dragHandle: '{name} को किसी समूह में खींचें',

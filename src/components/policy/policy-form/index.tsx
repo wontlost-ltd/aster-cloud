@@ -84,6 +84,7 @@ import { useFitViewportHeight } from './use-fit-viewport-height';
 import { useSuppressLauncherSafeArea } from '@/components/assistant/assistant-context';
 import { EditorPalette } from './editor-palette';
 import { EditorRail } from './editor-rail';
+import type { StructuredAuthoringProps } from '@/lib/capabilities/types';
 import { StarterHint } from './starter-hint';
 import { CNLSyntaxConverterDialog } from '@/components/policy/cnl-syntax-converter-dialog';
 import { type PolicyExample, getExampleSource } from '@/data/policy-examples';
@@ -94,6 +95,9 @@ import { useAliasIssueMessage } from '@/components/policy/use-alias-issue-messag
 import { localizedErrorMessage } from '@/lib/api/localized-error-message';
 
 /** 保存时作者词汇非法的错误码（与服务端 policy-compile-response 一致）。 */
+/** 未传 structuredAuthoring 时的默认值：无权，侧栏与接入前一致。 */
+const STRUCTURED_AUTHORING_DENIED: StructuredAuthoringProps = { allowed: false, sources: [] };
+
 const VOCABULARY_SCOPE_INVALID_CODE = 'vocabulary_scope_invalid';
 
 // 类型-only 导入（不拉入 Monaco 重包；运行时组件仍走下方 dynamic）。
@@ -192,6 +196,8 @@ export interface PolicyFormProps {
   breadcrumbs: Array<{ label: string; href?: string }>;
   /** Whether this user may configure structural keyword aliases. */
   allowStructuralAliases?: boolean;
+  /** 结构化编写能力的服务端判定结果；缺省视为无权（编辑器与接入前一致）。 */
+  structuredAuthoring?: StructuredAuthoringProps;
   /** 当前用户不能切换公开状态（团队策略只有 owner/admin 可以，ADR 0016）。 */
   visibilityLocked?: boolean;
   /** 团队策略所属团队：编辑器按团队词汇 + 作者词汇编译（ADR 0017）。 */
@@ -216,6 +222,7 @@ export function PolicyForm({
   detailHrefFor,
   breadcrumbs,
   allowStructuralAliases = false,
+  structuredAuthoring = STRUCTURED_AUTHORING_DENIED,
   visibilityLocked = false,
   teamId = null,
 }: PolicyFormProps) {
@@ -834,6 +841,7 @@ export function PolicyForm({
               open={sidePanelOpen}
               errorCount={compileErrorCount}
               onSelect={openSidePanel}
+              structuredAuthoring={structuredAuthoring}
             />
           )}
           <div className="flex min-w-0 flex-1 flex-col rounded-xl border border-border bg-bg shadow-sm overflow-hidden">
@@ -901,6 +909,7 @@ export function PolicyForm({
                 aliasSet={aliasSet}
                 reservedSets={reservedSets}
                 allowStructuralAliases={allowStructuralAliases}
+                structuredAuthoring={structuredAuthoring}
                 onAliasSetChange={setAliasSet}
                 onApplyContent={(body) => setContent(body)}
                 starterSource={starterSource}
