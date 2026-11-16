@@ -108,4 +108,11 @@ describe('PoliciesContent 团队策略', () => {
     expect(row('Teammate').querySelector('[data-drag-handle]')).toBeNull();
     expect(row('Mine').querySelector('[data-drag-handle]')).not.toBeNull();
   });
+
+  it('拖拽手柄有可访问名称（#774 axe aria-command-name）', () => {
+    renderContent();
+    const handle = row('Mine').querySelector('[data-drag-handle]');
+    expect(handle?.getAttribute('role')).toBe('button');
+    expect(handle?.getAttribute('aria-label')).toBe('dragHandle');
+  });
 });

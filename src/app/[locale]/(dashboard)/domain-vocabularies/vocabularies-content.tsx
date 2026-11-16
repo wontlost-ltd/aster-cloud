@@ -662,6 +662,8 @@ export function VocabulariesContent({
             }}>{loadingDeletedPage ? t('actions.loadingMore') : t('actions.loadMore')}</Button></div> : null}
           </div>
         ) : <DataTable
+          // 滚动容器须是定位祖先：sr-only 表头（position:absolute）否则逃出 overflow-x-auto，撑宽移动端整页（#774）
+          className="relative"
           columns={columns}
           rows={initialTerms}
           getRowKey={(row) => row.id}

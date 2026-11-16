@@ -194,7 +194,8 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* 窄屏下时间范围与刷新按钮折到标题下方，避免横向溢出（#774） */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-semibold text-fg dark:text-white">
           {t('title')}
         </h2>
@@ -204,6 +205,8 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
             {(['1h', '24h', '7d', '30d'] as TimeRange[]).map((range) => (
               <button
                 key={range}
+                type="button"
+                aria-pressed={timeRange === range}
                 onClick={() => setTimeRange(range)}
                 className={`px-3 py-1 text-sm font-medium first:rounded-l-md last:rounded-r-md border ${
                   timeRange === range
@@ -217,8 +220,11 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
           </div>
           {/* Refresh Button */}
           <button
+            type="button"
             onClick={fetchData}
             disabled={loading}
+            aria-label={t('refresh')}
+            title={t('refresh')}
             className="p-2 text-fg-muted hover:text-fg dark:text-fg-subtle dark:hover:text-gray-200"
           >
             <svg
@@ -226,6 +232,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
+              aria-hidden="true"
             >
               <path
                 strokeLinecap="round"
@@ -240,7 +247,8 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
 
       {/* Stats Cards */}
       {stats && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        // 统计卡是「名称 → 数值」对，用 <dl> 包住 <dt>/<dd>（axe dlitem）
+        <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Total Events */}
           <div className="bg-bg dark:bg-gray-800 rounded-lg shadow p-4">
             <dt className="text-sm font-medium text-fg-muted dark:text-fg-subtle">{t('totalEvents')}</dt>
@@ -280,7 +288,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
               {formatSecurityCount(stats.bySeverity.ERROR + stats.bySeverity.CRITICAL, locale)}
             </dd>
           </div>
-        </div>
+        </dl>
       )}
 
       {/* Event Type Breakdown */}
@@ -313,6 +321,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
           <h3 className="text-lg font-medium text-fg dark:text-white">{t('recentEvents')}</h3>
           {/* Severity Filter */}
           <select
+            aria-label={t('severityFilter')}
             value={selectedSeverity}
             onChange={(e) => setSelectedSeverity(e.target.value as EventSeverity | 'ALL')}
             className="text-sm border border-border-strong dark:border-gray-600 rounded-md px-2 py-1 bg-bg dark:bg-gray-700 text-fg dark:text-white"

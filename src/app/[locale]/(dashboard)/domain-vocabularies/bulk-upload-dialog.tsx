@@ -20,7 +20,7 @@ import {
 } from './bulk-result';
 import { BulkRowErrors, BulkSkippedReasons, skippedReasonTexts } from './bulk-row-errors';
 import { parseBulkInput, parseFindingText, type ParseOutcome } from './bulk-parse';
-import { useFocusTrap } from './use-focus-trap';
+import { useFocusTrap } from '@/hooks/use-focus-trap';
 import { useVocabularyErrors } from './use-vocabulary-errors';
 
 interface BulkUploadDialogProps {

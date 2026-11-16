@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { CLIENT_CAPABILITIES } from '@/hooks/use-deployment-mode';
@@ -22,6 +22,8 @@ interface AiUsage {
  */
 export function AiUsageCard({ locale }: { locale: string }) {
   const t = useTranslations('dashboard.aiUsage');
+  // 进度条以卡片标题为可访问名称（axe aria-progressbar-name）
+  const titleId = useId();
   const [data, setData] = useState<AiUsage | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -83,7 +85,7 @@ export function AiUsageCard({ locale }: { locale: string }) {
   return (
     <div className="rounded-lg border border-border p-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-fg">{t('title')}</h3>
+        <h3 id={titleId} className="text-sm font-medium text-fg">{t('title')}</h3>
         <span className={`text-xs font-medium ${textColor}`}>
           {data.monthly.used} / {data.monthly.limit === -1 ? '∞' : data.monthly.limit}
         </span>
@@ -95,6 +97,7 @@ export function AiUsageCard({ locale }: { locale: string }) {
             className={`h-full ${barColor} transition-all`}
             style={{ width: `${Math.min(percent, 100)}%` }}
             role="progressbar"
+            aria-labelledby={titleId}
             aria-valuenow={percent}
             aria-valuemin={0}
             aria-valuemax={100}

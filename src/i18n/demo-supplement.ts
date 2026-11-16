@@ -1258,7 +1258,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
     // 细分出的展示类型，见 lib/security-event-display.ts。
     security: {
-      dashboard: { title: 'Security monitoring', retry: 'Retry', loadFailed: 'Could not load security data.', unknownError: 'Unknown error.', timeRange: { '1h': '1 hour', '24h': '24 hours', '7d': '7 days', '30d': '30 days' }, totalEvents: 'Total events', errorRate: 'Error rate', errorsAndCritical: 'Errors / critical', eventTypeBreakdown: 'Event type breakdown', recentEvents: 'Recent events', allSeverities: 'All severities', noEvents: 'No events recorded.', policy: 'Policy', requestId: 'Request ID', viewDetails: 'View details', severity: { INFO: 'Info', WARNING: 'Warning', ERROR: 'Error', CRITICAL: 'Critical' } },
+      dashboard: { refresh: 'Refresh security data', severityFilter: 'Filter events by severity', title: 'Security monitoring', retry: 'Retry', loadFailed: 'Could not load security data.', unknownError: 'Unknown error.', timeRange: { '1h': '1 hour', '24h': '24 hours', '7d': '7 days', '30d': '30 days' }, totalEvents: 'Total events', errorRate: 'Error rate', errorsAndCritical: 'Errors / critical', eventTypeBreakdown: 'Event type breakdown', recentEvents: 'Recent events', allSeverities: 'All severities', noEvents: 'No events recorded.', policy: 'Policy', requestId: 'Request ID', viewDetails: 'View details', severity: { INFO: 'Info', WARNING: 'Warning', ERROR: 'Error', CRITICAL: 'Critical' } },
       eventTypes: {
         TEAM_MEMBER_BUSINESS_ROLES_UPDATED: 'Team member business roles changed',
         SIGNATURE_INVALID: 'Invalid signature',
@@ -1299,6 +1299,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // PLAN_FEATURE_MESSAGE_VALUES 按已配置 locales 注入。trialCardTitle 替换写死的 "Trial"。
     billing: {
       currencies: { USD: 'US Dollar ($)', CNY: 'Chinese Yuan (¥)', EUR: 'Euro (€)' },
+      currencyLabel: 'Billing currency',
+      intervalLabel: 'Billing interval',
       restApiCallsThisMonth: 'Cloud REST API calls this month',
       policyApiCallsThisMonth: 'Policy Execution API calls this month',
       // 两项 API 计量各自独立计数的说明（review minor）。
@@ -1354,6 +1356,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 编辑器状态栏的 LSP 断开 / 重连提示（生产复测第 6 轮）。
     diagnostics: { teamVocabularyShadowed: 'Team vocabulary takes precedence: your personal terms {terms} are not used in this team policy.', lspReconnecting: 'LSP disconnected, reconnecting…', lspDisconnected: 'LSP disconnected', lspTooManySessions: 'Too many editors open on this network; LSP will reconnect shortly' },
     policies: {
+      // 拖拽手柄的可访问名称（#774 axe aria-command-name）
+      dragHandle: 'Drag {name} to a group',
       // /policies 列表的团队筛选与无权限操作提示（列表含团队策略后新增）
       teamFilter: { label: 'Owner', all: 'All', personal: 'Personal' },
       teamBadge: 'Team: {team}',
@@ -3029,7 +3033,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
     // 细分出的展示类型，见 lib/security-event-display.ts。
     security: {
-      dashboard: { title: '安全监控', retry: '重试', loadFailed: '无法加载安全数据。', unknownError: '未知错误。', timeRange: { '1h': '1 小时', '24h': '24 小时', '7d': '7 天', '30d': '30 天' }, totalEvents: '事件总数', errorRate: '错误率', errorsAndCritical: '错误 / 严重', eventTypeBreakdown: '事件类型分布', recentEvents: '最近事件', allSeverities: '所有级别', noEvents: '暂无事件记录。', policy: '策略', requestId: '请求 ID', viewDetails: '查看详情', severity: { INFO: '信息', WARNING: '警告', ERROR: '错误', CRITICAL: '严重' } },
+      dashboard: { refresh: '刷新安全数据', severityFilter: '按级别筛选事件', title: '安全监控', retry: '重试', loadFailed: '无法加载安全数据。', unknownError: '未知错误。', timeRange: { '1h': '1 小时', '24h': '24 小时', '7d': '7 天', '30d': '30 天' }, totalEvents: '事件总数', errorRate: '错误率', errorsAndCritical: '错误 / 严重', eventTypeBreakdown: '事件类型分布', recentEvents: '最近事件', allSeverities: '所有级别', noEvents: '暂无事件记录。', policy: '策略', requestId: '请求 ID', viewDetails: '查看详情', severity: { INFO: '信息', WARNING: '警告', ERROR: '错误', CRITICAL: '严重' } },
       eventTypes: {
         TEAM_MEMBER_BUSINESS_ROLES_UPDATED: '团队成员业务角色已变更',
         SIGNATURE_INVALID: '签名无效',
@@ -3070,6 +3074,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // PLAN_FEATURE_MESSAGE_VALUES 按已配置 locales 注入。trialCardTitle 替换写死的 "Trial"。
     billing: {
       currencies: { USD: '美元 ($)', CNY: '人民币 (¥)', EUR: '欧元 (€)' },
+      currencyLabel: '结算币种',
+      intervalLabel: '计费周期',
       restApiCallsThisMonth: '本月 Cloud REST API 调用次数',
       policyApiCallsThisMonth: '本月 Policy 执行 API 调用次数',
       // 两项 API 计量各自独立计数的说明（review minor）。
@@ -3125,6 +3131,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 编辑器状态栏的 LSP 断开 / 重连提示（生产复测第 6 轮）。
     diagnostics: { teamVocabularyShadowed: '团队词汇优先：你的个人词条 {terms} 在此团队策略中不生效。', lspReconnecting: 'LSP 已断开，正在重连…', lspDisconnected: 'LSP 已断开', lspTooManySessions: '同一网络打开的编辑器过多，LSP 稍后重连' },
     policies: {
+      // 拖拽手柄的可访问名称（#774 axe aria-command-name）
+      dragHandle: '拖动“{name}”到分组',
       teamFilter: { label: '归属', all: '全部', personal: '个人' },
       teamBadge: '团队：{team}',
       actionNotPermitted: '你在该团队的角色不允许此操作',
@@ -4801,7 +4809,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
     // 细分出的展示类型，见 lib/security-event-display.ts。
     security: {
-      dashboard: { title: 'Sicherheitsüberwachung', retry: 'Erneut versuchen', loadFailed: 'Sicherheitsdaten konnten nicht geladen werden.', unknownError: 'Unbekannter Fehler.', timeRange: { '1h': '1 Stunde', '24h': '24 Stunden', '7d': '7 Tage', '30d': '30 Tage' }, totalEvents: 'Ereignisse gesamt', errorRate: 'Fehlerrate', errorsAndCritical: 'Fehler / kritisch', eventTypeBreakdown: 'Ereignisse nach Typ', recentEvents: 'Letzte Ereignisse', allSeverities: 'Alle Schweregrade', noEvents: 'Keine Ereignisse erfasst.', policy: 'Policy', requestId: 'Anfrage-ID', viewDetails: 'Details anzeigen', severity: { INFO: 'Info', WARNING: 'Warnung', ERROR: 'Fehler', CRITICAL: 'Kritisch' } },
+      dashboard: { refresh: 'Sicherheitsdaten aktualisieren', severityFilter: 'Ereignisse nach Schweregrad filtern', title: 'Sicherheitsüberwachung', retry: 'Erneut versuchen', loadFailed: 'Sicherheitsdaten konnten nicht geladen werden.', unknownError: 'Unbekannter Fehler.', timeRange: { '1h': '1 Stunde', '24h': '24 Stunden', '7d': '7 Tage', '30d': '30 Tage' }, totalEvents: 'Ereignisse gesamt', errorRate: 'Fehlerrate', errorsAndCritical: 'Fehler / kritisch', eventTypeBreakdown: 'Ereignisse nach Typ', recentEvents: 'Letzte Ereignisse', allSeverities: 'Alle Schweregrade', noEvents: 'Keine Ereignisse erfasst.', policy: 'Policy', requestId: 'Anfrage-ID', viewDetails: 'Details anzeigen', severity: { INFO: 'Info', WARNING: 'Warnung', ERROR: 'Fehler', CRITICAL: 'Kritisch' } },
       eventTypes: {
         TEAM_MEMBER_BUSINESS_ROLES_UPDATED: 'Geschäftsrollen eines Teammitglieds geändert',
         SIGNATURE_INVALID: 'Ungültige Signatur',
@@ -4842,6 +4850,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // PLAN_FEATURE_MESSAGE_VALUES 按已配置 locales 注入。trialCardTitle 替换写死的 "Trial"。
     billing: {
       currencies: { USD: 'US-Dollar ($)', CNY: 'Chinesischer Yuan (¥)', EUR: 'Euro (€)' },
+      currencyLabel: 'Abrechnungswährung',
+      intervalLabel: 'Abrechnungszeitraum',
       restApiCallsThisMonth: 'Cloud-REST-API-Aufrufe diesen Monat',
       policyApiCallsThisMonth: 'Policy-Ausführungs-API-Aufrufe diesen Monat',
       // 两项 API 计量各自独立计数的说明（review minor）。
@@ -4897,6 +4907,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 编辑器状态栏的 LSP 断开 / 重连提示（生产复测第 6 轮）。
     diagnostics: { teamVocabularyShadowed: 'Das Team-Vokabular hat Vorrang: Ihre persönlichen Begriffe {terms} werden in dieser Team-Richtlinie nicht verwendet.', lspReconnecting: 'LSP getrennt, Verbindung wird wiederhergestellt…', lspDisconnected: 'LSP getrennt', lspTooManySessions: 'Zu viele Editoren in diesem Netzwerk geöffnet; LSP verbindet sich gleich erneut' },
     policies: {
+      // 拖拽手柄的可访问名称（#774 axe aria-command-name）
+      dragHandle: '{name} in eine Gruppe ziehen',
       teamFilter: { label: 'Zuordnung', all: 'Alle', personal: 'Persönlich' },
       teamBadge: 'Team: {team}',
       actionNotPermitted: 'Ihre Teamrolle erlaubt diese Aktion nicht',
@@ -6559,7 +6571,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 安全监控事件类型标签（F10）。APPROVAL_SUBMITTED / POLICY_EXECUTION_FAILED 是按 details
     // 细分出的展示类型，见 lib/security-event-display.ts。
     security: {
-      dashboard: { title: 'सुरक्षा निगरानी', retry: 'फिर कोशिश करें', loadFailed: 'सुरक्षा डेटा लोड नहीं हो सका।', unknownError: 'अज्ञात त्रुटि।', timeRange: { '1h': '1 घंटा', '24h': '24 घंटे', '7d': '7 दिन', '30d': '30 दिन' }, totalEvents: 'कुल घटनाएँ', errorRate: 'त्रुटि दर', errorsAndCritical: 'त्रुटियाँ / गंभीर', eventTypeBreakdown: 'घटना प्रकार का विभाजन', recentEvents: 'हाल की घटनाएँ', allSeverities: 'सभी स्तर', noEvents: 'कोई घटना दर्ज नहीं है।', policy: 'नीति', requestId: 'अनुरोध ID', viewDetails: 'विवरण देखें', severity: { INFO: 'जानकारी', WARNING: 'चेतावनी', ERROR: 'त्रुटि', CRITICAL: 'गंभीर' } },
+      dashboard: { refresh: 'सुरक्षा डेटा रीफ़्रेश करें', severityFilter: 'गंभीरता के अनुसार घटनाएँ फ़िल्टर करें', title: 'सुरक्षा निगरानी', retry: 'फिर कोशिश करें', loadFailed: 'सुरक्षा डेटा लोड नहीं हो सका।', unknownError: 'अज्ञात त्रुटि।', timeRange: { '1h': '1 घंटा', '24h': '24 घंटे', '7d': '7 दिन', '30d': '30 दिन' }, totalEvents: 'कुल घटनाएँ', errorRate: 'त्रुटि दर', errorsAndCritical: 'त्रुटियाँ / गंभीर', eventTypeBreakdown: 'घटना प्रकार का विभाजन', recentEvents: 'हाल की घटनाएँ', allSeverities: 'सभी स्तर', noEvents: 'कोई घटना दर्ज नहीं है।', policy: 'नीति', requestId: 'अनुरोध ID', viewDetails: 'विवरण देखें', severity: { INFO: 'जानकारी', WARNING: 'चेतावनी', ERROR: 'त्रुटि', CRITICAL: 'गंभीर' } },
       eventTypes: {
         TEAM_MEMBER_BUSINESS_ROLES_UPDATED: 'टीम सदस्य की व्यावसायिक भूमिकाएँ बदली गईं',
         SIGNATURE_INVALID: 'अमान्य हस्ताक्षर',
@@ -6600,6 +6612,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // PLAN_FEATURE_MESSAGE_VALUES 按已配置 locales 注入。trialCardTitle 替换写死的 "Trial"。
     billing: {
       currencies: { USD: 'अमेरिकी डॉलर ($)', CNY: 'चीनी युआन (¥)', EUR: 'यूरो (€)' },
+      currencyLabel: 'बिलिंग मुद्रा',
+      intervalLabel: 'बिलिंग अवधि',
       restApiCallsThisMonth: 'इस माह Cloud REST API कॉल',
       policyApiCallsThisMonth: 'इस माह नीति निष्पादन API कॉल',
       // 两项 API 计量各自独立计数的说明（review minor）。
@@ -6655,6 +6669,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // 编辑器状态栏的 LSP 断开 / 重连提示（生产复测第 6 轮）。
     diagnostics: { teamVocabularyShadowed: 'टीम शब्दावली को प्राथमिकता मिलती है: आपके व्यक्तिगत शब्द {terms} इस टीम नीति में उपयोग नहीं होते।', lspReconnecting: 'LSP डिस्कनेक्ट हो गया, फिर से कनेक्ट हो रहा है…', lspDisconnected: 'LSP डिस्कनेक्ट हो गया', lspTooManySessions: 'इस नेटवर्क पर बहुत अधिक एडिटर खुले हैं; LSP थोड़ी देर में फिर से कनेक्ट होगा' },
     policies: {
+      // 拖拽手柄的可访问名称（#774 axe aria-command-name）
+      dragHandle: '{name} को किसी समूह में खींचें',
       teamFilter: { label: 'स्वामित्व', all: 'सभी', personal: 'व्यक्तिगत' },
       teamBadge: 'टीम: {team}',
       actionNotPermitted: 'टीम में आपकी भूमिका इस क्रिया की अनुमति नहीं देती',

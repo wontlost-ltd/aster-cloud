@@ -9,7 +9,7 @@ import {
   Badge,
   Button,
 } from '@/components/ui';
-import { useFocusTrap } from '../use-focus-trap';
+import { useFocusTrap } from '@/hooks/use-focus-trap';
 
 interface DiffSnapshotMeta {
   id: string;

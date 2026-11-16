@@ -379,10 +379,11 @@ export function CommandPalette({ commands, labels }: CommandPaletteProps) {
 
       {/* Inline trigger — appears in the top-nav. Click opens palette,
           keyboard Cmd+K does the same thing. */}
+      {/* 可访问名称取自可见文字（WCAG 2.5.3 Label in Name）：桌面端是占位文字，
+          移动端占位文字隐藏，改由 sr-only 的 hintOpen 提供；⌘K 只是视觉提示，不读出 */}
       <button
         type="button"
         onClick={() => openPalette('click')}
-        aria-label={labels.hintOpen}
         className={cn(
           'inline-flex items-center gap-2 rounded-md border border-border bg-bg-subtle',
           'px-2.5 py-1.5 text-sm text-fg-muted',
@@ -393,7 +394,8 @@ export function CommandPalette({ commands, labels }: CommandPaletteProps) {
       >
         <Search className="size-3.5" aria-hidden />
         <span className="hidden sm:inline">{labels.placeholder}</span>
-        <kbd className="hidden rounded border border-border bg-bg px-1.5 py-0.5 font-mono text-xs text-fg-muted sm:inline-block">
+        <span className="sr-only sm:hidden">{labels.hintOpen}</span>
+        <kbd aria-hidden className="hidden rounded border border-border bg-bg px-1.5 py-0.5 font-mono text-xs text-fg-muted sm:inline-block">
           ⌘K
         </kbd>
       </button>

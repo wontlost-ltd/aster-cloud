@@ -113,6 +113,8 @@ export default async function BillingPlansPage() {
       CNY: t.raw('currencies.CNY' as never) as string,
       EUR: t.raw('currencies.EUR' as never) as string,
     },
+    currencyLabel: t('currencyLabel'),
+    intervalLabel: t('intervalLabel'),
     title: t('title'),
     subtitle: t('subtitle'),
     subscriptionActivated: t('subscriptionActivated'),

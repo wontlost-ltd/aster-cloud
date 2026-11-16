@@ -68,4 +68,17 @@ describe('LogsContent 筛选区与空态文案', () => {
     expect(screen.queryByText('Status')).toBeNull();
     expect(screen.queryByText('Execute the policy to see logs here')).toBeNull();
   });
+
+  it('筛选控件都以可见标签为可访问名称（#774 axe label / select-name）', () => {
+    render(
+      <LogsContent policyId="p1" policyName="P" translations={translations} locale="zh" initialLogs={[]}
+        initialStats={{ totalExecutions: 0, successCount: 0, failureCount: 0, pendingCount: 0, indeterminateCount: 0,
+          avgDurationMs: 0, successRate: 0, bySource: [], recentTrend: [] }}
+        initialTotalPages={1} />,
+    );
+    expect(screen.getByLabelText('状态').tagName).toBe('SELECT');
+    expect(screen.getByLabelText('来源').tagName).toBe('SELECT');
+    expect(screen.getByLabelText('从').getAttribute('type')).toBe('date');
+    expect(screen.getByLabelText('至').getAttribute('type')).toBe('date');
+  });
 });

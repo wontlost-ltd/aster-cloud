@@ -15,7 +15,7 @@ import {
 import { checkVocabularyScope } from '@/lib/domain-vocabulary-format';
 import { requiresParent } from '@/lib/domain-vocabulary-assemble';
 import { KIND_OPTIONS, type Kind } from './constants';
-import { useFocusTrap } from './use-focus-trap';
+import { useFocusTrap } from '@/hooks/use-focus-trap';
 
 function isKnownKind(value: string | undefined): value is Kind {
   return value !== undefined && (KIND_OPTIONS as readonly string[]).includes(value);

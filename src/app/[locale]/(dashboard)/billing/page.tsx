@@ -241,7 +241,8 @@ export default async function BillingOverviewPage() {
                   {tOv('managePayment')} · {tOv('invoicesEmpty')}
                 </p>
               </Stack>
-              <Stack direction="row" gap={3} className="shrink-0">
+              {/* 窄屏下两个按钮折行，避免 390px 宽度下横向溢出（#774） */}
+              <Stack direction="row" gap={3} className="flex-wrap sm:shrink-0">
                 {/* Stripe Customer Portal session API at
                     /api/stripe/portal accepts POST only (mints a
                     one-shot session URL then 302s into Stripe's
