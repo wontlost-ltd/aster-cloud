@@ -353,15 +353,16 @@ export function ApiKeysContent({
                 // narrow viewports instead of clipping columns. The
                 // previous overflow-hidden silently dropped the
                 // trailing Actions column on mobile.
+                // 窄屏隐藏作用域 / 最近使用 / 创建时间三列：否则「Revoke」初始落在横向滚动区外，要先横滑才看得到（#774）
                 <div className="overflow-x-auto -mx-4 sm:mx-0">
                   <table className="min-w-full divide-y divide-border">
                     <thead>
                       <tr>
                         <Th>{t.name}</Th>
                         <Th>{t.key}</Th>
-                        <Th>{t.scopeColumn}</Th>
-                        <Th>{t.lastUsed}</Th>
-                        <Th>{t.created}</Th>
+                        <Th className="max-sm:hidden">{t.scopeColumn}</Th>
+                        <Th className="max-sm:hidden">{t.lastUsed}</Th>
+                        <Th className="max-sm:hidden">{t.created}</Th>
                         <Th align="right">{t.actions}</Th>
                       </tr>
                     </thead>
@@ -374,13 +375,13 @@ export function ApiKeysContent({
                           <td className="whitespace-nowrap px-3 py-4 font-mono text-sm text-fg-muted">
                             {key.prefix}...
                           </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-fg-muted">
+                          <td className="whitespace-nowrap px-3 py-4 text-sm text-fg-muted max-sm:hidden">
                             {key.teamName ?? t.scopePersonal}
                           </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-fg-muted">
+                          <td className="whitespace-nowrap px-3 py-4 text-sm text-fg-muted max-sm:hidden">
                             {key.lastUsedAt ? formatDate(key.lastUsedAt, locale) : t.never}
                           </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-fg-muted">
+                          <td className="whitespace-nowrap px-3 py-4 text-sm text-fg-muted max-sm:hidden">
                             {formatDate(key.createdAt, locale)}
                           </td>
                           <td className="whitespace-nowrap px-3 py-4 text-right text-sm">
@@ -578,14 +579,15 @@ else:
 /* ------------------------------------------------------------------ */
 
 function Th({
-  children, align = 'left',
-}: { children: React.ReactNode; align?: 'left' | 'right' }) {
+  children, align = 'left', className,
+}: { children: React.ReactNode; align?: 'left' | 'right'; className?: string }) {
   return (
     <th
       scope="col"
       className={cn(
         'px-3 py-3 text-xs font-medium uppercase tracking-wider text-fg-muted',
         align === 'right' ? 'text-right' : 'text-left',
+        className,
       )}
     >
       {children}

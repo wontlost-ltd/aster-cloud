@@ -294,7 +294,9 @@ export function NotificationsBell() {
         <div
           role="dialog"
           aria-label={labels.label}
-          className="absolute right-0 top-full z-40 mt-2 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-border bg-bg shadow-lg"
+          // 移动端铃铛不在顶栏最右：以铃铛右缘为锚的 320px 面板左侧会落到视口外、条目被截（#774）。
+          // 窄屏改为相对视口定位、左右各留 1rem；sm 起恢复锚在铃铛下方。
+          className="fixed inset-x-4 top-16 z-40 overflow-hidden rounded-lg border border-border bg-bg shadow-lg sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80"
         >
           <div className="flex items-center justify-between border-b border-border bg-bg-subtle px-3 py-2">
             <p className="text-sm font-semibold text-fg">{labels.label}</p>

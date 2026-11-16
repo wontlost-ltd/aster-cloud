@@ -247,6 +247,28 @@ function DecisionDialog({
  * 策略版本审批分区。只负责「找得到」：批准/驳回仍在版本页完成（approveVersion），这里不重复审批逻辑。
  * 作者本人的提交只读，标注等待他人审批（四眼原则）。
  */
+/** 版本审批条目的操作区（桌面表格与移动端卡片共用）：能审批 →「Review」，作者本人 → 只读「等待他人审批」 */
+function VersionApprovalActions({ item, t }: { item: PendingVersionApproval; t: T }) {
+  return (
+    <div className="flex items-center gap-3">
+      {!item.canAct && !item.noEligibleReviewer && (
+        <Badge variant="neutral">{t('versions.awaitingOthers')}</Badge>
+      )}
+      {/* 团队里除作者外没有 owner/admin：四眼原则下无人能审批，引导去团队成员管理任命管理员 */}
+      {item.noEligibleReviewer && item.teamId && (
+        <Link href={`/teams/${item.teamId}/members`} data-testid="no-eligible-reviewer"
+          className="text-xs text-warning underline hover:text-warning/80">
+          {t('versions.noEligibleReviewer')}
+        </Link>
+      )}
+      <Link href={`/policies/${item.policyId}/versions`}
+        className="text-sm font-medium text-primary hover:text-primary-hover">
+        {t(item.canAct ? 'versions.review' : 'versions.view')} →
+      </Link>
+    </div>
+  );
+}
+
 function VersionApprovalsSection({ items, locale, t }: { items: PendingVersionApproval[]; locale: string; t: T }) {
   return (
     <section aria-labelledby="version-approvals-title" className="mb-8">
@@ -255,9 +277,12 @@ function VersionApprovalsSection({ items, locale, t }: { items: PendingVersionAp
       {items.length === 0 ? (
         <p className="rounded-lg border border-border px-4 py-6 text-sm text-fg-muted">{t('versions.empty')}</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="min-w-full text-sm">
-            <thead>
+        // 同一份表格标记：sm 起是五列表格；窄屏每行折成一张卡片、单元格纵向堆叠，操作入口始终在视口内。
+        // 此前五列表格在 390px 下把操作列挤出 overflow-x-auto 容器，「Review」被裁到视口外
+        // （#774 用户反馈「审批入口藏在容器里」）。
+        <div className="rounded-lg border border-border sm:overflow-x-auto">
+          <table className="min-w-full text-sm max-sm:block">
+            <thead className="max-sm:sr-only">
               <tr className="border-b border-border text-xs uppercase text-fg-muted">
                 <th className="px-4 py-2 text-left">{t('thPolicy')}</th>
                 <th className="px-4 py-2 text-left">{t('versions.thVersion')}</th>
@@ -266,30 +291,16 @@ function VersionApprovalsSection({ items, locale, t }: { items: PendingVersionAp
                 <th className="px-4 py-2 text-left">{t('thActions')}</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="max-sm:block">
               {items.map((item) => (
-                <tr key={item.versionId} data-version-id={item.versionId} className="border-b border-border">
-                  <td className="px-4 py-3 font-medium text-fg">{item.policyName}</td>
-                  <td className="px-4 py-3">v{item.version}</td>
-                  <td className="px-4 py-3">{item.submittedBy ?? t('versions.unknownUser')}</td>
-                  <td className="px-4 py-3 text-fg-muted">{formatCreatedAt(item.submittedAt, locale)}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      {!item.canAct && !item.noEligibleReviewer && (
-                        <Badge variant="neutral">{t('versions.awaitingOthers')}</Badge>
-                      )}
-                      {/* 团队里除作者外没有 owner/admin：四眼原则下无人能审批，引导去团队成员管理任命管理员 */}
-                      {item.noEligibleReviewer && item.teamId && (
-                        <Link href={`/teams/${item.teamId}/members`} data-testid="no-eligible-reviewer"
-                          className="text-xs text-warning underline hover:text-warning/80">
-                          {t('versions.noEligibleReviewer')}
-                        </Link>
-                      )}
-                      <Link href={`/policies/${item.policyId}/versions`}
-                        className="text-sm font-medium text-primary hover:text-primary-hover">
-                        {t(item.canAct ? 'versions.review' : 'versions.view')} →
-                      </Link>
-                    </div>
+                <tr key={item.versionId} data-version-id={item.versionId}
+                  className="border-b border-border last:border-b-0 max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:gap-x-2 max-sm:gap-y-1 max-sm:p-3">
+                  <td className="px-4 py-3 font-medium text-fg max-sm:p-0 max-sm:break-words">{item.policyName}</td>
+                  <td className="px-4 py-3 max-sm:p-0">v{item.version}</td>
+                  <td className="px-4 py-3 max-sm:basis-full max-sm:p-0 max-sm:text-xs max-sm:text-fg-muted">{item.submittedBy ?? t('versions.unknownUser')}</td>
+                  <td className="px-4 py-3 text-fg-muted max-sm:basis-full max-sm:p-0 max-sm:text-xs">{formatCreatedAt(item.submittedAt, locale)}</td>
+                  <td className="px-4 py-3 max-sm:basis-full max-sm:p-0 max-sm:pt-1">
+                    <VersionApprovalActions item={item} t={t} />
                   </td>
                 </tr>
               ))}

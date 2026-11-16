@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import {
@@ -16,7 +16,8 @@ import { formatDate } from '@/lib/format';
 /*
  * Pending team invitations — in-app inbox card.
  *
- * Mounted on /teams (and re-mountable elsewhere later). Polls a
+ * Mounted on /teams and on the dashboard home (#774: invitations were
+ * only discoverable on /teams). Polls a
  * per-user inbox endpoint that returns every pending invitation
  * addressed to the signed-in account's email. Lets the user accept
  * or decline without leaving the app — no email click required.
@@ -60,6 +61,7 @@ export function PendingInvitationsCard() {
   const [items, setItems] = useState<InboxItem[] | null>(null);
   const [pending, setPending] = useState<Record<string, ItemState>>({});
   const [errors, setErrors] = useState<Record<string, string | null>>({});
+  const titleId = useId();
 
   const labels: Labels = {
     title: t('title'),
@@ -154,13 +156,14 @@ export function PendingInvitationsCard() {
   // Loading / empty: render nothing — the card is opt-in surface.
   if (items === null || items.length === 0) return null;
 
+  // 以标题命名的 region：仪表盘与 /teams 都挂这张卡，读屏可按地标直接跳到待接受的邀请（#774）
   return (
-    <Card>
+    <Card role="region" aria-labelledby={titleId}>
       <CardBody className="pt-6">
         <Stack gap={4}>
           <Stack gap={1}>
             <Stack direction="row" gap={2} align="center">
-              <h2 className="font-display text-xl font-semibold tracking-tight text-fg">
+              <h2 id={titleId} className="font-display text-xl font-semibold tracking-tight text-fg">
                 {labels.title}
               </h2>
               <Badge variant="primary">{items.length}</Badge>

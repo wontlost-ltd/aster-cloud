@@ -7,6 +7,7 @@ import { isAdminFromSession } from '@/lib/admin-auth';
 import { DashboardContent } from './dashboard-content';
 import { localizedTitle } from '@/lib/page-metadata';
 import { getDashboardData } from './dashboard-data';
+import { listPendingVersionApprovals } from '@/lib/version-approvals-inbox';
 
 export const generateMetadata = localizedTitle('dashboardNav', 'dashboard');
 
@@ -16,8 +17,15 @@ export default async function DashboardPage() {
     redirect('/login');
   }
 
-  const { stats, policies } = await getDashboardData(session.user.id);
+  const [{ stats, policies }, versionApprovals] = await Promise.all([
+    getDashboardData(session.user.id),
+    listPendingVersionApprovals(session.user.id),
+  ]);
   const t = await getTranslations('dashboard');
+  // 仪表盘只放「轮到我审批」的版本；作者本人的提交（canAct=false）留在 /approvals 只读展示，四眼规则不变
+  const pendingApprovals = versionApprovals
+    .filter((v) => v.canAct)
+    .map(({ versionId, policyId, policyName, version, submittedBy }) => ({ versionId, policyId, policyName, version, submittedBy }));
   const locale = await getLocale();
 
   /*
@@ -157,6 +165,15 @@ export default async function DashboardPage() {
       totalPiiFields={totalPiiFields}
       translations={translations}
       locale={locale}
+      pendingApprovals={pendingApprovals}
+      pendingApprovalsLabels={{
+        title: t('pendingApprovals.title'),
+        subtitle: t('pendingApprovals.subtitle'),
+        review: t('pendingApprovals.review'),
+        submittedBy: t.raw('pendingApprovals.submittedBy') as string,
+        unknownUser: t('pendingApprovals.unknownUser'),
+        viewAll: t('pendingApprovals.viewAll'),
+      }}
     />
   );
 }
