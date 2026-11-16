@@ -79,8 +79,14 @@ test.describe('tap targets (44px on mobile)', () => {
     expect(await small(page, '<div style="padding:40px"><button disabled style="font:12px/16px sans-serif">Add</button></div>')).toEqual([]);
   });
 
-  test('links inside a sentence are exempt', async ({ page }) => {
+  test('links inside a sentence are exempt; inline links in a navigation row are not', async ({ page }) => {
     expect(await small(page, '<p style="font:14px/20px sans-serif">Read the <a href="/d">docs</a> before you start.</p>')).toEqual([]);
+    expect(await small(page, '<div style="font:14px/20px sans-serif">Home · <a href="/d">Docs</a> · Blog</div>')).toEqual(['Docs']);
+  });
+
+  test('a disabled neighbour does not cancel a hit area', async ({ page }) => {
+    const body = '<div style="padding:40px"><button class="tap-target" style="font:12px/16px sans-serif;width:60px">Copy</button><div style="height:4px"></div><button disabled style="font:12px/16px sans-serif;width:60px">Off</button></div>';
+    expect(await small(page, body)).toEqual([]);
   });
 });
 

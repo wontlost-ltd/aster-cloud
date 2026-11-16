@@ -90,7 +90,9 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
   const smallTargets: LayoutReport['smallTargets'] = [];
   if (opts.mobile) {
     const q = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=tab], [role=checkbox], [role=switch], [role=menuitem]';
-    const targets = Array.from(document.querySelectorAll(q)).filter(visible);
+    // 禁用的控件无法操作：既不算点击目标，也不参与相邻目标的重叠判定
+    const targets = Array.from(document.querySelectorAll(q)).filter((el) => visible(el)
+      && !(el as HTMLButtonElement).disabled && el.getAttribute('aria-disabled') !== 'true');
     // 对点击区中心那块 minTarget × minTarget 的方块（区域更小时取整块区域）做 5×5 网格命中测试：
     // 每个测点都要命中本元素（或其后代）。只要求这块方块，而不是整个伪元素——宽按钮的伪元素两端被相邻目标盖住不影响
     // 「存在一块 44×44 可点区域」。测完恢复滚动位置。
@@ -133,14 +135,14 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
     };
     for (const el of targets) {
       const cs = getComputedStyle(el);
+      // WCAG 例外：正文句子里的行内链接（所在文字块是段落、列表项、表格单元格等，且链接之外还有文字）
       if (el.tagName === 'A' && cs.display === 'inline') {
-        const parentText = (el.parentElement?.textContent || '').trim();
-        if (parentText.length > (el.textContent || '').trim().length + 3) continue;
+        const block = el.closest('p, li, dd, dt, td, th, blockquote, figcaption');
+        const blockText = (block?.textContent || '').trim();
+        if (block && blockText.length > (el.textContent || '').trim().length + 3) continue;
       }
       // 原生复选框 / 单选框常由外层 label 扩大点击区
       if (el.tagName === 'INPUT' && el.closest('label')) continue;
-      // 禁用的控件无法操作，不算点击目标
-      if ((el as HTMLButtonElement).disabled || el.getAttribute('aria-disabled') === 'true') continue;
       const r = el.getBoundingClientRect();
       // sr-only 元素（如跳到主内容链接）平时被裁成 1px，聚焦时才展开，不算点击目标
       if (r.width <= 1 || r.height <= 1) continue;
