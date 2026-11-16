@@ -79,6 +79,11 @@ test.describe('tap targets (44px on mobile)', () => {
     expect(await small(page, '<div style="padding:40px"><button disabled style="font:12px/16px sans-serif">Add</button></div>')).toEqual([]);
   });
 
+  test('enlarged hit areas that overlap each other (boxes not touching) do not count for either target', async ({ page }) => {
+    const list = '<div style="padding:40px">' + ['One', 'Two'].map((t) => `<a href="/${t}" class="tap-target" style="display:block;font:14px/20px sans-serif;width:200px;margin-bottom:12px">${t}</a>`).join('') + '</div>';
+    expect(await small(page, list)).toEqual(['One', 'Two']);
+  });
+
   test('links inside a sentence are exempt; inline links in a navigation row are not', async ({ page }) => {
     expect(await small(page, '<p style="font:14px/20px sans-serif">Read the <a href="/d">docs</a> before you start.</p>')).toEqual([]);
     expect(await small(page, '<div style="font:14px/20px sans-serif">Home · <a href="/d">Docs</a> · Blog</div>')).toEqual(['Docs']);

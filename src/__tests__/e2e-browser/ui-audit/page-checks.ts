@@ -127,6 +127,43 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
       window.scrollTo({ left: sx, top: sy, behavior: 'instant' });
       return ok;
     };
+    type Box = { left: number; right: number; top: number; bottom: number };
+    const intersects = (a: Box, b: Box) => {
+      const e = 0.5;
+      return a.left < b.right - e && a.right > b.left + e && a.top < b.bottom - e && a.bottom > b.top + e;
+    };
+    // 区域中心那块 minTarget × minTarget 的方块（区域更小时取整块区域）
+    const centralSquare = (a: Box): Box => {
+      const cx = (a.left + a.right) / 2;
+      const cy = (a.top + a.bottom) / 2;
+      const hw = Math.min(opts.minTarget, a.right - a.left) / 2;
+      const hh = Math.min(opts.minTarget, a.bottom - a.top) / 2;
+      return { left: cx - hw, right: cx + hw, top: cy - hh, bottom: cy + hh };
+    };
+    // 元素用绝对定位的 ::before / ::after 撑出的点击区（宿主坐标系 q 下）：宿主须已定位且自身不裁剪、伪元素可见可点、
+    // 只做纯平移（matrix(1, 0, 0, 1, tx, ty)）；位置 = 宿主内边距盒 + 计算出的 left / top + 平移。取两者中更大的那个
+    const pseudoBox = (el: Element, q: DOMRect): Box | null => {
+      const hostCs = getComputedStyle(el);
+      if (hostCs.position === 'static' || hostCs.overflow !== 'visible') return null;
+      let best: Box | null = null;
+      for (const pseudo of ['::before', '::after']) {
+        const ps = getComputedStyle(el, pseudo);
+        if (ps.content === 'none' || ps.content === 'normal' || ps.position !== 'absolute' || ps.pointerEvents === 'none') continue;
+        if (ps.display === 'none' || ps.visibility === 'hidden') continue;
+        const m = /^matrix\(1, 0, 0, 1, (-?[\d.]+), (-?[\d.]+)\)$/.exec(ps.transform);
+        if (ps.transform !== 'none' && !m) continue;
+        const w = parseFloat(ps.width);
+        const h = parseFloat(ps.height);
+        const left = parseFloat(ps.left);
+        const top = parseFloat(ps.top);
+        if (![w, h, left, top].every(Number.isFinite)) continue;
+        const x = q.left + (parseFloat(hostCs.borderLeftWidth) || 0) + left + (m ? parseFloat(m[1]) : 0);
+        const y = q.top + (parseFloat(hostCs.borderTopWidth) || 0) + top + (m ? parseFloat(m[2]) : 0);
+        const box = { left: x, right: x + w, top: y, bottom: y + h };
+        if (!best || Math.min(w, h) > Math.min(best.right - best.left, best.bottom - best.top)) best = box;
+      }
+      return best;
+    };
     const fixedLayer = (el: Element) => {
       for (let p: Element | null = el; p && p !== document.body; p = p.parentElement) {
         if (getComputedStyle(p).position === 'fixed') return true;
@@ -148,51 +185,29 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
       if (r.width <= 1 || r.height <= 1) continue;
       const own = Math.min(r.width, r.height);
       let min = own;
-      // 点击区可以由绝对定位、居中的 ::before / ::after 撑大（伪元素的点击落在宿主元素上，globals.css 的移动端规则）。
-      // 只在元素自身不裁剪（overflow visible，否则伪元素被裁掉）、撑大后的区域不压到别的点击目标、
-      // 且对这块区域逐点做命中测试（elementFromPoint）确实落在本元素上时才承认——不靠假设，
-      // 伪元素的位置按计算样式求出，被祖先裁掉、被别的层盖住或不可见的情况都会在命中测试里暴露。
-      if (own < opts.minTarget && getComputedStyle(el).overflow === 'visible') {
-        for (const pseudo of ['::before', '::after']) {
-          const ps = getComputedStyle(el, pseudo);
-          if (ps.content === 'none' || ps.content === 'normal' || ps.position !== 'absolute' || ps.pointerEvents === 'none') continue;
-          if (ps.display === 'none' || ps.visibility === 'hidden') continue;
-          const w = parseFloat(ps.width);
-          const h = parseFloat(ps.height);
-          if (!Number.isFinite(w) || !Number.isFinite(h) || Math.min(w, h) <= min) continue;
-          // 伪元素的实际位置：包含块是宿主元素（宿主须已定位）的内边距盒，加上计算出的 left / top 与平移变换；
-          // 只认纯平移（matrix(1, 0, 0, 1, tx, ty)），其他变换或宿主未定位时不承认撑大的点击区
-          const hostCs = getComputedStyle(el);
-          if (hostCs.position === 'static') continue;
-          const m = /^matrix\(1, 0, 0, 1, (-?[\d.]+), (-?[\d.]+)\)$/.exec(ps.transform);
-          if (ps.transform !== 'none' && !m) continue;
-          const tx = m ? parseFloat(m[1]) : 0;
-          const ty = m ? parseFloat(m[2]) : 0;
-          const left = parseFloat(ps.left);
-          const top = parseFloat(ps.top);
-          if (!Number.isFinite(left) || !Number.isFinite(top)) continue;
-          const bl = parseFloat(hostCs.borderLeftWidth) || 0;
-          const bt = parseFloat(hostCs.borderTopWidth) || 0;
-          const area = (q: DOMRect) => {
-            const x = q.left + bl + left + tx;
-            const y = q.top + bt + top + ty;
-            return { left: x, right: x + w, top: y, bottom: y + h };
-          };
-          // 浮在页面上的固定定位元素（右下角助手按钮等）随滚动位置盖住不同内容，不算相邻目标；
-          // 0.5px 容差吸收亚像素误差（并排的分段按钮恰好相接不算重叠）
-          const a0 = area(r);
-          const overlaps = targets.some((o) => {
-            if (o === el || el.contains(o) || o.contains(el) || fixedLayer(o)) return false;
-            const q = o.getBoundingClientRect();
-            if (q.width <= 1 || q.height <= 1) return false;
-            const e = 0.5;
-            return q.left < a0.right - e && q.right > a0.left + e && q.top < a0.bottom - e && q.bottom > a0.top + e;
-          });
-          // 撑大的区域须罩住宿主的内边距盒（百分比宽高按内边距盒算，不含边框），否则谈不上「点击区变大」
-          const br = parseFloat(hostCs.borderRightWidth) || 0;
-          const bb = parseFloat(hostCs.borderBottomWidth) || 0;
-          const covers = a0.left <= r.left + bl + 0.5 && a0.right >= r.right - br - 0.5 && a0.top <= r.top + bt + 0.5 && a0.bottom >= r.bottom - bb - 0.5;
-          if (!covers || overlaps || !hitsCentralSquare(el, area)) continue;
+      // 点击区可以由绝对定位的 ::before / ::after 撑大（伪元素的点击落在宿主元素上，globals.css 的移动端规则）。
+      // 承认的条件：伪元素位置按计算样式求出（pseudoBox）、罩住宿主、中心 44×44 方块不压到相邻目标的有效点击区，
+      // 且对这块方块做网格命中测试（elementFromPoint）确实落在本元素上——被祖先裁掉、被别的层盖住都会暴露。
+      if (own < opts.minTarget) {
+        const a0 = pseudoBox(el, r);
+        const hostCs = getComputedStyle(el);
+        // 撑大的区域须罩住宿主的内边距盒（百分比宽高按内边距盒算，不含边框），否则谈不上「点击区变大」
+        const covers = !!a0
+          && a0.left <= r.left + (parseFloat(hostCs.borderLeftWidth) || 0) + 0.5
+          && a0.right >= r.right - (parseFloat(hostCs.borderRightWidth) || 0) - 0.5
+          && a0.top <= r.top + (parseFloat(hostCs.borderTopWidth) || 0) + 0.5
+          && a0.bottom >= r.bottom - (parseFloat(hostCs.borderBottomWidth) || 0) - 0.5;
+        // 本元素点击区中心的 44×44 方块不得压到相邻目标的有效点击区（其盒子，加上它撑大后的中心方块）；
+        // 浮在页面上的固定定位元素随滚动位置盖住不同内容，不算相邻目标；0.5px 容差吸收亚像素误差
+        const overlaps = !!a0 && targets.some((o) => {
+          if (o === el || el.contains(o) || o.contains(el) || fixedLayer(o)) return false;
+          const q = o.getBoundingClientRect();
+          if (q.width <= 1 || q.height <= 1) return false;
+          const ob = pseudoBox(o, q);
+          const boxes = ob ? [q, centralSquare(ob)] : [q];
+          return boxes.some((x) => intersects(centralSquare(a0), x));
+        });
+        if (a0 && covers && !overlaps && hitsCentralSquare(el, (q) => pseudoBox(el, q) ?? a0)) {
           // 实际可点区域 = 宿主盒与伪元素盒的并集
           const uw = Math.max(r.right, a0.right) - Math.min(r.left, a0.left);
           const uh = Math.max(r.bottom, a0.bottom) - Math.min(r.top, a0.top);
