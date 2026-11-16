@@ -1,0 +1,49 @@
+---
+title: "Editor und Dashboard"
+description: "Startvorlagen für neue Richtlinien, Sprachserver-Verbindung, Cedar-Export, Dashboard-Karten, Engine-Äquivalenz und Barrierefreiheit."
+updated: 2026-11-16
+apiVersion: v1
+---
+
+# Editor und Dashboard
+
+Diese Seite beschreibt jüngste Änderungen am Richtlinieneditor und am Dashboard von Aster Cloud.
+
+## Neue Richtlinien beginnen mit einer Vorlage
+
+**Neue Richtlinie** öffnet sich mit einer kleinen Startrichtlinie in der Sprache der Oberfläche: Chinesisch für die chinesische, Deutsch für die deutsche und sonst Englisch (eine Hindi-Startvorlage gibt es noch nicht, daher erhält auch die Hindi-Oberfläche Englisch). Die Quellsprache der Richtlinie ist die Sprache der Vorlage, sodass Lexikon, Vervollständigung und gespeicherte Sprache des Editors übereinstimmen.
+
+- Ein Hinweis über dem Editor nennt die Sprache der Vorlage und bietet **Leer beginnen** an. Sie können ihn auch schließen.
+- Eine unveränderte Startvorlage ist kein Entwurf: Sie wird nicht automatisch gespeichert, und beim Verlassen der Seite erscheint keine Rückfrage. Erst die erste Änderung — von Hand, über eine Vorlage oder durch den Assistenten — macht sie zu Ihrem Entwurf.
+- Ein gespeicherter Entwurf hat weiterhin Vorrang: Wie bisher wird angeboten, ihn wiederherzustellen.
+- Die Startvorlage ist auch der erste Eintrag im Tab **Vorlagen** des Editors (**Einstiegsvorlage** unter **Erste Schritte**) — nach „Leer beginnen“ holen Sie sie dort zurück.
+- Ein Link aus der Dokumentation, der ein bestimmtes Beispiel öffnet (`?template=…`), zeigt nur dieses Beispiel.
+- Solange der Editor die unveränderte Startvorlage enthält, schreibt **Generieren** im Assistenten eine neue Richtlinie von Grund auf, statt die Vorlage zu bearbeiten.
+
+## Verbindung zum Sprachserver
+
+Diagnosen, Vervollständigung und andere Sprachfunktionen im Editor kommen von einem Sprachserver. Vor jeder Verbindung und jedem Neuverbinden fordert der Editor bei Aster Cloud ein kurzlebiges Ticket an; es ist an Ihren Benutzer gebunden, 60 Sekunden gültig und nur einmal verwendbar. Im Browser wird keine gemeinsame Zugangsinformation mehr ausgeliefert.
+
+- Eine Sitzung, die 15 Minuten untätig war, wird geschlossen; der Editor verbindet sich neu, sobald Sie weiterarbeiten.
+- Jeder Benutzer kann höchstens drei Sprachserver-Sitzungen gleichzeitig halten; eine weitere wird geschlossen. Fehlen die Sprachfunktionen in einem neuen Tab, schließen Sie einen nicht genutzten Editor-Tab.
+
+## Nach Cedar exportieren
+
+Auf der Detailseite einer Richtlinie exportiert **Nach Cedar exportieren** die Version, die ohne Versionsangabe ausgeführt wird — die freigegebene Standardversion, sonst die neueste freigegebene. Entwürfe werden nie exportiert. Ein erfolgreicher Export lädt die Cedar-Richtlinie und die Schemadatei herunter und meldet, gegen wie viele Proben das Ergebnis verifiziert wurde. Was exportiert werden kann und wie Ergebnisse abgebildet werden, steht unter [Export nach Cedar auf aster-lang.dev](https://aster-lang.dev/docs/cedar-export).
+
+## Das Dashboard
+
+Zwei Karten oben im Dashboard sammeln Aufgaben, die leicht zu übersehen waren:
+
+- **Offene Einladungen** — Einladungen annehmen oder ablehnen, ohne die Team-Seite zu öffnen.
+- **Richtlinienversionen zur Prüfung durch Sie** — bis zu fünf Versionen, mit Gesamtzahl und direktem Link **Prüfen**. Aufgeführt sind nur Versionen, die Sie freigeben dürfen; wer was freigeben darf, ist unverändert, bei Team-Richtlinien wartet die Autorin oder der Autor also weiter auf eine andere freigebende Person.
+
+Gibt es nichts zu tun, sind beide Karten ausgeblendet. Auf kleinen Bildschirmen bleibt das Benachrichtigungsfeld im sichtbaren Bereich, die Freigabetabelle wird zu einer Kartenliste, und Tabellen behalten ihre Aktionsspalte im Blick.
+
+## Engine-Äquivalenz
+
+Die öffentliche [Äquivalenzseite](/equivalence) zeigt, ob die TypeScript-Engine und die JVM-Engine übereinstimmen. Sie beginnt mit einem Ergebnis — alle Prüfungen stimmen überein, oder wie viele abwichen — und dem Datum der letzten nächtlichen Prüfung; ein Bericht, der älter als 72 Stunden ist, wird als veraltet markiert, und ohne Daten werden keine Zahlen angezeigt. Darunter folgen die drei verglichenen Ebenen (Parsing, Laufergebnisse und Core IR), die Testabdeckung, der nächtliche Verlauf mit markierten früheren Abweichungen, offene Abweichungen sowie die Methode mit Links zu den CSV-Rohdaten.
+
+## Barrierefreiheit
+
+Text, Bedienelemente und Code-Hervorhebung erreichen in hellem und dunklem Design das WCAG-AA-Kontrastverhältnis. Auf Mobilgeräten sind Touch-Ziele mindestens 44 × 44 CSS-Pixel groß. Codeblöcke in der Dokumentation sind per Tastatur erreichbar und bestätigen das Kopieren, und der Fokus ist überall sichtbar.

@@ -394,6 +394,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         guides: {
           title: 'Guides',
           creditPilot: 'Credit pilot (Article 14)',
+          guardApprovals: 'Guard, approvals and logs',
+          workspace: 'Editor and dashboard',
         },
       },
       overlay: {
@@ -2202,6 +2204,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         guides: {
           title: '指南',
           creditPilot: '信贷试点（第 14 条）',
+          guardApprovals: '守卫、审批与日志',
+          workspace: '编辑器与仪表盘',
         },
       },
       overlay: {
@@ -3980,6 +3984,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         guides: {
           title: 'Leitfäden',
           creditPilot: 'Kreditpilot (Artikel 14)',
+          guardApprovals: 'Guard, Freigaben und Protokolle',
+          workspace: 'Editor und Dashboard',
         },
       },
       overlay: {
@@ -5762,6 +5768,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         guides: {
           title: 'Guides',
           creditPilot: 'Credit pilot (Article 14)',
+          guardApprovals: 'गार्ड, अनुमोदन और लॉग',
+          workspace: 'एडिटर और डैशबोर्ड',
         },
       },
       overlay: {

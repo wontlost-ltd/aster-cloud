@@ -1,0 +1,55 @@
+---
+title: "Guard, approvals and execution logs"
+description: "How Aster Cloud deploys policies to the Guard, how approvers review masked decision inputs, and what execution logs show of @pii inputs and outputs."
+updated: 2026-11-16
+apiVersion: v1
+---
+
+# Guard, approvals and execution logs
+
+Aster Cloud is where Guard policies are written, approved and deployed, and where people review the actions agents ask for. This page covers what the dashboard does. The agent side — the decision API, signed execution receipts, consume and reconciliation, and the `@aster-cloud/aster-guard` SDK and MCP proxy — is documented in [Action Guard on aster-lang.dev](https://aster-lang.dev/docs/action-guard).
+
+## Deploying a policy to the Guard
+
+An agent names a policy by module and function, for example `guard.customer/decide`. The version the Guard evaluates is that policy's **default version** in Aster Cloud.
+
+- **Setting a default version deploys it first.** The dashboard commits the new default only after the policy API has accepted the deployment. If the policy API cannot be reached, you get a retryable error and the default stays as it was, so the Guard never runs a different version from the one the dashboard shows.
+- **Concurrent changes.** If someone else changes the default of the same policy at the same time, the slower request is rejected and must be repeated.
+- **Trash and restore.** Moving a policy to the trash withdraws it from the Guard; restoring it deploys it again. A policy that was never deployed can be deleted even while the policy API is unavailable.
+- **Convergence.** A background job checks every five minutes that each policy's deployed version matches its default and repairs any deployment that did not complete.
+
+The Guard evaluates the deployed version with the same source, keyword aliases, language and frozen domain vocabulary that Aster Cloud compiled, and with the same entry rule that dashboard executions use.
+
+## What agents receive
+
+For an `ALLOW`, the Guard returns a signed execution receipt. The agent must verify it and consume it — once — before it acts. The signature covers the tenant, a hash of the action and the policy module and function, so an `ALLOW` obtained from another, more permissive policy cannot be reused. Use `@aster-cloud/aster-guard` 0.3.0 or later; it performs the verification, consume and result report in a fixed order and has no option to skip them.
+
+Executions started from Aster Cloud take part too. When an execution of a policy that declares the `eu-ai-act-high-risk` profile returns `ALLOW`, Cloud registers a guard decision for it as it does for `REQUIRE_APPROVAL` and `ESCALATE`, so the input-provenance check applies to every outcome.
+
+## Reviewing an approval
+
+Pending approvals appear in **Approvals** and, for policy versions, on the dashboard (see [Editor and dashboard](/docs/guides/workspace#the-dashboard)). You can act on a guard approval when your verified business roles include its required role, or when it is an escalation. You cannot decide an action you requested yourself.
+
+Open **Show decision input** before deciding. The panel shows what the rule decided on, masked:
+
+| You see | Meaning |
+|---|---|
+| `L2 · email` badge | A field the policy declares `@pii`, with its level and category. |
+| *Undeclared type, not visible* | The value does not match the declared type, or is nested too deeply. |
+| *Undeclared fields* | One entry for all keys of an object that the policy does not declare. Their names are hidden as well, because a key name can itself be personal data. |
+| Plain value | A declared field without `@pii`. Text is still passed through the pattern redactor (e-mail addresses, phone numbers, card numbers and similar). |
+
+Each field also shows whether its value was **Verified** (signed by a registered fact issuer) or **Self-reported** by the caller. When the panel says that the signed facts have expired, that is informational: facts are checked when the decision is made and stay valid for 10 minutes. Their expiry does not affect whether you can approve, and a request whose fact issuer had been revoked is rejected automatically.
+
+If you hold the required role and the approval is still pending, **Show original values** reveals the declared `@pii` values. Each reveal is recorded in the audit chain under your name, and the panel says whether you are deciding on the masked view or on revealed values. Undeclared content can never be revealed, and escalations cannot be revealed.
+
+Your decision is bound to the view you saw. If the input view changed after you opened it, the decision is refused, the panel reloads the current view, and you review it again.
+
+## Execution logs
+
+A policy's **Execution Logs** page lists its executions. Nobody can see raw `@pii` values there — not the person who ran the policy, and not owners or admins. There is no reveal on that page.
+
+- **Inputs** are masked with the same rules as the approval panel. The marks come from the policy version that ran: fields declared `@pii` show their level and category, undeclared fields are collapsed and hidden, and other text passes through the pattern redactor. If the type information of that version cannot be loaded, every value is hidden.
+- **Outputs** pass every text value through the same pattern redactor. This catches e-mail addresses, phone numbers, card numbers and similar patterns. It does **not** catch free text derived from inputs: a rule that returns `"Hello, " + applicant.name` shows the name in the log.
+- The response you see right after running a policy is your own request's result and is not masked by this view.
+- Masking changes only what is displayed. The stored input and output, and the hashes used by replay, What-If and evidence bundles, are unchanged. Evidence bundles do not contain execution inputs.

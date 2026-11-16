@@ -1,0 +1,55 @@
+---
+title: "Guard, Freigaben und Ausführungsprotokolle"
+description: "Wie Aster Cloud Richtlinien im Guard bereitstellt, wie Freigebende maskierte Eingaben prüfen und was Ausführungsprotokolle von @pii-Daten zeigen."
+updated: 2026-11-16
+apiVersion: v1
+---
+
+# Guard, Freigaben und Ausführungsprotokolle
+
+In Aster Cloud werden Guard-Richtlinien geschrieben, freigegeben und bereitgestellt, und hier prüfen Menschen die Aktionen, die Agenten anfragen. Diese Seite beschreibt, was das Dashboard tut. Die Agentenseite — die Entscheidungs-API, signierte Ausführungsbelege, Consume und Abgleich sowie das SDK und der MCP-Proxy `@aster-cloud/aster-guard` — ist unter [Action Guard auf aster-lang.dev](https://aster-lang.dev/docs/action-guard) dokumentiert.
+
+## Eine Richtlinie im Guard bereitstellen
+
+Ein Agent benennt eine Richtlinie über Modul und Funktion, zum Beispiel `guard.customer/decide`. Der Guard wertet die **Standardversion** dieser Richtlinie in Aster Cloud aus.
+
+- **Eine Standardversion wird zuerst bereitgestellt.** Das Dashboard übernimmt die neue Standardversion erst, nachdem die Richtlinien-API die Bereitstellung angenommen hat. Ist die Richtlinien-API nicht erreichbar, erhalten Sie einen wiederholbaren Fehler und die Standardversion bleibt unverändert — der Guard führt nie eine andere Version aus als die, die das Dashboard anzeigt.
+- **Gleichzeitige Änderungen.** Ändert jemand anderes gleichzeitig die Standardversion derselben Richtlinie, wird die langsamere Anfrage abgelehnt und muss wiederholt werden.
+- **Papierkorb und Wiederherstellen.** Verschieben in den Papierkorb zieht die Richtlinie aus dem Guard zurück; Wiederherstellen stellt sie erneut bereit. Eine nie bereitgestellte Richtlinie lässt sich auch löschen, während die Richtlinien-API nicht verfügbar ist.
+- **Abgleich.** Ein Hintergrundjob prüft alle fünf Minuten, ob die bereitgestellte Version jeder Richtlinie ihrer Standardversion entspricht, und schließt nicht abgeschlossene Bereitstellungen ab.
+
+Der Guard wertet die bereitgestellte Version mit demselben Quelltext, denselben Schlüsselwort-Aliasen, derselben Sprache und demselben eingefrorenen Domänenvokabular aus, mit denen Aster Cloud kompiliert hat, und mit derselben Einstiegsregel wie Ausführungen im Dashboard.
+
+## Was Agenten erhalten
+
+Bei `ALLOW` liefert der Guard einen signierten Ausführungsbeleg. Der Agent muss ihn prüfen und — genau einmal — konsumieren, bevor er handelt. Die Signatur umfasst den Mandanten, einen Hash der Aktion sowie Modul und Funktion der Richtlinie, sodass ein `ALLOW` aus einer anderen, großzügigeren Richtlinie nicht wiederverwendet werden kann. Verwenden Sie `@aster-cloud/aster-guard` 0.3.0 oder neuer; es führt Prüfung, Consume und Ergebnismeldung in fester Reihenfolge aus und bietet keine Option, sie zu überspringen.
+
+Auch Ausführungen aus Aster Cloud sind einbezogen. Liefert die Ausführung einer Richtlinie, die das Profil `eu-ai-act-high-risk` deklariert, `ALLOW`, registriert Cloud dafür ebenso eine Guard-Entscheidung wie für `REQUIRE_APPROVAL` und `ESCALATE` — die Prüfung der Eingabeherkunft gilt damit für jedes Ergebnis.
+
+## Eine Freigabe prüfen
+
+Offene Freigaben erscheinen unter **Freigaben** und, für Richtlinienversionen, im Dashboard (siehe [Editor und Dashboard](/docs/guides/workspace#das-dashboard)). Sie können eine Guard-Freigabe bearbeiten, wenn Ihre verifizierten Geschäftsrollen die geforderte Rolle enthalten oder wenn es sich um eine Eskalation handelt. Über eine Aktion, die Sie selbst angefragt haben, können Sie nicht entscheiden.
+
+Öffnen Sie vor der Entscheidung **Entscheidungseingabe anzeigen**. Das Panel zeigt maskiert, worauf die Regel entschieden hat:
+
+| Sie sehen | Bedeutung |
+|---|---|
+| Plakette `L2 · email` | Ein Feld, das die Richtlinie als `@pii` deklariert, mit Stufe und Kategorie. |
+| *Nicht deklarierter Typ, nicht sichtbar* | Der Wert passt nicht zum deklarierten Typ oder ist zu tief verschachtelt. |
+| *Nicht deklarierte Felder* | Ein Eintrag für alle Schlüssel eines Objekts, die die Richtlinie nicht deklariert. Auch ihre Namen sind verborgen, denn schon ein Schlüsselname kann personenbezogen sein. |
+| Klartextwert | Ein deklariertes Feld ohne `@pii`. Text durchläuft trotzdem die Mustermaskierung (E-Mail-Adressen, Telefonnummern, Kartennummern und Ähnliches). |
+
+Zu jedem Feld steht außerdem, ob sein Wert **verifiziert** (von einem registrierten Faktenaussteller signiert) oder vom Aufrufer **selbst angegeben** ist. Meldet das Panel, dass die signierten Fakten abgelaufen sind, ist das nur ein Hinweis: Fakten werden bei der Entscheidung geprüft und bleiben 10 Minuten gültig. Ihr Ablauf ändert nichts daran, ob Sie freigeben können; wäre der Aussteller widerrufen worden, wäre die Anfrage automatisch abgelehnt worden.
+
+Haben Sie die geforderte Rolle und ist die Freigabe noch offen, deckt **Originalwerte anzeigen** die deklarierten `@pii`-Werte auf. Jedes Aufdecken wird unter Ihrem Namen in der Audit-Kette festgehalten, und das Panel zeigt, ob Sie auf der maskierten Ansicht oder auf aufgedeckten Werten entscheiden. Nicht deklarierte Inhalte lassen sich nie aufdecken, Eskalationen ebenfalls nicht.
+
+Ihre Entscheidung ist an die Ansicht gebunden, die Sie gesehen haben. Hat sich die Eingabeansicht seit dem Öffnen geändert, wird die Entscheidung abgelehnt, das Panel lädt die aktuelle Ansicht neu, und Sie prüfen erneut.
+
+## Ausführungsprotokolle
+
+Die Seite **Ausführungsprotokolle** einer Richtlinie listet ihre Ausführungen. Dort sieht niemand rohe `@pii`-Werte — weder die Person, die die Richtlinie ausgeführt hat, noch Owner oder Admins. Auf dieser Seite gibt es kein Aufdecken.
+
+- **Eingaben** werden nach denselben Regeln maskiert wie im Freigabe-Panel. Die Markierungen stammen aus der ausgeführten Richtlinienversion: als `@pii` deklarierte Felder zeigen Stufe und Kategorie, nicht deklarierte Felder werden zusammengefasst und verborgen, anderer Text durchläuft die Mustermaskierung. Lassen sich die Typinformationen dieser Version nicht laden, sind alle Werte verborgen.
+- **Ausgaben**: Jeder Textwert durchläuft dieselbe Mustermaskierung. Sie erkennt E-Mail-Adressen, Telefonnummern, Kartennummern und ähnliche Muster, aber **keinen** aus Eingaben abgeleiteten Freitext: Gibt eine Regel `"Hello, " + applicant.name` zurück, steht der Name im Protokoll.
+- Die Antwort, die Sie direkt nach dem Ausführen sehen, ist das Ergebnis Ihrer eigenen Anfrage und wird von dieser Ansicht nicht maskiert.
+- Die Maskierung ändert nur die Anzeige. Gespeicherte Ein- und Ausgaben sowie die Hashes für Replay, What-If und Evidenzpakete bleiben unverändert. Evidenzpakete enthalten keine Ausführungseingaben.

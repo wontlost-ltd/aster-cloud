@@ -281,6 +281,16 @@ export const PAGE_ACTIONS: Record<RouteSlug, PageActionSet> = {
     primary: openDashboard(),
     secondary: [viewMyTraces()],
   },
+  // 守卫、审批与日志：审批与执行日志都从控制台进入。
+  'guides/guard-approvals': {
+    primary: openDashboard(),
+    secondary: [viewMyTraces()],
+  },
+  // 编辑器与仪表盘：从控制台起步。
+  'guides/workspace': {
+    primary: openDashboard(),
+    secondary: [],
+  },
 };
 
 /**

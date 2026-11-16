@@ -525,6 +525,18 @@ routes:
     source: src/app/[locale]/docs/guides/credit-pilot/page.tsx
     locales: all
 
+  - path: /docs/guides/guard-approvals
+    status: canonical-here
+    owner: docs
+    source: src/app/[locale]/docs/guides/guard-approvals/page.tsx
+    locales: all
+
+  - path: /docs/guides/workspace
+    status: canonical-here
+    owner: docs
+    source: src/app/[locale]/docs/guides/workspace/page.tsx
+    locales: all
+
   - path: /docs/api
     status: canonical-here
     owner: docs-api

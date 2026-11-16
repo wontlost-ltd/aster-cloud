@@ -1,7 +1,7 @@
 ---
 title: "Überblick"
 description: "Die Aster Policy Engine ist ein produktionsreifer REST-Dienst zur Evaluierung von Geschäftsregeln, die in Aster CNL (Controlled Natural Language)…"
-updated: 2026-06-02
+updated: 2026-11-16
 apiVersion: v1
 ---
 
@@ -57,7 +57,7 @@ Alle Anfrage- und Antwortkörper verwenden `application/json`. Anfragen ohne `Co
 
 ## Ratenbegrenzung
 
-Die Ratenbegrenzung wird pro Mandant angewendet. Anfragen, die das Limit überschreiten, erhalten eine `429 Too Many Requests`-Antwort mit einem `Retry-After`-Header, der angibt, wann das Fenster zurückgesetzt wird.
+Anfragen werden durch ein Anfragefenster pro Mandant begrenzt und an den Auswertungs- und Guard-Entscheidungs-Endpunkten zusätzlich durch Anfragen pro Sekunde je API-Key; das monatliche API-Kontingent hat außerdem ein hartes Limit. Jedes antwortet mit `429 Too Many Requests` und einem eigenen `error`-Code — wie Sie sie unterscheiden und wann ein erneuter Versuch hilft, steht unter [Fehlerbehandlung](/docs/getting-started/errors#429-too-many-requests).
 
 ## Was ist Aster CNL?
 
