@@ -313,7 +313,7 @@ export function PolicyVersionList({
                 {version.status === 'DRAFT' && onSubmitForApproval && (
                   <button
                     onClick={() => openActionDialog('submit', version)}
-                    className="text-sm bg-primary hover:bg-primary-hover text-white px-3 py-1.5 rounded-md"
+                    className="text-sm bg-primary hover:bg-primary-hover text-primary-fg px-3 py-1.5 rounded-md"
                   >
                     {t('submitForApproval')}
                   </button>

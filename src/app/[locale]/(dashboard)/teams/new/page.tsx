@@ -175,7 +175,7 @@ export default function NewTeamPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-fg shadow-sm hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 <>

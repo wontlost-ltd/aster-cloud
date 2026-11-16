@@ -151,7 +151,7 @@ function RuleChooser({ candidates, labels, busy, onExport }: {
         type="button"
         onClick={() => onExport(chosen)}
         disabled={busy}
-        className="inline-flex items-center rounded-md bg-primary px-3 py-1 text-sm font-semibold text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex items-center rounded-md bg-primary px-3 py-1 text-sm font-semibold text-primary-fg hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
       >
         {labels.exportRule}
       </button>

@@ -28,7 +28,7 @@ export function WhitepaperContent({ locale }: WhitepaperContentProps) {
         </a>
         <button
           onClick={() => window.print()}
-          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-hover"
+          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg shadow-sm hover:bg-primary-hover"
         >
           <svg className="size-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
             <path fillRule="evenodd" d="M5 4v3h10V4a1 1 0 00-1-1H6a1 1 0 00-1 1zm-2 4a2 2 0 00-2 2v4a2 2 0 002 2h1v1a1 1 0 001 1h8a1 1 0 001-1v-1h1a2 2 0 002-2v-4a2 2 0 00-2-2H3zm3 6a1 1 0 011-1h6a1 1 0 011 1v3H6v-3z" clipRule="evenodd" />

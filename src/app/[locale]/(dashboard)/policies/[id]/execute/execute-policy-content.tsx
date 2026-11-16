@@ -833,7 +833,7 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
               onClick={() => handleExecute()}
               disabled={isLoading || mustChooseRule}
               data-testid="execute-policy-button"
-              className="mt-4 w-full inline-flex justify-center items-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-primary-hover focus:ring-2 focus:ring-primary/20 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              className="mt-4 w-full inline-flex justify-center items-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg shadow-sm transition-all duration-200 hover:bg-primary-hover focus:ring-2 focus:ring-primary/20 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 <>

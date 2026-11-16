@@ -97,7 +97,7 @@ export function UpgradeBlocker({
           ) : (
             <Link
               href={`/${locale}/pricing?ref=upgrade-blocker&reason=${reason}`}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover"
             >
               {t('viewPlans')}
             </Link>

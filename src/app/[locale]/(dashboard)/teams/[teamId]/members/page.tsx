@@ -386,7 +386,7 @@ export default function TeamMembersPage() {
     return (
       <Container size="xl" className="py-6 sm:py-10">
         <div className="text-center py-12">
-          <p className="text-red-600">{error || t('teamNotFound')}</p>
+          <p className="text-danger">{error || t('teamNotFound')}</p>
           <Link href={`/${locale}/teams`} className="mt-4 text-primary hover:text-primary-hover">
             {t('backToTeams')}
           </Link>
@@ -414,7 +414,7 @@ export default function TeamMembersPage() {
           canInvite ? (
             <button
               onClick={() => setShowInviteForm(true)}
-              className="inline-flex items-center rounded-md bg-primary px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-hover"
+              className="inline-flex items-center rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-fg shadow-sm hover:bg-primary-hover"
             >
               <svg className="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                 <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
@@ -485,7 +485,7 @@ export default function TeamMembersPage() {
                 <button
                   type="submit"
                   disabled={isInviting}
-                  className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-50"
+                  className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-fg hover:bg-primary-hover disabled:opacity-50"
                 >
                   {isInviting ? t('members.sending') : t('members.sendInvite')}
                 </button>
@@ -517,7 +517,7 @@ export default function TeamMembersPage() {
                     </span>
                     <button
                       onClick={() => handleRevokeInvitation(invitation.id)}
-                      className="text-red-600 hover:text-red-800 text-sm"
+                      className="text-danger hover:text-danger text-sm"
                     >
                       {t('members.revoke')}
                     </button>
@@ -611,7 +611,7 @@ export default function TeamMembersPage() {
                     ) : canRemove && member.role !== 'owner' && member.userId !== currentUserId && (
                       <button
                         onClick={() => handleRemoveMember(member.id, member.user.name || member.user.email)}
-                        className="text-red-600 hover:text-red-800 text-sm"
+                        className="text-danger hover:text-danger text-sm"
                       >
                         {t('members.remove')}
                       </button>

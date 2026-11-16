@@ -10,7 +10,6 @@ import {
   type BreadcrumbItem,
   type BreadcrumbsProps as DesignSystemBreadcrumbsProps,
 } from '@aster-cloud/ui';
-import { cn } from '@aster-cloud/ui';
 import { Link } from '@/i18n/navigation';
 
 export type BreadcrumbsProps = Omit<DesignSystemBreadcrumbsProps, 'linkComponent'>;
@@ -20,8 +19,6 @@ export function Breadcrumbs(props: BreadcrumbsProps) {
   return (
     <DesignSystemBreadcrumbs
       {...props}
-      // 设计系统的 <ol> 不折行，长路径在 390px 下横向溢出整页（#774）：允许折行
-      className={cn('min-w-0 [&>ol]:min-w-0 [&>ol]:flex-wrap', props.className)}
       linkComponent={({ href, className, children }) => (
         <Link href={href} className={className}>
           {children}

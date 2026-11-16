@@ -138,7 +138,7 @@ export function CnlDemo({ className }: { className?: string }) {
           <span className="size-2.5 rounded-full bg-emerald-500/70" aria-hidden />
         </div>
         <span className="font-mono text-xs text-zinc-400">{t(snippet.labelKey)}</span>
-        <span className="font-mono text-xs text-zinc-600">.aster</span>
+        <span className="font-mono text-xs text-zinc-400">.aster</span>
       </div>
 
       {/* Code body */}
@@ -208,7 +208,8 @@ const RELATIONAL = 'text-sky-300';
 const CONTROL    = 'text-amber-300 font-semibold';
 const ACTION     = 'text-emerald-300 font-semibold';
 const NUMBER     = 'text-emerald-300';
-const COMMENT    = 'text-zinc-500 italic';
+// 代码面板固定深色底（zinc-900）：注释用 zinc-400（6.9:1），zinc-500 只有 3.67:1（#774）
+const COMMENT    = 'text-zinc-400 italic';
 
 /**
  * Per-line tokenizer. The patterns are ordered: more-specific keywords

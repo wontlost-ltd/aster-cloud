@@ -269,7 +269,7 @@ function DecisionRunner({
               <span
                 className={cn(
                   'flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs',
-                  values[tg.name] ? 'border-primary bg-primary text-white' : 'border-border',
+                  values[tg.name] ? 'border-primary bg-primary text-primary-fg' : 'border-border',
                 )}
                 aria-hidden
               >

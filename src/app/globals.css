@@ -295,7 +295,8 @@ body {
   margin-top: 0.75rem;
   margin-bottom: 0.75rem;
   line-height: 1.7;
-  color: var(--fg-muted, #52525b);
+  /* 必须引用实际存在的 token：此前写成不存在的 --fg-muted，暗色下回落到浅色主题的 #52525b（2.57:1，#774） */
+  color: var(--aster-fg-muted);
 }
 
 @media print {
@@ -621,7 +622,9 @@ body {
 }
 .poker-card.is-up .poker-card-inner { transform: rotateY(180deg); }
 .poker-card.is-win { box-shadow: 0 0 0 2px #f59e0b, 0 0 14px rgba(245, 158, 11, 0.7); border-radius: 7px; }
-.poker-card.is-dim { opacity: 0.72; }
+/* 非获胜牌：用更深的牌面底色表示「弱化」，而不是整体降透明度——opacity 0.72 会把牌面文字压到 1.9–4.4:1（#774）。
+ * 红色点数在 #ebe6dc 上 4.59:1、黑色 13.99:1。 */
+.poker-card.is-dim .poker-card-face { background: #ebe6dc; border-color: #d6cfc2; }
 
 .poker-card-back, .poker-card-face {
   position: absolute;

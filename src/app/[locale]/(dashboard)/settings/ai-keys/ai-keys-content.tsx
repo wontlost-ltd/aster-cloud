@@ -546,7 +546,7 @@ export function AiKeysContent({ initialBindings, locale, renderedAt }: AiKeysCon
           <button
             type="submit"
             disabled={submitting}
-            className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-50"
+            className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
           >
             {submitting ? t('saving') : t('save')}
           </button>
@@ -660,7 +660,7 @@ export function AiKeysContent({ initialBindings, locale, renderedAt }: AiKeysCon
                           {t('statusExpired')}
                         </span>
                       ) : (
-                        <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                        <span className="rounded bg-success-subtle px-2 py-0.5 text-xs font-medium text-success">
                           {t('statusActive')}
                         </span>
                       )}
