@@ -89,7 +89,7 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
   // 2. 移动端点击目标：项目规范 ≥44×44 CSS px（WCAG 2.5.5 AAA）；句中行内链接按 WCAG 例外豁免
   const smallTargets: LayoutReport['smallTargets'] = [];
   if (opts.mobile) {
-    const q = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=tab], [role=checkbox], [role=switch], [role=menuitem]';
+    const q = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=tab], [role=checkbox], [role=radio], [role=switch], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=option]';
     // 禁用的控件无法操作：既不算点击目标，也不参与相邻目标的重叠判定
     const targets = Array.from(document.querySelectorAll(q)).filter((el) => visible(el)
       && !(el as HTMLButtonElement).disabled && el.getAttribute('aria-disabled') !== 'true');
@@ -362,14 +362,14 @@ export function collectStructure(): StructureReport {
   const duplicateHeadings = Array.from(document.querySelectorAll('h2, h3, h4, h5, h6'))
     .filter((h) => shown(h) && h1Set.has(norm((h as HTMLElement).innerText)))
     .map((h) => `${h.tagName.toLowerCase()} "${(h.textContent || '').trim().slice(0, 60)}"`);
-  const redundantBreadcrumbs = Array.from(document.querySelectorAll('nav[aria-label="Breadcrumb"], nav[aria-label="breadcrumb"]'))
+  const redundantBreadcrumbs = Array.from(document.querySelectorAll('nav[aria-label*="breadcrumb" i]'))
     .filter((n) => shown(n) && n.querySelectorAll('a[href]').length === 0)
     .map((n) => `"${(n.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 60)}"`);
 
   // 2. 可操作项被裁剪：逐个祖先比对盒子（只看当前滚动位置下的布局，不滚动任何容器）
   const clippedActions: StructureReport['clippedActions'] = [];
   // 与点击目标检查同一组可操作元素
-  const q = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=tab], [role=checkbox], [role=switch], [role=menuitem]';
+  const q = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=tab], [role=checkbox], [role=radio], [role=switch], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=option]';
   for (const el of Array.from(document.querySelectorAll(q))) {
     if (!shown(el)) continue;
     const r = el.getBoundingClientRect();

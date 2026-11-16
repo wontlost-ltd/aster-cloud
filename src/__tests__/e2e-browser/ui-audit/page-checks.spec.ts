@@ -92,7 +92,7 @@ test.describe('tap targets (44px on mobile)', () => {
 
 test.describe('page title structure', () => {
   test('flags two h1s, a heading that repeats the h1 and a link-less breadcrumb', async ({ page }) => {
-    await page.setContent(`<nav aria-label="Breadcrumb"><ol><li>Approvals</li></ol></nav><h1>Approvals</h1><h2>Approvals</h2><h1>Other</h1>`);
+    await page.setContent(`<nav aria-label="Breadcrumb navigation"><ol><li>Approvals</li></ol></nav><h1>Approvals</h1><h2>Approvals</h2><h1>Other</h1>`);
     const r = await page.evaluate(collectStructure);
     expect(r.h1).toEqual(['approvals', 'other']);
     expect(r.duplicateHeadings).toEqual(['h2 "Approvals"']);
