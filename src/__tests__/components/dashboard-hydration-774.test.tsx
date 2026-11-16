@@ -27,7 +27,10 @@ const props = {
   },
 };
 
+// 每个用例创建的 React root 在用例结束时卸载，避免残留订阅影响后续用例
+const roots: Array<{ unmount(): void }> = [];
 afterEach(() => {
+  for (const r of roots.splice(0)) act(() => r.unmount());
   window.localStorage.clear();
   document.body.innerHTML = '';
 });
@@ -45,7 +48,7 @@ describe('AdminLaunchpad hydration (#774)', () => {
     document.body.appendChild(container);
     const recoverable = vi.fn();
     await act(async () => {
-      hydrateRoot(container, <AdminLaunchpad {...props} />, { onRecoverableError: recoverable });
+      roots.push(hydrateRoot(container, <AdminLaunchpad {...props} />, { onRecoverableError: recoverable }));
     });
     expect(recoverable).not.toHaveBeenCalled();
     expect(container.textContent).not.toContain('Get set up');
@@ -58,7 +61,7 @@ describe('AdminLaunchpad hydration (#774)', () => {
     document.body.appendChild(container);
     const recoverable = vi.fn();
     await act(async () => {
-      hydrateRoot(container, <AdminLaunchpad {...props} />, { onRecoverableError: recoverable });
+      roots.push(hydrateRoot(container, <AdminLaunchpad {...props} />, { onRecoverableError: recoverable }));
     });
     expect(recoverable).not.toHaveBeenCalled();
     expect(container.textContent).toContain('Get set up');
@@ -79,7 +82,7 @@ describe('DashboardSidebar hydration (#774)', () => {
     document.body.appendChild(container);
     const recoverable = vi.fn();
     await act(async () => {
-      hydrateRoot(container, tree, { onRecoverableError: recoverable });
+      roots.push(hydrateRoot(container, tree, { onRecoverableError: recoverable }));
     });
     expect(recoverable).not.toHaveBeenCalled();
     // 收起后折叠按钮的名称变为「展开」
@@ -98,7 +101,7 @@ describe('persisted toggles after hydration (#774)', () => {
     container.innerHTML = renderToString(tree);
     document.body.appendChild(container);
     await act(async () => {
-      hydrateRoot(container, tree);
+      roots.push(hydrateRoot(container, tree));
     });
     const toggle = () => container.querySelector('[aria-label="collapseSidebar"], [aria-label="expandSidebar"]') as HTMLButtonElement;
     expect(toggle().getAttribute('aria-label')).toBe('collapseSidebar');
@@ -122,7 +125,7 @@ describe('persisted toggles after hydration (#774)', () => {
     container.innerHTML = renderToString(<AdminLaunchpad {...props} />);
     document.body.appendChild(container);
     await act(async () => {
-      hydrateRoot(container, <AdminLaunchpad {...props} />);
+      roots.push(hydrateRoot(container, <AdminLaunchpad {...props} />));
     });
     const hide = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'Hide this checklist') as HTMLButtonElement;
     await act(async () => hide.click());
@@ -149,7 +152,9 @@ describe('boolean preference with the 1/0 codec (#774)', () => {
       const container = document.createElement('div');
       document.body.appendChild(container);
       const { createRoot } = await import('react-dom/client');
-      await act(async () => createRoot(container).render(<Probe />));
+      const root = createRoot(container);
+      roots.push(root);
+      await act(async () => root.render(<Probe />));
       const btn = container.querySelector('button') as HTMLButtonElement;
       expect(btn.textContent).toBe('off');
       await act(async () => btn.click());
