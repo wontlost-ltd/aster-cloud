@@ -60,6 +60,11 @@ test.describe('tap targets (44px on mobile)', () => {
     expect(await small(page, off)).toEqual(['Copy']);
   });
 
+  test('hit testing works below the fold on pages with smooth scrolling', async ({ page }) => {
+    const body = '<style>html{scroll-behavior:smooth}</style><div style="height:2000px"></div><div style="padding:40px"><button class="tap-target" style="font:12px/16px sans-serif">Copy</button></div>';
+    expect(await small(page, body)).toEqual([]);
+  });
+
   test('links inside a sentence are exempt', async ({ page }) => {
     expect(await small(page, '<p style="font:14px/20px sans-serif">Read the <a href="/d">docs</a> before you start.</p>')).toEqual([]);
   });

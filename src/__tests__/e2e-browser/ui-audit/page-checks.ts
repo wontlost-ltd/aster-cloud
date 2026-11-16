@@ -97,7 +97,8 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
       const sx = window.scrollX;
       const sy = window.scrollY;
       const r0 = el.getBoundingClientRect();
-      window.scrollTo(sx, Math.max(0, r0.top + sy - window.innerHeight / 2));
+      // behavior: 'instant'：站点开了 scroll-behavior: smooth，普通 scrollTo 会动画滚动，命中测试时位置还没到
+      window.scrollTo({ left: sx, top: Math.max(0, r0.top + sy - window.innerHeight / 2), behavior: 'instant' });
       const a = area(el.getBoundingClientRect());
       const i = 1.5;
       const xs = [a.left + i, (a.left + a.right) / 2, a.right - i];
@@ -110,7 +111,7 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
           if (!hit || !(hit === el || el.contains(hit) || fixedLayer(hit))) ok = false;
         }
       }
-      window.scrollTo(sx, sy);
+      window.scrollTo({ left: sx, top: sy, behavior: 'instant' });
       return ok;
     };
     const fixedLayer = (el: Element) => {
