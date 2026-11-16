@@ -1,0 +1,93 @@
+---
+title: "把 Aster Guard 接入策略"
+description: "在 AI Agent 的每个动作执行之前先交给你的策略裁决：设置策略的默认版本、签发 API 密钥，再把 aster-guard 放在 Agent 和它的工具之间。"
+updated: 2026-11-16
+apiVersion: v1
+---
+
+# 把 Aster Guard 接入策略
+
+Aster Guard 在 AI Agent 的动作（删除客户记录、发起付款、给客户发邮件）**执行之前**，先交给你的某个策略裁决：放行、拒绝，或等待人工批准。每一次裁决都记入审计链。
+
+执行这一检查的位置叫**执行点**，也就是位于 Agent 和其工具之间的 `aster-guard`。只有策略放行的工具调用才会被转发，Agent 无法跳过检查。
+
+## 开始之前
+
+- **一个裁决动作的策略。** 策略的入口函数接收提议的动作并返回裁决：`Verdict.allow()`、`Verdict.deny("<原因>")`、`Verdict.require_approval("<业务角色>", "<原因>")` 或 `Verdict.escalate("<原因>")`。
+- **默认版本。** Guard 始终使用策略的默认版本。打开策略的**版本**页，让某个版本获批（见[审批全流程](/docs/how-to/approvals)），再把它设为默认版本。修改默认版本会让 Guard 切换到新版本；如果切换无法确认，默认版本保持不变。
+- **API 密钥。** 在[设置 → API 密钥](/settings/api-keys)中创建。策略属于团队时选择团队作用域，裁决和审批才会留在该团队中。见[创建 API 密钥](/docs/getting-started/api-keys)。
+- **审批人。** 如果策略可能返回 `require_approval`，确认团队里有人持有对应的业务角色，见[邀请团队成员并分配业务角色](/docs/how-to/teams)。
+
+## 选择接入方式
+
+从 npm 安装 `@aster-cloud/aster-guard` 0.3.0 或更高版本（需要 Node.js 24 或更高）。它提供两种形式的执行点。两者都会在任何动作执行之前验证签名的执行收据并 consume 它，且都没有跳过这一步的选项。完整的参数与 API 说明见 [aster-lang.dev 上的 Action Guard 文档](https://aster-lang.dev/zh/docs/action-guard)。
+
+### 包裹 MCP 服务器
+
+如果你的 Agent 通过 MCP 调用工具，在现有 MCP 服务器前运行 `aster-guard-mcp`，并让 Agent 改为连接这个代理：
+
+```bash
+ASTER_GUARD_API_KEY=ak_your_key_here \
+aster-guard-mcp \
+  --base-url https://policy.aster-lang.dev \
+  --policy guard.customer/decide \
+  --principal-id support-agent \
+  --tenant-id <team-id> \
+  --isolation network \
+  --tools delete_customer_record,send_refund \
+  --upstream "node ./my-mcp-server.js"
+```
+
+- `--policy` 的格式是 `<模块>/<函数>`：策略中声明的模块名，以及作出裁决的函数。
+- `--tenant-id` 是 API 密钥所属的工作区。团队密钥填团队 ID，可以在团队页面的地址中看到（`/teams/<team-id>`）。
+- `--tools` 列出 Agent 可以调用的工具。每次调用都会成为一个动作：工具名是动作名，参数是上下文。
+- 放行的调用会被转发；被拒绝的调用返回一条注明决策的工具错误；需要审批的调用会等待（默认 300 秒，见 `--approval-timeout`），之后继续或被拦下。
+
+<Callout type="warning" title="不要让 Agent 直接访问原始工具">
+Guard 只能保护 Agent 经由代理访问的工具。请确保 Agent 没有其他途径访问上游服务器或其端点；`--isolation` 声明这一点如何保证。
+</Callout>
+
+### 在代码中调用 Guard
+
+在 TypeScript 服务中使用 `GuardClient.run`。只有在决策为 `ALLOW`、且其收据已验签并 consume 之后，你的回调才会执行：
+
+```ts
+import { GuardClient } from '@aster-cloud/aster-guard';
+
+const guard = new GuardClient({
+  baseUrl: 'https://policy.aster-lang.dev',
+  apiKey: process.env.ASTER_API_KEY!,
+  policyModule: 'guard.customer',
+  policyFunction: 'decide',
+  principal: { id: 'billing-worker', type: 'agent' },
+  tenantId: '<team-id>',
+});
+
+const outcome = await guard.run(
+  { action: { name: 'delete_customer_record' }, resource: { type: 'customer', id: 'C-1001' } },
+  async () => deleteCustomerRecord('C-1001'),
+);
+// outcome.kind: 'executed' | 'blocked' | 'pending' | 'failed'
+```
+
+## 动作需要审批时
+
+`require_approval` 或 `escalate` 裁决会在[审批](/approvals)页的「动作审批」中生成请求。业务角色匹配的成员会在那里看到它并收到通知。发起该动作的人或密钥不能批准它。见[审批全流程](/docs/how-to/approvals)。
+
+## 高风险规则的签名事实
+
+声明了高风险治理档案的策略，只信任由已登记的**事实签发方**签名的输入字段。没有有效的签名事实时，裁决为拒绝，原因是 `unverified_input`。
+
+个人工作区的签发方在[设置 → 事实签发方](/settings/fact-issuers)中登记，团队的签发方在团队设置中登记。可以一键启用 Aster Cloud 签发方，也可以登记你自己的签发方公钥。吊销签发方会自动驳回依赖它的待审批请求。
+
+## 验证是否生效
+
+1. 分别触发一个策略放行和一个策略拒绝的动作。放行的调用到达工具；被拒绝的调用返回带决策 ID 的错误。
+2. 触发一个需要审批的动作，它会出现在[审批](/approvals)页的「动作审批」中。
+3. 以持有所需业务角色的成员身份批准它，确认等待中的调用随后执行。
+
+在 Aster Cloud 里运行同一策略（策略的**运行**页或 `/api/v1/policies/.../execute` API）、结果为 `require_approval` 或 `escalate` 时，同样会生成 Guard 审批，其**日志**条目会链接到该请求。
+
+## 深入了解
+
+- [守卫、审批与执行日志](/docs/guides/guard-approvals)：部署、执行收据、打码的决策输入与执行日志的详细说明。

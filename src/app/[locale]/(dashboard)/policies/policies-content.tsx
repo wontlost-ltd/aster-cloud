@@ -24,6 +24,7 @@ import {
   Users,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { DocsLink } from '@/components/docs/docs-link';
 import {
   Alert,
   AlertDescription,
@@ -534,6 +535,7 @@ export function PoliciesContent({
   // Clear the selection on every pagination-key change and tell the
   // user so they don't wonder why their selection vanished.
   const tPolicies = useTranslations('policies');
+  const tGuide = useTranslations('guidance');
   const paginationKey = `${pagination.page}-${pagination.pageSize}-${pagination.selectedGroupId ?? ''}-${pagination.scope ?? ''}-${pagination.query}`;
   const previousPaginationKeyRef = useRef(paginationKey);
   useEffect(() => {
@@ -1022,6 +1024,11 @@ export function PoliciesContent({
                 <Plus className="size-4" aria-hidden />
                 {t.newPolicy}
               </Link>
+            </div>
+            {/* 窄屏不给打不开的编辑器入口，改为说明 + 文档入口，空状态仍有可执行的下一步（#796）。 */}
+            <div className="mt-6 flex flex-col items-center gap-3 lg:hidden" data-testid="policies-empty-mobile">
+              <p className="max-w-sm text-sm text-fg-muted">{tGuide('policies.mobileEmpty')}</p>
+              <DocsLink slug="getting-started/overview">{tGuide('policies.readOverview')}</DocsLink>
             </div>
           </div>
         ) : (

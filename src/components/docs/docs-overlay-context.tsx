@@ -45,6 +45,14 @@ export function DocsOverlayProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * 不在 DocsOverlayProvider 内时返回 null，不抛错。
+ * 供可能挂在 dashboard 外（或单测里不带 provider）的「了解更多」链接使用：没有浮层就退回普通 /docs 链接。
+ */
+export function useOptionalDocsOverlay(): DocsOverlayState | null {
+  return useContext(DocsOverlayContext);
+}
+
 export function useDocsOverlay(): DocsOverlayState {
   const ctx = useContext(DocsOverlayContext);
   if (!ctx) {

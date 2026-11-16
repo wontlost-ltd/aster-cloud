@@ -1,0 +1,93 @@
+---
+title: "Aster Guard an eine Richtlinie anbinden"
+description: "Aktionen von KI-Agenten vor der Ausführung prüfen: Standardversion setzen, API-Schlüssel ausstellen, aster-guard zwischen Agent und Werkzeuge schalten."
+updated: 2026-11-16
+apiVersion: v1
+---
+
+# Aster Guard an eine Richtlinie anbinden
+
+Aster Guard prüft eine Aktion, die ein KI-Agent ausführen will (einen Kundendatensatz löschen, eine Zahlung senden, einem Kunden eine E-Mail schicken), **vor** der Ausführung gegen eine Ihrer Richtlinien. Die Richtlinie entscheidet: erlauben, ablehnen oder auf die Freigabe einer Person warten. Jede Entscheidung wird in der Audit-Kette festgehalten.
+
+Die Stelle, an der diese Prüfung stattfindet, ist der **Ausführungspunkt**: die Komponente `aster-guard` zwischen dem Agenten und seinen Werkzeugen. Ein Werkzeugaufruf wird nur weitergeleitet, wenn die Richtlinie ihn erlaubt, sodass der Agent die Prüfung nicht umgehen kann.
+
+## Voraussetzungen
+
+- **Eine Richtlinie, die über Aktionen entscheidet.** Ihre Einstiegsfunktion erhält die vorgeschlagene Aktion und liefert ein Urteil: `Verdict.allow()`, `Verdict.deny("<Grund>")`, `Verdict.require_approval("<Geschäftsrolle>", "<Grund>")` oder `Verdict.escalate("<Grund>")`.
+- **Eine Standardversion.** Guard verwendet immer die Standardversion der Richtlinie. Öffnen Sie die Seite **Versionen**, lassen Sie eine Version freigeben (siehe [Freigaben](/docs/how-to/approvals)) und setzen Sie sie als Standard. Ein Wechsel der Standardversion schaltet Guard auf die neue Version um; lässt sich das nicht bestätigen, bleibt die bisherige Standardversion.
+- **Ein API-Schlüssel.** Legen Sie ihn unter [Einstellungen → API-Schlüssel](/settings/api-keys) an. Gehört die Richtlinie einem Team, wählen Sie den Team-Bereich, damit Entscheidungen und Freigaben im Team bleiben. Siehe [API-Schlüssel erstellen](/docs/getting-started/api-keys).
+- **Freigebende.** Kann die Richtlinie `require_approval` liefern, muss jemand im Team diese Geschäftsrolle haben. Siehe [Ein Team einladen und Geschäftsrollen vergeben](/docs/how-to/teams).
+
+## Art der Anbindung wählen
+
+Installieren Sie `@aster-cloud/aster-guard` 0.3.0 oder neuer von npm (Node.js 24 oder neuer). Es bietet zwei Formen des Ausführungspunkts. Beide prüfen den signierten Ausführungsbeleg und lösen ihn ein (consume), bevor irgendetwas ausgeführt wird; keine hat eine Option, das zu überspringen. Die vollständige Referenz zu Parametern und API steht unter [Action Guard auf aster-lang.dev](https://aster-lang.dev/docs/action-guard).
+
+### Einen MCP-Server umhüllen
+
+Ruft Ihr Agent Werkzeuge über MCP auf, starten Sie `aster-guard-mcp` vor dem bestehenden MCP-Server und verbinden Sie den Agenten stattdessen mit dem Proxy:
+
+```bash
+ASTER_GUARD_API_KEY=ak_your_key_here \
+aster-guard-mcp \
+  --base-url https://policy.aster-lang.dev \
+  --policy guard.customer/decide \
+  --principal-id support-agent \
+  --tenant-id <team-id> \
+  --isolation network \
+  --tools delete_customer_record,send_refund \
+  --upstream "node ./my-mcp-server.js"
+```
+
+- `--policy` ist `<Modul>/<Funktion>`: der in Ihrer Richtlinie deklarierte Modulname und die Funktion, die entscheidet.
+- `--tenant-id` ist der Arbeitsbereich, zu dem der API-Schlüssel gehört. Für einen Team-Schlüssel ist das die Team-ID, die Sie in der Adresse der Teamseite sehen (`/teams/<team-id>`).
+- `--tools` listet die Werkzeuge, die der Agent aufrufen darf. Jeder Aufruf wird zu einer Aktion: Der Werkzeugname ist der Aktionsname, die Argumente sind der Kontext.
+- Ein erlaubter Aufruf wird weitergeleitet. Ein abgelehnter Aufruf liefert einen Werkzeugfehler mit der Entscheidung. Ein Aufruf, der eine Freigabe braucht, wartet (standardmäßig 300 Sekunden, `--approval-timeout`) und läuft dann weiter oder wird blockiert.
+
+<Callout type="warning" title="Originalwerkzeuge vor dem Agenten verbergen">
+Guard schützt nur Werkzeuge, die der Agent über den Proxy erreicht. Stellen Sie sicher, dass der Agent keinen anderen Weg zum Upstream-Server oder dessen Endpunkten hat; `--isolation` gibt an, wie das durchgesetzt wird.
+</Callout>
+
+### Guard aus dem eigenen Code aufrufen
+
+In einem TypeScript-Dienst verwenden Sie `GuardClient.run`. Ihr Callback läuft erst, wenn die Entscheidung `ALLOW` ist und ihr Beleg geprüft und eingelöst wurde:
+
+```ts
+import { GuardClient } from '@aster-cloud/aster-guard';
+
+const guard = new GuardClient({
+  baseUrl: 'https://policy.aster-lang.dev',
+  apiKey: process.env.ASTER_API_KEY!,
+  policyModule: 'guard.customer',
+  policyFunction: 'decide',
+  principal: { id: 'billing-worker', type: 'agent' },
+  tenantId: '<team-id>',
+});
+
+const outcome = await guard.run(
+  { action: { name: 'delete_customer_record' }, resource: { type: 'customer', id: 'C-1001' } },
+  async () => deleteCustomerRecord('C-1001'),
+);
+// outcome.kind: 'executed' | 'blocked' | 'pending' | 'failed'
+```
+
+## Wenn eine Aktion eine Freigabe braucht
+
+Ein Urteil `require_approval` oder `escalate` erzeugt eine Anfrage auf der Seite [Freigaben](/approvals) unter „Aktionsfreigaben“. Mitglieder mit passender Geschäftsrolle sehen sie dort und erhalten eine Benachrichtigung. Wer die Aktion angefordert hat (Person oder Schlüssel), kann sie nicht freigeben. Siehe [Freigaben von Anfang bis Ende](/docs/how-to/approvals).
+
+## Signierte Fakten für Hochrisiko-Regeln
+
+Eine Richtlinie, die ein Hochrisiko-Governance-Profil deklariert, vertraut nur Eingabefeldern, die ein registrierter **Fakten-Aussteller** signiert hat. Ohne gültige signierte Fakten lautet die Entscheidung Ablehnen mit dem Grund `unverified_input`.
+
+Aussteller für Ihren persönlichen Arbeitsbereich registrieren Sie unter [Einstellungen → Fakten-Aussteller](/settings/fact-issuers), für ein Team in dessen Einstellungen. Sie können den Aster-Cloud-Aussteller mit einem Klick aktivieren oder den öffentlichen Schlüssel Ihres eigenen Ausstellers registrieren. Wird ein Aussteller widerrufen, werden ausstehende Freigaben, die sich auf ihn stützen, automatisch abgelehnt.
+
+## Prüfen, ob es funktioniert
+
+1. Lösen Sie eine Aktion aus, die die Richtlinie erlaubt, und eine, die sie ablehnt. Der erlaubte Aufruf erreicht das Werkzeug; der abgelehnte liefert einen Fehler mit seiner Entscheidungs-ID.
+2. Lösen Sie eine Aktion aus, die eine Freigabe braucht. Sie erscheint auf der Seite [Freigaben](/approvals) unter „Aktionsfreigaben“.
+3. Geben Sie sie als Mitglied mit der erforderlichen Geschäftsrolle frei und prüfen Sie, dass der wartende Aufruf danach ausgeführt wird.
+
+Ausführungen derselben Richtlinie in Aster Cloud (Seite **Ausführen** der Richtlinie oder API `/api/v1/policies/.../execute`), die mit `require_approval` oder `escalate` enden, erzeugen ebenfalls eine Guard-Freigabe. Ihr Eintrag in den **Protokollen** verlinkt auf die Anfrage.
+
+## Mehr erfahren
+
+- [Guard, Freigaben und Protokolle](/docs/guides/guard-approvals): Bereitstellung, Ausführungsbelege, maskierte Entscheidungseingaben und Ausführungsprotokolle im Detail.

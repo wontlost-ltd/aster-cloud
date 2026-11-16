@@ -8,7 +8,8 @@
  * 现由 `/api/auth/signup` 补齐，注册后不自动登录——让 2FA / 可信设备等
  * 既有登录路径保持唯一入口。
  *
- * W2.2 rewrite: same flow (NextAuth signIn → /onboarding callback),
+ * W2.2 rewrite: same flow (NextAuth signIn → /dashboard callback; the old
+ * /onboarding wizard now lives in the dashboard getting-started card, #796),
  * design-system visuals. Trial benefits panel uses the accent-tinted
  * card pattern (primary-subtle bg) to read as "value summary" not
  * "warning".
@@ -54,7 +55,7 @@ export function SignupContent({ returnTo = null }: { returnTo?: string | null } 
 
   // Locale-aware callback URL: defaultLocale = no prefix; others get /<locale>.
   const localePrefix = locale === defaultLocale ? '' : `/${locale}`;
-  const callbackUrl = `${localePrefix}/onboarding`;
+  const callbackUrl = `${localePrefix}/dashboard`;
 
   const handleOAuthSignIn = (provider: string) => {
     setIsLoading(true);

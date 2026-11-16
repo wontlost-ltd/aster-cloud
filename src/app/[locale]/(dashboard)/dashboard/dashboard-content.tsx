@@ -38,11 +38,8 @@ import {
   type PendingVersionApprovalItem,
 } from '@/components/dashboard/pending-version-approvals-card';
 import { PendingInvitationsCard } from '@/components/teams/pending-invitations-card';
-import {
-  AdminLaunchpad,
-  type SetupSignals,
-  type LaunchpadTranslations,
-} from '@/components/dashboard/admin-launchpad';
+import { GettingStartedCard } from '@/components/dashboard/getting-started-card';
+import type { GettingStartedItem } from '@/lib/onboarding/getting-started';
 import {
   Alert,
   AlertDescription,
@@ -131,15 +128,10 @@ interface Translations {
 interface DashboardContentProps {
   stats: DashboardStats;
   policies: Policy[];
-  /**
-   * Admin launchpad — only rendered when the viewer is an admin AND
-   * the checklist still has outstanding steps. Driven by JWT-side
-   * `isAdmin` + four DB-side signal counts; component hides itself
-   * when complete or dismissed (localStorage flag).
-   */
+  userId: string;
   isAdmin: boolean;
-  setupSignals: SetupSignals;
-  launchpadTranslations: LaunchpadTranslations;
+  /** 上手清单条目（服务端按当前用户算好）；卡片在必做条目全部完成或被收起时自行隐藏。 */
+  gettingStartedItems: GettingStartedItem[];
   totalPiiFields: number;
   translations: Translations;
   locale: string;
@@ -162,9 +154,9 @@ function formatTemplate(template: string, values: Record<string, string | number
 export function DashboardContent({
   stats,
   policies,
+  userId,
   isAdmin,
-  setupSignals,
-  launchpadTranslations,
+  gettingStartedItems,
   totalPiiFields,
   translations: t,
   locale,
@@ -196,15 +188,8 @@ export function DashboardContent({
         <PendingInvitationsCard />
         <PendingVersionApprovalsCard items={pendingApprovals} labels={pendingApprovalsLabels} />
 
-        {/* Admin setup launchpad — first viewport for SaaS admins on a
-            fresh tenant. The component self-hides when all five signals
-            are satisfied or when the user explicitly dismissed it. */}
-        {isAdmin && (
-          <AdminLaunchpad
-            signals={setupSignals}
-            translations={launchpadTranslations}
-          />
-        )}
+        {/* 上手清单（#796）：所有用户可见，管理员看到管理员条目；必做条目完成或被收起后自行隐藏。 */}
+        <GettingStartedCard userId={userId} isAdmin={isAdmin} items={gettingStartedItems} />
 
         {/* Plan-state banner — SaaS only.
             stats.plan === 'trial' 在 on-prem 上理论上不可能出现（auth.ts

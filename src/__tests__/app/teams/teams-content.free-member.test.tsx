@@ -47,4 +47,11 @@ describe('TeamsContent — Free 成员（#672）', () => {
     expect(html).toContain('href="/teams/new"');
     expect(html).not.toContain('upgradeRequired');
   });
+
+  it('#796 没有团队时空状态带「新建团队」与团队文档入口', () => {
+    const html = renderToStaticMarkup(<TeamsContent initialTeams={[]} canCreateTeam />);
+    expect(html).toContain('href="/teams/new"');
+    expect(html).toContain('href="/docs/how-to/teams"');
+    expect(html).toContain('teams.learnMore');
+  });
 });

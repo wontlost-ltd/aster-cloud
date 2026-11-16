@@ -36,6 +36,91 @@ type MessageTree = Record<string, unknown>;
  */
 export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
   en: {
+    // 仪表盘上手清单（#796）：原两步偏好向导并入此卡片；管理员条目沿用 adminLaunchpad 文案。
+    gettingStarted: {
+      title: 'Get started with Aster',
+      body: 'A few first steps take a policy from draft to governed. Each one ticks itself off when you do it.',
+      optional: 'Optional',
+      doneLabel: 'Done',
+      steps: {
+        preferences: {
+          label: 'Tell us what you are working on',
+          desc: 'Choose your industry and goals so examples and templates fit your work.',
+          cta: 'Choose',
+          ctaDone: 'Change',
+        },
+        createPolicy: {
+          label: 'Create your first policy',
+          desc: 'Start from a starter template in your language, or write your own rules.',
+          cta: 'New policy',
+        },
+        runPolicy: {
+          label: 'Run a policy',
+          desc: 'Run it with sample input and see the decision and how it was reached.',
+          cta: 'Run',
+        },
+        joinTeam: {
+          label: 'Invite a teammate or join a team',
+          desc: 'Reviewers and approvers work together in a team. Create one and invite people, or accept an invitation.',
+          cta: 'Open teams',
+        },
+        submitApproval: {
+          label: 'Submit a version for approval',
+          desc: 'Ask for a review of a policy version before it runs.',
+          cta: 'Open versions',
+        },
+        connectGuard: {
+          label: 'Connect Aster Guard',
+          desc: 'Check AI agent actions against your policy before they run. Ticks off once one of your runs opens a Guard decision.',
+          cta: 'Read the guide',
+        },
+      },
+      preferences: {
+        save: 'Save',
+        saving: 'Saving…',
+        saveFailed: 'Could not save your choices. Try again.',
+        chooseIndustry: 'Choose an industry first.',
+        loadFailed: 'Could not load your saved choices, so they can\'t be changed right now. Try again later.',
+      },
+    },
+    // 空状态操作、「了解更多」与概念帮助提示（#796）。
+    guidance: {
+      learnMore: 'Learn more',
+      hints: {
+        businessRoles: 'How team roles and business roles work',
+        approvalFlow: 'How approvals work',
+        approvalFlowShort: 'How approval works',
+        executionPoint: 'How Aster Guard connects to a policy',
+      },
+      approvals: {
+        versionsEmptyHow: 'A version appears here when someone submits it for approval from the policy’s Versions page.',
+        openPolicies: 'Open policies',
+        guardEmptyHow: 'Action approvals arrive when a policy connected through Aster Guard asks a person to decide. Only members whose business role matches can decide them.',
+        connectGuard: 'Connect Aster Guard',
+        assignRoles: 'Assign business roles',
+      },
+      factIssuers: {
+        emptyHow: 'A fact issuer signs input facts so that high-risk rules can trust them. Without one, those rules deny with unverified_input.',
+        addIssuer: 'Add issuer',
+        learnMore: 'How Guard uses signed facts',
+      },
+      teams: {
+        learnMore: 'How teams and roles work',
+      },
+      policies: {
+        mobileEmpty: 'The policy editor needs a wider screen. Open Aster on a computer to write your first policy.',
+        readOverview: 'Read the overview',
+      },
+      governance: {
+        emptyTitle: 'No policies to map yet',
+        emptyDesc: 'Controls are listed here once your policies reference them with @control.',
+        openPolicies: 'Open policies',
+        seeExample: 'See a worked example',
+      },
+      evidence: {
+        learnMore: 'What an evidence bundle contains',
+      },
+    },
     // 需求验证落地页（/solutions/*）与试点申请表单。
     solutionsPage: {
       cta: 'Apply for a pilot',
@@ -391,11 +476,31 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       sidebar: {
         // 入门：创建 API 密钥（助手检索的常见问题）
         gettingStarted: { apiKeys: 'Create an API key' },
+        // 操作指南（#796）
+        howTo: {
+          title: 'How-to',
+          teams: 'Teams and business roles',
+          approvals: 'Approvals',
+          guard: 'Connect Aster Guard',
+        },
         guides: {
           title: 'Guides',
           creditPilot: 'Credit pilot (Article 14)',
           guardApprovals: 'Guard, approvals and logs',
           workspace: 'Editor and dashboard',
+        },
+      },
+      // 操作指南页的页内动作与任务视图（#796）
+      actions: {
+        goToTeams: 'Open teams',
+        goToApprovals: 'Open approvals',
+        goToPolicies: 'Open policies',
+        goToFactIssuers: 'Manage fact issuers',
+      },
+      tasks: {
+        governDeployment: {
+          title: 'Govern a deployment',
+          description: 'Form a team, set up approvals, and route agent actions through your policy.',
         },
       },
       overlay: {
@@ -1855,6 +1960,91 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
   },
   zh: {
+    // 仪表盘上手清单（#796）：原两步偏好向导并入此卡片；管理员条目沿用 adminLaunchpad 文案。
+    gettingStarted: {
+      title: '开始使用 Aster',
+      body: '几个起步动作，让一条策略从草稿走到受治理。每完成一项会自动打勾。',
+      optional: '可选',
+      doneLabel: '已完成',
+      steps: {
+        preferences: {
+          label: '告诉我们你在做什么',
+          desc: '选择所在行业和目标，示例与模板会更贴近你的工作。',
+          cta: '选择',
+          ctaDone: '修改',
+        },
+        createPolicy: {
+          label: '创建第一条策略',
+          desc: '从你所用语言的入门模板开始，或自己编写规则。',
+          cta: '新建策略',
+        },
+        runPolicy: {
+          label: '运行一次策略',
+          desc: '用示例输入运行，查看结论以及得出结论的过程。',
+          cta: '运行',
+        },
+        joinTeam: {
+          label: '邀请同事或加入团队',
+          desc: '审阅人和审批人在团队中协作。创建团队并邀请成员，或接受别人的邀请。',
+          cta: '打开团队',
+        },
+        submitApproval: {
+          label: '提交一个版本审批',
+          desc: '策略版本执行前先请人审阅。',
+          cta: '打开版本',
+        },
+        connectGuard: {
+          label: '连接 Aster Guard',
+          desc: 'AI Agent 的动作执行前先经你的策略裁决。你的某次运行生成 Guard 决策后自动打勾。',
+          cta: '阅读指南',
+        },
+      },
+      preferences: {
+        save: '保存',
+        saving: '保存中…',
+        saveFailed: '未能保存你的选择，请重试。',
+        chooseIndustry: '请先选择所在行业。',
+        loadFailed: '未能读取你已保存的选择，暂时无法修改，请稍后再试。',
+      },
+    },
+    // 空状态操作、「了解更多」与概念帮助提示（#796）。
+    guidance: {
+      learnMore: '了解更多',
+      hints: {
+        businessRoles: '团队角色与业务角色说明',
+        approvalFlow: '审批如何运作',
+        approvalFlowShort: '审批如何运作',
+        executionPoint: 'Aster Guard 如何接入策略',
+      },
+      approvals: {
+        versionsEmptyHow: '有人在策略的「版本」页提交审批后，版本会出现在这里。',
+        openPolicies: '打开策略',
+        guardEmptyHow: '经 Aster Guard 接入的策略要求人工决定时，动作审批会出现在这里。只有业务角色匹配的成员才能决定。',
+        connectGuard: '连接 Aster Guard',
+        assignRoles: '分配业务角色',
+      },
+      factIssuers: {
+        emptyHow: '事实签发方为输入事实签名，高风险规则才能信任这些字段。没有签发方时，这类规则会以 unverified_input 拒绝。',
+        addIssuer: '添加签发方',
+        learnMore: 'Guard 如何使用签名事实',
+      },
+      teams: {
+        learnMore: '团队与角色如何运作',
+      },
+      policies: {
+        mobileEmpty: '策略编辑器需要更宽的屏幕。请在电脑上打开 Aster 编写第一条策略。',
+        readOverview: '阅读概览',
+      },
+      governance: {
+        emptyTitle: '暂无可对照的策略',
+        emptyDesc: '策略用 @control 引用控制项后，会在这里列出。',
+        openPolicies: '打开策略',
+        seeExample: '查看完整示例',
+      },
+      evidence: {
+        learnMore: '证据包里有什么',
+      },
+    },
     // 需求验证落地页（/solutions/*）与试点申请表单。
     solutionsPage: {
       cta: '申请试点',
@@ -2201,11 +2391,31 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       sidebar: {
         // 入门：创建 API 密钥（助手检索的常见问题）
         gettingStarted: { apiKeys: '创建 API 密钥' },
+        // 操作指南（#796）
+        howTo: {
+          title: '操作指南',
+          teams: '团队与业务角色',
+          approvals: '审批',
+          guard: '连接 Aster Guard',
+        },
         guides: {
           title: '指南',
           creditPilot: '信贷试点（第 14 条）',
           guardApprovals: '守卫、审批与日志',
           workspace: '编辑器与仪表盘',
+        },
+      },
+      // 操作指南页的页内动作与任务视图（#796）
+      actions: {
+        goToTeams: '打开团队',
+        goToApprovals: '打开审批',
+        goToPolicies: '打开策略',
+        goToFactIssuers: '管理事实签发方',
+      },
+      tasks: {
+        governDeployment: {
+          title: '让部署受治理',
+          description: '组建团队、配置审批，让 Agent 的动作经过你的策略裁决。',
         },
       },
       overlay: {
@@ -3633,6 +3843,91 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
   },
   de: {
+    // 仪表盘上手清单（#796）：原两步偏好向导并入此卡片；管理员条目沿用 adminLaunchpad 文案。
+    gettingStarted: {
+      title: 'Erste Schritte mit Aster',
+      body: 'Ein paar erste Schritte bringen eine Richtlinie vom Entwurf zur kontrollierten Ausführung. Jeder Schritt hakt sich ab, sobald Sie ihn erledigt haben.',
+      optional: 'Optional',
+      doneLabel: 'Erledigt',
+      steps: {
+        preferences: {
+          label: 'Erzählen Sie uns, woran Sie arbeiten',
+          desc: 'Wählen Sie Branche und Ziele, damit Beispiele und Vorlagen zu Ihrer Arbeit passen.',
+          cta: 'Auswählen',
+          ctaDone: 'Ändern',
+        },
+        createPolicy: {
+          label: 'Erste Richtlinie anlegen',
+          desc: 'Starten Sie mit einer Vorlage in Ihrer Sprache oder schreiben Sie eigene Regeln.',
+          cta: 'Neue Richtlinie',
+        },
+        runPolicy: {
+          label: 'Eine Richtlinie ausführen',
+          desc: 'Führen Sie sie mit Beispieleingaben aus und sehen Sie die Entscheidung und wie sie zustande kam.',
+          cta: 'Ausführen',
+        },
+        joinTeam: {
+          label: 'Kollegen einladen oder einem Team beitreten',
+          desc: 'Prüfende und Freigebende arbeiten in einem Team zusammen. Legen Sie eines an und laden Sie Personen ein, oder nehmen Sie eine Einladung an.',
+          cta: 'Teams öffnen',
+        },
+        submitApproval: {
+          label: 'Eine Version zur Freigabe einreichen',
+          desc: 'Lassen Sie eine Richtlinienversion prüfen, bevor sie ausgeführt wird.',
+          cta: 'Versionen öffnen',
+        },
+        connectGuard: {
+          label: 'Aster Guard anbinden',
+          desc: 'Aktionen von KI-Agenten vor der Ausführung gegen Ihre Richtlinie prüfen. Wird abgehakt, sobald eine Ihrer Ausführungen eine Guard-Entscheidung auslöst.',
+          cta: 'Anleitung lesen',
+        },
+      },
+      preferences: {
+        save: 'Speichern',
+        saving: 'Wird gespeichert…',
+        saveFailed: 'Ihre Auswahl konnte nicht gespeichert werden. Bitte erneut versuchen.',
+        chooseIndustry: 'Wählen Sie zuerst eine Branche.',
+        loadFailed: 'Ihre gespeicherte Auswahl konnte nicht geladen werden und lässt sich gerade nicht ändern. Bitte später erneut versuchen.',
+      },
+    },
+    // 空状态操作、「了解更多」与概念帮助提示（#796）。
+    guidance: {
+      learnMore: 'Mehr erfahren',
+      hints: {
+        businessRoles: 'So funktionieren Teamrollen und Geschäftsrollen',
+        approvalFlow: 'So funktionieren Freigaben',
+        approvalFlowShort: 'So funktioniert die Freigabe',
+        executionPoint: 'So wird Aster Guard an eine Richtlinie angebunden',
+      },
+      approvals: {
+        versionsEmptyHow: 'Eine Version erscheint hier, sobald jemand sie auf der Seite „Versionen“ der Richtlinie zur Freigabe einreicht.',
+        openPolicies: 'Richtlinien öffnen',
+        guardEmptyHow: 'Aktionsfreigaben gehen ein, wenn eine über Aster Guard angebundene Richtlinie eine Person entscheiden lässt. Entscheiden können nur Mitglieder mit passender Geschäftsrolle.',
+        connectGuard: 'Aster Guard anbinden',
+        assignRoles: 'Geschäftsrollen vergeben',
+      },
+      factIssuers: {
+        emptyHow: 'Ein Fakten-Aussteller signiert Eingabefakten, damit Hochrisiko-Regeln ihnen vertrauen können. Ohne Aussteller lehnen diese Regeln mit unverified_input ab.',
+        addIssuer: 'Aussteller hinzufügen',
+        learnMore: 'So nutzt Guard signierte Fakten',
+      },
+      teams: {
+        learnMore: 'So funktionieren Teams und Rollen',
+      },
+      policies: {
+        mobileEmpty: 'Der Richtlinien-Editor braucht einen breiteren Bildschirm. Öffnen Sie Aster am Computer, um Ihre erste Richtlinie zu schreiben.',
+        readOverview: 'Überblick lesen',
+      },
+      governance: {
+        emptyTitle: 'Noch keine Richtlinien zuzuordnen',
+        emptyDesc: 'Kontrollen erscheinen hier, sobald Ihre Richtlinien sie mit @control referenzieren.',
+        openPolicies: 'Richtlinien öffnen',
+        seeExample: 'Ein vollständiges Beispiel ansehen',
+      },
+      evidence: {
+        learnMore: 'Was ein Nachweispaket enthält',
+      },
+    },
     // 需求验证落地页（/solutions/*）与试点申请表单。
     solutionsPage: {
       cta: 'Pilot anfragen',
@@ -3981,11 +4276,31 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       sidebar: {
         // 入门：创建 API 密钥（助手检索的常见问题）
         gettingStarted: { apiKeys: 'API-Schlüssel erstellen' },
+        // 操作指南（#796）
+        howTo: {
+          title: 'Anleitungen',
+          teams: 'Teams und Geschäftsrollen',
+          approvals: 'Freigaben',
+          guard: 'Aster Guard anbinden',
+        },
         guides: {
           title: 'Leitfäden',
           creditPilot: 'Kreditpilot (Artikel 14)',
           guardApprovals: 'Guard, Freigaben und Protokolle',
           workspace: 'Editor und Dashboard',
+        },
+      },
+      // 操作指南页的页内动作与任务视图（#796）
+      actions: {
+        goToTeams: 'Teams öffnen',
+        goToApprovals: 'Freigaben öffnen',
+        goToPolicies: 'Richtlinien öffnen',
+        goToFactIssuers: 'Fakten-Aussteller verwalten',
+      },
+      tasks: {
+        governDeployment: {
+          title: 'Ein Deployment unter Kontrolle bringen',
+          description: 'Team bilden, Freigaben einrichten und Agenten-Aktionen über Ihre Richtlinie leiten.',
         },
       },
       overlay: {
@@ -5418,6 +5733,91 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     },
   },
   hi: {
+    // 仪表盘上手清单（#796）：原两步偏好向导并入此卡片；管理员条目沿用 adminLaunchpad 文案。
+    gettingStarted: {
+      title: 'Aster के साथ शुरुआत करें',
+      body: 'कुछ शुरुआती कदम किसी नीति को मसौदे से नियंत्रित उपयोग तक ले जाते हैं। हर कदम पूरा करते ही अपने-आप चिह्नित हो जाता है।',
+      optional: 'वैकल्पिक',
+      doneLabel: 'पूरा हुआ',
+      steps: {
+        preferences: {
+          label: 'बताएँ कि आप किस पर काम कर रहे हैं',
+          desc: 'अपना उद्योग और लक्ष्य चुनें, ताकि उदाहरण और टेम्पलेट आपके काम के अनुरूप हों।',
+          cta: 'चुनें',
+          ctaDone: 'बदलें',
+        },
+        createPolicy: {
+          label: 'अपनी पहली नीति बनाएँ',
+          desc: 'अपनी भाषा के स्टार्टर टेम्पलेट से शुरू करें, या अपने नियम खुद लिखें।',
+          cta: 'नई नीति',
+        },
+        runPolicy: {
+          label: 'नीति चलाएँ',
+          desc: 'नमूना इनपुट के साथ चलाएँ और निर्णय तथा उस तक पहुँचने का तरीका देखें।',
+          cta: 'चलाएँ',
+        },
+        joinTeam: {
+          label: 'किसी सहकर्मी को आमंत्रित करें या टीम से जुड़ें',
+          desc: 'समीक्षक और अनुमोदक टीम में मिलकर काम करते हैं। टीम बनाकर लोगों को आमंत्रित करें, या कोई आमंत्रण स्वीकार करें।',
+          cta: 'टीमें खोलें',
+        },
+        submitApproval: {
+          label: 'किसी संस्करण को अनुमोदन के लिए भेजें',
+          desc: 'नीति संस्करण चलने से पहले उसकी समीक्षा करवाएँ।',
+          cta: 'संस्करण खोलें',
+        },
+        connectGuard: {
+          label: 'Aster Guard जोड़ें',
+          desc: 'AI एजेंट की कार्रवाइयों को चलने से पहले अपनी नीति से जाँचें। आपका कोई रन Guard निर्णय खोलते ही यह चिह्नित हो जाता है।',
+          cta: 'गाइड पढ़ें',
+        },
+      },
+      preferences: {
+        save: 'सहेजें',
+        saving: 'सहेजा जा रहा है…',
+        saveFailed: 'आपके विकल्प सहेजे नहीं जा सके। फिर से प्रयास करें।',
+        chooseIndustry: 'पहले एक उद्योग चुनें।',
+        loadFailed: 'आपके सहेजे गए विकल्प लोड नहीं हो सके, इसलिए अभी इन्हें बदला नहीं जा सकता। बाद में फिर से प्रयास करें।',
+      },
+    },
+    // 空状态操作、「了解更多」与概念帮助提示（#796）。
+    guidance: {
+      learnMore: 'और जानें',
+      hints: {
+        businessRoles: 'टीम भूमिकाएँ और व्यावसायिक भूमिकाएँ कैसे काम करती हैं',
+        approvalFlow: 'अनुमोदन कैसे काम करते हैं',
+        approvalFlowShort: 'अनुमोदन कैसे काम करता है',
+        executionPoint: 'Aster Guard नीति से कैसे जुड़ता है',
+      },
+      approvals: {
+        versionsEmptyHow: 'जब कोई नीति के संस्करण पृष्ठ से किसी संस्करण को अनुमोदन के लिए भेजता है, तो वह यहाँ दिखता है।',
+        openPolicies: 'नीतियाँ खोलें',
+        guardEmptyHow: 'जब Aster Guard से जुड़ी कोई नीति किसी व्यक्ति से निर्णय माँगती है, तो कार्रवाई अनुमोदन यहाँ आते हैं। केवल मेल खाती व्यावसायिक भूमिका वाले सदस्य ही निर्णय ले सकते हैं।',
+        connectGuard: 'Aster Guard जोड़ें',
+        assignRoles: 'व्यावसायिक भूमिकाएँ दें',
+      },
+      factIssuers: {
+        emptyHow: 'तथ्य जारीकर्ता इनपुट तथ्यों पर हस्ताक्षर करता है, ताकि उच्च-जोखिम नियम उन पर भरोसा कर सकें। इसके बिना वे नियम unverified_input के साथ अस्वीकार करते हैं।',
+        addIssuer: 'जारीकर्ता जोड़ें',
+        learnMore: 'Guard हस्ताक्षरित तथ्यों का उपयोग कैसे करता है',
+      },
+      teams: {
+        learnMore: 'टीमें और भूमिकाएँ कैसे काम करती हैं',
+      },
+      policies: {
+        mobileEmpty: 'नीति संपादक के लिए चौड़ी स्क्रीन चाहिए। अपनी पहली नीति लिखने के लिए Aster को कंप्यूटर पर खोलें।',
+        readOverview: 'अवलोकन पढ़ें',
+      },
+      governance: {
+        emptyTitle: 'अभी मैप करने के लिए कोई नीति नहीं',
+        emptyDesc: 'जब आपकी नीतियाँ @control से नियंत्रणों का संदर्भ देंगी, तो वे यहाँ दिखेंगे।',
+        openPolicies: 'नीतियाँ खोलें',
+        seeExample: 'पूरा उदाहरण देखें',
+      },
+      evidence: {
+        learnMore: 'साक्ष्य बंडल में क्या होता है',
+      },
+    },
     // 需求验证落地页（/solutions/*）与试点申请表单。
     solutionsPage: {
       cta: 'पायलट के लिए आवेदन करें',
@@ -5765,11 +6165,31 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       sidebar: {
         // 入门：创建 API 密钥（助手检索的常见问题）
         gettingStarted: { apiKeys: 'API कुंजी बनाएँ' },
+        // 操作指南（#796）
+        howTo: {
+          title: 'कैसे करें',
+          teams: 'टीमें और व्यावसायिक भूमिकाएँ',
+          approvals: 'अनुमोदन',
+          guard: 'Aster Guard जोड़ें',
+        },
         guides: {
           title: 'Guides',
           creditPilot: 'Credit pilot (Article 14)',
           guardApprovals: 'गार्ड, अनुमोदन और लॉग',
           workspace: 'एडिटर और डैशबोर्ड',
+        },
+      },
+      // 操作指南页的页内动作与任务视图（#796）
+      actions: {
+        goToTeams: 'टीमें खोलें',
+        goToApprovals: 'अनुमोदन खोलें',
+        goToPolicies: 'नीतियाँ खोलें',
+        goToFactIssuers: 'तथ्य जारीकर्ता प्रबंधित करें',
+      },
+      tasks: {
+        governDeployment: {
+          title: 'परिनियोजन को नियंत्रित करें',
+          description: 'टीम बनाएँ, अनुमोदन सेट करें और एजेंट की कार्रवाइयों को अपनी नीति से होकर भेजें।',
         },
       },
       overlay: {

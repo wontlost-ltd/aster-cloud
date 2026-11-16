@@ -151,6 +151,10 @@ function openDashboard(): PageAction {
   };
 }
 
+function goTo(id: string, labelKey: string, href: string, capability: ActionCapability): PageAction {
+  return { id, labelKey, href: `${href}?from=docs`, capability, variant: 'primary', audit: true };
+}
+
 /**
  * THE registry. Exhaustively maps every `RouteSlug` to an action set.
  * Build will fail if a new sidebar page is added without an entry
@@ -274,6 +278,19 @@ export const PAGE_ACTIONS: Record<RouteSlug, PageActionSet> = {
   'api/websocket/preview': {
     primary: playground('websocket-preview'),
     secondary: [],
+  },
+
+  // 操作指南（#796）：读完直接去对应的控制台页面动手。
+  'how-to/teams': {
+    primary: goTo('go_to_teams', 'docs.actions.goToTeams', '/teams', 'public'),
+  },
+  'how-to/approvals': {
+    primary: goTo('go_to_approvals', 'docs.actions.goToApprovals', '/approvals', 'public'),
+    secondary: [goTo('go_to_policies', 'docs.actions.goToPolicies', '/policies', 'canEditPolicies')],
+  },
+  'how-to/guard': {
+    primary: goTo('go_to_fact_issuers', 'docs.actions.goToFactIssuers', '/settings/fact-issuers', 'public'),
+    secondary: [goToApiKeys()],
   },
 
   // 指南：试点流程从控制台起步，跑完后去看自己的执行轨迹。

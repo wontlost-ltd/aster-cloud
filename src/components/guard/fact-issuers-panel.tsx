@@ -12,9 +12,10 @@
  * 错误按 code 本地化，不显示 api 原文。
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Badge, Button, Card, CardBody, ConfirmDialog, Input, Label, Stack } from '@/components/ui';
+import { Alert, Badge, Button, Card, CardBody, ConfirmDialog, EmptyState, Input, Label, Stack } from '@/components/ui';
+import { DocsLink, EMPTY_STATE_ACTIONS_CLASS } from '@/components/docs/docs-link';
 import { formatDate } from '@/lib/format';
 import type { FactIssuerListItem, FactIssuerUser, GuardFactIssuer } from '@/services/policy/guard-types';
 
@@ -69,6 +70,7 @@ export function FactIssuersPanel({ tenantId, showTitle = true }: { tenantId: str
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [revoking, setRevoking] = useState<GuardFactIssuer | null>(null);
+  const registerFormId = useId();
 
   const errorText = useCallback(
     (code: string | null) => t(code && KNOWN_ERRORS.has(code) ? `errors.${code}` : 'errors.generic'),
@@ -187,10 +189,11 @@ export function FactIssuersPanel({ tenantId, showTitle = true }: { tenantId: str
                 busy={busy}
                 locale={locale}
                 onRevoke={setRevoking}
+                registerFormId={state.canManage ? registerFormId : null}
               />
 
               {state.canManage && (
-                <RegisterForm form={form} busy={busy} onChange={setForm} onSubmit={register} />
+                <RegisterForm id={registerFormId} form={form} busy={busy} onChange={setForm} onSubmit={register} />
               )}
             </>
           )}
@@ -239,8 +242,39 @@ function CloudIssuerRow({
   );
 }
 
+/**
+ * 没有签发方时的空状态（#796）：说明签发方的作用，给出「添加签发方」（聚焦下方登记表单）与 Guard 文档入口。
+ * 只读成员没有登记表单，只给文档入口。
+ */
+function IssuersEmpty({ registerFormId }: { registerFormId: string | null }) {
+  const t = useTranslations('factIssuers');
+  const tGuide = useTranslations('guidance');
+  const focusForm = () => {
+    if (!registerFormId) return;
+    const form = document.getElementById(registerFormId);
+    form?.scrollIntoView?.({ block: 'center' });
+    form?.querySelector<HTMLInputElement>('input')?.focus();
+  };
+  return (
+    <EmptyState
+      title={t('empty')}
+      description={tGuide('factIssuers.emptyHow')}
+      action={
+        <div className={EMPTY_STATE_ACTIONS_CLASS}>
+          {registerFormId && (
+            <Button size="sm" variant="primary" onClick={focusForm}>
+              {tGuide('factIssuers.addIssuer')}
+            </Button>
+          )}
+          <DocsLink slug="how-to/guard">{tGuide('factIssuers.learnMore')}</DocsLink>
+        </div>
+      }
+    />
+  );
+}
+
 function IssuerTable({
-  issuers, cloud, canManage, busy, locale, onRevoke,
+  issuers, cloud, canManage, busy, locale, onRevoke, registerFormId,
 }: {
   issuers: FactIssuerListItem[];
   cloud: CloudIssuer | null;
@@ -248,9 +282,10 @@ function IssuerTable({
   busy: boolean;
   locale: string;
   onRevoke: (row: GuardFactIssuer) => void;
+  registerFormId: string | null;
 }) {
   const t = useTranslations('factIssuers');
-  if (issuers.length === 0) return <p className="text-sm text-fg-muted">{t('empty')}</p>;
+  if (issuers.length === 0) return <IssuersEmpty registerFormId={registerFormId} />;
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
       <table className="min-w-full text-sm">
@@ -320,8 +355,9 @@ function AddedBy({ user }: { user: FactIssuerUser | null | undefined }) {
 }
 
 function RegisterForm({
-  form, busy, onChange, onSubmit,
+  id, form, busy, onChange, onSubmit,
 }: {
+  id: string;
   form: typeof EMPTY_FORM;
   busy: boolean;
   onChange: (next: typeof EMPTY_FORM) => void;
@@ -331,7 +367,7 @@ function RegisterForm({
   const field = (key: keyof typeof EMPTY_FORM) => (e: React.ChangeEvent<HTMLInputElement>) =>
     onChange({ ...form, [key]: e.target.value });
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-3 rounded-md border border-border p-4">
+    <form id={id} onSubmit={onSubmit} className="flex flex-col gap-3 rounded-md border border-border p-4">
       <Stack gap={1}>
         <h3 className="text-sm font-semibold text-fg">{t('registerTitle')}</h3>
         <p className="text-xs text-fg-muted">{t('registerHint')}</p>

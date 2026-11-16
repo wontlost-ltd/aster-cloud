@@ -1,0 +1,60 @@
+---
+title: "Freigaben von Anfang bis Ende"
+description: "Wie Richtlinienversionen und Aktionen von KI-Agenten in den Freigabe-Eingang gelangen, wer sie freigeben darf und was nach einer Entscheidung passiert."
+updated: 2026-11-16
+apiVersion: v1
+---
+
+# Freigaben von Anfang bis Ende
+
+Die Seite [Freigaben](/approvals) sammelt alles, was auf eine menschliche Entscheidung wartet, über Ihren persönlichen Arbeitsbereich und alle Teams hinweg, denen Sie angehören. Dort gehen zwei Arten von Anfragen ein:
+
+- **Freigaben von Richtlinienversionen**: Jemand bittet darum, eine gespeicherte Version einer Richtlinie freizugeben, bevor sie ausgeführt wird.
+- **Aktionsfreigaben**: Eine über Aster Guard angebundene Richtlinie hat entschieden, dass die Aktion eines KI-Agenten erst von einer Person freigegeben werden muss.
+
+## Freigaben von Richtlinienversionen
+
+Jedes Speichern einer Richtlinie erzeugt eine neue Version. Eine Version beginnt als Entwurf.
+
+1. Öffnen Sie die Richtlinie und gehen Sie zu **Versionen** (Seite „Versionen & Freigaben“).
+2. Wählen Sie bei einer Entwurfs- oder abgelehnten Version „Zur Freigabe einreichen“. Sie können eine Release-Notiz hinzufügen.
+3. Die Version ist nun ausstehend. Sie erscheint unter „Freigaben von Richtlinienversionen“ auf der Seite Freigaben und auf dem Dashboard aller, die sie freigeben dürfen.
+4. Eine freigebende Person öffnet die Version und gibt sie frei oder lehnt sie ab. Jede Entscheidung bleibt im Freigabeverlauf der Version erhalten.
+
+Wer eine Version freigeben darf:
+
+- **Persönliche Richtlinie**: Sie als Eigentümer. Sie dürfen Ihre eigene Einreichung freigeben.
+- **Team-Richtlinie**: ein Team-Eigentümer oder Admin **außer dem Autor**. Das ist das Vier-Augen-Prinzip: Der Autor sieht die Anfrage, kann aber nicht entscheiden. Hat das Team außer dem Autor keinen Eigentümer oder Admin, kann niemand freigeben. Der Eingang weist dann darauf hin und verlinkt die Team-Einstellungen, damit Sie jemanden zum Admin machen können.
+
+Welche Version ausgeführt wird: die Standardversion, wenn eine gesetzt ist; sonst die höchste freigegebene Version. Wurde noch nie eine Version freigegeben, wird der zuletzt gespeicherte Inhalt verwendet.
+
+## Aktionsfreigaben
+
+Aktionsfreigaben kommen von [Aster Guard](/docs/how-to/guard). Ein KI-Agent schlägt eine Aktion vor (zum Beispiel einen Kundendatensatz zu löschen). Die Aktion wird vor der Ausführung gegen Ihre Richtlinie geprüft. Gibt die Regel `Verdict.require_approval("<Geschäftsrolle>", "<Grund>")` zurück, wartet die Aktion auf eine Person.
+
+1. Die Anfrage erscheint unter „Aktionsfreigaben“ mit Richtlinie, Aktion, **erforderlicher Rolle** und Arbeitsbereich.
+2. Öffnen Sie „Entscheidungseingabe anzeigen“, um zu sehen, was die Richtlinie gesehen hat. Maskierte Felder bleiben maskiert, es sei denn, Sie haben die erforderliche Rolle und lassen die Originalwerte anzeigen. Das Anzeigen wird in der Audit-Kette unter Ihrem Namen vermerkt.
+3. Geben Sie frei oder lehnen Sie mit Begründung ab. Der Aufruf des Agenten läuft dann weiter oder wird blockiert.
+
+Wer über eine Aktionsfreigabe entscheiden darf:
+
+- nur ein Mitglied, dessen **verifizierte Geschäftsrolle** genau der erforderlichen Rolle entspricht. Geschäftsrollen werden je Mitglied auf der Mitgliederseite des Teams gesetzt, siehe [Ein Team einladen und Geschäftsrollen vergeben](/docs/how-to/teams). Alle anderen sehen die Anfrage als „Nur ansehen“. Eskaliert die Regel ohne Rolle (`Verdict.escalate(...)`), darf jedes Mitglied entscheiden;
+- niemals, wer die Aktion angefordert hat. Darüber muss jemand anderes entscheiden.
+
+Anfragen, über die niemand rechtzeitig entscheidet, laufen ab. Eine Anfrage läuft auch automatisch ab, wenn der Fakten-Aussteller widerrufen wird, auf dessen signierte Eingaben sie sich stützt.
+
+<Callout type="tip" title="Status-Reiter nutzen">
+Aktionsfreigaben sind nach Status gruppiert: Ausstehend, Freigegeben, Abgelehnt und Abgelaufen. Entschiedene Anfragen zeigen, wer entschieden hat.
+</Callout>
+
+## Wo Sie offene Aufgaben finden
+
+- **Dashboard**: „Richtlinienversionen zur Prüfung durch Sie“ listet Versionen, die Sie jetzt freigeben können.
+- **Freigaben**: beide Arten von Anfragen, auch solche, die Sie nur ansehen können.
+- **Benachrichtigungen**: eine Benachrichtigung in der App, wenn eine neue Aktionsfreigabe Ihre Rolle braucht.
+
+## Nächste Schritte
+
+- [Ein Team einladen und Geschäftsrollen vergeben](/docs/how-to/teams): wer welche Team- und Geschäftsrolle hat.
+- [Aster Guard an eine Richtlinie anbinden](/docs/how-to/guard): woher Aktionsfreigaben kommen.
+- [Guard, Freigaben und Protokolle](/docs/guides/guard-approvals): was die maskierte Entscheidungseingabe Feld für Feld zeigt.

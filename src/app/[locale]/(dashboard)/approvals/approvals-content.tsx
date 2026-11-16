@@ -11,8 +11,10 @@ import {
   Label,
   PageHeader,
   Textarea,
+  buttonVariants,
 } from '@/components/ui';
 import { Link } from '@/i18n/navigation';
+import { DOCS_LINK_CLASS, DocsLink, HelpHint, EMPTY_STATE_ACTIONS_CLASS } from '@/components/docs/docs-link';
 import { trackProductEvent } from '@/lib/product-events/client';
 import type { InboxItem } from '@/lib/approvals-inbox';
 import type { PendingVersionApproval } from '@/lib/version-approvals-inbox';
@@ -270,12 +272,28 @@ function VersionApprovalActions({ item, t }: { item: PendingVersionApproval; t: 
 }
 
 function VersionApprovalsSection({ items, locale, t }: { items: PendingVersionApproval[]; locale: string; t: T }) {
+  const tGuide = useTranslations('guidance');
   return (
     <section aria-labelledby="version-approvals-title" className="mb-8">
-      <h2 id="version-approvals-title" className="text-lg font-semibold text-fg">{t('versions.title')}</h2>
+      {/* 帮助提示放在标题外：不并入标题的无障碍名称 */}
+      <div className="flex items-center gap-2">
+        <h2 id="version-approvals-title" className="text-lg font-semibold text-fg">{t('versions.title')}</h2>
+        <HelpHint slug="how-to/approvals" label={tGuide('hints.approvalFlow')} />
+      </div>
       <p className="mt-1 mb-3 text-sm text-fg-muted">{t('versions.subtitle')}</p>
       {items.length === 0 ? (
-        <p className="rounded-lg border border-border px-4 py-6 text-sm text-fg-muted">{t('versions.empty')}</p>
+        <EmptyState
+          title={t('versions.empty')}
+          description={tGuide('approvals.versionsEmptyHow')}
+          action={
+            <div className={EMPTY_STATE_ACTIONS_CLASS}>
+              <Link href="/policies" className={buttonVariants({ variant: 'secondary', size: 'sm' })}>
+                {tGuide('approvals.openPolicies')}
+              </Link>
+              <DocsLink slug="how-to/approvals">{tGuide('learnMore')}</DocsLink>
+            </div>
+          }
+        />
       ) : (
         // 同一份表格标记：sm 起是五列表格；窄屏每行折成一张卡片、单元格纵向堆叠，操作入口始终在视口内。
         // 此前五列表格在 390px 下把操作列挤出 overflow-x-auto 容器，「Review」被裁到视口外
@@ -316,6 +334,7 @@ export function ApprovalsContent({
   locale, initialStatus, initialItems, initialUnavailable, versionApprovals, highlightDecisionId,
 }: Props) {
   const t = useTranslations('approvals');
+  const tGuide = useTranslations('guidance');
   const [status, setStatus] = useState<GuardApprovalStatus>(initialStatus);
   const [items, setItems] = useState<InboxItem[]>(initialItems);
   const [unavailable, setUnavailable] = useState<string[]>(initialUnavailable);
@@ -373,7 +392,10 @@ export function ApprovalsContent({
 
       <VersionApprovalsSection items={versionApprovals} locale={locale} t={t} />
 
-      <h2 className="mb-3 text-lg font-semibold text-fg">{t('guardTitle')}</h2>
+      <div className="mb-3 flex items-center gap-2">
+        <h2 className="text-lg font-semibold text-fg">{t('guardTitle')}</h2>
+        <HelpHint slug="how-to/guard" label={tGuide('hints.executionPoint')} />
+      </div>
       <div role="tablist" className="mb-4 flex flex-wrap gap-2">
         {STATUSES.map((s) => (
           <Button key={s} role="tab" aria-selected={s === status} size="sm"
@@ -389,7 +411,23 @@ export function ApprovalsContent({
       {loadError && <Alert variant="danger" className="mb-4">{t('loadFailed')}</Alert>}
 
       {items.length === 0 ? (
-        <EmptyState title={t('empty')} description={t('emptyDesc')} />
+        <EmptyState
+          title={t('empty')}
+          description={
+            <>
+              {t('emptyDesc')} {tGuide('approvals.guardEmptyHow')}
+            </>
+          }
+          action={
+            <div className={EMPTY_STATE_ACTIONS_CLASS}>
+              <DocsLink slug="how-to/guard" className={buttonVariants({ variant: 'secondary', size: 'sm' })}>
+                {tGuide('approvals.connectGuard')}
+              </DocsLink>
+              <Link href="/teams" className={DOCS_LINK_CLASS}>{tGuide('approvals.assignRoles')}</Link>
+              <DocsLink slug="how-to/approvals">{tGuide('learnMore')}</DocsLink>
+            </div>
+          }
+        />
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="min-w-full text-sm">

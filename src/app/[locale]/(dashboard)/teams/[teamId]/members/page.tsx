@@ -10,6 +10,7 @@ import { ConfirmDialog, Container, PageHeader, Breadcrumbs, Input, Label, Select
 import { extractErrorMessage } from '@/lib/api/error-envelope';
 import { localizedErrorMessage } from '@/lib/api/localized-error-message';
 import { canChangeBusinessRoles } from '@/lib/business-role-permissions';
+import { HelpHint } from '@/components/docs/docs-link';
 import {
   BusinessRolesEditor,
   businessRolesSaveError,
@@ -58,6 +59,7 @@ type PendingAction =
 export default function TeamMembersPage() {
   const t = useTranslations('teams');
   const tCommon = useTranslations('common');
+  const tGuide = useTranslations('guidance');
   const params = useParams();
   const router = useRouter();
   const teamId = params.teamId as string;
@@ -531,9 +533,13 @@ export default function TeamMembersPage() {
 
       {/* 成员列表 */}
       <div className="mt-8">
-        <h2 className="text-lg font-medium text-fg">
-          {t('members.currentMembers', { count: totalMembers || members.length })}
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-medium text-fg">
+            {t('members.currentMembers', { count: totalMembers || members.length })}
+          </h2>
+          {/* 团队角色与业务角色的区别（业务角色决定谁能审批按角色把关的动作），见 how-to/teams（#796） */}
+          <HelpHint slug="how-to/teams" label={tGuide('hints.businessRoles')} />
+        </div>
         {hasMoreMembers && (
           <p className="text-sm text-fg-muted mt-1">
             {t('members.showingPartial', { shown: members.length, total: totalMembers })}

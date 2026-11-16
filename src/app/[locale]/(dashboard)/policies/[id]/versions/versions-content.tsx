@@ -21,6 +21,7 @@ import {
 } from '@/components/ui';
 import { GitBranch, MoreVertical } from 'lucide-react';
 import { Link } from '@/i18n/navigation';
+import { DOCS_LINK_CLASS, DocsLink } from '@/components/docs/docs-link';
 import { useApi } from '@/lib/api';
 import {
   decideVersionApproval,
@@ -111,6 +112,7 @@ export function VersionsContent({
 }: VersionsContentProps) {
   const t = useTranslations('policies.versions');
   const tCommon = useTranslations('common');
+  const tGuide = useTranslations('guidance');
   const releaseNoteLabel = (version: VersionRow) => version.releaseNote || t(version.version === 1 ? 'initialVersion' : 'editedVersion');
   const listKey = `/api/v1/policies/${policyId}/versions`;
   // Backend wraps the array as { versions: [...] } — destructure here
@@ -283,7 +285,11 @@ export function VersionsContent({
           }
         />
 
-        <p className="-mt-3 text-sm text-fg-muted">{t('executionRule')}</p>
+        <p className="-mt-3 text-sm text-fg-muted">
+          {t('executionRule')}{' '}
+          {/* 审批规则（谁能审批、四眼原则）在 how-to/approvals 里讲清楚（#796） */}
+          <DocsLink slug="how-to/approvals" className={DOCS_LINK_CLASS}>{tGuide('hints.approvalFlowShort')}</DocsLink>
+        </p>
 
         {error ? (
           <EmptyState
