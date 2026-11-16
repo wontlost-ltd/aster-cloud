@@ -13,6 +13,8 @@ import { localizedTitle } from '@/lib/page-metadata';
 import { loadPolicyForAction } from '@/lib/policy-access';
 import { policyCapabilities } from '@/lib/policy-access-matrix';
 import { planHolderForTeam } from '@/lib/team-plan';
+import { findDefaultExecutableVersion } from '@/services/policy/default-executable-version';
+import { checkCedarExportability } from '@/lib/cedar-exportability';
 
 export const generateMetadata = localizedTitle('pageTitles', 'policyDetail');
 
@@ -32,14 +34,24 @@ async function loadPolicyTeam(teamId: string | null): Promise<{ id: string; name
   return team ?? null;
 }
 
-// 是否存在批准版本：与 findDefaultExecutableVersion 同一口径（只有 APPROVED 版本可执行/可导出），
-// 这里只需判存在，故只取 id。
-async function hasApprovedVersion(policyId: string): Promise<boolean> {
-  const approved = await db.query.policyVersions.findFirst({
-    where: and(eq(policyVersions.policyId, policyId), eq(policyVersions.status, 'APPROVED')),
-    columns: { id: true },
+/**
+ * 「导出为 Cedar」的显示与可用（#786）。
+ * - 有可执行版本（与导出路由同一选择函数）：按该版本的可导出性决定是否显示，按钮可用；
+ * - 没有：按最新版本判定，可导出时显示禁用的按钮并提示先批准（批准后即可导出），否则不显示。
+ * 可导出性未知（aster-api 超时 / 尚无检查端点）时照旧显示，由导出本身说明原因。
+ */
+async function loadCedarExportState(
+  policy: { id: string; userId: string; teamId: string | null },
+  userId: string,
+): Promise<{ show: boolean; hasExecutableVersion: boolean }> {
+  const executable = await findDefaultExecutableVersion(policy.id);
+  const target = executable ?? await db.query.policyVersions.findFirst({
+    where: eq(policyVersions.policyId, policy.id),
+    orderBy: desc(policyVersions.version),
   });
-  return approved !== undefined;
+  if (!target) return { show: false, hasExecutableVersion: false };
+  const exportability = await checkCedarExportability({ policy, version: target, userId });
+  return { show: exportability !== 'not-exportable', hasExecutableVersion: executable !== null };
 }
 
 // 服务端数据获取：与 GET /api/policies/[id] 同一授权（团队策略任一当前成员，个人策略只认所有者，#669 #670）
@@ -141,9 +153,9 @@ export default async function PolicyDetailPage({
   //   必然空窗、而选项还在那里——那套窗口实际只适用于留存期最长的企业级用户。
   const retentionDays = resolveRetention(planUser?.plan).executionDays;
 
-  const [profile, hasExecutableVersion, review, sharingEnabled, policyTeam] = await Promise.all([
+  const [profile, cedarExport, review, sharingEnabled, policyTeam] = await Promise.all([
     loadActiveProfile(id, policy.version),
-    hasApprovedVersion(id),
+    loadCedarExportState({ id, userId: policy.ownerId, teamId: policy.teamId }, session.user.id),
     // 版本面板的批准/驳回按审批规则显示（团队策略按当前用户的团队角色）
     loadVersionReviewContext(id, session.user.id),
     // 共享开关在服务端读一次并下发（同列表页 shared-with-me 的做法）：关闭时客户端不挂载共享卡片，
@@ -219,7 +231,8 @@ export default async function PolicyDetailPage({
       /* What-If 属主限定（ADR 0034 §4.3）：调用者是创建者但当前角色不够时同样不可用 */
       whatIfOwnerOnly={!policy.capabilities.whatif}
       profile={profile}
-      hasExecutableVersion={hasExecutableVersion}
+      hasExecutableVersion={cedarExport.hasExecutableVersion}
+      showCedarExport={cedarExport.show}
       sharingEnabled={sharingEnabled}
       team={policyTeam ? { id: policyTeam.id, label: t('detail.teamBadge', { name: policyTeam.name }) } : null}
       review={review ? {

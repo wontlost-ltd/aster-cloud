@@ -21,8 +21,6 @@ export {
   Button,
   buttonVariants,
   IconButton,
-  Dropdown,
-  DropdownItem,
   DropdownSeparator,
   DropdownLabel,
   // Surfaces
@@ -63,8 +61,6 @@ export {
 export type {
   ButtonProps,
   IconButtonProps,
-  DropdownProps,
-  DropdownItemProps,
   ContainerProps,
   StackProps,
   SeparatorProps,
@@ -92,6 +88,15 @@ export type {
 // package primitive with the next-intl Link rather than re-exporting
 // it directly. Same goes for any future primitive that needs deeper
 // integration.
+// 下拉菜单：设计系统 0.3.2 的弹出层是 absolute，放进 overflow-x-auto 容器（DataTable）会被裁掉（#786）。
+// 本地版本改为 fixed 定位，API 不变；设计系统修好后删除并改回直接转出。
+export {
+  Dropdown,
+  DropdownItem,
+  type DropdownProps,
+  type DropdownItemProps,
+} from './dropdown';
+
 export {
   Breadcrumbs,
   type BreadcrumbsProps,

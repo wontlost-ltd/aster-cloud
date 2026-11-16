@@ -182,6 +182,8 @@ export default async function PoliciesPage({
       edit: t('groups.edit'),
       delete: t('groups.delete'),
       policiesCount: t.raw('groups.policiesCount'),
+      // 分组操作菜单按钮的无障碍名，复用版本表「操作」列的现成文案（不新增消息键）
+      actions: t('versions.table.actions'),
       createTitle: t('groups.createTitle'),
       editTitle: t('groups.editTitle'),
       nameLabel: t('groups.nameLabel'),

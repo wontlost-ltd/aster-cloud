@@ -11,7 +11,7 @@ import type { PolicyCapabilities } from '@/lib/policy-access-matrix';
 import { ShareWithTeamsCard } from '@/components/policy/share-with-teams-card';
 import { PolicyAnalyticsSection } from '@/components/policy/policy-analytics-section';
 import { PolicyProfileBadge } from '@/components/policy/policy-profile-badge';
-import { CedarExportPanel, type CedarExportLabels } from '@/components/policy/cedar-export-panel';
+import { CedarExportButton, CedarExportProvider, CedarExportStatus, type CedarExportLabels } from '@/components/policy/cedar-export-panel';
 
 interface PolicyVersion {
   id: string;
@@ -88,6 +88,11 @@ interface PolicyDetailContentProps {
   profile?: string | null;
   /** 是否已有批准版本（决定「导出为 Cedar」可用与否）；缺省按可用处理，由导出路由的 409 兜底。 */
   hasExecutableVersion?: boolean;
+  /**
+   * 是否显示「导出为 Cedar」（#786）：服务端按可导出性判定（lib/cedar-exportability），确定不可导出时为 false。
+   * 在服务端定好再下发，客户端没有「加载中」状态，按钮不会先出现再消失。
+   */
+  showCedarExport?: boolean;
   /** 版本审批判定上下文（见 version-approval-rules） */
   review?: Omit<VersionReviewContext, 'reviewerId'>;
   /**
@@ -116,6 +121,7 @@ export function PolicyDetailContent({
   policy,
   profile = null,
   hasExecutableVersion = true,
+  showCedarExport = false,
   review,
   sharingEnabled = false,
   capabilities = ALL_ACTIONS,
@@ -153,7 +159,7 @@ export function PolicyDetailContent({
     setDeleteDialogOpen(false);
   }, [isDeleting]);
 
-  return (
+  const content = (
     <Container size="xl" className="py-6 sm:py-10">
       {/* 详情页（deep）：保留 Breadcrumbs（放进 PageHeader 的 breadcrumbs slot），
           替代原来手抄的返回箭头链接，用作上一级导航。 */}
@@ -169,7 +175,8 @@ export function PolicyDetailContent({
           />
         }
         action={
-          <div className="flex space-x-3">
+          // 窄屏四个按钮放不下一行：折行，行距 / 列距 0.75rem，移动端撑到 44px 的点击区（globals.css）互不重叠
+          <div className="flex flex-wrap gap-3" data-testid="policy-actions">
             {/* 冻结策略只读：Execute/Edit 渲染为禁用态（与列表页一致）；
                 Delete 仍允许——删除是用户解除冻结（降到限额内）的途径。 */}
             {!capabilities.execute ? null : policy.isFrozen ? (
@@ -204,6 +211,8 @@ export function PolicyDetailContent({
                 {t.edit}
               </Link>
             )}
+            {/* 导出为 Cedar（ADR 0047 §6）：只读操作，冻结策略同样可导出；放在破坏性的「删除」之前（#786） */}
+            {showCedarExport && <CedarExportButton />}
             {capabilities.delete && (
             <button
               onClick={handleDeleteClick}
@@ -217,18 +226,13 @@ export function PolicyDetailContent({
         className="mb-6"
       />
 
+      {/* 导出结果 / 错误 / 「先批准」提示：紧贴页头操作组下方（#786）；导出的是执行路径实际选中的版本（默认的已批准版本，否则最新已批准版本） */}
+      {showCedarExport && <CedarExportStatus />}
+
       {/* 治理档案徽标（ADR 0046 §6）：活跃版本声明了档案才显示 */}
       <div className="mb-4 empty:hidden">
         <PolicyProfileBadge profile={profile} locale={locale} label={t.detail.profile} />
       </div>
-
-      {/* 导出为 Cedar（ADR 0047 §6）：导出执行路径实际选中的版本（默认的已批准版本，否则最新已批准版本），只读操作，冻结策略同样可导出 */}
-      <CedarExportPanel
-        policyId={policy.id}
-        labels={t.cedarExport}
-        hasExecutableVersion={hasExecutableVersion}
-        versionsHref={`/${locale}/policies/${policy.id}/versions`}
-      />
 
       {error && (
         <div className="mb-4 rounded-md bg-red-50 p-4">
@@ -379,5 +383,17 @@ export function PolicyDetailContent({
         isLoading={isDeleting}
       />
     </Container>
+  );
+
+  if (!showCedarExport) return content;
+  return (
+    <CedarExportProvider
+      policyId={policy.id}
+      labels={t.cedarExport}
+      hasExecutableVersion={hasExecutableVersion}
+      versionsHref={`/${locale}/policies/${policy.id}/versions`}
+    >
+      {content}
+    </CedarExportProvider>
   );
 }

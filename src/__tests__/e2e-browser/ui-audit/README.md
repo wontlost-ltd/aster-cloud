@@ -10,6 +10,7 @@
 | 链接 | 无 href 的 `<a>`、`#` / `javascript:` 假链接、页内锚点无目标、`target=_blank` 缺 `rel`；`links.spec.ts` 以对应角色会话 GET 每个站内链接（含 Next 软 404 识别），HEAD 站外链接 | serious（站内失效）/ moderate / minor |
 | 按钮 | 逐个点击（每页 ≤30 个，按名称去重），无任何可观察效果即「死按钮」；唯一效果是被拦截的 API 请求时记为「无法确认」（`click-verdict.ts`，不算有效）；点不到；禁用但不说明原因；破坏性按钮直接发写请求而无确认步骤 | serious / moderate / minor |
 | 键盘 | 菜单 / 对话框可用 Enter 打开、模态层困住焦点、Esc 关闭、焦点回到触发按钮；Tab 遍历前 25 个焦点检查可见焦点指示 | serious / moderate |
+| 弹出层 | 用 Enter 打开每个菜单 / 下拉后，新露出的项须完整可见：不被同时包含触发按钮的 overflow 容器截掉（含 auto / scroll——`overflow-x:auto` 的表格外壳会让纵轴也变成 auto，菜单只能在表格里滚动才看得到，#786）、不横向出视口、中心点不被别的元素盖住；弹出层自己的滚动列表不算。页面加载时菜单收起，结构检查看不到这些项 | serious（`popup-item-clipped`） |
 | 无障碍 | axe-core（WCAG 2.0/2.1/2.2 A + AA），深色主题复查对比度 | 按 axe impact |
 | 布局 | 横向溢出（逐个隐藏定位根因）、移动端点击目标 < 44×44 CSS px（项目规范，serious；句中行内链接豁免）、卡片网格同行等高 / 内边距一致 / 不重叠 / 内容不越界、深色主题是否生效 | serious（移动端溢出）/ moderate / minor |
 | 结构 | 一页多个 `<h1>`；h2–h6 与 h1 同文、或面包屑（aria-label 含 breadcrumb 的 nav）里没有任何链接（只剩当前页名）——同一标题渲染两次；可操作项被 `overflow:hidden` 祖先截掉（够不着），或在横向滚动容器里初始露出不足一个点击目标宽（移动端 serious） | serious / moderate |

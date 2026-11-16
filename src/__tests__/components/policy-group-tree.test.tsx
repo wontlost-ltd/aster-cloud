@@ -305,6 +305,49 @@ describe('PolicyGroupTree', () => {
     });
   });
 
+  // #786：分组操作菜单改用共用 Dropdown（fixed 弹出层，不被侧栏的 overflow-y-auto 裁掉）
+  describe('Group actions menu', () => {
+    const renderTree = () => render(
+      <PolicyGroupTree
+        groups={[createMockGroup()]}
+        selectedGroupId={null}
+        onSelectGroup={mockOnSelectGroup}
+        onCreateGroup={mockOnCreateGroup}
+        onEditGroup={mockOnEditGroup}
+        onDeleteGroup={mockOnDeleteGroup}
+        translations={{ ...mockTranslations, actions: 'Actions' }}
+        {...defaultCountProps}
+      />
+    );
+
+    it('has a named disclosure trigger that opens a fixed-position menu without selecting the group', () => {
+      renderTree();
+      const trigger = screen.getByRole('button', { name: 'Actions: Test Group' });
+      expect(trigger.getAttribute('aria-expanded')).toBe('false');
+      // 键盘聚焦或打开时可见（不是只在悬停时才显示）
+      expect(trigger.className).toMatch(/focus-visible:opacity-100/);
+      fireEvent.click(trigger);
+      expect(trigger.getAttribute('aria-expanded')).toBe('true');
+      expect(document.querySelector('[data-dropdown-panel]')?.className).toMatch(/\bfixed\b/);
+      expect(mockOnSelectGroup).not.toHaveBeenCalled();
+    });
+
+    it('items call their handlers, close the menu and do not select the group', () => {
+      renderTree();
+      fireEvent.click(screen.getByRole('button', { name: 'Actions: Test Group' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+      expect(mockOnEditGroup).toHaveBeenCalledWith(expect.objectContaining({ id: 'group-1' }));
+      expect(document.querySelector('[data-dropdown-panel]')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Actions: Test Group' }));
+      fireEvent.click(screen.getByRole('button', { name: 'New Subgroup' }));
+      expect(mockOnCreateGroup).toHaveBeenCalledWith('group-1');
+      fireEvent.click(screen.getByRole('button', { name: 'Actions: Test Group' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+      expect(mockOnDeleteGroup).toHaveBeenCalledWith(expect.objectContaining({ id: 'group-1' }));
+      expect(mockOnSelectGroup).not.toHaveBeenCalled();
+    });
+  });
+
   describe('Create Button', () => {
     it('should not show create button when onCreateGroup is not provided', () => {
       render(

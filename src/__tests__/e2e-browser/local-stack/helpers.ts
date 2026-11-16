@@ -3,6 +3,7 @@
  * 仅服务于 local-stack 目录下的用例，不得被生产冒烟用例引用。
  */
 import { execFileSync } from 'node:child_process';
+import { expect, type Locator } from '@playwright/test';
 import { createPublicKey, randomUUID, verify } from 'node:crypto';
 import { join } from 'node:path';
 import { jcsCanonicalize } from '@/lib/jcs';
@@ -209,4 +210,34 @@ export function verifyExecutionReceipt(
   if (now < Date.parse(p.issuedAt) - 60_000) return 'not_yet_valid';
   if (now >= Date.parse(p.expiresAt)) return 'expired';
   return 'ok';
+}
+
+/**
+ * 可操作项必须完整可见：页面纵向滚到元素处后，元素盒子在视口内、不被任何会裁剪的祖先（overflow 非 visible）截掉，
+ * 且中心点命中元素本身（没有被遮挡）。overflow 为 auto / scroll 也算：要先在容器里滚动才看得到的操作同样「藏在容器里」。
+ */
+export async function expectUnclipped(target: Locator): Promise<void> {
+  await expect(target).toBeVisible();
+  const problem = await target.evaluate((el) => {
+    // 只纵向滚动页面把元素带到视口中部；不能用 scrollIntoView——它会顺带横向滚动内层容器，
+    // 把本该被裁掉的操作项「救」回来，正好掩盖这次要抓的缺陷
+    const top = el.getBoundingClientRect().top + window.scrollY;
+    window.scrollTo(0, Math.max(0, top - window.innerHeight / 2));
+    const r = el.getBoundingClientRect();
+    if (r.left < -0.5 || r.right > window.innerWidth + 0.5) return `outside viewport: x=${Math.round(r.left)}..${Math.round(r.right)} vw=${window.innerWidth}`;
+    for (let p = el.parentElement; p; p = p.parentElement) {
+      const cs = getComputedStyle(p);
+      const pr = p.getBoundingClientRect();
+      const out = r.left < pr.left - 0.5 || r.right > pr.right + 0.5 || r.top < pr.top - 0.5 || r.bottom > pr.bottom + 0.5;
+      if ((cs.overflowX !== 'visible' || cs.overflowY !== 'visible') && out) {
+        return `clipped by ${p.tagName.toLowerCase()}.${Array.from(p.classList).slice(0, 4).join('.')}`;
+      }
+      // fixed 层（如下拉菜单的弹出层）已脱离外层祖先的裁剪，再往上不必比（#786）
+      if (cs.position === 'fixed') break;
+    }
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    if (!hit || !(hit === el || el.contains(hit))) return `covered by ${hit?.tagName.toLowerCase() ?? 'nothing'}`;
+    return null;
+  });
+  expect(problem, 'actionable item must be fully visible and clickable').toBeNull();
 }

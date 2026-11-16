@@ -1,8 +1,9 @@
 // 策略详情页「导出为 Cedar」面板（ADR 0047 §6）：可导出时按响应原样下载两个文件（文件名取编译器给出的模块名）
 // 并报告探针比对数；不可导出时列出诊断；无可执行版本（409）时提示先批准；忙时按错误码显示本地化的稍后重试文案；其余失败显示通用失败文案（#688）。
+// #786：按钮在页头操作组，消息在页头下方的 aria-live 状态区，二者经 CedarExportProvider 共享状态。
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { CedarExportPanel } from '@/components/policy/cedar-export-panel';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { CedarExportButton, CedarExportProvider, CedarExportStatus } from '@/components/policy/cedar-export-panel';
 
 const labels = {
   button: 'Export to Cedar',
@@ -44,8 +45,19 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// 与详情页相同的摆放：按钮与状态区分处两处（中间隔着别的内容），共享同一个 Provider
+function renderSplit(hasExecutableVersion = true) {
+  return render(
+    <CedarExportProvider policyId="p1" labels={labels} hasExecutableVersion={hasExecutableVersion} versionsHref="/zh/policies/p1/versions">
+      <div data-testid="actions"><CedarExportButton /></div>
+      <p>other content</p>
+      <CedarExportStatus />
+    </CedarExportProvider>,
+  );
+}
+
 function renderPanel() {
-  render(<CedarExportPanel policyId="p1" labels={labels} hasExecutableVersion versionsHref="/zh/policies/p1/versions" />);
+  renderSplit();
   fireEvent.click(screen.getByRole('button', { name: 'Export to Cedar' }));
 }
 
@@ -145,7 +157,7 @@ describe('CedarExportPanel', () => {
   it('no approved version at render time: button disabled, hint explains approval and links to versions; no request', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    render(<CedarExportPanel policyId="p1" labels={labels} hasExecutableVersion={false} versionsHref="/zh/policies/p1/versions" />);
+    renderSplit(false);
 
     const button = screen.getByRole('button', { name: 'Export to Cedar' });
     expect(button.hasAttribute('disabled')).toBe(true);
@@ -182,6 +194,52 @@ describe('CedarExportPanel', () => {
 
     expect(await screen.findByText('Export failed')).toBeDefined();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Export to Cedar' }).hasAttribute('disabled')).toBe(false));
+  });
+
+  describe('layout (#786)', () => {
+    it('status region is always mounted as a polite live region and empty (zero height) while idle', () => {
+      vi.stubGlobal('fetch', vi.fn());
+      renderSplit();
+      const status = screen.getByTestId('cedar-export-status');
+      expect(status.getAttribute('aria-live')).toBe('polite');
+      expect(status.childElementCount).toBe(0);
+    });
+
+    it('result is announced in the status region, not next to the button', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, {
+        exportable: true, moduleName: 'm', policies: 'permit…', schema: {}, schemaText: '{}', probes: { count: 3, agreed: 3 }, diagnostics: [],
+      })));
+      renderPanel();
+      const message = await screen.findByText('Verified against Cedar on 3 probes');
+      expect(screen.getByTestId('cedar-export-status').contains(message)).toBe(true);
+      expect(screen.getByTestId('actions').textContent).not.toContain('Verified');
+    });
+
+    it('busy keeps both labels in the button so its width does not change; the accessible name stays the action', async () => {
+      let resolve!: (r: Response) => void;
+      vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((r) => { resolve = r; })));
+      renderPanel();
+      const button = screen.getByTestId('cedar-export-button');
+      expect(button.getAttribute('aria-busy')).toBe('true');
+      expect(button.hasAttribute('disabled')).toBe(true);
+      expect(button.getAttribute('aria-label')).toBe('Export to Cedar');
+      // 两段文案都在，只切换可见性
+      expect(button.textContent).toContain('Export to Cedar');
+      expect(button.textContent).toContain('Exporting…');
+      expect(within(button).getByText('Export to Cedar').className).toContain('invisible');
+      resolve(jsonResponse(500, { error: 'boom' }));
+      await screen.findByRole('alert');
+      expect(within(button).getByText('Exporting…').className).toContain('invisible');
+      expect(button.hasAttribute('aria-busy')).toBe(false);
+    });
+
+    it('the "approve first" hint lives in the status region and describes the disabled button', () => {
+      vi.stubGlobal('fetch', vi.fn());
+      renderSplit(false);
+      const hint = screen.getByText('Approve a version before exporting to Cedar');
+      expect(screen.getByTestId('cedar-export-status').contains(hint)).toBe(true);
+      expect(screen.getByTestId('cedar-export-button').getAttribute('aria-describedby')).toBe(hint.id);
+    });
   });
 
   // #661：E720 多候选时让用户选择导出哪条规则，再带 functionName 导出

@@ -1,12 +1,19 @@
 'use client';
 
 /*
- * 策略详情页「导出为 Cedar」面板（ADR 0047 §6）。
+ * 策略详情页「导出为 Cedar」（ADR 0047 §6）。
  * 调所有者路由导出可执行版本：可导出时原样下载 <module>.cedar 与 <module>.cedarschema.json（模块名取编译器给出的
  * moduleName），并报告与 Cedar 比对过的探针数；不可导出时列出诊断；无可执行版本时提示先批准。文案由服务端页面预渲染传入。
  * 可导出的规则不止一条时（E720 多候选，#661）列出候选让用户选择，再带 functionName 导出所选规则。
+ *
+ * 布局（#786）：按钮放在页头右上的操作组里（与执行 / 编辑 / 删除同组同样式），结果、错误与「先批准」提示放在
+ * 页头下方紧贴操作组的状态区里。二者分处页头内外，故用 CedarExportProvider 共享导出状态：
+ * - CedarExportButton：操作组里的按钮。导出中文案换成「导出中…」时按钮宽度不变（两段文案叠放、只显示其一），
+ *   同组其余按钮不会被挤动；
+ * - CedarExportStatus：始终挂载的 aria-live 状态区（空时不占高度），结果出现在操作组下方、不影响页头里的其它操作。
+ * 是否显示整组由服务端按可导出性判定（见 lib/cedar-exportability），客户端不再请求，按钮不会先出现再消失。
  */
-import { useCallback, useId, useState } from 'react';
+import { createContext, useCallback, useContext, useId, useMemo, useState, type ReactNode } from 'react';
 import type { PolicyCedarExportResponse, PolicyDiagnostic } from '@/services/policy/policy-api';
 import { cedarRuleCandidates } from '@/lib/cedar-export-rules';
 import { actionErrorCode } from '@/lib/api/error-envelope';
@@ -31,7 +38,7 @@ export interface CedarExportLabels {
   exportRule: string;
 }
 
-interface CedarExportPanelProps {
+interface CedarExportProviderProps {
   policyId: string;
   labels: CedarExportLabels;
   /**
@@ -110,18 +117,18 @@ function DiagnosticList({ diagnostics }: { diagnostics: PolicyDiagnostic[] }) {
 function ExportResult({ state, labels }: { state: ExportState; labels: CedarExportLabels }) {
   if (state.kind === 'verified') {
     return (
-      <div className="mt-2 text-sm">
+      <div className="text-sm sm:text-right">
         <p className="text-green-700">{labels.verified.replace('{count}', String(state.count))}</p>
         <p className="mt-1 text-fg-muted">{labels.schemaNote}</p>
       </div>
     );
   }
   if (state.kind === 'error') {
-    return <p className="mt-2 text-sm text-red-700" role="alert">{state.message}</p>;
+    return <p className="text-sm text-red-700" role="alert">{state.message}</p>;
   }
   if (state.kind !== 'notExportable') return null;
   return (
-    <div className="mt-2" role="alert">
+    <div role="alert">
       <p className="text-sm font-medium text-red-700">{labels.notExportable}</p>
       <DiagnosticList diagnostics={state.diagnostics} />
     </div>
@@ -137,7 +144,7 @@ function RuleChooser({ candidates, labels, busy, onExport }: {
   const [chosen, setChosen] = useState(candidates[0]!);
   const selectId = useId();
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+    <div className="flex flex-wrap items-center gap-2 text-sm">
       <label htmlFor={selectId} className="text-fg">{labels.chooseRule}</label>
       <select
         id={selectId}
@@ -161,9 +168,24 @@ function RuleChooser({ candidates, labels, busy, onExport }: {
 
 const NO_VERSION_HINT_ID = 'cedar-export-no-version';
 
-export function CedarExportPanel({ policyId, labels, hasExecutableVersion, versionsHref }: CedarExportPanelProps) {
+interface CedarExportContextValue {
+  labels: CedarExportLabels;
+  hasExecutableVersion: boolean;
+  versionsHref: string;
+  state: ExportState;
+  handleExport: (functionName?: string) => void;
+}
+
+const CedarExportContext = createContext<CedarExportContextValue | null>(null);
+
+function useCedarExport(): CedarExportContextValue {
+  const ctx = useContext(CedarExportContext);
+  if (!ctx) throw new Error('CedarExportButton / CedarExportStatus 须放在 CedarExportProvider 内');
+  return ctx;
+}
+
+export function CedarExportProvider({ policyId, labels, hasExecutableVersion, versionsHref, children }: CedarExportProviderProps & { children: ReactNode }) {
   const [state, setState] = useState<ExportState>({ kind: 'idle' });
-  const busy = state.kind === 'busy';
 
   const handleExport = useCallback(async (functionName?: string) => {
     setState({ kind: 'busy' });
@@ -174,20 +196,52 @@ export function CedarExportPanel({ policyId, labels, hasExecutableVersion, versi
     }
   }, [policyId, labels]);
 
+  const value = useMemo(
+    () => ({ labels, hasExecutableVersion, versionsHref, state, handleExport }),
+    [labels, hasExecutableVersion, versionsHref, state, handleExport],
+  );
+  return <CedarExportContext.Provider value={value}>{children}</CedarExportContext.Provider>;
+}
+
+/** 页头操作组里的按钮：样式与「编辑」一致（次级按钮）。 */
+export function CedarExportButton() {
+  const { labels, hasExecutableVersion, state, handleExport } = useCedarExport();
+  const busy = state.kind === 'busy';
   return (
-    <div className="mb-6">
-      <button
-        type="button"
-        onClick={() => handleExport()}
-        disabled={busy || !hasExecutableVersion}
-        aria-label={labels.button}
-        aria-describedby={hasExecutableVersion ? undefined : NO_VERSION_HINT_ID}
-        className="inline-flex items-center rounded-md bg-bg px-3 py-2 text-sm font-semibold text-fg shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-bg-subtle disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {busy ? labels.exporting : labels.button}
-      </button>
+    <button
+      type="button"
+      onClick={() => handleExport()}
+      disabled={busy || !hasExecutableVersion}
+      aria-label={labels.button}
+      aria-busy={busy || undefined}
+      aria-describedby={hasExecutableVersion ? undefined : NO_VERSION_HINT_ID}
+      data-testid="cedar-export-button"
+      className="inline-flex items-center rounded-md bg-bg px-3 py-2 text-sm font-semibold text-fg shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-bg-subtle disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      {/* 两段文案叠在同一格里、只显示其一：按钮宽度取两者较宽者，导出中切换文案时同组按钮不移位 */}
+      <span className="grid">
+        <span className={`col-start-1 row-start-1 ${busy ? 'invisible' : ''}`}>{labels.button}</span>
+        <span className={`col-start-1 row-start-1 ${busy ? '' : 'invisible'}`} aria-hidden="true">{labels.exporting}</span>
+      </span>
+    </button>
+  );
+}
+
+/**
+ * 页头下方的状态区：始终挂载且不隐藏（读屏只播报已在无障碍树里的 live region 的变化），空时高度为 0、无外边距。
+ * sm 起各条消息靠右、宽度不超过 max-w-xl，紧贴上方操作组（短消息右对齐，多行诊断仍左对齐便于阅读）；消息出现只把下方内容往下推，页头里的操作不受影响。
+ */
+export function CedarExportStatus({ className = '' }: { className?: string }) {
+  const { labels, hasExecutableVersion, versionsHref, state, handleExport } = useCedarExport();
+  const busy = state.kind === 'busy';
+  return (
+    <div
+      aria-live="polite"
+      data-testid="cedar-export-status"
+      className={`flex max-w-full flex-col gap-2 sm:items-end sm:[&>*]:max-w-xl [&:not(:empty)]:-mt-3 [&:not(:empty)]:mb-6 ${className}`}
+    >
       {!hasExecutableVersion && (
-        <p id={NO_VERSION_HINT_ID} className="mt-2 text-sm text-fg-muted">
+        <p id={NO_VERSION_HINT_ID} className="text-sm text-fg-muted sm:text-right">
           {labels.noExecutableVersion}
           <a href={versionsHref} className="ml-2 font-medium text-primary hover:text-primary-hover">
             {labels.versionsLink} →

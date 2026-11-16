@@ -419,3 +419,99 @@ export function collectStructure(): StructureReport {
   }
   return { h1, duplicateHeadings, redundantBreadcrumbs, clippedActions };
 }
+
+/** 打开弹出层前给已有的可操作项打的标记：打开后没有这个标记的就是弹出层新露出的项 */
+export const PRE_POPUP_ATTR = 'data-ui-audit-pre';
+
+/** 与 collectStructure 同一组可操作元素 */
+export const POPUP_ACTIONABLE = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=tab], [role=checkbox], [role=radio], [role=switch], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=option]';
+
+/** 打开弹出层前调用：给当前所有可操作项打 PRE_POPUP_ATTR 标记。 */
+export function markActionables(args: { attr: string; selector: string }): number {
+  const all = Array.from(document.querySelectorAll(args.selector));
+  for (const el of all) el.setAttribute(args.attr, '');
+  return all.length;
+}
+
+export interface PopupClip {
+  text: string;
+  /** clipped：被同时包含触发按钮的 overflow 祖先截掉；offscreen：横向出了视口；covered：中心点被别的元素盖住 */
+  kind: 'clipped' | 'offscreen' | 'covered';
+  detail: string;
+}
+
+/**
+ * 弹出层（菜单、下拉）打开后，其新露出的可操作项必须完整可见、点得到（#786：版本页「⋮ → Submit for approval」
+ * 被 DataTable 的 overflow-x-auto 外壳裁掉——overflow-x 非 visible 时 overflow-y 也算作 auto，菜单只能在表格里纵向滚动才看得到）。
+ *
+ * - 裁剪：只看同时包含触发按钮的祖先（弹出层自己的滚动列表不算）；任一轴 overflow 非 visible（含 auto / scroll，
+ *   要在容器里滚动才看得到的菜单项同样算看不见）且菜单项越出该轴即报。途经 position:fixed 的祖先时，fixed 层已脱离
+ *   外层裁剪，只再看建立了包含块（transform / filter / contain 等）的祖先——fixed 逃不出它；
+ * - 横向出视口：页面可以纵向滚动，横向不行；
+ * - 遮挡：中心点在视口内时做命中测试，命中的不是菜单项自身或其后代即报（z-index 问题）。
+ */
+export function collectPopupClipping(args: { trigger: string; attr: string; selector: string }): PopupClip[] {
+  const trigger = document.querySelector(args.trigger);
+  if (!trigger) return [];
+  const vw = document.documentElement.clientWidth;
+  const vh = window.innerHeight;
+  const out: PopupClip[] = [];
+  const label = (el: Element) => ((el as HTMLElement).innerText || el.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ').slice(0, 50);
+  const desc = (el: Element) => {
+    const cls = (el.getAttribute('class') || '').split(/\s+/).filter((c) => c && !c.includes(':')).slice(0, 4);
+    return `${el.tagName.toLowerCase()}${cls.length ? `.${cls.join('.')}` : ''}`;
+  };
+  for (const el of Array.from(document.querySelectorAll(args.selector))) {
+    if (el.hasAttribute(args.attr) || el === trigger) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width <= 1 || r.height <= 1) continue;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === 'hidden' || cs.display === 'none' || el.closest('[aria-hidden="true"], [inert]')) continue;
+    let problem: PopupClip | null = null;
+    // 滚在弹出层自己的列表视区之外的项（如长下拉的后几项）是正常的，不做视口与遮挡判定
+    let inOwnScroller = false;
+    // fixed 层只在祖先建立了包含块（transform / filter / perspective / contain 等）时才仍受其裁剪：
+    // 遇到 fixed 后跳到这样的祖先继续比，没有就停止
+    const containingBlock = (from: HTMLElement | null): HTMLElement | null => {
+      for (let q = from; q && q !== document.body; q = q.parentElement) {
+        const c = getComputedStyle(q);
+        if (c.transform !== 'none' || c.filter !== 'none' || c.perspective !== 'none' || /paint|layout|strict|content/.test(c.contain) || /transform|filter/.test(c.willChange)) return q;
+      }
+      return null;
+    };
+    for (let p: HTMLElement | null = el.parentElement; p && p !== document.documentElement && !problem; p = p.parentElement) {
+      const pcs = getComputedStyle(p);
+      if (pcs.position === 'fixed') {
+        const cb = containingBlock(p.parentElement);
+        if (!cb) break;
+        p = cb;
+        const cbs = getComputedStyle(cb);
+        const cr = cb.getBoundingClientRect();
+        const cut = (cbs.overflowX !== 'visible' && (r.left < cr.left - 1 || r.right > cr.right + 1)) || (cbs.overflowY !== 'visible' && (r.top < cr.top - 1 || r.bottom > cr.bottom + 1));
+        if (cut) problem = { text: label(el), kind: 'clipped', detail: `by ${desc(cb)} (fixed popup inside a transformed / contained ancestor)` };
+        continue;
+      }
+      // body 的 overflow 作用于视口（页面本身可滚动），不算裁剪
+      if (p === document.body) continue;
+      const pr = p.getBoundingClientRect();
+      const outX = r.left < pr.left - 1 || r.right > pr.right + 1;
+      const outY = r.top < pr.top - 1 || r.bottom > pr.bottom + 1;
+      const cut = (pcs.overflowX !== 'visible' && outX) || (pcs.overflowY !== 'visible' && outY);
+      // 只有同时包含触发按钮的容器才算外部裁剪；不含触发按钮的是弹出层自己的滚动列表
+      if (cut && p.contains(trigger)) problem = { text: label(el), kind: 'clipped', detail: `by ${desc(p)} (overflow ${pcs.overflowX}/${pcs.overflowY})` };
+      else if (cut) inOwnScroller = true;
+    }
+    if (inOwnScroller && !problem) continue;
+    if (!problem && (r.left < -1 || r.right > vw + 1)) {
+      problem = { text: label(el), kind: 'offscreen', detail: `x=${Math.round(r.left)}..${Math.round(r.right)} viewport ${vw}` };
+    }
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    if (!problem && cx >= 0 && cx <= vw && cy >= 0 && cy <= vh) {
+      const hit = document.elementFromPoint(cx, cy);
+      if (!hit || !(hit === el || el.contains(hit))) problem = { text: label(el), kind: 'covered', detail: `by ${hit ? desc(hit) : 'nothing'}` };
+    }
+    if (problem) out.push(problem);
+  }
+  return out;
+}

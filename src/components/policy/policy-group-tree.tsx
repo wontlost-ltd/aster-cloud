@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { ChevronRight, ChevronDown, Folder, FolderOpen, Plus, MoreVertical, Pencil, Trash2, FolderPlus } from 'lucide-react';
 import { useDroppable } from '@dnd-kit/core';
+import { Dropdown, DropdownItem } from '@/components/ui';
 
 export interface PolicyGroup {
   id: string;
@@ -50,6 +51,8 @@ interface PolicyGroupTreeProps {
     edit: string;
     delete: string;
     policiesCount: string;
+    /** 分组操作菜单按钮的无障碍名前缀（「Actions: <分组名>」）；缺省用英文 */
+    actions?: string;
   };
 }
 
@@ -93,7 +96,6 @@ export function PolicyGroupTree({
   translations: t,
 }: PolicyGroupTreeProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
 
   const toggleExpand = useCallback((groupId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -108,16 +110,10 @@ export function PolicyGroupTree({
     });
   }, []);
 
-  const handleMenuToggle = useCallback((groupId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setMenuOpenId((prev) => (prev === groupId ? null : groupId));
-  }, []);
-
   const renderGroupItem = (group: PolicyGroup, depth: number = 0) => {
     const isExpanded = expandedIds.has(group.id);
     const isSelected = selectedGroupId === group.id;
     const hasChildren = group.children && group.children.length > 0;
-    const isMenuOpen = menuOpenId === group.id;
 
     return (
       <DroppableGroupItem key={group.id} id={group.id} isDragging={isDragging}>
@@ -163,60 +159,43 @@ export function PolicyGroupTree({
             {getTotalPoliciesCount(group)}
           </span>
 
-          {/* Context Menu */}
+          {/* 分组操作菜单：共用 Dropdown（fixed 弹出层，不被侧栏的 overflow-y-auto 裁掉，#786）。
+              外层截住点击冒泡，菜单内的点击不会顺带选中该分组。 */}
           {!group.isSystem && (onEditGroup || onDeleteGroup || onCreateGroup) && (
-            <div className="relative">
-              <button
-                className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-bg-muted"
-                onClick={(e) => handleMenuToggle(group.id, e)}
+            <div onClick={(e) => e.stopPropagation()} className="flex">
+              <Dropdown
+                trigger={
+                  <button
+                    type="button"
+                    aria-label={`${t.actions ?? 'Actions'}: ${group.name}`}
+                    // 悬停时显示；键盘聚焦或菜单打开时同样显示，不再是看不见的焦点
+                    className="p-1 rounded opacity-0 group-hover:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 hover:bg-bg-muted"
+                  >
+                    <MoreVertical className="w-4 h-4 text-fg-muted" aria-hidden="true" />
+                  </button>
+                }
+                className="w-40"
               >
-                <MoreVertical className="w-4 h-4 text-fg-muted" />
-              </button>
-
-              {isMenuOpen && (
-                <div className="absolute right-0 top-full mt-1 w-40 bg-bg rounded-md shadow-lg border border-border z-10">
-                  {/* 最多支持5级分组，第5级不再显示"新建子分组" */}
-                  {onCreateGroup && depth < MAX_GROUP_DEPTH - 1 && (
-                    <button
-                      className="w-full flex items-center px-3 py-2 text-sm text-fg hover:bg-bg-muted"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setMenuOpenId(null);
-                        onCreateGroup(group.id);
-                      }}
-                    >
-                      <FolderPlus className="w-4 h-4 mr-2" />
-                      {t.newSubgroup}
-                    </button>
-                  )}
-                  {onEditGroup && (
-                    <button
-                      className="w-full flex items-center px-3 py-2 text-sm text-fg hover:bg-bg-muted"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setMenuOpenId(null);
-                        onEditGroup(group);
-                      }}
-                    >
-                      <Pencil className="w-4 h-4 mr-2" />
-                      {t.edit}
-                    </button>
-                  )}
-                  {onDeleteGroup && (
-                    <button
-                      className="w-full flex items-center px-3 py-2 text-sm text-red-600 hover:bg-bg-muted"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setMenuOpenId(null);
-                        onDeleteGroup(group);
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      {t.delete}
-                    </button>
-                  )}
-                </div>
-              )}
+                {/* 最多支持5级分组，第5级不再显示"新建子分组" */}
+                {onCreateGroup && depth < MAX_GROUP_DEPTH - 1 && (
+                  <DropdownItem onSelect={() => onCreateGroup(group.id)} className="flex items-center">
+                    <FolderPlus className="w-4 h-4 mr-2" aria-hidden="true" />
+                    {t.newSubgroup}
+                  </DropdownItem>
+                )}
+                {onEditGroup && (
+                  <DropdownItem onSelect={() => onEditGroup(group)} className="flex items-center">
+                    <Pencil className="w-4 h-4 mr-2" aria-hidden="true" />
+                    {t.edit}
+                  </DropdownItem>
+                )}
+                {onDeleteGroup && (
+                  <DropdownItem variant="danger" onSelect={() => onDeleteGroup(group)} className="flex items-center">
+                    <Trash2 className="w-4 h-4 mr-2" aria-hidden="true" />
+                    {t.delete}
+                  </DropdownItem>
+                )}
+              </Dropdown>
             </div>
           )}
         </div>

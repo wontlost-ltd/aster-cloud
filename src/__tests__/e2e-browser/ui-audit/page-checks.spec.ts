@@ -3,7 +3,7 @@
  * 不访问本地栈，随 `pnpm test:ui-audit` 的 ui-audit-desktop 项目一起跑。
  */
 import { test, expect } from '@playwright/test';
-import { MOBILE_MIN_TARGET, collectLayout, collectStructure } from './page-checks';
+import { MOBILE_MIN_TARGET, POPUP_ACTIONABLE, PRE_POPUP_ATTR, collectLayout, collectPopupClipping, collectStructure, markActionables } from './page-checks';
 
 const HIT_AREA = `<style>
   .tap-target { position: relative; }
@@ -169,5 +169,70 @@ test.describe('actionable items clipped by a container', () => {
     await page.setContent(`<nav style="overflow-y:auto;height:60px">${Array.from({ length: 6 }, (_, i) => `<a href="/${i}" style="display:block;height:30px">Item ${i}</a>`).join('')}</nav>`);
     const r = await page.evaluate(collectStructure);
     expect(r.clippedActions).toEqual([]);
+  });
+});
+
+// #786：版本页「⋮ → Submit for approval」被 DataTable 的 overflow-x-auto 外壳裁掉。页面加载时菜单收起，
+// 只有打开弹出层之后才量得到：打开前标记已有项，打开后检查新露出的项
+test.describe('items in an opened popup', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  const TABLE = (panel: string) => `<body style="margin:0;padding:24px">
+    <div id="wrap" style="overflow-x:auto;border:1px solid">
+      <table style="width:100%"><tr><td>v1</td><td>Draft</td><td style="text-align:right">
+        <div style="position:relative;display:inline-block"><button id="t" aria-expanded="false" style="width:32px;height:32px">⋮</button>${panel}</div>
+      </td></tr></table></div>
+    <p>below</p></body>`;
+
+  const probe = async (page: import('@playwright/test').Page, html: string, panel: string) => {
+    await page.setContent(html);
+    await page.evaluate(markActionables, { attr: PRE_POPUP_ATTR, selector: POPUP_ACTIONABLE });
+    // 「打开」：插入弹出层
+    await page.evaluate((p) => document.getElementById('t')!.insertAdjacentHTML('afterend', p), panel);
+    return page.evaluate(collectPopupClipping, { trigger: '#t', attr: PRE_POPUP_ATTR, selector: POPUP_ACTIONABLE });
+  };
+
+  test('an absolute menu inside an overflow-x:auto table wrapper is reported as clipped (overflow-y becomes auto)', async ({ page }) => {
+    const menu = '<div style="position:absolute;right:0;top:40px;width:192px"><button style="display:block;width:100%;height:36px">Submit for approval</button></div>';
+    const r = await probe(page, TABLE(''), menu);
+    expect(r.map((c) => [c.text, c.kind])).toEqual([['Submit for approval', 'clipped']]);
+  });
+
+  test('a fixed-position menu escapes the wrapper and is not reported', async ({ page }) => {
+    const menu = '<div style="position:fixed;left:1200px;top:70px;width:192px;background:#fff"><button style="display:block;width:100%;height:36px">Submit for approval</button></div>';
+    expect(await probe(page, TABLE(''), menu)).toEqual([]);
+  });
+
+  test('a fixed menu inside a transformed, overflow-clipping ancestor is still reported', async ({ page }) => {
+    const html = TABLE('').replace('<div id="wrap" style="overflow-x:auto;border:1px solid">', '<div id="wrap" style="overflow:hidden;transform:translateZ(0);border:1px solid">');
+    const menu = '<div style="position:fixed;left:1200px;top:70px;width:192px;background:#fff"><button style="display:block;width:100%;height:36px">Submit for approval</button></div>';
+    const r = await probe(page, html, menu);
+    expect(r.map((c) => [c.text, c.kind])).toEqual([['Submit for approval', 'clipped']]);
+  });
+
+  test('the popup\'s own scrolling list does not count as clipping', async ({ page }) => {
+    const html = `<body style="margin:0;padding:24px"><div style="position:relative;display:inline-block"><button id="t">Group</button></div></body>`;
+    const list = `<div style="position:absolute;left:0;top:40px;width:200px;max-height:80px;overflow-y:auto">${Array.from({ length: 6 }, (_, i) => `<button style="display:block;height:30px">Option ${i}</button>`).join('')}</div>`;
+    expect(await probe(page, html, list)).toEqual([]);
+  });
+
+  test('a menu running off the right edge of the viewport is reported', async ({ page }) => {
+    const html = `<body style="margin:0"><div style="position:absolute;right:0;top:20px"><div style="position:relative;display:inline-block"><button id="t">⋮</button></div></div></body>`;
+    const menu = '<div style="position:absolute;left:0;top:30px;width:192px"><button style="width:100%">Archive</button></div>';
+    const r = await probe(page, html, menu);
+    expect(r.map((c) => [c.text, c.kind])).toEqual([['Archive', 'offscreen']]);
+  });
+
+  test('a menu painted under a sibling with a higher z-index is reported as covered', async ({ page }) => {
+    const html = `<body style="margin:0;padding:24px"><div style="position:relative;z-index:1"><div style="position:relative;display:inline-block"><button id="t">⋮</button></div></div>
+      <div style="position:relative;z-index:2;height:200px;background:#eee">next card</div></body>`;
+    const menu = '<div style="position:absolute;left:0;top:30px;width:192px;z-index:50"><button style="width:100%;height:36px">Approve</button></div>';
+    const r = await probe(page, html, menu);
+    expect(r.map((c) => [c.text, c.kind])).toEqual([['Approve', 'covered']]);
+  });
+
+  test('items that were already on the page before opening are ignored', async ({ page }) => {
+    const r = await probe(page, TABLE(''), '');
+    expect(r).toEqual([]);
   });
 });

@@ -16,7 +16,7 @@ import { loadPolicyForAction, policyAccessDeniedResponse } from '@/lib/policy-ac
 import { checkRateLimit, getRateLimitHeaders, RateLimitPresets } from '@/lib/rate-limit';
 import { policyTenantId } from '@/lib/policy-tenant';
 import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
-import { loadStoredVersionCompileContext } from '@/lib/execution-input';
+import { loadCedarExportInput } from '@/lib/cedar-export-input';
 import { versionVocabularyErrorResponse } from '@/lib/policy-compile-response';
 import { PolicyApiError } from '@/services/policy/policy-api';
 import { findDefaultExecutableVersion } from '@/services/policy/default-executable-version';
@@ -33,16 +33,6 @@ const CLAIMED_REF_VALUE = /^[A-Za-z0-9._:/-]{1,128}$/;
 function claimedRefFor(id: string, version: number): { claimedRef?: Record<string, string> } {
   const ref = { cloudPolicyId: id, version: String(version) };
   return Object.values(ref).every((v) => CLAIMED_REF_VALUE.test(v)) ? { claimedRef: ref } : {};
-}
-
-// 版本冻结的别名集（canonical JSON）；与执行路径同一口径，解析失败视同无别名
-function parseAliasSet(aliasSet: string | null): Record<string, string[]> | null {
-  if (!aliasSet) return null;
-  try {
-    return JSON.parse(aliasSet) as Record<string, string[]>;
-  } catch {
-    return null;
-  }
 }
 
 const EXPORT_FAILED_MESSAGE = 'Cedar export failed. Please try again later.';
@@ -133,24 +123,17 @@ export async function POST(req: Request, { params }: RouteParams) {
 
   const version = await findDefaultExecutableVersion(policy.id);
   if (!version) return NextResponse.json({ error: 'no executable version' }, { status: 409, headers });
-  const source = version.source ?? version.content;
 
   try {
-    const { locale, vocabulary } = await loadStoredVersionCompileContext({ ...version, source, teamId: policy.teamId ?? null });
+    // 编译输入与详情页的可导出性检查同一份（#786）
+    const { request, source, vocabulary } = await loadCedarExportInput(version, policy.teamId ?? null);
     const functionName = requested.functionName && resolvePolicyRuleName(source, vocabulary, requested.functionName);
     if (functionName === null) {
       return NextResponse.json({ error: 'unknown_function', message: 'functionName is not a rule of this policy version' }, { status: 400, headers });
     }
     const client = await createPolicyApiClientForUser(policyTenantId(policy), userId);
-    const aliasSet = parseAliasSet(version.aliasSet);
     const result = await client.exportCedar({
-      source,
-      locale,
-      aliasSet,
-      // 冻结即信任：与执行路径同一判定，已批准版本的别名集按已授权编译（含结构词别名）。
-      // aster-api 仅对 HMAC 已验签的调用方采信该标记；无别名时不带，保持原请求形状。
-      ...(aliasSet && Object.keys(aliasSet).length > 0 ? { allowStructural: true } : {}),
-      ...(vocabulary ? { vocabulary } : {}),
+      ...request,
       ...(functionName ? { functionName } : {}),
       ...claimedRefFor(policy.id, version.version),
     });
