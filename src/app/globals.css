@@ -158,7 +158,7 @@
  */
 @layer base {
   @media (max-width: 639.98px) {
-    :where(input:not([type="checkbox"], [type="radio"], [type="hidden"], [type="range"], [type="color"], [type="file"]), select, textarea) {
+    :where(input:not([type="checkbox"], [type="radio"], [type="hidden"], [type="range"], [type="color"], [type="file"], [type="button"], [type="submit"], [type="reset"], [type="image"]), select, textarea) {
       min-height: 2.75rem;
     }
     :where(button, a[href], summary, [role="button"], [role="tab"], [role="switch"], [role="menuitem"]):not(:where(.prose, .docs-article, article) :where(p, li, td) a),
