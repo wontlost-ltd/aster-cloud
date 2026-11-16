@@ -109,7 +109,9 @@ describe('缺少 HYPERDRIVE_FRESH 时的告警（#743）', () => {
 
   afterEach(() => {
     warn.mockRestore();
+    vi.unstubAllGlobals();
     setRelease(originalRelease);
+    vi.unstubAllEnvs();
     delete req.cache[opennextPath];
     globalForDb.__asterLocalDevDb = null;
     currentEnv = {};
@@ -117,6 +119,7 @@ describe('缺少 HYPERDRIVE_FRESH 时的告警（#743）', () => {
 
   it('workerd + 缺 HYPERDRIVE_FRESH：每个 isolate 只告警一次，含绑定名，且仍回落到 HYPERDRIVE', async () => {
     setRelease(undefined);
+    vi.stubGlobal('WebSocketPair', class {});
     currentEnv = { HYPERDRIVE: CACHED };
     const { getFreshDb } = await import('@/db');
     expect(databaseOf(getFreshDb())).toBe('cached_db');
@@ -128,6 +131,7 @@ describe('缺少 HYPERDRIVE_FRESH 时的告警（#743）', () => {
 
   it('workerd + freshDb 缺绑定：与 getFreshDb 共享同一次告警', async () => {
     setRelease(undefined);
+    vi.stubGlobal('WebSocketPair', class {});
     currentEnv = { HYPERDRIVE: CACHED };
     const { freshDb } = await import('@/db/fresh-read');
     const { getFreshDb } = await import('@/db');
@@ -139,6 +143,7 @@ describe('缺少 HYPERDRIVE_FRESH 时的告警（#743）', () => {
 
   it('workerd + 绑定齐全：不告警', async () => {
     setRelease(undefined);
+    vi.stubGlobal('WebSocketPair', class {});
     currentEnv = { HYPERDRIVE: CACHED, HYPERDRIVE_FRESH: FRESH };
     const { getFreshDb } = await import('@/db');
     getFreshDb();
@@ -147,11 +152,19 @@ describe('缺少 HYPERDRIVE_FRESH 时的告警（#743）', () => {
 
   it('workerd + 连 HYPERDRIVE 也没有：不告警（不是缺 FRESH 的场景）', async () => {
     setRelease(undefined);
+    vi.stubGlobal('WebSocketPair', class {});
     vi.stubEnv('DATABASE_URL', 'postgres://u:p@127.0.0.1:5432/env_db');
     currentEnv = {};
     const { getFreshDb } = await import('@/db');
     getFreshDb();
-    vi.unstubAllEnvs();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('非 Node 也非 workerd（无 workerd 特征）：不告警', async () => {
+    setRelease(undefined);
+    currentEnv = { HYPERDRIVE: CACHED };
+    const { getFreshDb } = await import('@/db');
+    getFreshDb();
     expect(warn).not.toHaveBeenCalled();
   });
 

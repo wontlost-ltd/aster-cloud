@@ -75,7 +75,7 @@ export function isNodeRuntime(): boolean {
   return isNode && !isWorkerd();
 }
 
-function isWorkerd(): boolean {
+export function isWorkerd(): boolean {
   const g = globalThis as { navigator?: { userAgent?: string }; WebSocketPair?: unknown };
   return g.navigator?.userAgent === 'Cloudflare-Workers' || g.WebSocketPair !== undefined;
 }
@@ -89,10 +89,10 @@ let freshBindingWarned = false;
  * 真实 workerd 里有 HYPERDRIVE 却缺 HYPERDRIVE_FRESH（绑定被删、改名或 env 取不到）时告警一次（#743）。
  *
  * 此时一致性敏感读会静默回落到带缓存的 HYPERDRIVE，可能读到约 75 秒旧数据。只发信号，**不改回退行为**；
- * Node 运行时（本地 dev / on-prem / 测试）本来就没有 Hyperdrive 缓存，不告警。
+ * 只在识别为 workerd 时告警；Node 运行时（本地 dev / on-prem / 测试）本来就没有 Hyperdrive 缓存，不告警。
  */
 export function warnFreshBindingMissing(env: CloudflareEnv | null | undefined): void {
-  if (freshBindingWarned || isNodeRuntime()) return;
+  if (freshBindingWarned || !isWorkerd()) return;
   if (!env?.HYPERDRIVE || env.HYPERDRIVE_FRESH?.connectionString) return;
   freshBindingWarned = true;
   console.warn(
