@@ -1,7 +1,7 @@
 ---
 title: "错误处理"
 description: "Aster 策略引擎使用标准 HTTP 状态码和一致的 JSON 响应信封处理所有错误条件。"
-updated: 2026-06-02
+updated: 2026-11-16
 apiVersion: v1
 ---
 
@@ -114,20 +114,51 @@ HTTP/1.1 404 Not Found
 
 ### 429 Too Many Requests
 
-当租户超出其速率限制时返回。响应包含 `Retry-After` 请求头。
+有三种不同的限制会返回 `429`，处理方式不同，请按 `error` 字段区分：
+
+| `error` | 限制 | 怎么处理 |
+|---|---|---|
+| `"Too Many Requests"` | API 入口处的粗粒度请求窗口，按客户端 IP 计（已知租户时按租户计） | 等 `Retry-After` 秒后重试 |
+| `"rate_limit_exceeded"` | 每个 API key 每秒请求数，作用于求值与守卫决策端点 | 等 `Retry-After`（1 秒）后重试 |
+| `"api_quota_hard_exceeded"` | 月度 API 配额的硬上限（套餐配额的 200%） | 重试无济于事——没有 `Retry-After`；等配额周期重置或更换套餐 |
+
+**请求窗口**——该 `429` 还带 `X-RateLimit-Limit`、`X-RateLimit-Remaining`（`0`）与 `X-RateLimit-Reset`（Unix 秒）：
 
 ```
 HTTP/1.1 429 Too Many Requests
 Retry-After: 30
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 1763254830
 ```
 
 ```json
+{ "error": "Too Many Requests", "retryAfter": 30 }
+```
+
+**每 key 每秒请求数：**
+
+```json
 {
-  "result": null,
-  "error": "Rate limit exceeded; retry after 30 seconds",
-  "executionTimeMs": 0
+  "error": "rate_limit_exceeded",
+  "message": "…",
+  "rps_limit": 10,
+  "rps_used": 11
 }
 ```
+
+**月度配额：**
+
+```json
+{
+  "error": "api_quota_hard_exceeded",
+  "message": "…",
+  "limit": 10000,
+  "used": 20001
+}
+```
+
+上面的数字只是示例，实际限制取决于你的套餐与部署。没有 API 访问权限的套餐（每秒请求数上限为 `0`）得到的是 `403`，不是 `429`。
 
 ### 500 Internal Server Error
 

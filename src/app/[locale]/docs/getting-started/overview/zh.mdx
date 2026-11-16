@@ -1,7 +1,7 @@
 ---
 title: "概述"
 description: "Aster 策略引擎是一个生产级 REST 服务，用于评估以 Aster CNL（受控自然语言）编写的业务规则。它基于 Quarkus 构建，专为低延迟、多租户部署而设计。"
-updated: 2026-06-02
+updated: 2026-11-16
 apiVersion: v1
 ---
 
@@ -57,7 +57,7 @@ https://policy.aster-lang.dev
 
 ## 速率限制
 
-速率限制按租户应用。超出限制的请求将收到 `429 Too Many Requests` 响应，附带 `Retry-After` 请求头指示窗口重置时间。
+请求受粗粒度的请求窗口限制（按客户端 IP 计，已知租户时按租户计）；求值与守卫决策端点另按每个 API key 每秒请求数限制；月度 API 配额也有硬上限。三者都返回 `429 Too Many Requests`，但 `error` 码不同——如何区分、什么时候重试有用，见[错误处理](/zh/docs/getting-started/errors#429-too-many-requests)。
 
 ## 什么是 Aster CNL？
 

@@ -1,7 +1,7 @@
 ---
 title: "Fehlerbehandlung"
 description: "Die Aster Policy Engine verwendet Standard-HTTP-Statuscodes und einen konsistenten JSON-Antwortumschlag für alle Fehlerbedingungen."
-updated: 2026-06-02
+updated: 2026-11-16
 apiVersion: v1
 ---
 
@@ -67,19 +67,48 @@ HTTP/1.1 404 Not Found
 
 ### 429 Too Many Requests
 
-Wird zurückgegeben, wenn der Mandant sein Ratenlimit überschritten hat. Die Antwort enthält einen `Retry-After`-Header.
+Drei verschiedene Limits antworten mit `429`. Unterscheiden Sie sie am Feld `error` — sie verlangen unterschiedliche Behandlung:
+
+| `error` | Limit | Vorgehen |
+|---|---|---|
+| `"Too Many Requests"` | Grobes Anfragefenster am Eingang der API, gezählt pro Client-IP (pro Mandant, wenn der Mandant bereits bekannt ist) | Nach `Retry-After` Sekunden erneut versuchen |
+| `"rate_limit_exceeded"` | Anfragen pro Sekunde je API-Key, an den Auswertungs- und Guard-Entscheidungs-Endpunkten | Nach `Retry-After` (1 Sekunde) erneut versuchen |
+| `"api_quota_hard_exceeded"` | Hartes Limit des monatlichen API-Kontingents (200 % des Plankontingents) | Erneute Versuche helfen nicht — es gibt kein `Retry-After`; auf den neuen Kontingentzeitraum warten oder den Plan wechseln |
+
+**Anfragefenster** — die `429` enthält zusätzlich `X-RateLimit-Limit`, `X-RateLimit-Remaining` (`0`) und `X-RateLimit-Reset` (Unix-Sekunden):
 ```
 HTTP/1.1 429 Too Many Requests
 Retry-After: 30
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 1763254830
 ```
 
 ```json
+{ "error": "Too Many Requests", "retryAfter": 30 }
+```
+
+**Anfragen pro Sekunde je Key:**
+```json
 {
-  "result": null,
-  "error": "Rate limit exceeded; retry after 30 seconds",
-  "executionTimeMs": 0
+  "error": "rate_limit_exceeded",
+  "message": "…",
+  "rps_limit": 10,
+  "rps_used": 11
 }
 ```
+
+**Monatliches Kontingent:**
+```json
+{
+  "error": "api_quota_hard_exceeded",
+  "message": "…",
+  "limit": 10000,
+  "used": 20001
+}
+```
+
+Die Zahlen sind Beispiele; die tatsächlichen Limits hängen von Ihrem Plan und Ihrer Bereitstellung ab. Ein Plan ohne API-Zugang (Limit `0` Anfragen pro Sekunde) erhält `403`, nicht `429`.
 
 ### 500 Internal Server Error
 

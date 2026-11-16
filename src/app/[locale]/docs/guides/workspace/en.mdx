@@ -1,0 +1,49 @@
+---
+title: "Editor and dashboard"
+description: "Starter templates for new policies, the language-server connection, Cedar export, dashboard cards, engine equivalence and accessibility."
+updated: 2026-11-16
+apiVersion: v1
+---
+
+# Editor and dashboard
+
+This page describes recent changes to the policy editor and the dashboard in Aster Cloud.
+
+## New policies start from a template
+
+**New policy** opens with a small starter policy in the language of the interface: Chinese for the Chinese interface, German for the German interface, and English otherwise (there is no Hindi starter yet, so the Hindi interface also gets English). The policy's source language is the starter's language, so the editor's lexicon, completions and the saved locale all match.
+
+- A hint above the editor names the starter's language and offers **Start blank**. You can also dismiss it.
+- An unchanged starter is not a draft: it is not autosaved and leaving the page does not ask for confirmation. The first edit — by hand, from a template or from the assistant — makes it your draft.
+- A saved draft still takes precedence: you are offered to restore it as before.
+- The starter is also the first entry in the editor's **Templates** tab (**Basic starter**, under **Getting started**), so you can bring it back after starting blank.
+- A link from the documentation that opens a specific example (`?template=…`) shows only that example.
+- While the editor still contains the unchanged starter, the assistant's **Generate** writes a new policy from scratch instead of editing the starter.
+
+## Language server connection
+
+Diagnostics, completion and other language features in the editor come from a language server. Before each connection or reconnection the editor requests a short-lived ticket from Aster Cloud; the ticket is bound to your user, is valid for 60 seconds and can be used once. No shared credential is shipped to the browser.
+
+- A session that has been idle for 15 minutes is closed, and the editor reconnects when you continue working.
+- Each user can hold up to three language-server sessions at a time; a further session is closed. Close an unused editor tab if language features stop in a new one.
+
+## Export to Cedar
+
+On a policy's detail page, **Export to Cedar** exports the version that runs when no version is specified — the default approved version, or else the latest approved one. Drafts are never exported. A successful export downloads the Cedar policy and schema files and reports how many probes the result was verified against. What can be exported and how outcomes map is described in [Export to Cedar on aster-lang.dev](https://aster-lang.dev/docs/cedar-export).
+
+## The dashboard
+
+Two cards at the top of the dashboard collect actions that were easy to miss:
+
+- **Pending invitations** — accept or decline an invitation without opening the Teams page.
+- **Policy versions awaiting your review** — up to five versions, with the total count and a direct **Review** link. Only versions you are allowed to approve are listed; who may approve what is unchanged, so on a team policy the author still waits for another approver.
+
+Both cards are hidden when there is nothing to do. On small screens the notifications panel stays inside the screen, the approvals table becomes a list of cards, and tables keep their action column in view.
+
+## Engine equivalence
+
+The public [equivalence page](/equivalence) reports whether the TypeScript engine and the JVM engine agree. It leads with a conclusion — all checks agree, or how many differed — and the date of the last nightly check; a report older than 72 hours is marked as stale, and no figures are shown when no data is available. Below it are the three things compared (parsing, run results and Core IR), test coverage, the nightly history with past disagreements marked, any open disagreements, and the method with links to the raw CSV data.
+
+## Accessibility
+
+Text, controls and code highlighting meet the WCAG AA contrast ratio in light and dark themes. On mobile, touch targets are at least 44 × 44 CSS pixels. Code blocks in the documentation can be reached with the keyboard and confirm when their content was copied, and focus is visible throughout.

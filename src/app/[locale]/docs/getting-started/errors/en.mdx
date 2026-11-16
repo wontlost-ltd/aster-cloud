@@ -1,7 +1,7 @@
 ---
 title: "Error Handling"
 description: "Understand Aster API error responses — the structured error envelope, HTTP status codes, validation violations, and how to handle rate limits and retries."
-updated: 2026-06-02
+updated: 2026-11-16
 apiVersion: v1
 ---
 
@@ -105,19 +105,48 @@ HTTP/1.1 404 Not Found
 
 ### 429 Too Many Requests
 
-Returned when the tenant has exceeded its rate limit. The response includes a `Retry-After` header.
+Three different limits answer `429`. Tell them apart by the `error` field — they need different handling:
+
+| `error` | Limit | What to do |
+|---|---|---|
+| `"Too Many Requests"` | Coarse request window at the edge of the API, counted per client IP (per tenant when the tenant is already known) | Retry after `Retry-After` seconds |
+| `"rate_limit_exceeded"` | Requests per second per API key, on evaluation and guard decision endpoints | Retry after `Retry-After` (1 second) |
+| `"api_quota_hard_exceeded"` | Hard limit of the monthly API quota (200% of the plan quota) | Retrying does not help — there is no `Retry-After`; wait for the quota period or change plan |
+
+**Request window** — the `429` also carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` (`0`) and `X-RateLimit-Reset` (Unix seconds):
 ```
 HTTP/1.1 429 Too Many Requests
 Retry-After: 30
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 1763254830
 ```
 
 ```json
+{ "error": "Too Many Requests", "retryAfter": 30 }
+```
+
+**Per-key requests per second:**
+```json
 {
-  "result": null,
-  "error": "Rate limit exceeded; retry after 30 seconds",
-  "executionTimeMs": 0
+  "error": "rate_limit_exceeded",
+  "message": "…",
+  "rps_limit": 10,
+  "rps_used": 11
 }
 ```
+
+**Monthly quota:**
+```json
+{
+  "error": "api_quota_hard_exceeded",
+  "message": "…",
+  "limit": 10000,
+  "used": 20001
+}
+```
+
+The numbers above are examples; the actual limits depend on your plan and deployment. A plan without API access (requests-per-second limit `0`) gets `403`, not `429`.
 
 ### 500 Internal Server Error
 
