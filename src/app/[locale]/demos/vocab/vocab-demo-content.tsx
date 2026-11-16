@@ -134,7 +134,8 @@ export function VocabDemoContent({ locale }: { locale: string }) {
       <section className="mb-8">
         <StepHeading n={2} title={t('step2.title')} />
         <p className="mb-3 text-sm text-fg-muted">{t('step2.hint')}</p>
-        <div className="overflow-x-auto rounded-lg border border-border">
+        {/* 可横向滚动的表格容器：键盘可聚焦后用方向键滚动（axe scrollable-region-focusable，#774） */}
+        <div tabIndex={0} role="region" aria-label={t('step2.title')} data-scroll-region className="overflow-x-auto rounded-lg border border-border">
           <table className="min-w-full divide-y divide-border text-sm">
             <thead className="bg-bg-subtle">
               <tr>
@@ -163,7 +164,7 @@ export function VocabDemoContent({ locale }: { locale: string }) {
       <section className="mb-8">
         <StepHeading n={3} title={t('step3.title')} />
         <p className="mb-3 text-sm text-fg-muted">{t('step3.hint')}</p>
-        <pre className="overflow-x-auto rounded-lg bg-zinc-900 p-4 text-sm leading-relaxed text-zinc-100">
+        <pre tabIndex={0} className="overflow-x-auto rounded-lg bg-zinc-900 p-4 text-sm leading-relaxed text-zinc-100">
           {highlightVocab(rule.source, domain.terms.map((t) => t.localized[loc]))}
         </pre>
         <p className="mt-2 text-xs text-fg-subtle">

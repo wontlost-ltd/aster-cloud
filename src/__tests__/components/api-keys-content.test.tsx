@@ -9,6 +9,12 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { ApiKeysContent } from '@/app/[locale]/(dashboard)/settings/api-keys/api-keys-content';
 
+const toastError = vi.hoisted(() => vi.fn());
+vi.mock('@/components/ui', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('@/components/ui');
+  return { ...actual, toast: Object.assign(vi.fn(), { error: toastError, success: vi.fn() }) };
+});
+
 // ConfirmDialog 包装的按钮缺省文案取自 next-intl（common 命名空间），这里给最小桩
 vi.mock('next-intl', () => ({ useTranslations: () => (key: string) => key }));
 
@@ -20,6 +26,8 @@ const T = {
   keyCreated: 'Key created',
   copyWarning: 'Copy it now',
   copy: 'Copy',
+  copied: 'Copied!',
+  copyFailed: 'Copy failed — copy manually',
   dismiss: 'Dismiss',
   createNew: 'Create new API key',
   keyPlaceholder: 'Key name',
@@ -129,5 +137,43 @@ describe('ApiKeysContent — 作用域', () => {
   it('团队名含 $ 模式时按字面渲染作用域选项', () => {
     render(<ApiKeysContent initialApiKeys={[]} teams={[{ id: 't1', name: 'A$&B' }]} translations={T} locale="en" />);
     expect(screen.getByRole('option', { name: 'Team · A$&B' })).toBeInTheDocument();
+  });
+});
+
+describe('ApiKeysContent — 复制反馈（#774）', () => {
+  function setClipboard(writeText: ((t: string) => Promise<void>) | undefined) {
+    Object.defineProperty(navigator, 'clipboard', { value: writeText ? { writeText } : undefined, configurable: true });
+  }
+
+  it('shows "Copied" on the clicked code block and announces it', async () => {
+    const writeText = vi.fn(async () => undefined);
+    setClipboard(writeText);
+    render(<ApiKeysContent initialApiKeys={[]} teams={[]} translations={T} locale="en" />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Copy' })[0]);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Copied!' })).toHaveLength(1));
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByRole('status').some((el) => el.textContent === 'Copied!')).toBe(true);
+  });
+
+  it('tells the user to copy manually when the clipboard rejects, without throwing', async () => {
+    toastError.mockClear();
+    setClipboard(vi.fn(async () => { throw new DOMException('Write permission denied.', 'NotAllowedError'); }));
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    render(<ApiKeysContent initialApiKeys={[]} teams={[]} translations={T} locale="en" />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Copy' })[0]);
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Copy failed — copy manually'));
+    await new Promise((r) => setTimeout(r, 0));
+    process.off('unhandledRejection', unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Copied!' })).toBeNull();
+  });
+
+  it('handles a missing Clipboard API (insecure context)', async () => {
+    toastError.mockClear();
+    setClipboard(undefined);
+    render(<ApiKeysContent initialApiKeys={[]} teams={[]} translations={T} locale="en" />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Copy' })[0]);
+    await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
   });
 });

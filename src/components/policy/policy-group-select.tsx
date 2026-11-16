@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useId, useRef } from 'react';
 import { ChevronDown, Folder, Check, X } from 'lucide-react';
 
 interface PolicyGroup {
@@ -57,6 +57,9 @@ export function PolicyGroupSelect({
   const [flatGroups, setFlatGroups] = useState<PolicyGroup[]>([]);
   const [isLoading, setIsLoading] = useState(!externalGroups);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  // 可访问名称 = 标签 + 按钮上可见的当前值（WCAG 2.5.3 Label in Name：名称须包含可见文字，#774）
+  const labelId = useId();
+  const valueId = useId();
 
   // Fetch groups if not provided externally
   useEffect(() => {
@@ -140,23 +143,22 @@ export function PolicyGroupSelect({
   return (
     <div className={`relative ${className}`} ref={dropdownRef}>
       {label && (
-        <label className="block text-sm font-semibold text-fg mb-2">
+        <label id={labelId} className="block text-sm font-semibold text-fg mb-2">
           {label}
         </label>
       )}
 
       {/* Select Button */}
-      {/* R32 audit P0 fix：icon-only / placeholder button needs an
-          accessible name. aria-haspopup + aria-expanded so screen readers
-          report dropdown state; aria-label fallback for the "no group"
-          case where the visible text is only a placeholder. */}
+      {/* aria-haspopup + aria-expanded so screen readers report dropdown
+          state. 名称由标签与可见的当前值（或占位文字）组成；此前用 aria-label 覆盖成单纯的「Group」，
+          与按钮上可见的文字不一致（axe label-content-name-mismatch，#774）。 */}
       <button
         type="button"
         disabled={disabled || isLoading}
         onClick={() => setIsOpen(!isOpen)}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
-        aria-label={label || (selectedGroup ? `Selected group: ${selectedGroup.name}` : 'Select policy group')}
+        aria-labelledby={label ? `${labelId} ${valueId}` : undefined}
         className={`
           w-full flex items-center justify-between rounded-lg border bg-bg px-4 py-3 text-left shadow-sm transition-all duration-200
           ${disabled
@@ -167,7 +169,7 @@ export function PolicyGroupSelect({
           }
         `}
       >
-        <div className="flex items-center flex-1 min-w-0">
+        <div id={valueId} className="flex items-center flex-1 min-w-0">
           {isLoading ? (
             <span className="text-fg-subtle text-sm">Loading...</span>
           ) : selectedGroup ? (

@@ -63,7 +63,7 @@ export function CNLLanguageSelector({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`inline-flex items-center justify-between gap-2 rounded-lg border border-border-strong bg-bg shadow-sm transition-all duration-200 hover:bg-bg-subtle hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${
+        className={`inline-flex items-center justify-between gap-2 rounded-lg border border-border-strong bg-bg shadow-sm transition-all duration-200 hover:bg-bg-subtle hover:border-gray-400 focus:outline-none focus:shadow-ring focus:border-primary ${
           compact ? 'px-2 py-1.5 text-sm' : 'px-3 py-2 text-sm'
         }`}
         aria-expanded={isOpen}

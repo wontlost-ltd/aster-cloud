@@ -142,7 +142,7 @@ export function CnlDemo({ className }: { className?: string }) {
       </div>
 
       {/* Code body */}
-      <pre
+      <pre tabIndex={0}
         className="overflow-x-auto px-5 py-5 font-mono text-sm leading-relaxed"
         style={{
           // Lock minimum height so the card doesn't bounce as text types.

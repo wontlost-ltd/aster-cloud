@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Container, PageHeader, Breadcrumbs } from '@/components/ui';
+import { Container, PageHeader } from '@/components/ui';
 
 interface ReportRow {
   id: string;
@@ -109,9 +109,6 @@ export function RuleRegressionContent() {
       <PageHeader
         title={t('title')}
         subtitle={t('subtitle')}
-        breadcrumbs={
-          <Breadcrumbs items={[{ label: t('breadcrumbAdmin') }, { label: t('title') }]} />
-        }
         className="mb-6"
       />
 

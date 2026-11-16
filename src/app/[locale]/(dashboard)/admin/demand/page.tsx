@@ -11,7 +11,7 @@ import { IS_SAAS } from '@/lib/deployment-mode';
 import { loadDemandReport } from '@/lib/product-events/report';
 import { productEventsEnabled } from '@/lib/product-events/server';
 import { listPilotApplications } from '@/lib/pilot-applications';
-import { Breadcrumbs, Container, PageHeader } from '@/components/ui';
+import { Container, PageHeader } from '@/components/ui';
 import { localizedTitle } from '@/lib/page-metadata';
 import { DemandDashboard } from './demand-dashboard';
 
@@ -33,7 +33,6 @@ export default async function DemandPage({ params }: Props) {
   const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations('admin.demand');
-  const tNav = await getTranslations('dashboardNav');
 
   const [report, applications] = await Promise.all([
     loadDemandReport(),
@@ -45,7 +44,6 @@ export default async function DemandPage({ params }: Props) {
       <PageHeader
         title={t('title')}
         subtitle={t('subtitle')}
-        breadcrumbs={<Breadcrumbs items={[{ label: tNav('groupAdmin') }, { label: t('title') }]} />}
         className="mb-6"
       />
       <DemandDashboard

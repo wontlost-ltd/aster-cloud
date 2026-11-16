@@ -293,7 +293,7 @@ export function VersionDetailPanel({
               </div>
             )}
             {/* R30+ audit P2：从 raw gray ramp 改成 design tokens 同步 dark mode */}
-            <pre className="bg-bg-inverse text-fg-inverse p-4 rounded-lg overflow-x-auto text-sm font-mono max-h-[500px] overflow-y-auto dark:bg-zinc-900 dark:text-zinc-100">
+            <pre tabIndex={0} className="bg-bg-inverse text-fg-inverse p-4 rounded-lg overflow-x-auto text-sm font-mono max-h-[500px] overflow-y-auto dark:bg-zinc-900 dark:text-zinc-100">
               {sourceCode}
             </pre>
             {detail.aliasSet && (

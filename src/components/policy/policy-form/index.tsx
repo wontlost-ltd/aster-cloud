@@ -844,7 +844,7 @@ export function PolicyForm({
               // placeholder mirrors the editor's contentPlaceholder text
               // so a brand-new policy doesn't surprise the user with a
               // blank gray box.
-              <pre
+              <pre tabIndex={0}
                 className="m-0 h-full overflow-auto p-4 font-mono text-sm text-fg whitespace-pre-wrap break-words"
                 aria-label={t('content')}
               >

@@ -102,7 +102,7 @@ export function PoemDemoContent({ locale }: { locale: string }) {
           <span className="font-display italic text-fg">{poem.title}</span>
           <span> · {poem.attribution}</span>
         </p>
-        <pre className="overflow-x-auto rounded-xl border border-border bg-bg-subtle p-5 font-mono text-sm leading-relaxed text-fg">
+        <pre tabIndex={0} className="overflow-x-auto rounded-xl border border-border bg-bg-subtle p-5 font-mono text-sm leading-relaxed text-fg">
           {displaySource}
         </pre>
         <button
@@ -114,7 +114,7 @@ export function PoemDemoContent({ locale }: { locale: string }) {
         {showCanonical && (
           <div className="mt-3">
             <p className="mb-2 text-xs text-fg-subtle">{t('source.canonicalNote')}</p>
-            <pre className="overflow-x-auto rounded-xl border border-border bg-bg p-5 font-mono text-sm leading-relaxed text-fg-muted">
+            <pre tabIndex={0} className="overflow-x-auto rounded-xl border border-border bg-bg p-5 font-mono text-sm leading-relaxed text-fg-muted">
               {poem.canonical}
             </pre>
           </div>
@@ -173,7 +173,7 @@ export function PoemDemoContent({ locale }: { locale: string }) {
 
               {/* ① canonicalize 真实展开出的规范源码（引擎产物） */}
               <p className="mb-2 text-xs font-semibold text-fg-subtle">{t('result.canonicalizeLabel')}</p>
-              <pre className="overflow-x-auto rounded-lg border border-border bg-bg p-4 font-mono text-xs leading-relaxed text-fg-muted">
+              <pre tabIndex={0} className="overflow-x-auto rounded-lg border border-border bg-bg p-4 font-mono text-xs leading-relaxed text-fg-muted">
                 {result.canonical}
               </pre>
 

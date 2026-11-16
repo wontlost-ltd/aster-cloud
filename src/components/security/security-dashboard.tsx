@@ -193,12 +193,9 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      {/* 窄屏下时间范围与刷新按钮折到标题下方，避免横向溢出（#774） */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl font-semibold text-fg dark:text-white">
-          {t('title')}
-        </h2>
+      {/* 工具栏：页面标题由 /security 页的 PageHeader 给出，这里不再重复渲染第二个「安全监控」标题（#774）。
+          窄屏下按钮折行，避免横向溢出。 */}
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <div className="flex items-center gap-4">
           {/* Time Range Selector */}
           <div className="flex rounded-md shadow-sm">
@@ -371,7 +368,7 @@ export function SecurityDashboard({ policyId }: SecurityDashboardProps) {
                         <summary className="text-xs text-primary dark:text-primary cursor-pointer">
                           {t('viewDetails')}
                         </summary>
-                        <pre className="mt-1 text-xs bg-bg-muted dark:bg-gray-900 p-2 rounded overflow-x-auto">
+                        <pre tabIndex={0} className="mt-1 text-xs bg-bg-muted dark:bg-gray-900 p-2 rounded overflow-x-auto">
                           {JSON.stringify(event.details, null, 2)}
                         </pre>
                       </details>

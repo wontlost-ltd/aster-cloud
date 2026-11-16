@@ -161,7 +161,7 @@ export function DemoContent({ locale }: DemoContentProps) {
       <section className="mb-8">
         <StepHeading n={1} title={t('step1.title')} />
         <p className="mb-3 text-sm text-fg-muted">{t('step1.hint')}</p>
-        <pre className="overflow-x-auto rounded-lg bg-zinc-900 p-4 text-sm leading-relaxed text-zinc-100">
+        <pre tabIndex={0} className="overflow-x-auto rounded-lg bg-zinc-900 p-4 text-sm leading-relaxed text-zinc-100">
           {ruleSource}
         </pre>
       </section>
@@ -385,7 +385,7 @@ function NumberField({
   return (
     <label className="block">
       <span className="text-xs text-fg-subtle">{label}</span>
-      <div className="mt-1 flex items-center rounded-md border border-border bg-bg focus-within:ring-1 focus-within:ring-primary">
+      <div className="mt-1 flex items-center rounded-md border border-border bg-bg focus-within:border-primary focus-within:shadow-ring">
         {prefix && <span className="pl-2 text-sm text-fg-subtle">{prefix}</span>}
         <input
           type="number"

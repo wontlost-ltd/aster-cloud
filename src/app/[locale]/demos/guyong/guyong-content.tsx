@@ -188,7 +188,7 @@ export function GuyongDemoContent() {
             ))}
           </div>
         ) : (
-          <pre className="overflow-x-auto whitespace-pre-wrap font-mono text-sm leading-relaxed text-fg">
+          <pre tabIndex={0} className="overflow-x-auto whitespace-pre-wrap font-mono text-sm leading-relaxed text-fg">
             {VIEW_TEXT[view]}
           </pre>
         )}
@@ -249,7 +249,7 @@ export function GuyongDemoContent() {
           <p className="mb-2 text-xs font-semibold text-fg-subtle">
             ① canonicalize 的真实输出（引擎产物，非写死）——末句触发词「{variant.trigger}」已被字面量宏就地展开
           </p>
-          <pre className="overflow-x-auto rounded-lg border border-border bg-bg p-4 font-mono text-xs leading-relaxed text-fg-muted">
+          <pre tabIndex={0} className="overflow-x-auto rounded-lg border border-border bg-bg p-4 font-mono text-xs leading-relaxed text-fg-muted">
             {result.canonicalized}
           </pre>
 

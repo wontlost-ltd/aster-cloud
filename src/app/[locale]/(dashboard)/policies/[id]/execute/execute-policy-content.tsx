@@ -557,7 +557,7 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
             id={id}
             value={String(value ?? enumVariants[0])}
             onChange={(e) => updateFormField(paramName, fieldName, e.target.value)}
-            className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none hover:border-gray-400 sm:text-sm"
+            className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:shadow-ring focus:outline-none hover:border-gray-400 sm:text-sm"
           >
             {enumVariants.map((variant) => (
               <option key={variant} value={variant}>{variant}</option>
@@ -576,7 +576,7 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
             id={id}
             checked={Boolean(value)}
             onChange={(e) => updateFormField(paramName, fieldName, e.target.checked)}
-            className="h-5 w-5 rounded border-border-strong text-primary focus:ring-2 focus:ring-primary/20 cursor-pointer transition-colors"
+            className="h-5 w-5 rounded border-border-strong text-primary focus:shadow-ring cursor-pointer transition-colors"
           />
           <label htmlFor={id} className="text-sm font-medium text-fg cursor-pointer">
             {label}
@@ -605,7 +605,7 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
             aria-invalid={invalid || undefined}
             aria-describedby={invalid ? `${id}-error` : undefined}
             onChange={(e) => updateFormField(paramName, fieldName, numberFieldValue(e.target.value, numeric === 'integer'))}
-            className={`block w-full rounded-lg border ${invalid ? 'border-danger' : 'border-border-strong'} bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none hover:border-gray-400 sm:text-sm`}
+            className={`block w-full rounded-lg border ${invalid ? 'border-danger' : 'border-border-strong'} bg-bg px-4 py-2.5 text-fg shadow-sm transition-all duration-200 focus:border-primary focus:shadow-ring focus:outline-none hover:border-gray-400 sm:text-sm`}
           />
           {invalid && (
             <p id={`${id}-error`} className="mt-1 text-xs text-danger">{t('invalidNumberField', { field: label })}</p>
@@ -625,7 +625,7 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
           id={id}
           value={String(value ?? '')}
           onChange={(e) => updateFormField(paramName, fieldName, e.target.value)}
-          className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg placeholder-gray-400 shadow-sm transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none hover:border-gray-400 sm:text-sm"
+          className="block w-full rounded-lg border border-border-strong bg-bg px-4 py-2.5 text-fg placeholder-gray-400 shadow-sm transition-all duration-200 focus:border-primary focus:shadow-ring focus:outline-none hover:border-gray-400 sm:text-sm"
         />
       </div>
     );
@@ -781,7 +781,7 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
                         <summary className="text-xs text-amber-800 cursor-pointer hover:text-amber-900">
                           {t('viewDetails')}
                         </summary>
-                        <pre className="mt-2 text-xs text-amber-700 bg-amber-100 p-2 rounded overflow-x-auto whitespace-pre-wrap">
+                        <pre tabIndex={0} className="mt-2 text-xs text-amber-700 bg-amber-100 p-2 rounded overflow-x-auto whitespace-pre-wrap">
                           {schemaError.detail}
                         </pre>
                       </details>
@@ -816,7 +816,7 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 rows={12}
-                className="block w-full rounded-lg border border-border-strong bg-gray-900 px-4 py-3 text-gray-100 placeholder-gray-500 shadow-sm font-mono text-sm leading-relaxed transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none"
+                className="block w-full rounded-lg border border-border-strong bg-gray-900 px-4 py-3 text-gray-100 placeholder-gray-500 shadow-sm font-mono text-sm leading-relaxed transition-all duration-200 focus:border-primary focus:shadow-ring focus:outline-none"
                 placeholder={t('inputPlaceholder')}
               />
             )}
@@ -1042,7 +1042,7 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
                   <summary className="text-sm text-fg-muted cursor-pointer hover:text-fg">
                     {t('viewRawOutput')}
                   </summary>
-                  <pre className="mt-2 bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-xs">
+                  <pre tabIndex={0} className="mt-2 bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-xs">
                     {JSON.stringify(result, null, 2)}
                   </pre>
                 </details>

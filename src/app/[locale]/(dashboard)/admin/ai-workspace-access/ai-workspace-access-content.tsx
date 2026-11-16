@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Badge, Breadcrumbs, Container, Input, PageHeader, Toggle } from '@/components/ui';
+import { Badge, Container, Input, PageHeader, Toggle } from '@/components/ui';
 
 interface AccessUser {
   id: string;
@@ -15,7 +15,6 @@ interface AccessUser {
 
 export function AiWorkspaceAccessContent() {
   const t = useTranslations('admin.aiWorkspaceAccess');
-  const tNav = useTranslations('dashboardNav');
   const [query, setQuery] = useState('');
   const [users, setUsers] = useState<AccessUser[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -65,7 +64,6 @@ export function AiWorkspaceAccessContent() {
       <PageHeader
         title={t('title')}
         subtitle={t('subtitle')}
-        breadcrumbs={<Breadcrumbs items={[{ label: tNav('groupAdmin') }, { label: t('title') }]} />}
         className="mb-6"
       />
       <p className="mb-4 text-sm text-fg-muted">{t('adminDefault')}</p>

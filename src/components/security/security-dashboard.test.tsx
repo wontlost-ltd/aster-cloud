@@ -40,7 +40,7 @@ describe('SecurityDashboard localization', () => {
       </IntlClientProvider>,
     );
 
-    await waitFor(() => expect(container.textContent).toContain('Sicherheitsüberwachung'));
+    await waitFor(() => expect(container.textContent).toContain('Letzte Ereignisse'));
     expect(container.textContent).not.toMatch(/[\u4e00-\u9fff]/);
   });
 });
@@ -68,5 +68,18 @@ describe('SecurityDashboard accessibility (#774)', () => {
       expect(dt.closest('dl')).not.toBeNull();
     }
     expect(container.querySelectorAll('dt').length).toBeGreaterThan(0);
+  });
+
+  it('does not repeat the page title (the /security PageHeader owns it)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
+      Promise.resolve({ ok: true, json: async () => url.includes('/stats') ? stats : { events: [] } }),
+    ));
+    const { findByRole, queryByRole } = render(
+      <IntlClientProvider locale="en" messages={enMessages as never}>
+        <SecurityDashboard />
+      </IntlClientProvider>,
+    );
+    await findByRole('button', { name: 'Refresh security data' });
+    expect(queryByRole('heading', { name: 'Security monitoring' })).toBeNull();
   });
 });

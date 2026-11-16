@@ -134,7 +134,7 @@ export function PokerContent({ locale }: { locale: string }) {
             <span className="text-fg-subtle transition-transform group-open:rotate-90">▶</span>
             {t('ruleTitle')}
           </summary>
-          <pre className="overflow-x-auto rounded-lg bg-zinc-900 p-4 text-xs leading-relaxed text-zinc-100">
+          <pre tabIndex={0} className="overflow-x-auto rounded-lg bg-zinc-900 p-4 text-xs leading-relaxed text-zinc-100">
             {highlightVocab(rule.source, pokerHighlightTerms(loc))}
           </pre>
           <p className="mt-2 text-xs text-fg-subtle">

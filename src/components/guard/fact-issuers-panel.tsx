@@ -56,7 +56,11 @@ async function errorCode(res: Response): Promise<string | null> {
 
 const EMPTY_FORM = { issuer: '', kid: '', publicKey: '', notAfter: '' };
 
-export function FactIssuersPanel({ tenantId }: { tenantId: string }) {
+/**
+ * showTitle：独立的 /settings/fact-issuers 页已由 PageHeader 给出同名 h1，面板不再重复同一标题（#774）；
+ * 嵌在团队设置页里时仍显示自己的小标题。
+ */
+export function FactIssuersPanel({ tenantId, showTitle = true }: { tenantId: string; showTitle?: boolean }) {
   const t = useTranslations('factIssuers');
   const locale = useLocale();
   const [state, setState] = useState<IssuersState | null>(null);
@@ -155,7 +159,7 @@ export function FactIssuersPanel({ tenantId }: { tenantId: string }) {
       <CardBody className="pt-6">
         <Stack gap={4}>
           <Stack gap={1}>
-            <h2 className="font-display text-xl font-semibold tracking-tight text-fg">{t('title')}</h2>
+            {showTitle && <h2 className="font-display text-xl font-semibold tracking-tight text-fg">{t('title')}</h2>}
             <p className="text-sm text-fg-muted">{t('description')}</p>
           </Stack>
 

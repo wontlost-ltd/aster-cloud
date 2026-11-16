@@ -139,7 +139,7 @@ export function CatMoodContent({ locale }: { locale: string }) {
       {/* 规则（撸猫领域词高亮） */}
       <section className="mb-8">
         <h2 className="mb-2 text-sm font-semibold text-fg">{t('ruleTitle')}</h2>
-        <pre className="overflow-x-auto rounded-lg bg-zinc-900 p-4 text-sm leading-relaxed text-zinc-100">
+        <pre tabIndex={0} className="overflow-x-auto rounded-lg bg-zinc-900 p-4 text-sm leading-relaxed text-zinc-100">
           {highlightVocab(rule.source, catVocabTerms(loc))}
         </pre>
         <p className="mt-2 text-xs text-fg-subtle">

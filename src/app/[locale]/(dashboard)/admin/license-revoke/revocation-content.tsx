@@ -7,7 +7,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { Breadcrumbs, Container, PageHeader } from '@/components/ui';
+import { Container, PageHeader } from '@/components/ui';
 import { CurrentPublicationCard } from './components/current-publication';
 import { NewRevocationForm } from './components/new-revocation-form';
 import { RevokedLicensesTable } from './components/revoked-licenses-table';
@@ -46,16 +46,12 @@ export function RevocationContent({
   currentPublication,
 }: Props) {
   const t = useTranslations('admin.licenseRevoke');
-  const tNav = useTranslations('dashboardNav');
 
   return (
     <Container size="xl" className="py-6 sm:py-10">
       <PageHeader
         title={t('title')}
         subtitle={t('subtitle')}
-        breadcrumbs={
-          <Breadcrumbs items={[{ label: tNav('groupAdmin') }, { label: t('title') }]} />
-        }
         className="mb-6"
       />
 

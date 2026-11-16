@@ -40,7 +40,7 @@ export function GuardianEmbed({ locale, posterAlt }: { locale: string; posterAlt
   return (
     <div ref={box} className="relative h-[560px] w-full overflow-hidden rounded-xl border border-border bg-bg-muted md:aspect-[16/10] md:h-auto">
       {visible ? (
-        <iframe title={posterAlt} src={guardianEmbedUrl(locale, theme)} className="h-full w-full" loading="lazy" />
+        <iframe title={posterAlt} src={guardianEmbedUrl(locale, theme)} className="h-full w-full focus-visible:outline-none focus-visible:shadow-ring" loading="lazy" />
       ) : (
         // eslint-disable-next-line @next/next/no-img-element -- 静态海报占位，尺寸固定，无需 next/image 优化管线
         <img src="/images/guardian-poster.webp" alt={posterAlt} className="h-full w-full object-contain md:object-cover" width={1280} height={800} loading="lazy" decoding="async" />

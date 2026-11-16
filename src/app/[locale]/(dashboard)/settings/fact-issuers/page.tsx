@@ -27,7 +27,7 @@ export default async function FactIssuersPage() {
         breadcrumbs={<Breadcrumbs items={[{ label: tNav('settings'), href: '/settings' }, { label: t('title') }]} />}
         className="mb-6"
       />
-      <FactIssuersPanel tenantId={session.user.id} />
+      <FactIssuersPanel tenantId={session.user.id} showTitle={false} />
     </Container>
   );
 }

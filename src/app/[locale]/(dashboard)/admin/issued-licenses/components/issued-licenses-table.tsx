@@ -62,12 +62,10 @@ function telemetryRecencyLabel(received: Date | null, optedIn: boolean, t: Retur
 export function IssuedLicensesTable({ rows, searchQuery }: Props) {
   const t = useTranslations('admin.issuedLicenses');
 
+  // 不再放与页面 h1 同名的 sr-only h2（读屏会读到两遍「Issued licenses」标题，#774）；
+  // 区域名只给下面的表格滚动容器，外层不再重复命名
   return (
-    <section aria-labelledby="issued-licenses-heading" className="space-y-3">
-      <h2 id="issued-licenses-heading" className="sr-only">
-        {t('title')}
-      </h2>
-
+    <section className="space-y-3">
       <form method="GET" className="flex items-center gap-2">
         <input
           type="search"
@@ -84,7 +82,8 @@ export function IssuedLicensesTable({ rows, searchQuery }: Props) {
         </button>
       </form>
 
-      <div className="overflow-x-auto rounded-lg border border-border">
+      {/* 可横向滚动的表格容器：键盘可聚焦后用方向键滚动（axe scrollable-region-focusable，#774） */}
+      <div tabIndex={0} role="region" aria-label={t('title')} data-scroll-region className="overflow-x-auto rounded-lg border border-border">
         <table className="min-w-full text-sm">
           <thead className="bg-bg-subtle text-xs uppercase text-fg-muted">
             <tr>

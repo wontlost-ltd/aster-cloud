@@ -566,6 +566,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         removeFailed: 'Could not remove that device. Please try again.',
       },
       apiKeys: {
+        // 复制按钮的反馈与失败提示（#774）
+        copied: 'Copied',
+        copyFailed: 'Couldn’t copy — select the text and copy it manually.',
         // API key 作用域（ADR 0015 §6，本地补充）；scopeTeam 的 {team} 由客户端替换为团队名
         scope: 'Scope',
         scopePersonal: 'Personal',
@@ -2361,6 +2364,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         removeFailed: '移除失败，请重试。',
       },
       apiKeys: {
+        // 复制按钮的反馈与失败提示（#774）
+        copied: '已复制',
+        copyFailed: '复制失败，请手动选中文本复制。',
         scope: '作用域',
         scopePersonal: '个人',
         scopeTeam: '团队 · {team}',
@@ -4131,6 +4137,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         removeFailed: 'Gerät konnte nicht entfernt werden. Bitte erneut versuchen.',
       },
       apiKeys: {
+        // 复制按钮的反馈与失败提示（#774）
+        copied: 'Kopiert',
+        copyFailed: 'Kopieren fehlgeschlagen – bitte den Text markieren und manuell kopieren.',
         scope: 'Geltungsbereich',
         scopePersonal: 'Persönlich',
         scopeTeam: 'Team · {team}',
@@ -5898,6 +5907,9 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         removeFailed: 'डिवाइस हटाया नहीं जा सका। कृपया पुनः प्रयास करें।',
       },
       apiKeys: {
+        // 复制按钮的反馈与失败提示（#774）
+        copied: 'कॉपी हो गया',
+        copyFailed: 'कॉपी नहीं हो सका — टेक्स्ट चुनकर मैन्युअली कॉपी करें।',
         scope: 'दायरा',
         scopePersonal: 'व्यक्तिगत',
         scopeTeam: 'टीम · {team}',

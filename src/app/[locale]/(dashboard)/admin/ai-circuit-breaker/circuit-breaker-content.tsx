@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Badge,
-  Breadcrumbs,
   Button,
   Card,
   CardBody,
@@ -108,9 +107,6 @@ export function CircuitBreakerContent() {
     <Container size="xl" className="py-6 sm:py-10">
       <Stack gap={6}>
         <PageHeader
-          breadcrumbs={
-            <Breadcrumbs items={[{ label: t('breadcrumb') }]} />
-          }
           title={t('title')}
           subtitle={t('subtitle')}
           action={
