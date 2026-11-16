@@ -328,7 +328,7 @@ export interface StructureReport {
   duplicateHeadings: string[];
   /** 没有任何链接的面包屑（只剩当前页名，和 h1 重复） */
   redundantBreadcrumbs: string[];
-  /** 可操作项被裁剪祖先截掉：hidden/clip 祖先（够不着）或横向滚动容器（滚出视野） */
+  /** 可操作项被裁剪祖先截掉：hidden/clip 祖先（够不着）或横向滚动容器（初始露出不足一个点击目标） */
   clippedActions: Array<{ selector: string; text: string; by: string; kind: 'hidden' | 'scroll' }>;
 }
 
@@ -364,7 +364,8 @@ export function collectStructure(): StructureReport {
 
   // 2. 可操作项被裁剪：逐个祖先比对盒子（只看当前滚动位置下的布局，不滚动任何容器）
   const clippedActions: StructureReport['clippedActions'] = [];
-  const q = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=tab], [role=menuitem]';
+  // 与点击目标检查同一组可操作元素
+  const q = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=tab], [role=checkbox], [role=switch], [role=menuitem]';
   for (const el of Array.from(document.querySelectorAll(q))) {
     if (!shown(el)) continue;
     const r = el.getBoundingClientRect();
@@ -382,8 +383,10 @@ export function collectStructure(): StructureReport {
         clippedActions.push({ selector: desc(el), text: ((el as HTMLElement).innerText || el.getAttribute('aria-label') || '').trim().slice(0, 50), by: desc(p), kind: 'hidden' });
         break;
       }
-      // 横向滚动容器：操作项在初始视图里完全看不到（要先横向滚动才发现得了）。纵向滚动的列表（侧栏等）是常规模式，不报
-      if ((ox === 'auto' || ox === 'scroll') && (r.left >= pr.right - 1 || r.right <= pr.left + 1)) {
+      // 横向滚动容器：操作项在初始视图里露出的宽度不足一个点击目标（min(44px, 自身宽度)），要先横向滚动才点得到。
+      // 纵向滚动的列表（侧栏等）是常规模式，不报
+      const visibleW = Math.min(r.right, pr.right) - Math.max(r.left, pr.left);
+      if ((ox === 'auto' || ox === 'scroll') && visibleW < Math.min(44, r.width) - 1) {
         clippedActions.push({ selector: desc(el), text: ((el as HTMLElement).innerText || el.getAttribute('aria-label') || '').trim().slice(0, 50), by: desc(p), kind: 'scroll' });
         break;
       }

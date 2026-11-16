@@ -118,6 +118,13 @@ test.describe('actionable items clipped by a container', () => {
     expect(r.clippedActions.map((c) => [c.text, c.kind])).toEqual([['Review', 'scroll']]);
   });
 
+  test('an action only partly showing in a horizontal scroller is reported; a switch role counts too', async ({ page }) => {
+    await page.setContent(`<div style="overflow-x:auto;width:300px"><div style="display:flex;width:700px">
+      <div style="width:280px;flex:none">…</div><button style="width:120px;flex:none">Approve</button><span role="switch" aria-checked="false" tabindex="0" style="display:inline-block;flex:none;width:44px;height:24px;margin-left:200px">x</span></div></div>`);
+    const r = await page.evaluate(collectStructure);
+    expect(r.clippedActions.map((c) => c.text)).toEqual(['Approve', 'x']);
+  });
+
   test('an action cut off by overflow:hidden is reported as unreachable', async ({ page }) => {
     await page.setContent(`<div style="overflow:hidden;height:40px"><p style="height:40px;margin:0">Card</p><button>Accept</button></div>`);
     const r = await page.evaluate(collectStructure);
