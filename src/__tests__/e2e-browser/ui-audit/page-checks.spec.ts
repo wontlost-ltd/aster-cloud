@@ -42,6 +42,12 @@ test.describe('tap targets (44px on mobile)', () => {
     expect(await small(page, body)).toEqual([]);
   });
 
+  test('a fixed floating button over the page does not cancel a hit area; touching segmented buttons do not overlap', async ({ page }) => {
+    const body = `<button style="position:fixed;left:30px;top:30px;width:48px;height:48px">FAB</button>
+      <div style="padding:40px;display:flex"><button class="tap-target" style="font:12px/24px sans-serif;width:60px">Week</button><button class="tap-target" style="font:12px/24px sans-serif;width:60px">Month</button></div>`;
+    expect(await small(page, body)).toEqual([]);
+  });
+
   test('links inside a sentence are exempt', async ({ page }) => {
     expect(await small(page, '<p style="font:14px/20px sans-serif">Read the <a href="/d">docs</a> before you start.</p>')).toEqual([]);
   });

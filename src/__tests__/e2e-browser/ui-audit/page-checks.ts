@@ -91,6 +91,12 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
   if (opts.mobile) {
     const q = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=tab], [role=checkbox], [role=switch], [role=menuitem]';
     const targets = Array.from(document.querySelectorAll(q)).filter(visible);
+    const fixedLayer = (el: Element) => {
+      for (let p: Element | null = el; p && p !== document.body; p = p.parentElement) {
+        if (getComputedStyle(p).position === 'fixed') return true;
+      }
+      return false;
+    };
     for (const el of targets) {
       const cs = getComputedStyle(el);
       if (el.tagName === 'A' && cs.display === 'inline') {
@@ -115,16 +121,20 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
           const h = parseFloat(ps.height);
           if (!Number.isFinite(w) || !Number.isFinite(h)) continue;
           const area = { left: r.left + r.width / 2 - w / 2, right: r.left + r.width / 2 + w / 2, top: r.top + r.height / 2 - h / 2, bottom: r.top + r.height / 2 + h / 2 };
+          // 浮在页面上的固定定位元素（右下角助手按钮等）随滚动位置盖住不同内容，不算相邻目标；
+          // 0.5px 容差吸收亚像素误差（并排的分段按钮恰好相接不算重叠）
           const overlaps = targets.some((o) => {
-            if (o === el || el.contains(o) || o.contains(el)) return false;
+            if (o === el || el.contains(o) || o.contains(el) || fixedLayer(o)) return false;
             const q = o.getBoundingClientRect();
             if (q.width <= 1 || q.height <= 1) return false;
-            return q.left < area.right && q.right > area.left && q.top < area.bottom && q.bottom > area.top;
+            const e = 0.5;
+            return q.left < area.right - e && q.right > area.left + e && q.top < area.bottom - e && q.bottom > area.top + e;
           });
           if (!overlaps) min = Math.max(min, Math.min(w, h));
         }
       }
-      if (min < opts.minTarget) smallTargets.push({ selector: sel(el), text: textOf(el), box: boxOf(el), min: Math.round(min) });
+      // 亚像素宽度（如 43.99px）按 0.5px 容差计
+      if (min < opts.minTarget - 0.5) smallTargets.push({ selector: sel(el), text: textOf(el), box: boxOf(el), min: Math.round(min) });
     }
   }
 
