@@ -24,6 +24,9 @@ describe('design-system mobile fixes (#774)', () => {
     if (!scroller) return;
     expect(scroller.className).toMatch(/(^|\s)overflow-x-auto(\s|$)/);
     expect(scroller.className).toMatch(/(^|\s)relative(\s|$)/);
+    // sr-only 表头仍在（读屏可读），且就在这个定位祖先之内
+    const srHeader = scroller.querySelector('th .sr-only');
+    expect(srHeader?.textContent).toBe('Actions');
   });
 
   it('Breadcrumbs trail wraps instead of overflowing narrow viewports', () => {

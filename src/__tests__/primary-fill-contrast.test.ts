@@ -4,7 +4,8 @@
  * 主色（同一 token 还要作 text-primary 落在暗底上），所以只能由 cloud 侧改用 text-primary-fg。
  * 也守住 globals.css 引用不存在的 CSS 变量（如 --fg-muted）而回落到浅色色值的错误。
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { dirname, join, relative } from 'node:path';
 import ts from 'typescript';
@@ -81,61 +82,72 @@ function classAlternatives(node: ts.Node, scope: Scope, seen = new Set<string>()
   return combos;
 }
 
-/**
- * 待检单元：每个 JSX className 属性的整个表达式（类名拆在条件、数组或多段拼接里也合在一起看），
- * 以及 className 之外的每个字符串字面量（类名常量、variant 映射表等）。
- */
-function classUnits(file: string): Array<{ text: string; line: number }> {
-  const sf = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const scope = collectScope(sf);
-  const out: Array<{ text: string; line: number }> = [];
-  const line = (n: ts.Node) => sf.getLineAndCharacterOfPosition(n.getStart()).line + 1;
-  const visit = (node: ts.Node) => {
-    if (ts.isJsxAttribute(node) && node.name.getText(sf) === 'className' && node.initializer) {
-      for (const text of classAlternatives(node.initializer, scope)) out.push({ text, line: line(node) });
-      return;
-    }
-    if (ts.isStringLiteralLike(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) {
-      out.push({ text: node.text, line: line(node) });
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(sf);
-  return out;
-}
-
-const BG_PRIMARY = /(?<![\w:-])bg-primary(?![\w-])/;
+const PRIMARY_FILL = /(?<![\w:-])(bg|from|via|to)-primary(?![\w-])/;
+const OTHER_FILL = /(?<![\w:-])(bg|from)-(?!primary(?![\w-]))[\w-]+/;
 const TEXT_WHITE = /(?<![\w:-])text-white(?![\w-])/;
 
+/**
+ * 找出把白字放在主色填充上的位置：同一 className 里既有主色填充（bg-primary / 渐变 from|via|to-primary）又有 text-white，
+ * 或元素本身没有别的底色、但某个祖先 JSX 元素是主色填充（白字写在子元素上，如统计卡片里的数值）。
+ * className 外的字符串字面量（类名常量、variant 映射表等）单独检查同串组合。
+ */
+function offendersIn(file: string): number[] {
+  const sf = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const scope = collectScope(sf);
+  const lines: number[] = [];
+  const line = (n: ts.Node) => sf.getLineAndCharacterOfPosition(n.getStart()).line + 1;
+  const classAttr = (el: ts.JsxOpeningLikeElement) => el.attributes.properties.find(
+    (a): a is ts.JsxAttribute => ts.isJsxAttribute(a) && a.name.getText(sf) === 'className' && !!a.initializer,
+  );
+  const visit = (node: ts.Node, inFill: boolean) => {
+    const opening = ts.isJsxElement(node) ? node.openingElement : ts.isJsxSelfClosingElement(node) ? node : null;
+    if (opening) {
+      const attr = classAttr(opening);
+      const alts = attr?.initializer ? classAlternatives(attr.initializer, scope) : [''];
+      const bad = alts.some((c) => TEXT_WHITE.test(c) && (PRIMARY_FILL.test(c) || (inFill && !OTHER_FILL.test(c))));
+      if (bad && attr) lines.push(line(attr));
+      // 子元素继承：本元素是主色填充则进入填充区；本元素换了别的底色则退出
+      const next = alts.some((c) => PRIMARY_FILL.test(c)) || (inFill && !alts.every((c) => OTHER_FILL.test(c)));
+      ts.forEachChild(node, (child) => {
+        if (child === attr) return;
+        visit(child, next);
+      });
+      return;
+    }
+    if (ts.isJsxAttribute(node) && node.name.getText(sf) === 'className') return;
+    if (ts.isStringLiteralLike(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) {
+      if (PRIMARY_FILL.test(node.text) && TEXT_WHITE.test(node.text)) lines.push(line(node));
+    }
+    ts.forEachChild(node, (child) => visit(child, inFill));
+  };
+  visit(sf, false);
+  return [...new Set(lines)];
+}
+
+
 describe('primary fill contrast', () => {
-  it('no className puts text-white on bg-primary', () => {
+  it('no element puts text-white on a primary fill (itself or an ancestor)', () => {
     const offenders: string[] = [];
     for (const file of files(SRC, '.tsx')) {
-      for (const { text, line } of classUnits(file)) {
-        if (BG_PRIMARY.test(text) && TEXT_WHITE.test(text)) offenders.push(`${relative(SRC, file)}:${line}`);
-      }
+      for (const line of offendersIn(file)) offenders.push(`${relative(SRC, file)}:${line}`);
     }
     expect(offenders).toEqual([]);
   });
 
-  it('the scanner follows cn() arguments, same-file constants and helpers, and keeps conditional branches apart', () => {
-    const alts = (code: string) => {
-      const sf = ts.createSourceFile('x.tsx', code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-      const scope = collectScope(sf);
-      const found: string[] = [];
-      const v = (n: ts.Node) => {
-        if (ts.isJsxAttribute(n) && n.initializer) found.push(...classAlternatives(n.initializer, scope));
-        ts.forEachChild(n, v);
-      };
-      v(sf);
-      return found;
+  it('the scanner follows cn() arguments, same-file helpers, gradients and child elements, and keeps branches apart', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'primary-fill-'));
+    const hit = (code: string) => {
+      const f = join(dir, 'x.tsx');
+      writeFileSync(f, code);
+      return offendersIn(f).length > 0;
     };
-    const hit = (code: string) => alts(code).some((u) => BG_PRIMARY.test(u) && TEXT_WHITE.test(u));
-    expect(hit(`<a className={cn('rounded bg-primary', p.on && 'text-white')} />`)).toBe(true);
-    expect(hit(`<a className={cn('rounded', p.on ? 'bg-primary text-primary-fg' : 'bg-gray-900 text-white')} />`)).toBe(false);
+    expect(hit(`const X = (p: any) => <a className={cn('rounded bg-primary', p.on && 'text-white')} />;`)).toBe(true);
+    expect(hit(`const X = (p: any) => <a className={cn('rounded', p.on ? 'bg-primary text-primary-fg' : 'bg-gray-900 text-white')} />;`)).toBe(false);
     expect(hit(`const classes = 'bg-primary text-white'; const X = () => <a className={classes} />;`)).toBe(true);
     expect(hit(`const base = 'bg-primary'; function cls(on: boolean) { return cn(base, on && 'text-white'); } const X = () => <a className={cls(true)} />;`)).toBe(true);
-    expect(hit(`const cls = () => 'bg-primary text-primary-fg'; const X = () => <a className={cn(cls(), 'text-sm')} />;`)).toBe(false);
+    expect(hit(`const X = () => <div className="bg-gradient-to-br from-primary to-primary"><p className="text-3xl text-white">1</p></div>;`)).toBe(true);
+    expect(hit(`const X = () => <div className="bg-primary"><span className="bg-bg text-white">x</span></div>;`)).toBe(false);
+    expect(hit(`const X = () => <div className="bg-primary text-primary-fg"><p className="text-sm">1</p></div>;`)).toBe(false);
   });
 
   it('globals.css only references CSS variables that are defined', () => {
