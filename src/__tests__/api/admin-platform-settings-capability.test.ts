@@ -1,13 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@/lib/admin-auth', () => ({ requireAdmin: vi.fn() }));
 vi.mock('@/lib/license-write-gate', () => ({ requireLicenseWriteOk: vi.fn() }));
-const { setSetting, getSettingUncached, insert, auditValues } = vi.hoisted(() => ({
-  setSetting: vi.fn(), getSettingUncached: vi.fn(), insert: vi.fn(), auditValues: vi.fn(),
-}));
+const { setSetting, setSettingWithClient, invalidateSettingCache, getSettingUncached, insert, auditValues, transaction, tx } = vi.hoisted(() => {
+  const insert = vi.fn();
+  const tx = { insert };
+  return {
+    setSetting: vi.fn(), setSettingWithClient: vi.fn(), invalidateSettingCache: vi.fn(),
+    getSettingUncached: vi.fn(), insert, auditValues: vi.fn(), tx,
+    transaction: vi.fn(async (fn: (t: unknown) => Promise<unknown>) => fn(tx)),
+  };
+});
 vi.mock('@/lib/platform-settings', async (original) => ({
-  ...(await original<typeof import('@/lib/platform-settings')>()), setSetting, getSettingUncached,
+  ...(await original<typeof import('@/lib/platform-settings')>()),
+  setSetting, setSettingWithClient, invalidateSettingCache, getSettingUncached,
 }));
-vi.mock('@/lib/prisma', () => ({ db: { insert }, auditLogs: {} }));
+vi.mock('@/lib/prisma', () => ({ db: { insert, transaction }, auditLogs: {} }));
 
 import { POST } from '@/app/api/admin/platform-settings/route';
 import { requireAdmin } from '@/lib/admin-auth';
@@ -34,13 +41,17 @@ describe('capability.* 平台开关写入', () => {
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe('invalid_capability_setting');
     expect(setSetting).not.toHaveBeenCalled();
+    expect(setSettingWithClient).not.toHaveBeenCalled();
     expect(auditValues).not.toHaveBeenCalled();
   });
 
   it('布尔值 → 200 并写 platform_setting.update 审计（含旧值与新值）', async () => {
     const res = await POST(request({ key: ENABLED, value: true }));
     expect(res.status).toBe(200);
-    expect(setSetting).toHaveBeenCalledWith(ENABLED, true, 'admin-1');
+    expect(setSettingWithClient).toHaveBeenCalledWith(tx, ENABLED, true, 'admin-1');
+    expect(setSetting).not.toHaveBeenCalled();
+    expect(getSettingUncached).toHaveBeenCalledWith(ENABLED, tx);
+    expect(invalidateSettingCache).toHaveBeenCalledWith(ENABLED);
     expect(auditValues).toHaveBeenCalledWith(expect.objectContaining({
       userId: 'admin-1', action: 'platform_setting.update', resource: 'platform-setting',
       resourceId: ENABLED, metadata: { old: false, new: true },
@@ -52,6 +63,12 @@ describe('capability.* 平台开关写入', () => {
     const res = await POST(request({ key: ENABLED, value: true }));
     expect(res.status).toBe(500);
     expect(await res.json()).not.toEqual({ ok: true });
+    // 写入发生在事务客户端上、事务因审计失败而 reject；事务外没有任何直接写入，缓存也未失效
+    expect(transaction).toHaveBeenCalledTimes(1);
+    await expect(transaction.mock.results[0].value).rejects.toThrow('db down');
+    expect(setSettingWithClient).toHaveBeenCalledWith(tx, ENABLED, true, 'admin-1');
+    expect(setSetting).not.toHaveBeenCalled();
+    expect(invalidateSettingCache).not.toHaveBeenCalled();
   });
 
   it('团队委派开关同样写审计', async () => {

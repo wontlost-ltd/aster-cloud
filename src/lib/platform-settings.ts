@@ -19,7 +19,10 @@
  */
 
 import { eq } from 'drizzle-orm';
-import { db, platformSettings } from '@/lib/prisma';
+import { db, platformSettings, type Database } from '@/lib/prisma';
+
+/** 事务客户端或默认连接，供需要与其他写入同事务的调用方传入。 */
+export type SettingsClient = Pick<Database, 'insert' | 'query'>;
 
 export const PLATFORM_SETTING_KEYS = {
   POLICY_SHARING_ENABLED: 'policy_sharing.enabled',
@@ -103,8 +106,11 @@ export async function getSetting<T = unknown>(key: string): Promise<T> {
 }
 
 /** 直接读取数据库中的设置，供撤销类判断绕过 isolate 缓存。 */
-export async function getSettingUncached<T = unknown>(key: string): Promise<T> {
-  const row = await db.query.platformSettings.findFirst({ where: eq(platformSettings.key, key) });
+export async function getSettingUncached<T = unknown>(
+  key: string,
+  client: SettingsClient = db,
+): Promise<T> {
+  const row = await client.query.platformSettings.findFirst({ where: eq(platformSettings.key, key) });
   return (row ? row.value : DEFAULTS[key]) as T;
 }
 
@@ -121,9 +127,37 @@ export async function setSetting(
   value: unknown,
   updatedBy: string,
 ): Promise<void> {
+  await writeSetting(db, key, value, updatedBy);
+  invalidateSettingCache(key);
+}
+
+/**
+ * 在调用方给定的客户端（通常是事务）上写入设置，不触碰 isolate 缓存。
+ * 调用方必须在事务提交成功后再调用 invalidateSettingCache，避免回滚后缓存已被清空/重填脏值。
+ */
+export async function setSettingWithClient(
+  client: SettingsClient,
+  key: string,
+  value: unknown,
+  updatedBy: string,
+): Promise<void> {
+  await writeSetting(client, key, value, updatedBy);
+}
+
+/** 使本 isolate 内某个键的缓存失效。 */
+export function invalidateSettingCache(key: string): void {
+  cache.delete(key);
+}
+
+async function writeSetting(
+  client: SettingsClient,
+  key: string,
+  value: unknown,
+  updatedBy: string,
+): Promise<void> {
   const now = new Date();
   // Upsert — pgcrypto-free, uses primary key conflict.
-  await db
+  await client
     .insert(platformSettings)
     .values({
       key,
@@ -139,7 +173,6 @@ export async function setSetting(
         updatedBy,
       },
     });
-  cache.delete(key);
 }
 
 /** Type-safe sugar for the policy-sharing flag. */
