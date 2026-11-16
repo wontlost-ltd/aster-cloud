@@ -3,6 +3,10 @@
  * 硬编码 text-white 在暗色主题的 violet-400 填充上只有 2.72:1；@aster-cloud/tokens 0.2.2 保留暗色 violet-400
  * 主色（同一 token 还要作 text-primary 落在暗底上），所以只能由 cloud 侧改用 text-primary-fg。
  * 也守住 globals.css 引用不存在的 CSS 变量（如 --fg-muted）而回落到浅色色值的错误。
+ *
+ * 范围：这是静态的回归守卫，只认 className 里的 Tailwind 类（含 cn() 参数、条件分支、同文件常量 / 辅助函数、
+ * JSX 祖先的填充）；跨文件组件、CSS 里设置的底色不在其内。所有前景 / 背景组合的权威核对是 UI 审计（#775）
+ * 在浅色与暗色主题下对每个路由跑的 axe color-contrast。
  */
 import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
