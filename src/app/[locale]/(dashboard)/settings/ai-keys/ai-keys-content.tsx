@@ -419,7 +419,7 @@ export function AiKeysContent({ initialBindings, locale, renderedAt }: AiKeysCon
             {t('subtitle')}{' '}
             <Link
               href={`/${locale}/dashboard`}
-              className="ml-2 text-primary hover:underline"
+              className="ml-2 text-primary underline underline-offset-2"
             >
               {t('viewUsage')}
             </Link>

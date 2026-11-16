@@ -172,7 +172,7 @@ export function PilotApplicationForm({
         />
         <span>
           {t('consent')}{' '}
-          <Link href="/privacy" className="text-primary underline-offset-2 hover:underline">
+          <Link href="/privacy" className="text-primary underline underline-offset-2">
             {t('privacyLink')}
           </Link>
         </span>
