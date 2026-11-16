@@ -8,6 +8,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeSlug from 'rehype-slug';
 import rehypeAutolinkHeadings from 'rehype-autolink-headings';
 import rehypePrettyCode from 'rehype-pretty-code';
+import { CODE_THEME } from './src/lib/docs/code-theme';
 import { rehypeSnippetMeta } from './src/lib/mdx/rehype-snippet-meta';
 import { validateEnvOrWarn } from './src/lib/env-validation';
 import { safeEnv } from './src/lib/runtime/safe-env';
@@ -33,7 +34,9 @@ const withMDX = createMDX({
           // Dual-theme: client-side dark/light toggle via next-themes.
           // Shiki grammars compile at build-time; only HTML + tokens
           // reach the Worker bundle (no runtime highlighter).
-          theme: { light: 'github-light', dark: 'github-dark' },
+          // 高对比度主题：所有 token ≥ WCAG AA 4.5:1，选择理由见 src/lib/docs/code-theme.ts（#774）
+          // 暗色主题是修正过 diff / carriage-return 底色的 github-dark-high-contrast（见 code-theme.ts）
+          theme: CODE_THEME,
           keepBackground: false,
         },
       ],
