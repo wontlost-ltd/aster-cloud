@@ -85,7 +85,7 @@ export function DocsBreadcrumb() {
               <Link
                 href={it.href}
                 className={
-                  'hover:text-fg transition-colors rounded-sm max-sm:py-3 ' +
+                  'hover:text-fg transition-colors rounded-sm max-sm:inline-block max-sm:min-w-11 max-sm:py-3 max-sm:text-center ' +
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-bg'
                 }
               >

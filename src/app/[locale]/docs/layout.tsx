@@ -67,7 +67,8 @@ export default async function DocsLayout({ children, params }: Props) {
             sidebar takes its column. */}
         <div className="mx-auto flex flex-col lg:flex-row max-w-[1400px] pt-16">
           <DocsSidebar />
-          <main className="min-w-0 flex-1 px-4 sm:px-6 lg:px-8 py-10">
+          {/* 移动端底部多留 6rem：右下角固定的助手按钮不再盖住页面末尾的链接（如页脚「Suggest an edit」，#774） */}
+          <main className="min-w-0 flex-1 px-4 sm:px-6 lg:px-8 pt-10 pb-24 sm:pb-10">
             <DocsBreadcrumb />
             <DocsPageActions />
             <article
