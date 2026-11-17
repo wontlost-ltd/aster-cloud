@@ -24,6 +24,41 @@ permissions:
   contents: read
 
 jobs:
+  # ── 只动仓库文档时跳过构建、测试、镜像与 pin ─────────────────────────────
+  # 判定规则见 aster-lang-platform/.github/actions/docs-only（仓库级 *.md、docs/ 顶层文件、LICENSE 等）。
+  # ★站点文档是产品，不是「仓库文档」：src/app/**/docs/**、MDX、messages/*.json 都在 src/ 或 messages/ 下，
+  #   一律算代码。docs/ 的子目录也算代码（non-docs: docs/*/*）——glossary 检查扫 docs/on-prem、docs/saas、
+  #   docs/architecture/decisions、docs/operations、docs/workstreams，单测读 docs/on-prem 与 docs/runbooks/sql。
+  # 主要受益者是 changelog bot 的 CHANGELOG.md PR：合并后不再跑整套 CI、重建两个镜像、开两个 pin PR、重部署 Worker。
+  #
+  # ★push 的比较基准不是 before，而是「最近一次构建、测试全过且两个 pin PR 都真正开出」的 CI run 的
+  #   commit（基线）。代码提交 A 的 pin 被 Final stale gate 跳过（main 已前进到 docs 提交 B）时，B 若只和 A
+  #   比就不构建，A 的镜像永不 pin；和基线比，A 的代码在 diff 里 → B 完整运行。找不到基线 → 完整运行。
+  # 本 job 失败时输出为空：构建与测试照跑（!cancelled()，fail-safe），镜像与 pin 因上游失败而 skipped、
+  # run 为红——测试不会因探测故障被跳过，发布也不会在探测故障时发生。
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read      # 读本 workflow 历史 run 的 job / 步骤结论（push 基线）
+    outputs:
+      docs-only: ${{ steps.docs.outputs.docs-only }}
+    steps:
+      - id: docs
+        uses: aster-cloud/aster-lang-platform/.github/actions/docs-only@main
+        with:
+          non-docs: |
+            docs/*/*
+          baseline-workflow: ci.yml
+          baseline-jobs: |
+            ^build$
+            ^on-prem-build$
+            ^e2e$
+            ^migration-schema-drift$
+            ^image-pin-pr$ :: Open/update image-pin PR to k3s
+            ^image-pin-pr-lsp$ :: Open/update lsp image-pin PR to k3s
+
   # ── 探测本地 self-hosted runner 是否可用（省托管额度）─────────────────────
   # ★不采用 aster-api 的 build-local/build-hosted 双 job 拆分：本仓的 `build` 与
   #   `on-prem-build` 既是**分支保护的 required check**，又是 `e2e` /
@@ -46,6 +81,8 @@ jobs:
   #      纯粹是避免来回删改；它只占约 1 分钟托管额度。）
   #    其余 job 的 `needs: pick-runner` 同理保留——只表达顺序，不再消费其 outputs。
   pick-runner:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
     runs-on: ubuntu-latest
     # ★所有 job 必须有 timeout：无 timeout 的 job 在 runner 不接活时会
     #   排队到默认 24h，CI 卡死且不报错（2026-09-12 实测踩过）。
@@ -74,7 +111,12 @@ jobs:
           token: ${{ secrets.RUNNER_PROBE_TOKEN }}
 
   build:
-    needs: pick-runner
+    needs: [changes, pick-runner]
+    # docs-only 时跳过；e2e、build-migrate-image、build-lsp-image 与两个 image-pin job 经 needs 链随之 skipped。
+    # 按条件跳过（job 级 if）在本仓是安全的：main 目前没有必需检查（ruleset 只有 deletion / non_fast_forward，
+    # 上面 pick-runner 处的说明已过时），本仓也不在发布门禁 require-main-ci-green 之内；即便将来把 build
+    # 设为必需检查，GitHub 对「因 if 条件而 skipped」的 job 也按通过处理（只有 workflow 级 paths 过滤才会卡住）。
+    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
     # ★改回 GitHub 托管：两个 Linux self-hosted runner 虽然 API 报 online/idle
     #   且标签齐全，但**从未真正执行过任何 job**——查 aster-cloud 与 aster-api
     #   两个仓的历史，build/on-prem-build/e2e 全部是 GitHub 托管 runner 跑的。
@@ -331,6 +373,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [pick-runner, build]
+    # 显式 !cancelled()：隐式 success() 看全部上游，changes 探测失败时会把 e2e 连带跳过；这里只认 build。
+    # docs-only 时 build 是 skipped，本 job 随之跳过。
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -450,7 +495,8 @@ jobs:
   #                              wrap CLIENT_CAPABILITIES.billing
   # 详见 .claude/plan/saas-only-inventory.md §17 PR-4 checklist。
   on-prem-build:
-    needs: pick-runner
+    needs: [changes, pick-runner]
+    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
     # ★改回 GitHub 托管：两个 Linux self-hosted runner 虽然 API 报 online/idle
     #   且标签齐全，但**从未真正执行过任何 job**——查 aster-cloud 与 aster-api
     #   两个仓的历史，build/on-prem-build/e2e 全部是 GitHub 托管 runner 跑的。
@@ -979,6 +1025,8 @@ jobs:
   # drizzle/meta 快照，看不到手写迁移 SQL 漏建的索引 / 约束（生产 PolicyVersion 唯一索引因此缺失）。
   # 这里用一次性 Postgres 分别按迁移链与 schema.ts 建库，逐项比对列 / 索引 / 约束 / enum。
   migration-schema-drift:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:

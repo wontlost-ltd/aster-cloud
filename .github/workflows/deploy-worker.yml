@@ -46,6 +46,10 @@ name: Deploy Worker
 #   加 paths 白名单会出现"改了没在白名单里的文件 → 不部署 → 线上与 main 不一致"的静默漂移，
 #   与 aster-api deploy.yml 顶部记录的同类死角一致。
 
+# 标题写出本次实际部署的 commit：workflow_run 触发的 run，API 里的 head_sha 是触发时默认分支的 tip，
+# 不一定是被部署的 CI commit。docs-only 判定按标题里的 SHA 找「最近一次真正部署过的 commit」。
+run-name: Deploy Worker · ${{ github.event.workflow_run.head_sha || github.sha }}
+
 on:
   workflow_run:
     workflows: ["CI"]
@@ -64,11 +68,37 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # 只动仓库文档的提交不重部署 Worker（判定见 aster-lang-platform/.github/actions/docs-only，与 ci.yml 同一套规则）。
+  # ★比较基准是「最近一次 Build + deploy 真正成功」的 run 所部署的 commit，不是上一个 CI commit：
+  #   代码提交 A 的部署被 concurrency 挤掉（pending 被取消）后紧跟 docs 提交 B，B 若只和 A 比就不部署，
+  #   A 永不上线；和已部署的基线比，A 的代码在 diff 里 → B 照常部署。
+  #   workflow_dispatch 一律完整部署。找不到基线 → 照常部署；本 job 失败 → 不部署、run 为红（可见）。
+  changes:
+    if: ${{ (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') && vars.ENABLE_CI_WORKER_DEPLOY == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read      # 读本 workflow 历史 run 的步骤结论（基线）
+    outputs:
+      docs-only: ${{ steps.docs.outputs.docs-only }}
+    steps:
+      - id: docs
+        uses: aster-cloud/aster-lang-platform/.github/actions/docs-only@main
+        with:
+          non-docs: |
+            docs/*/*
+          baseline-workflow: deploy-worker.yml
+          baseline-jobs: |
+            ^deploy$ :: Build + deploy
+          baseline-sha-from: title
+
   deploy:
+    needs: changes
     # ★门控：仅当显式设 vars.ENABLE_CI_WORKER_DEPLOY=true 才部署。
     #   目的是杜绝与 Cloudflare Git 集成的双路部署（见文件头说明）。
     #   未设时本 job 直接 skip——不是失败，因为"没启用"是当前的预期状态。
-    if: ${{ (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') && vars.ENABLE_CI_WORKER_DEPLOY == 'true' }}
+    if: ${{ needs.changes.outputs.docs-only != 'true' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') && vars.ENABLE_CI_WORKER_DEPLOY == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
