@@ -46,8 +46,10 @@ jobs:
       docs-only: ${{ steps.docs.outputs.docs-only }}
     steps:
       - id: docs
-        uses: aster-cloud/aster-lang-platform/.github/actions/docs-only@main
+        uses: aster-cloud/aster-lang-platform/.github/actions/docs-only@ci/docs-only-skip
         with:
+          # 仅测试 PR：只比较最后一个提交，不合并
+          base: ${{ github.event.pull_request.head.sha }}~1
           non-docs: |
             docs/*/*
           baseline-workflow: ci.yml
