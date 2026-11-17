@@ -103,6 +103,67 @@ test.describe('tap targets (44px on mobile)', () => {
   });
 });
 
+test.describe('items spilling out of their grid / flex container (#774)', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  // 无任何断点（连字符也会断行，故用工具链标识这种只有 ; = . 的长串）
+  const LONG = 'abi=1.1;core=1.0.47;validator=1;resolver=1;casefold=15.1;build=a68b8793389c2d59e2bb6530aa27c02861aba0f9';
+  const card = (cell: string) => `<div style="border:1px solid #ccc;border-radius:8px;padding:16px"><div style="display:flex;gap:8px"><p style="margin:0">${cell}</p><span>Off</span></div></div>`;
+  const spills = async (page: import('@playwright/test').Page, body: string) => {
+    await page.setContent(`<body style="margin:0"><main style="padding:16px">${body}</main></body>`);
+    return (await page.evaluate(collectLayout, { mobile: true, minTarget: MOBILE_MIN_TARGET })).containerOverflow;
+  };
+
+  test('a card stretched by a long token in a grid without a column definition is reported, even when an ancestor clips the page', async ({ page }) => {
+    // 外层 overflow-x:clip 让页面本身不横向滚动：页面级规则看不见，被裁掉的内容够不着，这条规则仍要报出来
+    const clipped = await spills(page, `<div style="overflow-x:clip"><section><div style="display:grid;gap:16px">${card(LONG)}${card('Short')}</div></section></div>`);
+    expect(clipped).toHaveLength(1);
+    const open = await spills(page, `<section><div style="display:grid;gap:16px">${card(LONG)}${card('Short')}</div></section>`);
+    expect(open).toHaveLength(1);
+    expect(open[0].container).toMatch(/section > div$/);
+    expect(open[0].by).toBeGreaterThan(100);
+  });
+
+  test('a grid that clips its own overflowing items is reported; one that scrolls them is not', async ({ page }) => {
+    const clipped = await spills(page, `<div style="display:grid;gap:16px;overflow-x:hidden">${card(LONG)}</div>`);
+    expect(clipped).toHaveLength(1);
+    const scrolls = await spills(page, `<div style="display:grid;gap:16px;overflow-x:auto">${card(LONG)}</div>`);
+    expect(scrolls).toEqual([]);
+  });
+
+  test('grid-cols-1 (minmax(0,1fr)) with wrapping content is clean', async ({ page }) => {
+    const r = await spills(page, `<div style="display:grid;grid-template-columns:minmax(0,1fr);gap:16px">${card(`<span style="overflow-wrap:anywhere">${LONG}</span>`)}${card('Short')}</div>`);
+    expect(r).toEqual([]);
+  });
+
+  test('a flex row whose unbreakable child overflows is reported at the innermost container only', async ({ page }) => {
+    const r = await spills(page, `<div style="display:grid;grid-template-columns:minmax(0,1fr)">${card(LONG)}</div>`);
+    expect(r).toHaveLength(1);
+    expect(r[0].text).toContain('abi=1.1');
+  });
+
+  test('marks spills past the viewport or clipped as unreachable; a small in-viewport spill is not; negative-margin bleed is exempt', async ({ page }) => {
+    const wide = await spills(page, `<div style="display:grid">${card(LONG)}</div>`);
+    expect(wide[0].unreachable).toBe(true);
+    const small = await spills(page, '<div style="display:flex;width:60px"><span style="display:inline-flex;white-space:nowrap">Optional badge</span></div>');
+    expect(small).toHaveLength(1);
+    expect(small[0].unreachable).toBe(false);
+    const bleed = await spills(page, '<div style="display:flex;flex-direction:column;padding:0 16px"><div style="margin:0 -16px;height:20px"></div></div>');
+    expect(bleed).toEqual([]);
+  });
+
+  test('a spill past the left edge (RTL flex row) is reported too', async ({ page }) => {
+    const r = await spills(page, `<div dir="rtl" style="display:flex">${card(LONG)}</div>`);
+    expect(r).toHaveLength(1);
+    expect(r[0].unreachable).toBe(true);
+  });
+
+  test('a table in a horizontal scroll region does not count', async ({ page }) => {
+    const r = await spills(page, `<div style="display:flex"><div tabindex="0" role="region" aria-label="t" style="overflow-x:auto;min-width:0"><table><tr><td style="white-space:nowrap">${LONG}${LONG}</td></tr></table></div></div>`);
+    expect(r).toEqual([]);
+  });
+});
+
 test.describe('page title structure', () => {
   test('flags two h1s, a heading that repeats the h1 and a link-less breadcrumb', async ({ page }) => {
     await page.setContent(`<nav aria-label="Breadcrumb navigation"><ol><li>Approvals</li></ol></nav><h1>Approvals</h1><h2>Approvals</h2><h1>Other</h1>`);

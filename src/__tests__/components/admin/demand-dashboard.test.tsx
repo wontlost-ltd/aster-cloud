@@ -41,7 +41,9 @@ describe('DemandDashboard', () => {
 
   it('周计数表按周成行、事件成列，缺失补 0；Guard 调用列在内', () => {
     render(<DemandDashboard report={report} applications={[]} t={t} exportHref="/x.csv" />);
-    const section = screen.getByRole('region', { name: 'weekly.heading' });
+    // 区块（section）与其中可横向滚动的表格外壳（可聚焦的 region）同名；取外层区块（文档顺序在前）
+    const section = screen.getAllByRole('region', { name: 'weekly.heading' })[0];
+    expect(section.tagName).toBe('SECTION');
     const headers = within(section).getAllByRole('columnheader').map((h) => h.textContent);
     expect(headers[0]).toBe('weekly.week');
     expect(headers).toContain('guard_api_called');

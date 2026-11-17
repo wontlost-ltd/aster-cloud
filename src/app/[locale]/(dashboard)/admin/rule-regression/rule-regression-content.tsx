@@ -3,6 +3,7 @@
 import { useCallback, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Container, PageHeader } from '@/components/ui';
+import { ToolchainId } from '@/components/admin/toolchain-id';
 
 interface ReportRow {
   id: string;
@@ -152,7 +153,7 @@ export function RuleRegressionContent() {
             {reports.length === 0 ? (
               <p className="text-sm text-fg-muted">{t('noReports')}</p>
             ) : (
-              <div className="overflow-x-auto rounded-lg border border-border">
+              <div tabIndex={0} role="region" aria-label={t('reportsHeading')} data-scroll-region className="overflow-x-auto rounded-lg border border-border">
                 <table className="w-full text-sm">
                   <thead className="bg-bg-muted/50 text-left text-xs uppercase tracking-wider text-fg-muted">
                     <tr>
@@ -231,7 +232,10 @@ export function RuleRegressionContent() {
                         <td className="px-3 py-2 text-right tabular-nums">{r.passedCaseCount}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{r.failedCaseCount}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{r.nonReplayableCaseCount}</td>
-                        <td className="px-3 py-2 font-mono text-xs">{r.currentRuntimeToolchainId ?? '—'}</td>
+                        <td className="min-w-[14rem] px-3 py-2 text-xs">
+                          {/* 工具链标识整串无空格：在 `;` 处换行，不再把表格撑成一整行 */}
+                          {r.currentRuntimeToolchainId ? <ToolchainId value={r.currentRuntimeToolchainId} /> : '—'}
+                        </td>
                         <td className="px-3 py-2 font-mono text-xs">{r.reportHash.slice(0, 12)}…</td>
                         <td className="px-3 py-2 text-xs text-fg-muted">
                           {new Date(r.createdAt).toISOString().slice(0, 19).replace('T', ' ')}
@@ -250,7 +254,7 @@ export function RuleRegressionContent() {
             {cases.length === 0 ? (
               <p className="text-sm text-fg-muted">{t('noCases')}</p>
             ) : (
-              <div className="overflow-x-auto rounded-lg border border-border">
+              <div tabIndex={0} role="region" aria-label={t('casesHeading')} data-scroll-region className="overflow-x-auto rounded-lg border border-border">
                 <table className="w-full text-sm">
                   <thead className="bg-bg-muted/50 text-left text-xs uppercase tracking-wider text-fg-muted">
                     <tr>

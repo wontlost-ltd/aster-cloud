@@ -75,6 +75,13 @@ async function auditPage(page: Page, ctx: AuditContext, route: AuditRoute, deep:
 
   const started = Date.now();
   const target = localePath(ctx.locale, route.path);
+  if (route.localStorage) {
+    await page.addInitScript((entries) => {
+      for (const [k, v] of Object.entries(entries)) {
+        try { window.localStorage.setItem(k, v); } catch { /* 隐私模式等不可写时照常审计 */ }
+      }
+    }, route.localStorage);
+  }
   const resp = await page.goto(target, { waitUntil: 'load' });
   await settle(page);
   const status = resp?.status() ?? 0;
@@ -100,6 +107,20 @@ async function auditPage(page: Page, ctx: AuditContext, route: AuditRoute, deep:
       category: 'horizontal-overflow',
       message: `Page scrolls horizontally: scrollWidth ${layout.scrollWidth}px > viewport ${layout.clientWidth}px`,
       detail: layout.overflowOffenders.map((o) => `${o.selector} "${o.text}" x=${o.box.x} w=${o.box.w}`).join('\n'),
+    });
+  }
+  // 子项越出网格 / 弹性容器（#774）：越过视口或被祖先裁掉（够不着）的在移动端按 serious；仍在视口内的视觉越界按 moderate
+  const spillGroups = [
+    { items: layout.containerOverflow.filter((o) => o.unreachable), severity: mobile ? 'serious' : 'moderate', what: 'past the viewport or clipped' },
+    { items: layout.containerOverflow.filter((o) => !o.unreachable), severity: 'moderate', what: 'visually' },
+  ] as const;
+  for (const g of spillGroups) {
+    if (!g.items.length) continue;
+    emit({
+      severity: g.severity,
+      category: 'container-overflow',
+      message: `${g.items.length} item(s) extend past their grid / flex container (${g.what})`,
+      detail: g.items.map((o) => `${o.selector} "${o.text}" +${o.by}px past ${o.container}`).join('\n'),
     });
   }
   // 移动端点击目标下限 44×44 CSS px（项目规范，WCAG 2.5.5 AAA / Apple HIG）；句中行内链接按 WCAG 例外豁免

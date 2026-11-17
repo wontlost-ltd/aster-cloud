@@ -119,11 +119,50 @@ async function ensureApiKey(sql: postgres.Sql, cookie: string, owner: AuditRole)
   if (res.status >= 300) console.warn(`[seed] 建 API key 失败（不阻断）：HTTP ${res.status} ${JSON.stringify(res.json).slice(0, 200)}`);
 }
 
+// 无断点的长内容（#774）：平台管理页会把邮箱 / 用户 ID / 主机名 / 工具链标识原样渲染，种子里只有短值时窄屏溢出看不出来
+const LONG_TOKEN_USER = {
+  id: 'ui-long-token-cmh7x2k9q0000qwertyuiopasdfghjkl',
+  email: 'alexandra.konstantinopoulou-whitfield@compliance-operations.example-enterprise.com',
+};
+const LONG_BYOK_HOST = 'llm-gateway.eu-central-1.compliance-operations.example-enterprise.com';
+
+async function upsertLongTokenUser(sql: postgres.Sql): Promise<void> {
+  const now = new Date();
+  const { id, email } = LONG_TOKEN_USER;
+  await sql`
+    insert into "User" (id, name, email, "emailNormalized", "emailVerified", plan, "isAdmin",
+                        "onboardingCompletedAt", "priceLockedAt", "createdAt", "updatedAt")
+    values (${id}, null, ${email}, ${email}, ${now}, 'pro', false, ${now}, ${now}, ${now}, ${now})
+    on conflict do nothing`;
+}
+
+/**
+ * 平台管理页的长内容夹具（需要 aster-api；失败只告警）：BYOK 白名单加一个长主机名；发起一次 report 模式
+ * （只报告、不拦截）的全量复核，返回 runId，审计访问 /admin/revalidation 前写入 localStorage 以展示工具链标识。
+ */
+async function seedPlatformFixtures(cookie: string): Promise<string | undefined> {
+  const byok = await call(cookie, 'POST', '/api/admin/byok-allowlist', { action: 'add', host: LONG_BYOK_HOST });
+  if (byok.status >= 300) console.warn(`[seed] BYOK 长主机名失败（不阻断）：HTTP ${byok.status} ${JSON.stringify(byok.json).slice(0, 200)}`);
+  // 已有运行中的复核（409 active_run_exists，如刚跑过一次播种）时等它结束再发起，最多约 1 分钟
+  let run = await call(cookie, 'POST', '/api/admin/revalidation/runs', { scope: 'all', mode: 'report' });
+  for (let i = 0; run.status === 409 && i < 12; i += 1) {
+    await new Promise((r) => setTimeout(r, 5_000));
+    run = await call(cookie, 'POST', '/api/admin/revalidation/runs', { scope: 'all', mode: 'report' });
+  }
+  const runId = run.json.runId ?? run.json.id;
+  if (run.status >= 300 || runId === undefined) {
+    console.warn(`[seed] 发起复核失败（不阻断）：HTTP ${run.status} ${JSON.stringify(run.json).slice(0, 200)}`);
+    return undefined;
+  }
+  return String(runId);
+}
+
 async function main(): Promise<void> {
   if (!SECRET) throw new Error('缺少 AUTH_SECRET / NEXTAUTH_SECRET');
   const sql = postgres(DATABASE_URL, { max: 1 });
   try {
     await upsertIdentity(sql);
+    await upsertLongTokenUser(sql);
     const cookies = new Map<string, string>();
     for (const r of AUDIT_ROLES) cookies.set(r.id, await sessionCookie({ id: r.id, email: r.email, plan: r.plan }, SECRET));
     writeStates(cookies);
@@ -139,7 +178,9 @@ async function main(): Promise<void> {
     });
     if (exec.status >= 300) console.warn(`[seed] 执行策略失败（不阻断）：HTTP ${exec.status} ${JSON.stringify(exec.json).slice(0, 200)}`);
     await ensureApiKey(sql, cookies.get(pro.id)!, pro);
-    writeFileSync(join(STATE_DIR, 'fixtures.json'), JSON.stringify({ personalPolicyId: personal, teamPolicyId: team, teamId: AUDIT_TEAM_ID }, null, 2));
+    const platform = AUDIT_ROLES.find((r) => r.isAdmin);
+    const revalidationRunId = platform ? await seedPlatformFixtures(cookies.get(platform.id)!) : undefined;
+    writeFileSync(join(STATE_DIR, 'fixtures.json'), JSON.stringify({ personalPolicyId: personal, teamPolicyId: team, teamId: AUDIT_TEAM_ID, revalidationRunId }, null, 2));
     console.log(`[seed] 策略 personal=${personal} team=${team}`);
   } finally {
     await sql.end();

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, ConfirmDialog, Container, Input, PageHeader, Select } from '@/components/ui';
+import { ToolchainId } from '@/components/admin/toolchain-id';
 
 type Run = { runId?: string; id?: string; toolchainId?: string; status?: string; checked?: number; total?: number; invalid_count?: number; invalidCount?: number; mode?: string; scope?: string; scopeTenant?: string | null; triggeredBy?: string | null };
 type Invalid = { versionId?: string; version_id?: string; tenantId?: string; tenant_id?: string; toolchainId?: string; advisory?: boolean; diagnostics?: Array<{ code?: string; message?: string }> };
@@ -83,12 +84,14 @@ export function RevalidationContent() {
       setPending(null);
     }
   }
+  const toolchainId = run?.toolchainId || invalid[0]?.toolchainId;
   const invalidCount = run?.invalidCount ?? run?.invalid_count ?? invalid.length;
   return <Container size="xl" className="py-6 sm:py-10">
     <PageHeader title={t('title')} />
     <section className="my-6 rounded-lg border p-4">
       <p className="mb-3 rounded-md bg-info-subtle p-3 text-sm text-fg-muted">{t('scopeExplanation')}</p>
-      {(run?.toolchainId || invalid[0]?.toolchainId) && <p>{t('toolchain')}: {run?.toolchainId ?? invalid[0]?.toolchainId}</p>}
+      {/* 工具链标识是一整串无空格的 key=value 列表：ToolchainId 在 `;` 处可换行，窄屏不再撑出视口 */}
+      {toolchainId && <p>{t('toolchain')}: <ToolchainId value={toolchainId} className="text-sm" /></p>}
       <p>{t('recentRun')}: {run?.status ?? t('noRun')}　{t('progress')}: {run?.checked ?? 0}/{run?.total ?? 0}　{t('needsRepair')}: {invalidCount}
         {run?.mode && <>　{t('modeLabel')}: {run.mode === 'report' ? t('modeReportBadge') : t('modeEnforceBadge')}</>}
         {run?.triggeredBy && <>　{t('triggeredBy')}: {run.triggeredBy}</>}</p>
@@ -114,7 +117,7 @@ export function RevalidationContent() {
       {message && <p role="status" className="mt-2">{message}</p>}
     </section>
     <h2 className="mb-3 text-lg font-semibold">{t('invalidVersions')}</h2>
-    <div className="overflow-x-auto"><table className="w-full border-collapse text-left"><thead><tr><th className="p-2">{t('version')}</th><th className="p-2">{t('tenant')}</th><th className="p-2">{t('verdictKind')}</th><th className="p-2">{t('firstDiagnostic')}</th></tr></thead>
+    <div tabIndex={0} role="region" aria-label={t('invalidVersions')} data-scroll-region className="overflow-x-auto"><table className="w-full border-collapse text-left"><thead><tr><th className="p-2">{t('version')}</th><th className="p-2">{t('tenant')}</th><th className="p-2">{t('verdictKind')}</th><th className="p-2">{t('firstDiagnostic')}</th></tr></thead>
       <tbody>{invalid.map((row, index) => <tr key={row.versionId ?? row.version_id ?? index} className="border-t"><td className="p-2">{row.versionId ?? row.version_id}</td><td className="p-2">{row.tenantId ?? row.tenant_id ?? '—'}</td><td className="p-2">{row.advisory ? t('verdictAdvisory') : t('verdictBinding')}</td><td className="p-2">{row.diagnostics?.[0] ? `${row.diagnostics[0].code ?? ''} ${row.diagnostics[0].message ?? ''}` : '—'}</td></tr>)}
       {!invalid.length && <tr><td className="p-2" colSpan={4}>{t('noInvalidVersions')}</td></tr>}</tbody></table></div>
     <ConfirmDialog

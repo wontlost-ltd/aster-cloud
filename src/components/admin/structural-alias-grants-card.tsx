@@ -114,15 +114,16 @@ export function StructuralAliasGrantsCard() {
                     className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-bg-subtle p-3"
                   >
                     <Stack gap={1} className="min-w-0 flex-1">
+                      {/* 长邮箱 / 用户 ID 没有断点：允许任意处折行而不是截断，窄屏下完整可见、可选中复制 */}
                       <Stack direction="row" gap={2} align="center">
-                        <p className="truncate text-sm font-medium text-fg">
+                        <p className="min-w-0 text-sm font-medium text-fg [overflow-wrap:anywhere]">
                           {row.email ?? row.name ?? row.userId}
                         </p>
-                        <Badge variant={row.granted ? 'success' : 'neutral'}>
+                        <Badge variant={row.granted ? 'success' : 'neutral'} className="shrink-0">
                           {row.granted ? t('granted') : t('notGranted')}
                         </Badge>
                       </Stack>
-                      <p className="truncate text-xs text-fg-muted">{row.userId}</p>
+                      <p className="text-xs text-fg-muted [overflow-wrap:anywhere]">{row.userId}</p>
                     </Stack>
                     <button
                       type="button"

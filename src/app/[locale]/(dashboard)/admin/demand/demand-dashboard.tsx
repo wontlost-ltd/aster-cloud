@@ -27,10 +27,10 @@ function Section({ id, title, note, children }: { id: string; title: string; not
   );
 }
 
-function Table({ head, rows, empty }: { head: string[]; rows: ReactNode[][]; empty: string }) {
+function Table({ label, head, rows, empty }: { label: string; head: string[]; rows: ReactNode[][]; empty: string }) {
   if (rows.length === 0) return <p className="text-sm text-fg-muted">{empty}</p>;
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
+    <div tabIndex={0} role="region" aria-label={label} data-scroll-region className="overflow-x-auto rounded-lg border border-border">
       <table className="min-w-full divide-y divide-border text-sm">
         <thead className="bg-bg-subtle">
           <tr>
@@ -95,6 +95,7 @@ export function DemandDashboard({
 
       <Section id="demand-weekly" title={t('weekly.heading')} note={t('weekly.note')}>
         <Table
+          label={t('weekly.heading')}
           head={[t('weekly.week'), ...WEEKLY_COLUMNS]}
           rows={weeks.map((w) => [w, ...WEEKLY_COLUMNS.map((name) => countOf(w, name))])}
           empty={t('empty')}
@@ -104,6 +105,7 @@ export function DemandDashboard({
       <div className="grid gap-10 lg:grid-cols-2">
         <Section id="demand-templates" title={t('templates.heading')}>
           <Table
+            label={t('templates.heading')}
             head={[t('templates.template'), t('count')]}
             rows={report.templates.map((r) => [<code key="id">{r.templateId}</code>, r.count])}
             empty={t('empty')}
@@ -111,6 +113,7 @@ export function DemandDashboard({
         </Section>
         <Section id="demand-landing" title={t('landing.heading')} note={t('landing.note')}>
           <Table
+            label={t('landing.heading')}
             head={[t('landing.page'), t('landing.views'), t('landing.submissions'), t('landing.rate')]}
             rows={report.landing.map((r) => [`/solutions/${r.page}`, r.views, r.submissions, percent(r.submissions, r.views)])}
             empty={t('empty')}
@@ -118,6 +121,7 @@ export function DemandDashboard({
         </Section>
         <Section id="demand-sources" title={t('sources.heading')}>
           <Table
+            label={t('sources.heading')}
             head={[t('sources.source'), t('landing.views')]}
             rows={report.sources.map((r) => [r.source, r.views])}
             empty={t('empty')}
@@ -125,6 +129,7 @@ export function DemandDashboard({
         </Section>
         <Section id="demand-guard" title={t('guard.heading')} note={t('guard.note')}>
           <Table
+            label={t('guard.heading')}
             head={[t('guard.tenant'), t('count')]}
             rows={report.guardByTenant.map((r) => [<code key="t">{r.tenant}</code>, r.count])}
             empty={t('empty')}
@@ -137,6 +142,7 @@ export function DemandDashboard({
           {t('applications.export')}
         </a>
         <Table
+          label={t('applications.heading', { count: applications.length })}
           head={[
             t('applications.createdAt'), t('applications.email'), t('applications.mailbox'), t('applications.company'),
             t('applications.role'), t('applications.useCases'), t('applications.page'), t('applications.source'),

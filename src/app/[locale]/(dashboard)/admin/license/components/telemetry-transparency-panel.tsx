@@ -113,7 +113,7 @@ function RenderUpload({
 
       <details className="text-xs">
         <summary className="cursor-pointer text-fg-muted">{t('viewSentBody')}</summary>
-        <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 font-mono">
+        <dl className="mt-2 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1 font-mono [overflow-wrap:anywhere]">
           <dt className="text-fg-muted">period</dt>
           <dd className="text-fg">
             {record.payload.periodStart.slice(0, 10)} → {record.payload.periodEnd.slice(0, 10)}

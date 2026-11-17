@@ -12,11 +12,15 @@
 | 键盘 | 菜单 / 对话框可用 Enter 打开、模态层困住焦点、Esc 关闭、焦点回到触发按钮；Tab 遍历前 25 个焦点检查可见焦点指示 | serious / moderate |
 | 弹出层 | 用 Enter 打开每个菜单 / 下拉后，新露出的项须完整可见：不被同时包含触发按钮的 overflow 容器截掉（含 auto / scroll——`overflow-x:auto` 的表格外壳会让纵轴也变成 auto，菜单只能在表格里滚动才看得到，#786）、不横向出视口、中心点不被别的元素盖住；弹出层自己的滚动列表不算。页面加载时菜单收起，结构检查看不到这些项 | serious（`popup-item-clipped`） |
 | 无障碍 | axe-core（WCAG 2.0/2.1/2.2 A + AA），深色主题复查对比度 | 按 axe impact |
-| 布局 | 横向溢出（逐个隐藏定位根因）、移动端点击目标 < 44×44 CSS px（项目规范，serious；句中行内链接豁免）、卡片网格同行等高 / 内边距一致 / 不重叠 / 内容不越界、深色主题是否生效 | serious（移动端溢出）/ moderate / minor |
+| 布局 | 横向溢出（逐个隐藏定位根因）、网格 / 弹性容器的子项越出容器内容盒（`container-overflow`，与视口宽度无关；只豁免可横向滚动的祖先与负外边距出血，越过视口或被 hidden / clip 祖先裁掉的在移动端为 serious，仍在视口内的视觉越界为 moderate，#774）、移动端点击目标 < 44×44 CSS px（项目规范，serious；句中行内链接豁免）、卡片网格同行等高 / 内边距一致 / 不重叠 / 内容不越界、深色主题是否生效 | serious（移动端溢出 / 够不着的容器越界）/ moderate / minor |
 | 结构 | 一页多个 `<h1>`；h2–h6 与 h1 同文、或面包屑（aria-label 含 breadcrumb 的 nav）里没有任何链接（只剩当前页名）——同一标题渲染两次；可操作项被 `overflow:hidden` 祖先截掉（够不着），或在横向滚动容器里初始露出不足一个点击目标宽（移动端 serious） | serious / moderate |
 | 视觉 | 每个路由 × 视口 × 语言 × 主题一张全页截图，写入输出目录（不入库、不做基线比对） | — |
 
 按钮探测期间拦截所有写请求、所有 API 请求（任何源的 `/api/**`，GET 也拦）以及会改状态的页面（登出、邮件验证、重置密码、接受邀请、续期），伪造 503（带 `x-ui-audit-blocked` 头，不计入 5xx）；规则在 `request-guard.ts`，有单测。种子数据不会被改动；被拦的请求（读或写）不算按钮「有效果」，只有被拦请求之前发生的 DOM 变化、导航、弹窗、下载等才算，否则记为「无法确认」（minor，`button-effect-unverified`）。链接校验手动跟随重定向，跳出本地站点即停止并记为失败。点击目标检查只看尺寸（移动端 44×44 CSS px，`page-checks.ts` 的 `MOBILE_MIN_TARGET`），不评估间距例外；绝对定位的 `::before` / `::after` 撑出的点击区（`.tap-target`）在元素自身不裁剪、不压到相邻点击目标、且对点击区中心 44×44 方块的 5×5 网格采样命中测试都落在该元素上时计入；禁用的控件不算点击目标。规则自身的夹具用例在 `page-checks.spec.ts`（不依赖本地栈，随 ui-audit-desktop 项目运行）。critical / serious 发现会让对应用例 soft 失败；其余只进报告。
+
+## 种子里的长内容（#774）
+
+平台管理页把邮箱、用户 ID、主机名、工具链标识原样渲染，种子只有短值时窄屏溢出看不出来（/admin「平台控制」卡片曾因此漏检）。`seed.ts` 因此额外写入一个无空格长邮箱 / 长 ID 的用户，经 aster-api 给 BYOK 白名单加一个长主机名，并发起一次 report 模式（只报告不拦截）的全量复核，把 runId 写进 `fixtures.json`；审计访问 `/admin/revalidation` 前把它写入 localStorage，页面才会展示运行状态与工具链标识。aster-api 不可用时这两步只告警。
 
 ## 运行
 

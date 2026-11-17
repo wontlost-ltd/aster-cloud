@@ -22,12 +22,16 @@ export interface AuditRoute {
   role: AuditRoleId;
   /** 该页预期不是 2xx 正常页（如无效 token）时置 true：只做布局 / a11y，不把错误态当缺陷 */
   expectErrorState?: boolean;
+  /** 访问前写入的 localStorage（页面只在有本地记录时渲染的内容，如复核页的最近一次运行与工具链标识） */
+  localStorage?: Record<string, string>;
 }
 
 export interface AuditFixtures {
   personalPolicyId: string;
   teamPolicyId: string;
   teamId: string;
+  /** 种子发起的 report 模式复核 runId（需要 aster-api，可能缺失） */
+  revalidationRunId?: string;
 }
 
 export const STATE_DIR = process.env.UI_AUDIT_STATE_DIR || join(process.cwd(), '.superpowers/ui-audit');
@@ -98,7 +102,16 @@ export function buildRoutes(f: AuditFixtures = loadFixtures()): AuditRoute[] {
   for (const p of PRO_DASHBOARD) routes.push({ pattern: `(dashboard)/${p}`, path: p, role: 'ui-pro' });
   for (const p of ADMIN) {
     // license / sso 只在 on-prem 部署开放（CAN_LICENSE / CAN_SSO），SaaS 栈里渲染 404 是预期行为
-    routes.push({ pattern: `(dashboard)/${p}`, path: p, role: 'ui-platform', expectErrorState: ON_PREM_ONLY.has(p) });
+    routes.push({
+      pattern: `(dashboard)/${p}`,
+      path: p,
+      role: 'ui-platform',
+      expectErrorState: ON_PREM_ONLY.has(p),
+      // 复核页只在 localStorage 有最近一次 runId 时才展示运行状态与工具链标识（无空格长串，#774）
+      ...(p === 'admin/revalidation' && f.revalidationRunId
+        ? { localStorage: { 'aster.admin.revalidation.recentRunId': f.revalidationRunId } }
+        : {}),
+    });
   }
   const pol = f.personalPolicyId;
   for (const sub of ['', '/edit', '/execute', '/logs', '/versions']) {

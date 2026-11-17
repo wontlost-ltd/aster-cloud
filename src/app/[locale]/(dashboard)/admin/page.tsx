@@ -236,7 +236,7 @@ export default async function AdminOverviewPage({ params }: Props) {
         >
           {tPulse('heading')}
         </h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <PulseCircuitCard
             state={pulse.circuit.state}
             todayUsd={pulse.circuit.todayUsd}
@@ -289,7 +289,9 @@ export default async function AdminOverviewPage({ params }: Props) {
         >
           {t('controlsHeading')}
         </h2>
-        <div className="grid gap-4">
+        {/* 必须显式 grid-cols-1（minmax(0,1fr)）：不写列定义时隐式列为 auto，网格项 min-width:auto，
+            卡片里最长的不可断内容（长邮箱、长主机名）会把整列撑出视口，移动端整页横向溢出。 */}
+        <div className="grid grid-cols-1 gap-4">
           <FeatureFlagsCard />
           <RunnerParityCard />
           <PlatformLanguageCard />
@@ -307,7 +309,7 @@ export default async function AdminOverviewPage({ params }: Props) {
         </h2>
         <ul
           role="list"
-          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
         >
           {cards.map((card) => (
             <OverviewCardItem
