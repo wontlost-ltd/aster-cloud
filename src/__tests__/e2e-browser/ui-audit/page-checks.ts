@@ -283,7 +283,7 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
 
   // 4. 子项越出网格 / 弹性容器（#774）：卡片网格的卡片检查只比「卡片内的后代 vs 卡片边缘」，当卡片本身被最长内容
   //    撑宽（未声明列宽的 grid 隐式列为 auto，网格项 min-width:auto）时所有卡片一样宽、内容也都在卡片内，规则看不见；
-  //    页面级横向溢出也只在溢出恰好越过视口时才报。这里直接比每个子项与其父容器的内容盒右缘。
+  //    页面级横向溢出也只在溢出恰好越过视口时才报。这里直接比每个子项与其父容器内容盒的左右两缘。
   //    父容器自身可横向滚动、子项绝对 / 固定定位、或位于横向滚动容器内的，不算。
   //    只豁免可横向滚动（auto / scroll）的祖先——内容仍可滚动到达；被 hidden / clip 祖先裁掉的越界恰恰是「够不着」，照报。
   const insideHorizontalScroller = (el: Element) => {
@@ -295,11 +295,13 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
   };
   //    越界部分越过视口、或被某个 hidden / clip 祖先裁掉时记为 unreachable（移动端 serious），否则只是视觉越界（moderate）。
   const unreachable = (child: Element) => {
-    const right = child.getBoundingClientRect().right;
-    if (right > vw + 1) return true;
+    const { left, right } = child.getBoundingClientRect();
+    if (right > vw + 1 || left < -1) return true;
     for (let p = child.parentElement; p && p !== document.body; p = p.parentElement) {
       const ox = getComputedStyle(p).overflowX;
-      if ((ox === 'hidden' || ox === 'clip') && p.getBoundingClientRect().right < right - 1) return true;
+      if (ox !== 'hidden' && ox !== 'clip') continue;
+      const q = p.getBoundingClientRect();
+      if (q.right < right - 1 || q.left > left + 1) return true;
     }
     return false;
   };
@@ -311,12 +313,15 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
     if (pcs.overflowX === 'auto' || pcs.overflowX === 'scroll' || insideHorizontalScroller(parent)) continue;
     const pr = parent.getBoundingClientRect();
     const contentRight = pr.right - (parseFloat(pcs.borderRightWidth) || 0) - (parseFloat(pcs.paddingRight) || 0);
+    const contentLeft = pr.left + (parseFloat(pcs.borderLeftWidth) || 0) + (parseFloat(pcs.paddingLeft) || 0);
     for (const child of Array.from(parent.children)) {
       const ccs = getComputedStyle(child);
       if (ccs.position === 'absolute' || ccs.position === 'fixed' || !visible(child)) continue;
-      // 负外边距（如 -mx-4 的出血表格外壳）是有意越出内边距，按外边距抵消
-      const bleed = Math.min(0, parseFloat(ccs.marginRight) || 0);
-      const by = Math.round(child.getBoundingClientRect().right + bleed - contentRight);
+      // 左右两侧都查（RTL、负定位）；负外边距（如 -mx-4 的出血表格外壳）是有意越出内边距，按外边距抵消
+      const cr = child.getBoundingClientRect();
+      const byRight = cr.right + Math.min(0, parseFloat(ccs.marginRight) || 0) - contentRight;
+      const byLeft = contentLeft - cr.left + Math.min(0, parseFloat(ccs.marginLeft) || 0);
+      const by = Math.round(Math.max(byRight, byLeft));
       if (by > 1) {
         spills.push({ parent, child, by });
         break;

@@ -152,6 +152,12 @@ test.describe('items spilling out of their grid / flex container (#774)', () => 
     expect(bleed).toEqual([]);
   });
 
+  test('a spill past the left edge (RTL flex row) is reported too', async ({ page }) => {
+    const r = await spills(page, `<div dir="rtl" style="display:flex">${card(LONG)}</div>`);
+    expect(r).toHaveLength(1);
+    expect(r[0].unreachable).toBe(true);
+  });
+
   test('a table in a horizontal scroll region does not count', async ({ page }) => {
     const r = await spills(page, `<div style="display:flex"><div tabindex="0" role="region" aria-label="t" style="overflow-x:auto;min-width:0"><table><tr><td style="white-space:nowrap">${LONG}${LONG}</td></tr></table></div></div>`);
     expect(r).toEqual([]);
