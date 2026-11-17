@@ -3,6 +3,12 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 import zhBase from '@aster-cloud/ui-messages/zh-CN.json';
 import { EN_US, ZH_CN, type Lexicon } from '@aster-cloud/aster-lang-ts/browser';
+vi.mock('@/lib/structured-authoring/outline', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/structured-authoring/outline')>();
+  return { ...actual, buildModelOutline: vi.fn(actual.buildModelOutline) };
+});
+
+import { buildModelOutline } from '@/lib/structured-authoring/outline';
 import { IntlClientProvider } from '@/i18n/intl-client-provider';
 import { DEMO_SUPPLEMENT } from '@/i18n/demo-supplement';
 import { deepMergeMessages } from '@/i18n/request';
@@ -180,5 +186,104 @@ describe('ModelTab 表单', () => {
     fireEvent.click(screen.getByRole('button', { name: M.newTypeAlias }));
     const form = screen.getByRole('form', { name: M.newTypeAlias });
     expect((within(form).getByRole('button', { name: M.insert }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('ModelTab 名字校验', () => {
+  const openStruct = () => {
+    fireEvent.click(screen.getByRole('button', { name: M.newStruct }));
+    return screen.getByRole('form', { name: M.newStruct });
+  };
+  const insertButton = (form: HTMLElement) => within(form).getByRole('button', { name: M.insert }) as HTMLButtonElement;
+
+  it('结构体名含空格：禁用插入并显示行内错误', () => {
+    renderTab(fakeEditor(SOURCE), SOURCE);
+    const form = openStruct();
+    fireEvent.change(within(form).getByLabelText(M.structName), { target: { value: 'my struct' } });
+    fireEvent.change(within(form).getAllByLabelText(M.fieldName)[0], { target: { value: 'x' } });
+    expect(insertButton(form).disabled).toBe(true);
+    expect(within(form).getByRole('alert').textContent).toBe(M.invalidName);
+  });
+
+  it('结构体名含标点（注入第二条声明）被拒', () => {
+    renderTab(fakeEditor(SOURCE), SOURCE);
+    const form = openStruct();
+    fireEvent.change(within(form).getByLabelText(M.structName), { target: { value: 'A. Rule r' } });
+    fireEvent.change(within(form).getAllByLabelText(M.fieldName)[0], { target: { value: 'x' } });
+    expect(insertButton(form).disabled).toBe(true);
+  });
+
+  it('字段名无效或与另一行重名：禁用插入', () => {
+    renderTab(fakeEditor(SOURCE), SOURCE);
+    const form = openStruct();
+    fireEvent.change(within(form).getByLabelText(M.structName), { target: { value: 'Applicant' } });
+    fireEvent.change(within(form).getAllByLabelText(M.fieldName)[0], { target: { value: 'a b' } });
+    expect(insertButton(form).disabled).toBe(true);
+    expect(within(form).getByRole('alert').textContent).toBe(M.invalidName);
+    fireEvent.change(within(form).getAllByLabelText(M.fieldName)[0], { target: { value: 'income' } });
+    expect(insertButton(form).disabled).toBe(false);
+    fireEvent.click(within(form).getByRole('button', { name: M.addFieldRow }));
+    fireEvent.change(within(form).getAllByLabelText(M.fieldName)[1], { target: { value: 'income' } });
+    expect(insertButton(form).disabled).toBe(true);
+    expect(within(form).getByRole('alert').textContent).toBe(M.duplicateName);
+  });
+
+  it('与已有结构体 / 别名同名（忽略大小写）被拒', () => {
+    renderTab(fakeEditor(SOURCE), SOURCE);
+    const form = openStruct();
+    fireEvent.change(within(form).getByLabelText(M.structName), { target: { value: 'person' } });
+    fireEvent.change(within(form).getAllByLabelText(M.fieldName)[0], { target: { value: 'x' } });
+    expect(insertButton(form).disabled).toBe(true);
+    expect(within(form).getByRole('alert').textContent).toBe(M.duplicateName);
+  });
+
+  it('类型别名名无效：禁用插入', () => {
+    renderTab(fakeEditor(SOURCE), SOURCE);
+    fireEvent.click(screen.getByRole('button', { name: M.newTypeAlias }));
+    const form = screen.getByRole('form', { name: M.newTypeAlias });
+    fireEvent.change(within(form).getByLabelText(M.aliasName), { target: { value: 'a.b' } });
+    expect(insertButton(form).disabled).toBe(true);
+    expect(within(form).getByRole('alert').textContent).toBe(M.invalidName);
+  });
+
+  it('添加字段：已有字段重名被拒', () => {
+    renderTab(fakeEditor(SOURCE), SOURCE);
+    fireEvent.click(screen.getByRole('button', { name: ADD_FIELD_PERSON }));
+    const form = screen.getByRole('form', { name: ADD_FIELD_PERSON });
+    fireEvent.change(within(form).getByLabelText(M.fieldName), { target: { value: 'age' } });
+    expect(insertButton(form).disabled).toBe(true);
+    expect(within(form).getByRole('alert').textContent).toBe(M.duplicateName);
+  });
+});
+
+describe('ModelTab 类型下拉含枚举', () => {
+  it('Define X as one of … 声明的枚举可作为字段类型', () => {
+    const src = `${SOURCE}\n\nDefine Level as one of Low, High.`;
+    renderTab(fakeEditor(src), src);
+    fireEvent.click(screen.getByRole('button', { name: M.newStruct }));
+    const select = screen.getAllByLabelText(M.fieldType)[0] as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.value)).toContain('Level');
+  });
+});
+
+describe('ModelTab 没有字段的结构体', () => {
+  it('添加字段不静默：显示说明且不写编辑器', () => {
+    const original = vi.mocked(buildModelOutline).getMockImplementation()!;
+    vi.mocked(buildModelOutline).mockReturnValue({
+      structs: [{ name: 'Empty', span: { start: { line: 1, col: 1 }, end: { line: 1, col: 14 } }, fields: [] }],
+      enums: [],
+      typeAliases: [],
+      imports: [],
+    });
+    const editor = fakeEditor('Define Empty.');
+    renderTab(editor, 'Define Empty.');
+    const label = M.addFieldTo.replace('{name}', 'Empty');
+    fireEvent.click(screen.getByRole('button', { name: label }));
+    const form = screen.getByRole('form', { name: label });
+    fireEvent.change(within(form).getByLabelText(M.fieldName), { target: { value: 'x' } });
+    fireEvent.click(within(form).getByRole('button', { name: M.insert }));
+    expect(editor.executeEdits).not.toHaveBeenCalled();
+    expect(screen.getByRole('status').textContent).toBe(M.emptyStruct);
+    vi.mocked(buildModelOutline).mockImplementation(original);
   });
 });

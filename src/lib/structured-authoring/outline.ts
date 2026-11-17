@@ -1,6 +1,9 @@
 /**
  * 模型标签页的大纲（ADR 0058 §8.3）：从浏览器编译的 AST 取结构体（含字段）、类型别名与导入别名。
  *
+ * 本函数对同一份源码另行 compile 一次（编辑器的 compileAndTypecheck 不返回 AST），源码上限 12 KiB、
+ * 只在模型标签挂载且源码变化时执行，成本可接受，故有意不复用。
+ *
  * 位置一律取 AST span（1 起始行列，end 不含），与 Monaco 行列一致。类型按作者源码原文截取，
  * 因此本地化写法（如「整数」「Ganzzahl」）原样显示；推断类型的字段没有类型原文，显示本地化内置名。
  */
@@ -11,6 +14,8 @@ export type { Span };
 
 export interface ModelOutline {
   structs: Array<{ name: string; span: Span; fields: Array<{ name: string; type: string; span: Span }> }>;
+  /** 枚举声明（只供类型下拉使用，界面不单列）。 */
+  enums: Array<{ name: string; span: Span }>;
   typeAliases: Array<{ name: string; target: string; span: Span }>;
   imports: Array<{ alias: string; module: string; span: Span }>;
 }
@@ -32,7 +37,7 @@ export function buildModelOutline(source: string, lexicon: Lexicon): ModelOutlin
     return type.kind === 'TypeName' ? localizeBuiltinType(lexicon, type.name) : type.kind;
   };
 
-  const outline: ModelOutline = { structs: [], typeAliases: [], imports: [] };
+  const outline: ModelOutline = { structs: [], enums: [], typeAliases: [], imports: [] };
   for (const decl of ast.decls) {
     if (decl.kind === 'Data') {
       outline.structs.push({
@@ -40,6 +45,8 @@ export function buildModelOutline(source: string, lexicon: Lexicon): ModelOutlin
         span: decl.span,
         fields: decl.fields.map((f) => ({ name: f.name, type: typeText(f.type, f.typeInferred === true), span: f.span })),
       });
+    } else if (decl.kind === 'Enum') {
+      outline.enums.push({ name: decl.name, span: decl.span });
     } else if (decl.kind === 'Import' && decl.asName) {
       // 只列导入别名（ADR 0058 D4）；无 `as` 的导入不是别名
       outline.imports.push({ alias: decl.asName, module: decl.name, span: decl.span });

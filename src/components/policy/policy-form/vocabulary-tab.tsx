@@ -137,7 +137,7 @@ export function VocabularyTab({ editor, terms, teamId = null, policyLocale = '' 
       // 新标签页打开，避免离开编辑器丢失未保存的编辑
       target="_blank"
       rel="noopener noreferrer"
-      className="text-xs text-primary underline-offset-2 hover:underline"
+      className="rounded text-xs text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:shadow-ring"
     >
       {t('manage')}
     </a>
@@ -221,7 +221,7 @@ function TermGroup({ title, testId, items, byParent, onInsert }: TermGroupProps)
               <li key={`${term.domain}/${term.locale}/${term.parent ?? ''}/${term.canonical}/${term.localized}`}>
                 <button
                   type="button"
-                  className="flex w-full items-baseline justify-between gap-2 rounded px-2 py-1 text-left hover:bg-bg-muted"
+                  className="flex w-full items-baseline justify-between gap-2 rounded px-2 py-1 text-left hover:bg-bg-muted focus-visible:outline-none focus-visible:shadow-ring"
                   onClick={() => onInsert(term)}
                 >
                   <span>{term.localized}</span>
