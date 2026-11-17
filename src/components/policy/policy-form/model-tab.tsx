@@ -14,8 +14,15 @@ import { useId, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { useTranslations } from 'next-intl';
 import { Plus, X } from 'lucide-react';
-import type { Lexicon } from '@aster-cloud/aster-lang-ts/browser';
+import { foldKey, type Lexicon } from '@aster-cloud/aster-lang-ts/browser';
 import { Button, Input, Label, Select } from '@/components/ui';
+import {
+  fieldNameRoundTrips,
+  isValidFieldName,
+  isValidTypeName,
+  structNameRoundTrips,
+  typeAliasNameRoundTrips,
+} from '@/lib/structured-authoring/name-validation';
 import { buildModelOutline, type ModelOutline, type Span } from '@/lib/structured-authoring/outline';
 import {
   buildFieldClause,
@@ -47,10 +54,14 @@ export function ModelTab({ editor, source, lexicon }: ModelTabProps) {
   // 记录触发过期提示时的大纲源码：源码变化（大纲已刷新）后提示自动失效
   const [staleSource, setStaleSource] = useState<string | null>(null);
   const stale = staleSource === source;
+  // 空结构体无法追加字段时的说明（文法不允许零字段结构体，保持表单打开并明示）
+  const [emptyStruct, setEmptyStruct] = useState(false);
+  const takenTypeNames = useMemo(() => collectTakenTypeNames(outline), [outline]);
 
   const close = () => {
     setOpenForm(null);
     setStaleSource(null);
+    setEmptyStruct(false);
   };
 
   const jump = (span: Span) => {
@@ -73,7 +84,10 @@ export function ModelTab({ editor, source, lexicon }: ModelTabProps) {
     }
     const struct = outline.structs.find((s) => s.name === structName);
     const last = struct?.fields[struct.fields.length - 1];
-    if (!last) return;
+    if (!last) {
+      setEmptyStruct(true);
+      return;
+    }
     const text = ` ${lexicon.keywords[SemanticTokenKind.AND]} ${buildFieldClause(lexicon, field)}`;
     insertAt(editor, last.span.end, text);
     close();
@@ -82,16 +96,26 @@ export function ModelTab({ editor, source, lexicon }: ModelTabProps) {
   return (
     <div className="space-y-4 text-sm">
       <p className="text-xs text-fg-muted">{t('hint')}</p>
-      <OutlineView outline={outline} onJump={jump} onAddField={(struct) => setOpenForm({ kind: 'field', struct })} />
+      <OutlineView outline={outline} onJump={jump} onAddField={(struct) => {
+          setEmptyStruct(false);
+          setOpenForm({ kind: 'field', struct });
+        }} />
       {stale && (
         <p role="status" className="text-xs text-warning">
           {t('outlineStale')}
+        </p>
+      )}
+      {emptyStruct && (
+        <p role="status" className="text-xs text-warning">
+          {t('emptyStruct')}
         </p>
       )}
       {openForm?.kind === 'field' && (
         <FieldForm
           key={openForm.struct}
           structName={openForm.struct}
+          lexicon={lexicon}
+          existingFields={outline?.structs.find((x) => x.name === openForm.struct)?.fields.map((f) => f.name) ?? []}
           typeOptions={typeOptions}
           onCancel={close}
           onSubmit={(field) => insertField(openForm.struct, field)}
@@ -99,6 +123,8 @@ export function ModelTab({ editor, source, lexicon }: ModelTabProps) {
       )}
       {openForm?.kind === 'struct' && (
         <StructForm
+          lexicon={lexicon}
+          takenNames={takenTypeNames}
           typeOptions={typeOptions}
           onCancel={close}
           onSubmit={(input) => insertAtEnd(buildStructSource(lexicon, input))}
@@ -106,6 +132,8 @@ export function ModelTab({ editor, source, lexicon }: ModelTabProps) {
       )}
       {openForm?.kind === 'alias' && (
         <AliasForm
+          lexicon={lexicon}
+          takenNames={takenTypeNames}
           typeOptions={typeOptions}
           onCancel={close}
           onSubmit={(input) => insertAtEnd(buildTypeAliasSource(lexicon, input))}
@@ -146,15 +174,33 @@ function appendDeclaration(editor: MonacoEditor.IStandaloneCodeEditor, declarati
   return true;
 }
 
-/** 类型下拉：本地化内置类型 + 大纲里声明的结构体与类型别名（去重、保持顺序）。 */
+/** 类型下拉：本地化内置类型 + 大纲里声明的结构体、枚举与类型别名（去重、保持顺序）。 */
 function collectTypeOptions(lexicon: Lexicon, outline: ModelOutline | null): string[] {
   const names = [
     ...builtinTypeNames(lexicon),
     ...(outline?.structs.map((s) => s.name) ?? []),
+    ...(outline?.enums.map((e) => e.name) ?? []),
     ...(outline?.typeAliases.map((a) => a.name) ?? []),
   ];
   return [...new Set(names)];
 }
+
+/**
+ * 已被占用的类型名：结构体、枚举、类型别名与导入别名——编译器把它们放在同一组查重
+ * （resolve-declarations 的 importAliasSite）。
+ */
+function collectTakenTypeNames(outline: ModelOutline | null): ReadonlySet<string> {
+  const names = [
+    ...(outline?.structs.map((s) => s.name) ?? []),
+    ...(outline?.enums.map((e) => e.name) ?? []),
+    ...(outline?.typeAliases.map((a) => a.name) ?? []),
+    ...(outline?.imports.map((i) => i.alias) ?? []),
+  ];
+  return new Set(names.map(foldName));
+}
+
+/** 与编译器查重同口径的折叠（ADR 0051 §6.3：NFC + 大小写折叠）。 */
+const foldName = (name: string) => foldKey(name.trim());
 
 /* ------------------------------------------------------------------ */
 /* 大纲                                                                */
@@ -264,15 +310,65 @@ function OutlineItem({
 
 const isFilled = (value: string) => value.trim().length > 0;
 
+/**
+ * invalid：不是单个词（词法预检）；reserved：单个词，但放进声明后不能按原名读回（关键词、冠词等，
+ * 往返校验）；duplicate：与已有名字重名。
+ */
+type NameProblem = 'invalid' | 'reserved' | 'duplicate' | null;
+
+/** 类型名按角色往返：结构体名与类型别名名的声明上下文不同（德语 `Type der als …` 不能解析）。 */
+const TYPE_NAME_ROUND_TRIP = { struct: structNameRoundTrips, alias: typeAliasNameRoundTrips } as const;
+
+/** 类型名（结构体 / 类型别名）：须是单个标识符、能按原名读回，且不与已有类型名冲突；空串不报错（仅禁用提交）。 */
+function typeNameProblem(
+  lexicon: Lexicon,
+  role: keyof typeof TYPE_NAME_ROUND_TRIP,
+  name: string,
+  taken: ReadonlySet<string>,
+): NameProblem {
+  if (!isFilled(name)) return null;
+  if (!isValidTypeName(lexicon, name)) return 'invalid';
+  if (!TYPE_NAME_ROUND_TRIP[role](lexicon, name)) return 'reserved';
+  return taken.has(foldName(name)) ? 'duplicate' : null;
+}
+
+/** 字段名：须是单个标识符、能按原名读回，且不与同结构体已有字段（或本表单其他行）重名。 */
+function fieldNameProblem(lexicon: Lexicon, name: string, taken: readonly string[]): NameProblem {
+  if (!isFilled(name)) return null;
+  if (!isValidFieldName(lexicon, name)) return 'invalid';
+  if (!fieldNameRoundTrips(lexicon, name)) return 'reserved';
+  return taken.some((t) => foldName(t) === foldName(name)) ? 'duplicate' : null;
+}
+
+const PROBLEM_MESSAGE_KEY = {
+  invalid: 'invalidName',
+  reserved: 'reservedName',
+  duplicate: 'duplicateName',
+} as const;
+
+function ProblemMessage({ problem }: { problem: NameProblem }) {
+  const t = useTranslations('policyEditor.modelTab');
+  if (!problem) return null;
+  return (
+    <p role="alert" className="text-xs text-danger">
+      {t(PROBLEM_MESSAGE_KEY[problem])}
+    </p>
+  );
+}
+
+const firstProblem = (...problems: NameProblem[]): NameProblem => problems.find((p) => p !== null) ?? null;
+
 function FormShell({
   title,
   canSubmit,
+  problem,
   onSubmit,
   onCancel,
   children,
 }: {
   title: string;
   canSubmit: boolean;
+  problem: NameProblem;
   onSubmit: () => void;
   onCancel: () => void;
   children: ReactNode;
@@ -286,6 +382,7 @@ function FormShell({
     <form aria-label={title} onSubmit={handleSubmit} className="space-y-3 rounded-lg border border-border p-3">
       <h3 className="text-sm font-semibold text-fg">{title}</h3>
       {children}
+      <ProblemMessage problem={problem} />
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
           {t('cancel')}
@@ -374,10 +471,14 @@ function FieldRow({
 }
 
 function StructForm({
+  lexicon,
+  takenNames,
   typeOptions,
   onSubmit,
   onCancel,
 }: {
+  lexicon: Lexicon;
+  takenNames: ReadonlySet<string>;
   typeOptions: string[];
   onSubmit: (input: { name: string; fields: FieldInput[] }) => void;
   onCancel: () => void;
@@ -386,12 +487,28 @@ function StructForm({
   const blankField = (): FieldInput => ({ name: '', type: typeOptions[0] ?? '' });
   const [name, setName] = useState('');
   const [fields, setFields] = useState<FieldInput[]>(() => [blankField()]);
-  const canSubmit = isFilled(name) && fields.every((f) => isFilled(f.name) && isFilled(f.type));
+  const problem = firstProblem(
+    typeNameProblem(lexicon, 'struct', name, takenNames),
+    ...fields.map((f, i) =>
+      fieldNameProblem(
+        lexicon,
+        f.name,
+        fields.slice(0, i).map((prev) => prev.name),
+      ),
+    ),
+  );
+  const canSubmit = isFilled(name) && fields.every((f) => isFilled(f.name) && isFilled(f.type)) && problem === null;
   const updateField = (index: number, next: FieldInput) => setFields((all) => all.map((f, i) => (i === index ? next : f)));
   const removeField = (index: number) => setFields((all) => all.filter((_, i) => i !== index));
 
   return (
-    <FormShell title={t('newStruct')} canSubmit={canSubmit} onCancel={onCancel} onSubmit={() => onSubmit({ name, fields })}>
+    <FormShell
+      title={t('newStruct')}
+      canSubmit={canSubmit}
+      problem={problem}
+      onCancel={onCancel}
+      onSubmit={() => onSubmit({ name, fields })}
+    >
       <TextField label={t('structName')} value={name} onChange={setName} />
       {fields.map((field, index) => (
         <FieldRow
@@ -411,21 +528,27 @@ function StructForm({
 
 function FieldForm({
   structName,
+  lexicon,
+  existingFields,
   typeOptions,
   onSubmit,
   onCancel,
 }: {
   structName: string;
+  lexicon: Lexicon;
+  existingFields: readonly string[];
   typeOptions: string[];
   onSubmit: (field: FieldInput) => void;
   onCancel: () => void;
 }) {
   const t = useTranslations('policyEditor.modelTab');
   const [field, setField] = useState<FieldInput>({ name: '', type: typeOptions[0] ?? '' });
+  const problem = fieldNameProblem(lexicon, field.name, existingFields);
   return (
     <FormShell
       title={t('addFieldTo', { name: structName })}
-      canSubmit={isFilled(field.name) && isFilled(field.type)}
+      canSubmit={isFilled(field.name) && isFilled(field.type) && problem === null}
+      problem={problem}
       onCancel={onCancel}
       onSubmit={() => onSubmit(field)}
     >
@@ -435,10 +558,14 @@ function FieldForm({
 }
 
 function AliasForm({
+  lexicon,
+  takenNames,
   typeOptions,
   onSubmit,
   onCancel,
 }: {
+  lexicon: Lexicon;
+  takenNames: ReadonlySet<string>;
   typeOptions: string[];
   onSubmit: (input: { name: string; target: string }) => void;
   onCancel: () => void;
@@ -446,10 +573,12 @@ function AliasForm({
   const t = useTranslations('policyEditor.modelTab');
   const [name, setName] = useState('');
   const [target, setTarget] = useState(typeOptions[0] ?? '');
+  const problem = typeNameProblem(lexicon, 'alias', name, takenNames);
   return (
     <FormShell
       title={t('newTypeAlias')}
-      canSubmit={isFilled(name) && isFilled(target)}
+      canSubmit={isFilled(name) && isFilled(target) && problem === null}
+      problem={problem}
       onCancel={onCancel}
       onSubmit={() => onSubmit({ name, target })}
     >

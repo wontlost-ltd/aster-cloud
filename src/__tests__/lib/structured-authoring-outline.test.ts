@@ -63,6 +63,11 @@ describe('buildModelOutline', () => {
   });
 
   it('空源码返回空大纲', () => {
-    expect(buildModelOutline('', EN_US)).toEqual({ structs: [], typeAliases: [], imports: [] });
+    expect(buildModelOutline('', EN_US)).toEqual({ structs: [], enums: [], typeAliases: [], imports: [] });
+  });
+
+  it('收集枚举声明（供类型下拉使用）', () => {
+    const outline = buildModelOutline('Module demo.\n\nDefine Level as one of Low, High.\n', EN_US);
+    expect(outline?.enums.map((e) => e.name)).toEqual(['Level']);
   });
 });

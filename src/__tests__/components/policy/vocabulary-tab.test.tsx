@@ -119,6 +119,14 @@ describe('VocabularyTab 插入', () => {
   });
 });
 
+describe('VocabularyTab 焦点样式', () => {
+  it('术语按钮与管理链接带可见焦点环', () => {
+    renderTab(fakeEditor());
+    expect(screen.getByRole('button', { name: /bewerte/ }).className).toContain('focus-visible:shadow-ring');
+    expect(screen.getByRole('link', { name: M.manage }).className).toContain('focus-visible:shadow-ring');
+  });
+});
+
 describe('VocabularyTab 加为术语', () => {
   it('无选区时按钮禁用', () => {
     renderTab(fakeEditor(''));
