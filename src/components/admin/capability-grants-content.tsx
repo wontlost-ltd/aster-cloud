@@ -184,7 +184,7 @@ export function CapabilityGrantsContent() {
         <Input className="mt-1" value={query} onChange={(event) => setQuery(event.target.value)} />
       </label>
       {error && <p role="alert" className="mb-4 text-sm text-red-700">{error}</p>}
-      <div className="overflow-x-auto rounded-lg border border-border">
+      <div tabIndex={0} role="region" aria-label={t(tab === 'users' ? 'tabUsers' : 'tabTeams')} data-scroll-region className="overflow-x-auto rounded-lg border border-border">
         {tab === 'users' ? (
           <table className="w-full text-left text-sm">
             <thead className="bg-bg-muted">

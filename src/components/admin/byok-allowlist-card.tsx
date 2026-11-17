@@ -78,7 +78,7 @@ export function ByokAllowlistCard() {
   const sourceBadge = (source: EndpointView['source']) => {
     const variant =
       source === 'dynamic' ? 'success' : source === 'builtin' ? 'primary' : 'neutral';
-    return <Badge variant={variant}>{t(`source.${source}`)}</Badge>;
+    return <Badge variant={variant} className="shrink-0">{t(`source.${source}`)}</Badge>;
   };
 
   return (
@@ -99,7 +99,7 @@ export function ByokAllowlistCard() {
               onChange={(e) => setNewHost(e.target.value)}
               placeholder={t('addPlaceholder')}
               disabled={busy}
-              className="flex-1"
+              className="min-w-0 flex-1"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && newHost.trim()) void mutate('add', newHost.trim());
               }}
@@ -124,8 +124,9 @@ export function ByokAllowlistCard() {
                   key={`${e.source}:${e.host}:${e.port}:${e.pathPrefix}`}
                   className="flex items-center justify-between gap-3"
                 >
+                  {/* 长主机名没有断点：任意处折行而不是截断，完整可见、可选中复制 */}
                   <Stack direction="row" gap={2} align="center" className="min-w-0 flex-1">
-                    <code className="truncate text-sm font-medium text-fg">
+                    <code className="min-w-0 text-sm font-medium text-fg [overflow-wrap:anywhere]">
                       {e.host}
                       {e.port !== 443 ? `:${e.port}` : ''}
                       {e.pathPrefix}

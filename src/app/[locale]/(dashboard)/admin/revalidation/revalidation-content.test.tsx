@@ -68,6 +68,24 @@ describe('RevalidationContent 发起流程', () => {
     expect(screen.getByText(/progress: 0\/0/)).toBeTruthy();
   });
 
+  it('工具链标识在每个 ; 后可换行，文本仍是完整原值（窄屏不撑出视口，可整段复制）', async () => {
+    const toolchainId = 'abi=1.1;core=1.0.47;validator=1;resolver=1;casefold=15.1;build=a68b8793389c2d59e2bb6530aa27c02861aba0f9';
+    window.localStorage.setItem('aster.admin.revalidation.recentRunId', 'r0');
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).includes('/runs/r0')) return new Response(JSON.stringify({ runId: 'r0', status: 'done', toolchainId }), { status: 200 });
+      return new Response(JSON.stringify({ items: [] }), { status: 200 });
+    });
+    const { container } = render(<RevalidationContent />);
+    const code = await waitFor(() => {
+      const el = container.querySelector('code');
+      if (!el) throw new Error('toolchain id not rendered');
+      return el;
+    });
+    expect(code.textContent).toBe(toolchainId);
+    expect(code.querySelectorAll('wbr')).toHaveLength(5);
+    expect(code.className).toContain('[overflow-wrap:anywhere]');
+  });
+
   it('点启动先取预估、开对话框，不弹原生 confirm，也不发 POST', async () => {
     render(<RevalidationContent />);
     clickStart();

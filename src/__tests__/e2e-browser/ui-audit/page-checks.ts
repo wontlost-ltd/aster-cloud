@@ -19,6 +19,8 @@ export interface LayoutReport {
   overflowOffenders: Offender[];
   smallTargets: Array<Offender & { min: number }>;
   cardIssues: Array<{ kind: 'height' | 'padding' | 'overlap' | 'overflow'; grid: string; detail: string }>;
+  /** 网格 / 弹性布局的子项越出容器内容盒（容器本身不滚动、不裁剪）：与视口宽度无关，宽卡片撑大隐式列即属此类 */
+  containerOverflow: Array<Offender & { container: string; by: number }>;
   dataTheme: string | null;
 }
 
@@ -279,12 +281,48 @@ export function collectLayout(opts: { mobile: boolean; minTarget: number }): Lay
     }
   }
 
+  // 4. 子项越出网格 / 弹性容器（#774）：卡片网格的卡片检查只比「卡片内的后代 vs 卡片边缘」，当卡片本身被最长内容
+  //    撑宽（未声明列宽的 grid 隐式列为 auto，网格项 min-width:auto）时所有卡片一样宽、内容也都在卡片内，规则看不见；
+  //    页面级横向溢出也只在溢出恰好越过视口时才报。这里直接比每个子项与其父容器的内容盒右缘。
+  //    父容器自身可横向滚动 / 裁剪、子项绝对 / 固定定位、或位于横向滚动容器内的，不算。
+  //    只豁免可横向滚动（auto / scroll）的祖先——内容仍可滚动到达；被 hidden / clip 祖先裁掉的越界恰恰是「够不着」，照报。
+  const insideHorizontalScroller = (el: Element) => {
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      const ox = getComputedStyle(p).overflowX;
+      if (ox === 'auto' || ox === 'scroll') return true;
+    }
+    return false;
+  };
+  const spills: Array<{ parent: HTMLElement; child: Element; by: number }> = [];
+  for (const parent of Array.from(document.body.querySelectorAll<HTMLElement>('*'))) {
+    const pcs = getComputedStyle(parent);
+    if (!/^(inline-)?(grid|flex)$/.test(pcs.display) || !visible(parent)) continue;
+    if (pcs.overflowX !== 'visible' || insideHorizontalScroller(parent)) continue;
+    const pr = parent.getBoundingClientRect();
+    const contentRight = pr.right - (parseFloat(pcs.borderRightWidth) || 0) - (parseFloat(pcs.paddingRight) || 0);
+    for (const child of Array.from(parent.children)) {
+      const pos = getComputedStyle(child).position;
+      if (pos === 'absolute' || pos === 'fixed' || !visible(child)) continue;
+      const by = Math.round(child.getBoundingClientRect().right - contentRight);
+      if (by > 1) {
+        spills.push({ parent, child, by });
+        break;
+      }
+    }
+  }
+  // 只报最深的那层：外层容器越界往往只是内层越界的连带（越界子项里还包含别的越界容器时，交给里层报告）
+  const containerOverflow: LayoutReport['containerOverflow'] = spills
+    .filter((o) => !spills.some((d) => d !== o && o.child.contains(d.parent)))
+    .slice(0, 8)
+    .map((o) => ({ selector: sel(o.child), text: textOf(o.child), box: boxOf(o.child), container: sel(o.parent), by: o.by }));
+
   return {
     scrollWidth,
     clientWidth: vw,
     overflowOffenders,
     smallTargets,
     cardIssues: cardIssues.slice(0, 20),
+    containerOverflow,
     dataTheme: document.documentElement.getAttribute('data-theme'),
   };
 }

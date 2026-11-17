@@ -151,7 +151,7 @@ function SamlPanel({ config }: { config: SsoSamlConfig }) {
           </DetailRow>
           <DetailRow label={t('saml.certFingerprint')}>
             {config.idpCertFingerprint ? (
-              <code className="font-mono text-xs">
+              <code className="break-all font-mono text-xs">
                 {config.idpCertFingerprint}
               </code>
             ) : (
@@ -267,7 +267,8 @@ function DetailRow({
   return (
     <>
       <dt className="text-fg-muted">{label}</dt>
-      <dd className="sm:col-span-2">{children}</dd>
+      {/* min-w-0 + 可断行：ACS / 回调 URL、证书指纹都是无空格长串，窄屏下不得撑出视口 */}
+      <dd className="min-w-0 break-words sm:col-span-2">{children}</dd>
     </>
   );
 }
@@ -287,13 +288,13 @@ function CopyableValue({ value }: { value: string }) {
   };
 
   return (
-    <span className="inline-flex items-center gap-2">
-      <code className="font-mono text-xs">{value}</code>
+    <span className="inline-flex max-w-full items-center gap-2">
+      <code className="min-w-0 break-all font-mono text-xs">{value}</code>
       <button
         type="button"
         onClick={handleCopy}
         aria-label={t('copyValue', { label: value })}
-        className="rounded border border-border px-1.5 py-0.5 text-xs text-fg-muted hover:bg-bg-subtle hover:text-fg focus:outline-none focus:ring-2 focus:ring-primary/40"
+        className="shrink-0 rounded border border-border px-1.5 py-0.5 text-xs text-fg-muted hover:bg-bg-subtle hover:text-fg focus:outline-none focus:ring-2 focus:ring-primary/40"
       >
         {copied ? t('copied') : t('copy')}
       </button>

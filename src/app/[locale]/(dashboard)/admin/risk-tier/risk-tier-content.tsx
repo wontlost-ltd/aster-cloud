@@ -331,7 +331,7 @@ function OverrideModal({
       <div className="w-full max-w-md rounded-lg bg-bg p-6 shadow-xl dark:bg-gray-900">
         <h3 className="text-lg font-semibold">{t('title')}</h3>
         <p className="mt-2 text-sm text-fg-muted dark:text-fg-subtle">
-          <span className="font-mono">{row.email ?? row.id}</span>
+          <span className="break-all font-mono">{row.email ?? row.id}</span>
         </p>
         <p className="mt-1 text-xs text-fg-muted">
           {t('currentTier')}: <span className={`rounded px-1 ${TIER_COLORS[row.riskTier]}`}>
