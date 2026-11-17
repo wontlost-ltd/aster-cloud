@@ -2,7 +2,9 @@
 
 import {
   AlertTriangle,
+  BookMarked,
   BookOpen,
+  Boxes,
   LayoutTemplate,
   type LucideIcon,
   Settings,
@@ -11,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/components/ui';
+import type { StructuredAuthoringProps } from '@/lib/capabilities/types';
 import type { SidePanelTab } from './side-panel';
 
 interface EditorRailProps {
@@ -18,6 +21,7 @@ interface EditorRailProps {
   open: boolean;
   errorCount: number;
   onSelect: (tab: SidePanelTab) => void;
+  structuredAuthoring: StructuredAuthoringProps;
 }
 
 export function EditorRail({
@@ -25,8 +29,10 @@ export function EditorRail({
   open,
   errorCount,
   onSelect,
+  structuredAuthoring,
 }: EditorRailProps) {
   const t = useTranslations('policies.form');
+  const tEditor = useTranslations('policyEditor');
   const tAliases = useTranslations('policies.form.aliases');
   const items: Array<{
     tab: SidePanelTab;
@@ -47,6 +53,12 @@ export function EditorRail({
     { tab: 'ai', label: t('sidePanelAI'), icon: Sparkles },
     { tab: 'syntax', label: t('sidePanelSyntax'), icon: BookOpen },
     { tab: 'templates', label: t('sidePanelTemplates'), icon: LayoutTemplate },
+    ...(structuredAuthoring.allowed
+      ? [
+          { tab: 'model' as const, label: tEditor('tabModel'), icon: Boxes },
+          { tab: 'vocabulary' as const, label: tEditor('tabVocabulary'), icon: BookMarked },
+        ]
+      : []),
   ];
 
   return (

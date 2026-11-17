@@ -47,6 +47,15 @@ export function useDomainVocabularyInvalidate(
   return tick;
 }
 
+/**
+ * 立即补一次版本轮询（本页自己写入词汇后调用），让订阅者无需等下一个轮询周期即可刷新。
+ * 没有订阅者或页面不可见时无操作。
+ */
+export function pollDomainVocabularyNow(teamId?: string | null): void {
+  const url = teamId ? `${DEFAULT_URL}?teamId=${encodeURIComponent(teamId)}` : DEFAULT_URL;
+  pollers.get(url)?.wake();
+}
+
 /** 一个 URL 对应一个轮询器；listeners 为空时拆除。 */
 interface Poller {
   listeners: Set<() => void>;

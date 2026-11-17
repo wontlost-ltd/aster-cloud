@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { editor } from 'monaco-editor';
 import { localizeSyntaxDiagnostic, type SyntaxDiagnosticLike } from '@/lib/syntax-diagnostic-message';
 import type { EditorCnlLocale } from '@/lib/cnl-locale';
+import { withUserAliases } from '@/lib/aster-lexicon';
 import {
   compileAndTypecheck,
   extractSchema,
@@ -82,6 +83,8 @@ export interface UseAsterCompilerOptions {
 export interface UseAsterCompilerResult {
   /** Last compilation result */
   compileResult: CompileResult | null;
+  /** 产出 compileResult 的那份源码（防抖后的实时编译输入；空源码为空串）。 */
+  compiledSource: string;
   /** Whether currently compiling */
   compiling: boolean;
   /** Validation errors (for display) */
@@ -167,6 +170,7 @@ export function useAsterCompiler({
   enableValidation = true,
 }: UseAsterCompilerOptions): UseAsterCompilerResult {
   const [compileResult, setCompileResult] = useState<CompileResult | null>(null);
+  const [compiledSource, setCompiledSource] = useState('');
   const [compiling, setCompiling] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [diagnostics, setDiagnostics] = useState<TypecheckDiagnostic[]>([]);
@@ -183,18 +187,7 @@ export function useAsterCompiler({
   monacoRef.current = monaco;
 
   const baseLexicon = LEXICON_MAP[locale];
-  const lexicon = useMemo(
-    () => userAliasSet && Object.keys(userAliasSet).length > 0
-      ? {
-          ...baseLexicon,
-          aliases: {
-            ...((baseLexicon as { aliases?: Record<string, readonly string[]> }).aliases ?? {}),
-            ...userAliasSet,
-          },
-        }
-      : baseLexicon,
-    [baseLexicon, userAliasSet],
-  );
+  const lexicon = useMemo(() => withUserAliases(baseLexicon, userAliasSet), [baseLexicon, userAliasSet]);
 
   /**
    * Get the current source code from the editor
@@ -273,6 +266,7 @@ export function useAsterCompiler({
     if (!source) {
       // 空源码：清空实时编译结果 + 诊断（否则 module 摘要/Problems 会停留在上一次旧值）。
       setCompileResult(null);
+      setCompiledSource('');
       setDiagnostics([]);
       setErrors([]);
       return [];
@@ -283,6 +277,7 @@ export function useAsterCompiler({
       // 实时校验也保存 compileResult，使消费方（如上抛给父层的 module 摘要）能拿到
       // 最新 Core IR，而不必单独调 compileSource()。二者本质是同一 compileAndTypecheck 调用。
       setCompileResult(result);
+      setCompiledSource(source);
 
       const allDiagnostics = collectCompileDiagnostics(result, locale);
 
@@ -298,6 +293,7 @@ export function useAsterCompiler({
       setDiagnostics([errorDiag]);
       setErrors([errorDiag.message]);
       setCompileResult(null); // 解析崩溃 → 无有效 module
+      setCompiledSource(source);
       return [errorDiag];
     }
   }, [getSource, lexicon, locale, vocabulary, domain, tenantId]);
@@ -313,6 +309,7 @@ export function useAsterCompiler({
     try {
       const result = compileAndTypecheck(source, { lexicon, vocabulary, domain, tenantId });
       setCompileResult(result);
+      setCompiledSource(source);
 
       const allDiagnostics = collectCompileDiagnostics(result, locale);
 
@@ -414,6 +411,7 @@ export function useAsterCompiler({
 
   return {
     compileResult,
+    compiledSource,
     compiling,
     errors,
     diagnostics,

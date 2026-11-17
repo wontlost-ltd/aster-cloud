@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { editor } from 'monaco-editor';
 import { useTranslations } from 'next-intl';
 import {
   Sparkles,
   BookOpen,
+  BookMarked,
+  Boxes,
   LayoutTemplate,
   AlertTriangle,
   Settings,
@@ -19,6 +21,7 @@ import { useSuppressAssistantLauncher } from '@/components/assistant/assistant-c
 import type { AiWorkspaceConfig } from '@/components/ai-workspace-context';
 import { CNLSyntaxReferencePanel } from '@/components/policy/cnl-syntax-reference-panel';
 import { PolicyAliasPanel } from '@/components/policy/policy-alias-panel';
+import type { StructuredAuthoringProps } from '@/lib/capabilities/types';
 import type { ReservedSets } from '@/lib/policy-alias-shared';
 import {
   defaultControlRegistry,
@@ -45,6 +48,10 @@ import {
 import { cn } from '@/components/ui';
 import { useIsMobile } from './use-is-mobile';
 import { VocabularyDiagnosticLink } from '@/components/policy/vocabulary-diagnostic-link';
+import { getLexicon, withUserAliases } from '@/lib/aster-lexicon';
+import { ModelTab } from './model-tab';
+import { VocabularyTab } from './vocabulary-tab';
+import type { VocabularyTabTerm } from '@/hooks/useUserVocabularyRegistration';
 
 /** 侧栏容器可见的视口条件，与 index.tsx 中 `lg:flex` 一致。 */
 const PANEL_VISIBLE_QUERY = '(min-width: 1024px)';
@@ -75,7 +82,12 @@ export type SidePanelTab =
   | 'problems'
   | 'ai'
   | 'syntax'
-  | 'templates';
+  | 'templates'
+  // 以下两个标签仅在 structuredAuthoring.allowed 时出现（ADR 0058 §8.3）
+  | 'model'
+  | 'vocabulary';
+
+const NO_VOCABULARY_TERMS: ReadonlyArray<VocabularyTabTerm> = [];
 
 export interface SidePanelProps {
   editor: editor.IStandaloneCodeEditor | null;
@@ -96,6 +108,8 @@ export interface SidePanelProps {
   aliasSet: Record<string, string[]>;
   reservedSets: ReservedSets;
   allowStructuralAliases: boolean;
+  /** 结构化编写能力的服务端判定；allowed 为假时不渲染「模型 / 词汇」标签及其内容。 */
+  structuredAuthoring: StructuredAuthoringProps;
   onAliasSetChange: (aliasSet: Record<string, string[]>) => void;
   /** Apply a generated/template body to the form's main content. */
   onApplyContent: (content: string) => void;
@@ -109,6 +123,12 @@ export interface SidePanelProps {
   compileState?: CompileState;
   compileDiagnostics?: CompileDiagnostic[];
   compileModule?: CompileModuleSummary;
+  /** 最近一次防抖编译所用的源码（模型标签页的大纲据此解析）。 */
+  compileSource?: string;
+  /** 词汇标签页的术语（来自编辑器已拉取的词条）。 */
+  vocabularyTerms?: ReadonlyArray<VocabularyTabTerm>;
+  /** 策略所属团队（词汇标签页据此把新术语写入团队词汇）。 */
+  teamId?: string | null;
   /** Click a diagnostic row → jump to the offending line in Monaco. */
   onJumpToLine?: (line: number, column: number) => void;
   /** Externally request a specific tab (e.g. compile errored → focus
@@ -137,6 +157,7 @@ export function SidePanel({
   aliasSet,
   reservedSets,
   allowStructuralAliases,
+  structuredAuthoring,
   onAliasSetChange,
   onApplyContent,
   starterSource = null,
@@ -145,12 +166,16 @@ export function SidePanel({
   compileState,
   compileDiagnostics,
   compileModule,
+  compileSource = '',
+  vocabularyTerms = NO_VOCABULARY_TERMS,
+  teamId = null,
   onJumpToLine,
   initialTab,
   policyId = null,
   aiWorkspace = null,
 }: SidePanelProps) {
   const t = useTranslations('policies.form');
+  const tEditor = useTranslations('policyEditor');
   const [tab, setTab] = useState<SidePanelTab>(initialTab ?? 'ai');
   // Whenever the parent bumps the requested tab (e.g. compile errored),
   // honor it without losing user-selected state otherwise.
@@ -170,6 +195,8 @@ export function SidePanel({
   useSuppressAssistantLauncher(tab === 'ai' && panelVisible);
   const errorCount =
     compileDiagnostics?.filter((d) => d.severity === 'error').length ?? 0;
+  // 模型大纲与编辑器编译用同一份 lexicon（含策略关键词别名），否则用了别名的源码大纲为空
+  const modelLexicon = useMemo(() => withUserAliases(getLexicon(cnlLocale), aliasSet), [cnlLocale, aliasSet]);
 
   // header 标题/图标由当前 tab 派生——与左侧 rail 的图标/文案同源，
   // 保证两处一致（含「决策预览」用 AlertTriangle）。
@@ -180,6 +207,8 @@ export function SidePanel({
     ai: { icon: Sparkles, label: t('sidePanelAI') },
     syntax: { icon: BookOpen, label: t('sidePanelSyntax') },
     templates: { icon: LayoutTemplate, label: t('sidePanelTemplates') },
+    model: { icon: Boxes, label: tEditor('tabModel') },
+    vocabulary: { icon: BookMarked, label: tEditor('tabVocabulary') },
   };
   const HeaderIcon = tabMeta[tab].icon;
   const headerLabel = tabMeta[tab].label;
@@ -304,6 +333,16 @@ export function SidePanel({
                 onSelect={onApplyTemplate}
               />
             </div>
+          </div>
+        )}
+        {structuredAuthoring.allowed && tab === 'model' && (
+          <div className="p-3" data-testid="structured-authoring-model">
+            <ModelTab editor={editor} source={compileSource} lexicon={modelLexicon} />
+          </div>
+        )}
+        {structuredAuthoring.allowed && tab === 'vocabulary' && (
+          <div className="p-3" data-testid="structured-authoring-vocabulary">
+            <VocabularyTab editor={editor} terms={vocabularyTerms} teamId={teamId} policyLocale={cnlLocale} />
           </div>
         )}
         {tab === 'problems' && (

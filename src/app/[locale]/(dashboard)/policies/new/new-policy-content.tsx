@@ -9,6 +9,7 @@ import { extractErrorMessage } from '@/lib/api/error-envelope';
 import { getSnippetTemplate } from '@/lib/playground/snippet-templates';
 import { getStarterTemplate } from '@/config/aster-policy-templates';
 import { trackProductEvent } from '@/lib/product-events/client';
+import type { StructuredAuthoringProps } from '@/lib/capabilities/types';
 
 /**
  * /policies/new — thin wrapper around <PolicyForm>.
@@ -29,6 +30,7 @@ import { trackProductEvent } from '@/lib/product-events/client';
 interface NewPolicyContentProps {
   locale: string;
   allowStructuralAliases: boolean;
+  structuredAuthoring: StructuredAuthoringProps;
 }
 
 const EMPTY: PolicyDraftFields = {
@@ -43,6 +45,7 @@ const EMPTY: PolicyDraftFields = {
 export function NewPolicyContent({
   locale,
   allowStructuralAliases,
+  structuredAuthoring,
 }: NewPolicyContentProps) {
   const t = useTranslations('policies');
   const searchParams = useSearchParams();
@@ -107,6 +110,7 @@ export function NewPolicyContent({
       subtitle={t('form.createSubtitle')}
       onSave={handleSave}
       allowStructuralAliases={allowStructuralAliases}
+      structuredAuthoring={structuredAuthoring}
       teamId={teamId ?? null}
       cancelHref={`/${locale}/policies`}
       detailHrefFor={(id) => `/${locale}/policies/${id}`}

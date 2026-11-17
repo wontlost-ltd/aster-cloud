@@ -44,6 +44,7 @@ function panel(aiWorkspace: AiWorkspaceConfig | null, policyId: string | null, i
         aliasSet={{}}
         reservedSets={{} as never}
         allowStructuralAliases={false}
+        structuredAuthoring={{ allowed: false, sources: [] }}
         onAliasSetChange={noop}
         onApplyContent={noop}
         onApplyTemplate={noop}
