@@ -2,7 +2,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 import zhBase from '@aster-cloud/ui-messages/zh-CN.json';
-import { EN_US, ZH_CN, type Lexicon } from '@aster-cloud/aster-lang-ts/browser';
+import { DE_DE, EN_US, HI_IN, ZH_CN, type Lexicon } from '@aster-cloud/aster-lang-ts/browser';
 vi.mock('@/lib/structured-authoring/outline', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/structured-authoring/outline')>();
   return { ...actual, buildModelOutline: vi.fn(actual.buildModelOutline) };
@@ -269,12 +269,17 @@ describe('ModelTab 类型下拉含枚举', () => {
 describe('ModelTab 没有字段的结构体', () => {
   it('添加字段不静默：显示说明且不写编辑器', () => {
     const original = vi.mocked(buildModelOutline).getMockImplementation()!;
-    vi.mocked(buildModelOutline).mockReturnValue({
-      structs: [{ name: 'Empty', span: { start: { line: 1, col: 1 }, end: { line: 1, col: 14 } }, fields: [] }],
-      enums: [],
-      typeAliases: [],
-      imports: [],
-    });
+    // 只替换编辑器源码的大纲；名字往返校验用的最小模块仍走真实解析
+    vi.mocked(buildModelOutline).mockImplementation((src, lexicon) =>
+      src === 'Define Empty.'
+        ? {
+            structs: [{ name: 'Empty', span: { start: { line: 1, col: 1 }, end: { line: 1, col: 14 } }, fields: [] }],
+            enums: [],
+            typeAliases: [],
+            imports: [],
+          }
+        : original(src, lexicon),
+    );
     const editor = fakeEditor('Define Empty.');
     renderTab(editor, 'Define Empty.');
     const label = M.addFieldTo.replace('{name}', 'Empty');
@@ -285,5 +290,178 @@ describe('ModelTab 没有字段的结构体', () => {
     expect(editor.executeEdits).not.toHaveBeenCalled();
     expect(screen.getByRole('status').textContent).toBe(M.emptyStruct);
     vi.mocked(buildModelOutline).mockImplementation(original);
+  });
+});
+
+describe('ModelTab 名字往返校验（四种语言）', () => {
+  const openStruct = () => {
+    fireEvent.click(screen.getByRole('button', { name: M.newStruct }));
+    return screen.getByRole('form', { name: M.newStruct });
+  };
+  const insertButton = (form: HTMLElement) => within(form).getByRole('button', { name: M.insert }) as HTMLButtonElement;
+  const typeInto = (form: HTMLElement, label: string, value: string, index = 0) =>
+    fireEvent.change(within(form).getAllByLabelText(label)[index], { target: { value } });
+
+  /** 新建结构体：结构体名合法，字段名逐个试；被拒时显示 reservedName，换成合法名后可插入。 */
+  const expectFieldNamesReserved = (lexicon: Lexicon, structName: string, okField: string, reserved: string[]) => {
+    renderTab(fakeEditor(''), '', lexicon);
+    const form = openStruct();
+    typeInto(form, M.structName, structName);
+    for (const name of reserved) {
+      typeInto(form, M.fieldName, name);
+      expect(insertButton(form).disabled, name).toBe(true);
+      expect(within(form).getByRole('alert').textContent, name).toBe(M.reservedName);
+    }
+    typeInto(form, M.fieldName, okField);
+    expect(insertButton(form).disabled).toBe(false);
+    expect(within(form).queryByRole('alert')).toBeNull();
+  };
+
+  it('en-US：小写的关键词拼写在字段位置能编译，往返通过、不误拦', () => {
+    renderTab(fakeEditor(''), '', EN_US);
+    const form = openStruct();
+    typeInto(form, M.structName, 'Applicant');
+    for (const name of ['with', 'and', 'as', 'rule']) {
+      typeInto(form, M.fieldName, name);
+      expect(insertButton(form).disabled, name).toBe(false);
+    }
+  });
+
+  it('de-DE：冠词 der / die 作字段名被拒', () => {
+    expectFieldNamesReserved(DE_DE, 'Kunde', 'alter', ['der', 'die']);
+  });
+
+  it('zh-CN：关键词作字段名被拒', () => {
+    expectFieldNamesReserved(ZH_CN, '客户', '姓名', ['定义', '规则', '文本', '整数', '返回']);
+  });
+
+  it('hi-IN：关键词作字段名被拒', () => {
+    expectFieldNamesReserved(HI_IN, 'ग्राहक', 'नाम', ['परिभाषित', 'नियम', 'पाठ']);
+  });
+
+  it('多行字段：第二行的保留词同样被拒', () => {
+    renderTab(fakeEditor(''), '', ZH_CN);
+    const form = openStruct();
+    typeInto(form, M.structName, '客户');
+    typeInto(form, M.fieldName, '姓名');
+    fireEvent.click(within(form).getByRole('button', { name: M.addFieldRow }));
+    typeInto(form, M.fieldName, '规则', 1);
+    expect(insertButton(form).disabled).toBe(true);
+    expect(within(form).getByRole('alert').textContent).toBe(M.reservedName);
+  });
+
+  it('只填了保留字段名、结构体名尚空时即提示', () => {
+    renderTab(fakeEditor(''), '', DE_DE);
+    const form = openStruct();
+    typeInto(form, M.fieldName, 'der');
+    expect(within(form).getByRole('alert').textContent).toBe(M.reservedName);
+  });
+
+  it.each([
+    ['de-DE', DE_DE, ['der', 'die'], 'Kunde', 'name'],
+    ['zh-CN', ZH_CN, ['定义', '文本'], '客户', '姓名'],
+    ['en-US', EN_US, ['with'], 'Applicant', 'name'],
+  ] as const)('%s：不能作类型引用的结构体名被拒', (_, lexicon, reserved, ok, field) => {
+    renderTab(fakeEditor(''), '', lexicon);
+    const form = openStruct();
+    typeInto(form, M.fieldName, field);
+    for (const name of reserved) {
+      typeInto(form, M.structName, name);
+      expect(insertButton(form).disabled, name).toBe(true);
+      expect(within(form).getByRole('alert').textContent, name).toBe(M.reservedName);
+    }
+    typeInto(form, M.structName, ok);
+    expect(insertButton(form).disabled).toBe(false);
+    expect(within(form).queryByRole('alert')).toBeNull();
+  });
+
+  it('hi-IN：关键词作结构体名被拒', () => {
+    renderTab(fakeEditor(''), '', HI_IN);
+    const form = openStruct();
+    typeInto(form, M.fieldName, 'नाम');
+    typeInto(form, M.structName, 'परिभाषित');
+    expect(insertButton(form).disabled).toBe(true);
+    expect(within(form).getByRole('alert').textContent).toBe(M.reservedName);
+  });
+
+  it('de-DE：冠词作类型别名名被拒', () => {
+    renderTab(fakeEditor(''), '', DE_DE);
+    fireEvent.click(screen.getByRole('button', { name: M.newTypeAlias }));
+    const form = screen.getByRole('form', { name: M.newTypeAlias });
+    for (const name of ['der', 'die']) {
+      typeInto(form, M.aliasName, name);
+      expect(insertButton(form).disabled, name).toBe(true);
+      expect(within(form).getByRole('alert').textContent, name).toBe(M.reservedName);
+    }
+    typeInto(form, M.aliasName, 'Punktzahl');
+    expect(insertButton(form).disabled).toBe(false);
+  });
+
+  it.each([
+    ['zh-CN', ZH_CN, '客户', '姓名', ['定义', '规则', '文本', '整数', '返回'], '年龄'],
+    ['hi-IN', HI_IN, 'ग्राहक', 'नाम', ['परिभाषित', 'नियम', 'पाठ'], 'उम्र'],
+    ['de-DE', DE_DE, 'Kunde', 'name', ['der', 'die'], 'alter'],
+  ] as const)('%s：为已有结构体添加保留字段名被拒', (_, lexicon, struct, field, reserved, ok) => {
+    const src = `${lexicon.keywords.MODULE_DECL} demo${lexicon.punctuation.statementEnd}\n\n${buildStructSource(lexicon, {
+      name: struct,
+      fields: [{ name: field, type: lexicon.keywords.TEXT }],
+    })}`;
+    renderTab(fakeEditor(src), src, lexicon);
+    const label = M.addFieldTo.replace('{name}', struct);
+    fireEvent.click(screen.getByRole('button', { name: label }));
+    const form = screen.getByRole('form', { name: label });
+    for (const name of reserved) {
+      typeInto(form, M.fieldName, name);
+      expect(insertButton(form).disabled, name).toBe(true);
+      expect(within(form).getByRole('alert').textContent, name).toBe(M.reservedName);
+    }
+    typeInto(form, M.fieldName, ok);
+    expect(insertButton(form).disabled).toBe(false);
+  });
+});
+
+describe('ModelTab 重名口径与编译器一致', () => {
+  it('Unicode 大小写折叠（foldKey）：ſcore 与已有 Score 视为重名（toLocaleLowerCase 看不出）', () => {
+    renderTab(fakeEditor(SOURCE), SOURCE);
+    fireEvent.click(screen.getByRole('button', { name: M.newTypeAlias }));
+    const form = screen.getByRole('form', { name: M.newTypeAlias });
+    fireEvent.change(within(form).getByLabelText(M.aliasName), { target: { value: '\u017fcore' } });
+    expect((within(form).getByRole('button', { name: M.insert }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(form).getByRole('alert').textContent).toBe(M.duplicateName);
+  });
+
+  it('导入别名占用类型名：与 Use lib as L. 同名的类型别名被拒', () => {
+    renderTab(fakeEditor(SOURCE), SOURCE);
+    fireEvent.click(screen.getByRole('button', { name: M.newTypeAlias }));
+    const form = screen.getByRole('form', { name: M.newTypeAlias });
+    fireEvent.change(within(form).getByLabelText(M.aliasName), { target: { value: 'l' } });
+    expect((within(form).getByRole('button', { name: M.insert }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(form).getByRole('alert').textContent).toBe(M.duplicateName);
+  });
+});
+
+describe('ModelTab 重名口径（四种语言）：foldKey 折叠 + 导入别名', () => {
+  // [locale, lexicon, 导入别名, 已有结构体名, 视为重名的新类型名…]
+  it.each([
+    ['en-US', EN_US, 'L', 'Café', ['l', 'CAF\u00c9']],
+    ['de-DE', DE_DE, 'Bib', 'Kunde', ['bib', 'KUNDE']],
+    ['zh-CN', ZH_CN, '库', '客户', ['库', '客户']],
+    ['hi-IN', HI_IN, 'पुस्तक', 'क़ीमत', ['पुस्तक', 'क़ीमत']],
+  ] as const)('%s', (_, lexicon, importAlias, struct, duplicates) => {
+    const k = lexicon.keywords;
+    const end = lexicon.punctuation.statementEnd;
+    const src = [
+      `${k.MODULE_DECL} demo${end}`,
+      `${k.IMPORT.charAt(0).toUpperCase()}${k.IMPORT.slice(1)} lib ${k.IMPORT_ALIAS} ${importAlias}${end}`,
+      buildStructSource(lexicon, { name: struct, fields: [{ name: 'x', type: k.TEXT }] }),
+    ].join('\n\n');
+    renderTab(fakeEditor(src), src, lexicon);
+    fireEvent.click(screen.getByRole('button', { name: M.newTypeAlias }));
+    const form = screen.getByRole('form', { name: M.newTypeAlias });
+    for (const name of duplicates) {
+      fireEvent.change(within(form).getByLabelText(M.aliasName), { target: { value: name } });
+      expect((within(form).getByRole('button', { name: M.insert }) as HTMLButtonElement).disabled, name).toBe(true);
+      expect(within(form).getByRole('alert').textContent, name).toBe(M.duplicateName);
+    }
   });
 });
