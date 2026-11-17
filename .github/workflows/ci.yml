@@ -113,6 +113,9 @@ jobs:
   build:
     needs: [changes, pick-runner]
     # docs-only 时跳过；e2e、build-migrate-image、build-lsp-image 与两个 image-pin job 经 needs 链随之 skipped。
+    # 按条件跳过（job 级 if）在本仓是安全的：main 目前没有必需检查（ruleset 只有 deletion / non_fast_forward，
+    # 上面 pick-runner 处的说明已过时），本仓也不在发布门禁 require-main-ci-green 之内；即便将来把 build
+    # 设为必需检查，GitHub 对「因 if 条件而 skipped」的 job 也按通过处理（只有 workflow 级 paths 过滤才会卡住）。
     if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
     # ★改回 GitHub 托管：两个 Linux self-hosted runner 虽然 API 报 online/idle
     #   且标签齐全，但**从未真正执行过任何 job**——查 aster-cloud 与 aster-api
