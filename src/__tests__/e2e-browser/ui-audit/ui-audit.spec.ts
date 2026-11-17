@@ -109,13 +109,18 @@ async function auditPage(page: Page, ctx: AuditContext, route: AuditRoute, deep:
       detail: layout.overflowOffenders.map((o) => `${o.selector} "${o.text}" x=${o.box.x} w=${o.box.w}`).join('\n'),
     });
   }
-  // 子项越出网格 / 弹性容器（#774）：即使没越过视口（或被外层裁掉）也是布局缺陷，移动端按 serious
-  if (layout.containerOverflow.length) {
+  // 子项越出网格 / 弹性容器（#774）：越过视口或被祖先裁掉（够不着）的在移动端按 serious；仍在视口内的视觉越界按 moderate
+  const spillGroups = [
+    { items: layout.containerOverflow.filter((o) => o.unreachable), severity: mobile ? 'serious' : 'moderate', what: 'past the viewport or clipped' },
+    { items: layout.containerOverflow.filter((o) => !o.unreachable), severity: 'moderate', what: 'visually' },
+  ] as const;
+  for (const g of spillGroups) {
+    if (!g.items.length) continue;
     emit({
-      severity: mobile ? 'serious' : 'moderate',
+      severity: g.severity,
       category: 'container-overflow',
-      message: `${layout.containerOverflow.length} item(s) extend past their grid / flex container`,
-      detail: layout.containerOverflow.map((o) => `${o.selector} "${o.text}" +${o.by}px past ${o.container}`).join('\n'),
+      message: `${g.items.length} item(s) extend past their grid / flex container (${g.what})`,
+      detail: g.items.map((o) => `${o.selector} "${o.text}" +${o.by}px past ${o.container}`).join('\n'),
     });
   }
   // 移动端点击目标下限 44×44 CSS px（项目规范，WCAG 2.5.5 AAA / Apple HIG）；句中行内链接按 WCAG 例外豁免

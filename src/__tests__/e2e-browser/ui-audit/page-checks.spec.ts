@@ -124,6 +124,13 @@ test.describe('items spilling out of their grid / flex container (#774)', () => 
     expect(open[0].by).toBeGreaterThan(100);
   });
 
+  test('a grid that clips its own overflowing items is reported; one that scrolls them is not', async ({ page }) => {
+    const clipped = await spills(page, `<div style="display:grid;gap:16px;overflow-x:hidden">${card(LONG)}</div>`);
+    expect(clipped).toHaveLength(1);
+    const scrolls = await spills(page, `<div style="display:grid;gap:16px;overflow-x:auto">${card(LONG)}</div>`);
+    expect(scrolls).toEqual([]);
+  });
+
   test('grid-cols-1 (minmax(0,1fr)) with wrapping content is clean', async ({ page }) => {
     const r = await spills(page, `<div style="display:grid;grid-template-columns:minmax(0,1fr);gap:16px">${card(`<span style="overflow-wrap:anywhere">${LONG}</span>`)}${card('Short')}</div>`);
     expect(r).toEqual([]);
@@ -133,6 +140,16 @@ test.describe('items spilling out of their grid / flex container (#774)', () => 
     const r = await spills(page, `<div style="display:grid;grid-template-columns:minmax(0,1fr)">${card(LONG)}</div>`);
     expect(r).toHaveLength(1);
     expect(r[0].text).toContain('abi=1.1');
+  });
+
+  test('marks spills past the viewport or clipped as unreachable; a small in-viewport spill is not; negative-margin bleed is exempt', async ({ page }) => {
+    const wide = await spills(page, `<div style="display:grid">${card(LONG)}</div>`);
+    expect(wide[0].unreachable).toBe(true);
+    const small = await spills(page, '<div style="display:flex;width:60px"><span style="display:inline-flex;white-space:nowrap">Optional badge</span></div>');
+    expect(small).toHaveLength(1);
+    expect(small[0].unreachable).toBe(false);
+    const bleed = await spills(page, '<div style="display:flex;flex-direction:column;padding:0 16px"><div style="margin:0 -16px;height:20px"></div></div>');
+    expect(bleed).toEqual([]);
   });
 
   test('a table in a horizontal scroll region does not count', async ({ page }) => {
