@@ -7,6 +7,7 @@
 
 import { signRequest, signInternalCallerHeaders, type InternalCallerHeaders } from '@/lib/api-signing';
 import { API_ENDPOINTS } from '@/config/api-versions';
+import { safeDiagnostics } from '@/lib/package-diagnostics';
 import type {
   GuardApprovalInput,
   GuardApprovalPage,
@@ -884,7 +885,7 @@ export class PolicyApiClient {
     }
     const data = res.data as { exportable?: unknown; diagnostics?: unknown } | null;
     if (data && data.exportable === false) {
-      return { kind: 'refused', diagnostics: Array.isArray(data.diagnostics) ? (data.diagnostics as PolicyDiagnostic[]) : [] };
+      return { kind: 'refused', diagnostics: safeDiagnostics(data.diagnostics) };
     }
     throw invalidPackageResponse('neither a zip nor a refusal');
   }
