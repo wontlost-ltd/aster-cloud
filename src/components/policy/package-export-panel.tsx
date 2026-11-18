@@ -14,6 +14,7 @@
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { actionErrorCode } from '@/lib/api/error-envelope';
 import { packageFilename } from '@/lib/package-filename';
+import { safeDiagnostics } from '@/lib/package-diagnostics';
 import type { PackageExportTarget, PackageExportUiLocale, PolicyDiagnostic } from '@/services/policy/policy-api';
 import type { PackageExportMenuState } from '@/lib/package-export-state';
 
@@ -113,7 +114,7 @@ async function runExport(
   }
   const data = (await res.json().catch(() => null)) as { exportable?: unknown; diagnostics?: unknown } | null;
   if (data?.exportable === false) {
-    return { kind: 'refused', diagnostics: Array.isArray(data.diagnostics) ? (data.diagnostics as PolicyDiagnostic[]) : [] };
+    return { kind: 'refused', diagnostics: safeDiagnostics(data.diagnostics) };
   }
   return { kind: 'error', message: labels.failed };
 }
@@ -286,7 +287,14 @@ export function PackageExportStatus() {
       className="flex max-w-full flex-col gap-2 sm:items-end sm:[&>*]:max-w-xl [&:not(:empty)]:-mt-3 [&:not(:empty)]:mb-6"
     >
       {state.kind === 'chooseEntry' && (
-        <EntryChooser target={state.target} candidates={state.candidates} labels={labels} onExport={exportEntry} />
+        // 换 target 或候选集合时重新挂载，选择回到首个候选，不会提交列表外的旧值
+        <EntryChooser
+          key={`${state.target}:${state.candidates.join('\u0000')}`}
+          target={state.target}
+          candidates={state.candidates}
+          labels={labels}
+          onExport={exportEntry}
+        />
       )}
       <Result state={state} labels={labels} />
     </div>

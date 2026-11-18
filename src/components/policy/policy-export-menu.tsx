@@ -95,10 +95,11 @@ function menuTrigger(labels: PackageExportLabels, busy: boolean) {
       data-testid="policy-export-menu-button"
       className="inline-flex items-center gap-1 rounded-md bg-bg px-3 py-2 text-sm font-semibold text-fg shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-bg-subtle"
     >
-      {/* 两段文案叠在同一格里、只显示其一：导出中切换文案时同组按钮不移位 */}
+      {/* 两段文案叠在同一格里、只显示其一：导出中切换文案时同组按钮不移位。
+          隐藏的一段同时 aria-hidden，可访问名始终等于当前可见的文字 */}
       <span className="grid">
-        <span className={`col-start-1 row-start-1 ${busy ? 'invisible' : ''}`}>{labels.menu}</span>
-        <span className={`col-start-1 row-start-1 ${busy ? '' : 'invisible'}`} aria-hidden="true">{labels.exporting}</span>
+        <span className={`col-start-1 row-start-1 ${busy ? 'invisible' : ''}`} aria-hidden={busy || undefined}>{labels.menu}</span>
+        <span className={`col-start-1 row-start-1 ${busy ? '' : 'invisible'}`} aria-hidden={!busy || undefined}>{labels.exporting}</span>
       </span>
       <ChevronDown className="h-4 w-4" aria-hidden="true" />
     </button>

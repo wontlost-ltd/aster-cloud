@@ -163,6 +163,9 @@ describe('PolicyExportMenu', () => {
     const trigger = screen.getByTestId('policy-export-menu-button');
     await waitFor(() => expect(trigger.getAttribute('aria-busy')).toBe('true'));
     expect(trigger.querySelector('.invisible')?.textContent).toBe('Export');
+    // 忙碌时可访问名为可见的「导出中…」：隐藏的「Export」aria-hidden，「Exporting…」不再 aria-hidden
+    const labelSpans = Array.from(trigger.querySelectorAll('.grid > span'));
+    expect(labelSpans.map((s) => [s.textContent, s.getAttribute('aria-hidden')])).toEqual([['Export', 'true'], ['Exporting…', null]]);
     resolve(new Response(JSON.stringify({ exportable: false, diagnostics: [] }), { status: 200 }));
     await waitFor(() => expect(trigger.getAttribute('aria-busy')).toBeNull());
   });

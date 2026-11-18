@@ -117,6 +117,28 @@ describe('PackageExportPanel', () => {
     expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)).toEqual({ target: 'jre', uiLocale: 'en', entry: 'score' });
   });
 
+  it('入口选择中切换 target：选择回到首个候选，提交的入口与 target 一致', async () => {
+    fetchMock.mockResolvedValue(zip());
+    renderPanel(packages({ node: 'exportable', entryRequired: true, entryCandidates: ['decide', 'score'] }));
+    exportJre();
+    fireEvent.change(screen.getByLabelText('Choose the entry'), { target: { value: 'score' } });
+    fireEvent.click(screen.getByTestId('policy-export-menu-button'));
+    fireEvent.click(screen.getByTestId('export-item-node'));
+    expect((screen.getByLabelText('Choose the entry') as HTMLSelectElement).value).toBe('decide');
+    fireEvent.click(screen.getByText('Export this entry'));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)).toEqual({ target: 'node', uiLocale: 'en', entry: 'decide' });
+  });
+
+  it('refused 的畸形诊断条目被丢弃，不影响渲染', async () => {
+    fetchMock.mockResolvedValue(json(200, { exportable: false, diagnostics: [null, 'x', { code: 'E730', message: 'IO' }] }));
+    renderPanel();
+    exportJre();
+    const refused = await screen.findByTestId('package-export-refused');
+    expect(refused.querySelectorAll('li')).toHaveLength(1);
+    expect(refused.textContent).toContain('Uses IO');
+  });
+
   it('上游 400 entry_required：出现选择器（候选来自响应）', async () => {
     fetchMock.mockResolvedValue(json(400, { error: 'entry_required', code: 'entry_required', entryCandidates: ['a', 'b'] }));
     renderPanel();
