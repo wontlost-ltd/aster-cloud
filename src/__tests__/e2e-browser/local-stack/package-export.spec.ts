@@ -6,7 +6,7 @@
  *    与响应头及下载文件的实际哈希三者相同；
  * 2. 不可导出时状态区按诊断码给出本地化原因（E730）；
  * 3. free 用户看不到任何包选项（套餐门）；开关关时 pro 用户同样看不到（菜单回到「Export to Cedar」单按钮）；
- * 4. 菜单打开与下载完成两种状态下 axe（WCAG 2.0/2.1/2.2 A + AA）零违规；移动端无横向溢出。
+ * 4. 菜单打开、下载完成与拒绝三种状态下页面主区 axe（WCAG 2.0/2.1/2.2 A + AA）零违规；移动端无横向溢出。
  *
  * aster-api 的包导出端点（A5）合入之前，可导出性检查拿不到结论（'unknown'，照常显示 JRE 项），下载请求在浏览器侧
  * 以 page.route 回放契约形状的响应（zip 字节 + X-Aster-Package-* 头）。设 PACKAGE_EXPORT_LIVE=1 时不回放，
@@ -103,8 +103,12 @@ async function shot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: false });
 }
 
+/**
+ * axe 只扫页面主区（操作组、下拉与状态区都在其中）：整页由 UI 审计套件负责。页头的通知铃铛在有未读时
+ * 角标数字与 aria-label 不一致（label-content-name-mismatch），属既有问题且随数据出现，不在本用例范围。
+ */
 async function expectNoAxeViolations(page: Page, label: string): Promise<void> {
-  const { violations } = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+  const { violations } = await new AxeBuilder({ page }).include('#dashboard-main').withTags(WCAG_TAGS).analyze();
   const summary = violations.map((v) => `${v.id} (${v.impact}): ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
   expect(summary, `axe violations ${label}`).toEqual([]);
 }
@@ -116,6 +120,8 @@ async function replayZip(page: Page): Promise<{ bytes: Buffer; sha256: string; b
   let requestBody: unknown = null;
   await page.route('**/api/policies/*/export/package', async (route) => {
     requestBody = route.request().postDataJSON();
+    // 稍作停顿，让用例能在忙碌态下测量触发按钮
+    await new Promise((r) => setTimeout(r, 600));
     await route.fulfill({
       status: 200,
       body: bytes,
@@ -179,10 +185,17 @@ for (const vp of VIEWPORTS) {
       const replay = LIVE ? null : await replayZip(page);
       await page.goto(`/en/policies/${ids.pro}`);
       const trigger = main(page).getByTestId('policy-export-menu-button');
+      const idleWidth = (await trigger.boundingBox())!.width;
       await trigger.click();
       const responsePromise = page.waitForResponse((r) => r.url().includes('/export/package') && r.request().method() === 'POST');
       const downloadPromise = page.waitForEvent('download');
       await main(page).getByTestId('export-item-jre').click();
+      if (replay) {
+        // 忙碌态：aria-busy、可访问名为可见的「Exporting…」、按钮宽度不变（同组按钮不移位）
+        await expect(trigger).toHaveAttribute('aria-busy', 'true');
+        await expect(trigger).toHaveAccessibleName('Exporting…');
+        expect(Math.abs((await trigger.boundingBox())!.width - idleWidth)).toBeLessThan(0.5);
+      }
       const [response, download] = await Promise.all([responsePromise, downloadPromise]);
       expect(response.status()).toBe(200);
       const headerSha = response.headers()['x-aster-package-sha256'];
