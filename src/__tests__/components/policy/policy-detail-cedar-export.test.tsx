@@ -39,6 +39,7 @@ function deepStub(path = ''): unknown {
     executeAction: 'Execute', edit: 'Edit', delete: 'Delete',
     'cedarExport.button': 'Export to Cedar', 'cedarExport.exporting': 'Exporting…',
     'cedarExport.noExecutableVersion': 'Approve a version first',
+    'packageExport.menu': 'Export', 'packageExport.exporting': 'Exporting…',
   };
   return new Proxy(function stub() {} as unknown as object, {
     get: (_t, k) => {
@@ -99,5 +100,48 @@ describe('policy detail: Export to Cedar (#786)', () => {
   it('the action group wraps on narrow screens instead of overflowing', () => {
     renderDetail({ showCedarExport: true });
     expect(screen.getByTestId('policy-actions').className).toMatch(/\bflex-wrap\b/);
+  });
+
+  // ADR 0059 P2：策略包选项接入后，没有包选项时操作组与之前逐字相同
+  describe('policy package export (ADR 0059 P2)', () => {
+    const none = { jre: 'unavailable', node: 'unavailable', diagnostics: { jre: [], node: [] }, entryRequired: false, entryCandidates: [] };
+    const jre = { ...none, jre: 'exportable' };
+
+    it('Cedar only: the action group DOM is unchanged whether packageExport is absent, null or all-unavailable', () => {
+      const baseline = renderDetail({ showCedarExport: true }).container.querySelector('[data-testid="policy-actions"]')!.outerHTML;
+      cleanup();
+      for (const packageExport of [null, none]) {
+        const html = renderDetail({ showCedarExport: true, packageExport }).container.querySelector('[data-testid="policy-actions"]')!.outerHTML;
+        expect(html).toBe(baseline);
+        cleanup();
+      }
+    });
+
+    it('package options present: the Cedar button becomes an Export menu in the same place', () => {
+      renderDetail({ showCedarExport: true, packageExport: jre });
+      // 可访问名不含 aria-hidden 的「导出中…」占位文案
+      const accessibleName = (el: Element) => {
+        const clone = el.cloneNode(true) as Element;
+        clone.querySelectorAll('[aria-hidden="true"]').forEach((n) => n.remove());
+        return el.getAttribute('aria-label') || clone.textContent;
+      };
+      expect(actions(screen.getByTestId('policy-actions')).map(accessibleName)).toEqual(['Execute', 'Edit', 'Export', 'Delete']);
+      expect(screen.queryByTestId('cedar-export-button')).toBeNull();
+    });
+
+    it('package options without Cedar: the menu still renders, with its own status region after the header', () => {
+      renderDetail({ showCedarExport: false, packageExport: jre });
+      expect(screen.getByTestId('policy-export-menu-button')).toBeTruthy();
+      const status = screen.getByTestId('package-export-status');
+      expect(screen.getByTestId('policy-actions').contains(status)).toBe(false);
+      expect(document.querySelector('header')?.nextElementSibling).toBe(status);
+    });
+
+    it('neither Cedar nor packages: nothing export-related renders', () => {
+      renderDetail({ showCedarExport: false, packageExport: null });
+      expect(screen.queryByTestId('policy-export-menu-button')).toBeNull();
+      expect(screen.queryByTestId('package-export-status')).toBeNull();
+      expect(actions(screen.getByTestId('policy-actions'))).toHaveLength(3);
+    });
   });
 });

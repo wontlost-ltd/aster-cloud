@@ -13,6 +13,8 @@
  * 夹具：UI 审计的种子（`pnpm ui-audit:seed`，storageState 在 UI_AUDIT_STATE_DIR，默认 .superpowers/ui-audit）。
  * 用例以 ui-owner 身份经 `POST /api/policies` 新建三条个人策略，前两条经 psql 把 v1 置为 APPROVED（单用户无法自批），
  * 结束时软删除。需要 aster-api 提供可导出性检查端点（`POST /api/v1/policies/export/cedar/check`）。
+ * 5. 策略包导出（ADR 0059 P2）打开后操作组里的「Export」下拉：与同组按钮同高、移动端点击区 ≥ 44×44、
+ *    下拉随服务端 HTML 一起到达，单按钮从未出现过（不闪）。上面 1–4 在开关关闭时断言（beforeAll 经管理接口关闭）。
  */
 import { join } from 'node:path';
 import { test, expect, type Browser, type Page } from '@playwright/test';
@@ -60,6 +62,16 @@ const VIEWPORTS = [
 
 const ids = { exportable: '', notExportable: '', draft: '' };
 
+const PLATFORM_STATE = join(STATE_DIR, 'state-ui-platform.json');
+
+/** 经管理接口切换策略包导出开关（同进程即时生效，不受设置缓存影响） */
+async function setPackageExportFlag(browser: Browser, value: boolean): Promise<void> {
+  const ctx = await browser.newContext({ storageState: PLATFORM_STATE, baseURL: BASE });
+  const res = await ctx.request.post('/api/admin/platform-settings', { headers: ORIGIN, data: { key: 'policy_export.package.enabled', value } });
+  expect(res.status(), await res.text()).toBe(200);
+  await ctx.close();
+}
+
 async function ownerContext(browser: Browser) {
   return browser.newContext({ storageState: OWNER_STATE, baseURL: BASE });
 }
@@ -76,6 +88,7 @@ async function createPolicy(browser: Browser, name: string, content: string, app
 
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(120_000);
+  await setPackageExportFlag(browser, false);
   const run = Date.now();
   ids.exportable = await createPolicy(browser, `e2e-786-cedar-${run}`, EXPORTABLE(`guard.cedar.e786a${run}`), true);
   ids.notExportable = await createPolicy(browser, `e2e-786-textlen-${run}`, NOT_EXPORTABLE, true);
@@ -219,6 +232,44 @@ for (const vp of VIEWPORTS) {
       const hint = main(page).getByTestId('cedar-export-status').getByText('Approve a version before exporting to Cedar');
       await expect(hint).toBeVisible();
       await expect(button).toHaveAttribute('aria-describedby', (await hint.getAttribute('id'))!);
+    });
+  });
+
+  test.describe(`policy detail Export menu, package export on (${vp.name})`, () => {
+    test.use({ ...vp.use, storageState: OWNER_STATE });
+    test.beforeAll(async ({ browser }) => setPackageExportFlag(browser, true));
+    test.afterAll(async ({ browser }) => setPackageExportFlag(browser, false));
+
+    test('the Export menu replaces the Cedar button in place, with matching height and tap targets', async ({ page }) => {
+      await watchExportButton(page);
+      await page.goto(`/en/policies/${ids.exportable}`);
+      const group = main(page).getByTestId('policy-actions');
+      const trigger = group.getByTestId('policy-export-menu-button');
+      await expect(trigger).toBeVisible();
+      const boxes = await actionBoxes(page);
+      expect(boxes.map((b) => b.name)).toEqual(['Execute', 'Edit', 'Export', 'Delete']);
+      expect(new Set(boxes.map((b) => Math.round(b.h))).size, JSON.stringify(boxes)).toBe(1);
+      await expectUnclipped(trigger);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      if (vp.name === 'mobile') {
+        const t = await trigger.evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          const after = getComputedStyle(el, '::after');
+          return {
+            w: Math.max(r.width, after.content !== 'none' ? parseFloat(after.width) || 0 : 0),
+            h: Math.max(r.height, after.content !== 'none' ? parseFloat(after.height) || 0 : 0),
+          };
+        });
+        expect(t.w >= 44 && t.h >= 44, JSON.stringify(t)).toBe(true);
+      }
+      // 下拉形态下单按钮从首帧起就没出现过
+      expect(await page.evaluate(() => (window as unknown as { __cedarSeen: boolean }).__cedarSeen)).toBe(false);
+    });
+
+    test('the Export menu arrives with the server-rendered HTML (no loading state to flash)', async ({ page }) => {
+      const html = await (await page.request.get(`/en/policies/${ids.exportable}`)).text();
+      expect(html).toContain('data-testid="policy-export-menu-button"');
+      expect(html).not.toContain('data-testid="cedar-export-button"');
     });
   });
 

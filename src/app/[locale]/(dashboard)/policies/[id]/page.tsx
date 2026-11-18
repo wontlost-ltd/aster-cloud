@@ -15,6 +15,7 @@ import { policyCapabilities } from '@/lib/policy-access-matrix';
 import { planHolderForTeam } from '@/lib/team-plan';
 import { findDefaultExecutableVersion } from '@/services/policy/default-executable-version';
 import { checkCedarExportability } from '@/lib/cedar-exportability';
+import { loadPackageExportState } from '@/lib/package-export-state';
 
 export const generateMetadata = localizedTitle('pageTitles', 'policyDetail');
 
@@ -43,8 +44,9 @@ async function loadPolicyTeam(teamId: string | null): Promise<{ id: string; name
 async function loadCedarExportState(
   policy: { id: string; userId: string; teamId: string | null },
   userId: string,
+  executableVersion: ReturnType<typeof findDefaultExecutableVersion>,
 ): Promise<{ show: boolean; hasExecutableVersion: boolean }> {
-  const executable = await findDefaultExecutableVersion(policy.id);
+  const executable = await executableVersion;
   const target = executable ?? await db.query.policyVersions.findFirst({
     where: eq(policyVersions.policyId, policy.id),
     orderBy: desc(policyVersions.version),
@@ -153,9 +155,14 @@ export default async function PolicyDetailPage({
   //   必然空窗、而选项还在那里——那套窗口实际只适用于留存期最长的企业级用户。
   const retentionDays = resolveRetention(planUser?.plan).executionDays;
 
-  const [profile, cedarExport, review, sharingEnabled, policyTeam] = await Promise.all([
+  // Cedar 与策略包导出选的是同一个版本（执行路径会选中的已批准版本），只查一次
+  const exportPolicy = { id, userId: policy.ownerId, teamId: policy.teamId };
+  const executableVersion = findDefaultExecutableVersion(id);
+  const [profile, cedarExport, packageExport, review, sharingEnabled, policyTeam] = await Promise.all([
     loadActiveProfile(id, policy.version),
-    loadCedarExportState({ id, userId: policy.ownerId, teamId: policy.teamId }, session.user.id),
+    loadCedarExportState(exportPolicy, session.user.id, executableVersion),
+    // 策略包选项（ADR 0059 P2）：开关关、套餐不允许或无已批准版本时为 null，不调 aster-api
+    loadPackageExportState(exportPolicy, session.user.id, executableVersion),
     // 版本面板的批准/驳回按审批规则显示（团队策略按当前用户的团队角色）
     loadVersionReviewContext(id, session.user.id),
     // 共享开关在服务端读一次并下发（同列表页 shared-with-me 的做法）：关闭时客户端不挂载共享卡片，
@@ -202,6 +209,42 @@ export default async function PolicyDetailPage({
       chooseRule: t('cedarExport.chooseRule'),
       exportRule: t('cedarExport.exportRule'),
     },
+    // 策略包导出（ADR 0059 P2）；downloaded 保留 {sha256} 占位符，由面板替换
+    packageExport: {
+      menu: t('packageExport.menu'),
+      cedarItem: t('packageExport.cedarItem'),
+      cedarHint: t('packageExport.cedarHint'),
+      jreItem: t('packageExport.jreItem'),
+      jreHint: t('packageExport.jreHint'),
+      nodeItem: t('packageExport.nodeItem'),
+      nodeHint: t('packageExport.nodeHint'),
+      exporting: t('packageExport.exporting'),
+      downloaded: t.raw('packageExport.downloaded') as string,
+      unsigned: t('packageExport.unsigned'),
+      notExportable: t('packageExport.notExportable'),
+      showReasons: t('packageExport.showReasons'),
+      chooseEntry: t('packageExport.chooseEntry'),
+      exportEntry: t('packageExport.exportEntry'),
+      planRequired: t('packageExport.planRequired'),
+      busy: t('packageExport.busy'),
+      unavailable: t('packageExport.unavailable'),
+      failed: t('packageExport.failed'),
+      noExecutableVersion: t('packageExport.noExecutableVersion'),
+      copy: t('packageExport.copy'),
+      copied: t('packageExport.copied'),
+      reasons: {
+        E730: t('packageExport.reasons.E730'),
+        E731: t('packageExport.reasons.E731'),
+        E732: t('packageExport.reasons.E732'),
+        E733: t('packageExport.reasons.E733'),
+        E734: t('packageExport.reasons.E734'),
+        E735: t('packageExport.reasons.E735'),
+        E737: t('packageExport.reasons.E737'),
+        E738: t('packageExport.reasons.E738'),
+        E739: t('packageExport.reasons.E739'),
+        other: t('packageExport.reasons.other'),
+      },
+    },
     deleteDialog: {
       title: t('deleteDialog.title'),
       description: t('deleteDialog.description', { name: policy.name }),
@@ -233,6 +276,7 @@ export default async function PolicyDetailPage({
       profile={profile}
       hasExecutableVersion={cedarExport.hasExecutableVersion}
       showCedarExport={cedarExport.show}
+      packageExport={packageExport}
       sharingEnabled={sharingEnabled}
       team={policyTeam ? { id: policyTeam.id, label: t('detail.teamBadge', { name: policyTeam.name }) } : null}
       review={review ? {

@@ -166,7 +166,7 @@ function RuleChooser({ candidates, labels, busy, onExport }: {
   );
 }
 
-const NO_VERSION_HINT_ID = 'cedar-export-no-version';
+export const NO_VERSION_HINT_ID = 'cedar-export-no-version';
 
 interface CedarExportContextValue {
   labels: CedarExportLabels;
@@ -177,6 +177,11 @@ interface CedarExportContextValue {
 }
 
 const CedarExportContext = createContext<CedarExportContextValue | null>(null);
+
+/** 「导出」菜单（policy-export-menu）在 Cedar 不可见时不挂 Provider，故允许取不到上下文 */
+export function useOptionalCedarExport(): CedarExportContextValue | null {
+  return useContext(CedarExportContext);
+}
 
 function useCedarExport(): CedarExportContextValue {
   const ctx = useContext(CedarExportContext);
