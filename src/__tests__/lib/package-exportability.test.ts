@@ -155,12 +155,29 @@ describe('checkPackageExportability', () => {
     ['开关关（404）', new PolicyApiError('Not Found', 404)],
     ['超时', new PolicyApiError('Request timeout', 408, 'TIMEOUT')],
     ['上游 5xx', new PolicyApiError('boom', 500)],
-  ])('%s → 全部 unknown 且不缓存', async (_label, error) => {
+  ])('%s → jre unknown（node 在 C3 之前仍 unavailable）且不缓存', async (_label, error) => {
     h.check.mockRejectedValueOnce(error);
-    await expect(run()).resolves.toMatchObject({ jre: 'unknown', node: 'unknown', defaultEntry: null });
+    await expect(run()).resolves.toMatchObject({ jre: 'unknown', node: 'unavailable', defaultEntry: null });
     h.check.mockResolvedValueOnce(response());
     await expect(run()).resolves.toMatchObject({ jre: 'exportable' });
     expect(h.check).toHaveBeenCalledTimes(2);
+  });
+
+  it('检查失败且本地可复核 Node 包时 node 为 unknown', async () => {
+    h.nodeRuntime.mockReturnValue({ tsVersion: '3.3.0' });
+    h.check.mockRejectedValueOnce(new PolicyApiError('boom', 500));
+    await expect(run()).resolves.toMatchObject({ jre: 'unknown', node: 'unknown' });
+  });
+
+  it('诊断在边界处收窄：丢弃畸形条目，缺失的行列记 0', async () => {
+    h.check.mockResolvedValue(response({ targets: { jre: target(false, null, [
+      null, 'E730', { code: 7 }, { code: 'E730', message: 'IO' }, { code: 'E731', message: 'await', startLine: 2, startColumn: 4, severity: 'weird' },
+    ]) } }));
+    const res = await run();
+    expect(res.diagnostics.jre).toEqual([
+      { severity: 'error', message: 'IO', code: 'E730', startLine: 0, startColumn: 0, endLine: 0, endColumn: 0 },
+      { severity: 'error', message: 'await', code: 'E731', startLine: 2, startColumn: 4, endLine: 0, endColumn: 0 },
+    ]);
   });
 
   it('响应形状不对 → unknown 且不缓存', async () => {
