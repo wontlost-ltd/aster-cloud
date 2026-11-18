@@ -7,6 +7,8 @@
 
 import { signRequest, signInternalCallerHeaders, type InternalCallerHeaders } from '@/lib/api-signing';
 import { API_ENDPOINTS } from '@/config/api-versions';
+import { safeDiagnostics } from '@/lib/package-diagnostics';
+import { packageFilename } from '@/lib/package-filename';
 import type {
   GuardApprovalInput,
   GuardApprovalPage,
@@ -357,23 +359,8 @@ export type PackageExportResult =
 /** 包导出的超时：export/package 要跑最多 256 条探针并组装、签名，比通用 30 s 宽 */
 export const PACKAGE_EXPORT_TIMEOUT_MS = 60_000;
 
-const FALLBACK_PACKAGE_FILENAME = 'policy-package.zip';
-
-/** 从 Content-Disposition 取文件名：RFC 5987 的 filename*=UTF-8''… 优先，其次 filename="…"。 */
-export function packageFilename(contentDisposition: string | null): string {
-  const header = contentDisposition ?? '';
-  const extended = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header);
-  if (extended) {
-    try {
-      const decoded = decodeURIComponent(extended[1]!.trim());
-      if (decoded) return decoded;
-    } catch {
-      // 非法百分号编码：退到 ASCII 回退名
-    }
-  }
-  const plain = /filename\s*=\s*"([^"]+)"/i.exec(header) ?? /filename\s*=\s*([^;]+)/i.exec(header);
-  return plain?.[1]?.trim() || FALLBACK_PACKAGE_FILENAME;
-}
+// 文件名解析是纯函数，浏览器端（导出面板）同样要用，放在无服务端依赖的模块里
+export { packageFilename } from '@/lib/package-filename';
 
 function invalidPackageResponse(reason: string): PolicyApiError {
   return new PolicyApiError(`Invalid package export response: ${reason}`, 502, 'package_response_invalid');
@@ -884,7 +871,7 @@ export class PolicyApiClient {
     }
     const data = res.data as { exportable?: unknown; diagnostics?: unknown } | null;
     if (data && data.exportable === false) {
-      return { kind: 'refused', diagnostics: Array.isArray(data.diagnostics) ? (data.diagnostics as PolicyDiagnostic[]) : [] };
+      return { kind: 'refused', diagnostics: safeDiagnostics(data.diagnostics) };
     }
     throw invalidPackageResponse('neither a zip nor a refusal');
   }

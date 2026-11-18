@@ -15,6 +15,7 @@ import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
 import { policyTenantId } from '@/lib/policy-tenant';
 import { loadPackageExportInput, type PackageExportVersion } from '@/lib/package-export-input';
 import { nodePackageRuntime } from '@/lib/package-node-runtime';
+import { safeDiagnostics } from '@/lib/package-diagnostics';
 import type {
   PackageExportCheckResponse,
   PackageExportTarget,
@@ -40,13 +41,16 @@ const MAX_ENTRIES = 500;
 /** aster-api 升级后检查可能放宽 / 收紧，不永久缓存 */
 const TTL_MS = 60 * 60 * 1000;
 
-const UNKNOWN: PackageExportability = Object.freeze({
-  jre: 'unknown',
-  node: 'unknown',
-  diagnostics: Object.freeze({ jre: [], node: [] }) as Record<PackageExportTarget, PolicyDiagnostic[]>,
-  defaultEntry: null,
-  entryCandidates: [],
-}) as PackageExportability;
+/** 检查拿不到结论时：jre 未知（照常显示）；node 仍受本地复核能力约束，C3 之前不因一次失败而冒出来 */
+function unknownResult(): PackageExportability {
+  return {
+    jre: 'unknown',
+    node: nodePackageRuntime() ? 'unknown' : 'unavailable',
+    diagnostics: { jre: [], node: [] },
+    defaultEntry: null,
+    entryCandidates: [],
+  };
+}
 
 const cache = new Map<string, { value: PackageExportCheckResponse; expiresAt: number }>();
 const inflight = new Map<string, Promise<PackageExportCheckResponse | null>>();
@@ -86,8 +90,8 @@ function toExportability(res: PackageExportCheckResponse): PackageExportability 
     jre: targetState(res.targets.jre),
     node,
     diagnostics: {
-      jre: res.targets.jre?.diagnostics ?? [],
-      node: node === 'not-exportable' ? res.targets.node?.diagnostics ?? [] : [],
+      jre: safeDiagnostics(res.targets.jre?.diagnostics),
+      node: node === 'not-exportable' ? safeDiagnostics(res.targets.node?.diagnostics) : [],
     },
     defaultEntry: typeof res.defaultEntry === 'string' ? res.defaultEntry : null,
     entryCandidates: Array.isArray(res.entryCandidates) ? res.entryCandidates.filter((e) => typeof e === 'string') : [],
@@ -107,7 +111,7 @@ export async function checkPackageExportability({ policy, version, userId }: Che
     input = await loadPackageExportInput(policy, version);
   } catch (error) {
     console.warn('[package-exportability] compile input unavailable', policy.id, error);
-    return UNKNOWN;
+    return unknownResult();
   }
   // check 对 target 无关（按 target 分别给结论），按 aster-api 的入参校验带上 jre
   const request = { ...input.request, target: 'jre' as const, uiLocale: 'en' as const };
@@ -136,5 +140,5 @@ export async function checkPackageExportability({ policy, version, userId }: Che
     inflight.set(key, pending);
   }
   const res = await pending;
-  return res ? toExportability(res) : UNKNOWN;
+  return res ? toExportability(res) : unknownResult();
 }

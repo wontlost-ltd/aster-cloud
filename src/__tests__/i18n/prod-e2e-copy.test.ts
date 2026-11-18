@@ -55,6 +55,9 @@ const KEYS = [
   'approvals.versions.unknownUser', 'approvals.thPolicy', 'approvals.thActions',
   // 版本审批权限裁决：个人策略自审说明
   'policies.versions.selfApproveNote', 'policies.versions.awaitingOthers',
+  // ADR 0059 P2 策略包导出（详情页「导出」菜单与状态区）
+  'policies.packageExport.menu', 'policies.packageExport.cedarItem', 'policies.packageExport.cedarHint', 'policies.packageExport.jreItem', 'policies.packageExport.jreHint', 'policies.packageExport.nodeItem', 'policies.packageExport.nodeHint', 'policies.packageExport.exporting', 'policies.packageExport.downloaded', 'policies.packageExport.unsigned', 'policies.packageExport.notExportable', 'policies.packageExport.showReasons', 'policies.packageExport.chooseEntry', 'policies.packageExport.exportEntry', 'policies.packageExport.planRequired', 'policies.packageExport.busy', 'policies.packageExport.unavailable', 'policies.packageExport.failed', 'policies.packageExport.noExecutableVersion', 'policies.packageExport.copy', 'policies.packageExport.copied', 'policies.packageExport.reasons.E730', 'policies.packageExport.reasons.E731', 'policies.packageExport.reasons.E732', 'policies.packageExport.reasons.E733', 'policies.packageExport.reasons.E734', 'policies.packageExport.reasons.E735', 'policies.packageExport.reasons.E737', 'policies.packageExport.reasons.E738', 'policies.packageExport.reasons.E739', 'policies.packageExport.reasons.other',
+  'admin.flags.policyPackageExportTitle', 'admin.flags.policyPackageExportDesc',
 ];
 
 describe('生产 E2E 文案：四语完整', () => {

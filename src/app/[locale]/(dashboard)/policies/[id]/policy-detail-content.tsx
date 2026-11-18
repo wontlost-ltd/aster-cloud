@@ -11,7 +11,10 @@ import type { PolicyCapabilities } from '@/lib/policy-access-matrix';
 import { ShareWithTeamsCard } from '@/components/policy/share-with-teams-card';
 import { PolicyAnalyticsSection } from '@/components/policy/policy-analytics-section';
 import { PolicyProfileBadge } from '@/components/policy/policy-profile-badge';
-import { CedarExportButton, CedarExportProvider, CedarExportStatus, type CedarExportLabels } from '@/components/policy/cedar-export-panel';
+import { CedarExportProvider, CedarExportStatus, type CedarExportLabels } from '@/components/policy/cedar-export-panel';
+import { PackageExportProvider, PackageExportStatus, type PackageExportLabels } from '@/components/policy/package-export-panel';
+import { PolicyExportMenu, visiblePackageTargets } from '@/components/policy/policy-export-menu';
+import type { PackageExportMenuState } from '@/lib/package-export-state';
 
 interface PolicyVersion {
   id: string;
@@ -62,6 +65,7 @@ interface Translations {
     profile: string;
   };
   cedarExport: CedarExportLabels;
+  packageExport: PackageExportLabels;
   deleteDialog: {
     title: string;
     description: string;
@@ -93,6 +97,11 @@ interface PolicyDetailContentProps {
    * 在服务端定好再下发，客户端没有「加载中」状态，按钮不会先出现再消失。
    */
   showCedarExport?: boolean;
+  /**
+   * 「导出」菜单里的策略包选项（ADR 0059 P2）：服务端按开关、套餐、已批准版本与 check 判定（lib/package-export-state）；
+   * null 时没有任何包选项，操作组与引入策略包导出之前相同。
+   */
+  packageExport?: PackageExportMenuState | null;
   /** 版本审批判定上下文（见 version-approval-rules） */
   review?: Omit<VersionReviewContext, 'reviewerId'>;
   /**
@@ -122,6 +131,7 @@ export function PolicyDetailContent({
   profile = null,
   hasExecutableVersion = true,
   showCedarExport = false,
+  packageExport = null,
   review,
   sharingEnabled = false,
   capabilities = ALL_ACTIONS,
@@ -211,8 +221,9 @@ export function PolicyDetailContent({
                 {t.edit}
               </Link>
             )}
-            {/* 导出为 Cedar（ADR 0047 §6）：只读操作，冻结策略同样可导出；放在破坏性的「删除」之前（#786） */}
-            {showCedarExport && <CedarExportButton />}
+            {/* 导出（ADR 0047 §6 Cedar、ADR 0059 策略包）：只读操作，冻结策略同样可导出；放在破坏性的「删除」之前（#786）。
+                只有 Cedar 时是原来的单按钮，有包选项时是下拉菜单 */}
+            <PolicyExportMenu showCedar={showCedarExport} packages={packageExport} labels={t.packageExport} />
             {capabilities.delete && (
             <button
               onClick={handleDeleteClick}
@@ -228,6 +239,7 @@ export function PolicyDetailContent({
 
       {/* 导出结果 / 错误 / 「先批准」提示：紧贴页头操作组下方（#786）；导出的是执行路径实际选中的版本（默认的已批准版本，否则最新已批准版本） */}
       {showCedarExport && <CedarExportStatus />}
+      <PackageExportStatus />
 
       {/* 治理档案徽标（ADR 0046 §6）：活跃版本声明了档案才显示 */}
       <div className="mb-4 empty:hidden">
@@ -385,7 +397,12 @@ export function PolicyDetailContent({
     </Container>
   );
 
-  if (!showCedarExport) return content;
+  const withPackages = packageExport && visiblePackageTargets(packageExport).length > 0 ? (
+    <PackageExportProvider policyId={policy.id} locale={locale} labels={t.packageExport} packages={packageExport}>
+      {content}
+    </PackageExportProvider>
+  ) : content;
+  if (!showCedarExport) return withPackages;
   return (
     <CedarExportProvider
       policyId={policy.id}
@@ -393,7 +410,7 @@ export function PolicyDetailContent({
       hasExecutableVersion={hasExecutableVersion}
       versionsHref={`/${locale}/policies/${policy.id}/versions`}
     >
-      {content}
+      {withPackages}
     </CedarExportProvider>
   );
 }
