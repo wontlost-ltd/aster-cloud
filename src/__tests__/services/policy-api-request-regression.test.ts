@@ -68,8 +68,11 @@ describe('PolicyApiClient.request 回归', () => {
   });
 
   it('超时：408 TIMEOUT', async () => {
+    // 超时可能在 fetch 被调用之前就已触发（签名与 trace 头是异步的），先查 aborted 再挂监听
     fetchMock.mockImplementation((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
-      init.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+      const abort = () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+      if (init.signal?.aborted) abort();
+      else init.signal?.addEventListener('abort', abort);
     }));
     const err = await new PolicyApiClient('t1', 'u1').checkCedarExport({ source: 'x', locale: 'en-US' }, 5).catch((e: unknown) => e);
     expect(err).toMatchObject({ statusCode: 408, code: 'TIMEOUT' });

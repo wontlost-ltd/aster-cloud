@@ -869,6 +869,9 @@ export class PolicyApiClient {
     if (res.kind === 'binary') {
       const sha256 = res.headers.get('X-Aster-Package-Sha256')?.trim();
       if (!sha256) throw invalidPackageResponse('missing X-Aster-Package-Sha256');
+      // 签名标记决定 UI 是否提示「无签名包」：缺失或取值不明时不猜，按上游响应不完整处理
+      const signedHeader = res.headers.get('X-Aster-Package-Signed')?.trim().toLowerCase();
+      if (signedHeader !== 'true' && signedHeader !== 'false') throw invalidPackageResponse('missing X-Aster-Package-Signed');
       const contentDisposition = res.headers.get('Content-Disposition') ?? '';
       return {
         kind: 'zip',
@@ -876,7 +879,7 @@ export class PolicyApiClient {
         sha256,
         filename: packageFilename(contentDisposition),
         contentDisposition,
-        signed: res.headers.get('X-Aster-Package-Signed')?.trim().toLowerCase() === 'true',
+        signed: signedHeader === 'true',
       };
     }
     const data = res.data as { exportable?: unknown; diagnostics?: unknown } | null;

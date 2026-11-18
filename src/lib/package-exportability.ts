@@ -4,6 +4,7 @@
  * 判定来自 aster-api `POST /api/v1/policies/export/package/check`（修订 3 P2-R8）：编译 + 静态检查，
  * 按 target 分别给结论，不跑探针、不占导出并发、不写审计。成本控制照 cedar-exportability：
  * - 按请求体（编译输入 + claimedRef）的 SHA-256 缓存确定结果（进程内，有上限与 TTL），同一输入的并发请求共用一次调用；
+ *   claimedRef 含 cloud 策略 id，缓存键因此天然按策略（即按租户）区分，check 结论也只由请求体决定；
  * - 2 s 超时；超时 / 上游错误 / 旧版 aster-api 无该端点（404）/ 响应形状不对，一律 'unknown' 且不缓存。
  *
  * node 在两种情况下为 'unavailable'：check 给出 unavailable 码（如锁文件 node 为 null），

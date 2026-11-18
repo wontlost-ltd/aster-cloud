@@ -119,6 +119,12 @@ describe('PolicyApiClient 策略包导出', () => {
     expect(err).toMatchObject({ statusCode: 502, code: 'package_response_invalid' });
   });
 
+  it.each(['', 'yes'])('exportPackage：X-Aster-Package-Signed 缺失或取值不明（%j）视为上游错误', async (signed) => {
+    fetchMock.mockResolvedValue(zipResponse({ 'X-Aster-Package-Signed': signed }));
+    const err = await new PolicyApiClient('t1', 'u1').exportPackage(baseRequest).catch((e: unknown) => e);
+    expect(err).toMatchObject({ statusCode: 502, code: 'package_response_invalid' });
+  });
+
   it('exportPackage：既非 zip 也非 {exportable:false} 的 200 视为上游错误', async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     const err = await new PolicyApiClient('t1', 'u1').exportPackage(baseRequest).catch((e: unknown) => e);
@@ -148,8 +154,11 @@ describe('PolicyApiClient 策略包导出', () => {
   });
 
   it('exportPackage：超时抛 408 TIMEOUT', async () => {
+    // 超时可能在 fetch 被调用之前就已触发（签名与 trace 头是异步的），先查 aborted 再挂监听
     fetchMock.mockImplementation((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
-      init.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+      const abort = () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+      if (init.signal?.aborted) abort();
+      else init.signal?.addEventListener('abort', abort);
     }));
     const err = await new PolicyApiClient('t1', 'u1').exportPackage(baseRequest, 5).catch((e: unknown) => e);
     expect(err).toMatchObject({ statusCode: 408, code: 'TIMEOUT' });
