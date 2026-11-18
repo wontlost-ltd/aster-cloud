@@ -248,3 +248,29 @@ describe('VocabulariesContent — 团队词汇作用域', () => {
     expect(screen.getByText('newTerm')).toBeInTheDocument();
   });
 });
+
+describe('VocabulariesContent — 筛选栏可见字段名（#811）', () => {
+  it('领域 / 语言 / 类型三个下拉都有可见 Label 并以此作为可访问名', () => {
+    render(<VocabulariesContent {...baseProps} />);
+    for (const key of ['filters.domain', 'filters.locale', 'filters.kind']) {
+      const select = screen.getByRole('combobox', { name: key });
+      // 可访问名来自可见 <label for>，而不是只有 aria-label
+      expect(select).not.toHaveAttribute('aria-label');
+      const label = screen.getByText(key, { selector: 'label' });
+      expect(label).toHaveAttribute('for', select.id);
+    }
+    // 已选值仍正确回显
+    expect(screen.getByRole('combobox', { name: 'filters.domain' })).toHaveValue('finance');
+  });
+
+  it('选择下拉值时写回 URL 筛选参数', () => {
+    const push = vi.spyOn(router, 'push');
+    const replace = vi.spyOn(router, 'replace');
+    render(<VocabulariesContent {...baseProps} />);
+    fireEvent.change(screen.getByRole('combobox', { name: 'filters.kind' }), { target: { value: 'enum_value' } });
+    const urls = [...push.mock.calls, ...replace.mock.calls].map((args) => String((args as unknown[])[0]));
+    expect(urls.some((u) => u.includes('kind=enum_value'))).toBe(true);
+    push.mockRestore();
+    replace.mockRestore();
+  });
+});
