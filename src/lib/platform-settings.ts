@@ -43,6 +43,9 @@ export const PLATFORM_SETTING_KEYS = {
   STRUCTURED_AUTHORING_ENABLED: 'capability.structured_authoring.enabled',
   // 团队 owner 委派总开关：一键停掉所有团队的委派，默认 ON。
   STRUCTURED_AUTHORING_TEAM_DELEGATION: 'capability.structured_authoring.team_delegation.enabled',
+  // 策略包导出（ADR 0059 P2，修订 3 P2-R16）：默认 OFF；aster-api 侧另有 ASTER_EXPORT_PACKAGE_ENABLED，
+  //   两边都开且列车与导出密钥就绪后才真正可用。
+  POLICY_PACKAGE_EXPORT_ENABLED: 'policy_export.package.enabled',
 } as const;
 
 /** 管理员附加指令长度上限，与 aster-api AssistantRequest 的 @Size 对齐。 */
@@ -68,6 +71,7 @@ const DEFAULTS: Record<string, unknown> = {
   [PLATFORM_SETTING_KEYS.AUTH_DB_EPOCH]: 0,
   [PLATFORM_SETTING_KEYS.STRUCTURED_AUTHORING_ENABLED]: false,
   [PLATFORM_SETTING_KEYS.STRUCTURED_AUTHORING_TEAM_DELEGATION]: true,
+  [PLATFORM_SETTING_KEYS.POLICY_PACKAGE_EXPORT_ENABLED]: false,
 };
 
 const CACHE_TTL_MS = 60_000;
@@ -178,6 +182,12 @@ async function writeSetting(
 /** Type-safe sugar for the policy-sharing flag. */
 export async function isPolicySharingEnabled(): Promise<boolean> {
   const v = await getSetting<boolean>(PLATFORM_SETTING_KEYS.POLICY_SHARING_ENABLED);
+  return v === true;
+}
+
+/** 策略包导出开关：只有布尔 true 才算打开（缺行、读库失败、非布尔值一律关闭）。 */
+export async function isPolicyPackageExportEnabled(): Promise<boolean> {
+  const v = await getSetting<unknown>(PLATFORM_SETTING_KEYS.POLICY_PACKAGE_EXPORT_ENABLED);
   return v === true;
 }
 

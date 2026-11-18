@@ -1,0 +1,280 @@
+// 策略包下载代理（ADR 0059 P2，T18）：POST /api/policies/[id]/export/package。
+// 开关、限流、请求体、访问、计划门、已批准版本、入口归一、Node 未就绪的拒绝顺序；zip 字节与头原样转发；
+// 上游 503 已登记码透传，entry_required 透传候选，其余 502 通用文案。
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const h = vi.hoisted(() => ({
+  getSession: vi.fn(),
+  findFirst: vi.fn(),
+  findExecutable: vi.fn(),
+  exportPackage: vi.fn(),
+  createClient: vi.fn(),
+  checkRateLimit: vi.fn(),
+  flag: vi.fn(),
+  planHolder: vi.fn(),
+  hasFeature: vi.fn(),
+  loadInput: vi.fn(),
+  nodeRuntime: vi.fn(),
+  recordEvent: vi.fn(),
+}));
+
+vi.mock('@/lib/auth', () => ({ getSession: () => h.getSession() }));
+vi.mock('@/lib/policy-access', async () =>
+  (await import('@/__tests__/helpers/policy-access-mock')).policyAccessModule());
+vi.mock('@/services/policy/default-executable-version', () => ({
+  findDefaultExecutableVersion: (...a: unknown[]) => h.findExecutable(...a),
+}));
+vi.mock('@/lib/policy-api-identity', () => ({
+  createPolicyApiClientForUser: (...a: unknown[]) => h.createClient(...a),
+}));
+vi.mock('@/lib/rate-limit', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/rate-limit')>()),
+  checkRateLimit: (...a: unknown[]) => h.checkRateLimit(...a),
+}));
+vi.mock('@/lib/platform-settings', () => ({ isPolicyPackageExportEnabled: () => h.flag() }));
+vi.mock('@/lib/team-plan', () => ({ planHolderForTeam: (...a: unknown[]) => h.planHolder(...a) }));
+vi.mock('@/lib/usage', () => ({ hasFeatureAccess: (...a: unknown[]) => h.hasFeature(...a) }));
+vi.mock('@/lib/package-export-input', () => ({ loadPackageExportInput: (...a: unknown[]) => h.loadInput(...a) }));
+vi.mock('@/lib/package-node-runtime', () => ({ nodePackageRuntime: () => h.nodeRuntime() }));
+vi.mock('@/lib/product-events/server', () => ({
+  recordProductEventAfterResponse: (...a: unknown[]) => h.recordEvent(...a),
+}));
+
+import { POST } from '@/app/api/policies/[id]/export/package/route';
+import { PolicyApiError } from '@/services/policy/policy-api';
+import { RateLimitPresets } from '@/lib/rate-limit';
+
+const { policyAccessState } = await import('@/__tests__/helpers/policy-access-mock');
+const owned = (over: Record<string, unknown> = {}) => ({ id: 'p1', userId: 'u1', teamId: null, ...over });
+const twoRules = 'Module m.\n\nRule allowRead given request:\n  Return true.\n\nRule allowWrite given request:\n  Return false.\n';
+const claimedRef = { policyId: 'p1', version: 3, status: 'APPROVED', approvedAt: '2026-11-17T08:00:00.000Z' };
+const inputRequest = { source: twoRules, locale: 'en-US', aliasSet: null, mode: 'b', claimedRef };
+const zipBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 9, 9]);
+const disposition = `attachment; filename="m-v3-jre-b.zip"; filename*=UTF-8''m-v3-jre-b.zip`;
+const zipResult = (over: Record<string, unknown> = {}) => ({
+  kind: 'zip', bytes: zipBytes.buffer.slice(0), sha256: 'cd'.repeat(32), filename: 'm-v3-jre-b.zip',
+  contentDisposition: disposition, signed: true, ...over,
+});
+const req = (body: unknown = { target: 'jre' }) => new Request('http://localhost/api/policies/p1/export/package', {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: typeof body === 'string' ? body : JSON.stringify(body),
+});
+const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  h.getSession.mockResolvedValue({ user: { id: 'u1' } });
+  h.flag.mockResolvedValue(true);
+  policyAccessState.loader = (id) => h.findFirst({ id });
+  policyAccessState.teamRole = 'viewer';
+  h.findFirst.mockResolvedValue(owned());
+  h.checkRateLimit.mockReturnValue({ allowed: true, remaining: 19, resetAt: Date.now() + 60_000 });
+  h.planHolder.mockImplementation(async (userId: string) => userId);
+  h.hasFeature.mockResolvedValue(true);
+  h.findExecutable.mockResolvedValue({ id: 'v-row', version: 3, source: twoRules, content: twoRules, aliasSet: null, status: 'APPROVED' });
+  h.loadInput.mockResolvedValue({ request: inputRequest, source: twoRules, vocabulary: undefined });
+  h.nodeRuntime.mockReturnValue(null);
+  h.createClient.mockResolvedValue({ exportPackage: h.exportPackage });
+  h.exportPackage.mockResolvedValue(zipResult());
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
+});
+
+describe('POST /api/policies/[id]/export/package', () => {
+  it('401 无会话', async () => {
+    h.getSession.mockResolvedValue(null);
+    expect((await POST(req(), ctx('p1'))).status).toBe(401);
+    expect(h.flag).not.toHaveBeenCalled();
+  });
+
+  it('404 开关关（缺行即关），不限流、不查策略', async () => {
+    h.flag.mockResolvedValue(false);
+    expect((await POST(req(), ctx('p1'))).status).toBe(404);
+    expect(h.checkRateLimit).not.toHaveBeenCalled();
+    expect(h.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('429 限流，按用户与 EVALUATE_SOURCE 计', async () => {
+    h.checkRateLimit.mockReturnValue({ allowed: false, remaining: 0, resetAt: Date.now() + 1000, retryAfterSeconds: 3 });
+    const res = await POST(req(), ctx('p1'));
+    expect(res.status).toBe(429);
+    expect(h.checkRateLimit).toHaveBeenCalledWith('policy-package-export:u1', RateLimitPresets.EVALUATE_SOURCE);
+    expect(h.findFirst).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['无请求体', ''],
+    ['非 JSON', '{'],
+    ['未知 target', { target: 'wasm' }],
+    ['缺 target', {}],
+  ])('400 invalid_target：%s', async (_label, body) => {
+    const res = await POST(req(body), ctx('p1'));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: 'invalid_target' });
+    expect(h.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('400 invalid_entry：entry 为空串或非字符串', async () => {
+    for (const entry of ['  ', 42]) {
+      const res = await POST(req({ target: 'jre', entry }), ctx('p1'));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({ error: 'invalid_entry' });
+    }
+  });
+
+  it('非成员 / 他人个人策略 → 404，不导出', async () => {
+    h.findFirst.mockResolvedValue(owned({ userId: 'someone-else' }));
+    expect((await POST(req(), ctx('p1'))).status).toBe(404);
+    h.findFirst.mockResolvedValue(owned({ teamId: 't9' }));
+    policyAccessState.teamRole = null;
+    expect((await POST(req(), ctx('p1'))).status).toBe(404);
+    expect(h.exportPackage).not.toHaveBeenCalled();
+  });
+
+  it('403 policy_export_requires_plan：free 套餐的团队 owner 是套餐持有人', async () => {
+    h.findFirst.mockResolvedValue(owned({ teamId: 't9', userId: 'creator' }));
+    h.planHolder.mockResolvedValue('owner-free');
+    h.hasFeature.mockResolvedValue(false);
+    const res = await POST(req(), ctx('p1'));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error: 'policy_export_requires_plan', upgrade: true });
+    expect(h.planHolder).toHaveBeenCalledWith('u1', 't9');
+    expect(h.hasFeature).toHaveBeenCalledWith('owner-free', 'policyExport');
+    expect(h.exportPackage).not.toHaveBeenCalled();
+  });
+
+  it('团队 viewer（非创建者）在付费团队下可导出（只读）', async () => {
+    h.findFirst.mockResolvedValue(owned({ teamId: 't9', userId: 'creator' }));
+    h.planHolder.mockResolvedValue('owner-pro');
+    const res = await POST(req(), ctx('p1'));
+    expect(res.status).toBe(200);
+    expect(h.createClient).toHaveBeenCalledWith('t9', 'u1');
+  });
+
+  it('409 无已批准版本（草稿永不导出）', async () => {
+    h.findExecutable.mockResolvedValue(null);
+    const res = await POST(req(), ctx('p1'));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'no executable version' });
+    expect(h.exportPackage).not.toHaveBeenCalled();
+  });
+
+  it('jre 成功：zip 字节与 aster-api 的头原样转发，记录 product event', async () => {
+    const res = await POST(req({ target: 'jre', uiLocale: 'de' }), ctx('p1'));
+    expect(res.status).toBe(200);
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(zipBytes);
+    expect(res.headers.get('Content-Type')).toBe('application/zip');
+    expect(res.headers.get('Content-Disposition')).toBe(disposition);
+    expect(res.headers.get('X-Aster-Package-Sha256')).toBe('cd'.repeat(32));
+    expect(res.headers.get('X-Aster-Package-Signed')).toBe('true');
+    expect(res.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
+    expect(h.loadInput).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }), expect.objectContaining({ id: 'v-row', version: 3 }));
+    expect(h.exportPackage).toHaveBeenCalledWith({ ...inputRequest, target: 'jre', uiLocale: 'de' });
+    expect(h.recordEvent).toHaveBeenCalledWith('policy_package_exported', expect.objectContaining({
+      userId: 'u1', properties: { target: 'jre', signed: true },
+    }));
+  });
+
+  it('无签名包：X-Aster-Package-Signed=false 照转发', async () => {
+    h.exportPackage.mockResolvedValue(zipResult({ signed: false }));
+    const res = await POST(req(), ctx('p1'));
+    expect(res.headers.get('X-Aster-Package-Signed')).toBe('false');
+    expect(h.recordEvent.mock.calls[0][1].properties).toEqual({ target: 'jre', signed: false });
+  });
+
+  it('uiLocale 缺省或不支持时为 en', async () => {
+    await POST(req({ target: 'jre', uiLocale: 'fr' }), ctx('p1'));
+    expect(h.exportPackage.mock.calls[0][0].uiLocale).toBe('en');
+  });
+
+  it('不可导出：200 {exportable:false, diagnostics}，不记事件', async () => {
+    const diagnostics = [{ severity: 'error', code: 'E734', message: 'Package size 2000000 bytes exceeds the 1048576-byte limit', startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 }];
+    h.exportPackage.mockResolvedValue({ kind: 'refused', diagnostics });
+    const res = await POST(req(), ctx('p1'));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ exportable: false, diagnostics });
+    expect(h.recordEvent).not.toHaveBeenCalled();
+  });
+
+  describe('entry', () => {
+    it('属于该版本的规则名去空白后转发', async () => {
+      await POST(req({ target: 'jre', entry: ' allowWrite ' }), ctx('p1'));
+      expect(h.exportPackage.mock.calls[0][0]).toMatchObject({ entry: 'allowWrite' });
+    });
+
+    it('不属于该版本 → 400 unknown_function，不转发', async () => {
+      const res = await POST(req({ target: 'jre', entry: 'deleteEverything' }), ctx('p1'));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({ error: 'unknown_function' });
+      expect(h.exportPackage).not.toHaveBeenCalled();
+    });
+
+    it('未给 entry 时不带该键', async () => {
+      await POST(req(), ctx('p1'));
+      expect(h.exportPackage.mock.calls[0][0]).not.toHaveProperty('entry');
+    });
+
+    it('上游 400 entry_required 透传候选', async () => {
+      h.exportPackage.mockRejectedValue(new PolicyApiError('choose', 400, 'entry_required', undefined,
+        { error: 'entry_required', entryCandidates: ['allowRead', 'allowWrite', 7] }));
+      const res = await POST(req(), ctx('p1'));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({ code: 'entry_required', entryCandidates: ['allowRead', 'allowWrite'] });
+    });
+  });
+
+  it('target=node 在 C3 之前恒 503 export_runtime_skew，不调用 aster-api', async () => {
+    const res = await POST(req({ target: 'node' }), ctx('p1'));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ code: 'export_runtime_skew' });
+    expect(h.createClient).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['package_export_busy', '1'],
+    ['export_signing_unavailable', undefined],
+    ['export_signing_kid_unanchored', undefined],
+    ['export_runtime_unavailable', undefined],
+  ])('上游 503 %s 透传码与 Retry-After', async (code, retryAfter) => {
+    h.exportPackage.mockRejectedValue(new PolicyApiError('internal detail host:8080', 503, code, undefined, { error: code }, retryAfter));
+    const res = await POST(req(), ctx('p1'));
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body).toMatchObject({ code });
+    expect(JSON.stringify(body)).not.toContain('host:8080');
+    expect(res.headers.get('Retry-After')).toBe(retryAfter ?? null);
+  });
+
+  it('登记过的上游 4xx（别名集过大）透传码与英文文案', async () => {
+    h.exportPackage.mockRejectedValue(new PolicyApiError('x', 400, 'alias_set_too_large'));
+    const res = await POST(req(), ctx('p1'));
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ code: 'alias_set_too_large' });
+  });
+
+  it.each([
+    ['上游 500', new PolicyApiError('stack at io.aster…', 500)],
+    ['未登记的 503', new PolicyApiError('x', 503, 'weird')],
+    ['未登记的 400', new PolicyApiError('x', 400, 'claimed_ref_invalid')],
+    ['超时', new PolicyApiError('Request timeout', 408, 'TIMEOUT')],
+    ['非 PolicyApiError', new Error('boom')],
+  ])('%s → 502 package_export_failed + requestId', async (_label, error) => {
+    h.exportPackage.mockRejectedValue(error);
+    const res = await POST(req(), ctx('p1'));
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body).toMatchObject({ code: 'package_export_failed' });
+    expect(body.requestId).toBeTruthy();
+    expect(res.headers.get('x-request-id')).toBe(body.requestId);
+  });
+
+  it('词汇不可用 → 503 vocabulary_unavailable，不导出', async () => {
+    h.loadInput.mockRejectedValue(Object.assign(new Error('Domain vocabulary could not be loaded.'), {
+      name: 'VersionVocabularyUnavailableError', code: 'vocabulary_unavailable',
+    }));
+    const res = await POST(req(), ctx('p1'));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ code: 'vocabulary_unavailable' });
+    expect(h.exportPackage).not.toHaveBeenCalled();
+  });
+});

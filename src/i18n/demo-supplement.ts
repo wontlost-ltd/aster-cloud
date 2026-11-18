@@ -1325,6 +1325,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         structuredAuthoringDesc: 'Global switch. When off, no one can use structured authoring, whatever their grants. Default OFF.',
         structuredAuthoringDelegationTitle: 'Structured Authoring: team owner delegation',
         structuredAuthoringDelegationDesc: 'When off, team owners cannot delegate seats and existing delegations stop applying. Default ON.',
+        policyPackageExportTitle: 'Policy package export',
+        policyPackageExportDesc: 'Lets paid plans export an approved policy version as a signed package that runs outside the platform. aster-api must have package export enabled as well. Default OFF.',
       },
       aiWorkspaceAccess: {
         title: 'AI workspace access',
@@ -3325,6 +3327,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         structuredAuthoringDesc: '全局开关。关闭后无论是否已授权，任何人都不能使用结构化编写。默认关闭。',
         structuredAuthoringDelegationTitle: '结构化编写：团队 owner 委派',
         structuredAuthoringDelegationDesc: '关闭后团队 owner 无法委派座位，已有委派也不再生效。默认开启。',
+        policyPackageExportTitle: '策略包导出',
+        policyPackageExportDesc: '允许付费套餐把已批准的策略版本导出为可在平台外运行的签名包。aster-api 也须打开包导出。默认关闭。',
       },
       aiWorkspaceAccess: {
         title: 'AI 工作台授权',
@@ -5326,6 +5330,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         structuredAuthoringDesc: 'Globaler Schalter. Ist er aus, kann niemand Strukturiertes Verfassen nutzen, unabhängig von Freigaben. Standard: aus.',
         structuredAuthoringDelegationTitle: 'Strukturiertes Verfassen: Delegation durch Team-Owner',
         structuredAuthoringDelegationDesc: 'Ist er aus, können Team-Owner keine Plätze delegieren und bestehende Delegationen gelten nicht mehr. Standard: ein.',
+        policyPackageExportTitle: 'Export als Richtlinienpaket',
+        policyPackageExportDesc: 'Erlaubt kostenpflichtigen Tarifen, eine freigegebene Richtlinienversion als signiertes Paket zu exportieren, das außerhalb der Plattform läuft. Auch in aster-api muss der Paketexport aktiviert sein. Standard: aus.',
       },
       aiWorkspaceAccess: {
         title: 'Zugriff auf den KI-Arbeitsbereich',
@@ -7313,6 +7319,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         structuredAuthoringDesc: 'वैश्विक स्विच। बंद होने पर अनुमति होने के बावजूद कोई भी संरचित लेखन का उपयोग नहीं कर सकता। डिफ़ॉल्ट: बंद।',
         structuredAuthoringDelegationTitle: 'संरचित लेखन: टीम owner प्रत्यायोजन',
         structuredAuthoringDelegationDesc: 'बंद होने पर टीम owner स्थान प्रत्यायोजित नहीं कर सकते और मौजूदा प्रत्यायोजन लागू नहीं रहते। डिफ़ॉल्ट: चालू।',
+        policyPackageExportTitle: 'नीति पैकेज निर्यात',
+        policyPackageExportDesc: 'सशुल्क प्लान को स्वीकृत नीति संस्करण को ऐसे हस्ताक्षरित पैकेज के रूप में निर्यात करने देता है जो प्लेटफ़ॉर्म के बाहर चलता है। aster-api में भी पैकेज निर्यात चालू होना चाहिए। डिफ़ॉल्ट: बंद।',
       },
       aiWorkspaceAccess: {
         title: 'AI कार्यक्षेत्र पहुँच',
