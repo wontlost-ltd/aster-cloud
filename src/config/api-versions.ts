@@ -21,6 +21,13 @@ export const API_ENDPOINTS = {
   // 可导出性检查（#786）：只编译与翻译，不做等价性探针、不占导出并发、不写审计；详情页据此决定是否显示导出按钮
   checkCedarExport: `${prefix}/policies/export/cedar/check`,
   /**
+   * 策略包导出（ADR 0059 P2，修订 3 P2-R8）：三个端点只接受 HMAC 已验签的 cloud 调用（P2-R10），request() 自动附内部签名。
+   * check 廉价（编译 + 静态检查，按 target 给结论），prepare 另生成探针与平台期望值，exportPackage 组装、签名、审计并返回 zip。
+   */
+  checkPackageExport: `${prefix}/policies/export/package/check`,
+  preparePackageExport: `${prefix}/policies/export/package/prepare`,
+  exportPackage: `${prefix}/policies/export/package`,
+  /**
    * What-If 批次（ADR 0034）。★路径含 policyId，故用函数而非常量——
    * 签名时只取 pathname（不含 query），与 InternalCallerFilter 的
    * ctx.getUriInfo().getPath() 对齐。

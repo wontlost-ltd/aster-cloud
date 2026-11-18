@@ -57,6 +57,13 @@ export const PRODUCT_EVENT_DEFINITIONS = {
       verifiableOnly: { kind: 'bool' },
     },
   },
+  // 策略包导出成功（ADR 0059 P2，修订 3 P2-R17）：zip 哈希等明细在 aster-api 审计链，这里只记 target 与是否签名
+  policy_package_exported: {
+    props: {
+      target: { kind: 'enum', values: ['jre', 'node'] },
+      signed: { kind: 'bool' },
+    },
+  },
   approvals_inbox_viewed: { client: true, props: {} },
   landing_viewed: {
     client: true,

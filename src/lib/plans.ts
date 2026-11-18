@@ -77,6 +77,11 @@ export type PlanCapabilities = {
   customLexiconBulkUploadAsync: boolean;
   /** 结构化编写（ADR 0058）：套餐侧资格；是否放行还要看全局开关与授权。 */
   structuredAuthoring: boolean;
+  /**
+   * 策略包导出（ADR 0059 P2，修订 3 P2-R16）：把已批准版本导出为可在平台外运行的签名包。
+   * 套餐持有人按 planHolderForTeam 判定；Cedar 导出不受此门控。
+   */
+  policyExport: boolean;
   customIntegrations?: boolean;
 };
 
@@ -149,6 +154,7 @@ export const PLANS = {
       piiDetection: 'basic',
       sharing: false,
       evidenceExport: false,
+      policyExport: false,
       apiAccess: false,
       teamFeatures: false,
       customLexicon: false,
@@ -173,6 +179,7 @@ export const PLANS = {
       piiDetection: 'advanced',
       sharing: true,
       evidenceExport: true,
+      policyExport: true,
       apiAccess: true,
       teamFeatures: true,
       customLexicon: true,
@@ -210,6 +217,7 @@ export const PLANS = {
       piiDetection: 'advanced',
       sharing: true,
       evidenceExport: true,
+      policyExport: true,
       apiAccess: true,
       teamFeatures: true,
       auditLogs: true,
@@ -250,6 +258,7 @@ export const PLANS = {
       piiDetection: 'advanced',
       sharing: true,
       evidenceExport: true,
+      policyExport: true,
       apiAccess: true,
       teamFeatures: true,
       sso: true,
@@ -290,6 +299,7 @@ export const PLANS = {
       piiDetection: 'advanced',
       sharing: true,
       evidenceExport: true,
+      policyExport: true,
       apiAccess: true,
       teamFeatures: true,
       sso: true,

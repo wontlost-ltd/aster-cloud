@@ -267,6 +267,118 @@ export interface PolicyCedarExportCheckResponse {
   scopesHash?: string;
 }
 
+/** 策略包导出的 target（ADR 0059 P2）：jre 先行；node 在 C3（ts ≥ 3.3.0）之前由 cloud 拒绝。 */
+export type PackageExportTarget = 'jre' | 'node';
+export const PACKAGE_EXPORT_TARGETS: readonly PackageExportTarget[] = ['jre', 'node'];
+/** 包内 README 的语言（修订 3 P2-R15：hi 由 aster-api 回落英文模板）。 */
+export type PackageExportUiLocale = 'en' | 'zh' | 'de' | 'hi';
+
+/** 写进签名 manifest 的来源（修订 3 P2-R11）：四项必填，不合规时 aster-api 整次 400 claimed_ref_invalid。 */
+export interface PackageClaimedRef {
+  policyId: string;
+  version: number;
+  status: 'APPROVED';
+  /** 该版本最近一次批准决定的时间（ISO-8601）；没有批准记录时为 null */
+  approvedAt: string | null;
+}
+
+/** cloud 在 Worker 内完成的 Node 探针比对结果（修订 3 P2-R13，C3 才会发送）。 */
+export interface PackageNodeProbes {
+  probesSha256: string;
+  count: number;
+  agreed: number;
+  tsVersion: string;
+}
+
+/**
+ * 策略包导出请求（aster-api `PackageExportRequest`，check / prepare / export/package 三者同形）。
+ * 编译输入与 Cedar 导出同一份（源码、语言、冻结别名集、结构词授权、领域词汇）。
+ */
+export interface PackageExportRequest {
+  source: string;
+  locale: string;
+  aliasSet?: Record<string, string[]> | null;
+  allowStructural?: boolean;
+  vocabulary?: Record<string, unknown>;
+  /** 入口函数（规范名）；缺省时 aster-api 按 EntryPointSelector 确定（修订 3 P2-R9） */
+  entry?: string;
+  target: PackageExportTarget;
+  /** v1 只有 B 形态（源码 + 元数据） */
+  mode: 'b';
+  uiLocale: PackageExportUiLocale;
+  claimedRef: PackageClaimedRef;
+  nodeProbes?: PackageNodeProbes;
+}
+
+/** 单个 target 的检查结论；unavailable 为非空码（如 export_runtime_unavailable）时该 target 当前不提供。 */
+export interface PackageExportTargetCheck {
+  exportable: boolean;
+  diagnostics: PolicyDiagnostic[];
+  unavailable: string | null;
+}
+
+/** `POST …/export/package/check`：编译 + 静态检查，按 target 分别给结论；不跑探针、不占并发、不写审计。 */
+export interface PackageExportCheckResponse {
+  targets: Partial<Record<PackageExportTarget, PackageExportTargetCheck>>;
+  /** 确定不了唯一入口时为 null，此时 entryCandidates 列出候选 */
+  defaultEntry: string | null;
+  entryCandidates: string[];
+}
+
+/** `POST …/export/package/prepare`：另含平台 Core IR、探针与期望值，供 cloud 做 Node 比对（C3）。 */
+export interface PackageExportPrepareResponse {
+  exportable: boolean;
+  diagnostics: PolicyDiagnostic[];
+  coreIr: string | null;
+  coreIrSha256: string | null;
+  positionFreeSha256: string | null;
+  probes: unknown;
+  probesSha256: string | null;
+  probeCount: number;
+  runtime: { cliName: string; cliVersion: string; ecosystem: string } | null;
+}
+
+/** `POST …/export/package` 的结果：zip 字节（含 aster-api 给出的哈希与文件名），或不可导出的诊断。 */
+export type PackageExportResult =
+  | {
+      kind: 'zip';
+      bytes: ArrayBuffer;
+      /** 整个 zip 的 SHA-256（X-Aster-Package-Sha256，aster-api 审计链记录的同一值） */
+      sha256: string;
+      /** 解码后的下载文件名（filename* 优先） */
+      filename: string;
+      /** 上游 Content-Disposition 原文，下载代理原样转发 */
+      contentDisposition: string;
+      /** X-Aster-Package-Signed：false 表示无签名包（仅 on-prem 的 allow-unsigned） */
+      signed: boolean;
+    }
+  | { kind: 'refused'; diagnostics: PolicyDiagnostic[] };
+
+/** 包导出的超时：export/package 要跑最多 256 条探针并组装、签名，比通用 30 s 宽 */
+export const PACKAGE_EXPORT_TIMEOUT_MS = 60_000;
+
+const FALLBACK_PACKAGE_FILENAME = 'policy-package.zip';
+
+/** 从 Content-Disposition 取文件名：RFC 5987 的 filename*=UTF-8''… 优先，其次 filename="…"。 */
+export function packageFilename(contentDisposition: string | null): string {
+  const header = contentDisposition ?? '';
+  const extended = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header);
+  if (extended) {
+    try {
+      const decoded = decodeURIComponent(extended[1]!.trim());
+      if (decoded) return decoded;
+    } catch {
+      // 非法百分号编码：退到 ASCII 回退名
+    }
+  }
+  const plain = /filename\s*=\s*"([^"]+)"/i.exec(header) ?? /filename\s*=\s*([^;]+)/i.exec(header);
+  return plain?.[1]?.trim() || FALLBACK_PACKAGE_FILENAME;
+}
+
+function invalidPackageResponse(reason: string): PolicyApiError {
+  return new PolicyApiError(`Invalid package export response: ${reason}`, 502, 'package_response_invalid');
+}
+
 export interface PolicyDiagnostic {
   /** 严重级别 */
   severity: 'error' | 'warning' | 'info' | 'hint';
@@ -479,13 +591,44 @@ export class PolicyApiClient {
   }
 
   /**
-   * 发送 HTTP 请求
+   * 发送 HTTP 请求，响应按 JSON 读取
    */
   private async request<T>(
     method: string,
     path: string,
     body?: unknown,
     timeoutMs: number = this.timeout
+  ): Promise<T> {
+    // 204 无体（如签发方 DELETE）：不读 json，否则成功的调用会被当成解析失败
+    return this.send(method, path, body, timeoutMs, async (response): Promise<T> =>
+      response.status === 204 ? (undefined as T) : ((await response.json()) as T));
+  }
+
+  /**
+   * 发送 HTTP 请求，2xx 且 content-type 为 application/zip 时按字节读取，其余 2xx 按 JSON 读取。
+   * 签名头、超时与错误处理与 request() 相同（读体也在超时内）。
+   */
+  private async requestBinary(
+    method: string,
+    path: string,
+    body: unknown,
+    timeoutMs: number = this.timeout
+  ): Promise<{ kind: 'binary'; headers: Headers; bytes: ArrayBuffer } | { kind: 'json'; data: unknown }> {
+    return this.send(method, path, body, timeoutMs, async (response) => {
+      const contentType = response.headers.get('content-type') ?? '';
+      if (/^application\/zip\b/i.test(contentType)) {
+        return { kind: 'binary' as const, headers: response.headers, bytes: await response.arrayBuffer() };
+      }
+      return { kind: 'json' as const, data: await response.json() };
+    });
+  }
+
+  private async send<T>(
+    method: string,
+    path: string,
+    body: unknown,
+    timeoutMs: number,
+    read: (response: Response) => Promise<T>
   ): Promise<T> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -539,9 +682,7 @@ export class PolicyApiClient {
         );
       }
 
-      // 204 无体（如签发方 DELETE）：不读 json，否则成功的调用会被当成解析失败
-      if (response.status === 204) return undefined as T;
-      return response.json();
+      return await read(response);
     } catch (error) {
       if (error instanceof PolicyApiError) {
         throw error;
@@ -699,6 +840,53 @@ export class PolicyApiClient {
       ...(hasAliases && request.allowStructural === true ? { allowStructural: true } : {}),
       ...(request.vocabulary ? { vocabulary: request.vocabulary } : {}),
     });
+  }
+
+  /**
+   * 策略包可导出性检查（ADR 0059 P2，修订 3 P2-R8）：编译 + 静态检查，按 target 分别给结论。
+   * 不跑探针、不占导出并发、不写审计；详情页据此决定显示哪些包选项。
+   */
+  async checkPackageExport(request: PackageExportRequest, timeoutMs?: number): Promise<PackageExportCheckResponse> {
+    return this.request<PackageExportCheckResponse>('POST', API_ENDPOINTS.checkPackageExport, request, timeoutMs);
+  }
+
+  /** 策略包导出准备：另生成探针与平台期望值（最多 256 次求值），供 Node 比对（C3）。 */
+  async preparePackageExport(request: PackageExportRequest): Promise<PackageExportPrepareResponse> {
+    return this.request<PackageExportPrepareResponse>(
+      'POST', API_ENDPOINTS.preparePackageExport, request, PACKAGE_EXPORT_TIMEOUT_MS);
+  }
+
+  /**
+   * 导出策略包：200 application/zip 为包字节；200 `{exportable:false}` 为不可导出（含 E734 超限）。
+   * 其余状态（503 package_export_busy / export_signing_* / export_runtime_unavailable、400 entry_required 等）
+   * 抛 PolicyApiError，错误体与 Retry-After 保留供路由透传。zip 缺 SHA-256 头时不交出字节（无法供用户核对）。
+   */
+  async exportPackage(
+    request: PackageExportRequest,
+    timeoutMs: number = PACKAGE_EXPORT_TIMEOUT_MS
+  ): Promise<PackageExportResult> {
+    const res = await this.requestBinary('POST', API_ENDPOINTS.exportPackage, request, timeoutMs);
+    if (res.kind === 'binary') {
+      const sha256 = res.headers.get('X-Aster-Package-Sha256')?.trim();
+      if (!sha256) throw invalidPackageResponse('missing X-Aster-Package-Sha256');
+      // 签名标记决定 UI 是否提示「无签名包」：缺失或取值不明时不猜，按上游响应不完整处理
+      const signedHeader = res.headers.get('X-Aster-Package-Signed')?.trim().toLowerCase();
+      if (signedHeader !== 'true' && signedHeader !== 'false') throw invalidPackageResponse('missing X-Aster-Package-Signed');
+      const contentDisposition = res.headers.get('Content-Disposition') ?? '';
+      return {
+        kind: 'zip',
+        bytes: res.bytes,
+        sha256,
+        filename: packageFilename(contentDisposition),
+        contentDisposition,
+        signed: signedHeader === 'true',
+      };
+    }
+    const data = res.data as { exportable?: unknown; diagnostics?: unknown } | null;
+    if (data && data.exportable === false) {
+      return { kind: 'refused', diagnostics: Array.isArray(data.diagnostics) ? (data.diagnostics as PolicyDiagnostic[]) : [] };
+    }
+    throw invalidPackageResponse('neither a zip nor a refusal');
   }
 
   /** 导出为 Cedar（ADR 0047 §6）：不可导出仍是 200，503 cedar_export_busy 表示服务端并发已满。 */
