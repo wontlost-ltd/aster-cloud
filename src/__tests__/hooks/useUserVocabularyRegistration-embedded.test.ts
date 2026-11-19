@@ -105,6 +105,19 @@ describe('useUserVocabularyRegistration + 内嵌词汇', () => {
     expect(result.current.vocabulary).toBe(before.vocabulary);
   });
 
+  it('内嵌写法与本策略的关键词别名同形（保存会被拒）：不并入编辑器词汇', async () => {
+    const clash: EmbeddedVocabulary = { v: 1, terms: [{ kind: 'literal', localized: '接 着', canonical: 'x' }] };
+    const { result, rerender } = renderHook(
+      (aliasSet: Record<string, string[]> | null) =>
+        useUserVocabularyRegistration({ tenantId: 't', locale: 'zh-CN', source: SOURCE, embedded: clash, aliasSet }),
+      { initialProps: null as Record<string, string[]> | null },
+    );
+    await waitFor(() => expect(result.current.vocabulary?.literals?.[0]?.localized).toBe('接 着'));
+    rerender({ PLUS: ['接 着'] });
+    expect(result.current.vocabulary).toBeUndefined();
+    expect(result.current.registrationKey).toBe('');
+  });
+
   it('无内嵌词汇：与引入前一致（无个人词条时没有词汇）', async () => {
     const { result } = renderHook(() =>
       useUserVocabularyRegistration({ tenantId: 't', locale: 'zh-CN', source: SOURCE, embedded: null }),

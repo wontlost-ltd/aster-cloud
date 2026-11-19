@@ -16,6 +16,8 @@ const h = vi.hoisted(() => ({
   sidePanel: undefined as Record<string, unknown> | undefined,
   rail: undefined as Record<string, unknown> | undefined,
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn(), dismiss: vi.fn() },
+  // 草稿恢复提示（toast(title, { action })）
+  toastRoot: vi.fn(),
 }));
 
 vi.mock('next/dynamic', () => ({
@@ -42,7 +44,7 @@ vi.mock('next-intl', () => ({
     }),
   useLocale: () => 'zh',
 }));
-vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), h.toast) }));
+vi.mock('sonner', () => ({ toast: Object.assign((...args: unknown[]) => h.toastRoot(...args), h.toast) }));
 vi.mock('@/components/policy/policy-form/side-panel', () => ({
   SidePanel: (props: Record<string, unknown>) => {
     h.sidePanel = props;
@@ -123,7 +125,20 @@ beforeEach(() => {
   h.sidePanel = undefined;
   h.rail = undefined;
   for (const fn of Object.values(h.toast)) fn.mockReset();
+  h.toastRoot.mockReset();
 });
+
+/** 本地存一份 schema 3 草稿，渲染后点「恢复」。 */
+function restoreDraft(embedded: EmbeddedVocabulary | null) {
+  window.localStorage.setItem(
+    'aster:policy-draft:p1',
+    JSON.stringify({ v: 3, savedAt: Date.now(), name: 'n', description: '', content: SOURCE, isPublic: false, groupId: null, aliasSet: null, embeddedVocabulary: embedded }),
+  );
+}
+const clickRestore = () => {
+  const options = h.toastRoot.mock.calls.at(-1)![1] as { action: { onClick: () => void } };
+  act(() => options.action.onClick());
+};
 
 describe('PolicyForm 内嵌词汇', () => {
   it('编辑器（浏览器编译、LSP、规范预览）拿到活跃版本的内嵌词汇；侧栏拿到同一份', () => {
@@ -182,6 +197,33 @@ describe('PolicyForm 内嵌词汇', () => {
     clickSave();
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect('embeddedVocabulary' in ctxOf(onSave)).toBe(false);
+  });
+
+  it('无能力：即使表单值被改动（恢复旧草稿等），保存仍省略字段', async () => {
+    const onSave = renderForm({ structuredAuthoring: DENIED });
+    changeEmbedded({ v: 1, terms: [] });
+    clickSave();
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect('embeddedVocabulary' in ctxOf(onSave)).toBe(false);
+  });
+
+  it('无能力：恢复草稿不改内嵌词条（编辑器仍用活跃版本的值）', async () => {
+    restoreDraft(null);
+    renderForm({ structuredAuthoring: DENIED });
+    await waitFor(() => expect(h.toastRoot).toHaveBeenCalled());
+    clickRestore();
+    expect(h.props[0]!.embeddedVocabulary).toEqual(POEM);
+  });
+
+  it('有能力：恢复草稿带回草稿里的内嵌词条，保存时提交 null', async () => {
+    restoreDraft(null);
+    const onSave = renderForm();
+    await waitFor(() => expect(h.toastRoot).toHaveBeenCalled());
+    clickRestore();
+    expect(h.props[0]!.embeddedVocabulary).toBeNull();
+    clickSave();
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(ctxOf(onSave).embeddedVocabulary).toBeNull();
   });
 
   it('保存响应带 vocabularyShadowed 时提示被覆盖的词条及来源', async () => {

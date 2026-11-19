@@ -335,10 +335,12 @@ export function PolicyForm({
   );
   // 内嵌词汇在保存请求里的三态：与活跃版本相同 → 省略；改空 → null；否则提交对象
   const embeddedSaveField = useMemo((): EmbeddedVocabulary | null | undefined => {
+    // 无结构化编写能力的作者从不提交该字段（服务端沿用活跃版本），无论表单状态从何而来
+    if (!structuredAuthoring.allowed) return undefined;
     const current = storedEmbeddedVocabulary(fields.embeddedVocabulary);
     if (current === storedEmbeddedVocabulary(savedEmbedded)) return undefined;
     return current === null ? null : fields.embeddedVocabulary;
-  }, [fields.embeddedVocabulary, savedEmbedded]);
+  }, [fields.embeddedVocabulary, savedEmbedded, structuredAuthoring.allowed]);
 
   // ---------------------------------------------------------------
   // UI state
@@ -671,7 +673,8 @@ export function PolicyForm({
           setIsPublic(pendingDraft.isPublic);
           setGroupId(pendingDraft.groupId);
           setAliasSet(pendingDraft.aliasSet ?? {});
-          setEmbedded(pendingDraft.embeddedVocabulary ?? null);
+          // 只有能改动内嵌词条的作者才恢复草稿里的值；能力已被收回时保留活跃版本的值（只读作者不改词条）
+          if (structuredAuthoring.allowed) setEmbedded(pendingDraft.embeddedVocabulary ?? null);
           acceptPendingDraft();
         },
       },
@@ -686,7 +689,7 @@ export function PolicyForm({
       // If the user navigates away before responding, dismiss the toast.
       toast.dismiss(id);
     };
-  }, [pendingDraft, t, acceptPendingDraft, discardPendingDraft]);
+  }, [pendingDraft, t, acceptPendingDraft, discardPendingDraft, structuredAuthoring.allowed]);
 
   // ---------------------------------------------------------------
   // Save handlers

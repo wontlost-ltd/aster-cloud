@@ -515,6 +515,7 @@ export function MonacoPolicyEditor({
     enabled: userVocabularyEnabled,
     teamId: vocabularyTeamId,
     embedded: embeddedVocabulary,
+    aliasSet,
   });
 
   // 词汇标签页的术语：与上面同一次拉取，只上抛不另发请求。

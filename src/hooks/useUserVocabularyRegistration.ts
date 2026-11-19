@@ -46,8 +46,10 @@ import {
   mergeEmbeddedVocabulary,
   storedEmbeddedVocabulary,
   toDomainVocabulary,
+  validateEmbeddedVocabulary,
   type EmbeddedVocabulary,
 } from '@/lib/policy-embedded-vocabulary';
+import type { AliasSet } from '@/lib/policy-alias-shared';
 import type { IdentifierKind, IdentifierMapping } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
 
 /** GET /api/v1/domain-vocabularies/terms 返回的单条链接（取用到的字段）。 */
@@ -82,6 +84,8 @@ export interface UseUserVocabularyRegistrationOptions {
   teamId?: string | null;
   /** 策略内嵌词汇（ADR 0060）：优先于团队与作者词汇，不经作用域筛选；缺省或 null 为无。 */
   embedded?: EmbeddedVocabulary | null;
+  /** 本策略的关键词别名：内嵌词汇按与保存相同的规则（§6.4，含与别名的碰撞）校验，不合法时不并入。 */
+  aliasSet?: Readonly<Record<string, readonly string[]>> | null;
 }
 
 /** 在团队策略里因与团队词条冲突而不生效的作者个人词条。 */
@@ -221,13 +225,18 @@ function rowMapping(row: TermLikeRow): IdentifierMapping {
 }
 
 /**
- * 内嵌词汇的引擎形状；无词条，或词条无法构成作用域（编辑中途的非法组合）时为 null——
- * 非法内嵌词汇由编辑器表单拦下、保存时服务端 400，编译不因它崩溃，退回下层词汇。
+ * 内嵌词汇的引擎形状；无词条，或不能通过保存时的同一校验（validateEmbeddedVocabulary，含与本策略别名的碰撞）
+ * 或无法构成作用域时为 null——编辑器不用服务端会拒绝的词汇编译，退回下层词汇；保存前的本地校验会给出原因。
  */
-function embeddedForEditor(embedded: EmbeddedVocabulary | null | undefined, locale: string): DomainVocabulary | null {
+function embeddedForEditor(
+  embedded: EmbeddedVocabulary | null | undefined,
+  locale: string,
+  aliasSet: AliasSet | null,
+): DomainVocabulary | null {
   if (!embedded || embedded.terms.length === 0) return null;
-  const vocabulary = toDomainVocabulary(embedded, locale);
   try {
+    validateEmbeddedVocabulary(embedded, { locale, aliasSet });
+    const vocabulary = toDomainVocabulary(embedded, locale);
     buildVocabularyScopes(vocabulary);
     return vocabulary;
   } catch {
@@ -257,6 +266,7 @@ export function useUserVocabularyRegistration({
   enabled = true,
   teamId = null,
   embedded = null,
+  aliasSet = null,
 }: UseUserVocabularyRegistrationOptions): UseUserVocabularyRegistrationResult {
   const [authorRows, setAuthorRows] = useState<TermLikeRow[]>([]);
   // 团队词条连同所属团队一起存：只有与当前 teamId 一致时才参与合并，切换团队期间不会混入上一团队的词条。
@@ -313,8 +323,12 @@ export function useUserVocabularyRegistration({
 
   // 内嵌词汇按规范序列化取 key：内容不变（仅引用变化）时不重算作用域、不触发 LSP 重新初始化。
   const embeddedKey = embedded ? storedEmbeddedVocabulary(embedded) : null;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const embeddedVocabulary = useMemo(() => embeddedForEditor(embedded, locale), [embeddedKey, locale]);
+  const aliasKey = JSON.stringify(aliasSet ?? null);
+  const embeddedVocabulary = useMemo(
+    () => embeddedForEditor(embedded, locale, aliasSet),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [embeddedKey, locale, aliasKey],
+  );
   const shadowedByPolicy = useMemo(() => embeddedShadowPredicate(embeddedVocabulary), [embeddedVocabulary]);
 
   const terms = useMemo(
