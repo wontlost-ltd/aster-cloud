@@ -24,6 +24,12 @@ import { softDeletePolicy } from '@/lib/policy-lifecycle';
 import { invalidatePolicyCache } from '@/lib/cache';
 import { authorizeGroupPlacement, authorizePolicyAction, loadPolicyForAction, policyAccessDeniedResponse } from '@/lib/policy-access';
 import { parseCompileLocale } from '@/lib/cnl-locale';
+import { resolveEntitlement } from '@/lib/capabilities/resolve';
+import { layoutSaveErrorResponse } from '@/lib/policy-layout/errors';
+import { sha256Utf8Hex } from '@/lib/policy-layout/hash';
+import { activeLayoutSha256, loadVersionLayout } from '@/lib/policy-layout/store';
+import type { StoredLayout } from '@/lib/policy-layout/types';
+import { serializeLayout, type PolicyLayout } from '@aster-cloud/aster-lang-ts/layout';
 
 
 interface RouteParams {
@@ -86,8 +92,10 @@ export async function GET(req: Request, { params }: RouteParams) {
     // （否则含关键词/运算符别名的源码在「生成示例」阶段解析失败）。口径同执行路径（C1 SQL JOIN）。
     const activeVersion = await db.query.policyVersions.findFirst({
       where: and(eq(policyVersions.policyId, id), eq(policyVersions.version, policy.version)),
-      columns: { aliasSet: true },
+      columns: { id: true, aliasSet: true },
     });
+    // 活跃版本的 LayoutMap（ADR 0058 §7.2）：读权限检查之后读取，只读查看不设能力门。
+    const layout: StoredLayout = activeVersion ? await loadVersionLayout(activeVersion.id) : { status: 'none' };
 
     // 获取执行次数
     const [{ count: executionCount }] = await db
@@ -103,6 +111,7 @@ export async function GET(req: Request, { params }: RouteParams) {
       versions,
       // 活跃版本冻结别名（canonical JSON 字符串或 null）。前端合并进 lexicon 供 schema 提取。
       activeAliasSet: activeVersion?.aliasSet ?? null,
+      layout,
       _count: { executions: executionCount },
       isFrozen: freezeInfo?.isFrozen ?? false,
       freezeInfo: freezeInfo
@@ -120,6 +129,26 @@ export async function GET(req: Request, { params }: RouteParams) {
   }
 }
 
+/**
+ * 提交的 layout 是否与活跃版本不同（裁决 R4）：省略 → 不变；null → 活跃版本有 layout 即变；
+ * 其余按确定性序列化的哈希比较。序列化失败视为已变，交给 createVersion 报 400。
+ */
+function isLayoutChanged(layout: unknown, activeSha: string | null): boolean {
+  if (layout === undefined) return false;
+  if (layout === null) return activeSha !== null;
+  try {
+    return sha256Utf8Hex(serializeLayout(layout as PolicyLayout)) !== activeSha;
+  } catch {
+    return true;
+  }
+}
+
+/** 新版本可能带 layout 时才需要解析 structured_authoring（避免每次保存多一次能力查询）。 */
+function needsLayoutEntitlement(layout: unknown, activeSha: string | null): boolean {
+  if (layout === undefined) return activeSha !== null;
+  return layout !== null;
+}
+
 // PUT /api/policies/[id] - Update a policy
 export async function PUT(req: Request, { params }: RouteParams) {
   try {
@@ -129,7 +158,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
     }
 
     const { id } = await params;
-    const { name, content, description, isPublic, groupId, aliasSet, locale } = await req.json();
+    const { name, content, description, isPublic, groupId, aliasSet, locale, layout } = await req.json();
 
     // 团队策略按当前角色授权（member 起可编辑，viewer 403，非成员 404）；个人策略只认所有者。
     const access = await loadPolicyForAction(id, { userId: session.user.id }, 'update');
@@ -184,7 +213,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
         eq(policyVersions.policyId, id),
         eq(policyVersions.version, existingPolicy.version),
       ),
-      columns: { aliasSet: true, sourceScopesJson: true },
+      columns: { id: true, aliasSet: true, sourceScopesJson: true },
     });
     const existingCanonical = activeVersion?.aliasSet ?? null;
     let existingAliasSet: Record<string, string[]> | null = null;
@@ -214,7 +243,10 @@ export async function PUT(req: Request, { params }: RouteParams) {
     // 封印值为 NULL 的旧行（ADR 0051 之前）不参与比对，不因此强制建版本；只改名称等字段的请求
     // （不带 content）不加载词汇。
     const sealedScopesJson = activeVersion?.sourceScopesJson ?? null;
-    const inputsChanged = contentChanged || aliasChanged;
+    // 只改 layout 也建新版本（裁决 R4）：layout 是版本的一部分，不可原地更新。
+    const activeSha = activeVersion?.id ? await activeLayoutSha256(activeVersion.id) : null;
+    const layoutChanged = isLayoutChanged(layout, activeSha);
+    const inputsChanged = contentChanged || aliasChanged || layoutChanged;
     const checkVocabulary = !inputsChanged && content !== undefined && sealedScopesJson !== null;
     const saveVocabulary = inputsChanged || checkVocabulary
       ? await loadSaveVocabulary(session.user.id, { source: versionSource, locale: compileLocale }, { teamId: existingPolicy.teamId })
@@ -280,6 +312,11 @@ export async function PUT(req: Request, { params }: RouteParams) {
     const aliasReserved = newVersion && aliasSetInput
       ? await buildAliasReservedForUser(session.user.id, compileLocale)
       : undefined;
+    // structured_authoring 只在新版本可能带 layout 时解析：提交了 layout，或省略而活跃版本有 layout（沿用）。
+    const allowLayout = newVersion && needsLayoutEntitlement(layout, activeSha)
+      ? (await resolveEntitlement(session.user.id, 'structured_authoring', { teamId: existingPolicy.teamId })).allowed
+      : false;
+    let layoutDropped = false;
     const policy = await db.transaction(async (tx) => {
       if (newVersion && saveVocabulary) {
         const createdVersion = await createVersion({
@@ -294,7 +331,10 @@ export async function PUT(req: Request, { params }: RouteParams) {
           allowStructuralAliases: allowStructural,
           profile,
           dbClient: tx,
+          layout,
+          allowLayout,
         });
+        layoutDropped = createdVersion.layoutDropped;
         updateData.version = createdVersion.version; // 回填，保持 Policy.version ↔ PolicyVersion.version 一致
       }
       const [updated] = await tx
@@ -309,8 +349,10 @@ export async function PUT(req: Request, { params }: RouteParams) {
     // 响应前完成缓存失效；KV 故障只记录，不把已成功的写操作报成失败。
     await invalidatePolicyCache(id).catch((err) => console.warn('[Cache] Failed to invalidate policy cache:', err));
 
-    return NextResponse.json(policy);
+    return NextResponse.json({ ...policy, layoutDropped });
   } catch (error) {
+    const layoutError = layoutSaveErrorResponse(error);
+    if (layoutError) return layoutError;
     // 编译门禁拒绝：源码有阻断诊断 → 400；编译检查暂不可用 → 503 可重试。
     if (error instanceof PolicyCompileError) {
       return compileGateErrorResponse(error);

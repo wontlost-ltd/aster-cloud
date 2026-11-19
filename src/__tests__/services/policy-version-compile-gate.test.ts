@@ -11,6 +11,9 @@ const { mockInsertReturning, mockInsertValues, mockVersionsFindFirst } = vi.hois
   };
 });
 
+// 本文件整体替换了 @/lib/prisma：layout 存储用默认「无 layout」替身（ADR 0058）
+vi.mock('@/lib/policy-layout/store', async () =>
+  (await import('@/__tests__/helpers/policy-layout-store-mock')).policyLayoutStoreModule());
 vi.mock('@/lib/prisma', () => {
   const insert = vi.fn(() => ({ values: mockInsertValues }));
   // 链尾在事务内 SELECT … FOR UPDATE 读取（mockVersionsFindFirst 给出链尾行）

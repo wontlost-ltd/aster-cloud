@@ -34,6 +34,9 @@ vi.mock('@/lib/cache', () => ({
   invalidatePolicyCache: mockInvalidate,
 }));
 
+// 本文件整体替换了 @/lib/prisma：layout 存储用默认「无 layout」替身（ADR 0058）
+vi.mock('@/lib/policy-layout/store', async () =>
+  (await import('@/__tests__/helpers/policy-layout-store-mock')).policyLayoutStoreModule());
 vi.mock('@/lib/prisma', () => {
   const insert = vi.fn(() => ({
     values: vi.fn(() => ({ returning: mockInsertReturning })),

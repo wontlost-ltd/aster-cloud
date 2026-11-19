@@ -75,6 +75,7 @@ import {
   policyRecycleBins,
   policyReviewers,
   policyShares,
+  policyVersionLayouts,
   policyVersions,
   securityEvents,
   teamMembers,
@@ -1212,6 +1213,34 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('团队策略授权矩阵（真
       expect(await res.json()).toMatchObject({ id: POL.personal, teamId: TEAM, isPublic: false });
       const [row] = await db.select({ teamId: policies.teamId, isPublic: policies.isPublic }).from(policies).where(eq(policies.id, POL.personal));
       expect(row).toEqual({ teamId: TEAM, isPublic: false });
+    });
+  });
+
+  describe('新建团队策略不接受 layout（ADR 0058 裁决 R3）', () => {
+    it('POST /api/teams/[teamId]/policies with a layout object → 201, no PolicyVersionLayout row', async () => {
+      as('member');
+      const res = await teamPoliciesRoute.POST(
+        jsonRequest('POST', `/api/teams/${TEAM}/policies`, {
+          name: 'with layout',
+          content: SOURCE,
+          layout: { v: 1, spans: [{ text: SOURCE }] },
+        }),
+        { params: Promise.resolve({ teamId: TEAM }) },
+      );
+      expect(res.status).toBe(201);
+      const { id } = (await res.json()) as { id: string };
+      try {
+        const rows = await db
+          .select({ id: policyVersionLayouts.policyVersionId })
+          .from(policyVersionLayouts)
+          .innerJoin(policyVersions, eq(policyVersions.id, policyVersionLayouts.policyVersionId))
+          .where(eq(policyVersions.policyId, id));
+        expect(rows).toHaveLength(0);
+        expect(await db.select({ id: policyVersions.id }).from(policyVersions).where(eq(policyVersions.policyId, id))).toHaveLength(1);
+      } finally {
+        await db.delete(policyVersions).where(eq(policyVersions.policyId, id));
+        await db.delete(policies).where(eq(policies.id, id));
+      }
     });
   });
 

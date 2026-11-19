@@ -18,6 +18,9 @@ vi.mock('@/lib/structural-alias-grants', () => ({
   getStructuralAliasGrant: vi.fn(),
   buildAliasReservedForUser: vi.fn(),
 }));
+// 本文件整体替换了 @/lib/prisma：layout 存储用默认「无 layout」替身（ADR 0058）
+vi.mock('@/lib/policy-layout/store', async () =>
+  (await import('@/__tests__/helpers/policy-layout-store-mock')).policyLayoutStoreModule());
 vi.mock('@/lib/prisma', () => ({
   db: { query: { policies: { findFirst: vi.fn() } } },
   policies: { id: {}, userId: {}, deletedAt: {}, isPublic: {} },
