@@ -177,7 +177,7 @@ function applyEmbeddedVocabulary(
   target: ExecutionVocabularyTarget,
   lower: Record<string, unknown> | undefined,
 ): Record<string, unknown> | undefined {
-  if (!target.embeddedVocabulary) return lower;
+  if (target.embeddedVocabulary == null) return lower;
   let merged: DomainVocabulary | null;
   try {
     merged = withEmbeddedVocabulary((lower as unknown as DomainVocabulary | undefined) ?? null, target.embeddedVocabulary, target.locale);
@@ -204,7 +204,7 @@ export async function loadVersionExecutionVocabulary(
   target: ExecutionVocabularyTarget,
   options: { strict?: boolean } = {},
 ): Promise<Record<string, unknown> | undefined> {
-  const strict = options.strict || !!target.embeddedVocabulary;
+  const strict = options.strict || target.embeddedVocabulary != null;
   const lower = strict ? await loadVersionVocabularyStrict(target) : await loadVersionVocabularyBestEffort(target);
   return applyEmbeddedVocabulary(target, lower);
 }

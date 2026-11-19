@@ -16,14 +16,16 @@ import { loadSaveVocabulary, makeCompileValidator } from '@/lib/policy-compile-v
 import {
   aliasInvalidResponse,
   compileGateErrorResponse,
+  embeddedVocabularyInvalidResponse,
   structuralGrantRequiredResponse,
   vocabularyScopeInvalidResponse,
 } from '@/lib/policy-compile-response';
 import { hasStructuralAliases } from '@/lib/policy-alias-shared';
 import {
-  buildAliasReservedForUser,
+  buildAliasReservedFromVocabulary,
   getStructuralAliasGrant,
 } from '@/lib/structural-alias-grants';
+import { parseEmbeddedVocabularyField } from '@/lib/policy-embedded-vocabulary';
 import { errorEnvelope } from '@/lib/api/error-envelope';
 import { invalidatePolicyCache } from '@/lib/cache';
 import { recordProductEventAfterResponse } from '@/lib/product-events/server';
@@ -108,7 +110,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { name, content, description, isPublic, groupId, teamId, aliasSet, locale, layout } =
+    const { name, content, description, isPublic, groupId, teamId, aliasSet, locale, layout, embeddedVocabulary } =
       await req.json();
 
     if (!name || !content) {
@@ -278,14 +280,13 @@ export async function POST(req: Request) {
     const parsedLocale = parseCompileLocale(locale);
     if (!parsedLocale.ok) return NextResponse.json(parsedLocale.error, { status: 400 });
     const compileLocale = parsedLocale.locale;
+    // 内嵌词汇（ADR 0060 §6.5）：与本路由的 aliasSet 一致，省略与 null 都是无；对象校验后使用。不设能力 / 套餐门。
+    const embeddedInput = parseEmbeddedVocabularyField(embeddedVocabulary);
     const allowStructural = await getStructuralAliasGrant(session.user.id);
     // 未授权（或授权已撤销）却提交结构词别名：在编译门禁前直接拒绝，给出稳定码。
     if (!allowStructural && hasStructuralAliases(aliasSetInput)) {
       return structuralGrantRequiredResponse();
     }
-    const aliasReserved = aliasSetInput
-      ? await buildAliasReservedForUser(session.user.id, compileLocale)
-      : undefined;
 
     // layout（ADR 0058 §5.1）：只有提交了 layout 才解析 structured_authoring；新策略没有可沿用的上一版本。
     const allowLayout = layout !== undefined && layout !== null
@@ -295,8 +296,15 @@ export async function POST(req: Request) {
     // 编译门禁在开启事务**之前** preflight——避免事务内网络调用（慢/超时会持锁
     // + 挂着已插入行等 30s）。有 error 诊断抛 PolicyCompileError → 下方 catch 转 400（检查不可用时 503）。
     // 通过时得到的治理档案 id 随首个版本落库。
-    // 作者词汇只加载一次，编译门禁与 envelope 封印共用（ADR 0051 §7）；同在事务外。
-    const saveVocabulary = await loadSaveVocabulary(session.user.id, { source: content, locale: compileLocale }, { teamId: teamId || null });
+    // 作者词汇只加载一次，并入内嵌词汇后编译门禁、envelope 封印与别名占用集共用（ADR 0051 §7、ADR 0060 §6.3）；同在事务外。
+    const saveVocabulary = await loadSaveVocabulary(
+      session.user.id,
+      { source: content, locale: compileLocale },
+      { teamId: teamId || null, embedded: embeddedInput, aliasSet: aliasSetInput },
+    );
+    const aliasReserved = aliasSetInput
+      ? buildAliasReservedFromVocabulary(compileLocale, saveVocabulary.vocabulary)
+      : undefined;
     const profile = await assertCompilable(makeCompileValidator(session.user.id, saveVocabulary.vocabulary), {
       source: content,
       locale: compileLocale,
@@ -325,6 +333,7 @@ export async function POST(req: Request) {
         dbClient: tx,
         layout,
         allowLayout,
+        embeddedVocabulary: embeddedInput,
       });
       console.log('PolicyVersion insert succeeded');
       return createdPolicy;
@@ -339,7 +348,7 @@ export async function POST(req: Request) {
       tenantId: policy.teamId ?? session.user.id,
     });
 
-    return NextResponse.json(policy, { status: 201 });
+    return NextResponse.json({ ...policy, vocabularyShadowed: saveVocabulary.shadowed }, { status: 201 });
   } catch (error: unknown) {
     const layoutError = layoutSaveErrorResponse(error);
     if (layoutError) return layoutError;
@@ -352,6 +361,8 @@ export async function POST(req: Request) {
     if (aliasInvalid) return aliasInvalid;
     const vocabularyInvalid = vocabularyScopeInvalidResponse(error);
     if (vocabularyInvalid) return vocabularyInvalid;
+    const embeddedInvalid = embeddedVocabularyInvalidResponse(error);
+    if (embeddedInvalid) return embeddedInvalid;
     // H2 信息泄露修复：此前 500 把 error.stack + postgres 的 detail/hint/constraint/
     // table/column + 全部 error keys 直接回给客户端（schema/约束/内部路径外泄）。
     // 改为：完整细节只进服务端日志并以 requestId 关联，响应仅含稳定 code + requestId

@@ -330,7 +330,7 @@ describe('mergeEmbeddedVocabulary：内嵌 > 团队 > 作者', () => {
 describe('withEmbeddedVocabulary（读路径）', () => {
   it('versions without embedded vocabulary: lower vocabulary is returned as-is, so every envelope vector is unchanged', () => {
     for (const v of VECTORS) {
-      for (const text of [null, undefined, '']) {
+      for (const text of [null, undefined]) {
         const effective = withEmbeddedVocabulary(v.vocabulary, text, v.locale);
         expect(effective).toBe(v.vocabulary);
         const scopes = vocabularyScopesJson(effective);
@@ -348,6 +348,8 @@ describe('withEmbeddedVocabulary（读路径）', () => {
 
   it.each([
     ['not JSON', '{"v":1,'],
+    // 无内嵌词条只存 NULL；空串不是任何规范序列化
+    ['empty', ''],
     ['wrong shape', '{"v":1,"terms":[{"kind":"macro","localized":"a","canonical":"b"}]}'],
     ['not canonical (whitespace)', POEM_TEXT.replace('"terms":', '"terms": ')],
     ['not canonical (order)', '{"v":1,"terms":[{"kind":"struct","localized":"望明月","canonical":"Text"},{"kind":"literal","localized":"思故乡","canonical":"静夜思"}]}'],

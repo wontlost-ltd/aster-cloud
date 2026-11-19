@@ -10,10 +10,20 @@ import {
   VOCABULARY_UNAVAILABLE_CODE,
   type CompileValidator,
 } from '@/services/policy/version-manager';
-import { loadLiveVocabularyForPolicy } from '@/lib/domain-vocabulary-snapshot';
+import { loadLiveVocabularyWithOrigins, type LivePolicyVocabulary } from '@/lib/domain-vocabulary-snapshot';
+import { vocabularyOriginKey } from '@/lib/domain-vocabulary-team-merge';
 import type { PolicyVocabularyContext } from '@/lib/domain-vocabulary-scope';
 import { vocabularyScopesJson } from '@/lib/policy-alias';
-import type { DomainVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
+import type { AliasSet } from '@/lib/policy-alias-shared';
+import {
+  allMappings,
+  mergeEmbeddedVocabulary,
+  toDomainVocabulary,
+  validateEmbeddedVocabulary,
+  type EmbeddedVocabulary,
+  type ShadowedTerm,
+} from '@/lib/policy-embedded-vocabulary';
+import type { DomainVocabulary, IdentifierMapping } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
 
 /** 取上游 429 错误体中的 retryAfter（秒），缺失或非法时回退默认值。 */
 function retryAfterOf(err: PolicyApiError): number {
@@ -57,17 +67,31 @@ export function hasSourceError(
   );
 }
 
-/** 一次保存所用的作者词汇：编译门禁与 envelope 封印共用同一份，二者不会分叉。 */
+/** 一次保存所用的有效词汇：编译门禁与 envelope 封印共用同一份，二者不会分叉。 */
 export interface SaveVocabulary {
-  /** 作者现行词汇中该策略作用域内的部分；无则 null。 */
+  /** 内嵌词条并入下层（团队 + 作者）作用域内词汇后的有效词汇；无则 null。 */
   vocabulary: DomainVocabulary | null;
-  /** envelope 第 5 段（ADR 0051 §7）。 */
+  /** envelope 第 5 段（ADR 0051 §7），按有效词汇算。 */
   scopesJson: string;
+  /** 被内嵌词条遮蔽、整条不生效的下层词条（保存响应 `vocabularyShadowed`，ADR 0060 §6.3）。 */
+  shadowed: ShadowedTerm[];
+}
+
+/** 下层词汇里每个映射来自团队还是作者（mergeEmbeddedVocabulary 回报 shadowed 的 source 用）。 */
+function originsOf(live: LivePolicyVocabulary): Map<IdentifierMapping, 'team' | 'author'> {
+  const origins = new Map<IdentifierMapping, 'team' | 'author'>();
+  for (const mapping of live.vocabulary ? allMappings(live.vocabulary) : []) {
+    origins.set(mapping, live.teamTermKeys.has(vocabularyOriginKey(mapping)) ? 'team' : 'author');
+  }
+  return origins;
 }
 
 /**
  * 每次保存只加载一次作者现行词汇（作用域规则同编辑器注册与审批冻结，见 domain-vocabulary-scope），
- * 并据此算出 envelope 词汇段。
+ * 并入本版本的内嵌词汇（ADR 0060 §6.3，内嵌 > 团队 > 作者），据此算出 envelope 词汇段。
+ * 合并口径与读路径的 withEmbeddedVocabulary 相同，所以草稿执行与审批冻结复算的词汇段与此处封印一致。
+ * - 内嵌词汇先按 §6.4 校验（locale 与本版本的 aliasSet），不合法抛 EmbeddedVocabularyError（400），
+ *   不把非法词条发给编译门禁。
  * - 加载失败：编译门禁与封印都没有可信的词汇输入，按暂不可用拒绝（503 可重试，码为
  *   vocabulary_unavailable，与编译服务不可用区分），不退化为无词汇——否则落库的 envelope 与实际编译输入不一致。
  * - 词汇非法（字段/枚举成员缺 parent、字面量冲突）：引擎抛 VocabularyScopeError，原样上抛，
@@ -76,12 +100,19 @@ export interface SaveVocabulary {
 export async function loadSaveVocabulary(
   userId: string,
   policy: PolicyVocabularyContext,
-  /** 团队策略所属团队：词汇为团队词汇 + 作者词汇（ADR 0017 §2）。 */
-  opts: { teamId?: string | null } = {},
+  opts: {
+    /** 团队策略所属团队：下层词汇为团队词汇 + 作者词汇（ADR 0017 §2）。 */
+    teamId?: string | null;
+    /** 新版本的内嵌词汇（提交的或 PUT 沿用的）；无则 null / 省略。 */
+    embedded?: EmbeddedVocabulary | null;
+    /** 新版本的 aliasSet：内嵌写法不得等于其中的别名（§6.4 shadows_keyword）。 */
+    aliasSet?: AliasSet | null;
+  } = {},
 ): Promise<SaveVocabulary> {
-  let vocabulary: DomainVocabulary | null;
+  if (opts.embedded) validateEmbeddedVocabulary(opts.embedded, { locale: policy.locale, aliasSet: opts.aliasSet ?? null });
+  let live: LivePolicyVocabulary;
   try {
-    vocabulary = await loadLiveVocabularyForPolicy(userId, policy, { teamId: opts.teamId });
+    live = await loadLiveVocabularyWithOrigins(userId, policy, { teamId: opts.teamId });
   } catch (err) {
     console.warn('[compile-gate] failed to load domain vocabulary', err);
     throw new PolicyCompileUnavailableError(
@@ -90,12 +121,14 @@ export async function loadSaveVocabulary(
       VOCABULARY_UNAVAILABLE_CODE,
     );
   }
-  return { vocabulary, scopesJson: vocabularyScopesJson(vocabulary) };
+  const embedded = opts.embedded ? toDomainVocabulary(opts.embedded, policy.locale) : null;
+  const { vocabulary, shadowed } = mergeEmbeddedVocabulary(embedded, live.vocabulary, originsOf(live));
+  return { vocabulary, scopesJson: vocabularyScopesJson(vocabulary), shadowed };
 }
 
 /**
  * 构造保存前源码可编译性校验器，注入给 createVersion（覆盖所有版本创建入口）。
- * saveVocabulary 为本次保存经 {@link loadSaveVocabulary} 加载的同一份作者词汇（与 envelope 封印共用）。
+ * saveVocabulary 为本次保存经 {@link loadSaveVocabulary} 得到的同一份有效词汇（与 envelope 封印共用）。
  *
  * 用与执行一致的输入（source + locale + aliasSet + 结构词授权 + 作用域内领域词汇）调 aster-api 的
  * POST /api/v1/policies/compile——依赖用户自定义别名的合法源码不会被「不带

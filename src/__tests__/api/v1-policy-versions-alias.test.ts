@@ -16,7 +16,7 @@ vi.mock('@/services/policy/version-manager', () => ({
 }));
 vi.mock('@/lib/structural-alias-grants', () => ({
   getStructuralAliasGrant: vi.fn(),
-  buildAliasReservedForUser: vi.fn(),
+  buildAliasReservedFromVocabulary: vi.fn(),
 }));
 // 本文件整体替换了 @/lib/prisma：layout 存储用默认「无 layout」替身（ADR 0058）
 vi.mock('@/lib/policy-layout/store', async () =>
@@ -41,10 +41,10 @@ import { createVersion } from '@/services/policy/version-manager';
 import { loadSaveVocabulary, makeCompileValidator } from '@/lib/policy-compile-validator';
 import { VocabularyScopeError } from '@aster-cloud/aster-lang-ts/browser';
 
-const SAVE_VOCABULARY = { vocabulary: { id: 'v' }, scopesJson: '{"scopes":"live"}' } as never;
+const SAVE_VOCABULARY = { vocabulary: { id: 'v' }, scopesJson: '{"scopes":"live"}', shadowed: [] } as never;
 import {
   getStructuralAliasGrant,
-  buildAliasReservedForUser,
+  buildAliasReservedFromVocabulary,
 } from '@/lib/structural-alias-grants';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { policyAccessState } from '@/__tests__/helpers/policy-access-mock';
@@ -71,7 +71,7 @@ describe('POST /api/v1/policies/[id]/versions — aliasSet 支持', () => {
       id: 'v2', version: 2, sourceHash: 'h', sourceEnvelopeSha256: 'e',
     } as never);
     vi.mocked(getStructuralAliasGrant).mockResolvedValue(false);
-    vi.mocked(buildAliasReservedForUser).mockResolvedValue({
+    vi.mocked(buildAliasReservedFromVocabulary).mockReturnValue({
       canonicalKeywordsLower: new Set(),
     } as never);
   });
@@ -84,7 +84,7 @@ describe('POST /api/v1/policies/[id]/versions — aliasSet 支持', () => {
     }), params);
 
     expect(r.status).toBe(201);
-    expect(buildAliasReservedForUser).toHaveBeenCalledWith('user-1', 'en-US');
+    expect(buildAliasReservedFromVocabulary).toHaveBeenCalledWith('en-US', { id: 'v' });
     expect(createVersion).toHaveBeenCalledWith(expect.objectContaining({
       aliasSet: { TIMES: ['multiplied by'] },
       aliasReserved: expect.any(Object),
@@ -109,7 +109,7 @@ describe('POST /api/v1/policies/[id]/versions — aliasSet 支持', () => {
     await POST(req({ source: 'Module X.' }), params);
 
     expect(createVersion).toHaveBeenCalledWith(expect.objectContaining({ aliasSet: null }));
-    expect(buildAliasReservedForUser).not.toHaveBeenCalled();
+    expect(buildAliasReservedFromVocabulary).not.toHaveBeenCalled();
   });
 
   it('作者词汇只加载一次（按源码与编译 locale），同一份交给编译门禁与 envelope 封印', async () => {

@@ -81,8 +81,10 @@ describe('loadVersionExecutionVocabulary — 内嵌词汇', () => {
 
   it('a stored text that cannot be parsed is a seal mismatch for every status, never a silent fallback', async () => {
     for (const status of ['APPROVED', 'DRAFT', null]) {
-      await expect(loadVersionExecutionVocabulary(target({ status, embeddedVocabulary: '{"v":1' })))
-        .rejects.toBeInstanceOf(VocabularySealMismatchError);
+      for (const embeddedVocabulary of ['{"v":1', '']) {
+        await expect(loadVersionExecutionVocabulary(target({ status, embeddedVocabulary })))
+          .rejects.toBeInstanceOf(VocabularySealMismatchError);
+      }
     }
   });
 
@@ -114,7 +116,7 @@ describe('versions without embedded vocabulary behave exactly as before', () => 
     snapshot.loadLiveVocabularyForPolicy.mockResolvedValue(lower);
   });
 
-  it.each([null, undefined, ''])('embeddedVocabulary=%j: best-effort path, same object, no seal comparison', async (embedded) => {
+  it.each([null, undefined])('embeddedVocabulary=%j: best-effort path, same object, no seal comparison', async (embedded) => {
     const v = await loadVersionExecutionVocabulary(target({ embeddedVocabulary: embedded, sourceScopesJson: 'anything' }));
     expect(v).toBe(lower);
     expect(snapshot.loadExecutionVocabulary).toHaveBeenCalledTimes(1);
