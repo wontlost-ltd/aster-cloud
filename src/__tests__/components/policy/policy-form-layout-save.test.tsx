@@ -343,6 +343,20 @@ describe('并排视图', () => {
     // 选区落进结构 span：扩到整段 display
     select({ startLineNumber: 1, startColumn: 19, endLineNumber: 1, endColumn: 20 });
     expect(h.display!.highlight).toEqual(projectCanonicalRange(LAYOUT, 18, 19));
+    // 没有选区的光标：高亮光标后的一个字符
+    select({ startLineNumber: 1, startColumn: 3, endLineNumber: 1, endColumn: 3 });
+    expect(h.display!.highlight).toEqual(projectCanonicalRange(LAYOUT, 2, 3));
+  });
+
+  it('光标在代理对之前：高亮整个 emoji（不拆代理对）', () => {
+    const source = 'Module a😀.\n';
+    const layout = identityLayout(source);
+    renderForm({ initialLayout: layout, hasActiveLayout: true, content: source });
+    const { ed, select } = fakeEditor(source);
+    act(() => (h.props[0]!.onEditorReady as (e: unknown) => void)(ed));
+    act(() => layoutTabProps()!.onSideBySideChange(true));
+    select({ startLineNumber: 1, startColumn: 9, endLineNumber: 1, endColumn: 9 });
+    expect(h.display!.highlight).toEqual({ start: 8, end: 10 });
   });
 
   it('点击 display 偏移：setPosition 的行列等于 positionAt(displayToCanonical(...).start)', () => {

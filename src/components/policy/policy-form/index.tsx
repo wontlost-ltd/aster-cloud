@@ -424,12 +424,18 @@ export function PolicyForm({
   }, [paneLayout, editorReady]);
   const paneHighlight = useMemo(() => {
     if (!paneLayout || !canonicalSelection) return null;
+    let { start, end } = canonicalSelection;
+    // 光标没有选区时高亮光标后的一个字符（码点；行末 / 文末取前一个），否则零宽区间在 display 里看不见
+    if (start === end) {
+      if (start < content.length) end = start + (content.codePointAt(start)! > 0xffff ? 2 : 1);
+      else if (start > 0) start = end - (start >= 2 && content.codePointAt(start - 2)! > 0xffff ? 2 : 1);
+    }
     try {
-      return projectCanonicalRange(paneLayout, canonicalSelection.start, canonicalSelection.end);
+      return projectCanonicalRange(paneLayout, start, end);
     } catch {
       return null;
     }
-  }, [paneLayout, canonicalSelection]);
+  }, [paneLayout, canonicalSelection, content]);
   const paneMarkers = useMemo<LayoutDisplayMarker[]>(() => {
     // 诊断只对它所编译的那份源码有效；防抖编译尚未追上时不投影
     if (!paneLayout || (compile.source ?? content) !== content) return [];
