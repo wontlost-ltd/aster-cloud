@@ -8,6 +8,8 @@ import { track, Events, levenshtein } from '@/lib/mixpanel';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
 import type { StructuredAuthoringProps } from '@/lib/capabilities/types';
 import type { PolicyLayout } from '@aster-cloud/aster-lang-ts/layout';
+import type { EmbeddedVocabulary } from '@/lib/policy-embedded-vocabulary';
+import { policySaveBody, vocabularyShadowedOf } from '@/components/policy/policy-form/save-request';
 
 /**
  * /policies/[id]/edit — thin wrapper around <PolicyForm>.
@@ -31,6 +33,8 @@ interface Policy {
   teamId?: string | null;
   /** 活跃版本冻结的关键词别名（ADR 0022），编辑器预填用。 */
   aliasSet?: Record<string, string[]> | null;
+  /** 活跃版本的策略内嵌词汇（ADR 0060），编辑器预填与改动判定用；无为 null。 */
+  embeddedVocabulary?: EmbeddedVocabulary | null;
 }
 
 interface Translations {
@@ -74,7 +78,7 @@ export function EditPolicyContent({
   const tPolicies = useTranslations('policies');
 
   const handleSave = useCallback(
-    async (fields: PolicyDraftFields, { locale: cnlLocale, layout }: PolicySaveContext) => {
+    async (fields: PolicyDraftFields, context: PolicySaveContext) => {
       // Preserve the legacy ai-draft telemetry hand-off. window.__asterAiDraft
       // is set by the AI assistant flow when it commits a generated body.
       const aiDraft =
@@ -89,14 +93,9 @@ export function EditPolicyContent({
       const res = await fetch(`/api/policies/${policy.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        // 带上策略的 CNL 语言：服务端按它编译并记录进版本（缺省时会按 en-US 记录，#627）
-        body: JSON.stringify({
-          ...fields,
-          locale: cnlLocale,
-          // layout 只在作者编辑过排版时出现；省略时服务端按规则沿用（ADR 0058 §7.5）
-          ...(layout !== undefined ? { layout } : {}),
-          metadata: { source_kind: sourceKind },
-        }),
+        // 带上策略的 CNL 语言：服务端按它编译并记录进版本（缺省时会按 en-US 记录，#627）；
+        // layout / 内嵌词汇只在作者改动过时出现，省略时服务端沿用活跃版本（ADR 0058 §7.5、ADR 0060 §6.5）
+        body: JSON.stringify(policySaveBody(fields, context, { metadata: { source_kind: sourceKind } })),
       });
 
       if (!res.ok) {
@@ -142,7 +141,7 @@ export function EditPolicyContent({
 
       // 成功响应带 layoutDropped（ADR 0058 §7.5）；读不到响应体时按未丢弃处理
       const saved = (await res.json().catch(() => ({}))) as { layoutDropped?: unknown };
-      return { id: policy.id, layoutDropped: saved.layoutDropped === true };
+      return { id: policy.id, layoutDropped: saved.layoutDropped === true, vocabularyShadowed: vocabularyShadowedOf(saved) };
     },
     [policy.id, t.form.failedToUpdate],
   );
@@ -166,6 +165,7 @@ export function EditPolicyContent({
         isPublic: policy.isPublic,
         groupId: policy.groupId,
         aliasSet: policy.aliasSet ?? null,
+        embeddedVocabulary: policy.embeddedVocabulary ?? null,
       }}
       title={t.form.editTitle}
       subtitle={t.form.editSubtitle}

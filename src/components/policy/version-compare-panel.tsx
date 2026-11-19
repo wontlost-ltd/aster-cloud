@@ -39,6 +39,8 @@ interface VersionComparePanelProps {
 interface VersionSide {
   source: string;
   layoutSha256: string | null;
+  /** 版本行上的内嵌词汇规范序列化（ADR 0060）；无为 null。规范序列化唯一，文本不等即内容不等。 */
+  embeddedVocabulary: string | null;
 }
 
 /** 读取契约里的排版哈希：`none` 或旧接口不带字段记 null；`inconsistent` 也带哈希，照常参与比较。 */
@@ -173,6 +175,7 @@ export function VersionComparePanel({
   // 文案走 i18n（policies.versionCompare，demo-supplement 四语）；此前硬编码中文导致 /en 页面显示中文。
   const t = useTranslations('policies.versionCompare');
   const tLayout = useTranslations('policyLayout');
+  const tTerms = useTranslations('policyEditor.embeddedTerms');
   const sortedVersions = useMemo(
     () => [...versions].sort((a, b) => b.version - a.version),
     [versions]
@@ -200,6 +203,8 @@ export function VersionComparePanel({
   const [rightSource, setRightSource] = useState<string | null>(null);
   // 两侧显示排版的哈希不同即「显示排版已变更」（ADR 0058 §7.7 第 2 条）；diff 仍只比 canonical 源码。
   const [layoutChanged, setLayoutChanged] = useState(false);
+  // 内嵌词汇是编译输入但不在源码 diff 里：两侧存的文本不同即单列一行（ADR 0060 §7.5）
+  const [embeddedChanged, setEmbeddedChanged] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -209,7 +214,11 @@ export function VersionComparePanel({
         const response = await fetch(`/api/v1/policies/${policyId}/versions/${version}`);
         const data = await response.json();
         if (response.ok) {
-          return { source: data.source ?? data.content ?? '', layoutSha256: layoutShaOf(data.layout) };
+          return {
+            source: data.source ?? data.content ?? '',
+            layoutSha256: layoutShaOf(data.layout),
+            embeddedVocabulary: typeof data.embeddedVocabulary === 'string' ? data.embeddedVocabulary : null,
+          };
         }
         return null;
       } catch {
@@ -246,6 +255,7 @@ export function VersionComparePanel({
           setLeftSource(left.source);
           setRightSource(right.source);
           setLayoutChanged(left.layoutSha256 !== right.layoutSha256);
+          setEmbeddedChanged(left.embeddedVocabulary !== right.embeddedVocabulary);
         }
       } catch (err) {
         if (cancelled) return;
@@ -351,6 +361,19 @@ export function VersionComparePanel({
             {tLayout('compareChanged')}
           </span>
           <span className="text-fg-muted dark:text-fg-subtle">{tLayout('compareNote')}</span>
+        </div>
+      )}
+
+      {!loading && !error && embeddedChanged && (
+        <div
+          role="note"
+          data-testid="embedded-vocabulary-compare-changed"
+          className="flex flex-wrap items-center gap-2 px-6 py-2 text-sm border-b border-border dark:border-gray-700 bg-sky-50 dark:bg-sky-950/30"
+        >
+          <span className="rounded bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-900 dark:bg-sky-900/60 dark:text-sky-100">
+            {tTerms('compareChanged')}
+          </span>
+          <span className="text-fg-muted dark:text-fg-subtle">{tTerms('compareNote')}</span>
         </div>
       )}
 

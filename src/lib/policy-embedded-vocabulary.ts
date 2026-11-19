@@ -341,6 +341,18 @@ function isShadowed(mapping: IdentifierMapping, locale: string, index: EmbeddedI
   });
 }
 
+/**
+ * 判定下层词条是否被这些内嵌词条遮蔽（与 {@link mergeEmbeddedVocabulary} 丢弃下层词条同一规则）。
+ * 编辑器词汇标签页据此给下层词条标「被本策略覆盖」；无内嵌词条时恒为假。
+ */
+export function embeddedShadowPredicate(
+  embedded: DomainVocabulary | null,
+): (mapping: IdentifierMapping, locale: string) => boolean {
+  if (!hasMappings(embedded)) return () => false;
+  const index = indexEmbedded(embedded);
+  return (mapping, locale) => isShadowed(mapping, locale, index);
+}
+
 function withoutShadowed(lower: DomainVocabulary, keep: (mapping: IdentifierMapping) => boolean): DomainVocabulary {
   const literals = (lower.literals ?? []).filter(keep);
   return {

@@ -844,6 +844,24 @@ describe('Policies API - Drizzle Migration', () => {
 
       expect(response.status).toBe(200);
       expect(body.activeAliasSet).toBe(JSON.stringify({ PLUS: ['followed by'] }));
+      // 没有内嵌词汇的活跃版本：null（ADR 0060）
+      expect(body.activeEmbeddedVocabulary).toBeNull();
+    });
+
+    it('返回活跃版本的内嵌词汇原文（ADR 0060 §6.2，与 activeAliasSet 同口径）', async () => {
+      const text = '{"v":1,"terms":[{"kind":"literal","localized":"思故乡","canonical":"静夜思"}]}';
+      vi.mocked(db.query.policies.findFirst).mockResolvedValue(mockPolicy({ team: null }));
+      vi.mocked(db.query.policyVersions.findMany).mockResolvedValue([mockPolicyVersion()]);
+      vi.mocked(db.query.policyVersions.findFirst).mockResolvedValue({ aliasSet: null, embeddedVocabulary: text } as never);
+
+      const response = await GET_ID(makeRequest('http://localhost/api/policies/p1'), mockParams);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.activeEmbeddedVocabulary).toBe(text);
+      expect(vi.mocked(db.query.policyVersions.findFirst).mock.calls.at(-1)![0]).toMatchObject({
+        columns: { aliasSet: true, embeddedVocabulary: true },
+      });
     });
 
     it('should include freeze info for own policies', async () => {

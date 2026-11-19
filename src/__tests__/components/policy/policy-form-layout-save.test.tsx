@@ -161,7 +161,7 @@ describe('保存三态（R13）', () => {
     expect('layout' in ctxOf(onSave)).toBe(false);
   });
 
-  it('草稿只存表单字段：localStorage 里没有 layout，schema 仍为 2', async () => {
+  it('草稿只存表单字段：localStorage 里没有 layout（schema 3 起含内嵌词汇字段，ADR 0060）', async () => {
     renderForm({});
     setDraft({ kind: 'edited', layout: identityLayout(`${LAYOUT_SOURCE}# x\n`) });
     typeContent(`${LAYOUT_SOURCE}# x\n`);
@@ -170,7 +170,7 @@ describe('保存三态（R13）', () => {
         const raw = Object.keys(window.localStorage).map((k) => window.localStorage.getItem(k) ?? '');
         expect(raw.length).toBeGreaterThan(0);
         const draft = JSON.parse(raw[0]);
-        expect(draft.v).toBe(2);
+        expect(draft.v).toBe(3);
         expect(JSON.stringify(draft)).not.toContain('"layout"');
         expect(JSON.stringify(draft)).not.toContain('spans');
       },

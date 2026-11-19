@@ -10,6 +10,7 @@ import { STRUCTURAL_KINDS } from '@/lib/policy-alias-shared';
 import type { StoredLayout } from '@/lib/policy-layout/types';
 import { layoutForCanonical } from '@/lib/policy-layout/reconcile';
 import { LayoutReadTabs } from './layout/layout-read-tabs';
+import { EmbeddedVocabularyMap } from './embedded-vocabulary-map';
 
 /** kind → 规范关键词拼写（如 FUNC_TO→'Rule', IF→'If'），审批用。 */
 const KIND_CANONICAL: Record<string, string> = Object.fromEntries(
@@ -133,6 +134,8 @@ interface VersionDetail {
   isDefault: boolean;
   releaseNote: string | null;
   aliasSet: string | null;
+  /** 版本行上的策略内嵌词汇（ADR 0060 §6.2，规范序列化文本）；旧接口不带此字段时按无处理。 */
+  embeddedVocabulary?: string | null;
   createdBy: string;
   createdAt: string;
   deprecatedAt: string | null;
@@ -314,6 +317,8 @@ export function VersionDetailPanel({
                 <AliasCanonicalMap aliasSetJson={detail.aliasSet} />
               </>
             )}
+            {/* 别名映射之下：本版本自带的词条（写法 → 规范名 / 展开值），无则不渲染 */}
+            <EmbeddedVocabularyMap embeddedVocabularyJson={detail.embeddedVocabulary} />
           </div>
         )}
 

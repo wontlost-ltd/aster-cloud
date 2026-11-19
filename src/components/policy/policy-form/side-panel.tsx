@@ -48,6 +48,8 @@ import { getLexicon, withUserAliases } from '@/lib/aster-lexicon';
 import { ModelTab } from './model-tab';
 import { VocabularyTab } from './vocabulary-tab';
 import type { VocabularyTabTerm } from '@/hooks/useUserVocabularyRegistration';
+import type { EmbeddedVocabulary } from '@/lib/policy-embedded-vocabulary';
+import { EmbeddedVocabularyEditor } from './embedded-vocabulary-editor';
 
 /** 侧栏容器可见的视口条件，与 index.tsx 中 `lg:flex` 一致。 */
 const PANEL_VISIBLE_QUERY = '(min-width: 1024px)';
@@ -85,6 +87,7 @@ export type SidePanelTab =
   | 'layout';
 
 const NO_VOCABULARY_TERMS: ReadonlyArray<VocabularyTabTerm> = [];
+const NO_PARENT_OPTIONS: readonly string[] = [];
 
 export interface SidePanelProps {
   editor: editor.IStandaloneCodeEditor | null;
@@ -126,6 +129,14 @@ export interface SidePanelProps {
   vocabularyTerms?: ReadonlyArray<VocabularyTabTerm>;
   /** 策略所属团队（词汇标签页据此把新术语写入团队词汇）。 */
   teamId?: string | null;
+  /**
+   * 策略内嵌词汇（ADR 0060 §6.7）：有能力时在词汇标签页「本策略」分组里编辑；无能力且策略带词条时
+   * 在别名面板上方显示只读列表（无词条时什么都不渲染，DOM 与引入前一致）。
+   */
+  embeddedVocabulary?: EmbeddedVocabulary | null;
+  onEmbeddedVocabularyChange?: (next: EmbeddedVocabulary) => void;
+  /** 内嵌 field / enum_value 的所属类型候选。 */
+  embeddedParentOptions?: readonly string[];
   /** Click a diagnostic row → jump to the offending line in Monaco. */
   onJumpToLine?: (line: number, column: number) => void;
   /** Externally request a specific tab (e.g. compile errored → focus
@@ -175,6 +186,9 @@ export function SidePanel({
   compileModule,
   compileSource = '',
   vocabularyTerms = NO_VOCABULARY_TERMS,
+  embeddedVocabulary = null,
+  onEmbeddedVocabularyChange,
+  embeddedParentOptions = NO_PARENT_OPTIONS,
   teamId = null,
   onJumpToLine,
   initialTab,
@@ -279,6 +293,11 @@ export function SidePanel({
         )}
         {tab === 'aliases' && (
           <div className="p-3">
+            {!structuredAuthoring.allowed && (embeddedVocabulary?.terms.length ?? 0) > 0 && (
+              <div className="mb-3 rounded-xl border border-border bg-bg p-3 shadow-sm">
+                <EmbeddedVocabularyEditor value={embeddedVocabulary} locale={cnlLocale} aliasSet={aliasSet} readOnly />
+              </div>
+            )}
             <PolicyAliasPanel
               aliasSet={aliasSet}
               locale={cnlLocale}
@@ -366,7 +385,21 @@ export function SidePanel({
             {canonicalPreview && (
               <CanonicalPreviewToggle open={canonicalPreview.open} onToggle={canonicalPreview.onToggle} />
             )}
-            <VocabularyTab editor={editor} terms={vocabularyTerms} teamId={teamId} policyLocale={cnlLocale} />
+            <VocabularyTab
+              editor={editor}
+              terms={vocabularyTerms}
+              teamId={teamId}
+              policyLocale={cnlLocale}
+              policySection={
+                <EmbeddedVocabularyEditor
+                  value={embeddedVocabulary}
+                  onChange={onEmbeddedVocabularyChange}
+                  locale={cnlLocale}
+                  aliasSet={aliasSet}
+                  parentOptions={embeddedParentOptions}
+                />
+              }
+            />
           </div>
         )}
         {structuredAuthoring.allowed && tab === 'layout' && layoutPanel && (

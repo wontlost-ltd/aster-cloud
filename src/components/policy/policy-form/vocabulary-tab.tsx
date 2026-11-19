@@ -8,7 +8,7 @@
  * 点击把本地化写法插入光标处（替换选区）。「把选中文字加为术语」打开词汇管理页同一个对话框，
  * 预填选中文字，保存后由词汇版本失效轮询刷新本标签。词汇的增删权限仍由服务端套餐门禁决定。
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { useLocale, useTranslations } from 'next-intl';
 import { LearnMoreLink } from '@/components/docs/docs-link';
@@ -28,6 +28,8 @@ export interface VocabularyTabProps {
   teamId?: string | null;
   /** 策略的 CNL 语言，用于预填对话框的语言字段。 */
   policyLocale?: string;
+  /** 「本策略」分组（内嵌词汇编辑器，ADR 0060 §7.5），排在作用域内词汇之前。 */
+  policySection?: ReactNode;
 }
 
 /** executeEdits 的来源标识（与模型标签页区分）。 */
@@ -88,7 +90,7 @@ function singleDomain(terms: ReadonlyArray<VocabularyTabTerm>): string {
   return domains.size === 1 ? [...domains][0] : '';
 }
 
-export function VocabularyTab({ editor, terms, teamId = null, policyLocale = '' }: VocabularyTabProps) {
+export function VocabularyTab({ editor, terms, teamId = null, policyLocale = '', policySection = null }: VocabularyTabProps) {
   const t = useTranslations('policyEditor.vocabularyTab');
   const tVocab = useTranslations('domainVocabularies');
   const vocabularyErrors = useVocabularyErrors();
@@ -149,6 +151,7 @@ export function VocabularyTab({ editor, terms, teamId = null, policyLocale = '' 
       <p className="text-xs text-fg-muted">
         {t('hint')} <LearnMoreLink slug="guides/domain-vocabulary" />
       </p>
+      {policySection}
       {terms.length === 0 ? (
         <div className="space-y-2">
           <p className="text-xs text-fg-muted">{t('empty')}</p>
@@ -209,6 +212,7 @@ interface TermGroupProps {
 }
 
 function TermGroup({ title, testId, items, byParent, onInsert }: TermGroupProps) {
+  const tTerms = useTranslations('policyEditor.embeddedTerms');
   const sections = byParent ? groupByParent(items) : [{ parent: null, items }];
   return (
     <section data-testid={testId} className="space-y-1">
@@ -227,8 +231,19 @@ function TermGroup({ title, testId, items, byParent, onInsert }: TermGroupProps)
                   className="flex w-full items-baseline justify-between gap-2 rounded px-2 py-1 text-left hover:bg-bg-muted focus-visible:outline-none focus-visible:shadow-ring"
                   onClick={() => onInsert(term)}
                 >
-                  <span>{term.localized}</span>
-                  <span className="text-xs text-fg-muted">{term.canonical}</span>
+                  <span className={term.shadowedByPolicy ? 'text-fg-muted line-through' : undefined}>{term.localized}</span>
+                  <span className="flex items-baseline gap-1 text-xs text-fg-muted">
+                    {term.shadowedByPolicy && (
+                      // 被本策略内嵌词条覆盖：在这条策略里不生效（ADR 0060 §6.3），插入后按内嵌词条解析
+                      <span
+                        data-testid="vocab-term-shadowed"
+                        className="rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-100"
+                      >
+                        {tTerms('shadowedBadge')}
+                      </span>
+                    )}
+                    {term.canonical}
+                  </span>
                 </button>
               </li>
             ))}

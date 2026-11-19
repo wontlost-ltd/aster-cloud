@@ -13,6 +13,7 @@ import { localizedTitle } from '@/lib/page-metadata';
 import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
 import { activeLayoutSha256, loadVersionLayout } from '@/lib/policy-layout/store';
 import { layoutForCanonical } from '@/lib/policy-layout/reconcile';
+import { parseStoredEmbeddedVocabulary, type EmbeddedVocabulary } from '@/lib/policy-embedded-vocabulary';
 
 export const generateMetadata = localizedTitle('pageTitles', 'policyEdit');
 
@@ -60,6 +61,7 @@ export default async function EditPolicyPage({ params }: PageProps) {
     columns: {
       id: true,
       aliasSet: true,
+      embeddedVocabulary: true,
       content: true,
       source: true,
       sourceEnvelopeSha256: true,
@@ -85,6 +87,15 @@ export default async function EditPolicyPage({ params }: PageProps) {
     } catch {
       initialAliasSet = null;
     }
+  }
+
+  // 活跃版本的策略内嵌词汇（ADR 0060）：与能力无关地下发——它是编译输入，编辑器编译与 LSP 都要用；
+  // 无能力的作者只看到只读列表，保存时省略字段由服务端沿用。已存文本损坏时不预填（保存沿用时服务端 400 并说明）。
+  let initialEmbeddedVocabulary: EmbeddedVocabulary | null = null;
+  try {
+    initialEmbeddedVocabulary = parseStoredEmbeddedVocabulary(activeVersion?.embeddedVocabulary ?? null);
+  } catch {
+    initialEmbeddedVocabulary = null;
   }
 
   // 冻结策略只读：套餐降级超限后该策略被冻结，不可编辑。
@@ -119,6 +130,7 @@ export default async function EditPolicyPage({ params }: PageProps) {
     groupId: policyData.groupId,
     teamId: policyData.teamId,
     aliasSet: initialAliasSet,
+    embeddedVocabulary: initialEmbeddedVocabulary,
   };
 
   // 预渲染所有翻译字符串

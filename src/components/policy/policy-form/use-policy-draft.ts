@@ -1,6 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  parseEmbeddedVocabularyField,
+  storedEmbeddedVocabulary,
+  type EmbeddedVocabulary,
+} from '@/lib/policy-embedded-vocabulary';
 
 /**
  * localStorage draft persistence for the policy form.
@@ -15,8 +20,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
  * pages have independent slots so opening /new doesn't blow away
  * an in-progress edit of an existing policy.
  *
- * Schema-versioned (`v: 2`) so future shape changes can deliberately
- * invalidate older drafts instead of mis-parsing them.
+ * Schema-versioned (`v: 3`) so future shape changes can deliberately
+ * invalidate older drafts instead of mis-parsing them. v1 drafts have
+ * no aliasSet and v1/v2 drafts have no embedded vocabulary; those fields
+ * fall back to the server-side baseline when such a draft is restored.
  */
 
 export interface PolicyDraftFields {
@@ -26,14 +33,19 @@ export interface PolicyDraftFields {
   isPublic: boolean;
   groupId: string | null;
   aliasSet: Record<string, string[]> | null;
+  /**
+   * 策略内嵌词汇（ADR 0060）。缺省视同 null（无词条）。保存时是否随请求提交由表单按与活跃版本
+   * 是否不同判定（PolicySaveContext），保存页不得把它当普通字段原样展开进请求体。
+   */
+  embeddedVocabulary?: EmbeddedVocabulary | null;
 }
 
 interface StoredDraft extends PolicyDraftFields {
-  v: 1 | 2;
+  v: 1 | 2 | 3;
   savedAt: number; // epoch ms
 }
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const STORAGE_PREFIX = 'aster:policy-draft:';
 // Drafts older than this are treated as stale and not surfaced to the
 // user — they're more likely to be confusing than helpful (e.g. an
@@ -50,11 +62,20 @@ function safeRead(key: string): StoredDraft | null {
     const raw = window.localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as StoredDraft;
-    if (parsed.v !== 1 && parsed.v !== SCHEMA_VERSION) return null;
+    if (parsed.v !== 1 && parsed.v !== 2 && parsed.v !== SCHEMA_VERSION) return null;
     if (Date.now() - parsed.savedAt > STALE_AFTER_MS) return null;
-    return parsed.v === 1 ? { ...parsed, v: SCHEMA_VERSION, aliasSet: null } : parsed;
+    return parsed.v === 1 ? { ...parsed, aliasSet: null } : parsed;
   } catch {
     return null;
+  }
+}
+
+/** 草稿里的内嵌词汇按 §6.1 形状重新解析；本地存储被改坏时退回服务端基线，不让坏数据进表单。 */
+function draftEmbedded(stored: unknown, baseline: EmbeddedVocabulary | null | undefined): EmbeddedVocabulary | null {
+  try {
+    return parseEmbeddedVocabularyField(stored);
+  } catch {
+    return baseline ?? null;
   }
 }
 
@@ -107,7 +128,7 @@ export interface UsePolicyDraftResult {
   clearDraft: () => void;
 }
 
-/** Stable equality check across the 5 draft fields. */
+/** Stable equality check across the draft fields. */
 function draftEquals(a: PolicyDraftFields, b: PolicyDraftFields): boolean {
   return (
     a.name === b.name &&
@@ -115,7 +136,9 @@ function draftEquals(a: PolicyDraftFields, b: PolicyDraftFields): boolean {
     a.content === b.content &&
     a.isPublic === b.isPublic &&
     a.groupId === b.groupId &&
-    JSON.stringify(a.aliasSet ?? null) === JSON.stringify(b.aliasSet ?? null)
+    JSON.stringify(a.aliasSet ?? null) === JSON.stringify(b.aliasSet ?? null) &&
+    // 规范序列化比较：词条顺序与 NFC 差异不算改动
+    storedEmbeddedVocabulary(a.embeddedVocabulary) === storedEmbeddedVocabulary(b.embeddedVocabulary)
   );
 }
 
@@ -149,6 +172,10 @@ export function usePolicyDraft({
       isPublic: stored.isPublic,
       groupId: stored.groupId,
       aliasSet: stored.aliasSet ?? null,
+      // v3 之前的草稿没有这个字段：按服务端基线，不把「没记录」当成「清空」
+      embeddedVocabulary: stored.v === SCHEMA_VERSION
+        ? draftEmbedded(stored.embeddedVocabulary, baseline.embeddedVocabulary)
+        : (baseline.embeddedVocabulary ?? null),
     };
     if (!draftEquals(candidate, baseline)) {
       // 挂载时一次性把 localStorage 里的草稿读入 state（刻意避开 useState
