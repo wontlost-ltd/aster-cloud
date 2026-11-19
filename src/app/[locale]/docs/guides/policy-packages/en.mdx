@@ -15,7 +15,7 @@ Package export is being switched on in stages. Until it is on for your workspace
 
 ## Before you start
 
-- **A paid plan.** Exporting policy packages needs the Pro or Enterprise plan; it is not available on Free. For a team policy, the team owner's plan counts. Exporting to Cedar is not affected by the plan.
+- **A plan other than Free.** Policy packages can be exported on the Trial, Pro, Team and Enterprise plans; the Free plan cannot export them. For a team policy, the team owner's plan counts. Exporting to Cedar is not affected by the plan.
 - **An approved version.** The export always uses the version that runs when no version is specified: the default approved version, otherwise the latest approved one. Drafts are never exported, because that would bypass approval. If the policy has no approved version, the menu says *Approve a version before exporting a package*. See [Approvals](/docs/how-to/approvals).
 - **View access** to the policy is enough. A team member who can only view a team policy can export it.
 - **A runtime on the machine that runs the package:** Java 25 or later for a JRE package, Node.js 24 or later for a Node package.
@@ -193,7 +193,7 @@ Other messages:
 
 | Message | What to do |
 | --- | --- |
-| *Exporting policy packages requires a paid plan.* | Upgrade to Pro or Enterprise (for a team policy, the team owner's plan). |
+| *Exporting policy packages requires a paid plan.* | Move off the Free plan to Trial, Pro, Team or Enterprise (for a team policy, the team owner's plan). |
 | *Approve a version before exporting a package* | Get a version approved; drafts are never exported. |
 | *Too many package exports are running.* | Try again in a moment. |
 | *Package export is not available right now.* | The export runtime or signing key is not ready. Try again later. |

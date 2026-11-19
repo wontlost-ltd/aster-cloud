@@ -15,7 +15,7 @@ Der Paketexport wird schrittweise eingeschaltet. Solange er für Ihren Arbeitsbe
 
 ## Voraussetzungen
 
-- **Ein kostenpflichtiger Tarif.** Der Export von Richtlinienpaketen erfordert den Tarif Pro oder Enterprise; mit Free ist er nicht verfügbar. Für eine Teamrichtlinie zählt der Tarif der Teaminhaberin bzw. des Teaminhabers. Der Export nach Cedar hängt nicht vom Tarif ab.
+- **Ein anderer Tarif als Free.** Richtlinienpakete lassen sich mit den Tarifen Trial, Pro, Team und Enterprise exportieren; mit Free nicht. Für eine Teamrichtlinie zählt der Tarif der Teaminhaberin bzw. des Teaminhabers. Der Export nach Cedar hängt nicht vom Tarif ab.
 - **Eine freigegebene Version.** Exportiert wird immer die Version, die ausgeführt wird, wenn keine Version angegeben ist: die freigegebene Standardversion, sonst die neueste freigegebene. Entwürfe werden nie exportiert, denn das würde die Freigabe umgehen. Hat die Richtlinie keine freigegebene Version, meldet das Menü *Geben Sie eine Version frei, bevor Sie ein Paket exportieren*. Siehe [Freigaben](/docs/how-to/approvals).
 - **Leserechte** an der Richtlinie genügen. Ein Teammitglied, das eine Teamrichtlinie nur ansehen darf, kann sie exportieren.
 - **Eine Laufzeit auf dem Rechner, der das Paket ausführt:** Java 25 oder neuer für ein JRE-Paket, Node.js 24 oder neuer für ein Node-Paket.
@@ -193,7 +193,7 @@ Weitere Meldungen:
 
 | Meldung | Was zu tun ist |
 | --- | --- |
-| *Der Export von Richtlinienpaketen erfordert einen kostenpflichtigen Tarif.* | Auf Pro oder Enterprise wechseln (bei einer Teamrichtlinie der Tarif der Teaminhaberin bzw. des Teaminhabers). |
+| *Der Export von Richtlinienpaketen erfordert einen kostenpflichtigen Tarif.* | Von Free auf Trial, Pro, Team oder Enterprise wechseln (bei einer Teamrichtlinie der Tarif der Teaminhaberin bzw. des Teaminhabers). |
 | *Geben Sie eine Version frei, bevor Sie ein Paket exportieren* | Eine Version freigeben lassen; Entwürfe werden nie exportiert. |
 | *Zu viele Paketexporte laufen gerade.* | Gleich noch einmal versuchen. |
 | *Der Paketexport ist gerade nicht verfügbar.* | Die Exportlaufzeit oder der Signaturschlüssel ist noch nicht bereit. Später erneut versuchen. |
