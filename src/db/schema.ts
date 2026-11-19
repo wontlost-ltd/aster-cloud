@@ -773,6 +773,33 @@ export const policyVersions = pgTable(
   ]
 );
 
+// ADR 0058 §7.2：版本的显示层（LayoutMap），每版本至多一行，只插入。
+// layout 为包 serializeLayout 的输出（text，不用 jsonb，保留逐字节）；两个哈希均为 UTF-8 的 SHA-256，64 位小写十六进制、无前缀。
+// 不可 UPDATE、不可直接 DELETE，只随父 PolicyVersion 级联删除：由迁移 0068 的 trigger 保证，schema.ts 无法表达。
+// createdBy 不加外键（与 PolicyVersion.createdBy 一致）：用户硬删除不应删除版本的显示层。
+export const policyVersionLayouts = pgTable(
+  'PolicyVersionLayout',
+  {
+    policyVersionId: text('policyVersionId')
+      .primaryKey()
+      .notNull()
+      .references(() => policyVersions.id, { onDelete: 'cascade' }),
+    formatVersion: integer('formatVersion').notNull(),
+    layout: text('layout').notNull(),
+    layoutSha256: text('layoutSha256').notNull(),
+    sourceSha256: text('sourceSha256').notNull(),
+    createdBy: text('createdBy'),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    check('PolicyVersionLayout_format_ck', sql`${table.formatVersion} = 1`),
+    check('PolicyVersionLayout_layout_sha_ck', sql`${table.layoutSha256} ~ '^[0-9a-f]{64}$'`),
+    check('PolicyVersionLayout_source_sha_ck', sql`${table.sourceSha256} ~ '^[0-9a-f]{64}$'`),
+    // 上限与 @aster-cloud/aster-lang-ts/layout 的 LAYOUT_LIMITS.serializedBytes（49152）一致
+    check('PolicyVersionLayout_size_ck', sql`octet_length(${table.layout}) <= 49152`),
+  ]
+);
+
 // ============================================
 // Policy Approval
 // ============================================
