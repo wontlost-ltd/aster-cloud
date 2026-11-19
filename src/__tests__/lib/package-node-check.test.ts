@@ -36,7 +36,7 @@ function prepared(over: Partial<PackageExportPrepareResponse> = {}): PackageExpo
     probesJson,
     probesSha256: 'bb'.repeat(32),
     probeCount: 2,
-    runtime: { cliName: '@aster-cloud/aster-lang-ts', cliVersion: TS_VERSION, ecosystem: '1.0.50' },
+    runtime: { cliName: '@aster-cloud/aster-lang-ts', cliVersion: TS_VERSION, ecosystem: '1.0.51' },
     ...over,
   };
 }
