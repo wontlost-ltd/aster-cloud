@@ -44,6 +44,15 @@ import { getTeamMemberRole } from '@/lib/team-permissions';
 import { VersionStateError } from './version-state-error';
 import { loadPolicyForAction, type PolicyAction } from '@/lib/policy-access';
 import { freshDb } from '@/db/fresh-read';
+import { LayoutSaveError } from '@/lib/policy-layout/errors';
+import {
+  insertVersionLayout,
+  loadCarryCandidate,
+  loadVersionLayout,
+  prepareLayout,
+  type LayoutContext,
+  type PreparedLayout,
+} from '@/lib/policy-layout/store';
 import {
   canReviewPolicyVersions,
   decideVersionApproval,
@@ -385,6 +394,14 @@ export interface CreateVersionParams {
    * 在提交前把旧值重新填回缓存）。
    */
   dbClient?: SnapshotTx;
+  /**
+   * 版本的 LayoutMap（ADR 0058 §7.5 三态）：`undefined` = 省略，按规则沿用上一活跃版本的 layout；
+   * `null` = 新版本不带 layout；其他值 = 提交的 layout，须 `allowLayout` 且全量校验通过。
+   * layout 不进 envelope 与哈希链。
+   */
+  layout?: unknown;
+  /** 调用者是否持有 structured_authoring 能力。必须由服务端 resolveEntitlement 传入。缺省 false。 */
+  allowLayout?: boolean;
 }
 
 export interface CreateVersionResult {
@@ -392,6 +409,31 @@ export interface CreateVersionResult {
   version: number;
   sourceHash: string;
   sourceEnvelopeSha256: string;
+  /** 新版本 layout 的哈希；无 layout 为 null。 */
+  layoutSha256: string | null;
+  /** 省略 layout 时上一活跃版本有 layout 却未能沿用（源码 / 别名 / locale 变了、无权或存量行不一致）。 */
+  layoutDropped: boolean;
+}
+
+/**
+ * 省略 layout 时的沿用规则（裁决 R5、R6）：上一活跃版本的 layout 复验通过、调用者有权，且按新版本的
+ * 源码、locale 与别名重跑校验仍通过才沿用；否则只要上一版本有 layout 行就记为丢弃。
+ */
+async function carryForwardLayout(
+  tx: SnapshotTx,
+  policyId: string,
+  allowLayout: boolean,
+  ctx: LayoutContext,
+): Promise<{ prepared: PreparedLayout | null; dropped: boolean }> {
+  const candidate = await loadCarryCandidate(tx, policyId);
+  if (candidate.status === 'none') return { prepared: null, dropped: false };
+  if (candidate.status !== 'ok' || !allowLayout) return { prepared: null, dropped: true };
+  try {
+    return { prepared: prepareLayout(candidate.layout, ctx), dropped: false };
+  } catch (e) {
+    if (e instanceof LayoutSaveError) return { prepared: null, dropped: true };
+    throw e;
+  }
 }
 
 /**
@@ -507,6 +549,25 @@ export async function createVersion(
     aliasSetJson = canonicalAliasJson(params.aliasSet);
   }
 
+  // layout 三态（ADR 0058 §7.5）：提交的 layout 在编译与开事务之前就做门禁与全量校验，失败不落任何行。
+  const layoutCtx: LayoutContext = {
+    source,
+    locale,
+    aliasSet: aliasSetJson ? params.aliasSet ?? null : null,
+  };
+  const layoutOmitted = params.layout === undefined;
+  let submittedLayout: PreparedLayout | null = null;
+  if (!layoutOmitted && params.layout !== null) {
+    if (!params.allowLayout) {
+      throw new LayoutSaveError(
+        'structured_authoring_required',
+        403,
+        'Saving a layout requires the structured authoring capability.',
+      );
+    }
+    submittedLayout = prepareLayout(params.layout, layoutCtx);
+  }
+
   // 有解析错误的源码不落库（覆盖所有 createVersion 入口）。POST/PUT 已在事务外
   // preflight（见 assertCompilable），故不再传 validateCompilable 进来避免事务内
   // 网络调用+重复编译；v1/versions 无事务，直接靠此兜底。
@@ -539,8 +600,19 @@ export async function createVersion(
     sourceScopesJson: params.scopesJson,
     profile,
   });
-  const created = params.dbClient ? await insertVersion(params.dbClient) : await db.transaction(insertVersion);
-  const { version: newVersionNumber, sourceHash } = created;
+  // layout 与版本行同一事务写入；沿用候选在链尾锁之后读，并发保存各自基于已提交的活跃版本判定。
+  const insertWithLayout = async (tx: SnapshotTx) => {
+    const row = await insertVersion(tx);
+    const carried = layoutOmitted
+      ? await carryForwardLayout(tx, policyId, params.allowLayout === true, layoutCtx)
+      : { prepared: submittedLayout, dropped: false };
+    if (carried.prepared) {
+      await insertVersionLayout(tx, { policyVersionId: row.id, prepared: carried.prepared, createdBy });
+    }
+    return { ...row, layoutSha256: carried.prepared?.layoutSha256 ?? null, layoutDropped: carried.dropped };
+  };
+  const created = params.dbClient ? await insertWithLayout(params.dbClient) : await db.transaction(insertWithLayout);
+  const { version: newVersionNumber, sourceHash, layoutSha256, layoutDropped } = created;
 
   const hasStructuralAliases = aliasSetJson
     ? Object.keys(JSON.parse(aliasSetJson) as Record<string, string[]>)
@@ -559,6 +631,9 @@ export async function createVersion(
       aliasSet: aliasSetJson,
       hasStructuralAliases,
       structuralAliasAuthorized: params.allowStructuralAliases === true,
+      // ADR 0058 §4.9 / 裁决 R2：建版本的唯一审计事件同时记录 layout 结果
+      layoutSha256,
+      layoutDropped,
     },
   }, params.dbClient);
 
@@ -572,6 +647,8 @@ export async function createVersion(
     version: newVersionNumber,
     sourceHash,
     sourceEnvelopeSha256,
+    layoutSha256,
+    layoutDropped,
   };
 
 }

@@ -75,16 +75,16 @@ describe('prepareLayout', () => {
   });
 
   it('alias set decides whether a structural word is a keyword', () => {
-    const source = 'Module demo.layout.\n\nRule decide given amount as Int, produce Int:\n  Let x gets amount.\n  Return x.\n';
+    const source = 'Module demo.layout.\n\nRule decide given amount as Int, produce Int:\n  Return amount multiplied by 2.\n';
     const input = {
       v: 1,
       spans: [
-        { text: 'Module demo.layout.\n\nRule decide given amount as Int, produce Int:\n  Let x' },
-        { canonical: ' gets ', display: ' = ' },
-        { text: 'amount.\n  Return x.\n' },
+        { text: 'Module demo.layout.\n\nRule decide given amount as Int, produce Int:\n  Return amount' },
+        { canonical: ' multiplied by ', display: ' × ' },
+        { text: '2.\n' },
       ],
     };
-    expect(() => prepareLayout(input, { source, locale: 'en-US', aliasSet: { BE: ['gets'] } })).not.toThrow();
+    expect(() => prepareLayout(input, { source, locale: 'en-US', aliasSet: { TIMES: ['multiplied by'] } })).not.toThrow();
     expect(caught(() => prepareLayout(input, { source, locale: 'en-US', aliasSet: null })).code)
       .toBe('layout_structural_hides_value');
   });
