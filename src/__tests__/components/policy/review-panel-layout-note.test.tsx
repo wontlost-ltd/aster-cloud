@@ -47,3 +47,20 @@ describe('PolicyReviewPanel：无显示排版时 DOM 不变', () => {
     expect(container.innerHTML).toMatchSnapshot();
   });
 });
+
+describe('PolicyReviewPanel：活跃版本有显示排版', () => {
+  it('hasDisplayLayout = true：顶部说明与指向该策略版本页的链接', async () => {
+    await renderPanel({ hasDisplayLayout: true });
+    const note = screen.getByTestId('review-layout-note');
+    expect(note.textContent).toContain('policyLayout.reviewNote');
+    const link = screen.getByRole('link', { name: 'policyLayout.reviewLink' });
+    expect(link.getAttribute('href')).toBe('/policies/p1/versions');
+    expect(note.contains(link)).toBe(true);
+  });
+
+  it('面板从不渲染 display 文本（只有 canonical 片段）', async () => {
+    const { container } = await renderPanel({ hasDisplayLayout: true });
+    expect(container.querySelector('[data-layout-display]')).toBeNull();
+    expect(screen.queryByRole('tab')).toBeNull();
+  });
+});

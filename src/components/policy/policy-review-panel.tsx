@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Badge, Card, CardBody, Label, Stack, buttonVariants, cn } from '@/components/ui';
+import { LayoutReviewNote } from '@/components/policy/layout/layout-review-note';
 
 /**
  * 人工复核面板（ADR 0037 §14/§15）。
@@ -69,9 +70,14 @@ interface ReviewApiResponse {
 
 export interface PolicyReviewPanelProps {
   readonly policyId: string;
+  /**
+   * 活跃版本附有显示排版（ADR 0058 §7.7 第 7 条，裁决 R15）。本面板只渲染 canonical 片段、不渲染全文，
+   * 因此不加 display 标签，只在顶部说明并链接到版本页；缺省 / 假时 DOM 与引入排版之前一致。
+   */
+  readonly hasDisplayLayout?: boolean;
 }
 
-export function PolicyReviewPanel({ policyId }: PolicyReviewPanelProps) {
+export function PolicyReviewPanel({ policyId, hasDisplayLayout = false }: PolicyReviewPanelProps) {
   // ★命名空间是**顶层** `policyReview`（同级：whatIf / evidenceExport /
   //   conditionFunnel，见 demo-supplement.ts），不是 `demoPage.policyReview`。
   //   前缀写错时 next-intl 不抛错，getMessageFallback 会把整串 key 原样显示，
@@ -236,6 +242,8 @@ export function PolicyReviewPanel({ policyId }: PolicyReviewPanelProps) {
             </h2>
             <p className="text-sm text-fg-muted">{t('subtitle')}</p>
           </div>
+
+          {hasDisplayLayout ? <LayoutReviewNote policyId={policyId} /> : null}
 
           {loadError ? (
             <p className="text-sm text-danger" role="alert">{t('loadFailed')}</p>

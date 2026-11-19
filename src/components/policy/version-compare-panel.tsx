@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { WhatIfBatchPanel } from './whatif-batch-panel';
 import type { PolicyVersionStatus } from '@/lib/prisma';
+import type { StoredLayout } from '@/lib/policy-layout/types';
 
 interface VersionSummary {
   /** 版本行 id（不可变主键）。★What-If 批次按行 id 定位版本，不用 version 号——
@@ -32,6 +33,17 @@ interface VersionComparePanelProps {
   retentionDays?: number | null;
   /** 调用者不是策略创建者：What-If 属主限定（ADR 0034 §4.3） */
   whatIfOwnerOnly?: boolean;
+}
+
+/** 一侧版本对比所需的数据：canonical 源码与显示排版哈希（无排版为 null）。 */
+interface VersionSide {
+  source: string;
+  layoutSha256: string | null;
+}
+
+/** 读取契约里的排版哈希：`none` 或旧接口不带字段记 null；`inconsistent` 也带哈希，照常参与比较。 */
+function layoutShaOf(layout: StoredLayout | undefined): string | null {
+  return layout && layout.status !== 'none' ? layout.layoutSha256 : null;
 }
 
 interface DiffLine {
@@ -160,6 +172,7 @@ export function VersionComparePanel({
 }: VersionComparePanelProps) {
   // 文案走 i18n（policies.versionCompare，demo-supplement 四语）；此前硬编码中文导致 /en 页面显示中文。
   const t = useTranslations('policies.versionCompare');
+  const tLayout = useTranslations('policyLayout');
   const sortedVersions = useMemo(
     () => [...versions].sort((a, b) => b.version - a.version),
     [versions]
@@ -185,16 +198,18 @@ export function VersionComparePanel({
 
   const [leftSource, setLeftSource] = useState<string | null>(null);
   const [rightSource, setRightSource] = useState<string | null>(null);
+  // 两侧显示排版的哈希不同即「显示排版已变更」（ADR 0058 §7.7 第 2 条）；diff 仍只比 canonical 源码。
+  const [layoutChanged, setLayoutChanged] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchSource = useCallback(
-    async (version: number): Promise<string | null> => {
+    async (version: number): Promise<VersionSide | null> => {
       try {
         const response = await fetch(`/api/v1/policies/${policyId}/versions/${version}`);
         const data = await response.json();
         if (response.ok) {
-          return data.source ?? data.content ?? '';
+          return { source: data.source ?? data.content ?? '', layoutSha256: layoutShaOf(data.layout) };
         }
         return null;
       } catch {
@@ -228,8 +243,9 @@ export function VersionComparePanel({
         if (left === null || right === null) {
           setError(t('loadSourceError'));
         } else {
-          setLeftSource(left);
-          setRightSource(right);
+          setLeftSource(left.source);
+          setRightSource(right.source);
+          setLayoutChanged(left.layoutSha256 !== right.layoutSha256);
         }
       } catch (err) {
         if (cancelled) return;
@@ -323,6 +339,20 @@ export function VersionComparePanel({
         <span className="text-success">{t('linesAdded', { n: stats.added })}</span>
         <span className="text-red-600 dark:text-red-400">{t('linesRemoved', { n: stats.removed })}</span>
       </div>
+
+      {/* 显示排版变化单列一行，放在 diff 之上；diff 与增删统计只反映 canonical 源码 */}
+      {!loading && !error && layoutChanged && (
+        <div
+          role="note"
+          data-testid="layout-compare-changed"
+          className="flex flex-wrap items-center gap-2 px-6 py-2 text-sm border-b border-border dark:border-gray-700 bg-sky-50 dark:bg-sky-950/30"
+        >
+          <span className="rounded bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-900 dark:bg-sky-900/60 dark:text-sky-100">
+            {tLayout('compareChanged')}
+          </span>
+          <span className="text-fg-muted dark:text-fg-subtle">{tLayout('compareNote')}</span>
+        </div>
+      )}
 
       {/* Diff View */}
       <div className="p-4 overflow-x-auto">

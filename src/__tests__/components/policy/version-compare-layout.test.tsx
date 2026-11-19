@@ -12,6 +12,7 @@ vi.mock('next-intl', () => ({
 vi.mock('@/components/policy/whatif-batch-panel', () => ({ WhatIfBatchPanel: () => <div data-testid="whatif" /> }));
 
 import { VersionComparePanel } from '@/components/policy/version-compare-panel';
+import { STORED_INCONSISTENT, STORED_OK } from '@/__tests__/fixtures/layout-read-fixture';
 
 const V1 = 'Module m.\n\nRule decide given x: Int, produce Int:\n  Return x.\n';
 const V2 = 'Module m.\n\nRule decide given x: Int, produce Int:\n  Return 1.\n';
@@ -47,5 +48,49 @@ describe('VersionComparePanel：两侧都没有 layout 时 DOM 不变', () => {
       2: { source: V2, layout: { status: 'none' } },
     });
     expect(container.innerHTML).toMatchSnapshot();
+  });
+});
+
+describe('VersionComparePanel：显示排版已变更', () => {
+  const row = () => screen.queryByTestId('layout-compare-changed');
+  const statsText = (container: HTMLElement) =>
+    [...container.querySelectorAll('span')].map((el) => el.textContent).filter((s) => s?.startsWith('policies.versionCompare.lines'));
+  const diffRows = (container: HTMLElement) => container.querySelectorAll('.font-mono > div').length;
+
+  it('一侧 none、一侧 ok：显示「显示排版已变更」，带可见标签', async () => {
+    await renderCompare({ 1: { source: V1, layout: { status: 'none' } }, 2: { source: V2, layout: STORED_OK } });
+    expect(row()).not.toBeNull();
+    expect(screen.getByText('policyLayout.compareChanged')).toBeDefined();
+    expect(screen.getByText('policyLayout.compareNote')).toBeDefined();
+  });
+
+  it('两侧同哈希：不显示', async () => {
+    await renderCompare({ 1: { source: V1, layout: STORED_OK }, 2: { source: V2, layout: STORED_OK } });
+    expect(row()).toBeNull();
+  });
+
+  it('inconsistent 也按哈希比较：与同哈希的 ok 相同则不显示，与 none 不同则显示', async () => {
+    await renderCompare({ 1: { source: V1, layout: STORED_INCONSISTENT }, 2: { source: V2, layout: STORED_OK } });
+    expect(row()).toBeNull();
+    cleanup();
+    vi.unstubAllGlobals();
+    await renderCompare({ 1: { source: V1, layout: STORED_INCONSISTENT }, 2: { source: V2, layout: { status: 'none' } } });
+    expect(row()).not.toBeNull();
+  });
+
+  it('有该行时 diff 行数与增删统计与无 layout 时相同（diff 只比 canonical）', async () => {
+    const plain = await renderCompare({ 1: { source: V1 }, 2: { source: V2 } });
+    const plainRows = diffRows(plain.container);
+    const plainStats = statsText(plain.container);
+    cleanup();
+    vi.unstubAllGlobals();
+    const withRow = await renderCompare({ 1: { source: V1, layout: { status: 'none' } }, 2: { source: V2, layout: STORED_OK } });
+    expect(row()).not.toBeNull();
+    expect(diffRows(withRow.container)).toBe(plainRows);
+    expect(statsText(withRow.container)).toEqual(plainStats);
+    expect(plainStats).toEqual([
+      'policies.versionCompare.linesAdded:{"n":1}',
+      'policies.versionCompare.linesRemoved:{"n":1}',
+    ]);
   });
 });
