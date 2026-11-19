@@ -128,6 +128,18 @@ export function offsetAt(text: string, line: number, column: number): number {
   return lineStart + column - 1;
 }
 
+/**
+ * 同 `offsetAt`，但把越界的行列夹到最近的合法位置。用于外部给出的诊断区间（终点列可能越过行尾、
+ * 源码可能已比诊断短），保证投影不因越界而丢掉整条诊断。
+ */
+export function offsetAtClamped(text: string, line: number, column: number): number {
+  const starts = lineStarts(text);
+  const l = Math.min(Math.max(Math.trunc(line) || 1, 1), starts.length);
+  const lineStart = starts[l - 1];
+  const lineEnd = l < starts.length ? starts[l] - 1 : text.length;
+  return lineStart + Math.min(Math.max(Math.trunc(column) || 1, 1), lineEnd - lineStart + 1) - 1;
+}
+
 /** UTF-16 偏移 → 1 起始的行列；`offsetAt` 的逆。 */
 export function positionAt(text: string, offset: number): { line: number; column: number } {
   assertOffset(offset, text.length);
@@ -173,9 +185,13 @@ function sourceLineCount(source: string): number {
   return /[\r\n]$/.test(source) ? breaks : breaks + 1;
 }
 
-/** 源码超出排版上限（§7.6）时返回超出的上限名，否则 null。编辑器据此不提供排版入口。 */
-export function sourceLayoutLimitExceeded(source: string): Extract<LayoutLimitName, 'sourceBytes' | 'sourceLines'> | null {
-  if (new TextEncoder().encode(source).length > LAYOUT_LIMITS.sourceBytes) return 'sourceBytes';
-  if (sourceLineCount(source) > LAYOUT_LIMITS.sourceLines) return 'sourceLines';
+/** 源码超出排版上限（§7.6）时返回超出的上限名与实际值，否则 null。编辑器据此不提供排版入口。 */
+export function sourceLayoutLimitExceeded(
+  source: string,
+): { limit: Extract<LayoutLimitName, 'sourceBytes' | 'sourceLines'>; actual: number } | null {
+  const bytes = new TextEncoder().encode(source).length;
+  if (bytes > LAYOUT_LIMITS.sourceBytes) return { limit: 'sourceBytes', actual: bytes };
+  const lines = sourceLineCount(source);
+  if (lines > LAYOUT_LIMITS.sourceLines) return { limit: 'sourceLines', actual: lines };
   return null;
 }

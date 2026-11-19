@@ -75,12 +75,13 @@ export function NewPolicyContent({
   }, [searchParams]);
 
   const handleSave = useCallback(
-    async (fields: PolicyDraftFields, { locale: cnlLocale }: PolicySaveContext) => {
+    async (fields: PolicyDraftFields, { locale: cnlLocale, layout }: PolicySaveContext) => {
       // locale 是策略的 CNL 语言（按源码识别），不是界面语言：德语界面写英文策略应按 en-US 编译与记录（#627）
       const res = await fetch('/api/policies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...fields, teamId, locale: cnlLocale }),
+        // layout 只在作者编辑过排版时出现（省略 = 不带，ADR 0058 §7.5）
+        body: JSON.stringify({ ...fields, teamId, locale: cnlLocale, ...(layout !== undefined ? { layout } : {}) }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -91,6 +92,8 @@ export function NewPolicyContent({
           reason: data.reason,
           term: data.term,
           kind: data.kind,
+          offset: data.offset,
+          limit: data.limit,
           upgrade: !!data.upgrade,
         };
       }

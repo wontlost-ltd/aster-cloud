@@ -6,6 +6,7 @@ import {
   layoutEditErrorCode,
   markStructural,
   offsetAt,
+  offsetAtClamped,
   positionAt,
   projectCanonicalRange,
   setStructuralDisplay,
@@ -162,6 +163,12 @@ describe('offsetAt / positionAt', () => {
       expect(offsetAt(text, p.line, p.column)).toBe(o);
     }
   });
+  it('offsetAtClamped 把越界行列夹到最近的合法位置，合法输入与 offsetAt 相同', () => {
+    expect(offsetAtClamped('ab\ncd', 1, 99)).toBe(2);
+    expect(offsetAtClamped('ab\ncd', 9, 1)).toBe(3);
+    expect(offsetAtClamped('ab\ncd', 0, 0)).toBe(0);
+    expect(offsetAtClamped('ab\ncd', 2, 2)).toBe(offsetAt('ab\ncd', 2, 2));
+  });
   it('越界 → out_of_range', () => {
     expect(codeOf(() => offsetAt('ab', 2, 1))).toBe('out_of_range');
     expect(codeOf(() => offsetAt('ab', 1, 4))).toBe('out_of_range');
@@ -210,9 +217,9 @@ describe('projectCanonicalRange', () => {
 describe('sourceLayoutLimitExceeded', () => {
   it('UTF-8 字节与行数按包的上限', () => {
     expect(sourceLayoutLimitExceeded('a'.repeat(12288))).toBeNull();
-    expect(sourceLayoutLimitExceeded('a'.repeat(12289))).toBe('sourceBytes');
-    expect(sourceLayoutLimitExceeded('字'.repeat(4097))).toBe('sourceBytes');
+    expect(sourceLayoutLimitExceeded('a'.repeat(12289))).toEqual({ limit: 'sourceBytes', actual: 12289 });
+    expect(sourceLayoutLimitExceeded('字'.repeat(4097))).toEqual({ limit: 'sourceBytes', actual: 12291 });
     expect(sourceLayoutLimitExceeded('a\n'.repeat(200))).toBeNull();
-    expect(sourceLayoutLimitExceeded('a\n'.repeat(200) + 'b')).toBe('sourceLines');
+    expect(sourceLayoutLimitExceeded('a\r\n'.repeat(200) + 'b')).toEqual({ limit: 'sourceLines', actual: 201 });
   });
 });

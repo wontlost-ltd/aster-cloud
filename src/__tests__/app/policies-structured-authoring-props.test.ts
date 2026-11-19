@@ -6,6 +6,9 @@ const h = vi.hoisted(() => ({
   newProps: null as null | Record<string, unknown>,
   editProps: null as null | Record<string, unknown>,
   policyTeamId: 'team-9' as string | null,
+  activeVersion: null as null | Record<string, unknown>,
+  activeSha: vi.fn(),
+  loadLayout: vi.fn(),
 }));
 
 vi.mock('@/lib/auth', () => ({ getSession: async () => ({ user: { id: 'u1' } }) }));
@@ -41,9 +44,10 @@ vi.mock('@/lib/policy-access', () => ({
   authorizePolicyAction: async () => ({ allowed: true }),
 }));
 vi.mock('@/lib/prisma', () => ({
-  db: { query: { policyVersions: { findFirst: async () => null } } },
+  db: { query: { policyVersions: { findFirst: async () => h.activeVersion } } },
   policyVersions: {},
 }));
+vi.mock('@/lib/policy-layout/store', () => ({ activeLayoutSha256: h.activeSha, loadVersionLayout: h.loadLayout }));
 vi.mock('@/app/[locale]/(dashboard)/policies/new/new-policy-content', () => ({
   NewPolicyContent: (props: Record<string, unknown>) => {
     h.newProps = props;
@@ -81,6 +85,10 @@ beforeEach(() => {
   h.resolve.mockReset();
   h.resolve.mockResolvedValue(ENTITLEMENT);
   h.policyTeamId = 'team-9';
+  h.activeVersion = null;
+  h.activeSha.mockReset();
+  h.activeSha.mockResolvedValue(null);
+  h.loadLayout.mockReset();
 });
 
 describe('编辑页 structuredAuthoring', () => {
@@ -147,5 +155,50 @@ describe('无权时不下发授权来源（ADR §5.1）', () => {
   it('有权时 sources 原样下发', async () => {
     const props = await renderEdit();
     expect(props.structuredAuthoring).toEqual(ENTITLEMENT);
+  });
+});
+
+// 显示排版（ADR 0058 §7.4，计划 T10）：是否带排版与能力无关；排版本身只给有权的作者加载，且须与 Policy.content 逐字对应
+describe('编辑页 layout props', () => {
+  const LAYOUT = { v: 1, spans: [{ text: 'c' }] };
+  const DENIED = { allowed: false, denial: 'not_granted', sources: [] };
+
+  beforeEach(() => {
+    h.activeVersion = { id: 'v1', aliasSet: null, content: 'c', source: 'c' };
+    h.activeSha.mockResolvedValue('a'.repeat(64));
+  });
+
+  it('allowed=false：不调用 loadVersionLayout，但仍下发 hasActiveLayout', async () => {
+    h.resolve.mockResolvedValue(DENIED);
+    const props = await renderEdit();
+    expect(h.activeSha).toHaveBeenCalledWith('v1');
+    expect(h.loadLayout).not.toHaveBeenCalled();
+    expect(props).toMatchObject({ hasActiveLayout: true, initialLayout: null, initialLayoutInconsistent: false });
+  });
+
+  it('allowed=true 且 ok：initialLayout 为该排版', async () => {
+    h.loadLayout.mockResolvedValue({ status: 'ok', layout: LAYOUT, layoutSha256: 'a'.repeat(64) });
+    const props = await renderEdit();
+    expect(h.loadLayout).toHaveBeenCalledWith('v1');
+    expect(props).toMatchObject({ hasActiveLayout: true, initialLayout: LAYOUT, initialLayoutInconsistent: false });
+  });
+
+  it('allowed=true 且 inconsistent → initialLayoutInconsistent=true、initialLayout=null', async () => {
+    h.loadLayout.mockResolvedValue({ status: 'inconsistent', layoutSha256: 'a'.repeat(64) });
+    const props = await renderEdit();
+    expect(props).toMatchObject({ hasActiveLayout: true, initialLayout: null, initialLayoutInconsistent: true });
+  });
+
+  it('排版与 Policy.content 对不上（resolver 迁移等）→ 按不一致处理，不加载过期排版', async () => {
+    h.loadLayout.mockResolvedValue({ status: 'ok', layout: { v: 1, spans: [{ text: 'old' }] }, layoutSha256: 'a'.repeat(64) });
+    const props = await renderEdit();
+    expect(props).toMatchObject({ initialLayout: null, initialLayoutInconsistent: true });
+  });
+
+  it('活跃版本没有排版：不加载，hasActiveLayout=false', async () => {
+    h.activeSha.mockResolvedValue(null);
+    const props = await renderEdit();
+    expect(h.loadLayout).not.toHaveBeenCalled();
+    expect(props).toMatchObject({ hasActiveLayout: false, initialLayout: null, initialLayoutInconsistent: false });
   });
 });
