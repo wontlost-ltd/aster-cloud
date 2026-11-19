@@ -33,6 +33,19 @@ export function writtenKeys(row: WrittenKeyRow): string[] {
   return [...new Set(forms)].map((w) => JSON.stringify([localeLanguage(row.locale), role, parent, w]));
 }
 
+/**
+ * 词条来源判定键：种类 + NFC 写法 + 规范名 + parent。DB 行与引擎映射（IdentifierMapping）两侧同一口径，
+ * 用于在合并后的词汇里认出哪些映射来自团队（保存响应 `vocabularyShadowed` 的 source，ADR 0060 §6.3）。
+ */
+export function vocabularyOriginKey(term: {
+  kind: string;
+  localized: string;
+  canonical: string;
+  parent?: string | null;
+}): string {
+  return JSON.stringify([term.kind, term.localized.normalize('NFC'), term.canonical, term.parent ?? '']);
+}
+
 export interface TeamVocabularyMerge<T extends TermLikeRow> {
   /** 合并后的词条行：全部团队词条在前，未被遮蔽的作者词条在后。 */
   rows: T[];

@@ -5,8 +5,12 @@ const { mockCompile, mockLoadVocabulary } = vi.hoisted(() => ({
   mockLoadVocabulary: vi.fn(),
 }));
 
+// 保存路径经 loadLiveVocabularyWithOrigins 加载下层词汇（另带团队词条来源键，供 vocabularyShadowed 标注）。
 vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
-  loadLiveVocabularyForPolicy: mockLoadVocabulary,
+  loadLiveVocabularyWithOrigins: async (...args: unknown[]) => ({
+    vocabulary: await mockLoadVocabulary(...args),
+    teamTermKeys: new Set<string>(),
+  }),
 }));
 
 // PolicyApiError 真实类要用（instanceof 判 statusCode），只 mock compile 方法。
@@ -57,7 +61,7 @@ describe('makeCompileValidator / loadSaveVocabulary — 领域词汇（#602，AD
   it('无作用域内词汇 → vocabulary 为 null、词汇段为空串', async () => {
     mockLoadVocabulary.mockResolvedValue(null);
     const save = await loadSaveVocabulary('u1', { source, locale: 'de-DE' });
-    expect(save).toEqual({ vocabulary: null, scopesJson: '' });
+    expect(save).toEqual({ vocabulary: null, scopesJson: '', shadowed: [] });
     await makeCompileValidator('u1', save.vocabulary)({ source, locale: 'de-DE' });
     expect(mockCompile).toHaveBeenCalledWith(expect.objectContaining({ vocabulary: null }));
   });

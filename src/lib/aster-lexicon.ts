@@ -58,7 +58,7 @@ export function withUserAliases<L extends Lexicon>(
  *
  * <p>用 shared 的 {@link normalizeAliasToken} 归一（与 validateUserAliases/Java 同口径），
  * 不可随手 trim().toLowerCase()——否则占用集与校验值归一不一致（NBSP/大小写边界）。
- * vocabularyTermsLower（第三集）由服务端 buildAliasReservedForUser 从用户词汇表补齐。
+ * vocabularyTermsLower（第三集）由服务端 buildAliasReservedFromVocabulary 从本次保存的有效词汇补齐。
  */
 export function extractReservedAliasSets(lexicon: Lexicon): {
   canonicalKeywordsLower: Set<string>;

@@ -19,12 +19,14 @@ import { loadSaveVocabulary, makeCompileValidator } from '@/lib/policy-compile-v
 import {
   aliasInvalidResponse,
   compileGateErrorResponse,
+  embeddedVocabularyInvalidResponse,
   vocabularyScopeInvalidResponse,
 } from '@/lib/policy-compile-response';
 import {
   getStructuralAliasGrant,
-  buildAliasReservedForUser,
+  buildAliasReservedFromVocabulary,
 } from '@/lib/structural-alias-grants';
+import { parseEmbeddedVocabularyField } from '@/lib/policy-embedded-vocabulary';
 import { db, policies } from '@/lib/prisma';
 import { and, eq, isNull } from 'drizzle-orm';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
@@ -87,8 +89,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  * POST /api/v1/policies/{id}/versions
  *
  * 创建新版本
- * Body: { source: string, releaseNote?: string, aliasSet?, locale?, layout? }
+ * Body: { source: string, releaseNote?: string, aliasSet?, locale?, layout?, embeddedVocabulary? }
  * layout 三态见 createVersion（ADR 0058 §7.5）；响应含 layoutSha256 与 layoutDropped。
+ * embeddedVocabulary 与本路由的 aliasSet 一致：省略与 null 都是无（ADR 0060 §6.5）；响应含 vocabularyShadowed。
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
@@ -133,12 +136,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const { source, releaseNote, aliasSet, locale, layout } = body as {
+    const { source, releaseNote, aliasSet, locale, layout, embeddedVocabulary } = body as {
       source?: string;
       releaseNote?: string;
       aliasSet?: unknown;
       locale?: unknown;
       layout?: unknown;
+      embeddedVocabulary?: unknown;
     };
 
     if (!source || typeof source !== 'string') {
@@ -161,12 +165,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const parsedLocale = parseCompileLocale(locale);
     if (!parsedLocale.ok) return NextResponse.json(parsedLocale.error, { status: 400 });
     const compileLocale = parsedLocale.locale;
+    const embeddedInput = parseEmbeddedVocabularyField(embeddedVocabulary);
     const allowStructural = aliasSetInput
       ? await getStructuralAliasGrant(session.user.id)
       : false;
-    const aliasReserved = aliasSetInput
-      ? await buildAliasReservedForUser(session.user.id, compileLocale)
-      : undefined;
 
     // structured_authoring 只在新版本可能带 layout 时解析：提交了 layout，或省略而活跃版本有 layout（沿用）。
     const layoutSubmitted = layout !== undefined && layout !== null;
@@ -175,8 +177,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       ? (await resolveEntitlement(session.user.id, 'structured_authoring', { teamId: access.policy.teamId })).allowed
       : false;
 
-    // 作者词汇只加载一次，编译门禁与 envelope 封印共用（ADR 0051 §7）。
-    const saveVocabulary = await loadSaveVocabulary(session.user.id, { source, locale: compileLocale }, { teamId: access.policy.teamId });
+    // 作者词汇只加载一次，并入内嵌词汇后编译门禁、envelope 封印与别名占用集共用（ADR 0051 §7、ADR 0060 §6.3）。
+    const saveVocabulary = await loadSaveVocabulary(
+      session.user.id,
+      { source, locale: compileLocale },
+      { teamId: access.policy.teamId, embedded: embeddedInput, aliasSet: aliasSetInput },
+    );
+    const aliasReserved = aliasSetInput
+      ? buildAliasReservedFromVocabulary(compileLocale, saveVocabulary.vocabulary)
+      : undefined;
 
     const result = await createVersion({
       policyId: id,
@@ -191,9 +200,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       validateCompilable: makeCompileValidator(session.user.id, saveVocabulary.vocabulary),
       layout,
       allowLayout,
+      embeddedVocabulary: embeddedInput,
     });
 
-    return NextResponse.json(result, { status: 201 });
+    return NextResponse.json({ ...result, vocabularyShadowed: saveVocabulary.shadowed }, { status: 201 });
   } catch (error) {
     const layoutError = layoutSaveErrorResponse(error);
     if (layoutError) return layoutError;
@@ -205,6 +215,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (aliasInvalid) return aliasInvalid;
     const vocabularyInvalid = vocabularyScopeInvalidResponse(error);
     if (vocabularyInvalid) return vocabularyInvalid;
+    const embeddedInvalid = embeddedVocabularyInvalidResponse(error);
+    if (embeddedInvalid) return embeddedInvalid;
     return internalErrorResponse('Versions POST', error, 'Could not create version.');
   }
 }

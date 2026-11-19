@@ -28,12 +28,12 @@ vi.mock('@/services/policy/version-manager', () => ({
   PolicyCompileError: class PolicyCompileError extends Error {},
 }));
 vi.mock('@/lib/policy-compile-validator', () => ({
-  loadSaveVocabulary: vi.fn(async () => ({ vocabulary: { id: 'v' }, scopesJson: '' })),
+  loadSaveVocabulary: vi.fn(async () => ({ vocabulary: { id: 'v' }, scopesJson: '', shadowed: [] })),
   makeCompileValidator: vi.fn(() => vi.fn()),
 }));
 vi.mock('@/lib/structural-alias-grants', () => ({
   getStructuralAliasGrant: vi.fn(async () => false),
-  buildAliasReservedForUser: vi.fn(),
+  buildAliasReservedFromVocabulary: vi.fn(),
 }));
 vi.mock('@/lib/capabilities/resolve', () => ({ resolveEntitlement: h.resolveEntitlement }));
 vi.mock('@/lib/policy-layout/store', () => ({

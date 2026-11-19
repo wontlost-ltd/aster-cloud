@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { PolicyCompileError } from '@/services/policy/version-manager';
 import { vocabularyScopeErrorDetails, vocabularyScopeErrorMessage } from '@/lib/vocabulary-scope-error';
 import { withVocabularyHelp } from '@/lib/vocabulary-diagnostic';
+import { EmbeddedVocabularyError } from '@/lib/policy-embedded-vocabulary';
 
 /** 别名校验失败的稳定错误码（保存入口共用，前端按此码本地化）。 */
 export const ALIAS_INVALID_CODE = 'alias_invalid';
@@ -53,6 +54,18 @@ export function vocabularyScopeInvalidResponse(error: unknown): NextResponse | n
       // 引擎原文（中文），仅供排查
       detail: details.message,
     },
+    { status: 400 },
+  );
+}
+
+/**
+ * 保存入口 catch 分支共用：内嵌词汇不合法（ADR 0060 §6.4 五个码）→ 400 `{ error, code, detail }`；
+ * 其它错误返回 null。detail 为出错词条或上限的说明（英文，引擎校验失败时为引擎原文）。
+ */
+export function embeddedVocabularyInvalidResponse(error: unknown): NextResponse | null {
+  if (!(error instanceof EmbeddedVocabularyError)) return null;
+  return NextResponse.json(
+    { error: 'Invalid embedded vocabulary', code: error.code, detail: error.detail ?? null },
     { status: 400 },
   );
 }

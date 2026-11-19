@@ -39,7 +39,7 @@ vi.mock('@/lib/team-permissions', () => ({
 }));
 // 本文件只测编译服务不可用的分类：作者词汇正常加载（无词汇）。词汇加载失败另有用例（policy-compile-validator.test）。
 vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
-  loadLiveVocabularyForPolicy: vi.fn(async () => null),
+  loadLiveVocabularyWithOrigins: vi.fn(async () => ({ vocabulary: null, teamTermKeys: new Set<string>() })),
 }));
 vi.mock('@/services/policy/policy-api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/policy/policy-api')>()),

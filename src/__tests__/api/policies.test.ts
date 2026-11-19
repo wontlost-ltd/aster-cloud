@@ -15,7 +15,7 @@ const {
   mockSelectExec,
   mockCreateVersion,
   mockGetStructuralAliasGrant,
-  mockBuildAliasReservedForUser,
+  mockBuildAliasReservedFromVocabulary,
   mockCompile,
   mockPolicyCompileError,
   mockAssertCompilable,
@@ -40,7 +40,7 @@ const {
     sourceEnvelopeSha256: 'envelope',
   });
   const mockGetStructuralAliasGrant = vi.fn().mockResolvedValue(false);
-  const mockBuildAliasReservedForUser = vi.fn().mockResolvedValue({
+  const mockBuildAliasReservedFromVocabulary = vi.fn().mockReturnValue({
     canonicalKeywordsLower: new Set<string>(),
     baseAliasesLower: new Set<string>(),
     vocabularyTermsLower: new Set<string>(),
@@ -69,7 +69,7 @@ const {
     mockSelectExec,
     mockCreateVersion,
     mockGetStructuralAliasGrant,
-    mockBuildAliasReservedForUser,
+    mockBuildAliasReservedFromVocabulary,
     mockCompile,
     mockPolicyCompileError: MockPolicyCompileError,
     mockAssertCompilable,
@@ -103,7 +103,7 @@ vi.mock('@/services/pii/detector', () => ({
 
 // 作者词汇每次保存加载一次（ADR 0051 §7）：同一份交给编译门禁与 envelope 封印，事务外读取。
 const { mockLoadSaveVocabulary, mockMakeCompileValidator, SAVE_VOCABULARY } = vi.hoisted(() => {
-  const SAVE_VOCABULARY = { vocabulary: { id: 'v' }, scopesJson: '{"scopes":"live"}' };
+  const SAVE_VOCABULARY = { vocabulary: { id: 'v' }, scopesJson: '{"scopes":"live"}', shadowed: [] };
   return {
     SAVE_VOCABULARY,
     mockLoadSaveVocabulary: vi.fn(),
@@ -128,7 +128,7 @@ vi.mock('@/services/policy/policy-api', () => ({
 
 vi.mock('@/lib/structural-alias-grants', () => ({
   getStructuralAliasGrant: mockGetStructuralAliasGrant,
-  buildAliasReservedForUser: mockBuildAliasReservedForUser,
+  buildAliasReservedFromVocabulary: mockBuildAliasReservedFromVocabulary,
 }));
 
 vi.mock('@/lib/usage', () => ({
@@ -314,7 +314,7 @@ describe('Policies API - Drizzle Migration', () => {
     });
     vi.mocked(db.query.structuralAliasGrants.findFirst).mockResolvedValue(undefined);
     mockGetStructuralAliasGrant.mockResolvedValue(false);
-    mockBuildAliasReservedForUser.mockResolvedValue({
+    mockBuildAliasReservedFromVocabulary.mockReturnValue({
       canonicalKeywordsLower: new Set<string>(),
       baseAliasesLower: new Set<string>(),
       vocabularyTermsLower: new Set<string>(),
@@ -626,7 +626,7 @@ describe('Policies API - Drizzle Migration', () => {
       }));
 
       expect(response.status).toBe(201);
-      expect(mockBuildAliasReservedForUser).toHaveBeenCalledWith('user-1', 'en-US');
+      expect(mockBuildAliasReservedFromVocabulary).toHaveBeenCalledWith('en-US', { id: 'v' });
       expect(mockCreateVersion).toHaveBeenCalledWith(expect.objectContaining({
         aliasSet,
         aliasReserved: expect.any(Object),

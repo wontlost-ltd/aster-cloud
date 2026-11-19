@@ -30,17 +30,17 @@ const rel = (f: string) => path.relative(ROOT, f).split(path.sep).join('/');
 const FILES = sourceFiles(SRC).map((f) => ({ path: rel(f), text: readFileSync(f, 'utf8') }));
 
 /** 下层词汇加载器的调用（不含定义处）。 */
-const LOWER_LOADER_CALL = /\b(?:loadVocabularyForExecution|loadLiveVocabularyForPolicy|loadExecutionVocabulary|freezeVocabularyForApproval)\s*\(/;
-const MERGE_CALL = /\bwithEmbeddedVocabulary\s*\(/;
+const LOWER_LOADER_CALL = /\b(?:loadVocabularyForExecution|loadLiveVocabularyForPolicy|loadLiveVocabularyWithOrigins|loadExecutionVocabulary|freezeVocabularyForApproval)\s*\(/;
+const MERGE_CALL = /\b(?:withEmbeddedVocabulary|mergeEmbeddedVocabulary)\s*\(/;
 
 /** 可以直接调用下层加载器的文件 → 它在哪里并入内嵌词汇。 */
-const LOWER_LOADER_ALLOWLIST: Record<string, 'merges' | 'defines' | 'save-path'> = {
+const LOWER_LOADER_ALLOWLIST: Record<string, 'merges' | 'defines'> = {
   'src/lib/domain-vocabulary-snapshot.ts': 'defines',
   'src/lib/execution-input/index.ts': 'merges',
   'src/services/policy/version-manager.ts': 'merges',
   'src/services/policy/resolver-migration.ts': 'merges',
-  // 保存时编译门禁（loadSaveVocabulary）：内嵌词汇由写入方 PR 8（计划 T9）接入；本 PR 之后列仍恒为 NULL
-  'src/lib/policy-compile-validator.ts': 'save-path',
+  // 保存时编译门禁与封印（loadSaveVocabulary）：并入本版本提交 / 沿用的内嵌词汇（计划 T9）
+  'src/lib/policy-compile-validator.ts': 'merges',
 };
 
 /** 可以读写 embeddedVocabulary 列 / 字段的文件。 */
@@ -59,6 +59,10 @@ const COLUMN_ALLOWLIST = new Set([
   'src/app/api/v1/policies/[id]/execute/route.ts',
   'src/app/api/policies/[id]/executions/[execId]/verify-parity/route.ts',
   'src/app/api/internal/policy-versions/route.ts',
+  // 写入方（计划 T9）：三条保存路由按 ADR 0060 §6.5 三态解析请求字段，PUT 读活跃版本的值以沿用
+  'src/app/api/policies/route.ts',
+  'src/app/api/policies/[id]/route.ts',
+  'src/app/api/v1/policies/[id]/versions/route.ts',
 ]);
 
 /** 读版本编译输入的下游：必须存在、必须经 execution-input，且不得直接调用下层加载器。 */

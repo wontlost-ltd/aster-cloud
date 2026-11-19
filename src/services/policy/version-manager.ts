@@ -27,7 +27,13 @@ import {
   type SnapshotTx,
 } from '@/lib/domain-vocabulary-snapshot';
 import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
-import { EmbeddedVocabularyError, withEmbeddedVocabulary } from '@/lib/policy-embedded-vocabulary';
+import {
+  EmbeddedVocabularyError,
+  storedEmbeddedVocabulary,
+  validateEmbeddedVocabulary,
+  withEmbeddedVocabulary,
+  type EmbeddedVocabulary,
+} from '@/lib/policy-embedded-vocabulary';
 import { CNL_LOCALES, DEFAULT_CNL_LOCALE } from '@/lib/cnl-locale';
 import {
   canonicalAliasJson,
@@ -424,6 +430,12 @@ export interface CreateVersionParams {
   layout?: unknown;
   /** 调用者是否持有 structured_authoring 能力。必须由服务端 resolveEntitlement 传入。缺省 false。 */
   allowLayout?: boolean;
+  /**
+   * 版本的内嵌词汇（ADR 0060 §6）：与 aliasSet 同一行、同一生命周期，按 §6.4 校验后存其确定性序列化；
+   * 缺省 / null / 无词条 = 无内嵌词条（列为 NULL）。PUT 的「省略即沿用」由路由解析成这里的值。
+   * 不设能力门与套餐门（§6.7）。`scopesJson` 必须是并入同一份内嵌词汇后的词汇段（loadSaveVocabulary）。
+   */
+  embeddedVocabulary?: EmbeddedVocabulary | null;
 }
 
 export interface CreateVersionResult {
@@ -489,7 +501,8 @@ async function invalidateAfterVersionChange(policyId: string): Promise<void> {
 
 type ChainedVersionFields = Pick<
   typeof policyVersions.$inferInsert,
-  'createdBy' | 'releaseNote' | 'aliasSet' | 'sourceEnvelopeSha256' | 'sourceToolchainId' | 'sourceScopesJson' | 'profile'
+  | 'createdBy' | 'releaseNote' | 'aliasSet' | 'sourceEnvelopeSha256' | 'sourceToolchainId' | 'sourceScopesJson' | 'profile'
+  | 'embeddedVocabulary'
 >;
 
 /**
@@ -571,6 +584,13 @@ export async function createVersion(
     aliasSetJson = canonicalAliasJson(params.aliasSet);
   }
 
+  // 内嵌词汇（ADR 0060 §6.4）：保存路由已在 loadSaveVocabulary 校验过；这里对所有入口再 fail-closed 校验一次
+  // （纯计算），失败抛 EmbeddedVocabularyError（400），不落任何行。
+  if (params.embeddedVocabulary) {
+    validateEmbeddedVocabulary(params.embeddedVocabulary, { locale, aliasSet: aliasSetJson ? params.aliasSet ?? null : null });
+  }
+  const embeddedVocabularyText = storedEmbeddedVocabulary(params.embeddedVocabulary);
+
   // layout 三态（ADR 0058 §7.5）：提交的 layout 在编译与开事务之前就做门禁与全量校验，失败不落任何行。
   const layoutCtx: LayoutContext = {
     source,
@@ -621,6 +641,7 @@ export async function createVersion(
     // 封印所用词汇段原样落库：之后词条编辑或审批冻结都不改变 envelope 的重算输入。
     sourceScopesJson: params.scopesJson,
     profile,
+    embeddedVocabulary: embeddedVocabularyText,
   });
   // layout 与版本行同一事务写入；沿用候选在链尾锁之后读，并发保存各自基于已提交的活跃版本判定。
   const insertWithLayout = async (tx: SnapshotTx) => {
@@ -656,6 +677,8 @@ export async function createVersion(
       // ADR 0058 §4.9 / 裁决 R2：建版本的唯一审计事件同时记录 layout 结果
       layoutSha256,
       layoutDropped,
+      // ADR 0060 §6.2：内嵌词汇是编译输入，与 aliasSet 一样随建版本审计
+      embeddedVocabulary: embeddedVocabularyText,
     },
   }, params.dbClient);
 

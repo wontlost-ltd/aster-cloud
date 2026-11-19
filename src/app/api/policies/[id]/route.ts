@@ -13,10 +13,16 @@ import { loadSaveVocabulary, makeCompileValidator } from '@/lib/policy-compile-v
 import {
   aliasInvalidResponse,
   compileGateErrorResponse,
+  embeddedVocabularyInvalidResponse,
   structuralGrantRequiredResponse,
   vocabularyScopeInvalidResponse,
 } from '@/lib/policy-compile-response';
-import { getStructuralAliasGrant, buildAliasReservedForUser } from '@/lib/structural-alias-grants';
+import { getStructuralAliasGrant, buildAliasReservedFromVocabulary } from '@/lib/structural-alias-grants';
+import {
+  parseEmbeddedVocabularyField,
+  parseStoredEmbeddedVocabulary,
+  storedEmbeddedVocabulary,
+} from '@/lib/policy-embedded-vocabulary';
 import { canonicalAliasJson } from '@/lib/policy-alias';
 import { hasStructuralAliases } from '@/lib/policy-alias-shared';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
@@ -158,7 +164,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
     }
 
     const { id } = await params;
-    const { name, content, description, isPublic, groupId, aliasSet, locale, layout } = await req.json();
+    const { name, content, description, isPublic, groupId, aliasSet, locale, layout, embeddedVocabulary } = await req.json();
 
     // 团队策略按当前角色授权（member 起可编辑，viewer 403，非成员 404）；个人策略只认所有者。
     const access = await loadPolicyForAction(id, { userId: session.user.id }, 'update');
@@ -204,6 +210,10 @@ export async function PUT(req: Request, { params }: RouteParams) {
     const parsedLocale = parseCompileLocale(locale);
     if (!parsedLocale.ok) return NextResponse.json(parsedLocale.error, { status: 400 });
     const compileLocale = parsedLocale.locale;
+    // 内嵌词汇（ADR 0060 §6.5）三态与 aliasSet 一致：省略 → 沿用活跃版本；null → 清空；对象 → 校验后使用。
+    // 提交的对象先解析（形状不符 → 400），沿用值只在要编译新版本时才解析（只改名称等不读它）。
+    const requestHasEmbeddedField = embeddedVocabulary !== undefined;
+    const submittedEmbedded = parseEmbeddedVocabularyField(embeddedVocabulary);
 
     // 取活跃版本冻结的别名（canonical JSON）：字段缺省时作保留值 + content-only 变更时
     // 沿用它进新版本 + 判断 aliasChanged 的对照基线。仅在有版本编译输入变动时才需要，
@@ -213,7 +223,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
         eq(policyVersions.policyId, id),
         eq(policyVersions.version, existingPolicy.version),
       ),
-      columns: { id: true, aliasSet: true, sourceScopesJson: true },
+      columns: { id: true, aliasSet: true, sourceScopesJson: true, embeddedVocabulary: true },
     });
     const existingCanonical = activeVersion?.aliasSet ?? null;
     let existingAliasSet: Record<string, string[]> | null = null;
@@ -235,6 +245,10 @@ export async function PUT(req: Request, { params }: RouteParams) {
     // 只有字段存在时别名才可能变；缺省=保留现有，恒不算变。
     const aliasChanged =
       requestHasAliasField && existingCanonical !== canonicalAliasJson(submittedAliasSet);
+    // 内嵌词汇同理：只有字段存在才可能变，按确定性序列化比较（词条顺序、NFC 差异不误触发）。
+    const existingEmbeddedText = activeVersion?.embeddedVocabulary ?? null;
+    const embeddedChanged =
+      requestHasEmbeddedField && storedEmbeddedVocabulary(submittedEmbedded) !== existingEmbeddedText;
     // 新版本的源码：content 提交则用之，否则沿用现有 content（alias-only 变更不改源码）。
     const versionSource = content !== undefined ? content : existingPolicy.content;
     // 作者词汇每次保存只加载一次，编译门禁、envelope 封印与下方词汇变更判定共用（ADR 0051 §7）。
@@ -246,10 +260,18 @@ export async function PUT(req: Request, { params }: RouteParams) {
     // 只改 layout 也建新版本（裁决 R4）：layout 是版本的一部分，不可原地更新。
     const activeSha = activeVersion?.id ? await activeLayoutSha256(activeVersion.id) : null;
     const layoutChanged = isLayoutChanged(layout, activeSha);
-    const inputsChanged = contentChanged || aliasChanged || layoutChanged;
+    const inputsChanged = contentChanged || aliasChanged || layoutChanged || embeddedChanged;
     const checkVocabulary = !inputsChanged && content !== undefined && sealedScopesJson !== null;
+    // 新版本的内嵌词汇：字段存在用提交值（含显式清空），否则沿用活跃版本的（存量文本须为规范序列化）。
+    const embeddedInput = inputsChanged || checkVocabulary
+      ? (requestHasEmbeddedField ? submittedEmbedded : parseStoredEmbeddedVocabulary(existingEmbeddedText))
+      : null;
     const saveVocabulary = inputsChanged || checkVocabulary
-      ? await loadSaveVocabulary(session.user.id, { source: versionSource, locale: compileLocale }, { teamId: existingPolicy.teamId })
+      ? await loadSaveVocabulary(
+        session.user.id,
+        { source: versionSource, locale: compileLocale },
+        { teamId: existingPolicy.teamId, embedded: embeddedInput, aliasSet: aliasSetInput },
+      )
       : null;
     const vocabularyChanged = checkVocabulary && saveVocabulary!.scopesJson !== sealedScopesJson;
     const newVersion = inputsChanged || vocabularyChanged;
@@ -309,8 +331,9 @@ export async function PUT(req: Request, { params }: RouteParams) {
       })
       : null;
 
-    const aliasReserved = newVersion && aliasSetInput
-      ? await buildAliasReservedForUser(session.user.id, compileLocale)
+    // 别名占用集取本次编译所用的同一份有效词汇（含内嵌词条与字面量触发词）。
+    const aliasReserved = newVersion && aliasSetInput && saveVocabulary
+      ? buildAliasReservedFromVocabulary(compileLocale, saveVocabulary.vocabulary)
       : undefined;
     // structured_authoring 只在新版本可能带 layout 时解析：提交了 layout，或省略而活跃版本有 layout（沿用）。
     const allowLayout = newVersion && needsLayoutEntitlement(layout, activeSha)
@@ -333,6 +356,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
           dbClient: tx,
           layout,
           allowLayout,
+          embeddedVocabulary: embeddedInput,
         });
         layoutDropped = createdVersion.layoutDropped;
         updateData.version = createdVersion.version; // 回填，保持 Policy.version ↔ PolicyVersion.version 一致
@@ -349,7 +373,8 @@ export async function PUT(req: Request, { params }: RouteParams) {
     // 响应前完成缓存失效；KV 故障只记录，不把已成功的写操作报成失败。
     await invalidatePolicyCache(id).catch((err) => console.warn('[Cache] Failed to invalidate policy cache:', err));
 
-    return NextResponse.json({ ...policy, layoutDropped });
+    // vocabularyShadowed（ADR 0060 §6.3）：被活跃版本内嵌词条遮蔽的下层词条；本次没加载词汇（只改名称等）时为空。
+    return NextResponse.json({ ...policy, layoutDropped, vocabularyShadowed: saveVocabulary?.shadowed ?? [] });
   } catch (error) {
     const layoutError = layoutSaveErrorResponse(error);
     if (layoutError) return layoutError;
@@ -362,6 +387,8 @@ export async function PUT(req: Request, { params }: RouteParams) {
     if (aliasInvalid) return aliasInvalid;
     const vocabularyInvalid = vocabularyScopeInvalidResponse(error);
     if (vocabularyInvalid) return vocabularyInvalid;
+    const embeddedInvalid = embeddedVocabularyInvalidResponse(error);
+    if (embeddedInvalid) return embeddedInvalid;
     console.error('Error updating policy:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

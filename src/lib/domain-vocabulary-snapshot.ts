@@ -47,7 +47,7 @@ import {
   userOwner,
   type VocabularyOwner,
 } from '@/lib/domain-vocabulary';
-import { mergeTeamAndAuthorRows } from '@/lib/domain-vocabulary-team-merge';
+import { mergeTeamAndAuthorRows, vocabularyOriginKey } from '@/lib/domain-vocabulary-team-merge';
 import { freshDb } from '@/db/fresh-read';
 
 export interface SnapshotRef {
@@ -407,10 +407,35 @@ export async function loadLiveVocabularyForPolicy(
   policy: PolicyVocabularyContext,
   opts: PolicyTeamRef = {},
 ): Promise<DomainVocabulary | null> {
+  return (await loadLiveVocabularyWithOrigins(ownerId, policy, opts)).vocabulary;
+}
+
+/** 现行下层词汇，及其中哪些词条来自团队（其余来自作者）。 */
+export interface LivePolicyVocabulary {
+  vocabulary: DomainVocabulary | null;
+  /** 团队词条的 {@link vocabularyOriginKey}。 */
+  teamTermKeys: ReadonlySet<string>;
+}
+
+/**
+ * 同 {@link loadLiveVocabularyForPolicy}，另给出团队词条的来源键：保存时据此把被内嵌词条遮蔽的下层词条
+ * 标为 team / author（ADR 0060 §6.3 `vocabularyShadowed`）。
+ */
+export async function loadLiveVocabularyWithOrigins(
+  ownerId: string | null | undefined,
+  policy: PolicyVocabularyContext,
+  opts: PolicyTeamRef = {},
+): Promise<LivePolicyVocabulary> {
   // 团队策略：团队词条 + 作者词条（冲突时团队优先，ADR 0017 §2）；个人策略只读作者词条。
   const sources = await loadPolicyVocabularySources(ownerId, await resolvePolicyTeamId(opts));
   const rows = sources.flatMap((source) => source.rows).map(toTermLikeRow);
-  return resolvePolicyVocabularyFromRows(rows, policy);
+  const teamTermKeys = new Set(
+    sources
+      .filter((source) => source.scope.ownerType === 'team')
+      .flatMap((source) => source.rows)
+      .map((row) => vocabularyOriginKey({ ...row, parent: row.parentCanonical })),
+  );
+  return { vocabulary: resolvePolicyVocabularyFromRows(rows, policy), teamTermKeys };
 }
 
 /**

@@ -289,7 +289,8 @@ export function validateEmbeddedVocabulary(
   checkKeywords(ev, ctx);
 }
 
-function allMappings(vocabulary: DomainVocabulary): IdentifierMapping[] {
+/** 词汇里全部角色（含字面量）的映射，按 structs、fields、functions、enumValues、literals 的顺序。 */
+export function allMappings(vocabulary: DomainVocabulary): IdentifierMapping[] {
   return [
     ...(vocabulary.structs ?? []),
     ...(vocabulary.fields ?? []),
@@ -393,7 +394,18 @@ export function withEmbeddedVocabulary(
   embeddedText: string | null | undefined,
   locale: string,
 ): DomainVocabulary | null {
-  if (!embeddedText) return lower;
+  const ev = parseStoredEmbeddedVocabulary(embeddedText);
+  if (!ev) return lower;
+  return mergeEmbeddedVocabulary(toDomainVocabulary(ev, locale), lower).vocabulary;
+}
+
+/**
+ * 解析版本行上已存的内嵌词汇文本；NULL / 空串 → null。文本必须是可解析的规范序列化
+ * （与建版本时写入的字节相同），否则抛 `embedded_vocabulary_invalid_format`。
+ * 读路径与 PUT 省略字段时的沿用共用此口径。
+ */
+export function parseStoredEmbeddedVocabulary(embeddedText: string | null | undefined): EmbeddedVocabulary | null {
+  if (!embeddedText) return null;
   let raw: unknown;
   try {
     raw = JSON.parse(embeddedText);
@@ -404,5 +416,19 @@ export function withEmbeddedVocabulary(
   if (serializeEmbeddedVocabulary(ev) !== embeddedText) {
     throw formatError('stored embedded vocabulary is not in canonical form');
   }
-  return mergeEmbeddedVocabulary(toDomainVocabulary(ev, locale), lower).vocabulary;
+  return ev;
+}
+
+/**
+ * 保存入口请求体的 `embeddedVocabulary` 字段（§6.5）：`undefined` / `null` → null（无内嵌词条），
+ * 对象 → 按 §6.1 解析（形状不符抛 `embedded_vocabulary_invalid_format`）。
+ * PUT 的「省略即沿用」由路由在调用前判定，不在这里处理。
+ */
+export function parseEmbeddedVocabularyField(input: unknown): EmbeddedVocabulary | null {
+  return input === undefined || input === null ? null : parseEmbeddedVocabulary(input);
+}
+
+/** 内嵌词汇（可为 null）的存储形态：null 或无词条 → null，其余为确定性序列化。 */
+export function storedEmbeddedVocabulary(ev: EmbeddedVocabulary | null | undefined): string | null {
+  return ev ? serializeEmbeddedVocabulary(ev) : null;
 }
