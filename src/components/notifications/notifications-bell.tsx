@@ -47,6 +47,7 @@ function useLabels() {
   const t = useTranslations('notifications');
   return {
     label: t('label'),
+    labelWithUnread: t.raw('labelWithUnread') as string,
     empty: t('empty'),
     viewAll: t('openApprovals'),
     invitationReceived: t.raw('invitationReceived') as string,
@@ -265,13 +266,18 @@ export function NotificationsBell() {
   }, [items, unread]);
 
   const displayCount = unread > 50 ? '50+' : String(unread);
+  // 有未读时可访问名必须包含徽章上的可见文字（WCAG 2.5.3 Label in Name，axe
+  // label-content-name-mismatch，#814），语音控制用户才能按看到的内容（「3」）激活铃铛。
+  const buttonLabel = unread > 0
+    ? fillTemplate(labels.labelWithUnread, { count: displayCount })
+    : labels.label;
 
   return (
     <div ref={containerRef} className="relative">
       <button
         type="button"
         onClick={() => (open ? setOpen(false) : handleOpen())}
-        aria-label={labels.label}
+        aria-label={buttonLabel}
         aria-haspopup="true"
         aria-expanded={open}
         className="relative inline-flex size-9 items-center justify-center rounded-md text-fg-muted hover:bg-bg-subtle hover:text-fg focus-visible:outline-none focus-visible:shadow-ring"

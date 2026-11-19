@@ -19,6 +19,9 @@
  * - `equivalencePage.*` 中 /equivalence 重设计（#764）新增的结论 / 维度 / 覆盖率 / 历史 / 方法文案；
  *   seo、hero.title、trend.range、resolvedDivergences.rows、whitepaperCta 仍取共享包。
  *
+ * - `notifications.labelWithUnread`：通知铃铛有未读数时按钮的可访问名，须包含徽章上的可见数字
+ *   （WCAG 2.5.3，#814）；与同命名空间的 guard 审批 / 策略版本通知文案一样只叠加新键。
+ *
  * deepMergeMessages 深合并：只新增上述 key，不覆盖包里已有的 demoPage/languageSettings
  * 其余文案。缺 locale 的 key 由 request.ts 的 en 底座兜底。
  */
@@ -778,6 +781,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
     notifications: {
       versionRejectedNoComment: '{policyName} v{version} was rejected',
+      // 铃铛有未读数时的可访问名，须包含徽章上可见的数字（WCAG 2.5.3，#814）
+      labelWithUnread: 'Notifications, {count} unread',
       versionRejected: '{policyName} v{version} was rejected: {comment}',
       versionApproved: '{policyName} v{version} was approved',
       versionSubmitted: 'Approval needed: {policyName} v{version}',
@@ -2832,6 +2837,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
     notifications: {
       versionRejectedNoComment: '{policyName} v{version} 被驳回',
+      // 铃铛有未读数时的可访问名，须包含徽章上可见的数字（WCAG 2.5.3，#814）
+      labelWithUnread: '通知，{count} 条未读',
       versionRejected: '{policyName} v{version} 被驳回：{comment}',
       versionApproved: '{policyName} v{version} 已获批准',
       versionSubmitted: '待审批：{policyName} v{version}',
@@ -4865,6 +4872,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
     notifications: {
       versionRejectedNoComment: '{policyName} v{version} wurde abgelehnt',
+      // 铃铛有未读数时的可访问名，须包含徽章上可见的数字（WCAG 2.5.3，#814）
+      labelWithUnread: 'Benachrichtigungen, {count} ungelesen',
       versionRejected: '{policyName} v{version} wurde abgelehnt: {comment}',
       versionApproved: '{policyName} v{version} wurde freigegeben',
       versionSubmitted: 'Freigabe erforderlich: {policyName} v{version}',
@@ -6895,6 +6904,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
     notifications: {
       versionRejectedNoComment: '{policyName} v{version} अस्वीकृत हुआ',
+      // 铃铛有未读数时的可访问名，须包含徽章上可见的数字（WCAG 2.5.3，#814）
+      labelWithUnread: 'सूचनाएँ, {count} अपठित',
       versionRejected: '{policyName} v{version} अस्वीकृत हुआ: {comment}',
       versionApproved: '{policyName} v{version} अनुमोदित हुआ',
       versionSubmitted: 'अनुमोदन आवश्यक: {policyName} v{version}',
