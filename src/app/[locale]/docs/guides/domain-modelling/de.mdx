@@ -1,0 +1,155 @@
+---
+title: "Die eigene Domäne modellieren: Strukturen, Typ-Aliase und Import-Aliase"
+description: "Die Daten einer Richtlinie beschreiben: Strukturen mit Definiere, Typ-Aliase mit Type … als, Import-Aliase mit verwende … als, in drei Sprachen."
+updated: 2026-11-19
+apiVersion: v1
+---
+
+# Die eigene Domäne modellieren: Strukturen, Typ-Aliase und Import-Aliase
+
+Eine Richtlinie entscheidet über Dinge aus Ihrem Geschäft: einen Antragsteller, ein Darlehen, einen Schadensfall. Drei Deklarationen beschreiben diese Daten:
+
+| Deklaration | Wirkung | Deutsche Form |
+|---|---|---|
+| Struktur | Ein Datensatztyp mit benannten, typisierten Feldern | `Definiere Antragsteller mit name als Text und einkommen als Dezimal.` |
+| Typ-Alias | Ein zweiter Name für einen vorhandenen Typ | `Type Punktzahl als Ganzzahl.` |
+| Import-Alias | Ein kurzer lokaler Name für ein Modul | `verwende aster.finanzen.darlehen als Darlehen.` |
+
+Alle drei gehören zur Sprache Aster. Jeder kann sie schreiben, speichern, kompilieren und ausführen; dafür sind weder ein bestimmter Tarif noch eine Freigabe nötig. Der Tab **Modell** im Richtlinieneditor hilft beim Schreiben; er gehört zu [Strukturiertes Verfassen](/docs/guides/structured-authoring-admin).
+
+## Strukturen
+
+Eine Struktur beginnt mit `Definiere` (englisch `Define`), dann folgen ihr Name, `mit` (englisch `with`) und die Felder. Jedes Feld lautet `name als Typ`, Felder werden mit `und` (englisch `and`) verbunden:
+
+```
+Definiere Antragsteller mit name als Text und einkommen als Dezimal und bonitaet als Punktzahl.
+```
+
+Auf Englisch ist auch `Define Applicant has name as Text, income as Float.` (mit `has` und Kommas) zulässig.
+
+Ein Feldtyp ist ein eingebauter Typ (`Text`, `Ganzzahl`, `Dezimal`, `Boolesch`), eine andere Struktur oder ein Typ-Alias. Eine Regel liest ein Feld mit einem Punkt: `antragsteller.bonitaet`.
+
+## Typ-Aliase
+
+Ein Typ-Alias gibt einem vorhandenen Typ einen Namen aus Ihrer Domäne:
+
+```
+Type Punktzahl als Ganzzahl.
+```
+
+Verwenden Sie den Alias überall dort, wo ein Feld- oder Parametertyp steht: `bonitaet als Punktzahl`. Das einleitende Wort ist in jeder Richtliniensprache `Type`, auch in deutschen und chinesischen Richtlinien, und Groß- und Kleinschreibung spielt keine Rolle (`type` geht ebenso). Zwischen den Namen steht das `als` der jeweiligen Sprache (englisch `as`).
+
+<Callout type="warning" title="Aliase einheitlich verwenden">
+Die Typprüfung des Editors ersetzt einen Alias nicht durch seinen Zieltyp, wenn sie zwei deklarierte Typen vergleicht. Eine Regel mit `liefert Ganzzahl`, die einen als `als Punktzahl` deklarierten Parameter zurückgibt, wird als Typkonflikt gemeldet (`E003`). Deklarieren Sie das Ergebnis ebenfalls als `Punktzahl` oder verwenden Sie an beiden Stellen `Ganzzahl`.
+</Callout>
+
+## Import-Aliase
+
+Ein Import-Alias gibt einem Modul in Ihrer Richtlinie einen kurzen Namen:
+
+```
+verwende aster.finanzen.darlehen als Darlehen.
+```
+
+Der Alias benennt nur das Modul. Er ist in dem Modul sichtbar, das ihn deklariert; eine Umbenennung betrifft also nur dieses Modul.
+
+## Ein Namensraum für Typnamen
+
+Strukturen, Aufzählungen, Typ-Aliase und Import-Aliase teilen sich einen Namensraum. Tragen zwei davon denselben Namen, bricht die Kompilierung mit `E807` (doppelte Deklaration) ab, gemeldet an der zweiten Stelle. Keiner verdeckt den anderen: Benennen Sie einen der beiden um.
+
+```
+Use aster.lib as Score.
+Type Score as Int.
+```
+
+Die zweite Zeile scheitert mit `E807`. Regelnamen liegen in einem eigenen Namensraum und sind nicht betroffen.
+
+## Ein vollständiges Beispiel in drei Sprachen
+
+Dieselbe Richtlinie auf Englisch, Deutsch und Chinesisch. Die Richtliniensprache ergibt sich aus den Schlüsselwörtern im Quelltext, nicht aus der Sprache Ihrer Oberfläche. Jede Fassung lässt sich kompilieren und liefert `wahr` (`true`) für einen Antragsteller mit einer Bonität von mindestens 700.
+
+Englisch:
+
+```
+Module lending.
+
+Use aster.finance.loan as Loan.
+
+Type Score as Int.
+
+Define Applicant with name as Text and income as Float and creditScore as Score.
+
+Rule approve given applicant as Applicant, produce Bool:
+  If applicant.creditScore at least 700:
+    Return true.
+  Return false.
+```
+
+Deutsch:
+
+```
+Modul kredit.
+
+verwende aster.finanzen.darlehen als Darlehen.
+
+Type Punktzahl als Ganzzahl.
+
+Definiere Antragsteller mit name als Text und einkommen als Dezimal und bonitaet als Punktzahl.
+
+Regel genehmige gegeben antragsteller als Antragsteller, liefert Boolesch:
+  wenn antragsteller.bonitaet mindestens 700:
+    gib zurueck wahr.
+  gib zurueck falsch.
+```
+
+Chinesisch:
+
+```
+模块 信贷。
+
+引用 aster.finance.loan 作为 贷款。
+
+Type 评分 作为 整数。
+
+定义 申请人 包含 姓名 作为 文本 并且 收入 作为 小数 并且 信用分 作为 评分。
+
+规则 审批 给定 申请 作为 申请人，产出 布尔：
+  如果 申请.信用分 至少 700：
+    返回 真值。
+  返回 假值。
+```
+
+Die verwendeten Schlüsselwörter:
+
+| Bedeutung | Englisch | Deutsch | Chinesisch |
+|---|---|---|---|
+| Struktur deklarieren | `Define` | `Definiere` | `定义` |
+| Feldliste beginnen | `with` | `mit` | `包含` |
+| Felder verbinden | `and` | `und` | `并且` |
+| Name und Typ, Alias-Ziel | `as` | `als` | `作为` |
+| Modul importieren | `Use` | `verwende` | `引用` |
+| Typ-Alias deklarieren | `Type` | `Type` | `Type` |
+| Eingebaute Typen | `Text`, `Int`, `Float`, `Bool` | `Text`, `Ganzzahl`, `Dezimal`, `Boolesch` | `文本`, `整数`, `小数`, `布尔` |
+| Satzende | `.` | `.` | `。` |
+
+## Der Modell-Tab
+
+Mit Strukturiertes Verfassen hat die Seitenleiste des Editors einen Tab **Modell**. Er hat zwei Teile.
+
+**Gliederung.** Listet die Strukturen (mit Feldern), Typ-Aliase und Import-Aliase der Richtlinie. Ein Klick auf einen Eintrag springt zur Definition. Die Gliederung folgt dem Quelltext, den der Editor zuletzt kompiliert hat; enthält er Syntaxfehler, werden Sie gebeten, diese zuerst zu beheben.
+
+**Formulare.** Drei Formulare schreiben die Deklaration mit den Schlüsselwörtern der Richtliniensprache für Sie, sodass Sie keine Schlüsselwörter von Hand tippen:
+
+- **Neue Struktur**: ein Name und ein oder mehrere Felder (Name und Typ). Die Struktur wird am Ende der Richtlinie eingefügt.
+- **Feld zu *Struktur* hinzufügen**: fügt ein Feld nach dem letzten Feld der Struktur ein. Eine Struktur ohne Felder lässt sich nicht über das Formular erweitern; bearbeiten Sie ihre Deklaration im Editor.
+- **Neuer Typ-Alias**: ein Name und ein Zieltyp. Der Alias wird am Ende der Richtlinie eingefügt.
+
+Ein Name muss ein einzelnes Wort sein (Buchstaben, Ziffern oder Zeichen), darf kein Schlüsselwort der Richtliniensprache sein und darf noch nicht vergeben sein. Jedes Einfügen ist eine normale Bearbeitung im Editor, **Rückgängig** entfernt es also wieder.
+
+Die Befehlspalette im Editor (**Strg+K** oder **⌘K**) enthält **Neue Struktur** und **Tab „Modell“ öffnen**.
+
+## Siehe auch
+
+- [Das Domänenvokabular verwenden](/docs/guides/domain-vocabulary): diese Namen in Ihren eigenen Worten schreiben.
+- [Anzeigelayouts (LayoutMap)](/docs/guides/display-layouts): eine leserfreundliche Anordnung einer kurzen Richtlinie.
+- [Strukturiertes Verfassen für Admins](/docs/guides/structured-authoring-admin): wer den Tab „Modell“ sieht.

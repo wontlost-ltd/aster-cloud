@@ -111,6 +111,18 @@ export const TASK_VIEWS: ReadonlyArray<TaskView> = [
     ],
   },
   {
+    // 结构化编写（ADR 0058，#795）：先由管理员开通，再建模、用词汇写、最后给短策略加显示排版。
+    id: 'author-with-your-domain',
+    titleKey: 'docs.tasks.authorWithDomain.title',
+    descriptionKey: 'docs.tasks.authorWithDomain.description',
+    steps: [
+      { slug: 'guides/structured-authoring-admin' },
+      { slug: 'guides/domain-modelling' },
+      { slug: 'guides/domain-vocabulary' },
+      { slug: 'guides/display-layouts' },
+    ],
+  },
+  {
     id: 'set-up-production-auth',
     titleKey: 'docs.tasks.setUpProductionAuth.title',
     descriptionKey: 'docs.tasks.setUpProductionAuth.description',

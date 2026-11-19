@@ -1,0 +1,123 @@
+---
+title: "Display layouts (LayoutMap) for short policies"
+description: "Give a short policy a second, reader-friendly layout. Only the canonical source is compiled and executed; reviewers and approvers always see it first."
+updated: 2026-11-19
+apiVersion: v1
+---
+
+# Display layouts (LayoutMap) for short policies
+
+A **display layout** (LayoutMap) is a second arrangement of a policy version's source, made for people to read: a poem laid out as verse, or a short rule with its keywords replaced by plain words. The **canonical source** stays the only thing that is compiled and executed. The layout is never executed: execution, evidence, Cedar and policy package export, What-If and Guard read only the canonical source, and the layout is not part of the version's source envelope or hash.
+
+Display layouts are for display texts and small policies. Writing one needs [Structured Authoring](/docs/guides/structured-authoring-admin). Reading one needs only read access to the policy.
+
+## How a layout is built
+
+A layout is a list of spans that, joined together, give back the canonical source exactly:
+
+- a **content span** is a piece of the source shown as it is;
+- a **structural span** is a piece of the source (its *canonical* text) together with the text shown in its place (its *display*). The display can be empty, which hides that piece.
+
+In JSON (format version 1):
+
+```json
+{"v":1,"spans":[{"text":"Module pricing.\n\nRule discountedPrice given amount as Float, tier as Text, produce Float:\n  "},{"canonical":"If","display":"When"},{"text":" tier equals to \"gold\":\n    "},{"canonical":"Return","display":"Charge"},{"text":" amount * 0.8.\n  "},{"canonical":"Return","display":"Charge"},{"text":" amount."}]}
+```
+
+It belongs to this source:
+
+```
+Module pricing.
+
+Rule discountedPrice given amount as Float, tier as Text, produce Float:
+  If tier equals to "gold":
+    Return amount * 0.8.
+  Return amount.
+```
+
+The display reads "When tier equals to "gold": Charge amount * 0.8." The names, the number and the text value are content spans, so they appear in the display exactly as in the source.
+
+## The rules that stop a misleading layout
+
+Every save checks the layout against the version's source, its language and its keyword aliases. The first rule that fails refuses the save:
+
+| Code | Rule |
+|---|---|
+| `layout_invalid_format` | The JSON is not a valid layout: other keys than `v` and `spans` (or than `text`, or `canonical` and `display`, in a span), a version other than 1, no spans, an empty content span, a structural span with empty canonical text, or a span boundary in the middle of a character. |
+| `layout_too_large` | A size limit is exceeded (see below). The response names the limit. |
+| `layout_roundtrip_mismatch` | Joining the spans does not give back the source exactly. The response gives the first offset that differs. |
+| `layout_structural_hides_value` | A structural span overlaps something other than a keyword, punctuation, white space or a comment: a name, a number, a text value, or `true`, `false` and the other literal words. Values and names that affect the decision can only be in content spans, and content spans are shown as they are. |
+| `layout_content_parity` | The layout has no visible content span, or a structural span contains a quote character. |
+| `structured_authoring_required` (HTTP 403) | You submitted a layout without Structured Authoring for this policy. |
+
+In the example above, marking `0.8` as structural with the display "20% off" fails with `layout_structural_hides_value`: the reader would no longer see the number the rule uses.
+
+## Size limits
+
+| Limit | Maximum |
+|---|---|
+| Source size | 12,288 bytes (UTF-8) |
+| Source lines | 200 |
+| Spans (adjacent content spans count as one) | 400 |
+| Saved layout | 49,152 bytes |
+| Whole display text | 24,576 bytes |
+| Display of one structural span | 256 characters |
+
+If the source is over a limit, the Layout tab says which limit and does not offer a layout.
+
+## Create a layout in the editor
+
+With Structured Authoring, the editor's side panel has a **Layout** tab.
+
+1. Click **Start layout**. The layout starts as one content span: the source shown as it is. (Or click **Import JSON** and paste a layout.)
+2. Select a keyword, punctuation or spacing in the editor and click **Mark selection as structural**. The selection must lie inside one content span.
+3. Under **Structural spans**, type the display text for each span, or leave it empty to hide it. **Restore as content** turns a span back into source text.
+4. Turn on **Side-by-side view** to see the display to the left of the editor on wide screens. Selections are highlighted in both, problems are marked in the display, and clicking the display moves the cursor in the editor.
+5. The tab checks the layout as you work and shows **The layout is valid** or the first problem with **Go to line *n***.
+6. Save the policy. The layout is saved with the new version.
+
+The display marks every piece of text that exists only in the layout: structural text has its own style, hovering over it shows the canonical text, and a hidden keyword leaves a marker.
+
+## Versions and saving
+
+A layout belongs to one version and is never changed after it is saved.
+
+- **Changing only the layout creates a new version.** In the editor, saving again with the same source and the same layout creates none. The versions API (`POST /api/v1/policies/{id}/versions`) creates a version on every call.
+- **Remove layout** and save: the new version has no layout.
+- **Editing the source:** a layout that no longer gives back the source is invalid. The tab says *The source changed, so this layout no longer matches it*; layouts are not re-aligned automatically. Click **Restart from identity layout** to begin again, or **Remove layout**.
+- **Saving without touching the layout:** the new version keeps the current layout when it still passes every rule for the new source, language and aliases, and you have Structured Authoring. Otherwise the new version has no layout. When the editor can tell this before saving, it asks you to confirm (*This version will no longer have a display layout*). After any save that dropped the layout, it tells you that the new version has none. Earlier versions keep theirs.
+
+This last rule means a teammate without Structured Authoring can still edit and save a team policy that has a layout. The save is not refused; only the new version loses the layout.
+
+If a saved layout no longer matches its version (for example after a direct database change), it is not shown and not loaded into the editor. Readers see the canonical source and a notice instead.
+
+## What reviewers and approvers see
+
+The canonical source always comes first:
+
+- **Policy page and version details**, where approvers review a version: the tab **Canonical source (executed)** is open by default; **Display layout (not executed)** is a second tab with a note that compilation, execution, review and approval use the canonical source.
+- **Compare versions** compares the canonical source only. When the layout differs, a separate row says **Display layout changed**.
+- **Review panel**: when the policy has a layout, a note says that the layout is not executed and links to the versions.
+
+Literal vocabulary terms change the meaning of the source, not its layout. To see the text values they stand for, use the [canonical preview](/docs/guides/domain-vocabulary#the-canonical-preview).
+
+## Over the API
+
+`POST /api/v1/policies/{id}/versions` (and the editor's own save requests) accept a `layout` field:
+
+| `layout` | New version |
+|---|---|
+| left out | keeps the current layout under the rule above |
+| `null` | no layout |
+| a layout object | this layout, if you have Structured Authoring and it passes every rule |
+
+A failure returns `{ "error", "code", "offset"?, "limit"? }` with one of the codes above. A successful save returns `layoutDropped: true` when the current version had a layout that the new version did not keep. Reading a version (`GET /api/v1/policies/{id}/versions/{version}`) returns `layout` with `status` `none`, `ok` (with the layout) or `inconsistent`.
+
+## Not yet available
+
+Decision traces are shown against the canonical source. They are not mapped onto the display layout yet, because traces do not carry source positions.
+
+## Related
+
+- [Use your domain vocabulary](/docs/guides/domain-vocabulary)
+- [Approvals](/docs/how-to/approvals)

@@ -620,6 +620,34 @@
       "locales": "all"
     },
     {
+      "path": "/docs/guides/domain-modelling",
+      "status": "canonical-here",
+      "owner": "docs",
+      "source": "src/app/[locale]/docs/guides/domain-modelling/page.tsx",
+      "locales": "all"
+    },
+    {
+      "path": "/docs/guides/domain-vocabulary",
+      "status": "canonical-here",
+      "owner": "docs",
+      "source": "src/app/[locale]/docs/guides/domain-vocabulary/page.tsx",
+      "locales": "all"
+    },
+    {
+      "path": "/docs/guides/display-layouts",
+      "status": "canonical-here",
+      "owner": "docs",
+      "source": "src/app/[locale]/docs/guides/display-layouts/page.tsx",
+      "locales": "all"
+    },
+    {
+      "path": "/docs/guides/structured-authoring-admin",
+      "status": "canonical-here",
+      "owner": "docs",
+      "source": "src/app/[locale]/docs/guides/structured-authoring-admin/page.tsx",
+      "locales": "all"
+    },
+    {
       "path": "/docs/api",
       "status": "canonical-here",
       "owner": "docs-api",

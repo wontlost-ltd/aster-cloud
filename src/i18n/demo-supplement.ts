@@ -506,6 +506,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           guardApprovals: 'Guard, approvals and logs',
           workspace: 'Editor and dashboard',
           policyPackages: 'Export policy packages',
+          domainModelling: 'Model your domain',
+          domainVocabulary: 'Use your domain vocabulary',
+          displayLayouts: 'Display layouts (LayoutMap)',
+          structuredAuthoringAdmin: 'Structured Authoring for admins',
         },
       },
       // 操作指南页的页内动作与任务视图（#796）
@@ -514,11 +518,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         goToApprovals: 'Open approvals',
         goToPolicies: 'Open policies',
         goToFactIssuers: 'Manage fact issuers',
+        goToDomainVocabularies: 'Open domain vocabularies',
       },
       tasks: {
         governDeployment: {
           title: 'Govern a deployment',
           description: 'Form a team, set up approvals, and route agent actions through your policy.',
+        },
+        // 结构化编写任务视图（#795）
+        authorWithDomain: {
+          title: 'Author with your domain',
+          description: 'Turn on Structured Authoring, model your data, write with your vocabulary and add a display layout.',
         },
       },
       overlay: {
@@ -2656,6 +2666,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           guardApprovals: '守卫、审批与日志',
           workspace: '编辑器与仪表盘',
           policyPackages: '导出策略包',
+          domainModelling: '为领域建模',
+          domainVocabulary: '使用领域词汇',
+          displayLayouts: '显示排版（LayoutMap）',
+          structuredAuthoringAdmin: '结构化编写管理指南',
         },
       },
       // 操作指南页的页内动作与任务视图（#796）
@@ -2664,11 +2678,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         goToApprovals: '打开审批',
         goToPolicies: '打开策略',
         goToFactIssuers: '管理事实签发方',
+        goToDomainVocabularies: '打开领域词汇',
       },
       tasks: {
         governDeployment: {
           title: '让部署受治理',
           description: '组建团队、配置审批，让 Agent 的动作经过你的策略裁决。',
+        },
+        // 结构化编写任务视图（#795）
+        authorWithDomain: {
+          title: '用你的领域语言编写',
+          description: '开通结构化编写，为数据建模，用领域词汇编写，再为短策略添加显示排版。',
         },
       },
       overlay: {
@@ -4776,6 +4796,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           guardApprovals: 'Guard, Freigaben und Protokolle',
           workspace: 'Editor und Dashboard',
           policyPackages: 'Richtlinienpakete exportieren',
+          domainModelling: 'Die eigene Domäne modellieren',
+          domainVocabulary: 'Das Domänenvokabular verwenden',
+          displayLayouts: 'Anzeigelayouts (LayoutMap)',
+          structuredAuthoringAdmin: 'Strukturiertes Verfassen für Admins',
         },
       },
       // 操作指南页的页内动作与任务视图（#796）
@@ -4784,11 +4808,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         goToApprovals: 'Freigaben öffnen',
         goToPolicies: 'Richtlinien öffnen',
         goToFactIssuers: 'Fakten-Aussteller verwalten',
+        goToDomainVocabularies: 'Domänenvokabulare öffnen',
       },
       tasks: {
         governDeployment: {
           title: 'Ein Deployment unter Kontrolle bringen',
           description: 'Team bilden, Freigaben einrichten und Agenten-Aktionen über Ihre Richtlinie leiten.',
+        },
+        // 结构化编写任务视图（#795）
+        authorWithDomain: {
+          title: 'In der Sprache Ihrer Domäne verfassen',
+          description: 'Strukturiertes Verfassen einschalten, Daten modellieren, mit dem eigenen Vokabular schreiben und ein Anzeigelayout hinzufügen.',
         },
       },
       overlay: {
@@ -6900,6 +6930,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           guardApprovals: 'गार्ड, अनुमोदन और लॉग',
           workspace: 'एडिटर और डैशबोर्ड',
           policyPackages: 'पॉलिसी पैकेज निर्यात करें',
+          domainModelling: 'अपने डोमेन का मॉडल बनाएँ',
+          domainVocabulary: 'अपनी डोमेन शब्दावली का उपयोग करें',
+          displayLayouts: 'प्रदर्शन लेआउट (LayoutMap)',
+          structuredAuthoringAdmin: 'व्यवस्थापकों के लिए संरचित लेखन',
         },
       },
       // 操作指南页的页内动作与任务视图（#796）
@@ -6908,11 +6942,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         goToApprovals: 'अनुमोदन खोलें',
         goToPolicies: 'नीतियाँ खोलें',
         goToFactIssuers: 'तथ्य जारीकर्ता प्रबंधित करें',
+        goToDomainVocabularies: 'डोमेन शब्दावलियाँ खोलें',
       },
       tasks: {
         governDeployment: {
           title: 'परिनियोजन को नियंत्रित करें',
           description: 'टीम बनाएँ, अनुमोदन सेट करें और एजेंट की कार्रवाइयों को अपनी नीति से होकर भेजें।',
+        },
+        // 结构化编写任务视图（#795）
+        authorWithDomain: {
+          title: 'अपने डोमेन की भाषा में लिखें',
+          description: 'संरचित लेखन चालू करें, अपने डेटा का मॉडल बनाएँ, अपनी शब्दावली से लिखें और प्रदर्शन लेआउट जोड़ें।',
         },
       },
       overlay: {

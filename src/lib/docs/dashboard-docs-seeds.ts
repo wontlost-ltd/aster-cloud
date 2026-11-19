@@ -5,7 +5,8 @@
  * command list synchronously inside the layout's RSC), so we walk
  * the canonical sidebar order, look each slug up in the active
  * locale's search index for the localized title, and pipe up to
- * MAX_SEEDS entries through as `DocsCommandSeed[]`.
+ * MAX_SEEDS entries through as `DocsCommandSeed[]`, followed by the
+ * PINNED_SEED_SLUGS guides that sit too far down the sidebar.
  *
  * Order: the canonical `docsSidebar` order — getting-started first,
  * then the API namespaces in declared order. The search index is
@@ -21,6 +22,7 @@
 import type { DocsCommandSeed } from '@/components/dashboard/command-palette-commands';
 import type { SearchIndex } from '@/lib/docs/search-runtime';
 import { docsSidebar } from '@/lib/docs/sidebar';
+import type { RouteSlug } from '@/lib/docs/task-views';
 import enIndex from '@/lib/docs/search-index.en.json';
 import extEn from '@/lib/docs/external-index.en.json';
 import extZh from '@/lib/docs/external-index.zh.json';
@@ -90,8 +92,20 @@ export function getDocsRoutePrefix(locale: string): string {
   return resolved === 'en' ? '' : `/${resolved}`;
 }
 
-/** Max number of docs commands surfaced in the dashboard palette. */
+/** Max number of sidebar-order docs commands surfaced in the dashboard palette. */
 const MAX_SEEDS = 12;
+
+/**
+ * 侧栏前 MAX_SEEDS 条之外固定加入的文档（#795）：结构化编写的四篇指南。
+ * 它们在侧栏「指南」分区里排得靠后，按侧栏顺序取前 12 条时进不了 Cmd+K；
+ * 编辑器的模型 / 词汇 / 排版标签页也链接到它们。
+ */
+export const PINNED_SEED_SLUGS = [
+  'guides/domain-modelling',
+  'guides/domain-vocabulary',
+  'guides/display-layouts',
+  'guides/structured-authoring-admin',
+] as const satisfies readonly RouteSlug[];
 
 /**
  * Build the docs seed list for a given locale. Returns hrefs that
@@ -111,16 +125,22 @@ export function buildDocsSeeds(locale: string): DocsCommandSeed[] {
     titleBySlug.set(entry.slug, entry.title || entry.slug);
   }
   const prefix = resolvedLocale === 'en' ? '' : `/${resolvedLocale}`;
+  const seedFor = (slug: string): DocsCommandSeed => ({
+    id: `docs-${slug.replace(/\//g, '-')}`,
+    label: titleBySlug.get(slug) ?? slug,
+    href: `${prefix}/docs/${slug}`,
+  });
   const seeds: DocsCommandSeed[] = [];
   outer: for (const section of docsSidebar) {
     for (const item of section.items) {
-      seeds.push({
-        id: `docs-${item.href.replace(/\//g, '-')}`,
-        label: titleBySlug.get(item.href) ?? item.href,
-        href: `${prefix}/docs/${item.href}`,
-      });
+      seeds.push(seedFor(item.href));
       if (seeds.length >= MAX_SEEDS) break outer;
     }
+  }
+  const taken = new Set(seeds.map((seed) => seed.id));
+  for (const slug of PINNED_SEED_SLUGS) {
+    const seed = seedFor(slug);
+    if (!taken.has(seed.id)) seeds.push(seed);
   }
   return seeds;
 }

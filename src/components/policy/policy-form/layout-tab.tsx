@@ -12,6 +12,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { LearnMoreLink } from '@/components/docs/docs-link';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import {
   LAYOUT_LIMITS,
@@ -228,7 +229,9 @@ export function LayoutTab({
 
   return (
     <div className="space-y-3" data-testid="structured-authoring-layout">
-      <p className="text-xs text-fg-muted">{t('hint')}</p>
+      <p className="text-xs text-fg-muted">
+        {t('hint')} <LearnMoreLink slug="guides/display-layouts" />
+      </p>
       {inconsistent && !layout && <p className={warnNotice} data-layout-stored-inconsistent="">{t('storedInconsistent')}</p>}
       {body()}
     </div>

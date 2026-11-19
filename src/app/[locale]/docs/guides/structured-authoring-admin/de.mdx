@@ -1,0 +1,95 @@
+---
+title: "Strukturiertes Verfassen für Admins"
+description: "Strukturiertes Verfassen einschalten, Nutzern und Teams gewähren, Team-Owner Plätze delegieren lassen und wissen, was sich ändert, wenn der Zugriff endet."
+updated: 2026-11-19
+apiVersion: v1
+---
+
+# Strukturiertes Verfassen für Admins
+
+**Strukturiertes Verfassen** ergänzt den Richtlinieneditor um Schreibhilfen: die Tabs [Modell](/docs/guides/domain-modelling#der-modell-tab), [Vokabular](/docs/guides/domain-vocabulary#der-vokabular-tab) und [Layout](/docs/guides/display-layouts#ein-layout-im-editor-anlegen), die kanonische Vorschau und die passenden Einträge der Befehlspalette. Außerdem entscheidet es, wer ein [Anzeigelayout](/docs/guides/display-layouts) speichern darf.
+
+Die Sprache selbst schränkt es nicht ein. Strukturen, Typ-Aliase, Import-Aliase und Vokabularbegriffe kann jeder schreiben, speichern, kompilieren und ausführen, mit oder ohne Strukturiertes Verfassen.
+
+## Wer es nutzen kann
+
+Eine Person kann Strukturiertes Verfassen in einer Richtlinie nur nutzen, wenn alle diese Bedingungen erfüllt sind, geprüft in dieser Reihenfolge:
+
+1. **Der globale Schalter ist an.** Standardmäßig ist er aus.
+2. **Der Tarif erlaubt es.** Jeder Tarif außer Free enthält es: Trial, Pro und Enterprise sowie der eingestellte Team-Tarif. Es zählt der Tarif der Richtlinie: bei einer persönlichen Richtlinie der eigene Tarif des Autors, bei einer Teamrichtlinie der Tarif des Team-Owners.
+3. **Die Person hat eine Freigabe** aus mindestens einer dieser Quellen:
+   - eine **direkte Freigabe** durch einen Plattform-Admin;
+   - eine **Teamfreigabe** für ein Team, dem die Person mit einer anderen Rolle als Viewer angehört;
+   - eine **Delegation** durch den Owner eines Teams, dem die Person mit einer anderen Rolle als Viewer angehört, solange die Delegation für dieses Team und plattformweit eingeschaltet ist.
+
+Freigabe und Tarif sind beide nötig: Eine Freigabe ersetzt nicht den Tarif, und der Tarif ersetzt keine Freigabe. Eine Teamfreigabe oder Delegation gibt der Person die Funktion überall, der Tarif wird aber pro Richtlinie geprüft. Ein Mitglied mit dem Free-Tarif kann sie daher in den Richtlinien des Pro-Teams nutzen, nicht aber in seinen eigenen persönlichen Richtlinien.
+
+Schlägt die Prüfung fehl, sieht der Editor genauso aus wie ohne Strukturiertes Verfassen: Die Tabs und die Vorschau fehlen.
+
+## Einschalten
+
+1. Öffnen Sie das [Admin-Dashboard](/admin). Suchen Sie unter **Plattformsteuerung** in **Feature-Flags** den Eintrag **Strukturiertes Verfassen** und klicken Sie auf **Aktivieren**.
+2. **Strukturiertes Verfassen: Delegation durch Team-Owner** ist standardmäßig an. Schalten Sie es aus, damit kein Team-Owner mehr delegieren kann; bestehende Delegationen gelten dann erst wieder, wenn Sie es erneut einschalten.
+
+Schalteränderungen können bis zu einer Minute brauchen, bis sie auf allen Servern ankommen. Einen Schalter aus- und wieder einzuschalten ändert keine Freigabe: Alle Freigaben gelten danach wie zuvor. Jede Änderung wird im Audit-Log als `platform_setting.update` festgehalten.
+
+## Nutzern und Teams gewähren
+
+Öffnen Sie **Admin → Strukturiertes Verfassen** (`/admin/capabilities/structured-authoring`).
+
+**Tab „Nutzer“.** Suchen Sie nach E-Mail oder Name. Die Spalte **Quellen** listet jede Quelle, über die eine Person die Funktion hat: `direct`, `team:<Team>` oder `delegated:<Team>`. **Gewähren** fügt eine direkte Freigabe hinzu, **Widerrufen** entfernt sie. Diese Seite widerruft nur direkte Freigaben: Eine Teamfreigabe wird im Tab „Teams“ widerrufen, eine Delegation von ihrem Team-Owner.
+
+**Tab „Teams“.** Für jedes Team:
+
+- **Teamfreigabe** gibt die Funktion allen Mitgliedern außer Viewern.
+- **Platzlimit** (0 bis 10.000) legt fest, an wie viele Mitglieder der Team-Owner delegieren darf. **Owner-Delegation** schaltet die Delegation für dieses Team ein oder aus. Klicken Sie auf **Speichern**, um beides zu übernehmen.
+- **Belegte Plätze** zählt die aktiven Delegationen an Mitglieder, die noch im Team sind, auch an später zu Viewern herabgestufte.
+
+Ein Team ohne gespeichertes Platzlimit kann nicht delegieren. Ein Platzlimit unter den bereits belegten Plätzen wird abgelehnt; widerrufen Sie zuerst Delegationen. Plätze werden unter einer Sperre auf dem Team gezählt und vergeben; gleichzeitige Delegationen können das Limit daher nie überschreiten.
+
+## Team-Owner delegieren Plätze
+
+Der Team-Owner sieht in den Teameinstellungen **Plätze für Strukturiertes Verfassen** (nur der Owner, nicht die Team-Admins). Dort kann der Owner:
+
+- die belegten Plätze und das Platzlimit sehen;
+- ein Mitglied auswählen und auf **Delegieren** klicken. Viewer stehen nicht zur Auswahl;
+- eine Delegation widerrufen, um den Platz freizugeben.
+
+Ist die Delegation für das Team pausiert oder plattformweit ausgeschaltet, kann der Owner keine Delegationen hinzufügen, sie aber weiterhin widerrufen. Ein zum Viewer herabgestuftes Mitglied behält den Platz, hat aber bis zur erneuten Hochstufung keinen Zugriff. Direkte Freigaben, die ein Plattform-Admin Mitgliedern gegeben hat, sieht der Owner nicht.
+
+## Was passiert, wenn der Zugriff endet
+
+| Ereignis | Wirkung |
+|---|---|
+| Eine direkte Freigabe oder Teamfreigabe wird widerrufen | Diese Quelle zählt ab der nächsten Anfrage der Person nicht mehr. |
+| Eine Delegation wird widerrufen | Ebenso, und der Platz ist wieder frei. |
+| Ein Mitglied verlässt das Team oder wird entfernt | Teamfreigabe und Delegation des Teams gelten für diese Person sofort nicht mehr. Die Delegation wird widerrufen und ihr Platz frei. |
+| Ein Mitglied wird zum Viewer | Teamfreigabe und Delegation sind pausiert; der Platz bleibt belegt. Eine erneute Hochstufung stellt sie wieder her. |
+| Das Team wird gelöscht | Seine Teamfreigabe und alle seine Delegationen werden widerrufen, sein Platzlimit wird entfernt. |
+| Die Eigentümerschaft wird übertragen | Delegationen bleiben; der neue Owner verwaltet sie. |
+| Die Delegation wird ausgeschaltet (Team oder Plattform) | Delegationen sind pausiert, nicht widerrufen. Einschalten stellt sie wieder her. |
+| Der globale Schalter wird ausgeschaltet oder der Tarif herabgestuft | Niemand kann die Funktion in den betroffenen Richtlinien nutzen. Freigaben bleiben erhalten und gelten wieder, sobald Schalter oder Tarif zurück sind. |
+
+In jedem Fall funktionieren vorhandene Inhalte weiter:
+
+- Richtlinien mit Strukturen, Aliasen oder Vokabularbegriffen bleiben gültig. Sie lassen sich kompilieren und ausführen und weiterhin bearbeiten und speichern, nur ohne die Schreibhilfen.
+- Gespeicherte Anzeigelayouts kann jeder ansehen, der die Richtlinie lesen darf. Die Ausführung liest sie nie.
+- Speichert jemand ohne Strukturiertes Verfassen eine neue Version einer Richtlinie mit Layout, gelingt das Speichern, und die neue Version hat kein Layout. Frühere Versionen behalten ihres.
+
+Ein bereits geöffneter Editor behält seine Tabs, bis die Seite neu geladen wird; der Server prüft die Funktion aber erneut, sobald ein Speichern ein Layout enthält oder übernimmt.
+
+## Audit-Spur
+
+| Aktion | Wann |
+|---|---|
+| `capability.grant` | Eine direkte Freigabe, Teamfreigabe oder Delegation wird angelegt |
+| `capability.revoke` | Eine Freigabe wird widerrufen; `reason` nennt den Grund, etwa `manual`, `member_removed` oder `team_deleted` |
+| `capability.allotment.update` | Platzlimit oder Owner-Delegation eines Teams ändern sich, oder das Team wird gelöscht |
+| `platform_setting.update` | Ein Schalter für Strukturiertes Verfassen ändert sich |
+
+## Siehe auch
+
+- [Teams und Rollen](/docs/how-to/teams)
+- [Die eigene Domäne modellieren](/docs/guides/domain-modelling)
+- [Das Domänenvokabular verwenden](/docs/guides/domain-vocabulary)
+- [Anzeigelayouts (LayoutMap)](/docs/guides/display-layouts)

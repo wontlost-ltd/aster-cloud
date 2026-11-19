@@ -13,6 +13,7 @@
 import { useEffect, useId, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { useTranslations } from 'next-intl';
+import { LearnMoreLink } from '@/components/docs/docs-link';
 import { Plus, X } from 'lucide-react';
 import { foldKey, type Lexicon } from '@aster-cloud/aster-lang-ts/browser';
 import { Button, Input, Label, Select } from '@/components/ui';
@@ -108,7 +109,9 @@ export function ModelTab({ editor, source, lexicon, openStructForm = false, onSt
 
   return (
     <div className="space-y-4 text-sm">
-      <p className="text-xs text-fg-muted">{t('hint')}</p>
+      <p className="text-xs text-fg-muted">
+        {t('hint')} <LearnMoreLink slug="guides/domain-modelling" />
+      </p>
       <OutlineView outline={outline} onJump={jump} onAddField={(struct) => {
           setEmptyStruct(false);
           setOpenForm({ kind: 'field', struct });
