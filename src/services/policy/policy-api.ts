@@ -331,13 +331,31 @@ export interface PackageExportCheckResponse {
 export interface PackageExportPrepareResponse {
   exportable: boolean;
   diagnostics: PolicyDiagnostic[];
+  /** 本次导出确定的入口（规范名）；探针只针对它 */
+  entry?: string | null;
   coreIr: string | null;
   coreIrSha256: string | null;
   positionFreeSha256: string | null;
   probes: unknown;
+  /**
+   * `probes` 的 JSON 文本，数字保留 aster-api 写出的原始记号（不经 JS number 往返）。超出 2⁵³ 的 Long 期望值
+   * 经 `JSON.parse` 会丢精度，Node 比对（checkProbes 无损读入）必须用这一份。客户端填写，aster-api 不返回。
+   */
+  probesJson?: string | null;
   probesSha256: string | null;
   probeCount: number;
   runtime: { cliName: string; cliVersion: string; ecosystem: string } | null;
+}
+
+/**
+ * 解析 JSON 并让数字保留原始记号：每个数字换成 `JSON.rawJSON(原文)`，再 `JSON.stringify` 时原样写回。
+ * 依赖 ES2025 的 JSON.parse source text access（V8 ≥ 11.4，Node 24 与 Workers 均可用）。
+ */
+function parseJsonKeepingNumberTokens(text: string): unknown {
+  const json = JSON as unknown as { rawJSON: (s: string) => unknown };
+  const reviver = (_key: string, value: unknown, context?: { source?: string }) =>
+    typeof value === 'number' && typeof context?.source === 'string' ? json.rawJSON(context.source) : value;
+  return JSON.parse(text, reviver as (this: unknown, key: string, value: unknown) => unknown);
 }
 
 /** `POST …/export/package` 的结果：zip 字节（含 aster-api 给出的哈希与文件名），或不可导出的诊断。 */
@@ -839,8 +857,14 @@ export class PolicyApiClient {
 
   /** 策略包导出准备：另生成探针与平台期望值（最多 256 次求值），供 Node 比对（C3）。 */
   async preparePackageExport(request: PackageExportRequest): Promise<PackageExportPrepareResponse> {
-    return this.request<PackageExportPrepareResponse>(
-      'POST', API_ENDPOINTS.preparePackageExport, request, PACKAGE_EXPORT_TIMEOUT_MS);
+    return this.send('POST', API_ENDPOINTS.preparePackageExport, request, PACKAGE_EXPORT_TIMEOUT_MS, async (response) => {
+      const text = await response.text();
+      const data = JSON.parse(text) as PackageExportPrepareResponse;
+      // 探针另留一份保留数字原文的 JSON 文本，供 Node 比对无损读入
+      const raw = parseJsonKeepingNumberTokens(text) as { probes?: unknown } | null;
+      const probesJson = raw && typeof raw === 'object' && raw.probes != null ? JSON.stringify(raw.probes) : null;
+      return { ...data, probesJson };
+    });
   }
 
   /**

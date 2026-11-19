@@ -8,7 +8,8 @@
  *
  * 门控顺序：会话 401 → 开关 policy_export.package.enabled 关 404 → 限流 429 → 请求体 400 → 访问（团队任一成员 /
  * 个人策略所有者，非成员 404）→ 计划门 policyExport（按 planHolderForTeam）403 → 无已批准版本 409 → 编译输入 →
- * 入口名归一（不属于该版本 400）→ target=node 在 C3 之前恒 503 export_runtime_skew → 导出。
+ * 入口名归一（不属于该版本 400）→ target=node：prepare 后在 Worker 内复核（ts 版本漂移 503 export_runtime_skew，
+ * 重编译漂移 E739、探针不一致 E735 均按不可导出返回诊断），通过后带 nodeProbes → 导出。
  */
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
@@ -23,12 +24,14 @@ import { isPolicyPackageExportEnabled } from '@/lib/platform-settings';
 import { planHolderForTeam } from '@/lib/team-plan';
 import { hasFeatureAccess } from '@/lib/usage';
 import { loadPackageExportInput } from '@/lib/package-export-input';
-import { nodePackageRuntime } from '@/lib/package-node-runtime';
+import { safeDiagnostics } from '@/lib/package-diagnostics';
+import { runNodeCheck } from '@/lib/package-node-check';
 import { recordProductEventAfterResponse } from '@/lib/product-events/server';
 import { findDefaultExecutableVersion } from '@/services/policy/default-executable-version';
 import {
   PACKAGE_EXPORT_TARGETS,
   PolicyApiError,
+  type PackageExportRequest,
   type PackageExportTarget,
   type PackageExportUiLocale,
 } from '@/services/policy/policy-api';
@@ -169,20 +172,32 @@ export async function POST(req: Request, { params }: RouteParams) {
     if (entry === null) {
       return NextResponse.json({ error: 'unknown_function', message: 'entry is not a rule of this policy version' }, { status: 400, headers });
     }
-    // Node 包须先在 Worker 内重编译并比对探针（修订 3 P2-R5 / P2-R13）；C3 之前没有这个能力，宁可拒绝
-    if (body.target === 'node' && !nodePackageRuntime()) {
-      return NextResponse.json(
-        { error: 'export_runtime_skew', code: 'export_runtime_skew', message: 'Node package export is not available yet.' },
-        { status: 503, headers },
-      );
-    }
     const client = await createPolicyApiClientForUser(policyTenantId(policy), userId);
-    const result = await client.exportPackage({
+    const exportRequest: PackageExportRequest = {
       ...request,
       target: body.target,
       uiLocale: body.uiLocale,
       ...(entry ? { entry } : {}),
-    });
+    };
+    let nodeProbes: PackageExportRequest['nodeProbes'];
+    // Node 包须先在 Worker 内重编译并比对探针（修订 3 P2-R5 / P2-R13），通过后才交 aster-api 签名
+    if (body.target === 'node') {
+      const prepared = await client.preparePackageExport(exportRequest);
+      if (!prepared.exportable) {
+        return NextResponse.json({ exportable: false, diagnostics: safeDiagnostics(prepared.diagnostics) }, { headers });
+      }
+      const check = runNodeCheck(prepared, request);
+      if ('skew' in check) {
+        console.warn('[api/policies/export/package] node runtime skew', prepared.runtime?.cliVersion);
+        return NextResponse.json(
+          { error: 'export_runtime_skew', code: 'export_runtime_skew', message: 'Node package export is not available on this platform version.' },
+          { status: 503, headers },
+        );
+      }
+      if (!check.ok) return NextResponse.json({ exportable: false, diagnostics: check.diagnostics }, { headers });
+      nodeProbes = check.nodeProbes;
+    }
+    const result = await client.exportPackage(nodeProbes ? { ...exportRequest, nodeProbes } : exportRequest);
     if (result.kind === 'refused') {
       return NextResponse.json({ exportable: false, diagnostics: result.diagnostics }, { headers });
     }

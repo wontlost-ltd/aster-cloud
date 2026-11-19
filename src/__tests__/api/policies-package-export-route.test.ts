@@ -1,5 +1,6 @@
 // 策略包下载代理（ADR 0059 P2，T18）：POST /api/policies/[id]/export/package。
-// 开关、限流、请求体、访问、计划门、已批准版本、入口归一、Node 未就绪的拒绝顺序；zip 字节与头原样转发；
+// 开关、限流、请求体、访问、计划门、已批准版本、入口归一的拒绝顺序；Node 包先 prepare 再在 Worker 内复核（T27）；
+// zip 字节与头原样转发；
 // 上游 503 已登记码透传，entry_required 透传候选，其余 502 通用文案。
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -14,7 +15,8 @@ const h = vi.hoisted(() => ({
   planHolder: vi.fn(),
   hasFeature: vi.fn(),
   loadInput: vi.fn(),
-  nodeRuntime: vi.fn(),
+  preparePackageExport: vi.fn(),
+  nodeCheck: vi.fn(),
   recordEvent: vi.fn(),
 }));
 
@@ -35,7 +37,7 @@ vi.mock('@/lib/platform-settings', () => ({ isPolicyPackageExportEnabled: () => 
 vi.mock('@/lib/team-plan', () => ({ planHolderForTeam: (...a: unknown[]) => h.planHolder(...a) }));
 vi.mock('@/lib/usage', () => ({ hasFeatureAccess: (...a: unknown[]) => h.hasFeature(...a) }));
 vi.mock('@/lib/package-export-input', () => ({ loadPackageExportInput: (...a: unknown[]) => h.loadInput(...a) }));
-vi.mock('@/lib/package-node-runtime', () => ({ nodePackageRuntime: () => h.nodeRuntime() }));
+vi.mock('@/lib/package-node-check', () => ({ runNodeCheck: (...a: unknown[]) => h.nodeCheck(...a) }));
 vi.mock('@/lib/product-events/server', () => ({
   recordProductEventAfterResponse: (...a: unknown[]) => h.recordEvent(...a),
 }));
@@ -55,6 +57,12 @@ const zipResult = (over: Record<string, unknown> = {}) => ({
   kind: 'zip', bytes: zipBytes.buffer.slice(0), sha256: 'cd'.repeat(32), filename: 'm-v3-jre-b.zip',
   contentDisposition: disposition, signed: true, ...over,
 });
+const nodeProbes = { probesSha256: 'ef'.repeat(32), count: 4, agreed: 4, tsVersion: '3.3.0' };
+const preparedOk = {
+  exportable: true, diagnostics: [], entry: 'allowRead', coreIr: '{}', coreIrSha256: 'aa'.repeat(32),
+  positionFreeSha256: 'bb'.repeat(32), probes: { probes: [] }, probesJson: '{"probes":[]}', probesSha256: 'ef'.repeat(32),
+  probeCount: 4, runtime: { cliName: '@aster-cloud/aster-lang-ts', cliVersion: '3.3.0', ecosystem: '1.0.50' },
+};
 const req = (body: unknown = { target: 'jre' }) => new Request('http://localhost/api/policies/p1/export/package', {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: typeof body === 'string' ? body : JSON.stringify(body),
 });
@@ -72,8 +80,9 @@ beforeEach(() => {
   h.hasFeature.mockResolvedValue(true);
   h.findExecutable.mockResolvedValue({ id: 'v-row', version: 3, source: twoRules, content: twoRules, aliasSet: null, status: 'APPROVED' });
   h.loadInput.mockResolvedValue({ request: inputRequest, source: twoRules, vocabulary: undefined });
-  h.nodeRuntime.mockReturnValue(null);
-  h.createClient.mockResolvedValue({ exportPackage: h.exportPackage });
+  h.createClient.mockResolvedValue({ exportPackage: h.exportPackage, preparePackageExport: h.preparePackageExport });
+  h.preparePackageExport.mockResolvedValue(preparedOk);
+  h.nodeCheck.mockReturnValue({ ok: true, nodeProbes });
   h.exportPackage.mockResolvedValue(zipResult());
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -223,11 +232,66 @@ describe('POST /api/policies/[id]/export/package', () => {
     });
   });
 
-  it('target=node 在 C3 之前恒 503 export_runtime_skew，不调用 aster-api', async () => {
-    const res = await POST(req({ target: 'node' }), ctx('p1'));
-    expect(res.status).toBe(503);
-    expect(await res.json()).toMatchObject({ code: 'export_runtime_skew' });
-    expect(h.createClient).not.toHaveBeenCalled();
+  describe('target=node（T27：prepare → Worker 内复核 → 带 nodeProbes 导出）', () => {
+    it('通过：用同一编译输入复核，把 nodeProbes 交给 exportPackage', async () => {
+      h.exportPackage.mockResolvedValue(zipResult({ filename: 'm-v3-node-b.zip' }));
+      const res = await POST(req({ target: 'node', entry: 'allowRead' }), ctx('p1'));
+      expect(res.status).toBe(200);
+      const sent = { ...inputRequest, target: 'node', uiLocale: 'en', entry: 'allowRead' };
+      expect(h.preparePackageExport).toHaveBeenCalledWith(sent);
+      expect(h.nodeCheck).toHaveBeenCalledWith(preparedOk, inputRequest);
+      expect(h.exportPackage).toHaveBeenCalledWith({ ...sent, nodeProbes });
+      expect(h.recordEvent.mock.calls[0][1].properties).toEqual({ target: 'node', signed: true });
+    });
+
+    it('jre 不走 prepare，也不带 nodeProbes', async () => {
+      await POST(req({ target: 'jre' }), ctx('p1'));
+      expect(h.preparePackageExport).not.toHaveBeenCalled();
+      expect(h.nodeCheck).not.toHaveBeenCalled();
+      expect(h.exportPackage.mock.calls[0][0]).not.toHaveProperty('nodeProbes');
+    });
+
+    it('本地 ts 版本与锁文件不等 → 503 export_runtime_skew，不导出', async () => {
+      h.nodeCheck.mockReturnValue({ ok: false, skew: true });
+      const res = await POST(req({ target: 'node' }), ctx('p1'));
+      expect(res.status).toBe(503);
+      expect(await res.json()).toMatchObject({ code: 'export_runtime_skew' });
+      expect(h.exportPackage).not.toHaveBeenCalled();
+      expect(h.recordEvent).not.toHaveBeenCalled();
+    });
+
+    it.each(['E735', 'E739'])('%s → 200 {exportable:false, diagnostics}，不导出、不记事件', async (code) => {
+      const diagnostics = [{ severity: 'error', code, message: 'x', startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 }];
+      h.nodeCheck.mockReturnValue({ ok: false, diagnostics });
+      const res = await POST(req({ target: 'node' }), ctx('p1'));
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ exportable: false, diagnostics });
+      expect(h.exportPackage).not.toHaveBeenCalled();
+      expect(h.recordEvent).not.toHaveBeenCalled();
+    });
+
+    it('prepare 判不可导出 → 原样返回平台诊断，不复核', async () => {
+      const diagnostics = [{ severity: 'error', code: 'E730', message: 'IO', startLine: 2, startColumn: 3, endLine: 2, endColumn: 9 }];
+      h.preparePackageExport.mockResolvedValue({ ...preparedOk, exportable: false, diagnostics });
+      const res = await POST(req({ target: 'node' }), ctx('p1'));
+      expect(await res.json()).toEqual({ exportable: false, diagnostics });
+      expect(h.nodeCheck).not.toHaveBeenCalled();
+      expect(h.exportPackage).not.toHaveBeenCalled();
+    });
+
+    it('prepare 503 package_export_busy 照常透传', async () => {
+      h.preparePackageExport.mockRejectedValue(new PolicyApiError('x', 503, 'package_export_busy', undefined, { error: 'package_export_busy' }, '1'));
+      const res = await POST(req({ target: 'node' }), ctx('p1'));
+      expect(res.status).toBe(503);
+      expect(res.headers.get('Retry-After')).toBe('1');
+    });
+
+    it('复核本身抛错（平台 IR 不可读、prepare 缺字段）→ 502 package_export_failed，不导出', async () => {
+      h.nodeCheck.mockImplementation(() => { throw new Error('missing fields'); });
+      const res = await POST(req({ target: 'node' }), ctx('p1'));
+      expect(res.status).toBe(502);
+      expect(h.exportPackage).not.toHaveBeenCalled();
+    });
   });
 
   it.each([
