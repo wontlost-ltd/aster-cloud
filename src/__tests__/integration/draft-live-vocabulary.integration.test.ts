@@ -83,6 +83,8 @@ async function mapForVersion(version: number, input: unknown) {
     authorId: row.createdBy,
     source: SOURCE,
     locale: 'de-DE',
+    embeddedVocabulary: null,
+    sourceScopesJson: null,
   });
   return prepareExecutionInput({ input, functionName: undefined, vocabulary, source: SOURCE, locale: 'de-DE', aliasSet: null });
 }

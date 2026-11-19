@@ -9,6 +9,8 @@ export interface ExecutableVersionCandidate {
   vocabularySnapshotIds?: unknown;
   /** 版本作者：草稿执行按其现行词汇（#626）。 */
   createdBy?: string | null;
+  /** 版本的内嵌词汇原文（ADR 0060）；与 content / aliasSet 同源。 */
+  embeddedVocabulary?: string | null;
 }
 
 export interface ExecutablePolicyVersion extends ExecutableVersionCandidate {

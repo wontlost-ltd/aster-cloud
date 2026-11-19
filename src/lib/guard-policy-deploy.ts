@@ -305,6 +305,7 @@ export async function buildDeploymentPayload(versionId: string): Promise<Omit<Gu
     createdBy: version.createdBy,
     teamId: policy?.teamId ?? null,
     policyId: version.policyId,
+    embeddedVocabulary: version.embeddedVocabulary,
   });
   const aliasSet = parseAliasSet(version.aliasSet);
   const entry = resolveEntryFunction({ source, locale, aliasSet: aliasSet ?? null, vocabulary: buildExecutionVocabulary(vocabulary) });

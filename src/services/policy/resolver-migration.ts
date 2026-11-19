@@ -33,6 +33,7 @@ import {
   type SnapshotRef,
 } from '@/lib/domain-vocabulary-snapshot';
 import type { PolicyVocabularyContext } from '@/lib/domain-vocabulary-scope';
+import { withEmbeddedVocabulary } from '@/lib/policy-embedded-vocabulary';
 import { hasSourceError, makeCompileValidator } from '@/lib/policy-compile-validator';
 import { policyTenantId } from '@/lib/policy-tenant';
 import { vocabularyScopeErrorDetails } from '@/lib/vocabulary-scope-error';
@@ -251,12 +252,16 @@ function carriesCompileDiagnostics(err: unknown): err is PolicyCompileError & { 
     && hasSourceError(err.diagnostics ?? []);
 }
 
+/**
+ * 下层词汇（冻结快照或作者现行词汇）并入版本的内嵌词汇（ADR 0060 §7.3），两条分支同一合并。
+ * 内嵌文本无法解析时原样抛出，按基础设施故障处理（事务回滚、行不变、列入报告）。
+ */
 async function loadVersionVocabulary(row: VersionRow, policy: PolicyVocabularyContext): Promise<DomainVocabulary | null> {
   const status = row.archivedByResolverMigration ? (row.statusBeforeArchive ?? row.status) : row.status;
-  if (executionVocabularySource(status) === 'frozen') {
-    return loadVocabularyForExecution(row.vocabularySnapshotIds as SnapshotRef[], policy);
-  }
-  return row.createdBy ? loadLiveVocabularyForPolicy(row.createdBy, policy, { policyId: row.policyId }) : null;
+  const lower = executionVocabularySource(status) === 'frozen'
+    ? await loadVocabularyForExecution(row.vocabularySnapshotIds as SnapshotRef[], policy)
+    : row.createdBy ? await loadLiveVocabularyForPolicy(row.createdBy, policy, { policyId: row.policyId }) : null;
+  return withEmbeddedVocabulary(lower, row.embeddedVocabulary, policy.locale);
 }
 
 function compileFailure(errors: readonly CompileDiagnostic[], source: string, fallback?: string): Recompiled {

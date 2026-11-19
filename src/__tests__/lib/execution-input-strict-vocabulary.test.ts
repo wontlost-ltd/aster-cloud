@@ -19,7 +19,7 @@ import {
 const vocabulary = { id: 'v', locale: 'de-DE', structs: [], fields: [], functions: [] };
 const stored = (status: string, createdBy: string | null = 'a1') => ({
   source: 'Modul m.\n', status, createdBy, aliasSet: null, vocabularySnapshotIds: [{ snapshotId: 's1', domain: 'd', locale: 'de' }],
-  sourceEnvelopeSha256: null, sourceScopesJson: null, sourceToolchainId: null,
+  sourceEnvelopeSha256: null, sourceScopesJson: null, sourceToolchainId: null, embeddedVocabulary: null,
 });
 
 describe('loadStoredVersionCompileContext — 严格加载词汇', () => {
@@ -70,6 +70,7 @@ describe('loadVersionExecutionVocabulary — 执行路径仍 best-effort', () =>
     snapshot.loadLiveVocabularyForPolicy.mockRejectedValueOnce(new Error('db down'));
     await expect(loadVersionExecutionVocabulary({
       status: 'DRAFT', vocabularySnapshotIds: null, authorId: 'a1', source: 's', locale: 'de-DE',
+      embeddedVocabulary: null, sourceScopesJson: null,
     })).resolves.toBeUndefined();
   });
 
@@ -77,6 +78,7 @@ describe('loadVersionExecutionVocabulary — 执行路径仍 best-effort', () =>
     snapshot.loadLiveVocabularyForPolicy.mockRejectedValueOnce(new Error('db down'));
     await expect(loadVersionExecutionVocabulary({
       status: 'DRAFT', vocabularySnapshotIds: null, authorId: 'a1', source: 's', locale: 'de-DE',
+      embeddedVocabulary: null, sourceScopesJson: null,
     }, { strict: true })).rejects.toBeInstanceOf(VersionVocabularyUnavailableError);
   });
 });

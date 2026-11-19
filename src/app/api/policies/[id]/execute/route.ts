@@ -19,6 +19,7 @@ import {
   sanitizeExecutionResult,
 } from '@/lib/execution-error';
 import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
+import { versionVocabularyErrorResponse } from '@/lib/policy-compile-response';
 import {
   preparedInputErrorResponse,
   loadVersionExecutionVocabulary,
@@ -85,6 +86,8 @@ type UnifiedQueryResult = {
   policy_version: number | null;
   policy_source_toolchain_id: string | null;
   policy_vocab_snapshot_ids: unknown;
+  // 活跃版本的内嵌词汇原文（ADR 0060）；与 aliasSet 同源同生命周期。
+  policy_embedded_vocabulary: string | null;
   // User fields
   user_plan: string | null;
   user_trial_ends_at: Date | null;
@@ -147,6 +150,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         status: 'DRAFT', isDefault: false,
         sourceToolchainId: cachedPolicy.sourceToolchainId ?? null,
         vocabularySnapshotIds: cachedPolicy.vocabSnapshotIds,
+        embeddedVocabulary: cachedPolicy.embeddedVocabulary ?? null,
       };
       const executableVersion = resolveExecutableVersion<ExecutableVersionCandidate>(versionRows, fallbackVersion);
       if (isCachedVersionCurrent(cachedPolicy.version, executableVersion.version)) {
@@ -170,6 +174,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         NULL::text AS policy_version_row_id,
         NULL::text AS policy_source_toolchain_id,
         NULL::jsonb AS policy_vocab_snapshot_ids,
+        NULL::text AS policy_embedded_vocabulary,
         u.plan AS user_plan,
         u."trialEndsAt" AS user_trial_ends_at,
         ur.count AS usage_count
@@ -192,6 +197,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         p.version AS policy_version,
         pv."sourceToolchainId" AS policy_source_toolchain_id,
         pv."vocabularySnapshotIds" AS policy_vocab_snapshot_ids,
+        pv."embeddedVocabulary" AS policy_embedded_vocabulary,
         u.plan AS user_plan,
         u."trialEndsAt" AS user_trial_ends_at,
         ur.count AS usage_count
@@ -222,6 +228,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         status: 'DRAFT', isDefault: false,
         sourceToolchainId: row.policy_source_toolchain_id ?? null,
         vocabularySnapshotIds: row.policy_vocab_snapshot_ids,
+        embeddedVocabulary: row.policy_embedded_vocabulary ?? null,
       };
       const selectedVersion = resolveExecutableVersion<ExecutableVersionCandidate>(versionRows, fallbackVersion);
       const executableVersion = await hydrateExecutableVersion(
@@ -232,7 +239,7 @@ export async function POST(req: Request, { params }: RouteParams) {
             where: sql`${policyVersions.policyId} = ${id} AND ${policyVersions.version} = ${version}`,
             columns: {
               id: true, version: true, content: true, aliasSet: true, status: true,
-              isDefault: true, sourceToolchainId: true, vocabularySnapshotIds: true,
+              isDefault: true, sourceToolchainId: true, vocabularySnapshotIds: true, embeddedVocabulary: true,
             },
             limit: 1,
           });
@@ -253,6 +260,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         version: executableVersion.version || null,
         sourceToolchainId: executableVersion.sourceToolchainId ?? null,
         vocabSnapshotIds: executableVersion.vocabularySnapshotIds ?? null,
+        embeddedVocabulary: executableVersion.embeddedVocabulary ?? null,
       };
       // 保存缓存写入 Promise，稍后通过 waitUntil 执行
       cacheWritePromise = cachePolicyMeta(id, policy).catch(err =>
@@ -377,15 +385,25 @@ export async function POST(req: Request, { params }: RouteParams) {
       sourceToolchainId: policy.sourceToolchainId ?? null,
       vocabularySnapshotIds: policy.vocabSnapshotIds,
     });
-    const vocabulary = await loadVersionExecutionVocabulary({
-      status: executedVersionRow?.status,
-      vocabularySnapshotIds: policy.vocabSnapshotIds,
-      // 与审批冻结同口径：取版本作者（团队策略里可不是所有者）。
-      authorId: executedVersionRow?.createdBy,
-      teamId: policy.teamId ?? null,
-      source: policy.content,
-      locale: policyLocale,
-    });
+    // ADR 0060：并入版本的内嵌词汇；已审批版本按封印复核，不符 409 vocabulary_seal_mismatch（fail-closed）。
+    let vocabulary: Record<string, unknown> | undefined;
+    try {
+      vocabulary = await loadVersionExecutionVocabulary({
+        status: executedVersionRow?.status,
+        vocabularySnapshotIds: policy.vocabSnapshotIds,
+        // 与审批冻结同口径：取版本作者（团队策略里可不是所有者）。
+        authorId: executedVersionRow?.createdBy,
+        teamId: policy.teamId ?? null,
+        source: policy.content,
+        locale: policyLocale,
+        embeddedVocabulary: policy.embeddedVocabulary ?? null,
+        sourceScopesJson: executedVersionRow?.sourceScopesJson ?? null,
+      });
+    } catch (error) {
+      const response = versionVocabularyErrorResponse(error);
+      if (response) return response;
+      throw error;
+    }
     // #626：输入按策略语言书写，执行前映射为规范名；本地化键与规范键并存时 400，不猜测。
     const prepared = prepareExecutionInput({
       input: validatedInput,

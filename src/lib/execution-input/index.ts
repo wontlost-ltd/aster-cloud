@@ -27,6 +27,9 @@ import {
   type InputRename,
 } from './mapper';
 import { extractPolicyInputTypes } from './policy-types';
+import type { DomainVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
+import { vocabularyScopesJson } from '@/lib/policy-alias';
+import { EmbeddedVocabularyError, withEmbeddedVocabulary } from '@/lib/policy-embedded-vocabulary';
 import { recordInputTypeExtraction } from '@/lib/lexicon-metrics';
 import { resolveStoredVersionLocale, type StoredVersionLocaleInput } from '@/lib/policy-version-locale';
 
@@ -76,6 +79,13 @@ export interface ExecutionVocabularyTarget {
   policyId?: string | null;
   source: string;
   locale: string;
+  /**
+   * 版本行上的内嵌词汇（ADR 0060，PolicyVersion.embeddedVocabulary 原文）；null = 无。
+   * 必填键：每个读取方都要把版本行的这一列带进来，漏带即少了编译输入。
+   */
+  embeddedVocabulary: string | null | undefined;
+  /** 版本封印的词汇段（PolicyVersion.sourceScopesJson）；NULL = ADR 0051 前的旧行，不复核。 */
+  sourceScopesJson: string | null | undefined;
 }
 
 /** 词汇加载失败的稳定错误码，与保存入口的 503 vocabulary_unavailable 同码。 */
@@ -93,6 +103,22 @@ export class VersionVocabularyUnavailableError extends Error {
   constructor(cause: unknown) {
     super('Domain vocabulary could not be loaded. Try again later.', { cause });
     this.name = 'VersionVocabularyUnavailableError';
+  }
+}
+
+/** 内嵌词汇与封印不一致的稳定错误码（ADR 0060 §7.2），路由映射为 409。 */
+export const VOCABULARY_SEAL_MISMATCH_CODE = 'vocabulary_seal_mismatch';
+
+/**
+ * 已审批 / 已弃用版本按「冻结的下层词汇 + 内嵌词汇」复算的词汇段与保存时封印的 sourceScopesJson 不等，
+ * 或版本行上的内嵌词汇文本已无法解析：编译输入不再是审阅过的那一份，拒绝执行 / 导出（fail-closed）。
+ */
+export class VocabularySealMismatchError extends Error {
+  readonly code = VOCABULARY_SEAL_MISMATCH_CODE;
+
+  constructor(cause?: unknown) {
+    super('The vocabulary of this policy version no longer matches its seal. The version was not executed.', { cause });
+    this.name = 'VocabularySealMismatchError';
   }
 }
 
@@ -121,16 +147,9 @@ async function loadVersionVocabularyStrict(
   }
 }
 
-/**
- * 加载被执行版本的领域词汇，返回值可直接作为 evaluateSource 的 vocabulary 选项。
- * - 默认 best-effort（执行路径）：加载失败退化为不带词汇执行（与修复前一致）；
- * - strict（重编译 / 回放路径）：加载失败抛 {@link VersionVocabularyUnavailableError}，作者词汇非法原样上抛。
- */
-export async function loadVersionExecutionVocabulary(
+async function loadVersionVocabularyBestEffort(
   target: ExecutionVocabularyTarget,
-  options: { strict?: boolean } = {},
 ): Promise<Record<string, unknown> | undefined> {
-  if (options.strict) return loadVersionVocabularyStrict(target);
   const policy = { source: target.source, locale: target.locale };
   if (executionVocabularySource(target.status) === 'frozen') {
     return loadExecutionVocabulary(target.vocabularySnapshotIds, policy);
@@ -149,6 +168,47 @@ export async function loadVersionExecutionVocabulary(
   }
 }
 
+/**
+ * 下层词汇并入版本的内嵌词汇（ADR 0060 §6.3、§7.2）。无内嵌词条时原样返回（旧版本行为不变）。
+ * 已审批 / 已弃用版本且有封印时复算词汇段并与封印比较，不等抛 {@link VocabularySealMismatchError}；
+ * 草稿用现行词汇，本来就可能与封印不同，不比较。内嵌文本无法解析同样按封印不符拒绝，不退化。
+ */
+function applyEmbeddedVocabulary(
+  target: ExecutionVocabularyTarget,
+  lower: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!target.embeddedVocabulary) return lower;
+  let merged: DomainVocabulary | null;
+  try {
+    merged = withEmbeddedVocabulary((lower as unknown as DomainVocabulary | undefined) ?? null, target.embeddedVocabulary, target.locale);
+  } catch (err) {
+    if (err instanceof EmbeddedVocabularyError) throw new VocabularySealMismatchError(err);
+    throw err;
+  }
+  const sealed = target.sourceScopesJson;
+  if (executionVocabularySource(target.status) === 'frozen' && sealed != null && vocabularyScopesJson(merged) !== sealed) {
+    throw new VocabularySealMismatchError();
+  }
+  return merged ? (merged as unknown as Record<string, unknown>) : undefined;
+}
+
+/**
+ * 加载被执行版本的领域词汇（下层词汇 + 内嵌词汇），返回值可直接作为 evaluateSource 的 vocabulary 选项。
+ * - 默认 best-effort（执行路径）：下层词汇加载失败退化为不带下层词汇执行（与修复前一致）；
+ * - strict（重编译 / 回放路径）：加载失败抛 {@link VersionVocabularyUnavailableError}，作者词汇非法原样上抛。
+ * - 带内嵌词汇的版本一律按 strict 加载下层词汇：封印复核需要确切的下层词汇，退化只会换来误报的封印不符
+ *   或静默算错的结果。
+ * - 封印不符 / 内嵌文本损坏抛 {@link VocabularySealMismatchError}，两种模式都不退化。
+ */
+export async function loadVersionExecutionVocabulary(
+  target: ExecutionVocabularyTarget,
+  options: { strict?: boolean } = {},
+): Promise<Record<string, unknown> | undefined> {
+  const strict = options.strict || !!target.embeddedVocabulary;
+  const lower = strict ? await loadVersionVocabularyStrict(target) : await loadVersionVocabularyBestEffort(target);
+  return applyEmbeddedVocabulary(target, lower);
+}
+
 /** 已存版本的编译上下文所需字段（PolicyVersion 行的子集；source 为版本源码）。 */
 export interface StoredVersionCompileInput extends StoredVersionLocaleInput {
   status: string | null | undefined;
@@ -156,6 +216,8 @@ export interface StoredVersionCompileInput extends StoredVersionLocaleInput {
   /** 团队策略的团队 / 版本所属策略，见 {@link ExecutionVocabularyTarget.teamId}。 */
   teamId?: string | null;
   policyId?: string | null;
+  /** 版本行上的内嵌词汇原文（ADR 0060），见 {@link ExecutionVocabularyTarget.embeddedVocabulary}。 */
+  embeddedVocabulary: string | null;
 }
 
 export interface StoredVersionCompileContext {
@@ -167,7 +229,7 @@ export interface StoredVersionCompileContext {
 
 /**
  * 已存版本交给 aster-api 重新编译时的语言与词汇（What-If 重放、Cedar 导出与执行同一口径）：
- * 已审批 / 已弃用取冻结快照，草稿取作者现行词汇（ADR 0051 §7）。词汇严格加载：失败抛
+ * 已审批 / 已弃用取冻结快照，草稿取作者现行词汇（ADR 0051 §7），再并入版本的内嵌词汇（ADR 0060）。词汇严格加载：失败抛
  * {@link VersionVocabularyUnavailableError}，作者词汇非法抛引擎 VocabularyScopeError，不退化为无词汇。
  */
 export async function loadStoredVersionCompileContext(
@@ -182,6 +244,8 @@ export async function loadStoredVersionCompileContext(
     policyId: version.policyId,
     source: version.source,
     locale,
+    embeddedVocabulary: version.embeddedVocabulary,
+    sourceScopesJson: version.sourceScopesJson,
   }, { strict: true });
   return { locale, vocabulary };
 }

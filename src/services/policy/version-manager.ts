@@ -27,6 +27,7 @@ import {
   type SnapshotTx,
 } from '@/lib/domain-vocabulary-snapshot';
 import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
+import { EmbeddedVocabularyError, withEmbeddedVocabulary } from '@/lib/policy-embedded-vocabulary';
 import { CNL_LOCALES, DEFAULT_CNL_LOCALE } from '@/lib/cnl-locale';
 import {
   canonicalAliasJson,
@@ -137,15 +138,15 @@ export class VocabularyChangedSinceSaveError extends Error {
  * 在审批事务内冻结待批准版本作用域内的作者词汇（B12 / #610），返回快照引用。
  * 作用域按版本源码与其记录的编译 locale 计算；失败抛 VocabularyFreezeError（事务回滚）。
  *
- * 一致性：写入快照前比对「即将冻结的词汇」的 scopesJson 与版本保存时封印的 sourceScopesJson，
- * 不同则抛 VocabularyChangedSinceSaveError，不写任何快照。sourceScopesJson 为 NULL 的存量行
- * 早于词汇封印（ADR 0051 之前），无可比对的封印值，直接放行；resolver 迁移会为其回填。
+ * 一致性：写入快照前比对「即将冻结的词汇并入版本内嵌词汇（ADR 0060 §7.2）」的 scopesJson 与版本保存时
+ * 封印的 sourceScopesJson，不同则抛 VocabularyChangedSinceSaveError，不写任何快照。内嵌词汇写在版本行上、
+ * 不进快照，只冻结下层（团队 / 作者）词汇。内嵌文本无法解析同样按不一致拒绝。sourceScopesJson 为 NULL 的
+ * 存量行早于词汇封印（ADR 0051 之前），无可比对的封印值，直接放行；resolver 迁移会为其回填。
  */
 async function freezeApprovalVocabulary(
   version: InferSelectModel<typeof policyVersions>,
   tx: SnapshotTx,
 ): Promise<SnapshotRef[]> {
-  if (!version.createdBy) return [];
   const source = version.source ?? version.content;
   const locale = resolveStoredVersionLocale({
     source,
@@ -158,9 +159,16 @@ async function freezeApprovalVocabulary(
   const sealed = version.sourceScopesJson;
   const verifyVocabulary = sealed === null
     ? undefined
-    : (vocabulary: DomainVocabulary | null) => {
-      if (vocabularyScopesJson(vocabulary) !== sealed) throw new VocabularyChangedSinceSaveError();
+    : (lower: DomainVocabulary | null) => {
+      if (vocabularyScopesJson(effectiveApprovalVocabulary(lower, version.embeddedVocabulary, locale)) !== sealed) {
+        throw new VocabularyChangedSinceSaveError();
+      }
     };
+  if (!version.createdBy) {
+    // 无作者不冻结任何下层词汇；带内嵌词汇时仍按封印复核（下层为空）
+    if (version.embeddedVocabulary) verifyVocabulary?.(null);
+    return [];
+  }
   try {
     // 团队策略同时冻结团队词汇（ADR 0017 §2）：团队归属由冻结在审批事务内按策略行读取。
     return await freezeVocabularyForApproval(
@@ -172,6 +180,20 @@ async function freezeApprovalVocabulary(
     if (err instanceof VocabularyChangedSinceSaveError) throw err;
     console.error('[vocabulary-snapshot] freeze failed, approval aborted:', err);
     throw new VocabularyFreezeError();
+  }
+}
+
+/** 审批复核用的有效词汇：冻结的下层词汇并入版本内嵌词汇；内嵌文本损坏按「保存后已变化」拒绝。 */
+function effectiveApprovalVocabulary(
+  lower: DomainVocabulary | null,
+  embeddedText: string | null,
+  locale: string,
+): DomainVocabulary | null {
+  try {
+    return withEmbeddedVocabulary(lower, embeddedText, locale);
+  } catch (err) {
+    if (err instanceof EmbeddedVocabularyError) throw new VocabularyChangedSinceSaveError();
+    throw err;
   }
 }
 

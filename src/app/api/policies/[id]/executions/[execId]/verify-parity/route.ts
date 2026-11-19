@@ -71,7 +71,10 @@ export async function POST(_req: Request, { params }: RouteParams) {
     }
     const version = await db.query.policyVersions.findFirst({
       where: and(eq(policyVersions.id, exec.policyVersionRowId), eq(policyVersions.policyId, id)),
-      columns: { content: true, aliasSet: true, status: true, createdBy: true, vocabularySnapshotIds: true },
+      columns: {
+        content: true, aliasSet: true, status: true, createdBy: true, vocabularySnapshotIds: true,
+        sourceScopesJson: true, embeddedVocabulary: true,
+      },
     });
     if (!version) {
       return NextResponse.json({
@@ -114,6 +117,8 @@ export async function POST(_req: Request, { params }: RouteParams) {
       teamId: policy.teamId ?? null,
       source: version.content,
       locale: exec.locale ?? '',
+      embeddedVocabulary: version.embeddedVocabulary,
+      sourceScopesJson: version.sourceScopesJson,
     });
 
     const { result, persisted } = await runParityForExecutionNow({
