@@ -723,6 +723,32 @@ export function PolicyForm({
     setCancelConfirmOpen(true);
   };
 
+  const monacoEditor = (
+    <MonacoPolicyEditor
+      value={content}
+      onChange={setContent}
+      locale={cnlLocale}
+      userVocabulary
+      vocabularyTeamId={teamId}
+      height="100%"
+      placeholder={t('contentPlaceholder')}
+      aliasSet={fields.aliasSet ?? undefined}
+      onEditorReady={(ed) => {
+        editorInstanceRef.current = ed;
+        // Trigger one re-render so palette / side-panel hooks
+        // depending on the editor instance can pick it up.
+        setEditorReady(true);
+      }}
+      onCompileChange={setCompile}
+      // 仅在结构化创作可用时同步词条，能力关闭时不产生额外渲染
+      onVocabularyTermsChange={structuredAuthoring.allowed ? setVocabularyTerms : undefined}
+      onLspChange={structuredAuthoring.allowed ? setLsp : undefined}
+      // 用户在设置页或状态栏关闭后不再发出任何 AI 补全请求；
+      // 读取本地偏好完成前按关闭处理，避免首帧按默认值误发请求。
+      enableAICompletion={aiInlineCompletion.value && !aiInlineCompletion.hydrating}
+      onToggleAIPanel={() => openSidePanel('ai')}
+    />  );
+
   return (
     // 设计系统宽度权威：dashboard <main> 现为全宽透传，宽度+水平内边距+垂直
     // 节奏由本页 <Container> 负责。编辑器是「编辑器+schema」的全高 flex 布局，
@@ -893,30 +919,12 @@ export function PolicyForm({
                 {content || t('contentPlaceholder')}
               </pre>
             ) : (
-              <MonacoPolicyEditor
-                value={content}
-                onChange={setContent}
-                locale={cnlLocale}
-                userVocabulary
-                vocabularyTeamId={teamId}
-                height="100%"
-                placeholder={t('contentPlaceholder')}
-                aliasSet={fields.aliasSet ?? undefined}
-                onEditorReady={(ed) => {
-                  editorInstanceRef.current = ed;
-                  // Trigger one re-render so palette / side-panel hooks
-                  // depending on the editor instance can pick it up.
-                  setEditorReady(true);
-                }}
-                onCompileChange={setCompile}
-                // 仅在结构化创作可用时同步词条，能力关闭时不产生额外渲染
-                onVocabularyTermsChange={structuredAuthoring.allowed ? setVocabularyTerms : undefined}
-                onLspChange={structuredAuthoring.allowed ? setLsp : undefined}
-                // 用户在设置页或状态栏关闭后不再发出任何 AI 补全请求；
-                // 读取本地偏好完成前按关闭处理，避免首帧按默认值误发请求。
-                enableAICompletion={aiInlineCompletion.value && !aiInlineCompletion.hydrating}
-                onToggleAIPanel={() => openSidePanel('ai')}
-              />
+              structuredAuthoring.allowed ? (
+                // 结构化编写可用时编辑器放进可收缩的一格，下方才能分出词汇规范预览；能力为假时 DOM 不变
+                <div className="flex min-h-0 flex-1 flex-col">{monacoEditor}</div>
+              ) : (
+                monacoEditor
+              )
             )}
             {canonicalPreviewAvailable && canonicalPreviewOpen && !isMobile && lsp && (
               <div className="flex h-[40%] min-h-0 shrink-0 flex-col">
