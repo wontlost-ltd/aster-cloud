@@ -102,3 +102,21 @@ describe('LayoutDisplayView', () => {
     expect(content[1].childNodes).toHaveLength(1);
   });
 });
+
+describe('LayoutDisplayView：区间端点落在代理对中间', () => {
+  const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+  it.each([
+    ['highlight 起点在 emoji 中间', (e: number) => ({ highlight: { start: e + 1, end: e + 3 } })],
+    ['highlight 终点在 emoji 中间', (e: number) => ({ highlight: { start: e - 1, end: e + 1 } })],
+    ['marker 只覆盖 emoji 的低位代理项', (e: number) => ({ markers: [{ range: { start: e + 1, end: e + 2 }, severity: 'warning' as const }] })],
+  ])('%s：不产生孤立代理项，emoji 整体落在区间内', (_name, props) => {
+    const e = offsetOf('🙂');
+    const { container } = render(<LayoutDisplayView layout={LAYOUT} {...props(e)} />);
+    const pieces = [...container.querySelectorAll('[data-layout-highlight], [data-layout-marker]')];
+    expect(pieces.length).toBeGreaterThan(0);
+    for (const el of pieces) expect(lone.test(el.textContent ?? ''), el.textContent ?? '').toBe(false);
+    expect(pieces.some((el) => el.textContent?.includes('🙂'))).toBe(true);
+    expect(view().textContent).toBe(LAYOUT_DISPLAY);
+  });
+});

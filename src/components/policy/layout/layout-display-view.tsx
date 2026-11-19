@@ -70,6 +70,16 @@ function codePointCuts(block: Block): number[] {
   return cuts;
 }
 
+/** 切点落在代理对中间时移到码点边界：起点向前、终点向后，区间只会变宽、不会拆出孤立代理项。 */
+function snapToCodePoint(block: Block, offset: number, direction: -1 | 1): number {
+  const i = offset - block.start;
+  if (i <= 0 || i >= block.display.length) return offset;
+  const high = block.display.charCodeAt(i - 1);
+  const low = block.display.charCodeAt(i);
+  const splitsPair = high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff;
+  return splitsPair ? offset + (direction === -1 ? -1 : 1) : offset;
+}
+
 /** 把一个 span 在给定的切点处切开；只保留落在 span 内部的切点。 */
 function splitBlock(block: Block, cuts: readonly number[]): Piece[] {
   const end = block.start + block.display.length;
@@ -101,7 +111,7 @@ export function LayoutDisplayView({ layout, highlight = null, markers = [], onDi
   };
 
   const renderPieces = (block: Block) => {
-    const cuts = ranges.flatMap((r) => [r.start, r.end]);
+    const cuts = ranges.flatMap((r) => [snapToCodePoint(block, r.start, -1), snapToCodePoint(block, r.end, 1)]);
     const all = onDisplayOffsetClick ? [...cuts, ...codePointCuts(block)] : cuts;
     return splitBlock(block, all).map((p) => {
       const { highlighted, severity } = pieceState(p.start, p.start + p.text.length);
