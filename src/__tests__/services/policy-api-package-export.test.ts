@@ -73,6 +73,23 @@ describe('PolicyApiClient 策略包导出', () => {
     expect((init.headers as Record<string, string>)['X-Internal-Signature']).toBeTruthy();
   });
 
+  it('preparePackageExport：probesJson 保留数字原文（超出 2⁵³ 的 Long 不经 JS number 往返）', async () => {
+    const text = '{"exportable":true,"diagnostics":[],"entry":"decide","probeCount":1,'
+      + '"probes":{"probes":[{"entry":"decide","expected":{"ok":true,"value":9007199254740993},"input":{"d":1.0E10}}]}}';
+    fetchMock.mockResolvedValue(new Response(text, { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    const res = await new PolicyApiClient('t1', 'u1').preparePackageExport(baseRequest);
+    expect(res.entry).toBe('decide');
+    expect(res.probesJson).toBe(
+      '{"probes":[{"entry":"decide","expected":{"ok":true,"value":9007199254740993},"input":{"d":1.0E10}}]}');
+  });
+
+  it('preparePackageExport：不可导出（无 probes）时 probesJson 为 null', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ exportable: false, diagnostics: [], probeCount: 0 }), { status: 200 }));
+    const res = await new PolicyApiClient('t1', 'u1').preparePackageExport(baseRequest);
+    expect(res.exportable).toBe(false);
+    expect(res.probesJson).toBeNull();
+  });
+
   it('exportPackage：zip 响应返回字节、SHA-256、文件名与签名标记', async () => {
     const res = await new PolicyApiClient('t1', 'u1').exportPackage(baseRequest);
 

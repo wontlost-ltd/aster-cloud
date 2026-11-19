@@ -8,7 +8,8 @@
  * - 2 s 超时；超时 / 上游错误 / 旧版 aster-api 无该端点（404）/ 响应形状不对，一律 'unknown' 且不缓存。
  *
  * node 在两种情况下为 'unavailable'：check 给出 unavailable 码（如锁文件 node 为 null），
- * 或 cloud 本地还不能复核 Node 包（C3 之前恒为此，见 package-node-runtime）。
+ * 或 cloud 本地不能复核 Node 包（package-node-runtime 返回 null）。check 响应不带锁文件版本，
+ * 本地 ts 版本（TS_VERSION）与锁文件 node.cliVersion 的比较在下载路由 prepare 之后进行（不等即 503 export_runtime_skew）。
  */
 import { createHash } from 'node:crypto';
 import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
@@ -41,7 +42,7 @@ const MAX_ENTRIES = 500;
 /** aster-api 升级后检查可能放宽 / 收紧，不永久缓存 */
 const TTL_MS = 60 * 60 * 1000;
 
-/** 检查拿不到结论时：jre 未知（照常显示）；node 仍受本地复核能力约束，C3 之前不因一次失败而冒出来 */
+/** 检查拿不到结论时：jre 未知（照常显示）；node 仍受本地复核能力约束 */
 function unknownResult(): PackageExportability {
   return {
     jre: 'unknown',
