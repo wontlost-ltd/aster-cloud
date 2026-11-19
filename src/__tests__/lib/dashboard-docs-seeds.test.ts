@@ -4,7 +4,8 @@
  * The seeds are produced from the canonical `docsSidebar` order with
  * titles looked up in the active locale's search index. The runtime
  * must:
- *   - Cap the result at MAX_SEEDS (12) so the palette stays scannable.
+ *   - Cap the sidebar-order part at MAX_SEEDS (12) so the palette stays
+ *     scannable, then append the pinned structured-authoring guides (#795).
  *   - Apply locale-aware hrefs ('' for `en`, `/zh` / `/de` otherwise).
  *   - Lead with the five getting-started pages (the IA's stated
  *     intent — preserved by walking `docsSidebar` in declared order
@@ -17,7 +18,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildDocsSeeds } from '@/lib/docs/dashboard-docs-seeds';
+import { buildDocsSeeds, PINNED_SEED_SLUGS } from '@/lib/docs/dashboard-docs-seeds';
 
 const GETTING_STARTED_SLUGS = new Set<string>([
   'getting-started/overview',
@@ -28,8 +29,19 @@ const GETTING_STARTED_SLUGS = new Set<string>([
 ]);
 
 describe('buildDocsSeeds', () => {
-  it('returns at most 12 entries', () => {
-    expect(buildDocsSeeds('en').length).toBeLessThanOrEqual(12);
+  it('returns at most 12 sidebar entries plus the pinned guides', () => {
+    expect(buildDocsSeeds('en').length).toBeLessThanOrEqual(12 + PINNED_SEED_SLUGS.length);
+  });
+
+  it.each(['en', 'zh', 'de'])('%s: includes every pinned structured-authoring guide with a localized title', (locale) => {
+    const prefix = locale === 'en' ? '' : `/${locale}`;
+    const seeds = buildDocsSeeds(locale);
+    for (const slug of PINNED_SEED_SLUGS) {
+      const seed = seeds.find((s) => s.href === `${prefix}/docs/${slug}`);
+      expect(seed, slug).toBeDefined();
+      // 标题来自搜索索引；回落为 slug 说明索引没重建
+      expect(seed!.label).not.toBe(slug);
+    }
   });
 
   it('leads with the five getting-started pages', () => {

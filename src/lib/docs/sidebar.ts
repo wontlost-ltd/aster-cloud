@@ -106,6 +106,11 @@ export const docsSidebar = [
       { labelKey: 'docs.sidebar.guides.guardApprovals', href: 'guides/guard-approvals' },
       { labelKey: 'docs.sidebar.guides.workspace', href: 'guides/workspace' },
       { labelKey: 'docs.sidebar.guides.policyPackages', href: 'guides/policy-packages' },
+      // 结构化编写（ADR 0058，#795）：领域建模、领域词汇、显示排版与管理员指南。
+      { labelKey: 'docs.sidebar.guides.domainModelling', href: 'guides/domain-modelling' },
+      { labelKey: 'docs.sidebar.guides.domainVocabulary', href: 'guides/domain-vocabulary' },
+      { labelKey: 'docs.sidebar.guides.displayLayouts', href: 'guides/display-layouts' },
+      { labelKey: 'docs.sidebar.guides.structuredAuthoringAdmin', href: 'guides/structured-authoring-admin' },
     ],
   },
 ] as const satisfies readonly DocsSidebarSection[];

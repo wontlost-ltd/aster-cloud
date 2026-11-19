@@ -312,6 +312,22 @@ export const PAGE_ACTIONS: Record<RouteSlug, PageActionSet> = {
   'guides/policy-packages': {
     primary: goTo('go_to_policies', 'docs.actions.goToPolicies', '/policies', 'public'),
   },
+  // 结构化编写（ADR 0058，#795）：模型、词汇、排版标签页都在策略编辑器里，从策略列表进入；
+  // 词汇页另给词汇管理页入口。管理员指南指向团队页（团队 owner 在团队设置里委派座位）：
+  // 平台管理页对非管理员是 404，不作为文档动作。
+  'guides/domain-modelling': {
+    primary: goTo('go_to_policies', 'docs.actions.goToPolicies', '/policies', 'public'),
+  },
+  'guides/domain-vocabulary': {
+    primary: goTo('go_to_domain_vocabularies', 'docs.actions.goToDomainVocabularies', '/domain-vocabularies', 'public'),
+    secondary: [goTo('go_to_policies', 'docs.actions.goToPolicies', '/policies', 'canEditPolicies')],
+  },
+  'guides/display-layouts': {
+    primary: goTo('go_to_policies', 'docs.actions.goToPolicies', '/policies', 'public'),
+  },
+  'guides/structured-authoring-admin': {
+    primary: goTo('go_to_teams', 'docs.actions.goToTeams', '/teams', 'public'),
+  },
 };
 
 /**

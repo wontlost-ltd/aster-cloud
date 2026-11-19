@@ -1,0 +1,155 @@
+---
+title: "Model your domain: structs, type aliases and import aliases"
+description: "Describe the data a policy works with: structs with Define, type aliases with Type … as, and import aliases with Use … as, in English, German and Chinese."
+updated: 2026-11-19
+apiVersion: v1
+---
+
+# Model your domain: structs, type aliases and import aliases
+
+A policy decides about things from your business: an applicant, a loan, a claim. Three declarations describe that data:
+
+| Declaration | What it does | English form |
+|---|---|---|
+| Struct | A record type with named, typed fields | `Define Applicant with name as Text and income as Float.` |
+| Type alias | A second name for an existing type | `Type Score as Int.` |
+| Import alias | A short local name for a module | `Use aster.finance.loan as Loan.` |
+
+All three are part of the Aster language. Anyone can write them, save them, compile them and run them; they need no plan and no grant. The **Model** tab in the policy editor helps you write them, and that tab is part of [Structured Authoring](/docs/guides/structured-authoring-admin).
+
+## Structs
+
+A struct starts with `Define`, then its name, then `with` and its fields. Each field is `name as Type`, and fields are joined with `and`:
+
+```
+Define Applicant with name as Text and income as Float and creditScore as Score.
+```
+
+`Define Applicant has name as Text, income as Float.` (with `has` and commas) is accepted as well.
+
+A field type is a built-in type (`Text`, `Int`, `Float`, `Bool`), another struct, or a type alias. A rule reads a field with a dot: `applicant.creditScore`.
+
+## Type aliases
+
+A type alias gives an existing type a name from your domain:
+
+```
+Type Score as Int.
+```
+
+Use the alias wherever a field or parameter type goes: `creditScore as Score`. The leading word is `Type` in every policy language, also in German and Chinese policies, and it is not case-sensitive (`type Score as Int.` works too). The word between the names is the language's `as` keyword.
+
+<Callout type="warning" title="Use an alias consistently">
+The editor's type check does not replace an alias with its target type when it compares two declared types. A rule declared with `produce Int` that returns a parameter declared `as Score` is reported as a type mismatch (`E003`). Declare the result `as Score` too, or use `Int` in both places.
+</Callout>
+
+## Import aliases
+
+An import alias gives a module a short name inside your policy:
+
+```
+Use aster.finance.loan as Loan.
+```
+
+The alias names the module only. It is visible in the module that declares it, so renaming it affects only that module.
+
+## One namespace for type names
+
+Structs, enums, type aliases and import aliases share one namespace. Two of them with the same name stop the compile with `E807` (duplicate declaration), reported at the second one. Nothing shadows anything else: rename one of the two.
+
+```
+Use aster.lib as Score.
+Type Score as Int.
+```
+
+The second line fails with `E807`. Rule names are in a separate namespace and are not affected.
+
+## A complete example in three languages
+
+The same policy in English, German and Chinese. The policy language is chosen by the keywords in the source, not by your interface language. Each version compiles and returns `true` for an applicant whose credit score is 700 or more.
+
+English:
+
+```
+Module lending.
+
+Use aster.finance.loan as Loan.
+
+Type Score as Int.
+
+Define Applicant with name as Text and income as Float and creditScore as Score.
+
+Rule approve given applicant as Applicant, produce Bool:
+  If applicant.creditScore at least 700:
+    Return true.
+  Return false.
+```
+
+German:
+
+```
+Modul kredit.
+
+verwende aster.finanzen.darlehen als Darlehen.
+
+Type Punktzahl als Ganzzahl.
+
+Definiere Antragsteller mit name als Text und einkommen als Dezimal und bonitaet als Punktzahl.
+
+Regel genehmige gegeben antragsteller als Antragsteller, liefert Boolesch:
+  wenn antragsteller.bonitaet mindestens 700:
+    gib zurueck wahr.
+  gib zurueck falsch.
+```
+
+Chinese:
+
+```
+模块 信贷。
+
+引用 aster.finance.loan 作为 贷款。
+
+Type 评分 作为 整数。
+
+定义 申请人 包含 姓名 作为 文本 并且 收入 作为 小数 并且 信用分 作为 评分。
+
+规则 审批 给定 申请 作为 申请人，产出 布尔：
+  如果 申请.信用分 至少 700：
+    返回 真值。
+  返回 假值。
+```
+
+The keywords used above:
+
+| Meaning | English | German | Chinese |
+|---|---|---|---|
+| Declare a struct | `Define` | `Definiere` | `定义` |
+| Start the field list | `with` | `mit` | `包含` |
+| Join fields | `and` | `und` | `并且` |
+| Name and type, alias target | `as` | `als` | `作为` |
+| Import a module | `Use` | `verwende` | `引用` |
+| Declare a type alias | `Type` | `Type` | `Type` |
+| Built-in types | `Text`, `Int`, `Float`, `Bool` | `Text`, `Ganzzahl`, `Dezimal`, `Boolesch` | `文本`, `整数`, `小数`, `布尔` |
+| End of a statement | `.` | `.` | `。` |
+
+## The Model tab
+
+With Structured Authoring, the editor's side panel has a **Model** tab. It has two parts.
+
+**Outline.** Lists the structs (with their fields), type aliases and import aliases of the policy. Click an entry to jump to its definition. The outline follows the source the editor last compiled; if the source has syntax errors, it asks you to fix them first.
+
+**Forms.** Three forms write the declaration for you, with the keywords of the policy's language, so you do not type keywords by hand:
+
+- **New struct**: a name and one or more fields (name and type). The struct is added at the end of the policy.
+- **Add field to *struct***: adds a field after the struct's last field. A struct without fields cannot be extended from the form; edit its declaration in the editor.
+- **New type alias**: a name and a target type. The alias is added at the end of the policy.
+
+A name must be a single word (letters, digits or marks), must not be a keyword of the policy language, and must not be taken already. Each insertion is a normal editor edit, so **Undo** removes it.
+
+The command palette in the editor (**Ctrl+K** or **⌘K**) has **New struct** and **Open Model tab**.
+
+## Related
+
+- [Use your domain vocabulary](/docs/guides/domain-vocabulary): write these names in your own words.
+- [Display layouts (LayoutMap)](/docs/guides/display-layouts): a reader-friendly arrangement of a short policy.
+- [Structured Authoring for administrators](/docs/guides/structured-authoring-admin): who gets the Model tab.

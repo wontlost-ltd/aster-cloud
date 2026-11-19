@@ -9,6 +9,7 @@
  */
 import { HelpCircle } from 'lucide-react';
 import type { MouseEvent, ReactNode } from 'react';
+import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { useOptionalDocsOverlay } from '@/components/docs/docs-overlay-context';
 import { cn } from '@/components/ui';
@@ -65,6 +66,22 @@ export function HelpHint({ slug, label, className }: { slug: string; label: stri
       )}
     >
       <HelpCircle className="size-4" aria-hidden />
+    </DocsLink>
+  );
+}
+
+/**
+ * 紧凑面板说明行末尾的「了解更多」（#795：编辑器侧栏的模型 / 词汇 / 排版标签页）。
+ * 与正文同为小号字；行为同 DocsLink（dashboard 内在文档浮层打开）。
+ */
+export function LearnMoreLink({ slug }: { slug: string }) {
+  const t = useTranslations('guidance');
+  return (
+    <DocsLink
+      slug={slug}
+      className="rounded-sm text-xs font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:shadow-ring"
+    >
+      {t('learnMore')}
     </DocsLink>
   );
 }

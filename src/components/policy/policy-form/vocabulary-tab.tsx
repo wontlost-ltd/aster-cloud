@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { useLocale, useTranslations } from 'next-intl';
+import { LearnMoreLink } from '@/components/docs/docs-link';
 import { Button, Input, toast } from '@/components/ui';
 import {
   VocabularyDialog,
@@ -145,7 +146,9 @@ export function VocabularyTab({ editor, terms, teamId = null, policyLocale = '' 
 
   return (
     <div className="space-y-4 text-sm">
-      <p className="text-xs text-fg-muted">{t('hint')}</p>
+      <p className="text-xs text-fg-muted">
+        {t('hint')} <LearnMoreLink slug="guides/domain-vocabulary" />
+      </p>
       {terms.length === 0 ? (
         <div className="space-y-2">
           <p className="text-xs text-fg-muted">{t('empty')}</p>

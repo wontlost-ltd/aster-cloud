@@ -1,0 +1,85 @@
+---
+title: "Use your domain vocabulary in the editor"
+description: "Write policies with your own names: how terms resolve by role, which terms a policy uses, the Vocabulary tab and the canonical preview."
+updated: 2026-11-19
+apiVersion: v1
+---
+
+# Use your domain vocabulary in the editor
+
+A **domain vocabulary** maps the words your team uses to the canonical names in a policy. A German team can write `Fahrer` and `alter` while the compiled policy says `Driver` and `age`. You keep the terms on the [Domain vocabularies](/domain-vocabularies) page; the editor uses them while you write.
+
+Writing with vocabulary terms is part of the language: anyone can save, compile and run a policy that uses them. Adding and editing terms needs a plan with custom vocabularies (every plan except Free). The **Vocabulary** tab and the **canonical preview** in the editor are part of [Structured Authoring](/docs/guides/structured-authoring-admin).
+
+## Terms and roles
+
+Each term has a localized name (optionally with aliases), a canonical name and a role:
+
+| Role | Shown in the Vocabulary tab as | Note |
+|---|---|---|
+| Struct | Types | A type name, for example `Fahrer` → `Driver` |
+| Field | Fields | Belongs to a struct: `alter` → `age` of `Driver` |
+| Enum value | Enum members | Belongs to an enum |
+| Function | Functions | A rule name |
+| Literal | Literals | A word that the compiler replaces with a text value |
+
+A word is resolved by **where it stands** in the source, not by a global search-and-replace. `Fahrer` in a type position resolves to the struct `Driver`; `fahrer` as a parameter name stays `fahrer`. A field resolves against the struct it belongs to, so the same localized field name can mean different fields in different structs. Names that the source declares itself, such as parameters and `Let` names, are never rewritten.
+
+Example with the terms `Fahrer` → `Driver` (struct), `alter` → `age` (field of `Driver`) and `zugelassen` → `eligible` (function):
+
+```
+Modul versicherung.
+
+Definiere Fahrer mit alter als Ganzzahl.
+
+Regel zugelassen gegeben fahrer als Fahrer, liefert Boolesch:
+  wenn fahrer.alter mindestens 18:
+    gib zurueck wahr.
+  gib zurueck falsch.
+```
+
+The compiled policy has a struct `Driver` with a field `age` and a rule `eligible`; the parameter is still called `fahrer`.
+
+## Which terms a policy uses
+
+A policy does not use every term you have. For each group of terms (one domain and one language), the editor, the save check, approval and execution all apply the same rule:
+
+- the group's language matches the policy's language (the language of its keywords, compared by the main language, so `de` matches a `de-DE` policy), and
+- at least one of the group's localized names or aliases appears as a whole word in the code. Comments and text in quotes do not count.
+
+A **team policy** uses the team's vocabulary and the author's personal vocabulary. If the same written word maps to different canonical names in the two, the team's term wins and the editor tells you which personal terms are not used.
+
+## Saving, approval and snapshots
+
+- **Saving** compiles the policy with your current terms, chosen by the same rule as in the editor. A save that does not compile is refused with the diagnostics.
+- **Approval** freezes the terms the version uses into a vocabulary snapshot attached to that version.
+- **Execution** of an approved version uses its snapshot. Changing or deleting a term later does not change what an approved version means; save and approve a new version to pick up the change.
+
+## The Vocabulary tab
+
+With Structured Authoring, the editor's side panel has a **Vocabulary** tab:
+
+- The terms in scope for this policy, grouped by role (Types, Fields grouped by their struct, Functions, Enum members, Literals).
+- **Search terms** matches the localized name or the canonical name.
+- Click a term to insert its localized spelling at the cursor. If text is selected, the term replaces it.
+- **Add selection as term** opens the same dialog as the Domain vocabularies page, filled in with the selected text. In a team policy the new term goes into the team's vocabulary, otherwise into yours. Your plan decides whether you can add terms.
+- **Manage vocabularies** opens the Domain vocabularies page.
+
+The command palette (**Ctrl+K** or **⌘K**) has **Open Vocabulary tab**.
+
+## The canonical preview
+
+The canonical preview shows the policy with every vocabulary term replaced by its canonical name and every literal term replaced by the text value it stands for. Keywords and everything else stay as written. For the example above it shows `Driver`, `age` and `eligible` where the source says `Fahrer`, `alter` and `zugelassen`.
+
+- Open it with **Show canonical preview** at the top of the Vocabulary tab, or **Toggle canonical preview** in the command palette. It opens below the editor, on wide screens.
+- It is read-only. It is not saved and not compiled; it only helps you and your reviewers read the policy.
+- It follows your cursor: when the cursor is on a term, the preview selects the canonical name.
+- Invisible and bidirectional control characters (for example U+202E) are shown as visible placeholders, and the pane lists their code points, so they cannot change the order in which the text is displayed.
+- If the preview cannot be produced, the pane says so and tries again after your next change. The editor keeps working.
+
+The preview is available when the editor's language server supports it. Hovering over a term in the editor also shows the written word and its canonical name.
+
+## Related
+
+- [Model your domain](/docs/guides/domain-modelling): structs, type aliases and import aliases.
+- [Display layouts (LayoutMap)](/docs/guides/display-layouts): what reviewers see for literal terms.

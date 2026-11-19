@@ -1,0 +1,95 @@
+---
+title: "Structured Authoring for administrators"
+description: "Turn Structured Authoring on, grant it to users and teams, let team owners delegate seats, and know what changes when access ends."
+updated: 2026-11-19
+apiVersion: v1
+---
+
+# Structured Authoring for administrators
+
+**Structured Authoring** adds writing aids to the policy editor: the [Model](/docs/guides/domain-modelling#the-model-tab), [Vocabulary](/docs/guides/domain-vocabulary#the-vocabulary-tab) and [Layout](/docs/guides/display-layouts#create-a-layout-in-the-editor) tabs, the canonical preview, and the matching command palette entries. It also decides who may save a [display layout](/docs/guides/display-layouts).
+
+It does not gate the language. Structs, type aliases, import aliases and vocabulary terms can be written, saved, compiled and run by anyone, with or without Structured Authoring.
+
+## Who can use it
+
+A person can use Structured Authoring in a policy only when all of these hold, checked in this order:
+
+1. **The global switch is on.** It is off by default.
+2. **The plan allows it.** Every plan except Free includes it (Trial, Pro, Team, Enterprise). The plan that counts is the policy's: for a personal policy the author's own plan, for a team policy the team owner's plan.
+3. **The person has a grant**, from at least one of these sources:
+   - a **direct grant** from a platform administrator;
+   - a **team grant** to a team the person belongs to, with a role other than viewer;
+   - a **delegation** from the owner of a team the person belongs to, with a role other than viewer, while delegation is on for that team and platform-wide.
+
+A grant and the plan are both required: a grant does not replace the plan, and the plan does not replace a grant. A team grant or delegation gives the person the capability everywhere, but the plan is still checked per policy. So a member on the Free plan can use it in the Pro team's policies but not in their own personal policies.
+
+When the check fails, the editor looks exactly as it does without Structured Authoring: the tabs and the preview are not there.
+
+## Turn it on
+
+1. Open the [admin dashboard](/admin). Under **Platform controls**, in **Feature flags**, find **Structured Authoring** and click **Enable**.
+2. **Structured Authoring: team owner delegation** is on by default. Turn it off to stop all team owners from delegating; existing delegations then stop applying until you turn it on again.
+
+Switch changes can take up to a minute to reach every server. Turning a switch off and on again does not touch any grant: all grants apply again as before. Each change is recorded in the audit log as `platform_setting.update`.
+
+## Grant to users and teams
+
+Open **Admin → Structured Authoring** (`/admin/capabilities/structured-authoring`).
+
+**Users tab.** Search by email or name. The **Sources** column lists every source through which a person has the capability: `direct`, `team:<team>` or `delegated:<team>`. **Grant** adds a direct grant; **Revoke** removes it. This page only revokes direct grants: a team grant is revoked on the Teams tab, and a delegation by its team owner.
+
+**Teams tab.** For each team:
+
+- **Team grant** gives the capability to every member except viewers.
+- **Seat cap** (0 to 10,000) is how many members the team owner may delegate to. **Owner delegation** turns delegation on or off for this team. Click **Save** to apply both.
+- **Seats used** counts the active delegations of members who are still in the team, including members who were later made viewers.
+
+A team without a saved seat cap cannot delegate. A seat cap lower than the seats already used is refused; revoke delegations first. Seats are counted and assigned under a lock on the team, so delegations made at the same moment can never take more seats than the cap.
+
+## Team owners delegate seats
+
+The team owner sees **Structured Authoring seats** in the team's settings (only the owner sees it, not team admins). There the owner:
+
+- sees the seats used and the seat cap;
+- chooses a member and clicks **Delegate**. Viewers cannot be chosen;
+- revokes a delegation to free the seat.
+
+When delegation is paused for the team or switched off platform-wide, the owner cannot add delegations but can still revoke them. A member who is made a viewer keeps the seat but loses access until promoted again. The owner does not see direct grants that a platform administrator gave to members.
+
+## What happens when access ends
+
+| Event | Effect |
+|---|---|
+| A direct or team grant is revoked | That source stops counting at the person's next request. |
+| A delegation is revoked | Same, and the seat is free again. |
+| A member leaves or is removed from the team | The team's grant and its delegation stop applying to that person at once. The delegation is revoked and its seat freed. |
+| A member is made a viewer | Team grant and delegation are paused; the seat stays taken. Promoting the member back restores them. |
+| The team is deleted | Its team grant and all its delegations are revoked, and its seat cap removed. |
+| Ownership is transferred | Delegations stay; the new owner manages them. |
+| Delegation is turned off (team or platform) | Delegations are paused, not revoked. Turning delegation on restores them. |
+| The global switch is turned off, or the plan is downgraded | Nobody can use the capability in the policies concerned. Grants are kept and apply again when the switch or plan comes back. |
+
+In every case, existing content keeps working:
+
+- Policies that use structs, aliases or vocabulary terms stay valid. They compile and run, and they can still be edited and saved, only without the writing aids.
+- Saved display layouts can still be viewed by anyone who can read the policy. Execution never reads them.
+- When someone without Structured Authoring saves a new version of a policy that has a layout, the save succeeds and the new version has no layout. Earlier versions keep theirs.
+
+An editor that is already open keeps its tabs until the page is reloaded, but the server checks the capability again whenever a save includes or keeps a layout.
+
+## Audit trail
+
+| Action | When |
+|---|---|
+| `capability.grant` | A direct grant, team grant or delegation is created |
+| `capability.revoke` | A grant is revoked; `reason` is `manual`, `member_removed` or `team_deleted` |
+| `capability.allotment.update` | A team's seat cap or owner delegation changes, or the team is deleted |
+| `platform_setting.update` | A Structured Authoring switch changes |
+
+## Related
+
+- [Teams and roles](/docs/how-to/teams)
+- [Model your domain](/docs/guides/domain-modelling)
+- [Use your domain vocabulary](/docs/guides/domain-vocabulary)
+- [Display layouts (LayoutMap)](/docs/guides/display-layouts)

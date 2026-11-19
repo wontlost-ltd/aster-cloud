@@ -1,0 +1,85 @@
+---
+title: "Das Domänenvokabular im Editor verwenden"
+description: "Eigene Namen für Typen, Felder und Funktionen: Auflösung nach Rolle, welche Begriffe gelten, der Vokabular-Tab und die kanonische Vorschau."
+updated: 2026-11-19
+apiVersion: v1
+---
+
+# Das Domänenvokabular im Editor verwenden
+
+Ein **Domänenvokabular** ordnet die Wörter Ihres Teams den kanonischen Namen in einer Richtlinie zu. Ein deutsches Team kann `Fahrer` und `alter` schreiben, während die kompilierte Richtlinie `Driver` und `age` enthält. Die Begriffe pflegen Sie auf der Seite [Domänenvokabulare](/domain-vocabularies); der Editor verwendet sie beim Schreiben.
+
+Mit Vokabularbegriffen zu schreiben gehört zur Sprache: Jeder kann eine Richtlinie mit Begriffen speichern, kompilieren und ausführen. Begriffe anlegen und ändern erfordert einen Tarif mit eigenen Vokabularen (jeder Tarif außer Free). Der Tab **Vokabular** und die **kanonische Vorschau** im Editor gehören zu [Strukturiertes Verfassen](/docs/guides/structured-authoring-admin).
+
+## Begriffe und Rollen
+
+Jeder Begriff hat einen lokalisierten Namen (optional mit Aliasen), einen kanonischen Namen und eine Rolle:
+
+| Rolle | Gruppe im Vokabular-Tab | Hinweis |
+|---|---|---|
+| Struktur | Typen | Ein Typname, zum Beispiel `Fahrer` → `Driver` |
+| Feld | Felder | Gehört zu einer Struktur: `alter` → `age` von `Driver` |
+| Aufzählungswert | Enum-Werte | Gehört zu einer Aufzählung |
+| Funktion | Funktionen | Ein Regelname |
+| Literal | Literale | Ein Wort, das der Compiler durch einen Textwert ersetzt |
+
+Ein Wort wird danach aufgelöst, **wo es im Quelltext steht**, nicht durch globales Suchen und Ersetzen. `Fahrer` an einer Typposition wird zur Struktur `Driver`; `fahrer` als Parametername bleibt `fahrer`. Ein Feld wird anhand der Struktur aufgelöst, zu der es gehört; derselbe lokalisierte Feldname kann daher in verschiedenen Strukturen verschiedene Felder bedeuten. Namen, die der Quelltext selbst deklariert, etwa Parameter und `Let`-Namen, werden nie umgeschrieben.
+
+Beispiel mit den Begriffen `Fahrer` → `Driver` (Struktur), `alter` → `age` (Feld von `Driver`) und `zugelassen` → `eligible` (Funktion):
+
+```
+Modul versicherung.
+
+Definiere Fahrer mit alter als Ganzzahl.
+
+Regel zugelassen gegeben fahrer als Fahrer, liefert Boolesch:
+  wenn fahrer.alter mindestens 18:
+    gib zurueck wahr.
+  gib zurueck falsch.
+```
+
+Die kompilierte Richtlinie hat eine Struktur `Driver` mit dem Feld `age` und eine Regel `eligible`; der Parameter heißt weiterhin `fahrer`.
+
+## Welche Begriffe eine Richtlinie verwendet
+
+Eine Richtlinie verwendet nicht alle Ihre Begriffe. Für jede Begriffsgruppe (eine Domäne und eine Sprache) wenden Editor, Speicherprüfung, Freigabe und Ausführung dieselbe Regel an:
+
+- Die Sprache der Gruppe passt zur Sprache der Richtlinie (die Sprache ihrer Schlüsselwörter, verglichen nach der Hauptsprache; `de` passt also zu einer `de-DE`-Richtlinie), und
+- mindestens ein lokalisierter Name oder Alias der Gruppe kommt als ganzes Wort im Code vor. Kommentare und Text in Anführungszeichen zählen nicht.
+
+Eine **Teamrichtlinie** verwendet das Vokabular des Teams und das persönliche Vokabular des Autors. Bildet dasselbe geschriebene Wort in beiden auf verschiedene kanonische Namen ab, gilt der Teambegriff, und der Editor zeigt an, welche persönlichen Begriffe nicht verwendet werden.
+
+## Speichern, Freigabe und Snapshots
+
+- **Speichern** kompiliert die Richtlinie mit Ihren aktuellen Begriffen, ausgewählt nach derselben Regel wie im Editor. Ein Speichern, das nicht kompiliert, wird mit den Diagnosen abgelehnt.
+- Die **Freigabe** friert die Begriffe, die die Version verwendet, in einem Vokabular-Snapshot ein, der an dieser Version hängt.
+- Die **Ausführung** einer freigegebenen Version verwendet ihren Snapshot. Spätere Änderungen oder Löschungen von Begriffen ändern nicht, was eine freigegebene Version bedeutet; speichern und freigeben Sie eine neue Version, um die Änderung zu übernehmen.
+
+## Der Vokabular-Tab
+
+Mit Strukturiertes Verfassen hat die Seitenleiste des Editors einen Tab **Vokabular**:
+
+- Die Begriffe im Geltungsbereich dieser Richtlinie, nach Rolle gruppiert (Typen, Felder nach ihrer Struktur gruppiert, Funktionen, Enum-Werte, Literale).
+- **Begriffe suchen** findet den lokalisierten oder den kanonischen Namen.
+- Ein Klick auf einen Begriff fügt seine lokalisierte Schreibweise an der Cursorposition ein. Ist Text ausgewählt, ersetzt der Begriff ihn.
+- **Auswahl als Begriff hinzufügen** öffnet denselben Dialog wie die Seite Domänenvokabulare, vorausgefüllt mit dem ausgewählten Text. In einer Teamrichtlinie landet der neue Begriff im Vokabular des Teams, sonst in Ihrem eigenen. Ob Sie Begriffe hinzufügen dürfen, entscheidet Ihr Tarif.
+- **Vokabulare verwalten** öffnet die Seite Domänenvokabulare.
+
+Die Befehlspalette (**Strg+K** oder **⌘K**) enthält **Tab „Vokabular“ öffnen**.
+
+## Die kanonische Vorschau
+
+Die kanonische Vorschau zeigt die Richtlinie, in der jeder Vokabularbegriff durch seinen kanonischen Namen und jeder Literal-Begriff durch den Textwert ersetzt ist, für den er steht. Schlüsselwörter und alles andere bleiben, wie sie geschrieben sind. Für das Beispiel oben zeigt sie `Driver`, `age` und `eligible`, wo der Quelltext `Fahrer`, `alter` und `zugelassen` enthält.
+
+- Öffnen Sie sie mit **Kanonische Vorschau anzeigen** oben im Vokabular-Tab oder mit **Kanonische Vorschau umschalten** in der Befehlspalette. Sie erscheint auf breiten Bildschirmen unter dem Editor.
+- Sie ist schreibgeschützt, wird weder gespeichert noch kompiliert und hilft nur Ihnen und Ihren Prüfern beim Lesen.
+- Sie folgt dem Cursor: Steht der Cursor auf einem Begriff, markiert die Vorschau den kanonischen Namen.
+- Unsichtbare und bidirektionale Steuerzeichen (zum Beispiel U+202E) werden als sichtbare Platzhalter dargestellt, und der Bereich listet ihre Codepunkte auf; sie können die Reihenfolge der Anzeige also nicht verändern.
+- Lässt sich die Vorschau nicht erstellen, sagt der Bereich das und versucht es nach Ihrer nächsten Änderung erneut. Der Editor arbeitet weiter.
+
+Die Vorschau ist verfügbar, wenn der Sprachserver des Editors sie unterstützt. Wenn Sie im Editor mit der Maus auf einen Begriff zeigen, sehen Sie außerdem das geschriebene Wort und seinen kanonischen Namen.
+
+## Siehe auch
+
+- [Die eigene Domäne modellieren](/docs/guides/domain-modelling): Strukturen, Typ-Aliase und Import-Aliase.
+- [Anzeigelayouts (LayoutMap)](/docs/guides/display-layouts): was Prüfer bei Literal-Begriffen sehen.

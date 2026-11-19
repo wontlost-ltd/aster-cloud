@@ -1,0 +1,123 @@
+---
+title: "Anzeigelayouts (LayoutMap) für kurze Richtlinien"
+description: "Ein zweites, leserfreundliches Layout für kurze Richtlinien. Ausgeführt wird nur der kanonische Quelltext; Prüfer sehen ihn immer zuerst."
+updated: 2026-11-19
+apiVersion: v1
+---
+
+# Anzeigelayouts (LayoutMap) für kurze Richtlinien
+
+Ein **Anzeigelayout** (LayoutMap) ist eine zweite Anordnung des Quelltexts einer Richtlinienversion, gedacht für Menschen: ein Gedicht in Versen oder eine kurze Regel, deren Schlüsselwörter durch einfache Wörter ersetzt sind. Der **kanonische Quelltext** bleibt das Einzige, was kompiliert und ausgeführt wird. Das Layout wird nie ausgeführt: Ausführung, Nachweise, Cedar- und Richtlinienpaket-Export, What-If und Guard lesen nur den kanonischen Quelltext, und das Layout gehört weder zum Quelltext-Umschlag (Envelope) noch zum Hash der Version.
+
+Anzeigelayouts sind für Anzeigetexte und kleine Richtlinien gedacht. Ein Layout zu schreiben erfordert [Strukturiertes Verfassen](/docs/guides/structured-authoring-admin). Zum Ansehen genügt Lesezugriff auf die Richtlinie.
+
+## Wie ein Layout aufgebaut ist
+
+Ein Layout ist eine Liste von Abschnitten (Spans), die zusammengesetzt exakt den kanonischen Quelltext ergeben:
+
+- ein **Inhaltsabschnitt** ist ein Stück Quelltext, das unverändert angezeigt wird;
+- ein **struktureller Abschnitt** ist ein Stück Quelltext (sein *canonical*-Text) zusammen mit dem Text, der an seiner Stelle erscheint (sein *display*). Der display-Text darf leer sein; das Stück wird dann ausgeblendet.
+
+Als JSON (Formatversion 1):
+
+```json
+{"v":1,"spans":[{"text":"Module pricing.\n\nRule discountedPrice given amount as Float, tier as Text, produce Float:\n  "},{"canonical":"If","display":"When"},{"text":" tier equals to \"gold\":\n    "},{"canonical":"Return","display":"Charge"},{"text":" amount * 0.8.\n  "},{"canonical":"Return","display":"Charge"},{"text":" amount."}]}
+```
+
+Es gehört zu diesem Quelltext:
+
+```
+Module pricing.
+
+Rule discountedPrice given amount as Float, tier as Text, produce Float:
+  If tier equals to "gold":
+    Return amount * 0.8.
+  Return amount.
+```
+
+Die Anzeige lautet „When tier equals to "gold": Charge amount * 0.8.“ Namen, Zahl und Textwert stehen in Inhaltsabschnitten und erscheinen daher genau wie im Quelltext.
+
+## Die Regeln gegen irreführende Layouts
+
+Jedes Speichern prüft das Layout gegen den Quelltext, die Sprache und die Schlüsselwort-Aliase der Version. Die erste nicht erfüllte Regel lehnt das Speichern ab:
+
+| Code | Regel |
+|---|---|
+| `layout_invalid_format` | Das JSON ist kein gültiges Layout: andere Schlüssel als `v` und `spans` (bzw. als `text` oder `canonical` und `display` in einem Abschnitt), eine andere Version als 1, keine Abschnitte, ein leerer Inhaltsabschnitt, ein struktureller Abschnitt mit leerem canonical-Text oder eine Abschnittsgrenze mitten in einem Zeichen. |
+| `layout_too_large` | Ein Größenlimit ist überschritten (siehe unten). Die Antwort nennt das Limit. |
+| `layout_roundtrip_mismatch` | Die zusammengesetzten Abschnitte ergeben nicht exakt den Quelltext. Die Antwort nennt den ersten abweichenden Offset. |
+| `layout_structural_hides_value` | Ein struktureller Abschnitt überdeckt etwas anderes als Schlüsselwörter, Satzzeichen, Leerraum oder Kommentare: einen Namen, eine Zahl, einen Textwert oder `true`, `false` und die übrigen Literalwörter. Werte und Namen, die die Entscheidung beeinflussen, dürfen nur in Inhaltsabschnitten stehen, und diese werden unverändert angezeigt. |
+| `layout_content_parity` | Das Layout hat keinen sichtbaren Inhaltsabschnitt, oder ein struktureller Abschnitt enthält ein Anführungszeichen. |
+| `structured_authoring_required` (HTTP 403) | Sie haben ein Layout ohne Strukturiertes Verfassen für diese Richtlinie übermittelt. |
+
+Im Beispiel oben scheitert es mit `layout_structural_hides_value`, `0.8` als strukturell mit der Anzeige „20% off“ zu markieren: Der Leser sähe die Zahl nicht mehr, die die Regel verwendet.
+
+## Größenlimits
+
+| Limit | Höchstwert |
+|---|---|
+| Quelltextgröße | 12.288 Bytes (UTF-8) |
+| Quelltextzeilen | 200 |
+| Abschnitte (benachbarte Inhaltsabschnitte zählen als einer) | 400 |
+| Gespeichertes Layout | 49.152 Bytes |
+| Gesamter Anzeigetext | 24.576 Bytes |
+| Anzeige eines strukturellen Abschnitts | 256 Zeichen |
+
+Überschreitet der Quelltext ein Limit, nennt der Layout-Tab das Limit und bietet kein Layout an.
+
+## Ein Layout im Editor anlegen
+
+Mit Strukturiertes Verfassen hat die Seitenleiste des Editors einen Tab **Layout**.
+
+1. Klicken Sie auf **Layout beginnen**. Das Layout beginnt als ein einziger Inhaltsabschnitt: der Quelltext, wie er ist. (Oder klicken Sie auf **JSON importieren** und fügen Sie ein Layout ein.)
+2. Wählen Sie im Editor ein Schlüsselwort, Satzzeichen oder Leerraum aus und klicken Sie auf **Auswahl als strukturell markieren**. Die Auswahl muss in einem einzigen Inhaltsabschnitt liegen.
+3. Geben Sie unter **Strukturelle Abschnitte** für jeden Abschnitt den Anzeigetext ein oder lassen Sie ihn leer, um ihn auszublenden. **Als Inhalt wiederherstellen** macht einen Abschnitt wieder zu Quelltext.
+4. Schalten Sie die **Nebeneinander-Ansicht** ein, um die Anzeige auf breiten Bildschirmen links neben dem Editor zu sehen. Auswahlen werden auf beiden Seiten hervorgehoben, Probleme in der Anzeige markiert, und ein Klick in die Anzeige setzt den Cursor im Editor.
+5. Der Tab prüft das Layout, während Sie arbeiten, und zeigt **Das Layout ist gültig.** oder das erste Problem mit **Zu Zeile *n***.
+6. Speichern Sie die Richtlinie. Das Layout wird mit der neuen Version gespeichert.
+
+Die Anzeige kennzeichnet jedes Stück Text, das nur im Layout existiert: Struktureller Text hat einen eigenen Stil, beim Darüberfahren erscheint der canonical-Text, und ein ausgeblendetes Schlüsselwort hinterlässt eine Markierung.
+
+## Versionen und Speichern
+
+Ein Layout gehört zu einer Version und wird nach dem Speichern nie mehr geändert.
+
+- **Wer nur das Layout ändert, erzeugt eine neue Version.** Dasselbe Layout erneut zu speichern erzeugt keine.
+- **Layout entfernen** und speichern: Die neue Version hat kein Layout.
+- **Den Quelltext bearbeiten:** Ein Layout, das den Quelltext nicht mehr ergibt, ist ungültig. Der Tab meldet *Der Quelltext wurde geändert, daher passt dieses Layout nicht mehr*; Layouts werden nicht automatisch neu ausgerichtet. Klicken Sie auf **Mit Identitäts-Layout neu beginnen** oder auf **Layout entfernen**.
+- **Speichern, ohne das Layout anzufassen:** Die neue Version übernimmt das aktuelle Layout, wenn es für den neuen Quelltext, die Sprache und die Aliase noch alle Regeln erfüllt und Sie Strukturiertes Verfassen haben. Andernfalls hat die neue Version kein Layout. Kann der Editor das vor dem Speichern erkennen, bittet er Sie um Bestätigung (*Diese Version hat kein Anzeige-Layout mehr*). Nach jedem Speichern, bei dem das Layout weggefallen ist, weist er darauf hin. Frühere Versionen behalten ihres.
+
+Die letzte Regel bedeutet: Eine Teamkollegin ohne Strukturiertes Verfassen kann eine Teamrichtlinie mit Layout weiterhin bearbeiten und speichern. Das Speichern wird nicht abgelehnt; nur die neue Version verliert das Layout.
+
+Passt ein gespeichertes Layout nicht mehr zu seiner Version (etwa nach einer direkten Datenbankänderung), wird es weder angezeigt noch in den Editor geladen. Leser sehen stattdessen den kanonischen Quelltext und einen Hinweis.
+
+## Was Prüfer und Freigebende sehen
+
+Der kanonische Quelltext kommt immer zuerst:
+
+- **Richtlinienseite und Versionsdetails**, wo Freigebende eine Version prüfen: Der Tab **Kanonischer Quelltext (wird ausgeführt)** ist standardmäßig offen; **Anzeigelayout (wird nicht ausgeführt)** ist ein zweiter Tab mit dem Hinweis, dass Kompilierung, Ausführung, Prüfung und Freigabe den kanonischen Quelltext verwenden.
+- **Versionen vergleichen** vergleicht nur den kanonischen Quelltext. Unterscheidet sich das Layout, meldet eine eigene Zeile **Anzeigelayout geändert**.
+- **Prüfbereich**: Hat die Richtlinie ein Layout, weist ein Hinweis darauf hin, dass es nicht ausgeführt wird, und verlinkt auf die Versionen.
+
+Literal-Begriffe des Vokabulars ändern die Bedeutung des Quelltexts, nicht sein Layout. Die Textwerte, für die sie stehen, zeigt die [kanonische Vorschau](/docs/guides/domain-vocabulary#die-kanonische-vorschau).
+
+## Über die API
+
+`POST /api/v1/policies/{id}/versions` (und die eigenen Speicheranfragen des Editors) akzeptieren ein Feld `layout`:
+
+| `layout` | Neue Version |
+|---|---|
+| weggelassen | übernimmt das aktuelle Layout nach der Regel oben |
+| `null` | kein Layout |
+| ein Layout-Objekt | dieses Layout, wenn Sie Strukturiertes Verfassen haben und es alle Regeln erfüllt |
+
+Ein Fehler liefert `{ "error", "code", "offset"?, "limit"? }` mit einem der Codes oben. Ein erfolgreiches Speichern liefert `layoutDropped: true`, wenn die aktuelle Version ein Layout hatte, das die neue Version nicht übernommen hat. Das Lesen einer Version (`GET /api/v1/policies/{id}/versions/{version}`) liefert `layout` mit `status` `none`, `ok` (mit dem Layout) oder `inconsistent`.
+
+## Noch nicht verfügbar
+
+Entscheidungs-Traces werden gegen den kanonischen Quelltext angezeigt. Auf das Anzeigelayout werden sie noch nicht abgebildet, weil Traces keine Quelltextpositionen enthalten.
+
+## Siehe auch
+
+- [Das Domänenvokabular verwenden](/docs/guides/domain-vocabulary)
+- [Freigaben](/docs/how-to/approvals)

@@ -1,0 +1,155 @@
+---
+title: "为领域建模：结构体、类型别名与导入别名"
+description: "描述策略处理的数据：用 Define 声明结构体，用 Type … as 声明类型别名，用 Use … as 声明导入别名；附英文、德文与中文示例。"
+updated: 2026-11-19
+apiVersion: v1
+---
+
+# 为领域建模：结构体、类型别名与导入别名
+
+策略裁决的是业务里的对象：申请人、贷款、理赔。描述这些数据有三种声明：
+
+| 声明 | 作用 | 中文写法 |
+|---|---|---|
+| 结构体 | 带具名、带类型字段的记录类型 | `定义 申请人 包含 姓名 作为 文本 并且 收入 作为 小数。` |
+| 类型别名 | 给已有类型起第二个名字 | `Type 评分 作为 整数。` |
+| 导入别名 | 给模块起一个简短的本地名 | `引用 aster.finance.loan 作为 贷款。` |
+
+三者都是 Aster 语言的一部分。任何人都可以编写、保存、编译和执行它们，不需要特定套餐，也不需要授权。策略编辑器里的**模型**标签页帮你编写这些声明，它属于[结构化编写](/docs/guides/structured-authoring-admin)。
+
+## 结构体
+
+结构体以 `定义`（英文 `Define`）开头，后面是名称、`包含`（英文 `with`）和字段。每个字段写作「名称 `作为` 类型」，字段之间用 `并且`（英文 `and`）连接：
+
+```
+定义 申请人 包含 姓名 作为 文本 并且 收入 作为 小数 并且 信用分 作为 评分。
+```
+
+英文也可以写作 `Define Applicant has name as Text, income as Float.`（用 `has` 和逗号）。
+
+字段类型可以是内置类型（`文本`、`整数`、`小数`、`布尔`）、另一个结构体或类型别名。规则用点号读取字段：`申请.信用分`。
+
+## 类型别名
+
+类型别名用业务里的名字称呼一个已有类型：
+
+```
+Type 评分 作为 整数。
+```
+
+需要字段类型或参数类型的地方都可以用这个别名，例如 `信用分 作为 评分`。开头的词在所有策略语言里都是 `Type`，中文与德文策略也一样，而且不区分大小写（写 `type` 也可以）。两个名字之间是该语言的 `作为`（英文 `as`）。
+
+<Callout type="warning" title="别名要前后一致">
+编辑器的类型检查在比较两个声明类型时，不会把别名替换成它的目标类型。规则声明 `产出 整数`，却返回一个声明为 `作为 评分` 的参数，会报类型不匹配（`E003`）。请把结果也声明为 `评分`，或者两处都用 `整数`。
+</Callout>
+
+## 导入别名
+
+导入别名给模块在策略里起一个简短的名字：
+
+```
+引用 aster.finance.loan 作为 贷款。
+```
+
+别名只代表这个模块，并且只在声明它的模块里可见，改名只影响该模块。
+
+## 类型名共用一个命名空间
+
+结构体、枚举、类型别名和导入别名共用一个命名空间。两者同名时编译失败，报 `E807`（重复声明），位置在后出现的那一处。不存在谁遮蔽谁，请给其中一个改名。
+
+```
+Use aster.lib as Score.
+Type Score as Int.
+```
+
+第二行报 `E807`。规则名在另一个命名空间里，不受影响。
+
+## 三种语言的完整示例
+
+下面是同一条策略的英文、德文和中文写法。策略语言由源码中的关键词决定，与界面语言无关。三种写法都能编译，信用分不低于 700 的申请人得到 `真值`（`true`）。
+
+英文：
+
+```
+Module lending.
+
+Use aster.finance.loan as Loan.
+
+Type Score as Int.
+
+Define Applicant with name as Text and income as Float and creditScore as Score.
+
+Rule approve given applicant as Applicant, produce Bool:
+  If applicant.creditScore at least 700:
+    Return true.
+  Return false.
+```
+
+德文：
+
+```
+Modul kredit.
+
+verwende aster.finanzen.darlehen als Darlehen.
+
+Type Punktzahl als Ganzzahl.
+
+Definiere Antragsteller mit name als Text und einkommen als Dezimal und bonitaet als Punktzahl.
+
+Regel genehmige gegeben antragsteller als Antragsteller, liefert Boolesch:
+  wenn antragsteller.bonitaet mindestens 700:
+    gib zurueck wahr.
+  gib zurueck falsch.
+```
+
+中文：
+
+```
+模块 信贷。
+
+引用 aster.finance.loan 作为 贷款。
+
+Type 评分 作为 整数。
+
+定义 申请人 包含 姓名 作为 文本 并且 收入 作为 小数 并且 信用分 作为 评分。
+
+规则 审批 给定 申请 作为 申请人，产出 布尔：
+  如果 申请.信用分 至少 700：
+    返回 真值。
+  返回 假值。
+```
+
+上面用到的关键词：
+
+| 含义 | 英文 | 德文 | 中文 |
+|---|---|---|---|
+| 声明结构体 | `Define` | `Definiere` | `定义` |
+| 开始字段列表 | `with` | `mit` | `包含` |
+| 连接字段 | `and` | `und` | `并且` |
+| 名称与类型、别名目标 | `as` | `als` | `作为` |
+| 引用模块 | `Use` | `verwende` | `引用` |
+| 声明类型别名 | `Type` | `Type` | `Type` |
+| 内置类型 | `Text`、`Int`、`Float`、`Bool` | `Text`、`Ganzzahl`、`Dezimal`、`Boolesch` | `文本`、`整数`、`小数`、`布尔` |
+| 语句结束 | `.` | `.` | `。` |
+
+## 模型标签页
+
+有结构化编写能力时，编辑器侧栏有一个**模型**标签页，分两部分。
+
+**大纲**：列出策略中的结构体（含字段）、类型别名和导入别名，点击条目跳到定义处。大纲依据编辑器最近一次编译的源码；源码有语法错误时，会提示先修复语法。
+
+**表单**：三个表单按策略语言的关键词替你写出声明，不必手写关键词：
+
+- **新建结构体**：填写名称和一个或多个字段（名称与类型），结构体添加在策略末尾。
+- **为 *结构体* 添加字段**：在该结构体最后一个字段之后添加字段。没有字段的结构体不能从表单扩展，请直接在编辑器中修改其声明。
+- **新建类型别名**：填写名称和目标类型，别名添加在策略末尾。
+
+名称必须是单个词（字母、数字或标记），不能是该策略语言的关键词，也不能与已有名称重复。每次插入都是普通的编辑操作，**撤销**即可移除。
+
+编辑器的命令面板（**Ctrl+K** 或 **⌘K**）里有**新建结构体**和**打开模型标签页**。
+
+## 相关文档
+
+- [使用领域词汇](/docs/guides/domain-vocabulary)：用你自己的词写这些名字。
+- [显示排版（LayoutMap）](/docs/guides/display-layouts)：短策略的易读排版。
+- [结构化编写管理指南](/docs/guides/structured-authoring-admin)：谁能看到模型标签页。
