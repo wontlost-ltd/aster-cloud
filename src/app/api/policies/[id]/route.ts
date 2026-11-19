@@ -27,7 +27,8 @@ import { parseCompileLocale } from '@/lib/cnl-locale';
 import { resolveEntitlement } from '@/lib/capabilities/resolve';
 import { layoutSaveErrorResponse } from '@/lib/policy-layout/errors';
 import { sha256Utf8Hex } from '@/lib/policy-layout/hash';
-import { activeLayoutSha256 } from '@/lib/policy-layout/store';
+import { activeLayoutSha256, loadVersionLayout } from '@/lib/policy-layout/store';
+import type { StoredLayout } from '@/lib/policy-layout/types';
 import { serializeLayout, type PolicyLayout } from '@aster-cloud/aster-lang-ts/layout';
 
 
@@ -91,8 +92,10 @@ export async function GET(req: Request, { params }: RouteParams) {
     // （否则含关键词/运算符别名的源码在「生成示例」阶段解析失败）。口径同执行路径（C1 SQL JOIN）。
     const activeVersion = await db.query.policyVersions.findFirst({
       where: and(eq(policyVersions.policyId, id), eq(policyVersions.version, policy.version)),
-      columns: { aliasSet: true },
+      columns: { id: true, aliasSet: true },
     });
+    // 活跃版本的 LayoutMap（ADR 0058 §7.2）：读权限检查之后读取，只读查看不设能力门。
+    const layout: StoredLayout = activeVersion ? await loadVersionLayout(activeVersion.id) : { status: 'none' };
 
     // 获取执行次数
     const [{ count: executionCount }] = await db
@@ -108,6 +111,7 @@ export async function GET(req: Request, { params }: RouteParams) {
       versions,
       // 活跃版本冻结别名（canonical JSON 字符串或 null）。前端合并进 lexicon 供 schema 提取。
       activeAliasSet: activeVersion?.aliasSet ?? null,
+      layout,
       _count: { executions: executionCount },
       isFrozen: freezeInfo?.isFrozen ?? false,
       freezeInfo: freezeInfo

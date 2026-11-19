@@ -1117,6 +1117,8 @@ export async function getVersionDetail(params: {
 
   return {
     ...rest,
+    // ADR 0058 §7.2 读取契约：只读查看不设能力门；复验不过为 inconsistent，仍随详情返回。
+    layout: await loadVersionLayout(row.id),
     createdByName: displayName(createdByUser),
     deprecatedByName: displayName(deprecatedByUser),
     archivedByName: displayName(archivedByUser),
