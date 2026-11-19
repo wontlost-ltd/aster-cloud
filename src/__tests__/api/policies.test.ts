@@ -277,6 +277,7 @@ function mockPolicyVersion(overrides: Record<string, unknown> = {}) {
     archivedBy: null,
     vocabularySnapshotIds: [],
     aliasSet: null,
+    embeddedVocabulary: null,
     sourceEnvelopeSha256: null,
     sourceToolchainId: null,
     sourceScopesJson: null,

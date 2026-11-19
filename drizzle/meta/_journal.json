@@ -491,6 +491,13 @@
       "when": 1795074025755,
       "tag": "0068_policy_version_layout",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1795116702906,
+      "tag": "0069_policy_version_embedded_vocabulary",
+      "breakpoints": true
     }
   ]
 }
