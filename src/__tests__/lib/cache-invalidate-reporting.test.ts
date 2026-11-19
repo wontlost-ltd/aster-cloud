@@ -22,7 +22,7 @@ describe('invalidatePolicyCacheReporting', () => {
     const del = vi.fn(async (_key: string) => undefined);
     env.value = { CACHE: { delete: del } };
     await expect(invalidatePolicyCacheReporting('p1')).resolves.toBe('invalidated');
-    expect(del.mock.calls.map((c) => c[0]).sort()).toEqual(['policy-content:p1', 'policy:v4:p1']);
+    expect(del.mock.calls.map((c) => c[0]).sort()).toEqual(['policy-content:p1', 'policy:v5:p1']);
   });
 
   it('KV 删除失败 → 抛出（不吞掉）', async () => {

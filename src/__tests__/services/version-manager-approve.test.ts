@@ -381,3 +381,66 @@ describe('approveVersion — 词汇快照（#610）', () => {
     expect(h.updateSet).toHaveBeenCalledWith({ status: 'REJECTED' });
   });
 });
+
+// ADR 0060 §7.2：审批复核比较「冻结的下层词汇并入版本内嵌词汇」与封印；内嵌词汇不进快照。
+describe('approveVersion — 版本内嵌词汇', () => {
+  const EMBEDDED = '{"v":1,"terms":[{"kind":"struct","localized":"Fahrer","canonical":"Driver"}]}';
+  const embeddedOnly = (): DomainVocabulary => ({
+    id: 'policy.embedded', name: 'policy', locale: 'de-DE', version: '1',
+    structs: [{ canonical: 'Driver', localized: 'Fahrer', kind: IdentifierKind.STRUCT }],
+    fields: [], functions: [], enumValues: [], literals: [],
+  } as DomainVocabulary);
+
+  function setupEmbedded(embeddedVocabulary: string, createdBy: string | null = 'owner') {
+    const sealed = vocabularyScopesJson(embeddedOnly());
+    setup({ userId: 'owner', teamId: null }, 'owner');
+    h.versionsFindFirst.mockResolvedValue({
+      id: 'v1', policyId: 'p1', version: 2, createdBy, status: 'PENDING_APPROVAL',
+      content: GERMAN_SOURCE, source: null, aliasSet: null, sourceToolchainId: 'tc-1',
+      sourceScopesJson: sealed, embeddedVocabulary,
+      sourceEnvelopeSha256: computeSourceEnvelope(GERMAN_SOURCE, null, 'de-DE', 'tc-1', sealed),
+    });
+  }
+
+  it('approval freeze compares frozen lower vocabulary plus embedded with the seal: equal → approved', async () => {
+    setupEmbedded(EMBEDDED);
+    // 作者在保存后新增了同形个人词条 Fahrer → Lenker：被内嵌词条遮蔽，有效词汇不变，照常批准
+    const colliding = { ...vocab('Fahrer'), structs: [{ canonical: 'Lenker', localized: 'Fahrer', kind: IdentifierKind.STRUCT }] } as DomainVocabulary;
+    h.snapshot.mockImplementation(freezeWith(colliding, []));
+
+    await approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' });
+
+    expect(h.committed).toEqual(['refCount+1', 'approval', 'status']);
+  });
+
+  it('the embedded column changed directly in the database → VocabularyChangedSinceSaveError, nothing written', async () => {
+    setupEmbedded(EMBEDDED.replace('Driver', 'Pilot'));
+    h.snapshot.mockImplementation(freezeWith(null, []));
+
+    await expect(approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' }))
+      .rejects.toBeInstanceOf(VocabularyChangedSinceSaveError);
+    expect(h.committed).toEqual([]);
+    expect(h.updateSet).not.toHaveBeenCalled();
+  });
+
+  it('an unparsable embedded column is rejected the same way', async () => {
+    setupEmbedded('{"v":1');
+    h.snapshot.mockImplementation(freezeWith(null, []));
+
+    await expect(approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' }))
+      .rejects.toBeInstanceOf(VocabularyChangedSinceSaveError);
+    expect(h.committed).toEqual([]);
+  });
+
+  it('a version without author is still checked against the seal when it carries embedded terms', async () => {
+    setupEmbedded(EMBEDDED.replace('Driver', 'Pilot'), null);
+
+    await expect(approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' }))
+      .rejects.toBeInstanceOf(VocabularyChangedSinceSaveError);
+    expect(h.snapshot).not.toHaveBeenCalled();
+
+    setupEmbedded(EMBEDDED, null);
+    await approveVersion({ policyId: 'p1', version: 2, approverId: 'owner', decision: 'APPROVED' });
+    expect(h.updateSet).toHaveBeenCalledWith({ status: 'APPROVED', vocabularySnapshotIds: [] });
+  });
+});

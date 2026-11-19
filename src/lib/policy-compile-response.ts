@@ -113,12 +113,19 @@ export function compileGateErrorResponse(error: PolicyCompileError): NextRespons
 }
 
 /**
- * 按已存版本重编译 / 重放（What-If、Cedar 导出）时的词汇错误 → HTTP 响应，其它错误返回 null：
+ * 按已存版本执行 / 重编译 / 重放（执行、What-If、Cedar / 包导出）时的词汇错误 → HTTP 响应，其它错误返回 null：
  * - 词汇加载失败（execution-input 的 VersionVocabularyUnavailableError）→ 503 vocabulary_unavailable + Retry-After；
+ * - 内嵌词汇与封印不符（execution-input 的 VocabularySealMismatchError，ADR 0060 §7.2）→ 409 vocabulary_seal_mismatch；
  * - 作者词汇非法（引擎 VocabularyScopeError）→ 400 vocabulary_scope_invalid。
  * 按 name 判别而不 instanceof：路由测试会整体 mock execution-input。
  */
 export function versionVocabularyErrorResponse(error: unknown, headers?: Headers): NextResponse | null {
+  if (error instanceof Error && error.name === 'VocabularySealMismatchError') {
+    return NextResponse.json(
+      { error: 'vocabulary_seal_mismatch', code: 'vocabulary_seal_mismatch', message: error.message },
+      { status: 409, headers: new Headers(headers) },
+    );
+  }
   if (error instanceof Error && error.name === 'VersionVocabularyUnavailableError') {
     const retryAfter = (error as Error & { retryAfterSeconds?: unknown }).retryAfterSeconds;
     const responseHeaders = new Headers(headers);

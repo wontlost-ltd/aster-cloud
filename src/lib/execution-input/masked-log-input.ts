@@ -45,6 +45,8 @@ type VersionRow = {
   status: string | null;
   createdBy: string | null;
   vocabularySnapshotIds: unknown;
+  sourceScopesJson: string | null;
+  embeddedVocabulary: string | null;
 };
 
 type AliasSet = Record<string, readonly string[]> | null;
@@ -67,7 +69,10 @@ async function loadVersions(rows: readonly MaskableExecutionRow[]): Promise<Map<
   if (ids.length === 0) return new Map();
   const found = (await db.query.policyVersions.findMany({
     where: inArray(policyVersions.id, ids),
-    columns: { id: true, policyId: true, content: true, aliasSet: true, status: true, createdBy: true, vocabularySnapshotIds: true },
+    columns: {
+      id: true, policyId: true, content: true, aliasSet: true, status: true, createdBy: true, vocabularySnapshotIds: true,
+      sourceScopesJson: true, embeddedVocabulary: true,
+    },
   })) as VersionRow[];
   return new Map(found.map((v) => [v.id, v]));
 }
@@ -90,6 +95,8 @@ async function classificationOf(
       policyId: version.policyId,
       source: version.content,
       locale,
+      embeddedVocabulary: version.embeddedVocabulary,
+      sourceScopesJson: version.sourceScopesJson,
     }));
   }
   const vocabulary = await vocabularies.get(vocabularyKey)!;

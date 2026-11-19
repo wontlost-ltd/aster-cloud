@@ -948,6 +948,9 @@ export interface VersionVocabularyRow {
   vocabularySnapshotIds: unknown;
   /** 版本所属策略：团队策略草稿按「团队词汇 + 作者词汇」取词（ADR 0017）。 */
   policyId?: string | null;
+  /** 版本封印的词汇段与内嵌词汇（ADR 0060）：已审批版本按封印复核合并后的词汇。 */
+  sourceScopesJson: string | null;
+  embeddedVocabulary: string | null;
 }
 
 /**
@@ -969,6 +972,8 @@ export function versionVocabularyLoader(
       policyId: pv.policyId,
       source: pv.content,
       locale,
+      embeddedVocabulary: pv.embeddedVocabulary,
+      sourceScopesJson: pv.sourceScopesJson,
     }, { strict: true });
     cache.set(locale, loaded);
     return loaded;
@@ -1088,6 +1093,8 @@ export async function freezeHandwritten(params: {
         version: true,
         status: true,
         createdBy: true,
+        sourceScopesJson: true,
+        embeddedVocabulary: true,
       },
     });
     if (!pv) {
@@ -1268,7 +1275,10 @@ export async function run(params: {
   // 载入版本内容（replay 需要 source）。★绑 policyId（Codex 复审 #2）：防消费脏 case 用错 policy 版本。
   const pv = await db.query.policyVersions.findFirst({
     where: and(eq(policyVersions.id, policyVersionRowId), eq(policyVersions.policyId, policyId)),
-    columns: { id: true, content: true, aliasSet: true, status: true, createdBy: true, vocabularySnapshotIds: true },
+    columns: {
+      id: true, content: true, aliasSet: true, status: true, createdBy: true, vocabularySnapshotIds: true,
+      sourceScopesJson: true, embeddedVocabulary: true,
+    },
   });
 
   const details: CaseRunDetail[] = [];

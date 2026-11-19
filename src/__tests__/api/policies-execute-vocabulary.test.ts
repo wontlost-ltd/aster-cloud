@@ -170,3 +170,61 @@ describe('POST /api/policies/[id]/execute — 版本冻结词汇', () => {
     expect(mockFindSnapshots).not.toHaveBeenCalled();
   });
 });
+
+// ADR 0060 §7.2–7.3：版本行上的内嵌词汇并入执行词汇；已审批版本按封印复核，不符 409（fail-closed）。
+describe('POST /api/policies/[id]/execute — 版本内嵌词汇', () => {
+  // 用内嵌词汇（而不是冻结快照）提供 Fahrer → Driver、alter → Driver.age
+  const EMBEDDED = '{"v":1,"terms":[{"kind":"field","localized":"alter","canonical":"age","parent":"Driver"},'
+    + '{"kind":"struct","localized":"Fahrer","canonical":"Driver"}]}';
+
+  async function sealOf(embedded: string): Promise<string> {
+    const { withEmbeddedVocabulary } = await import('@/lib/policy-embedded-vocabulary');
+    const { vocabularyScopesJson } = await import('@/lib/policy-alias');
+    return vocabularyScopesJson(withEmbeddedVocabulary(null, embedded, 'de-DE'));
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetSession.mockResolvedValue({ user: { id: 'user-1' } });
+    mockEvaluateSource.mockImplementation(fakeEvaluateSource);
+    mockFindSnapshots.mockResolvedValue([]);
+    mockDbExecute.mockResolvedValue([{ ...policyRow([]), policy_embedded_vocabulary: EMBEDDED }]);
+  });
+
+  it('已审批版本：封印一致 → 内嵌词条随执行词汇透传，结果 42', async () => {
+    mockFindVersions.mockResolvedValue([
+      { id: 'pv-1', version: 1, status: 'APPROVED', isDefault: true, sourceScopesJson: await sealOf(EMBEDDED) },
+    ]);
+
+    const res = await POST(request({ input: { fahrer: { age: 21 } } }), params);
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).output.result).toBe(42);
+    const [, , options] = mockEvaluateSource.mock.calls[0]!;
+    expect(options.vocabulary).toMatchObject({
+      id: 'policy.embedded',
+      structs: [expect.objectContaining({ canonical: 'Driver', localized: 'Fahrer' })],
+      fields: [expect.objectContaining({ canonical: 'age', localized: 'alter', parent: 'Driver' })],
+    });
+  });
+
+  it('已审批版本：内嵌列与封印不符 → 409 vocabulary_seal_mismatch，不执行', async () => {
+    mockFindVersions.mockResolvedValue([{ id: 'pv-1', version: 1, status: 'APPROVED', isDefault: true, sourceScopesJson: '' }]);
+
+    const res = await POST(request({ input: { fahrer: { age: 21 } } }), params);
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: 'vocabulary_seal_mismatch', code: 'vocabulary_seal_mismatch' });
+    expect(mockEvaluateSource).not.toHaveBeenCalled();
+  });
+
+  it('内嵌列无法解析 → 409 vocabulary_seal_mismatch，不退化为无词汇执行', async () => {
+    mockDbExecute.mockResolvedValue([{ ...policyRow([]), policy_embedded_vocabulary: '{"v":1,' }]);
+    mockFindVersions.mockResolvedValue([{ id: 'pv-1', version: 1, status: 'APPROVED', isDefault: true, sourceScopesJson: null }]);
+
+    const res = await POST(request({ input: { fahrer: { age: 21 } } }), params);
+
+    expect(res.status).toBe(409);
+    expect(mockEvaluateSource).not.toHaveBeenCalled();
+  });
+});

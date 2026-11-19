@@ -38,6 +38,7 @@ const policy = { id: 'p1', userId: 'u1', teamId: null };
 const version = (over: Record<string, unknown> = {}) => ({
   id: 'v-row-1', version: 3, source: 'Module m.', content: 'Module m.', aliasSet: null, status: 'APPROVED', createdBy: 'u1',
   policyId: 'p1', vocabularySnapshotIds: null, sourceEnvelopeSha256: null, sourceScopesJson: null, sourceToolchainId: null,
+  embeddedVocabulary: null,
   ...over,
 });
 const run = (v = version()) => checkPackageExportability({ policy, version: v, userId: 'u1' });

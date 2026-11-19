@@ -22,6 +22,7 @@ const policy = { id: 'p1', userId: 'u1', teamId: null };
 const version = (over: Record<string, unknown> = {}) => ({
   version: 1, source: 'Module m.', content: 'Module m.', aliasSet: null, status: 'APPROVED', createdBy: 'u1',
   policyId: 'p1', vocabularySnapshotIds: null, sourceEnvelopeSha256: null, sourceScopesJson: null, sourceToolchainId: null,
+  embeddedVocabulary: null,
   ...over,
 });
 const run = (v = version()) => checkCedarExportability({ policy, version: v, userId: 'u1' });

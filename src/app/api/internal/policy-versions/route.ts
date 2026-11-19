@@ -80,6 +80,7 @@ export async function GET(req: Request) {
       sourceEnvelopeSha256: policyVersions.sourceEnvelopeSha256,
       sourceScopesJson: policyVersions.sourceScopesJson,
       sourceToolchainId: policyVersions.sourceToolchainId,
+      embeddedVocabulary: policyVersions.embeddedVocabulary,
       policyUserId: policies.userId,
       policyTeamId: policies.teamId,
     })
@@ -113,6 +114,7 @@ export async function GET(req: Request) {
       sourceEnvelopeSha256: row.sourceEnvelopeSha256 ?? null,
       sourceScopesJson: row.sourceScopesJson ?? null,
       sourceToolchainId: row.sourceToolchainId ?? null,
+      embeddedVocabulary: row.embeddedVocabulary ?? null,
     }));
   } catch (error) {
     // 词汇加载失败 / 作者词汇非法：不返回无词汇的编译输入（重放结果会被静默算错），按 503 / 400 拒绝

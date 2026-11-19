@@ -27,13 +27,16 @@ const {
   };
 });
 
-const { mockLoadExecutionVocabulary, mockLoadLiveVocabulary } = vi.hoisted(() => ({
+const { mockLoadExecutionVocabulary, mockLoadLiveVocabulary, mockLoadVocabularyForExecution } = vi.hoisted(() => ({
   mockLoadExecutionVocabulary: vi.fn(async (): Promise<Record<string, unknown> | undefined> => undefined),
   mockLoadLiveVocabulary: vi.fn(async (): Promise<Record<string, unknown> | null> => null),
+  // 带内嵌词汇的版本按严格模式加载下层词汇（ADR 0060）
+  mockLoadVocabularyForExecution: vi.fn(async (): Promise<Record<string, unknown> | null> => null),
 }));
 vi.mock('@/lib/domain-vocabulary-snapshot', () => ({
   loadExecutionVocabulary: mockLoadExecutionVocabulary,
   loadLiveVocabularyForPolicy: mockLoadLiveVocabulary,
+  loadVocabularyForExecution: mockLoadVocabularyForExecution,
 }));
 
 vi.mock('@/lib/api-keys', () => ({
@@ -973,6 +976,84 @@ Regel bewerten gegeben person als Fahrer liefert Ganzzahl:
         expect(mockExecutePolicyUnified).toHaveBeenCalledWith(
           expect.objectContaining({ input: { person: { age: 21 } }, vocabulary: deVocab }),
         );
+      });
+    });
+
+    // ADR 0060 §7.2–7.3：版本内嵌词汇并入执行词汇；已审批版本按封印复核，不符 409 且不执行。
+    describe('版本内嵌词汇（v1）', () => {
+      const SOURCE = `Modul e2e0060.vocab.
+
+Definiere Fahrer hat alter als Ganzzahl.
+
+Regel bewerten gegeben person als Fahrer liefert Ganzzahl:
+  wenn person.alter mindestens 18:
+    gib zurück 42.
+  gib zurück 0.
+`;
+      const EMBEDDED = '{"v":1,"terms":[{"kind":"field","localized":"alter","canonical":"age","parent":"Driver"},'
+        + '{"kind":"struct","localized":"Fahrer","canonical":"Driver"}]}';
+      const frozen = { id: 'snap-team', locale: 'de-DE', name: 'team', version: '1', structs: [], fields: [], functions: [] };
+
+      async function seal(): Promise<string> {
+        const { withEmbeddedVocabulary } = await import('@/lib/policy-embedded-vocabulary');
+        const { vocabularyScopesJson } = await import('@/lib/policy-alias');
+        return vocabularyScopesJson(withEmbeddedVocabulary(frozen as never, EMBEDDED, 'de'));
+      }
+
+      function run() {
+        return POST(makeRequest('http://localhost/api/v1/policies/p1/execute', 'POST', { input: { person: { alter: 21 } } }), mockParams);
+      }
+
+      beforeEach(() => {
+        // 本文件桩掉了 cnl-executor 的 locale 识别：用冻结快照引用的 locale（de）确定编译语言
+        setupExecuteRow({
+          policy_content: SOURCE, policy_version: 1, policy_embedded_vocabulary: EMBEDDED,
+          policy_vocab_snapshot_ids: [{ snapshotId: 'snap-team', domain: 'team', locale: 'de' }],
+        });
+        mockLoadVocabularyForExecution.mockResolvedValue(frozen);
+      });
+
+      it('已审批且封印一致：冻结下层词汇 + 内嵌词条一起透传，输入按内嵌词条映射', async () => {
+        vi.mocked(db.query.policyVersions.findMany).mockResolvedValueOnce(
+          [{ id: 'pv-1', version: 1, status: 'APPROVED', isDefault: true, createdBy: 'author-1', sourceScopesJson: await seal() }] as never,
+        );
+
+        const response = await run();
+
+        expect(response.status).toBe(200);
+        expect(mockLoadExecutionVocabulary).not.toHaveBeenCalled();
+        expect(mockLoadVocabularyForExecution).toHaveBeenCalledTimes(1);
+        expect(mockExecutePolicyUnified).toHaveBeenCalledWith(expect.objectContaining({
+          input: { person: { age: 21 } },
+          vocabulary: expect.objectContaining({
+            structs: [expect.objectContaining({ canonical: 'Driver', localized: 'Fahrer' })],
+          }),
+        }));
+      });
+
+      it('已审批而封印不符 → 409 vocabulary_seal_mismatch，不执行', async () => {
+        vi.mocked(db.query.policyVersions.findMany).mockResolvedValueOnce(
+          [{ id: 'pv-1', version: 1, status: 'APPROVED', isDefault: true, createdBy: 'author-1', sourceScopesJson: '' }] as never,
+        );
+
+        const response = await run();
+
+        expect(response.status).toBe(409);
+        expect(await response.json()).toMatchObject({ code: 'vocabulary_seal_mismatch' });
+        expect(mockExecutePolicyUnified).not.toHaveBeenCalled();
+      });
+
+      it('下层词汇加载失败：带内嵌词汇的版本不退化 → 503 vocabulary_unavailable', async () => {
+        vi.mocked(db.query.policyVersions.findMany).mockResolvedValueOnce(
+          [{ id: 'pv-1', version: 1, status: 'APPROVED', isDefault: true, createdBy: 'author-1', sourceScopesJson: await seal() }] as never,
+        );
+        mockLoadVocabularyForExecution.mockRejectedValueOnce(new Error('db down'));
+
+        const response = await run();
+
+        expect(response.status).toBe(503);
+        expect(await response.json()).toMatchObject({ code: 'vocabulary_unavailable' });
+        expect(mockExecutePolicyUnified).not.toHaveBeenCalled();
       });
     });
 

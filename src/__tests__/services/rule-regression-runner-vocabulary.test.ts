@@ -15,7 +15,10 @@ vi.mock('@/lib/prisma', () => ({ db: {} }));
 import { caseVocabulary, evaluateForCapture, versionVocabularyLoader } from '@/services/policy/rule-regression-runner';
 
 const vocabulary = { id: 'grades', locale: 'de-DE', structs: [], fields: [], functions: [] };
-const pv = { content: 'Modul m.', status: 'APPROVED', createdBy: 'a1', vocabularySnapshotIds: [{ snapshotId: 's1' }] };
+const pv = {
+  content: 'Modul m.', status: 'APPROVED', createdBy: 'a1', vocabularySnapshotIds: [{ snapshotId: 's1' }],
+  sourceScopesJson: '{"sealed":1}', embeddedVocabulary: '{"v":1,"terms":[]}',
+};
 
 describe('rule-regression-runner 词汇', () => {
   beforeEach(() => {
@@ -32,6 +35,8 @@ describe('rule-regression-runner 词汇', () => {
     // 严格加载（#650）：回归基线必须与执行同一份词汇，失败不退化为无词汇
     expect(loadVersionExecutionVocabulary).toHaveBeenCalledWith({
       status: 'APPROVED', vocabularySnapshotIds: pv.vocabularySnapshotIds, authorId: 'a1', source: 'Modul m.', locale: 'de-DE',
+      // ADR 0060：封印与内嵌词汇原样带给 execution-input
+      sourceScopesJson: pv.sourceScopesJson, embeddedVocabulary: pv.embeddedVocabulary,
     }, { strict: true });
   });
 
