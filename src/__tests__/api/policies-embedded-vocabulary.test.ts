@@ -252,15 +252,18 @@ describe('PUT /api/policies/[id]: carry forward and change detection', () => {
     expect(h.createVersion).not.toHaveBeenCalled();
   });
 
-  it('a name-only edit never parses the stored value; a source edit carrying a corrupt stored value is a 400', async () => {
-    h.activeVersionFindFirst.mockResolvedValue({ id: 'ver-3', aliasSet: null, sourceScopesJson: null, embeddedVocabulary: '{"v":1,"terms":[]} ' });
-    const rename = await PUT(json('http://localhost/api/policies/p1', 'PUT', { name: 'renamed' }), params);
-    expect(rename.status).toBe(200);
-    const edit = await ROUTES['PUT /api/policies/[id]']({});
-    expect(edit.status).toBe(400);
-    expect(await edit.json()).toMatchObject({ code: 'embedded_vocabulary_invalid_format' });
-    expect(h.createVersion).not.toHaveBeenCalled();
-  });
+  it.each([['non-canonical', '{"v":1,"terms":[]} '], ['empty string', '']])(
+    'a name-only edit never parses the stored value; a source edit carrying a corrupt (%s) stored value is a 400',
+    async (_name, stored) => {
+      h.activeVersionFindFirst.mockResolvedValue({ id: 'ver-3', aliasSet: null, sourceScopesJson: null, embeddedVocabulary: stored });
+      const rename = await PUT(json('http://localhost/api/policies/p1', 'PUT', { name: 'renamed' }), params);
+      expect(rename.status).toBe(200);
+      const edit = await ROUTES['PUT /api/policies/[id]']({});
+      expect(edit.status).toBe(400);
+      expect(await edit.json()).toMatchObject({ code: 'embedded_vocabulary_invalid_format' });
+      expect(h.createVersion).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe.each(ROUTE_NAMES)('%s: merged vocabulary, shadowing and gating', (route) => {

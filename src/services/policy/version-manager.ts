@@ -172,7 +172,7 @@ async function freezeApprovalVocabulary(
     };
   if (!version.createdBy) {
     // 无作者不冻结任何下层词汇；带内嵌词汇时仍按封印复核（下层为空）
-    if (version.embeddedVocabulary) verifyVocabulary?.(null);
+    if (version.embeddedVocabulary != null) verifyVocabulary?.(null);
     return [];
   }
   try {

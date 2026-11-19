@@ -400,12 +400,13 @@ export function withEmbeddedVocabulary(
 }
 
 /**
- * 解析版本行上已存的内嵌词汇文本；NULL / 空串 → null。文本必须是可解析的规范序列化
+ * 解析版本行上已存的内嵌词汇文本；NULL → null（空串视为损坏）。文本必须是可解析的规范序列化
  * （与建版本时写入的字节相同），否则抛 `embedded_vocabulary_invalid_format`。
  * 读路径与 PUT 省略字段时的沿用共用此口径。
  */
 export function parseStoredEmbeddedVocabulary(embeddedText: string | null | undefined): EmbeddedVocabulary | null {
-  if (!embeddedText) return null;
+  // 只有 NULL 表示无内嵌词条；空串不是任何规范序列化，按损坏文本 fail-closed（解析失败）
+  if (embeddedText === null || embeddedText === undefined) return null;
   let raw: unknown;
   try {
     raw = JSON.parse(embeddedText);
