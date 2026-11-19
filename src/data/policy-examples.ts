@@ -9,7 +9,9 @@
  * 每个示例都有三种语言的原生 CNL 源码
  */
 
+import type { PolicyLayout } from '@aster-cloud/aster-lang-ts/layout';
 import { ASTER_POLICY_TEMPLATES, STARTER_TEMPLATE_ID } from '@/config/aster-policy-templates';
+import { jingyesiShowcaseExample } from './policy-example-showcase';
 
 // ============================================
 // 类型定义
@@ -17,7 +19,7 @@ import { ASTER_POLICY_TEMPLATES, STARTER_TEMPLATE_ID } from '@/config/aster-poli
 
 export type SupportedLocale = 'en-US' | 'zh-CN' | 'de-DE';
 
-export type PolicyCategory = 'starter' | 'loan' | 'creditcard' | 'fraud' | 'healthcare' | 'auto-insurance';
+export type PolicyCategory = 'starter' | 'loan' | 'creditcard' | 'fraud' | 'healthcare' | 'auto-insurance' | 'showcase';
 
 export interface PolicyExampleInput {
   [key: string]: unknown;
@@ -28,12 +30,39 @@ export interface LocalizedMetadata {
   description: string;
 }
 
+/**
+ * 模板应用前须满足的能力。缺省 = 无要求（只替换源码的普通模板）。
+ * 不满足时模板在选择器里显示为锁定，不可应用。
+ */
+export interface TemplateRequirements {
+  /** 需要结构化编写能力（显示排版随模板写入，ADR 0058）。 */
+  structuredAuthoring?: boolean;
+  /** 需要结构词别名授权（aliasSet 含 MODULE_DECL / RETURN 等结构词 kind）。 */
+  structuralAliases?: boolean;
+}
+
+/** 调用方当前具备的能力（服务端判定后下发，见 PolicyFormProps）。 */
+export interface TemplateCapabilities {
+  structuredAuthoring: boolean;
+  structuralAliases: boolean;
+}
+
 export interface PolicyExample {
   id: string;
   category: PolicyCategory;
   groupId: string; // 使用 ID 而非本地化文本
+  /** 各语种源码。设了 cnlLocale 的模板只有该语种一份源码，三个键指向同一份。 */
   sources: Record<SupportedLocale, string>;
-  metadata: Record<SupportedLocale, LocalizedMetadata>;
+  /** hi-IN 只有元数据（模板源码只有 en/zh/de 三套）；缺省回退 en-US。 */
+  metadata: Record<SupportedLocale, LocalizedMetadata> & { 'hi-IN'?: LocalizedMetadata };
+  /** 模板固定的策略 CNL 语言：应用时编辑器切到该语言，与界面语言无关。缺省按编辑器当前语言取源码。 */
+  cnlLocale?: SupportedLocale;
+  /** 随模板写入的关键词别名（应用时整体替换编辑器的 aliasSet）。须过 validateUserAliases。 */
+  aliasSet?: Readonly<Record<string, readonly string[]>>;
+  /** 随模板写入的显示排版；toCanonical(layout) 必须等于该模板的源码。 */
+  layout?: PolicyLayout;
+  /** 应用前须具备的能力；不满足时锁定。 */
+  requires?: TemplateRequirements;
   /**
    * 各语种的示例输入。
    *
@@ -1055,6 +1084,7 @@ export const POLICY_EXAMPLES: PolicyExample[] = [
   autoInsuranceExample,
   fraudExample,
   creditcardExample,
+  jingyesiShowcaseExample,
 ];
 
 // 按类别分组
@@ -1065,6 +1095,7 @@ export const POLICY_EXAMPLES_BY_CATEGORY: Record<PolicyCategory, PolicyExample[]
   fraud: POLICY_EXAMPLES.filter((e) => e.category === 'fraud'),
   healthcare: POLICY_EXAMPLES.filter((e) => e.category === 'healthcare'),
   'auto-insurance': POLICY_EXAMPLES.filter((e) => e.category === 'auto-insurance'),
+  showcase: POLICY_EXAMPLES.filter((e) => e.category === 'showcase'),
 };
 
 // ============================================
@@ -1075,7 +1106,26 @@ export const POLICY_EXAMPLES_BY_CATEGORY: Record<PolicyCategory, PolicyExample[]
  * 获取示例的源码（根据语言）
  */
 export function getExampleSource(example: PolicyExample, locale: SupportedLocale): string {
+  if (example.cnlLocale) return example.sources[example.cnlLocale];
   return example.sources[locale] || example.sources['en-US'];
+}
+
+/** 模板实际提供源码的语种：固定语言的模板只有 cnlLocale 一种，其余为全部语种键。 */
+export function getExampleLocales(example: PolicyExample): SupportedLocale[] {
+  return example.cnlLocale ? [example.cnlLocale] : (Object.keys(example.sources) as SupportedLocale[]);
+}
+
+/** 模板除源码外还带别名或排版（应用时一并替换，不能只插入到光标）。 */
+export function hasTemplateExtras(example: PolicyExample): boolean {
+  return Boolean(example.layout) || Object.keys(example.aliasSet ?? {}).length > 0;
+}
+
+/** 调用方能否应用该模板：requires 中每一项都须具备。 */
+export function isTemplateAvailable(example: PolicyExample, capabilities: TemplateCapabilities): boolean {
+  const requires = example.requires ?? {};
+  if (requires.structuredAuthoring && !capabilities.structuredAuthoring) return false;
+  if (requires.structuralAliases && !capabilities.structuralAliases) return false;
+  return true;
 }
 
 /** 模板比对用的源码规范化：统一换行、去行尾空白与首尾空行（保存/粘贴可能改变这些）。 */
@@ -1101,7 +1151,7 @@ export function findExampleDefaultInput(
 ): PolicyExampleInput | null {
   const normalized = normalizeExampleSource(content);
   for (const example of POLICY_EXAMPLES) {
-    for (const locale of Object.keys(example.sources) as SupportedLocale[]) {
+    for (const locale of getExampleLocales(example)) {
       if (normalizeExampleSource(example.sources[locale]) !== normalized) continue;
       const input = example.defaultInputs[locale];
       const keys = Object.keys(input);
@@ -1116,16 +1166,20 @@ export function findExampleDefaultInput(
  * 获取示例名称（根据语言）
  */
 export function getExampleName(example: PolicyExample, locale: SupportedLocale | string): string {
-  const normalizedLocale = normalizeLocale(locale);
-  return example.metadata[normalizedLocale]?.name || example.metadata['en-US'].name;
+  return metadataFor(example, locale).name;
+}
+
+/** 元数据按界面语言取：hi 有 hi-IN 元数据时用它，其余按 normalizeLocale，缺失回退 en-US。 */
+function metadataFor(example: PolicyExample, locale: SupportedLocale | string): LocalizedMetadata {
+  if (locale.startsWith('hi') && example.metadata['hi-IN']) return example.metadata['hi-IN'];
+  return example.metadata[normalizeLocale(locale)] ?? example.metadata['en-US'];
 }
 
 /**
  * 获取示例描述（根据语言）
  */
 export function getExampleDescription(example: PolicyExample, locale: SupportedLocale | string): string {
-  const normalizedLocale = normalizeLocale(locale);
-  return example.metadata[normalizedLocale]?.description || example.metadata['en-US'].description;
+  return metadataFor(example, locale).description;
 }
 
 /**
@@ -1155,6 +1209,7 @@ export const CATEGORY_LABELS: Record<PolicyCategory, Record<SupportedLocale, str
   fraud: { 'en-US': 'Fraud Detection', 'zh-CN': '欺诈检测', 'de-DE': 'Betrugserkennung' },
   healthcare: { 'en-US': 'Healthcare', 'zh-CN': '医疗', 'de-DE': 'Gesundheitswesen' },
   'auto-insurance': { 'en-US': 'Auto Insurance', 'zh-CN': '汽车保险', 'de-DE': 'Kfz-Versicherung' },
+  showcase: { 'en-US': 'Showcase', 'zh-CN': '特色示例', 'de-DE': 'Showcase' },
 };
 
 /**

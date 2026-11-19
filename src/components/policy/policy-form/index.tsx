@@ -87,7 +87,7 @@ import { EditorRail } from './editor-rail';
 import type { StructuredAuthoringProps } from '@/lib/capabilities/types';
 import { StarterHint } from './starter-hint';
 import { CNLSyntaxConverterDialog } from '@/components/policy/cnl-syntax-converter-dialog';
-import { type PolicyExample, getExampleSource } from '@/data/policy-examples';
+import { type PolicyExample, getExampleSource, hasTemplateExtras } from '@/data/policy-examples';
 import { trackProductEvent } from '@/lib/product-events/client';
 import { extractReservedAliasSets, getLexicon } from '@/lib/aster-lexicon';
 import { validateUserAliases } from '@/lib/policy-alias-shared';
@@ -549,26 +549,44 @@ export function PolicyForm({
       // setContent 是编辑器内容的唯一真相源（Monaco 受控于 value），直接整体
       // 替换即清空并写入模板；无需先手动清空。
       setContent(body);
+      if (hasTemplateExtras(tpl)) {
+        // 带别名 / 排版的模板（#791）：源码依赖这些别名，整体替换 aliasSet；排版只在有结构化编写能力时写入
+        // （无能力时模板本就锁定，这里是兜底）。固定语言的模板同时切换策略 CNL 语言。
+        setAliasSet(Object.fromEntries(Object.entries(tpl.aliasSet ?? {}).map(([kind, words]) => [kind, [...words]])));
+        if (tpl.layout && structuredAuthoring.allowed) {
+          setLayoutDraft({ kind: 'edited', layout: tpl.layout });
+          setSideBySide(true);
+        }
+      } else {
+        // 普通模板只换源码；但之前编辑过的排版已对不上新源码，保存时必被拒（往返不符），退回「未动」。
+        setLayoutDraft((draft) =>
+          draft.kind === 'edited' && toCanonical(draft.layout) !== body ? { kind: 'untouched' } : draft,
+        );
+      }
+      if (tpl.cnlLocale) setChosenCnlLocale(tpl.cnlLocale);
       const previousAutoName = autoTemplateName.current;
       setName((prev) => nextTemplateName(prev, previousAutoName, tpl.id));
       autoTemplateName.current = tpl.id;
       toast.success(t('templateReplaced'));
       if (mode === 'create') trackProductEvent('template_selected', { templateId: tpl.id, source: 'picker' });
     },
-    [exampleLocale, t, mode],
+    [exampleLocale, t, mode, structuredAuthoring.allowed],
   );
 
   /** 侧栏「模板」tab 点击入口：编辑器有内容先弹确认（防误抹未保存草稿），
    *  为空则直接替换。 */
   const requestTemplateReplace = useCallback(
     (tpl: PolicyExample) => {
-      if (content.trim().length > 0) {
+      // 带别名 / 排版的模板还会覆盖已有别名与已编辑的排版：编辑器为空但这些不为空时也先确认。
+      const overwritesExtras =
+        hasTemplateExtras(tpl) && (Object.keys(aliasSet).length > 0 || layoutDraft.kind === 'edited');
+      if (content.trim().length > 0 || overwritesExtras) {
         setPendingTemplate(tpl);
       } else {
         applyTemplateReplace(tpl);
       }
     },
-    [content, applyTemplateReplace],
+    [content, aliasSet, layoutDraft.kind, applyTemplateReplace],
   );
 
   /** Trigger Monaco's built-in format-document action. */
@@ -1281,7 +1299,11 @@ export function PolicyForm({
         <ConfirmDialog
           isOpen={pendingTemplate !== null}
           title={t('templateReplaceTitle')}
-          description={t('templateReplaceDescription')}
+          description={
+            pendingTemplate && hasTemplateExtras(pendingTemplate)
+              ? t('templateReplaceDescriptionExtras')
+              : t('templateReplaceDescription')
+          }
           confirmLabel={t('replace')}
           cancelLabel={tCommon('cancel')}
           variant="warning"

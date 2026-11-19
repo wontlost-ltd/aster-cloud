@@ -1,11 +1,11 @@
 // 执行页预填模板的 defaultInputs（2026-10-30 生产复测 G：由内置模板创建的策略，执行页预填的是
 // 按参数类型生成的空字符串示例 {"driver":{"id":"","age":"",…}}，而不是模板自带的 defaultInputs）。
 import { describe, it, expect } from 'vitest';
-import { POLICY_EXAMPLES, findExampleDefaultInput, type SupportedLocale } from '@/data/policy-examples';
+import { POLICY_EXAMPLES, findExampleDefaultInput, getExampleLocales } from '@/data/policy-examples';
 
 describe('findExampleDefaultInput', () => {
   for (const example of POLICY_EXAMPLES) {
-    for (const locale of Object.keys(example.sources) as SupportedLocale[]) {
+    for (const locale of getExampleLocales(example)) {
       it(`${example.id} [${locale}]：源码一致且参数名对得上 → 返回该语种的 defaultInputs`, () => {
         const input = example.defaultInputs[locale];
         expect(findExampleDefaultInput(example.sources[locale], Object.keys(input))).toEqual(input);

@@ -32,8 +32,15 @@ import {
   type PolicyExample,
   getExampleName,
   getExampleDescription,
+  hasTemplateExtras,
   normalizeLocale,
 } from '@/data/policy-examples';
+
+/**
+ * 命令面板只「插入到光标」，插入不了模板自带的关键词别名与显示排版；带这些的模板（#791 展示模板）
+ * 只经侧栏「模板」标签整体替换，不出现在这里。
+ */
+const INSERTABLE_TEMPLATES = POLICY_EXAMPLES.filter((tpl) => !hasTemplateExtras(tpl));
 
 /**
  * In-editor ⌘K command palette.
@@ -250,8 +257,8 @@ export function EditorPalette({
 
   const filteredTemplates = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return POLICY_EXAMPLES;
-    return POLICY_EXAMPLES.filter((tpl) => {
+    if (!q) return INSERTABLE_TEMPLATES;
+    return INSERTABLE_TEMPLATES.filter((tpl) => {
       const hay = (
         getExampleName(tpl, uiLocale) +
         ' ' +

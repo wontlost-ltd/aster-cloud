@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { detectCNLLocale } from '@/services/policy/cnl-executor';
-import { POLICY_EXAMPLES, type SupportedLocale } from '@/data/policy-examples';
+import { POLICY_EXAMPLES, getExampleLocales } from '@/data/policy-examples';
 
 /**
  * CNL 语种检测必须按**词**匹配，不能用子串包含。
@@ -39,7 +39,7 @@ describe('detectCNLLocale — 按词匹配而非子串', () => {
   it('★15 个内置样例（5 示例 × 3 语种）语种检测全部正确', () => {
     const wrong: string[] = [];
     for (const ex of POLICY_EXAMPLES) {
-      for (const loc of Object.keys(ex.sources) as SupportedLocale[]) {
+      for (const loc of getExampleLocales(ex)) {
         const got = detectCNLLocale(ex.sources[loc]);
         if (got !== loc) wrong.push(`${ex.id}[${loc}] -> ${got}`);
       }

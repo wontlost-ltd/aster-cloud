@@ -39,15 +39,8 @@ import type {
   CompileState,
 } from './use-compile';
 import { MetaSection } from './meta-section';
-import {
-  POLICY_EXAMPLES,
-  CATEGORY_LABELS,
-  type PolicyExample,
-  getExampleName,
-  getExampleDescription,
-  normalizeLocale,
-  type SupportedLocale,
-} from '@/data/policy-examples';
+import { normalizeLocale, type PolicyExample } from '@/data/policy-examples';
+import { TemplatesTab } from './templates-tab';
 import { cn } from '@/components/ui';
 import { useIsMobile } from './use-is-mobile';
 import { VocabularyDiagnosticLink } from '@/components/policy/vocabulary-diagnostic-link';
@@ -344,7 +337,10 @@ export function SidePanel({
             <div className="rounded-xl border border-border bg-bg shadow-sm">
               <TemplatesTab
                 uiLocale={uiLocale}
-                cnlLocale={normalizeLocale(cnlLocale)}
+                capabilities={{
+                  structuredAuthoring: structuredAuthoring.allowed,
+                  structuralAliases: allowStructuralAliases,
+                }}
                 // Picking a template fully delegates to the parent's
                 // template handler — which in PR-3 inserts at cursor
                 // rather than wiping the form body. We deliberately
@@ -562,66 +558,6 @@ function DecisionInputRefs({
         ))}
       </ul>
       {requiresSignature && <p className="mt-1.5 text-fg-muted">{t('decisionInputRefsVerifiedHint')}</p>}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Templates tab                                                       */
-/* ------------------------------------------------------------------ */
-
-function TemplatesTab({
-  uiLocale,
-  onSelect,
-}: {
-  uiLocale: string;
-  cnlLocale: SupportedLocale;
-  onSelect: (t: PolicyExample) => void;
-}) {
-  const categories = Object.keys(CATEGORY_LABELS) as Array<
-    keyof typeof CATEGORY_LABELS
-  >;
-  // 点击模板会清空并整体替换编辑器内容（非插入到光标）。文案本仓内联三语，
-  // 避免为一句提示走 ui-messages 跨仓发版。
-  const hint = uiLocale.startsWith('zh')
-    ? '点击模板会清空编辑器并替换为该模板内容。'
-    : uiLocale.startsWith('de')
-      ? 'Ein Klick ersetzt den gesamten Editorinhalt durch die Vorlage.'
-      : 'Picking a template clears the editor and replaces its content.';
-
-  return (
-    // 内边距对齐关键词别名/策略信息卡片（px-5 py-5），各 tab 内容起始位置一致。
-    <div className="space-y-4 px-5 py-5">
-      <p className="text-xs text-fg-muted">{hint}</p>
-      {categories.map((category) => {
-        const items = POLICY_EXAMPLES.filter((e) => e.category === category);
-        if (items.length === 0) return null;
-        return (
-          <div key={category}>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-subtle">
-              {CATEGORY_LABELS[category][normalizeLocale(uiLocale)]}
-            </h3>
-            <ul className="space-y-1">
-              {items.map((example) => (
-                <li key={example.id}>
-                  <button
-                    type="button"
-                    onClick={() => onSelect(example)}
-                    className="w-full rounded-md px-2 py-1.5 text-left transition-colors hover:bg-bg-subtle focus-visible:outline-none focus-visible:shadow-ring"
-                  >
-                    <div className="text-sm font-medium text-fg">
-                      {getExampleName(example, uiLocale)}
-                    </div>
-                    <div className="mt-0.5 text-xs text-fg-muted">
-                      {getExampleDescription(example, uiLocale)}
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        );
-      })}
     </div>
   );
 }

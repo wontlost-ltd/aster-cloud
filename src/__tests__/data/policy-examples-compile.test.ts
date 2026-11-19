@@ -9,13 +9,20 @@
 
 import { describe, it, expect } from 'vitest';
 import { compileAndTypecheck, evaluate, EN_US, ZH_CN, DE_DE } from '@aster-cloud/aster-lang-ts/browser';
-import { POLICY_EXAMPLES, type SupportedLocale } from '@/data/policy-examples';
+import { POLICY_EXAMPLES, getExampleLocales, type PolicyExample, type SupportedLocale } from '@/data/policy-examples';
+import { withUserAliases } from '@/lib/aster-lexicon';
 
 const LEXICONS: Record<SupportedLocale, unknown> = {
   'en-US': EN_US,
   'zh-CN': ZH_CN,
   'de-DE': DE_DE,
 };
+
+/** 样例按其固定语言（cnlLocale）与自带关键词别名编译，与编辑器应用模板后的输入一致（#791）。 */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const lexiconFor = (example: PolicyExample, locale: SupportedLocale): any =>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  withUserAliases(LEXICONS[example.cnlLocale ?? locale] as any, example.aliasSet);
 
 // 全部内置样例（en-US / zh-CN / de-DE）现已编译零错误，无 known-failing。
 // 历史失败已根治：
@@ -27,7 +34,7 @@ const KNOWN_FAILING = new Set<string>();
 
 describe('内置策略样例编译验证（防 Undefined variable / 语法错误）', () => {
   for (const example of POLICY_EXAMPLES) {
-    for (const locale of Object.keys(example.sources) as SupportedLocale[]) {
+    for (const locale of getExampleLocales(example)) {
       if (KNOWN_FAILING.has(`${example.id}:${locale}`)) {
         it.todo(`${example.id} [${locale}] 编译零错误（known failing — 见样例治理 issue）`);
         continue;
@@ -36,8 +43,7 @@ describe('内置策略样例编译验证（防 Undefined variable / 语法错误
         const src = example.sources[locale];
         expect(src, `${example.id} 缺少 ${locale} 源`).toBeTruthy();
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const r = compileAndTypecheck(src, { lexicon: LEXICONS[locale] as any });
+        const r = compileAndTypecheck(src, { lexicon: lexiconFor(example, locale) });
 
         const parseErrors = (r.parseErrors ?? []).map((e) =>
           typeof e === 'object' && e !== null && 'message' in e
@@ -79,14 +85,13 @@ describe('内置策略样例执行验证（防「编译过但跑不了」）', (
   }
 
   for (const example of POLICY_EXAMPLES) {
-    for (const locale of Object.keys(example.sources) as SupportedLocale[]) {
+    for (const locale of getExampleLocales(example)) {
       it(`${example.id} [${locale}] 用自带 defaultInput 执行成功`, () => {
         const src = example.sources[locale];
         const input = example.defaultInputs?.[locale];
         expect(input, `${example.id} 缺少 ${locale} 的 defaultInputs`).toBeTruthy();
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const c = compileAndTypecheck(src, { lexicon: LEXICONS[locale] as any });
+        const c = compileAndTypecheck(src, { lexicon: lexiconFor(example, locale) });
         expect(c.core, `${example.id} [${locale}] 未产出 Core IR`).toBeTruthy();
 
         const fn = entryFn(src);
@@ -108,7 +113,7 @@ describe('内置策略样例执行验证（防「编译过但跑不了」）', (
    * 报错会是含糊的执行失败；这条让失败信息直接指出键名不匹配。
    */
   for (const example of POLICY_EXAMPLES) {
-    for (const locale of Object.keys(example.sources) as SupportedLocale[]) {
+    for (const locale of getExampleLocales(example)) {
       it(`${example.id} [${locale}] defaultInput 顶层键 = 规则参数名`, () => {
         const src = example.sources[locale];
         const m =
