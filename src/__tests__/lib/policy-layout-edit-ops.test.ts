@@ -150,15 +150,21 @@ describe('offsetAt / positionAt', () => {
     expect(offsetAt(text, 2, 1)).toBe(4);
     expect([...'a😀\n'].length).toBe(3);
   });
-  it('\\r\\n：第 2 行第 1 列在 \\r\\n 之后，\\r 属于上一行末尾', () => {
+  it('\\r\\n：第 2 行第 1 列在 \\r\\n 之后，\\r 属于上一行的行尾（最大列不含它，与 Monaco 一致）', () => {
     const text = 'ab\r\ncd';
     expect(offsetAt(text, 2, 1)).toBe(4);
+    expect(offsetAt(text, 1, 3)).toBe(2);
+    expect(codeOf(() => offsetAt(text, 1, 4))).toBe('out_of_range');
     expect(positionAt(text, 2)).toEqual({ line: 1, column: 3 });
+    // \r 与 \n 之间的偏移没有 Monaco 位置：归到行尾
+    expect(positionAt(text, 3)).toEqual({ line: 1, column: 3 });
     expect(positionAt(text, 4)).toEqual({ line: 2, column: 1 });
+    expect(offsetAtClamped(text, 1, 99)).toBe(2);
   });
-  it('二者互逆', () => {
-    const text = '模块 a。\r\n😀 x\n\ny';
+  it('二者互逆（\\r\\n 中间的偏移除外）', () => {
+    const text = '模块 a。\r\n😀 x\n\ny\r\n';
     for (let o = 0; o <= text.length; o++) {
+      if (text[o - 1] === '\r' && text[o] === '\n') continue;
       const p = positionAt(text, o);
       expect(offsetAt(text, p.line, p.column)).toBe(o);
     }

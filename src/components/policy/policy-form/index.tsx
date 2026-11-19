@@ -425,8 +425,12 @@ export function PolicyForm({
   const paneHighlight = useMemo(() => {
     if (!paneLayout || !canonicalSelection) return null;
     let { start, end } = canonicalSelection;
-    // 光标没有选区时高亮光标后的一个字符（码点；行末 / 文末取前一个），否则零宽区间在 display 里看不见
+    // 光标没有选区时高亮光标后的一个字符（码点；行末 / 文末取前一个），否则零宽区间在 display 里看不见。
+    // 光标若落在代理对中间先退到码点起点，不高亮半个字符。
     if (start === end) {
+      const high = content.charCodeAt(start - 1);
+      const low = content.charCodeAt(start);
+      if (high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff) start = end = start - 1;
       if (start < content.length) end = start + (content.codePointAt(start)! > 0xffff ? 2 : 1);
       else if (start > 0) start = end - (start >= 2 && content.codePointAt(start - 2)! > 0xffff ? 2 : 1);
     }

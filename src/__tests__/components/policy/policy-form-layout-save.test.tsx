@@ -357,6 +357,9 @@ describe('并排视图', () => {
     act(() => layoutTabProps()!.onSideBySideChange(true));
     select({ startLineNumber: 1, startColumn: 9, endLineNumber: 1, endColumn: 9 });
     expect(h.display!.highlight).toEqual({ start: 8, end: 10 });
+    // 光标落在代理对中间：退到码点起点，仍高亮整个 emoji
+    select({ startLineNumber: 1, startColumn: 10, endLineNumber: 1, endColumn: 10 });
+    expect(h.display!.highlight).toEqual({ start: 8, end: 10 });
   });
 
   it('点击 display 偏移：setPosition 的行列等于 positionAt(displayToCanonical(...).start)', () => {

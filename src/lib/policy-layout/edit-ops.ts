@@ -111,11 +111,18 @@ export function setStructuralDisplay(layout: PolicyLayout, index: number, displa
   return { v: 1, spans };
 }
 
-/** 各行起点偏移；只按 `\n` 断行（`\r\n` 的 `\r` 留在上一行末尾，与 Monaco 行模型一致）。 */
+/** 各行起点偏移；只按 `\n` 断行（`\r\n` 的 `\r` 属于上一行的行尾，与 Monaco 行模型一致）。 */
 function lineStarts(text: string): number[] {
   const starts = [0];
   for (let i = text.indexOf('\n'); i !== -1; i = text.indexOf('\n', i + 1)) starts.push(i + 1);
   return starts;
+}
+
+/** 第 `line` 行（1 起始）内容的结束偏移：不含行尾的 `\n` 与其前的 `\r`（Monaco 的最大列 = 内容长度 + 1）。 */
+function lineContentEnd(text: string, starts: readonly number[], line: number): number {
+  if (line >= starts.length) return text.length;
+  const newline = starts[line] - 1;
+  return newline > starts[line - 1] && text.charCodeAt(newline - 1) === 0x0d ? newline - 1 : newline;
 }
 
 /** 1 起始的行列 → UTF-16 偏移。列可到行尾之后一位（行末插入点）。 */
@@ -123,7 +130,7 @@ export function offsetAt(text: string, line: number, column: number): number {
   const starts = lineStarts(text);
   if (!Number.isInteger(line) || line < 1 || line > starts.length) fail('out_of_range');
   const lineStart = starts[line - 1];
-  const lineEnd = line < starts.length ? starts[line] - 1 : text.length;
+  const lineEnd = lineContentEnd(text, starts, line);
   if (!Number.isInteger(column) || column < 1 || column > lineEnd - lineStart + 1) fail('out_of_range');
   return lineStart + column - 1;
 }
@@ -136,17 +143,21 @@ export function offsetAtClamped(text: string, line: number, column: number): num
   const starts = lineStarts(text);
   const l = Math.min(Math.max(Math.trunc(line) || 1, 1), starts.length);
   const lineStart = starts[l - 1];
-  const lineEnd = l < starts.length ? starts[l] - 1 : text.length;
+  const lineEnd = lineContentEnd(text, starts, l);
   return lineStart + Math.min(Math.max(Math.trunc(column) || 1, 1), lineEnd - lineStart + 1) - 1;
 }
 
-/** UTF-16 偏移 → 1 起始的行列；`offsetAt` 的逆。 */
+/**
+ * UTF-16 偏移 → 1 起始的行列；`offsetAt` 的逆。落在 `\r\n` 两个 code unit 之间的偏移没有对应的 Monaco 位置，
+ * 归到该行行尾（`\r` 之前），与 Monaco 对这类位置的夹取一致。
+ */
 export function positionAt(text: string, offset: number): { line: number; column: number } {
   assertOffset(offset, text.length);
-  const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
+  const at = offset > 0 && text.charCodeAt(offset - 1) === 0x0d && text.charCodeAt(offset) === 0x0a ? offset - 1 : offset;
+  const lineStart = text.lastIndexOf('\n', at - 1) + 1;
   let line = 1;
-  for (let i = text.indexOf('\n'); i !== -1 && i < offset; i = text.indexOf('\n', i + 1)) line++;
-  return { line, column: offset - lineStart + 1 };
+  for (let i = text.indexOf('\n'); i !== -1 && i < at; i = text.indexOf('\n', i + 1)) line++;
+  return { line, column: at - lineStart + 1 };
 }
 
 /**
