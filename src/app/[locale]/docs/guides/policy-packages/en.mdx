@@ -1,0 +1,204 @@
+---
+title: "Export a policy as a runnable package"
+description: "Download an approved policy version as a signed package and run it outside Aster Cloud with the Aster CLI: verify the signature first, then run it."
+updated: 2026-11-19
+apiVersion: v1
+---
+
+# Export a policy as a runnable package
+
+A **policy package** is a zip file that holds the source and metadata of one approved version of a policy. You run it on your own machines with the Aster command-line tool (CLI): the CLI checks the platform's signature, compiles the source locally, confirms that the result is the same program the platform approved, and only then evaluates it. Running a package makes no call to Aster Cloud.
+
+<Callout type="info" title="Rollout">
+Package export is being switched on in stages. Until it is on for your workspace, the **Export** menu on a policy's detail page shows only **Cedar policy** (or the single **Export to Cedar** button). **JRE packages** come first. **Node packages are coming later**: the Node item appears in the menu once the platform's Node toolchain check is live. The Node instructions below describe how it will work.
+</Callout>
+
+## Before you start
+
+- **A paid plan.** Exporting policy packages needs the Pro or Enterprise plan; it is not available on Free. For a team policy, the team owner's plan counts. Exporting to Cedar is not affected by the plan.
+- **An approved version.** The export always uses the version that runs when no version is specified: the default approved version, otherwise the latest approved one. Drafts are never exported, because that would bypass approval. If the policy has no approved version, the menu says *Approve a version before exporting a package*. See [Approvals](/docs/how-to/approvals).
+- **View access** to the policy is enough. A team member who can only view a team policy can export it.
+- **A runtime on the machine that runs the package:** Java 25 or later for a JRE package, Node.js 24 or later for a Node package.
+
+## Export a package
+
+1. Open the policy's detail page and choose **Export** in the actions at the top right.
+2. Choose **Policy package (JRE)**. (**Policy package (Node)** appears here once Node export is available.)
+3. If the policy has several entry functions and none of them is marked as the entry, choose the one to export. A package has exactly one entry function.
+4. The browser downloads `<module>-v<version>-jre-b.zip`, for example `credit.limit-v3-jre-b.zip`. The panel shows the **SHA-256 of the zip**; copy it to check the file later.
+
+If an item is disabled, the policy cannot be exported for that runtime. Choose **Show reasons** to see the diagnostics (see [Why an export is refused](#why-an-export-is-refused)).
+
+Each export is recorded in your workspace's audit chain as a `POLICY_EXPORTED` event with the SHA-256 of the zip, the SHA-256 of the manifest, the Core IR hash, the CLI version and the number of probes, so a package you find later can be traced back to its export.
+
+## What a package is — and what it is not
+
+The zip contains one folder with:
+
+| File | Content |
+| --- | --- |
+| `README.md` | How to verify and run this package, in the language of your interface (English for Hindi) |
+| `manifest.json` | What the package contains: entry function, source hash, Core IR hash, effects, CLI version, a hash and size for every file |
+| `manifest.sig.json` | The platform's Ed25519 signature over `manifest.json` |
+| `SHA256SUMS` | Checksums in `sha256sum -c` format, to locate a damaged file |
+| `policy/policy.aster` | The source of the approved version, byte for byte |
+| `policy/compile/` | The alias set and, if the version uses one, the frozen vocabulary |
+| `schema/input.json`, `schema/output.json` | JSON Schema of the entry function's input and result |
+| `tests/probes.json` | Sample inputs with the results the platform computed for them |
+
+There is no compiled code in a package. That is what the `b` at the end of the name means: source and metadata, compiled by the CLI you install.
+
+A package is **not** a governed deployment:
+
+- **It is not a Guard execution point.** Running it records nothing in Aster Cloud, issues no execution receipt and enforces no approval. `require_approval` and `escalate` are plain return values that your code has to handle. For governed execution, use [Aster Guard](/docs/how-to/guard).
+- **Facts are not verified.** Inputs are taken as given, including fields that would come from signed facts on the platform.
+- **Probes are a sample.** `tests/probes.json` shows that the CLI and the platform agree on those inputs; it is not a proof that they agree on every input.
+- **A package cannot be revoked.** Once downloaded, it keeps working even if the version is later withdrawn on the platform. Check the version you run against the platform when it matters.
+
+Only pure policies can be exported: no IO, no workflows, and only built-in functions that the target runtime implements.
+
+## Install the CLI
+
+Install the CLI version the package was built for. It is recorded in the package as `runtime.cli.version` and printed in its `README.md`. The first JRE release is **1.0.50**.
+
+### JRE
+
+Download the jar, its checksum and the `aster` launcher from the [aster-lang-truffle release](https://github.com/aster-cloud/aster-lang-truffle/releases) of that version, and check the jar:
+
+```bash
+VER=1.0.50
+BASE=https://github.com/aster-cloud/aster-lang-truffle/releases/download/v$VER
+curl -sSLO $BASE/aster-cli-$VER.jar
+curl -sSLO $BASE/aster-cli-$VER.jar.sha256
+curl -sSLO $BASE/aster
+sha256sum -c aster-cli-$VER.jar.sha256    # macOS without sha256sum: shasum -a 256 -c …
+chmod +x aster
+./aster version
+```
+
+The launcher `aster` (`aster.cmd` on Windows) runs `java --sun-misc-unsafe-memory-access=allow -jar aster-cli-<version>.jar`; the flag only silences a warning that JDK 25 prints for GraalVM Truffle. Keep it next to the jar. You can also call `java -jar aster-cli-$VER.jar …` directly. The JVM CLI refuses to start while the environment variable `ASTER_TRUFFLE_FUNC` is set.
+
+### Node (coming)
+
+The Node CLI is the single file `aster.mjs`, attached with its checksum to each [aster-lang-ts release](https://github.com/aster-cloud/aster-lang-ts/releases). It needs only Node.js 24, no `node_modules`:
+
+```bash
+VER=3.3.0   # use the runtime.cli.version of your package
+BASE=https://github.com/aster-cloud/aster-lang-ts/releases/download/v$VER
+curl -sSLO $BASE/aster.mjs
+curl -sSLO $BASE/aster.mjs.sha256
+sha256sum -c aster.mjs.sha256
+node aster.mjs version
+```
+
+The same file is published in the npm package `@aster-cloud/aster-lang-ts` as `dist/runner/aster.mjs`. The commands below are written as `aster`; with the Node CLI, run `node aster.mjs` instead.
+
+`aster version` lists `trustAnchorKids`, the platform signing keys built into the CLI. Packages exported from Aster Cloud are signed with `export-2026-11a`.
+
+## Verify the package
+
+Verify before you run, and again whenever the zip has been copied somewhere you do not control:
+
+```bash
+aster verify credit.limit-v3-jre-b.zip --probes
+```
+
+`verify` checks, in this order, and stops at the first failure:
+
+1. `schema` — the manifest is well-formed and of a supported format version;
+2. `signature` — `manifest.sig.json` is a valid signature over `manifest.json` by a trusted key;
+3. `integrity` — every file matches its hash and size in the manifest, there are no extra files, and `SHA256SUMS` matches;
+4. `recompile` (with `--recompile`) — the CLI compiles the source and gets the same Core IR as the platform;
+5. `probes` (with `--probes`) — compiles the source, runs every probe and compares the results with `tests/probes.json`.
+
+It prints one line of JSON, `{"checks":[…],"meta":…,"ok":true}`, and exits with 0 when every check passed.
+
+Also compare the SHA-256 of the zip with the one shown when you exported it:
+
+```bash
+sha256sum credit.limit-v3-jre-b.zip
+```
+
+### Which keys are trusted
+
+By default the CLI trusts only the keys built into it. To check against the keys the platform currently publishes, pass the public key set (JWKS):
+
+```bash
+aster verify credit.limit-v3-jre-b.zip --jwks https://policy.aster-lang.dev/api/v1/exports/keys
+```
+
+`https://policy.aster-lang.dev/api/v1/exports/keys` is public and needs no API key. `--jwks` also accepts a saved file, and `--pubkey <file>` takes a single public key. When Aster Cloud starts signing with a new key, an older CLI reports `PKG_UNTRUSTED_KID` for new packages: update the CLI or pass `--jwks`.
+
+A package without `manifest.sig.json` is refused with `PKG_UNSIGNED` unless you pass `--allow-unsigned`. Aster Cloud always signs its packages; unsigned packages come only from self-hosted installations without an export key. Every output then shows `"signed":false`.
+
+## Run the package
+
+```bash
+aster run credit.limit-v3-jre-b.zip --input input.json
+aster run credit.limit-v3-jre-b.zip --input - < input.json    # read the input from stdin
+```
+
+Every `run` checks the signature and the file hashes and recompiles the source first. The input is a JSON object with one key per parameter of the entry function, as described in `schema/input.json`:
+
+```json
+{"applicant":{"activeDefaults":0,"creditScore":760,"monthlyDebt":"2000","monthlyIncome":"9000","requestedAmount":"20000"}}
+```
+
+- `Decimal` values are decimal strings (`"2000"`, `"0.15"`), not JSON numbers.
+- `Long` values are integers, or decimal strings above 2^53.
+- `Int` values must fit in 32 bits; `Maybe` values are `null` when absent; enums are the variant name as a string.
+
+Options: `--entry <function>` (a package has one entry, so you rarely need it), `--timeout 5s` (the evaluation limit, default `5s`, at most `300s`), and `--jwks`, `--pubkey` or `--allow-unsigned` as for `verify`. `aster inspect <zip>` prints the entry, the input and output schemas, the effects and the runtime the package needs, without running it.
+
+The result goes to stdout as one line of JSON; messages for people go to stderr:
+
+```json
+{"meta":{"cliVersion":"1.0.50","coreIrSha256":"9a4f…","engine":"aster-lang-truffle","entry":"decide","irRecompiled":true,"signed":true},"ok":true,"value":{"__type":"Verdict","outcome":"ALLOW"}}
+```
+
+On failure, `ok` is `false` and `error` holds a `code` and a fixed `message`; the details are on stderr. Long values above 2^53 are printed as exact JSON integers, so read the output with a JSON parser that keeps big integers if you need them.
+
+### Exit codes
+
+| Exit | Codes | Meaning |
+| --- | --- | --- |
+| 0 | — | Success |
+| 1 | `EVAL_ERROR`, `PROBE_MISMATCH` | The policy failed while evaluating; or, with `verify --probes`, a probe result differs from the expected one |
+| 2 | `INPUT_INVALID`, `ENTRY_NOT_FOUND`, `USAGE` | The input does not match the schema; the entry does not exist; the command line is invalid |
+| 3 | `PKG_INTEGRITY`, `PKG_SIGNATURE`, `PKG_UNSIGNED`, `PKG_UNTRUSTED_KID` | The package is damaged or changed, the signature is invalid or missing, or it was signed by a key the CLI does not trust |
+| 4 | `PKG_INVALID_MANIFEST`, `PKG_UNSUPPORTED_FORMAT`, `PKG_UNSUPPORTED_IR`, `PKG_IR_DRIFT`, `COMPILE_ERROR` | The package or its program is not supported by this CLI, or the local compilation differs from the platform |
+| 5 | `TIMEOUT`, `RESOURCE_EXHAUSTED` | The evaluation ran out of time or another resource |
+
+### PKG_IR_DRIFT
+
+The CLI only runs a package when its local compilation produces the same Core IR as the platform (`coreIr.positionFreeSha256` in the manifest). If it does not — usually because a different CLI version is installed — `run` and `verify --probes` stop with `PKG_IR_DRIFT` (exit 4). Install the version in the package's `runtime.cli.version` and try again. There is no option to skip this check.
+
+## Why an export is refused
+
+When a policy cannot be exported for a runtime, **Show reasons** lists the diagnostics:
+
+| Code | Meaning |
+| --- | --- |
+| `E730` | A function declares an IO capability (HTTP, database, files, time and so on). Packages cannot perform IO. |
+| `E731` | The policy uses a workflow or async / await. Packages cannot wait. |
+| `E732` | A name is not a function of this module, a local value, a type or a pure built-in function of the target runtime. |
+| `E733` | An input or result type of the entry function has no JSON form (for example a function type or `Result`). |
+| `E734` | The package would be larger than 1 MiB. |
+| `E735` | Node only: on a probe, the Node runtime gave a different result than the platform. |
+| `E737` | JVM only: the entry function is hidden by a function named `main`. |
+| `E738` | An input or result of the entry function uses `DateTime` or PII types, whose JSON form is not defined yet. |
+| `E739` | Node only: compiling the policy with the Node toolchain does not give the platform's Core IR. |
+
+Other messages:
+
+| Message | What to do |
+| --- | --- |
+| *Exporting policy packages requires a paid plan.* | Upgrade to Pro or Enterprise (for a team policy, the team owner's plan). |
+| *Approve a version before exporting a package* | Get a version approved; drafts are never exported. |
+| *Too many package exports are running.* | Try again in a moment. |
+| *Package export is not available right now.* | The export runtime or signing key is not ready. Try again later. |
+
+## See also
+
+- [Policy packages on aster-lang.dev](https://aster-lang.dev/docs/policy-packages): the package layout, the manifest fields and the CLI reference for developers.
+- [Export to Cedar](https://aster-lang.dev/docs/cedar-export): hand a rule to a Cedar enforcement point instead.

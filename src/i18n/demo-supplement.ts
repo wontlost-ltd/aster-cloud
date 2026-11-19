@@ -491,6 +491,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           creditPilot: 'Credit pilot (Article 14)',
           guardApprovals: 'Guard, approvals and logs',
           workspace: 'Editor and dashboard',
+          policyPackages: 'Export policy packages',
         },
       },
       // 操作指南页的页内动作与任务视图（#796）
@@ -2552,6 +2553,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           creditPilot: '信贷试点（第 14 条）',
           guardApprovals: '守卫、审批与日志',
           workspace: '编辑器与仪表盘',
+          policyPackages: '导出策略包',
         },
       },
       // 操作指南页的页内动作与任务视图（#796）
@@ -4583,6 +4585,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           creditPilot: 'Kreditpilot (Artikel 14)',
           guardApprovals: 'Guard, Freigaben und Protokolle',
           workspace: 'Editor und Dashboard',
+          policyPackages: 'Richtlinienpakete exportieren',
         },
       },
       // 操作指南页的页内动作与任务视图（#796）
@@ -6618,6 +6621,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
           creditPilot: 'Credit pilot (Article 14)',
           guardApprovals: 'गार्ड, अनुमोदन और लॉग',
           workspace: 'एडिटर और डैशबोर्ड',
+          policyPackages: 'पॉलिसी पैकेज निर्यात करें',
         },
       },
       // 操作指南页的页内动作与任务视图（#796）

@@ -105,6 +105,7 @@ export const docsSidebar = [
       { labelKey: 'docs.sidebar.guides.creditPilot', href: 'guides/credit-pilot' },
       { labelKey: 'docs.sidebar.guides.guardApprovals', href: 'guides/guard-approvals' },
       { labelKey: 'docs.sidebar.guides.workspace', href: 'guides/workspace' },
+      { labelKey: 'docs.sidebar.guides.policyPackages', href: 'guides/policy-packages' },
     ],
   },
 ] as const satisfies readonly DocsSidebarSection[];
