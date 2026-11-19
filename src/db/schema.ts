@@ -745,6 +745,9 @@ export const policyVersions = pgTable(
     // ADR 0022 方案 D：用户自定义关键词别名的版本固化（camelCase 对齐本库 PolicyVersion 命名约定）。
     // aliasSet：该版本编译时冻结的规范别名 JSON（kind→[别名,...]），NULL=无别名。不可变。
     aliasSet: text('aliasSet'),
+    // ADR 0060 §6.2：版本内嵌词汇（含 literal 词条），确定性序列化的 JSON（text 而非 jsonb，保留逐字节）。
+    // 与 aliasSet 同生命周期：建版本时写入，之后不改；NULL=无内嵌词条。上限 8192 字节，由 CHECK 保证。
+    embeddedVocabulary: text('embeddedVocabulary'),
     // sourceEnvelopeSha256：覆盖完整编译输入（content+aliasSet+locale+工具链）的哈希，防别名替换篡改。
     sourceEnvelopeSha256: text('sourceEnvelopeSha256'),
     // sourceToolchainId：envelope 计算所用工具链身份，供 tip-anchor verifier 重算验证。
@@ -770,6 +773,11 @@ export const policyVersions = pgTable(
     index('PolicyVersion_status_idx').on(table.status),
     index('PolicyVersion_policyId_status_idx').on(table.policyId, table.status),
     index('PolicyVersion_policyId_isDefault_idx').on(table.policyId, table.isDefault),
+    // ADR 0060 §6.2：内嵌词汇序列化后不超过 8192 字节（按 UTF-8 字节计，与 cloud 保存校验同值）
+    check(
+      'PolicyVersion_embeddedVocabulary_size_check',
+      sql`${table.embeddedVocabulary} IS NULL OR octet_length(${table.embeddedVocabulary}) <= 8192`
+    ),
   ]
 );
 
