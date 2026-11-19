@@ -18,8 +18,14 @@ const ROLE_BY_KIND: Readonly<Record<string, string>> = {
   function: 'functions',
 };
 
-/** 写法冲突键：语言 + 角色 + 作用域 + NFC 写法；不认识的 kind 不参与裁决。 */
-function writtenKeys(row: TermLikeRow): string[] {
+/** 计算写法冲突键所需的最小词条形状（DB 行、TermLink 与由 IdentifierMapping 转来的行都满足）。 */
+export type WrittenKeyRow = Pick<TermLikeRow, 'kind' | 'locale' | 'localized' | 'aliases' | 'parentCanonical'>;
+
+/**
+ * 写法冲突键：语言 + 角色 + 作用域 + NFC 写法；不认识的 kind（含 literal）不参与裁决。
+ * 策略内嵌词汇的合并（policy-embedded-vocabulary）复用同一口径，不另造键。
+ */
+export function writtenKeys(row: WrittenKeyRow): string[] {
   const role = ROLE_BY_KIND[row.kind];
   if (!role) return [];
   const parent = role === 'fields' || role === 'enumMembers' ? (row.parentCanonical ?? '') : '';
