@@ -1,0 +1,204 @@
+---
+title: "Eine Richtlinie als ausführbares Paket exportieren"
+description: "Eine freigegebene Richtlinienversion als signiertes Paket laden und außerhalb von Aster Cloud mit der Aster-CLI ausführen: erst prüfen, dann ausführen."
+updated: 2026-11-19
+apiVersion: v1
+---
+
+# Eine Richtlinie als ausführbares Paket exportieren
+
+Ein **Richtlinienpaket** ist eine ZIP-Datei mit dem Quelltext und den Metadaten einer freigegebenen Version einer Richtlinie. Sie führen es auf Ihren eigenen Rechnern mit dem Aster-Kommandozeilenwerkzeug (CLI) aus: Die CLI prüft die Signatur der Plattform, kompiliert den Quelltext lokal, stellt fest, dass das Ergebnis dasselbe Programm ist, das die Plattform freigegeben hat, und wertet es erst dann aus. Beim Ausführen eines Pakets wird Aster Cloud nicht aufgerufen.
+
+<Callout type="info" title="Schrittweise Einführung">
+Der Paketexport wird schrittweise eingeschaltet. Solange er für Ihren Arbeitsbereich nicht aktiv ist, zeigt das Menü **Exportieren** auf der Detailseite einer Richtlinie nur **Cedar-Richtlinie** (oder die einzelne Schaltfläche **Nach Cedar exportieren**). **JRE-Pakete** kommen zuerst. **Node-Pakete folgen später**: Der Node-Eintrag erscheint im Menü, sobald die Prüfung mit der Node-Toolchain der Plattform in Betrieb ist. Die Node-Anleitung unten beschreibt, wie es dann funktioniert.
+</Callout>
+
+## Voraussetzungen
+
+- **Ein anderer Tarif als Free.** Richtlinienpakete lassen sich mit den Tarifen Trial, Pro, Team und Enterprise exportieren; mit Free nicht. Für eine Teamrichtlinie zählt der Tarif der Teaminhaberin bzw. des Teaminhabers. Der Export nach Cedar hängt nicht vom Tarif ab.
+- **Eine freigegebene Version.** Exportiert wird immer die Version, die ausgeführt wird, wenn keine Version angegeben ist: die freigegebene Standardversion, sonst die neueste freigegebene. Entwürfe werden nie exportiert, denn das würde die Freigabe umgehen. Hat die Richtlinie keine freigegebene Version, meldet das Menü *Geben Sie eine Version frei, bevor Sie ein Paket exportieren*. Siehe [Freigaben](/docs/how-to/approvals).
+- **Leserechte** an der Richtlinie genügen. Ein Teammitglied, das eine Teamrichtlinie nur ansehen darf, kann sie exportieren.
+- **Eine Laufzeit auf dem Rechner, der das Paket ausführt:** Java 25 oder neuer für ein JRE-Paket, Node.js 24 oder neuer für ein Node-Paket.
+
+## Ein Paket exportieren
+
+1. Öffnen Sie die Detailseite der Richtlinie und wählen Sie oben rechts in den Aktionen **Exportieren**.
+2. Wählen Sie **Richtlinienpaket (JRE)**. (**Richtlinienpaket (Node)** erscheint hier, sobald der Node-Export verfügbar ist.)
+3. Hat die Richtlinie mehrere Einstiegsfunktionen und ist keine davon als Einstieg markiert, wählen Sie die zu exportierende. Ein Paket hat genau eine Einstiegsfunktion.
+4. Der Browser lädt `<modul>-v<version>-jre-b.zip` herunter, zum Beispiel `credit.limit-v3-jre-b.zip`. Das Panel zeigt den **SHA-256 der ZIP-Datei**; kopieren Sie ihn, um die Datei später zu prüfen.
+
+Ist ein Eintrag deaktiviert, lässt sich die Richtlinie für diese Laufzeit nicht exportieren. Mit **Gründe anzeigen** sehen Sie die Diagnosen (siehe [Warum ein Export abgelehnt wird](#warum-ein-export-abgelehnt-wird)).
+
+Jeder Export wird als Ereignis `POLICY_EXPORTED` in der Audit-Kette Ihres Arbeitsbereichs festgehalten, mit dem SHA-256 der ZIP-Datei, dem SHA-256 des Manifests, dem Core-IR-Hash, der CLI-Version und der Zahl der Proben. So lässt sich ein Paket, das Sie später finden, auf seinen Export zurückführen.
+
+## Was ein Paket ist – und was nicht
+
+Die ZIP-Datei enthält einen Ordner mit:
+
+| Datei | Inhalt |
+| --- | --- |
+| `README.md` | Wie Sie dieses Paket prüfen und ausführen, in der Sprache Ihrer Oberfläche (Englisch für Hindi) |
+| `manifest.json` | Was das Paket enthält: Einstiegsfunktion, Quelltext-Hash, Core-IR-Hash, Effekte, CLI-Version, Hash und Größe jeder Datei |
+| `manifest.sig.json` | Die Ed25519-Signatur der Plattform über `manifest.json` |
+| `SHA256SUMS` | Prüfsummen im Format von `sha256sum -c`, um eine beschädigte Datei zu finden |
+| `policy/policy.aster` | Der Quelltext der freigegebenen Version, Byte für Byte |
+| `policy/compile/` | Das Alias-Set und, falls die Version eines nutzt, das eingefrorene Vokabular |
+| `schema/input.json`, `schema/output.json` | JSON Schema der Eingabe und des Ergebnisses der Einstiegsfunktion |
+| `tests/probes.json` | Beispieleingaben mit den Ergebnissen, die die Plattform für sie berechnet hat |
+
+Ein Paket enthält keinen kompilierten Code. Dafür steht das `b` am Ende des Namens: Quelltext und Metadaten, kompiliert von der CLI, die Sie installieren.
+
+Ein Paket ist **keine** gesteuerte Bereitstellung:
+
+- **Es ist kein Guard-Ausführungspunkt.** Beim Ausführen wird nichts in Aster Cloud festgehalten, es wird kein Ausführungsbeleg ausgestellt und keine Freigabe durchgesetzt. `require_approval` und `escalate` sind einfache Rückgabewerte, die Ihr Code behandeln muss. Für gesteuerte Ausführung nutzen Sie [Aster Guard](/docs/how-to/guard).
+- **Fakten werden nicht geprüft.** Eingaben werden so übernommen, wie sie kommen, auch Felder, die auf der Plattform aus signierten Fakten stammen würden.
+- **Proben sind eine Stichprobe.** `tests/probes.json` zeigt, dass CLI und Plattform bei diesen Eingaben übereinstimmen; es beweist nicht, dass sie bei jeder Eingabe übereinstimmen.
+- **Ein Paket lässt sich nicht widerrufen.** Einmal heruntergeladen, funktioniert es weiter, auch wenn die Version später auf der Plattform zurückgezogen wird. Gleichen Sie die ausgeführte Version mit der Plattform ab, wenn es darauf ankommt.
+
+Exportieren lassen sich nur reine Richtlinien: keine IO, keine Workflows und nur eingebaute Funktionen, die die Ziellaufzeit implementiert.
+
+## Die CLI installieren
+
+Installieren Sie die CLI-Version, für die das Paket erstellt wurde. Sie steht im Paket als `runtime.cli.version` und in dessen `README.md`. Die erste JRE-Version ist **1.0.50**.
+
+### JRE
+
+Laden Sie das JAR, seine Prüfsumme und das Startskript `aster` aus dem [aster-lang-truffle-Release](https://github.com/aster-cloud/aster-lang-truffle/releases) dieser Version und prüfen Sie das JAR:
+
+```bash
+VER=1.0.50
+BASE=https://github.com/aster-cloud/aster-lang-truffle/releases/download/v$VER
+curl -sSLO $BASE/aster-cli-$VER.jar
+curl -sSLO $BASE/aster-cli-$VER.jar.sha256
+curl -sSLO $BASE/aster
+sha256sum -c aster-cli-$VER.jar.sha256    # macOS ohne sha256sum: shasum -a 256 -c …
+chmod +x aster
+./aster version
+```
+
+Das Startskript `aster` (`aster.cmd` unter Windows) ruft `java --sun-misc-unsafe-memory-access=allow -jar aster-cli-<version>.jar` auf; die Option unterdrückt nur eine Warnung, die JDK 25 für GraalVM Truffle ausgibt. Legen Sie es neben das JAR. Sie können auch direkt `java -jar aster-cli-$VER.jar …` aufrufen. Die JVM-CLI startet nicht, solange die Umgebungsvariable `ASTER_TRUFFLE_FUNC` gesetzt ist.
+
+### Node (folgt)
+
+Die Node-CLI ist die einzelne Datei `aster.mjs`, die mit ihrer Prüfsumme jedem [aster-lang-ts-Release](https://github.com/aster-cloud/aster-lang-ts/releases) beiliegt. Sie braucht nur Node.js 24, kein `node_modules`:
+
+```bash
+VER=3.3.0   # die runtime.cli.version Ihres Pakets
+BASE=https://github.com/aster-cloud/aster-lang-ts/releases/download/v$VER
+curl -sSLO $BASE/aster.mjs
+curl -sSLO $BASE/aster.mjs.sha256
+sha256sum -c aster.mjs.sha256
+node aster.mjs version
+```
+
+Dieselbe Datei liegt im npm-Paket `@aster-cloud/aster-lang-ts` unter `dist/runner/aster.mjs`. Die folgenden Befehle sind als `aster` geschrieben; mit der Node-CLI rufen Sie stattdessen `node aster.mjs` auf.
+
+`aster version` listet `trustAnchorKids`, die in die CLI eingebauten Signaturschlüssel der Plattform. Pakete aus Aster Cloud sind mit `export-2026-11a` signiert.
+
+## Das Paket prüfen
+
+Prüfen Sie vor dem Ausführen und erneut, wenn die ZIP-Datei über einen Ort kopiert wurde, den Sie nicht kontrollieren:
+
+```bash
+aster verify credit.limit-v3-jre-b.zip --probes
+```
+
+`verify` prüft in dieser Reihenfolge und hält beim ersten Fehler an:
+
+1. `schema` – das Manifest ist wohlgeformt und hat eine unterstützte Formatversion;
+2. `signature` – `manifest.sig.json` ist eine gültige Signatur über `manifest.json` mit einem vertrauenswürdigen Schlüssel;
+3. `integrity` – jede Datei stimmt mit Hash und Größe im Manifest überein, es gibt keine zusätzlichen Dateien, und `SHA256SUMS` passt;
+4. `recompile` (mit `--recompile`) – die CLI kompiliert den Quelltext und erhält dieselbe Core IR wie die Plattform;
+5. `probes` (mit `--probes`) – kompiliert den Quelltext, führt jede Probe aus und vergleicht die Ergebnisse mit `tests/probes.json`.
+
+Ausgegeben wird eine Zeile JSON, `{"checks":[…],"meta":…,"ok":true}`; der Exit-Code ist 0, wenn alle Prüfungen bestanden sind.
+
+Vergleichen Sie außerdem den SHA-256 der ZIP-Datei mit dem beim Export angezeigten:
+
+```bash
+sha256sum credit.limit-v3-jre-b.zip
+```
+
+### Welchen Schlüsseln vertraut wird
+
+Standardmäßig vertraut die CLI nur den eingebauten Schlüsseln. Um gegen die Schlüssel zu prüfen, die die Plattform aktuell veröffentlicht, übergeben Sie den öffentlichen Schlüsselsatz (JWKS):
+
+```bash
+aster verify credit.limit-v3-jre-b.zip --jwks https://policy.aster-lang.dev/api/v1/exports/keys
+```
+
+`https://policy.aster-lang.dev/api/v1/exports/keys` ist öffentlich und braucht keinen API-Schlüssel. `--jwks` akzeptiert auch eine gespeicherte Datei, `--pubkey <datei>` einen einzelnen öffentlichen Schlüssel. Signiert Aster Cloud mit einem neuen Schlüssel, meldet eine ältere CLI für neue Pakete `PKG_UNTRUSTED_KID`: Aktualisieren Sie die CLI oder übergeben Sie `--jwks`.
+
+Ein Paket ohne `manifest.sig.json` wird mit `PKG_UNSIGNED` abgelehnt, außer Sie übergeben `--allow-unsigned`. Aster Cloud signiert seine Pakete immer; unsignierte Pakete stammen nur aus selbst betriebenen Installationen ohne Exportschlüssel. Jede Ausgabe zeigt dann `"signed":false`.
+
+## Das Paket ausführen
+
+```bash
+aster run credit.limit-v3-jre-b.zip --input input.json
+aster run credit.limit-v3-jre-b.zip --input - < input.json    # Eingabe von stdin lesen
+```
+
+Jedes `run` prüft zuerst Signatur und Datei-Hashes und kompiliert den Quelltext neu. Die Eingabe ist ein JSON-Objekt mit einem Schlüssel je Parameter der Einstiegsfunktion, wie in `schema/input.json` beschrieben:
+
+```json
+{"applicant":{"activeDefaults":0,"creditScore":760,"monthlyDebt":"2000","monthlyIncome":"9000","requestedAmount":"20000"}}
+```
+
+- `Decimal`-Werte sind Dezimalzeichenketten (`"2000"`, `"0.15"`), keine JSON-Zahlen.
+- `Long`-Werte sind ganze Zahlen, oberhalb von 2^53 Dezimalzeichenketten.
+- `Int`-Werte müssen in 32 Bit passen; `Maybe`-Werte sind `null`, wenn sie fehlen; Aufzählungen sind der Variantenname als Zeichenkette.
+
+Optionen: `--entry <funktion>` (ein Paket hat einen Einstieg, Sie brauchen sie also selten), `--timeout 5s` (Zeitlimit der Auswertung, Standard `5s`, höchstens `300s`) sowie `--jwks`, `--pubkey` oder `--allow-unsigned` wie bei `verify`. `aster inspect <zip>` gibt Einstieg, Ein- und Ausgabeschema, Effekte und die benötigte Laufzeit aus, ohne das Paket auszuführen.
+
+Das Ergebnis geht als eine Zeile JSON nach stdout; Meldungen für Menschen gehen nach stderr:
+
+```json
+{"meta":{"cliVersion":"1.0.50","coreIrSha256":"9a4f…","engine":"aster-lang-truffle","entry":"decide","irRecompiled":true,"signed":true},"ok":true,"value":{"__type":"Verdict","outcome":"ALLOW"}}
+```
+
+Bei einem Fehler ist `ok` gleich `false`, und `error` enthält einen `code` und eine feste `message`; die Einzelheiten stehen in stderr. `Long`-Werte oberhalb von 2^53 werden als exakte JSON-Ganzzahlen ausgegeben; lesen Sie die Ausgabe mit einem JSON-Parser, der große Ganzzahlen erhält, wenn Sie sie brauchen.
+
+### Exit-Codes
+
+| Exit | Codes | Bedeutung |
+| --- | --- | --- |
+| 0 | — | Erfolg |
+| 1 | `EVAL_ERROR`, `PROBE_MISMATCH` | Die Auswertung der Richtlinie ist fehlgeschlagen; oder bei `verify --probes` weicht ein Probenergebnis vom erwarteten ab |
+| 2 | `INPUT_INVALID`, `ENTRY_NOT_FOUND`, `USAGE` | Die Eingabe passt nicht zum Schema; der Einstieg existiert nicht; die Kommandozeile ist ungültig |
+| 3 | `PKG_INTEGRITY`, `PKG_SIGNATURE`, `PKG_UNSIGNED`, `PKG_UNTRUSTED_KID` | Das Paket ist beschädigt oder verändert, die Signatur ist ungültig oder fehlt, oder der Schlüssel ist der CLI nicht vertrauenswürdig |
+| 4 | `PKG_INVALID_MANIFEST`, `PKG_UNSUPPORTED_FORMAT`, `PKG_UNSUPPORTED_IR`, `PKG_IR_DRIFT`, `COMPILE_ERROR` | Diese CLI unterstützt das Paket oder sein Programm nicht, oder die lokale Kompilierung weicht von der Plattform ab |
+| 5 | `TIMEOUT`, `RESOURCE_EXHAUSTED` | Die Auswertung hat das Zeitlimit oder eine andere Ressource ausgeschöpft |
+
+### PKG_IR_DRIFT
+
+Die CLI führt ein Paket nur aus, wenn ihre lokale Kompilierung dieselbe Core IR ergibt wie die Plattform (`coreIr.positionFreeSha256` im Manifest). Ist das nicht so – meist weil eine andere CLI-Version installiert ist –, brechen `run` und `verify --probes` mit `PKG_IR_DRIFT` ab (Exit-Code 4). Installieren Sie die Version aus `runtime.cli.version` des Pakets und versuchen Sie es erneut. Diese Prüfung lässt sich nicht abschalten.
+
+## Warum ein Export abgelehnt wird
+
+Lässt sich eine Richtlinie für eine Laufzeit nicht exportieren, listet **Gründe anzeigen** die Diagnosen:
+
+| Code | Bedeutung |
+| --- | --- |
+| `E730` | Eine Funktion deklariert eine IO-Fähigkeit (HTTP, Datenbank, Dateien, Zeit usw.). Pakete können keine IO ausführen. |
+| `E731` | Die Richtlinie nutzt einen Workflow oder async / await. Pakete können nicht warten. |
+| `E732` | Ein Name ist weder eine Funktion dieses Moduls noch ein lokaler Wert, ein Typ oder eine reine eingebaute Funktion der Ziellaufzeit. |
+| `E733` | Ein Eingabe- oder Ergebnistyp der Einstiegsfunktion hat keine JSON-Form (zum Beispiel ein Funktionstyp oder `Result`). |
+| `E734` | Das Paket wäre größer als 1 MiB. |
+| `E735` | Nur Node: Bei einer Probe liefert die Node-Laufzeit ein anderes Ergebnis als die Plattform. |
+| `E737` | Nur JVM: Die Einstiegsfunktion wird von einer Funktion namens `main` verdeckt. |
+| `E738` | Eine Eingabe oder ein Ergebnis der Einstiegsfunktion nutzt `DateTime` oder PII-Typen, deren JSON-Form noch nicht festgelegt ist. |
+| `E739` | Nur Node: Das Kompilieren mit der Node-Toolchain ergibt nicht die Core IR der Plattform. |
+
+Weitere Meldungen:
+
+| Meldung | Was zu tun ist |
+| --- | --- |
+| *Der Export von Richtlinienpaketen erfordert einen kostenpflichtigen Tarif.* | Von Free auf Trial, Pro, Team oder Enterprise wechseln (bei einer Teamrichtlinie der Tarif der Teaminhaberin bzw. des Teaminhabers). |
+| *Geben Sie eine Version frei, bevor Sie ein Paket exportieren* | Eine Version freigeben lassen; Entwürfe werden nie exportiert. |
+| *Zu viele Paketexporte laufen gerade.* | Gleich noch einmal versuchen. |
+| *Der Paketexport ist gerade nicht verfügbar.* | Die Exportlaufzeit oder der Signaturschlüssel ist noch nicht bereit. Später erneut versuchen. |
+
+## Siehe auch
+
+- [Richtlinienpakete auf aster-lang.dev](https://aster-lang.dev/docs/policy-packages) (englisch): Paketaufbau, Manifestfelder und CLI-Referenz für Entwickler.
+- [Export nach Cedar](https://aster-lang.dev/docs/cedar-export) (englisch): eine Regel stattdessen an einen Cedar-Durchsetzungspunkt übergeben.

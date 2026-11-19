@@ -1,0 +1,204 @@
+---
+title: "把策略导出为可运行的策略包"
+description: "把已批准的策略版本下载为签名策略包，在 Aster Cloud 之外用 Aster 命令行工具运行：先验证签名，再在你自己的机器上运行。"
+updated: 2026-11-19
+apiVersion: v1
+---
+
+# 把策略导出为可运行的策略包
+
+**策略包**是一个 zip 文件，装有某个策略的一个已批准版本的源码与元数据。你在自己的机器上用 Aster 命令行工具（CLI）运行它：CLI 先核对平台的签名，在本地编译源码，确认结果与平台批准的是同一个程序，然后才求值。运行策略包不会调用 Aster Cloud。
+
+<Callout type="info" title="分阶段开放">
+策略包导出正在分阶段开启。在你的工作区开启之前，策略详情页的**导出**菜单里只有 **Cedar 策略**（或者只有一个**导出为 Cedar** 按钮）。**JRE 策略包**先开放。**Node 策略包稍后推出**：平台的 Node 工具链核对上线后，菜单里才会出现 Node 一项。下文关于 Node 的说明描述的是届时的用法。
+</Callout>
+
+## 开始之前
+
+- **非 Free 套餐。** Trial、Pro、Team 与 Enterprise 套餐都可以导出策略包，Free 套餐不能导出。团队策略按团队所有者的套餐计算。导出为 Cedar 不受套餐限制。
+- **已批准的版本。** 导出的始终是「未指定版本时会执行的那个版本」：默认的已批准版本，没有默认版本时取最新的已批准版本。草稿永远不会被导出，否则就绕过了审批。策略没有已批准版本时，菜单会提示「请先批准一个版本，再导出策略包」。参见[审批](/docs/how-to/approvals)。
+- 对该策略有**查看权限**即可。只能查看团队策略的团队成员也可以导出它。
+- **运行策略包的机器上要有运行时：** JRE 策略包需要 Java 25 或更高版本，Node 策略包需要 Node.js 24 或更高版本。
+
+## 导出策略包
+
+1. 打开策略详情页，在右上角的操作中选择**导出**。
+2. 选择**策略包（JRE）**。（Node 导出开放后，这里会出现**策略包（Node）**。）
+3. 如果策略有多个入口函数且没有一个被标为入口，请选择要导出的那一个。一个策略包恰有一个入口函数。
+4. 浏览器下载 `<模块名>-v<版本>-jre-b.zip`，例如 `credit.limit-v3-jre-b.zip`。面板会显示 **zip 的 SHA-256**，复制下来以便日后核对文件。
+
+某一项显示为禁用时，表示该策略不能导出为对应的运行时。选择**查看原因**可以看到诊断（见[导出被拒的原因](#导出被拒的原因)）。
+
+每次导出都会以 `POLICY_EXPORTED` 事件记入工作区的审计链，附带 zip 的 SHA-256、manifest 的 SHA-256、Core IR 哈希、CLI 版本与探针条数，因此日后拿到的策略包都能追溯到它的那次导出。
+
+## 策略包是什么、不是什么
+
+zip 里只有一个文件夹，包含：
+
+| 文件 | 内容 |
+| --- | --- |
+| `README.md` | 如何验证和运行本包，语言与你的界面一致（印地语界面为英文） |
+| `manifest.json` | 包的内容：入口函数、源码哈希、Core IR 哈希、效果、CLI 版本、每个文件的哈希与大小 |
+| `manifest.sig.json` | 平台对 `manifest.json` 的 Ed25519 签名 |
+| `SHA256SUMS` | `sha256sum -c` 格式的校验和，用于定位损坏的文件 |
+| `policy/policy.aster` | 已批准版本的源码，逐字节不变 |
+| `policy/compile/` | 别名集，以及该版本使用的冻结词汇（如有） |
+| `schema/input.json`、`schema/output.json` | 入口函数输入与结果的 JSON Schema |
+| `tests/probes.json` | 抽样输入，以及平台为它们算出的结果 |
+
+策略包里没有编译好的代码。文件名末尾的 `b` 就是这个意思：源码 + 元数据，由你安装的 CLI 编译。
+
+策略包**不是**受治理的部署：
+
+- **它不是 Guard 执行点。** 运行它不会在 Aster Cloud 留下任何记录，不签发执行收据，也不执行审批。`require_approval` 与 `escalate` 只是普通的返回值，需要你的代码自行处理。需要受治理的执行时，请使用 [Aster Guard](/docs/how-to/guard)。
+- **事实不经验证。** 输入按给定值采信，包括在平台上本应来自签名事实的字段。
+- **探针只是抽样。** `tests/probes.json` 说明 CLI 与平台在这些输入上结果一致，并不证明在所有输入上都一致。
+- **策略包无法撤销。** 下载之后，即使该版本后来在平台上被撤回，策略包仍然可以运行。在重要场合，请到平台上核对你运行的版本。
+
+只有纯策略可以导出：不做 IO、不用工作流，且只用目标运行时已实现的内置函数。
+
+## 安装 CLI
+
+请安装策略包构建时对应的 CLI 版本。它记录在包的 `runtime.cli.version` 中，也写在包内的 `README.md` 里。JRE 的首个发布版本是 **1.0.50**。
+
+### JRE
+
+从对应版本的 [aster-lang-truffle Release](https://github.com/aster-cloud/aster-lang-truffle/releases) 下载 jar、它的校验文件和启动脚本 `aster`，并校验 jar：
+
+```bash
+VER=1.0.50
+BASE=https://github.com/aster-cloud/aster-lang-truffle/releases/download/v$VER
+curl -sSLO $BASE/aster-cli-$VER.jar
+curl -sSLO $BASE/aster-cli-$VER.jar.sha256
+curl -sSLO $BASE/aster
+sha256sum -c aster-cli-$VER.jar.sha256    # macOS 没有 sha256sum 时：shasum -a 256 -c …
+chmod +x aster
+./aster version
+```
+
+启动脚本 `aster`（Windows 上为 `aster.cmd`）执行的是 `java --sun-misc-unsafe-memory-access=allow -jar aster-cli-<版本>.jar`；这个选项只是关掉 JDK 25 针对 GraalVM Truffle 打印的一条警告。请把它和 jar 放在同一目录。也可以直接调用 `java -jar aster-cli-$VER.jar …`。设置了环境变量 `ASTER_TRUFFLE_FUNC` 时，JVM CLI 拒绝启动。
+
+### Node（即将推出）
+
+Node CLI 是单个文件 `aster.mjs`，连同校验文件附在每个 [aster-lang-ts Release](https://github.com/aster-cloud/aster-lang-ts/releases) 上。它只需要 Node.js 24，不需要 `node_modules`：
+
+```bash
+VER=3.3.0   # 使用策略包的 runtime.cli.version
+BASE=https://github.com/aster-cloud/aster-lang-ts/releases/download/v$VER
+curl -sSLO $BASE/aster.mjs
+curl -sSLO $BASE/aster.mjs.sha256
+sha256sum -c aster.mjs.sha256
+node aster.mjs version
+```
+
+同一个文件也随 npm 包 `@aster-cloud/aster-lang-ts` 发布，路径为 `dist/runner/aster.mjs`。下文的命令都写作 `aster`；使用 Node CLI 时请改为 `node aster.mjs`。
+
+`aster version` 会列出 `trustAnchorKids`，即 CLI 内置的平台签名密钥。Aster Cloud 导出的策略包由 `export-2026-11a` 签名。
+
+## 验证策略包
+
+运行之前先验证；zip 经过你无法掌控的地方之后，也要再验证一次：
+
+```bash
+aster verify credit.limit-v3-jre-b.zip --probes
+```
+
+`verify` 依次检查以下各项，在第一处失败停止：
+
+1. `schema`：manifest 格式正确，且格式版本受支持；
+2. `signature`：`manifest.sig.json` 是受信任的密钥对 `manifest.json` 的有效签名；
+3. `integrity`：每个文件的哈希与大小都与 manifest 相符，没有多余文件，`SHA256SUMS` 一致；
+4. `recompile`（给出 `--recompile` 时）：CLI 编译源码，得到与平台相同的 Core IR；
+5. `probes`（给出 `--probes` 时）：编译源码，逐条运行探针，并与 `tests/probes.json` 比较结果。
+
+它输出一行 JSON：`{"checks":[…],"meta":…,"ok":true}`，全部通过时退出码为 0。
+
+另外，请把 zip 的 SHA-256 与导出时显示的值对比：
+
+```bash
+sha256sum credit.limit-v3-jre-b.zip
+```
+
+### 信任哪些密钥
+
+缺省情况下，CLI 只信任它内置的密钥。要按平台当前发布的密钥核对，请传入公钥集（JWKS）：
+
+```bash
+aster verify credit.limit-v3-jre-b.zip --jwks https://policy.aster-lang.dev/api/v1/exports/keys
+```
+
+`https://policy.aster-lang.dev/api/v1/exports/keys` 公开可读，不需要 API 密钥。`--jwks` 也接受保存下来的文件，`--pubkey <文件>` 接受单个公钥。Aster Cloud 开始用新密钥签名后，旧版本 CLI 对新策略包会报 `PKG_UNTRUSTED_KID`：请升级 CLI 或传入 `--jwks`。
+
+没有 `manifest.sig.json` 的策略包会以 `PKG_UNSIGNED` 被拒，除非你给出 `--allow-unsigned`。Aster Cloud 导出的策略包总是带签名；无签名的策略包只来自未配置导出密钥的自托管部署，这时所有输出都显示 `"signed":false`。
+
+## 运行策略包
+
+```bash
+aster run credit.limit-v3-jre-b.zip --input input.json
+aster run credit.limit-v3-jre-b.zip --input - < input.json    # 从标准输入读取
+```
+
+每次 `run` 都会先核对签名与文件哈希，并重新编译源码。输入是一个 JSON 对象，入口函数的每个参数对应一个键，形状见 `schema/input.json`：
+
+```json
+{"applicant":{"activeDefaults":0,"creditScore":760,"monthlyDebt":"2000","monthlyIncome":"9000","requestedAmount":"20000"}}
+```
+
+- `Decimal` 值写成十进制字符串（`"2000"`、`"0.15"`），不能写成 JSON 数字。
+- `Long` 值写成整数；超过 2^53 时写成十进制字符串。
+- `Int` 值必须在 32 位范围内；`Maybe` 值缺省时为 `null`；枚举写成变体名字符串。
+
+选项：`--entry <函数>`（策略包只有一个入口，一般用不到）、`--timeout 5s`（求值时限，缺省 `5s`，最多 `300s`），以及与 `verify` 相同的 `--jwks`、`--pubkey`、`--allow-unsigned`。`aster inspect <zip>` 不运行策略，只打印入口、输入与输出 schema、效果以及所需的运行时。
+
+结果以一行 JSON 写到标准输出，给人看的信息写到标准错误：
+
+```json
+{"meta":{"cliVersion":"1.0.50","coreIrSha256":"9a4f…","engine":"aster-lang-truffle","entry":"decide","irRecompiled":true,"signed":true},"ok":true,"value":{"__type":"Verdict","outcome":"ALLOW"}}
+```
+
+失败时 `ok` 为 `false`，`error` 带 `code` 与固定的 `message`，细节在标准错误中。超过 2^53 的 Long 值以精确的 JSON 整数输出；需要这些值时，请用能保留大整数的 JSON 解析器读取。
+
+### 退出码
+
+| 退出码 | 错误码 | 含义 |
+| --- | --- | --- |
+| 0 | — | 成功 |
+| 1 | `EVAL_ERROR`、`PROBE_MISMATCH` | 策略求值失败；或 `verify --probes` 中某条探针的结果与期望不同 |
+| 2 | `INPUT_INVALID`、`ENTRY_NOT_FOUND`、`USAGE` | 输入不符合 schema；入口不存在；命令行不合法 |
+| 3 | `PKG_INTEGRITY`、`PKG_SIGNATURE`、`PKG_UNSIGNED`、`PKG_UNTRUSTED_KID` | 包已损坏或被改动、签名无效或缺失，或签名密钥不受 CLI 信任 |
+| 4 | `PKG_INVALID_MANIFEST`、`PKG_UNSUPPORTED_FORMAT`、`PKG_UNSUPPORTED_IR`、`PKG_IR_DRIFT`、`COMPILE_ERROR` | 本 CLI 不支持该包或其中的程序，或本地编译结果与平台不同 |
+| 5 | `TIMEOUT`、`RESOURCE_EXHAUSTED` | 求值超时或耗尽其他资源 |
+
+### PKG_IR_DRIFT
+
+只有本地编译得到的 Core IR 与平台相同（manifest 中的 `coreIr.positionFreeSha256`）时，CLI 才会运行策略包。不同时（通常是装了另一个版本的 CLI），`run` 与 `verify --probes` 以 `PKG_IR_DRIFT`（退出码 4）停止。请安装包中 `runtime.cli.version` 记录的版本后重试。这项检查没有跳过的选项。
+
+## 导出被拒的原因
+
+策略不能导出为某个运行时时，**查看原因**会列出诊断：
+
+| 码 | 含义 |
+| --- | --- |
+| `E730` | 某个函数声明了 IO 能力（HTTP、数据库、文件、时间等）。策略包不能执行 IO。 |
+| `E731` | 策略使用了工作流或 async / await。策略包不能等待。 |
+| `E732` | 某个名字既不是本模块的函数、局部值、类型，也不是目标运行时的纯内置函数。 |
+| `E733` | 入口函数的某个输入或结果类型没有 JSON 形式（例如函数类型或 `Result`）。 |
+| `E734` | 策略包会超过 1 MiB。 |
+| `E735` | 仅 Node：某条探针上 Node 运行时的结果与平台不同。 |
+| `E737` | 仅 JVM：入口函数被名为 `main` 的函数遮蔽。 |
+| `E738` | 入口函数的输入或结果用到了 `DateTime` 或 PII 类型，它们的 JSON 形式尚未确定。 |
+| `E739` | 仅 Node：用 Node 工具链编译策略，得不到平台的 Core IR。 |
+
+其他提示：
+
+| 提示 | 处理 |
+| --- | --- |
+| 「导出策略包需要付费套餐。」 | 从 Free 换到 Trial、Pro、Team 或 Enterprise 套餐（团队策略看团队所有者的套餐）。 |
+| 「请先批准一个版本，再导出策略包」 | 让一个版本通过审批；草稿永远不会被导出。 |
+| 「正在进行的策略包导出过多」 | 稍后再试。 |
+| 「策略包导出暂不可用」 | 导出运行时或签名密钥尚未就绪，请稍后再试。 |
+
+## 另见
+
+- [aster-lang.dev 上的策略包文档](https://aster-lang.dev/zh/docs/policy-packages)：面向开发者的包布局、manifest 字段与 CLI 参考。
+- [导出到 Cedar](https://aster-lang.dev/zh/docs/cedar-export)：改为把规则交给 Cedar 执行点。

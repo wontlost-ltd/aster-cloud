@@ -308,6 +308,10 @@ export const PAGE_ACTIONS: Record<RouteSlug, PageActionSet> = {
     primary: openDashboard(),
     secondary: [],
   },
+  // 策略包导出（ADR 0059 P2）：导出入口在策略详情页，从策略列表进入。
+  'guides/policy-packages': {
+    primary: goTo('go_to_policies', 'docs.actions.goToPolicies', '/policies', 'public'),
+  },
 };
 
 /**
