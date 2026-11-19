@@ -61,7 +61,7 @@ const rel = (f: string) => path.relative(ROOT, f).split(path.sep).join('/');
 const FILES = sourceFiles(SRC).map((f) => ({ path: rel(f), text: readFileSync(f, 'utf8') }));
 
 /** 任意形式的导入（静态、动态、相对路径）指向 layout 存储 */
-const STORE_IMPORT = /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"](?:@\/lib\/|(?:\.{1,2}\/)+(?:[\w-]+\/)*)policy-layout\/store['"]/;
+const STORE_IMPORT = /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"](?:@\/lib\/|(?:\.{1,2}\/)+(?:[\w-]+\/)*)policy-layout\/store(?:\/index)?(?:\.[cm]?[jt]sx?)?['"]/;
 const TABLE_REF = /\bpolicyVersionLayouts\b|"PolicyVersionLayout"/;
 
 describe('policy layout isolation', () => {
@@ -98,6 +98,13 @@ describe('policy layout isolation', () => {
     ]) {
       expect(STORE_IMPORT.test(line)).toBe(true);
     }
+    expect(STORE_IMPORT.test("import { z } from '@/lib/policy-layout/store/index';")).toBe(true);
+    expect(STORE_IMPORT.test("import { z } from './policy-layout/store.ts';")).toBe(true);
     expect(STORE_IMPORT.test("import type { StoredLayout } from '@/lib/policy-layout/types';")).toBe(false);
+  });
+
+  it('policy-layout has no barrel that could re-export the store past the scan', () => {
+    const barrels = FILES.filter((f) => /^src\/lib\/policy-layout\/index\.[cm]?[jt]sx?$/.test(f.path));
+    expect(barrels).toEqual([]);
   });
 });
