@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState, useTransition } from 'react';
+import { useCallback, useId, useMemo, useState, useTransition } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Link, usePathname, useRouter } from '@/i18n/navigation';
 import {
@@ -11,6 +11,7 @@ import {
   Container,
   DataTable,
   EmptyState,
+  Label,
   ListSearchInput,
   PageHeader,
   Pagination,
@@ -171,6 +172,13 @@ export function VocabulariesContent({
   // typed characters immediately while the debounced URL update fires
   // in the background.
   const [searchInput, setSearchInput] = useState<string>(initialQuery);
+  // 筛选下拉的 id，供可见 Label 的 htmlFor 关联（#811）；useId 保证 SSR/CSR 一致。
+  const filterIdBase = useId();
+  const filterIds = {
+    domain: `${filterIdBase}-domain`,
+    locale: `${filterIdBase}-locale`,
+    kind: `${filterIdBase}-kind`,
+  };
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<SerializableTermLink | null>(null);
@@ -587,56 +595,74 @@ export function VocabulariesContent({
         <Button variant={showDeleted ? 'primary' : 'outline'} onClick={() => setShowDeleted(true)}>{t('actions.recentlyDeleted')}</Button>
       </div>
 
-      <div className="mt-6 flex flex-wrap items-end gap-3">
-        <div className="min-w-[12rem] flex-1">
+      {/*
+        筛选栏（#811）：搜索框占满剩余宽度，三个下拉固定宽度排在其右侧；每个下拉
+        上方有可见字段名（Label + htmlFor，与 reports / logs 页筛选同一模式），未选时
+        也能看出是哪个字段。窄屏与带侧栏的平板宽度（< lg）搜索框独占一行，下拉三等分排在下一行，
+        min-w-0 让长选项值在格内截断而不撑出视口（#806 同类问题）。
+      */}
+      <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-end">
+        <div className="min-w-0 lg:flex-1">
           <ListSearchInput
             value={searchInput}
             onChange={handleSearchChange}
             placeholder={t('filters.search')}
+            className="max-w-none"
           />
         </div>
-        <Select
-          aria-label={t('filters.domain')}
-          value={initialFilters.domain}
-          onChange={(e) =>
-            navigate({ filters: { domain: e.target.value || undefined } })
-          }
-        >
-          <option value="">{t('filters.all')}</option>
-          {domainOptions.map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </Select>
-        <Select
-          aria-label={t('filters.locale')}
-          value={initialFilters.locale}
-          onChange={(e) =>
-            navigate({ filters: { locale: e.target.value || undefined } })
-          }
-        >
-          <option value="">{t('filters.all')}</option>
-          {localeOptions.map((l) => (
-            <option key={l} value={l}>
-              {l}
-            </option>
-          ))}
-        </Select>
-        <Select
-          aria-label={t('filters.kind')}
-          value={initialFilters.kind}
-          onChange={(e) =>
-            navigate({ filters: { kind: e.target.value || undefined } })
-          }
-        >
-          <option value="">{t('filters.all')}</option>
-          {KIND_OPTIONS.map((k) => (
-            <option key={k} value={k}>
-              {translateKind(k)}
-            </option>
-          ))}
-        </Select>
+        <div className="grid grid-cols-3 gap-3 lg:flex lg:shrink-0">
+          <div className="flex min-w-0 flex-col gap-1.5 lg:w-36 xl:w-40">
+            <Label htmlFor={filterIds.domain}>{t('filters.domain')}</Label>
+            <Select
+              id={filterIds.domain}
+              value={initialFilters.domain}
+              onChange={(e) =>
+                navigate({ filters: { domain: e.target.value || undefined } })
+              }
+            >
+              <option value="">{t('filters.all')}</option>
+              {domainOptions.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="flex min-w-0 flex-col gap-1.5 lg:w-36 xl:w-40">
+            <Label htmlFor={filterIds.locale}>{t('filters.locale')}</Label>
+            <Select
+              id={filterIds.locale}
+              value={initialFilters.locale}
+              onChange={(e) =>
+                navigate({ filters: { locale: e.target.value || undefined } })
+              }
+            >
+              <option value="">{t('filters.all')}</option>
+              {localeOptions.map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="flex min-w-0 flex-col gap-1.5 lg:w-36 xl:w-40">
+            <Label htmlFor={filterIds.kind}>{t('filters.kind')}</Label>
+            <Select
+              id={filterIds.kind}
+              value={initialFilters.kind}
+              onChange={(e) =>
+                navigate({ filters: { kind: e.target.value || undefined } })
+              }
+            >
+              <option value="">{t('filters.all')}</option>
+              {KIND_OPTIONS.map((k) => (
+                <option key={k} value={k}>
+                  {translateKind(k)}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </div>
       </div>
 
       <div className="mt-6">
