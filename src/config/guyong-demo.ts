@@ -12,7 +12,7 @@
  * ★歌词原创声明：全部歌词为本项目原创，从零创作，不取自任何既有歌曲；主题「孤勇与救赎」。
  *
  * ★LayoutMap：页面**显示** toDisplay（脚手架隐成标点/换行，读成工整押韵短诗），引擎**编译**
- *   toCanonical（语法必需的带空格规范源码）。不变式：toCanonical(GUYONG_LAYOUT) === activeSource。
+ *   toCanonical（语法必需的带空格规范源码）。不变式：toCanonical(layoutFor(变体)) === sourceFor(变体)。
  *
  * ★诚实契约（已用生产同款 TS 引擎实证，见 guyong-demo.compile.test.ts）：
  *  1. 每个触发词变体的诗体源码用《孤勇》别名词典 + 字面量宏词汇编译成功（无诊断错误）。

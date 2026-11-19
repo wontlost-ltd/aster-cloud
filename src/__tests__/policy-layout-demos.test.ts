@@ -44,9 +44,16 @@ describe('演示 layout 通过 validatePolicyLayout', () => {
 
   it('guyong fails without the aliasSet', () => {
     for (const v of GUYONG.variants) {
-      const result = validatePolicyLayout(GUYONG.layoutFor(v), GUYONG.sourceFor(v), getLexicon('zh-CN'));
-      expect(result.ok, v.trigger).toBe(false);
-      expect(result.ok === false && result.code, v.trigger).toBe('layout_structural_hides_value');
+      const source = GUYONG.sourceFor(v);
+      const result = validatePolicyLayout(GUYONG.layoutFor(v), source, getLexicon('zh-CN'));
+      // 收紧到「结构 span 与值重叠」这一种原因：没有别名时「我曾问」只是普通标识符（值），
+      // 却落在结构 span `我曾问 ` 里；不能是同码的「源码无法分词」。
+      expect(result, v.trigger).toMatchObject({
+        ok: false,
+        code: 'layout_structural_hides_value',
+        offset: source.indexOf('我曾问'),
+      });
+      expect(result.ok === false && result.message, v.trigger).toContain('overlaps value "我曾问"');
     }
   });
 });
