@@ -5,6 +5,7 @@ import {
   BookMarked,
   BookOpen,
   Boxes,
+  Columns2,
   LayoutTemplate,
   type LucideIcon,
   Settings,
@@ -57,6 +58,7 @@ export function EditorRail({
       ? [
           { tab: 'model' as const, label: tEditor('tabModel'), icon: Boxes },
           { tab: 'vocabulary' as const, label: tEditor('tabVocabulary'), icon: BookMarked },
+          { tab: 'layout' as const, label: tEditor('layoutTab.title'), icon: Columns2 },
         ]
       : []),
   ];

@@ -11,6 +11,8 @@ import { resolveEntitlementForRequest } from '@/lib/capabilities/resolve';
 import { toEditorAuthoringProps } from '@/lib/capabilities/editor-props';
 import { localizedTitle } from '@/lib/page-metadata';
 import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
+import { activeLayoutSha256, loadVersionLayout } from '@/lib/policy-layout/store';
+import { layoutForCanonical } from '@/lib/policy-layout/reconcile';
 
 export const generateMetadata = localizedTitle('pageTitles', 'policyEdit');
 
@@ -56,6 +58,7 @@ export default async function EditPolicyPage({ params }: PageProps) {
   const activeVersion = await db.query.policyVersions.findFirst({
     where: and(eq(policyVersions.policyId, id), eq(policyVersions.version, policyData.version)),
     columns: {
+      id: true,
       aliasSet: true,
       content: true,
       source: true,
@@ -98,6 +101,14 @@ export default async function EditPolicyPage({ params }: PageProps) {
     }),
   );
 
+  // 显示排版（ADR 0058 §7.4）：是否带排版与能力无关（保存前的丢弃提示要用）；排版本身只给有权的作者加载。
+  // 编辑器里的源码是 Policy.content，排版须与它逐字对应，否则按不一致处理、不加载（绝不加载过期排版）。
+  const hasActiveLayout = activeVersion ? (await activeLayoutSha256(activeVersion.id)) !== null : false;
+  const storedLayout =
+    structuredAuthoring.allowed && hasActiveLayout && activeVersion
+      ? layoutForCanonical(await loadVersionLayout(activeVersion.id), policyData.content)
+      : null;
+
   // 序列化策略数据
   const policy = {
     id: policyData.id,
@@ -139,6 +150,9 @@ export default async function EditPolicyPage({ params }: PageProps) {
       allowStructuralAliases={allowStructuralAliases}
       structuredAuthoring={structuredAuthoring}
       visibilityLocked={!canPublish}
+      hasActiveLayout={hasActiveLayout}
+      initialLayout={storedLayout?.status === 'ok' ? storedLayout.layout : null}
+      initialLayoutInconsistent={storedLayout?.status === 'inconsistent'}
     />
   );
 }

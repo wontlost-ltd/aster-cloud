@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { editor } from 'monaco-editor';
 import { useTranslations } from 'next-intl';
 import {
@@ -8,6 +8,7 @@ import {
   BookOpen,
   BookMarked,
   Boxes,
+  Columns2,
   LayoutTemplate,
   AlertTriangle,
   Settings,
@@ -85,9 +86,10 @@ export type SidePanelTab =
   | 'ai'
   | 'syntax'
   | 'templates'
-  // 以下两个标签仅在 structuredAuthoring.allowed 时出现（ADR 0058 §8.3）
+  // 以下标签仅在 structuredAuthoring.allowed 时出现（ADR 0058 §8.3；排版见 §7.4、裁决 R11）
   | 'model'
-  | 'vocabulary';
+  | 'vocabulary'
+  | 'layout';
 
 const NO_VOCABULARY_TERMS: ReadonlyArray<VocabularyTabTerm> = [];
 
@@ -148,6 +150,8 @@ export interface SidePanelProps {
   /** 命令面板「新建结构体」：模型标签页据此打开新建表单，打开后回调消费请求。 */
   newStructRequested?: boolean;
   onNewStructRequestHandled?: () => void;
+  /** 「排版」标签页内容（ADR 0058 §7.4）。排版状态由 PolicyForm 持有，这里只负责放进标签；能力为假时不渲染。 */
+  layoutPanel?: ReactNode;
 }
 
 export function SidePanel({
@@ -186,6 +190,7 @@ export function SidePanel({
   canonicalPreview = null,
   newStructRequested = false,
   onNewStructRequestHandled,
+  layoutPanel = null,
 }: SidePanelProps) {
   const t = useTranslations('policies.form');
   const tEditor = useTranslations('policyEditor');
@@ -222,6 +227,7 @@ export function SidePanel({
     templates: { icon: LayoutTemplate, label: t('sidePanelTemplates') },
     model: { icon: Boxes, label: tEditor('tabModel') },
     vocabulary: { icon: BookMarked, label: tEditor('tabVocabulary') },
+    layout: { icon: Columns2, label: tEditor('layoutTab.title') },
   };
   const HeaderIcon = tabMeta[tab].icon;
   const headerLabel = tabMeta[tab].label;
@@ -366,6 +372,9 @@ export function SidePanel({
             )}
             <VocabularyTab editor={editor} terms={vocabularyTerms} teamId={teamId} policyLocale={cnlLocale} />
           </div>
+        )}
+        {structuredAuthoring.allowed && tab === 'layout' && layoutPanel && (
+          <div className="p-3">{layoutPanel}</div>
         )}
         {tab === 'problems' && (
           <div className="p-3">

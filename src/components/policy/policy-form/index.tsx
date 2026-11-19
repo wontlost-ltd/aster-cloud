@@ -93,6 +93,11 @@ import { extractReservedAliasSets, getLexicon } from '@/lib/aster-lexicon';
 import { validateUserAliases } from '@/lib/policy-alias-shared';
 import { useAliasIssueMessage } from '@/components/policy/use-alias-issue-message';
 import { localizedErrorMessage } from '@/lib/api/localized-error-message';
+import { displayToCanonical, toCanonical, type PolicyLayout } from '@aster-cloud/aster-lang-ts/layout';
+import { offsetAt, offsetAtClamped, positionAt, projectCanonicalRange } from '@/lib/policy-layout/edit-ops';
+import { LayoutDisplayView, type LayoutDisplayMarker } from '@/components/policy/layout/layout-display-view';
+import { LayoutTab, type LayoutDraft } from './layout-tab';
+import { isLayoutSaveErrorCode, useLayoutErrorText } from './layout-error-text';
 
 /** 保存时作者词汇非法的错误码（与服务端 policy-compile-response 一致）。 */
 const VOCABULARY_SCOPE_INVALID_CODE = 'vocabulary_scope_invalid';
@@ -138,9 +143,13 @@ export type PolicyFormMode = 'create' | 'edit';
 
 export type PolicyFormInitialFields = PolicyDraftFields;
 
+export type { LayoutDraft } from './layout-tab';
+
 export interface PolicySaveResult {
   /** Saved policy id — used to navigate to detail on "save and view". */
   id: string;
+  /** 新版本没有沿用上一版本的显示排版（ADR 0058 §7.5）。 */
+  layoutDropped?: boolean;
 }
 
 export interface PolicySaveError {
@@ -163,12 +172,21 @@ export interface PolicySaveError {
   term?: string;
   /** vocabulary_scope_invalid：出错词条的种类（field / enum_value / literal）。 */
   kind?: string;
+  /** layout 错误码：canonical 源码中的 UTF-16 偏移。 */
+  offset?: number;
+  /** layout_too_large：超出的上限名。 */
+  limit?: string;
 }
 
 /** 保存时随字段一起提交的上下文。 */
 export interface PolicySaveContext {
   /** 策略的 CNL 语言（规范标签），作为保存请求的 locale 提交，见 policy-cnl-locale。 */
   locale: string;
+  /**
+   * 显示排版的三态（ADR 0058 §7.5，裁决 R13）：缺省 = 请求体省略 layout（服务端按规则沿用），
+   * null = 不带，对象 = 提交该排版。不进 localStorage 草稿。
+   */
+  layout?: PolicyLayout | null;
 }
 
 export interface PolicyFormProps {
@@ -210,6 +228,12 @@ export interface PolicyFormProps {
   visibilityLocked?: boolean;
   /** 团队策略所属团队：编辑器按团队词汇 + 作者词汇编译（ADR 0017）。 */
   teamId?: string | null;
+  /** 活跃版本复验通过的显示排版；只在能力为真时由编辑页下发（ADR 0058 §7.4）。 */
+  initialLayout?: PolicyLayout | null;
+  /** 活跃版本有排版行但复验不一致、未加载。 */
+  initialLayoutInconsistent?: boolean;
+  /** 活跃版本带显示排版（与能力无关，保存前的丢弃提示要用）。 */
+  hasActiveLayout?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -233,10 +257,15 @@ export function PolicyForm({
   structuredAuthoring = STRUCTURED_AUTHORING_DENIED,
   visibilityLocked = false,
   teamId = null,
+  initialLayout = null,
+  initialLayoutInconsistent = false,
+  hasActiveLayout = false,
 }: PolicyFormProps) {
   const router = useRouter();
   const t = useTranslations('policies.form');
   const tCommon = useTranslations('common');
+  const tEditor = useTranslations('policyEditor');
+  const layoutErrorText = useLayoutErrorText();
   const aliasIssueMessage = useAliasIssueMessage();
   // dashboard layout 下发的 AI 工作台开关；null 时「AI」tab 保持原面板。
   const aiWorkspace = useAiWorkspace();
@@ -321,7 +350,7 @@ export function PolicyForm({
   const editorInstanceRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   // 保留 ready 布尔：onMount 是异步的，翻转它触发一次 re-render，让依赖 editor 实例的
   // 子组件（SidePanel / palette）在挂载后拿到实例（ref 变化本身不触发 re-render）。
-  const [, setEditorReady] = useState(false);
+  const [editorReady, setEditorReady] = useState(false);
 
   // 词汇标签页的术语：由编辑器内的词汇 hook 上抛，不另发请求。
   const [vocabularyTerms, setVocabularyTerms] = useState<ReadonlyArray<VocabularyTabTerm>>([]);
@@ -333,6 +362,27 @@ export function PolicyForm({
   const canonicalPreviewAvailable = structuredAuthoring.allowed && lsp?.features?.canonicalPreview === true;
   const toggleCanonicalPreview = useCallback(() => setCanonicalPreviewOpen((v) => !v), []);
   const handleNewStructRequestHandled = useCallback(() => setNewStructRequested(false), []);
+
+  // ---------------------------------------------------------------
+  // 显示排版（ADR 0058 §7.4–7.8，裁决 R11–R13）
+  // ---------------------------------------------------------------
+  // savedLayout / activeHasLayout / savedContent 是「上一次落库」的基线：加载时来自编辑页，保存成功后更新。
+  const [savedLayout, setSavedLayout] = useState<PolicyLayout | null>(initialLayout);
+  const [activeHasLayout, setActiveHasLayout] = useState(hasActiveLayout);
+  const [savedContent, setSavedContent] = useState(initial.content);
+  const [layoutDraft, setLayoutDraft] = useState<LayoutDraft>({ kind: 'untouched' });
+  const [sideBySide, setSideBySide] = useState(false);
+  // Monaco 选区的 canonical 偏移（只在并排视图打开时跟踪）
+  const [canonicalSelection, setCanonicalSelection] = useState<{ start: number; end: number } | null>(null);
+  // 保存前的「此版本将不再带显示排版」确认：记下确认后要继续的保存
+  const [pendingDropSave, setPendingDropSave] = useState<{ afterSave?: (id: string) => void } | null>(null);
+  const currentLayout =
+    layoutDraft.kind === 'edited' ? layoutDraft.layout : layoutDraft.kind === 'removed' ? null : savedLayout;
+  // 并排窗格只显示与当前源码逐字对应的排版；源码改了即失效（R12），窗格随之收起
+  const paneLayout =
+    structuredAuthoring.allowed && sideBySide && !isMobile && currentLayout && toCanonical(currentLayout) === content
+      ? currentLayout
+      : null;
   // ---------------------------------------------------------------
   // Compile-on-type —— 单一真相源
   // ---------------------------------------------------------------
@@ -353,6 +403,63 @@ export function PolicyForm({
   const compileErrorCount = useMemo(
     () => compile.diagnostics.filter((d) => d.severity === 'error').length,
     [compile.diagnostics],
+  );
+
+  // 并排视图的同步：Monaco 光标 / 选区 → display 高亮；编译诊断 → display 标记（都经 projectCanonicalRange）
+  useEffect(() => {
+    const ed = editorInstanceRef.current;
+    if (!paneLayout || !ed) return;
+    const subscription = ed.onDidChangeCursorSelection(({ selection }) => {
+      const text = ed.getModel()?.getValue() ?? '';
+      try {
+        setCanonicalSelection({
+          start: offsetAt(text, selection.startLineNumber, selection.startColumn),
+          end: offsetAt(text, selection.endLineNumber, selection.endColumn),
+        });
+      } catch {
+        setCanonicalSelection(null);
+      }
+    });
+    return () => subscription.dispose();
+  }, [paneLayout, editorReady]);
+  const paneHighlight = useMemo(() => {
+    if (!paneLayout || !canonicalSelection) return null;
+    let { start, end } = canonicalSelection;
+    // 光标没有选区时高亮光标后的一个字符（码点；行末 / 文末取前一个），否则零宽区间在 display 里看不见。
+    // 光标若落在代理对中间先退到码点起点，不高亮半个字符。
+    if (start === end) {
+      const high = content.charCodeAt(start - 1);
+      const low = content.charCodeAt(start);
+      if (high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff) start = end = start - 1;
+      if (start < content.length) end = start + (content.codePointAt(start)! > 0xffff ? 2 : 1);
+      else if (start > 0) start = end - (start >= 2 && content.codePointAt(start - 2)! > 0xffff ? 2 : 1);
+    }
+    try {
+      return projectCanonicalRange(paneLayout, start, end);
+    } catch {
+      return null;
+    }
+  }, [paneLayout, canonicalSelection, content]);
+  const paneMarkers = useMemo<LayoutDisplayMarker[]>(() => {
+    // 诊断只对它所编译的那份源码有效；防抖编译尚未追上时不投影
+    if (!paneLayout || (compile.source ?? content) !== content) return [];
+    return compile.diagnostics.flatMap((d) => {
+      if (d.severity !== 'error' && d.severity !== 'warning') return [];
+      const a = offsetAtClamped(content, d.startLine, d.startColumn);
+      const b = offsetAtClamped(content, d.endLine, d.endColumn);
+      return [{ range: projectCanonicalRange(paneLayout, Math.min(a, b), Math.max(a, b)), severity: d.severity }];
+    });
+  }, [paneLayout, compile.source, compile.diagnostics, content]);
+  const jumpFromDisplay = useCallback(
+    (displayOffset: number) => {
+      const ed = editorInstanceRef.current;
+      if (!ed || !paneLayout) return;
+      const { line, column } = positionAt(content, displayToCanonical(paneLayout, displayOffset).start);
+      ed.setPosition({ lineNumber: line, column });
+      ed.revealLineInCenter(line);
+      ed.focus();
+    },
+    [paneLayout, content],
   );
 
   const openSidePanel = useCallback((tab: SidePanelTab) => {
@@ -586,6 +693,9 @@ export function PolicyForm({
    */
   const saveErrorText = useCallback(
     (error: PolicySaveError): string => {
+      if (isLayoutSaveErrorCode(error.code)) {
+        return layoutErrorText({ code: error.code, offset: error.offset, limit: error.limit }, content);
+      }
       if (error.code === VOCABULARY_SCOPE_INVALID_CODE) {
         // 按引擎原因分文案：缺 parent（字段 / 枚举成员）与字面量冲突的修法不同；未知原因用通用说明
         const term = error.term;
@@ -613,18 +723,25 @@ export function PolicyForm({
         vocabulary_unavailable: t('saveErrorCodes.vocabulary_unavailable'),
       }, error.message);
     },
-    [t],
+    [t, layoutErrorText, content],
   );
 
-  /** Submit. Optional callback to fire on success (e.g. navigate). */
-  const handleSubmit = useCallback(
+  // 这次保存会让新版本失去显示排版：活跃版本有排版、源码改了，且无权保存排版或排版未动而已对不上源码
+  const willDropLayout =
+    activeHasLayout &&
+    content !== savedContent &&
+    (!structuredAuthoring.allowed ||
+      (layoutDraft.kind === 'untouched' && (savedLayout === null || toCanonical(savedLayout) !== content)));
+
+  /** 已通过校验后真正提交（丢弃确认之后也从这里继续）。 */
+  const submit = useCallback(
     async (afterSave?: (id: string) => void): Promise<void> => {
-      if (!validate()) return;
-      if (isSaving) return;
       setIsSaving(true);
       setServerError(null);
+      // 草稿 → 三态：未动 = 省略，edited = 对象，removed = null（R13）
+      const layout = layoutDraft.kind === 'edited' ? layoutDraft.layout : layoutDraft.kind === 'removed' ? null : undefined;
       try {
-        const result = await onSave(fields, { locale: cnlLocale });
+        const result = await onSave(fields, layout === undefined ? { locale: cnlLocale } : { locale: cnlLocale, layout });
         if ('message' in result) {
           setServerError(result);
           const diagnostics = (result.diagnostics ?? []).filter(
@@ -643,11 +760,21 @@ export function PolicyForm({
               message: first.message ?? t('saveDiagnosticFallback'),
             }));
           } else {
+            // layout 错误码引导到排版标签页（能力为假时没有该标签）
+            if (isLayoutSaveErrorCode(result.code) && structuredAuthoring.allowed) openSidePanel('layout');
             toast.error(t('saveFailed'), { description: saveErrorText(result) });
           }
           return;
         }
         toast.success(t('saveSuccess'));
+        if (result.layoutDropped) toast.warning(tEditor('layoutDrop.dropped'));
+        // 刚保存的版本成为新的基线：提交的排版即活跃排版；省略且被丢弃则活跃版本不再带排版
+        if (layout !== undefined || result.layoutDropped) {
+          setSavedLayout(layout ?? null);
+          setActiveHasLayout(layout != null);
+        }
+        setLayoutDraft({ kind: 'untouched' });
+        setSavedContent(fields.content);
         clearDraft();
         afterSave?.(result.id);
       } catch (err) {
@@ -658,7 +785,21 @@ export function PolicyForm({
         setIsSaving(false);
       }
     },
-    [validate, isSaving, onSave, fields, cnlLocale, clearDraft, t, openSidePanel, saveErrorText],
+    [layoutDraft, onSave, fields, cnlLocale, clearDraft, t, tEditor, openSidePanel, saveErrorText, structuredAuthoring.allowed],
+  );
+
+  /** Submit. Optional callback to fire on success (e.g. navigate). */
+  const handleSubmit = useCallback(
+    async (afterSave?: (id: string) => void): Promise<void> => {
+      if (!validate()) return;
+      if (isSaving) return;
+      if (willDropLayout) {
+        setPendingDropSave({ afterSave });
+        return;
+      }
+      await submit(afterSave);
+    },
+    [validate, isSaving, willDropLayout, submit],
   );
 
   const onSaveOnly = useCallback(
@@ -920,8 +1061,30 @@ export function PolicyForm({
               </pre>
             ) : (
               structuredAuthoring.allowed ? (
-                // 结构化编写可用时编辑器放进可收缩的一格，下方才能分出词汇规范预览；能力为假时 DOM 不变
-                <div className="flex min-h-0 flex-1 flex-col">{monacoEditor}</div>
+                // 结构化编写可用时编辑器放进可收缩的一格，下方才能分出词汇规范预览、左侧才能并排显示排版；
+                // 能力为假时 DOM 不变。显示排版是只读窗格，Monaco 仍是唯一的 canonical 编辑器（R11）。
+                <div className="flex min-h-0 flex-1">
+                  {paneLayout && (
+                    <section
+                      data-testid="layout-display-pane"
+                      aria-label={tEditor('layoutTab.paneTitle')}
+                      className="hidden min-h-0 w-1/2 shrink-0 flex-col border-r border-border lg:flex"
+                    >
+                      <h2 className="border-b border-border px-3 py-1.5 text-xs font-medium text-fg-muted">
+                        {tEditor('layoutTab.paneTitle')}
+                      </h2>
+                      <div className="min-h-0 flex-1 overflow-auto p-2">
+                        <LayoutDisplayView
+                          layout={paneLayout}
+                          highlight={paneHighlight}
+                          markers={paneMarkers}
+                          onDisplayOffsetClick={jumpFromDisplay}
+                        />
+                      </div>
+                    </section>
+                  )}
+                  <div className="flex min-h-0 flex-1 flex-col min-w-0">{monacoEditor}</div>
+                </div>
               ) : (
                 monacoEditor
               )
@@ -1009,6 +1172,23 @@ export function PolicyForm({
                 }
                 newStructRequested={newStructRequested}
                 onNewStructRequestHandled={handleNewStructRequestHandled}
+                layoutPanel={
+                  structuredAuthoring.allowed ? (
+                    <LayoutTab
+                      // 同上：编辑器实例经 ref 持有
+                      // eslint-disable-next-line react-hooks/refs
+                      editor={editorInstanceRef.current}
+                      source={content}
+                      cnlLocale={cnlLocale}
+                      aliasSet={fields.aliasSet}
+                      layout={currentLayout}
+                      inconsistent={initialLayoutInconsistent && layoutDraft.kind === 'untouched'}
+                      sideBySide={sideBySide}
+                      onSideBySideChange={setSideBySide}
+                      onChange={setLayoutDraft}
+                    />
+                  ) : null
+                }
               />
             </div>
           )}
@@ -1077,6 +1257,24 @@ export function PolicyForm({
             router.push(cancelHref);
           }}
         />
+
+        {/* ----- 显示排版丢弃确认（ADR 0058 §6 第 3 行、§7.5）：只在需要时挂载，无排版的编辑器 DOM 不变 ----- */}
+        {pendingDropSave && (
+          <ConfirmDialog
+            isOpen
+            title={tEditor('layoutDrop.confirmTitle')}
+            description={tEditor('layoutDrop.confirmBody')}
+            confirmLabel={tEditor('layoutDrop.confirm')}
+            cancelLabel={tCommon('cancel')}
+            variant="warning"
+            onCancel={() => setPendingDropSave(null)}
+            onConfirm={() => {
+              const { afterSave } = pendingDropSave;
+              setPendingDropSave(null);
+              void submit(afterSave);
+            }}
+          />
+        )}
 
         {/* ----- Template overwrite confirmation ----- */}
         {/* 模板覆盖已有内容前先确认，避免误删未保存的编辑。 */}

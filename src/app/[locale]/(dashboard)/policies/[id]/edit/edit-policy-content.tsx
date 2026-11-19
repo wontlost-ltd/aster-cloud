@@ -7,6 +7,7 @@ import type { PolicyDraftFields } from '@/components/policy/policy-form/use-poli
 import { track, Events, levenshtein } from '@/lib/mixpanel';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
 import type { StructuredAuthoringProps } from '@/lib/capabilities/types';
+import type { PolicyLayout } from '@aster-cloud/aster-lang-ts/layout';
 
 /**
  * /policies/[id]/edit — thin wrapper around <PolicyForm>.
@@ -50,6 +51,12 @@ interface EditPolicyContentProps {
   structuredAuthoring: StructuredAuthoringProps;
   /** 当前用户不能切换公开状态（团队策略只有 owner/admin 可以） */
   visibilityLocked?: boolean;
+  /** 活跃版本复验通过的显示排版（仅能力为真时下发，ADR 0058 §7.4）。 */
+  initialLayout?: PolicyLayout | null;
+  /** 活跃版本的排版行复验不一致、未加载。 */
+  initialLayoutInconsistent?: boolean;
+  /** 活跃版本带显示排版（与能力无关，用于保存前的丢弃提示）。 */
+  hasActiveLayout?: boolean;
 }
 
 export function EditPolicyContent({
@@ -60,11 +67,14 @@ export function EditPolicyContent({
   allowStructuralAliases,
   structuredAuthoring,
   visibilityLocked = false,
+  initialLayout = null,
+  initialLayoutInconsistent = false,
+  hasActiveLayout = false,
 }: EditPolicyContentProps) {
   const tPolicies = useTranslations('policies');
 
   const handleSave = useCallback(
-    async (fields: PolicyDraftFields, { locale: cnlLocale }: PolicySaveContext) => {
+    async (fields: PolicyDraftFields, { locale: cnlLocale, layout }: PolicySaveContext) => {
       // Preserve the legacy ai-draft telemetry hand-off. window.__asterAiDraft
       // is set by the AI assistant flow when it commits a generated body.
       const aiDraft =
@@ -83,6 +93,8 @@ export function EditPolicyContent({
         body: JSON.stringify({
           ...fields,
           locale: cnlLocale,
+          // layout 只在作者编辑过排版时出现；省略时服务端按规则沿用（ADR 0058 §7.5）
+          ...(layout !== undefined ? { layout } : {}),
           metadata: { source_kind: sourceKind },
         }),
       });
@@ -96,6 +108,8 @@ export function EditPolicyContent({
           reason: data.reason,
           term: data.term,
           kind: data.kind,
+          offset: data.offset,
+          limit: data.limit,
           upgrade: !!(data.upgrade || data.frozen),
         };
       }
@@ -126,7 +140,9 @@ export function EditPolicyContent({
         delete window.__asterAiDraft;
       }
 
-      return { id: policy.id };
+      // 成功响应带 layoutDropped（ADR 0058 §7.5）；读不到响应体时按未丢弃处理
+      const saved = (await res.json().catch(() => ({}))) as { layoutDropped?: unknown };
+      return { id: policy.id, layoutDropped: saved.layoutDropped === true };
     },
     [policy.id, t.form.failedToUpdate],
   );
@@ -158,6 +174,9 @@ export function EditPolicyContent({
       structuredAuthoring={structuredAuthoring}
       visibilityLocked={visibilityLocked}
       teamId={policy.teamId ?? null}
+      initialLayout={initialLayout}
+      initialLayoutInconsistent={initialLayoutInconsistent}
+      hasActiveLayout={hasActiveLayout}
       cancelHref={`/${locale}/policies/${policy.id}`}
       detailHrefFor={(id) => `/${locale}/policies/${id}`}
       breadcrumbs={[
