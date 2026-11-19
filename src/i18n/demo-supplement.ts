@@ -19,6 +19,9 @@
  * - `equivalencePage.*` 中 /equivalence 重设计（#764）新增的结论 / 维度 / 覆盖率 / 历史 / 方法文案；
  *   seo、hero.title、trend.range、resolvedDivergences.rows、whitepaperCta 仍取共享包。
  *
+ * - `notifications.labelWithUnread`：通知铃铛有未读数时按钮的可访问名，须包含徽章上的可见数字
+ *   （WCAG 2.5.3，#814）；与同命名空间的 guard 审批 / 策略版本通知文案一样只叠加新键。
+ *
  * deepMergeMessages 深合并：只新增上述 key，不覆盖包里已有的 demoPage/languageSettings
  * 其余文案。缺 locale 的 key 由 request.ts 的 en 底座兜底。
  */

@@ -20,7 +20,7 @@ vi.mock('@/i18n/navigation', () => ({
   Link: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => React.createElement('a', { href, ...props }, children),
 }));
 
-import { NotificationsBell } from '@/components/notifications/notifications-bell';
+import { NotificationsBell, fillTemplate } from '@/components/notifications/notifications-bell';
 import { DEMO_SUPPLEMENT } from '@/i18n/demo-supplement';
 import { locales } from '@/i18n/config';
 
@@ -53,8 +53,13 @@ describe('NotificationsBell 可访问名（#814）', () => {
     expect((button.textContent ?? '').trim()).toBe('');
   });
 
-  it.each(locales)('%s：labelWithUnread 文案带 {count} 占位符', (locale) => {
-    const notifications = DEMO_SUPPLEMENT[locale].notifications as Record<string, string>;
-    expect(notifications.labelWithUnread).toContain('{count}');
+  it.each(locales)('%s：labelWithUnread 代入 3 / 50+ 后可访问名包含徽章原文', (locale) => {
+    const template = (DEMO_SUPPLEMENT[locale].notifications as Record<string, string>).labelWithUnread;
+    expect(template).toContain('{count}');
+    for (const badge of ['3', '50+']) {
+      const name = fillTemplate(template, { count: badge });
+      expect(name).toContain(badge);
+      expect(name).not.toContain('{count}');
+    }
   });
 });

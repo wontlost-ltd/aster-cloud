@@ -73,11 +73,16 @@ async function upsertIdentity(sql: postgres.Sql): Promise<void> {
 const UNREAD_NOTIFICATIONS = 3;
 
 /**
- * 给每个审计角色写入固定 id 的未读通知（幂等）：重复播种时把 readAt 清回 null，
+ * 给每个审计角色写入固定 id 的未读通知（幂等）：先把审计用户的其他未读通知标为已读，重复播种时把 readAt 清回 null，
  * 上一轮审计或手动点开铃铛标为已读后仍能恢复未读状态。
  */
 async function upsertUnreadNotifications(sql: postgres.Sql): Promise<void> {
   const now = new Date();
+  // 其他来源的未读通知（如上一轮播种建策略、团队邀请产生的）一律标为已读，徽章数字稳定为 UNREAD_NOTIFICATIONS
+  const ids = AUDIT_ROLES.map((r) => r.id);
+  await sql`
+    update "Notification" set "readAt" = ${now}
+    where "userId" in ${sql(ids)} and "readAt" is null and id not like 'ui-audit-notif-%'`;
   for (const r of AUDIT_ROLES) {
     for (let i = 1; i <= UNREAD_NOTIFICATIONS; i += 1) {
       const data = { teamId: AUDIT_TEAM_ID, teamName: 'UI Audit Team', memberName: `Audit teammate ${i}` };
