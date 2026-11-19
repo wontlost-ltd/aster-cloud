@@ -16,7 +16,7 @@ apiVersion: v1
 只有以下条件全部满足时，一个人才能在某条策略上使用结构化编写，按此顺序检查：
 
 1. **全局开关已开启。**默认关闭。
-2. **套餐允许。**Free 以外的所有套餐都包含它（Trial、Pro、Team、Enterprise）。看的是这条策略的套餐：个人策略看作者本人的套餐，团队策略看团队 owner 的套餐。
+2. **套餐允许。**Free 以外的所有套餐都包含它：Trial、Pro、Enterprise，以及已下线的 Team 套餐。看的是这条策略的套餐：个人策略看作者本人的套餐，团队策略看团队 owner 的套餐。
 3. **此人有授权**，来自以下至少一个来源：
    - 平台管理员给的**直接授权**；
    - 授予此人所在团队的**团队授权**，且此人在该团队的角色不是 viewer；
@@ -83,7 +83,7 @@ apiVersion: v1
 | 操作 | 何时记录 |
 |---|---|
 | `capability.grant` | 新建直接授权、团队授权或委派 |
-| `capability.revoke` | 撤销授权；`reason` 为 `manual`、`member_removed` 或 `team_deleted` |
+| `capability.revoke` | 撤销授权；`reason` 说明原因，例如 `manual`、`member_removed` 或 `team_deleted` |
 | `capability.allotment.update` | 团队的座位上限或 owner 委派变更，或团队被删除 |
 | `platform_setting.update` | 结构化编写的开关变更 |
 

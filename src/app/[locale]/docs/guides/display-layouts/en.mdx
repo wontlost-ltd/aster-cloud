@@ -82,7 +82,7 @@ The display marks every piece of text that exists only in the layout: structural
 
 A layout belongs to one version and is never changed after it is saved.
 
-- **Changing only the layout creates a new version.** Saving the same layout again creates none.
+- **Changing only the layout creates a new version.** In the editor, saving again with the same source and the same layout creates none. The versions API (`POST /api/v1/policies/{id}/versions`) creates a version on every call.
 - **Remove layout** and save: the new version has no layout.
 - **Editing the source:** a layout that no longer gives back the source is invalid. The tab says *The source changed, so this layout no longer matches it*; layouts are not re-aligned automatically. Click **Restart from identity layout** to begin again, or **Remove layout**.
 - **Saving without touching the layout:** the new version keeps the current layout when it still passes every rule for the new source, language and aliases, and you have Structured Authoring. Otherwise the new version has no layout. When the editor can tell this before saving, it asks you to confirm (*This version will no longer have a display layout*). After any save that dropped the layout, it tells you that the new version has none. Earlier versions keep theirs.

@@ -16,7 +16,7 @@ It does not gate the language. Structs, type aliases, import aliases and vocabul
 A person can use Structured Authoring in a policy only when all of these hold, checked in this order:
 
 1. **The global switch is on.** It is off by default.
-2. **The plan allows it.** Every plan except Free includes it (Trial, Pro, Team, Enterprise). The plan that counts is the policy's: for a personal policy the author's own plan, for a team policy the team owner's plan.
+2. **The plan allows it.** Every plan except Free includes it: Trial, Pro and Enterprise, and the retired Team plan. The plan that counts is the policy's: for a personal policy the author's own plan, for a team policy the team owner's plan.
 3. **The person has a grant**, from at least one of these sources:
    - a **direct grant** from a platform administrator;
    - a **team grant** to a team the person belongs to, with a role other than viewer;
@@ -83,7 +83,7 @@ An editor that is already open keeps its tabs until the page is reloaded, but th
 | Action | When |
 |---|---|
 | `capability.grant` | A direct grant, team grant or delegation is created |
-| `capability.revoke` | A grant is revoked; `reason` is `manual`, `member_removed` or `team_deleted` |
+| `capability.revoke` | A grant is revoked; `reason` gives the cause, such as `manual`, `member_removed` or `team_deleted` |
 | `capability.allotment.update` | A team's seat cap or owner delegation changes, or the team is deleted |
 | `platform_setting.update` | A Structured Authoring switch changes |
 

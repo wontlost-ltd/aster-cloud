@@ -16,7 +16,7 @@ Die Sprache selbst schränkt es nicht ein. Strukturen, Typ-Aliase, Import-Aliase
 Eine Person kann Strukturiertes Verfassen in einer Richtlinie nur nutzen, wenn alle diese Bedingungen erfüllt sind, geprüft in dieser Reihenfolge:
 
 1. **Der globale Schalter ist an.** Standardmäßig ist er aus.
-2. **Der Tarif erlaubt es.** Jeder Tarif außer Free enthält es (Trial, Pro, Team, Enterprise). Es zählt der Tarif der Richtlinie: bei einer persönlichen Richtlinie der eigene Tarif des Autors, bei einer Teamrichtlinie der Tarif des Team-Owners.
+2. **Der Tarif erlaubt es.** Jeder Tarif außer Free enthält es: Trial, Pro und Enterprise sowie der eingestellte Team-Tarif. Es zählt der Tarif der Richtlinie: bei einer persönlichen Richtlinie der eigene Tarif des Autors, bei einer Teamrichtlinie der Tarif des Team-Owners.
 3. **Die Person hat eine Freigabe** aus mindestens einer dieser Quellen:
    - eine **direkte Freigabe** durch einen Plattform-Admin;
    - eine **Teamfreigabe** für ein Team, dem die Person mit einer anderen Rolle als Viewer angehört;
@@ -83,7 +83,7 @@ Ein bereits geöffneter Editor behält seine Tabs, bis die Seite neu geladen wir
 | Aktion | Wann |
 |---|---|
 | `capability.grant` | Eine direkte Freigabe, Teamfreigabe oder Delegation wird angelegt |
-| `capability.revoke` | Eine Freigabe wird widerrufen; `reason` ist `manual`, `member_removed` oder `team_deleted` |
+| `capability.revoke` | Eine Freigabe wird widerrufen; `reason` nennt den Grund, etwa `manual`, `member_removed` oder `team_deleted` |
 | `capability.allotment.update` | Platzlimit oder Owner-Delegation eines Teams ändern sich, oder das Team wird gelöscht |
 | `platform_setting.update` | Ein Schalter für Strukturiertes Verfassen ändert sich |
 

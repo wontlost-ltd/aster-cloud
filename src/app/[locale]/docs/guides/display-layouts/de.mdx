@@ -82,7 +82,7 @@ Die Anzeige kennzeichnet jedes Stück Text, das nur im Layout existiert: Struktu
 
 Ein Layout gehört zu einer Version und wird nach dem Speichern nie mehr geändert.
 
-- **Wer nur das Layout ändert, erzeugt eine neue Version.** Dasselbe Layout erneut zu speichern erzeugt keine.
+- **Wer nur das Layout ändert, erzeugt eine neue Version.** Im Editor erzeugt erneutes Speichern mit unverändertem Quelltext und Layout keine. Die Versions-API (`POST /api/v1/policies/{id}/versions`) erzeugt bei jedem Aufruf eine Version.
 - **Layout entfernen** und speichern: Die neue Version hat kein Layout.
 - **Den Quelltext bearbeiten:** Ein Layout, das den Quelltext nicht mehr ergibt, ist ungültig. Der Tab meldet *Der Quelltext wurde geändert, daher passt dieses Layout nicht mehr*; Layouts werden nicht automatisch neu ausgerichtet. Klicken Sie auf **Mit Identitäts-Layout neu beginnen** oder auf **Layout entfernen**.
 - **Speichern, ohne das Layout anzufassen:** Die neue Version übernimmt das aktuelle Layout, wenn es für den neuen Quelltext, die Sprache und die Aliase noch alle Regeln erfüllt und Sie Strukturiertes Verfassen haben. Andernfalls hat die neue Version kein Layout. Kann der Editor das vor dem Speichern erkennen, bittet er Sie um Bestätigung (*Diese Version hat kein Anzeige-Layout mehr*). Nach jedem Speichern, bei dem das Layout weggefallen ist, weist er darauf hin. Frühere Versionen behalten ihres.

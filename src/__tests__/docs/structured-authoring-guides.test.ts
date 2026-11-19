@@ -18,6 +18,9 @@ import {
 import type { DomainVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
 import { LAYOUT_LIMITS, parseLayout, validatePolicyLayout } from '@aster-cloud/aster-lang-ts/layout';
 import { docsSidebar } from '@/lib/docs/sidebar';
+import { CAPABILITIES } from '@/lib/capabilities/registry';
+import { CAPABILITY_ERROR_STATUS } from '@/lib/capabilities/errors';
+import { PLANS } from '@/lib/plans';
 
 const GUIDES = join(process.cwd(), 'src/app/[locale]/docs/guides');
 const LOCALES = ['en', 'zh', 'de'] as const;
@@ -174,7 +177,7 @@ describe('display layouts guide', () => {
     expect(validatePolicyLayout(hidden, source, EN_US)).toMatchObject({ ok: false, code: 'layout_structural_hides_value' });
   });
 
-  it.each(LOCALES)('%s：列出全部错误码，规模上限与包的 LAYOUT_LIMITS 一致', (locale) => {
+  it.each(LOCALES)('%s：列出全部错误码', (locale) => {
     const src = read('display-layouts', locale);
     for (const code of [
       'layout_invalid_format',
@@ -186,15 +189,43 @@ describe('display layouts guide', () => {
     ]) {
       expect(src).toContain(`\`${code}\``);
     }
-    // 去掉千位分隔符（, . 空格）后比较数字
-    const digits = src.replace(/(\d)[,.   ](?=\d{3}\b)/g, '$1');
-    for (const value of Object.values(LAYOUT_LIMITS)) {
-      expect(digits, String(value)).toMatch(new RegExp(`\\b${value}\\b`));
+  });
+
+  it.each(LOCALES)('%s：上限表逐行与 LAYOUT_LIMITS 一致（行序同包常量）', (locale) => {
+    const lines = read('display-layouts', locale).split('\n');
+    // 上限表：表头第二列是 Maximum / 最大值 / Höchstwert，表体到第一个非表格行为止
+    const header = lines.findIndex((line) => /^\|[^|]+\|\s*(Maximum|最大值|Höchstwert)\s*\|$/.test(line));
+    expect(header).toBeGreaterThan(0);
+    const rows: string[] = [];
+    for (const line of lines.slice(header + 2)) {
+      if (!line.startsWith('|')) break;
+      rows.push(line);
     }
+    // 第二列的第一个数，去掉千位分隔符（, . 空格）
+    const values = rows.map((row) => Number(row.split('|')[2]!.match(/\d[\d,. ]*/)![0].replace(/[,. ]/g, '')));
+    expect(values).toEqual([
+      LAYOUT_LIMITS.sourceBytes,
+      LAYOUT_LIMITS.sourceLines,
+      LAYOUT_LIMITS.spans,
+      LAYOUT_LIMITS.serializedBytes,
+      LAYOUT_LIMITS.displayBytes,
+      LAYOUT_LIMITS.structuralDisplayChars,
+    ]);
   });
 });
 
 describe('structured authoring admin guide', () => {
+  // 文中「Free 以外的套餐都包含」「团队 owner 可委派」「平台管理员不隐式拥有」「下调座位低于已用数被拒」的代码依据
+  it('套餐、注册项与错误码与文中一致', () => {
+    const plans = Object.entries(PLANS).map(([name, plan]) => [name, plan.capabilities.structuredAuthoring] as const);
+    expect(Object.fromEntries(plans)).toEqual({ free: false, trial: true, pro: true, team: true, enterprise: true });
+    expect(CAPABILITIES.structured_authoring).toMatchObject({
+      planCapability: 'structuredAuthoring',
+      teamDelegation: true,
+      implicitForPlatformAdmin: false,
+    });
+    expect(CAPABILITY_ERROR_STATUS.seat_cap_below_active).toBe(409);
+  });
   it.each(LOCALES)('%s：说明管理页路径与审计事件', (locale) => {
     const src = read('structured-authoring-admin', locale);
     expect(src).toContain('/admin/capabilities/structured-authoring');
