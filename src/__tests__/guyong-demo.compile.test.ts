@@ -14,7 +14,7 @@ import {
   ZH_CN,
 } from '@aster-cloud/aster-lang-ts/browser';
 import { GUYONG, type GuyongVariant } from '@/config/guyong-demo';
-import { toCanonical, toDisplay, verifyContentParity } from '@/lib/layout-map';
+import { toCanonical, toDisplay, verifyContentParity } from '@aster-cloud/aster-lang-ts/layout';
 
 /** 按 demo content 同款方式编译某变体：直接传该变体字面量宏词汇，走 toCanonical(=source) 编译。 */
 function compileVariant(v: GuyongVariant) {
@@ -80,7 +80,7 @@ describe('guyong demo: 孤勇 · 原创歌词即源码（alias-literal + LayoutM
       it('4b. LayoutMap — toDisplay 按序按次逐字保留全部意象内容 span', () => {
         const layout = GUYONG.layoutFor(v);
         const display = toDisplay(layout);
-        const contentPieces = layout
+        const contentPieces = layout.spans
           .filter((s): s is { text: string } => 'text' in s)
           .map((s) => s.text);
         // 成员性 + 顺序 + 次数：逐段从游标向后 indexOf，防某段被结构 span 吞掉或重排。
@@ -94,7 +94,7 @@ describe('guyong demo: 孤勇 · 原创歌词即源码（alias-literal + LayoutM
 
       it('4c. LayoutMap — verifyContentParity 通过（结构 span 未偷塞字面量）', () => {
         const parity = verifyContentParity(GUYONG.layoutFor(v));
-        expect(parity.ok, parity.reason ?? '').toBe(true);
+        expect(parity.ok, parity.ok ? '' : parity.reason).toBe(true);
       });
 
       it('4d. LayoutMap 语义诚实：领域 token 在 display 与 source 出现次数一致（防显示欺骗）', () => {
