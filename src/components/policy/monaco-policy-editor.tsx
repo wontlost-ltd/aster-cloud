@@ -28,6 +28,8 @@ import { useEntryRuleDecorations } from './use-entry-rule-decorations';
 import { extractUseRefs, type UseRef } from '@/lib/aster/modules';
 import type { AsterModuleCatalogEntry } from '@/services/policy/policy-api';
 import { useAsterLSP, type LspConnectionStatus } from '@/hooks/useAsterLSP';
+import type { LspFeatures } from '@/lib/lsp-features';
+import type { CanonicalPreview } from '@/lib/structured-authoring/canonical-preview';
 import { VocabularyDiagnosticLink } from '@/components/policy/vocabulary-diagnostic-link';
 import { summarizeCoreModule, type EditorCompileModuleSummary } from './core-module-summary';
 
@@ -80,6 +82,18 @@ interface MonacoPolicyEditorProps {
   onCompileChange?: (result: EditorCompileState) => void;
   /** 词汇标签页用：上抛 hook 已拉取的词条（不另发请求）。 */
   onVocabularyTermsChange?: (terms: ReadonlyArray<VocabularyTabTerm>) => void;
+  /**
+   * 上抛本编辑器 LSP 会话的能力与词汇规范预览请求（ADR 0058 §8.3 预览窗格用）。
+   * LSP 未启用（未配置 NEXT_PUBLIC_LSP_HOST 或只读）时 features 恒为 null。
+   */
+  onLspChange?: (lsp: EditorLspHandle) => void;
+}
+
+/** 上抛给父层的 LSP 句柄：能力探测结果 + 预览请求（请求只针对本编辑器的文档）。 */
+export interface EditorLspHandle {
+  features: LspFeatures | null;
+  status: LspConnectionStatus;
+  requestCanonicalPreview: () => Promise<CanonicalPreview | null>;
 }
 
 /** 上抛给父层的编译状态（形状对齐 policy-form 的 StatusBar/SidePanel 消费口径）。 */
@@ -372,6 +386,7 @@ export function MonacoPolicyEditor({
   onExplainSelection,
   onCompileChange,
   onVocabularyTermsChange,
+  onLspChange,
 }: MonacoPolicyEditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof import('monaco-editor') | null>(null);
@@ -568,7 +583,11 @@ export function MonacoPolicyEditor({
     [userVocabulary],
   );
   /* eslint-disable react-hooks/refs */
-  const { status: lspStatus } = useAsterLSP({
+  const {
+    status: lspStatus,
+    features: lspFeatures,
+    requestCanonicalPreview: requestLspCanonicalPreview,
+  } = useAsterLSP({
     editor: lspEnabled && isEditorReady ? editorRef.current : null,
     // ★必须是编辑器自己的 Monaco（onMount 拿到的那一份），见 useAsterLSP 的 monaco 选项说明。
     monaco: lspEnabled && isEditorReady ? monacoRef.current : null,
@@ -588,6 +607,16 @@ export function MonacoPolicyEditor({
     suppressErrors: true,
   });
   /* eslint-enable react-hooks/refs */
+
+  // 预览窗格经父层请求本文档的规范预览；未启用 LSP 时不上抛可用能力（与 hook 未连接一致）。
+  useEffect(() => {
+    if (!onLspChange) return;
+    onLspChange({
+      features: lspEnabled ? lspFeatures : null,
+      status: lspStatus,
+      requestCanonicalPreview: () => requestLspCanonicalPreview(),
+    });
+  }, [onLspChange, lspEnabled, lspFeatures, lspStatus, requestLspCanonicalPreview]);
 
   // 把编译结果上抛父层（StatusBar/SidePanel 复用，取代父层冗余 useCompile）。
   // 映射 TypecheckDiagnostic → 父层 CompileDiagnostic。★Aster span 的 line/col 均为 **1-based**

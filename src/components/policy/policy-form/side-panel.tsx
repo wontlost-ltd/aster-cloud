@@ -13,6 +13,8 @@ import {
   Settings,
   Tags,
   X,
+  Eye,
+  EyeOff,
   type LucideIcon,
 } from 'lucide-react';
 import { AIAssistantPanel } from '@/components/policy/ai-assistant-panel';
@@ -138,6 +140,14 @@ export interface SidePanelProps {
   policyId?: string | null;
   /** AI 工作台配置；启用时「AI」tab 嵌入工作台面板，否则沿用原 AIAssistantPanel。 */
   aiWorkspace?: AiWorkspaceConfig | null;
+  /**
+   * 词汇规范预览窗格开关（ADR 0058 §8.3）。只在 structuredAuthoring.allowed 且 LSP 声明
+   * canonicalPreview 时由父层传入，开关显示在词汇标签页顶部；缺省不渲染。
+   */
+  canonicalPreview?: { open: boolean; onToggle: () => void } | null;
+  /** 命令面板「新建结构体」：模型标签页据此打开新建表单，打开后回调消费请求。 */
+  newStructRequested?: boolean;
+  onNewStructRequestHandled?: () => void;
 }
 
 export function SidePanel({
@@ -173,6 +183,9 @@ export function SidePanel({
   initialTab,
   policyId = null,
   aiWorkspace = null,
+  canonicalPreview = null,
+  newStructRequested = false,
+  onNewStructRequestHandled,
 }: SidePanelProps) {
   const t = useTranslations('policies.form');
   const tEditor = useTranslations('policyEditor');
@@ -337,11 +350,20 @@ export function SidePanel({
         )}
         {structuredAuthoring.allowed && tab === 'model' && (
           <div className="p-3" data-testid="structured-authoring-model">
-            <ModelTab editor={editor} source={compileSource} lexicon={modelLexicon} />
+            <ModelTab
+              editor={editor}
+              source={compileSource}
+              lexicon={modelLexicon}
+              openStructForm={newStructRequested}
+              onStructFormOpened={onNewStructRequestHandled}
+            />
           </div>
         )}
         {structuredAuthoring.allowed && tab === 'vocabulary' && (
           <div className="p-3" data-testid="structured-authoring-vocabulary">
+            {canonicalPreview && (
+              <CanonicalPreviewToggle open={canonicalPreview.open} onToggle={canonicalPreview.onToggle} />
+            )}
             <VocabularyTab editor={editor} terms={vocabularyTerms} teamId={teamId} policyLocale={cnlLocale} />
           </div>
         )}
@@ -360,6 +382,23 @@ export function SidePanel({
         )}
       </div>
     </aside>
+  );
+}
+
+/** 词汇规范预览窗格的开关（窗格本身由 PolicyForm 渲染在编辑器下方）。 */
+function CanonicalPreviewToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  const t = useTranslations('policyEditor.canonicalPreview');
+  const Icon = open ? EyeOff : Eye;
+  return (
+    <button
+      type="button"
+      aria-pressed={open}
+      onClick={onToggle}
+      className="mb-3 inline-flex w-full items-center justify-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm text-fg hover:bg-bg-subtle focus-visible:outline-none focus-visible:shadow-ring"
+    >
+      <Icon aria-hidden className="size-4" />
+      {open ? t('hide') : t('show')}
+    </button>
   );
 }
 

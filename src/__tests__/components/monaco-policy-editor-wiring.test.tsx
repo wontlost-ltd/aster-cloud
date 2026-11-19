@@ -102,12 +102,17 @@ vi.mock('@monaco-editor/react', () => ({
 
 // ── useAsterLSP 探针：捕获组件传下去的入参 ────────────────────────────
 const lspCalls: Array<Record<string, unknown>> = [];
-const lspState = vi.hoisted(() => ({ status: 'idle' as string }));
+const lspState = vi.hoisted(() => ({
+  status: 'idle' as string,
+  features: null as Record<string, boolean> | null,
+  requestCanonicalPreview: (() => Promise.resolve(null)) as (uri?: string) => Promise<unknown>,
+}));
 vi.mock('@/hooks/useAsterLSP', () => ({
   useAsterLSP: (opts: Record<string, unknown>) => {
     lspCalls.push(opts);
     return { connected: lspState.status === 'connected', status: lspState.status, connecting: false, error: null,
-      connect: vi.fn(), disconnect: vi.fn(), reconnect: vi.fn() };
+      connect: vi.fn(), disconnect: vi.fn(), reconnect: vi.fn(),
+      features: lspState.features, requestCanonicalPreview: lspState.requestCanonicalPreview };
   },
 }));
 
@@ -172,6 +177,8 @@ beforeEach(() => {
   registeredProviders.length = 0;
   lspCalls.length = 0;
   lspState.status = 'idle';
+  lspState.features = null;
+  lspState.requestCanonicalPreview = () => Promise.resolve(null);
 });
 
 describe('编辑器接线：关键词补全', () => {
@@ -324,6 +331,38 @@ describe('编辑器接线：LSP 断开 / 重连提示', () => {
   });
 });
 
+
+// ADR 0058 §8.3：预览窗格经父层拿到本编辑器 LSP 会话的能力与预览请求
+describe('编辑器接线：上抛 LSP 句柄（词汇规范预览）', () => {
+  it('LSP 启用时上抛 hook 的能力、状态与预览请求', async () => {
+    const preview = { text: 'Driver', mappings: [], resolverVersion: 1 };
+    const request = vi.fn(() => Promise.resolve(preview));
+    lspState.status = 'connected';
+    lspState.features = { canonicalPreview: true };
+    lspState.requestCanonicalPreview = request;
+    const onLspChange = vi.fn();
+    process.env.NEXT_PUBLIC_LSP_HOST = 'lsp.example.test';
+    try {
+      render(<MonacoPolicyEditor value="" onChange={() => {}} locale="de" onLspChange={onLspChange} />);
+      await waitFor(() => expect(onLspChange).toHaveBeenCalled());
+      const handle = onLspChange.mock.calls.at(-1)![0];
+      expect(handle.features).toEqual({ canonicalPreview: true });
+      expect(handle.status).toBe('connected');
+      await expect(handle.requestCanonicalPreview()).resolves.toBe(preview);
+      expect(request).toHaveBeenCalledTimes(1);
+    } finally {
+      delete process.env.NEXT_PUBLIC_LSP_HOST;
+    }
+  });
+
+  it('未配置 LSP 时能力为 null（窗格与开关不出现）', async () => {
+    lspState.features = { canonicalPreview: true };
+    const onLspChange = vi.fn();
+    render(<MonacoPolicyEditor value="" onChange={() => {}} locale="de" onLspChange={onLspChange} />);
+    await waitFor(() => expect(onLspChange).toHaveBeenCalled());
+    expect(onLspChange.mock.calls.at(-1)![0].features).toBeNull();
+  });
+});
 
 /* #708：同一个 CNL 语言值同时用于浏览器编译、作者词汇注册、词汇失效订阅与 LSP 初始化，
  * hi 必须一路是 hi-IN（此前被映射成 en-US，hi 策略按英文词法编译）。 */

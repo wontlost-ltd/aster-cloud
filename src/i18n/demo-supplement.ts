@@ -1549,6 +1549,23 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     policyEditor: {
       tabModel: 'Model',
       tabVocabulary: 'Vocabulary',
+      // 词汇规范预览窗格与命令面板项（ADR 0058 §8.2–8.3）。
+      canonicalPreview: {
+        title: 'Canonical preview',
+        note: 'Read-only: vocabulary terms shown by their canonical names and literal macros expanded. Not saved or compiled.',
+        loading: 'Loading preview…',
+        unavailable: 'Preview unavailable. The editor keeps working; the preview refreshes after your next change.',
+        close: 'Close canonical preview',
+        show: 'Show canonical preview',
+        hide: 'Hide canonical preview',
+        hiddenChars: 'Contains {count, plural, one {# invisible or bidirectional control character} other {# invisible or bidirectional control characters}}, shown as {placeholder}: {codePoints}',
+      },
+      palette: {
+        openModelTab: 'Open Model tab',
+        openVocabularyTab: 'Open Vocabulary tab',
+        toggleCanonicalPreview: 'Toggle canonical preview',
+        newStruct: 'New struct',
+      },
       vocabularyTab: {
         hint: 'Terms in scope, grouped by role. Click one to insert its localized spelling.',
         searchPlaceholder: 'Search terms',
@@ -3590,6 +3607,23 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     policyEditor: {
       tabModel: '模型',
       tabVocabulary: '词汇',
+      // 词汇规范预览窗格与命令面板项（ADR 0058 §8.2–8.3）。
+      canonicalPreview: {
+        title: '词汇规范预览',
+        note: '只读：词汇术语显示为规范名，字面量宏已展开。不保存，不参与编译。',
+        loading: '正在加载预览…',
+        unavailable: '预览不可用。编辑器照常可用，下次修改后会重新生成预览。',
+        close: '关闭词汇规范预览',
+        show: '显示词汇规范预览',
+        hide: '隐藏词汇规范预览',
+        hiddenChars: '含 {count} 个不可见或双向控制字符，已显示为 {placeholder}：{codePoints}',
+      },
+      palette: {
+        openModelTab: '打开模型标签页',
+        openVocabularyTab: '打开词汇标签页',
+        toggleCanonicalPreview: '切换词汇规范预览',
+        newStruct: '新建结构体',
+      },
       vocabularyTab: {
         hint: '作用域内的术语，按角色分组。点击即可插入其本地化写法。',
         searchPlaceholder: '搜索术语',
@@ -5632,6 +5666,23 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     policyEditor: {
       tabModel: 'Modell',
       tabVocabulary: 'Vokabular',
+      // 词汇规范预览窗格与命令面板项（ADR 0058 §8.2–8.3）。
+      canonicalPreview: {
+        title: 'Kanonische Vorschau',
+        note: 'Schreibgeschützt: Vokabularbegriffe erscheinen mit ihren kanonischen Namen, Literal-Makros sind aufgelöst. Wird weder gespeichert noch kompiliert.',
+        loading: 'Vorschau wird geladen…',
+        unavailable: 'Vorschau nicht verfügbar. Der Editor funktioniert weiter; die Vorschau wird nach der nächsten Änderung neu erstellt.',
+        close: 'Kanonische Vorschau schließen',
+        show: 'Kanonische Vorschau anzeigen',
+        hide: 'Kanonische Vorschau ausblenden',
+        hiddenChars: 'Enthält {count, plural, one {# unsichtbares oder bidirektionales Steuerzeichen} other {# unsichtbare oder bidirektionale Steuerzeichen}}, dargestellt als {placeholder}: {codePoints}',
+      },
+      palette: {
+        openModelTab: 'Tab „Modell“ öffnen',
+        openVocabularyTab: 'Tab „Vokabular“ öffnen',
+        toggleCanonicalPreview: 'Kanonische Vorschau umschalten',
+        newStruct: 'Neue Struktur',
+      },
       vocabularyTab: {
         hint: 'Begriffe im Geltungsbereich, nach Rolle gruppiert. Klicken Sie, um die lokalisierte Schreibweise einzufügen.',
         searchPlaceholder: 'Begriffe suchen',
@@ -7660,6 +7711,23 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
     policyEditor: {
       tabModel: 'मॉडल',
       tabVocabulary: 'शब्दावली',
+      // 词汇规范预览窗格与命令面板项（ADR 0058 §8.2–8.3）。
+      canonicalPreview: {
+        title: 'कैनोनिकल पूर्वावलोकन',
+        note: 'केवल पढ़ने के लिए: शब्दावली के शब्द अपने कैनोनिकल नामों से दिखते हैं और लिटरल मैक्रो विस्तारित हैं। न सहेजा जाता है, न कंपाइल होता है।',
+        loading: 'पूर्वावलोकन लोड हो रहा है…',
+        unavailable: 'पूर्वावलोकन उपलब्ध नहीं है। एडिटर सामान्य रूप से काम करता रहेगा; अगले बदलाव के बाद पूर्वावलोकन फिर से बनेगा।',
+        close: 'कैनोनिकल पूर्वावलोकन बंद करें',
+        show: 'कैनोनिकल पूर्वावलोकन दिखाएँ',
+        hide: 'कैनोनिकल पूर्वावलोकन छिपाएँ',
+        hiddenChars: '{count} अदृश्य या द्विदिशीय नियंत्रण वर्ण हैं, {placeholder} के रूप में दिखाए गए: {codePoints}',
+      },
+      palette: {
+        openModelTab: 'मॉडल टैब खोलें',
+        openVocabularyTab: 'शब्दावली टैब खोलें',
+        toggleCanonicalPreview: 'कैनोनिकल पूर्वावलोकन टॉगल करें',
+        newStruct: 'नई संरचना',
+      },
       vocabularyTab: {
         hint: 'दायरे में मौजूद शब्द, भूमिका के अनुसार समूहित। स्थानीय वर्तनी डालने के लिए क्लिक करें।',
         searchPlaceholder: 'शब्द खोजें',

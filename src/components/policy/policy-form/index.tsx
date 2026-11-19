@@ -102,7 +102,8 @@ const STRUCTURED_AUTHORING_DENIED: StructuredAuthoringProps = { allowed: false, 
 
 // 类型-only 导入（不拉入 Monaco 重包；运行时组件仍走下方 dynamic）。
 import type { VocabularyTabTerm } from '@/hooks/useUserVocabularyRegistration';
-import type { EditorCompileState } from '@/components/policy/monaco-policy-editor';
+import type { EditorCompileState, EditorLspHandle } from '@/components/policy/monaco-policy-editor';
+import type { StructuredAuthoringPaletteActions } from './editor-palette';
 
 const MonacoPolicyEditor = dynamic(
   () =>
@@ -121,6 +122,12 @@ const MonacoPolicyEditor = dynamic(
       </div>
     ),
   },
+);
+
+// 词汇规范预览窗格同样内嵌只读 Monaco，按需加载且不参与 SSR。
+const CanonicalPreviewPane = dynamic(
+  () => import('./canonical-preview-pane').then((mod) => mod.CanonicalPreviewPane),
+  { ssr: false },
 );
 
 /* ------------------------------------------------------------------ */
@@ -318,6 +325,14 @@ export function PolicyForm({
 
   // 词汇标签页的术语：由编辑器内的词汇 hook 上抛，不另发请求。
   const [vocabularyTerms, setVocabularyTerms] = useState<ReadonlyArray<VocabularyTabTerm>>([]);
+  // 词汇规范预览（ADR 0058 §8.3）：编辑器 LSP 会话上抛能力与请求函数；只在能力为真时接收。
+  const [lsp, setLsp] = useState<EditorLspHandle | null>(null);
+  const [canonicalPreviewOpen, setCanonicalPreviewOpen] = useState(false);
+  // 命令面板「新建结构体」：模型标签页打开新建表单后清除
+  const [newStructRequested, setNewStructRequested] = useState(false);
+  const canonicalPreviewAvailable = structuredAuthoring.allowed && lsp?.features?.canonicalPreview === true;
+  const toggleCanonicalPreview = useCallback(() => setCanonicalPreviewOpen((v) => !v), []);
+  const handleNewStructRequestHandled = useCallback(() => setNewStructRequested(false), []);
   // ---------------------------------------------------------------
   // Compile-on-type —— 单一真相源
   // ---------------------------------------------------------------
@@ -362,6 +377,22 @@ export function PolicyForm({
   // ---------------------------------------------------------------
   // Editor command helpers
   // ---------------------------------------------------------------
+
+  const structuredAuthoringPalette = useMemo<StructuredAuthoringPaletteActions | null>(
+    () =>
+      structuredAuthoring.allowed
+        ? {
+            onOpenModelTab: () => openSidePanel('model'),
+            onOpenVocabularyTab: () => openSidePanel('vocabulary'),
+            onNewStruct: () => {
+              setNewStructRequested(true);
+              openSidePanel('model');
+            },
+            onToggleCanonicalPreview: canonicalPreviewAvailable ? toggleCanonicalPreview : null,
+          }
+        : null,
+    [structuredAuthoring.allowed, canonicalPreviewAvailable, openSidePanel, toggleCanonicalPreview],
+  );
 
   /** Insert a text snippet at the current cursor (or replace selection). */
   const insertAtCursor = useCallback((snippet: string) => {
@@ -880,11 +911,25 @@ export function PolicyForm({
                 onCompileChange={setCompile}
                 // 仅在结构化创作可用时同步词条，能力关闭时不产生额外渲染
                 onVocabularyTermsChange={structuredAuthoring.allowed ? setVocabularyTerms : undefined}
+                onLspChange={structuredAuthoring.allowed ? setLsp : undefined}
                 // 用户在设置页或状态栏关闭后不再发出任何 AI 补全请求；
                 // 读取本地偏好完成前按关闭处理，避免首帧按默认值误发请求。
                 enableAICompletion={aiInlineCompletion.value && !aiInlineCompletion.hydrating}
                 onToggleAIPanel={() => openSidePanel('ai')}
               />
+            )}
+            {canonicalPreviewAvailable && canonicalPreviewOpen && !isMobile && lsp && (
+              <div className="flex h-[40%] min-h-0 shrink-0 flex-col">
+                <CanonicalPreviewPane
+                  // 同 SidePanel：编辑器实例经 ref 持有，onEditorReady 触发的重渲染后可读到
+                  // eslint-disable-next-line react-hooks/refs
+                  editor={editorInstanceRef.current}
+                  source={compile.source ?? content}
+                  request={lsp.requestCanonicalPreview}
+                  refreshKey={lsp.status}
+                  onClose={() => setCanonicalPreviewOpen(false)}
+                />
+              </div>
             )}
           </div>
           {sidePanelOpen && !isMobile && (
@@ -951,6 +996,11 @@ export function PolicyForm({
                 initialTab={requestedTab}
                 policyId={policyId}
                 aiWorkspace={aiWorkspace}
+                canonicalPreview={
+                  canonicalPreviewAvailable ? { open: canonicalPreviewOpen, onToggle: toggleCanonicalPreview } : null
+                }
+                newStructRequested={newStructRequested}
+                onNewStructRequestHandled={handleNewStructRequestHandled}
               />
             </div>
           )}
@@ -987,6 +1037,7 @@ export function PolicyForm({
           onTogglePanel={() => setSidePanelOpen((v) => !v)}
           onShowSyntax={() => openSidePanel('syntax')}
           onShowDecision={() => openSidePanel('problems')}
+          structuredAuthoring={structuredAuthoringPalette}
         />
 
         {/* ----- CNL locale converter dialog ----- */}
