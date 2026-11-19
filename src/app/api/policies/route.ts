@@ -29,6 +29,8 @@ import { invalidatePolicyCache } from '@/lib/cache';
 import { recordProductEventAfterResponse } from '@/lib/product-events/server';
 import { eq, isNull, desc, sql, and, inArray } from 'drizzle-orm';
 import { parseCompileLocale } from '@/lib/cnl-locale';
+import { resolveEntitlement } from '@/lib/capabilities/resolve';
+import { layoutSaveErrorResponse } from '@/lib/policy-layout/errors';
 
 // GET /api/policies - 本人个人策略 + 本人可查看团队的团队策略（与团队页同一可见口径）
 export async function GET() {
@@ -106,7 +108,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { name, content, description, isPublic, groupId, teamId, aliasSet, locale } =
+    const { name, content, description, isPublic, groupId, teamId, aliasSet, locale, layout } =
       await req.json();
 
     if (!name || !content) {
@@ -285,6 +287,11 @@ export async function POST(req: Request) {
       ? await buildAliasReservedForUser(session.user.id, compileLocale)
       : undefined;
 
+    // layout（ADR 0058 §5.1）：只有提交了 layout 才解析 structured_authoring；新策略没有可沿用的上一版本。
+    const allowLayout = layout !== undefined && layout !== null
+      ? (await resolveEntitlement(session.user.id, 'structured_authoring', { teamId: teamId || null })).allowed
+      : false;
+
     // 编译门禁在开启事务**之前** preflight——避免事务内网络调用（慢/超时会持锁
     // + 挂着已插入行等 30s）。有 error 诊断抛 PolicyCompileError → 下方 catch 转 400（检查不可用时 503）。
     // 通过时得到的治理档案 id 随首个版本落库。
@@ -316,6 +323,8 @@ export async function POST(req: Request) {
         allowStructuralAliases: allowStructural,
         profile,
         dbClient: tx,
+        layout,
+        allowLayout,
       });
       console.log('PolicyVersion insert succeeded');
       return createdPolicy;
@@ -332,6 +341,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json(policy, { status: 201 });
   } catch (error: unknown) {
+    const layoutError = layoutSaveErrorResponse(error);
+    if (layoutError) return layoutError;
     // 编译门禁拒绝：源码有阻断诊断 → 400；编译检查暂不可用 → 503 可重试。
     if (error instanceof PolicyCompileError) {
       return compileGateErrorResponse(error);

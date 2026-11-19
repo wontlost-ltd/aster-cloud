@@ -30,6 +30,9 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { isPolicyFrozen } from '@/lib/policy-freeze';
 import { parseCompileLocale } from '@/lib/cnl-locale';
 import { loadPolicyForAction } from '@/lib/policy-access';
+import { resolveEntitlement } from '@/lib/capabilities/resolve';
+import { layoutSaveErrorResponse } from '@/lib/policy-layout/errors';
+import { activeLayoutSha256ForPolicy } from '@/lib/policy-layout/store';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -84,7 +87,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  * POST /api/v1/policies/{id}/versions
  *
  * 创建新版本
- * Body: { source: string, releaseNote?: string }
+ * Body: { source: string, releaseNote?: string, aliasSet?, locale?, layout? }
+ * layout 三态见 createVersion（ADR 0058 §7.5）；响应含 layoutSha256 与 layoutDropped。
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
@@ -129,11 +133,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const { source, releaseNote, aliasSet, locale } = body as {
+    const { source, releaseNote, aliasSet, locale, layout } = body as {
       source?: string;
       releaseNote?: string;
       aliasSet?: unknown;
       locale?: unknown;
+      layout?: unknown;
     };
 
     if (!source || typeof source !== 'string') {
@@ -163,6 +168,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       ? await buildAliasReservedForUser(session.user.id, compileLocale)
       : undefined;
 
+    // structured_authoring 只在新版本可能带 layout 时解析：提交了 layout，或省略而活跃版本有 layout（沿用）。
+    const layoutSubmitted = layout !== undefined && layout !== null;
+    const mayCarry = layout === undefined && (await activeLayoutSha256ForPolicy(id)) !== null;
+    const allowLayout = layoutSubmitted || mayCarry
+      ? (await resolveEntitlement(session.user.id, 'structured_authoring', { teamId: access.policy.teamId })).allowed
+      : false;
+
     // 作者词汇只加载一次，编译门禁与 envelope 封印共用（ADR 0051 §7）。
     const saveVocabulary = await loadSaveVocabulary(session.user.id, { source, locale: compileLocale }, { teamId: access.policy.teamId });
 
@@ -177,10 +189,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       aliasReserved,
       allowStructuralAliases: allowStructural,
       validateCompilable: makeCompileValidator(session.user.id, saveVocabulary.vocabulary),
+      layout,
+      allowLayout,
     });
 
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
+    const layoutError = layoutSaveErrorResponse(error);
+    if (layoutError) return layoutError;
     // 编译门禁拒绝：源码有阻断诊断 → 400；编译检查暂不可用 → 503 可重试。
     if (error instanceof PolicyCompileError) {
       return compileGateErrorResponse(error);

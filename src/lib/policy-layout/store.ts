@@ -117,14 +117,15 @@ interface LayoutRow {
   content: string;
 }
 
-const layoutRowColumns = {
+// 函数而非模块级常量：导入本模块（经 version-manager）时不触碰表对象。
+const layoutRowColumns = () => ({
   versionId: policyVersionLayouts.policyVersionId,
   layout: policyVersionLayouts.layout,
   layoutSha256: policyVersionLayouts.layoutSha256,
   sourceSha256: policyVersionLayouts.sourceSha256,
   source: policyVersions.source,
   content: policyVersions.content,
-};
+});
 
 function inconsistent(row: LayoutRow, check: string): StoredLayout {
   console.error('[policy-layout] inconsistent', { versionId: row.versionId, check });
@@ -150,7 +151,7 @@ function verifyRow(row: LayoutRow | undefined): StoredLayout {
 /** 版本的 layout（读接口用）。不做权限检查：调用方必须先完成既有的读权限检查。 */
 export async function loadVersionLayout(versionId: string): Promise<StoredLayout> {
   const [row] = await db
-    .select(layoutRowColumns)
+    .select(layoutRowColumns())
     .from(policyVersionLayouts)
     .innerJoin(policyVersions, eq(policyVersions.id, policyVersionLayouts.policyVersionId))
     .where(eq(policyVersionLayouts.policyVersionId, versionId))
@@ -186,7 +187,7 @@ export async function activeLayoutSha256ForPolicy(policyId: string): Promise<str
  */
 export async function loadCarryCandidate(tx: SnapshotTx, policyId: string): Promise<StoredLayout> {
   const [row] = await tx
-    .select(layoutRowColumns)
+    .select(layoutRowColumns())
     .from(policies)
     .innerJoin(policyVersions, and(eq(policyVersions.policyId, policies.id), eq(policyVersions.version, policies.version)))
     .innerJoin(policyVersionLayouts, eq(policyVersionLayouts.policyVersionId, policyVersions.id))
