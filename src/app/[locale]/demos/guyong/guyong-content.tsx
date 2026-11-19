@@ -24,7 +24,7 @@ import {
   buildVocabularyScopes,
 } from '@aster-cloud/aster-lang-ts/browser';
 import { GUYONG } from '@/config/guyong-demo';
-import { toCanonical, toDisplay } from '@/lib/layout-map';
+import { toCanonical, toDisplay } from '@aster-cloud/aster-lang-ts/layout';
 import { cn } from '@/components/ui';
 
 interface RunResult {

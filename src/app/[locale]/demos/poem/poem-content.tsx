@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { compile, evaluate, canonicalize, buildVocabularyScopes } from '@aster-cloud/aster-lang-ts/browser';
 import { POEMS, toPoemLocale } from '@/config/poem-demo';
-import { toCanonical, toDisplay } from '@/lib/layout-map';
+import { toCanonical, toDisplay } from '@aster-cloud/aster-lang-ts/layout';
 import { cn } from '@/components/ui';
 
 interface RunResult {

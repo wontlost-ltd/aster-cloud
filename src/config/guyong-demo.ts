@@ -24,7 +24,7 @@
  */
 import { ZH_CN, IdentifierKind } from '@aster-cloud/aster-lang-ts/browser';
 import type { Lexicon, DomainVocabulary } from '@aster-cloud/aster-lang-ts/browser';
-import { toCanonical, type LayoutSpan } from '@/lib/layout-map';
+import { toCanonical, type LayoutSpan, type PolicyLayout } from '@aster-cloud/aster-lang-ts/layout';
 
 /** SemanticTokenKind 字面量（与 poem-demo 的 K 对齐，避免运行时依赖内部枚举）。 */
 const K = {
@@ -69,7 +69,7 @@ export interface GuyongConfig {
   /** 给定触发词，产出该变体的**规范关键词版**（证明歌词体 ≡ 规范版；含展开主题句）。 */
   canonicalFor: (variant: GuyongVariant) => string;
   /** 给定触发词，产出该变体的 LayoutMap（显示走 toDisplay=工整押韵短诗，编译走 toCanonical=source）。 */
-  layoutFor: (variant: GuyongVariant) => readonly LayoutSpan[];
+  layoutFor: (variant: GuyongVariant) => PolicyLayout;
   /** 入口 rule 名（规范名；各变体共用）。 */
   entry: string;
 }
@@ -94,8 +94,8 @@ const VARIANTS: GuyongVariant[] = [
  * 意象内容 span（孤身/入夜的城/归途/远方的灯/脚下的路/触发词）逐字保留（诚实，不隐语义）。
  * 不变式（compile 测试钉死）：toCanonical(layoutFor(v)) === sourceFor(v)。
  */
-function layoutForTrigger(trigger: string): readonly LayoutSpan[] {
-  return [
+function layoutForTrigger(trigger: string): PolicyLayout {
+  return { v: 1, spans: [
     { text: '孤身' }, SP, { text: '入夜的城' }, { canonical: '。\n', display: '，\n' },
     // 规则头：`我曾问 归途 心里:`（我曾问→规则、心里→produce 隐；归途 是意象内容，露）。
     { canonical: '我曾问 ', display: '我曾问' }, { text: '归途' }, { canonical: ' 心里', display: '，心里记着' },
@@ -108,7 +108,7 @@ function layoutForTrigger(trigger: string): readonly LayoutSpan[] {
     { text: '「脚下的路」' }, { canonical: '。\n  ', display: '。\n' },
     // return：`答一句 <触发词>`（答一句→返回 隐；触发词是意象内容，露）。
     { canonical: '答一句 ', display: '我只答一句：' }, { text: trigger }, { canonical: '。', display: '。' },
-  ];
+  ] };
 }
 
 /**

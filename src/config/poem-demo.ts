@@ -18,7 +18,7 @@
  */
 import { EN_US, ZH_CN, DE_DE, HI_IN, IdentifierKind } from '@aster-cloud/aster-lang-ts/browser';
 import type { Lexicon, DomainVocabulary } from '@aster-cloud/aster-lang-ts/browser';
-import type { LayoutSpan } from '@/lib/layout-map';
+import type { LayoutSpan, PolicyLayout } from '@aster-cloud/aster-lang-ts/layout';
 
 export type PoemLocale = 'en' | 'zh' | 'de' | 'hi';
 
@@ -131,7 +131,7 @@ export interface PoemConfig {
    * （如无空格的工整原诗「床前明月光」），而**编译**走 `toCanonical(layout)`（语法必需的带空格版
    * 「床前 明月光」）。用于让 zh 诗真正呈现为原诗排版。不变式:toCanonical(layout) === source。
    */
-  layout?: readonly LayoutSpan[];
+  layout?: PolicyLayout;
   /** 规范关键词版（证明诗体版 ≡ 规范版，结构一致 Core IR）。 */
   canonical: string;
   /** 入口 rule 名（规范名；三范式共用）。 */
@@ -193,12 +193,12 @@ const JYS_DOMAIN = 'jingyesi-zh';
  * 不变式（由 poem-demo.compile.test.ts 钉死）：toCanonical(JINGYESI_LAYOUT) === POEM_ZH.source。
  */
 const SP: LayoutSpan = { canonical: ' ', display: '' };
-const JINGYESI_LAYOUT: readonly LayoutSpan[] = [
+const JINGYESI_LAYOUT: PolicyLayout = { v: 1, spans: [
   { text: '床前' }, SP, { text: '明月光' }, { canonical: '。\n', display: '，\n' },
   { text: '疑是' }, SP, { text: '地上霜' }, { canonical: '，', display: '。\n' },
   { text: '举头' }, SP, { text: '望明月' }, { canonical: '：\n  ', display: '，\n' },
   { text: '低头' }, SP, { text: '思故乡' }, { canonical: '。', display: '。' },
-];
+] };
 
 const POEM_ZH: PoemConfig = {
   title: '静夜思',

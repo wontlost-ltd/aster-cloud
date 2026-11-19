@@ -22,7 +22,7 @@
 import { describe, it, expect } from 'vitest';
 import { compile, evaluate, EN_US, ZH_CN, DE_DE, HI_IN } from '@aster-cloud/aster-lang-ts/browser';
 import { POEMS, type PoemLocale, type PoemConfig } from '@/config/poem-demo';
-import { toCanonical, toDisplay, verifyContentParity } from '@/lib/layout-map';
+import { toCanonical, toDisplay, verifyContentParity } from '@aster-cloud/aster-lang-ts/layout';
 
 const BASE: Record<PoemLocale, typeof ZH_CN> = { en: EN_US, zh: ZH_CN, de: DE_DE, hi: HI_IN };
 const LOCALES: PoemLocale[] = ['en', 'zh', 'de', 'hi'];
@@ -173,7 +173,7 @@ describe('poem demo: source-as-poem across three paradigms', () => {
         // 显示层不含「关键词 内容」之间用于满足语法的空格；也不含缩进空格（结构 span 用换行标点替代）。
         expect(display.includes(' '), `[${loc}] display must have no keyword-space`).toBe(false);
         // 且显示层仍逐字保留全部诗词内容 span（内容不被隐藏）。
-        const contentPieces = poem.layout!
+        const contentPieces = poem.layout!.spans
           .filter((s): s is { text: string } => 'text' in s)
           .map((s) => s.text);
         for (const piece of contentPieces) {
@@ -183,7 +183,7 @@ describe('poem demo: source-as-poem across three paradigms', () => {
 
       it(`${loc} (${poem.title}): LayoutMap — verifyContentParity 通过（结构 span 未偷塞字面量）`, () => {
         const v = verifyContentParity(poem.layout!);
-        expect(v.ok, `[${loc}] ${v.reason ?? ''}`).toBe(true);
+        expect(v.ok, `[${loc}] ${v.ok ? '' : v.reason}`).toBe(true);
       });
 
       it(`${loc} (${poem.title}): LayoutMap — 用 toCanonical 编译与用 source 编译得同一 Core IR`, () => {
