@@ -9,7 +9,8 @@
 import { describe, it, expect } from 'vitest';
 import { EN_US, ZH_CN, DE_DE } from '@aster-cloud/aster-lang-ts/browser';
 import type { Lexicon } from '@aster-cloud/aster-lang-ts/lexicons/types';
-import { POLICY_EXAMPLES, type SupportedLocale } from '@/data/policy-examples';
+import { POLICY_EXAMPLES, getExampleLocales, type SupportedLocale } from '@/data/policy-examples';
+import { withUserAliases } from '@/lib/aster-lexicon';
 import { memberCompletions } from '../../../node_modules/@aster-cloud/aster-lang-ts/dist/src/lsp/member-completion.js';
 import { parseDocumentText } from '../../../node_modules/@aster-cloud/aster-lang-ts/dist/src/lsp/parse-document.js';
 
@@ -43,8 +44,10 @@ function structFields(src: string, typeName: string): string[] {
 
 describe('内置模板规则参数带类型', () => {
   for (const example of POLICY_EXAMPLES) {
-    for (const locale of Object.keys(example.sources) as SupportedLocale[]) {
+    for (const locale of getExampleLocales(example)) {
       const src = example.sources[locale];
+      // 样例按其固定语言与自带关键词别名解析（#791 展示模板的规则体依赖别名）
+      const lexicon = withUserAliases(LEXICONS[example.cnlLocale ?? locale], example.aliasSet);
 
       it(`${example.id} [${locale}] 每条规则的每个参数都显式声明了类型`, () => {
         const headers = src.match(/^(?:Rule|规则|Regel)\s+.*$/gm) ?? [];
@@ -73,8 +76,8 @@ describe('内置模板规则参数带类型', () => {
         const line = src.slice(0, headerEnd).split('\n').length - 1;
         const character = probe.length;
 
-        const doc = parseDocumentText(text, LEXICONS[locale], undefined, undefined);
-        const items = memberCompletions({ ...doc, text }, { line, character }, LEXICONS[locale]);
+        const doc = parseDocumentText(text, lexicon, undefined, undefined);
+        const items = memberCompletions({ ...doc, text }, { line, character }, lexicon);
         expect(items, `${example.id} [${locale}] 点号后无字段补全`).not.toBeNull();
         const labels = (items as { label: string }[]).map((i) => i.label);
         for (const f of expected) expect(labels, `缺字段 ${f}`).toContain(f);
