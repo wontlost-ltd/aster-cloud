@@ -98,6 +98,17 @@ import { offsetAt, offsetAtClamped, positionAt, projectCanonicalRange } from '@/
 import { LayoutDisplayView, type LayoutDisplayMarker } from '@/components/policy/layout/layout-display-view';
 import { LayoutTab, type LayoutDraft } from './layout-tab';
 import { isLayoutSaveErrorCode, useLayoutErrorText } from './layout-error-text';
+import {
+  storedEmbeddedVocabulary,
+  type EmbeddedVocabulary,
+  type ShadowedTerm as EmbeddedShadowedTerm,
+} from '@/lib/policy-embedded-vocabulary';
+import { embeddedVocabularyErrorCode } from './embedded-vocabulary-editor';
+
+/** 内嵌词汇保存错误码的前缀（ADR 0060 §6.4，五个码都以它开头）。 */
+const EMBEDDED_VOCABULARY_ERROR_PREFIX = 'embedded_vocabulary_';
+const isEmbeddedVocabularyErrorCode = (code: string | undefined): code is string =>
+  typeof code === 'string' && code.startsWith(EMBEDDED_VOCABULARY_ERROR_PREFIX);
 
 /** 保存时作者词汇非法的错误码（与服务端 policy-compile-response 一致）。 */
 const VOCABULARY_SCOPE_INVALID_CODE = 'vocabulary_scope_invalid';
@@ -150,6 +161,8 @@ export interface PolicySaveResult {
   id: string;
   /** 新版本没有沿用上一版本的显示排版（ADR 0058 §7.5）。 */
   layoutDropped?: boolean;
+  /** 被本策略内嵌词条遮蔽、在这条策略里不生效的团队 / 个人词条（保存响应 vocabularyShadowed）。 */
+  vocabularyShadowed?: EmbeddedShadowedTerm[];
 }
 
 export interface PolicySaveError {
@@ -187,6 +200,11 @@ export interface PolicySaveContext {
    * null = 不带，对象 = 提交该排版。不进 localStorage 草稿。
    */
   layout?: PolicyLayout | null;
+  /**
+   * 策略内嵌词汇的三态（ADR 0060 §6.5，与 aliasSet 同一路由规则）：缺省 = 请求体省略（PUT 沿用活跃版本），
+   * null = 清空，对象 = 提交该词汇。只有内容与活跃版本不同（规范序列化比较）时才出现。
+   */
+  embeddedVocabulary?: EmbeddedVocabulary | null;
 }
 
 export interface PolicyFormProps {
@@ -265,6 +283,7 @@ export function PolicyForm({
   const t = useTranslations('policies.form');
   const tCommon = useTranslations('common');
   const tEditor = useTranslations('policyEditor');
+  const tTerms = useTranslations('policyEditor.embeddedTerms');
   const layoutErrorText = useLayoutErrorText();
   const aliasIssueMessage = useAliasIssueMessage();
   // dashboard layout 下发的 AI 工作台开关；null 时「AI」tab 保持原面板。
@@ -287,6 +306,10 @@ export function PolicyForm({
   const [aliasSet, setAliasSet] = useState<Record<string, string[]>>(
     initial.aliasSet ?? {},
   );
+  // 策略内嵌词汇（ADR 0060）：embedded 是表单当前值，savedEmbedded 是活跃版本的值（保存成功后更新）。
+  // 二者规范序列化相同即「未改动」，保存时省略字段；只有结构化编写能力的作者能改动它。
+  const [embedded, setEmbedded] = useState<EmbeddedVocabulary | null>(initial.embeddedVocabulary ?? null);
+  const [savedEmbedded, setSavedEmbedded] = useState<EmbeddedVocabulary | null>(initial.embeddedVocabulary ?? null);
   // 策略的 CNL 语言（#627）：状态栏、别名规范拼写、编辑器词法与保存 locale 共用，不跟随界面语言，
   // 且与执行端同一判定（见 policy-cnl-locale）。chosenCnlLocale 是用户显式切换或语言转换后的选择。
   // 模板与语法参考只有 en/zh/de 三套，按 exampleLocale 取。
@@ -306,9 +329,16 @@ export function PolicyForm({
       isPublic,
       groupId,
       aliasSet: Object.keys(aliasSet).length > 0 ? aliasSet : null,
+      embeddedVocabulary: embedded && embedded.terms.length > 0 ? embedded : null,
     }),
-    [name, description, content, isPublic, groupId, aliasSet],
+    [name, description, content, isPublic, groupId, aliasSet, embedded],
   );
+  // 内嵌词汇在保存请求里的三态：与活跃版本相同 → 省略；改空 → null；否则提交对象
+  const embeddedSaveField = useMemo((): EmbeddedVocabulary | null | undefined => {
+    const current = storedEmbeddedVocabulary(fields.embeddedVocabulary);
+    if (current === storedEmbeddedVocabulary(savedEmbedded)) return undefined;
+    return current === null ? null : fields.embeddedVocabulary;
+  }, [fields.embeddedVocabulary, savedEmbedded]);
 
   // ---------------------------------------------------------------
   // UI state
@@ -400,6 +430,13 @@ export function PolicyForm({
     () => extractReservedAliasSets(getLexicon(cnlLocale)),
     [cnlLocale],
   );
+  // 内嵌 field / enum_value 的所属类型候选（规范名）：本策略与作用域内词汇里的类型，以及源码声明的类型
+  const embeddedParentOptions = useMemo(() => {
+    const names = new Set<string>(compile.module?.types ?? []);
+    for (const term of vocabularyTerms) if (term.kind === 'struct') names.add(term.canonical);
+    for (const term of embedded?.terms ?? []) if (term.kind === 'struct') names.add(term.canonical);
+    return [...names].sort();
+  }, [compile.module?.types, vocabularyTerms, embedded]);
   const compileErrorCount = useMemo(
     () => compile.diagnostics.filter((d) => d.severity === 'error').length,
     [compile.diagnostics],
@@ -634,6 +671,7 @@ export function PolicyForm({
           setIsPublic(pendingDraft.isPublic);
           setGroupId(pendingDraft.groupId);
           setAliasSet(pendingDraft.aliasSet ?? {});
+          setEmbedded(pendingDraft.embeddedVocabulary ?? null);
           acceptPendingDraft();
         },
       },
@@ -673,6 +711,16 @@ export function PolicyForm({
       });
       return false;
     }
+    // 内嵌词条与服务端同一份校验（含与本策略别名的碰撞）：不合法时引导到「本策略」所在的标签
+    const embeddedError = embeddedVocabularyErrorCode(fields.embeddedVocabulary?.terms ?? [], {
+      locale: cnlLocale,
+      aliasSet: fields.aliasSet,
+    });
+    if (embeddedError) {
+      openSidePanel(structuredAuthoring.allowed ? 'vocabulary' : 'aliases');
+      toast.error(tTerms('invalidBeforeSaving'), { description: tTerms(`errors.${embeddedError}`) });
+      return false;
+    }
     // 有解析/编译错误的策略不允许保存——落库不可编译的源码会污染版本链，
     // 且执行时必然失败。此门禁是**唯一生效的门禁**：编译由客户端 alias-aware
     // 编译器（useAsterCompiler）即时完成，compileErrorCount 已别名感知。
@@ -700,6 +748,11 @@ export function PolicyForm({
     reservedSets,
     allowStructuralAliases,
     aliasIssueMessage,
+    fields.embeddedVocabulary,
+    fields.aliasSet,
+    cnlLocale,
+    structuredAuthoring.allowed,
+    tTerms,
     compileErrorCount,
     compile.state,
     content,
@@ -714,6 +767,7 @@ export function PolicyForm({
       if (isLayoutSaveErrorCode(error.code)) {
         return layoutErrorText({ code: error.code, offset: error.offset, limit: error.limit }, content);
       }
+      if (isEmbeddedVocabularyErrorCode(error.code)) return tTerms(`errors.${error.code}`);
       if (error.code === VOCABULARY_SCOPE_INVALID_CODE) {
         // 按引擎原因分文案：缺 parent（字段 / 枚举成员）与字面量冲突的修法不同；未知原因用通用说明
         const term = error.term;
@@ -741,7 +795,7 @@ export function PolicyForm({
         vocabulary_unavailable: t('saveErrorCodes.vocabulary_unavailable'),
       }, error.message);
     },
-    [t, layoutErrorText, content],
+    [t, tTerms, layoutErrorText, content],
   );
 
   // 这次保存会让新版本失去显示排版：活跃版本有排版、源码改了，且无权保存排版或排版未动而已对不上源码
@@ -758,8 +812,13 @@ export function PolicyForm({
       setServerError(null);
       // 草稿 → 三态：未动 = 省略，edited = 对象，removed = null（R13）
       const layout = layoutDraft.kind === 'edited' ? layoutDraft.layout : layoutDraft.kind === 'removed' ? null : undefined;
+      const context: PolicySaveContext = {
+        locale: cnlLocale,
+        ...(layout !== undefined ? { layout } : {}),
+        ...(embeddedSaveField !== undefined ? { embeddedVocabulary: embeddedSaveField } : {}),
+      };
       try {
-        const result = await onSave(fields, layout === undefined ? { locale: cnlLocale } : { locale: cnlLocale, layout });
+        const result = await onSave(fields, context);
         if ('message' in result) {
           setServerError(result);
           const diagnostics = (result.diagnostics ?? []).filter(
@@ -780,12 +839,26 @@ export function PolicyForm({
           } else {
             // layout 错误码引导到排版标签页（能力为假时没有该标签）
             if (isLayoutSaveErrorCode(result.code) && structuredAuthoring.allowed) openSidePanel('layout');
+            // 内嵌词汇错误码引导到「本策略」所在的标签（有能力为词汇标签，否则为只读列表所在的别名标签）
+            if (isEmbeddedVocabularyErrorCode(result.code)) openSidePanel(structuredAuthoring.allowed ? 'vocabulary' : 'aliases');
             toast.error(t('saveFailed'), { description: saveErrorText(result) });
           }
           return;
         }
         toast.success(t('saveSuccess'));
         if (result.layoutDropped) toast.warning(tEditor('layoutDrop.dropped'));
+        const shadowed = result.vocabularyShadowed ?? [];
+        if (shadowed.length > 0) {
+          toast.info(
+            tTerms('shadowedAfterSave', {
+              count: shadowed.length,
+              terms: shadowed
+                .map((term) => `${term.localized} (${term.source === 'team' ? tTerms('sourceTeam') : tTerms('sourceAuthor')})`)
+                .join(', '),
+            }),
+          );
+        }
+        setSavedEmbedded(fields.embeddedVocabulary ?? null);
         // 刚保存的版本成为新的基线：提交的排版即活跃排版；省略且被丢弃则活跃版本不再带排版
         if (layout !== undefined || result.layoutDropped) {
           setSavedLayout(layout ?? null);
@@ -803,7 +876,7 @@ export function PolicyForm({
         setIsSaving(false);
       }
     },
-    [layoutDraft, onSave, fields, cnlLocale, clearDraft, t, tEditor, openSidePanel, saveErrorText, structuredAuthoring.allowed],
+    [layoutDraft, embeddedSaveField, onSave, fields, cnlLocale, clearDraft, t, tEditor, tTerms, openSidePanel, saveErrorText, structuredAuthoring.allowed],
   );
 
   /** Submit. Optional callback to fire on success (e.g. navigate). */
@@ -889,6 +962,7 @@ export function PolicyForm({
       locale={cnlLocale}
       userVocabulary
       vocabularyTeamId={teamId}
+      embeddedVocabulary={fields.embeddedVocabulary}
       height="100%"
       placeholder={t('contentPlaceholder')}
       aliasSet={fields.aliasSet ?? undefined}
@@ -1161,6 +1235,9 @@ export function PolicyForm({
                 compileState={serverError?.diagnostics?.length ? 'error' : compile.state}
                 compileSource={compile.source}
                 vocabularyTerms={vocabularyTerms}
+                embeddedVocabulary={fields.embeddedVocabulary ?? null}
+                onEmbeddedVocabularyChange={setEmbedded}
+                embeddedParentOptions={embeddedParentOptions}
                 teamId={teamId}
                 compileDiagnostics={[
                   ...compile.diagnostics,

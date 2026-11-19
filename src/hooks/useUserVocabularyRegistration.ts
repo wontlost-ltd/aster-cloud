@@ -13,6 +13,10 @@
  * 团队策略（传入 teamId，ADR 0017 §2）：另拉团队共享词条，与作者词条合并，跨归属写法冲突时团队优先，
  * 被遮蔽且被当前源码引用的作者词条经 shadowed 返回给编辑器提示；同时订阅团队词汇版本。
  *
+ * 策略内嵌词汇（传入 embedded，ADR 0060 §6.3）：不经作用域筛选，以「内嵌 > 团队 > 作者」并入上面的结果，
+ * 与服务端 loadSaveVocabulary 同一合并（mergeEmbeddedVocabulary），所以浏览器编译、高亮、LSP 与规范预览
+ * 都看到保存时的有效词汇；被内嵌词条遮蔽的下层词条在 terms 上带 shadowedByPolicy。
+ *
  * 返回合并后的词汇（编译 / 高亮 / LSP 共用）、其 VocabularyScopes，以及以
  * canonicalScopesJson 为内容的稳定 key（与 envelope 第 5 段同值），供下游触发重编译/重高亮。
  */
@@ -37,6 +41,14 @@ import { useDomainVocabularyInvalidate } from '@/hooks/useDomainVocabularyInvali
 import { mergeTeamAndAuthorRows } from '@/lib/domain-vocabulary-team-merge';
 import { assembleDomainVocabularyFromLinks } from '@/lib/domain-vocabulary-assemble';
 import { policyScopeMatcher } from '@/lib/domain-vocabulary-scope';
+import {
+  embeddedShadowPredicate,
+  mergeEmbeddedVocabulary,
+  storedEmbeddedVocabulary,
+  toDomainVocabulary,
+  type EmbeddedVocabulary,
+} from '@/lib/policy-embedded-vocabulary';
+import type { IdentifierKind, IdentifierMapping } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
 
 /** GET /api/v1/domain-vocabularies/terms 返回的单条链接（取用到的字段）。 */
 interface TermLink {
@@ -68,6 +80,8 @@ export interface UseUserVocabularyRegistrationOptions {
   enabled?: boolean;
   /** 团队策略所属团队；缺省为个人策略（只用作者词汇）。 */
   teamId?: string | null;
+  /** 策略内嵌词汇（ADR 0060）：优先于团队与作者词汇，不经作用域筛选；缺省或 null 为无。 */
+  embedded?: EmbeddedVocabulary | null;
 }
 
 /** 在团队策略里因与团队词条冲突而不生效的作者个人词条。 */
@@ -100,6 +114,8 @@ export interface VocabularyTabTerm {
   parent?: string;
   domain: string;
   locale: string;
+  /** 被本策略的内嵌词条遮蔽、在这条策略里不生效（ADR 0060 §6.3）。 */
+  shadowedByPolicy?: boolean;
 }
 
 /** 词条行 → 标签页术语；kind 不在五个取值内返回 null（丢弃）。parentCanonical 为空则省略 parent。 */
@@ -193,6 +209,44 @@ function shadowedInScope(rows: readonly TermLikeRow[], source: string, locale: s
     .map((row) => ({ canonical: row.canonical, localized: row.localized }));
 }
 
+/** 词条行 → 引擎映射（只用于判定是否被内嵌词条遮蔽）。 */
+function rowMapping(row: TermLikeRow): IdentifierMapping {
+  return {
+    canonical: row.canonical,
+    localized: row.localized,
+    kind: row.kind as IdentifierKind,
+    ...(row.parentCanonical ? { parent: row.parentCanonical } : {}),
+    ...(row.aliases?.length ? { aliases: [...row.aliases] } : {}),
+  };
+}
+
+/**
+ * 内嵌词汇的引擎形状；无词条，或词条无法构成作用域（编辑中途的非法组合）时为 null——
+ * 非法内嵌词汇由编辑器表单拦下、保存时服务端 400，编译不因它崩溃，退回下层词汇。
+ */
+function embeddedForEditor(embedded: EmbeddedVocabulary | null | undefined, locale: string): DomainVocabulary | null {
+  if (!embedded || embedded.terms.length === 0) return null;
+  const vocabulary = toDomainVocabulary(embedded, locale);
+  try {
+    buildVocabularyScopes(vocabulary);
+    return vocabulary;
+  } catch {
+    return null;
+  }
+}
+
+/** 下层作用域内词汇并入内嵌词汇（内嵌优先）；合并结果无法构成作用域时保留下层结果。 */
+function withEmbedded(lower: EditorVocabulary | null, embedded: DomainVocabulary | null): EditorVocabulary | null {
+  if (!embedded) return lower;
+  const { vocabulary } = mergeEmbeddedVocabulary(embedded, lower?.vocabulary ?? null);
+  if (!vocabulary) return lower;
+  try {
+    return { vocabulary, scopes: buildVocabularyScopes(vocabulary) };
+  } catch {
+    return lower;
+  }
+}
+
 const NO_SHADOWED: readonly ShadowedTerm[] = [];
 const NO_TERMS: ReadonlyArray<VocabularyTabTerm> = [];
 
@@ -202,6 +256,7 @@ export function useUserVocabularyRegistration({
   source,
   enabled = true,
   teamId = null,
+  embedded = null,
 }: UseUserVocabularyRegistrationOptions): UseUserVocabularyRegistrationResult {
   const [authorRows, setAuthorRows] = useState<TermLikeRow[]>([]);
   // 团队词条连同所属团队一起存：只有与当前 teamId 一致时才参与合并，切换团队期间不会混入上一团队的词条。
@@ -256,22 +311,32 @@ export function useUserVocabularyRegistration({
     [teamRows, authorRows],
   );
 
+  // 内嵌词汇按规范序列化取 key：内容不变（仅引用变化）时不重算作用域、不触发 LSP 重新初始化。
+  const embeddedKey = embedded ? storedEmbeddedVocabulary(embedded) : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const embeddedVocabulary = useMemo(() => embeddedForEditor(embedded, locale), [embeddedKey, locale]);
+  const shadowedByPolicy = useMemo(() => embeddedShadowPredicate(embeddedVocabulary), [embeddedVocabulary]);
+
   const terms = useMemo(
     () =>
       active
         ? merged.rows
             // 仅同语言词条可在当前策略中解析；其他语言的词条插入后会成为未解析标识符。
             .filter((row) => isLocaleCompatible(row.locale, locale))
-            .flatMap((row) => toVocabularyTabTerm(row) ?? [])
+            .flatMap((row) => {
+              const term = toVocabularyTabTerm(row);
+              if (!term) return [];
+              return shadowedByPolicy(rowMapping(row), row.locale) ? { ...term, shadowedByPolicy: true } : term;
+            })
         : NO_TERMS,
-    [active, merged.rows, locale],
+    [active, merged.rows, locale, shadowedByPolicy],
   );
 
   // 作用域随源码变化；延迟值避免每次按键都同步扫描全部词条。
   const deferredSource = useDeferredValue(source);
   const scoped = useMemo(
-    () => (active ? resolveEditorVocabulary(merged.rows, deferredSource, locale) : null),
-    [active, merged.rows, deferredSource, locale],
+    () => withEmbedded(active ? resolveEditorVocabulary(merged.rows, deferredSource, locale) : null, embeddedVocabulary),
+    [active, merged.rows, deferredSource, locale, embeddedVocabulary],
   );
   const shadowedTerms = useMemo(
     () => (active ? shadowedInScope(merged.shadowed, deferredSource, locale) : []),

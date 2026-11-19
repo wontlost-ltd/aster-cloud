@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { policySaveBody, vocabularyShadowedOf } from '@/components/policy/policy-form/save-request';
 import { PolicyForm, type PolicySaveContext } from '@/components/policy/policy-form';
 import type { PolicyDraftFields } from '@/components/policy/policy-form/use-policy-draft';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
@@ -75,13 +76,13 @@ export function NewPolicyContent({
   }, [searchParams]);
 
   const handleSave = useCallback(
-    async (fields: PolicyDraftFields, { locale: cnlLocale, layout }: PolicySaveContext) => {
+    async (fields: PolicyDraftFields, context: PolicySaveContext) => {
       // locale 是策略的 CNL 语言（按源码识别），不是界面语言：德语界面写英文策略应按 en-US 编译与记录（#627）
       const res = await fetch('/api/policies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // layout 只在作者编辑过排版时出现（省略 = 不带，ADR 0058 §7.5）
-        body: JSON.stringify({ ...fields, teamId, locale: cnlLocale, ...(layout !== undefined ? { layout } : {}) }),
+        // layout / 内嵌词汇只在作者编辑过时出现（省略 = 不带，ADR 0058 §7.5、ADR 0060 §6.5）
+        body: JSON.stringify(policySaveBody(fields, context, { teamId })),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -97,7 +98,7 @@ export function NewPolicyContent({
           upgrade: !!data.upgrade,
         };
       }
-      return { id: data.id as string };
+      return { id: data.id as string, vocabularyShadowed: vocabularyShadowedOf(data) };
     },
     [t, teamId],
   );

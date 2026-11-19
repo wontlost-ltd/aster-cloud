@@ -98,7 +98,7 @@ export async function GET(req: Request, { params }: RouteParams) {
     // （否则含关键词/运算符别名的源码在「生成示例」阶段解析失败）。口径同执行路径（C1 SQL JOIN）。
     const activeVersion = await db.query.policyVersions.findFirst({
       where: and(eq(policyVersions.policyId, id), eq(policyVersions.version, policy.version)),
-      columns: { id: true, aliasSet: true },
+      columns: { id: true, aliasSet: true, embeddedVocabulary: true },
     });
     // 活跃版本的 LayoutMap（ADR 0058 §7.2）：读权限检查之后读取，只读查看不设能力门。
     const layout: StoredLayout = activeVersion ? await loadVersionLayout(activeVersion.id) : { status: 'none' };
@@ -117,6 +117,8 @@ export async function GET(req: Request, { params }: RouteParams) {
       versions,
       // 活跃版本冻结别名（canonical JSON 字符串或 null）。前端合并进 lexicon 供 schema 提取。
       activeAliasSet: activeVersion?.aliasSet ?? null,
+      // 活跃版本的策略内嵌词汇（ADR 0060 §6.2，规范序列化文本或 null），与 activeAliasSet 同口径
+      activeEmbeddedVocabulary: activeVersion?.embeddedVocabulary ?? null,
       layout,
       _count: { executions: executionCount },
       isFrozen: freezeInfo?.isFrozen ?? false,

@@ -63,6 +63,19 @@ const COLUMN_ALLOWLIST = new Set([
   'src/app/api/policies/route.ts',
   'src/app/api/policies/[id]/route.ts',
   'src/app/api/v1/policies/[id]/versions/route.ts',
+  // 编辑器与审批视图（计划 T11）：编辑页预填活跃版本的值、表单按三态提交、版本详情 / 对比展示已存文本。
+  // 都不是执行 / 导出的编译输入读取方；编辑器编译与 LSP 经 useUserVocabularyRegistration 用与保存相同的
+  // mergeEmbeddedVocabulary 合并（下方单独钉住）。
+  'src/app/[locale]/(dashboard)/policies/[id]/edit/page.tsx',
+  'src/app/[locale]/(dashboard)/policies/[id]/edit/edit-policy-content.tsx',
+  'src/components/policy/policy-form/index.tsx',
+  'src/components/policy/policy-form/save-request.ts',
+  'src/components/policy/policy-form/side-panel.tsx',
+  'src/components/policy/policy-form/use-policy-draft.ts',
+  'src/components/policy/monaco-policy-editor.tsx',
+  'src/hooks/useUserVocabularyRegistration.ts',
+  'src/components/policy/version-detail-panel.tsx',
+  'src/components/policy/version-compare-panel.tsx',
 ]);
 
 /** 读版本编译输入的下游：必须存在、必须经 execution-input，且不得直接调用下层加载器。 */
@@ -102,6 +115,11 @@ describe('embedded vocabulary read paths', () => {
     const readers = FILES.filter((f) => /\bembeddedVocabulary\b/.test(f.text)).map((f) => f.path);
     expect(readers.filter((p) => !COLUMN_ALLOWLIST.has(p))).toEqual([]);
     for (const p of COLUMN_ALLOWLIST) expect(existsSync(path.join(ROOT, p))).toBe(true);
+  });
+
+  it('the editor merges embedded terms the same way the save path does', () => {
+    const text = readFileSync(path.join(ROOT, 'src/hooks/useUserVocabularyRegistration.ts'), 'utf8');
+    expect(text).toMatch(/\bmergeEmbeddedVocabulary\s*\(/);
   });
 
   it.each(DOWNSTREAM)('%s reads its vocabulary through execution-input', (p, entry) => {

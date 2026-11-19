@@ -22,6 +22,7 @@ import { buildKeywordSuggestions, isMemberAccessPosition } from '@/lib/aster-key
 import { useAsterModuleCatalog } from '@/hooks/useAsterModuleCatalog';
 import { useDomainVocabularyInvalidate } from '@/hooks/useDomainVocabularyInvalidate';
 import { useUserVocabularyRegistration, type VocabularyTabTerm } from '@/hooks/useUserVocabularyRegistration';
+import type { EmbeddedVocabulary } from '@/lib/policy-embedded-vocabulary';
 import type { TypecheckDiagnostic } from '@aster-cloud/aster-lang-ts/browser';
 import { asterEditorTheme } from '@/lib/editor/aster-editor-theme';
 import { useEntryRuleDecorations } from './use-entry-rule-decorations';
@@ -59,6 +60,11 @@ interface MonacoPolicyEditorProps {
    * 被遮蔽的个人词条在状态栏下方提示。个人策略缺省。
    */
   vocabularyTeamId?: string | null;
+  /**
+   * 策略内嵌词汇（ADR 0060 §6.3）：并入作者 / 团队词汇（内嵌优先），浏览器编译、高亮与 LSP
+   * （含规范预览）都用合并后的有效词汇，与保存时一致。缺省为无。
+   */
+  embeddedVocabulary?: EmbeddedVocabulary | null;
   /** 用户策略层关键词别名，kind → 多词别名。 */
   aliasSet?: Readonly<Record<string, readonly string[]>>;
   height?: string;
@@ -375,6 +381,7 @@ export function MonacoPolicyEditor({
   domain,
   userVocabulary: userVocabularyEnabled = false,
   vocabularyTeamId = null,
+  embeddedVocabulary = null,
   aliasSet,
   height = '400px',
   readOnly = false,
@@ -507,6 +514,7 @@ export function MonacoPolicyEditor({
     source: value,
     enabled: userVocabularyEnabled,
     teamId: vocabularyTeamId,
+    embedded: embeddedVocabulary,
   });
 
   // 词汇标签页的术语：与上面同一次拉取，只上抛不另发请求。
