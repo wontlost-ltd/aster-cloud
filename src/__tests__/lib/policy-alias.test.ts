@@ -61,6 +61,12 @@ describe('policy-alias — validateUserAliases (H3)', () => {
   it('单词别名拒绝（占标识符命名空间）', () => {
     expect(validateUserAliases({ TIMES: ['scaled'] }, canon).valid).toBe(false);
   });
+  it('v2：zh 策略允许 2–8 个汉字的单词别名，其余 locale 与未传 locale 仍拒（ADR 0060 §5.2）', () => {
+    expect(validateUserAliases({ TIMES: ['乘以'] }, canon, { locale: 'zh-CN' }).valid).toBe(true);
+    expect(validateUserAliases({ TIMES: ['乘以'] }, canon, { locale: 'de-DE' }).valid).toBe(false);
+    expect(validateUserAliases({ TIMES: ['乘以'] }, canon).valid).toBe(false);
+    expect(validateUserAliases({ TIMES: ['乘'] }, canon, { locale: 'zh-CN' }).valid).toBe(false);
+  });
   it('遮蔽规范拼写拒绝', () => {
     expect(validateUserAliases({ TIMES: ['divided by'] }, canon).valid).toBe(false);
   });

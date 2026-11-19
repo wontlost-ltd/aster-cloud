@@ -38,6 +38,9 @@ describe('结构词别名门控（allowStructural）', () => {
     const r = validateUserAliases({ RETURN: ['answer'] }, RESERVED, { allowStructural: true });
     expect(r.valid).toBe(false);
     expect(r.errors.join()).toContain('多词');
+    // zh 策略里拉丁单词仍拒，只放开 2–8 个汉字的单词（ADR 0060 §5.2）
+    expect(validateUserAliases({ RETURN: ['answer'] }, RESERVED, { allowStructural: true, locale: 'zh-CN' }).valid).toBe(false);
+    expect(validateUserAliases({ RETURN: ['低头'] }, RESERVED, { allowStructural: true, locale: 'zh-CN' }).valid).toBe(true);
   });
 
   it('高危 kind（IMPORT/AND/OR/IO）即使 allowStructural=true 也拒（不在两档白名单）', () => {
@@ -61,8 +64,9 @@ describe('结构词别名门控（allowStructural）', () => {
   it('两档白名单不重叠且覆盖预期', () => {
     // OPERATOR 与 STRUCTURAL 无交集
     for (const k of OPERATOR_KINDS) expect(STRUCTURAL_KINDS.has(k)).toBe(false);
-    // STRUCTURAL 含核心 7 词
-    for (const k of ['MODULE_DECL', 'FUNC_TO', 'IF', 'OTHERWISE', 'MATCH', 'WHEN', 'RETURN']) {
+    // STRUCTURAL 含 8 个结构词（ADR 0060 §5.1 加入 FUNC_PRODUCE）
+    expect(STRUCTURAL_KINDS.size).toBe(8);
+    for (const k of ['MODULE_DECL', 'FUNC_TO', 'FUNC_PRODUCE', 'IF', 'OTHERWISE', 'MATCH', 'WHEN', 'RETURN']) {
       expect(STRUCTURAL_KINDS.has(k)).toBe(true);
     }
   });

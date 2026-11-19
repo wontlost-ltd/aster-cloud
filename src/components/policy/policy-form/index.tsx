@@ -664,6 +664,7 @@ export function PolicyForm({
     setNameError(null);
     const aliasValidation = validateUserAliases(aliasSet, reservedSets, {
       allowStructural: allowStructuralAliases,
+      locale: cnlLocale,
     });
     if (!aliasValidation.valid) {
       // 跨 kind 重复等整体问题不能静默拦截：打开别名面板并给出首条问题的本地化说明。
@@ -699,6 +700,7 @@ export function PolicyForm({
     aliasSet,
     reservedSets,
     allowStructuralAliases,
+    cnlLocale,
     aliasIssueMessage,
     compileErrorCount,
     compile.state,

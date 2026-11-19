@@ -55,7 +55,7 @@ export function PolicyAliasPanel({
   const lexicon = useMemo(() => getLexicon(locale), [locale]);
   const count = configuredCount(aliasSet);
   // 整体校验一次：跨 kind 重复等问题只有看全集才能发现，按 kind 分发到对应行（两行都标错）。
-  const issues = validateUserAliases(aliasSet, reservedSets, { allowStructural }).issues;
+  const issues = validateUserAliases(aliasSet, reservedSets, { allowStructural, locale }).issues;
   const issuesFor = (kind: string) =>
     issues.filter((issue) => issue.kind === kind || issue.otherKind === kind);
 

@@ -31,10 +31,11 @@ export const ALLOWED_KINDS: ReadonlySet<string> = new Set([
 export const OPERATOR_KINDS: ReadonlySet<string> = ALLOWED_KINDS;
 
 /**
- * **结构词** kind：声明 + 控制流 + 返回。**仅当调用方获授权（allowStructural=true）时可自定义别名**。
+ * **结构词** kind：声明 + 函数签名 + 控制流 + 返回（ADR 0060 §5.1）。**仅当调用方获授权（allowStructural=true）时可自定义别名**。
+ * `FUNC_PRODUCE` 与 `FUNC_TO` 同属函数签名关键词，与引擎 core / ts 的结构词集合一致。
  *
- * <p>红队 H3 默认排除结构词（别名滥用会误导审批人）。放开需满足三重护栏：①别名必多词（铁律2）
- * ②审批 UI 显 canonicalize 后规范结构 ③审计留痕。授权由管理员**按用户**授予，服务端权威判定。
+ * <p>红队 H3 默认排除结构词（别名滥用会误导审批人）。放开需满足三重护栏：①别名须为多词短语或 zh 下的汉字单词
+ * （铁律 2，见 {@link isHanSingleToken}）②审批 UI 显 canonicalize 后规范结构 ③审计留痕。授权由管理员**按用户**授予，服务端权威判定。
  *
  * <p>**仍禁（不在此集，任何授权都不放开）**：IMPORT*、效果(IO/CPU/AWAIT/WORKFLOW/STEP)、
  * 逻辑(AND/OR/NOT)、布尔/类型字面量——这些别名能改变语义/藏副作用，护栏兜不住，风险高于误导。
@@ -42,6 +43,7 @@ export const OPERATOR_KINDS: ReadonlySet<string> = ALLOWED_KINDS;
 export const STRUCTURAL_KINDS: ReadonlySet<string> = new Set([
   'MODULE_DECL',
   'FUNC_TO',      // Rule
+  'FUNC_PRODUCE', // produce
   'IF',
   'OTHERWISE',
   'MATCH',
@@ -49,12 +51,12 @@ export const STRUCTURAL_KINDS: ReadonlySet<string> = new Set([
   'RETURN',
 ]);
 
-/** 校验器版本（进 toolchain identity；与 Java UserAliasValidator.VERSION 对齐）。 */
-export const USER_ALIAS_VALIDATOR_VERSION = '1';
+/** 校验器版本（进 toolchain identity；与 Java UserAliasValidator.VERSION、ts USER_ALIAS_VALIDATOR_VERSION 对齐；v2 = ADR 0060 §5）。 */
+export const USER_ALIAS_VALIDATOR_VERSION = '2';
 
 /**
- * W2 DoS 上界（与 Java UserAliasValidator 同名常量逐一对齐）。可别名 kind 上限 18
- * （11 运算符 + 7 结构词），故这些界远宽于合法用途，只兜异常/恶意巨量输入——防止
+ * W2 DoS 上界（与 Java UserAliasValidator 同名常量逐一对齐）。可别名 kind 上限 19
+ * （11 运算符 + 8 结构词），故这些界远宽于合法用途，只兜异常/恶意巨量输入——防止
  * 单条别名达 MB 级把 canonicalize 正则/信封哈希拖垮，或几千个 kind/短语撑爆内存。
  */
 export const MAX_ALIAS_KINDS = 32;
@@ -62,11 +64,19 @@ export const MAX_ALIAS_KINDS = 32;
 export const MAX_ALIASES_PER_KIND = 8;
 /** 单条别名短语最大长度（字符）。规范多词短语远短于此。 */
 export const MAX_ALIAS_LENGTH = 64;
+/** 汉字单词别名的码点数下限与上限（ADR 0060 §5.2）。 */
+export const MIN_HAN_SINGLE_TOKEN = 2;
+export const MAX_HAN_SINGLE_TOKEN = 8;
 
 /** 校验选项。allowStructural=true 时额外放开 STRUCTURAL_KINDS（需管理员授权，服务端权威传入）。 */
 export interface AliasValidationOptions {
   /** 是否允许结构词别名（默认 false）。true 由服务端依 per-user entitlement 传入，不信前端。 */
   readonly allowStructural?: boolean;
+  /**
+   * 编译 locale：决定汉字单词别名是否放行（ADR 0060 §5.2）。缺省视为非 zh——
+   * 调用方必须传入本次编译所用的 locale，否则 zh 策略的汉字单词别名会被误拒。
+   */
+  readonly locale?: string | null;
 }
 
 /** 别名集：kind → 别名短语数组。 */
@@ -138,6 +148,30 @@ export function normalizeAliasToken(s: string): string {
   return t.toLowerCase();
 }
 
+/** locale 主语言子标签为 zh（`zh`、`zh-CN`、`zh_TW`…），与引擎 `isZhLocale` 同口径。 */
+export function isZhLocale(locale: string | null | undefined): boolean {
+  if (typeof locale !== 'string') return false;
+  const norm = locale.toLowerCase().replace(/_/g, '-');
+  return norm === 'zh' || norm.startsWith('zh-');
+}
+
+/** 汉字基本区 U+4E00–U+9FFF 或扩展 A U+3400–U+4DBF。 */
+function isHanBasicOrExtA(cp: number): boolean {
+  return (cp >= 0x4e00 && cp <= 0x9fff) || (cp >= 0x3400 && cp <= 0x4dbf);
+}
+
+/**
+ * 汉字单词别名判定（ADR 0060 §5.2）：locale 主子标签为 zh，`norm` 的每个码点都在汉字基本区或扩展 A，
+ * 码点数 2–8（按码点计，扩展 B 的代理对算一个码点但不在允许区内）。只取这两个区，是因为两引擎的
+ * token 边界只在这里一致：假名、谚文、扩展 B 在 core 是标识符字符，在 ts 的 zh 词法不是。
+ */
+export function isHanSingleToken(norm: string, locale: string | null | undefined): boolean {
+  if (!isZhLocale(locale)) return false;
+  const cps = Array.from(norm, (c) => c.codePointAt(0)!);
+  if (cps.length < MIN_HAN_SINGLE_TOKEN || cps.length > MAX_HAN_SINGLE_TOKEN) return false;
+  return cps.every(isHanBasicOrExtA);
+}
+
 /**
  * 校验用户 aliasSet（白名单/多词/不遮蔽规范拼写+base别名/不撞领域词汇）。
  *
@@ -160,6 +194,7 @@ export function validateUserAliases(
   const baseAliasesLower = sets.baseAliasesLower ?? new Set<string>();
   const vocabularyTermsLower = sets.vocabularyTermsLower ?? new Set<string>();
   const allowStructural = options?.allowStructural ?? false;
+  const locale = options?.locale ?? null;
 
   if (!aliasSet || Object.keys(aliasSet).length === 0) {
     return { valid: true, errors: [], issues: [] };
@@ -186,7 +221,9 @@ export function validateUserAliases(
       continue;
     }
     for (const alias of aliasList) {
-      issues.push(...aliasIssues(kind, alias, { canonicalKeywordsLower, baseAliasesLower, vocabularyTermsLower }, seen));
+      issues.push(
+        ...aliasIssues(kind, alias, locale, { canonicalKeywordsLower, baseAliasesLower, vocabularyTermsLower }, seen),
+      );
     }
   }
   return resultOf(issues);
@@ -212,6 +249,7 @@ function kindPermissionIssue(kind: string, allowStructural: boolean): AliasIssue
 function aliasIssues(
   kind: string,
   alias: string,
+  locale: string | null,
   sets: Required<ReservedSets>,
   seen: Map<string, string>,
 ): AliasIssue[] {
@@ -224,15 +262,16 @@ function aliasIssues(
   // 铁律 0：提交值须已是规范形（注入值即匹配值）
   if (alias !== norm) return [{ code: 'nonCanonical', kind, alias, normalized: norm }];
   const out: AliasIssue[] = [];
-  // 铁律 2：仅多词
-  if (!norm.includes(' ')) out.push({ code: 'singleWord', kind, alias });
+  // 铁律 2：多词，或 zh 下 2–8 个汉字的单词（ADR 0060 §5.2）
+  if (!norm.includes(' ') && !isHanSingleToken(norm, locale)) out.push({ code: 'singleWord', kind, alias });
   // 不遮蔽规范拼写 / base 已有别名
   if (sets.canonicalKeywordsLower.has(norm)) {
     out.push({ code: 'shadowsKeyword', kind, alias });
   } else if (sets.baseAliasesLower.has(norm)) {
     out.push({ code: 'shadowsBaseAlias', kind, alias });
   }
-  // 不撞领域词汇标识符（关键词翻译先于标识符翻译 → 别名会抢赢用户字段名）
+  // 不撞领域词汇的任何写法，含字面量触发词（关键词翻译先于标识符翻译 → 别名会抢赢用户字段名；
+  // 与字面量触发词同形时两引擎的展开顺序不同，ADR 0060 §5.3 第 1 条）。占用集由调用方按本次编译所用的有效词汇生成。
   if (sets.vocabularyTermsLower.has(norm)) out.push({ code: 'collidesVocabulary', kind, alias });
   // 跨 kind 不重复
   const owner = seen.get(norm);
@@ -263,7 +302,7 @@ export function formatAliasIssueZh(issue: AliasIssue): string {
     case 'nonCanonical':
       return `别名 '${alias}'（${kind}）含非规范空白/大小写；请提交规范形 '${issue.normalized}'`;
     case 'singleWord':
-      return `别名 '${alias}'（${kind}）必须是多词短语；单词别名会占用标识符命名空间，破坏用户空间`;
+      return `别名 '${alias}'（${kind}）必须是多词短语，或 zh 下 2–8 个汉字的单词；其余单词别名会占用标识符命名空间，破坏用户空间`;
     case 'shadowsKeyword':
       return `别名 '${alias}'（${kind}）与某规范关键词同形，禁止遮蔽`;
     case 'shadowsBaseAlias':

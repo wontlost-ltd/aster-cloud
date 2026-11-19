@@ -75,6 +75,23 @@ describe('PolicyAliasPanel', () => {
     expect(screen.getByRole('alert')).not.toHaveTextContent('多词');
   });
 
+  it('accepts a Han single-word alias in a zh-CN policy and rejects it in en-US (ADR 0060 §5.2)', () => {
+    const zhReserved = extractReservedAliasSets(getLexicon('zh-CN'));
+    const props = {
+      aliasSet: { FUNC_PRODUCE: ['举头'], RETURN: ['低头'] },
+      allowStructural: true,
+      onChange: vi.fn(),
+      expanded: true,
+      onExpandedChange: vi.fn(),
+    };
+    const { unmount } = render(<PolicyAliasPanel {...props} locale="zh-CN" reservedSets={zhReserved} />);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Aliases for kinds.produce')).toHaveValue('举头');
+    unmount();
+    render(<PolicyAliasPanel {...props} locale="en-US" reservedSets={reservedSets} />);
+    expect(screen.getAllByRole('alert').map((el) => el.textContent).join(' ')).toContain('errors.singleWord(低头|kinds.return|');
+  });
+
   it('normalizes comma-separated input before emitting changes', () => {
     const { onChange } = renderPanel(false);
     fireEvent.change(screen.getByLabelText('Aliases for kinds.times'), {
