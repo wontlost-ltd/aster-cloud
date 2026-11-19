@@ -36,7 +36,7 @@ function prepared(over: Partial<PackageExportPrepareResponse> = {}): PackageExpo
     probesJson,
     probesSha256: 'bb'.repeat(32),
     probeCount: 2,
-    runtime: { cliName: '@aster-cloud/aster-lang-ts', cliVersion: TS_VERSION, ecosystem: '1.0.50' },
+    runtime: { cliName: '@aster-cloud/aster-lang-ts', cliVersion: TS_VERSION, ecosystem: '1.0.51' },
     ...over,
   };
 }
@@ -55,7 +55,9 @@ describe('runNodeCheck', () => {
 
   it('本地 ts 版本 ≠ 锁文件 node.cliVersion → skew，不编译不跑探针', () => {
     expect(runNodeCheck(prepared(), input, '3.2.0')).toEqual({ ok: false, skew: true });
-    const lockAhead = prepared({ runtime: { cliName: '@aster-cloud/aster-lang-ts', cliVersion: '3.4.0', ecosystem: '1.0.51' } });
+    // 锁文件领先本地 ts 一个 minor（由 TS_VERSION 推出，ts 升级后用例不随之失效）
+    const [major, minor] = TS_VERSION.split('.').map(Number);
+    const lockAhead = prepared({ runtime: { cliName: '@aster-cloud/aster-lang-ts', cliVersion: `${major}.${minor + 1}.0`, ecosystem: '1.0.51' } });
     expect(runNodeCheck(lockAhead, input)).toEqual({ ok: false, skew: true });
   });
 

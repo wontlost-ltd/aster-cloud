@@ -41,7 +41,8 @@ const USERS = {
 type UserKey = keyof typeof USERS;
 const TEAM_ID = id('team');
 const DOMAIN = `e2e-sa-${suffix}`;
-// de-DE：aster-lang-ts 3.3.0 的语言服务对 en-US 文档不套用租户词汇（见 PR 说明），预览在 de-DE 上验收
+// de-DE：本用例写于 aster-lang-ts 3.3.0（en-US 文档不套用租户词汇，#365，3.4.0 修复）；en-US 的预览由
+// src/__tests__/lib/lsp-canonical-preview-en-us.test.ts 对真实语言服务器验收
 const LOCALE = 'de-DE';
 // A 的词汇：本地化写法 → 规范名（字段挂在结构下）
 const TERMS = [
