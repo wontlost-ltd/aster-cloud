@@ -1,0 +1,17 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`VersionDetailPanel：无 layout 的版本 DOM 不变 > layout.status = none：整块面板与改动前快照一致 1`] = `
+"<div class="bg-bg dark:bg-gray-800 rounded-lg shadow-lg"><div class="flex items-center justify-between px-6 py-4 border-b border-border dark:border-gray-700"><div class="flex items-center gap-3"><h2 class="text-xl font-semibold text-fg dark:text-white">v2</h2><span class="inline-flex items-center gap-1.5"><span class="inline-flex items-center rounded-full font-medium px-2 py-0.5 text-xs bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200">policies.versions.status.PENDING_APPROVAL</span></span></div></div><div class="border-b border-border dark:border-gray-700"><nav class="flex -mb-px px-6"><button class="py-3 px-4 text-sm font-medium border-b-2 transition-colors border-primary text-primary dark:text-primary">policies.versions.detail.tabs.source</button><button class="py-3 px-4 text-sm font-medium border-b-2 transition-colors border-transparent text-fg-muted hover:text-fg dark:text-fg-subtle dark:hover:text-gray-300">policies.versions.detail.tabs.metadata</button><button class="py-3 px-4 text-sm font-medium border-b-2 transition-colors border-transparent text-fg-muted hover:text-fg dark:text-fg-subtle dark:hover:text-gray-300">policies.versions.detail.tabs.approvals</button></nav></div><div class="p-6"><div class="space-y-4"><div class="text-sm text-fg-muted dark:text-fg-subtle bg-bg-subtle dark:bg-gray-900 p-3 rounded-lg">note</div><pre tabindex="0" class="bg-bg-inverse text-fg-inverse p-4 rounded-lg overflow-x-auto text-sm font-mono max-h-[500px] overflow-y-auto dark:bg-zinc-900 dark:text-zinc-100">Module m.
+
+Rule decide given x: Int, produce Int:
+  Return x.
+</pre></div></div></div>"
+`;
+
+exports[`VersionDetailPanel：无 layout 的版本 DOM 不变 > 旧接口不带 layout 字段：同样与改动前快照一致 1`] = `
+"<div class="bg-bg dark:bg-gray-800 rounded-lg shadow-lg"><div class="flex items-center justify-between px-6 py-4 border-b border-border dark:border-gray-700"><div class="flex items-center gap-3"><h2 class="text-xl font-semibold text-fg dark:text-white">v2</h2><span class="inline-flex items-center gap-1.5"><span class="inline-flex items-center rounded-full font-medium px-2 py-0.5 text-xs bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200">policies.versions.status.PENDING_APPROVAL</span></span></div></div><div class="border-b border-border dark:border-gray-700"><nav class="flex -mb-px px-6"><button class="py-3 px-4 text-sm font-medium border-b-2 transition-colors border-primary text-primary dark:text-primary">policies.versions.detail.tabs.source</button><button class="py-3 px-4 text-sm font-medium border-b-2 transition-colors border-transparent text-fg-muted hover:text-fg dark:text-fg-subtle dark:hover:text-gray-300">policies.versions.detail.tabs.metadata</button><button class="py-3 px-4 text-sm font-medium border-b-2 transition-colors border-transparent text-fg-muted hover:text-fg dark:text-fg-subtle dark:hover:text-gray-300">policies.versions.detail.tabs.approvals</button></nav></div><div class="p-6"><div class="space-y-4"><div class="text-sm text-fg-muted dark:text-fg-subtle bg-bg-subtle dark:bg-gray-900 p-3 rounded-lg">note</div><pre tabindex="0" class="bg-bg-inverse text-fg-inverse p-4 rounded-lg overflow-x-auto text-sm font-mono max-h-[500px] overflow-y-auto dark:bg-zinc-900 dark:text-zinc-100">Module m.
+
+Rule decide given x: Int, produce Int:
+  Return x.
+</pre></div></div></div>"
+`;

@@ -15,6 +15,8 @@ import { CedarExportProvider, CedarExportStatus, type CedarExportLabels } from '
 import { PackageExportProvider, PackageExportStatus, type PackageExportLabels } from '@/components/policy/package-export-panel';
 import { PolicyExportMenu, visiblePackageTargets } from '@/components/policy/policy-export-menu';
 import type { PackageExportMenuState } from '@/lib/package-export-state';
+import { LayoutReadTabs } from '@/components/policy/layout/layout-read-tabs';
+import type { StoredLayout } from '@/lib/policy-layout/types';
 
 interface PolicyVersion {
   id: string;
@@ -118,11 +120,17 @@ interface PolicyDetailContentProps {
   whatIfOwnerOnly?: boolean;
   /** 所属团队（团队策略）；个人策略为 null。状态卡据此标出团队，区分个人策略与团队策略（#681）。 */
   team?: { id: string; label: string } | null;
+  /**
+   * 活跃版本的显示排版（ADR 0058 §7.2，服务端读取并复验）。缺省 none：源码卡片与引入 layout 之前一致。
+   * 只读查看不设能力门，公开或共享策略的读者同样看得到。
+   */
+  activeLayout?: StoredLayout;
   translations: Translations;
   locale: string;
 }
 
 const ALL_ACTIONS = { execute: true, update: true, delete: true } as const;
+const NO_LAYOUT: StoredLayout = { status: 'none' };
 
 export function PolicyDetailContent({
   whatIfEntitled = false,
@@ -137,6 +145,7 @@ export function PolicyDetailContent({
   capabilities = ALL_ACTIONS,
   whatIfOwnerOnly = false,
   team = null,
+  activeLayout = NO_LAYOUT,
   translations: t,
   locale,
 }: PolicyDetailContentProps) {
@@ -352,9 +361,11 @@ export function PolicyDetailContent({
       <div className="bg-bg shadow sm:rounded-lg mb-6">
         <div className="px-4 py-5 sm:p-6">
           <h3 className="text-lg font-medium text-fg mb-4">{t.detail.policyContent}</h3>
-          <pre tabIndex={0} className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm">
-            {policy.content}
-          </pre>
+          <LayoutReadTabs layout={activeLayout}>
+            <pre tabIndex={0} className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm">
+              {policy.content}
+            </pre>
+          </LayoutReadTabs>
         </div>
       </div>
 
@@ -369,8 +380,9 @@ export function PolicyDetailContent({
 
       {/* 人工复核（ADR 0037 §14/§15）。自带 i18n 与自隐藏：
           无权查看时 return null，不渲染"你没有权限"的空壳。
-          队列、计数、已落库结论都由 GET /api/policies/:id/review 一次返回。 */}
-      <PolicyReviewPanel policyId={policy.id} />
+          队列、计数、已落库结论都由 GET /api/policies/:id/review 一次返回。
+          活跃版本有显示排版时，面板顶部说明其片段均为 canonical（ADR 0058 §7.7 第 7 条）。 */}
+      <PolicyReviewPanel policyId={policy.id} hasDisplayLayout={activeLayout.status !== 'none'} />
 
       {/* Version Management with Approval Workflow */}
       <PolicyVersionsTab policyId={policy.id} whatIfEntitled={whatIfEntitled} retentionDays={retentionDays} review={review} whatIfOwnerOnly={whatIfOwnerOnly} />

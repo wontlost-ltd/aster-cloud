@@ -7,6 +7,9 @@ import { VersionStatusBadge } from './version-status-badge';
 import { extractErrorMessage } from '@/lib/api/error-envelope';
 import { ALL_ALIAS_KINDS } from './policy-alias-types';
 import { STRUCTURAL_KINDS } from '@/lib/policy-alias-shared';
+import type { StoredLayout } from '@/lib/policy-layout/types';
+import { layoutForCanonical } from '@/lib/policy-layout/reconcile';
+import { LayoutReadTabs } from './layout/layout-read-tabs';
 
 /** kind → 规范关键词拼写（如 FUNC_TO→'Rule', IF→'If'），审批用。 */
 const KIND_CANONICAL: Record<string, string> = Object.fromEntries(
@@ -142,7 +145,11 @@ interface VersionDetail {
   deprecatedByName?: string | null;
   archivedByName?: string | null;
   approvals: ApprovalRecord[];
+  /** 版本的显示排版（ADR 0058 §7.2 读取契约）；旧接口不带此字段时按 none 处理。 */
+  layout?: StoredLayout;
 }
+
+const NO_LAYOUT: StoredLayout = { status: 'none' };
 
 /**
  * 「谁做的」字段的显示值：有姓名显姓名，否则回退到原始 ID。
@@ -293,9 +300,12 @@ export function VersionDetailPanel({
               </div>
             )}
             {/* R30+ audit P2：从 raw gray ramp 改成 design tokens 同步 dark mode */}
-            <pre tabIndex={0} className="bg-bg-inverse text-fg-inverse p-4 rounded-lg overflow-x-auto text-sm font-mono max-h-[500px] overflow-y-auto dark:bg-zinc-900 dark:text-zinc-100">
-              {sourceCode}
-            </pre>
+            {/* 审批者在这里读源码（裁决 R15）：canonical 默认，显示排版只是次级标签 */}
+            <LayoutReadTabs layout={layoutForCanonical(detail.layout ?? NO_LAYOUT, sourceCode)}>
+              <pre tabIndex={0} className="bg-bg-inverse text-fg-inverse p-4 rounded-lg overflow-x-auto text-sm font-mono max-h-[500px] overflow-y-auto dark:bg-zinc-900 dark:text-zinc-100">
+                {sourceCode}
+              </pre>
+            </LayoutReadTabs>
             {detail.aliasSet && (
               <>
                 <div className="rounded-lg border border-amber-300/40 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-950/30 dark:text-amber-100">

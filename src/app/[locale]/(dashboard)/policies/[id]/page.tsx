@@ -16,16 +16,35 @@ import { planHolderForTeam } from '@/lib/team-plan';
 import { findDefaultExecutableVersion } from '@/services/policy/default-executable-version';
 import { checkCedarExportability } from '@/lib/cedar-exportability';
 import { loadPackageExportState } from '@/lib/package-export-state';
+import { loadVersionLayout } from '@/lib/policy-layout/store';
+import type { StoredLayout } from '@/lib/policy-layout/types';
+import { layoutForCanonical } from '@/lib/policy-layout/reconcile';
 
 export const generateMetadata = localizedTitle('pageTitles', 'policyDetail');
 
-// 活跃版本保存时落库的治理档案 id（ADR 0046 §6）；未声明档案或旧版本为 null
-async function loadActiveProfile(policyId: string, version: number): Promise<string | null> {
+/**
+ * 活跃版本的治理档案 id（ADR 0046 §6；未声明档案或旧版本为 null）与显示排版（ADR 0058 §7.2）。
+ *
+ * <p>排版在存储层已按版本源码复验；源码卡片显示的是 `Policy.content`，两者若不一致（resolver 迁移等）
+ * 同样按 inconsistent 处理，绝不在 canonical 旁边显示一份对不上的排版。
+ */
+async function loadActiveVersionView(
+  policyId: string,
+  version: number,
+  content: string,
+): Promise<{ profile: string | null; layout: StoredLayout }> {
   const activeVersion = await db.query.policyVersions.findFirst({
     where: and(eq(policyVersions.policyId, policyId), eq(policyVersions.version, version)),
-    columns: { profile: true },
+    columns: { id: true, profile: true },
   });
-  return activeVersion?.profile ?? null;
+  if (!activeVersion) return { profile: null, layout: { status: 'none' } };
+  const profile = activeVersion.profile ?? null;
+  const stored = await loadVersionLayout(activeVersion.id);
+  const layout = layoutForCanonical(stored, content);
+  if (layout.status !== stored.status) {
+    console.error('[policy-layout] inconsistent', { versionId: activeVersion.id, check: 'policy_content' });
+  }
+  return { profile, layout };
 }
 
 // 所属团队（团队策略）；个人策略或团队已删除返回 null
@@ -158,8 +177,8 @@ export default async function PolicyDetailPage({
   // Cedar 与策略包导出选的是同一个版本（执行路径会选中的已批准版本），只查一次
   const exportPolicy = { id, userId: policy.ownerId, teamId: policy.teamId };
   const executableVersion = findDefaultExecutableVersion(id);
-  const [profile, cedarExport, packageExport, review, sharingEnabled, policyTeam] = await Promise.all([
-    loadActiveProfile(id, policy.version),
+  const [activeVersionView, cedarExport, packageExport, review, sharingEnabled, policyTeam] = await Promise.all([
+    loadActiveVersionView(id, policy.version, policy.content),
     loadCedarExportState(exportPolicy, session.user.id, executableVersion),
     // 策略包选项（ADR 0059 P2）：开关关、套餐不允许或无已批准版本时为 null，不调 aster-api
     loadPackageExportState(exportPolicy, session.user.id, executableVersion),
@@ -273,7 +292,8 @@ export default async function PolicyDetailPage({
       capabilities={policy.capabilities}
       /* What-If 属主限定（ADR 0034 §4.3）：调用者是创建者但当前角色不够时同样不可用 */
       whatIfOwnerOnly={!policy.capabilities.whatif}
-      profile={profile}
+      profile={activeVersionView.profile}
+      activeLayout={activeVersionView.layout}
       hasExecutableVersion={cedarExport.hasExecutableVersion}
       showCedarExport={cedarExport.show}
       packageExport={packageExport}

@@ -365,6 +365,20 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       loadFailed: 'Could not load the review queue.',
     },
     // 条件漏斗面板（Phase 1，本地补充）。★sampleNote 必须常驻，见 condition-funnel-panel.tsx。
+    // 策略显示排版的只读视图（ADR 0058 §7.7）：版本详情 / 审批、策略详情、版本对比、复核面板。
+    policyLayout: {
+      tabsLabel: 'Source view',
+      tabCanonical: 'Canonical source (executed)',
+      tabDisplay: 'Display layout (not executed)',
+      displayLabel: 'Display layout, not executed',
+      displayNote: 'Read-only display layout. Compilation, execution, review and approval always use the canonical source.',
+      insertionLabel: 'Hidden keyword: {canonical}',
+      inconsistent: 'The display layout data is inconsistent with this version, so only the canonical source is shown.',
+      compareChanged: 'Display layout changed',
+      compareNote: 'The diff below compares the canonical source only; display layouts are not executed.',
+      reviewNote: 'This policy has a display layout. It is not executed, and every excerpt in this panel is canonical source. For the expanded values of literal vocabulary macros, see the canonical preview.',
+      reviewLink: 'View versions',
+    },
     conditionFunnel: {
       title: 'Condition funnel',
       subtitle: 'How this policy actually ran — how often each condition was evaluated and matched.',
@@ -2453,6 +2467,20 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       loadFailed: '复核队列加载失败。',
     },
     // 条件漏斗面板（Phase 1，本地补充）。
+    // 策略显示排版的只读视图（ADR 0058 §7.7）：版本详情 / 审批、策略详情、版本对比、复核面板。
+    policyLayout: {
+      tabsLabel: '源码视图',
+      tabCanonical: 'Canonical 源码（参与执行）',
+      tabDisplay: '显示排版（不参与执行）',
+      displayLabel: '显示排版，不参与执行',
+      displayNote: '只读的显示排版。编译、执行、评审与审批始终使用 canonical 源码。',
+      insertionLabel: '已隐藏的关键词：{canonical}',
+      inconsistent: '显示层数据与此版本不一致，只显示 canonical 源码。',
+      compareChanged: '显示排版已变更',
+      compareNote: '下方 diff 只比较 canonical 源码；显示排版不参与执行。',
+      reviewNote: '此策略附有显示排版。它不参与执行，本面板的片段均为 canonical 源码。词汇字面量宏展开后的值见词汇规范预览。',
+      reviewLink: '查看版本',
+    },
     conditionFunnel: {
       title: '条件漏斗',
       subtitle: '这条策略实际怎么走的——每个条件被求值和命中的次数。',
@@ -4500,6 +4528,20 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       loadFailed: 'Prüfliste konnte nicht geladen werden.',
     },
     // Bedingungs-Funnel (Phase 1, lokale Ergänzung).
+    // 策略显示排版的只读视图（ADR 0058 §7.7）：版本详情 / 审批、策略详情、版本对比、复核面板。
+    policyLayout: {
+      tabsLabel: 'Quelltextansicht',
+      tabCanonical: 'Kanonischer Quelltext (wird ausgeführt)',
+      tabDisplay: 'Anzeigelayout (wird nicht ausgeführt)',
+      displayLabel: 'Anzeigelayout, wird nicht ausgeführt',
+      displayNote: 'Schreibgeschütztes Anzeigelayout. Kompilierung, Ausführung, Prüfung und Freigabe verwenden immer den kanonischen Quelltext.',
+      insertionLabel: 'Ausgeblendetes Schlüsselwort: {canonical}',
+      inconsistent: 'Die Daten des Anzeigelayouts passen nicht zu dieser Version, daher wird nur der kanonische Quelltext angezeigt.',
+      compareChanged: 'Anzeigelayout geändert',
+      compareNote: 'Der Vergleich unten bezieht sich nur auf den kanonischen Quelltext; Anzeigelayouts werden nicht ausgeführt.',
+      reviewNote: 'Diese Richtlinie hat ein Anzeigelayout. Es wird nicht ausgeführt, und alle Ausschnitte in diesem Bereich sind kanonischer Quelltext. Die expandierten Werte von Vokabular-Literalmakros zeigt die kanonische Vorschau.',
+      reviewLink: 'Versionen ansehen',
+    },
     conditionFunnel: {
       title: 'Bedingungs-Funnel',
       subtitle: 'Wie diese Richtlinie tatsächlich lief — wie oft jede Bedingung geprüft und erfüllt wurde.',
@@ -6554,6 +6596,20 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
       loadFailed: 'समीक्षा कतार लोड नहीं हो सकी।',
     },
     // शर्त फ़नल (Phase 1, स्थानीय पूरक)।
+    // 策略显示排版的只读视图（ADR 0058 §7.7）：版本详情 / 审批、策略详情、版本对比、复核面板。
+    policyLayout: {
+      tabsLabel: 'सोर्स दृश्य',
+      tabCanonical: 'कैनोनिकल सोर्स (निष्पादित होता है)',
+      tabDisplay: 'डिस्प्ले लेआउट (निष्पादित नहीं होता)',
+      displayLabel: 'डिस्प्ले लेआउट, निष्पादित नहीं होता',
+      displayNote: 'केवल पढ़ने योग्य डिस्प्ले लेआउट। कंपाइल, निष्पादन, समीक्षा और अनुमोदन हमेशा कैनोनिकल सोर्स का उपयोग करते हैं।',
+      insertionLabel: 'छिपा हुआ कीवर्ड: {canonical}',
+      inconsistent: 'डिस्प्ले लेआउट का डेटा इस संस्करण से मेल नहीं खाता, इसलिए केवल कैनोनिकल सोर्स दिखाया गया है।',
+      compareChanged: 'डिस्प्ले लेआउट बदला गया',
+      compareNote: 'नीचे का अंतर केवल कैनोनिकल सोर्स की तुलना करता है; डिस्प्ले लेआउट निष्पादित नहीं होते।',
+      reviewNote: 'इस नीति में एक डिस्प्ले लेआउट है। यह निष्पादित नहीं होता, और इस पैनल के सभी अंश कैनोनिकल सोर्स हैं। शब्दावली लिटरल मैक्रो के विस्तारित मानों के लिए कैनोनिकल पूर्वावलोकन देखें।',
+      reviewLink: 'संस्करण देखें',
+    },
     conditionFunnel: {
       title: 'शर्त फ़नल',
       subtitle: 'यह नीति वास्तव में कैसे चली — प्रत्येक शर्त कितनी बार जाँची और पूरी हुई।',

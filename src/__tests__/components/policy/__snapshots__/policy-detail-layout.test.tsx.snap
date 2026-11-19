@@ -1,0 +1,17 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`策略详情源码卡片：活跃版本无 layout 时 DOM 不变 > activeLayout = none：卡片与改动前快照一致 1`] = `
+"<div class="bg-bg shadow sm:rounded-lg mb-6"><div class="px-4 py-5 sm:p-6"><h3 class="text-lg font-medium text-fg mb-4"></h3><pre tabindex="0" class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm">Module m.
+
+Rule decide given x: Int, produce Int:
+  Return x.
+</pre></div></div>"
+`;
+
+exports[`策略详情源码卡片：活跃版本无 layout 时 DOM 不变 > 不传 activeLayout（旧调用方）：卡片与改动前快照一致 1`] = `
+"<div class="bg-bg shadow sm:rounded-lg mb-6"><div class="px-4 py-5 sm:p-6"><h3 class="text-lg font-medium text-fg mb-4"></h3><pre tabindex="0" class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm">Module m.
+
+Rule decide given x: Int, produce Int:
+  Return x.
+</pre></div></div>"
+`;
