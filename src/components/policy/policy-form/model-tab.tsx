@@ -10,7 +10,7 @@
  * 大纲来源 `source` 是编辑器 300 ms 防抖编译所用的那份源码（见 use-compile.ts 的 source），
  * 此处不再另设防抖；同一 source 只解析一次（useMemo）。
  */
-import { useId, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { useTranslations } from 'next-intl';
 import { Plus, X } from 'lucide-react';
@@ -39,6 +39,9 @@ export interface ModelTabProps {
   source: string;
   /** 与编辑器编译一致的 lexicon（含策略关键词别名）。 */
   lexicon: Lexicon;
+  /** 命令面板「新建结构体」：为真时打开新建结构体表单，随后调用 onStructFormOpened 消费该请求。 */
+  openStructForm?: boolean;
+  onStructFormOpened?: () => void;
 }
 
 type OpenForm = { kind: 'struct' } | { kind: 'alias' } | { kind: 'field'; struct: string } | null;
@@ -46,7 +49,7 @@ type OpenForm = { kind: 'struct' } | { kind: 'alias' } | { kind: 'field'; struct
 /** executeEdits 的来源标识（撤销栈与扩展据此区分编辑来源）。 */
 const EDIT_SOURCE = 'structured-authoring.model';
 
-export function ModelTab({ editor, source, lexicon }: ModelTabProps) {
+export function ModelTab({ editor, source, lexicon, openStructForm = false, onStructFormOpened }: ModelTabProps) {
   const t = useTranslations('policyEditor.modelTab');
   const outline = useMemo(() => buildModelOutline(source, lexicon), [source, lexicon]);
   const typeOptions = useMemo(() => collectTypeOptions(lexicon, outline), [lexicon, outline]);
@@ -57,6 +60,16 @@ export function ModelTab({ editor, source, lexicon }: ModelTabProps) {
   // 空结构体无法追加字段时的说明（文法不允许零字段结构体，保持表单打开并明示）
   const [emptyStruct, setEmptyStruct] = useState(false);
   const takenTypeNames = useMemo(() => collectTakenTypeNames(outline), [outline]);
+
+  // 父层（命令面板）请求打开新建结构体表单：打开后立即回执，避免切换标签再挂载时重复打开
+  useEffect(() => {
+    if (!openStructForm) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOpenForm({ kind: 'struct' });
+    setStaleSource(null);
+    setEmptyStruct(false);
+    onStructFormOpened?.();
+  }, [openStructForm, onStructFormOpened]);
 
   const close = () => {
     setOpenForm(null);

@@ -21,9 +21,25 @@ describe('selectLspFeatures', () => {
     expect(Object.values(f).every((v) => v === false)).toBe(true);
   });
 
-  it('新服务端（两个标志）+ zh：全部可用', () => {
-    const f = selectLspFeatures('zh-CN', { ...ALL, experimental: { aster: { localizedParsing: true, openDocumentNavigation: true } } });
+  it('新服务端（三个标志）+ zh：全部可用', () => {
+    const f = selectLspFeatures('zh-CN', {
+      ...ALL,
+      experimental: { aster: { localizedParsing: true, openDocumentNavigation: true, canonicalPreview: true } },
+    });
     expect(Object.values(f).every((v) => v === true)).toBe(true);
+  });
+
+  // ADR 0058 §8.2：服务端在 experimental.aster.canonicalPreview 中声明，客户端按能力探测
+  it('canonicalPreview 只随服务端标志开启', () => {
+    const flags = { localizedParsing: true, openDocumentNavigation: true };
+    expect(selectLspFeatures('de-DE', { ...ALL, experimental: { aster: { ...flags, canonicalPreview: true } } }).canonicalPreview).toBe(true);
+    expect(selectLspFeatures('de-DE', { ...ALL, experimental: { aster: flags } }).canonicalPreview).toBe(false);
+    expect(selectLspFeatures('de-DE', { ...ALL, experimental: { aster: { ...flags, canonicalPreview: false } } }).canonicalPreview).toBe(false);
+    expect(selectLspFeatures('en-US', ALL).canonicalPreview).toBe(false);
+  });
+
+  it('文档不可解析时即使声明 canonicalPreview 也不启用（旧服务端 + zh）', () => {
+    expect(selectLspFeatures('zh-CN', { ...ALL, experimental: { aster: { canonicalPreview: true } } }).canonicalPreview).toBe(false);
   });
 
   it('声明 completionProvider 且可解析时启用上下文补全', () => {

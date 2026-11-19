@@ -20,6 +20,10 @@ import {
   Sparkles,
   WandSparkles,
   Languages,
+  Boxes,
+  BookMarked,
+  Eye,
+  SquarePlus,
 } from 'lucide-react';
 import { cn } from '@/components/ui';
 import {
@@ -58,7 +62,12 @@ export type PaletteCommandId =
   | 'save-and-view'
   | 'toggle-panel'
   | 'show-syntax'
-  | 'show-decision';
+  | 'show-decision'
+  // 以下仅在 structured_authoring 为真时出现（ADR 0058 §8.3）
+  | 'open-model-tab'
+  | 'open-vocabulary-tab'
+  | 'new-struct'
+  | 'toggle-canonical-preview';
 
 export type PaletteCommandGroup = 'ai' | 'edit' | 'nav';
 
@@ -85,6 +94,18 @@ export interface EditorPaletteProps {
   onTogglePanel: () => void;
   onShowSyntax: () => void;
   onShowDecision: () => void;
+  /**
+   * 结构化编写的命令面板项；只在 structuredAuthoring.allowed 时由父层传入，缺省时面板与接入前一致。
+   * onToggleCanonicalPreview 另需 LSP 声明 canonicalPreview，否则为 null（不出现该项）。
+   */
+  structuredAuthoring?: StructuredAuthoringPaletteActions | null;
+}
+
+export interface StructuredAuthoringPaletteActions {
+  onOpenModelTab: () => void;
+  onOpenVocabularyTab: () => void;
+  onNewStruct: () => void;
+  onToggleCanonicalPreview: (() => void) | null;
 }
 
 type PaletteView = 'commands' | 'templates';
@@ -102,8 +123,10 @@ export function EditorPalette({
   onTogglePanel,
   onShowSyntax,
   onShowDecision,
+  structuredAuthoring = null,
 }: EditorPaletteProps) {
   const t = useTranslations('policies.form');
+  const tPalette = useTranslations('policyEditor.palette');
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [view, setView] = useState<PaletteView>('commands');
@@ -196,8 +219,9 @@ export function EditorPalette({
         group: 'nav',
         icon: <Activity aria-hidden className="size-4" />,
       },
+      ...structuredAuthoringCommands(structuredAuthoring, tPalette),
     ],
-    [t],
+    [t, tPalette, structuredAuthoring],
   );
 
   const filteredCommands = useMemo(() => {
@@ -279,6 +303,22 @@ export function EditorPalette({
           onShowDecision();
           onClose();
           return;
+        case 'open-model-tab':
+          structuredAuthoring?.onOpenModelTab();
+          onClose();
+          return;
+        case 'open-vocabulary-tab':
+          structuredAuthoring?.onOpenVocabularyTab();
+          onClose();
+          return;
+        case 'new-struct':
+          structuredAuthoring?.onNewStruct();
+          onClose();
+          return;
+        case 'toggle-canonical-preview':
+          structuredAuthoring?.onToggleCanonicalPreview?.();
+          onClose();
+          return;
       }
     },
     [
@@ -291,6 +331,7 @@ export function EditorPalette({
       onTogglePanel,
       onShowSyntax,
       onShowDecision,
+      structuredAuthoring,
     ],
   );
 
@@ -587,4 +628,26 @@ function TemplateList({
       )}
     </>
   );
+}
+
+/** 结构化编写的面板项：无权时为空，面板与接入前逐项一致。 */
+function structuredAuthoringCommands(
+  actions: StructuredAuthoringPaletteActions | null,
+  labelOf: (key: 'openModelTab' | 'openVocabularyTab' | 'newStruct' | 'toggleCanonicalPreview') => string,
+): PaletteCommand[] {
+  if (!actions) return [];
+  const commands: PaletteCommand[] = [
+    { id: 'new-struct', label: labelOf('newStruct'), group: 'edit', icon: <SquarePlus aria-hidden className="size-4" /> },
+    { id: 'open-model-tab', label: labelOf('openModelTab'), group: 'nav', icon: <Boxes aria-hidden className="size-4" /> },
+    { id: 'open-vocabulary-tab', label: labelOf('openVocabularyTab'), group: 'nav', icon: <BookMarked aria-hidden className="size-4" /> },
+  ];
+  if (actions.onToggleCanonicalPreview) {
+    commands.push({
+      id: 'toggle-canonical-preview',
+      label: labelOf('toggleCanonicalPreview'),
+      group: 'nav',
+      icon: <Eye aria-hidden className="size-4" />,
+    });
+  }
+  return commands;
 }

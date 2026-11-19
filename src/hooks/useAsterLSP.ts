@@ -43,6 +43,11 @@ import {
   sharedHandshakeBudget,
 } from '@/lib/lsp-reconnect';
 import { lspAuthQuery } from '@/lib/lsp-ticket-client';
+import { CANONICAL_PREVIEW_METHOD } from '@aster-cloud/aster-lang-ts/browser';
+import { parseCanonicalPreview, type CanonicalPreview } from '@/lib/structured-authoring/canonical-preview';
+
+/** 词汇规范预览请求的超时：服务端逐候选探测较慢，但不能让窗格无限期停在「加载中」 */
+const CANONICAL_PREVIEW_TIMEOUT_MS = 10_000;
 
 type MonacoNamespace = typeof import('monaco-editor');
 
@@ -127,6 +132,16 @@ export interface UseAsterLSPResult {
   disconnect: () => void;
   /** Reconnect to LSP */
   reconnect: () => Promise<void>;
+  /**
+   * 本会话 initialize 后按服务端能力选出的功能（见 selectLspFeatures）；未初始化或已主动断开为 null。
+   * 断线重连期间保留上一次的值，重连成功后按新会话刷新。
+   */
+  features: LspFeatures | null;
+  /**
+   * 请求词汇规范预览（`aster/canonicalPreview`，ADR 0058 §8.2）。uri 缺省为当前文档。
+   * 服务端返回 null（文档不存在或无法忠实生成）或响应不合契约时得 null；未连接、超时或服务端报错时 reject。
+   */
+  requestCanonicalPreview: (uri?: string) => Promise<CanonicalPreview | null>;
 }
 
 interface LSPMessage {
@@ -294,6 +309,7 @@ export function useAsterLSP({
   const [status, setStatus] = useState<LspConnectionStatus>('idle');
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [features, setFeatures] = useState<LspFeatures | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const requestIdRef = useRef(0);
@@ -1053,7 +1069,9 @@ export function useAsterLSP({
     });
 
     // 只注册当前服务端真正可用的功能（见 selectLspFeatures）
-    await registerProviders(selectLspFeatures(locale, initResult?.capabilities));
+    const selected = selectLspFeatures(locale, initResult?.capabilities);
+    await registerProviders(selected);
+    setFeatures(selected);
 
     if (model) {
       sendNotification('textDocument/didOpen', {
@@ -1237,7 +1255,20 @@ export function useAsterLSP({
     setConnected(false);
     setConnecting(false);
     setStatus('idle');
+    setFeatures(null);
   }, [scheduler]);
+
+  const requestCanonicalPreview = useCallback(
+    async (uri?: string): Promise<CanonicalPreview | null> => {
+      const result = await sendRequest<unknown>(
+        CANONICAL_PREVIEW_METHOD,
+        { textDocument: { uri: uri ?? documentUriRef.current } },
+        { timeoutMs: CANONICAL_PREVIEW_TIMEOUT_MS },
+      );
+      return parseCanonicalPreview(result);
+    },
+    [sendRequest],
+  );
 
   /**
    * Reconnect to the LSP server
@@ -1350,5 +1381,7 @@ export function useAsterLSP({
     connect,
     disconnect,
     reconnect,
+    features,
+    requestCanonicalPreview,
   };
 }

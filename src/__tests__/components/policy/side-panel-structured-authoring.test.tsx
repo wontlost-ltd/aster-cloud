@@ -1,6 +1,6 @@
 // 编辑器侧栏「模型 / 词汇」标签（ADR 0058 §8.3）：能力为假时 DOM 与接入前逐字节一致，为真时出现两个标签容器。
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import zhBase from '@aster-cloud/ui-messages/zh-CN.json';
 import { IntlClientProvider } from '@/i18n/intl-client-provider';
 import { DEMO_SUPPLEMENT } from '@/i18n/demo-supplement';
@@ -17,7 +17,14 @@ import type { StructuredAuthoringProps } from '@/lib/capabilities/types';
 
 const messages = deepMergeMessages(zhBase as Record<string, unknown>, DEMO_SUPPLEMENT.zh);
 const noop = () => {};
-const EDITOR_TABS = (messages as { policyEditor: { tabModel: string; tabVocabulary: string } }).policyEditor;
+const EDITOR_TABS = (messages as {
+  policyEditor: {
+    tabModel: string;
+    tabVocabulary: string;
+    canonicalPreview: Record<string, string>;
+    modelTab: Record<string, string>;
+  };
+}).policyEditor;
 
 const DENIED: StructuredAuthoringProps = { allowed: false, denial: 'not_granted', sources: [] };
 const ALLOWED: StructuredAuthoringProps = { allowed: true, sources: [{ kind: 'admin' }] };
@@ -25,7 +32,13 @@ const ALLOWED: StructuredAuthoringProps = { allowed: true, sources: [{ kind: 'ad
 function panel(
   structuredAuthoring: StructuredAuthoringProps,
   initialTab: SidePanelTab = 'ai',
-  extra: { compileSource?: string; aliasSet?: Record<string, string[]> } = {},
+  extra: {
+    compileSource?: string;
+    aliasSet?: Record<string, string[]>;
+    canonicalPreview?: { open: boolean; onToggle: () => void } | null;
+    newStructRequested?: boolean;
+    onNewStructRequestHandled?: () => void;
+  } = {},
 ) {
   return (
     <IntlClientProvider locale="zh" messages={messages as never}>
@@ -53,6 +66,9 @@ function panel(
         aiWorkspace={null}
         structuredAuthoring={structuredAuthoring}
         compileSource={extra.compileSource}
+        canonicalPreview={extra.canonicalPreview}
+        newStructRequested={extra.newStructRequested}
+        onNewStructRequestHandled={extra.onNewStructRequestHandled}
       />
     </IntlClientProvider>
   );
@@ -116,6 +132,45 @@ describe('SidePanel 模型标签', () => {
       }),
     );
     expect(screen.getByRole('button', { name: /^申请人$/ })).toBeTruthy();
+  });
+});
+
+// 词汇规范预览开关（ADR 0058 §8.3）：只在父层传入（能力为真且 LSP 支持）时出现在词汇标签页顶部
+describe('SidePanel 词汇规范预览开关', () => {
+  it('未传 canonicalPreview（LSP 不支持）：词汇标签页没有开关', () => {
+    render(panel(ALLOWED, 'vocabulary'));
+    expect(screen.queryByRole('button', { name: EDITOR_TABS.canonicalPreview.show })).toBeNull();
+  });
+
+  it('传入时显示开关，点击切换；按下状态随 open', () => {
+    const onToggle = vi.fn();
+    render(panel(ALLOWED, 'vocabulary', { canonicalPreview: { open: false, onToggle } }));
+    const btn = screen.getByRole('button', { name: EDITOR_TABS.canonicalPreview.show });
+    expect(btn.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(btn);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    cleanup();
+    render(panel(ALLOWED, 'vocabulary', { canonicalPreview: { open: true, onToggle } }));
+    expect(screen.getByRole('button', { name: EDITOR_TABS.canonicalPreview.hide }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('能力为假时即使传入也不渲染（词汇标签页不挂载）', () => {
+    render(panel(DENIED, 'vocabulary', { canonicalPreview: { open: false, onToggle: noop } }));
+    expect(screen.queryByRole('button', { name: EDITOR_TABS.canonicalPreview.show })).toBeNull();
+  });
+});
+
+describe('SidePanel 命令面板「新建结构体」', () => {
+  it('请求打开时模型标签页显示新建结构体表单并回执', () => {
+    const handled = vi.fn();
+    render(panel(ALLOWED, 'model', { newStructRequested: true, onNewStructRequestHandled: handled }));
+    expect(screen.getByRole('form', { name: EDITOR_TABS.modelTab.newStruct })).toBeTruthy();
+    expect(handled).toHaveBeenCalledTimes(1);
+  });
+
+  it('未请求时不打开表单', () => {
+    render(panel(ALLOWED, 'model'));
+    expect(screen.queryByRole('form', { name: EDITOR_TABS.modelTab.newStruct })).toBeNull();
   });
 });
 

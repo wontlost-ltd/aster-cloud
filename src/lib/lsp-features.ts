@@ -12,6 +12,7 @@
  * 修复后的服务端在 initialize 返回 `experimental.aster` 标志（aster-lang-ts#219）：
  *   - localizedParsing      —— 非英文文档可正常解析
  *   - openDocumentNavigation —— 引用 / 重命名读打开中的内存文本（inmemory 文档可用）
+ *   - canonicalPreview      —— 支持 `aster/canonicalPreview`（词汇规范预览，ADR 0058 §8.2，aster-lang-ts ≥ 3.3.0）
  */
 
 export interface LspServerCapabilities {
@@ -25,7 +26,9 @@ export interface LspServerCapabilities {
   documentFormattingProvider?: unknown;
   documentHighlightProvider?: unknown;
   completionProvider?: unknown;
-  experimental?: { aster?: { localizedParsing?: boolean; openDocumentNavigation?: boolean } };
+  experimental?: {
+    aster?: { localizedParsing?: boolean; openDocumentNavigation?: boolean; canonicalPreview?: boolean };
+  };
 }
 
 export interface LspFeatures {
@@ -40,6 +43,8 @@ export interface LspFeatures {
   documentHighlight: boolean;
   /** 上下文补全（`x.` 后按接收者类型列字段等）；通用关键字仍由本地 provider 提供 */
   completion: boolean;
+  /** 词汇规范预览请求；只决定能否请求，界面入口另由 structured_authoring 能力控制 */
+  canonicalPreview: boolean;
 }
 
 /** 旧服务端（无 localizedParsing 标志）上实测可正常解析的语言 */
@@ -62,5 +67,6 @@ export function selectLspFeatures(locale: string, caps: LspServerCapabilities | 
     completion: parses && has(c.completionProvider),
     references: openDocs && has(c.referencesProvider),
     rename: openDocs && has(c.renameProvider),
+    canonicalPreview: parses && flags.canonicalPreview === true,
   };
 }

@@ -31,6 +31,7 @@ class FakeWebSocket {
   static hoverFails = false;
   static prepareRename: 'null' | 'error' = 'null';
   static completion: unknown = null;
+  static canonicalPreview: unknown = null;
   readyState = 0;
   sent: Sent[] = [];
   onopen: (() => void) | null = null;
@@ -63,6 +64,11 @@ class FakeWebSocket {
     }
     if (msg.method === 'textDocument/completion' && FakeWebSocket.completion !== 'hang') {
       this.serverSend({ jsonrpc: '2.0', id: msg.id, result: FakeWebSocket.completion });
+    }
+    if (msg.method === 'aster/canonicalPreview') {
+      this.serverSend(FakeWebSocket.canonicalPreview === 'error'
+        ? { jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: 'boom' } }
+        : { jsonrpc: '2.0', id: msg.id, result: FakeWebSocket.canonicalPreview });
     }
     if (msg.method === 'textDocument/codeAction') {
       this.serverSend({ jsonrpc: '2.0', id: msg.id, result: [] });
@@ -125,6 +131,7 @@ describe('useAsterLSP 协议', () => {
     FakeWebSocket.hoverFails = false;
     FakeWebSocket.prepareRename = 'null';
     FakeWebSocket.completion = null;
+    FakeWebSocket.canonicalPreview = null;
     vi.stubGlobal('WebSocket', FakeWebSocket);
     process.env.NEXT_PUBLIC_LSP_HOST = 'lsp.example.test';
   });
@@ -558,5 +565,60 @@ describe('useAsterLSP 协议', () => {
     const loc = await monaco.providers.rename.resolveRenameLocation!(fakeModel, { lineNumber: 1, column: 8 }) as { rejectReason?: string } | null;
     expect(loc?.rejectReason).toContain(expected);
   });
-});
 
+  // ADR 0058 §8.2：服务端声明 canonicalPreview 后客户端才有预览入口；请求带当前文档 URI
+  describe('词汇规范预览 aster/canonicalPreview', () => {
+    const preview = { text: 'Driver', mappings: [{ source: [0, 6], preview: [0, 6], canonical: 'Driver', role: 'TYPE' }], resolverVersion: 1 };
+    const render = () => {
+      const monaco = makeFakeMonaco();
+      return renderHook(() => useAsterLSP({
+        editor: fakeEditor as never,
+        monaco: monaco as never,
+        documentUri: 'inmemory://policy/default.aster',
+        locale: 'de-DE',
+      }));
+    };
+
+    it('initialize 前 features 为 null；声明标志后 canonicalPreview=true', async () => {
+      FakeWebSocket.serverCaps = { ...NEW_SERVER_CAPS, experimental: { aster: { localizedParsing: true, openDocumentNavigation: true, canonicalPreview: true } } };
+      const { result } = render();
+      expect(result.current.features).toBeNull();
+      await waitFor(() => expect(result.current.features?.canonicalPreview).toBe(true));
+    });
+
+    it('未声明标志的服务端：features.canonicalPreview=false', async () => {
+      const { result } = render();
+      await waitFor(() => expect(result.current.features).not.toBeNull());
+      expect(result.current.features?.canonicalPreview).toBe(false);
+    });
+
+    it('请求带编辑器模型 URI，返回合契约的预览', async () => {
+      FakeWebSocket.canonicalPreview = preview;
+      const { result } = render();
+      await waitFor(() => expect(result.current.features).not.toBeNull());
+      await expect(result.current.requestCanonicalPreview()).resolves.toEqual(preview);
+      const sent = FakeWebSocket.instances[0].sent.find((m) => m.method === 'aster/canonicalPreview');
+      expect(sent?.params).toEqual({ textDocument: { uri: MODEL_URI } });
+    });
+
+    it('服务端返回 null 或不合契约的响应得 null；服务端报错时 reject', async () => {
+      const { result } = render();
+      await waitFor(() => expect(result.current.features).not.toBeNull());
+      await expect(result.current.requestCanonicalPreview()).resolves.toBeNull();
+      FakeWebSocket.canonicalPreview = { text: 'x', mappings: [{ source: [3, 1] }], resolverVersion: 1 };
+      await expect(result.current.requestCanonicalPreview()).resolves.toBeNull();
+      FakeWebSocket.canonicalPreview = 'error';
+      await expect(result.current.requestCanonicalPreview()).rejects.toThrow();
+    });
+
+    it('未连接时 reject（窗格据此显示不可用）', async () => {
+      const { result } = renderHook(() => useAsterLSP({
+        editor: null,
+        monaco: null,
+        documentUri: 'inmemory://policy/default.aster',
+        autoConnect: false,
+      }));
+      await expect(result.current.requestCanonicalPreview()).rejects.toThrow('WebSocket not connected');
+    });
+  });
+});
