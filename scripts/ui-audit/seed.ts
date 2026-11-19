@@ -1,6 +1,7 @@
 /**
  * UI 审计（#774）本地栈播种：按角色建用户、团队与成员，伪造 Auth.js 会话 cookie 写出 Playwright storageState，
  * 再以这些会话经应用自身的 HTTP 接口建策略、执行一次、建 API key，让列表 / 详情 / 日志页都有真实数据可审计。
+ * 每个角色另有若干未读通知，让顶栏铃铛带未读徽章接受审计（#814）。
  *
  * 只允许指向本地栈：DATABASE_URL 与 BASE_CLOUD 的主机都必须是回环地址。
  *
@@ -65,6 +66,26 @@ async function upsertIdentity(sql: postgres.Sql): Promise<void> {
       insert into "TeamMember" (id, "teamId", "userId", role, "createdAt")
       values (${`tm-${r.id}`}, ${AUDIT_TEAM_ID}, ${r.id}, ${r.teamRole}, ${now})
       on conflict ("teamId", "userId") do update set role = excluded.role`;
+  }
+}
+
+/** 每个审计角色的未读通知条数：顶栏铃铛因此显示未读徽章，axe 才能检查徽章与可访问名是否一致（#814）。 */
+const UNREAD_NOTIFICATIONS = 3;
+
+/**
+ * 给每个审计角色写入固定 id 的未读通知（幂等）：重复播种时把 readAt 清回 null，
+ * 上一轮审计或手动点开铃铛标为已读后仍能恢复未读状态。
+ */
+async function upsertUnreadNotifications(sql: postgres.Sql): Promise<void> {
+  const now = new Date();
+  for (const r of AUDIT_ROLES) {
+    for (let i = 1; i <= UNREAD_NOTIFICATIONS; i += 1) {
+      const data = { teamId: AUDIT_TEAM_ID, teamName: 'UI Audit Team', memberName: `Audit teammate ${i}` };
+      await sql`
+        insert into "Notification" (id, "userId", kind, data, "readAt", "createdAt")
+        values (${`ui-audit-notif-${r.id}-${i}`}, ${r.id}, 'team.invitation_accepted', ${sql.json(data)}, null, ${now})
+        on conflict (id) do update set "readAt" = null, "createdAt" = excluded."createdAt"`;
+    }
   }
 }
 
@@ -163,6 +184,7 @@ async function main(): Promise<void> {
   try {
     await upsertIdentity(sql);
     await upsertLongTokenUser(sql);
+    await upsertUnreadNotifications(sql);
     const cookies = new Map<string, string>();
     for (const r of AUDIT_ROLES) cookies.set(r.id, await sessionCookie({ id: r.id, email: r.email, plan: r.plan }, SECRET));
     writeStates(cookies);
