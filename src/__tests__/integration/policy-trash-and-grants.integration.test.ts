@@ -23,6 +23,8 @@ import {
   policyReviewInvitations,
   policyReviewers,
   policyShares,
+  policyVersionLayouts,
+  policyVersions,
   structuralAliasGrants,
   users,
 } from '@/lib/prisma';
@@ -81,6 +83,8 @@ async function accessRowIds(db: Db, policyId: string): Promise<string[]> {
 
 async function cleanup(db: Db): Promise<void> {
   await cleanupAccessRows(db);
+  // layout 行只能随父版本级联删除（ADR 0058 R8），因此按版本清理
+  await db.delete(policyVersions).where(sql`${policyVersions.id} LIKE ${ACCESS_PREFIX + '%'}`);
   await db.delete(structuralAliasGrants).where(inArray(structuralAliasGrants.userId, USER_IDS));
   await db.delete(policyRecycleBins).where(eq(policyRecycleBins.userId, OWNER));
   await db.delete(policies).where(eq(policies.userId, OWNER));
@@ -127,6 +131,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('回收站与结构词授权（
 
   beforeEach(async () => {
     await cleanupAccessRows(db);
+    await db.delete(policyVersions).where(sql`${policyVersions.id} LIKE ${ACCESS_PREFIX + '%'}`);
     await db.delete(structuralAliasGrants).where(inArray(structuralAliasGrants.userId, USER_IDS));
     await db.delete(policyRecycleBins).where(eq(policyRecycleBins.userId, OWNER));
     await db.delete(policies).where(eq(policies.userId, OWNER));
@@ -151,6 +156,42 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('回收站与结构词授权（
       const bins = await db.select().from(policyRecycleBins).where(eq(policyRecycleBins.policyId, 'it-trash-p1'));
       expect(bins).toHaveLength(0);
       expect((await getTrashItems(OWNER)).map((i) => i.policyId)).toEqual(['it-trash-p2']);
+    });
+
+    it('ADR 0058：版本带 layout 行的策略可永久删除，版本与 layout 作为历史证据保留', async () => {
+      await seedPolicy(db, 'it-trash-layout');
+      await db.insert(policyVersions).values({
+        id: 'it-trash-layout-v1',
+        policyId: 'it-trash-layout',
+        version: 1,
+        content: 'Module it.trash.',
+      });
+      await db.insert(policyVersionLayouts).values({
+        policyVersionId: 'it-trash-layout-v1',
+        formatVersion: 1,
+        layout: '{"v":1,"spans":[]}',
+        layoutSha256: 'a'.repeat(64),
+        sourceSha256: 'b'.repeat(64),
+        createdBy: OWNER,
+      });
+      await softDeletePolicy('it-trash-layout', OWNER);
+
+      expect(await permanentDeletePolicy('it-trash-layout', OWNER)).toEqual({
+        success: true,
+        policyId: 'it-trash-layout',
+      });
+
+      // purgePolicy 不删版本行（无外键，历史证据），layout 行随版本保留，删除路径不触发 append-only 拒绝
+      expect(await db.select().from(policies).where(eq(policies.id, 'it-trash-layout'))).toHaveLength(0);
+      expect(
+        await db.select().from(policyVersions).where(eq(policyVersions.id, 'it-trash-layout-v1')),
+      ).toHaveLength(1);
+      expect(
+        await db
+          .select()
+          .from(policyVersionLayouts)
+          .where(eq(policyVersionLayouts.policyVersionId, 'it-trash-layout-v1')),
+      ).toHaveLength(1);
     });
 
     it('#623 永久删除同时删掉共享、审阅人与待处理邀请，已接受的邀请作为审计历史保留', async () => {

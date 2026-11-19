@@ -484,6 +484,13 @@
       "when": 1794826561798,
       "tag": "0067_capability_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1795074025755,
+      "tag": "0068_policy_version_layout",
+      "breakpoints": true
     }
   ]
 }
