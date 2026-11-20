@@ -161,6 +161,7 @@ jobs:
           bash scripts/ci/open-image-pin-pr-merge.test.sh
           bash scripts/ci/open-image-pin-pr-flow.test.sh
           bash scripts/ci/deploy-worker-workflow.test.sh
+          bash scripts/ci/verify-worker-deployment.test.sh
 
       # ★版本对得上不代表跑得起来：aster-lang-ts 的 vscode-languageserver 是可选 peer，
       #   pnpm 不装。这里按 Dockerfile.lsp 同一方式安装并完成一次真实 initialize 握手。
