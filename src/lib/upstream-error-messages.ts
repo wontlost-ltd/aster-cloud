@@ -27,6 +27,12 @@ const UPSTREAM_MESSAGES: Readonly<Record<string, string>> = {
   issuer_key_conflict: 'This key id is already registered with a different public key. Use a new key id to rotate keys.',
   issuer_revoked: 'This issuer key has been revoked and cannot be re-enabled. Register a new key id instead.',
   issuer_not_found: 'This issuer is not registered for the workspace.',
+  // aster-api GuardReconciliationResource 与 cloud 对账 BFF（ADR 0054 §10.2，ADR 0061）
+  invalid_query: 'The reconciliation filter is not valid.',
+  invalid_ack: 'An acknowledgement needs a comment of 1 to 1000 characters.',
+  not_open: 'This orphan action is no longer open. It was resolved or acknowledged in the meantime.',
+  orphan_not_found: 'This orphan action does not exist in the workspace.',
+  invalid_decision_id: 'The decision id is not a valid UUID.',
   // cloud 客户端本地校验（policy-api.ts）
   invalid_id: 'Invalid approval id.',
   invalid_issuer_name: 'Issuer and key id may only contain letters, digits, ".", "_", "~" and "-" (issuer up to 255, key id up to 64 characters).',
