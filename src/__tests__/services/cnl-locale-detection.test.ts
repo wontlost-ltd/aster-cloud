@@ -38,7 +38,9 @@ describe('detectCNLLocale — 按词匹配而非子串', () => {
   /** 全部内置样例的语种必须被正确识别——修复前 5 个英文样例全部误判。 */
   it('★15 个内置样例（5 示例 × 3 语种）语种检测全部正确', () => {
     const wrong: string[] = [];
-    for (const ex of POLICY_EXAMPLES) {
+    // 固定语言的模板（cnlLocale，如《静夜思》：源码只有别名、没有规范关键词）应用时显式设定策略语言并随版本保存，
+    // 不走启发式检测；其余模板必须能被检测正确。
+    for (const ex of POLICY_EXAMPLES.filter((e) => !e.cnlLocale)) {
       for (const loc of getExampleLocales(ex)) {
         const got = detectCNLLocale(ex.sources[loc]);
         if (got !== loc) wrong.push(`${ex.id}[${loc}] -> ${got}`);

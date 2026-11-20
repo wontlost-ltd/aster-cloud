@@ -78,7 +78,7 @@ With Structured Authoring, the editor's side panel has a **Layout** tab.
 
 The display marks every piece of text that exists only in the layout: structural text has its own style, hovering over it shows the canonical text, and a hidden keyword leaves a marker.
 
-To see a finished layout, pick **Quiet Night Thoughts (Chinese showcase)** under **Showcase** in the editor's **Templates** tab. It sets the zh-CN source, a keyword alias and a layout whose display reads as Li Bai's poem, and it saves as a normal policy. Without Structured Authoring the template is shown as locked.
+To see a finished layout, pick **Quiet Night Thoughts (Chinese showcase)** under **Showcase** in the editor's **Templates** tab. The source is Li Bai's poem 静夜思 word for word. Four keyword aliases (床前, 疑是, 举头, 低头) start the lines, and the policy's own vocabulary maps 望明月 to the `Text` type and expands the literal 思故乡 to `"静夜思"`. The zh-CN lexer needs a space after each alias, so the source reads `床前 明月光。` and so on. The layout hides those spaces and puts back the poem's punctuation, so the display is the original poem, character for character. The policy saves, is approved and runs like any other, and running it outputs `静夜思`. The template needs Structured Authoring and permission for structural keyword aliases. Without either, it is shown as locked.
 
 ## Versions and saving
 

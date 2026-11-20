@@ -30,6 +30,7 @@ import { softDeletePolicy } from '@/lib/policy-lifecycle';
 import { invalidatePolicyCache } from '@/lib/cache';
 import { authorizeGroupPlacement, authorizePolicyAction, loadPolicyForAction, policyAccessDeniedResponse } from '@/lib/policy-access';
 import { parseCompileLocale } from '@/lib/cnl-locale';
+import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
 import { resolveEntitlement } from '@/lib/capabilities/resolve';
 import { layoutSaveErrorResponse } from '@/lib/policy-layout/errors';
 import { sha256Utf8Hex } from '@/lib/policy-layout/hash';
@@ -98,7 +99,27 @@ export async function GET(req: Request, { params }: RouteParams) {
     // （否则含关键词/运算符别名的源码在「生成示例」阶段解析失败）。口径同执行路径（C1 SQL JOIN）。
     const activeVersion = await db.query.policyVersions.findFirst({
       where: and(eq(policyVersions.policyId, id), eq(policyVersions.version, policy.version)),
-      columns: { id: true, aliasSet: true, embeddedVocabulary: true },
+      columns: {
+        id: true,
+        aliasSet: true,
+        embeddedVocabulary: true,
+        content: true,
+        source: true,
+        sourceEnvelopeSha256: true,
+        sourceScopesJson: true,
+        sourceToolchainId: true,
+        vocabularySnapshotIds: true,
+      },
+    });
+    // 活跃版本的 CNL 语言（#627）：与执行、编辑页同一判定（envelope 记录的编译 locale 优先，启发式兜底）。
+    // 执行页据此选词法表提取 schema——源码可能只有别名、没有规范关键词（《静夜思》，ADR 0060 §8），启发式识别不出。
+    const activeLocale = resolveStoredVersionLocale({
+      source: activeVersion?.source ?? activeVersion?.content ?? policy.content ?? '',
+      aliasSet: activeVersion?.aliasSet ?? null,
+      sourceEnvelopeSha256: activeVersion?.sourceEnvelopeSha256 ?? null,
+      sourceScopesJson: activeVersion?.sourceScopesJson ?? null,
+      sourceToolchainId: activeVersion?.sourceToolchainId ?? null,
+      vocabularySnapshotIds: activeVersion?.vocabularySnapshotIds ?? null,
     });
     // 活跃版本的 LayoutMap（ADR 0058 §7.2）：读权限检查之后读取，只读查看不设能力门。
     const layout: StoredLayout = activeVersion ? await loadVersionLayout(activeVersion.id) : { status: 'none' };
@@ -119,6 +140,7 @@ export async function GET(req: Request, { params }: RouteParams) {
       activeAliasSet: activeVersion?.aliasSet ?? null,
       // 活跃版本的策略内嵌词汇（ADR 0060 §6.2，规范序列化文本或 null），与 activeAliasSet 同口径
       activeEmbeddedVocabulary: activeVersion?.embeddedVocabulary ?? null,
+      activeLocale,
       layout,
       _count: { executions: executionCount },
       isFrozen: freezeInfo?.isFrozen ?? false,

@@ -62,6 +62,10 @@ const LEXICON_MAP: Record<PolicyLocale, Lexicon> = {
   'en-US': EN_US,
 };
 
+function isPolicyLocale(value: unknown): value is PolicyLocale {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(LEXICON_MAP, value);
+}
+
 interface ExecutionResult {
   executionId: string;
   success: boolean;
@@ -232,7 +236,9 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
   // 用户随后选中这个函数时应恢复刚才的输入，而不是再覆盖一次。
   const inputRuleRef = useRef('');
 
-  const ruleSymbols = useMemo(() => extractRuleSymbols(policyContent), [policyContent]);
+  // 规则关键词含活跃版本冻结的 FUNC_TO 别名：只用别名起规则的源码（《静夜思》）也能列出规则。
+  const [ruleAliases, setRuleAliases] = useState<readonly string[]>([]);
+  const ruleSymbols = useMemo(() => extractRuleSymbols(policyContent, ruleAliases), [policyContent, ruleAliases]);
   const ambiguousEntryDiagnostic = executionDiagnostics.find((diag) => diag.code === 'ENTRY_AMBIGUOUS');
 
 
@@ -338,7 +344,10 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
         // 错误的 prompt locale
         const pageLocaleFallback: PolicyLocale =
           locale.startsWith('zh') ? 'zh-CN' : locale.startsWith('de') ? 'de-DE' : 'en-US';
-        const detectedLocale = detectPolicyLocale(data.content || '', pageLocaleFallback);
+        // 服务端按活跃版本判定的策略语言（与执行同口径）优先；缺失或不受支持时才按源码启发式识别。
+        const detectedLocale = isPolicyLocale(data.activeLocale)
+          ? data.activeLocale
+          : detectPolicyLocale(data.content || '', pageLocaleFallback);
         setPolicyLocale(detectedLocale);
         // 活跃版本冻结的 aliasSet（canonical JSON），合并进 lexicon 供 schema 提取。
         // 由后端精确返回 activeAliasSet（GET 已按 version===Policy.version 查），不从
@@ -368,7 +377,9 @@ export function ExecutePolicyContent({ policyId, locale }: ExecutePolicyContentP
         if (data.content) {
           // 首次加载即按默认 Rule 同步提取（保持示例与源码同一轮渲染就绪的原时序）；
           // 之后用户切换 Rule 时由下方 effect 按所选 Rule 重新提取。
-          const defaultRule = chooseDefaultRule(extractRuleSymbols(data.content));
+          const aliasRuleKeywords = aliasSet?.FUNC_TO ?? [];
+          setRuleAliases(aliasRuleKeywords);
+          const defaultRule = chooseDefaultRule(extractRuleSymbols(data.content, aliasRuleKeywords));
           schemaRuleRef.current = defaultRule;
           // 与源码同一批写入默认 Rule：否则首个 commit 里 selectedRule 仍为 null，
           // 下方 effect 会先按第一个函数多提取一次（@entry 不在首位时会闪出错误的示例）。

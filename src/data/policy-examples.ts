@@ -10,6 +10,7 @@
  */
 
 import type { PolicyLayout } from '@aster-cloud/aster-lang-ts/layout';
+import type { EmbeddedVocabulary } from '@/lib/policy-embedded-vocabulary';
 import { ASTER_POLICY_TEMPLATES, STARTER_TEMPLATE_ID } from '@/config/aster-policy-templates';
 import { jingyesiShowcaseExample } from './policy-example-showcase';
 
@@ -61,6 +62,11 @@ export interface PolicyExample {
   aliasSet?: Readonly<Record<string, readonly string[]>>;
   /** 随模板写入的显示排版；toCanonical(layout) 必须等于该模板的源码。 */
   layout?: PolicyLayout;
+  /**
+   * 随模板写入的策略内嵌词汇（ADR 0060 §6）：应用时整体替换编辑器「本策略」分组，随版本保存与审批。
+   * 模板从不写个人 / 团队词汇。
+   */
+  embeddedVocabulary?: EmbeddedVocabulary;
   /** 应用前须具备的能力；不满足时锁定。 */
   requires?: TemplateRequirements;
   /**
@@ -1115,9 +1121,13 @@ export function getExampleLocales(example: PolicyExample): SupportedLocale[] {
   return example.cnlLocale ? [example.cnlLocale] : (Object.keys(example.sources) as SupportedLocale[]);
 }
 
-/** 模板除源码外还带别名或排版（应用时一并替换，不能只插入到光标）。 */
+/** 模板除源码外还带别名、排版或内嵌词汇（应用时一并替换，不能只插入到光标）。 */
 export function hasTemplateExtras(example: PolicyExample): boolean {
-  return Boolean(example.layout) || Object.keys(example.aliasSet ?? {}).length > 0;
+  return (
+    Boolean(example.layout) ||
+    Object.keys(example.aliasSet ?? {}).length > 0 ||
+    (example.embeddedVocabulary?.terms.length ?? 0) > 0
+  );
 }
 
 /** 调用方能否应用该模板：requires 中每一项都须具备。 */
