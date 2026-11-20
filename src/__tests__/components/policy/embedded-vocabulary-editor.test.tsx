@@ -94,7 +94,7 @@ describe('EmbeddedVocabularyEditor', () => {
   it.each<[string, Partial<Record<'kind' | 'localized' | 'canonical', string>>, string]>([
     ['写法等于关键词', { localized: '返回', canonical: 'x' }, 'embedded_vocabulary_shadows_keyword'],
     ['触发词重复', { localized: '思故乡', canonical: '别的' }, 'embedded_vocabulary_duplicate'],
-    ['字面量含引号', { localized: '低头', canonical: 'a"b' }, 'embedded_vocabulary_invalid'],
+    ['字面量含无从转义的定界符', { localized: '低头', canonical: 'a「b' }, 'embedded_vocabulary_invalid'],
     ['结构体规范名非 ASCII', { kind: 'struct', localized: '床前', canonical: '床' }, 'embedded_vocabulary_invalid'],
     ['写法超过 32 字符', { localized: '字'.repeat(33), canonical: 'x' }, 'embedded_vocabulary_too_large'],
   ])('即时校验：%s → 本地化错误，不能提交', (_label, input, code) => {

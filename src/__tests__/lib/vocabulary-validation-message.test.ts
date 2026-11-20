@@ -60,7 +60,8 @@ const ENGINE_MESSAGES: Record<string, string> = {
   }).errors.join('; '),
   emptyLiteral: validate({ literals: [mapping(IdentifierKind.LITERAL, '', 'gruss')] }).errors.join('; '),
   controlLiteral: validate({ literals: [mapping(IdentifierKind.LITERAL, 'a\nb', 'gruss')] }).errors.join('; '),
-  quotedLiteral: validate({ literals: [mapping(IdentifierKind.LITERAL, 'say "hi"', 'gruss')] }).errors.join('; '),
+  // ts 3.6.0 起 ASCII 双引号、弯引号与反斜杠允许（ADR 0060 修订 1 R18），无从转义的「」『』«» 照旧拒绝
+  quotedLiteral: validate({ literals: [mapping(IdentifierKind.LITERAL, 'say 「hi」', 'gruss')] }).errors.join('; '),
   fieldWithoutParent: validate({ fields: [mapping(IdentifierKind.FIELD, 'age', 'alter')] }).errors.join('; '),
   enumWithoutParent: validate({ enumValues: [mapping(IdentifierKind.ENUM_VALUE, 'High', 'Hoch')] }).errors.join('; '),
   registryWrapper: `词汇表 "d" 验证失败:\n${validate({ structs: [mapping(IdentifierKind.STRUCT, 'Bad Name!', 'Fahrer')] }).errors.join('\n')}`,
@@ -70,6 +71,8 @@ const ENGINE_MESSAGES: Record<string, string> = {
 const LEGACY_ENGINE_MESSAGES: Record<string, string> = {
   duplicateCanonical: 'structs[1]: 规范化名称 "Driver" 重复',
   duplicateLocalized: 'structs[1]: 本地化名称 "Fahrer" 重复，可能导致歧义',
+  // ts ≤ 3.5.0 拒绝任何引号与反斜杠时的诊断
+  invalidLiteral: 'literals[0]: 字面量宏内容不得含引号定界符（" 「 」 『 』 « » “ ” ‘ ’）或反斜杠 "say "hi""（防逃逸/注入）',
 };
 
 /** 服务层 / 路由 / 异步 worker 的英文 validation_failed 消息（src/lib/domain-vocabulary*.ts、api/v1/domain-vocabularies）。 */

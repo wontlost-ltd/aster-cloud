@@ -165,10 +165,16 @@ describe('validateEmbeddedVocabulary', () => {
     expect(validate(sized(8192), null, 'en-US')).toBeUndefined();
   });
 
-  it('rejects a literal containing a quote or a newline → embedded_vocabulary_invalid', () => {
-    expect(validate([{ kind: 'literal', localized: '甲', canonical: '有"引号' }])).toBe('embedded_vocabulary_invalid');
+  it('rejects a literal containing an unescapable delimiter or a newline → embedded_vocabulary_invalid', () => {
+    expect(validate([{ kind: 'literal', localized: '甲', canonical: '有「引号' }])).toBe('embedded_vocabulary_invalid');
+    expect(validate([{ kind: 'literal', localized: '甲', canonical: '有«引号' }])).toBe('embedded_vocabulary_invalid');
     expect(validate([{ kind: 'literal', localized: '甲', canonical: '换\n行' }])).toBe('embedded_vocabulary_invalid');
     expect(validate([{ kind: 'literal', localized: '甲', canonical: '' }])).toBe('embedded_vocabulary_invalid');
+  });
+
+  it('accepts ASCII / curly quotes and backslashes in a literal (ts 3.6.0, ADR 0060 amendment 1 R18)', () => {
+    expect(validate([{ kind: 'literal', localized: '甲', canonical: '有"引号' }])).toBeUndefined();
+    expect(validate([{ kind: 'literal', localized: '甲', canonical: '“弯”\\x' }])).toBeUndefined();
   });
 
   it('rejects a non-ASCII canonical for struct → embedded_vocabulary_invalid', () => {
