@@ -9,6 +9,7 @@
 
 import { locales, defaultLocale, type Locale } from '@/i18n/config';
 import { safeEnv } from '@/lib/runtime/safe-env';
+import { resolvePolicyApiBaseUrl } from '@/lib/policy-api-url';
 
 export interface AvailabilityResult {
   /**
@@ -55,7 +56,7 @@ const LEXICON_FETCH_TIMEOUT_MS = 2_000;
 // runtime（CF middleware / browser）抛 ReferenceError，整个 middleware
 // 拒绝加载。通过 safeEnv 安全读取。
 const ASTER_API_BASE =
-  safeEnv('NEXT_PUBLIC_ASTER_POLICY_API_URL') || 'https://policy.aster-lang.dev';
+  resolvePolicyApiBaseUrl(safeEnv('NEXT_PUBLIC_ASTER_POLICY_API_URL'));
 
 function lexiconIdToUiLocale(lexId: string): string {
   return lexId.split('-')[0].toLowerCase();

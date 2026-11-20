@@ -21,14 +21,16 @@ import { checkAiQuota, recordAiUsage } from '@/lib/ai-quota';
 import { aiQuotaHttpStatus } from '@/lib/ai-quota-http';
 import { resolveByokEnvelope, injectByokEnvelope } from '@/lib/byok-envelope';
 import { isLlmCallerError, resolveLlmCaller } from '@/lib/llm-caller';
+import { resolvePolicyApiBaseUrl } from '@/lib/policy-api-url';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const ASTER_API_BASE =
-  process.env.ASTER_POLICY_API_INTERNAL_URL ||
-  process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL ||
-  'https://policy.aster-lang.dev';
+  resolvePolicyApiBaseUrl(
+    process.env.ASTER_POLICY_API_INTERNAL_URL,
+    process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL,
+  );
 
 const UPSTREAM_PATH = '/api/v1/ai/complete';
 

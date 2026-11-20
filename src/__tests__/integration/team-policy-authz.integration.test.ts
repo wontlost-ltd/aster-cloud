@@ -69,6 +69,7 @@ import {
   auditLogs,
   complianceReports,
   executions,
+  guardPolicyDeployments,
   policies,
   policyApprovals,
   policyGroups,
@@ -118,6 +119,7 @@ import * as whatifBatchesRoute from '@/app/api/v1/policies/[id]/whatif-batches/r
 import * as whatifBatchRoute from '@/app/api/v1/policies/[id]/whatif-batches/[batchId]/route';
 import * as v1ListRoute from '@/app/api/v1/policies/route';
 import { listUserPolicies } from '@/lib/policies';
+import { setGuardDeployDepsForTest } from '@/lib/guard-policy-deploy';
 import * as v1ExecuteRoute from '@/app/api/v1/policies/[id]/execute/route';
 
 const P = 'it-tpa';
@@ -171,6 +173,7 @@ async function cleanup(db: Db): Promise<void> {
   await db.delete(policyApprovals).where(sql`${policyApprovals.versionId} LIKE ${`${P}-%`}`);
   await db.delete(policyVersions).where(inArray(policyVersions.policyId, POLICY_IDS));
   await db.delete(policyRecycleBins).where(inArray(policyRecycleBins.policyId, POLICY_IDS));
+  await db.delete(guardPolicyDeployments).where(inArray(guardPolicyDeployments.policyId, POLICY_IDS));
   await db.delete(policies).where(inArray(policies.id, POLICY_IDS));
   await db.delete(apiKeys).where(inArray(apiKeys.userId, USER_IDS));
   await db.delete(teamMembers).where(eq(teamMembers.teamId, TEAM));
@@ -362,19 +365,35 @@ async function bodyOf<T = Record<string, unknown>>(res: Promise<Response> | Resp
 describe.skipIf(process.env.LICENSE_E2E !== '1')('团队策略授权矩阵（真实 Postgres）', () => {
   const previous = globalForDb.__asterLocalDevDb;
   const db = createDb(undefined, { max: 4 });
+  /**
+   * Guard 部署（设默认版本 / 删除走「先部署、后提交」）一律打到这个记录器，绝不触达真实 aster-api：
+   * 本套件只验证授权，部署语义由 guard-policy-deploy 集成测试覆盖（#824）。
+   */
+  const guardCalls: Array<{ kind: 'deploy' | 'withdraw'; actor: string; policyId: string; cloudVersion?: number }> = [];
 
   beforeAll(async () => {
     globalForDb.__asterLocalDevDb = db;
+    setGuardDeployDepsForTest({
+      async deploy(_tenantId, actor, policyId, body) {
+        guardCalls.push({ kind: 'deploy', actor, policyId, cloudVersion: body.cloudVersion });
+        return { policyVersionId: 1000 + body.generation };
+      },
+      async withdraw(_tenantId, actor, policyId) {
+        guardCalls.push({ kind: 'withdraw', actor, policyId });
+      },
+    });
     await cleanup(db);
   }, 120_000);
 
   // 本机负载高时夹具重建可能超过默认 10s 钩子超时，超时后半途的数据会让下一个用例主键冲突
   beforeEach(async () => {
+    guardCalls.length = 0;
     await cleanup(db);
     await seed(db);
   }, 120_000);
 
   afterAll(async () => {
+    setGuardDeployDepsForTest(undefined);
     await cleanup(db);
     globalForDb.__asterLocalDevDb = previous;
     await db.$client.end({ timeout: 1 });
@@ -484,6 +503,8 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('团队策略授权矩阵（真
     it('设默认版本：member 可、viewer 403', async () => {
       expect(await statusOf(call.setDefault('member', POL.own, 3))).toBe(200);
       expect(await statusOf(call.setDefault('viewer', POL.own, 3))).toBe(403);
+      // 只有获授权的那次部署到 Guard（记录器），viewer 在部署前即被拒
+      expect(guardCalls).toEqual([{ kind: 'deploy', actor: U.member, policyId: POL.own, cloudVersion: 3 }]);
     });
   });
 

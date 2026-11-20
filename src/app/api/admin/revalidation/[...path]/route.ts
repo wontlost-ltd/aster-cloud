@@ -2,11 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
 import { signByokAllowlistHeaders } from '@/lib/api-signing';
 import { extractClientInfo, logAuditEvent } from '@/lib/audit-log';
+import { resolvePolicyApiBaseUrl } from '@/lib/policy-api-url';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const API_BASE = process.env.ASTER_POLICY_API_INTERNAL_URL || process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL || 'https://policy.aster-lang.dev';
+const API_BASE = resolvePolicyApiBaseUrl(
+  process.env.ASTER_POLICY_API_INTERNAL_URL,
+  process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL,
+);
 
 async function proxy(req: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const admin = await requireAdmin();
