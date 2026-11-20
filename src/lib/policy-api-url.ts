@@ -45,7 +45,7 @@ export function isProductionAsterHost(url: string): boolean {
 }
 
 function resolve(candidates: Array<string | undefined>, production: string, testFallback: string): string {
-  const configured = candidates.find((value) => Boolean(value?.trim()));
+  const configured = candidates.map((value) => value?.trim()).find(Boolean);
   if (!isTestRuntime()) return configured ?? production;
   return configured && !isProductionAsterHost(configured) ? configured : testFallback;
 }

@@ -4,8 +4,8 @@
  * 三层守卫：
  *   1. 回落规则本身：测试进程未配置 / 配成生产域 → 不可达的本机地址；非测试进程保持生产回落。
  *   2. 行为：未设任何 env 时，Guard 部署客户端真正发出的请求不指向 *.aster-lang.dev。
- *   3. 静态：除回落规则模块与 CSP（响应头里的来源白名单，不是客户端）外，源码里不得再出现
- *      `policy.aster-lang.dev` 字面量——新增客户端只能经 resolvePolicyApiBaseUrl 取基址。
+ *   3. 静态：源码里除官网 / 文档链接（aster-lang.dev、www.aster-lang.dev）外，生产子域只允许出现在
+ *      回落规则模块与 CSP（响应头里的来源白名单，不是客户端）——新增客户端只能经 resolvePolicyApiBaseUrl 取基址。
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -64,6 +64,7 @@ describe('resolvePolicyApiBaseUrl：测试进程 fail closed', () => {
   it('本地 / mock aster-api 照常使用，按优先级取第一个非空值', () => {
     expect(resolvePolicyApiBaseUrl(undefined, 'http://localhost:8080')).toBe('http://localhost:8080');
     expect(resolvePolicyApiBaseUrl('http://aster-api:8080', 'http://localhost:8080')).toBe('http://aster-api:8080');
+    expect(resolvePolicyApiBaseUrl('  http://localhost:8080\n')).toBe('http://localhost:8080');
     // 形似但不是生产域的主机不受影响
     expect(resolvePolicyApiBaseUrl('http://not-aster-lang.dev.example')).toBe('http://not-aster-lang.dev.example');
   });
@@ -117,8 +118,18 @@ describe('测试进程里的 aster-api 客户端不解析到 *.aster-lang.dev', 
 
 describe('源码里不再硬编码生产 aster-api 地址', () => {
   const SRC = path.resolve(__dirname, '../..');
-  /** 允许出现该字面量的文件：回落规则本身，以及 CSP（只是响应头里的来源白名单）。 */
-  const ALLOWED = new Set(['lib/policy-api-url.ts', 'lib/security/csp.ts']);
+  /** 官网 / 文档链接用的主机：页面跳转与文档引用，不是 API 客户端。 */
+  const SITE_HOSTS = new Set(['aster-lang.dev', 'www.aster-lang.dev']);
+  /**
+   * 只有这些文件可以出现其它生产子域：回落规则本身；CSP 只是响应头里的来源白名单
+   * （policy 的 REST / WS 与 lsp 的 WS），不发请求。
+   */
+  const HOST_ALLOWED_IN: Record<string, ReadonlySet<string>> = {
+    'lib/policy-api-url.ts': new Set(['policy.aster-lang.dev']),
+    'lib/security/csp.ts': new Set(['policy.aster-lang.dev', 'lsp.aster-lang.dev']),
+  };
+  /** 带协议的 URL，或引号 / 模板串里不带协议的主机名，主机为 aster-lang.dev 或其子域。 */
+  const HOST_PATTERN = /(?:(?:https?|wss?):\/\/|['"`])((?:[a-z0-9-]+\.)*aster-lang\.dev)\b/gi;
 
   function sourceFiles(dir: string): string[] {
     return readdirSync(dir).flatMap((name) => {
@@ -128,15 +139,35 @@ describe('源码里不再硬编码生产 aster-api 地址', () => {
     });
   }
 
-  it('policy.aster-lang.dev 只出现在允许的文件与注释中', () => {
-    const offenders = sourceFiles(SRC)
-      .map((file) => path.relative(SRC, file).split(path.sep).join('/'))
-      .filter((rel) => !ALLOWED.has(rel))
-      .filter((rel) =>
-        readFileSync(path.join(SRC, rel), 'utf8')
-          .split('\n')
-          .some((line) => /['"`](https?|wss?):\/\/policy\.aster-lang\.dev/.test(line)),
-      );
+  function isComment(line: string): boolean {
+    const t = line.trim();
+    return t.startsWith('*') || t.startsWith('//') || t.startsWith('/*');
+  }
+
+  it('除官网链接外，生产子域只出现在回落规则与 CSP 中', () => {
+    const offenders = sourceFiles(SRC).flatMap((file) => {
+      const rel = path.relative(SRC, file).split(path.sep).join('/');
+      const allowed = HOST_ALLOWED_IN[rel] ?? new Set<string>();
+      return readFileSync(file, 'utf8')
+        .split('\n')
+        .flatMap((line, i) =>
+          isComment(line)
+            ? []
+            : [...line.matchAll(HOST_PATTERN)]
+                .map((m) => m[1].toLowerCase())
+                .filter((host) => !SITE_HOSTS.has(host) && !allowed.has(host))
+                .map((host) => `${rel}:${i + 1} ${host}`),
+        );
+    });
     expect(offenders).toEqual([]);
+  });
+
+  it('扫描规则本身能识别各种写法', () => {
+    const hosts = (line: string) => [...line.matchAll(HOST_PATTERN)].map((m) => m[1].toLowerCase());
+    expect(hosts(`const a = 'https://policy.aster-lang.dev';`)).toEqual(['policy.aster-lang.dev']);
+    expect(hosts('const b = `wss://API.Aster-Lang.dev/x`;')).toEqual(['api.aster-lang.dev']);
+    expect(hosts(`const c = "policy.aster-lang.dev";`)).toEqual(['policy.aster-lang.dev']);
+    expect(hosts(`const d = 'https://www.aster-lang.dev/zh';`)).toEqual(['www.aster-lang.dev']);
+    expect(hosts(`const e = 'https://example.com/aster-lang.dev';`)).toEqual([]);
   });
 });
