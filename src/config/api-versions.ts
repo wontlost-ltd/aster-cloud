@@ -58,6 +58,13 @@ export const API_ENDPOINTS = {
   guardFactIssuer: (issuer: string, kid: string) =>
     `${prefix}/guard/fact-issuers/${encodeURIComponent(issuer)}/${encodeURIComponent(kid)}`,
 
+  /**
+   * Guard 对账（ADR 0054 §10.2 / ADR 0061）：摘要、孤儿列表、确认。孤儿 id 是正整数，直接拼进路径不需编码。
+   */
+  guardReconciliation: `${prefix}/guard/reconciliation`,
+  guardReconciliationOrphans: `${prefix}/guard/reconciliation/orphans`,
+  guardOrphanAck: (id: number) => `${prefix}/guard/reconciliation/orphans/${id}/ack`,
+
   /** cloud 策略部署到 aster-api Guard（ADR 0054 §11 D1）：cloud 策略 id 为 cuid / uuid，URL 安全。 */
   guardPolicyDeployment: (cloudPolicyId: string) =>
     `${prefix}/guard/policy-deployments/${encodeURIComponent(cloudPolicyId)}`,
