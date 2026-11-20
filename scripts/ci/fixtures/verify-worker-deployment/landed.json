@@ -1,0 +1,87 @@
+[
+  {
+    "id": "00000001-0000-4000-8000-000000000001",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "ci@example.com",
+    "created_on": "2026-11-19T20:15:15.953Z",
+    "annotations": {
+      "workers/message": "github-actions-run-44606227301",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "0eb7dcef-e499-47b1-bd84-c1b4c3f522c6",
+        "percentage": 100
+      }
+    ]
+  },
+  {
+    "id": "00000002-0000-4000-8000-000000000002",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "ci@example.com",
+    "created_on": "2026-11-19T21:22:58.284Z",
+    "annotations": {
+      "workers/message": "github-actions-run-44617657457",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "22b59276-e90d-4db8-847a-f0359de12008",
+        "percentage": 100
+      }
+    ]
+  },
+  {
+    "id": "00000003-0000-4000-8000-000000000003",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "ci@example.com",
+    "created_on": "2026-11-19T22:19:01.564Z",
+    "annotations": {
+      "workers/message": "github-actions-run-44626820874",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "93a7ab09-33cb-4cba-af33-54a63d5635d6",
+        "percentage": 100
+      }
+    ]
+  },
+  {
+    "id": "00000004-0000-4000-8000-000000000004",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "ci@example.com",
+    "created_on": "2026-11-19T23:15:06.981Z",
+    "annotations": {
+      "workers/message": "github-actions-run-44635557383",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "6db4f8c1-7404-4086-9f3d-9926a30c98b3",
+        "percentage": 100
+      }
+    ]
+  },
+  {
+    "id": "00000005-0000-4000-8000-000000000005",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "ci@example.com",
+    "created_on": "2026-11-20T00:39:17.512Z",
+    "annotations": {
+      "workers/message": "github-actions-run-44647104899",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "f4f4ffae-4a57-4128-ba86-34bd240fabbe",
+        "percentage": 100
+      }
+    ]
+  }
+]

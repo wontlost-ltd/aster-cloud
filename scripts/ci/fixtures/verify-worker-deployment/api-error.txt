@@ -1,0 +1,2 @@
+✘ [ERROR] A request to the Cloudflare API (/accounts/0000/workers/scripts/aster-cloud/versions/ca8e7cf1-8986-403a-a593-86aa7bc99d8e) failed.
+  The requested Worker version could not be found, please check the ID being passed and try again. [code: 100146]
