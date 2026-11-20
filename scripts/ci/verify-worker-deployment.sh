@@ -61,7 +61,10 @@ classify_deployments() {
     | if $ours == 0 then "pending 列表中尚无 message=\($msg) 的部署"
       elif ($latest.annotations["workers/message"] // "") != $msg then
         "superseded 本次部署已被更新的部署覆盖：最新 created_on=\($latest.created_on) message=\($latest.annotations["workers/message"] // "-")"
-      elif any(($latest.versions // [])[]; .version_id == $ver and .percentage == 100) then
+      elif ($latest.versions // []) == [] then
+        "mismatch 最新部署没有任何 version 流量，期望 \($ver)@100%"
+      elif all(($latest.versions // [])[]; .version_id == $ver)
+        and ((($latest.versions // []) | map(.percentage) | add) == 100) then
         "landed 最新部署 created_on=\($latest.created_on) 100% → \($ver)"
       else
         "mismatch 最新部署流量为 \(($latest.versions // []) | map("\(.version_id)@\(.percentage)%") | join(","))，期望 \($ver)@100%"

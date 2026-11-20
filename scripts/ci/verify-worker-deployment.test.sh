@@ -102,6 +102,12 @@ expect "本次部署被更新的部署覆盖：立即失败不重试" 1 1 "" "su
 run_case deploy.log mismatch.json
 expect "最新部署流量未 100% 指向本次 version：立即失败" 1 1 "" "mismatch"
 
+run_case deploy.log conflicting-traffic.json
+expect "本次 version 100% 之外还有其它 version 流量：立即失败" 1 1 "" "mismatch"
+
+run_case deploy.log no-versions.json
+expect "最新部署无 version 流量：立即失败" 1 1 "" "mismatch"
+
 run_case deploy.log prefix-collision.json
 expect "message 前缀碰撞不算命中" 1 4 "5,10,15" "pending"
 
