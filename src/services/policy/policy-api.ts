@@ -18,7 +18,12 @@ import type {
   GuardFactIssuer,
   GuardFactIssuerPut,
   GuardFromEvidenceRequest,
+  GuardOrphan,
+  GuardOrphanPage,
+  GuardOrphanQuery,
+  GuardReconciliationSummary,
 } from './guard-types';
+import { orphanQueryToSearch } from '@/lib/guard-reconciliation/query';
 
 // 环境变量配置
 export const getApiConfig = () => {
@@ -788,6 +793,28 @@ export class PolicyApiClient {
   async revealGuardApprovalInput(id: string): Promise<GuardApprovalInput> {
     assertGuardPathId(id);
     return this.request<GuardApprovalInput>('POST', API_ENDPOINTS.guardApprovalInputReveal(id), {}, GUARD_TIMEOUT_MS);
+  }
+
+  /**
+   * 对账摘要（ADR 0054 §10.2）。以下三个对账方法只经 `ReconciliationApi` 窄接口调用（ADR 0061 §3.2），
+   * 由 `createReconciliationClient` 以用户的真实团队角色构造本客户端。
+   */
+  async getGuardReconciliation(): Promise<GuardReconciliationSummary> {
+    return this.request<GuardReconciliationSummary>('GET', API_ENDPOINTS.guardReconciliation, undefined, GUARD_TIMEOUT_MS);
+  }
+
+  /** 一页孤儿；旧 aster-api 会忽略 `severity`，调用方须再过滤（见 `fillFilteredPage`）。 */
+  async listGuardOrphans(q: GuardOrphanQuery): Promise<GuardOrphanPage> {
+    const path = `${API_ENDPOINTS.guardReconciliationOrphans}?${orphanQueryToSearch(q)}`;
+    return this.request<GuardOrphanPage>('GET', path, undefined, GUARD_TIMEOUT_MS);
+  }
+
+  /** 管理员确认（aster-api 方法级 ADMIN）。409 not_open 时 `details.status` 为当前状态。 */
+  async ackGuardOrphan(id: number, comment: string): Promise<GuardOrphan> {
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      throw new PolicyApiError('Invalid orphan id', 400, 'invalid_id');
+    }
+    return this.request<GuardOrphan>('POST', API_ENDPOINTS.guardOrphanAck(id), { comment }, GUARD_TIMEOUT_MS);
   }
 
   /** 本租户签发方列表（含已吊销），租户取自签名内的 X-Tenant-Id。 */

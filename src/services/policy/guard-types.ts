@@ -56,6 +56,16 @@ export interface GuardDecision {
   ruleId?: string;
   /** 输入来源（ADR 0040 §11 D2）：verified 路径、参与背书的 issuer#kid、事实是否已过期。 */
   inputSources?: { verified?: string[]; factIssuers?: string[]; factsStale?: boolean };
+  /**
+   * 执行收据（ADR 0040 §12 D1，仅 ALLOW）。payload 内的策略地址 `policyModule / policyFunction` 是签名覆盖的
+   * （#517 之前签发的收据没有）；其余键 cloud 不解读。
+   */
+  executionReceipt?: { payload?: { policyModule?: string; policyFunction?: string; [key: string]: unknown } };
+  /** 以下三项只有回读端点 `GET /guard/decisions/{id}` 才有（ADR 0054 §3.3）：已 consume 时的动作摘要与消耗方。 */
+  actionHash?: string;
+  consumedBy?: { attemptId: string; consumedAt: string; executorId?: string };
+  /** 已回写结果时。 */
+  result?: { resultAt: string; status: string };
 }
 
 /** 审批列表项：基础字段 + ADR 0042 §4.3 取自关联决策的扩展字段。 */
@@ -159,4 +169,76 @@ export interface GuardFactIssuerPut {
   publicKey: string;
   enabled?: boolean;
   notAfter?: string;
+}
+
+/**
+ * Guard 对账（aster-api ADR 0054 §10，查询扩展见 ADR 0061 §3.4）。字面量与 aster-api `OrphanKind` 一一对应，
+ * 两侧测试同时钉住（cloud：`kinds.test.ts`）。
+ */
+export type GuardOrphanKind =
+  | 'side_effect_without_decision'
+  | 'side_effect_unconsumed'
+  | 'side_effect_mismatch'
+  | 'consumed_without_result'
+  | 'allow_unconsumed'
+  | 'consume_on_non_allow'
+  | 'result_without_consume'
+  | 'orphan_receipt';
+
+export type GuardOrphanSeverity = 'critical' | 'warning' | 'info';
+
+export type GuardOrphanStatus = 'OPEN' | 'RESOLVED' | 'ACKNOWLEDGED';
+
+/**
+ * 孤儿列表项（aster-api `GuardOrphanAdminService.view`）。null 字段不写出，故可选项缺省即无。
+ * `detail`、`executor`、`executorId` 含上报方可控文本，只能按纯文本展示（ADR 0061 §3.6）。
+ */
+export interface GuardOrphan {
+  id: number;
+  kind: GuardOrphanKind;
+  severity: GuardOrphanSeverity;
+  status: GuardOrphanStatus;
+  decisionId?: string;
+  sideEffectId?: number;
+  executor: string;
+  executorId?: string;
+  detectedAt: string;
+  resolvedAt?: string;
+  resolution?: 'late_result' | 'aged_out' | 'acknowledged';
+  acknowledgedBy?: string;
+  /** 确认说明；旧 aster-api（ADR 0061 之前）不返回。 */
+  ackComment?: string;
+  detail: Record<string, unknown>;
+}
+
+export interface GuardOrphanPage {
+  items: GuardOrphan[];
+  /** 下一页的 `before` 游标；没有更多时缺省。 */
+  next?: number;
+}
+
+/** 对账摘要（`GET /guard/reconciliation`）；`open` 只列非零的 kind。 */
+export interface GuardReconciliationSummary {
+  lastRun: {
+    runId: number;
+    finishedAt: string;
+    windowStart: string;
+    windowEnd: string;
+    newOrphans: number;
+    resolvedOrphans: number;
+    openOrphans: number;
+  } | null;
+  open: Partial<Record<GuardOrphanKind, number>>;
+  openTotal: number;
+  resultGrace: string;
+  lookback: string;
+}
+
+/** 孤儿列表查询；`severities` 为空数组表示不按 severity 过滤。 */
+export interface GuardOrphanQuery {
+  status: GuardOrphanStatus;
+  severities: GuardOrphanSeverity[];
+  kind?: GuardOrphanKind;
+  before?: number;
+  limit: number;
 }
