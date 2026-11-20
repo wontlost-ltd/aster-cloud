@@ -1,7 +1,7 @@
 ---
 title: "Connect Aster Guard to a policy"
 description: "Check AI agent actions against your policy before they run: set a default version, issue an API key, and put aster-guard between the agent and its tools."
-updated: 2026-11-16
+updated: 2026-11-20
 apiVersion: v1
 ---
 
@@ -87,6 +87,27 @@ Register issuers in [Settings → Fact issuers](/settings/fact-issuers) for your
 3. Approve it as a member who holds the required business role, and confirm that the waiting call then runs.
 
 Runs of the same policy from Aster Cloud (the policy's **Run** page or the `/api/v1/policies/.../execute` API) that end in `require_approval` or `escalate` also open a Guard approval. Their **Logs** entry links to the request.
+
+## Reconciliation and orphan actions
+
+Every few minutes Aster reconciles what executors report against Guard's decisions and receipts. Anything that does not line up is an **orphan action**, listed under [Governance → Guard reconciliation](/governance/reconciliation). The Governance page shows how many orphan actions are open in each workspace.
+
+| Kind | Severity | What it means |
+|---|---|---|
+| `side_effect_without_decision` | critical | A side effect was reported without a decision this workspace knows about. |
+| `side_effect_unconsumed` | critical | A side effect was reported, but its execution receipt was never consumed. |
+| `side_effect_mismatch` | critical | The reported attempt or action hash does not match the consumed receipt, or the report is a replay. |
+| `consume_on_non_allow` | critical | A receipt was consumed for a decision that was neither allowed nor approved. |
+| `result_without_consume` | critical | A result was reported for a receipt that was never consumed. |
+| `consumed_without_result` | warning | A receipt was consumed but no result arrived in time. Resolves on its own if the result arrives later. |
+| `allow_unconsumed` | info | An allow expired without being consumed, for example from an older SDK. Resolves on its own after the retention period. |
+| `orphan_receipt` | info | The audit chain has a decision event with no decision row in this workspace. Resolves on its own after the retention period. |
+
+The list shows open critical and warning orphan actions by default. Expand a row to see what was reported, the decision and its chain receipts, and links to the execution logs and the approval.
+
+- **Who can see it:** members, admins and owners of a team, and you in your personal workspace. Viewers cannot see it.
+- **Who can acknowledge:** team admins and owners, and you in your personal workspace. Acknowledging needs a comment of 1 to 1000 characters.
+- **Acknowledging cannot be undone.** It closes the orphan action permanently and records it, with your comment, in the audit chain. There is no bulk acknowledge: check each critical orphan action on its own.
 
 ## Learn more
 

@@ -1,7 +1,7 @@
 ---
 title: "Aster Guard an eine Richtlinie anbinden"
 description: "Aktionen von KI-Agenten vor der Ausführung prüfen: Standardversion setzen, API-Schlüssel ausstellen, aster-guard zwischen Agent und Werkzeuge schalten."
-updated: 2026-11-16
+updated: 2026-11-20
 apiVersion: v1
 ---
 
@@ -87,6 +87,27 @@ Aussteller für Ihren persönlichen Arbeitsbereich registrieren Sie unter [Einst
 3. Geben Sie sie als Mitglied mit der erforderlichen Geschäftsrolle frei und prüfen Sie, dass der wartende Aufruf danach ausgeführt wird.
 
 Ausführungen derselben Richtlinie in Aster Cloud (Seite **Ausführen** der Richtlinie oder API `/api/v1/policies/.../execute`), die mit `require_approval` oder `escalate` enden, erzeugen ebenfalls eine Guard-Freigabe. Ihr Eintrag in den **Protokollen** verlinkt auf die Anfrage.
+
+## Abgleich und verwaiste Aktionen
+
+Alle paar Minuten gleicht Aster ab, was Executoren melden, mit den Entscheidungen und Belegen von Guard. Was nicht zusammenpasst, ist eine **verwaiste Aktion** und erscheint unter [Governance → Guard-Abgleich](/governance/reconciliation). Die Governance-Seite zeigt, wie viele verwaiste Aktionen in jedem Arbeitsbereich offen sind.
+
+| Art | Schweregrad | Bedeutung |
+|---|---|---|
+| `side_effect_without_decision` | critical | Eine Nebenwirkung wurde ohne eine Entscheidung gemeldet, die dieser Arbeitsbereich kennt. |
+| `side_effect_unconsumed` | critical | Eine Nebenwirkung wurde gemeldet, ihr Ausführungsbeleg aber nie verbraucht. |
+| `side_effect_mismatch` | critical | Gemeldeter Versuch oder Aktions-Hash passt nicht zum verbrauchten Beleg, oder die Meldung ist eine Wiederholung. |
+| `consume_on_non_allow` | critical | Ein Beleg wurde für eine Entscheidung verbraucht, die weder freigegeben noch genehmigt war. |
+| `result_without_consume` | critical | Für einen nie verbrauchten Beleg wurde ein Ergebnis gemeldet. |
+| `consumed_without_result` | warning | Ein Beleg wurde verbraucht, aber kein Ergebnis kam rechtzeitig an. Löst sich auf, wenn das Ergebnis nachgereicht wird. |
+| `allow_unconsumed` | info | Eine Freigabe ist ohne Verbrauch abgelaufen, etwa durch ein älteres SDK. Löst sich nach der Aufbewahrungsfrist auf. |
+| `orphan_receipt` | info | Die Audit-Kette enthält ein Entscheidungsereignis ohne Entscheidungszeile in diesem Arbeitsbereich. Löst sich nach der Aufbewahrungsfrist auf. |
+
+Die Liste zeigt standardmäßig offene verwaiste Aktionen der Schweregrade critical und warning. Klappen Sie eine Zeile auf, um die gemeldeten Angaben, die Entscheidung mit ihren Kettenbelegen sowie Links zu den Ausführungsprotokollen und zur Genehmigung zu sehen.
+
+- **Wer sie sieht:** Mitglieder, Admins und Eigentümer eines Teams sowie Sie selbst im persönlichen Arbeitsbereich. Betrachter sehen sie nicht.
+- **Wer bestätigen darf:** Team-Admins und -Eigentümer sowie Sie selbst im persönlichen Arbeitsbereich. Eine Bestätigung braucht einen Kommentar mit 1 bis 1000 Zeichen.
+- **Eine Bestätigung lässt sich nicht rückgängig machen.** Sie schließt die verwaiste Aktion dauerhaft und hält sie mit Ihrem Kommentar in der Audit-Kette fest. Eine Sammelbestätigung gibt es nicht: Prüfen Sie jede kritische verwaiste Aktion einzeln.
 
 ## Mehr erfahren
 
