@@ -92,3 +92,21 @@ describe('reconcileSelectedRule', () => {
     expect(reconcileSelectedRule(null, rules)).toBeNull();
   });
 });
+
+describe('extractRuleSymbols with FUNC_TO aliases (ADR 0060 §8)', () => {
+  const POEM = '床前 明月光。\n疑是 地上霜，举头 望明月：\n  低头 思故乡。\n';
+
+  it('finds the rule declared with the frozen FUNC_TO alias', () => {
+    expect(extractRuleSymbols(POEM)).toEqual([]);
+    const rules = extractRuleSymbols(POEM, ['疑是']);
+    expect(rules.map((rule) => rule.name)).toEqual(['地上霜']);
+    expect(rules[0].range).toEqual({ startLineNumber: 2, startColumn: 4, endLineNumber: 2, endColumn: 7 });
+    expect(chooseDefaultRule(rules)).toBe('地上霜');
+  });
+
+  it('escapes alias text and keeps the canonical keywords', () => {
+    expect(extractRuleSymbols('a+b x.', ['a+b']).map((rule) => rule.name)).toEqual(['x.']);
+    expect(extractRuleSymbols('aab x.', ['a+b'])).toEqual([]);
+    expect(extractRuleSymbols('规则 r 给定 x：', ['疑是']).map((rule) => rule.name)).toEqual(['r']);
+  });
+});

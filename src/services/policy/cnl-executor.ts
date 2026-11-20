@@ -85,13 +85,28 @@ function containsWord(content: string, keyword: string): boolean {
  *
  * 注意：简单的 "if ... then ..." 规则不被视为 CNL，
  * 因为本地 DSL 也使用相同语法，应由简单执行器处理。
+ *
+ * `aliasSet` 是版本冻结的关键词别名：模块 / 规则声明可以用别名起头（《静夜思》以「床前」声明模块、「疑是」起规则，
+ * ADR 0060 §8），源码里没有任何规范关键词。行首出现 MODULE_DECL 或 FUNC_TO 别名、其后跟名字，同样是 CNL 声明。
  */
-export function isAsterCNL(content: string): boolean {
+export function isAsterCNL(content: string, aliasSet?: Readonly<Record<string, readonly string[]>> | null): boolean {
   if (!content || content.trim().length === 0) {
     return false;
   }
   // 必须匹配至少一个 CNL 独有特征
-  return CNL_REQUIRED_PATTERNS.some((pattern) => pattern.test(content));
+  if (CNL_REQUIRED_PATTERNS.some((pattern) => pattern.test(content))) return true;
+  return declarationAliases(aliasSet).some((alias) =>
+    new RegExp(`^\\s*${escapeRegExp(alias)}\\s+\\S`, 'imu').test(content),
+  );
+}
+
+/** 起声明的别名：模块（MODULE_DECL）与规则（FUNC_TO）。 */
+function declarationAliases(aliasSet: Readonly<Record<string, readonly string[]>> | null | undefined): string[] {
+  return [...(aliasSet?.MODULE_DECL ?? []), ...(aliasSet?.FUNC_TO ?? [])].filter((alias) => alias.trim().length > 0);
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
@@ -239,7 +254,7 @@ export async function executePolicyUnified(
 ): Promise<PolicyExecutionResult> {
   const { policy, input, userId, tenantId, functionName, aliasSet, vocabulary, replayCapture, agent, locale } = options;
   const policyContent = policy.content || '';
-  const useAsterEngine = isAsterCNL(policyContent);
+  const useAsterEngine = isAsterCNL(policyContent, aliasSet);
 
   if (useAsterEngine) {
     return executeWithAsterEngine(policy, policyContent, input, userId, tenantId, functionName, aliasSet, vocabulary, replayCapture, agent, locale);

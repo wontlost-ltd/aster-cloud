@@ -11,14 +11,25 @@ export interface RuleSymbol {
   range: RuleSymbolRange;
 }
 
-const RULE_DECLARATION_RE = /(?:^|\s)(Rule|规则|Regel)\s+([A-Za-z_\u4e00-\u9fff][\w\u4e00-\u9fff.]*)/i;
+const RULE_KEYWORDS = ['Rule', '规则', 'Regel'];
+const RULE_NAME = '([A-Za-z_\\u4e00-\\u9fff][\\w\\u4e00-\\u9fff.]*)';
+const RULE_DECLARATION_RE = ruleDeclarationRe([]);
+
+/** 规则声明的正则：三语规范关键词加版本冻结的 FUNC_TO 别名（如《静夜思》的「疑是」，ADR 0060 §8）。 */
+function ruleDeclarationRe(ruleAliases: readonly string[]): RegExp {
+  const keywords = [...RULE_KEYWORDS, ...ruleAliases.filter((alias) => alias.trim().length > 0)]
+    .map((keyword) => keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|');
+  return new RegExp(`(?:^|\\s)(${keywords})\\s+${RULE_NAME}`, 'i');
+}
 const COMMENT_LINE_RE = /^\s*(?:\/\/|#)/;
 const ENTRY_RE = /(?:^|\s)@entry(?:\s|$)/i;
 
 // 仅含注解（@name / @name(...)）的行——用于独立行 @entry 识别
 const ANNOTATION_ONLY_LINE_RE = /^\s*@[A-Za-z_][\w]*(?:\([^)]*\))?\s*$/;
 
-export function extractRuleSymbols(source: string): RuleSymbol[] {
+export function extractRuleSymbols(source: string, ruleAliases: readonly string[] = []): RuleSymbol[] {
+  const declaration = ruleAliases.length > 0 ? ruleDeclarationRe(ruleAliases) : RULE_DECLARATION_RE;
   const rules: RuleSymbol[] = [];
   const lines = source.split(/\r\n|\r|\n/);
   // 前置独立注解行里是否出现 @entry（grammar 支持 @entry 与 Rule 同行或独立成行）
@@ -29,7 +40,7 @@ export function extractRuleSymbols(source: string): RuleSymbol[] {
       return;
     }
 
-    const match = RULE_DECLARATION_RE.exec(line);
+    const match = declaration.exec(line);
     if (!match || match.index === undefined) {
       // 非 Rule 行：若是纯注解行，累积 @entry 标志；空行不重置；其它内容行重置
       if (ANNOTATION_ONLY_LINE_RE.test(line)) {

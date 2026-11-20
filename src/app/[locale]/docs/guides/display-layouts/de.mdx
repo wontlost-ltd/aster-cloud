@@ -78,7 +78,7 @@ Mit Strukturiertes Verfassen hat die Seitenleiste des Editors einen Tab **Layout
 
 Die Anzeige kennzeichnet jedes Stück Text, das nur im Layout existiert: Struktureller Text hat einen eigenen Stil, beim Darüberfahren erscheint der canonical-Text, und ein ausgeblendetes Schlüsselwort hinterlässt eine Markierung.
 
-Ein fertiges Layout zeigt die Vorlage **Gedanken in stiller Nacht (chinesisches Beispiel)** unter **Showcase** im Tab **Vorlagen** des Editors. Sie setzt den zh-CN-Quelltext, einen Schlüsselwort-Alias und ein Layout, dessen Anzeige sich wie Li Bais Gedicht liest, und lässt sich wie jede Richtlinie speichern. Ohne Strukturiertes Verfassen ist die Vorlage gesperrt.
+Ein fertiges Layout zeigt die Vorlage **Gedanken in stiller Nacht (chinesisches Beispiel)** unter **Showcase** im Tab **Vorlagen** des Editors. Der Quelltext ist Li Bais Gedicht 静夜思 Wort für Wort. Vier Schlüsselwort-Aliase (床前, 疑是, 举头, 低头) beginnen die Verse, und das eigene Vokabular der Richtlinie bildet 望明月 auf den Typ `Text` ab und erweitert das Literal 思故乡 zu `"静夜思"`. Der zh-CN-Lexer braucht nach jedem Alias ein Leerzeichen, daher lautet der Quelltext `床前 明月光。` usw. Das Layout blendet diese Leerzeichen aus und setzt die Satzzeichen des Gedichts wieder ein, sodass die Anzeige Zeichen für Zeichen das Originalgedicht ist. Die Richtlinie wird wie jede andere gespeichert, genehmigt und ausgeführt; beim Ausführen gibt sie `静夜思` aus. Die Vorlage erfordert Strukturiertes Verfassen und die Berechtigung für strukturelle Schlüsselwort-Aliase. Fehlt eines davon, ist sie gesperrt.
 
 ## Versionen und Speichern
 

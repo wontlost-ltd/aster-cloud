@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 
 /**
- * #791：带 requires 的模板在能力不满足时锁定（不可点击、说明原因、链接文档）；普通模板照常可点。
+ * #791 / ADR 0060 §8：带 requires 的模板在能力不满足时锁定（不可点击、说明缺哪项能力、链接文档）；普通模板照常可点。
+ * 「静夜思」需要结构化编写与结构词别名授权两项。
  */
 
 vi.mock('next-intl', () => ({
@@ -25,7 +26,7 @@ const NONE = { structuredAuthoring: false, structuralAliases: false };
 const SHOWCASE_NAME = 'Quiet Night Thoughts (Chinese showcase)';
 
 describe('TemplatesTab gating', () => {
-  it('without structured authoring: showcase is locked with a reason and docs links; content-only templates stay clickable', () => {
+  it('without either capability: showcase is locked with both reasons and docs links; content-only templates stay clickable', () => {
     const onSelect = vi.fn();
     render(<TemplatesTab uiLocale="en" capabilities={NONE} onSelect={onSelect} />);
 
@@ -34,7 +35,7 @@ describe('TemplatesTab gating', () => {
     expect(within(locked).queryByRole('button')).toBeNull();
     expect(within(locked).getByText('templateLocked')).toBeTruthy();
     expect(within(locked).getByText('templateRequiresStructuredAuthoring')).toBeTruthy();
-    expect(within(locked).queryByText('templateRequiresStructuralAliases')).toBeNull();
+    expect(within(locked).getByText('templateRequiresStructuralAliases')).toBeTruthy();
     expect(within(locked).getByText('templateDocsAdmin').getAttribute('href')).toBe('/docs/guides/structured-authoring-admin');
     expect(within(locked).getByText('templateDocsLayouts').getAttribute('href')).toBe('/docs/guides/display-layouts');
     fireEvent.click(within(locked).getByText(SHOWCASE_NAME));
@@ -48,9 +49,23 @@ describe('TemplatesTab gating', () => {
     expect(screen.queryByText('templateIncludesExtras')).toBeNull();
   });
 
-  it('with structured authoring: showcase is a normal button that says it also sets aliases and a layout', () => {
+  it.each([
+    ['structured authoring only', { structuredAuthoring: true, structuralAliases: false }, 'templateRequiresStructuralAliases', 'templateRequiresStructuredAuthoring'],
+    ['the structural alias grant only', { structuredAuthoring: false, structuralAliases: true }, 'templateRequiresStructuredAuthoring', 'templateRequiresStructuralAliases'],
+  ] as const)('with %s: showcase stays locked and names the missing capability', (_label, capabilities, missing, held) => {
     const onSelect = vi.fn();
-    render(<TemplatesTab uiLocale="en" capabilities={{ structuredAuthoring: true, structuralAliases: false }} onSelect={onSelect} />);
+    render(<TemplatesTab uiLocale="en" capabilities={capabilities} onSelect={onSelect} />);
+    const locked = screen.getByTestId(`template-locked-${JINGYESI_TEMPLATE_ID}`);
+    expect(within(locked).queryByRole('button')).toBeNull();
+    expect(within(locked).getByText(missing)).toBeTruthy();
+    expect(within(locked).queryByText(held)).toBeNull();
+    fireEvent.click(within(locked).getByText(SHOWCASE_NAME));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('with both capabilities: showcase is a normal button that says it also sets aliases, terms and a layout', () => {
+    const onSelect = vi.fn();
+    render(<TemplatesTab uiLocale="en" capabilities={{ structuredAuthoring: true, structuralAliases: true }} onSelect={onSelect} />);
 
     expect(screen.queryByTestId(`template-locked-${JINGYESI_TEMPLATE_ID}`)).toBeNull();
     const button = screen.getByRole('button', { name: new RegExp(SHOWCASE_NAME.replace(/[()]/g, '\\$&')) });

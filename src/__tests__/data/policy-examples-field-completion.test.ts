@@ -42,8 +42,17 @@ function structFields(src: string, typeName: string): string[] {
     .filter(Boolean);
 }
 
+/** 规则带参数的模板。《静夜思》（ADR 0060 §8）的入口规则「地上霜」无参数，没有可声明类型或可补全的参数，不在此列。 */
+const WITH_PARAMETERS = POLICY_EXAMPLES.filter((example) =>
+  getExampleLocales(example).every((locale) => TYPED_PARAM.test(example.sources[locale])),
+);
+
 describe('内置模板规则参数带类型', () => {
-  for (const example of POLICY_EXAMPLES) {
+  it('only parameterless showcase templates are left out', () => {
+    expect(POLICY_EXAMPLES.filter((e) => !WITH_PARAMETERS.includes(e)).map((e) => e.id)).toEqual(['showcase-jingyesi']);
+  });
+
+  for (const example of WITH_PARAMETERS) {
     for (const locale of getExampleLocales(example)) {
       const src = example.sources[locale];
       // 样例按其固定语言与自带关键词别名解析（#791 展示模板的规则体依赖别名）

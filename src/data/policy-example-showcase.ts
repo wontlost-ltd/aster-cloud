@@ -1,65 +1,45 @@
 /**
- * 结构化编写展示模板（#791）：《静夜思》（李白，公有领域）写成一条**可保存的真实策略**。
+ * 「静夜思」特色模板（ADR 0060 §8，cloud#830）：李白《静夜思》原诗即一条可保存、可审批、可执行的真实策略，
+ * 运行输出诗名「静夜思」。与演示页 /zh/demos/poem 同一份源码与排版（`src/config/jingyesi-poem.ts`）。
  *
- * 与 /demos/poem 的区别：演示页用单字关键词别名、字面量宏与内联词汇，这些都过不了真实策略的
- * 保存门禁。这里按今天的规则重写：
+ * - **关键词别名（全是结构词，需结构词别名授权）**：床前 → 模块、疑是 → 规则、举头 → 产出、低头 → 返回。
+ *   别名规则 v2 允许 zh 下 2–8 个汉字的单词别名（ADR 0060 §5）。
+ * - **策略内嵌词汇（两条，随版本保存与审批）**：类型词条 望明月 → Text（返回类型位置按词汇解析）；
+ *   字面量宏 思故乡 → 「静夜思」（个人 / 团队词汇没有字面量种类，只有内嵌词汇能写）。
+ *   模板应用时只写这一份内嵌词汇，从不写个人或团队词条。
+ * - **显示排版（LayoutMap）**：zh 词法把相邻汉字连成一个 token，别名后必须有空格；排版把这些空格隐去、
+ *   把结构标点换回原诗标点，显示与原诗逐字相同，编译的仍是带空格的规范源码。
+ * - **能力要求**：排版需要结构化编写，四个结构词别名需要结构词别名授权；缺任一项模板在选择器里锁定。
  *
- * - **结构体即诗**：`模块 床前明月光` 是第一句；`定义 地上霜 包含 举头望明月，低头思故乡` 是后三句（源码按诗分行）——
- *   结构体「地上霜」的两个字段就是第三、四句。规则「吟」读这个结构体。
- * - **关键词别名只用运算符类**：`接 着` → PLUS（多词、白名单内、恒允许），不需要结构词别名授权。
- *   规则体 `夜.举头望明月 接 着 夜.低头思故乡` 去掉别名就无法解析，别名是承重的。
- * - **显示排版（LayoutMap）**：结构 span 只覆盖关键词、标点与空白——`模块 ` 隐去，`定义 ` 显示为「疑是」，
- *   `包含`/逗号/句号换成诗的标点与换行，别名 `接 着` 显示为「接着」；全部名字（内容 span）原样可见。
- *   toDisplay 的前四行就是原诗，其后是规则原文。
- * - **不含领域词汇**：内置 zh-CN 词汇（finance.loan / insurance.auto）只有显式传 domain 时才生效，
- *   策略编辑器与保存编译门禁都不传 domain、只用作者自己的词条；模板又不得替用户写词条。
- *   因此词汇不进模板，描述里指向「词汇」标签页与文档。
- *
- * 不变式（policy-example-showcase.test.ts 钉死）：toCanonical(layout) === source；源码以 zh-CN + aliasSet
- * 编译零诊断；layout 以 zh-CN + 冻结 aliasSet 通过 validatePolicyLayout，去掉 aliasSet 则被拒。
+ * 不变式（policy-example-showcase.test.ts 钉死）：source === POEM_ZH.source；aliasSet 过 v2 校验（无授权则
+ * structuralNotGranted）；源码仅在 zh-CN + aliasSet + 内嵌词汇齐备时编译，Core IR 的 positionFreeSha256 与
+ * ts / core 两侧证明相同；入口「地上霜」求值为「静夜思」；排版通过 validatePolicyLayout，toDisplay 即原诗。
  */
-import type { PolicyLayout } from '@aster-cloud/aster-lang-ts/layout';
+import { JINGYESI_LAYOUT, JINGYESI_SOURCE } from '@/config/jingyesi-poem';
+import type { EmbeddedVocabulary } from '@/lib/policy-embedded-vocabulary';
 import type { PolicyExample } from './policy-examples';
 
 export const JINGYESI_TEMPLATE_ID = 'showcase-jingyesi';
 
-/** 规则体用的多词运算符别名：`接 着` = 加上（PLUS，文本拼接）。 */
+/** ADR 0060 §8 的 aliasSet：四个领字都是结构词别名。 */
 const JINGYESI_ALIAS_SET: Readonly<Record<string, readonly string[]>> = {
-  PLUS: ['接 着'],
+  FUNC_PRODUCE: ['举头'],
+  FUNC_TO: ['疑是'],
+  MODULE_DECL: ['床前'],
+  RETURN: ['低头'],
 };
 
-/** 结构 span 只放关键词/标点/空白；名字与字面量一律走内容 span（`layout_structural_hides_value`）。 */
-const JINGYESI_LAYOUT: PolicyLayout = {
+/** ADR 0060 §8 的内嵌词汇（顺序即规范序列化的顺序：按 kind 的码点序，literal 在 struct 前）。 */
+const JINGYESI_EMBEDDED_VOCABULARY: EmbeddedVocabulary = {
   v: 1,
-  spans: [
-    { canonical: '模块 ', display: '' },
-    { text: '床前明月光' },
-    { canonical: '。\n\n定义 ', display: '，\n疑是' },
-    { text: '地上霜' },
-    { canonical: ' 包含\n  ', display: '。\n' },
-    { text: '举头望明月' },
-    { canonical: '，\n  ', display: '，\n' },
-    { text: '低头思故乡' },
-    { canonical: '。', display: '。' },
-    { text: '\n\n规则 吟 给定 夜 作为 地上霜，产出 文本：\n  返回 夜.举头望明月 ' },
-    { canonical: '接 着', display: '接着' },
-    { text: ' 夜.低头思故乡。\n' },
+  terms: [
+    { kind: 'literal', localized: '思故乡', canonical: '静夜思' },
+    { kind: 'struct', localized: '望明月', canonical: 'Text' },
   ],
 };
 
-/** 规范源码（= toCanonical(JINGYESI_LAYOUT)），编辑器与保存都用它。 */
-const JINGYESI_SOURCE = `模块 床前明月光。
-
-定义 地上霜 包含
-  举头望明月，
-  低头思故乡。
-
-规则 吟 给定 夜 作为 地上霜，产出 文本：
-  返回 夜.举头望明月 接 着 夜.低头思故乡。
-`;
-
-/** 规则只有一个参数「夜」（结构体 地上霜）；执行输出后两句。 */
-const JINGYESI_INPUT = { 夜: { 举头望明月: '举头望明月，', 低头思故乡: '低头思故乡。' } };
+/** 入口规则「地上霜」没有参数。 */
+const JINGYESI_INPUT = {};
 
 export const jingyesiShowcaseExample: PolicyExample = {
   id: JINGYESI_TEMPLATE_ID,
@@ -69,28 +49,29 @@ export const jingyesiShowcaseExample: PolicyExample = {
   sources: { 'en-US': JINGYESI_SOURCE, 'zh-CN': JINGYESI_SOURCE, 'de-DE': JINGYESI_SOURCE },
   cnlLocale: 'zh-CN',
   aliasSet: JINGYESI_ALIAS_SET,
+  embeddedVocabulary: JINGYESI_EMBEDDED_VOCABULARY,
   layout: JINGYESI_LAYOUT,
-  requires: { structuredAuthoring: true },
+  requires: { structuredAuthoring: true, structuralAliases: true },
   metadata: {
     'en-US': {
       name: 'Quiet Night Thoughts (Chinese showcase)',
       description:
-        'A Chinese (zh-CN) policy built from Li Bai’s poem to show structured authoring. The module and a Define struct hold the poem lines. A rule joins them with a multi-word keyword alias, and a display layout shows the keywords and punctuation as the poem. Domain vocabulary is not included. Use the Vocabulary tab and the docs for that.',
+        'Li Bai’s poem, word for word, is the source of a Chinese (zh-CN) policy, and running it outputs the title 静夜思. Four keyword aliases turn the opening words of the lines into keywords. The policy’s own vocabulary maps 望明月 to the Text type and expands the literal 思故乡 to "静夜思". A display layout hides the spaces the aliases need, so the policy reads as the original poem.',
     },
     'zh-CN': {
-      name: '静夜思 · 结构化编写示例',
+      name: '静夜思 · 原诗即策略',
       description:
-        '把《静夜思》写成一条真实策略：模块与结构体「地上霜」组成诗句，规则用多词关键词别名「接 着」（加上）拼接诗行，显示排版把关键词与标点排成原诗。模板不含领域词汇，可在「词汇」标签页与文档中了解。',
+        '李白《静夜思》原诗就是这条策略的源码，运行输出诗名「静夜思」。四个关键词别名把每句的领字变成关键词（床前、疑是、举头、低头）；本策略自带词汇把「望明月」解析为文本类型，并把字面量「思故乡」展开为「静夜思」；显示排版隐去别名后必需的空格，读起来与原诗一字不差。',
     },
     'de-DE': {
       name: 'Gedanken in stiller Nacht (chinesisches Beispiel)',
       description:
-        'Eine chinesische (zh-CN) Richtlinie aus Li Bais Gedicht, die Strukturiertes Verfassen zeigt. Modul und ein Define-Struct enthalten die Verse. Eine Regel verbindet sie mit einem mehrteiligen Schlüsselwort-Alias, und ein Anzeigelayout zeigt Schlüsselwörter und Satzzeichen als Gedicht. Domänenvokabular ist nicht enthalten. Siehe dazu den Tab „Vokabular“ und die Dokumentation.',
+        'Li Bais Gedicht ist Wort für Wort der Quelltext einer chinesischen (zh-CN) Richtlinie; beim Ausführen gibt sie den Titel 静夜思 aus. Vier Schlüsselwort-Aliase machen die Anfangswörter der Verse zu Schlüsselwörtern. Das eigene Vokabular der Richtlinie bildet 望明月 auf den Typ Text ab und erweitert das Literal 思故乡 zu „静夜思“. Ein Anzeigelayout blendet die Leerzeichen aus, die die Aliase brauchen, sodass die Richtlinie wie das Originalgedicht aussieht.',
     },
     'hi-IN': {
       name: 'शांत रात के विचार (चीनी उदाहरण)',
       description:
-        'ली बाई की कविता से बनी एक चीनी (zh-CN) नीति, जो संरचित लेखन दिखाती है। मॉड्यूल और एक Define struct में कविता की पंक्तियाँ हैं। एक नियम उन्हें बहु-शब्द कीवर्ड उपनाम से जोड़ता है, और डिस्प्ले लेआउट कीवर्ड और विराम चिह्नों को कविता की तरह दिखाता है। डोमेन शब्दावली शामिल नहीं है। उसके लिए शब्दावली टैब और दस्तावेज़ देखें।',
+        'ली बाई की कविता, शब्दशः, एक चीनी (zh-CN) नीति का स्रोत है, और इसे चलाने पर शीर्षक 静夜思 मिलता है। चार कीवर्ड उपनाम पंक्तियों के पहले शब्दों को कीवर्ड बनाते हैं। नीति की अपनी शब्दावली 望明月 को Text प्रकार से जोड़ती है और लिटरल 思故乡 को "静夜思" में बदलती है। डिस्प्ले लेआउट उपनामों के लिए ज़रूरी रिक्त स्थान छिपाता है, ताकि नीति मूल कविता जैसी पढ़ी जाए।',
     },
   },
   defaultInputs: { 'en-US': JINGYESI_INPUT, 'zh-CN': JINGYESI_INPUT, 'de-DE': JINGYESI_INPUT },

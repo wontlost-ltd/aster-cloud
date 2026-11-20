@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { compileAndTypecheck, evaluate, EN_US, ZH_CN, DE_DE } from '@aster-cloud/aster-lang-ts/browser';
 import { POLICY_EXAMPLES, getExampleLocales, type PolicyExample, type SupportedLocale } from '@/data/policy-examples';
 import { withUserAliases } from '@/lib/aster-lexicon';
+import { toDomainVocabulary } from '@/lib/policy-embedded-vocabulary';
 
 const LEXICONS: Record<SupportedLocale, unknown> = {
   'en-US': EN_US,
@@ -23,6 +24,20 @@ const LEXICONS: Record<SupportedLocale, unknown> = {
 const lexiconFor = (example: PolicyExample, locale: SupportedLocale): any =>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   withUserAliases(LEXICONS[example.cnlLocale ?? locale] as any, example.aliasSet);
+
+/** 模板自带的内嵌词汇（ADR 0060）按引擎形状随编译传入，与编辑器 / 保存门禁的有效词汇一致；无则不传。 */
+const compileOptions = (example: PolicyExample, locale: SupportedLocale) => ({
+  lexicon: lexiconFor(example, locale),
+  ...(example.embeddedVocabulary
+    ? { vocabulary: toDomainVocabulary(example.embeddedVocabulary, example.cnlLocale ?? locale) }
+    : {}),
+});
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** 规则头的关键词：三语规范拼写，加模板别名里的 FUNC_TO（《静夜思》用「疑是」起规则）。 */
+const ruleKeywords = (example: PolicyExample) =>
+  ['Rule', '规则', 'Regel', ...(example.aliasSet?.FUNC_TO ?? [])].map(escapeRe).join('|');
 
 // 全部内置样例（en-US / zh-CN / de-DE）现已编译零错误，无 known-failing。
 // 历史失败已根治：
@@ -43,7 +58,7 @@ describe('内置策略样例编译验证（防 Undefined variable / 语法错误
         const src = example.sources[locale];
         expect(src, `${example.id} 缺少 ${locale} 源`).toBeTruthy();
 
-        const r = compileAndTypecheck(src, { lexicon: lexiconFor(example, locale) });
+        const r = compileAndTypecheck(src, compileOptions(example, locale));
 
         const parseErrors = (r.parseErrors ?? []).map((e) =>
           typeof e === 'object' && e !== null && 'message' in e
@@ -78,9 +93,9 @@ describe('内置策略样例编译验证（防 Undefined variable / 语法错误
  * <p>教训：**只测编译的用例挡不住只在执行期暴露的缺陷**。
  */
 describe('内置策略样例执行验证（防「编译过但跑不了」）', () => {
-  /** 从各语种源码里取首个规则名作为入口函数。 */
-  function entryFn(src: string): string {
-    const m = /^\s*(?:Rule|规则|Regel)\s+([^\s（(,:]+)/m.exec(src);
+  /** 从各语种源码里取首个规则名作为入口函数（规则关键词含模板别名）。 */
+  function entryFn(example: PolicyExample, src: string): string {
+    const m = new RegExp(`^\\s*(?:${ruleKeywords(example)})\\s+([^\\s（(,，:：]+)`, 'm').exec(src);
     return m ? m[1] : '';
   }
 
@@ -91,10 +106,10 @@ describe('内置策略样例执行验证（防「编译过但跑不了」）', (
         const input = example.defaultInputs?.[locale];
         expect(input, `${example.id} 缺少 ${locale} 的 defaultInputs`).toBeTruthy();
 
-        const c = compileAndTypecheck(src, { lexicon: lexiconFor(example, locale) });
+        const c = compileAndTypecheck(src, compileOptions(example, locale));
         expect(c.core, `${example.id} [${locale}] 未产出 Core IR`).toBeTruthy();
 
-        const fn = entryFn(src);
+        const fn = entryFn(example, src);
         expect(fn, `${example.id} [${locale}] 找不到入口规则名`).toBeTruthy();
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -116,12 +131,14 @@ describe('内置策略样例执行验证（防「编译过但跑不了」）', (
     for (const locale of getExampleLocales(example)) {
       it(`${example.id} [${locale}] defaultInput 顶层键 = 规则参数名`, () => {
         const src = example.sources[locale];
-        const m =
-          /^\s*(?:Rule|规则|Regel)\s+\S+\s+(?:given|给定|gegeben)\s+([\s\S]*?)(?:,|，)\s*(?:produce|产出|liefert)/m.exec(
-            src,
-          );
-        expect(m, `${example.id} [${locale}] 解析不出参数列表`).toBeTruthy();
-        const params = (m as RegExpExecArray)[1]
+        const kw = ruleKeywords(example);
+        expect(new RegExp(`^\\s*(?:${kw})\\s+`, 'm').test(src), `${example.id} [${locale}] 找不到规则`).toBe(true);
+        // 无 given 子句的规则（《静夜思》的入口「地上霜」）参数表为空，示例输入也必须为空对象
+        const m = new RegExp(
+          `^\\s*(?:${kw})\\s+\\S+\\s+(?:given|给定|gegeben)\\s+([\\s\\S]*?)(?:,|，)\\s*(?:produce|产出|liefert)`,
+          'm',
+        ).exec(src);
+        const params = (m?.[1] ?? '')
           .split(/[,，]/)
           .map((x) => x.trim().split(/\s+(?:as|作为|als)\s+/)[0])
           .filter(Boolean);

@@ -864,6 +864,32 @@ describe('Policies API - Drizzle Migration', () => {
       });
     });
 
+    it('返回活跃版本的策略语言 activeLocale（envelope 记录的编译 locale；只有别名的源码也能判定）', async () => {
+      const source = '床前 明月光。\n疑是 地上霜，举头 望明月：\n  低头 思故乡。\n';
+      const aliasSet = '{"FUNC_PRODUCE":["举头"],"FUNC_TO":["疑是"],"MODULE_DECL":["床前"],"RETURN":["低头"]}';
+      const { computeSourceEnvelope } = await vi.importActual<typeof import('@/lib/policy-alias')>('@/lib/policy-alias');
+      const toolchain = 'tc-test';
+      const scopes = '[]';
+      vi.mocked(db.query.policies.findFirst).mockResolvedValueOnce(mockPolicy({ team: null, content: source }));
+      vi.mocked(db.query.policyVersions.findMany).mockResolvedValue([mockPolicyVersion()]);
+      vi.mocked(db.query.policyVersions.findFirst).mockResolvedValueOnce({
+        aliasSet,
+        embeddedVocabulary: null,
+        content: source,
+        source,
+        sourceEnvelopeSha256: computeSourceEnvelope(source, aliasSet, 'zh-CN', toolchain, scopes),
+        sourceScopesJson: scopes,
+        sourceToolchainId: toolchain,
+        vocabularySnapshotIds: null,
+      } as never);
+
+      const response = await GET_ID(makeRequest('http://localhost/api/policies/p1'), mockParams);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.activeLocale).toBe('zh-CN');
+    });
+
     it('should include freeze info for own policies', async () => {
       vi.mocked(db.query.policies.findFirst).mockResolvedValue(mockPolicy());
       mockIsPolicyFrozen.mockResolvedValue({

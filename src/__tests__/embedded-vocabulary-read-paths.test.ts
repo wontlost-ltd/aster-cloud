@@ -76,6 +76,9 @@ const COLUMN_ALLOWLIST = new Set([
   'src/hooks/useUserVocabularyRegistration.ts',
   'src/components/policy/version-detail-panel.tsx',
   'src/components/policy/version-compare-panel.tsx',
+  // 模板（计划 T13）：「静夜思」模板自带内嵌词汇常量，应用时写进编辑器表单、经正常保存路径提交；不读数据库列。
+  'src/data/policy-examples.ts',
+  'src/data/policy-example-showcase.ts',
 ]);
 
 /** 读版本编译输入的下游：必须存在、必须经 execution-input，且不得直接调用下层加载器。 */

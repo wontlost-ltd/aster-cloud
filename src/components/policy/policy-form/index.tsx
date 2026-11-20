@@ -589,12 +589,18 @@ export function PolicyForm({
       // 替换即清空并写入模板；无需先手动清空。
       setContent(body);
       if (hasTemplateExtras(tpl)) {
-        // 带别名 / 排版的模板（#791）：源码依赖这些别名，整体替换 aliasSet；排版只在有结构化编写能力时写入
-        // （无能力时模板本就锁定，这里是兜底）。固定语言的模板同时切换策略 CNL 语言。
+        // 带别名 / 排版 / 内嵌词汇的模板（#791、ADR 0060）：源码依赖别名与内嵌词条，二者整体替换；排版与内嵌词汇
+        // 只在有结构化编写能力时写入（无能力时模板本就锁定，这里是兜底；内嵌词汇也只有该能力才会随保存提交）。
+        // 固定语言的模板同时切换策略 CNL 语言。模板从不写个人 / 团队词汇。
         setAliasSet(Object.fromEntries(Object.entries(tpl.aliasSet ?? {}).map(([kind, words]) => [kind, [...words]])));
-        if (tpl.layout && structuredAuthoring.allowed) {
-          setLayoutDraft({ kind: 'edited', layout: tpl.layout });
-          setSideBySide(true);
+        if (structuredAuthoring.allowed) {
+          setEmbedded(
+            tpl.embeddedVocabulary ? { v: 1, terms: tpl.embeddedVocabulary.terms.map((term) => ({ ...term })) } : null,
+          );
+          if (tpl.layout) {
+            setLayoutDraft({ kind: 'edited', layout: tpl.layout });
+            setSideBySide(true);
+          }
         }
       } else {
         // 普通模板只换源码；但之前编辑过的排版已对不上新源码，保存时必被拒（往返不符），退回「未动」。
@@ -616,16 +622,17 @@ export function PolicyForm({
    *  为空则直接替换。 */
   const requestTemplateReplace = useCallback(
     (tpl: PolicyExample) => {
-      // 带别名 / 排版的模板还会覆盖已有别名与已编辑的排版：编辑器为空但这些不为空时也先确认。
+      // 带别名 / 排版 / 内嵌词汇的模板还会覆盖已有别名、已编辑的排版与本策略词条：编辑器为空但这些不为空时也先确认。
       const overwritesExtras =
-        hasTemplateExtras(tpl) && (Object.keys(aliasSet).length > 0 || layoutDraft.kind === 'edited');
+        hasTemplateExtras(tpl) &&
+        (Object.keys(aliasSet).length > 0 || layoutDraft.kind === 'edited' || (embedded?.terms.length ?? 0) > 0);
       if (content.trim().length > 0 || overwritesExtras) {
         setPendingTemplate(tpl);
       } else {
         applyTemplateReplace(tpl);
       }
     },
-    [content, aliasSet, layoutDraft.kind, applyTemplateReplace],
+    [content, aliasSet, layoutDraft.kind, embedded, applyTemplateReplace],
   );
 
   /** Trigger Monaco's built-in format-document action. */
