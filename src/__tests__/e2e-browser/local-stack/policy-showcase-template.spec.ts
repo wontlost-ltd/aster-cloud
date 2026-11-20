@@ -209,6 +209,8 @@ test.describe('Jingyesi showcase template end to end (ADR 0060 §8, cloud#830)',
 
   test('2. A applies the template: the display is the original poem, the Vocabulary tab lists this policy’s terms; A saves', async ({ browser }) => {
     test.setTimeout(300_000);
+    // 模板应用与保存前后的词条总数：模板从不写个人 / 团队词汇（DomainTerm 是二者共用的词条表）
+    const domainTermsBefore = psql('aster_cloud', 'select count(*) from "DomainTerm"');
     const page = await pageAs(browser, 'a');
     await page.goto(`/en/policies/new?teamId=${TEAM_ID}`);
     await expect(railButton(page, COPY.layout)).toBeVisible({ timeout: 30_000 });
@@ -263,6 +265,7 @@ test.describe('Jingyesi showcase template end to end (ADR 0060 §8, cloud#830)',
     expect(JSON.parse(stored)).toEqual(TEMPLATE.layout);
     // 模板从不写个人 / 团队词汇
     expect(psql('aster_cloud', `select count(*) from "UserDomainTerm" where "userId" = ${lit(USERS.a.id)}`)).toBe('0');
+    expect(psql('aster_cloud', 'select count(*) from "DomainTerm"')).toBe(domainTermsBefore);
     await page.context().close();
   });
 
@@ -353,5 +356,18 @@ test.describe('Jingyesi showcase template end to end (ADR 0060 §8, cloud#830)',
     expect(batch.status, JSON.stringify(batch)).toBe('COMPLETED');
     expect(Number(batch.plannedCount), JSON.stringify(batch)).toBeGreaterThanOrEqual(1);
     console.log(`[what-if] ${JSON.stringify(batch)}`);
+    // 批次接口按 ADR 0034 §1.1 只给结论类别（文本输出为 INDETERMINATE），不给值。逐条核对：每条回放都成功
+    // （v1 带冻结 aliasSet 与合并词汇重编译并求值，缺任一项即编译失败、记 failure_kind），且被回放的源执行输出都是「静夜思」。
+    const items = psql(
+      'aster_policy',
+      `select execution_id || '|' || success || '|' || coalesce(failure_kind, '-') || '|' || target_outcome
+       from replay_batch_item where batch_id = ${lit(batchId)} order by execution_id`,
+    ).split('\n');
+    expect(items).toHaveLength(Number(batch.plannedCount));
+    for (const item of items) {
+      const [executionId, success, failure, outcome] = item.split('|');
+      expect([success, failure, outcome], item).toEqual(['true', '-', 'INDETERMINATE']);
+      expect(psql('aster_cloud', `select output->>'result' from "Execution" where id = ${lit(executionId)}`)).toBe('静夜思');
+    }
   });
 });
