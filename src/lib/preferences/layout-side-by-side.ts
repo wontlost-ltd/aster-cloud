@@ -34,7 +34,7 @@ export interface LayoutSideBySide {
  * @param openByDefault 编辑器加载时是否带着可显示的排版（有能力且活跃版本的排版与源码一致）。
  */
 export function useLayoutSideBySide(openByDefault: boolean): LayoutSideBySide {
-  const { value: preferred, setValue } = useBooleanPreference(layoutSideBySidePreference);
+  const { value: preferred, hydrating, setValue } = useBooleanPreference(layoutSideBySidePreference);
   const [session, setSession] = useState<boolean | null>(null);
   const setOpen = useCallback(
     (open: boolean) => {
@@ -44,5 +44,7 @@ export function useLayoutSideBySide(openByDefault: boolean): LayoutSideBySide {
     [setValue],
   );
   const openForSession = useCallback(() => setSession(true), []);
-  return { open: session ?? (openByDefault && preferred), setOpen, openForSession };
+  // 水合完成前读不到偏好（服务端快照恒为缺省值）：先不打开，免得存过「关闭」的作者看到窗格一闪而过。
+  // 窗格旁的 Monaco 本就只在客户端挂载，晚一帧打开看不出差别。
+  return { open: session ?? (openByDefault && !hydrating && preferred), setOpen, openForSession };
 }
