@@ -1,7 +1,7 @@
 ---
 title: "Display layouts (LayoutMap) for short policies"
-description: "Give a short policy a second, reader-friendly layout. Only the canonical source is compiled and executed; reviewers and approvers always see it first."
-updated: 2026-11-19
+description: "Give a short policy a second, reader-friendly layout. Only the canonical source is executed; readers see the layout first, approvers the canonical source."
+updated: 2026-11-20
 apiVersion: v1
 ---
 
@@ -72,7 +72,7 @@ With Structured Authoring, the editor's side panel has a **Layout** tab.
 1. Click **Start layout**. The layout starts as one content span: the source shown as it is. (Or click **Import JSON** and paste a layout.)
 2. Select a keyword, punctuation or spacing in the editor and click **Mark selection as structural**. The selection must lie inside one content span.
 3. Under **Structural spans**, type the display text for each span, or leave it empty to hide it. **Restore as content** turns a span back into source text.
-4. Turn on **Side-by-side view** to see the display to the left of the editor on wide screens. Selections are highlighted in both, problems are marked in the display, and clicking the display moves the cursor in the editor.
+4. Turn on **Side-by-side view** to see the display to the left of the editor on wide screens. Selections are highlighted in both, problems are marked in the display, and clicking the display moves the cursor in the editor. When you open a policy whose current version already has a layout, the side-by-side view is on from the start. If you turn it off, this browser remembers that until you turn it on again.
 5. The tab checks the layout as you work and shows **The layout is valid** or the first problem with **Go to line *n***.
 6. Save the policy. The layout is saved with the new version.
 
@@ -93,11 +93,12 @@ This last rule means a teammate without Structured Authoring can still edit and 
 
 If a saved layout no longer matches its version (for example after a direct database change), it is not shown and not loaded into the editor. Readers see the canonical source and a notice instead.
 
-## What reviewers and approvers see
+## What readers, reviewers and approvers see
 
-The canonical source always comes first:
+Readers see the layout first. Approvers see the canonical source first. In both places **Canonical source (executed)** is the first tab and **Display layout (not executed)** the second; only the tab that opens by default differs.
 
-- **Policy page and version details**, where approvers review a version: the tab **Canonical source (executed)** is open by default; **Display layout (not executed)** is a second tab with a note that compilation, execution, review and approval use the canonical source.
+- **Policy page**: when the current version has a layout, **Display layout (not executed)** is open by default, with a note that compilation, execution, review and approval use the canonical source. Click **Canonical source (executed)** to see the source that runs.
+- **Version details**, where approvers review a version before approving it: **Canonical source (executed)** is open by default; the display layout is the second tab.
 - **Compare versions** compares the canonical source only. When the layout differs, a separate row says **Display layout changed**.
 - **Review panel**: when the policy has a layout, a note says that the layout is not executed and links to the versions.
 

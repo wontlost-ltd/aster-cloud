@@ -1,7 +1,7 @@
 ---
 title: "Anzeigelayouts (LayoutMap) für kurze Richtlinien"
-description: "Ein zweites, leserfreundliches Layout für kurze Richtlinien. Ausgeführt wird nur der kanonische Quelltext; Prüfer sehen ihn immer zuerst."
-updated: 2026-11-19
+description: "Ein zweites, leserfreundliches Layout für kurze Richtlinien. Ausgeführt wird nur der kanonische Quelltext; Leser sehen zuerst das Layout, Freigebende ihn."
+updated: 2026-11-20
 apiVersion: v1
 ---
 
@@ -72,7 +72,7 @@ Mit Strukturiertes Verfassen hat die Seitenleiste des Editors einen Tab **Layout
 1. Klicken Sie auf **Layout beginnen**. Das Layout beginnt als ein einziger Inhaltsabschnitt: der Quelltext, wie er ist. (Oder klicken Sie auf **JSON importieren** und fügen Sie ein Layout ein.)
 2. Wählen Sie im Editor ein Schlüsselwort, Satzzeichen oder Leerraum aus und klicken Sie auf **Auswahl als strukturell markieren**. Die Auswahl muss in einem einzigen Inhaltsabschnitt liegen.
 3. Geben Sie unter **Strukturelle Abschnitte** für jeden Abschnitt den Anzeigetext ein oder lassen Sie ihn leer, um ihn auszublenden. **Als Inhalt wiederherstellen** macht einen Abschnitt wieder zu Quelltext.
-4. Schalten Sie die **Nebeneinander-Ansicht** ein, um die Anzeige auf breiten Bildschirmen links neben dem Editor zu sehen. Auswahlen werden auf beiden Seiten hervorgehoben, Probleme in der Anzeige markiert, und ein Klick in die Anzeige setzt den Cursor im Editor.
+4. Schalten Sie die **Nebeneinander-Ansicht** ein, um die Anzeige auf breiten Bildschirmen links neben dem Editor zu sehen. Auswahlen werden auf beiden Seiten hervorgehoben, Probleme in der Anzeige markiert, und ein Klick in die Anzeige setzt den Cursor im Editor. Öffnen Sie eine Richtlinie, deren aktuelle Version bereits ein Layout hat, ist die Nebeneinander-Ansicht von Anfang an eingeschaltet. Schalten Sie sie aus, merkt sich dieser Browser das, bis Sie sie wieder einschalten.
 5. Der Tab prüft das Layout, während Sie arbeiten, und zeigt **Das Layout ist gültig.** oder das erste Problem mit **Zu Zeile *n***.
 6. Speichern Sie die Richtlinie. Das Layout wird mit der neuen Version gespeichert.
 
@@ -93,11 +93,12 @@ Die letzte Regel bedeutet: Eine Teamkollegin ohne Strukturiertes Verfassen kann 
 
 Passt ein gespeichertes Layout nicht mehr zu seiner Version (etwa nach einer direkten Datenbankänderung), wird es weder angezeigt noch in den Editor geladen. Leser sehen stattdessen den kanonischen Quelltext und einen Hinweis.
 
-## Was Prüfer und Freigebende sehen
+## Was Leser, Prüfer und Freigebende sehen
 
-Der kanonische Quelltext kommt immer zuerst:
+Leser sehen zuerst das Layout, Freigebende zuerst den kanonischen Quelltext. An beiden Stellen ist **Kanonischer Quelltext (wird ausgeführt)** der erste Tab und **Anzeigelayout (wird nicht ausgeführt)** der zweite; nur der standardmäßig geöffnete Tab unterscheidet sich.
 
-- **Richtlinienseite und Versionsdetails**, wo Freigebende eine Version prüfen: Der Tab **Kanonischer Quelltext (wird ausgeführt)** ist standardmäßig offen; **Anzeigelayout (wird nicht ausgeführt)** ist ein zweiter Tab mit dem Hinweis, dass Kompilierung, Ausführung, Prüfung und Freigabe den kanonischen Quelltext verwenden.
+- **Richtlinienseite**: Hat die aktuelle Version ein Layout, ist **Anzeigelayout (wird nicht ausgeführt)** standardmäßig offen, mit dem Hinweis, dass Kompilierung, Ausführung, Prüfung und Freigabe den kanonischen Quelltext verwenden. Ein Klick auf **Kanonischer Quelltext (wird ausgeführt)** zeigt den Quelltext, der ausgeführt wird.
+- **Versionsdetails**, wo Freigebende eine Version prüfen und freigeben: **Kanonischer Quelltext (wird ausgeführt)** ist standardmäßig offen; das Anzeigelayout ist der zweite Tab.
 - **Versionen vergleichen** vergleicht nur den kanonischen Quelltext. Unterscheidet sich das Layout, meldet eine eigene Zeile **Anzeigelayout geändert**.
 - **Prüfbereich**: Hat die Richtlinie ein Layout, weist ein Hinweis darauf hin, dass es nicht ausgeführt wird, und verlinkt auf die Versionen.
 

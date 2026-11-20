@@ -6,9 +6,10 @@
  *      Monaco 里移动光标时 display 对应位置高亮；保存成功且版本带排版行。
  *   2. 同一策略「导入 JSON」一个把标识符盖进结构 span 的排版 → 保存被拒，显示 layout_structural_hides_value 的文案；
  *      再导入 canonical 与源码不一致的排版 → 显示 layout_roundtrip_mismatch 的文案；两次都不建版本。
- *   3. A 只改排版保存 → 新版本（裁决 R4）；A 提交 v1 审批。T 的 owner B 在版本列表打开待审批的 v1：source 区第一个标签是
+ *   3. A 重新打开编辑器：活跃版本带排版，并排视图缺省打开（修订 1 A2）；A 只改排版保存 → 新版本（裁决 R4）；A 提交 v1 审批。T 的 owner B 在版本列表打开待审批的 v1：source 区第一个标签是
  *      canonical 且默认选中，display 是次级标签并写明「不参与执行」；B 批准；版本对比显示「显示排版已变更」。
- *   4. 用户 D（无授权、无编辑权：团队 T 的 viewer）打开策略详情：能看到 display 次级标签（只读不设门）。
+ *   4. 用户 D（无授权、无编辑权：团队 T 的 viewer）打开策略详情：display 标签默认选中（ADR 0058 修订 1 A1，只读不设门），
+ *      标签顺序仍是 canonical、display。
  *   5. T 的成员 C（无授权）打开编辑器：没有「排版」入口；改 content 保存时出现丢弃确认 → 确认 → 成功并出现警告 toast；
  *      新版本详情没有 display 标签，上一版本仍有。
  *   6. C 编辑一条从未附排版的策略：没有「排版」入口、保存无丢弃确认、版本详情无 display 标签（与改前一致）。
@@ -195,6 +196,8 @@ async function openVersionSource(page: Page, policy: string, version: number): P
 
 /** 版本详情面板里的源码标签组（详情页源码卡片也可能有一组，面板在其后）。 */
 const versionSourceTabs = (page: Page) => page.getByRole('tablist', { name: 'Source view' }).last();
+/** 版本详情面板源码区（标签组与两个面板的共同父节点）：详情页源码卡片默认显示 display，断言须限定在面板内。 */
+const versionSource = (page: Page) => versionSourceTabs(page).locator('xpath=..');
 
 test.describe('policy display layout end to end (ADR 0058 phase 2)', () => {
   test.describe.configure({ mode: 'serial' });
@@ -336,8 +339,12 @@ test.describe('policy display layout end to end (ADR 0058 phase 2)', () => {
     await a.goto(`/en/policies/${policyId}/edit`);
     await expect(railButton(a, COPY.layout)).toBeVisible({ timeout: 30_000 });
     await waitForMonaco(a);
+    // 活跃版本带排版 + 有能力：并排窗格缺省打开，不需要点开关（修订 1 A2）
+    await expect(a.getByTestId('layout-display-pane')).toBeVisible({ timeout: 30_000 });
+    await a.screenshot({ path: join(SHOTS, '3-a-editor-side-by-side-default.png') });
     await railButton(a, COPY.layout).click();
     const tab = a.getByTestId('structured-authoring-layout');
+    await expect(tab.getByRole('button', { name: COPY.sideBySide })).toHaveAttribute('aria-pressed', 'true');
     await tab.getByRole('textbox', { name: 'Display text for “ ”' }).fill('·');
     await expect(tab.getByText('The layout is valid.')).toBeVisible({ timeout: 10_000 });
     await a.getByRole('button', { name: 'Save Changes' }).click();
@@ -357,12 +364,12 @@ test.describe('policy display layout end to end (ADR 0058 phase 2)', () => {
     await expect(canonicalTab).toHaveText(COPY.tabCanonical);
     await expect(canonicalTab).toHaveAttribute('aria-selected', 'true');
     await expect(b.getByText('规则 吟诵 给定 月光 作为 文本，产出 文本：').last()).toBeVisible();
-    await expect(b.locator('[data-layout-display]')).toHaveCount(0);
+    await expect(versionSource(b).locator('[data-layout-display]')).toHaveCount(0);
     const displayTab = tabs.getByRole('tab', { name: COPY.tabDisplay });
     await expect(displayTab).toHaveAttribute('aria-selected', 'false');
     await b.screenshot({ path: join(SHOTS, '3-b-approver-canonical-first.png') });
     await displayTab.click();
-    await expect(b.locator('[data-layout-display] [data-layout-insertion]')).toHaveCount(1);
+    await expect(versionSource(b).locator('[data-layout-display] [data-layout-insertion]')).toHaveCount(1);
     await b.screenshot({ path: join(SHOTS, '3-b-approver-display-tab.png') });
 
     await b.goto(`/en/policies/${policyId}`);
@@ -381,7 +388,7 @@ test.describe('policy display layout end to end (ADR 0058 phase 2)', () => {
     await b.context().close();
   });
 
-  test('4. a reader without the capability or edit rights (team viewer) sees the display tab', async ({ browser }) => {
+  test('4. a reader without the capability or edit rights (team viewer) sees the display first', async ({ browser }) => {
     test.setTimeout(120_000);
     const d = await pageAs(browser, 'd');
     // viewer 不能进编辑页
@@ -389,8 +396,10 @@ test.describe('policy display layout end to end (ADR 0058 phase 2)', () => {
     await d.goto(`/en/policies/${policyId}`);
     const tabs = d.getByRole('tablist', { name: 'Source view' });
     await expect(tabs).toBeVisible({ timeout: 30_000 });
-    await expect(tabs.getByRole('tab').first()).toHaveAttribute('aria-selected', 'true');
-    await tabs.getByRole('tab', { name: COPY.tabDisplay }).click();
+    // 阅读视图：标签顺序不变（canonical 在前），但 display 默认选中，无需点击即可看到
+    await expect(tabs.getByRole('tab').first()).toHaveText(COPY.tabCanonical);
+    await expect(tabs.getByRole('tab').first()).toHaveAttribute('aria-selected', 'false');
+    await expect(tabs.getByRole('tab', { name: COPY.tabDisplay })).toHaveAttribute('aria-selected', 'true');
     await expect(d.locator('[data-layout-display]')).toContainText('模块·静夜思。');
     await d.screenshot({ path: join(SHOTS, '4-d-public-reader-display.png') });
     await d.context().close();
