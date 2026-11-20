@@ -304,6 +304,13 @@ routes:
     auth: required
     locales: all
 
+  - path: /governance/reconciliation
+    status: canonical-here
+    owner: app
+    source: src/app/[locale]/(dashboard)/governance/reconciliation/page.tsx
+    auth: required
+    locales: all
+
   - path: /domain-vocabularies
     status: canonical-here
     owner: app

@@ -1,7 +1,7 @@
 ---
 title: "把 Aster Guard 接入策略"
 description: "在 AI Agent 的每个动作执行之前先交给你的策略裁决：设置策略的默认版本、签发 API 密钥，再把 aster-guard 放在 Agent 和它的工具之间。"
-updated: 2026-11-16
+updated: 2026-11-20
 apiVersion: v1
 ---
 
@@ -87,6 +87,27 @@ const outcome = await guard.run(
 3. 以持有所需业务角色的成员身份批准它，确认等待中的调用随后执行。
 
 在 Aster Cloud 里运行同一策略（策略的**运行**页或 `/api/v1/policies/.../execute` API）、结果为 `require_approval` 或 `escalate` 时，同样会生成 Guard 审批，其**日志**条目会链接到该请求。
+
+## 对账与孤儿动作
+
+Aster 每隔几分钟把执行方的上报与 Guard 的决策和收据对一次账。对不上的就是**孤儿动作**，列在[治理 → Guard 对账](/governance/reconciliation)。治理页会显示每个工作区还有多少未处理的孤儿动作。
+
+| 类别 | 严重度 | 含义 |
+|---|---|---|
+| `side_effect_without_decision` | critical | 上报的副作用没有本工作区已知的决策。 |
+| `side_effect_unconsumed` | critical | 上报了副作用，但其执行收据从未被消耗。 |
+| `side_effect_mismatch` | critical | 上报的尝试或动作哈希与已消耗的收据不符，或该上报是重放。 |
+| `consume_on_non_allow` | critical | 决策既未放行也未获批，收据却被消耗了。 |
+| `result_without_consume` | critical | 收据从未被消耗，却回写了结果。 |
+| `consumed_without_result` | warning | 收据已被消耗，但结果没有按时回写。之后补到结果时会自动解除。 |
+| `allow_unconsumed` | info | 放行过期时仍未被消耗，例如来自旧版 SDK。超过保留期后会自动解除。 |
+| `orphan_receipt` | info | 审计链上有决策事件，本工作区却没有对应的决策行。超过保留期后会自动解除。 |
+
+列表缺省只显示未处理的 critical 与 warning 孤儿动作。展开一行可以看到上报内容、决策及其链上收据，以及指向执行日志和审批的链接。
+
+- **谁能看：** 团队的成员、管理员和所有者；个人工作区里是你本人。查看者看不到。
+- **谁能确认：** 团队管理员和所有者；个人工作区里是你本人。确认时须填写 1 到 1000 个字符的说明。
+- **确认无法撤销。** 确认会永久关闭该孤儿动作，并连同你的说明记入审计链。不提供批量确认：critical 孤儿动作须逐条核实。
 
 ## 深入了解
 

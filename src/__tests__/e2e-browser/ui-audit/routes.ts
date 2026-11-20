@@ -82,7 +82,7 @@ const ADMIN = [
 
 const PRO_DASHBOARD = [
   'dashboard', 'approvals', 'billing', 'billing/plans', 'domain-vocabularies', 'domain-vocabularies/snapshots',
-  'governance', 'reports', 'security', 'settings', 'settings/ai-keys', 'settings/api-keys', 'settings/data',
+  'governance', 'governance/reconciliation', 'reports', 'security', 'settings', 'settings/ai-keys', 'settings/api-keys', 'settings/data',
   'settings/fact-issuers', 'policies', 'policies/new', 'policies/trash', 'teams', 'teams/new',
 ];
 

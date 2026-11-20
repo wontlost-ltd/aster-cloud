@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { Badge, Card, CardBody, CardHeader, CardTitle, Container, EmptyState, PageHeader, Stack, buttonVariants } from '@/components/ui';
 import { DocsLink, EMPTY_STATE_ACTIONS_CLASS } from '@/components/docs/docs-link';
 import { Link } from '@/i18n/navigation';
+import { ReconciliationSummaryCard } from '@/components/guard/reconciliation-summary-card';
 import { localizedTitle } from '@/services/evidence/control-registry';
 import type { ControlGroup, GovernanceOverview, ImpactPolicy, ImpactVersion, PolicyActivity } from '@/lib/governance-impact';
 
@@ -133,6 +134,8 @@ export function GovernanceContent({ locale, overview }: Props) {
             }
           />
         )}
+        {/* Guard 对账摘要（ADR 0061 §3.7）：客户端自取，不进 SSR */}
+        <ReconciliationSummaryCard />
         <p className="text-sm text-muted-foreground" data-testid="registry-version">
           {t('registryVersion', { version: overview.registryVersion })}
         </p>

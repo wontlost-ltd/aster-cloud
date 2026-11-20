@@ -24,6 +24,11 @@ vi.mock('@/i18n/navigation', () => ({
   Link: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
 }));
 
+// 摘要卡自取数据（客户端），这里只核对挂载点（ADR 0061 §3.7：SSR 不因此增加 aster-api 调用）
+vi.mock('@/components/guard/reconciliation-summary-card', () => ({
+  ReconciliationSummaryCard: () => <div data-testid="reconciliation-summary-mount" />,
+}));
+
 import { GovernanceContent } from './governance-content';
 import type { GovernanceOverview, ImpactPolicy } from '@/lib/governance-impact';
 
@@ -116,6 +121,14 @@ describe('GovernanceContent', () => {
     expect(known.getByRole('link', { name: 'Policy p1' }).getAttribute('href')).toBe('/policies/p1/versions');
     expect(known.getByText('E064')).toBeTruthy();
     expect(within(screen.getByTestId('unparsed-p9-1')).getByRole('link', { name: 'p9' })).toBeTruthy();
+  });
+
+  it('在注册表版本之前挂载 Guard 对账摘要卡，且只挂载一次', () => {
+    render(<GovernanceContent locale="en" overview={overview} />);
+    const mount = screen.getByTestId('reconciliation-summary-mount');
+    const version = screen.getByTestId('registry-version');
+    expect(mount.compareDocumentPosition(version) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getAllByTestId('reconciliation-summary-mount')).toHaveLength(1);
   });
 
   it('没有未登记键 / 未解析版本时不渲染这两组；没有未关联策略时显示空态', () => {
