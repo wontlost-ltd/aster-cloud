@@ -13,7 +13,7 @@
  *   - DSAR purge cascades through the snapshot/job/idempotency tables
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const hoisted = vi.hoisted(() => ({
   selectChain: vi.fn(),
@@ -104,9 +104,22 @@ function chain(result: unknown): Thenable {
   return c;
 }
 
+// db.select() / tx.select() 按调用顺序依次取结果（FIFO）。服务层新增或删减一次读取都会让后续读取错位，
+// 因此 afterEach 断言队列恰好耗尽、且没有未排队的读取，让此类漂移直接以读取计数报错，
+// 而不是表现为 link_create_failed / not_found 之类难以追溯的业务错误。
 const selectQueue: unknown[] = [];
+let selectCalls = 0;
+let unqueuedSelects: number[] = [];
 function queueSelect(result: unknown) {
   selectQueue.push(result);
+}
+function nextSelectResult(): unknown {
+  selectCalls += 1;
+  if (selectQueue.length === 0) {
+    unqueuedSelects.push(selectCalls);
+    return [];
+  }
+  return selectQueue.shift();
 }
 
 function makeInsert(returning: unknown[]) {
@@ -142,13 +155,15 @@ function joinedRow(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   selectQueue.length = 0;
+  selectCalls = 0;
+  unqueuedSelects = [];
   _resetLexiconMetricsForTest();
   vi.mocked(getLexiconQuota).mockResolvedValue({
     maxTerms: 5000,
     bulkAsync: true,
     allowed: true,
   });
-  hoisted.selectChain.mockImplementation(() => chain(selectQueue.shift() ?? []));
+  hoisted.selectChain.mockImplementation(() => chain(nextSelectResult()));
   hoisted.transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
     fn({
       execute: vi.fn().mockResolvedValue(undefined),
@@ -167,9 +182,17 @@ beforeEach(() => {
   hoisted.updateReturning.mockResolvedValue([{ id: 'link-1' }]);
 });
 
+afterEach(() => {
+  expect({ unqueuedSelects, leftoverSelects: selectQueue.length }).toEqual({
+    unqueuedSelects: [],
+    leftoverSelects: 0,
+  });
+});
+
 describe('lexicon integration — observability wiring', () => {
   it('add → records Prometheus op + writes audit', async () => {
     queueSelect([{ count: 0 }]); // in-txn quota count
+    queueSelect([]); // in-txn scope-conflict group (ADR 0051 §8)
     queueSelect([joinedRow()]); // post-insert reload
 
     const termInsert = makeInsert([{ id: 'term-1' }]);
@@ -197,6 +220,7 @@ describe('lexicon integration — observability wiring', () => {
   it('modify and delete share the same observability contract', async () => {
     // modify
     queueSelect([joinedRow({ termId: 'term-old' })]); // existing lookup
+    queueSelect([]); // in-txn scope-conflict group (ADR 0051 §8)
     queueSelect([joinedRow({ termId: 'term-new' })]); // post-update reload
     hoisted.insert.mockReturnValueOnce(makeInsert([{ id: 'term-new' }]));
 
@@ -224,6 +248,7 @@ describe('lexicon integration — observability wiring', () => {
 
   it('restore reactivates a soft-deleted link', async () => {
     queueSelect([joinedRow()]); // includeDeleted lookup
+    queueSelect([]); // in-txn scope-conflict group (ADR 0051 §8)
     queueSelect([joinedRow()]); // post-update reload
 
 
