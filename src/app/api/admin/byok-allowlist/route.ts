@@ -19,14 +19,16 @@ import { requireAdmin } from '@/lib/admin-auth';
 import { requireLicenseWriteOk } from '@/lib/license-write-gate';
 import { signByokAllowlistHeaders } from '@/lib/api-signing';
 import { db, auditLogs } from '@/lib/prisma';
+import { resolvePolicyApiBaseUrl } from '@/lib/policy-api-url';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const ASTER_API_BASE =
-  process.env.ASTER_POLICY_API_INTERNAL_URL ||
-  process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL ||
-  'https://policy.aster-lang.dev';
+  resolvePolicyApiBaseUrl(
+    process.env.ASTER_POLICY_API_INTERNAL_URL,
+    process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL,
+  );
 
 const UPSTREAM_PATH = '/api/v1/admin/byok-allowlist';
 

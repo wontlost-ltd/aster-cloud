@@ -24,11 +24,13 @@ import { aiQuotaHttpStatus } from '@/lib/ai-quota-http';
 import { resolveByokEnvelope, injectByokEnvelope } from '@/lib/byok-envelope';
 import { createSseBillableWatcher } from '@/lib/sse-frame';
 import { isLlmCallerError, resolveLlmCaller } from '@/lib/llm-caller';
+import { resolvePolicyApiBaseUrl } from '@/lib/policy-api-url';
 
 const ASTER_API_BASE =
-  process.env.ASTER_POLICY_API_INTERNAL_URL ||
-  process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL ||
-  'https://policy.aster-lang.dev';
+  resolvePolicyApiBaseUrl(
+    process.env.ASTER_POLICY_API_INTERNAL_URL,
+    process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL,
+  );
 
 export interface SseProxyOptions {
   /** 上游 path，例如 "/api/v1/ai/generate" */

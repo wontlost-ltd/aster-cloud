@@ -6,11 +6,13 @@
  * 不参与调用选择。
  */
 import { signInternalCallerHeaders } from '@/lib/api-signing';
+import { resolvePolicyApiBaseUrl } from '@/lib/policy-api-url';
 
 const ASTER_API_BASE =
-  process.env.ASTER_POLICY_API_INTERNAL_URL ||
-  process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL ||
-  'https://policy.aster-lang.dev';
+  resolvePolicyApiBaseUrl(
+    process.env.ASTER_POLICY_API_INTERNAL_URL,
+    process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL,
+  );
 
 const MODELS_PATH = '/api/v1/ai/models';
 

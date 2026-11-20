@@ -14,9 +14,10 @@
  */
 
 import { useEffect, useState } from 'react';
+import { resolvePolicyApiBaseUrl } from '@/lib/policy-api-url';
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL || 'https://policy.aster-lang.dev';
+  resolvePolicyApiBaseUrl(process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL);
 
 export interface LexiconInfo {
   id: string;

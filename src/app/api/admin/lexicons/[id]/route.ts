@@ -26,14 +26,16 @@ import { signLexiconAdminHeaders } from '@/lib/api-signing';
 import { uiLocaleToLexiconId } from '@/lib/lexicon-locale';
 import { defaultLocale } from '@/i18n/config';
 import { db, auditLogs } from '@/lib/prisma';
+import { resolvePolicyApiBaseUrl } from '@/lib/policy-api-url';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const ASTER_API_BASE =
-  process.env.ASTER_POLICY_API_INTERNAL_URL ||
-  process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL ||
-  'https://policy.aster-lang.dev';
+  resolvePolicyApiBaseUrl(
+    process.env.ASTER_POLICY_API_INTERNAL_URL,
+    process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL,
+  );
 
 // 后端 sanitizeLocaleId 接受 BCP-47 形态（en-US / zh-CN / hi-IN）。在 BFF 这层先做
 // 同样严格的白名单校验，避免把任意字符串透传进签名 path（path 进 canonical，污染

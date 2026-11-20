@@ -20,6 +20,7 @@
  */
 
 import { defaultLocale, type Locale } from './config';
+import { resolvePolicyApiBaseUrl } from '@/lib/policy-api-url';
 
 /** cloud 短码 locale → 后端 lexicon 全码 id（/api/v1/messages 的主键）。 */
 const LOCALE_ID_MAP: Record<Locale, string> = {
@@ -30,7 +31,7 @@ const LOCALE_ID_MAP: Record<Locale, string> = {
 };
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL || 'https://policy.aster-lang.dev';
+  resolvePolicyApiBaseUrl(process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL);
 
 /**
  * 版本化 KV body 的 TTL（秒）。key 含 sha → 内容对某 key 不可变（版本变则 key 变），

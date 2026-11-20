@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { signInternalCallerHeaders } from './api-signing';
+import { resolvePolicyApiBaseUrl } from '@/lib/policy-api-url';
 
 /**
  * 取后端 aster-api 的引擎版本（供「关于」弹框展示）。
@@ -16,9 +17,10 @@ import { signInternalCallerHeaders } from './api-signing';
  */
 
 const ASTER_API_BASE =
-  process.env.ASTER_POLICY_API_INTERNAL_URL ||
-  process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL ||
-  'https://policy.aster-lang.dev';
+  resolvePolicyApiBaseUrl(
+    process.env.ASTER_POLICY_API_INTERNAL_URL,
+    process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL,
+  );
 
 const VERSION_PATH = '/api/v1/version';
 

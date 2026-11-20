@@ -9,6 +9,7 @@ import { signRequest, signInternalCallerHeaders, type InternalCallerHeaders } fr
 import { API_ENDPOINTS } from '@/config/api-versions';
 import { safeDiagnostics } from '@/lib/package-diagnostics';
 import { packageFilename } from '@/lib/package-filename';
+import { resolvePolicyApiBaseUrl, resolvePolicyWsUrl } from '@/lib/policy-api-url';
 import type {
   GuardApprovalInput,
   GuardApprovalPage,
@@ -24,10 +25,11 @@ export const getApiConfig = () => {
   const isServer = typeof window === 'undefined';
   return {
     // 服务端优先使用内部网络地址（容器间通信），回退到公开地址
+    // 未配置时生产回落 policy.aster-lang.dev；测试进程回落到不可达的本机地址
     baseUrl: isServer
-      ? (process.env.ASTER_POLICY_API_INTERNAL_URL || process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL || 'https://policy.aster-lang.dev')
-      : (process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL || 'https://policy.aster-lang.dev'),
-    wsUrl: process.env.NEXT_PUBLIC_ASTER_POLICY_WS_URL || 'wss://policy.aster-lang.dev/ws/preview',
+      ? resolvePolicyApiBaseUrl(process.env.ASTER_POLICY_API_INTERNAL_URL, process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL)
+      : resolvePolicyApiBaseUrl(process.env.NEXT_PUBLIC_ASTER_POLICY_API_URL),
+    wsUrl: resolvePolicyWsUrl(process.env.NEXT_PUBLIC_ASTER_POLICY_WS_URL),
     timeout: parseInt(process.env.ASTER_POLICY_API_TIMEOUT || '30000', 10),
   };
 };
