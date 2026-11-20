@@ -361,7 +361,8 @@ export function PolicyDetailContent({
       <div className="bg-bg shadow sm:rounded-lg mb-6">
         <div className="px-4 py-5 sm:p-6">
           <h3 className="text-lg font-medium text-fg mb-4">{t.detail.policyContent}</h3>
-          <LayoutReadTabs layout={activeLayout}>
+          {/* 普通阅读视图：有一致的排版时先显示排版（ADR 0058 修订 1 的 A1）；审批走版本详情，仍 canonical 优先（R15） */}
+          <LayoutReadTabs layout={activeLayout} defaultTab="display">
             <pre tabIndex={0} className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm">
               {policy.content}
             </pre>

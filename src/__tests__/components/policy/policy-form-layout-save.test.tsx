@@ -65,6 +65,8 @@ vi.mock('@/components/policy/policy-form/use-is-mobile', () => ({ useIsMobile: (
 
 import { PolicyForm, type LayoutDraft, type PolicySaveContext } from '@/components/policy/policy-form';
 import type { StructuredAuthoringProps } from '@/lib/capabilities/types';
+import { jingyesiShowcaseExample } from '@/data/policy-example-showcase';
+import { layoutSideBySidePreference } from '@/lib/preferences/layout-side-by-side';
 
 const ALLOWED: StructuredAuthoringProps = { allowed: true, sources: [{ kind: 'admin' }] };
 const DENIED: StructuredAuthoringProps = { allowed: false, denial: 'not_granted', sources: [] };
@@ -304,8 +306,7 @@ describe('并排视图', () => {
     renderForm({ initialLayout: LAYOUT, hasActiveLayout: true });
     const { ed, select } = fakeEditor(LAYOUT_SOURCE);
     act(() => (h.props[0]!.onEditorReady as (e: unknown) => void)(ed));
-    expect(screen.queryByTestId('layout-display-pane')).toBeNull();
-    act(() => layoutTabProps()!.onSideBySideChange(true));
+    // 加载时带着一致的排版：并排视图缺省打开（修订 1 A2），不需要先点开关
     expect(screen.getByTestId('layout-display-pane')).toBeTruthy();
     return { ed, select };
   }
@@ -378,5 +379,93 @@ describe('并排视图', () => {
     renderForm({ structuredAuthoring: DENIED, initialLayout: LAYOUT, hasActiveLayout: true });
     expect(h.sidePanel?.layoutPanel).toBeNull();
     expect(screen.queryByTestId('layout-display-pane')).toBeNull();
+  });
+});
+
+// 并排视图的默认状态与持久化（ADR 0058 修订 1 A2）：
+// 加载时带着一致的排版且有能力 → 缺省打开；作者显式关闭按浏览器记住；没有排版或无能力时与改前一致（关闭）。
+describe('并排视图默认打开与显式关闭的持久化（修订 1 A2）', () => {
+  const KEY = 'aster.editor.layoutSideBySide';
+  const LAYOUT = markStructural(identityLayout(LAYOUT_SOURCE), 18, 21, '\n');
+  const pane = () => screen.queryByTestId('layout-display-pane');
+  const toggleProps = () =>
+    (h.sidePanel?.layoutPanel as { props: { sideBySide: boolean; onSideBySideChange: (v: boolean) => void } } | null)?.props;
+  const remount = (opts: Parameters<typeof renderForm>[0]) => {
+    cleanup();
+    h.sidePanel = undefined;
+    renderForm(opts);
+  };
+
+  it('有排版 + 有能力：首次打开编辑器即显示并排窗格，开关为按下状态，未写偏好', () => {
+    renderForm({ initialLayout: LAYOUT, hasActiveLayout: true });
+    expect(pane()).toBeTruthy();
+    expect(toggleProps()!.sideBySide).toBe(true);
+    expect(window.localStorage.getItem(KEY)).toBeNull();
+  });
+
+  it('显式关闭：本次收起并写入偏好；重新打开编辑器仍是关闭；显式再打开后恢复缺省打开', () => {
+    renderForm({ initialLayout: LAYOUT, hasActiveLayout: true });
+    act(() => toggleProps()!.onSideBySideChange(false));
+    expect(pane()).toBeNull();
+    expect(window.localStorage.getItem(KEY)).toBe('false');
+
+    remount({ initialLayout: LAYOUT, hasActiveLayout: true });
+    expect(pane()).toBeNull();
+    expect(toggleProps()!.sideBySide).toBe(false);
+
+    act(() => toggleProps()!.onSideBySideChange(true));
+    expect(pane()).toBeTruthy();
+    expect(window.localStorage.getItem(KEY)).toBe('true');
+    remount({ initialLayout: LAYOUT, hasActiveLayout: true });
+    expect(pane()).toBeTruthy();
+  });
+
+  it('localStorage 不可用时缺省仍打开，显式关闭在本次会话内生效', () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    try {
+      renderForm({ initialLayout: LAYOUT, hasActiveLayout: true });
+      expect(pane()).toBeTruthy();
+      act(() => toggleProps()!.onSideBySideChange(false));
+      expect(pane()).toBeNull();
+    } finally {
+      getItem.mockRestore();
+      setItem.mockRestore();
+      // 偏好模块在存储不可用时把写入记在模块内（会话兜底）；恢复为缺省值，免得影响后续用例
+      layoutSideBySidePreference.write(true);
+    }
+  });
+
+  it.each([
+    ['没有排版', { initialLayout: null, hasActiveLayout: false }],
+    ['排版与源码不一致（编辑页未下发排版）', { initialLayout: null, hasActiveLayout: true }],
+  ])('%s：与改前一致，不打开（偏好为 true 也一样）', (_name, opts) => {
+    window.localStorage.setItem(KEY, 'true');
+    renderForm(opts);
+    expect(pane()).toBeNull();
+    // 开始排版后开关仍是未按下（与改前一致），需作者自己打开
+    act(() => layoutTabProps()!.onChange({ kind: 'edited', layout: identityLayout(LAYOUT_SOURCE) }));
+    expect(toggleProps()!.sideBySide).toBe(false);
+    expect(pane()).toBeNull();
+  });
+
+  it('无能力：即使下发了排版也没有窗格与排版入口', () => {
+    renderForm({ structuredAuthoring: DENIED, initialLayout: LAYOUT, hasActiveLayout: true });
+    expect(h.sidePanel?.layoutPanel).toBeNull();
+    expect(pane()).toBeNull();
+  });
+
+  it('套用带排版的模板（#829 / #837）：作者之前关闭过也会打开，且不改写偏好', () => {
+    window.localStorage.setItem(KEY, 'false');
+    renderForm({ content: '' });
+    expect(pane()).toBeNull();
+    act(() => (h.sidePanel!.onApplyTemplate as (tpl: unknown) => void)(jingyesiShowcaseExample));
+    expect(toggleProps()!.sideBySide).toBe(true);
+    expect(pane()).toBeTruthy();
+    expect(window.localStorage.getItem(KEY)).toBe('false');
   });
 });

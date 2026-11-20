@@ -1,5 +1,5 @@
 /*
- * 策略详情页源码卡片的 layout 只读视图（ADR 0058 §7.7 第 1 条，计划 T7 / 裁决 R16）。
+ * 策略详情页源码卡片的 layout 只读视图（ADR 0058 §7.7 第 1 条，计划 T7；修订 1 A1 取代裁决 R16：阅读视图 display 优先）。
  * 活跃版本没有 layout 时，卡片 DOM 与引入 layout 之前逐字节一致（快照在改动前的代码上固化）。
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -71,18 +71,23 @@ describe('策略详情源码卡片：活跃版本无 layout 时 DOM 不变', () 
 describe('策略详情源码卡片：活跃版本有 layout', () => {
   const withSource = { ...policy, content: LAYOUT_SOURCE };
 
-  it('ok：canonical 默认，display 是次级标签', () => {
+  it('ok：display 默认选中（修订 1 A1），标签顺序仍是 canonical、display，canonical 一键可切', () => {
     const { container } = render(
       <PolicyDetailContent policy={withSource as never} translations={translations} locale="en" activeLayout={STORED_OK} />,
     );
     const tabs = screen.getAllByRole('tab');
     expect(tabs.map((t) => [t.textContent, t.getAttribute('aria-selected')])).toEqual([
-      ['policyLayout.tabCanonical', 'true'],
-      ['policyLayout.tabDisplay', 'false'],
+      ['policyLayout.tabCanonical', 'false'],
+      ['policyLayout.tabDisplay', 'true'],
     ]);
-    expect(sourceCard(container).querySelector('pre')!.textContent).toBe(LAYOUT_SOURCE);
-    fireEvent.click(tabs[1]);
     expect(screen.getByRole('region', { name: 'policyLayout.displayLabel' }).textContent).toBe(LAYOUT_DISPLAY);
+    expect(screen.getByText('policyLayout.displayNote')).toBeDefined();
+    const pre = sourceCard(container).querySelector('pre')!;
+    expect(pre.textContent).toBe(LAYOUT_SOURCE);
+    expect(pre.closest('[role="tabpanel"]')!.hasAttribute('hidden')).toBe(true);
+    fireEvent.click(tabs[0]);
+    expect(pre.closest('[role="tabpanel"]')!.hasAttribute('hidden')).toBe(false);
+    expect(screen.queryByRole('region', { name: 'policyLayout.displayLabel' })).toBeNull();
   });
 
   it('无编辑权限的读者（公开策略、非作者、无结构化编写能力）同样看到 display 标签', () => {
@@ -95,7 +100,7 @@ describe('策略详情源码卡片：活跃版本有 layout', () => {
         activeLayout={STORED_OK}
       />,
     );
-    expect(screen.getByRole('tab', { name: 'policyLayout.tabDisplay' })).toBeDefined();
+    expect(screen.getByRole('tab', { name: 'policyLayout.tabDisplay' }).getAttribute('aria-selected')).toBe('true');
   });
 
   it('inconsistent：只有 canonical 与提示', () => {
@@ -104,6 +109,7 @@ describe('策略详情源码卡片：活跃版本有 layout', () => {
     );
     expect(screen.getByText('policyLayout.inconsistent')).toBeDefined();
     expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.queryByRole('region', { name: 'policyLayout.displayLabel' })).toBeNull();
   });
 
   it.each([

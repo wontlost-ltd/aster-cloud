@@ -76,6 +76,7 @@ import { SidePanel, type SidePanelTab } from './side-panel';
 import { useAiWorkspace } from '@/components/ai-workspace-context';
 import { StatusBar } from './status-bar';
 import { useAiInlineCompletion } from '@/lib/preferences/ai-inline-completion';
+import { useLayoutSideBySide } from '@/lib/preferences/layout-side-by-side';
 import { usePolicyDraft, type PolicyDraftFields } from './use-policy-draft';
 import { useUnsavedWarning } from './use-unsaved-warning';
 import { usePolicyShortcuts } from './use-policy-shortcuts';
@@ -403,7 +404,12 @@ export function PolicyForm({
   const [activeHasLayout, setActiveHasLayout] = useState(hasActiveLayout);
   const [savedContent, setSavedContent] = useState(initial.content);
   const [layoutDraft, setLayoutDraft] = useState<LayoutDraft>({ kind: 'untouched' });
-  const [sideBySide, setSideBySide] = useState(false);
+  // 并排视图：加载时带着一致的排版（只在有能力时下发）则缺省打开，作者显式关闭按浏览器记住（修订 1 的 A2）
+  const {
+    open: sideBySide,
+    setOpen: setSideBySide,
+    openForSession: openSideBySideForSession,
+  } = useLayoutSideBySide(structuredAuthoring.allowed && initialLayout !== null);
   // Monaco 选区的 canonical 偏移（只在并排视图打开时跟踪）
   const [canonicalSelection, setCanonicalSelection] = useState<{ start: number; end: number } | null>(null);
   // 保存前的「此版本将不再带显示排版」确认：记下确认后要继续的保存
@@ -599,7 +605,7 @@ export function PolicyForm({
           );
           if (tpl.layout) {
             setLayoutDraft({ kind: 'edited', layout: tpl.layout });
-            setSideBySide(true);
+            openSideBySideForSession();
           }
         }
       } else {
@@ -615,7 +621,7 @@ export function PolicyForm({
       toast.success(t('templateReplaced'));
       if (mode === 'create') trackProductEvent('template_selected', { templateId: tpl.id, source: 'picker' });
     },
-    [exampleLocale, t, mode, structuredAuthoring.allowed],
+    [exampleLocale, t, mode, structuredAuthoring.allowed, openSideBySideForSession],
   );
 
   /** 侧栏「模板」tab 点击入口：编辑器有内容先弹确认（防误抹未保存草稿），
