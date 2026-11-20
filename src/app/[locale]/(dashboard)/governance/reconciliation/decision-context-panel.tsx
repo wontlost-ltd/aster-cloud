@@ -133,7 +133,7 @@ interface ChainItem {
 /** 链上 consume 尝试 / 结果 / 审批逐条列出；权威那条（guard_receipts 所指）加标记。 */
 function ChainList({ items, testId }: { items: ChainItem[]; testId: string }) {
   const t = useTranslations('guardReconciliation.decision');
-  if (items.length === 0) return <span className="text-fg-muted">{t('chainNoDecision')}</span>;
+  if (items.length === 0) return <span className="text-fg-muted">{t('none')}</span>;
   return (
     <ul className="space-y-0.5" data-testid={testId}>
       {items.map((item) => (
