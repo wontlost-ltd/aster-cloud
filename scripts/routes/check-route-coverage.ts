@@ -136,6 +136,8 @@ const SKIP_PATTERNS: RegExp[] = [
   /^\/api\/approvals(\/|$)/,
   // 签发方设置后端（ADR 0040 §11 D3）：同上，仅供设置页的 cookie 会话调用
   /^\/api\/fact-issuers(\/|$)/,
+  // Guard 对账治理页后端（ADR 0061）：同上，仅供治理页的 cookie 会话调用
+  /^\/api\/guard-reconciliation(\/|$)/,
   /^\/api\/governance(\/|$)/,
   /^\/api\/renew(\/|$)/,
   /^\/api\/license\/revoked$/,
