@@ -95,10 +95,55 @@ function ChainPart({ ctx, locale }: { ctx: DecisionContext; locale: string }) {
       <Field label={t('chainDecision')}>
         {c.decision ? `${c.decision.eventType} · #${c.decision.auditId} · ${formatUtc(c.decision.timestamp, locale)}` : t('chainNoDecision')}
       </Field>
-      <Field label={t('chainConsumes')}>{c.consumes.length}</Field>
-      <Field label={t('chainResults')}>{c.results.length}</Field>
-      <Field label={t('chainApprovals')}>{c.approvals.length}</Field>
+      <Field label={t('chainConsumes')}>
+        <ChainList testId="chain-consumes" items={c.consumes.map((e) => ({
+          key: e.auditId,
+          text: [`#${e.auditId}`, e.outcome, e.attemptId].filter(Boolean).join(' · '),
+          executorId: e.executorId,
+          authoritative: e.authoritative,
+        }))} />
+      </Field>
+      <Field label={t('chainResults')}>
+        <ChainList testId="chain-results" items={c.results.map((e) => ({
+          key: e.auditId,
+          text: [`#${e.auditId}`, e.status, e.attemptId].filter(Boolean).join(' · '),
+          executorId: e.executorId,
+          authoritative: e.authoritative,
+        }))} />
+      </Field>
+      <Field label={t('chainApprovals')}>
+        <ChainList testId="chain-approvals" items={c.approvals.map((e) => ({
+          key: e.auditId,
+          text: `#${e.auditId} · ${e.outcome} · ${formatUtc(e.decidedAt, locale)}`,
+        }))} />
+      </Field>
     </dl>
+  );
+}
+
+interface ChainItem {
+  key: number;
+  /** aster-api 生成的字段（审计 id、结论、attemptId、时间）。 */
+  text: string;
+  /** 执行方 id 由执行方上报，按上报方文本显示。 */
+  executorId?: string | null;
+  authoritative?: boolean;
+}
+
+/** 链上 consume 尝试 / 结果 / 审批逐条列出；权威那条（guard_receipts 所指）加标记。 */
+function ChainList({ items, testId }: { items: ChainItem[]; testId: string }) {
+  const t = useTranslations('guardReconciliation.decision');
+  if (items.length === 0) return <span className="text-fg-muted">{t('chainNoDecision')}</span>;
+  return (
+    <ul className="space-y-0.5" data-testid={testId}>
+      {items.map((item) => (
+        <li key={item.key} className="font-mono text-xs">
+          {item.text}
+          {item.executorId && <> · <ReporterText value={item.executorId} /></>}
+          {item.authoritative && <Badge variant="primary" className="ml-1">{t('authoritative')}</Badge>}
+        </li>
+      ))}
+    </ul>
   );
 }
 

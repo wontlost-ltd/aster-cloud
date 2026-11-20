@@ -54,7 +54,18 @@ function ctx(over: Partial<DecisionContext> = {}): DecisionContext {
           auditId: 101, currentHash: 'h', prevHash: null, hashVersion: 3, eventType: 'ACTION_GUARD_DECISION',
           timestamp: '2026-11-20T08:00:00Z', metadata: {}, authoritativeConsumeAuditId: 102,
         },
-        consumes: [], results: [], approvals: [],
+        consumes: [
+          { auditId: 102, currentHash: 'h2', decisionId: DECISION_ID, authoritative: true, attemptId: 'a-1', executorId: 'mcp@host-1', outcome: 'consumed' },
+          { auditId: 104, currentHash: 'h4', decisionId: DECISION_ID, authoritative: false, attemptId: 'a-2', executorId: '<i>x</i>', outcome: 'receipt_consumed' },
+        ],
+        results: [
+          { auditId: 103, currentHash: 'h3', decisionId: DECISION_ID, authoritative: true, attemptId: 'a-1', executorId: 'mcp@host-1', status: 'succeeded' },
+        ],
+        approvals: [{
+          auditId: 99, decisionId: DECISION_ID, outcome: 'APPROVED', decidedBy: 'u-2', requiredRole: 'DPO', comment: null,
+          decidedAt: '2026-11-20T07:59:00Z', currentHash: 'h0', decisionReceiptHash: null, inputSnapshotHash: null,
+          inputSnapshotMatched: null, inputRevealed: null, inputStatus: null,
+        }],
       },
     },
     execution: { policyId: 'pol-1', executionId: 'exec-1' },
@@ -109,6 +120,14 @@ describe('OrphanRow', () => {
     expect(panel.getByText('mcp@host-1')).toBeTruthy();
     expect(panel.getByText(/^succeeded · /)).toBeTruthy();
     expect(screen.getByTestId('chain-ok').textContent).toContain('ACTION_GUARD_DECISION · #101');
+    // 链上 consume 尝试 / 结果 / 审批逐条列出，权威那条带标记；执行方 id 按纯文本
+    const consumes = screen.getByTestId('chain-consumes').querySelectorAll('li');
+    expect(consumes).toHaveLength(2);
+    expect(consumes[0].textContent).toBe('#102 · consumed · a-1 · mcp@host-1guardReconciliation.decision.authoritative');
+    expect(consumes[1].textContent).toBe('#104 · receipt_consumed · a-2 · <i>x</i>');
+    expect(document.querySelector('i')).toBeNull();
+    expect(screen.getByTestId('chain-results').textContent).toContain('#103 · succeeded · a-1');
+    expect(screen.getByTestId('chain-approvals').textContent).toMatch(/^#99 · APPROVED · .* UTC$/);
     expect(screen.getByTestId('execution-link').getAttribute('href')).toBe('/policies/pol-1/logs');
     expect(screen.getByTestId('approval-link').getAttribute('href')).toBe(`/approvals?status=APPROVED&decisionId=${DECISION_ID}`);
   });

@@ -989,6 +989,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         chainApprovals: 'Approvals',
         executionLink: 'Execution logs',
         approvalLink: 'Approval',
+        authoritative: 'authoritative',
       },
     },
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
@@ -3393,6 +3394,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         chainApprovals: '审批',
         executionLink: '执行日志',
         approvalLink: '审批',
+        authoritative: '权威',
       },
     },
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
@@ -5775,6 +5777,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         chainApprovals: 'Genehmigungen',
         executionLink: 'Ausführungsprotokolle',
         approvalLink: 'Genehmigung',
+        authoritative: 'maßgeblich',
       },
     },
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
@@ -8154,6 +8157,7 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         chainApprovals: 'अनुमोदन',
         executionLink: 'निष्पादन लॉग',
         approvalLink: 'अनुमोदन',
+        authoritative: 'प्रामाणिक',
       },
     },
     // guard 审批通知文案（ADR 0042 §5.3），deepMerge 进包内 notifications 命名空间。
