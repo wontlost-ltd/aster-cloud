@@ -2,9 +2,9 @@
  * 关键词别名 UI 的 kind 元数据（ADR 0022，Phase A）。
  *
  * <p>列 server 白名单允许用户自定义的 11 个**低风险运算符/比较词**，以及需授权的
- * 7 个结构词（Module/Rule/If/Otherwise/Match/When/Return）。
+ * 8 个结构词（Module/Rule/produce/If/Otherwise/Match/When/Return，ADR 0060 §5.1）。
  *
- * <p>面板按「算术」「比较」两组展示，每 kind 显示其在当前 lexicon 的规范拼写 + 用户多词别名输入。
+ * <p>面板按「算术」「比较」两组展示，每 kind 显示其在当前 lexicon 的规范拼写 + 用户别名输入（多词短语，zh 下也可为汉字单词）。
  */
 import type { SemanticTokenKind } from '@aster-cloud/aster-lang-ts/token-kind';
 
@@ -43,6 +43,7 @@ export const USER_ALIAS_KINDS: readonly AliasKindMeta[] = [
 export const STRUCTURAL_ALIAS_KINDS: readonly AliasKindMeta[] = [
   { kind: 'MODULE_DECL', group: 'structural', symbol: 'Module', labelKey: 'module' },
   { kind: 'FUNC_TO', group: 'structural', symbol: 'Rule', labelKey: 'rule' },
+  { kind: 'FUNC_PRODUCE', group: 'structural', symbol: 'produce', labelKey: 'produce' },
   { kind: 'IF', group: 'structural', symbol: 'If', labelKey: 'if' },
   { kind: 'OTHERWISE', group: 'structural', symbol: 'Otherwise', labelKey: 'otherwise' },
   { kind: 'MATCH', group: 'structural', symbol: 'Match', labelKey: 'match' },

@@ -577,6 +577,7 @@ export async function createVersion(
     }
     const vr = validateUserAliases(params.aliasSet, params.aliasReserved, {
       allowStructural: params.allowStructuralAliases ?? false,
+      locale,
     });
     if (!vr.valid) {
       throw new Error(`用户自定义别名校验失败: ${vr.errors.join('; ')}`);

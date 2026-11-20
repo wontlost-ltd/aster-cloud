@@ -1,0 +1,1443 @@
+{
+  "version": 2,
+  "description": "ADR 0060 §5.4 别名校验器 v2 跨引擎夹具。aster-lang-core src/test/resources/diagnostics/ 与 aster-lang-ts shared/ 两份逐字节相同。cases 只跑校验器（core UserAliasValidator.validate / ts validateAliasSet）：valid 与 codes（cloud AliasIssueCode 名，按错误消息映射）都须一致。guardCases 跑完整编译（core InProcessCnlParser.parseWithUserAliases / ts compileSource，含名称解析，不含类型检查）：ok = 零 error；alias_identifier_collision = 编译失败且只有 E808（含解析失败归因）；parse_error = 编译失败且不含 E808。",
+  "cases": [
+    {
+      "id": "zh-han-2",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "valid": true,
+      "codes": []
+    },
+    {
+      "id": "zh-han-1",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "头"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "singleWord"
+      ]
+    },
+    {
+      "id": "zh-han-8",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "一二三四五六七八"
+        ]
+      },
+      "vocabulary": null,
+      "valid": true,
+      "codes": []
+    },
+    {
+      "id": "zh-han-9",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "一二三四五六七八九"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "singleWord"
+      ]
+    },
+    {
+      "id": "zh-ext-a",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "㐀㐁"
+        ]
+      },
+      "vocabulary": null,
+      "valid": true,
+      "codes": []
+    },
+    {
+      "id": "zh-ext-b",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "𠀀𠀁"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "singleWord"
+      ]
+    },
+    {
+      "id": "zh-kana",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "かな"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "singleWord"
+      ]
+    },
+    {
+      "id": "zh-hangul",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "한글"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "singleWord"
+      ]
+    },
+    {
+      "id": "zh-latin-single",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "answer"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "singleWord"
+      ]
+    },
+    {
+      "id": "zh-mixed-latin",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头x"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "singleWord"
+      ]
+    },
+    {
+      "id": "zh-mixed-digit",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头1"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "singleWord"
+      ]
+    },
+    {
+      "id": "zh-han-multiword",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低 头"
+        ]
+      },
+      "vocabulary": null,
+      "valid": true,
+      "codes": []
+    },
+    {
+      "id": "zh-tw",
+      "locale": "zh-TW",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "valid": true,
+      "codes": []
+    },
+    {
+      "id": "zh-bare",
+      "locale": "zh",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "valid": true,
+      "codes": []
+    },
+    {
+      "id": "zh-underscore",
+      "locale": "zh_CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "valid": true,
+      "codes": []
+    },
+    {
+      "id": "en-han",
+      "locale": "en-US",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "singleWord"
+      ]
+    },
+    {
+      "id": "de-han",
+      "locale": "de-DE",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "singleWord"
+      ]
+    },
+    {
+      "id": "func-produce-granted",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "FUNC_PRODUCE": [
+          "举头"
+        ]
+      },
+      "vocabulary": null,
+      "valid": true,
+      "codes": []
+    },
+    {
+      "id": "func-produce-ungranted",
+      "locale": "zh-CN",
+      "allowStructural": false,
+      "aliasSet": {
+        "FUNC_PRODUCE": [
+          "举头"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "structuralNotGranted"
+      ]
+    },
+    {
+      "id": "func-produce-multiword-en",
+      "locale": "en-US",
+      "allowStructural": true,
+      "aliasSet": {
+        "FUNC_PRODUCE": [
+          "yield up"
+        ]
+      },
+      "vocabulary": null,
+      "valid": true,
+      "codes": []
+    },
+    {
+      "id": "structural-han-ungranted",
+      "locale": "zh-CN",
+      "allowStructural": false,
+      "aliasSet": {
+        "IF": [
+          "倘若"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "structuralNotGranted"
+      ]
+    },
+    {
+      "id": "operator-han-ungranted",
+      "locale": "zh-CN",
+      "allowStructural": false,
+      "aliasSet": {
+        "PLUS": [
+          "接着"
+        ]
+      },
+      "vocabulary": null,
+      "valid": true,
+      "codes": []
+    },
+    {
+      "id": "poem",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "FUNC_PRODUCE": [
+          "举头"
+        ],
+        "FUNC_TO": [
+          "疑是"
+        ],
+        "MODULE_DECL": [
+          "床前"
+        ],
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": {
+        "id": "policy.embedded",
+        "name": "policy",
+        "locale": "zh-CN",
+        "version": "1",
+        "structs": [
+          {
+            "localized": "望明月",
+            "canonical": "Text",
+            "kind": "struct"
+          }
+        ],
+        "fields": [],
+        "functions": [],
+        "enumValues": [],
+        "literals": [
+          {
+            "localized": "思故乡",
+            "canonical": "静夜思",
+            "kind": "literal"
+          }
+        ]
+      },
+      "valid": true,
+      "codes": []
+    },
+    {
+      "id": "poem-ungranted",
+      "locale": "zh-CN",
+      "allowStructural": false,
+      "aliasSet": {
+        "FUNC_PRODUCE": [
+          "举头"
+        ],
+        "FUNC_TO": [
+          "疑是"
+        ],
+        "MODULE_DECL": [
+          "床前"
+        ],
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": {
+        "id": "policy.embedded",
+        "name": "policy",
+        "locale": "zh-CN",
+        "version": "1",
+        "structs": [
+          {
+            "localized": "望明月",
+            "canonical": "Text",
+            "kind": "struct"
+          }
+        ],
+        "fields": [],
+        "functions": [],
+        "enumValues": [],
+        "literals": [
+          {
+            "localized": "思故乡",
+            "canonical": "静夜思",
+            "kind": "literal"
+          }
+        ]
+      },
+      "valid": false,
+      "codes": [
+        "structuralNotGranted"
+      ]
+    },
+    {
+      "id": "alias-eq-literal",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "思故乡"
+        ]
+      },
+      "vocabulary": {
+        "id": "policy.embedded",
+        "name": "policy",
+        "locale": "zh-CN",
+        "version": "1",
+        "structs": [
+          {
+            "localized": "望明月",
+            "canonical": "Text",
+            "kind": "struct"
+          }
+        ],
+        "fields": [],
+        "functions": [],
+        "enumValues": [],
+        "literals": [
+          {
+            "localized": "思故乡",
+            "canonical": "静夜思",
+            "kind": "literal"
+          }
+        ]
+      },
+      "valid": false,
+      "codes": [
+        "collidesVocabulary"
+      ]
+    },
+    {
+      "id": "operator-alias-eq-literal",
+      "locale": "zh-CN",
+      "allowStructural": false,
+      "aliasSet": {
+        "PLUS": [
+          "思故乡"
+        ]
+      },
+      "vocabulary": {
+        "id": "policy.embedded",
+        "name": "policy",
+        "locale": "zh-CN",
+        "version": "1",
+        "structs": [
+          {
+            "localized": "望明月",
+            "canonical": "Text",
+            "kind": "struct"
+          }
+        ],
+        "fields": [],
+        "functions": [],
+        "enumValues": [],
+        "literals": [
+          {
+            "localized": "思故乡",
+            "canonical": "静夜思",
+            "kind": "literal"
+          }
+        ]
+      },
+      "valid": false,
+      "codes": [
+        "collidesVocabulary"
+      ]
+    },
+    {
+      "id": "alias-eq-struct",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "望明月"
+        ]
+      },
+      "vocabulary": {
+        "id": "policy.embedded",
+        "name": "policy",
+        "locale": "zh-CN",
+        "version": "1",
+        "structs": [
+          {
+            "localized": "望明月",
+            "canonical": "Text",
+            "kind": "struct"
+          }
+        ],
+        "fields": [],
+        "functions": [],
+        "enumValues": [],
+        "literals": [
+          {
+            "localized": "思故乡",
+            "canonical": "静夜思",
+            "kind": "literal"
+          }
+        ]
+      },
+      "valid": false,
+      "codes": [
+        "collidesVocabulary"
+      ]
+    },
+    {
+      "id": "alias-eq-function",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "算分"
+        ]
+      },
+      "vocabulary": {
+        "id": "policy.embedded",
+        "name": "policy",
+        "locale": "zh-CN",
+        "version": "1",
+        "structs": [],
+        "fields": [],
+        "functions": [
+          {
+            "localized": "算分",
+            "canonical": "score",
+            "kind": "function"
+          }
+        ],
+        "enumValues": [],
+        "literals": []
+      },
+      "valid": false,
+      "codes": [
+        "collidesVocabulary"
+      ]
+    },
+    {
+      "id": "alias-ne-literal",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": {
+        "id": "policy.embedded",
+        "name": "policy",
+        "locale": "zh-CN",
+        "version": "1",
+        "structs": [
+          {
+            "localized": "望明月",
+            "canonical": "Text",
+            "kind": "struct"
+          }
+        ],
+        "fields": [],
+        "functions": [],
+        "enumValues": [],
+        "literals": [
+          {
+            "localized": "思故乡",
+            "canonical": "静夜思",
+            "kind": "literal"
+          }
+        ]
+      },
+      "valid": true,
+      "codes": []
+    },
+    {
+      "id": "latin-multi",
+      "locale": "en-US",
+      "allowStructural": false,
+      "aliasSet": {
+        "TIMES": [
+          "scaled by"
+        ]
+      },
+      "vocabulary": null,
+      "valid": true,
+      "codes": []
+    },
+    {
+      "id": "latin-single",
+      "locale": "en-US",
+      "allowStructural": false,
+      "aliasSet": {
+        "TIMES": [
+          "scaled"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "singleWord"
+      ]
+    },
+    {
+      "id": "latin-single-granted",
+      "locale": "en-US",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "answer"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "singleWord"
+      ]
+    },
+    {
+      "id": "logic-kind",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "AND": [
+          "并且 也"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "kindNotAllowed"
+      ]
+    },
+    {
+      "id": "logic-kind-han",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "AND": [
+          "并且也"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "kindNotAllowed"
+      ]
+    },
+    {
+      "id": "shadows-zh-keyword",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "返回"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "shadowsKeyword"
+      ]
+    },
+    {
+      "id": "duplicate-han",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "IF": [
+          "低头"
+        ],
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "duplicate"
+      ]
+    },
+    {
+      "id": "non-canonical-han",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          " 低头"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "nonCanonical"
+      ]
+    }
+  ],
+  "guardCases": [
+    {
+      "id": "return-as-param",
+      "kind": "RETURN",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 低头 作为 整数，产出 整数：\n  返回 1。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "return-as-let",
+      "kind": "RETURN",
+      "position": "let",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲，产出 整数：\n  令 低头 定义为 1。\n  返回 2。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "return-as-field",
+      "kind": "RETURN",
+      "position": "field",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n定义 工单 包含 低头 作为 整数。\n\n规则 甲，产出 整数：\n  返回 1。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "return-as-member",
+      "kind": "RETURN",
+      "position": "member",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n定义 工单 包含 数量 作为 整数。\n\n规则 甲 给定 t 作为 工单，产出 整数：\n  返回 t.低头。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "return-as-construct-field",
+      "kind": "RETURN",
+      "position": "construct-field",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n定义 工单 包含 数量 作为 整数。\n\n规则 甲，产出 工单：\n  返回 工单 包含 低头 将 设为 1。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "return-as-rule-name",
+      "kind": "RETURN",
+      "position": "rule-name",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 低头，产出 整数：\n  返回 1。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "return-as-module-segment",
+      "kind": "RETURN",
+      "position": "module-segment",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试.低头。\n\n规则 甲，产出 整数：\n  返回 1。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "return-as-type-alias",
+      "kind": "RETURN",
+      "position": "type-alias",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\ntype 低头 作为 整数。\n\n规则 甲，产出 整数：\n  返回 1。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "return-as-import-alias",
+      "kind": "RETURN",
+      "position": "import-alias",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n引用 外部.库 作为 低头。\n\n规则 甲，产出 整数：\n  返回 1。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "return-as-call-target",
+      "kind": "RETURN",
+      "position": "call-target",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲，产出 整数：\n  返回 低头(1)。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "return-as-enum-member",
+      "kind": "RETURN",
+      "position": "enum-member",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n定义 状态 为以下之一 低头、进行中。\n\n规则 甲，产出 整数：\n  返回 1。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "return-as-data-name",
+      "kind": "RETURN",
+      "position": "data-name",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n定义 低头 包含 数量 作为 整数。\n\n规则 甲，产出 整数：\n  返回 1。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "return-as-enum-name",
+      "kind": "RETURN",
+      "position": "enum-name",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n定义 低头 为以下之一 甲乙、丙丁。\n\n规则 甲，产出 整数：\n  返回 1。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "return-as-pattern-name",
+      "kind": "RETURN",
+      "position": "pattern-name",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 n 作为 整数，产出 整数：\n  匹配于 n：\n    当 0，返回 1。\n    当 低头，返回 2。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "control-param",
+      "kind": "RETURN",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": null,
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 低头 作为 整数，产出 整数：\n  返回 1。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "control-let",
+      "kind": "RETURN",
+      "position": "let",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": null,
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲，产出 整数：\n  令 低头 定义为 1。\n  返回 2。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "control-field",
+      "kind": "RETURN",
+      "position": "field",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": null,
+      "vocabulary": null,
+      "source": "模块 测试。\n\n定义 工单 包含 低头 作为 整数。\n\n规则 甲，产出 整数：\n  返回 1。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "control-rule-name",
+      "kind": "RETURN",
+      "position": "rule-name",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": null,
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 低头，产出 整数：\n  返回 1。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "control-module-segment",
+      "kind": "RETURN",
+      "position": "module-segment",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": null,
+      "vocabulary": null,
+      "source": "模块 测试.低头。\n\n规则 甲，产出 整数：\n  返回 1。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "control-type-alias",
+      "kind": "RETURN",
+      "position": "type-alias",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": null,
+      "vocabulary": null,
+      "source": "模块 测试。\n\ntype 低头 作为 整数。\n\n规则 甲，产出 整数：\n  返回 1。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "control-import-alias",
+      "kind": "RETURN",
+      "position": "import-alias",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": null,
+      "vocabulary": null,
+      "source": "模块 测试。\n\n引用 外部.库 作为 低头。\n\n规则 甲，产出 整数：\n  返回 1。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "control-enum-member",
+      "kind": "RETURN",
+      "position": "enum-member",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": null,
+      "vocabulary": null,
+      "source": "模块 测试。\n\n定义 状态 为以下之一 低头、进行中。\n\n规则 甲，产出 整数：\n  返回 1。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "control-data-name",
+      "kind": "RETURN",
+      "position": "data-name",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": null,
+      "vocabulary": null,
+      "source": "模块 测试。\n\n定义 低头 包含 数量 作为 整数。\n\n规则 甲，产出 整数：\n  返回 1。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "control-enum-name",
+      "kind": "RETURN",
+      "position": "enum-name",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": null,
+      "vocabulary": null,
+      "source": "模块 测试。\n\n定义 低头 为以下之一 甲乙、丙丁。\n\n规则 甲，产出 整数：\n  返回 1。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "control-pattern-name",
+      "kind": "RETURN",
+      "position": "pattern-name",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": null,
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 n 作为 整数，产出 整数：\n  匹配于 n：\n    当 0，返回 1。\n    当 低头，返回 2。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "english-return-param",
+      "kind": "RETURN",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 return 作为 整数，产出 整数：\n  返回 return。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "kind-MODULE_DECL-param",
+      "kind": "MODULE_DECL",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "MODULE_DECL": [
+          "立篇"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 立篇 作为 整数，产出 整数：\n  返回 1。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "kind-MODULE_DECL-other-spelling",
+      "kind": "MODULE_DECL",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "MODULE_DECL": [
+          "立篇"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 return 作为 整数，产出 整数：\n  返回 return。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "kind-FUNC_TO-param",
+      "kind": "FUNC_TO",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "FUNC_TO": [
+          "起首"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 起首 作为 整数，产出 整数：\n  返回 1。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "kind-FUNC_TO-other-spelling",
+      "kind": "FUNC_TO",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "FUNC_TO": [
+          "起首"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 return 作为 整数，产出 整数：\n  返回 return。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "kind-FUNC_PRODUCE-param",
+      "kind": "FUNC_PRODUCE",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "FUNC_PRODUCE": [
+          "产得"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 产得 作为 整数，产出 整数：\n  返回 1。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "kind-FUNC_PRODUCE-other-spelling",
+      "kind": "FUNC_PRODUCE",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "FUNC_PRODUCE": [
+          "产得"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 return 作为 整数，产出 整数：\n  返回 return。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "kind-IF-param",
+      "kind": "IF",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "IF": [
+          "倘若"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 倘若 作为 整数，产出 整数：\n  返回 1。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "kind-IF-other-spelling",
+      "kind": "IF",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "IF": [
+          "倘若"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 return 作为 整数，产出 整数：\n  返回 return。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "kind-OTHERWISE-param",
+      "kind": "OTHERWISE",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "OTHERWISE": [
+          "不然"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 不然 作为 整数，产出 整数：\n  返回 1。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "kind-OTHERWISE-other-spelling",
+      "kind": "OTHERWISE",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "OTHERWISE": [
+          "不然"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 return 作为 整数，产出 整数：\n  返回 return。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "kind-MATCH-param",
+      "kind": "MATCH",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "MATCH": [
+          "对照"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 对照 作为 整数，产出 整数：\n  返回 1。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "kind-MATCH-other-spelling",
+      "kind": "MATCH",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "MATCH": [
+          "对照"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 return 作为 整数，产出 整数：\n  返回 return。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "kind-WHEN-param",
+      "kind": "WHEN",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "WHEN": [
+          "遇到"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 遇到 作为 整数，产出 整数：\n  返回 1。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "kind-WHEN-other-spelling",
+      "kind": "WHEN",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "WHEN": [
+          "遇到"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 return 作为 整数，产出 整数：\n  返回 return。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "kind-RETURN-param",
+      "kind": "RETURN",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 低头 作为 整数，产出 整数：\n  返回 1。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "kind-RETURN-other-spelling",
+      "kind": "RETURN",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 when 作为 整数，产出 整数：\n  返回 when。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "kind-PLUS-param",
+      "kind": "PLUS",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "PLUS": [
+          "接着"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 接着 作为 整数，产出 整数：\n  返回 1。\n",
+      "expect": "alias_identifier_collision"
+    },
+    {
+      "id": "kind-PLUS-other-spelling",
+      "kind": "PLUS",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "PLUS": [
+          "接着"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 return 作为 整数，产出 整数：\n  返回 return。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "structural-alias-line-with-other-error",
+      "kind": "RETURN",
+      "position": "none",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲，产出 整数：\n  低头 1 加上。\n",
+      "expect": "parse_error"
+    },
+    {
+      "id": "substring-name",
+      "kind": "RETURN",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 低头思 作为 整数，产出 整数：\n  返回 低头思。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "poem",
+      "kind": "POEM",
+      "position": "none",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "FUNC_PRODUCE": [
+          "举头"
+        ],
+        "FUNC_TO": [
+          "疑是"
+        ],
+        "MODULE_DECL": [
+          "床前"
+        ],
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": {
+        "id": "policy.embedded",
+        "name": "policy",
+        "locale": "zh-CN",
+        "version": "1",
+        "structs": [
+          {
+            "localized": "望明月",
+            "canonical": "Text",
+            "kind": "struct"
+          }
+        ],
+        "fields": [],
+        "functions": [],
+        "enumValues": [],
+        "literals": [
+          {
+            "localized": "思故乡",
+            "canonical": "静夜思",
+            "kind": "literal"
+          }
+        ]
+      },
+      "source": "床前 明月光。\n疑是 地上霜，举头 望明月：\n  低头 思故乡。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "template-829-multiword",
+      "kind": "PLUS",
+      "position": "none",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "PLUS": [
+          "接 着"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 床前明月光。\n\n定义 地上霜 包含\n  举头望明月，\n  低头思故乡。\n\n规则 吟 给定 夜 作为 地上霜，产出 文本：\n  返回 夜.举头望明月 接 着 夜.低头思故乡。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "operator-han-in-use",
+      "kind": "PLUS",
+      "position": "none",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "PLUS": [
+          "接着"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲，产出 整数：\n  返回 1 接着 2。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "multiword-en-no-guard",
+      "kind": "RETURN",
+      "position": "param",
+      "locale": "en-US",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "answer it"
+        ]
+      },
+      "vocabulary": null,
+      "source": "Module demo.\n\nRule f given answer as Int, produce Int:\n  answer it answer.\n",
+      "expect": "ok"
+    }
+  ]
+}
