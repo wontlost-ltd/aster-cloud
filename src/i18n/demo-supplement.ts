@@ -1547,6 +1547,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         structuredAuthoringDelegationDesc: 'When off, team owners cannot delegate seats and existing delegations stop applying. Default ON.',
         policyPackageExportTitle: 'Policy package export',
         policyPackageExportDesc: 'Lets paid plans export an approved policy version as a signed package that runs outside the platform. aster-api must have package export enabled as well. Default OFF.',
+        policyPackageLayoutExportTitle: 'Policy package display layout',
+        policyPackageLayoutExportDesc: 'Includes the saved display layout of the approved version in exported policy packages (format 1.1). Needs package export on, and an aster-api whose lock file lists format 1.1. Default OFF.',
       },
       aiWorkspaceAccess: {
         title: 'AI workspace access',
@@ -1976,6 +1978,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noExecutableVersion: 'Approve a version before exporting a package',
         copy: 'Copy SHA-256',
         copied: 'Copied',
+        // 修订 4：下载后一行说明包是否带显示排版；layoutOmitted 按 X-Aster-Package-Layout-Reason 给出原因。
+        layoutIncluded: 'The package includes the display layout. Run aster show on it to read the policy as written.',
+        layoutOmitted: {
+          layout_inconsistent: 'The display layout was left out: the saved layout no longer matches this version.',
+          layout_invalid: 'The display layout was left out: it does not pass the current layout checks.',
+          layout_export_disabled: 'The display layout was left out: layout export is turned off on this platform.',
+          node_display_check_failed: 'The display layout was left out: the Node toolchain could not confirm it.',
+          display_rules_failed: 'The display layout was left out: it does not pass the package layout rules.',
+          cli_unsupported: 'The display layout was left out: the CLI for this package does not support layouts yet.',
+          other: 'The display layout was left out of this package.',
+        },
         reasons: {
           E730: 'A function declares an IO capability (HTTP, database, files and so on). Exported packages cannot perform IO.',
           E731: 'The policy uses a workflow or async / await. Exported packages cannot wait.',
@@ -3937,6 +3950,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         structuredAuthoringDelegationDesc: '关闭后团队 owner 无法委派座位，已有委派也不再生效。默认开启。',
         policyPackageExportTitle: '策略包导出',
         policyPackageExportDesc: '允许付费套餐把已批准的策略版本导出为可在平台外运行的签名包。aster-api 也须打开包导出。默认关闭。',
+        policyPackageLayoutExportTitle: '策略包显示排版',
+        policyPackageLayoutExportDesc: '导出的策略包带上已批准版本保存的显示排版（格式 1.1）。须同时打开策略包导出，且 aster-api 锁文件声明支持 1.1。默认关闭。',
       },
       aiWorkspaceAccess: {
         title: 'AI 工作台授权',
@@ -4363,6 +4378,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noExecutableVersion: '请先批准一个版本，再导出策略包',
         copy: '复制 SHA-256',
         copied: '已复制',
+        // 修订 4：下载后一行说明包是否带显示排版；layoutOmitted 按 X-Aster-Package-Layout-Reason 给出原因。
+        layoutIncluded: '包中带有显示排版，用 aster show 可按原样阅读策略。',
+        layoutOmitted: {
+          layout_inconsistent: '未包含显示排版：保存的排版与该版本已不一致。',
+          layout_invalid: '未包含显示排版：排版未通过当前的排版校验。',
+          layout_export_disabled: '未包含显示排版：本平台未开启排版导出。',
+          node_display_check_failed: '未包含显示排版：Node 工具链未能确认该排版。',
+          display_rules_failed: '未包含显示排版：排版未通过策略包的排版规则。',
+          cli_unsupported: '未包含显示排版：该包对应的 CLI 尚不支持排版。',
+          other: '本包未包含显示排版。',
+        },
         reasons: {
           E730: '有函数声明了 IO 能力（HTTP、数据库、文件等），导出的包不能执行 IO。',
           E731: '策略用到了工作流或 async / await，导出的包不能等待。',
@@ -6327,6 +6353,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         structuredAuthoringDelegationDesc: 'Ist er aus, können Team-Owner keine Plätze delegieren und bestehende Delegationen gelten nicht mehr. Standard: ein.',
         policyPackageExportTitle: 'Export als Richtlinienpaket',
         policyPackageExportDesc: 'Erlaubt kostenpflichtigen Tarifen, eine freigegebene Richtlinienversion als signiertes Paket zu exportieren, das außerhalb der Plattform läuft. Auch in aster-api muss der Paketexport aktiviert sein. Standard: aus.',
+        policyPackageLayoutExportTitle: 'Anzeigelayout in Richtlinienpaketen',
+        policyPackageLayoutExportDesc: 'Nimmt das gespeicherte Anzeigelayout der freigegebenen Version in exportierte Richtlinienpakete auf (Format 1.1). Erfordert den Paketexport und eine aster-api, deren Lock-Datei Format 1.1 nennt. Standard: aus.',
       },
       aiWorkspaceAccess: {
         title: 'Zugriff auf den KI-Arbeitsbereich',
@@ -6753,6 +6781,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noExecutableVersion: 'Geben Sie eine Version frei, bevor Sie ein Paket exportieren',
         copy: 'SHA-256 kopieren',
         copied: 'Kopiert',
+        // 修订 4：下载后一行说明包是否带显示排版；layoutOmitted 按 X-Aster-Package-Layout-Reason 给出原因。
+        layoutIncluded: 'Das Paket enthält das Anzeigelayout. Mit aster show lesen Sie die Richtlinie so, wie sie geschrieben wurde.',
+        layoutOmitted: {
+          layout_inconsistent: 'Das Anzeigelayout wurde weggelassen: Das gespeicherte Layout passt nicht mehr zu dieser Version.',
+          layout_invalid: 'Das Anzeigelayout wurde weggelassen: Es besteht die aktuellen Layoutprüfungen nicht.',
+          layout_export_disabled: 'Das Anzeigelayout wurde weggelassen: Der Layoutexport ist auf dieser Plattform ausgeschaltet.',
+          node_display_check_failed: 'Das Anzeigelayout wurde weggelassen: Die Node-Toolchain konnte es nicht bestätigen.',
+          display_rules_failed: 'Das Anzeigelayout wurde weggelassen: Es erfüllt die Layoutregeln für Pakete nicht.',
+          cli_unsupported: 'Das Anzeigelayout wurde weggelassen: Die CLI für dieses Paket unterstützt noch keine Layouts.',
+          other: 'Das Anzeigelayout ist in diesem Paket nicht enthalten.',
+        },
         reasons: {
           E730: 'Eine Funktion deklariert eine IO-Fähigkeit (HTTP, Datenbank, Dateien usw.). Exportierte Pakete können kein IO ausführen.',
           E731: 'Die Richtlinie verwendet einen Workflow oder async / await. Exportierte Pakete können nicht warten.',
@@ -8703,6 +8742,8 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         structuredAuthoringDelegationDesc: 'बंद होने पर टीम owner स्थान प्रत्यायोजित नहीं कर सकते और मौजूदा प्रत्यायोजन लागू नहीं रहते। डिफ़ॉल्ट: चालू।',
         policyPackageExportTitle: 'नीति पैकेज निर्यात',
         policyPackageExportDesc: 'सशुल्क प्लान को स्वीकृत नीति संस्करण को ऐसे हस्ताक्षरित पैकेज के रूप में निर्यात करने देता है जो प्लेटफ़ॉर्म के बाहर चलता है। aster-api में भी पैकेज निर्यात चालू होना चाहिए। डिफ़ॉल्ट: बंद।',
+        policyPackageLayoutExportTitle: 'नीति पैकेज प्रदर्शन लेआउट',
+        policyPackageLayoutExportDesc: 'स्वीकृत संस्करण का सहेजा गया प्रदर्शन लेआउट निर्यात किए गए नीति पैकेजों में शामिल करता है (फ़ॉर्मेट 1.1)। पैकेज निर्यात चालू होना चाहिए और aster-api की लॉक फ़ाइल में फ़ॉर्मेट 1.1 होना चाहिए। डिफ़ॉल्ट: बंद।',
       },
       aiWorkspaceAccess: {
         title: 'AI कार्यक्षेत्र पहुँच',
@@ -9129,6 +9170,17 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         noExecutableVersion: 'पैकेज निर्यात करने से पहले कोई संस्करण स्वीकृत करें',
         copy: 'SHA-256 कॉपी करें',
         copied: 'कॉपी हो गया',
+        // 修订 4：下载后一行说明包是否带显示排版；layoutOmitted 按 X-Aster-Package-Layout-Reason 给出原因。
+        layoutIncluded: 'पैकेज में प्रदर्शन लेआउट शामिल है। नीति को लिखे रूप में पढ़ने के लिए उस पर aster show चलाएँ।',
+        layoutOmitted: {
+          layout_inconsistent: 'प्रदर्शन लेआउट शामिल नहीं किया गया: सहेजा गया लेआउट अब इस संस्करण से मेल नहीं खाता।',
+          layout_invalid: 'प्रदर्शन लेआउट शामिल नहीं किया गया: यह मौजूदा लेआउट जाँच पास नहीं करता।',
+          layout_export_disabled: 'प्रदर्शन लेआउट शामिल नहीं किया गया: इस प्लेटफ़ॉर्म पर लेआउट निर्यात बंद है।',
+          node_display_check_failed: 'प्रदर्शन लेआउट शामिल नहीं किया गया: Node टूलचेन इसकी पुष्टि नहीं कर सका।',
+          display_rules_failed: 'प्रदर्शन लेआउट शामिल नहीं किया गया: यह पैकेज के लेआउट नियम पूरे नहीं करता।',
+          cli_unsupported: 'प्रदर्शन लेआउट शामिल नहीं किया गया: इस पैकेज का CLI अभी लेआउट का समर्थन नहीं करता।',
+          other: 'इस पैकेज में प्रदर्शन लेआउट शामिल नहीं है।',
+        },
         reasons: {
           E730: 'कोई फ़ंक्शन IO क्षमता (HTTP, डेटाबेस, फ़ाइलें आदि) घोषित करता है। निर्यात किए गए पैकेज IO नहीं कर सकते।',
           E731: 'नीति workflow या async / await का उपयोग करती है। निर्यात किए गए पैकेज प्रतीक्षा नहीं कर सकते।',

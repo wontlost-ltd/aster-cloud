@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
   preparePackageExport: vi.fn(),
   nodeCheck: vi.fn(),
   recordEvent: vi.fn(),
+  loadLayout: vi.fn(),
 }));
 
 vi.mock('@/lib/auth', () => ({ getSession: () => h.getSession() }));
@@ -38,6 +39,7 @@ vi.mock('@/lib/team-plan', () => ({ planHolderForTeam: (...a: unknown[]) => h.pl
 vi.mock('@/lib/usage', () => ({ hasFeatureAccess: (...a: unknown[]) => h.hasFeature(...a) }));
 vi.mock('@/lib/package-export-input', () => ({ loadPackageExportInput: (...a: unknown[]) => h.loadInput(...a) }));
 vi.mock('@/lib/package-node-check', () => ({ runNodeCheck: (...a: unknown[]) => h.nodeCheck(...a) }));
+vi.mock('@/lib/package-export-layout', () => ({ loadExportLayout: (...a: unknown[]) => h.loadLayout(...a) }));
 vi.mock('@/lib/product-events/server', () => ({
   recordProductEventAfterResponse: (...a: unknown[]) => h.recordEvent(...a),
 }));
@@ -55,13 +57,14 @@ const zipBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 9, 9]);
 const disposition = `attachment; filename="m-v3-jre-b.zip"; filename*=UTF-8''m-v3-jre-b.zip`;
 const zipResult = (over: Record<string, unknown> = {}) => ({
   kind: 'zip', bytes: zipBytes.buffer.slice(0), sha256: 'cd'.repeat(32), filename: 'm-v3-jre-b.zip',
-  contentDisposition: disposition, signed: true, ...over,
+  contentDisposition: disposition, signed: true, layout: { status: 'absent', reason: null }, ...over,
 });
-const nodeProbes = { probesSha256: 'ef'.repeat(32), count: 4, agreed: 4, tsVersion: '3.5.0' };
+const nodeProbes = { probesSha256: 'ef'.repeat(32), count: 4, agreed: 4, tsVersion: '3.6.0' };
+const LAYOUT = '{"v":1,"spans":[{"text":"Module m."}]}';
 const preparedOk = {
   exportable: true, diagnostics: [], entry: 'allowRead', coreIr: '{}', coreIrSha256: 'aa'.repeat(32),
   positionFreeSha256: 'bb'.repeat(32), probes: { probes: [] }, probesJson: '{"probes":[]}', probesSha256: 'ef'.repeat(32),
-  probeCount: 4, runtime: { cliName: '@aster-cloud/aster-lang-ts', cliVersion: '3.5.0', ecosystem: '1.0.52' },
+  probeCount: 4, runtime: { cliName: '@aster-cloud/aster-lang-ts', cliVersion: '3.6.0', ecosystem: '1.0.53' },
 };
 const req = (body: unknown = { target: 'jre' }) => new Request('http://localhost/api/policies/p1/export/package', {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: typeof body === 'string' ? body : JSON.stringify(body),
@@ -82,7 +85,8 @@ beforeEach(() => {
   h.loadInput.mockResolvedValue({ request: inputRequest, source: twoRules, vocabulary: undefined });
   h.createClient.mockResolvedValue({ exportPackage: h.exportPackage, preparePackageExport: h.preparePackageExport });
   h.preparePackageExport.mockResolvedValue(preparedOk);
-  h.nodeCheck.mockReturnValue({ ok: true, nodeProbes });
+  h.nodeCheck.mockReturnValue({ ok: true, nodeProbes, layoutOk: true });
+  h.loadLayout.mockResolvedValue({ kind: 'absent' });
   h.exportPackage.mockResolvedValue(zipResult());
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -232,6 +236,71 @@ describe('POST /api/policies/[id]/export/package', () => {
     });
   });
 
+  describe('显示排版（ADR 0059 修订 4 D11）', () => {
+    it('读同一版本的排版：版本 id、实际编译的源码、编译 locale 与冻结 aliasSet', async () => {
+      await POST(req({ target: 'jre' }), ctx('p1'));
+      expect(h.loadLayout).toHaveBeenCalledWith({ id: 'v-row', source: twoRules, locale: 'en-US', aliasSet: null });
+    });
+
+    it('版本无排版：请求体不带 layout，头为 absent', async () => {
+      const res = await POST(req({ target: 'jre' }), ctx('p1'));
+      expect(h.exportPackage.mock.calls[0][0]).not.toHaveProperty('layout');
+      expect(res.headers.get('X-Aster-Package-Layout')).toBe('absent');
+      expect(res.headers.get('X-Aster-Package-Layout-Reason')).toBeNull();
+    });
+
+    it('jre 带排版：请求体含 layout（不经 Node 复核），上游 included 原样转发；prepare 不带 layout', async () => {
+      h.loadLayout.mockResolvedValue({ kind: 'included', layout: LAYOUT });
+      h.exportPackage.mockResolvedValue(zipResult({ layout: { status: 'included', reason: null } }));
+      const res = await POST(req({ target: 'jre' }), ctx('p1'));
+      expect(res.status).toBe(200);
+      expect(h.exportPackage).toHaveBeenCalledWith({ ...inputRequest, target: 'jre', uiLocale: 'en', layout: LAYOUT });
+      expect(res.headers.get('X-Aster-Package-Layout')).toBe('included');
+      expect(res.headers.get('X-Aster-Package-Layout-Reason')).toBeNull();
+    });
+
+    it('node 带排版且 Worker 复核通过：nodeProbes 与 layout 一起发送；prepare 与复核的请求体都不带 layout', async () => {
+      h.loadLayout.mockResolvedValue({ kind: 'included', layout: LAYOUT });
+      h.exportPackage.mockResolvedValue(zipResult({ layout: { status: 'included', reason: null } }));
+      const res = await POST(req({ target: 'node' }), ctx('p1'));
+      const sent = { ...inputRequest, target: 'node', uiLocale: 'en' };
+      expect(h.preparePackageExport).toHaveBeenCalledWith(sent);
+      expect(h.nodeCheck).toHaveBeenCalledWith(preparedOk, inputRequest, LAYOUT);
+      expect(h.exportPackage).toHaveBeenCalledWith({ ...sent, nodeProbes, layout: LAYOUT });
+      expect(res.headers.get('X-Aster-Package-Layout')).toBe('included');
+    });
+
+    it('node 且 layoutOk:false：不带 layout 照常导出，头改写为 omitted / node_display_check_failed', async () => {
+      h.loadLayout.mockResolvedValue({ kind: 'included', layout: LAYOUT });
+      h.nodeCheck.mockReturnValue({ ok: true, nodeProbes, layoutOk: false });
+      const res = await POST(req({ target: 'node' }), ctx('p1'));
+      expect(res.status).toBe(200);
+      expect(h.exportPackage).toHaveBeenCalledWith({ ...inputRequest, target: 'node', uiLocale: 'en', nodeProbes });
+      expect(res.headers.get('X-Aster-Package-Layout')).toBe('omitted');
+      expect(res.headers.get('X-Aster-Package-Layout-Reason')).toBe('node_display_check_failed');
+    });
+
+    it.each(['layout_export_disabled', 'layout_inconsistent', 'layout_invalid'])(
+      'cloud 侧省略（%s）：不发送 layout，cloud 的原因优先于上游的 absent', async (reason) => {
+        h.loadLayout.mockResolvedValue({ kind: 'omitted', reason });
+        const res = await POST(req({ target: 'node' }), ctx('p1'));
+        expect(h.nodeCheck).toHaveBeenCalledWith(preparedOk, inputRequest, undefined);
+        expect(h.exportPackage.mock.calls[0][0]).not.toHaveProperty('layout');
+        expect(res.headers.get('X-Aster-Package-Layout')).toBe('omitted');
+        expect(res.headers.get('X-Aster-Package-Layout-Reason')).toBe(reason);
+      });
+
+    it('上游省略（aster-api 签名前规则或锁文件）：原因原样转发', async () => {
+      h.loadLayout.mockResolvedValue({ kind: 'included', layout: LAYOUT });
+      for (const reason of ['display_rules_failed', 'cli_unsupported']) {
+        h.exportPackage.mockResolvedValue(zipResult({ layout: { status: 'omitted', reason } }));
+        const res = await POST(req({ target: 'jre' }), ctx('p1'));
+        expect(res.headers.get('X-Aster-Package-Layout')).toBe('omitted');
+        expect(res.headers.get('X-Aster-Package-Layout-Reason')).toBe(reason);
+      }
+    });
+  });
+
   describe('target=node（T27：prepare → Worker 内复核 → 带 nodeProbes 导出）', () => {
     it('通过：用同一编译输入复核，把 nodeProbes 交给 exportPackage', async () => {
       h.exportPackage.mockResolvedValue(zipResult({ filename: 'm-v3-node-b.zip' }));
@@ -239,7 +308,7 @@ describe('POST /api/policies/[id]/export/package', () => {
       expect(res.status).toBe(200);
       const sent = { ...inputRequest, target: 'node', uiLocale: 'en', entry: 'allowRead' };
       expect(h.preparePackageExport).toHaveBeenCalledWith(sent);
-      expect(h.nodeCheck).toHaveBeenCalledWith(preparedOk, inputRequest);
+      expect(h.nodeCheck).toHaveBeenCalledWith(preparedOk, inputRequest, undefined);
       expect(h.exportPackage).toHaveBeenCalledWith({ ...sent, nodeProbes });
       expect(h.recordEvent.mock.calls[0][1].properties).toEqual({ target: 'node', signed: true });
     });

@@ -1,5 +1,7 @@
 // ADR 0058 §7.7 第 5 条 / 计划 T6：下游不读 layout（静态扫描）。
-// layout 只给人看：执行、证据、Cedar 导出、包导出、What-If、回放、Guard 部署与版本列表都不得读取它。
+// layout 只给人看：执行、证据、Cedar 导出、What-If、回放、Guard 部署与版本列表都不得读取它。
+// 例外（ADR 0059 修订 4 D16）：策略包导出经 src/lib/package-export-layout.ts 读取，只为把排版作为非编译载荷放进包；
+// 包导出路由与编译输入模块本身仍不得直接读取（DOWNSTREAM）。
 // 只有白名单里的文件可以导入 layout 存储；只有存储本身可以直接引用 PolicyVersionLayout 表。
 // 新增读取方必须改这里的白名单，并在评审中说明它不在执行 / 导出路径上。
 import { describe, expect, it } from 'vitest';
@@ -17,6 +19,8 @@ const STORE_IMPORT_ALLOWLIST = new Set([
   'src/app/api/v1/policies/[id]/versions/route.ts',
   'src/app/[locale]/(dashboard)/policies/[id]/edit/page.tsx',
   'src/app/[locale]/(dashboard)/policies/[id]/page.tsx',
+  // 修订 4 D16：包导出的唯一读取入口，只读不编译
+  'src/lib/package-export-layout.ts',
 ]);
 
 /** 可以直接引用 layout 表的文件：表定义与唯一的存储实现。 */
@@ -36,6 +40,7 @@ const DOWNSTREAM = [
   'src/lib/cedar-export-rules.ts',
   'src/app/api/policies/[id]/export/package/route.ts',
   'src/lib/package-export-input.ts',
+  'src/lib/package-node-check.ts',
   'src/app/api/policies/[id]/whatif/route.ts',
   'src/app/api/v1/policies/[id]/whatif-batches/route.ts',
   'src/services/evidence/replay-items-client.ts',

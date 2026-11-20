@@ -110,13 +110,13 @@ describe('checkPackageExportability', () => {
     });
 
     it('本地可复核，但 check 给出 unavailable 码（锁文件 node 为 null）', async () => {
-      h.nodeRuntime.mockReturnValue({ tsVersion: '3.5.0' });
+      h.nodeRuntime.mockReturnValue({ tsVersion: '3.6.0' });
       h.check.mockResolvedValue(response({ targets: { jre: target(true), node: target(false, 'export_runtime_unavailable') } }));
       await expect(run()).resolves.toMatchObject({ node: 'unavailable' });
     });
 
     it('本地可复核且 check 可导出时为 exportable；check 未给 node 项时为 unavailable', async () => {
-      h.nodeRuntime.mockReturnValue({ tsVersion: '3.5.0' });
+      h.nodeRuntime.mockReturnValue({ tsVersion: '3.6.0' });
       h.check.mockResolvedValue(response());
       await expect(run()).resolves.toMatchObject({ node: 'exportable' });
       clearPackageExportabilityCache();
@@ -165,7 +165,7 @@ describe('checkPackageExportability', () => {
   });
 
   it('检查失败且本地可复核 Node 包时 node 为 unknown', async () => {
-    h.nodeRuntime.mockReturnValue({ tsVersion: '3.5.0' });
+    h.nodeRuntime.mockReturnValue({ tsVersion: '3.6.0' });
     h.check.mockRejectedValueOnce(new PolicyApiError('boom', 500));
     await expect(run()).resolves.toMatchObject({ jre: 'unknown', node: 'unknown' });
   });

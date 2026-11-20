@@ -14,11 +14,13 @@ import {
   PLATFORM_SETTING_KEYS,
   invalidateSettingCache,
   isPolicyPackageExportEnabled,
+  isPolicyPackageLayoutExportEnabled,
 } from '@/lib/platform-settings';
 
 beforeEach(() => {
   vi.clearAllMocks();
   invalidateSettingCache(PLATFORM_SETTING_KEYS.POLICY_PACKAGE_EXPORT_ENABLED);
+  invalidateSettingCache(PLATFORM_SETTING_KEYS.POLICY_PACKAGE_LAYOUT_EXPORT_ENABLED);
 });
 
 describe('PlanCapabilities.policyExport', () => {
@@ -56,5 +58,26 @@ describe('policy_export.package.enabled', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     h.findFirst.mockRejectedValue(new Error('db down'));
     await expect(isPolicyPackageExportEnabled()).resolves.toBe(false);
+  });
+});
+
+describe('policy_export.package.layout.enabled（ADR 0059 修订 4 D13）', () => {
+  it('键名固定', () => {
+    expect(PLATFORM_SETTING_KEYS.POLICY_PACKAGE_LAYOUT_EXPORT_ENABLED).toBe('policy_export.package.layout.enabled');
+  });
+
+  it('缺行时为 false；只有布尔 true 才算打开；读库失败为 false', async () => {
+    h.findFirst.mockResolvedValue(undefined);
+    await expect(isPolicyPackageLayoutExportEnabled()).resolves.toBe(false);
+    invalidateSettingCache(PLATFORM_SETTING_KEYS.POLICY_PACKAGE_LAYOUT_EXPORT_ENABLED);
+    h.findFirst.mockResolvedValue({ key: 'policy_export.package.layout.enabled', value: 'true' });
+    await expect(isPolicyPackageLayoutExportEnabled()).resolves.toBe(false);
+    invalidateSettingCache(PLATFORM_SETTING_KEYS.POLICY_PACKAGE_LAYOUT_EXPORT_ENABLED);
+    h.findFirst.mockResolvedValue({ key: 'policy_export.package.layout.enabled', value: true });
+    await expect(isPolicyPackageLayoutExportEnabled()).resolves.toBe(true);
+    invalidateSettingCache(PLATFORM_SETTING_KEYS.POLICY_PACKAGE_LAYOUT_EXPORT_ENABLED);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    h.findFirst.mockRejectedValue(new Error('db down'));
+    await expect(isPolicyPackageLayoutExportEnabled()).resolves.toBe(false);
   });
 });

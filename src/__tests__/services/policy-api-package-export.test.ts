@@ -106,6 +106,26 @@ describe('PolicyApiClient 策略包导出', () => {
     expect(res.contentDisposition).toContain('attachment;');
   });
 
+  it('exportPackage：显示排版头（修订 4 D11）——缺头按 absent；layout 随请求体发送；omitted 只认登记过的原因', async () => {
+    expect(await new PolicyApiClient('t1', 'u1').exportPackage(baseRequest)).toMatchObject({ layout: { status: 'absent', reason: null } });
+
+    fetchMock.mockResolvedValue(zipResponse({ 'X-Aster-Package-Layout': 'included' }));
+    const layout = '{"v":1,"spans":[{"text":"x"}]}';
+    const included = await new PolicyApiClient('t1', 'u1').exportPackage({ ...baseRequest, layout });
+    expect(included).toMatchObject({ layout: { status: 'included', reason: null } });
+    expect(JSON.parse((fetchMock.mock.calls.at(-1) as [string, RequestInit])[1].body as string).layout).toBe(layout);
+
+    fetchMock.mockResolvedValue(zipResponse({ 'X-Aster-Package-Layout': 'omitted', 'X-Aster-Package-Layout-Reason': 'cli_unsupported' }));
+    expect(await new PolicyApiClient('t1', 'u1').exportPackage(baseRequest))
+      .toMatchObject({ layout: { status: 'omitted', reason: 'cli_unsupported' } });
+
+    fetchMock.mockResolvedValue(zipResponse({ 'X-Aster-Package-Layout': 'omitted', 'X-Aster-Package-Layout-Reason': '<script>' }));
+    expect(await new PolicyApiClient('t1', 'u1').exportPackage(baseRequest)).toMatchObject({ layout: { status: 'omitted', reason: null } });
+
+    fetchMock.mockResolvedValue(zipResponse({ 'X-Aster-Package-Layout': 'maybe' }));
+    expect(await new PolicyApiClient('t1', 'u1').exportPackage(baseRequest)).toMatchObject({ layout: { status: 'absent', reason: null } });
+  });
+
   it('exportPackage：filename* 优先并按 UTF-8 解码（中文模块名）', async () => {
     fetchMock.mockResolvedValue(zipResponse({
       'Content-Disposition': `attachment; filename="_-v1-jre-b.zip"; filename*=UTF-8''${encodeURIComponent('块.遮蔽-v1-jre-b')}.zip`,

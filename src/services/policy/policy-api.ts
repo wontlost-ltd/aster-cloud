@@ -9,6 +9,7 @@ import { signRequest, signInternalCallerHeaders, type InternalCallerHeaders } fr
 import { API_ENDPOINTS } from '@/config/api-versions';
 import { safeDiagnostics } from '@/lib/package-diagnostics';
 import { packageFilename } from '@/lib/package-filename';
+import { readPackageLayout, type PackageLayoutOutcome } from '@/lib/package-layout-outcome';
 import { resolvePolicyApiBaseUrl, resolvePolicyWsUrl } from '@/lib/policy-api-url';
 import type {
   GuardApprovalInput,
@@ -317,6 +318,11 @@ export interface PackageExportRequest {
   uiLocale: PackageExportUiLocale;
   claimedRef: PackageClaimedRef;
   nodeProbes?: PackageNodeProbes;
+  /**
+   * 版本显示排版的序列化文本（ADR 0059 修订 4 D12）：只随导出请求发送，cloud 校验通过且开关打开时才带；
+   * aster-api 签名前再跑 L1–L9，不过则省略、导出 1.0 包。check / prepare 不读它。
+   */
+  layout?: string;
 }
 
 /** 单个 target 的检查结论；unavailable 为非空码（如 export_runtime_unavailable）时该 target 当前不提供。 */
@@ -378,6 +384,8 @@ export type PackageExportResult =
       contentDisposition: string;
       /** X-Aster-Package-Signed：false 表示无签名包（仅 on-prem 的 allow-unsigned） */
       signed: boolean;
+      /** X-Aster-Package-Layout(-Reason)：包是否带显示排版及省略原因（修订 4 D11） */
+      layout: PackageLayoutOutcome;
     }
   | { kind: 'refused'; diagnostics: PolicyDiagnostic[] };
 
@@ -386,6 +394,8 @@ export const PACKAGE_EXPORT_TIMEOUT_MS = 60_000;
 
 // 文件名解析是纯函数，浏览器端（导出面板）同样要用，放在无服务端依赖的模块里
 export { packageFilename } from '@/lib/package-filename';
+export { readPackageLayout } from '@/lib/package-layout-outcome';
+export type { PackageLayoutOutcome, PackageLayoutReason, PackageLayoutStatus } from '@/lib/package-layout-outcome';
 
 function invalidPackageResponse(reason: string): PolicyApiError {
   return new PolicyApiError(`Invalid package export response: ${reason}`, 502, 'package_response_invalid');
@@ -920,6 +930,7 @@ export class PolicyApiClient {
         filename: packageFilename(contentDisposition),
         contentDisposition,
         signed: signedHeader === 'true',
+        layout: readPackageLayout(res.headers),
       };
     }
     const data = res.data as { exportable?: unknown; diagnostics?: unknown } | null;
