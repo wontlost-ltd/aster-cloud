@@ -46,6 +46,9 @@ export const PLATFORM_SETTING_KEYS = {
   // 策略包导出（ADR 0059 P2，修订 3 P2-R16）：默认 OFF；aster-api 侧另有 ASTER_EXPORT_PACKAGE_ENABLED，
   //   两边都开且列车与导出密钥就绪后才真正可用。
   POLICY_PACKAGE_EXPORT_ENABLED: 'policy_export.package.enabled',
+  // 策略包携带显示排版（ADR 0059 修订 4 D13）：默认 OFF。关时导出不发送排版，包为 1.0，
+  //   响应头 X-Aster-Package-Layout-Reason 为 layout_export_disabled。
+  POLICY_PACKAGE_LAYOUT_EXPORT_ENABLED: 'policy_export.package.layout.enabled',
 } as const;
 
 /** 管理员附加指令长度上限，与 aster-api AssistantRequest 的 @Size 对齐。 */
@@ -72,6 +75,7 @@ const DEFAULTS: Record<string, unknown> = {
   [PLATFORM_SETTING_KEYS.STRUCTURED_AUTHORING_ENABLED]: false,
   [PLATFORM_SETTING_KEYS.STRUCTURED_AUTHORING_TEAM_DELEGATION]: true,
   [PLATFORM_SETTING_KEYS.POLICY_PACKAGE_EXPORT_ENABLED]: false,
+  [PLATFORM_SETTING_KEYS.POLICY_PACKAGE_LAYOUT_EXPORT_ENABLED]: false,
 };
 
 const CACHE_TTL_MS = 60_000;
@@ -188,6 +192,12 @@ export async function isPolicySharingEnabled(): Promise<boolean> {
 /** 策略包导出开关：只有布尔 true 才算打开（缺行、读库失败、非布尔值一律关闭）。 */
 export async function isPolicyPackageExportEnabled(): Promise<boolean> {
   const v = await getSetting<unknown>(PLATFORM_SETTING_KEYS.POLICY_PACKAGE_EXPORT_ENABLED);
+  return v === true;
+}
+
+/** 策略包携带显示排版的开关（修订 4 D13）：只有布尔 true 才算打开（缺行、读库失败、非布尔值一律关闭）。 */
+export async function isPolicyPackageLayoutExportEnabled(): Promise<boolean> {
+  const v = await getSetting<unknown>(PLATFORM_SETTING_KEYS.POLICY_PACKAGE_LAYOUT_EXPORT_ENABLED);
   return v === true;
 }
 

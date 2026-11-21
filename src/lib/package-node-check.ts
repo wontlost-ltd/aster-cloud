@@ -8,6 +8,10 @@
  *   3. 在平台 Core IR 上逐条跑探针，有任一不一致 → E735；
  *   4. 全部一致 → 交给 aster-api 签名的 `nodeProbes`。
  * 只拒绝、不降级：超步数、栈溢出、超时都按不一致处理。诊断形状与 aster-api 的导出诊断相同（无位置记 1:1）。
+ *
+ * 带显示排版时（ADR 0059 修订 4 D11 第 1 步）另用同一 ts 跑包排版规则 L1–L9——与 Node CLI 的 `verify`
+ * （`display`、`display-ir`）同一实现、同一组编译输入，结果写在 `layoutOk`。排版不过只让路由省略排版
+ * （`node_display_check_failed`），不影响探针结论与可导出性。
  */
 import {
   CompileFailure,
@@ -15,6 +19,18 @@ import {
   checkProbes,
   compileSourcePositionFreeSha256,
 } from '@aster-cloud/aster-lang-ts/package-check';
+import {
+  checkPackageLayout,
+  irNameStrings,
+  padStructuralSpans,
+  parseLayoutStrict,
+  structuralNameHits,
+  toDisplay,
+  type LayoutRuleContext,
+} from '@aster-cloud/aster-lang-ts/layout';
+import { foldKey } from '@aster-cloud/aster-lang-ts/lexicons/identifiers';
+import { getLexicon } from '@/lib/aster-lexicon';
+import { OPERATOR_KINDS } from '@/lib/policy-alias-shared';
 import type {
   PackageExportPrepareResponse,
   PackageExportRequest,
@@ -37,9 +53,87 @@ export const NODE_CHECK_LIMITS = {
 export type NodeCheckCompileInput = Pick<PackageExportRequest, 'source' | 'locale' | 'aliasSet' | 'allowStructural' | 'vocabulary'>;
 
 export type NodeCheckResult =
-  | { ok: true; nodeProbes: PackageNodeProbes }
+  | { ok: true; nodeProbes: PackageNodeProbes; layoutOk: boolean }
   | { ok: false; diagnostics: PolicyDiagnostic[] }
   | { ok: false; skew: true };
+
+/** 字面量关键词的 kind（L6(c)）。 */
+const LITERAL_KINDS: readonly string[] = ['TRUE', 'FALSE', 'NULL', 'NONE'];
+
+/** 码点序比较（与 ts `compareCodePoints` 同义；`localeCompare` 依赖 ICU，不能用） */
+function compareCodePoints(a: string, b: string): number {
+  const x = [...a];
+  const y = [...b];
+  for (let i = 0; i < Math.min(x.length, y.length); i++) {
+    const d = x[i]!.codePointAt(0)! - y[i]!.codePointAt(0)!;
+    if (d !== 0) return d;
+  }
+  return x.length - y.length;
+}
+
+/** 某个 locale 词法表中一组 kind 的全部拼写（keywords 与词法表 aliases），foldKey、按码点排序去重。 */
+function spellingsOf(locale: string, kinds: Iterable<string>): string[] {
+  const lex = getLexicon(locale);
+  const keywords = lex.keywords as Readonly<Record<string, string | undefined>>;
+  const aliases = (lex.aliases ?? {}) as Readonly<Record<string, readonly string[] | undefined>>;
+  const all: string[] = [];
+  for (const k of kinds) {
+    if (keywords[k] !== undefined) all.push(keywords[k]!);
+    all.push(...(aliases[k] ?? []));
+  }
+  return [...new Set(all.map(foldKey))].filter((s) => s !== '').sort(compareCodePoints);
+}
+
+/** 一个 locale 的字面量关键词与运算符拼写（与 aster-lang-test `vectors/keyword-spellings.json` 同形）。 */
+export function keywordSpellings(locale: string): { literal: string[]; operator: string[] } {
+  return { literal: spellingsOf(locale, LITERAL_KINDS), operator: spellingsOf(locale, OPERATOR_KINDS) };
+}
+
+/**
+ * L1–L9 的词汇与拼写（与 ts CLI `ruleContext` 同一口径）：词汇全部条目的 localized；包 locale ∪ en-US 的字面量关键词；
+ * 包 locale ∪ en-US 的运算符拼写，另并入 aliasSet 中运算符 kind 的别名。
+ */
+export function layoutRuleContext(input: NodeCheckCompileInput): LayoutRuleContext {
+  const loc = keywordSpellings(input.locale);
+  const en = keywordSpellings('en-US');
+  const vocabularyLocalized: string[] = [];
+  for (const v of Object.values(input.vocabulary ?? {})) {
+    if (!Array.isArray(v)) continue;
+    for (const e of v) {
+      const localized = (e as { localized?: unknown } | null)?.localized;
+      if (typeof localized === 'string') vocabularyLocalized.push(localized);
+    }
+  }
+  const aliases = Object.entries(input.aliasSet ?? {}).filter(([k]) => OPERATOR_KINDS.has(k)).flatMap(([, v]) => v);
+  return {
+    vocabularyLocalized,
+    literalKeywords: [...loc.literal, ...en.literal],
+    operatorSpellings: [...loc.operator, ...en.operator, ...aliases],
+  };
+}
+
+const utf8 = (s: string) => new TextEncoder().encode(s);
+
+/**
+ * 包排版 L1–L9（修订 4 §4）：L1–L7 由 `checkPackageLayout` 判定（`display.aster` 即 `toDisplay`，与 aster-api 写入包的相同）；
+ * L8 用平台 Core IR 的名字；L9 用同一组编译输入重编译补空格后的源码并比较投影哈希。任何异常都按不通过处理。
+ */
+function layoutPasses(layoutText: string, input: NodeCheckCompileInput, coreIr: string, positionFreeSha256: string): boolean {
+  try {
+    const layoutBytes = utf8(layoutText);
+    const parsed = checkPackageLayout({
+      layoutBytes,
+      displayBytes: utf8(toDisplay(parseLayoutStrict(layoutBytes))),
+      source: input.source,
+      layoutVersion: 1,
+      ...layoutRuleContext(input),
+    });
+    if (structuralNameHits(parsed, irNameStrings(coreIr)).length > 0) return false;
+    return nodePositionFreeSha256({ ...input, source: padStructuralSpans(parsed) }) === positionFreeSha256;
+  } catch {
+    return false;
+  }
+}
 
 /** 英文模板与 aster-api `ExportDiagnosticCode` / ts `shared/error_codes.json` 逐字相同 */
 const TEMPLATES = {
@@ -84,6 +178,8 @@ function required(prepared: PackageExportPrepareResponse) {
 export function runNodeCheck(
   prepared: PackageExportPrepareResponse,
   input: NodeCheckCompileInput,
+  /** cloud 送给 aster-api 的显示排版序列化文本；不带排版时省略（`layoutOk` 恒为 true） */
+  layout?: string,
   /** cloud 依赖的 aster-lang-ts 版本（构建时盖章）；测试注入 */
   tsVersion: string = TS_VERSION,
 ): NodeCheckResult {
@@ -103,5 +199,6 @@ export function runNodeCheck(
   return {
     ok: true,
     nodeProbes: { probesSha256: p.probesSha256, count: result.count, agreed: result.agreed, tsVersion },
+    layoutOk: layout === undefined || layoutPasses(layout, input, p.coreIr, p.positionFreeSha256),
   };
 }

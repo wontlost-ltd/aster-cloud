@@ -28,9 +28,11 @@ import { errorEnvelope } from '@/lib/api/error-envelope';
 /** 能力类全局开关的键前缀：这类键要求布尔值并写审计。 */
 const CAPABILITY_SETTING_PREFIX = 'capability.';
 
-/** 要求布尔值并与审计同事务写入的开关：能力类开关，以及策略包导出开关（ADR 0059 P2）。 */
+/** 要求布尔值并与审计同事务写入的开关：能力类开关，以及策略包导出与其显示排版开关（ADR 0059 P2、修订 4）。 */
 function isAuditedBooleanSetting(key: string): boolean {
-  return key.startsWith(CAPABILITY_SETTING_PREFIX) || key === PLATFORM_SETTING_KEYS.POLICY_PACKAGE_EXPORT_ENABLED;
+  return key.startsWith(CAPABILITY_SETTING_PREFIX)
+    || key === PLATFORM_SETTING_KEYS.POLICY_PACKAGE_EXPORT_ENABLED
+    || key === PLATFORM_SETTING_KEYS.POLICY_PACKAGE_LAYOUT_EXPORT_ENABLED;
 }
 
 export async function GET() {

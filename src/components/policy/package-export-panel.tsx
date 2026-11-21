@@ -10,10 +10,13 @@
  * 下载走 POST /api/policies/[id]/export/package：zip 字节按 Content-Disposition 的文件名保存，
  * SHA-256 取 X-Aster-Package-Sha256（aster-api 审计链记录的同一值）。失败文案按状态与稳定错误码在客户端本地化，
  * 不显示服务端原文（#688）；诊断按错误码给出本地化原因，英文原文作为补充保留。
+ * 下载完成后另有一行说明包是否带显示排版（X-Aster-Package-Layout，ADR 0059 修订 4 D11）：带则提示可用 aster show 阅读，
+ * 省略则按 X-Aster-Package-Layout-Reason 给出本地化原因；版本本无排版时不显示。面板不提供「不含排版」选项（修订 4 Q2）。
  */
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { actionErrorCode } from '@/lib/api/error-envelope';
 import { packageFilename } from '@/lib/package-filename';
+import { readPackageLayout, type PackageLayoutOutcome } from '@/lib/package-layout-outcome';
 import { safeDiagnostics } from '@/lib/package-diagnostics';
 import type { PackageExportTarget, PackageExportUiLocale, PolicyDiagnostic } from '@/services/policy/policy-api';
 import type { PackageExportMenuState } from '@/lib/package-export-state';
@@ -41,6 +44,10 @@ export interface PackageExportLabels {
   noExecutableVersion: string;
   copy: string;
   copied: string;
+  /** 包带显示排版时的一行说明 */
+  layoutIncluded: string;
+  /** 省略排版的原因（按 X-Aster-Package-Layout-Reason）；other 为未登记原因的兜底 */
+  layoutOmitted: Record<string, string>;
   /** 按诊断码（E730–E739）的可读原因；other 为未登记码的兜底 */
   reasons: Record<string, string>;
 }
@@ -48,7 +55,7 @@ export interface PackageExportLabels {
 export type PackageExportState =
   | { kind: 'idle' }
   | { kind: 'busy'; target: PackageExportTarget }
-  | { kind: 'downloaded'; sha256: string; signed: boolean }
+  | { kind: 'downloaded'; sha256: string; signed: boolean; layout: PackageLayoutOutcome }
   | { kind: 'refused'; diagnostics: PolicyDiagnostic[] }
   | { kind: 'chooseEntry'; target: PackageExportTarget; candidates: string[] }
   | { kind: 'error'; message: string };
@@ -110,7 +117,12 @@ async function runExport(
   if ((res.headers.get('Content-Type') ?? '').startsWith('application/zip')) {
     const sha256 = res.headers.get('X-Aster-Package-Sha256') ?? '';
     downloadBlob(packageFilename(res.headers.get('Content-Disposition')), await res.arrayBuffer());
-    return { kind: 'downloaded', sha256, signed: res.headers.get('X-Aster-Package-Signed') === 'true' };
+    return {
+      kind: 'downloaded',
+      sha256,
+      signed: res.headers.get('X-Aster-Package-Signed') === 'true',
+      layout: readPackageLayout(res.headers),
+    };
   }
   const data = (await res.json().catch(() => null)) as { exportable?: unknown; diagnostics?: unknown } | null;
   if (data?.exportable === false) {
@@ -250,6 +262,20 @@ function EntryChooser({ target, candidates, labels, onExport }: {
   );
 }
 
+/** 下载后的排版说明：included 一行提示，omitted 一行原因，absent 不显示。 */
+function LayoutNote({ layout, labels }: { layout: PackageLayoutOutcome; labels: PackageExportLabels }) {
+  if (layout.status === 'included') {
+    return <p className="text-fg-muted sm:text-right" data-testid="package-export-layout-included">{labels.layoutIncluded}</p>;
+  }
+  if (layout.status !== 'omitted') return null;
+  const text = (layout.reason && labels.layoutOmitted[layout.reason]) || labels.layoutOmitted.other;
+  return (
+    <p className="text-fg-muted sm:text-right" data-testid="package-export-layout-omitted" data-reason={layout.reason ?? 'other'}>
+      {text}
+    </p>
+  );
+}
+
 function Result({ state, labels }: { state: PackageExportState; labels: PackageExportLabels }) {
   if (state.kind === 'downloaded') {
     const [before, after = ''] = labels.downloaded.split('{sha256}');
@@ -262,6 +288,7 @@ function Result({ state, labels }: { state: PackageExportState; labels: PackageE
         </p>
         <CopyButton text={state.sha256} labels={labels} />
         {!state.signed && <p className="text-fg-muted sm:text-right" data-testid="package-export-unsigned">{labels.unsigned}</p>}
+        <LayoutNote layout={state.layout} labels={labels} />
       </div>
     );
   }

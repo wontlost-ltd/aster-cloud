@@ -1,0 +1,109 @@
+{
+  "description": "各 locale 词法表中字面量关键词（TRUE / FALSE / NULL / NONE）与 11 个运算符 kind（core UserAliasValidator 的运算符档：PLUS、MINUS_WORD、TIMES、DIVIDED_BY、INTEGER_DIVIDED_BY、MODULO、LESS_THAN、GREATER_THAN、EQUALS_TO、AT_LEAST、AT_MOST）的全部拼写（keywords 与词法表 aliases），已 foldKey、按码点排序去重；不含 aliasSet 别名（调用方并入）。ADR 0059 修订 4 L6(c)、L7。两个引擎各自从自己编译所用的词法表取拼写（ts lexiconForLocale、Java locales SPI），并断言与本文件相同（计划裁决 PR4）；本文件由两侧导出相同后写入。",
+  "version": 1,
+  "operatorKinds": [
+    "PLUS",
+    "MINUS_WORD",
+    "TIMES",
+    "DIVIDED_BY",
+    "INTEGER_DIVIDED_BY",
+    "MODULO",
+    "LESS_THAN",
+    "GREATER_THAN",
+    "EQUALS_TO",
+    "AT_LEAST",
+    "AT_MOST"
+  ],
+  "literalKinds": [
+    "TRUE",
+    "FALSE",
+    "NULL",
+    "NONE"
+  ],
+  "locales": {
+    "en-US": {
+      "literal": [
+        "false",
+        "none",
+        "null",
+        "true"
+      ],
+      "operator": [
+        "at least",
+        "at most",
+        "divided by",
+        "equals to",
+        "greater than",
+        "integer divided by",
+        "less than",
+        "minus",
+        "modulo",
+        "plus",
+        "times"
+      ]
+    },
+    "zh-CN": {
+      "literal": [
+        "假值",
+        "无值",
+        "真值",
+        "空值"
+      ],
+      "operator": [
+        "乘以",
+        "减去",
+        "加上",
+        "取模",
+        "大于",
+        "小于",
+        "整除",
+        "等于",
+        "至多",
+        "至少",
+        "除以"
+      ]
+    },
+    "de-DE": {
+      "literal": [
+        "falsch",
+        "keines",
+        "null",
+        "wahr"
+      ],
+      "operator": [
+        "entspricht",
+        "ganzzahlig geteilt durch",
+        "geteilt durch",
+        "groesser als",
+        "hoechstens",
+        "kleiner als",
+        "mal",
+        "mindestens",
+        "minus",
+        "modulo",
+        "plus"
+      ]
+    },
+    "hi-IN": {
+      "literal": [
+        "असत्य",
+        "कोई नहीं",
+        "शून्य",
+        "सत्य"
+      ],
+      "operator": [
+        "अधिक से अधिक",
+        "कम से कम",
+        "गुणा",
+        "घटा",
+        "जोड़",
+        "पूर्णांक भाग",
+        "बराबर",
+        "भाग",
+        "शेषफल",
+        "से अधिक",
+        "से कम"
+      ]
+    }
+  }
+}

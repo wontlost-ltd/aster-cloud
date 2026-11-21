@@ -7,5 +7,7 @@ export const packageExportLabels: PackageExportLabels = {
   unsigned: 'Not signed', notExportable: "Can't be exported", showReasons: 'Show reasons', chooseEntry: 'Choose the entry',
   exportEntry: 'Export this entry', planRequired: 'Paid plan required', busy: 'Busy', unavailable: 'Unavailable', failed: 'Failed',
   noExecutableVersion: 'Approve first', copy: 'Copy SHA-256', copied: 'Copied',
+  layoutIncluded: 'Includes the display layout',
+  layoutOmitted: { node_display_check_failed: 'Layout left out: Node check failed', cli_unsupported: 'Layout left out: CLI too old', other: 'Layout left out' },
   reasons: { E730: 'Uses IO', E734: 'Too large', other: 'Other reason' },
 };

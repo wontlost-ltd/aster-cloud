@@ -24,6 +24,7 @@ import { PLATFORM_SETTING_KEYS, getSetting } from '@/lib/platform-settings';
 const ENABLED = PLATFORM_SETTING_KEYS.STRUCTURED_AUTHORING_ENABLED;
 const DELEGATION = PLATFORM_SETTING_KEYS.STRUCTURED_AUTHORING_TEAM_DELEGATION;
 const PACKAGE_EXPORT = PLATFORM_SETTING_KEYS.POLICY_PACKAGE_EXPORT_ENABLED;
+const PACKAGE_LAYOUT = PLATFORM_SETTING_KEYS.POLICY_PACKAGE_LAYOUT_EXPORT_ENABLED;
 function request(body: unknown) {
   return new Request('http://localhost/api/admin/platform-settings', { method: 'POST', body: JSON.stringify(body) });
 }
@@ -37,7 +38,7 @@ describe('capability.* 平台开关写入', () => {
     insert.mockReturnValue({ values: auditValues.mockResolvedValue(undefined) });
   });
 
-  it.each([ENABLED, DELEGATION, PACKAGE_EXPORT])('%s 非布尔值 → 400 invalid_capability_setting 且不写入', async (key) => {
+  it.each([ENABLED, DELEGATION, PACKAGE_EXPORT, PACKAGE_LAYOUT])('%s 非布尔值 → 400 invalid_capability_setting 且不写入', async (key) => {
     const res = await POST(request({ key, value: 'yes' }));
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe('invalid_capability_setting');
@@ -87,6 +88,15 @@ describe('capability.* 平台开关写入', () => {
     expect(setSettingWithClient).toHaveBeenCalledWith(tx, PACKAGE_EXPORT, true, 'admin-1');
     expect(auditValues).toHaveBeenCalledWith(expect.objectContaining({
       resourceId: PACKAGE_EXPORT, metadata: { old: false, new: true },
+    }));
+  });
+
+  it('策略包显示排版开关（ADR 0059 修订 4 D13）同样要求布尔值并写审计', async () => {
+    const res = await POST(request({ key: PACKAGE_LAYOUT, value: true }));
+    expect(res.status).toBe(200);
+    expect(setSettingWithClient).toHaveBeenCalledWith(tx, PACKAGE_LAYOUT, true, 'admin-1');
+    expect(auditValues).toHaveBeenCalledWith(expect.objectContaining({
+      resourceId: PACKAGE_LAYOUT, metadata: { old: false, new: true },
     }));
   });
 

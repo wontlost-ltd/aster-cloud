@@ -81,6 +81,42 @@ describe('PackageExportPanel', () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('ef'.repeat(32)));
   });
 
+  it('修订 4：包带显示排版时下载后显示「包含显示排版」；版本无排版（absent 或缺头）时不显示排版说明', async () => {
+    fetchMock.mockResolvedValue(zip({ 'X-Aster-Package-Layout': 'included' }));
+    renderPanel();
+    exportJre();
+    expect((await screen.findByTestId('package-export-layout-included')).textContent).toBe('Includes the display layout');
+    expect(screen.queryByTestId('package-export-layout-omitted')).toBeNull();
+    cleanup();
+
+    for (const headers of [{ 'X-Aster-Package-Layout': 'absent' }, {}] as Record<string, string>[]) {
+      fetchMock.mockResolvedValue(zip(headers));
+      renderPanel();
+      exportJre();
+      await screen.findByTestId('package-export-downloaded');
+      expect(screen.queryByTestId('package-export-layout-included')).toBeNull();
+      expect(screen.queryByTestId('package-export-layout-omitted')).toBeNull();
+      cleanup();
+    }
+  });
+
+  it('修订 4：省略排版时按原因码显示本地化原因，未登记的原因用兜底文案', async () => {
+    fetchMock.mockResolvedValue(zip({ 'X-Aster-Package-Layout': 'omitted', 'X-Aster-Package-Layout-Reason': 'node_display_check_failed' }));
+    renderPanel();
+    exportJre();
+    const note = await screen.findByTestId('package-export-layout-omitted');
+    expect(note.textContent).toBe('Layout left out: Node check failed');
+    expect(note.getAttribute('data-reason')).toBe('node_display_check_failed');
+    cleanup();
+
+    fetchMock.mockResolvedValue(zip({ 'X-Aster-Package-Layout': 'omitted', 'X-Aster-Package-Layout-Reason': 'something_new' }));
+    renderPanel();
+    exportJre();
+    const fallback = await screen.findByTestId('package-export-layout-omitted');
+    expect(fallback.textContent).toBe('Layout left out');
+    expect(fallback.getAttribute('data-reason')).toBe('other');
+  });
+
   it('无签名包：显示「无签名包」提示', async () => {
     fetchMock.mockResolvedValue(zip({ 'X-Aster-Package-Signed': 'false' }));
     renderPanel();

@@ -251,6 +251,16 @@ export default async function PolicyDetailPage({
       noExecutableVersion: t('packageExport.noExecutableVersion'),
       copy: t('packageExport.copy'),
       copied: t('packageExport.copied'),
+      layoutIncluded: t('packageExport.layoutIncluded'),
+      layoutOmitted: {
+        layout_inconsistent: t('packageExport.layoutOmitted.layout_inconsistent'),
+        layout_invalid: t('packageExport.layoutOmitted.layout_invalid'),
+        layout_export_disabled: t('packageExport.layoutOmitted.layout_export_disabled'),
+        node_display_check_failed: t('packageExport.layoutOmitted.node_display_check_failed'),
+        display_rules_failed: t('packageExport.layoutOmitted.display_rules_failed'),
+        cli_unsupported: t('packageExport.layoutOmitted.cli_unsupported'),
+        other: t('packageExport.layoutOmitted.other'),
+      },
       reasons: {
         E730: t('packageExport.reasons.E730'),
         E731: t('packageExport.reasons.E731'),

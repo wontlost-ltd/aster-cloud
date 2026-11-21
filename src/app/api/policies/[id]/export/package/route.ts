@@ -10,6 +10,11 @@
  * 个人策略所有者，非成员 404）→ 计划门 policyExport（按 planHolderForTeam）403 → 无已批准版本 409 → 编译输入 →
  * 入口名归一（不属于该版本 400）→ target=node：prepare 后在 Worker 内复核（ts 版本漂移 503 export_runtime_skew，
  * 重编译漂移 E739、探针不一致 E735 均按不可导出返回诊断），通过后带 nodeProbes → 导出。
+ *
+ * 显示排版（ADR 0059 修订 4 D11）：loadExportLayout 读同一版本的排版并复跑保存校验（开关 policy_export.package.layout.enabled
+ * 关、读取复验不过、校验不过 → 不发送）；target=node 时 Worker 复核另用 ts 跑 L1–L9，不过同样不发送（node_display_check_failed）。
+ * 排版问题只省略排版、不拒绝导出。响应头 X-Aster-Package-Layout(-Reason)：cloud 没发送时以 cloud 的原因为准
+ * （此时上游必然返回 absent），否则原样转发 aster-api 的结论。
  */
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
@@ -26,6 +31,13 @@ import { hasFeatureAccess } from '@/lib/usage';
 import { loadPackageExportInput } from '@/lib/package-export-input';
 import { safeDiagnostics } from '@/lib/package-diagnostics';
 import { runNodeCheck } from '@/lib/package-node-check';
+import { loadExportLayout } from '@/lib/package-export-layout';
+import {
+  PACKAGE_LAYOUT_HEADER,
+  PACKAGE_LAYOUT_REASON_HEADER,
+  type CloudLayoutReason,
+  type PackageLayoutOutcome,
+} from '@/lib/package-layout-outcome';
 import { recordProductEventAfterResponse } from '@/lib/product-events/server';
 import { findDefaultExecutableVersion } from '@/services/policy/default-executable-version';
 import {
@@ -179,6 +191,14 @@ export async function POST(req: Request, { params }: RouteParams) {
       uiLocale: body.uiLocale,
       ...(entry ? { entry } : {}),
     };
+    const exportLayout = await loadExportLayout({
+      id: version.id,
+      source,
+      locale: request.locale,
+      aliasSet: request.aliasSet ?? null,
+    });
+    let layout = exportLayout.kind === 'included' ? exportLayout.layout : undefined;
+    let cloudReason: CloudLayoutReason | null = exportLayout.kind === 'omitted' ? exportLayout.reason : null;
     let nodeProbes: PackageExportRequest['nodeProbes'];
     // Node 包须先在 Worker 内重编译并比对探针（修订 3 P2-R5 / P2-R13），通过后才交 aster-api 签名
     if (body.target === 'node') {
@@ -186,7 +206,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       if (!prepared.exportable) {
         return NextResponse.json({ exportable: false, diagnostics: safeDiagnostics(prepared.diagnostics) }, { headers });
       }
-      const check = runNodeCheck(prepared, request);
+      const check = runNodeCheck(prepared, request, layout);
       if ('skew' in check) {
         console.warn('[api/policies/export/package] node runtime skew', prepared.runtime?.cliVersion);
         return NextResponse.json(
@@ -196,8 +216,17 @@ export async function POST(req: Request, { params }: RouteParams) {
       }
       if (!check.ok) return NextResponse.json({ exportable: false, diagnostics: check.diagnostics }, { headers });
       nodeProbes = check.nodeProbes;
+      if (layout !== undefined && !check.layoutOk) {
+        console.warn('[api/policies/export/package] node display check failed; exporting without layout');
+        layout = undefined;
+        cloudReason = 'node_display_check_failed';
+      }
     }
-    const result = await client.exportPackage(nodeProbes ? { ...exportRequest, nodeProbes } : exportRequest);
+    const result = await client.exportPackage({
+      ...exportRequest,
+      ...(nodeProbes ? { nodeProbes } : {}),
+      ...(layout !== undefined ? { layout } : {}),
+    });
     if (result.kind === 'refused') {
       return NextResponse.json({ exportable: false, diagnostics: result.diagnostics }, { headers });
     }
@@ -211,6 +240,9 @@ export async function POST(req: Request, { params }: RouteParams) {
       || `attachment; filename="policy-package.zip"; filename*=UTF-8''${encodeURIComponent(result.filename)}`);
     headers.set('X-Aster-Package-Sha256', result.sha256);
     headers.set('X-Aster-Package-Signed', String(result.signed));
+    const layoutOutcome: PackageLayoutOutcome = cloudReason ? { status: 'omitted', reason: cloudReason } : result.layout;
+    headers.set(PACKAGE_LAYOUT_HEADER, layoutOutcome.status);
+    if (layoutOutcome.status === 'omitted' && layoutOutcome.reason) headers.set(PACKAGE_LAYOUT_REASON_HEADER, layoutOutcome.reason);
     headers.set('Cache-Control', 'private, no-store');
     headers.set('X-Content-Type-Options', 'nosniff');
     return new NextResponse(result.bytes, { status: 200, headers });
