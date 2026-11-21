@@ -125,10 +125,26 @@ function isQueryReadTimeout(err: unknown): boolean {
  * 用 end() 而不是直接销毁 socket：_ending 置位后连接断开不会再作为未捕获的 'error' 事件抛出。
  */
 class StallGuardClient extends Client {
+  /** 作废本连接的那次超时；之后的语句不再发出，直接以带超时信息的错误失败。 */
+  private abandonedBy: Error | null = null;
+
   // pg 的 query 有回调 / promise 多种重载，这里只做透传，不改变参数与返回值。
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   query(...args: any[]): any {
     const callbackIndex = args.findIndex((arg) => typeof arg === 'function');
+    // drizzle 事务在回调失败后会先发 rollback，rollback 的错误会盖掉原始错误。连接已作废时让后续语句
+    // 以「查询读超时」失败，调用方看到的仍是超时，而不是 "Client was closed"。
+    if (this.abandonedBy) {
+      const error = new Error(
+        `${QUERY_READ_TIMEOUT_MESSAGE}：连接已在先前的查询超时后作废，本语句未发送`,
+        { cause: this.abandonedBy },
+      );
+      if (callbackIndex >= 0) {
+        process.nextTick(() => (args[callbackIndex] as (err: unknown) => void)(error));
+        return undefined;
+      }
+      return Promise.reject(error);
+    }
     if (callbackIndex >= 0) {
       const callback = args[callbackIndex] as (err: unknown, res: unknown) => void;
       args[callbackIndex] = (err: unknown, res: unknown) => {
@@ -150,7 +166,8 @@ class StallGuardClient extends Client {
   }
 
   private abandonOnTimeout(err: unknown): void {
-    if (!isQueryReadTimeout(err)) return;
+    if (!isQueryReadTimeout(err) || this.abandonedBy) return;
+    this.abandonedBy = err as Error;
     this.end().catch(() => {
       // 连接本来就坏了，关闭失败无需处理
     });

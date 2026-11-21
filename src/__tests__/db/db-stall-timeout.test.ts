@@ -135,8 +135,14 @@ describe('事务内卡死：连接被作废并让出池位（#842）', () => {
     const url = await startFakePostgres('stall-after-begin');
     const db = createDb({ HYPERDRIVE: { connectionString: url } }, options);
     const started = Date.now();
-    await expect(db.transaction(async (tx) => tx.execute(sql`SELECT 1`))).rejects.toBeTruthy();
+    const txErr = await db.transaction(async (tx) => tx.execute(sql`SELECT 1`)).then(
+      () => null,
+      (e: unknown) => e,
+    );
     expect(Date.now() - started).toBeLessThan(3_000);
+    // drizzle 用 rollback 的错误替换原始错误；作废后的连接让 rollback 也报查询读超时，原因不丢。
+    expect(driverMessage(txErr)).toContain('Query read timeout');
+    expect(driverMessage(txErr)).not.toMatch(/Client was closed|not queryable/);
 
     const err = await db.execute(sql`SELECT 2`).then(() => null, (e: unknown) => e);
     expect(driverMessage(err)).not.toMatch(/trying to connect|connection timeout/i);
@@ -147,7 +153,11 @@ describe('事务内卡死：连接被作废并让出池位（#842）', () => {
   it('BEGIN 本身卡死（drizzle 此时不会 release）：池位同样被让出', async () => {
     const url = await startFakePostgres('stall-on-query');
     const db = createDb({ HYPERDRIVE: { connectionString: url } }, options);
-    await expect(db.transaction(async (tx) => tx.execute(sql`SELECT 1`))).rejects.toBeTruthy();
+    const txErr = await db.transaction(async (tx) => tx.execute(sql`SELECT 1`)).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(driverMessage(txErr)).toContain('Query read timeout');
 
     const err = await db.execute(sql`SELECT 2`).then(() => null, (e: unknown) => e);
     expect(driverMessage(err)).toContain('Query read timeout');
