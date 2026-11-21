@@ -5,8 +5,17 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 
+// t 必须在多次渲染间保持同一引用（与真实 next-intl 的 useMemo 一致）：面板的 fetchDetail 以 t 为依赖，
+// 每次渲染返回新函数会让 effect 无限重取详情，面板在加载骨架与内容之间来回切换，断言随机落空（#849）。
+const translator = vi.hoisted(() => {
+  const byNs = new Map<string, (key: string) => string>();
+  return (ns: string) => {
+    if (!byNs.has(ns)) byNs.set(ns, (key: string) => `${ns}.${key}`);
+    return byNs.get(ns)!;
+  };
+});
 vi.mock('next-intl', () => ({
-  useTranslations: (ns: string) => (key: string) => `${ns}.${key}`,
+  useTranslations: translator,
   useLocale: () => 'en',
 }));
 
