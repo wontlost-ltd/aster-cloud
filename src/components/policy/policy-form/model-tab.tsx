@@ -328,9 +328,16 @@ const isFilled = (value: string) => value.trim().length > 0;
 
 /**
  * invalid：不是单个词（词法预检）；reserved：单个词，但放进声明后不能按原名读回（关键词、冠词等，
- * 往返校验）；duplicate：与已有名字重名。
+ * 往返校验）；lowercaseType：类型名以小写字母起首，作类型引用时编译器报 E055（仅类型名）；
+ * duplicate：与已有名字重名。
  */
-type NameProblem = 'invalid' | 'reserved' | 'duplicate' | null;
+type NameProblem = 'invalid' | 'reserved' | 'lowercaseType' | 'duplicate' | null;
+
+/** 首字母改大写；非小写起首返回 null（与 aster-lang-ts isBareLowercaseTypeAt 同一判据：Unicode Ll）。 */
+function capitalized(name: string): string | null {
+  const trimmed = name.trim();
+  return /^\p{Ll}/u.test(trimmed) ? trimmed.replace(/^./u, (c) => c.toUpperCase()) : null;
+}
 
 /** 类型名按角色往返：结构体名与类型别名名的声明上下文不同（德语 `Type der als …` 不能解析）。 */
 const TYPE_NAME_ROUND_TRIP = { struct: structNameRoundTrips, alias: typeAliasNameRoundTrips } as const;
@@ -344,7 +351,11 @@ function typeNameProblem(
 ): NameProblem {
   if (!isFilled(name)) return null;
   if (!isValidTypeName(lexicon, name)) return 'invalid';
-  if (!TYPE_NAME_ROUND_TRIP[role](lexicon, name)) return 'reserved';
+  if (!TYPE_NAME_ROUND_TRIP[role](lexicon, name)) {
+    // 仅当改成大写起首即可通过时才提示大小写；小写的关键词 / 冠词（`with`、`der`）大写后仍被拒，照旧报保留词。
+    const upper = capitalized(name);
+    return upper !== null && TYPE_NAME_ROUND_TRIP[role](lexicon, upper) ? 'lowercaseType' : 'reserved';
+  }
   return taken.has(foldName(name)) ? 'duplicate' : null;
 }
 
@@ -359,6 +370,7 @@ function fieldNameProblem(lexicon: Lexicon, name: string, taken: readonly string
 const PROBLEM_MESSAGE_KEY = {
   invalid: 'invalidName',
   reserved: 'reservedName',
+  lowercaseType: 'lowercaseType',
   duplicate: 'duplicateName',
 } as const;
 
