@@ -12,7 +12,7 @@ import { sql } from 'drizzle-orm';
 import { createDb, DB_CONNECT_TIMEOUT_MS, DB_QUERY_TIMEOUT_MS } from '@/db';
 import { firstRowOf, rowsOf } from '@/db/result';
 
-type Mode = 'stall-on-connect' | 'stall-on-query';
+type Mode = 'stall-on-connect' | 'stall-on-query' | 'stall-after-begin';
 
 const servers: net.Server[] = [];
 const sockets: net.Socket[] = [];
@@ -22,16 +22,34 @@ const AUTH_OK = Buffer.from([0x52, 0, 0, 0, 8, 0, 0, 0, 0]);
 /** ReadyForQuery：'Z' + int32 长度 5 + 状态 'I'（空闲）。 */
 const READY_FOR_QUERY = Buffer.from([0x5a, 0, 0, 0, 5, 0x49]);
 
+/** BEGIN 的应答：CommandComplete('BEGIN') + ReadyForQuery('T'，事务中)。 */
+function beginReply(): Buffer {
+  const tag = Buffer.from('BEGIN\0');
+  const complete = Buffer.alloc(5);
+  complete.write('C', 0);
+  complete.writeInt32BE(4 + tag.length, 1);
+  return Buffer.concat([complete, tag, Buffer.from([0x5a, 0, 0, 0, 5, 0x54])]);
+}
+
 async function startFakePostgres(mode: Mode): Promise<string> {
+  // 整个服务端只应答一次 BEGIN：新建的连接上不会再有成功的查询。
+  let answeredBegin = false;
   const server = net.createServer((socket) => {
     sockets.push(socket);
     socket.on('error', () => {});
     let greeted = false;
-    socket.on('data', () => {
-      // 第一包是 StartupMessage（无 SSL）。只在「查询卡死」模式下完成握手，之后的报文一律不回。
-      if (mode === 'stall-on-query' && !greeted) {
+    socket.on('data', (chunk: Buffer) => {
+      if (mode === 'stall-on-connect') return;
+      // 第一包是 StartupMessage（无 SSL）：完成握手。
+      if (!greeted) {
         greeted = true;
         socket.write(Buffer.concat([AUTH_OK, READY_FOR_QUERY]));
+        return;
+      }
+      // stall-after-begin：只应答第一条简单查询（drizzle 事务的 BEGIN），之后一律不回。
+      if (mode === 'stall-after-begin' && !answeredBegin && chunk[0] === 0x51 /* 'Q' */) {
+        answeredBegin = true;
+        socket.write(beginReply());
       }
     });
   });
@@ -103,6 +121,36 @@ describe('createDb 卡死兜底超时（#842）', () => {
     await expect(db.execute(sql`SELECT 1`)).rejects.toBeTruthy();
     await expect(db.execute(sql`SELECT 2`)).rejects.toBeTruthy();
     // max=1 的池里只留下新连接：卡住的那条没有被放回去复用。
+    expect(sockets.length).toBe(2);
+    await db.$client.end();
+  });
+});
+
+describe('事务内卡死：连接被作废并让出池位（#842）', () => {
+  // 池大小 1 + 很短的建连超时：若卡死的连接没有让出池位，下一条查询会以
+  // "timeout exceeded when trying to connect" 失败；让出了则是新连接上的 "Query read timeout"。
+  const options = { max: 1, queryTimeoutMs: 150, connectTimeoutMs: 400 };
+
+  it('事务回调中的查询卡死：事务有界失败，后续查询拿到新连接', async () => {
+    const url = await startFakePostgres('stall-after-begin');
+    const db = createDb({ HYPERDRIVE: { connectionString: url } }, options);
+    const started = Date.now();
+    await expect(db.transaction(async (tx) => tx.execute(sql`SELECT 1`))).rejects.toBeTruthy();
+    expect(Date.now() - started).toBeLessThan(3_000);
+
+    const err = await db.execute(sql`SELECT 2`).then(() => null, (e: unknown) => e);
+    expect(driverMessage(err)).not.toMatch(/trying to connect|connection timeout/i);
+    expect(sockets.length).toBe(2);
+    await db.$client.end();
+  });
+
+  it('BEGIN 本身卡死（drizzle 此时不会 release）：池位同样被让出', async () => {
+    const url = await startFakePostgres('stall-on-query');
+    const db = createDb({ HYPERDRIVE: { connectionString: url } }, options);
+    await expect(db.transaction(async (tx) => tx.execute(sql`SELECT 1`))).rejects.toBeTruthy();
+
+    const err = await db.execute(sql`SELECT 2`).then(() => null, (e: unknown) => e);
+    expect(driverMessage(err)).toContain('Query read timeout');
     expect(sockets.length).toBe(2);
     await db.$client.end();
   });

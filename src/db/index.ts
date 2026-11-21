@@ -8,7 +8,7 @@
  * - 使用 AsyncLocalStorage 实现请求级别的连接复用
  */
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
+import { Client, Pool } from 'pg';
 import * as schema from './schema';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { getCloudflareEnvSync, isNodeRuntime, warnFreshBindingMissing, type CloudflareEnv } from './binding';
@@ -107,6 +107,65 @@ export const DB_QUERY_TIMEOUT_MS = 30_000;
 /** 空闲连接归还时间（毫秒），语义同旧 postgres-js 的 idle_timeout: 20，见 createDb 注释。 */
 const DB_IDLE_TIMEOUT_MS = 20_000;
 
+/** pg 客户端侧查询读超时的错误信息（pg/lib/client.js）。 */
+const QUERY_READ_TIMEOUT_MESSAGE = 'Query read timeout';
+
+function isQueryReadTimeout(err: unknown): boolean {
+  return err instanceof Error && err.message === QUERY_READ_TIMEOUT_MESSAGE;
+}
+
+/**
+ * 查询读超时后立即作废整条连接的 pg 客户端（#842）。
+ *
+ * pg 的 query_timeout 只让调用方的 promise 失败：非 pipeline 模式下超时的查询仍占着连接，
+ * 后面的查询（包括 drizzle 事务失败后发的 rollback）会排在它后面继续卡住；drizzle 事务结束时
+ * 又以「无错误」把这条连接还给池，下一位使用者拿到的是一条卡死的连接。
+ * 这里在超时发生时调用 end()：有活动查询时 pg 会直接销毁 socket，客户端标记为不可查询，
+ * 排队的查询立刻以 "Client was closed" 失败，池在归还时把它移除而不是复用。
+ * 用 end() 而不是直接销毁 socket：_ending 置位后连接断开不会再作为未捕获的 'error' 事件抛出。
+ */
+class StallGuardClient extends Client {
+  // pg 的 query 有回调 / promise 多种重载，这里只做透传，不改变参数与返回值。
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  query(...args: any[]): any {
+    const callbackIndex = args.findIndex((arg) => typeof arg === 'function');
+    if (callbackIndex >= 0) {
+      const callback = args[callbackIndex] as (err: unknown, res: unknown) => void;
+      args[callbackIndex] = (err: unknown, res: unknown) => {
+        this.abandonOnTimeout(err);
+        callback(err, res);
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (super.query as any)(...args);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = (super.query as any)(...args);
+    if (result && typeof result.then === 'function') {
+      return result.catch((err: unknown) => {
+        this.abandonOnTimeout(err);
+        throw err;
+      });
+    }
+    return result;
+  }
+
+  private abandonOnTimeout(err: unknown): void {
+    if (!isQueryReadTimeout(err)) return;
+    this.end().catch(() => {
+      // 连接本来就坏了，关闭失败无需处理
+    });
+    // 被借出的连接立刻带错归还，让池移除它、空出名额：drizzle 的事务在 BEGIN 就失败时不会调用
+    // release()，不在这里归还就会永久占住一个池位。之后调用方再 release() 是空操作（否则 pg-pool
+    // 会抛「重复归还」，盖掉真正的超时错误）。
+    const checkedOut = this as unknown as { release?: (err?: Error) => void };
+    const release = checkedOut.release;
+    if (typeof release === 'function') {
+      checkedOut.release = () => {};
+      release(err as Error);
+    }
+  }
+}
+
 /**
  * 创建数据库客户端（drizzle + node-postgres 连接池）。
  *
@@ -137,6 +196,7 @@ export function createDb(
   const max = options?.max ?? (isIntegrationTest ? 8 : 1);
 
   const pool = new Pool({
+    Client: StallGuardClient,
     connectionString,
     max,
     connectionTimeoutMillis: options?.connectTimeoutMs ?? DB_CONNECT_TIMEOUT_MS,
