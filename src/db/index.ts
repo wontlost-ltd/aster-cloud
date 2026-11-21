@@ -121,7 +121,8 @@ function isQueryReadTimeout(err: unknown): boolean {
  * 后面的查询（包括 drizzle 事务失败后发的 rollback）会排在它后面继续卡住；drizzle 事务结束时
  * 又以「无错误」把这条连接还给池，下一位使用者拿到的是一条卡死的连接。
  * 这里在超时发生时调用 end()：有活动查询时 pg 会直接销毁 socket，客户端标记为不可查询，
- * 排队的查询立刻以 "Client was closed" 失败，池在归还时把它移除而不是复用。
+ * 超时前已在 pg 内部排队的查询以连接终止错误失败；作废之后新提交的语句（如 rollback）
+ * 不再发出，直接以带原始超时为 cause 的 "Query read timeout" 失败。池会移除这条连接而不是复用。
  * 用 end() 而不是直接销毁 socket：_ending 置位后连接断开不会再作为未捕获的 'error' 事件抛出。
  */
 class StallGuardClient extends Client {
