@@ -30,6 +30,7 @@ import { parseAgentIdentity } from '@/services/policy/policy-api';
 import { hydrateExecutableVersion, resolveExecutableVersion, type ExecutableVersionCandidate } from '@/services/policy/executable-version';
 import { maybeRunParityForExecution, RUNNER_LAUNCHER_HMAC_ROLE } from '@/services/policy/runner-parity-from-execution';
 import { countOwnerPoolUsage, currentPeriodMonth, recordApiCallRecord } from '@/lib/api-quota-pool';
+import { rowsOf } from '@/db/result';
 
 /** apiCallRecords 里本端点的 endpointPath（模板，不带具体策略 id，便于按端点聚合）。 */
 const API_CALL_ENDPOINT = '/api/v1/policies/{id}/execute';
@@ -157,8 +158,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       LIMIT 1
     `);
 
-    // postgres-js returns an array directly
-    const rows = result as unknown as UnifiedQueryResult[];
+    const rows = rowsOf<UnifiedQueryResult>(result);
     const row = rows[0];
 
     // 解构查询结果

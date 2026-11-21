@@ -124,7 +124,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('草稿按作者现行词汇执
   afterAll(async () => {
     await cleanup(db);
     globalForDb.__asterLocalDevDb = previous;
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   });
 
   it('草稿：本地化输入用作者现行词汇映射为规范名；已审批版本同样可用（冻结快照）', async () => {

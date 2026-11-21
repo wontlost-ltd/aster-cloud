@@ -134,7 +134,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('审批与永久删除对快照
     await db.delete(domainTerms).where(sql`${domainTerms.id} LIKE 'dt-approve-purge-it-%'`);
     await db.delete(users).where(eq(users.id, USER));
     globalForDb.__asterLocalDevDb = previous;
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   });
 
   it('审批先提交、再永久删除：两个版本的引用都被释放，refCount 归 0', async () => {

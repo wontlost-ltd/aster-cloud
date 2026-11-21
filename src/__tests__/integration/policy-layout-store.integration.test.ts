@@ -74,7 +74,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('policy-layout store（真实 P
   afterAll(async () => {
     await cleanup();
     globalForDb.__asterLocalDevDb = previous;
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   });
 
   it('insert then load returns ok with the same layout and hash', async () => {

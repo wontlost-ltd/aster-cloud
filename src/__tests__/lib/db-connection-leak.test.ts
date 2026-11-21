@@ -34,8 +34,10 @@ import { describe, it, expect } from 'vitest';
 const SOURCE = readFileSync(join(process.cwd(), 'src/db/index.ts'), 'utf8');
 
 describe('createDb 连接泄漏防护（issue #383）', () => {
-  it('postgres() 必须设 idle_timeout——否则空闲连接永不归还', () => {
-    expect(SOURCE).toMatch(/idle_timeout:\s*\d+/);
+  it('连接池必须设空闲超时——否则空闲连接永不归还', () => {
+    // #842 起驱动是 node-postgres：对应选项为 idleTimeoutMillis（旧 postgres-js 为 idle_timeout）。
+    expect(SOURCE).toMatch(/idleTimeoutMillis:\s*DB_IDLE_TIMEOUT_MS/);
+    expect(SOURCE).toMatch(/const DB_IDLE_TIMEOUT_MS = [\d_]+;/);
   });
 
   it('本地 dev 单例必须挂在 globalThis 上——模块级 let 撑不过 HMR', () => {

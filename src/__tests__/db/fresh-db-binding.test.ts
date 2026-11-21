@@ -20,8 +20,10 @@ function setRelease(value: unknown) {
   Object.defineProperty(process, 'release', { value, configurable: true, writable: true });
 }
 
+// pg 的 Pool 只保存原始连接串，库名从连接串路径里取。
 function databaseOf(db: unknown): string {
-  return (db as { $client: { options: { database: string } } }).$client.options.database;
+  const { connectionString } = (db as { $client: { options: { connectionString: string } } }).$client.options;
+  return new URL(connectionString).pathname.slice(1);
 }
 
 const CACHED = { connectionString: 'postgres://u:p@127.0.0.1:5432/cached_db' };
@@ -50,8 +52,25 @@ describe('getFreshDb 选择关闭缓存的 Hyperdrive 绑定', () => {
   it('Workers + 有 HYPERDRIVE_FRESH：用 fresh 绑定的连接串新建 client', async () => {
     setRelease(undefined);
     currentEnv = { HYPERDRIVE: CACHED, HYPERDRIVE_FRESH: FRESH };
-    const { getFreshDb, getDb } = await import('@/db');
+    const { getFreshDb } = await import('@/db');
     expect(databaseOf(getFreshDb())).toBe('fresh_db');
+  });
+
+  // #842：换成 node-postgres 后参数化查询在默认配置上会开始被缓存；全局 db 未做陈旧性审计，
+  // 因此 Workers 上 getDb / getDbAsync / withRequestDb 也走关闭缓存的 HYPERDRIVE_FRESH。
+  it('Workers + 有 HYPERDRIVE_FRESH：全局 db 的三个入口都走关闭缓存的配置', async () => {
+    setRelease(undefined);
+    currentEnv = { HYPERDRIVE: CACHED, HYPERDRIVE_FRESH: FRESH };
+    const { getDb, getDbAsync, withRequestDb } = await import('@/db');
+    expect(databaseOf(getDb())).toBe('fresh_db');
+    expect(databaseOf(await getDbAsync())).toBe('fresh_db');
+    expect(await withRequestDb(async (db) => databaseOf(db))).toBe('fresh_db');
+  });
+
+  it('Workers + 无 HYPERDRIVE_FRESH：全局 db 回落到默认 HYPERDRIVE', async () => {
+    setRelease(undefined);
+    currentEnv = { HYPERDRIVE: CACHED };
+    const { getDb } = await import('@/db');
     expect(databaseOf(getDb())).toBe('cached_db');
   });
 

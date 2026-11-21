@@ -158,7 +158,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('保存路由写入内嵌词汇
   afterAll(async () => {
     await cleanup();
     globalForDb.__asterLocalDevDb = previous;
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   });
 
   let poemPolicy = '';

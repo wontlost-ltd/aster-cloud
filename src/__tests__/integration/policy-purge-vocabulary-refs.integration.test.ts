@@ -108,7 +108,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('策略物理删除释放词汇
     await cleanup(db);
     await db.delete(users).where(eq(users.id, OWNER));
     globalForDb.__asterLocalDevDb = previous;
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   });
 
   it('永久删除：按引用次数递减（同一快照被两个版本引用减 2），0 下限', async () => {

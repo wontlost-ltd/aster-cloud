@@ -34,7 +34,7 @@ RUN mkdir /out \
       const v = (n) => JSON.parse(fs.readFileSync(`node_modules/${n}/package.json`, "utf8")).version; \
       const tgz = fs.readdirSync("/out").find((f) => f.endsWith(".tgz")); \
       const deps = { "@aster-cloud/aster-lang-ts": `file:./${tgz}` }; \
-      for (const n of ["dotenv", "drizzle-orm", "postgres", "prom-client", "tsx"]) deps[n] = v(n); \
+      for (const n of ["dotenv", "drizzle-orm", "pg", "postgres", "prom-client", "tsx"]) deps[n] = v(n); \
       fs.writeFileSync("/out/package.json", JSON.stringify({ name: "aster-resolver-migration", private: true, type: "module", dependencies: deps }, null, 2)); \
       console.log(JSON.stringify(deps)); \
     '

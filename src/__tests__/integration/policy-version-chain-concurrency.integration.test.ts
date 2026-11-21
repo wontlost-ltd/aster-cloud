@@ -66,7 +66,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('并发建版本的哈希链（
   afterAll(async () => {
     await cleanup(db);
     globalForDb.__asterLocalDevDb = previous;
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   });
 
   it('空链：前一事务未提交时后到者等待，提交后接成 v2，链接指向 v1', async () => {

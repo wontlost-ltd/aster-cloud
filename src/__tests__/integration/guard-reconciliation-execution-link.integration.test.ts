@@ -63,7 +63,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('findExecutionForDecision（真
     await cleanup();
     await db.delete(users).where(inArray(users.id, [OWNER_A, OWNER_B]));
     globalForDb.__asterLocalDevDb = previous;
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   });
 
   it('同一 guardDecisionId 的两条执行分属本租户与他租户 → 只返回本租户那条', async () => {

@@ -27,6 +27,7 @@
  *   引擎的 ./browser 子路径只有 ESM 导出，封印所需的工具链常量要静态导入）
  */
 
+import '@/scripts/pg-require-conditions'; // 必须最先导入：见该文件说明（#842）
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import postgres from 'postgres';

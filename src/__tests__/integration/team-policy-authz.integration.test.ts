@@ -122,6 +122,8 @@ import { listUserPolicies } from '@/lib/policies';
 import { setGuardDeployDepsForTest } from '@/lib/guard-policy-deploy';
 import * as v1ExecuteRoute from '@/app/api/v1/policies/[id]/execute/route';
 
+import { rowsOf } from '@/db/result';
+import { affectedRows } from '@/lib/retention/batching';
 const P = 'it-tpa';
 const TEAM = `${P}-team`;
 /** 团队外用户 outsider 自己的团队：用来接收分享 */
@@ -396,7 +398,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('团队策略授权矩阵（真
     setGuardDeployDepsForTest(undefined);
     await cleanup(db);
     globalForDb.__asterLocalDevDb = previous;
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   }, 120_000);
 
   // ── 查看类：所有团队成员可看他人创建的团队策略；团队外用户与被移除的创建者 404（#669 #670）──
@@ -1165,9 +1167,9 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('团队策略授权矩阵（真
       readFileSync(path.resolve(__dirname, '../../../docs/runbooks/sql', name), 'utf8');
     type Misplaced = { policyId: string; teamId: string; groupId: string; groupTeamId: string | null };
     const findMisplacedTeamPolicies = async (d: Db) =>
-      [...(await d.execute(sql.raw(runbookSql('policy-group-misplaced-check.sql'))))] as unknown as Misplaced[];
+      rowsOf<Misplaced>(await d.execute(sql.raw(runbookSql('policy-group-misplaced-check.sql'))));
     const ungroupMisplacedTeamPolicies = async (d: Db) =>
-      Number((await d.execute(sql.raw(runbookSql('policy-group-misplaced-cleanup.sql'))) as unknown as { count: number }).count);
+      affectedRows(await d.execute(sql.raw(runbookSql('policy-group-misplaced-cleanup.sql'))));
 
     it('只列出团队策略放在私有分组或他队分组的行；清理后移到未分组且幂等', async () => {
       await db.insert(teams).values({ id: TEAM2, name: 'Other', slug: TEAM2, ownerId: U.outsider });

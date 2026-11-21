@@ -20,6 +20,7 @@ import { db, regressionReports, regressionDriftApprovals, regressionCases } from
 import { createDriftApproval } from '@/services/policy/rule-regression-runner';
 import { deleteAppendOnlyRows, setupTestDb, teardownTestDb } from './setup-postgres';
 
+import { rowsOf } from '@/db/result';
 const POL = 'pol-ig-1';
 const PVR = 'pv-ig-1';
 const REP = 'rep-ig-1';
@@ -212,7 +213,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('P0-A Item 3 INSERT guardsï¼ˆçœ
       SELECT conname, convalidated FROM pg_constraint
       WHERE conname = 'RegressionDriftApproval_reportId_fkey' AND contype = 'f'
     `);
-    const arr = rows as unknown as Array<{ conname: string; convalidated: boolean }>;
+    const arr = rowsOf<{ conname: string; convalidated: boolean }>(rows);
     expect(arr).toHaveLength(1);
     expect(arr[0].convalidated).toBe(true);
   });

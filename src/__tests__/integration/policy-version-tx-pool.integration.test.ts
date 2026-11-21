@@ -92,11 +92,11 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('策略保存事务（连接池
 
   afterAll(async () => {
     // 挂死时池内连接仍被占用，先强制关闭再用独立连接清理。
-    await pool.$client.end({ timeout: 1 });
+    await pool.$client.end();
     globalForDb.__asterLocalDevDb = previous;
     const janitor = createDb(undefined, { max: 1 });
     await cleanup(janitor);
-    await janitor.$client.end({ timeout: 1 });
+    await janitor.$client.end();
   });
 
   it('POST 建策略：事务内建版本与安全事件只用事务连接', async () => {

@@ -16,6 +16,7 @@ import { auth } from '@/auth';
 import { db } from '@/lib/prisma';
 import { sql } from 'drizzle-orm';
 import { eraseAiWorkspaceData } from '@/lib/ai-workspace-gdpr';
+import { rowsOf } from '@/db/result';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -40,7 +41,7 @@ export async function DELETE() {
     RETURNING id
   `);
 
-  const affected = (result as unknown as Array<unknown>).length;
+  const affected = rowsOf<unknown>(result).length;
 
   console.warn(`[gdpr-erasure] user ${userId} requested data deletion, ${affected} records cleared`);
 

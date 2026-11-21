@@ -3,16 +3,18 @@
  */
 
 /**
- * 取 postgres-js 结果上的受影响行数（RowList.count）。
+ * 取 delete / update 结果上的受影响行数：node-postgres 的 `rowCount`（#842 起的驱动），
+ * 兼容 postgres-js 的 `RowList.count`。
  *
  * <p>★不用 `.returning()` 计数：那会把每一条被删 / 被改的行 id 回传进 Worker 内存，
- * 积压上百万行时足以 OOM（#481）。取不到 count 时直接报错，不当成 0——
+ * 积压上百万行时足以 OOM（#481）。取不到计数时直接报错，不当成 0——
  * 当成 0 会让循环以为清完了。
  */
 export function affectedRows(result: unknown): number {
-  const count = (result as { count?: unknown } | null)?.count;
+  const r = result as { rowCount?: unknown; count?: unknown } | null;
+  const count = typeof r?.rowCount === 'number' ? r.rowCount : r?.count;
   if (typeof count !== 'number') {
-    throw new Error('数据库驱动未返回受影响行数（RowList.count）');
+    throw new Error('数据库驱动未返回受影响行数（rowCount / RowList.count）');
   }
   return count;
 }

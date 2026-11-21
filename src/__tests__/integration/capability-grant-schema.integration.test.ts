@@ -33,8 +33,8 @@ async function rejection(p: Promise<unknown>): Promise<string> {
   try {
     await p;
   } catch (e) {
-    const err = e as { message?: string; cause?: { message?: string; constraint_name?: string } };
-    return `${err.message ?? ''} ${err.cause?.message ?? ''} ${err.cause?.constraint_name ?? ''}`;
+    const err = e as { message?: string; cause?: { message?: string; constraint?: string } };
+    return `${err.message ?? ''} ${err.cause?.message ?? ''} ${err.cause?.constraint ?? ''}`;
   }
   throw new Error('期望写入被拒绝，但成功了');
 }
