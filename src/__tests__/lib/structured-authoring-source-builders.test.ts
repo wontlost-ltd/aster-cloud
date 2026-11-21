@@ -1,6 +1,7 @@
 // 模型标签页的源码生成（ADR 0058 §8.3）：表单经 lexicon 生成本地化源码，编译成功且大纲读回同名声明。
 import { describe, it, expect } from 'vitest';
-import { compile, EN_US, DE_DE, ZH_CN, type Lexicon } from '@aster-cloud/aster-lang-ts/browser';
+import { compile, EN_US, DE_DE, ZH_CN, HI_IN, type Lexicon } from '@aster-cloud/aster-lang-ts/browser';
+import { TS_VERSION } from '@aster-cloud/aster-lang-ts/package-check';
 import { SemanticTokenKind } from '@aster-cloud/aster-lang-ts/lexicons';
 import {
   buildFieldClause,
@@ -36,6 +37,7 @@ function cases(): Case[] {
     { lexicon: DE_DE, struct: 'Größe', fields: ['höhe', 'übermaß'], alias: 'Maß' },
     { lexicon: ZH_CN, struct: '申请人', fields: ['姓名', '年龄'], alias: '分数' },
     { lexicon: ZH_CN, struct: '贷款申请', fields: ['月收入', '信用评分'], alias: '风险等级' },
+    { lexicon: HI_IN, struct: 'ग्राहक', fields: ['नाम', 'उम्र'], alias: 'अंक' },
   ];
 }
 
@@ -84,7 +86,7 @@ describe('source-builders 关键词取自 lexicon', () => {
 
   it('de-DE 字段子句与类型别名', () => {
     expect(buildFieldClause(DE_DE, { name: 'alter', type: 'Ganzzahl' })).toBe('alter als Ganzzahl');
-    expect(buildTypeAliasSource(DE_DE, { name: 'Punktzahl', target: 'Ganzzahl' })).toBe('Type Punktzahl als Ganzzahl.');
+    expect(buildTypeAliasSource(DE_DE, { name: 'Punktzahl', target: 'Ganzzahl' })).toBe('Typ Punktzahl als Ganzzahl.');
   });
 
   it('en-US 结构体', () => {
@@ -100,4 +102,47 @@ describe('source-builders 关键词取自 lexicon', () => {
     expect(builtinTypeNames(DE_DE)).toEqual(['Text', 'Ganzzahl', 'Dezimal', 'Boolesch']);
     expect(builtinTypeNames(ZH_CN)).toEqual(['文本', '整数', '小数', '布尔']);
   });
+});
+
+/**
+ * ADR 0058 修订 2：类型别名引导词取 lexicon 的 TYPE_ALIAS（aster-lang-ts 3.6.0 起），四种语言各自的拼写；
+ * 英文 `Type` 在所有语言里仍被接受（T2），所以存量源码无需迁移。
+ */
+describe('类型别名引导词本地化（ADR 0058 修订 2）', () => {
+  const LOCALES = [
+    { lexicon: EN_US, keyword: 'Type', name: 'Score', target: 'Int', expected: 'Type Score as Int.' },
+    { lexicon: ZH_CN, keyword: '类型', name: '分数', target: '整数', expected: '类型 分数 作为 整数。' },
+    { lexicon: DE_DE, keyword: 'Typ', name: 'Punktzahl', target: 'Ganzzahl', expected: 'Typ Punktzahl als Ganzzahl.' },
+    { lexicon: HI_IN, keyword: 'प्रकार', name: 'अंक', target: 'पूर्णांक', expected: 'प्रकार अंक रूप में पूर्णांक।' },
+  ];
+
+  it('随包 aster-lang-ts 为 3.6.0', () => {
+    expect(TS_VERSION).toBe('3.6.0');
+  });
+
+  for (const c of LOCALES) {
+    it(`${c.lexicon.id}：生成「${c.keyword}」并以 ts 3.6.0 编译、大纲读回`, () => {
+      expect(c.lexicon.keywords[SemanticTokenKind.TYPE_ALIAS]).toBe(c.keyword);
+      const alias = buildTypeAliasSource(c.lexicon, { name: c.name, target: c.target });
+      expect(alias).toBe(c.expected);
+
+      const source = moduleSource(c.lexicon, [alias]);
+      const result = compile(source, { lexicon: c.lexicon });
+      expect(result.parseErrors ?? []).toEqual([]);
+      expect(result.success).toBe(true);
+      expect(buildModelOutline(source, c.lexicon)!.typeAliases.map((a) => [a.name, a.target])).toEqual([[c.name, c.target]]);
+    });
+
+    it(`${c.lexicon.id}：存量的英文「Type」照常编译，大纲与本地化写法相同（无需迁移）`, () => {
+      const localized = moduleSource(c.lexicon, [buildTypeAliasSource(c.lexicon, { name: c.name, target: c.target })]);
+      const legacy = localized.replace(c.keyword, 'Type');
+      expect(legacy).toContain(`Type ${c.name}`);
+
+      const result = compile(legacy, { lexicon: c.lexicon });
+      expect(result.parseErrors ?? []).toEqual([]);
+      expect(result.success).toBe(true);
+      const aliases = (src: string) => buildModelOutline(src, c.lexicon)!.typeAliases.map((a) => [a.name, a.target]);
+      expect(aliases(legacy)).toEqual(aliases(localized));
+    });
+  }
 });

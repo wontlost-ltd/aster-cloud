@@ -1,11 +1,11 @@
 /**
  * 模型标签页表单 → 本地化 CNL 源码（ADR 0058 §8.3）。
  *
- * 关键词一律取自 lexicon（`Define` / `with` / `and` / 字段与别名共用的 `as` / 语句结束符），
- * 作者不手写关键词。例外是类型别名的引导词：3.0.0 的 lexicon 没有对应的 SemanticTokenKind，
- * 解析器在所有语言里都按规范关键词 `KW.TYPE` 识别它，故取包内规范拼写（首字母大写）。
+ * 关键词一律取自 lexicon（`Define` / `with` / `and` / 类型别名引导词 / 字段与别名共用的 `as` / 语句结束符），
+ * 作者不手写关键词。类型别名引导词是 ADR 0058 修订 2 的 `TYPE_ALIAS`（aster-lang-ts ≥ 3.6.0）：
+ * en `Type`、zh `类型`、de `Typ`、hi `प्रकार`。英文 `Type` 在所有语言里仍被接受，存量源码无需迁移。
  */
-import { KW, type Lexicon } from '@aster-cloud/aster-lang-ts/browser';
+import type { Lexicon } from '@aster-cloud/aster-lang-ts/browser';
 import { SemanticTokenKind } from '@/lib/aster-lexicon';
 
 export interface FieldInput {
@@ -48,8 +48,8 @@ export function buildStructSource(lexicon: Lexicon, input: { name: string; field
   return `${k[SemanticTokenKind.TYPE_DEF]} ${input.name.trim()} ${k[SemanticTokenKind.TYPE_WITH]} ${fields}${lexicon.punctuation.statementEnd}`;
 }
 
-/** 类型别名声明：`Type Name as Target.` */
+/** 类型别名声明：`Type Name as Target.`（zh `类型 名 作为 目标。`） */
 export function buildTypeAliasSource(lexicon: Lexicon, input: { name: string; target: string }): string {
-  const lead = KW.TYPE.charAt(0).toUpperCase() + KW.TYPE.slice(1);
-  return `${lead} ${input.name.trim()} ${lexicon.keywords[SemanticTokenKind.IMPORT_ALIAS]} ${input.target.trim()}${lexicon.punctuation.statementEnd}`;
+  const k = lexicon.keywords;
+  return `${k[SemanticTokenKind.TYPE_ALIAS]} ${input.name.trim()} ${k[SemanticTokenKind.IMPORT_ALIAS]} ${input.target.trim()}${lexicon.punctuation.statementEnd}`;
 }

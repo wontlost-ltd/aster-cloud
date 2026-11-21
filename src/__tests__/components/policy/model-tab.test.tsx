@@ -178,7 +178,8 @@ describe('ModelTab 表单', () => {
     const [, edits] = editor.executeEdits.mock.calls[0] as unknown as [string, Array<{ range: unknown; text: string }>];
     // 文档以单个换行结尾：补一个换行隔出空行
     expect(edits[0].range).toEqual({ startLineNumber: 4, startColumn: 1, endLineNumber: 4, endColumn: 1 });
-    expect(edits[0].text).toBe('\nType 客户 作为 人员。\n');
+    // 类型别名引导词取 lexicon 的 TYPE_ALIAS（ADR 0058 修订 2）
+    expect(edits[0].text).toBe('\n类型 客户 作为 人员。\n');
   });
 
   it('名字为空时插入按钮不可用', () => {
@@ -231,7 +232,7 @@ describe('ModelTab 名字校验', () => {
   it('与已有结构体 / 别名同名（忽略大小写）被拒', () => {
     renderTab(fakeEditor(SOURCE), SOURCE);
     const form = openStruct();
-    fireEvent.change(within(form).getByLabelText(M.structName), { target: { value: 'person' } });
+    fireEvent.change(within(form).getByLabelText(M.structName), { target: { value: 'PERSON' } });
     fireEvent.change(within(form).getAllByLabelText(M.fieldName)[0], { target: { value: 'x' } });
     expect(insertButton(form).disabled).toBe(true);
     expect(within(form).getByRole('alert').textContent).toBe(M.duplicateName);
@@ -421,11 +422,11 @@ describe('ModelTab 名字往返校验（四种语言）', () => {
 });
 
 describe('ModelTab 重名口径与编译器一致', () => {
-  it('Unicode 大小写折叠（foldKey）：ſcore 与已有 Score 视为重名（toLocaleLowerCase 看不出）', () => {
+  it('Unicode 大小写折叠（foldKey）：Perſon 与已有 Person 视为重名（toLocaleLowerCase 看不出）', () => {
     renderTab(fakeEditor(SOURCE), SOURCE);
     fireEvent.click(screen.getByRole('button', { name: M.newTypeAlias }));
     const form = screen.getByRole('form', { name: M.newTypeAlias });
-    fireEvent.change(within(form).getByLabelText(M.aliasName), { target: { value: '\u017fcore' } });
+    fireEvent.change(within(form).getByLabelText(M.aliasName), { target: { value: 'Per\u017fon' } });
     expect((within(form).getByRole('button', { name: M.insert }) as HTMLButtonElement).disabled).toBe(true);
     expect(within(form).getByRole('alert').textContent).toBe(M.duplicateName);
   });
@@ -434,17 +435,27 @@ describe('ModelTab 重名口径与编译器一致', () => {
     renderTab(fakeEditor(SOURCE), SOURCE);
     fireEvent.click(screen.getByRole('button', { name: M.newTypeAlias }));
     const form = screen.getByRole('form', { name: M.newTypeAlias });
-    fireEvent.change(within(form).getByLabelText(M.aliasName), { target: { value: 'l' } });
+    fireEvent.change(within(form).getByLabelText(M.aliasName), { target: { value: 'L' } });
     expect((within(form).getByRole('button', { name: M.insert }) as HTMLButtonElement).disabled).toBe(true);
     expect(within(form).getByRole('alert').textContent).toBe(M.duplicateName);
+  });
+
+  it('en-US 小写起首的类型名作类型引用报 E055（aster-lang-ts 3.6.0），往返失败、不能插入', () => {
+    renderTab(fakeEditor(SOURCE), SOURCE);
+    fireEvent.click(screen.getByRole('button', { name: M.newTypeAlias }));
+    const form = screen.getByRole('form', { name: M.newTypeAlias });
+    fireEvent.change(within(form).getByLabelText(M.aliasName), { target: { value: 'rating' } });
+    expect((within(form).getByRole('button', { name: M.insert }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(form).getByRole('alert').textContent).toBe(M.reservedName);
   });
 });
 
 describe('ModelTab 重名口径（四种语言）：foldKey 折叠 + 导入别名', () => {
   // [locale, lexicon, 导入别名, 已有结构体名, 视为重名的新类型名…]
   it.each([
-    ['en-US', EN_US, 'L', 'Café', ['l', 'CAF\u00c9']],
-    ['de-DE', DE_DE, 'Bib', 'Kunde', ['bib', 'KUNDE']],
+    // 拉丁语言的候选名大写起首：小写起首的类型名在 ts 3.6.0 作类型引用报 E055，先于重名判定被拒
+    ['en-US', EN_US, 'Lib', 'Café', ['LIB', 'CAF\u00c9']],
+    ['de-DE', DE_DE, 'Bib', 'Kunde', ['BIB', 'KUNDE']],
     ['zh-CN', ZH_CN, '库', '客户', ['库', '客户']],
     ['hi-IN', HI_IN, 'पुस्तक', 'क़ीमत', ['पुस्तक', 'क़ीमत']],
   ] as const)('%s', (_, lexicon, importAlias, struct, duplicates) => {
