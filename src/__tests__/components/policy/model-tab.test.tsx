@@ -361,7 +361,6 @@ describe('ModelTab 名字往返校验（四种语言）', () => {
   it.each([
     ['de-DE', DE_DE, ['der', 'die'], 'Kunde', 'name'],
     ['zh-CN', ZH_CN, ['定义', '文本'], '客户', '姓名'],
-    ['en-US', EN_US, ['with'], 'Applicant', 'name'],
   ] as const)('%s：不能作类型引用的结构体名被拒', (_, lexicon, reserved, ok, field) => {
     renderTab(fakeEditor(''), '', lexicon);
     const form = openStruct();
@@ -395,6 +394,62 @@ describe('ModelTab 名字往返校验（四种语言）', () => {
       expect(within(form).getByRole('alert').textContent, name).toBe(M.reservedName);
     }
     typeInto(form, M.aliasName, 'Punktzahl');
+    expect(insertButton(form).disabled).toBe(false);
+  });
+
+  it.each([
+    ['en-US', EN_US, 'applicant', 'Applicant'],
+    ['de-DE', DE_DE, 'kunde', 'Kunde'],
+    ['de-DE（变音符）', DE_DE, 'ärger', 'Ärger'],
+    ['zh-CN（拉丁名）', ZH_CN, 'applicant', 'Applicant'],
+    ['hi-IN（拉丁名）', HI_IN, 'applicant', 'Applicant'],
+  ] as const)('%s：小写起首的结构体名提示大小写而非保留词，改成大写后可提交', (_, lexicon, lower, upper) => {
+    renderTab(fakeEditor(''), '', lexicon);
+    const form = openStruct();
+    typeInto(form, M.fieldName, lexicon === ZH_CN ? '姓名' : lexicon === HI_IN ? 'नाम' : 'name');
+    typeInto(form, M.structName, lower);
+    expect(insertButton(form).disabled).toBe(true);
+    expect(within(form).getByRole('alert').textContent).toBe(M.lowercaseType);
+    typeInto(form, M.structName, upper);
+    expect(insertButton(form).disabled).toBe(false);
+    expect(within(form).queryByRole('alert')).toBeNull();
+  });
+
+  it.each([
+    ['en-US', EN_US, 'score', 'Score'],
+    ['de-DE', DE_DE, 'punktzahl', 'Punktzahl'],
+  ] as const)('%s：小写起首的类型别名名提示大小写', (_, lexicon, lower, upper) => {
+    renderTab(fakeEditor(''), '', lexicon);
+    fireEvent.click(screen.getByRole('button', { name: M.newTypeAlias }));
+    const form = screen.getByRole('form', { name: M.newTypeAlias });
+    typeInto(form, M.aliasName, lower);
+    expect(insertButton(form).disabled).toBe(true);
+    expect(within(form).getByRole('alert').textContent).toBe(M.lowercaseType);
+    typeInto(form, M.aliasName, upper);
+    expect(insertButton(form).disabled).toBe(false);
+  });
+
+  it('de-DE：小写冠词作类型名仍报保留词（大写后同样被拒）', () => {
+    renderTab(fakeEditor(''), '', DE_DE);
+    const form = openStruct();
+    typeInto(form, M.fieldName, 'name');
+    typeInto(form, M.structName, 'der');
+    expect(within(form).getByRole('alert').textContent).toBe(M.reservedName);
+  });
+
+  it('非拉丁字母的小写名（希腊字母）按「不是单个词」处理，不提示大小写', () => {
+    renderTab(fakeEditor(''), '', EN_US);
+    const form = openStruct();
+    typeInto(form, M.fieldName, 'name');
+    typeInto(form, M.structName, '\u03c3');
+    expect(within(form).getByRole('alert').textContent).toBe(M.invalidName);
+  });
+
+  it('字段名不受类型名大小写规则影响：小写字段名可提交', () => {
+    renderTab(fakeEditor(''), '', EN_US);
+    const form = openStruct();
+    typeInto(form, M.structName, 'Applicant');
+    typeInto(form, M.fieldName, 'income');
     expect(insertButton(form).disabled).toBe(false);
   });
 
@@ -446,7 +501,7 @@ describe('ModelTab 重名口径与编译器一致', () => {
     const form = screen.getByRole('form', { name: M.newTypeAlias });
     fireEvent.change(within(form).getByLabelText(M.aliasName), { target: { value: 'rating' } });
     expect((within(form).getByRole('button', { name: M.insert }) as HTMLButtonElement).disabled).toBe(true);
-    expect(within(form).getByRole('alert').textContent).toBe(M.reservedName);
+    expect(within(form).getByRole('alert').textContent).toBe(M.lowercaseType);
   });
 });
 

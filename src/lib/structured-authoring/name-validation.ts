@@ -14,7 +14,8 @@
  * 还须能在字段类型与别名目标位置被引用（德语 `der` 作结构体名能声明，作类型引用时会被当冠词删掉）。
  * 字段类型与别名目标一律用本地化 Text：它们来自下拉，不是作者输入。
  *
- * 结构体 / 类型别名名：解析器接受 IDENT 与 TYPE_IDENT（`Define person with …` 亦可）。
+ * 结构体 / 类型别名名：词法预检接受 IDENT 与 TYPE_IDENT，但小写字母起首的名字（`person`）作类型引用时被
+ * aster-lang-ts ≥ 3.6.0 报 E055，往返校验会拒绝；界面据此提示「类型名须以大写字母开头」，而非「保留词」。
  * 字段名：解析器只接受 IDENT（拉丁语言里大写起首会被词法器归为 TYPE_IDENT）。
  */
 import { canonicalize, foldKey, lex, TokenKind, type Lexicon } from '@aster-cloud/aster-lang-ts/browser';
