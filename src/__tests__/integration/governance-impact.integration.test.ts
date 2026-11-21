@@ -160,7 +160,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('控制项影响分析（真实
   afterAll(async () => {
     await cleanup(db);
     globalForDb.__asterLocalDevDb = previous;
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   }, 120_000);
 
   it('团队 owner：列出团队策略 + 本人个人策略；回收站、归档版本、他人个人策略不出现', async () => {

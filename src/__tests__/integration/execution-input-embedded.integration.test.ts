@@ -159,7 +159,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('版本内嵌词汇的读路径
   afterAll(async () => {
     await cleanup(db);
     globalForDb.__asterLocalDevDb = previous;
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   });
 
   it('the seal of the poem version equals the envelope.literal-macro vector scopesJson', async () => {

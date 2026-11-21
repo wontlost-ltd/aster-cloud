@@ -4,6 +4,7 @@
  * 由发布 Job 在 aster-api 迁移端点之后调用，须在 rollout 窗口内执行（迁移 0061 先于代码上线）。
  * 用法、环境变量、退出码与已知限制见下方 USAGE（`--help` 打印）。
  */
+import '@/scripts/pg-require-conditions'; // 必须最先导入：见该文件说明（#842）
 import 'dotenv/config';
 import { writeFile } from 'node:fs/promises';
 import { getDb } from '@/lib/prisma';
@@ -89,7 +90,7 @@ async function main(): Promise<number> {
     `[resolver-migration] processed=${report.processed} succeeded=${report.succeeded} failed=${report.failed} ` +
       `integrity=${report.triage.integrityMismatch.length} infrastructure=${report.triage.infrastructure.length}`,
   );
-  await getDb().$client.end({ timeout: 5 });
+  await getDb().$client.end();
   return report.triage.infrastructure.length > 0 ? 1 : 0;
 }
 

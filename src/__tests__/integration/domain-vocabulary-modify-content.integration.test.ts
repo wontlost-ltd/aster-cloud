@@ -64,7 +64,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('编辑词条的别名与描述
   afterAll(async () => {
     await cleanup(db);
     globalForDb.__asterLocalDevDb = previous;
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   });
 
   it('两个租户的同一词条起初共享全局词条', async () => {

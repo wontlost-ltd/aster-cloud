@@ -16,6 +16,7 @@ import { db } from '@/lib/prisma';
 import { sql, type SQL } from 'drizzle-orm';
 import { errorEnvelope, safeErrorCode } from '@/lib/api/error-envelope';
 import { exportAiWorkspaceData } from '@/lib/ai-workspace-gdpr';
+import { rowsOf } from '@/db/result';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -49,7 +50,7 @@ async function loadRecords(userId: string, secret: string | null) {
     WHERE "userId" = ${userId}
     ORDER BY "createdAt" DESC
   `);
-  return result as unknown as Array<Record<string, unknown>>;
+  return rowsOf<Record<string, unknown>>(result);
 }
 
 export async function GET() {

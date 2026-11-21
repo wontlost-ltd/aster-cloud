@@ -13,6 +13,7 @@ import { db } from '@/lib/prisma';
 import { sql } from 'drizzle-orm';
 import { BILLABLE_STATUS_SQL } from '@/lib/ai-quota';
 import { getSetting, setSetting } from '@/lib/platform-settings';
+import { firstRowOf, rowsOf } from '@/db/result';
 
 /**
  * 阈值（生产环境通过 env 覆盖，留 escape hatch）
@@ -69,8 +70,7 @@ export async function todayPlatformCostCents(): Promise<number> {
       AND "usedByok" = false
       AND status IN (${BILLABLE_STATUS_SQL})
   `);
-  const rows = result as unknown as Array<{ cents: number }>;
-  return rows[0]?.cents ?? 0;
+  return firstRowOf<{ cents: number }>(result)?.cents ?? 0;
 }
 
 /**
@@ -112,8 +112,7 @@ export async function applyCircuit(
       AND ("aiBannedUntil" IS NULL OR "aiBannedUntil" < ${endOfDayIso}::timestamp)
     RETURNING id
   `);
-  const rows = result as unknown as Array<{ id: string }>;
-  return { affected: rows.length };
+  return { affected: rowsOf<{ id: string }>(result).length };
 }
 
 /**
@@ -129,8 +128,7 @@ export async function releaseCircuit(adminId: string): Promise<{ released: numbe
     WHERE "aiBanReason" LIKE ${CIRCUIT_BAN_REASON_PREFIX + '%'}
     RETURNING id
   `);
-  const rows = result as unknown as Array<{ id: string }>;
-  return { released: rows.length };
+  return { released: rowsOf<{ id: string }>(result).length };
 }
 
 /** 熔断 ban 的原因文本：前缀 + 档位（+ 手动标记）。 */
@@ -224,7 +222,7 @@ export async function getCircuitStatus(now: Date = new Date()): Promise<CircuitS
       GROUP BY "aiBanReason"
     `),
   ]);
-  const rows = banRows as unknown as Array<{ reason: string | null; users: number }>;
+  const rows = rowsOf<{ reason: string | null; users: number }>(banRows);
   const costState = evaluateCircuit(todayCents);
   const fromBans = stateFromBanReasons(rows.map((r) => r.reason));
   // 手动熔断即使此刻没有命中任何用户（例如还没有 Free 用户），也是生效中的熔断。

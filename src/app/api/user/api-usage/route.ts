@@ -5,6 +5,7 @@ import { db, users } from '@/lib/prisma';
 import { eq, gte, sql } from 'drizzle-orm';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
 import { countOwnerPoolUsage, currentPeriodMonth } from '@/lib/api-quota-pool';
+import { firstRowOf, rowsOf } from '@/db/result';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -73,8 +74,7 @@ export async function GET() {
         AND "createdAt" >= ${sevenDaysAgo.toISOString()}::timestamp
         AND status = 'success'
     `);
-    latRow =
-      (latencyResult as unknown as Array<typeof latRow>)[0] ?? latRow;
+    latRow = firstRowOf<typeof latRow>(latencyResult) ?? latRow;
 
     const trendResult = await db.execute(sql`
       SELECT
@@ -87,7 +87,7 @@ export async function GET() {
       GROUP BY 1
       ORDER BY 1
     `);
-    trend = trendResult as unknown as Array<{ day: string; calls: number }>;
+    trend = rowsOf<{ day: string; calls: number }>(trendResult);
   } catch (err) {
     if (isUndefinedTable(err)) {
       // 迁移未应用，dashboard 仍可用：返回 0 调用 + degraded 标记。

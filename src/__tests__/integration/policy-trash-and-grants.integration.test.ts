@@ -140,7 +140,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('回收站与结构词授权（
   afterAll(async () => {
     await cleanup(db);
     globalForDb.__asterLocalDevDb = previous;
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   });
 
   describe('#603 回收站', () => {

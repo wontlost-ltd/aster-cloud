@@ -25,6 +25,7 @@
  * 之后：BASE_API=<aster-api> DEMO_API_KEY=<打印的 key> DEMO_TENANT_ID=agent-guard-demo pnpm demo:agent-guard
  */
 
+import '@/scripts/pg-require-conditions'; // 必须最先导入：见该文件说明（#842）
 import 'dotenv/config';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

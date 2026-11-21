@@ -5,6 +5,7 @@
 
 import { db, aiKeyBindings } from '@/lib/prisma';
 import { eq, and, asc, sql } from 'drizzle-orm';
+import { firstRowOf, rowsOf } from '@/db/result';
 
 function encryptionSecret(): string {
   const s = process.env.AI_KEY_ENCRYPTION_SECRET;
@@ -110,8 +111,8 @@ export async function reorderBYOKKeys(
     WHERE "userId" = ${userId} AND "provider" = ${provider} AND "id" IN (${idList})
     RETURNING "id"
   `);
-  // execute 返回受影响行（RETURNING）——稳妥取 length（不同封装形态兜底）。
-  return Array.isArray(res) ? res.length : (res as { count?: number }).count ?? 0;
+  // RETURNING 回来的行数即实际改到的行数。
+  return rowsOf<{ id: string }>(res).length;
 }
 
 /**
@@ -245,8 +246,7 @@ export async function getDecryptedBYOKKeyById(
       AND "active" = true
     LIMIT 1
   `);
-  const rows = result as unknown as Array<{ key: string | null }>;
-  return rows[0]?.key ?? null;
+  return firstRowOf<{ key: string | null }>(result)?.key ?? null;
 }
 
 /** 停用 BYOK（临时禁用而不删除；保留供内部使用/未来 UI）。 */

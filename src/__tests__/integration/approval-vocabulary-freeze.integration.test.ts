@@ -157,7 +157,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('审批冻结词汇：与审批
   afterAll(async () => {
     await cleanup(db);
     globalForDb.__asterLocalDevDb = previous;
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   });
 
   it('成功审批：创建快照（refCount=1），引用与 APPROVED 状态一并落库', async () => {

@@ -34,6 +34,7 @@ import { eq, and, isNull, sql } from 'drizzle-orm';
 
 import { db } from '@/lib/prisma';
 import { totpCredentials, totpRecoveryCodes } from '@/db/schema';
+import { firstRowOf } from '@/db/result';
 
 /**
  * 允许的时间漂移容忍（**秒**，前后各 30 秒 = 各一个时间窗）。
@@ -212,11 +213,11 @@ export async function startEnrollment(
 async function decryptSecret(userId: string): Promise<string | null> {
   const key = encryptionSecret();
   try {
-    const rows = (await db.execute(sql`
+    const result = await db.execute(sql`
       SELECT pgp_sym_decrypt("encryptedSecret"::bytea, ${key}::text) AS secret
       FROM "TotpCredential" WHERE "userId" = ${userId} LIMIT 1
-    `)) as unknown as Array<{ secret: string }>;
-    return rows[0]?.secret ?? null;
+    `);
+    return firstRowOf<{ secret: string }>(result)?.secret ?? null;
   } catch (_err) {
     // ★_err **刻意不使用**：它带着完整 SQL 与绑定参数（含主加密密钥）。
     // ★必须吞掉原始错误（独立审查发现的 High）。

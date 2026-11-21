@@ -124,7 +124,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('Guard 策略部署（真实 Po
     await cleanup();
     await db.delete(users).where(eq(users.id, OWNER));
     globalForDb.__asterLocalDevDb = previous;
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   });
 
   it('setDefaultTriggersDeploy：载荷含源码、入口函数、Module 头、sha256；成功后才切默认版本', async () => {

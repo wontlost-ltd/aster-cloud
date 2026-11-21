@@ -11,6 +11,7 @@ import { eq, like, sql } from 'drizzle-orm';
 import { createDb } from '@/db';
 import { policyVersions } from '@/lib/prisma';
 
+import { rowsOf } from '@/db/result';
 const PREFIX = 'it-pvembvocab-';
 const POLICY = `${PREFIX}policy`;
 const CONSTRAINT = 'PolicyVersion_embeddedVocabulary_size_check';
@@ -47,9 +48,10 @@ async function rejection(p: Promise<unknown>): Promise<{ constraint?: string; co
   try {
     await p;
   } catch (e) {
-    const err = e as { message?: string; cause?: { message?: string; constraint_name?: string; code?: string } };
+    // node-postgres 的 DatabaseError 用 constraint 字段（postgres-js 叫 constraint_name）。
+    const err = e as { message?: string; cause?: { message?: string; constraint?: string; code?: string } };
     return {
-      constraint: err.cause?.constraint_name,
+      constraint: err.cause?.constraint,
       code: err.cause?.code,
       text: `${err.message ?? ''} ${err.cause?.message ?? ''}`,
     };
@@ -75,7 +77,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('PolicyVersion.embeddedVocabula
   beforeEach(cleanup);
   afterAll(async () => {
     await cleanup();
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   });
 
   it('column is nullable text with no default', async () => {
@@ -84,7 +86,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('PolicyVersion.embeddedVocabula
       FROM information_schema.columns
       WHERE table_schema = 'public' AND table_name = 'PolicyVersion' AND column_name = 'embeddedVocabulary'
     `);
-    expect([...rows]).toEqual([{ data_type: 'text', is_nullable: 'YES', column_default: null }]);
+    expect(rowsOf(rows)).toEqual([{ data_type: 'text', is_nullable: 'YES', column_default: null }]);
   });
 
   it('constraint definition is exactly the size bound', async () => {
@@ -93,7 +95,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('PolicyVersion.embeddedVocabula
       FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid
       WHERE c.relname = 'PolicyVersion' AND co.conname = ${CONSTRAINT} AND co.contype = 'c'
     `);
-    expect([...rows].map((r) => r.def)).toEqual([
+    expect(rowsOf<{ def: string }>(rows).map((r) => r.def)).toEqual([
       'CHECK ((("embeddedVocabulary" IS NULL) OR (octet_length("embeddedVocabulary") <= 8192)))',
     ]);
   });
