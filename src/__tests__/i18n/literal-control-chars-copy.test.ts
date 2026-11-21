@@ -45,6 +45,9 @@ describe('字面量规则文案提到控制字符（en/zh/de/hi）', () => {
     const m = messagesOf(loc);
     expect(m.domainVocabularies.errors.validation.invalidLiteral).toContain(CONTROL_WORD[loc]);
     expect(m.policyEditor.embeddedTerms.errors.embedded_vocabulary_invalid).toContain(CONTROL_WORD[loc]);
+    // 引擎拒绝 U+007F，两条文案都要点明 DEL
+    expect(m.domainVocabularies.errors.validation.invalidLiteral).toContain('DEL');
+    expect(m.policyEditor.embeddedTerms.errors.embedded_vocabulary_invalid).toContain('DEL');
   });
 });
 

@@ -437,6 +437,14 @@ describe('ModelTab 名字往返校验（四种语言）', () => {
     expect(within(form).getByRole('alert').textContent).toBe(M.reservedName);
   });
 
+  it('非拉丁字母的小写名（希腊字母）按「不是单个词」处理，不提示大小写', () => {
+    renderTab(fakeEditor(''), '', EN_US);
+    const form = openStruct();
+    typeInto(form, M.fieldName, 'name');
+    typeInto(form, M.structName, '\u03c3');
+    expect(within(form).getByRole('alert').textContent).toBe(M.invalidName);
+  });
+
   it('字段名不受类型名大小写规则影响：小写字段名可提交', () => {
     renderTab(fakeEditor(''), '', EN_US);
     const form = openStruct();
