@@ -41,6 +41,7 @@ import { errorEnvelope } from '@/lib/api/error-envelope';
 import { isPolicySharingEnabled } from '@/lib/platform-settings';
 import { loadPolicyForAction } from '@/lib/policy-access';
 import { createNotification } from '@/lib/notifications';
+import { rowsOf } from '@/db/result';
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -191,7 +192,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     // matching the error message" pattern and closes the TOCTOU race
     // window where two concurrent shares could both see "no row".
     const newId = globalThis.crypto.randomUUID();
-    const upsertRows = (await db.execute(sql`
+    const upsertRows = rowsOf<{ share_id: string; prev_permission: string | null }>(await db.execute(sql`
       WITH prev AS (
         SELECT id, "permission"
         FROM "PolicyShare"
@@ -208,7 +209,7 @@ export async function POST(req: Request, { params }: RouteParams) {
              prev."permission" AS prev_permission
       FROM upserted
       LEFT JOIN prev ON TRUE
-    `)) as unknown as Array<{ share_id: string; prev_permission: string | null }>;
+    `));
 
     const shareRow = upsertRows[0];
     if (!shareRow) {

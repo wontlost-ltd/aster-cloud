@@ -62,6 +62,7 @@ import { sql } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { getDb, hasDbBinding } from '@/db';
 import { randomUUID } from 'node:crypto';
+import { firstRowOf } from '@/db/result';
 
 /** Schema patch is immutable: once the column lands, no later request
  *  needs to retry. Safe to cache for the life of the isolate. */
@@ -589,9 +590,8 @@ async function seedAdmin(
   const existingRows = await db.execute(
     sql`SELECT id, "mustChangePassword", "isAdmin" FROM "User" WHERE LOWER(email) = ${email} LIMIT 1`,
   );
-  const existing = Array.isArray(existingRows) && existingRows[0]
-    ? (existingRows[0] as { id: string; mustChangePassword: boolean; isAdmin: boolean })
-    : null;
+  const existing =
+    firstRowOf<{ id: string; mustChangePassword: boolean; isAdmin: boolean }>(existingRows) ?? null;
 
   if (existing) {
     // Already rotated voluntarily — don't reset the temp password or

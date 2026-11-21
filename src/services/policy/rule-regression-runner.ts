@@ -23,6 +23,7 @@ import { canonicalHash } from '@/lib/canonical-json';
 import { createPolicyApiClient } from './policy-api';
 import { detectCNLLocale } from './cnl-executor';
 import { loadVersionExecutionVocabulary } from '@/lib/execution-input';
+import { rowsOf } from '@/db/result';
 
 /**
  * runner 版本——进 reportHash，保证报告可复算归因到 runner 逻辑版本。
@@ -808,7 +809,7 @@ export async function freezeFromExecutions(params: {
 
   // 候选谓词（ADR 附录 B.3）：canonical hash 地基完整 + 有回放上下文 + 无错误。
   // DISTINCT ON 去重同一 canonical input（保最新）。参数化防注入。
-  const candidates = (await db.execute(sql`
+  const candidates = rowsOf<Record<string, unknown>>(await db.execute(sql`
     SELECT DISTINCT ON (
       e."policyVersionRowId", e."functionName", e."locale", e."canonicalInputHash"
     )
@@ -852,7 +853,7 @@ export async function freezeFromExecutions(params: {
       e."policyVersionRowId", e."functionName", e."locale", e."canonicalInputHash",
       e."createdAt" DESC
     LIMIT ${limit}
-  `)) as unknown as Array<Record<string, unknown>>;
+  `));
 
   const result: FreezeResult = { frozen: 0, duplicate: 0, skipped: 0, outputConflicts: [], caseIds: [], skippedReasons: [] };
 

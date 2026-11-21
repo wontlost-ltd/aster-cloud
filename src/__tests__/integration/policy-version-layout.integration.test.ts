@@ -106,7 +106,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('createVersion 的 layout 三�
   afterAll(async () => {
     await cleanup();
     globalForDb.__asterLocalDevDb = previous;
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   });
 
   describe('envelope 与哈希链不受 layout 影响（ADR 0058 §7.2）', () => {

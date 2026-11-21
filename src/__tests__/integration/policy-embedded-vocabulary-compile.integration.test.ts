@@ -77,7 +77,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1' || !LOCAL_ONLY.test(LOCAL_API))(
     if (previousUrl === undefined) delete process.env.ASTER_POLICY_API_INTERNAL_URL;
     else process.env.ASTER_POLICY_API_INTERNAL_URL = previousUrl;
     globalForDb.__asterLocalDevDb = previous;
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   });
 
   it('without the embedded vocabulary the poem does not compile and nothing is stored', async () => {

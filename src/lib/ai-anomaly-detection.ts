@@ -6,6 +6,7 @@
 import { db, users, aiUsageRecords } from '@/lib/prisma';
 import { and, eq, gte, sql, isNotNull } from 'drizzle-orm';
 import { BILLABLE_STATUS_SQL } from '@/lib/ai-quota';
+import { rowsOf } from '@/db/result';
 
 interface AnomalySignal {
   userId: string;
@@ -76,7 +77,7 @@ export async function detectAndBan(): Promise<AnomalySignal[]> {
        AND SUM(CASE WHEN status NOT IN (${BILLABLE_STATUS_SQL}) THEN 1 ELSE 0 END) * 1.0 / COUNT(*) > 0.8
   `);
 
-  for (const row of failingUsers as unknown as Array<{ userId: string; total: number; failed: number }>) {
+  for (const row of rowsOf<{ userId: string; total: number; failed: number }>(failingUsers)) {
     signals.push({
       userId: row.userId,
       reason: `失败率 ${Math.round((row.failed / row.total) * 100)}% (${row.failed}/${row.total})，疑似探测行为`,
@@ -97,7 +98,7 @@ export async function detectAndBan(): Promise<AnomalySignal[]> {
     HAVING COUNT(*) >= 3
   `);
 
-  for (const row of jailbreakUsers as unknown as Array<{ userId: string; strikes: number }>) {
+  for (const row of rowsOf<{ userId: string; strikes: number }>(jailbreakUsers)) {
     signals.push({
       userId: row.userId,
       reason: `内容安全策略命中 ${row.strikes} 次（疑似 prompt injection / jailbreak）`,
@@ -124,7 +125,7 @@ export async function detectAndBan(): Promise<AnomalySignal[]> {
 
   // 冻结直到管理员人工审核（aiBannedUntil = 100 年后视为永久）
   const reviewBan = new Date(Date.now() + 365 * 100 * 24 * 60 * 60 * 1000);
-  for (const row of clusters as unknown as Array<{ hash: string; user_ids: string[] }>) {
+  for (const row of rowsOf<{ hash: string; user_ids: string[] }>(clusters)) {
     for (const uid of row.user_ids) {
       signals.push({
         userId: uid,

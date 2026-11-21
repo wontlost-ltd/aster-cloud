@@ -27,3 +27,22 @@ describe('nonce-service', () => {
     expect(code).toMatch(/affectedRows\(\s*await db\.delete\(usedNonces\)/);
   });
 });
+
+describe('affectedRows 跨驱动取受影响行数（#842）', () => {
+  it('node-postgres：取 rowCount', async () => {
+    const { affectedRows } = await import('@/lib/retention/batching');
+    expect(affectedRows({ rows: [], rowCount: 7 })).toBe(7);
+    expect(affectedRows({ rows: [], rowCount: 0 })).toBe(0);
+  });
+
+  it('postgres-js：取 RowList.count', async () => {
+    const { affectedRows } = await import('@/lib/retention/batching');
+    expect(affectedRows(Object.assign([], { count: 3 }))).toBe(3);
+  });
+
+  it('取不到计数时报错，不当成 0（否则分批循环会误以为已清完）', async () => {
+    const { affectedRows } = await import('@/lib/retention/batching');
+    expect(() => affectedRows({ rows: [], rowCount: null })).toThrow(/受影响行数/);
+    expect(() => affectedRows(undefined)).toThrow(/受影响行数/);
+  });
+});

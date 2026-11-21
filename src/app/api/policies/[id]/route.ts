@@ -38,6 +38,7 @@ import { activeLayoutSha256, loadVersionLayout } from '@/lib/policy-layout/store
 import type { StoredLayout } from '@/lib/policy-layout/types';
 import { serializeLayout, type PolicyLayout } from '@aster-cloud/aster-lang-ts/layout';
 
+import { rowsOf } from '@/db/result';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -49,14 +50,14 @@ interface RouteParams {
 async function isSharedWithCaller(policyId: string, userId: string): Promise<boolean> {
   const { isPolicySharingEnabled } = await import('@/lib/platform-settings');
   if (!(await isPolicySharingEnabled())) return false;
-  const sharedRows = (await db.execute(sql`
+  const sharedRows = rowsOf<{ ok: number }>(await db.execute(sql`
     SELECT 1 AS ok
     FROM "PolicyShare" ps
     JOIN "TeamMember" tm ON tm."teamId" = ps."teamId"
     WHERE ps."policyId" = ${policyId}
       AND tm."userId" = ${userId}
     LIMIT 1
-  `)) as unknown as Array<{ ok: number }>;
+  `));
   return sharedRows.length > 0;
 }
 

@@ -10,6 +10,7 @@ import { eq, like, sql } from 'drizzle-orm';
 import { createDb } from '@/db';
 import { policyVersionLayouts, policyVersions } from '@/lib/prisma';
 
+import { rowsOf } from '@/db/result';
 const PREFIX = 'it-pvlayout-';
 const POLICY = `${PREFIX}policy`;
 const HEX_A = 'a'.repeat(64);
@@ -43,8 +44,8 @@ async function rejection(p: Promise<unknown>): Promise<string> {
   try {
     await p;
   } catch (e) {
-    const err = e as { message?: string; cause?: { message?: string; constraint_name?: string; code?: string } };
-    return `${err.message ?? ''} ${err.cause?.message ?? ''} ${err.cause?.constraint_name ?? ''} ${err.cause?.code ?? ''}`;
+    const err = e as { message?: string; cause?: { message?: string; constraint?: string; code?: string } };
+    return `${err.message ?? ''} ${err.cause?.message ?? ''} ${err.cause?.constraint ?? ''} ${err.cause?.code ?? ''}`;
   }
   throw new Error('期望写入被拒绝，但成功了');
 }
@@ -65,7 +66,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('PolicyVersionLayout 表约束�
   beforeEach(cleanup);
   afterAll(async () => {
     await cleanup();
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   });
 
   it('accepts a valid row; createdBy has no foreign key and createdAt defaults', async () => {
@@ -222,7 +223,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('PolicyVersionLayout 表约束�
     const rows = await db.execute<{ def: string }>(sql`
       SELECT pg_get_triggerdef(t.oid) AS def FROM pg_trigger t
       WHERE t.tgrelid = '"PolicyVersionLayout"'::regclass AND NOT t.tgisinternal`);
-    expect(rows.map((r) => r.def)).toEqual([
+    expect(rowsOf<{ def: string }>(rows).map((r) => r.def)).toEqual([
       'CREATE TRIGGER "PolicyVersionLayout_guard" BEFORE DELETE OR UPDATE ON public."PolicyVersionLayout" FOR EACH ROW EXECUTE FUNCTION policy_version_layout_guard()',
     ]);
   });

@@ -260,7 +260,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('resolver 迁移（ADR 0051 §9
   afterAll(async () => {
     await cleanup(db);
     globalForDb.__asterLocalDevDb = previous;
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   });
 
   it('全量成功（跨批）：当前工具链 5 段 envelope、词汇段回填、resolverVersion=1、链有效', async () => {

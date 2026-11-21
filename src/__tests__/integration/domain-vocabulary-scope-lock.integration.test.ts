@@ -23,6 +23,7 @@ import {
   type TermInput,
 } from '@/lib/domain-vocabulary';
 
+import { rowsOf } from '@/db/result';
 const USER = 'vocab-scope-lock-it-user';
 let domain = 'insurance.lock';
 
@@ -60,8 +61,8 @@ function holdLockWithPendingWagen() {
 async function blockedOnLockOrSettled(settled: () => boolean): Promise<void> {
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline && !settled()) {
-    const [row] = await db.execute<{ waiting: number }>(
-      sql`SELECT count(*)::int AS waiting FROM pg_locks WHERE NOT granted`,
+    const [row] = rowsOf<{ waiting: number }>(
+      await db.execute(sql`SELECT count(*)::int AS waiting FROM pg_locks WHERE NOT granted`),
     );
     if ((row?.waiting ?? 0) > 0) return;
     await new Promise((resolve) => setTimeout(resolve, 20));

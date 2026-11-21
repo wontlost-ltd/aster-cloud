@@ -4,6 +4,7 @@ import { eq, sql } from 'drizzle-orm';
 import { getDb, users } from '@/lib/prisma';
 import { ensureAdminSeeded, ensureSchemaApplied } from '@/lib/db-bootstrap';
 import { verifyPassword } from '@/auth';
+import { rowsOf } from '@/db/result';
 
 /** 常量时间比较，避免按字节泄露密钥（长度不同直接 false）。 */
 function secretMatches(provided: string | null, expected: string): boolean {
@@ -64,7 +65,7 @@ export async function GET(req: Request) {
      WHERE table_name = 'User'
        AND column_name = 'mustChangePassword'
   `);
-  const columnExists = Array.isArray(colCheck) && colCheck.length > 0;
+  const columnExists = rowsOf<unknown>(colCheck).length > 0;
 
   const adminEmailRaw = process.env.ADMIN_EMAIL;
   const adminEmail = adminEmailRaw ? adminEmailRaw.toLowerCase().trim() : null;

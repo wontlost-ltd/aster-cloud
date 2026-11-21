@@ -95,7 +95,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('owner 池用量随快照下发
     globalForDb.__asterLocalDevDb = previous;
     if (previousKey === undefined) delete process.env.ASTER_PLAN_GATE_HMAC_KEY;
     else process.env.ASTER_PLAN_GATE_HMAC_KEY = previousKey;
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   });
 
   it('批量计数与逐 owner 计数一致，没有调用的 owner 计 0', async () => {

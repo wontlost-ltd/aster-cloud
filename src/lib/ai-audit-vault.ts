@@ -10,6 +10,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '@/lib/prisma';
+import { firstRowOf } from '@/db/result';
 
 /** 每个 isolate 只报一次「密钥未配置」，避免每笔用量记录刷屏。 */
 let missingSecretReported = false;
@@ -75,6 +76,5 @@ export async function decryptAuditField(
   const result = await db.execute(sql`
     SELECT pgp_sym_decrypt(${encryptedValue}::bytea, ${secret}::text) AS plain
   `);
-  const rows = result as unknown as Array<{ plain: string | null }>;
-  return rows[0]?.plain ?? null;
+  return firstRowOf<{ plain: string | null }>(result)?.plain ?? null;
 }

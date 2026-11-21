@@ -218,7 +218,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('团队共享领域词汇（#67
   afterAll(async () => {
     await cleanup(db);
     globalForDb.__asterLocalDevDb = previous;
-    await db.$client.end({ timeout: 1 });
+    await db.$client.end();
   }, 120_000);
 
   it('Free 成员在 Pro 团队可新增团队词条，额度按团队 owner 判定；个人词汇仍被本人 Free 套餐拦住', async () => {

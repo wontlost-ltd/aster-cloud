@@ -37,6 +37,7 @@ import {
 import { createPolicyApiClientForUser } from '@/lib/policy-api-identity';
 import type { AgentIdentity } from '@/services/policy/policy-api';
 import { maybeRunParityForExecution, RUNNER_LAUNCHER_HMAC_ROLE } from '@/services/policy/runner-parity-from-execution';
+import { rowsOf } from '@/db/result';
 
 /** dashboard 执行的固定 agent 身份（ADR 0041 §4）：控制台人工触发，无外部 agent。 */
 const DASHBOARD_AGENT: AgentIdentity = { provider: 'aster-cloud', model: 'dashboard' };
@@ -52,7 +53,7 @@ interface RouteParams {
 async function sharedGrantFor(policyId: string, userId: string): Promise<string | null> {
   const { isPolicySharingEnabled } = await import('@/lib/platform-settings');
   if (!(await isPolicySharingEnabled())) return null;
-  const sharedRows = (await db.execute<{ permission: string }>(sql`
+  const sharedRows = rowsOf<{ permission: string }>(await db.execute<{ permission: string }>(sql`
     SELECT ps."permission" AS permission
     FROM "PolicyShare" ps
     JOIN "TeamMember" tm ON tm."teamId" = ps."teamId"
@@ -60,7 +61,7 @@ async function sharedGrantFor(policyId: string, userId: string): Promise<string 
       AND tm."userId" = ${userId}
     ORDER BY (ps."permission" = 'execute') DESC
     LIMIT 1
-  `)) as unknown as Array<{ permission: string }>;
+  `));
   return sharedRows[0]?.permission ?? null;
 }
 
@@ -215,8 +216,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     `);
     timings.dbQueries = Date.now() - tDb;
 
-    // postgres-js returns an array directly
-    const rows = result as unknown as UnifiedQueryResult[];
+    const rows = rowsOf<UnifiedQueryResult>(result);
     const row = rows[0];
 
     // 如果缓存未命中，从数据库结果构建策略对象
