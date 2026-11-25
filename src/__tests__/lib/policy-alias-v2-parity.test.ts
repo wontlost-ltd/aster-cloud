@@ -40,7 +40,7 @@ interface ParityCase {
 }
 
 const FIXTURE_PATH = join(__dirname, '..', '..', 'lib', '__fixtures__', 'alias_validation_v2_parity.json');
-/** 与 core / ts 两份副本相同的 sha256（ts v3.5.0 / v3.6.0 `shared/`、core v1.0.52 `src/test/resources/diagnostics/`）。 */
+/** 与 core / ts 两份副本相同的 sha256（ts v3.5.0–v3.7.0 `shared/`、core v1.0.52 `src/test/resources/diagnostics/`）。 */
 const FIXTURE_SHA256 = '721ab90b1f847ce7e3806d32360db1157d6a1ac5368ef5d15f99e402464765c4';
 const raw = readFileSync(FIXTURE_PATH);
 interface GuardCase {
@@ -145,8 +145,8 @@ describe('bundled aster-lang-ts recompiles the poem with v2 aliases', () => {
     vocabularyJson: JSON.stringify(VOCAB),
   });
 
-  it('pins ts 3.6.0', () => {
-    expect(TS_VERSION).toBe('3.6.0');
+  it('pins ts 3.7.0', () => {
+    expect(TS_VERSION).toBe('3.7.0');
   });
 
   it('compiles to the same Core IR as the ts engine proof', () => {

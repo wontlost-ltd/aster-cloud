@@ -6,7 +6,6 @@ import { localizeSyntaxDiagnostic, type SyntaxDiagnosticLike } from '@/lib/synta
 
 const head = 'Module m.\n\nRule f given x as Int, produce Int:\n';
 const wf = `${head}  Workflow:\n    Step a:\n      Return x.\n`;
-// E063 只由 aster-api 的 ANTLR 解析器产生，ts 解析器不发，故不在此列
 const CASES: ReadonlyArray<readonly [string, string, typeof EN_US]> = [
   ['E050', `${head}  Return x § 1.\n`, EN_US],
   ['E052', `${head}   Return x.\n`, EN_US],
@@ -14,6 +13,10 @@ const CASES: ReadonlyArray<readonly [string, string, typeof EN_US]> = [
   ['E059', `${head}  Return x\n`, EN_US],
   ['E059', '模块 m。\n\n规则 f 给定 x 作为 整数，产出 整数：\n  返回 x\n', ZH_CN],
   ['E064', `${head}  Return x + .\n`, EN_US],
+  // ts 3.7.0 起与 core 同码：缩进的首条顶层声明报 E063（token.indent），语句中间换行报 E063（token.newline）
+  ['E063', 'Module m.\n\n  Type Email as Text.\n', EN_US],
+  ['E063', '模块 m。\n\n  类型 邮箱 作为 文本。\n', ZH_CN],
+  ['E063', `${head}  Return\n    x.\n`, EN_US],
   ['E051', 'Module m.\n\nRule f, produce Text:\n  Return "abc.\n', EN_US],
   ['E053', `${head}  Return 99999999999.\n`, EN_US],
   ['E054', `${head}  Return ${'('.repeat(70)}x${')'.repeat(70)}.\n`, EN_US],

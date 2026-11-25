@@ -90,7 +90,7 @@ const SPELLINGS = JSON.parse(readFileSync(SPELLINGS_PATH, 'utf8')) as {
 };
 
 describe('layoutRuleContext（L6(c) / L7 的拼写）', () => {
-  it('向量副本与 ts v3.6.0 shared/layout-vectors、aster-lang-test 的 sha256 相同', () => {
+  it('向量副本与 ts v3.7.0 shared/layout-vectors、aster-lang-test 的 sha256 相同', () => {
     expect(createHash('sha256').update(readFileSync(SPELLINGS_PATH)).digest('hex'))
       .toBe('467b1075dd67e2e7249d50ae3b47eb5c1f00a2f1827dcf501016e97ef906fd3f');
   });
@@ -120,7 +120,7 @@ describe('runNodeCheck：包排版 L1–L9（修订 4 D11 第 1 步）', () => {
     exportable: true, diagnostics: [], entry: '地上霜', coreIr, coreIrSha256: 'aa'.repeat(32), positionFreeSha256: pfh,
     probes: null, probesJson: '{"probes":[{"entry":"地上霜","expected":{"ok":true,"value":"静夜思"},"input":{}}]}',
     probesSha256: 'bb'.repeat(32), probeCount: 1,
-    runtime: { cliName: '@aster-cloud/aster-lang-ts', cliVersion: TS_VERSION, ecosystem: '1.0.53' },
+    runtime: { cliName: '@aster-cloud/aster-lang-ts', cliVersion: TS_VERSION, ecosystem: '1.0.55' },
   };
 
   it('《静夜思》的投影哈希是两引擎的共同值；平台 IR 带出入口名（L8 的名字来源）', async () => {
