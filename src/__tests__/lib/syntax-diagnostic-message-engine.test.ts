@@ -1,4 +1,4 @@
-// 用真实 aster-lang-ts 1.4.0 编译错误源码，验证引擎给出的 code + params 能被按码渲染，
+// 用随包的真实 aster-lang-ts 编译错误源码，验证引擎给出的 code + params 能被按码渲染，
 // 并逐条与旧实现（只按英文句型翻译）对照：新实现在 zh/de/hi 下不更英文。
 import { describe, it, expect } from 'vitest';
 import { compileAndTypecheck, EN_US, ZH_CN } from '@aster-cloud/aster-lang-ts/browser';

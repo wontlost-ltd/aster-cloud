@@ -40,7 +40,7 @@ describe('aster-lang-ts 3.7.0 行为变化', () => {
 
   it('`result is` 的分隔只认空格与 tab：换行不改写，按语法报错', () => {
     expect(run(enRule('  The result\tis x.\n'), EN_US).codes).toEqual([]);
-    expect(run(enRule('  The result\n  is x.\n'), EN_US).ok).toBe(false);
+    expect(run(enRule('  The result\n  is x.\n'), EN_US).codes).toEqual(['E052']);
   });
 
   it('缩进的顶层类型声明报 E063（此前编辑器接受）', () => {
@@ -54,8 +54,8 @@ describe('aster-lang-ts 3.7.0 行为变化', () => {
     expect(vocabularyDiagnosticHelp(all[0]!)?.written).toBe('Unbekannt');
   });
 
-  it('类型别名之前的注解被拒绝', () => {
-    expect(run('Module m.\n\n@pii(L1, email) Type Email as Text.\n', EN_US).ok).toBe(false);
+  it('类型别名之前的注解被拒绝（E056：注解之后应为规则）', () => {
+    expect(run('Module m.\n\n@pii(L1, email) Type Email as Text.\n', EN_US).codes).toEqual(['E056']);
   });
 
   it('块头之后可以先空行再写块', () => {
