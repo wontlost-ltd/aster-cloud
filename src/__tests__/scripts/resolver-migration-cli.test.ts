@@ -1,9 +1,11 @@
 // 迁移脚本入口（ADR 0051 §9）：缺内部地址或签名密钥时拒绝运行、非零退出，绝不回落到生产地址；--help 写明已知限制。
 import { describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = join(__dirname, '..', '..', '..');
+const IMAGE_DEPS_HOOK = join(__dirname, 'fixtures', 'image-deps-only-hook.mjs');
 
 function runCli(args: string[], env: Record<string, string>) {
   return spawnSync(process.execPath, ['--conditions=import', '--import', 'tsx', 'scripts/resolver-migration.ts', ...args], {
@@ -44,5 +46,49 @@ describe('scripts/resolver-migration.ts', () => {
     ]) {
       expect(result.stdout).toContain(text);
     }
+  });
+
+  describe('镜像依赖集合下可启动（#853）', () => {
+    // 与 Dockerfile.resolver-migration 的运行时清单同源：引擎包 + deps 阶段 for 循环里的包名。
+    function imageDependencies(): string[] {
+      const dockerfile = readFileSync(join(ROOT, 'Dockerfile.resolver-migration'), 'utf8');
+      const list = /for \(const n of (\[[^\]]*\])\)/.exec(dockerfile)?.[1];
+      if (!list) throw new Error('Dockerfile.resolver-migration 里找不到运行时依赖清单');
+      return ['@aster-cloud/aster-lang-ts', ...(JSON.parse(list) as string[])];
+    }
+
+    function runWithImageDeps(entry: string, args: string[]) {
+      return spawnSync(
+        process.execPath,
+        ['--conditions=import', '--import', IMAGE_DEPS_HOOK, '--import', 'tsx', entry, ...args],
+        {
+          cwd: ROOT,
+          encoding: 'utf8',
+          timeout: 60_000,
+          env: {
+            NODE_ENV: 'test', PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '',
+            DOTENV_CONFIG_PATH: '/nonexistent/.env', IMAGE_DEPENDENCIES: JSON.stringify(imageDependencies()),
+          },
+        },
+      );
+    }
+
+    it('清单不含 next：镜像确实不装 Next.js 运行时', () => {
+      expect(imageDependencies()).toEqual(expect.arrayContaining(['@aster-cloud/aster-lang-ts', 'pg', 'tsx']));
+      expect(imageDependencies()).not.toContain('next');
+    });
+
+    it('生产命令 --help 能加载完整导入图（不经 next/server 等镜像外的包）', () => {
+      const result = runWithImageDeps('scripts/resolver-migration.ts', ['--help']);
+      expect(result.stderr).not.toContain('Cannot find package');
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('resolver migration');
+    });
+
+    it('反例：导入了镜像外的包（next/server）→ 按镜像里的报错失败', () => {
+      const result = runWithImageDeps('src/__tests__/scripts/fixtures/imports-next.ts', []);
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("Cannot find package 'next'");
+    });
   });
 });

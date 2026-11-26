@@ -8,8 +8,8 @@ import {
   PolicyCompileError,
   PolicyCompileUnavailableError,
   VOCABULARY_UNAVAILABLE_CODE,
-  type CompileValidator,
-} from '@/services/policy/version-manager';
+} from '@/services/policy/policy-compile-error';
+import type { CompileValidator } from '@/services/policy/version-manager';
 import { loadLiveVocabularyWithOrigins, type LivePolicyVocabulary } from '@/lib/domain-vocabulary-snapshot';
 import { vocabularyOriginKey } from '@/lib/domain-vocabulary-team-merge';
 import type { PolicyVocabularyContext } from '@/lib/domain-vocabulary-scope';

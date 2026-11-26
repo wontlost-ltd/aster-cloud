@@ -997,6 +997,41 @@ jobs:
           echo "::error title=migration not verified::等 ArgoCD sync 到含本次 migrate digest 的 revision 超时 → 迁移状态未知,需人工确认。详见 #187。"
           exit 1
 
+  # #853：resolver 迁移镜像（Dockerfile.resolver-migration）只装脚本运行时闭包的外部包，不装 next。
+  # 闭包跨 src/lib、src/services 多个目录，任何一个模块新导入 next/server 之类的包都会让镜像一启动就
+  # ERR_MODULE_NOT_FOUND；而镜像 workflow 只在 main 上、按窄路径过滤构建，PR 阶段看不到。
+  # 这里在每个 PR 上按同一 Dockerfile 构建（只 amd64、不推送；Dockerfile 内的 --help 冒烟随构建执行），
+  # 再取镜像自身的 CMD 追加 --help 跑一次，确认生产启动命令能加载完整导入图。
+  resolver-migration-image-smoke:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      # 只读复用 resolver-migration-image.yml 在 main 上写入的缓存，不回写（PR 不污染 main 的缓存）。
+      - name: Build resolver-migration image (no push)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.resolver-migration
+          push: false
+          load: true
+          platforms: linux/amd64
+          tags: aster-resolver-migration:smoke
+          cache-from: type=gha,scope=resolver-migration
+
+      - name: Production CMD loads the import graph (--help)
+        run: |
+          set -euo pipefail
+          mapfile -t cmd < <(docker image inspect aster-resolver-migration:smoke --format '{{json .Config.Cmd}}' | jq -r '.[]')
+          echo "CMD: ${cmd[*]} --help"
+          out="$(docker run --rm --network none aster-resolver-migration:smoke "${cmd[@]}" --help)"
+          grep -q '^resolver migration' <<< "$out" || { echo "--help 输出不符合预期："; echo "$out"; exit 1; }
+
   migration-split:
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
