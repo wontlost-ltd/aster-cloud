@@ -25,7 +25,8 @@ beforeAll(async () => {
     dispatchEvent: () => false,
   })) as typeof window.matchMedia;
   monaco = (await import('monaco-editor/editor/editor.api.js')) as unknown as MonacoApi;
-});
+  // 首次加载 Monaco 要转换数百个模块，全量并发跑时远超默认 10 s 的钩子超时
+}, 120_000);
 
 let seq = 0;
 /** 注册一门临时语言并 tokenize，返回每行的 [文本, token] 序列。 */

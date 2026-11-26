@@ -121,19 +121,43 @@ export interface EscapeDelimiters {
 /** 转义内容：同一行内、不含空白与反引号的非空串（ADR 0064 N1a 的形状部分；是否真是转义 token 由 L10 判定）。 */
 const ESCAPE_CONTENT = /^[^`\s]+$/;
 
+/** 字符串的开 / 闭引号（ASCII 双引号与中文直角引号，与 Monarch 着色同一口径）。 */
+const STRING_CLOSE: Readonly<Record<string, string>> = { '"': '"', '「': '」' };
+
 /**
- * 偏移 `offset`（光标或选区起点）所在的名字转义：同一行里包住它的一对反引号（光标在反引号上或紧贴其后也算）。
- * 只看字符，不区分字符串与注释——串里的反引号隐藏后由 L10 拒绝（ADR 0059 修订 5 引理 1）。找不到返回 null。
+ * 一行里位于字符串与注释之外的反引号偏移（ADR 0064 N1c：字符串与注释里的反引号只是字符）。
+ * 注释从字符串之外的 `#` 或 `//` 起到行尾。跨行字符串按行内近似处理——误判只会多给或少给一个候选，L10 预检兜底。
+ */
+function codeBackticks(line: string, lineStart: number): number[] {
+  const out: number[] = [];
+  let close: string | null = null;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (close !== null) {
+      if (ch === '\\') i++;
+      else if (ch === close) close = null;
+    } else if (ch in STRING_CLOSE) {
+      close = STRING_CLOSE[ch];
+    } else if (ch === '#' || (ch === '/' && line[i + 1] === '/')) {
+      break;
+    } else if (ch === '`') {
+      out.push(lineStart + i);
+    }
+  }
+  return out;
+}
+
+/**
+ * 偏移 `offset`（光标或选区起点）所在的名字转义：同一行里、字符串与注释之外包住它的一对反引号（光标在反引号上或
+ * 紧贴其后也算）。是否允许隐藏仍由调用方的 L10 预检判定（ADR 0059 修订 5）。找不到返回 null。
  */
 export function escapeAt(source: string, offset: number): EscapeDelimiters | null {
   assertOffset(offset, source.length);
   const lineStart = source.lastIndexOf('\n', offset - 1) + 1;
   const newline = source.indexOf('\n', offset);
   const lineEnd = newline === -1 ? source.length : newline;
-  const line = source.slice(lineStart, lineEnd);
-  // 行内反引号从左到右两两配对（与词法器一致：开反引号之后到同一行下一个反引号为止是一个转义）
-  const ticks: number[] = [];
-  for (let i = line.indexOf('`'); i !== -1; i = line.indexOf('`', i + 1)) ticks.push(lineStart + i);
+  // 反引号从左到右两两配对（与词法器一致：开反引号之后到同一行下一个反引号为止是一个转义）
+  const ticks = codeBackticks(source.slice(lineStart, lineEnd), lineStart);
   for (let k = 0; k + 1 < ticks.length; k += 2) {
     const open = ticks[k];
     const close = ticks[k + 1];

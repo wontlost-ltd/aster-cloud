@@ -2,6 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import { canonicalToDisplay, toCanonical, toDisplay, type PolicyLayout } from '@aster-cloud/aster-lang-ts/layout';
 import {
+  escapeAt,
+  hideEscapeDelimiters,
   identityLayout,
   layoutEditErrorCode,
   markStructural,
@@ -12,6 +14,7 @@ import {
   setStructuralDisplay,
   sourceLayoutLimitExceeded,
   unmarkStructural,
+  unmarkStructuralSpan,
 } from '@/lib/policy-layout/edit-ops';
 
 const SOURCE = '模块 静夜思。\n\n规则 吟诵 给定 月光 作为 文本，产出 文本：\n  返回 月光。\n';
@@ -227,5 +230,36 @@ describe('sourceLayoutLimitExceeded', () => {
     expect(sourceLayoutLimitExceeded('字'.repeat(4097))).toEqual({ limit: 'sourceBytes', actual: 12291 });
     expect(sourceLayoutLimitExceeded('a\n'.repeat(200))).toBeNull();
     expect(sourceLayoutLimitExceeded('a\r\n'.repeat(200) + 'b')).toEqual({ limit: 'sourceLines', actual: 201 });
+  });
+});
+
+// 「隐藏转义符」的纯函数（ADR 0058 修订 3 E6）。
+describe('escapeAt / hideEscapeDelimiters / unmarkStructuralSpan', () => {
+  const SRC = 'Rule f given `count` as Int:\n  Return `count`. # `当`\n  Return "a`b`c" 「`x`」.\n';
+  const open1 = SRC.indexOf('`');
+
+  it('光标在名字上、开反引号上或闭反引号之后都找到同一转义', () => {
+    for (const at of [open1, open1 + 3, open1 + 6, open1 + 7]) expect(escapeAt(SRC, at)).toEqual({ open: open1, close: open1 + 6 });
+    expect(escapeAt(SRC, 2)).toBeNull();
+  });
+
+  it('注释与字符串里的反引号不是转义', () => {
+    expect(escapeAt(SRC, SRC.indexOf('当'))).toBeNull();
+    expect(escapeAt(SRC, SRC.indexOf('a`b') + 2)).toBeNull();
+    expect(escapeAt(SRC, SRC.indexOf('`x`') + 1)).toBeNull();
+    // 注释之前同一行的转义照常
+    const second = SRC.indexOf('`count`.');
+    expect(escapeAt(SRC, second + 1)).toEqual({ open: second, close: second + 6 });
+  });
+
+  it('含空白的「转义」不算', () => {
+    expect(escapeAt('Let `a b` be 1.\n', 5)).toBeNull();
+  });
+
+  it('隐藏后得到 L10a 三元组；取消其中一个反引号两个一起恢复', () => {
+    const hidden = hideEscapeDelimiters(identityLayout(SRC), { open: open1, close: open1 + 6 });
+    expect(hidden.spans.slice(1, 4)).toEqual([{ canonical: '`', display: '' }, { text: 'count' }, { canonical: '`', display: '' }]);
+    expect(unmarkStructuralSpan(hidden, 1)).toEqual(identityLayout(SRC));
+    expect(unmarkStructuralSpan(hidden, 3)).toEqual(identityLayout(SRC));
   });
 });

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { DEMO_SUPPLEMENT } from '@/i18n/demo-supplement';
 
 const KEYS = [
-  'tabsLabel', 'tabCanonical', 'tabDisplay', 'displayLabel', 'displayNote', 'insertionLabel',
+  'tabsLabel', 'tabCanonical', 'tabDisplay', 'displayLabel', 'displayNote', 'insertionLabel', 'hiddenEscapeLabel',
   'inconsistent', 'compareChanged', 'compareNote', 'reviewNote', 'reviewLink',
 ] as const;
 
@@ -15,5 +15,6 @@ describe('policyLayout 文案', () => {
       expect(typeof messages[key] === 'string' && (messages[key] as string).trim().length > 0, `${locale}.${key}`).toBe(true);
     }
     expect(messages.insertionLabel).toContain('{canonical}');
+    expect(messages.hiddenEscapeLabel).toContain('{canonical}');
   });
 });
