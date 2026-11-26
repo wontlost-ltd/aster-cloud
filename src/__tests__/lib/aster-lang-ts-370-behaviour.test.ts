@@ -1,8 +1,8 @@
 // aster-lang-ts 3.7.0（eco-1.0.55）对 cloud 可见的行为变化：随包引擎的接受 / 拒绝集合与
-// cloud 的诊断呈现（词汇诊断链接）在这里钉住，升级时一眼看出哪条变了。
+// cloud 的诊断呈现（词汇诊断链接）在这里钉住，升级时一眼看出哪条变了。随包版本由当前版本的
+// 行为测试（aster-lang-ts-380-behaviour）钉住，这里只钉 3.7.0 引入、之后仍成立的行为。
 import { describe, it, expect } from 'vitest';
 import { compileAndTypecheck, DE_DE, EN_US, ZH_CN, type Lexicon } from '@aster-cloud/aster-lang-ts/browser';
-import { TS_VERSION } from '@aster-cloud/aster-lang-ts/package-check';
 import { vocabularyDiagnosticHelp } from '@/lib/vocabulary-diagnostic';
 
 interface Diagnostic {
@@ -27,11 +27,7 @@ function run(source: string, lexicon: Lexicon): { ok: boolean; codes: string[]; 
 
 const enRule = (body: string) => `Module m.\n\nRule f given x as Int, produce Int:\n${body}`;
 
-describe('aster-lang-ts 3.7.0 行为变化', () => {
-  it('随包 aster-lang-ts 为 3.7.0', () => {
-    expect(TS_VERSION).toBe('3.7.0');
-  });
-
+describe('aster-lang-ts 3.7.0 起的行为变化', () => {
   it('en `The result is x.` 与 de `Ergebnis ist x.` 可编译（此前 E064）', () => {
     expect(run(enRule('  The result is x.\n'), EN_US).codes).toEqual([]);
     const de = 'Modul m.\n\nRegel f gegeben x als Ganzzahl, liefert Ganzzahl:\n  Ergebnis ist x.\n';
