@@ -58,8 +58,8 @@ const enRule = (body: string) => `Module m.\n\nRule f given x as Int, produce In
 const zhRule = (body: string) => `模块 m。\n\n规则 f 给定 x 作为 整数，产出 整数：\n${body}`;
 
 describe('aster-lang-ts 3.8.0 行为变化', () => {
-  it('随包 aster-lang-ts 为 3.8.1', () => {
-    expect(TS_VERSION).toBe('3.8.1');
+  it('随包 aster-lang-ts 为 3.8.2', () => {
+    expect(TS_VERSION).toBe('3.8.2');
   });
 
   describe('名字转义 `x`（ADR 0064）：纯新增语法', () => {
