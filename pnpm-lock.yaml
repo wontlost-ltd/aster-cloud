@@ -51,8 +51,8 @@ importers:
         specifier: ^0.3.2
         version: 0.3.2(@types/react@19.2.18)(react@19.2.8)(sonner@2.0.8(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))
       '@aster-cloud/ui-messages':
-        specifier: 1.0.31
-        version: 1.0.31
+        specifier: 1.0.32
+        version: 1.0.32
       '@aster-cloud/ui-messages-hi':
         specifier: 1.0.24
         version: 1.0.24
@@ -402,8 +402,8 @@ packages:
   '@aster-cloud/ui-messages-hi@1.0.24':
     resolution: {integrity: sha512-o/Fl3z6jbATryTTh3Vx3kleLetpiFSN/1Dzpxt63RjNWp/uDL1sXAkKn/c5lNhPPQMHfNRyfDudiSRMPrgPf9A==}
 
-  '@aster-cloud/ui-messages@1.0.31':
-    resolution: {integrity: sha512-/AiENlTj3y/XazuGTmSUYa12nkCCqwfGe9CUgcTnqBQoIX1Bj5tiAobh6YYJk/IosNQL4AC+mDrltmXGiddw5Q==}
+  '@aster-cloud/ui-messages@1.0.32':
+    resolution: {integrity: sha512-6GK3Ip5YFczxiI4FMiUHG0mZXZ5VdKOHHplp3YtCGSY0uvffhf+I6qYtZ5M3C4ByQKERk2B070BC0Rs+R3iGUg==}
 
   '@aster-cloud/ui@0.3.2':
     resolution: {integrity: sha512-3Jk5cMhuFD6YevcdXYbXQ0tk5deKcd89saOQdW1jbr8dzwf5s5a7TInRsh5HSgRTZQuDPzSuMAO13ezZ3Ddsrg==}
@@ -6253,7 +6253,7 @@ snapshots:
 
   '@aster-cloud/ui-messages-hi@1.0.24': {}
 
-  '@aster-cloud/ui-messages@1.0.31': {}
+  '@aster-cloud/ui-messages@1.0.32': {}
 
   '@aster-cloud/ui@0.3.2(@types/react@19.2.18)(react@19.2.8)(sonner@2.0.8(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))':
     dependencies:

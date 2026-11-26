@@ -131,6 +131,7 @@ export function collectCompileDiagnostics(
     });
   }
 
+  // 名称解析诊断（含 W802 关键词被改名为名字）：引擎已按传入的 lexicon 经语言包 overlay 本地化，原样透传
   all.push(...(result.resolutionDiagnostics ?? []));
 
   // 降级诊断（E600–E606）：引擎按传入的 lexicon 经语言包 overlay 本地化过，原样透传
