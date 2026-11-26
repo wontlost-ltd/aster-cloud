@@ -436,6 +436,12 @@ export interface CreateVersionParams {
    * 不设能力门与套餐门（§6.7）。`scopesJson` 必须是并入同一份内嵌词汇后的词汇段（loadSaveVocabulary）。
    */
   embeddedVocabulary?: EmbeddedVocabulary | null;
+  /**
+   * 版本编译所用的有效词汇（loadSaveVocabulary 的 `vocabulary`，与 `scopesJson` 同一份；无词汇为 null）。
+   * 显示排版隐藏转义的 L10b 用它与 locale、aliasSet、结构词授权一起编译（ADR 0058 修订 3 E8）；
+   * 省略时含隐藏转义的排版保存与沿用都失败封闭，其余排版不受影响。
+   */
+  vocabulary?: DomainVocabulary | null;
 }
 
 export interface CreateVersionResult {
@@ -597,6 +603,9 @@ export async function createVersion(
     source,
     locale,
     aliasSet: aliasSetJson ? params.aliasSet ?? null : null,
+    ...(params.vocabulary !== undefined
+      ? { compile: { allowStructural: params.allowStructuralAliases ?? false, vocabulary: params.vocabulary } }
+      : {}),
   };
   const layoutOmitted = params.layout === undefined;
   let submittedLayout: PreparedLayout | null = null;

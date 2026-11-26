@@ -6,13 +6,16 @@
  * - 内容 span 原样显示（两个视图里逐字相同）；
  * - 结构 span 有独立样式，`title` / `aria-description` 给出它在 canonical 里的写法，读者随时能看到实际执行的关键词；
  * - display 为空串的结构 span 渲染一个插入标记，隐藏的关键词不会无声消失；
+ * - 被隐藏的名字转义（ADR 0059 修订 5 L10a 三元组，ADR 0058 修订 3 E7）：两个 display 为空的反引号结构 span 不画插入标记，
+ *   夹在中间的内容 span 用「转义名字」专门样式（与结构 span、普通内容都不同），悬停与 `aria-description` 给出 canonical 原文
+ *   `` `x` `` 与「名字，不是关键词」。形状不合 L10a 的排版（保存时会被拒）按普通结构 span 渲染；
  * - `highlight` 与 `markers` 是 display 偏移（UTF-16 code unit，由调用方经 canonical → display 投影得到）。
  *
- * 只从包的 `./layout` 子路径取类型：主入口经 `node:crypto` 会拖垮客户端包（见 policy-review-panel.tsx 的说明）。
+ * 只从包的 `./layout` 子路径取函数与类型：主入口经 `node:crypto` 会拖垮客户端包（见 policy-review-panel.tsx 的说明）。
  */
 import { useMemo, type MouseEvent } from 'react';
 import { useTranslations } from 'next-intl';
-import type { LayoutRange, PolicyLayout } from '@aster-cloud/aster-lang-ts/layout';
+import { hiddenEscapeTriples, type LayoutRange, type PolicyLayout } from '@aster-cloud/aster-lang-ts/layout';
 
 export type LayoutMarkerSeverity = 'error' | 'warning';
 
@@ -29,11 +32,16 @@ export interface LayoutDisplayViewProps {
   onDisplayOffsetClick?: (offset: number) => void;
 }
 
-/** 一个 span 在 display 里的位置；结构 span 带 canonical 写法。 */
+/**
+ * 一个 span 在 display 里的位置；结构 span 带 canonical 写法。`hiddenEscape`：被隐藏转义的内容 span 带转义原文
+ * `` `x` ``；`escapeDelimiter`：被隐藏的反引号结构 span。
+ */
 interface Block {
   start: number;
   display: string;
   canonical: string | null;
+  hiddenEscape?: string;
+  escapeDelimiter?: boolean;
 }
 
 /** 渲染单元：同一 span 内、高亮与标记状态都不变的一段 display。 */
@@ -48,16 +56,32 @@ export const MARKER_CLASS: Record<LayoutMarkerSeverity, string> = {
   warning: 'underline decoration-wavy decoration-amber-600 dark:decoration-amber-400',
 };
 
+/** 被隐藏转义三元组的开反引号 span 下标；排版不合 L10a 时为空（保存校验会拒绝它，这里只按普通结构 span 渲染）。 */
+function hiddenEscapeOpenings(layout: PolicyLayout): ReadonlySet<number> {
+  try {
+    return new Set(hiddenEscapeTriples(layout).map((t) => t.spanIndex));
+  } catch {
+    return new Set();
+  }
+}
+
 function toBlocks(layout: PolicyLayout): Block[] {
+  const openings = hiddenEscapeOpenings(layout);
   let offset = 0;
-  return layout.spans.map((span) => {
+  return layout.spans.map((span, i) => {
     const block: Block = 'text' in span
       ? { start: offset, display: span.text, canonical: null }
       : { start: offset, display: span.display, canonical: span.canonical };
+    if (openings.has(i) || openings.has(i - 2)) block.escapeDelimiter = true;
+    if (openings.has(i - 1) && 'text' in span) block.hiddenEscape = `\`${span.text}\``;
     offset += block.display.length;
     return block;
   });
 }
+
+/** 被隐藏的转义名：浅绿底加虚线下划线，区别于结构 span（天蓝）与普通内容。 */
+export const HIDDEN_ESCAPE_CLASS =
+  'rounded-sm bg-emerald-50 text-emerald-900 underline decoration-dashed decoration-emerald-600 underline-offset-2 dark:bg-emerald-900/40 dark:text-emerald-100 dark:decoration-emerald-400';
 
 /** 码点边界（不在代理对中间切分）。 */
 function codePointCuts(block: Block): number[] {
@@ -148,6 +172,23 @@ export function LayoutDisplayView({ layout, highlight = null, markers = [], onDi
       className="max-h-[500px] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-bg-subtle p-4 font-mono text-sm text-fg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
     >
       {blocks.map((block) => {
+        // 被隐藏的反引号不画插入标记：转义名自身的样式与悬停已经标出它（E7）
+        if (block.escapeDelimiter) return null;
+        if (block.hiddenEscape !== undefined) {
+          const label = t('hiddenEscapeLabel', { canonical: block.hiddenEscape });
+          return (
+            <span
+              key={block.start}
+              data-layout-content=""
+              data-layout-hidden-escape={block.hiddenEscape}
+              title={label}
+              aria-description={label}
+              className={HIDDEN_ESCAPE_CLASS}
+            >
+              {renderPieces(block)}
+            </span>
+          );
+        }
         if (block.canonical === null) {
           return <span key={block.start} data-layout-content="">{renderPieces(block)}</span>;
         }

@@ -40,6 +40,7 @@ export function useAliasIssueMessage(): (issue: AliasIssue) => string {
         case 'empty': return t('errors.empty', values);
         case 'tooLong': return t('errors.tooLong', values);
         case 'nonCanonical': return t('errors.nonCanonical', values);
+        case 'containsBacktick': return t('errors.containsBacktick', values);
         case 'singleWord': return t('errors.singleWord', values);
         case 'shadowsKeyword': return t('errors.shadowsKeyword', values);
         case 'shadowsBaseAlias': return t('errors.shadowsBaseAlias', values);

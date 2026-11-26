@@ -187,6 +187,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         releaseNote: undefined,
         locale: 'en-US',
         scopesJson: saveVocabulary.scopesJson,
+        vocabulary: saveVocabulary.vocabulary,
         aliasSet: null,
         profile,
         dbClient: tx,

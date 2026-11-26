@@ -63,6 +63,11 @@ export function asterEditorTheme(isDark: boolean): editor.IStandaloneThemeData {
       // === Domain vocabulary terms — sky italic flags them as "your vocabulary" ===
       { token: 'variable.domain', foreground: hex(isDark ? sky[300] : sky[700]), fontStyle: 'italic' },
 
+      // === 名字转义 `x`（ADR 0064 §6，ADR 0058 修订 3 E5/E7）：反引号淡化（与注释同色阶，仍过 AA），
+      //     名字用标识符色加下划线，与普通标识符、领域词汇、关键词都区分开 ===
+      { token: 'delimiter.escape',   foreground: hex(isDark ? zinc[400] : zinc[500]) },
+      { token: 'identifier.escaped', foreground: hex(isDark ? zinc[50] : zinc[900]), fontStyle: 'underline' },
+
       // === Operators / delimiters (quiet so structure breathes) ===
       { token: 'operator',         foreground: hex(isDark ? zinc[300] : zinc[700]) },
       { token: 'delimiter',        foreground: hex(isDark ? zinc[400] : zinc[600]) },

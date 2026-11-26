@@ -94,6 +94,7 @@ export type AliasIssueCode =
   | 'empty'
   | 'tooLong'
   | 'nonCanonical'
+  | 'containsBacktick'
   | 'singleWord'
   | 'shadowsKeyword'
   | 'shadowsBaseAlias'
@@ -261,6 +262,9 @@ function aliasIssues(
   const norm = normalizeAliasToken(alias);
   // 铁律 0：提交值须已是规范形（注入值即匹配值）
   if (alias !== norm) return [{ code: 'nonCanonical', kind, alias, normalized: norm }];
+  // 不得含反引号（ADR 0060 修订 2 X2）：反引号是名字转义的定界符，规范化器把转义当作不透明片段，
+  // 含反引号的别名会被转义片段整体覆盖。与 ts validateAliasSet / core UserAliasValidator 同为前置失败。
+  if (norm.includes('`')) return [{ code: 'containsBacktick', kind, alias }];
   const out: AliasIssue[] = [];
   // 铁律 2：多词，或 zh 下 2–8 个汉字的单词（ADR 0060 §5.2）
   if (!norm.includes(' ') && !isHanSingleToken(norm, locale)) out.push({ code: 'singleWord', kind, alias });
@@ -301,6 +305,8 @@ export function formatAliasIssueZh(issue: AliasIssue): string {
       return `${kind} 的别名长度 ${issue.count} 超过上限 ${issue.limit}`;
     case 'nonCanonical':
       return `别名 '${alias}'（${kind}）含非规范空白/大小写；请提交规范形 '${issue.normalized}'`;
+    case 'containsBacktick':
+      return `别名 '${alias}'（${kind}）含反引号 \`，与名字转义冲突，禁止`;
     case 'singleWord':
       return `别名 '${alias}'（${kind}）必须是多词短语，或 zh 下 2–8 个汉字的单词；其余单词别名会占用标识符命名空间，破坏用户空间`;
     case 'shadowsKeyword':

@@ -32,6 +32,8 @@ interface NewPolicyContentProps {
   locale: string;
   allowStructuralAliases: boolean;
   structuredAuthoring: StructuredAuthoringProps;
+  /** 平台开关 `authoring.name_escape.enabled`（ADR 0058 修订 3）。 */
+  nameEscape?: boolean;
 }
 
 const EMPTY: PolicyDraftFields = {
@@ -47,6 +49,7 @@ export function NewPolicyContent({
   locale,
   allowStructuralAliases,
   structuredAuthoring,
+  nameEscape = false,
 }: NewPolicyContentProps) {
   const t = useTranslations('policies');
   const searchParams = useSearchParams();
@@ -115,6 +118,7 @@ export function NewPolicyContent({
       onSave={handleSave}
       allowStructuralAliases={allowStructuralAliases}
       structuredAuthoring={structuredAuthoring}
+      nameEscape={nameEscape}
       teamId={teamId ?? null}
       cancelHref={`/${locale}/policies`}
       detailHrefFor={(id) => `/${locale}/policies/${id}`}

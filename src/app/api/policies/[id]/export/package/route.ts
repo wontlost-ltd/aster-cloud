@@ -32,6 +32,7 @@ import { loadPackageExportInput } from '@/lib/package-export-input';
 import { safeDiagnostics } from '@/lib/package-diagnostics';
 import { runNodeCheck } from '@/lib/package-node-check';
 import { loadExportLayout } from '@/lib/package-export-layout';
+import type { DomainVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
 import {
   PACKAGE_LAYOUT_HEADER,
   PACKAGE_LAYOUT_REASON_HEADER,
@@ -196,6 +197,8 @@ export async function POST(req: Request, { params }: RouteParams) {
       source,
       locale: request.locale,
       aliasSet: request.aliasSet ?? null,
+      allowStructural: request.allowStructural === true,
+      vocabulary: (vocabulary ?? null) as DomainVocabulary | null,
     });
     let layout = exportLayout.kind === 'included' ? exportLayout.layout : undefined;
     let cloudReason: CloudLayoutReason | null = exportLayout.kind === 'omitted' ? exportLayout.reason : null;

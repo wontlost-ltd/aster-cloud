@@ -326,6 +326,7 @@ export async function POST(req: Request) {
         releaseNote: undefined,
         locale: compileLocale,
         scopesJson: saveVocabulary.scopesJson,
+        vocabulary: saveVocabulary.vocabulary,
         aliasSet: aliasSetInput,
         aliasReserved,
         allowStructuralAliases: allowStructural,

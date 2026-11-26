@@ -120,3 +120,39 @@ describe('LayoutDisplayView：区间端点落在代理对中间', () => {
     expect(view().textContent).toBe(LAYOUT_DISPLAY);
   });
 });
+
+// 被隐藏的名字转义（ADR 0058 修订 3 E7，ADR 0059 修订 5 L10a 三元组）：转义名有专门样式与悬停，反引号不画插入标记。
+describe('LayoutDisplayView：被隐藏的名字转义', () => {
+  const tick = { canonical: '`', display: '' };
+  const POEM = {
+    v: 1 as const,
+    spans: [
+      { text: '床前' }, { canonical: ' ', display: '' }, tick, { text: '当' }, tick, { canonical: ' ', display: '' }, { text: '明月光' },
+    ],
+  };
+
+  it('转义名用专门样式，title 与 aria-description 给出原文 `当` 与「名字，不是关键词」；反引号不画插入标记（快照）', () => {
+    const { container } = render(<LayoutDisplayView layout={POEM} />);
+    expect(view().textContent).toBe('床前当明月光');
+    const escaped = container.querySelectorAll('[data-layout-hidden-escape]');
+    expect(escaped).toHaveLength(1);
+    expect(escaped[0].getAttribute('data-layout-hidden-escape')).toBe('`当`');
+    expect(escaped[0].getAttribute('title')).toBe('policyLayout.hiddenEscapeLabel:{"canonical":"`当`"}');
+    expect(escaped[0].getAttribute('aria-description')).toBe(escaped[0].getAttribute('title'));
+    // 两个隐藏空格照旧是插入标记；两个反引号不画
+    expect([...container.querySelectorAll('[data-layout-insertion]')].map((el) => el.getAttribute('title'))).toEqual([' ', ' ']);
+    expect(view().innerHTML).toMatchSnapshot();
+  });
+
+  it('形状不合 L10a（只有一个反引号结构 span）：按普通结构 span 渲染，不标转义名', () => {
+    const broken = { v: 1 as const, spans: [{ text: '床前' }, tick, { text: '当`明月光' }] };
+    const { container } = render(<LayoutDisplayView layout={broken} />);
+    expect(container.querySelector('[data-layout-hidden-escape]')).toBeNull();
+    expect(container.querySelectorAll('[data-layout-insertion]')).toHaveLength(1);
+  });
+
+  it('没有反引号结构 span 的排版：DOM 与引入转义之前相同（无转义标记）', () => {
+    const { container } = render(<LayoutDisplayView layout={LAYOUT} />);
+    expect(container.querySelector('[data-layout-hidden-escape]')).toBeNull();
+  });
+});

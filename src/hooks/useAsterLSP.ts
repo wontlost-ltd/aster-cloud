@@ -108,6 +108,27 @@ export interface UseAsterLSPOptions {
    *   `publishDiagnostics` 能力，并会发 didOpen / didChange。
    */
   suppressDiagnostics?: boolean;
+  /**
+   * 是否请求「用作名字」快速修复（ADR 0058 修订 3 E2；平台开关 `authoring.name_escape.enabled`）。
+   * 关闭时 E901 / W802 / E808 不随代码操作请求发给服务端，服务端因而不提供把词改写为转义的修复；
+   * 其余快速修复不受影响。缺省关闭。
+   */
+  nameEscapeQuickFix?: boolean;
+}
+
+/** 服务端为之提供「用作名字」（改写为 `` `x` ``）快速修复的诊断码（aster-lang-ts `lsp/codeaction`，ADR 0064 §6）。 */
+export const NAME_ESCAPE_FIX_CODES: ReadonlySet<string> = new Set(['E901', 'W802', 'E808']);
+
+/** 代码操作请求要带给服务端的 marker：开关关闭时去掉只为「用作名字」而存在的诊断。 */
+export function codeActionMarkers<T extends { code?: string | { value: string } }>(
+  markers: readonly T[],
+  nameEscapeQuickFix: boolean,
+): T[] {
+  if (nameEscapeQuickFix) return [...markers];
+  return markers.filter((m) => {
+    const code = typeof m.code === 'string' ? m.code : m.code?.value;
+    return code === undefined || !NAME_ESCAPE_FIX_CODES.has(code);
+  });
 }
 
 /**
@@ -297,6 +318,7 @@ export function useAsterLSP({
   tenantId,
   domainVocabularies,
   suppressDiagnostics = false,
+  nameEscapeQuickFix = false,
   autoConnect = true,
   autoReconnect = true,
   reconnectDelay = LSP_RECONNECT_BASE_MS,
@@ -333,6 +355,10 @@ export function useAsterLSP({
   const localeRef = useRef(locale);
   // eslint-disable-next-line react-hooks/refs
   localeRef.current = locale;
+  // 代码操作 provider 只注册一次，开关经 ref 读取，切换后立即生效
+  const nameEscapeQuickFixRef = useRef(nameEscapeQuickFix);
+  // eslint-disable-next-line react-hooks/refs
+  nameEscapeQuickFixRef.current = nameEscapeQuickFix;
 
   /**
    * Get the WebSocket URL for LSP connection
@@ -805,7 +831,7 @@ export function useAsterLSP({
                 end: monacoPositionToLsp({ lineNumber: range.endLineNumber, column: range.endColumn }),
               },
               context: {
-                diagnostics: context.markers.map(m => ({
+                diagnostics: codeActionMarkers(context.markers, nameEscapeQuickFixRef.current).map(m => ({
                   range: {
                     start: { line: m.startLineNumber - 1, character: m.startColumn - 1 },
                     end: { line: m.endLineNumber - 1, character: m.endColumn - 1 },

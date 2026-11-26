@@ -25,6 +25,7 @@ const ENABLED = PLATFORM_SETTING_KEYS.STRUCTURED_AUTHORING_ENABLED;
 const DELEGATION = PLATFORM_SETTING_KEYS.STRUCTURED_AUTHORING_TEAM_DELEGATION;
 const PACKAGE_EXPORT = PLATFORM_SETTING_KEYS.POLICY_PACKAGE_EXPORT_ENABLED;
 const PACKAGE_LAYOUT = PLATFORM_SETTING_KEYS.POLICY_PACKAGE_LAYOUT_EXPORT_ENABLED;
+const NAME_ESCAPE = PLATFORM_SETTING_KEYS.NAME_ESCAPE_ENABLED;
 function request(body: unknown) {
   return new Request('http://localhost/api/admin/platform-settings', { method: 'POST', body: JSON.stringify(body) });
 }
@@ -38,7 +39,7 @@ describe('capability.* 平台开关写入', () => {
     insert.mockReturnValue({ values: auditValues.mockResolvedValue(undefined) });
   });
 
-  it.each([ENABLED, DELEGATION, PACKAGE_EXPORT, PACKAGE_LAYOUT])('%s 非布尔值 → 400 invalid_capability_setting 且不写入', async (key) => {
+  it.each([ENABLED, DELEGATION, PACKAGE_EXPORT, PACKAGE_LAYOUT, NAME_ESCAPE])('%s 非布尔值 → 400 invalid_capability_setting 且不写入', async (key) => {
     const res = await POST(request({ key, value: 'yes' }));
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe('invalid_capability_setting');
@@ -100,6 +101,16 @@ describe('capability.* 平台开关写入', () => {
     }));
   });
 
+  it('编辑器名字转义开关（ADR 0058 修订 3）同样要求布尔值并写审计', async () => {
+    expect(NAME_ESCAPE).toBe('authoring.name_escape.enabled');
+    const res = await POST(request({ key: NAME_ESCAPE, value: true }));
+    expect(res.status).toBe(200);
+    expect(setSettingWithClient).toHaveBeenCalledWith(tx, NAME_ESCAPE, true, 'admin-1');
+    expect(auditValues).toHaveBeenCalledWith(expect.objectContaining({
+      resourceId: NAME_ESCAPE, metadata: { old: false, new: true },
+    }));
+  });
+
   it('非 capability.* 键不写审计（现状不变）', async () => {
     const res = await POST(request({ key: PLATFORM_SETTING_KEYS.POLICY_SHARING_ENABLED, value: true }));
     expect(res.status).toBe(200);
@@ -113,5 +124,11 @@ describe('capability 开关缺行默认值', () => {
     // 未 mock 的真实 getSetting 在 DB 不可用时走 fail-OFF 分支，返回 DEFAULTS
     expect(await getSetting(ENABLED)).toBe(false);
     expect(await getSetting(DELEGATION)).toBe(true);
+  });
+
+  it('编辑器名字转义缺行默认 false（D5：aster-api 接通 L10b 之前保持关闭）', async () => {
+    const { isNameEscapeEnabled } = await import('@/lib/platform-settings');
+    expect(await getSetting(NAME_ESCAPE)).toBe(false);
+    expect(await isNameEscapeEnabled()).toBe(false);
   });
 });

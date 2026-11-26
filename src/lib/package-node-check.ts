@@ -9,8 +9,9 @@
  *   4. 全部一致 → 交给 aster-api 签名的 `nodeProbes`。
  * 只拒绝、不降级：超步数、栈溢出、超时都按不一致处理。诊断形状与 aster-api 的导出诊断相同（无位置记 1:1）。
  *
- * 带显示排版时（ADR 0059 修订 4 D11 第 1 步）另用同一 ts 跑包排版规则 L1–L9——与 Node CLI 的 `verify`
- * （`display`、`display-ir`）同一实现、同一组编译输入，结果写在 `layoutOk`。排版不过只让路由省略排版
+ * 带显示排版时（ADR 0059 修订 4 D11 第 1 步）另用同一 ts 跑包排版规则 L1–L10——与 Node CLI 的 `verify`
+ * （`display`、`display-ir`）同一实现、同一组编译输入，结果写在 `layoutOk`。隐藏转义的 L10b（ADR 0059 修订 5 §2.3）
+ * 用重编译的同一组编译输入编译各个去反引号变体。排版不过只让路由省略排版
  * （`node_display_check_failed`），不影响探针结论与可导出性。
  */
 import {
@@ -115,8 +116,9 @@ export function layoutRuleContext(input: NodeCheckCompileInput): LayoutRuleConte
 const utf8 = (s: string) => new TextEncoder().encode(s);
 
 /**
- * 包排版 L1–L9（修订 4 §4）：L1–L7 由 `checkPackageLayout` 判定（`display.aster` 即 `toDisplay`，与 aster-api 写入包的相同）；
- * L8 用平台 Core IR 的名字；L9 用同一组编译输入重编译补空格后的源码并比较投影哈希。任何异常都按不通过处理。
+ * 包排版 L1–L10（修订 4 §4、修订 5 §2）：L1–L7 与 L10 由 `checkPackageLayout` 判定（`display.aster` 即 `toDisplay`，与 aster-api
+ * 写入包的相同；L10b 用同一组编译输入编译去反引号的变体）；L8 用平台 Core IR 的名字；L9 用同一组编译输入重编译补空格后的
+ * 源码并比较投影哈希。任何异常都按不通过处理。
  */
 function layoutPasses(layoutText: string, input: NodeCheckCompileInput, coreIr: string, positionFreeSha256: string): boolean {
   try {
@@ -127,6 +129,10 @@ function layoutPasses(layoutText: string, input: NodeCheckCompileInput, coreIr: 
       source: input.source,
       layoutVersion: 1,
       ...layoutRuleContext(input),
+      l10b: (variant) => {
+        const hash = nodePositionFreeSha256({ ...input, source: variant });
+        return hash === 'compile-failed' ? undefined : hash;
+      },
     });
     if (structuralNameHits(parsed, irNameStrings(coreIr)).length > 0) return false;
     return nodePositionFreeSha256({ ...input, source: padStructuralSpans(parsed) }) === positionFreeSha256;

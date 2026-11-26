@@ -27,7 +27,10 @@ const VOCABULARY = {
   structs: [{ localized: '望明月', canonical: 'Text', kind: 'struct' }], fields: [], functions: [], enumValues: [],
   literals: [{ localized: '思故乡', canonical: '静夜思', kind: 'literal' }],
 };
-const version = { id: 'v-poem', source: JINGYESI_SOURCE, locale: 'zh-CN', aliasSet: ALIAS_SET };
+const version = {
+  id: 'v-poem', source: JINGYESI_SOURCE, locale: 'zh-CN', aliasSet: ALIAS_SET,
+  allowStructural: true, vocabulary: VOCABULARY as never,
+};
 const POEM_LAYOUT_TEXT = serializeLayout(JINGYESI_LAYOUT);
 
 beforeEach(() => {

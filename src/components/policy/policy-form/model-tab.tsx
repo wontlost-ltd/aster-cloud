@@ -9,20 +9,22 @@
  *
  * 大纲来源 `source` 是编辑器 300 ms 防抖编译所用的那份源码（见 use-compile.ts 的 source），
  * 此处不再另设防抖；同一 source 只解析一次（useMemo）。
+ *
+ * 名字转义（ADR 0058 修订 3 E1）：开关 `nameEscape` 打开时，因关键词、别名、字面量触发词或冠词读不回原名的名字
+ * 生成 `` `name` `` 并就地提示「已自动转义」，而不是拒绝；开关关闭时判定与产出与引入转义之前逐字节相同。
  */
 import { useEffect, useId, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { useTranslations } from 'next-intl';
 import { LearnMoreLink } from '@/components/docs/docs-link';
 import { Plus, X } from 'lucide-react';
-import { foldKey, type Lexicon } from '@aster-cloud/aster-lang-ts/browser';
+import { foldKey, type DomainVocabulary, type Lexicon } from '@aster-cloud/aster-lang-ts/browser';
 import { Button, Input, Label, Select } from '@/components/ui';
 import {
-  fieldNameRoundTrips,
-  isValidFieldName,
-  isValidTypeName,
-  structNameRoundTrips,
-  typeAliasNameRoundTrips,
+  nameVerdict,
+  typeReferenceSpelling,
+  type NameRole,
+  type NameVerdictOptions,
 } from '@/lib/structured-authoring/name-validation';
 import { buildModelOutline, type ModelOutline, type Span } from '@/lib/structured-authoring/outline';
 import {
@@ -43,6 +45,10 @@ export interface ModelTabProps {
   /** 命令面板「新建结构体」：为真时打开新建结构体表单，随后调用 onStructFormOpened 消费该请求。 */
   openStructForm?: boolean;
   onStructFormOpened?: () => void;
+  /** 平台开关 `authoring.name_escape.enabled`：表单自动转义（ADR 0058 修订 3 E1）。缺省关闭。 */
+  nameEscape?: boolean;
+  /** 编辑器编译所用的有效词汇：开关打开时参与名字往返（字面量触发词作名字时据此识别）。 */
+  vocabulary?: DomainVocabulary | null;
 }
 
 type OpenForm = { kind: 'struct' } | { kind: 'alias' } | { kind: 'field'; struct: string } | null;
@@ -50,8 +56,20 @@ type OpenForm = { kind: 'struct' } | { kind: 'alias' } | { kind: 'field'; struct
 /** executeEdits 的来源标识（撤销栈与扩展据此区分编辑来源）。 */
 const EDIT_SOURCE = 'structured-authoring.model';
 
-export function ModelTab({ editor, source, lexicon, openStructForm = false, onStructFormOpened }: ModelTabProps) {
+export function ModelTab({
+  editor,
+  source,
+  lexicon,
+  openStructForm = false,
+  onStructFormOpened,
+  nameEscape = false,
+  vocabulary = null,
+}: ModelTabProps) {
   const t = useTranslations('policyEditor.modelTab');
+  const nameOptions = useMemo<NameVerdictOptions>(
+    () => ({ nameEscape, ...(vocabulary ? { vocabulary } : {}) }),
+    [nameEscape, vocabulary],
+  );
   const outline = useMemo(() => buildModelOutline(source, lexicon), [source, lexicon]);
   const typeOptions = useMemo(() => collectTypeOptions(lexicon, outline), [lexicon, outline]);
   const [openForm, setOpenForm] = useState<OpenForm>(null);
@@ -131,6 +149,7 @@ export function ModelTab({ editor, source, lexicon, openStructForm = false, onSt
           key={openForm.struct}
           structName={openForm.struct}
           lexicon={lexicon}
+          nameOptions={nameOptions}
           existingFields={outline?.structs.find((x) => x.name === openForm.struct)?.fields.map((f) => f.name) ?? []}
           typeOptions={typeOptions}
           onCancel={close}
@@ -140,6 +159,7 @@ export function ModelTab({ editor, source, lexicon, openStructForm = false, onSt
       {openForm?.kind === 'struct' && (
         <StructForm
           lexicon={lexicon}
+          nameOptions={nameOptions}
           takenNames={takenTypeNames}
           typeOptions={typeOptions}
           onCancel={close}
@@ -149,6 +169,7 @@ export function ModelTab({ editor, source, lexicon, openStructForm = false, onSt
       {openForm?.kind === 'alias' && (
         <AliasForm
           lexicon={lexicon}
+          nameOptions={nameOptions}
           takenNames={takenTypeNames}
           typeOptions={typeOptions}
           onCancel={close}
@@ -329,43 +350,53 @@ const isFilled = (value: string) => value.trim().length > 0;
 /**
  * invalid：不是单个词（词法预检）；reserved：单个词，但放进声明后不能按原名读回（关键词、冠词等，
  * 往返校验）；lowercaseType：类型名以小写字母起首，作类型引用时编译器报 E055（仅类型名）；
- * duplicate：与已有名字重名。
+ * duplicate：与已有名字重名；escaped：不是问题，名字已自动写成转义（ADR 0058 修订 3 E1），只作提示、不阻止提交。
  */
-type NameProblem = 'invalid' | 'reserved' | 'lowercaseType' | 'duplicate' | null;
+type NameProblem = 'invalid' | 'reserved' | 'lowercaseType' | 'duplicate' | 'escaped' | null;
 
-/** 首字母改大写；非小写起首返回 null（与 aster-lang-ts isBareLowercaseTypeAt 同一判据：Unicode Ll）。 */
-function capitalized(name: string): string | null {
-  const trimmed = name.trim();
-  return /^\p{Ll}/u.test(trimmed) ? trimmed.replace(/^./u, (c) => c.toUpperCase()) : null;
+/** 一个名字的判定结果：界面提示与写进源码的写法。 */
+interface NameCheck {
+  problem: NameProblem;
+  /** 写进源码的写法（原样或 `` `name` ``）；有阻止提交的问题时无意义。 */
+  written: string;
 }
 
-/** 类型名按角色往返：结构体名与类型别名名的声明上下文不同（德语 `Type der als …` 不能解析）。 */
-const TYPE_NAME_ROUND_TRIP = { struct: structNameRoundTrips, alias: typeAliasNameRoundTrips } as const;
+const isBlocking = (problem: NameProblem) => problem !== null && problem !== 'escaped';
 
-/** 类型名（结构体 / 类型别名）：须是单个标识符、能按原名读回，且不与已有类型名冲突；空串不报错（仅禁用提交）。 */
-function typeNameProblem(
+/**
+ * 名字须是单个标识符、能按原名（或其转义写法）读回，且不与已有名字冲突；空串不报错（仅禁用提交）。
+ * 类型名按角色往返：结构体名与类型别名名的声明上下文不同（德语 `Type der als …` 不能解析）。
+ */
+function checkName(
   lexicon: Lexicon,
-  role: keyof typeof TYPE_NAME_ROUND_TRIP,
+  role: NameRole,
+  name: string,
+  isTaken: (folded: string) => boolean,
+  opts: NameVerdictOptions,
+): NameCheck {
+  if (!isFilled(name)) return { problem: null, written: name };
+  const verdict = nameVerdict(lexicon, role, name, opts);
+  if (verdict.kind !== 'plain' && verdict.kind !== 'escaped') return { problem: verdict.kind, written: name };
+  if (isTaken(foldName(name))) return { problem: 'duplicate', written: verdict.written };
+  return { problem: verdict.kind === 'escaped' ? 'escaped' : null, written: verdict.written };
+}
+
+const typeNameCheck = (
+  lexicon: Lexicon,
+  role: 'struct' | 'alias',
   name: string,
   taken: ReadonlySet<string>,
-): NameProblem {
-  if (!isFilled(name)) return null;
-  if (!isValidTypeName(lexicon, name)) return 'invalid';
-  if (!TYPE_NAME_ROUND_TRIP[role](lexicon, name)) {
-    // 仅当改成大写起首即可通过时才提示大小写；小写的关键词 / 冠词（`with`、`der`）大写后仍被拒，照旧报保留词。
-    const upper = capitalized(name);
-    return upper !== null && TYPE_NAME_ROUND_TRIP[role](lexicon, upper) ? 'lowercaseType' : 'reserved';
-  }
-  return taken.has(foldName(name)) ? 'duplicate' : null;
-}
+  opts: NameVerdictOptions,
+): NameCheck => checkName(lexicon, role, name, (folded) => taken.has(folded), opts);
 
-/** 字段名：须是单个标识符、能按原名读回，且不与同结构体已有字段（或本表单其他行）重名。 */
-function fieldNameProblem(lexicon: Lexicon, name: string, taken: readonly string[]): NameProblem {
-  if (!isFilled(name)) return null;
-  if (!isValidFieldName(lexicon, name)) return 'invalid';
-  if (!fieldNameRoundTrips(lexicon, name)) return 'reserved';
-  return taken.some((t) => foldName(t) === foldName(name)) ? 'duplicate' : null;
-}
+const fieldNameCheck = (lexicon: Lexicon, name: string, taken: readonly string[], opts: NameVerdictOptions): NameCheck =>
+  checkName(lexicon, 'field', name, (folded) => taken.some((t) => foldName(t) === folded), opts);
+
+/** 字段：名字按判定的写法，类型按下拉里的类型名的引用写法（内置类型原样）。 */
+const writtenField = (lexicon: Lexicon, field: FieldInput, check: NameCheck, opts: NameVerdictOptions): FieldInput => ({
+  name: check.written,
+  type: typeReferenceSpelling(lexicon, field.type.trim(), opts),
+});
 
 const PROBLEM_MESSAGE_KEY = {
   invalid: 'invalidName',
@@ -374,17 +405,28 @@ const PROBLEM_MESSAGE_KEY = {
   duplicate: 'duplicateName',
 } as const;
 
-function ProblemMessage({ problem }: { problem: NameProblem }) {
+function ProblemMessage({ check }: { check: NameCheck | null }) {
   const t = useTranslations('policyEditor.modelTab');
-  if (!problem) return null;
+  if (!check?.problem) return null;
+  if (check.problem === 'escaped') {
+    return (
+      <p role="status" data-name-escaped="" className="text-xs text-fg-muted">
+        {t('autoEscaped', { written: check.written })}
+      </p>
+    );
+  }
   return (
     <p role="alert" className="text-xs text-danger">
-      {t(PROBLEM_MESSAGE_KEY[problem])}
+      {t(PROBLEM_MESSAGE_KEY[check.problem])}
     </p>
   );
 }
 
-const firstProblem = (...problems: NameProblem[]): NameProblem => problems.find((p) => p !== null) ?? null;
+/** 先报第一个阻止提交的问题；没有时报第一个「已自动转义」提示。 */
+const firstProblem = (...checks: NameCheck[]): NameCheck | null =>
+  checks.find((c) => isBlocking(c.problem)) ?? checks.find((c) => c.problem === 'escaped') ?? null;
+
+const blocks = (check: NameCheck | null) => check !== null && isBlocking(check.problem);
 
 function FormShell({
   title,
@@ -396,7 +438,7 @@ function FormShell({
 }: {
   title: string;
   canSubmit: boolean;
-  problem: NameProblem;
+  problem: NameCheck | null;
   onSubmit: () => void;
   onCancel: () => void;
   children: ReactNode;
@@ -410,7 +452,7 @@ function FormShell({
     <form aria-label={title} onSubmit={handleSubmit} className="space-y-3 rounded-lg border border-border p-3">
       <h3 className="text-sm font-semibold text-fg">{title}</h3>
       {children}
-      <ProblemMessage problem={problem} />
+      <ProblemMessage check={problem} />
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
           {t('cancel')}
@@ -500,12 +542,14 @@ function FieldRow({
 
 function StructForm({
   lexicon,
+  nameOptions,
   takenNames,
   typeOptions,
   onSubmit,
   onCancel,
 }: {
   lexicon: Lexicon;
+  nameOptions: NameVerdictOptions;
   takenNames: ReadonlySet<string>;
   typeOptions: string[];
   onSubmit: (input: { name: string; fields: FieldInput[] }) => void;
@@ -515,17 +559,17 @@ function StructForm({
   const blankField = (): FieldInput => ({ name: '', type: typeOptions[0] ?? '' });
   const [name, setName] = useState('');
   const [fields, setFields] = useState<FieldInput[]>(() => [blankField()]);
-  const problem = firstProblem(
-    typeNameProblem(lexicon, 'struct', name, takenNames),
-    ...fields.map((f, i) =>
-      fieldNameProblem(
-        lexicon,
-        f.name,
-        fields.slice(0, i).map((prev) => prev.name),
-      ),
+  const nameCheck = typeNameCheck(lexicon, 'struct', name, takenNames, nameOptions);
+  const fieldChecks = fields.map((f, i) =>
+    fieldNameCheck(
+      lexicon,
+      f.name,
+      fields.slice(0, i).map((prev) => prev.name),
+      nameOptions,
     ),
   );
-  const canSubmit = isFilled(name) && fields.every((f) => isFilled(f.name) && isFilled(f.type)) && problem === null;
+  const problem = firstProblem(nameCheck, ...fieldChecks);
+  const canSubmit = isFilled(name) && fields.every((f) => isFilled(f.name) && isFilled(f.type)) && !blocks(problem);
   const updateField = (index: number, next: FieldInput) => setFields((all) => all.map((f, i) => (i === index ? next : f)));
   const removeField = (index: number) => setFields((all) => all.filter((_, i) => i !== index));
 
@@ -535,7 +579,12 @@ function StructForm({
       canSubmit={canSubmit}
       problem={problem}
       onCancel={onCancel}
-      onSubmit={() => onSubmit({ name, fields })}
+      onSubmit={() =>
+        onSubmit({
+          name: nameCheck.written,
+          fields: fields.map((f, i) => writtenField(lexicon, f, fieldChecks[i], nameOptions)),
+        })
+      }
     >
       <TextField label={t('structName')} value={name} onChange={setName} />
       {fields.map((field, index) => (
@@ -557,6 +606,7 @@ function StructForm({
 function FieldForm({
   structName,
   lexicon,
+  nameOptions,
   existingFields,
   typeOptions,
   onSubmit,
@@ -564,6 +614,7 @@ function FieldForm({
 }: {
   structName: string;
   lexicon: Lexicon;
+  nameOptions: NameVerdictOptions;
   existingFields: readonly string[];
   typeOptions: string[];
   onSubmit: (field: FieldInput) => void;
@@ -571,14 +622,15 @@ function FieldForm({
 }) {
   const t = useTranslations('policyEditor.modelTab');
   const [field, setField] = useState<FieldInput>({ name: '', type: typeOptions[0] ?? '' });
-  const problem = fieldNameProblem(lexicon, field.name, existingFields);
+  const check = fieldNameCheck(lexicon, field.name, existingFields, nameOptions);
+  const problem = firstProblem(check);
   return (
     <FormShell
       title={t('addFieldTo', { name: structName })}
-      canSubmit={isFilled(field.name) && isFilled(field.type) && problem === null}
+      canSubmit={isFilled(field.name) && isFilled(field.type) && !blocks(problem)}
       problem={problem}
       onCancel={onCancel}
-      onSubmit={() => onSubmit(field)}
+      onSubmit={() => onSubmit(writtenField(lexicon, field, check, nameOptions))}
     >
       <FieldRow field={field} typeOptions={typeOptions} onChange={setField} />
     </FormShell>
@@ -587,12 +639,14 @@ function FieldForm({
 
 function AliasForm({
   lexicon,
+  nameOptions,
   takenNames,
   typeOptions,
   onSubmit,
   onCancel,
 }: {
   lexicon: Lexicon;
+  nameOptions: NameVerdictOptions;
   takenNames: ReadonlySet<string>;
   typeOptions: string[];
   onSubmit: (input: { name: string; target: string }) => void;
@@ -601,14 +655,15 @@ function AliasForm({
   const t = useTranslations('policyEditor.modelTab');
   const [name, setName] = useState('');
   const [target, setTarget] = useState(typeOptions[0] ?? '');
-  const problem = typeNameProblem(lexicon, 'alias', name, takenNames);
+  const check = typeNameCheck(lexicon, 'alias', name, takenNames, nameOptions);
+  const problem = firstProblem(check);
   return (
     <FormShell
       title={t('newTypeAlias')}
-      canSubmit={isFilled(name) && isFilled(target) && problem === null}
+      canSubmit={isFilled(name) && isFilled(target) && !blocks(problem)}
       problem={problem}
       onCancel={onCancel}
-      onSubmit={() => onSubmit({ name, target })}
+      onSubmit={() => onSubmit({ name: check.written, target: typeReferenceSpelling(lexicon, target.trim(), nameOptions) })}
     >
       <TextField label={t('aliasName')} value={name} onChange={setName} />
       <TypeSelect label={t('aliasTarget')} value={target} options={typeOptions} onChange={setTarget} />

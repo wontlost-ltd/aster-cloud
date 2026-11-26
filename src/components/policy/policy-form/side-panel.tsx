@@ -26,6 +26,7 @@ import { CNLSyntaxReferencePanel } from '@/components/policy/cnl-syntax-referenc
 import { PolicyAliasPanel } from '@/components/policy/policy-alias-panel';
 import type { StructuredAuthoringProps } from '@/lib/capabilities/types';
 import type { ReservedSets } from '@/lib/policy-alias-shared';
+import type { DomainVocabulary } from '@aster-cloud/aster-lang-ts/browser';
 import {
   defaultControlRegistry,
   localizedTitle,
@@ -108,6 +109,10 @@ export interface SidePanelProps {
   aliasSet: Record<string, string[]>;
   reservedSets: ReservedSets;
   allowStructuralAliases: boolean;
+  /** 平台开关 `authoring.name_escape.enabled`：模型标签页表单自动转义（ADR 0058 修订 3 E1）。 */
+  nameEscape?: boolean;
+  /** 编辑器编译所用的有效词汇（模型标签页名字往返用）。 */
+  compileVocabulary?: DomainVocabulary | null;
   /** 结构化编写能力的服务端判定；allowed 为假时不渲染「模型 / 词汇」标签及其内容。 */
   structuredAuthoring: StructuredAuthoringProps;
   onAliasSetChange: (aliasSet: Record<string, string[]>) => void;
@@ -175,6 +180,8 @@ export function SidePanel({
   aliasSet,
   reservedSets,
   allowStructuralAliases,
+  nameEscape = false,
+  compileVocabulary = null,
   structuredAuthoring,
   onAliasSetChange,
   onApplyContent,
@@ -377,6 +384,8 @@ export function SidePanel({
               lexicon={modelLexicon}
               openStructForm={newStructRequested}
               onStructFormOpened={onNewStructRequestHandled}
+              nameEscape={nameEscape}
+              vocabulary={compileVocabulary}
             />
           </div>
         )}

@@ -194,6 +194,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       releaseNote,
       locale: compileLocale,
       scopesJson: saveVocabulary.scopesJson,
+      vocabulary: saveVocabulary.vocabulary,
       aliasSet: aliasSetInput,
       aliasReserved,
       allowStructuralAliases: allowStructural,

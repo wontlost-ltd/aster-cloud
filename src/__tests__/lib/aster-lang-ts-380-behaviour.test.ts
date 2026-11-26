@@ -132,7 +132,7 @@ describe('aster-lang-ts 3.8.0 行为变化', () => {
     });
   });
 
-  describe('显示排版的隐藏转义（ADR 0059 修订 5 L10）：cloud 不传编译上下文，失败封闭', () => {
+  describe('显示排版的隐藏转义（ADR 0059 修订 5 L10）：不带编译上下文时失败封闭（带上下文的判定见 policy-layout-hidden-escape）', () => {
     const source = 'Module probe.sample.\n\nRule f given `count` as Int, produce Int:\n  Return `count`.\n';
     const hidden = (s: string) => [{ canonical: '`', display: '' }, { text: s }, { canonical: '`', display: '' }];
     const layout = {
@@ -148,7 +148,7 @@ describe('aster-lang-ts 3.8.0 行为变化', () => {
       expect(result).toMatchObject({ ok: false, code: 'layout_hidden_escape_changes_program' });
     });
 
-    it('保存接口同样以 400 拒绝；反引号照原样显示的排版照常通过', () => {
+    it('保存接口在调用方给不出编译上下文（LayoutContext.compile 缺省）时同样以 400 拒绝；反引号照原样显示的排版照常通过', () => {
       let error: unknown;
       try {
         prepareLayout(layout, { source, locale: 'en-US', aliasSet: null });
@@ -157,9 +157,9 @@ describe('aster-lang-ts 3.8.0 行为变化', () => {
       }
       expect(error).toBeInstanceOf(LayoutSaveError);
       expect(error).toMatchObject({ code: 'layout_hidden_escape_changes_program', status: 400 });
-      // 排版标签页的错误码表还不认这两个新码（文案随 E5 补），界面走通用失败提示
-      expect(isLayoutSaveErrorCode('layout_hidden_escape_changes_program')).toBe(false);
-      expect(isLayoutSaveErrorCode('layout_escape_delimiter_invalid')).toBe(false);
+      // 排版标签页的错误码表认这两个码（ADR 0058 修订 3 E8），按码显示本地化文案
+      expect(isLayoutSaveErrorCode('layout_hidden_escape_changes_program')).toBe(true);
+      expect(isLayoutSaveErrorCode('layout_escape_delimiter_invalid')).toBe(true);
 
       expect(() => prepareLayout({ v: 1, spans: [{ text: source }] }, { source, locale: 'en-US', aliasSet: null }))
         .not.toThrow();
@@ -178,7 +178,7 @@ describe('aster-lang-ts 3.8.0 行为变化', () => {
     });
   });
 
-  it('领域词汇的写法含反引号被引擎拒绝（ADR 0060 修订 2 X2），界面回落到通用提示', () => {
+  it('领域词汇的写法含反引号被引擎拒绝（ADR 0060 修订 2 X2），界面识别为 containsBacktick', () => {
     const vocab = assembleDomainVocabularyFromLinks(
       [{ domainTermId: 't1', domain: 'd', locale: 'de', kind: 'struct', canonical: 'Driver', localized: '`Fahrer`', aliases: [] }],
       { domain: 'd', locale: 'de' },
@@ -187,6 +187,6 @@ describe('aster-lang-ts 3.8.0 行为变化', () => {
     expect(result.valid).toBe(false);
     const message = result.errors.join('; ');
     expect(message).toContain('反引号');
-    expect(parseVocabularyValidationMessage(message)).toBeNull();
+    expect(parseVocabularyValidationMessage(message)).toEqual({ reason: 'containsBacktick', values: { name: '`Fahrer`' } });
   });
 });
