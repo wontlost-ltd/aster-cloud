@@ -116,12 +116,12 @@ describe('类型别名引导词本地化（ADR 0058 修订 2）', () => {
     { lexicon: HI_IN, keyword: 'प्रकार', name: 'अंक', target: 'पूर्णांक', expected: 'प्रकार अंक रूप में पूर्णांक।' },
   ];
 
-  it('随包 aster-lang-ts 为 3.8.0', () => {
-    expect(TS_VERSION).toBe('3.8.0');
+  it('随包 aster-lang-ts 为 3.8.1', () => {
+    expect(TS_VERSION).toBe('3.8.1');
   });
 
   for (const c of LOCALES) {
-    it(`${c.lexicon.id}：生成「${c.keyword}」并以 ts 3.8.0 编译、大纲读回`, () => {
+    it(`${c.lexicon.id}：生成「${c.keyword}」并以 ts 3.8.1 编译、大纲读回`, () => {
       expect(c.lexicon.keywords[SemanticTokenKind.TYPE_ALIAS]).toBe(c.keyword);
       const alias = buildTypeAliasSource(c.lexicon, { name: c.name, target: c.target });
       expect(alias).toBe(c.expected);

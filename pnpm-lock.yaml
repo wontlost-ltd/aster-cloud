@@ -42,8 +42,8 @@ importers:
   .:
     dependencies:
       '@aster-cloud/aster-lang-ts':
-        specifier: 3.8.0
-        version: 3.8.0(ws@8.21.1)(zod@4.6.7)
+        specifier: 3.8.1
+        version: 3.8.1(ws@8.21.1)(zod@4.6.7)
       '@aster-cloud/tokens':
         specifier: ^0.2.2
         version: 0.2.2
@@ -387,8 +387,8 @@ packages:
     engines: {node: '>=24'}
     hasBin: true
 
-  '@aster-cloud/aster-lang-ts@3.8.0':
-    resolution: {integrity: sha512-PRybgkWr09vol/656rPzxrSYgc6lWzcgyWQzFXSrVNWYI+e33fe3zmWYiGHrWWyz5U6K2ZHxnN3o+/UctJNmng==}
+  '@aster-cloud/aster-lang-ts@3.8.1':
+    resolution: {integrity: sha512-2JiHtYmonagH6NSQeLvOjcVUeGNohh+y4c0Er/SWpWxUK4AZ92LH9TRr8q/reQm1pCGxpYKwnsm0q67Wi5EjYA==}
     engines: {node: '>=24.0.0'}
     hasBin: true
 
@@ -6218,7 +6218,7 @@ snapshots:
       - '@cfworker/json-schema'
       - supports-color
 
-  '@aster-cloud/aster-lang-ts@3.8.0(ws@8.21.1)(zod@4.6.7)':
+  '@aster-cloud/aster-lang-ts@3.8.1(ws@8.21.1)(zod@4.6.7)':
     dependencies:
       '@types/semver': 7.7.1
       ajv: 8.20.0
