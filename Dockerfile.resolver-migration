@@ -52,4 +52,9 @@ COPY scripts/resolver-migration.ts ./scripts/resolver-migration.ts
 
 USER node
 
+# 冒烟（#853）：用与 CMD 相同的命令跑 --help。脚本的静态导入在 --help 判定之前全部求值，
+# 所以闭包里只要有一个模块导入了本镜像未安装的包（如 next/server），这里就报 ERR_MODULE_NOT_FOUND，
+# 镜像构建失败、不会推送，也不会开 pin PR。PR 阶段由 ci.yml 的 resolver-migration-image-smoke 构建本镜像触发同一检查。
+RUN node --conditions=import --import tsx scripts/resolver-migration.ts --help > /dev/null
+
 CMD ["node", "--conditions=import", "--import", "tsx", "scripts/resolver-migration.ts"]

@@ -42,7 +42,7 @@ import {
   PolicyCompileError,
   PolicyCompileUnavailableError,
   type CompileDiagnostic,
-} from '@/services/policy/version-manager';
+} from '@/services/policy/policy-compile-error';
 
 /** 每批读取的主键数（ADR 0051 §9）。 */
 export const RESOLVER_MIGRATION_BATCH_SIZE = 50;
