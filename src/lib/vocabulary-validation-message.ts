@@ -17,6 +17,7 @@ export type VocabularyValidationReason =
   | 'duplicateLocalized'
   | 'triggerConflict'
   | 'scopeConflict'
+  | 'containsBacktick'
   | 'invalidLiteral'
   | 'parentRequired'
   | 'fieldRequired'
@@ -49,6 +50,8 @@ const RULES: ReadonlyArray<{
   { pattern: /规范化名称 "([^"]*)" 重复/, reason: 'duplicateCanonical', param: 'name' },
   { pattern: /本地化名称 "([^"]*)" 重复/, reason: 'duplicateLocalized', param: 'name' },
   { pattern: /触发词 "([^"]*)" 与另一条映射冲突/, reason: 'triggerConflict', param: 'trigger' },
+  // 写法含反引号（ADR 0060 修订 2 X2）：反引号是名字转义的定界符
+  { pattern: /写法 "([^"]*)" 含反引号/, reason: 'containsBacktick', param: 'name' },
   { pattern: /字面量宏内容/, reason: 'invalidLiteral' },
   { pattern: /字段 "[^"]*" 没有指定父结构体/, reason: 'parentRequired' },
   { pattern: /枚举成员 "[^"]*" 没有指定父枚举/, reason: 'parentRequired' },

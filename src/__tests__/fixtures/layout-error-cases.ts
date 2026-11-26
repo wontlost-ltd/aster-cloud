@@ -41,6 +41,16 @@ const MANY_SPANS: LayoutSpan[] = Array.from({ length: 401 }, (_, i) => [
 ]).flat();
 const MANY_SPANS_SOURCE = MANY_SPANS.map((s) => ('text' in s ? s.text : s.canonical)).join('');
 
+/** 带名字转义的源码（ADR 0064）：形参 `count` 冗余转义。 */
+export const ESCAPE_SOURCE = `${HEAD}.\n\nRule decide given \`count\` as Int, produce Int:\n  Return \`count\`.\n`;
+const tick = (display: string): LayoutSpan => ({ canonical: '`', display });
+
+/** zh 字段 `版本`：去掉反引号会编译成字段 version（ADR 0059 修订 5 §6 向量 E2），隐藏不被允许。 */
+export const VERSION_FIELD_SOURCE = '模块 探针.样例。\n\n定义 软件 包含 `版本` 作为 整数。\n';
+export const VERSION_FIELD_HIDDEN = layout([
+  { text: '模块 探针.样例。\n\n定义 软件 包含 ' }, tick(''), { text: '版本' }, tick(''), { text: ' 作为 整数。\n' },
+]);
+
 export const LAYOUT_ERROR_CASES: ReadonlyArray<LayoutErrorCase> = [
   {
     name: 'format version 2',
@@ -96,6 +106,29 @@ export const LAYOUT_ERROR_CASES: ReadonlyArray<LayoutErrorCase> = [
       source: QUOTED_COMMENT_SOURCE,
       locale: 'en-US',
     },
+    expect: {},
+  },
+  {
+    // L10a：结构 span 的 display 不得含反引号（防把关键词伪装成转义名）
+    name: 'structural span displays a backtick',
+    code: 'layout_escape_delimiter_invalid',
+    status: 400,
+    input: {
+      layout: layout([
+        { text: `${HEAD}.\n\nRule decide given ` }, tick('`'), { text: 'count' }, tick(''),
+        { text: ' as Int, produce Int:\n  Return `count`.\n' },
+      ]),
+      source: ESCAPE_SOURCE,
+      locale: 'en-US',
+    },
+    expect: {},
+  },
+  {
+    // L10b：带不带编译上下文都拒绝——不带时失败封闭，带时 C⁻ 编译成另一个程序
+    name: 'hidden escape whose removal renames the field',
+    code: 'layout_hidden_escape_changes_program',
+    status: 400,
+    input: { layout: VERSION_FIELD_HIDDEN, source: VERSION_FIELD_SOURCE, locale: 'zh-CN' },
     expect: {},
   },
   {

@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "description": "ADR 0060 §5.4 别名校验器 v2 跨引擎夹具。aster-lang-core src/test/resources/diagnostics/ 与 aster-lang-ts shared/ 两份逐字节相同。cases 只跑校验器（core UserAliasValidator.validate / ts validateAliasSet）：valid 与 codes（cloud AliasIssueCode 名，按错误消息映射）都须一致。guardCases 跑完整编译（core InProcessCnlParser.parseWithUserAliases / ts compileSource，含名称解析，不含类型检查）：ok = 零 error；alias_identifier_collision = 编译失败且只有 E808（含解析失败归因）；parse_error = 编译失败且不含 E808。",
+  "description": "ADR 0060 §5.4 别名校验器 v2 跨引擎夹具。aster-lang-core src/test/resources/diagnostics/ 与 aster-lang-ts shared/ 两份逐字节相同。cases 只跑校验器（含 ADR 0060 修订 2 X2：别名不得含反引号）（core UserAliasValidator.validate / ts validateAliasSet）：valid 与 codes（cloud AliasIssueCode 名，按错误消息映射）都须一致。guardCases 跑完整编译（含 X1：转义名跳过 E808）（core InProcessCnlParser.parseWithUserAliases / ts compileSource，含名称解析，不含类型检查）：ok = 零 error；alias_identifier_collision = 编译失败且只有 E808（含解析失败归因）；parse_error = 编译失败且不含 E808。",
   "cases": [
     {
       "id": "zh-han-2",
@@ -698,6 +698,36 @@
       "valid": false,
       "codes": [
         "nonCanonical"
+      ]
+    },
+    {
+      "id": "backtick-multiword",
+      "locale": "en-US",
+      "allowStructural": false,
+      "aliasSet": {
+        "TIMES": [
+          "multiplied `by`"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "containsBacktick"
+      ]
+    },
+    {
+      "id": "backtick-han",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "`低头`"
+        ]
+      },
+      "vocabulary": null,
+      "valid": false,
+      "codes": [
+        "containsBacktick"
       ]
     }
   ],
@@ -1437,6 +1467,36 @@
       },
       "vocabulary": null,
       "source": "Module demo.\n\nRule f given answer as Int, produce Int:\n  answer it answer.\n",
+      "expect": "ok"
+    },
+    {
+      "id": "return-escaped-param",
+      "kind": "RETURN",
+      "position": "param",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲 给定 `低头` 作为 整数，产出 整数：\n  返回 `低头`。\n",
+      "expect": "ok"
+    },
+    {
+      "id": "return-escaped-let",
+      "kind": "RETURN",
+      "position": "let",
+      "locale": "zh-CN",
+      "allowStructural": true,
+      "aliasSet": {
+        "RETURN": [
+          "低头"
+        ]
+      },
+      "vocabulary": null,
+      "source": "模块 测试。\n\n规则 甲，产出 整数：\n  令 `低头` 定义为 1。\n  返回 `低头`。\n",
       "expect": "ok"
     }
   ]

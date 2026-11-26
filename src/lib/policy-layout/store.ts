@@ -16,8 +16,10 @@ import {
   serializeLayout,
   toCanonical,
   validatePolicyLayout,
+  type LayoutCompileContext,
   type PolicyLayout,
 } from '@aster-cloud/aster-lang-ts/layout';
+import type { DomainVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
 import { db, policies, policyVersionLayouts, policyVersions } from '@/lib/prisma';
 import { getLexicon } from '@/lib/aster-lexicon';
 import type { SnapshotTx } from '@/lib/domain-vocabulary-snapshot';
@@ -36,6 +38,26 @@ export interface LayoutContext {
   source: string;
   locale: string;
   aliasSet: Readonly<Record<string, readonly string[]>> | null;
+  /**
+   * L10b（ADR 0059 修订 5 §2.3，ADR 0058 修订 3 E8）其余的编译输入：与版本源码实际编译相同的结构词授权与有效词汇。
+   * 缺省表示调用方给不出完整编译输入——含隐藏转义三元组的排版一律以 `layout_hidden_escape_changes_program` 拒绝（失败封闭），
+   * 不含三元组的排版不受影响。
+   */
+  compile?: { allowStructural: boolean; vocabulary: DomainVocabulary | null };
+}
+
+/** 版本的 L10b 编译上下文；`ctx.compile` 缺省时为 undefined（失败封闭）。aliasSet 与词法表叠加口径相同。 */
+function compileContextOf(
+  ctx: LayoutContext,
+  aliasSet: Record<string, string[]> | undefined,
+): LayoutCompileContext | undefined {
+  if (!ctx.compile) return undefined;
+  return {
+    locale: ctx.locale,
+    aliasSet: aliasSet ?? null,
+    allowStructural: ctx.compile.allowStructural,
+    vocabulary: ctx.compile.vocabulary,
+  };
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -70,14 +92,15 @@ function readSubmitted(input: unknown): PolicyLayout {
 
 /**
  * 校验一个 layout 能否随版本源码保存，返回存储形态。校验与编辑器共用包的 `validatePolicyLayout`，
- * 词法表为版本 locale 的词法表并入版本冻结的 aliasSet（裁决 R7）。失败抛 400 `LayoutSaveError`。
+ * 词法表为版本 locale 的词法表并入版本冻结的 aliasSet（裁决 R7），隐藏转义的 L10b 用版本的编译上下文（E8）。
+ * 失败抛 400 `LayoutSaveError`。
  */
 export function prepareLayout(input: unknown, ctx: LayoutContext): PreparedLayout {
   const parsed = readSubmitted(input);
   const aliasSet = ctx.aliasSet && Object.keys(ctx.aliasSet).length > 0
     ? (ctx.aliasSet as Record<string, string[]>)
     : undefined;
-  const result = validatePolicyLayout(parsed, ctx.source, getLexicon(ctx.locale), aliasSet);
+  const result = validatePolicyLayout(parsed, ctx.source, getLexicon(ctx.locale), aliasSet, compileContextOf(ctx, aliasSet));
   if (!result.ok) {
     throw new LayoutSaveError(result.code, 400, result.message, {
       ...(result.offset !== undefined ? { offset: result.offset } : {}),

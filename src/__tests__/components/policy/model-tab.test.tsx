@@ -531,3 +531,74 @@ describe('ModelTab 重名口径（四种语言）：foldKey 折叠 + 导入别�
     }
   });
 });
+
+// 名字自动转义（ADR 0058 修订 3 E1）：开关打开时生成 `name` 并提示「已自动转义」；开关关闭时与引入转义之前逐字节相同。
+describe('ModelTab 名字自动转义（开关 authoring.name_escape.enabled）', () => {
+  const ZH = '模块 demo。\n\n定义 人员 包含 姓名 作为 文本。\n';
+  const renderZh = (editor: ReturnType<typeof fakeEditor>, nameEscape?: boolean) =>
+    render(
+      <IntlClientProvider locale="zh" messages={messages as never}>
+        <ModelTab editor={editor as never} source={ZH} lexicon={ZH_CN} {...(nameEscape === undefined ? {} : { nameEscape })} />
+      </IntlClientProvider>,
+    );
+  const fillStruct = (structName: string, fieldName: string) => {
+    fireEvent.click(screen.getByRole('button', { name: M.newStruct }));
+    const form = screen.getByRole('form', { name: M.newStruct });
+    fireEvent.change(within(form).getByLabelText(M.structName), { target: { value: structName } });
+    fireEvent.change(within(form).getAllByLabelText(M.fieldName)[0], { target: { value: fieldName } });
+    return form;
+  };
+  const insertButton = (form: HTMLElement) => within(form).getByRole('button', { name: M.insert }) as HTMLButtonElement;
+  const insertedText = (editor: ReturnType<typeof fakeEditor>) =>
+    (editor.executeEdits.mock.calls[0] as unknown as [string, Array<{ text: string }>])[1][0].text;
+
+  it('开关打开：关键词作字段名 → 「已自动转义」提示，插入 `版本`', () => {
+    const editor = fakeEditor(ZH);
+    renderZh(editor, true);
+    const form = fillStruct('软件', '版本');
+    expect(insertButton(form).disabled).toBe(false);
+    expect(within(form).queryByRole('alert')).toBeNull();
+    expect(within(form).getByRole('status').textContent).toBe(M.autoEscaped.replace('{written}', '`版本`'));
+    fireEvent.click(insertButton(form));
+    expect(insertedText(editor)).toBe('\n定义 软件 包含 `版本` 作为 文本。\n');
+  });
+
+  it('开关打开：关键词作结构体名，再作字段类型时类型下拉写成转义', () => {
+    const src = '模块 demo。\n\n定义 `如果` 包含 x 作为 文本。\n';
+    const editor = fakeEditor(src);
+    render(
+      <IntlClientProvider locale="zh" messages={messages as never}>
+        <ModelTab editor={editor as never} source={src} lexicon={ZH_CN} nameEscape />
+      </IntlClientProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: M.newStruct }));
+    const form = screen.getByRole('form', { name: M.newStruct });
+    fireEvent.change(within(form).getByLabelText(M.structName), { target: { value: '申请' } });
+    fireEvent.change(within(form).getAllByLabelText(M.fieldName)[0], { target: { value: '条件' } });
+    fireEvent.change(within(form).getAllByLabelText(M.fieldType)[0], { target: { value: '如果' } });
+    fireEvent.click(insertButton(form));
+    expect(insertedText(editor)).toBe('\n定义 申请 包含 条件 作为 `如果`。\n');
+  });
+
+  it('开关打开：阻止提交的问题优先于自动转义提示', () => {
+    renderZh(fakeEditor(ZH), true);
+    const form = fillStruct('人员', '版本');
+    expect(insertButton(form).disabled).toBe(true);
+    expect(within(form).getByRole('alert').textContent).toBe(M.duplicateName);
+  });
+
+  it.each([undefined, false])('开关关闭（%s）：与引入转义之前一致——报保留词、禁用插入、不转义', (flag) => {
+    const editor = fakeEditor(ZH);
+    renderZh(editor, flag);
+    const form = fillStruct('软件', '版本');
+    expect(insertButton(form).disabled).toBe(true);
+    expect(within(form).getByRole('alert').textContent).toBe(M.reservedName);
+    expect(within(form).queryByRole('status')).toBeNull();
+    // 合法名字的产出与 buildStructSource 逐字节相同
+    fireEvent.change(within(form).getAllByLabelText(M.fieldName)[0], { target: { value: ' 年龄 ' } });
+    fireEvent.click(insertButton(form));
+    expect(insertedText(editor)).toBe(
+      `\n${buildStructSource(ZH_CN, { name: '软件', fields: [{ name: ' 年龄 ', type: '文本' }] })}\n`,
+    );
+  });
+});

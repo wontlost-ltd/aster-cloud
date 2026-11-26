@@ -7,10 +7,7 @@ import { useTheme } from 'next-themes';
 import { useTranslations } from 'next-intl';
 import {
   getLexicon,
-  getKeywordsByCategory,
-  buildMultiWordRules,
   getVocabulary,
-  extractVocabularyTerms,
   initBuiltinVocabularies,
   type Lexicon,
   type DomainVocabulary,
@@ -25,6 +22,7 @@ import { useUserVocabularyRegistration, type VocabularyTabTerm } from '@/hooks/u
 import type { EmbeddedVocabulary } from '@/lib/policy-embedded-vocabulary';
 import type { TypecheckDiagnostic } from '@aster-cloud/aster-lang-ts/browser';
 import { asterEditorTheme } from '@/lib/editor/aster-editor-theme';
+import { buildAsterMonarchLanguage } from '@/lib/editor/aster-monarch';
 import { useEntryRuleDecorations } from './use-entry-rule-decorations';
 import { extractUseRefs, type UseRef } from '@/lib/aster/modules';
 import type { AsterModuleCatalogEntry } from '@/services/policy/policy-api';
@@ -89,6 +87,11 @@ interface MonacoPolicyEditorProps {
   /** 词汇标签页用：上抛 hook 已拉取的词条（不另发请求）。 */
   onVocabularyTermsChange?: (terms: ReadonlyArray<VocabularyTabTerm>) => void;
   /**
+   * 平台开关 `authoring.name_escape.enabled`（ADR 0058 修订 3 E2）：关闭时不向 LSP 请求「用作名字」快速修复，
+   * 编辑器不产生任何转义；已有的转义照常着色与编译。缺省关闭。
+   */
+  nameEscape?: boolean;
+  /**
    * 上抛本编辑器 LSP 会话的能力与词汇规范预览请求（ADR 0058 §8.3 预览窗格用）。
    * LSP 未启用（未配置 NEXT_PUBLIC_LSP_HOST 或只读）时 features 恒为 null。
    */
@@ -109,6 +112,11 @@ export interface EditorCompileState {
   module?: EditorCompileModuleSummary;
   /** 本次诊断对应的源码（300 ms 防抖编译的输入）；模型大纲据此解析，不另设防抖。 */
   source?: string;
+  /**
+   * 编辑器编译所用的有效词汇（作者 + 团队 + 内嵌，与服务端 loadSaveVocabulary 同一合并）；未启用词汇时为 null。
+   * 模型表单的名字往返与排版标签页的 L10b 预检据此与编译同口径。
+   */
+  vocabulary?: DomainVocabulary | null;
 }
 
 export interface EditorCompileDiagnostic {
@@ -141,113 +149,8 @@ function registerAsterLanguage(
     languageRegistered = true;
   }
 
-  const keywords = getKeywordsByCategory(lexicon);
-  // 多词关键词规则（从词表派生，见 buildMultiWordRules 的说明）。
-  const multiWordRules = buildMultiWordRules(lexicon);
-
-  // 提取领域词汇表术语
-  const domainTerms = vocabulary ? extractVocabularyTerms(vocabulary) : [];
-
-  // 设置语言的 Token 规则
-  monaco.languages.setMonarchTokensProvider(ASTER_LANG_ID, {
-    // 关键词分类
-    moduleKeywords: keywords.module,
-    typeKeywords: keywords.type,
-    functionKeywords: keywords.function,
-    controlKeywords: keywords.control,
-    variableKeywords: keywords.variable,
-    booleanKeywords: keywords.boolean,
-    operatorKeywords: keywords.operator,
-    literalKeywords: keywords.literal,
-    primitiveTypeKeywords: keywords.primitiveType,
-    workflowKeywords: keywords.workflow,
-    asyncKeywords: keywords.async,
-    constraintKeywords: keywords.constraint,
-    effectKeywords: keywords.effect,
-    domainTerms,
-
-    // Token 化规则
-    tokenizer: {
-      root: [
-        // 注释 (// 或 # 开头)
-        [/\/\/.*$/, 'comment'],
-        [/#.*$/, 'comment'],
-
-        // 字符串 (支持多种引号)
-        [/"([^"\\]|\\.)*$/, 'string.invalid'], // 未闭合的字符串
-        [/"/, 'string', '@string_double'],
-        [/'([^'\\]|\\.)*$/, 'string.invalid'],
-        [/'/, 'string', '@string_single'],
-        [/「/, 'string', '@string_chinese'],
-
-        // 数字
-        [/\d+\.\d*/, 'number.float'],
-        [/\.\d+/, 'number.float'],
-        [/\d+/, 'number'],
-
-        // ★多词关键词必须排在标识符规则**之前**：Monarch 自上而下首个匹配即用，
-        //   标识符规则 [A-Za-z_…]+ 只吃到 "for" 就落 @default=identifier，
-        //   排在后面的 /for each/ 永远轮不到（这是「英文/德文多词关键词从不高亮」的根因）。
-        //   规则由 buildMultiWordRules 从词表**动态生成**（含长度降序，
-        //   使 "integer divided by" 不被 "divided by" 抢先匹配），词表新增自动跟随。
-        ...multiWordRules,
-
-        // 标识符和关键词
-        [
-          /[a-zA-Z_\u4e00-\u9fa5\u0900-\u097f][\w\u4e00-\u9fa5\u0900-\u097f]*/,
-          {
-            cases: {
-              '@moduleKeywords': 'keyword.module',
-              '@typeKeywords': 'keyword.type',
-              '@functionKeywords': 'keyword.function',
-              '@controlKeywords': 'keyword.control',
-              '@variableKeywords': 'keyword.variable',
-              '@booleanKeywords': 'keyword.boolean',
-              '@operatorKeywords': 'keyword.operator',
-              '@literalKeywords': 'constant.language',
-              '@primitiveTypeKeywords': 'type',
-              '@workflowKeywords': 'keyword.workflow',
-              '@asyncKeywords': 'keyword.async',
-                '@constraintKeywords': 'keyword.constraint',
-                '@effectKeywords': 'keyword.effect',
-              '@domainTerms': 'variable.domain',
-              '@default': 'identifier',
-            },
-          },
-        ],
-
-        // 运算符
-        [/[+\-*/<>=!]+/, 'operator'],
-
-        // 标点符号
-        [/[{}()\[\]]/, 'delimiter.bracket'],
-        [/[;,.:：。，、]/, 'delimiter'],
-
-        // 空白
-        [/\s+/, 'white'],
-      ],
-
-      // 双引号字符串
-      string_double: [
-        [/[^\\"]+/, 'string'],
-        [/\\./, 'string.escape'],
-        [/"/, 'string', '@pop'],
-      ],
-
-      // 单引号字符串
-      string_single: [
-        [/[^\\']+/, 'string'],
-        [/\\./, 'string.escape'],
-        [/'/, 'string', '@pop'],
-      ],
-
-      // 中文引号字符串
-      string_chinese: [
-        [/[^」]+/, 'string'],
-        [/」/, 'string', '@pop'],
-      ],
-    },
-  });
+  // 着色规则（含名字转义，ADR 0064 §6）见 lib/editor/aster-monarch，单测用真实 Monaco tokenize 做快照
+  monaco.languages.setMonarchTokensProvider(ASTER_LANG_ID, buildAsterMonarchLanguage(lexicon, vocabulary));
 
   // 设置语言配置（括号匹配、注释等）
   monaco.languages.setLanguageConfiguration(ASTER_LANG_ID, {
@@ -394,6 +297,7 @@ export function MonacoPolicyEditor({
   onCompileChange,
   onVocabularyTermsChange,
   onLspChange,
+  nameEscape = false,
 }: MonacoPolicyEditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof import('monaco-editor') | null>(null);
@@ -611,6 +515,8 @@ export function MonacoPolicyEditor({
      *   Problems 面板双份条目（且两边行列基准还不同）。
      *   诊断归浏览器侧编译器，LSP 只提供跳转/签名/引用。 */
     suppressDiagnostics: true,
+    // 「用作名字」快速修复（ADR 0058 修订 3 E2）由平台开关控制；关闭时不请求，编辑器不产生转义。
+    nameEscapeQuickFix: nameEscape,
     // 连不上时静默降级：编辑器仍有完整的浏览器侧诊断，
     // 不该因为一个增强能力不可用就往控制台刷错误。
     suppressErrors: true,
@@ -650,8 +556,14 @@ export function MonacoPolicyEditor({
     // 呈现，StatusBar 的 error 态专用于 transportError（网络编译，此本地路径无）。
     const state: EditorCompileState['state'] =
       value.trim().length === 0 ? 'idle' : 'ok';
-    onCompileChange({ state, diagnostics: mapped, module: moduleSummary, source: compiledSource });
-  }, [diagnostics, compileResult, compiledSource, value, onCompileChange]);
+    onCompileChange({
+      state,
+      diagnostics: mapped,
+      module: moduleSummary,
+      source: compiledSource,
+      vocabulary: userVocabulary ?? null,
+    });
+  }, [diagnostics, compileResult, compiledSource, value, onCompileChange, userVocabulary]);
 
   const { errorCount, warningCount } = useMemo(() => {
     let errors = 0;

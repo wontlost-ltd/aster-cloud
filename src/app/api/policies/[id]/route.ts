@@ -374,6 +374,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
           releaseNote: undefined,
           locale: compileLocale,
           scopesJson: saveVocabulary.scopesJson,
+          vocabulary: saveVocabulary.vocabulary,
           aliasSet: aliasSetInput,
           aliasReserved,
           allowStructuralAliases: allowStructural,

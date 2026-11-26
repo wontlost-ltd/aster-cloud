@@ -4,6 +4,7 @@ import { NewPolicyContent } from './new-policy-content';
 import { getStructuralAliasGrant } from '@/lib/structural-alias-grants';
 import { resolveEntitlementForRequest } from '@/lib/capabilities/resolve';
 import { toEditorAuthoringProps } from '@/lib/capabilities/editor-props';
+import { isNameEscapeEnabled } from '@/lib/platform-settings';
 
 interface PageProps {
   params: Promise<{ locale: string }>;
@@ -33,12 +34,15 @@ export default async function NewPolicyPage({ params, searchParams }: PageProps)
   const structuredAuthoring = toEditorAuthoringProps(
     await resolveEntitlementForRequest(session.user.id, 'structured_authoring', { teamId }),
   );
+  // 编辑器名字转义（ADR 0058 修订 3）：平台开关，缺行 / 读库失败一律关闭
+  const nameEscape = await isNameEscapeEnabled();
 
   return (
     <NewPolicyContent
       locale={locale}
       allowStructuralAliases={allowStructuralAliases}
       structuredAuthoring={structuredAuthoring}
+      nameEscape={nameEscape}
     />
   );
 }

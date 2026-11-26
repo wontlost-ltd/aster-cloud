@@ -9,13 +9,14 @@
  */
 import { LAYOUT_LIMITS, type LayoutLimitName, type LayoutRange, type LayoutSpan, type PolicyLayout } from '@aster-cloud/aster-lang-ts/layout';
 
-export type LayoutEditErrorCode = 'empty_range' | 'crosses_structural' | 'splits_surrogate' | 'out_of_range';
+export type LayoutEditErrorCode = 'empty_range' | 'crosses_structural' | 'splits_surrogate' | 'out_of_range' | 'no_escape';
 
 export const LAYOUT_EDIT_ERROR_CODES: readonly LayoutEditErrorCode[] = [
   'empty_range',
   'crosses_structural',
   'splits_surrogate',
   'out_of_range',
+  'no_escape',
 ];
 
 function fail(code: LayoutEditErrorCode): never {
@@ -109,6 +110,91 @@ export function setStructuralDisplay(layout: PolicyLayout, index: number, displa
   assertStructuralIndex(layout, index);
   const spans = layout.spans.map((span, i) => (i === index ? { canonical: canonicalOf(span), display } : span));
   return { v: 1, spans };
+}
+
+/** 源码里一个名字转义 `` `x` `` 的两个反引号的偏移（`close` 指闭反引号本身）。 */
+export interface EscapeDelimiters {
+  open: number;
+  close: number;
+}
+
+/** 转义内容：同一行内、不含空白与反引号的非空串（ADR 0064 N1a 的形状部分；是否真是转义 token 由 L10 判定）。 */
+const ESCAPE_CONTENT = /^[^`\s]+$/;
+
+/** 字符串的开 / 闭引号（ASCII 双引号与中文直角引号，与 Monarch 着色同一口径）。 */
+const STRING_CLOSE: Readonly<Record<string, string>> = { '"': '"', '「': '」' };
+
+/**
+ * 一行里位于字符串与注释之外的反引号偏移（ADR 0064 N1c：字符串与注释里的反引号只是字符）。
+ * 注释从字符串之外的 `#` 或 `//` 起到行尾。跨行字符串按行内近似处理——误判只会多给或少给一个候选，L10 预检兜底。
+ */
+function codeBackticks(line: string, lineStart: number): number[] {
+  const out: number[] = [];
+  let close: string | null = null;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (close !== null) {
+      if (ch === '\\') i++;
+      else if (ch === close) close = null;
+    } else if (ch in STRING_CLOSE) {
+      close = STRING_CLOSE[ch];
+    } else if (ch === '#' || (ch === '/' && line[i + 1] === '/')) {
+      break;
+    } else if (ch === '`') {
+      out.push(lineStart + i);
+    }
+  }
+  return out;
+}
+
+/**
+ * 偏移 `offset`（光标或选区起点）所在的名字转义：同一行里、字符串与注释之外包住它的一对反引号（光标在反引号上或
+ * 紧贴其后也算）。是否允许隐藏仍由调用方的 L10 预检判定（ADR 0059 修订 5）。找不到返回 null。
+ */
+export function escapeAt(source: string, offset: number): EscapeDelimiters | null {
+  assertOffset(offset, source.length);
+  const lineStart = source.lastIndexOf('\n', offset - 1) + 1;
+  const newline = source.indexOf('\n', offset);
+  const lineEnd = newline === -1 ? source.length : newline;
+  // 反引号从左到右两两配对（与词法器一致：开反引号之后到同一行下一个反引号为止是一个转义）
+  const ticks = codeBackticks(source.slice(lineStart, lineEnd), lineStart);
+  for (let k = 0; k + 1 < ticks.length; k += 2) {
+    const open = ticks[k];
+    const close = ticks[k + 1];
+    if (offset < open || offset > close + 1) continue;
+    return ESCAPE_CONTENT.test(source.slice(open + 1, close)) ? { open, close } : null;
+  }
+  return null;
+}
+
+/**
+ * 「隐藏转义符」（ADR 0058 修订 3 E6）：把一对反引号各标为 display 为空的结构 span，得到 L10a 的转义三元组
+ * `{canonical:"\`",display:""}`、内容、`{canonical:"\`",display:""}`。两个反引号必须落在内容 span 里；
+ * 名字本身留在内容 span，原样显示。是否允许隐藏由调用方跑 L10 预检。
+ */
+export function hideEscapeDelimiters(layout: PolicyLayout, escape: EscapeDelimiters): PolicyLayout {
+  return markStructural(markStructural(layout, escape.close, escape.close + 1, ''), escape.open, escape.open + 1, '');
+}
+
+const isDelimiterSpan = (span: LayoutSpan | undefined): boolean =>
+  span !== undefined && isStructural(span) && span.canonical === '`' && span.display === '';
+
+/**
+ * 「取消标记」的目标：第 `index` 个 span 是被隐藏转义三元组的一个反引号时，返回两个反引号的下标（降序，逐个取消后下标仍有效），
+ * 否则只返回 `index`。只取消一个会留下不成对的反引号结构 span，保存时以 L10a 拒绝。
+ */
+function unmarkTargets(layout: PolicyLayout, index: number): number[] {
+  const spans = layout.spans;
+  if (!isDelimiterSpan(spans[index])) return [index];
+  const content = (i: number) => spans[i] !== undefined && 'text' in spans[i];
+  if (content(index + 1) && isDelimiterSpan(spans[index + 2])) return [index + 2, index];
+  if (content(index - 1) && isDelimiterSpan(spans[index - 2])) return [index, index - 2];
+  return [index];
+}
+
+/** 取消标记第 `index` 个结构 span；它是被隐藏转义的一个反引号时两个一起恢复（「显示转义符」）。 */
+export function unmarkStructuralSpan(layout: PolicyLayout, index: number): PolicyLayout {
+  return unmarkTargets(layout, index).reduce((next, i) => unmarkStructural(next, i), layout);
 }
 
 /** 各行起点偏移；只按 `\n` 断行（`\r\n` 的 `\r` 属于上一行的行尾，与 Monaco 行模型一致）。 */

@@ -237,9 +237,24 @@ describe('POST /api/policies/[id]/export/package', () => {
   });
 
   describe('显示排版（ADR 0059 修订 4 D11）', () => {
-    it('读同一版本的排版：版本 id、实际编译的源码、编译 locale 与冻结 aliasSet', async () => {
+    it('读同一版本的排版：版本 id、实际编译的源码、编译 locale 与冻结 aliasSet，以及 L10b 用的结构词授权与词汇', async () => {
       await POST(req({ target: 'jre' }), ctx('p1'));
-      expect(h.loadLayout).toHaveBeenCalledWith({ id: 'v-row', source: twoRules, locale: 'en-US', aliasSet: null });
+      expect(h.loadLayout).toHaveBeenCalledWith({
+        id: 'v-row', source: twoRules, locale: 'en-US', aliasSet: null, allowStructural: false, vocabulary: null,
+      });
+    });
+
+    it('L10b 的编译上下文与提交给 aster-api 的编译输入同一份（冻结别名即授权、版本词汇）', async () => {
+      const vocabulary = { id: 'vocab', structs: [], fields: [], functions: [] };
+      h.loadInput.mockResolvedValue({
+        request: { ...inputRequest, aliasSet: { PLUS: ['add on'] }, allowStructural: true, vocabulary },
+        source: twoRules,
+        vocabulary,
+      });
+      await POST(req({ target: 'jre' }), ctx('p1'));
+      expect(h.loadLayout).toHaveBeenCalledWith(expect.objectContaining({
+        aliasSet: { PLUS: ['add on'] }, allowStructural: true, vocabulary,
+      }));
     });
 
     it('版本无排版：请求体不带 layout，头为 absent', async () => {

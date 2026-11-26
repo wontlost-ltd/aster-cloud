@@ -40,8 +40,8 @@ interface ParityCase {
 }
 
 const FIXTURE_PATH = join(__dirname, '..', '..', 'lib', '__fixtures__', 'alias_validation_v2_parity.json');
-/** 与 core / ts 两份副本相同的 sha256（ts v3.5.0–v3.7.0 `shared/`、core v1.0.52 `src/test/resources/diagnostics/`）。 */
-const FIXTURE_SHA256 = '721ab90b1f847ce7e3806d32360db1157d6a1ac5368ef5d15f99e402464765c4';
+/** 与 core / ts 两份副本相同的 sha256（ts v3.8.0 `shared/`、core v1.0.56 `src/test/resources/diagnostics/`，含 ADR 0060 修订 2 X2 的反引号用例）。 */
+const FIXTURE_SHA256 = '409aaafdd4c9c5a5fd4da137fd60b8956d4cf31335687a4ed025add3e2ef5e74';
 const raw = readFileSync(FIXTURE_PATH);
 interface GuardCase {
   id: string;

@@ -53,6 +53,8 @@ interface EditPolicyContentProps {
   policyCnlLocale: string | null;
   allowStructuralAliases: boolean;
   structuredAuthoring: StructuredAuthoringProps;
+  /** 平台开关 `authoring.name_escape.enabled`（ADR 0058 修订 3）。 */
+  nameEscape?: boolean;
   /** 当前用户不能切换公开状态（团队策略只有 owner/admin 可以） */
   visibilityLocked?: boolean;
   /** 活跃版本复验通过的显示排版（仅能力为真时下发，ADR 0058 §7.4）。 */
@@ -70,6 +72,7 @@ export function EditPolicyContent({
   policyCnlLocale,
   allowStructuralAliases,
   structuredAuthoring,
+  nameEscape = false,
   visibilityLocked = false,
   initialLayout = null,
   initialLayoutInconsistent = false,
@@ -172,6 +175,7 @@ export function EditPolicyContent({
       onSave={handleSave}
       allowStructuralAliases={allowStructuralAliases}
       structuredAuthoring={structuredAuthoring}
+      nameEscape={nameEscape}
       visibilityLocked={visibilityLocked}
       teamId={policy.teamId ?? null}
       initialLayout={initialLayout}

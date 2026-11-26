@@ -58,6 +58,11 @@ const ENGINE_MESSAGES: Record<string, string> = {
     structs: [mapping(IdentifierKind.STRUCT, 'Driver', 'vip')],
     literals: [mapping(IdentifierKind.LITERAL, 'VIP customer', 'vip')],
   }).errors.join('; '),
+  // ADR 0060 修订 2 X2：写法（localized 与 aliases，全部 kind）不得含反引号
+  containsBacktick: validate({ structs: [mapping(IdentifierKind.STRUCT, 'Driver', '`Fahrer`')] }).errors.join('; '),
+  containsBacktickAlias: validate({
+    fields: [mapping(IdentifierKind.FIELD, 'age', 'alter', { parent: 'Driver', aliases: ['jahre`'] })],
+  }).errors.join('; '),
   emptyLiteral: validate({ literals: [mapping(IdentifierKind.LITERAL, '', 'gruss')] }).errors.join('; '),
   controlLiteral: validate({ literals: [mapping(IdentifierKind.LITERAL, 'a\nb', 'gruss')] }).errors.join('; '),
   // ts 3.6.0 起 ASCII 双引号、弯引号与反斜杠允许（ADR 0060 修订 1 R18），无从转义的「」『』«» 照旧拒绝
@@ -124,6 +129,8 @@ describe('parseVocabularyValidationMessage（#609/#634）', () => {
       invalidCanonical: 'invalidCanonical',
       scopeConflict: 'scopeConflict',
       triggerConflict: 'triggerConflict',
+      containsBacktick: 'containsBacktick',
+      containsBacktickAlias: 'containsBacktick',
       emptyLiteral: 'invalidLiteral',
       controlLiteral: 'invalidLiteral',
       quotedLiteral: 'invalidLiteral',
@@ -132,6 +139,8 @@ describe('parseVocabularyValidationMessage（#609/#634）', () => {
       registryWrapper: 'invalidCanonical',
     });
     expect(parseVocabularyValidationMessage(ENGINE_MESSAGES.scopeConflict)?.values).toEqual({ name: 'alter' });
+    expect(parseVocabularyValidationMessage(ENGINE_MESSAGES.containsBacktick)?.values).toEqual({ name: '`Fahrer`' });
+    expect(parseVocabularyValidationMessage(ENGINE_MESSAGES.containsBacktickAlias)?.values).toEqual({ name: 'jahre`' });
   });
 
   it('ADR 0051 之前的历史引擎诊断仍能识别', () => {

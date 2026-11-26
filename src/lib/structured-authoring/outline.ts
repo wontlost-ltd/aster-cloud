@@ -7,7 +7,7 @@
  * 位置一律取 AST span（1 起始行列，end 不含），与 Monaco 行列一致。类型按作者源码原文截取，
  * 因此本地化写法（如「整数」「Ganzzahl」）原样显示；推断类型的字段没有类型原文，显示本地化内置名。
  */
-import { compile, type Lexicon, type Span, type Type } from '@aster-cloud/aster-lang-ts/browser';
+import { compile, type DomainVocabulary, type Lexicon, type Span, type Type } from '@aster-cloud/aster-lang-ts/browser';
 import { localizeBuiltinType } from './source-builders';
 
 export type { Span };
@@ -20,11 +20,14 @@ export interface ModelOutline {
   imports: Array<{ alias: string; module: string; span: Span }>;
 }
 
-/** 解析失败（有语法错误或没有 AST）返回 null，界面提示先修复语法。 */
-export function buildModelOutline(source: string, lexicon: Lexicon): ModelOutline | null {
+/**
+ * 解析失败（有语法错误或没有 AST）返回 null，界面提示先修复语法。
+ * `vocabulary` 只供名字往返校验（字面量触发词在规范化时展开）；AST 的名字是源码写法，不经词汇解析。
+ */
+export function buildModelOutline(source: string, lexicon: Lexicon, vocabulary?: DomainVocabulary): ModelOutline | null {
   let result: ReturnType<typeof compile>;
   try {
-    result = compile(source, { lexicon, includeIntermediates: true });
+    result = compile(source, { lexicon, includeIntermediates: true, ...(vocabulary ? { vocabulary } : {}) });
   } catch {
     return null;
   }

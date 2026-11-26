@@ -1,14 +1,20 @@
 // 编辑器「排版」标签页（ADR 0058 §7.4–7.6，计划 T10，裁决 R12）：入口、上限、切分、导入、失效与实时校验。
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import enBase from '@aster-cloud/ui-messages/en-US.json';
 import { toCanonical, type PolicyLayout } from '@aster-cloud/aster-lang-ts/layout';
 import { IntlClientProvider } from '@/i18n/intl-client-provider';
 import { DEMO_SUPPLEMENT } from '@/i18n/demo-supplement';
 import { deepMergeMessages } from '@/i18n/request';
 import { LayoutTab, type LayoutDraft, type LayoutTabProps } from '@/components/policy/policy-form/layout-tab';
-import { identityLayout, markStructural } from '@/lib/policy-layout/edit-ops';
-import { LAYOUT_ERROR_CASES, LAYOUT_SOURCE, LAYOUT_VALID_CASE } from '../../fixtures/layout-error-cases';
+import { hideEscapeDelimiters, identityLayout, markStructural } from '@/lib/policy-layout/edit-ops';
+import {
+  ESCAPE_SOURCE,
+  LAYOUT_ERROR_CASES,
+  LAYOUT_SOURCE,
+  LAYOUT_VALID_CASE,
+  VERSION_FIELD_SOURCE,
+} from '../../fixtures/layout-error-cases';
 
 const messages = deepMergeMessages(enBase as Record<string, unknown>, DEMO_SUPPLEMENT.en);
 const L = (messages as { policyEditor: { layoutTab: Record<string, never>; saveErrorCodes: Record<string, string> } }).policyEditor;
@@ -183,7 +189,13 @@ describe('LayoutTab 实时校验（与保存同一实现）', () => {
   // 往返不符的排版在标签页里先表现为「已失效」（R12）；源码超上限时入口本身被收起——两种情况都不进入实时校验
   it.each(LAYOUT_ERROR_CASES.filter((c) => c.status === 400).map((c) => [c.name, c] as const))('%s', async (_name, c) => {
     const editor = fakeEditor();
-    renderTab({ layout: c.input.layout as PolicyLayout, source: c.input.source, aliasSet: c.input.aliasSet ?? null, editor: editor as never });
+    renderTab({
+      layout: c.input.layout as PolicyLayout,
+      source: c.input.source,
+      cnlLocale: c.input.locale,
+      aliasSet: c.input.aliasSet ?? null,
+      editor: editor as never,
+    });
     if (c.code === 'layout_roundtrip_mismatch') {
       expect(document.querySelector('[data-layout-invalidated]')).toBeTruthy();
       return;
@@ -224,5 +236,59 @@ describe('四种语言的排版文案', () => {
     for (const key of ['layoutTab', 'saveErrorCodes', 'layoutDrop']) {
       expect(keys(editor[key]).sort()).toEqual(keys(en[key]).sort());
     }
+  });
+});
+
+// 「隐藏转义符」（ADR 0058 修订 3 E6）与带编译上下文的实时校验（E8）。
+describe('LayoutTab 隐藏转义符（开关 authoring.name_escape.enabled）', () => {
+  const at = (line: number, column: number) => fakeEditor({ startLineNumber: line, startColumn: column, endLineNumber: line, endColumn: column });
+  const identity = (source: string) => identityLayout(source);
+
+  it('开关关闭（缺省）：不显示「隐藏转义符」', () => {
+    renderTab({ source: ESCAPE_SOURCE, layout: identity(ESCAPE_SOURCE), editor: at(3, 20) as never });
+    expect(screen.queryByRole('button', { name: TAB.hideEscape })).toBeNull();
+  });
+
+  it('开关打开：光标在转义名上 → 两个反引号做成三元组，回调新排版', () => {
+    const { onChange } = renderTab({ source: ESCAPE_SOURCE, layout: identity(ESCAPE_SOURCE), editor: at(3, 21) as never, nameEscape: true });
+    fireEvent.click(screen.getByRole('button', { name: TAB.hideEscape }));
+    // 第 3 行 `Rule decide given \`count\` …`：开反引号在第 19 列
+    const open = ESCAPE_SOURCE.indexOf('`');
+    expect(onChange).toHaveBeenCalledWith({
+      kind: 'edited',
+      layout: hideEscapeDelimiters(identity(ESCAPE_SOURCE), { open, close: open + 6 }),
+    });
+  });
+
+  it('L10 预检不过（`版本` 去掉反引号是另一个程序）：显示原因、不回调', () => {
+    const { onChange } = renderTab({
+      source: VERSION_FIELD_SOURCE, cnlLocale: 'zh-CN', layout: identity(VERSION_FIELD_SOURCE), editor: at(3, 12) as never, nameEscape: true,
+    });
+    fireEvent.click(screen.getByRole('button', { name: TAB.hideEscape }));
+    expect(onChange).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-layout-hide-escape-error]')?.textContent).toContain(CODES.layout_hidden_escape_changes_program);
+  });
+
+  it('光标不在转义上：显示 no_escape 文案', () => {
+    const { onChange } = renderTab({ source: ESCAPE_SOURCE, layout: identity(ESCAPE_SOURCE), editor: at(1, 2) as never, nameEscape: true });
+    fireEvent.click(screen.getByRole('button', { name: TAB.hideEscape }));
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert').textContent).toBe(TAB.opErrors.no_escape);
+  });
+
+  it('实时校验带编译上下文：已隐藏的冗余转义判为有效（不带上下文时会失败封闭）', async () => {
+    const open = ESCAPE_SOURCE.indexOf('`');
+    const hidden = hideEscapeDelimiters(identity(ESCAPE_SOURCE), { open, close: open + 6 });
+    renderTab({ source: ESCAPE_SOURCE, layout: hidden });
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe(TAB.valid));
+  });
+
+  it('取消标记一个被隐藏的反引号：两个一起恢复为内容', () => {
+    const open = ESCAPE_SOURCE.indexOf('`');
+    const hidden = hideEscapeDelimiters(identity(ESCAPE_SOURCE), { open, close: open + 6 });
+    const { onChange } = renderTab({ source: ESCAPE_SOURCE, layout: hidden });
+    const row = document.querySelector('[data-layout-structural-row="3"]') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: TAB.unmark }));
+    expect(onChange).toHaveBeenCalledWith({ kind: 'edited', layout: identity(ESCAPE_SOURCE) });
   });
 });

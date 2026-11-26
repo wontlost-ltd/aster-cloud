@@ -2,12 +2,14 @@
  * 策略包导出读取版本显示排版（ADR 0059 修订 4 D11 第 1 步、D13、D16）。
  *
  * 导出是 `loadVersionLayout` 的调用方，但只为把排版作为**非编译载荷**放进包：读取复验（哈希、往返）之后，再用保存时的
- * 同一校验 `prepareLayout`（ts `validatePolicyLayout`，版本 locale 的词法表 + 冻结 aliasSet）复跑一次，通过且开关
+ * 同一校验 `prepareLayout`（ts `validatePolicyLayout`，版本 locale 的词法表 + 冻结 aliasSet，隐藏转义的 L10b 用导出同一份
+ * 编译输入）复跑一次，通过且开关
  * `policy_export.package.layout.enabled` 打开才随请求发送。任何一步不过都只省略排版（导出 1.0 包），原因写入响应头，
  * 不拒绝导出——排版不改变执行内容（修订 4 §11 Q1）。
  *
  * 排版随版本导出，与导出者有没有结构化编写能力无关（D11 第 4 条）：显示排版对所有有读权限的人可见，导出只是另一种读。
  */
+import type { DomainVocabulary } from '@aster-cloud/aster-lang-ts/lexicons/identifiers/types';
 import { isPolicyPackageLayoutExportEnabled } from '@/lib/platform-settings';
 import { loadVersionLayout, prepareLayout } from '@/lib/policy-layout/store';
 import type { StoredLayout } from '@/lib/policy-layout/types';
@@ -19,12 +21,17 @@ export type ExportLayout =
   | { kind: 'absent' }
   | { kind: 'omitted'; reason: ExportLayoutOmittedReason };
 
-/** 导出所用的版本：源码为实际编译的源码（版本 source，旧版本回退 content），locale / aliasSet 为编译输入。 */
+/**
+ * 导出所用的版本：源码为实际编译的源码（版本 source，旧版本回退 content），locale / aliasSet / allowStructural / vocabulary
+ * 为提交给 aster-api 的同一份编译输入（隐藏转义的 L10b 用它们编译，ADR 0058 修订 3 E8）。
+ */
 export interface ExportLayoutVersion {
   id: string;
   source: string;
   locale: string;
   aliasSet: Record<string, string[]> | null;
+  allowStructural: boolean;
+  vocabulary: DomainVocabulary | null;
 }
 
 const omitted = (reason: ExportLayoutOmittedReason): ExportLayout => ({ kind: 'omitted', reason });
@@ -49,6 +56,7 @@ export async function loadExportLayout(version: ExportLayoutVersion): Promise<Ex
       source: version.source,
       locale: version.locale,
       aliasSet: version.aliasSet,
+      compile: { allowStructural: version.allowStructural, vocabulary: version.vocabulary },
     });
     return { kind: 'included', layout: prepared.serialized };
   } catch (error) {

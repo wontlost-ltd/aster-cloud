@@ -1,0 +1,411 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`名字转义着色 > en / de / hi：转义名紧贴标点与限定名的一段（快照） 1`] = `
+[
+  [
+    [
+      "Rule",
+      "keyword.function",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "f",
+      "identifier",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "given",
+      "keyword.function",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "\`",
+      "delimiter.escape",
+    ],
+    [
+      "type",
+      "identifier.escaped",
+    ],
+    [
+      "\`",
+      "delimiter.escape",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "as",
+      "keyword.module",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "Int",
+      "type",
+    ],
+    [
+      ",",
+      "delimiter",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "produce",
+      "keyword.function",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "Int",
+      "type",
+    ],
+    [
+      ":",
+      "delimiter",
+    ],
+  ],
+  [
+    [
+      "  ",
+      "white",
+    ],
+    [
+      "Return",
+      "keyword.control",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "s",
+      "identifier",
+    ],
+    [
+      ".",
+      "delimiter",
+    ],
+    [
+      "\`",
+      "delimiter.escape",
+    ],
+    [
+      "Given",
+      "identifier.escaped",
+    ],
+    [
+      "\`",
+      "delimiter.escape",
+    ],
+    [
+      ".",
+      "delimiter",
+    ],
+  ],
+]
+`;
+
+exports[`名字转义着色 > en / de / hi：转义名紧贴标点与限定名的一段（快照） 2`] = `
+[
+  [
+    [
+      "Definiere",
+      "keyword.type",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "Antrag",
+      "identifier",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "mit",
+      "keyword.type",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "\`",
+      "delimiter.escape",
+    ],
+    [
+      "wenn",
+      "identifier.escaped",
+    ],
+    [
+      "\`",
+      "delimiter.escape",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "als",
+      "keyword.module",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "Int",
+      "identifier",
+    ],
+    [
+      ".",
+      "delimiter",
+    ],
+  ],
+]
+`;
+
+exports[`名字转义着色 > en / de / hi：转义名紧贴标点与限定名的一段（快照） 3`] = `
+[
+  [
+    [
+      "परिभाषित",
+      "keyword.type",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "Software",
+      "identifier",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "सहित",
+      "keyword.type",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "\`",
+      "delimiter.escape",
+    ],
+    [
+      "अनुमति",
+      "identifier.escaped",
+    ],
+    [
+      "\`",
+      "delimiter.escape",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "रूप में",
+      "keyword.module",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "Int।",
+      "identifier",
+    ],
+  ],
+]
+`;
+
+exports[`名字转义着色 > zh：\`版本\` 与 \`如果\` 是转义名，不是关键词（快照） 1`] = `
+[
+  [
+    [
+      "定义",
+      "keyword.type",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "软件",
+      "identifier",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "包含",
+      "keyword.type",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "\`",
+      "delimiter.escape",
+    ],
+    [
+      "版本",
+      "identifier.escaped",
+    ],
+    [
+      "\`",
+      "delimiter.escape",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "作为",
+      "keyword.module",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "整数",
+      "type",
+    ],
+    [
+      "。",
+      "delimiter",
+    ],
+  ],
+  [
+    [
+      "规则",
+      "keyword.function",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "取值",
+      "identifier",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "给定",
+      "keyword.function",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "\`",
+      "delimiter.escape",
+    ],
+    [
+      "如果",
+      "identifier.escaped",
+    ],
+    [
+      "\`",
+      "delimiter.escape",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "作为",
+      "keyword.module",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "整数",
+      "type",
+    ],
+    [
+      "，",
+      "delimiter",
+    ],
+    [
+      "产出",
+      "keyword.function",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "整数",
+      "type",
+    ],
+    [
+      "：",
+      "delimiter",
+    ],
+  ],
+  [
+    [
+      "  ",
+      "white",
+    ],
+    [
+      "返回",
+      "keyword.control",
+    ],
+    [
+      " ",
+      "white",
+    ],
+    [
+      "\`",
+      "delimiter.escape",
+    ],
+    [
+      "如果",
+      "identifier.escaped",
+    ],
+    [
+      "\`",
+      "delimiter.escape",
+    ],
+    [
+      "。",
+      "delimiter",
+    ],
+  ],
+]
+`;

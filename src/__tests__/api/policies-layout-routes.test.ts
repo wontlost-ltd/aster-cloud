@@ -246,3 +246,13 @@ describe('POST /api/v1/policies/[id]/versions', () => {
     expect(h.createVersion).toHaveBeenCalledWith(expect.objectContaining({ layout: null, allowLayout: false }));
   });
 });
+
+// ADR 0058 修订 3 E8：三个建版本入口都把本次保存的有效词汇交给 createVersion，排版隐藏转义的 L10b 与源码编译同一份词汇。
+describe.each(Object.keys(ROUTES) as (keyof typeof ROUTES)[])('%s：L10b 的编译上下文', (route) => {
+  it('createVersion receives the save vocabulary (same object as scopesJson / compile gate)', async () => {
+    h.activeLayoutSha256.mockResolvedValue(OTHER_SHA);
+    h.activeLayoutSha256ForPolicy.mockResolvedValue(OTHER_SHA);
+    await ROUTES[route]({ layout: LAYOUT });
+    expect(h.createVersion).toHaveBeenCalledWith(expect.objectContaining({ vocabulary: { id: 'v' } }));
+  });
+});

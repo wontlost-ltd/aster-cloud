@@ -3,7 +3,8 @@
 /**
  * layout 错误码的本地化文案（ADR 0058 §7.5）：排版标签页的实时校验与保存失败共用。
  *
- * 五个校验码来自包的 `validatePolicyLayout` / 保存接口 400，另加门禁的 `structured_authoring_required`（403）。
+ * 校验码来自包的 `validatePolicyLayout` / 保存接口 400（含 ADR 0059 修订 5 L10 的 `layout_escape_delimiter_invalid` 与
+ * `layout_hidden_escape_changes_program`），另加门禁的 `structured_authoring_required`（403）。
  * `offset` 是 canonical 源码里的 UTF-16 偏移，换算成 1 起始的行列附在文案后；`limit` 附上限名与上限值。
  */
 import { useCallback } from 'react';
@@ -18,6 +19,8 @@ export const LAYOUT_SAVE_ERROR_CODES: readonly LayoutSaveErrorCode[] = [
   'layout_roundtrip_mismatch',
   'layout_structural_hides_value',
   'layout_content_parity',
+  'layout_escape_delimiter_invalid',
+  'layout_hidden_escape_changes_program',
   'structured_authoring_required',
 ];
 

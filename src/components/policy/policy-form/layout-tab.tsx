@@ -8,6 +8,10 @@
  * - 无排版：「开始排版」（恒等排版）或「导入 JSON」；
  * - 源码改动后排版失效：不自动重排，只给「从恒等排版重新开始」「移除排版」（R12）；
  * - 有效排版：结构片段列表、把编辑器选区标为结构、并排视图开关，以及与保存同一实现的实时校验。
+ *   实时校验带版本的编译上下文（locale、aliasSet、allowStructural、词汇），与保存时 `prepareLayout` 同口径，
+ *   隐藏转义的 L10b 因而能在编辑器里判定（ADR 0058 修订 3 E8）；
+ * - 开关 `nameEscape` 打开时另有「隐藏转义符」（E6）：把光标所在名字转义的两个反引号做成 L10a 三元组，当场跑 L10 预检，
+ *   不通过就显示原因、不应用。
  * 排版状态由 PolicyForm 持有（LayoutDraft），经 PolicySaveContext 交给保存，不进 localStorage 草稿（R13）。
  */
 import { useEffect, useMemo, useState } from 'react';
@@ -20,12 +24,16 @@ import {
   parseLayout,
   toCanonical,
   validatePolicyLayout,
+  type LayoutCompileContext,
   type LayoutValidation,
   type PolicyLayout,
 } from '@aster-cloud/aster-lang-ts/layout';
+import type { DomainVocabulary } from '@aster-cloud/aster-lang-ts/browser';
 import { cn } from '@/components/ui';
 import { getLexicon } from '@/lib/aster-lexicon';
 import {
+  escapeAt,
+  hideEscapeDelimiters,
   identityLayout,
   layoutEditErrorCode,
   markStructural,
@@ -33,7 +41,7 @@ import {
   positionAt,
   setStructuralDisplay,
   sourceLayoutLimitExceeded,
-  unmarkStructural,
+  unmarkStructuralSpan,
   type LayoutEditErrorCode,
 } from '@/lib/policy-layout/edit-ops';
 import { useLayoutErrorText } from './layout-error-text';
@@ -52,6 +60,12 @@ export interface LayoutTabProps {
   cnlLocale: string;
   /** 策略当前的关键词别名：校验时与词法表取并集（与保存口径一致，R7）。 */
   aliasSet: Record<string, string[]> | null;
+  /** 作者是否持有结构词别名授权（与保存时编译同一判定）：L10b 编译输入。 */
+  allowStructural?: boolean;
+  /** 编辑器编译所用的有效词汇：L10b 编译输入（与保存时 loadSaveVocabulary 同一合并）。 */
+  vocabulary?: DomainVocabulary | null;
+  /** 平台开关 `authoring.name_escape.enabled`：提供「隐藏转义符」（ADR 0058 修订 3 E6）。缺省关闭。 */
+  nameEscape?: boolean;
   /** 当前排版（已按草稿推出）；null = 没有排版。 */
   layout: PolicyLayout | null;
   /** 已存排版复验不一致、未加载。 */
@@ -72,11 +86,28 @@ interface CheckedLayout {
   result: LayoutValidation;
 }
 
+/** L10 的两个失败码：「隐藏转义符」预检只因它们拒绝应用，其余问题照常由实时校验报告。 */
+const L10_CODES: ReadonlySet<string> = new Set(['layout_escape_delimiter_invalid', 'layout_hidden_escape_changes_program']);
+
+/** 版本的 L10b 编译输入（ADR 0059 修订 5 §2.3）：与保存时 prepareLayout 同口径，空 aliasSet 视为无别名。 */
+export function layoutCompileContext(
+  locale: string,
+  aliasSet: Record<string, string[]> | null,
+  allowStructural: boolean,
+  vocabulary: DomainVocabulary | null,
+): LayoutCompileContext {
+  const aliases = aliasSet && Object.keys(aliasSet).length > 0 ? aliasSet : null;
+  return { locale, aliasSet: aliases, allowStructural, vocabulary };
+}
+
 export function LayoutTab({
   editor,
   source,
   cnlLocale,
   aliasSet,
+  allowStructural = false,
+  vocabulary = null,
+  nameEscape = false,
   layout,
   inconsistent,
   sideBySide,
@@ -90,25 +121,32 @@ export function LayoutTab({
   const [importText, setImportText] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
   const [checked, setChecked] = useState<CheckedLayout | null>(null);
+  // 「隐藏转义符」被 L10 预检拒绝时的原因（已本地化）；任何其他排版操作都清掉它
+  const [hideError, setHideError] = useState<string | null>(null);
+  const compileContext = useMemo(
+    () => layoutCompileContext(cnlLocale, aliasSet, allowStructural, vocabulary),
+    [cnlLocale, aliasSet, allowStructural, vocabulary],
+  );
 
   const limitExceeded = useMemo(() => sourceLayoutLimitExceeded(source), [source]);
   const matchesSource = layout !== null && toCanonical(layout) === source;
 
-  // 实时校验：与保存接口同一实现（包的 validatePolicyLayout），按版本 locale 的词法表 + 当前别名；防抖后执行
+  // 实时校验：与保存接口同一实现（包的 validatePolicyLayout），按版本 locale 的词法表 + 当前别名，并带编译上下文（L10b）；防抖后执行
   useEffect(() => {
     if (!layout || !matchesSource) return;
     const timer = setTimeout(() => {
-      const result = validatePolicyLayout(layout, source, getLexicon(cnlLocale), aliasSet ?? undefined);
+      const result = validatePolicyLayout(layout, source, getLexicon(cnlLocale), aliasSet ?? undefined, compileContext);
       setChecked({ layout, source, result });
     }, LAYOUT_VALIDATE_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [layout, matchesSource, source, cnlLocale, aliasSet]);
+  }, [layout, matchesSource, source, cnlLocale, aliasSet, compileContext]);
   const validation = checked && checked.layout === layout && checked.source === source ? checked.result : null;
 
   const edit = (fn: () => PolicyLayout) => {
     try {
       onChange({ kind: 'edited', layout: fn() });
       setOpError(null);
+      setHideError(null);
     } catch (e) {
       const code = layoutEditErrorCode(e);
       if (!code) throw e;
@@ -134,6 +172,32 @@ export function LayoutTab({
       // 新结构片段的 display 先与 canonical 相同，作者随后在列表里改写或清空
       return markStructural(layout, start, end, source.slice(start, end));
     });
+  };
+
+  /** 「隐藏转义符」：光标所在的转义做成三元组；L10 预检不过就显示原因、不应用（E6）。 */
+  const hideSelectedEscape = () => {
+    if (!layout) return;
+    // 选区起点（无选区时即光标）
+    const selection = editor?.getSelection();
+    let candidate: PolicyLayout;
+    try {
+      const escape = selection ? escapeAt(source, offsetAt(source, selection.startLineNumber, selection.startColumn)) : null;
+      if (!escape) throw new RangeError('no_escape');
+      candidate = hideEscapeDelimiters(layout, escape);
+    } catch (e) {
+      const code = layoutEditErrorCode(e);
+      if (!code) throw e;
+      setOpError(code);
+      setHideError(null);
+      return;
+    }
+    const result = validatePolicyLayout(candidate, source, getLexicon(cnlLocale), aliasSet ?? undefined, compileContext);
+    if (!result.ok && L10_CODES.has(result.code)) {
+      setOpError(null);
+      setHideError(layoutErrorText(result, source));
+      return;
+    }
+    edit(() => candidate);
   };
 
   const applyImport = () => {
@@ -207,6 +271,11 @@ export function LayoutTab({
       <div className="space-y-3">
         <div className="flex flex-wrap gap-2">
           <button type="button" className={buttonClass} onClick={markSelection}>{t('markSelection')}</button>
+          {nameEscape && (
+            <button type="button" className={buttonClass} onClick={hideSelectedEscape} data-layout-hide-escape="">
+              {t('hideEscape')}
+            </button>
+          )}
           <button type="button" className={buttonClass} aria-pressed={sideBySide} onClick={() => onSideBySideChange(!sideBySide)}>
             {t('sideBySide')}
           </button>
@@ -214,6 +283,7 @@ export function LayoutTab({
         </div>
         <p className="text-xs text-fg-subtle">{t('sideBySideNote')}</p>
         {opError && <p role="alert" className="text-xs text-danger">{t(`opErrors.${opError}`)}</p>}
+        {hideError && <p role="alert" data-layout-hide-escape-error="" className="text-xs text-danger">{hideError}</p>}
         <ValidationStatus
           validation={validation}
           message={validation && !validation.ok ? layoutErrorText(validation, source) : ''}
@@ -288,7 +358,7 @@ function StructuralList({ layout, onEdit }: { layout: PolicyLayout; onEdit: (fn:
                 onChange={(e) => onEdit(() => setStructuralDisplay(layout, index, e.target.value))}
                 className="min-w-0 flex-1 rounded-md border border-border bg-bg px-2 py-1 font-mono text-xs text-fg"
               />
-              <button type="button" className={buttonClass} onClick={() => onEdit(() => unmarkStructural(layout, index))}>
+              <button type="button" className={buttonClass} onClick={() => onEdit(() => unmarkStructuralSpan(layout, index))}>
                 {t('unmark')}
               </button>
             </li>

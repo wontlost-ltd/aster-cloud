@@ -243,6 +243,11 @@ export interface PolicyFormProps {
   allowStructuralAliases?: boolean;
   /** 结构化编写能力的服务端判定结果；缺省视为无权（编辑器与接入前一致）。 */
   structuredAuthoring?: StructuredAuthoringProps;
+  /**
+   * 平台开关 `authoring.name_escape.enabled`（ADR 0058 修订 3）：模型表单自动转义、「用作名字」快速修复与
+   * 排版「隐藏转义符」。缺省关闭，关闭时编辑器产出与引入转义之前逐字节相同。
+   */
+  nameEscape?: boolean;
   /** 当前用户不能切换公开状态（团队策略只有 owner/admin 可以，ADR 0016）。 */
   visibilityLocked?: boolean;
   /** 团队策略所属团队：编辑器按团队词汇 + 作者词汇编译（ADR 0017）。 */
@@ -274,6 +279,7 @@ export function PolicyForm({
   breadcrumbs,
   allowStructuralAliases = false,
   structuredAuthoring = STRUCTURED_AUTHORING_DENIED,
+  nameEscape = false,
   visibilityLocked = false,
   teamId = null,
   initialLayout = null,
@@ -998,6 +1004,7 @@ export function PolicyForm({
       // 读取本地偏好完成前按关闭处理，避免首帧按默认值误发请求。
       enableAICompletion={aiInlineCompletion.value && !aiInlineCompletion.hydrating}
       onToggleAIPanel={() => openSidePanel('ai')}
+      nameEscape={nameEscape}
     />  );
 
   return (
@@ -1285,6 +1292,8 @@ export function PolicyForm({
                 }
                 newStructRequested={newStructRequested}
                 onNewStructRequestHandled={handleNewStructRequestHandled}
+                nameEscape={nameEscape}
+                compileVocabulary={compile.vocabulary ?? null}
                 layoutPanel={
                   structuredAuthoring.allowed ? (
                     <LayoutTab
@@ -1294,6 +1303,9 @@ export function PolicyForm({
                       source={content}
                       cnlLocale={cnlLocale}
                       aliasSet={fields.aliasSet}
+                      allowStructural={allowStructuralAliases}
+                      vocabulary={compile.vocabulary ?? null}
+                      nameEscape={nameEscape}
                       layout={currentLayout}
                       inconsistent={initialLayoutInconsistent && layoutDraft.kind === 'untouched'}
                       sideBySide={sideBySide}

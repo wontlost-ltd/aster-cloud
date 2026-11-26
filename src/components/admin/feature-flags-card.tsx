@@ -10,7 +10,7 @@ import { Badge, Card, CardBody, Stack, buttonVariants, cn } from '@/components/u
  * Lives on the /admin overview page (above the Tools section).
  * Renders one row per known platform-settings key (policy_sharing.enabled,
  * the two structured-authoring capability switches, the policy package
- * export switch and its display-layout switch) — add new flags by extending
+ * export switch, its display-layout switch and the editor name-escape switch) — add new flags by extending
  * FLAGS below + adding a key constant + i18n + a row.
  *
  * Optimistic toggle: flips the local state on click, hits POST
@@ -45,6 +45,11 @@ const FLAGS = [
     key: 'policy_export.package.layout.enabled',
     titleKey: 'policyPackageLayoutExportTitle',
     descKey: 'policyPackageLayoutExportDesc',
+  },
+  {
+    key: 'authoring.name_escape.enabled',
+    titleKey: 'nameEscapeTitle',
+    descKey: 'nameEscapeDesc',
   },
 ] as const;
 

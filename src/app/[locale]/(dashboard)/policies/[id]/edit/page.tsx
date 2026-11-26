@@ -9,6 +9,7 @@ import { EditPolicyContent } from './edit-policy-content';
 import { getStructuralAliasGrant } from '@/lib/structural-alias-grants';
 import { resolveEntitlementForRequest } from '@/lib/capabilities/resolve';
 import { toEditorAuthoringProps } from '@/lib/capabilities/editor-props';
+import { isNameEscapeEnabled } from '@/lib/platform-settings';
 import { localizedTitle } from '@/lib/page-metadata';
 import { resolveStoredVersionLocale } from '@/lib/policy-version-locale';
 import { activeLayoutSha256, loadVersionLayout } from '@/lib/policy-layout/store';
@@ -111,6 +112,8 @@ export default async function EditPolicyPage({ params }: PageProps) {
       teamId: policyData.teamId ?? null,
     }),
   );
+  // 编辑器名字转义（ADR 0058 修订 3）：平台开关，缺行 / 读库失败一律关闭
+  const nameEscape = await isNameEscapeEnabled();
 
   // 显示排版（ADR 0058 §7.4）：是否带排版与能力无关（保存前的丢弃提示要用）；排版本身只给有权的作者加载。
   // 编辑器里的源码是 Policy.content，排版须与它逐字对应，否则按不一致处理、不加载（绝不加载过期排版）。
@@ -161,6 +164,7 @@ export default async function EditPolicyPage({ params }: PageProps) {
       policyCnlLocale={policyCnlLocale}
       allowStructuralAliases={allowStructuralAliases}
       structuredAuthoring={structuredAuthoring}
+      nameEscape={nameEscape}
       visibilityLocked={!canPublish}
       hasActiveLayout={hasActiveLayout}
       initialLayout={storedLayout?.status === 'ok' ? storedLayout.layout : null}
