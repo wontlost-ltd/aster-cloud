@@ -6,6 +6,7 @@ import enCatalog from '@aster-cloud/ui-messages/syntax-diagnostics/en-US.json';
 import zhCatalog from '@aster-cloud/ui-messages/syntax-diagnostics/zh-CN.json';
 import deCatalog from '@aster-cloud/ui-messages/syntax-diagnostics/de-DE.json';
 import hiCatalog from '@aster-cloud/ui-messages/syntax-diagnostics/hi-IN.json';
+import { compileAndTypecheck, DE_DE, HI_IN, ZH_CN, type Lexicon } from '@aster-cloud/aster-lang-ts/browser';
 import { localizeSyntaxDiagnostic, SYNTAX_MESSAGE_KEYS } from '@/lib/syntax-diagnostic-message';
 import { collectCompileDiagnostics } from '@/hooks/useAsterCompiler';
 
@@ -79,6 +80,93 @@ describe('localizeSyntaxDiagnostic 边界', () => {
   });
 });
 
+// E901 / E902 的参数形状取自 aster-lang-ts 3.8.0：E901 `{ keyword: 'kw.<槽位>', kind: '<SemanticTokenKind>' }`
+// （parse-issue keywordAsNameIssue）；E902 `{ reason }`，invalid_char 另带 `char: "'<源码字符>'"`（diagnostics invalidEscape）
+describe('E901 关键词作名字（ADR 0056 修订 A6 K1）', () => {
+  const e901 = d('E901', { keyword: 'kw.return', kind: 'RETURN' },
+    "'Return' is the keyword RETURN and cannot be used as a name; write it in backticks to use it as a name");
+
+  it.each([
+    ['en-US', e901.message],
+    ['zh-CN', "'返回' 是关键词 RETURN，不能用作名字；写成反引号形式即可用作名字"],
+    ['de-DE', "'gib zurueck' ist das Schlüsselwort RETURN und kann nicht als Name verwendet werden; schreiben Sie ihn in Backticks, um ihn als Namen zu verwenden"],
+    ['hi-IN', "'लौटाएं' कीवर्ड RETURN है और नाम के रूप में उपयोग नहीं किया जा सकता; इसे नाम के रूप में उपयोग करने के लिए बैकटिक में लिखें"],
+  ])('%s', (locale, expected) => {
+    expect(localizeSyntaxDiagnostic(e901, locale)).toBe(expected);
+  });
+
+  it('8 个结构关键词槽位都能按目标词法渲染（不回退英文）', () => {
+    const slots = ['define', 'if', 'let', 'match', 'otherwise', 'return', 'rule', 'when'];
+    for (const locale of ['zh-CN', 'de-DE', 'hi-IN']) {
+      for (const slot of slots) {
+        const message = `'${slot}' is the keyword X and cannot be used as a name`;
+        expect(localizeSyntaxDiagnostic(d('E901', { keyword: `kw.${slot}`, kind: 'X' }, message), locale), `${locale} ${slot}`)
+          .not.toBe(message);
+      }
+    }
+  });
+});
+
+describe('E902 名字转义格式错误（ADR 0064 N1a）', () => {
+  const unterminated = d('E902', { reason: 'unterminated' }, 'Invalid name escape: the closing backtick is missing');
+  const empty = d('E902', { reason: 'empty' }, 'Invalid name escape: nothing is written between the backticks');
+  const invalidChar = d('E902', { reason: 'invalid_char', char: "'.'" }, "Invalid name escape: '.' cannot be part of a name");
+
+  it.each([
+    ['en-US', unterminated, unterminated.message],
+    ['en-US', empty, empty.message],
+    ['en-US', invalidChar, invalidChar.message],
+    ['zh-CN', unterminated, '名字转义无效：缺少闭合的反引号'],
+    ['zh-CN', empty, '名字转义无效：两个反引号之间没有内容'],
+    // 非法字符是源码原文：'.' 不换成 zh 句号 '。'
+    ['zh-CN', invalidChar, "名字转义无效：'.' 不能出现在名字里"],
+    ['de-DE', unterminated, 'Ungültiges Namens-Escape: der schließende Backtick fehlt'],
+    ['de-DE', empty, 'Ungültiges Namens-Escape: zwischen den Backticks steht nichts'],
+    ['de-DE', invalidChar, "Ungültiges Namens-Escape: '.' darf nicht in einem Namen vorkommen"],
+    ['hi-IN', unterminated, 'अमान्य नाम एस्केप: समापन बैकटिक नहीं है'],
+    ['hi-IN', empty, 'अमान्य नाम एस्केप: बैकटिक के बीच कुछ नहीं लिखा है'],
+    ['hi-IN', invalidChar, "अमान्य नाम एस्केप: '.' नाम का हिस्सा नहीं हो सकता"],
+  ])('%s %#', (locale, diagnostic, expected) => {
+    expect(localizeSyntaxDiagnostic(diagnostic, locale)).toBe(expected);
+  });
+
+  it('名词句的占位符不二次替换、不换标点；汉字字符照常补空格', () => {
+    expect(localizeSyntaxDiagnostic(d('E902', { reason: 'invalid_char', char: "'{reason}'" }, 'x'), 'de-DE'))
+      .toBe("Ungültiges Namens-Escape: '{reason}' darf nicht in einem Namen vorkommen");
+    expect(localizeSyntaxDiagnostic(d('E902', { reason: 'invalid_char', char: "'，'" }, 'x'), 'zh-CN'))
+      .toBe("名字转义无效：'，' 不能出现在名字里");
+  });
+
+  it('未收录的 reason、invalid_char 缺 char 时退回引擎英文消息', () => {
+    for (const locale of ['zh-CN', 'de-DE', 'hi-IN']) {
+      expect(localizeSyntaxDiagnostic(d('E902', { reason: 'multiline' }, 'Invalid name escape: future'), locale))
+        .toBe('Invalid name escape: future');
+      expect(localizeSyntaxDiagnostic(d('E902', { reason: 'toString' }, 'Invalid name escape: proto'), locale))
+        .toBe('Invalid name escape: proto');
+      expect(localizeSyntaxDiagnostic(d('E902', { reason: 'invalid_char' }, 'Invalid name escape: no char'), locale))
+        .toBe('Invalid name escape: no char');
+      expect(localizeSyntaxDiagnostic(d('E902', {}, 'Invalid name escape: no reason'), locale))
+        .toBe('Invalid name escape: no reason');
+    }
+  });
+});
+
+describe('W802 关键词被改名为名字（ADR 0056 修订 A6 K3）：引擎 overlay 已本地化，与目录 keywordRenamedAsName 一致', () => {
+  const catalogs: Record<string, Record<string, string>> = { 'zh-CN': zhCatalog, 'de-DE': deCatalog, 'hi-IN': hiCatalog };
+  it.each([
+    ['zh-CN', ZH_CN, '模块 m。\n\n定义 软件 包含 版本 作为 整数。\n', "'版本' 被读作关键词 IMPORT_VERSION：名字变为 'version'"],
+    ['de-DE', DE_DE, 'Modul m.\n\nDefiniere Software mit erlauben als Ganzzahl.\n', "'erlauben' wird als Schlüsselwort ALLOW gelesen: Der Name wird zu 'allow'"],
+    ['hi-IN', HI_IN, 'मॉड्यूल m।\n\nपरिभाषित Applicant रखता है अनुमति रूप में पूर्णांक।\n', "'अनुमति' को कीवर्ड ALLOW के रूप में पढ़ा जाता है: नाम 'allow' हो जाता है"],
+  ] as const)('%s', (locale, lexicon: Lexicon, source, expected) => {
+    const result = compileAndTypecheck(source, { lexicon });
+    const [w802] = collectCompileDiagnostics(result as Parameters<typeof collectCompileDiagnostics>[0], locale);
+    expect(w802).toMatchObject({ severity: 'warning', code: 'W802', message: expected });
+    // 引擎 overlay 与 locales 目录是同一份文案：用目录模板按诊断 data 填出来逐字相同
+    const data = (result.resolutionDiagnostics![0] as { data: Record<string, string> }).data;
+    expect(catalogs[locale]!.keywordRenamedAsName!.replace(/\{(\w+)\}/g, (_w, name: string) => data[name]!)).toBe(expected);
+  });
+});
+
 describe('collectCompileDiagnostics 按 code + params 本地化解析错误', () => {
   it('★解析错误按 zh-CN 译出并保留引擎码，降级诊断（引擎已按 lexicon 本地化）与类型诊断原样', () => {
     const lowering = { severity: 'error', code: 'E602', message: 'lowerStmt：未处理的语句种类 \'X\'', data: { kind: 'X' } };
@@ -136,9 +224,14 @@ const BY_CODE: ReadonlyArray<readonly [string, Record<string, string | number>, 
   // ADR 0055：注解参数值只允许字符串 / Int / Bool（E067），同名参数重复（E900）；取自 aster-lang-ts 2.0.0
   ['E067', { construct: 'token.annotationArgumentValue', value: '1.5', allowed: 'string, Int or Bool' }, 'Annotation argument value must be a string, Int or Bool: 1.5'],
   ['E900', { annotation: 'id', name: 'name' }, 'Annotation @id repeats the argument name'],
+  // ADR 0056 修订 A6 K1 / ADR 0064 N1a；取自 aster-lang-ts 3.8.0
+  ['E901', { keyword: 'kw.if', kind: 'IF' }, "'If' is the keyword IF and cannot be used as a name; write it in backticks to use it as a name"],
+  ['E902', { reason: 'unterminated' }, 'Invalid name escape: the closing backtick is missing'],
+  ['E902', { reason: 'empty' }, 'Invalid name escape: nothing is written between the backticks'],
+  ['E902', { reason: 'invalid_char', char: "'.'" }, "Invalid name escape: '.' cannot be part of a name"],
 ];
 
-describe('E050–E069 与 E900 逐码覆盖（zh / de / hi）', () => {
+describe('E050–E069 与 E900–E902 逐码覆盖（zh / de / hi）', () => {
   it.each(BY_CODE)('%s', (code, params, message) => {
     for (const locale of ['zh-CN', 'de-DE', 'hi-IN']) {
       const out = localizeSyntaxDiagnostic({ code, params, message }, locale);

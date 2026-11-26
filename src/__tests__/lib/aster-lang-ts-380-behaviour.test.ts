@@ -100,13 +100,18 @@ describe('aster-lang-ts 3.8.0 行为变化', () => {
       expect(warnings).toEqual(['W802', 'W802']);
     });
 
-    it('cloud 编辑器的诊断汇总：E901 按码渲染不了时退回引擎英文消息，W802 原样透传为警告', () => {
-      // ui-messages 1.0.31 的 syntax-diagnostics 目录还没有 E901 / E902 的句子模板（随 E5 / locales 补），
-      // 在此之前 zh/de/hi 显示引擎英文消息，不报错、不丢诊断。
+    it('cloud 编辑器的诊断汇总：E901 / E902 按码译成 zh（ui-messages 1.0.32，aster-cloud#858），W802 原样透传为警告', () => {
       const e901 = compile('模块 m。\n\n定义 软件 包含 返回 作为 整数。\n', ZH_CN);
       const [d] = collectCompileDiagnostics(e901 as Parameters<typeof collectCompileDiagnostics>[0], 'zh-CN');
-      expect(d).toMatchObject({ severity: 'error', code: 'E901' });
-      expect(d!.message).toContain('返回');
+      expect(d).toMatchObject({
+        severity: 'error',
+        code: 'E901',
+        message: "'返回' 是关键词 RETURN，不能用作名字；写成反引号形式即可用作名字",
+      });
+
+      const e902 = compile(zhRule('  返回 `a.b`。\n'), ZH_CN);
+      const [escape] = collectCompileDiagnostics(e902 as Parameters<typeof collectCompileDiagnostics>[0], 'zh-CN');
+      expect(escape).toMatchObject({ severity: 'error', code: 'E902', message: "名字转义无效：'.' 不能出现在名字里" });
 
       const w802 = compile('模块 m。\n\n定义 软件 包含 版本 作为 整数。\n', ZH_CN);
       const all = collectCompileDiagnostics(w802 as Parameters<typeof collectCompileDiagnostics>[0], 'zh-CN');
