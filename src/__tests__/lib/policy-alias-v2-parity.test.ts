@@ -145,8 +145,8 @@ describe('bundled aster-lang-ts recompiles the poem with v2 aliases', () => {
     vocabularyJson: JSON.stringify(VOCAB),
   });
 
-  it('pins ts 3.8.0', () => {
-    expect(TS_VERSION).toBe('3.8.0');
+  it('pins ts 3.8.1', () => {
+    expect(TS_VERSION).toBe('3.8.1');
   });
 
   it('compiles to the same Core IR as the ts engine proof', () => {
