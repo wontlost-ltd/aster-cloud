@@ -125,7 +125,7 @@ describe('runNodeCheck：包排版 L10b 用重编译的同一组编译输入', (
     positionFreeSha256: compileSourcePositionFreeSha256(ESCAPE_SOURCE, { locale: 'en-US', aliasSetJson: 'null', allowStructural: false }),
     probes: null, probesJson: '{"probes":[{"entry":"decide","expected":{"ok":true,"value":3},"input":{"count":3}}]}',
     probesSha256: 'bb'.repeat(32), probeCount: 1,
-    runtime: { cliName: '@aster-cloud/aster-lang-ts', cliVersion: TS_VERSION, ecosystem: '1.0.56' },
+    runtime: { cliName: '@aster-cloud/aster-lang-ts', cliVersion: TS_VERSION, ecosystem: '1.0.57' },
   };
 
   it('E3 的隐藏转义通过 L1–L10；不带排版照常', () => {

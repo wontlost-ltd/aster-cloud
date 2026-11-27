@@ -123,7 +123,7 @@ describe('runNodeCheck：包排版 L1–L9（修订 4 D11 第 1 步）', () => {
     exportable: true, diagnostics: [], entry: '地上霜', coreIr, coreIrSha256: 'aa'.repeat(32), positionFreeSha256: pfh,
     probes: null, probesJson: '{"probes":[{"entry":"地上霜","expected":{"ok":true,"value":"静夜思"},"input":{}}]}',
     probesSha256: 'bb'.repeat(32), probeCount: 1,
-    runtime: { cliName: '@aster-cloud/aster-lang-ts', cliVersion: TS_VERSION, ecosystem: '1.0.56' },
+    runtime: { cliName: '@aster-cloud/aster-lang-ts', cliVersion: TS_VERSION, ecosystem: '1.0.57' },
   };
 
   it('《静夜思》的投影哈希是两引擎的共同值；平台 IR 带出入口名（L8 的名字来源）', async () => {
