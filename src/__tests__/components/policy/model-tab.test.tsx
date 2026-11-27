@@ -318,14 +318,16 @@ describe('ModelTab 名字往返校验（四种语言）', () => {
     expect(within(form).queryByRole('alert')).toBeNull();
   };
 
-  it('en-US：小写的关键词拼写在字段位置能编译，往返通过、不误拦', () => {
+  it('en-US：小写关键词作字段名被拒（aster-lang-ts 3.9.0 D4，与 core 一致）', () => {
+    expectFieldNamesReserved(EN_US, 'Applicant', 'amount', ['with', 'and', 'as']);
+  });
+
+  it('en-US：不是关键词的小写词（rule）在字段位置照常通过', () => {
     renderTab(fakeEditor(''), '', EN_US);
     const form = openStruct();
     typeInto(form, M.structName, 'Applicant');
-    for (const name of ['with', 'and', 'as', 'rule']) {
-      typeInto(form, M.fieldName, name);
-      expect(insertButton(form).disabled, name).toBe(false);
-    }
+    typeInto(form, M.fieldName, 'rule');
+    expect(insertButton(form).disabled).toBe(false);
   });
 
   it('de-DE：冠词 der / die 作字段名被拒', () => {

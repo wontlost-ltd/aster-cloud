@@ -101,8 +101,9 @@ describe('往返校验：上下文里会变成关键词或冠词的名字被拒'
     }
   });
 
-  it('en-US：编译器说了算——小写关键词拼写作字段名能编译，不误拦；作类型名不能引用则被拒', () => {
-    for (const name of ['with', 'and', 'as', 'rule']) expect(fieldNameRoundTrips(EN_US, name), name).toBe(true);
+  it('en-US：编译器说了算——小写关键词作字段名被拒（aster-lang-ts 3.9.0 D4，与 core 一致），非关键词照常通过', () => {
+    for (const name of ['with', 'and', 'as']) expect(fieldNameRoundTrips(EN_US, name), name).toBe(false);
+    expect(fieldNameRoundTrips(EN_US, 'rule')).toBe(true);
     expect(structNameRoundTrips(EN_US, 'with')).toBe(false);
   });
 

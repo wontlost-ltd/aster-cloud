@@ -59,12 +59,12 @@ const zipResult = (over: Record<string, unknown> = {}) => ({
   kind: 'zip', bytes: zipBytes.buffer.slice(0), sha256: 'cd'.repeat(32), filename: 'm-v3-jre-b.zip',
   contentDisposition: disposition, signed: true, layout: { status: 'absent', reason: null }, ...over,
 });
-const nodeProbes = { probesSha256: 'ef'.repeat(32), count: 4, agreed: 4, tsVersion: '3.8.2' };
+const nodeProbes = { probesSha256: 'ef'.repeat(32), count: 4, agreed: 4, tsVersion: '3.9.0' };
 const LAYOUT = '{"v":1,"spans":[{"text":"Module m."}]}';
 const preparedOk = {
   exportable: true, diagnostics: [], entry: 'allowRead', coreIr: '{}', coreIrSha256: 'aa'.repeat(32),
   positionFreeSha256: 'bb'.repeat(32), probes: { probes: [] }, probesJson: '{"probes":[]}', probesSha256: 'ef'.repeat(32),
-  probeCount: 4, runtime: { cliName: '@aster-cloud/aster-lang-ts', cliVersion: '3.8.2', ecosystem: '1.0.56' },
+  probeCount: 4, runtime: { cliName: '@aster-cloud/aster-lang-ts', cliVersion: '3.9.0', ecosystem: '1.0.56' },
 };
 const req = (body: unknown = { target: 'jre' }) => new Request('http://localhost/api/policies/p1/export/package', {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: typeof body === 'string' ? body : JSON.stringify(body),
