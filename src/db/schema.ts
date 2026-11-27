@@ -715,6 +715,29 @@ export const guardPolicyDeployments = pgTable('GuardPolicyDeployment', {
   updatedAt: timestamp('updatedAt', { mode: 'date', precision: 3 }).defaultNow().notNull().$onUpdate(() => new Date()),
 });
 
+/** Guard 孤儿通知水位（ADR 0065 §3.4.3）：每个出现过 critical 孤儿的租户一行；不设外键（租户可能已删）。 */
+export const guardOrphanNotifyState = pgTable('GuardOrphanNotifyState', {
+  tenantId: text('tenantId').primaryKey().notNull(),
+  /** 已通知到的最大孤儿 id；比较后写以它为期望旧值。 */
+  notifiedThroughId: bigint('notifiedThroughId', { mode: 'number' }).notNull().default(0),
+  /** 最近一次发出站内通知的时间，安静期以它计；从未发过为 NULL。 */
+  lastNoticeAt: timestamp('lastNoticeAt', { mode: 'date', precision: 3 }),
+  /** 水位之上有新增但被安静期或租户上限推迟时的首次观察时刻；推进水位后清空。 */
+  pendingSince: timestamp('pendingSince', { mode: 'date', precision: 3 }),
+  updatedAt: timestamp('updatedAt', { mode: 'date', precision: 3 }).defaultNow().notNull().$onUpdate(() => new Date()),
+});
+
+/** 邮件限频（ADR 0065 Q4，R4）：每收件人每租户 24 小时至多一封。 */
+export const guardOrphanEmailState = pgTable(
+  'GuardOrphanEmailState',
+  {
+    tenantId: text('tenantId').notNull(),
+    userId: text('userId').notNull(),
+    lastEmailAt: timestamp('lastEmailAt', { mode: 'date', precision: 3 }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.userId] })],
+);
+
 // ============================================
 // Policy Version
 // ============================================
