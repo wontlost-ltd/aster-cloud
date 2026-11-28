@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OrphanFeedError, createOrphanFeedClient } from '@/lib/guard-orphan-notify/feed-client';
 
 vi.mock('server-only', () => ({}));
@@ -168,5 +168,41 @@ describe('orphan feed client', () => {
     });
     err = await errorOf(client.summary(summaryQ));
     expect([err.status, err.code]).toEqual([0, 'unreachable']);
+  });
+});
+
+describe('orphan feed client base URL', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  async function calledUrl(): Promise<string> {
+    const fetchImpl = vi.fn(async () => jsonRes(200, fixture.tenantsResponse));
+    const client = createOrphanFeedClient({ hmacKey: 'k', fetchImpl: fetchImpl as unknown as typeof fetch });
+    await client.tenants(fixture.tenantsRequest);
+    return (fetchImpl.mock.calls[0] as unknown as [string])[0];
+  }
+
+  it('prefers ASTER_API_INTERNAL_URL', async () => {
+    vi.stubEnv('ASTER_API_INTERNAL_URL', 'http://internal.test');
+    vi.stubEnv('ASTER_POLICY_API_INTERNAL_URL', 'http://policy-internal.test');
+    expect(await calledUrl()).toBe('http://internal.test/api/internal/guard/orphan-feed/tenants');
+  });
+
+  it('falls back to the policy API URLs the rest of cloud uses', async () => {
+    vi.stubEnv('ASTER_API_INTERNAL_URL', '');
+    vi.stubEnv('ASTER_POLICY_API_INTERNAL_URL', '');
+    vi.stubEnv('NEXT_PUBLIC_ASTER_POLICY_API_URL', 'http://public-policy.test');
+    expect(await calledUrl()).toBe('http://public-policy.test/api/internal/guard/orphan-feed/tenants');
+  });
+
+  it('never falls back to the in-cluster host when nothing is configured', async () => {
+    vi.stubEnv('ASTER_API_INTERNAL_URL', '');
+    vi.stubEnv('ASTER_POLICY_API_INTERNAL_URL', '');
+    vi.stubEnv('NEXT_PUBLIC_ASTER_POLICY_API_URL', '');
+    const url = await calledUrl();
+    expect(url).not.toContain('aster-api:8080');
+    // 测试进程回落到本机 discard 端口；生产进程回落到 PRODUCTION_POLICY_API_URL（见 policy-api-url.test）
+    expect(url).toBe('http://127.0.0.1:9/api/internal/guard/orphan-feed/tenants');
   });
 });

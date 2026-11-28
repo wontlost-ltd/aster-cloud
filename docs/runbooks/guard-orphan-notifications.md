@@ -21,7 +21,7 @@ Guard 对账（aster-api，每 5 分钟一轮）发现新的 **critical** 孤儿
 | cron | `2-59/5 * * * *`（每 5 分钟、错开 2 分钟；`*/5` 已被 `guard-deploy-sync` 占用） |
 | 去重 | `CronJobLease` 按「以 :02 为起点的 5 分钟窗口」去重；同一窗口重复触发返回 `ran: false, reason: already-*` |
 | 心跳 | `HEALTHCHECKS_GUARD_ORPHAN_NOTIFY_URL`（start / success / fail）；开关关闭时照常上报 success |
-| 依赖 | `ASTER_API_INTERNAL_URL`、`ASTER_PLAN_GATE_HMAC_KEY`（缺 key 时 tick 在发请求前失败，心跳 fail） |
+| 依赖 | aster-api 地址按 `ASTER_API_INTERNAL_URL` → `ASTER_POLICY_API_INTERNAL_URL` → `NEXT_PUBLIC_ASTER_POLICY_API_URL` 取第一个非空值，都未配置时为生产 `https://policy.aster-lang.dev`（与其它 aster-api 调用方一致；Worker 无法访问集群内地址）；`ASTER_PLAN_GATE_HMAC_KEY`（缺 key 时 tick 在发请求前失败，心跳 fail） |
 
 每个 tick：以 `now − 7 天 − 5 分钟` 翻页拉取租户索引 → 对 `maxId` 超过水位的租户（至多 50 个、并发 4）拉取增量汇总 → 现查收件人 → 同一事务写通知行并以比较后写推进水位。每租户安静期 1 小时：期内的新增不推进水位，期满后合并成一条。
 
@@ -29,7 +29,7 @@ Guard 对账（aster-api，每 5 分钟一轮）发现新的 **critical** 孤儿
 
 逐条核对，任一不满足都不要打开：
 
-1. **生产 aster-api 已提供通知源**。从能访问 aster-api 的地方（与 cloud `ASTER_API_INTERNAL_URL` 同一地址）发一个不带签名的请求，必须是 `401`；`404` 表示 aster-api 还是旧版本：
+1. **生产 aster-api 已提供通知源**。从能访问 aster-api 的地方（与 cloud 解析出的 aster-api 地址相同，见 §2 依赖）发一个不带签名的请求，必须是 `401`；`404` 表示 aster-api 还是旧版本：
 
    ```bash
    curl -s -o /dev/null -w '%{http_code}\n' -X POST "$ASTER_API_BASE/api/internal/guard/orphan-feed/tenants" \
@@ -141,7 +141,8 @@ curl -s -X POST "$CLOUD_BASE/api/cron/guard-orphan-notify" -H "Authorization: Be
   | `orphan feed 403 …` | aster-api 未配置 `aster.plan-gate.hmac-key` |
   | `orphan feed 404 …` | aster-api 版本不含通知源（门槛 1 未满足） |
   | `orphan feed 400 invalid_query` | `detectedSince` 越过收紧带（时钟偏差或 tick 超长），检查两侧时钟 |
-  | `orphan feed 0 unreachable` | `ASTER_API_INTERNAL_URL` 不通或超时（单请求 8 秒） |
+  | `orphan feed 0 unreachable` | aster-api 地址（见 §2 依赖）不通或超时（单请求 8 秒） |
+  | `orphan feed 403 http_403`，且 aster-api 侧 `guard_orphan_feed_requests_total` 不涨 | 请求没到 aster-api：地址指向了 Worker 不可达的主机（如集群内 `http://aster-api:8080`），Cloudflare 直接返回 403 |
 
 失败的 tick 不改任何状态，下一轮按水位补发；只要在 7 天内恢复就不丢通知。
 
