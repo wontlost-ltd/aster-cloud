@@ -2,11 +2,17 @@
  * guard 审批站内通知（ADR 0042 §5.3）。
  *
  * 只发站内通知、不发邮件；全部 fire-and-forget——通知失败只记日志，绝不影响触发它的执行或审批。
+ * 另含 notifyOrphansDetected：ADR 0065 的孤儿通知每 tick 编排入口（由 cron 调用，失败会抛出）。
  */
 import { and, arrayContains, eq, sql } from 'drizzle-orm';
 import { createNotification, type GuardApprovalNotification } from '@/lib/notifications';
 import { isPersonalTenant, policyTenantId } from '@/lib/policy-tenant';
 import { db, executions, policies, teamMembers } from '@/lib/prisma';
+import { createOrphanFeedClient } from '@/lib/guard-orphan-notify/feed-client';
+import { resolveOrphanRecipients } from '@/lib/guard-orphan-notify/recipients';
+import { clearPending, commitTenantNotice, loadNotifyStates, markPending } from '@/lib/guard-orphan-notify/state';
+import { runOrphanNotifyTick, type OrphanNotifyReport } from '@/lib/guard-orphan-notify/tick';
+import { getSetting, PLATFORM_SETTING_KEYS } from '@/lib/platform-settings';
 
 /**
  * 待审批收件人：个人租户（与业务角色读取同一判定）只有所有者本人；
@@ -79,4 +85,21 @@ export async function notifyApprovalDecided(
   } catch (err) {
     console.error('[guard-notifications] approval_decided failed', { decisionId: payload.decisionId, err });
   }
+}
+
+/** 孤儿通知一个 tick：以缺省依赖运行编排；站内开关关闭时返回 ran:false，其余错误向上抛出由 cron 记失败。 */
+export function notifyOrphansDetected(now: Date = new Date()): Promise<OrphanNotifyReport> {
+  return runOrphanNotifyTick(
+    {
+      inAppEnabled: () => getSetting<boolean>(PLATFORM_SETTING_KEYS.GUARD_ORPHAN_NOTIFICATIONS_ENABLED),
+      feed: createOrphanFeedClient(),
+      loadStates: loadNotifyStates,
+      markPending,
+      clearPending,
+      commit: commitTenantNotice,
+      recipients: resolveOrphanRecipients,
+      afterCommit: undefined,
+    },
+    now,
+  );
 }
