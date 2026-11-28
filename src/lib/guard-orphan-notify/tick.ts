@@ -47,7 +47,7 @@ export interface OrphanNotifyReport {
   emailed: number;
   /** 本 tick 已发通知中「最早检出时刻」到 now 的最大整秒数。 */
   maxLagSeconds: number | null;
-  /** 被推迟租户的 (pendingSince ?? now) 最小值到 now 的整秒数。 */
+  /** 被推迟（安静期 / 积压）或处理失败的租户，其 (pendingSince ?? now) 最小值到 now 的整秒数。 */
   oldestPendingSeconds: number | null;
 }
 
@@ -118,6 +118,7 @@ async function processTenant(
   detectedSince: string,
   now: Date,
   report: OrphanNotifyReport,
+  failed: string[],
 ): Promise<void> {
   const { tenantId } = item;
   try {
@@ -145,6 +146,7 @@ async function processTenant(
     await runAfterCommit(deps, { tenantId, notice, userIds });
   } catch (err) {
     report.summaryFailed++;
+    failed.push(tenantId);
     console.error('[guard-orphan-notify] tenant failed', { tenantId, err });
   }
 }
@@ -161,21 +163,31 @@ async function runAfterCommit(
   }
 }
 
-/** 推迟的租户记 pendingSince，并回填 deferred 计数与最老积压秒数。 */
-async function deferTenants(
-  deps: OrphanNotifyDeps,
-  { quiet, backlog }: Partitioned,
-  states: Map<string, NotifyState>,
-  now: Date,
-  report: OrphanNotifyReport,
-): Promise<void> {
-  const deferred = [...quiet, ...backlog];
+/** 被推迟的租户记 pendingSince 并回填 deferred 计数。 */
+async function deferTenants(deps: OrphanNotifyDeps, { quiet, backlog }: Partitioned, now: Date, report: OrphanNotifyReport) {
   report.deferredQuiet = quiet.length;
   report.deferredBacklog = backlog.length;
-  if (deferred.length === 0) return;
-  await deps.markPending(deferred.map((d) => d.tenantId), now);
-  const oldest = Math.min(...deferred.map((d) => (states.get(d.tenantId)?.pendingSince ?? now).getTime()));
-  report.oldestPendingSeconds = wholeSeconds(oldest, now.getTime());
+  const ids = [...quiet, ...backlog].map((d) => d.tenantId);
+  if (ids.length > 0) await deps.markPending(ids, now);
+}
+
+/**
+ * 处理失败的租户同样记 pendingSince（cas_lost 不记：已被别的 tick 推进）。
+ * 此处出错只记日志，不让整个 tick 失败：其他租户已处理完成。
+ */
+async function markFailed(deps: OrphanNotifyDeps, failed: string[], now: Date): Promise<void> {
+  if (failed.length === 0) return;
+  try {
+    await deps.markPending(failed, now);
+  } catch (err) {
+    console.error('[guard-orphan-notify] markPending for failed tenants failed', { err });
+  }
+}
+
+function oldestPendingSeconds(ids: string[], states: Map<string, NotifyState>, now: Date): number | null {
+  if (ids.length === 0) return null;
+  const oldest = ids.reduce((min, id) => Math.min(min, (states.get(id)?.pendingSince ?? now).getTime()), now.getTime());
+  return wholeSeconds(oldest, now.getTime());
 }
 
 export async function runOrphanNotifyTick(deps: OrphanNotifyDeps, now: Date): Promise<OrphanNotifyReport> {
@@ -189,15 +201,19 @@ export async function runOrphanNotifyTick(deps: OrphanNotifyDeps, now: Date): Pr
   report.tenantsWithNew = candidates.length;
 
   const parts = partition(candidates, states, now);
-  await deferTenants(deps, parts, states, now, report);
+  await deferTenants(deps, parts, now, report);
 
   const limit = createLimiter(SUMMARY_CONCURRENCY);
+  const failed: string[] = [];
   await Promise.all(
     parts.work.map((item) =>
       limit(() =>
-        processTenant(deps, item, states.get(item.tenantId)?.notifiedThroughId ?? 0, detectedSince, now, report),
+        processTenant(deps, item, states.get(item.tenantId)?.notifiedThroughId ?? 0, detectedSince, now, report, failed),
       ),
     ),
   );
+  await markFailed(deps, failed, now);
+  const pending = [...parts.quiet, ...parts.backlog].map((d) => d.tenantId).concat(failed);
+  report.oldestPendingSeconds = oldestPendingSeconds(pending, states, now);
   return report;
 }

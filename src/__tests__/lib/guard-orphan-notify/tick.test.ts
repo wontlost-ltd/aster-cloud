@@ -169,12 +169,10 @@ describe('runOrphanNotifyTick', () => {
   it('backlog is FIFO, not starved by smaller tenant ids', async () => {
     const t1 = new Date(NOW.getTime() - 5 * MIN);
     // 第二 tick：旧的 10 个（id 最大，pendingSince = t1）+ 50 个 id 更小的新候选
-    seed(h, 50, 100);
     seed(h, 10, 200);
     // 新候选 id 更小：tid(0..49)
     seed(h, 50, 0);
     for (let i = 200; i < 210; i++) h.states.set(tid(i), state(tid(i), { pendingSince: t1 }));
-    h.index = h.index.filter((i) => !(Number(i.tenantId.slice(1)) >= 100 && Number(i.tenantId.slice(1)) < 150));
     await runOrphanNotifyTick(h.deps, NOW);
     const order = h.summary.mock.calls.map(([q]) => q.tenantId);
     expect(order).toHaveLength(50);
@@ -214,6 +212,37 @@ describe('runOrphanNotifyTick', () => {
     const r = await runOrphanNotifyTick(h.deps, NOW);
     expect(r.summaryFailed).toBe(1);
     expect(h.commit).toHaveBeenCalledTimes(2);
+  });
+
+  it('failed summary is marked pending and drives oldestPendingSeconds', async () => {
+    seed(h, 2);
+    h.states.set(tid(1), state(tid(1), { pendingSince: new Date(NOW.getTime() - 2 * 3600_000) }));
+    h.summary.mockImplementation(async (q: { tenantId: string }) => {
+      if (q.tenantId === tid(1)) throw new Error('down');
+      return summaryOf(q.tenantId, 10);
+    });
+    const r = await runOrphanNotifyTick(h.deps, NOW);
+    expect(h.markPending).toHaveBeenCalledTimes(1);
+    expect(h.markPending).toHaveBeenCalledWith([tid(1)], NOW);
+    expect(r.oldestPendingSeconds).toBe(7200);
+  });
+
+  it('failed commit is marked pending; markPending error does not fail the tick', async () => {
+    seed(h, 1);
+    h.commit.mockRejectedValue(new Error('db'));
+    h.markPending.mockRejectedValue(new Error('mark down'));
+    const r = await runOrphanNotifyTick(h.deps, NOW);
+    expect(r.summaryFailed).toBe(1);
+    expect(h.markPending).toHaveBeenCalledWith([tid(0)], NOW);
+    expect(r.oldestPendingSeconds).toBe(0);
+  });
+
+  it('cas lost tenants are not marked pending', async () => {
+    seed(h, 1);
+    h.commit.mockResolvedValue('cas_lost');
+    const r = await runOrphanNotifyTick(h.deps, NOW);
+    expect(h.markPending).not.toHaveBeenCalled();
+    expect(r.oldestPendingSeconds).toBeNull();
   });
 
   it('commit throwing a non-CAS error counts as failed and does not stop others', async () => {
