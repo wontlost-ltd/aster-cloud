@@ -29,6 +29,8 @@ export interface CommitTenantNoticeParams {
 }
 
 const LOAD_BATCH_SIZE = 200;
+/** 批量写入的 VALUES 分块大小，与读取批大小一致。 */
+const WRITE_BATCH_SIZE = LOAD_BATCH_SIZE;
 
 /** 事务内比较失败时抛出，用于强制回滚；只在本模块内部被捕获。 */
 class CasLostError extends Error {
@@ -67,25 +69,28 @@ export async function loadNotifyStates(tenantIds: string[]): Promise<Map<string,
  * 原生 upsert 不触发 drizzle 的 $onUpdate，故 updatedAt 显式写入。
  */
 export async function markPending(tenantIds: string[], now: Date): Promise<void> {
-  if (tenantIds.length === 0) return;
+  // 同一条 INSERT 里重复的冲突键会触发「cannot affect row a second time」，先去重。
+  const unique = [...new Set(tenantIds)];
   const at = ts(now);
-  const values = sql.join(
-    tenantIds.map((t) => sql`(${t}, 0, ${at}::timestamp, ${at}::timestamp)`),
-    sql`, `,
-  );
-  await db.execute(sql`
-    INSERT INTO "GuardOrphanNotifyState" ("tenantId", "notifiedThroughId", "pendingSince", "updatedAt")
-    VALUES ${values}
-    ON CONFLICT ("tenantId") DO UPDATE SET
-      "pendingSince" = COALESCE("GuardOrphanNotifyState"."pendingSince", EXCLUDED."pendingSince"),
-      "updatedAt" = EXCLUDED."updatedAt"
-  `);
+  for (let i = 0; i < unique.length; i += WRITE_BATCH_SIZE) {
+    const values = sql.join(
+      unique.slice(i, i + WRITE_BATCH_SIZE).map((t) => sql`(${t}, 0, ${at}::timestamp, ${at}::timestamp)`),
+      sql`, `,
+    );
+    await db.execute(sql`
+      INSERT INTO "GuardOrphanNotifyState" ("tenantId", "notifiedThroughId", "pendingSince", "updatedAt")
+      VALUES ${values}
+      ON CONFLICT ("tenantId") DO UPDATE SET
+        "pendingSince" = COALESCE("GuardOrphanNotifyState"."pendingSince", EXCLUDED."pendingSince"),
+        "updatedAt" = EXCLUDED."updatedAt"
+    `);
+  }
 }
 
-/** 清除推迟标记；行不存在时无操作。 */
+/** 清除推迟标记；行不存在时无操作。原生 UPDATE 不触发 $onUpdate，updatedAt 显式写入。 */
 export async function clearPending(tenantId: string): Promise<void> {
   await db.execute(sql`
-    UPDATE "GuardOrphanNotifyState" SET "pendingSince" = NULL
+    UPDATE "GuardOrphanNotifyState" SET "pendingSince" = NULL, "updatedAt" = ${ts(new Date())}::timestamp
     WHERE "tenantId" = ${tenantId} AND "pendingSince" IS NOT NULL
   `);
 }

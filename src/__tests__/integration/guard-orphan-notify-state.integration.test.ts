@@ -117,6 +117,56 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('孤儿通知水位（真实 Po
     expect(rows.map((r) => r.id)).toEqual([winnerIsA ? `guard-orphans:${t}:10:ua` : `guard-orphans:${t}:12:ub`]);
   });
 
+  // 持锁事务 L 先占住冲突点，B 必然在 L 未提交时开始并被阻塞；L 提交后 B 重新评估 WHERE。
+  async function raceAgainstHeldTransaction(t: string, hold: (tx: Parameters<Parameters<Db['transaction']>[0]>[0]) => Promise<void>) {
+    let release!: () => void;
+    let locked!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const held = new Promise<void>((r) => (locked = r));
+    const holder = db.transaction(async (tx) => {
+      await hold(tx);
+      locked();
+      await gate;
+    });
+    await held;
+    let settled = false;
+    const b = commitTenantNotice({
+      tenantId: t,
+      expectedThroughId: 0,
+      newThroughId: 12,
+      notices: [notice(t, 'ub', 12)],
+      now,
+    }).finally(() => (settled = true));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(settled).toBe(false); // B 确实被未提交的 A 阻塞
+    release();
+    await holder;
+    return b;
+  }
+
+  it('overlapping commit loses while winner is uncommitted (no row yet)', async () => {
+    const t = newTenant();
+    const result = await raceAgainstHeldTransaction(t, async (tx) => {
+      await tx.execute(sql`INSERT INTO "GuardOrphanNotifyState" ("tenantId","notifiedThroughId","lastNoticeAt","updatedAt") VALUES (${t}, 10, ${now.toISOString()}::timestamp, ${now.toISOString()}::timestamp)`);
+      await tx.insert(notifications).values({ id: `guard-orphans:${t}:10:ua`, userId: 'ua', kind: 'guard.orphans_detected', data: data(t, 10) });
+    });
+    expect(result).toBe('cas_lost');
+    expect((await stateOf(t)).notifiedThroughId).toBe(10);
+    expect((await noticesOf(t)).map((r) => r.id)).toEqual([`guard-orphans:${t}:10:ua`]);
+  });
+
+  it('overlapping commit loses while winner is uncommitted (row exists)', async () => {
+    const t = newTenant();
+    await markPending([t], now);
+    const result = await raceAgainstHeldTransaction(t, async (tx) => {
+      await tx.execute(sql`UPDATE "GuardOrphanNotifyState" SET "notifiedThroughId" = 10 WHERE "tenantId" = ${t}`);
+      await tx.insert(notifications).values({ id: `guard-orphans:${t}:10:ua`, userId: 'ua', kind: 'guard.orphans_detected', data: data(t, 10) });
+    });
+    expect(result).toBe('cas_lost');
+    expect((await stateOf(t)).notifiedThroughId).toBe(10);
+    expect((await noticesOf(t)).map((r) => r.id)).toEqual([`guard-orphans:${t}:10:ua`]);
+  });
+
   it('concurrent commits really use separate connections', async () => {
     // 前提校验：池内两个并发事务拿到不同的后端 pid，否则上一个用例会平凡地串行。
     const pids = await Promise.all(
@@ -210,12 +260,22 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('孤儿通知水位（真实 Po
     expect((await stateOf(b)).updatedAt).toEqual(t1);
   });
 
+  it('markPending tolerates duplicate ids and chunks large batches', async () => {
+    const a = newTenant();
+    await expect(markPending([a, a, a], now)).resolves.toBeUndefined();
+    const ids = Array.from({ length: 450 }, () => newTenant());
+    await markPending([...ids, ...ids.slice(0, 10)], now);
+    expect((await loadNotifyStates(ids)).size).toBe(450);
+  });
+
   it('clearPending clears pendingSince only', async () => {
     const t = newTenant();
-    await markPending([t], now);
+    const past = new Date('2020-01-01T00:00:00.000Z');
+    await markPending([t], past);
     await clearPending(t);
     const row = await stateOf(t);
     expect(row.pendingSince).toBeNull();
+    expect(row.updatedAt.getTime()).toBeGreaterThan(past.getTime());
     expect(row.notifiedThroughId).toBe(0);
   });
 
