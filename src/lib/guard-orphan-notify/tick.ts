@@ -88,6 +88,8 @@ const wholeSeconds = (from: number, to: number) => Math.floor((to - from) / 1000
 async function indexTenants(feed: OrphanFeed, detectedSince: string, report: OrphanNotifyReport): Promise<IndexItem[]> {
   const items: IndexItem[] = [];
   let next: string | undefined;
+  // 服务端按数据库排序规则排序，客户端无法比较游标先后；只检测重复，更长的环由页数上限兜底。
+  const seen = new Set<string>();
   do {
     if (report.pages >= MAX_INDEX_PAGES) throw new Error(`orphan feed index exceeded ${MAX_INDEX_PAGES} pages`);
     const page: OrphanFeedTenantsPage = await feed.tenants(
@@ -95,9 +97,10 @@ async function indexTenants(feed: OrphanFeed, detectedSince: string, report: Orp
     );
     report.pages++;
     items.push(...page.items);
-    if (next !== undefined && page.next !== undefined && page.next <= next) {
-      throw new Error(`orphan feed index cursor not increasing: ${next} -> ${page.next}`);
+    if (page.next !== undefined && seen.has(page.next)) {
+      throw new Error(`orphan feed index cursor repeated: ${page.next}`);
     }
+    if (page.next !== undefined) seen.add(page.next);
     next = page.next;
   } while (next !== undefined);
   report.tenantsIndexed = items.length;

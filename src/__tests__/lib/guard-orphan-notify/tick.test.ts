@@ -378,7 +378,7 @@ describe('runOrphanNotifyTick', () => {
     expect(h.markPending).toHaveBeenCalledWith([tid(0)], NOW);
   });
 
-  it('repeated or non-increasing page cursor fails the whole tick', async () => {
+  it('repeated page cursor fails the whole tick', async () => {
     seed(h, 1);
     h.tenants.mockResolvedValueOnce({ items: h.index, next: 'c5' });
     h.tenants.mockResolvedValueOnce({ items: [], next: 'c5' });
@@ -387,9 +387,18 @@ describe('runOrphanNotifyTick', () => {
     expect(h.markPending).not.toHaveBeenCalled();
   });
 
-  it('decreasing page cursor fails the whole tick', async () => {
-    h.tenants.mockResolvedValueOnce({ items: [], next: 'c5' });
-    h.tenants.mockResolvedValueOnce({ items: [], next: 'c4' });
+  it('collation-ordered cursors that look decreasing in code-unit order do not fail', async () => {
+    h.tenants.mockResolvedValueOnce({ items: [], next: 'alpha' });
+    h.tenants.mockResolvedValueOnce({ items: [], next: 'Beta' });
+    h.tenants.mockResolvedValueOnce({ items: [] });
+    const r = await runOrphanNotifyTick(h.deps, NOW);
+    expect(r.pages).toBe(3);
+  });
+
+  it('cursor cycle of length two fails the whole tick', async () => {
+    h.tenants.mockResolvedValueOnce({ items: [], next: 'a' });
+    h.tenants.mockResolvedValueOnce({ items: [], next: 'b' });
+    h.tenants.mockResolvedValueOnce({ items: [], next: 'a' });
     await expect(runOrphanNotifyTick(h.deps, NOW)).rejects.toThrow(/cursor/);
   });
 
