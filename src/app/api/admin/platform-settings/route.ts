@@ -28,15 +28,20 @@ import { errorEnvelope } from '@/lib/api/error-envelope';
 /** 能力类全局开关的键前缀：这类键要求布尔值并写审计。 */
 const CAPABILITY_SETTING_PREFIX = 'capability.';
 
+/** Guard 孤儿通知开关的键前缀（ADR 0065）：同样要求布尔值并写审计。 */
+const GUARD_ORPHAN_SETTING_PREFIX = 'guard.orphan_notifications.';
+
 /**
  * 要求布尔值并与审计同事务写入的开关：能力类开关、策略包导出与其显示排版开关（ADR 0059 P2、修订 4），
- * 以及编辑器名字转义开关（ADR 0058 修订 3）。
+ * 编辑器名字转义开关（ADR 0058 修订 3），
+ * 以及 Guard 孤儿通知的站内与邮件开关（ADR 0065，`guard.orphan_notifications.` 前缀）。
  */
 function isAuditedBooleanSetting(key: string): boolean {
   return key.startsWith(CAPABILITY_SETTING_PREFIX)
     || key === PLATFORM_SETTING_KEYS.POLICY_PACKAGE_EXPORT_ENABLED
     || key === PLATFORM_SETTING_KEYS.POLICY_PACKAGE_LAYOUT_EXPORT_ENABLED
-    || key === PLATFORM_SETTING_KEYS.NAME_ESCAPE_ENABLED;
+    || key === PLATFORM_SETTING_KEYS.NAME_ESCAPE_ENABLED
+    || key.startsWith(GUARD_ORPHAN_SETTING_PREFIX);
 }
 
 export async function GET() {

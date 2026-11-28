@@ -1554,6 +1554,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         policyPackageLayoutExportDesc: 'Includes the saved display layout of the approved version in exported policy packages (format 1.1). Needs package export on, and an aster-api whose lock file lists format 1.1. Default OFF.',
         nameEscapeTitle: 'Editor name escapes',
         nameEscapeDesc: 'Lets the policy editor write a word as a name with backticks (`word`): model forms escape names that clash with keywords, the editor offers “Use as a name” fixes, and layouts can hide escape delimiters. Keep OFF until aster-api checks hidden escapes before signing. Turning it off stops new escapes only; saved ones still work. Default OFF.',
+        guardOrphanNotifyTitle: 'Guard orphan notifications (in-app)',
+        guardOrphanNotifyDesc: 'Notify team owners and admins in-app when Guard reconciliation finds new critical orphan actions. At most one summary per workspace per hour.',
+        guardOrphanEmailTitle: 'Guard orphan notifications (email)',
+        guardOrphanEmailDesc: 'Also email the same summary (SaaS only; at most one per recipient per workspace per 24 hours). Takes effect only when the in-app switch is on.',
       },
       aiWorkspaceAccess: {
         title: 'AI workspace access',
@@ -3968,6 +3972,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         policyPackageLayoutExportDesc: '导出的策略包带上已批准版本保存的显示排版（格式 1.1）。须同时打开策略包导出，且 aster-api 锁文件声明支持 1.1。默认关闭。',
         nameEscapeTitle: '编辑器名字转义',
         nameEscapeDesc: '允许策略编辑器用反引号把词写成名字（`词`）：模型表单为与关键词冲突的名字自动转义，编辑器提供「用作名字」修复，排版可以隐藏转义符。在 aster-api 签名前校验隐藏转义之前保持关闭。关闭只停止产生新的转义，已保存的照常可用。默认关闭。',
+        guardOrphanNotifyTitle: 'Guard 孤儿通知（站内）',
+        guardOrphanNotifyDesc: 'Guard 对账发现新的 critical 孤儿动作时，给团队 owner 与 admin 发站内通知；每个工作区每小时至多一条汇总。',
+        guardOrphanEmailTitle: 'Guard 孤儿通知（邮件）',
+        guardOrphanEmailDesc: '同一条汇总另发邮件（仅 SaaS；每位收件人每个工作区 24 小时至多一封）。仅在站内开关打开时生效。',
       },
       aiWorkspaceAccess: {
         title: 'AI 工作台授权',
@@ -6382,6 +6390,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         policyPackageLayoutExportDesc: 'Nimmt das gespeicherte Anzeigelayout der freigegebenen Version in exportierte Richtlinienpakete auf (Format 1.1). Erfordert den Paketexport und eine aster-api, deren Lock-Datei Format 1.1 nennt. Standard: aus.',
         nameEscapeTitle: 'Namens-Escapes im Editor',
         nameEscapeDesc: 'Erlaubt dem Policy-Editor, ein Wort mit Backticks als Namen zu schreiben (`Wort`): Modellformulare maskieren Namen, die mit Schlüsselwörtern kollidieren, der Editor bietet „Als Namen verwenden“ an, und Layouts können die Escape-Zeichen ausblenden. Ausgeschaltet lassen, bis aster-api ausgeblendete Escapes vor dem Signieren prüft. Ausschalten verhindert nur neue Escapes; gespeicherte funktionieren weiter. Standard: aus.',
+        guardOrphanNotifyTitle: 'Guard-Orphan-Benachrichtigungen (In-App)',
+        guardOrphanNotifyDesc: 'Benachrichtigt Team-Owner und -Admins in der App, wenn der Guard-Abgleich neue kritische verwaiste Aktionen findet. Höchstens eine Zusammenfassung pro Arbeitsbereich und Stunde.',
+        guardOrphanEmailTitle: 'Guard-Orphan-Benachrichtigungen (E-Mail)',
+        guardOrphanEmailDesc: 'Sendet dieselbe Zusammenfassung zusätzlich per E-Mail (nur SaaS; höchstens eine pro Empfänger und Arbeitsbereich in 24 Stunden). Wirkt nur, wenn der In-App-Schalter aktiv ist.',
       },
       aiWorkspaceAccess: {
         title: 'Zugriff auf den KI-Arbeitsbereich',
@@ -8782,6 +8794,10 @@ export const DEMO_SUPPLEMENT: Record<Locale, MessageTree> = {
         policyPackageLayoutExportDesc: 'स्वीकृत संस्करण का सहेजा गया प्रदर्शन लेआउट निर्यात किए गए नीति पैकेजों में शामिल करता है (फ़ॉर्मेट 1.1)। पैकेज निर्यात चालू होना चाहिए और aster-api की लॉक फ़ाइल में फ़ॉर्मेट 1.1 होना चाहिए। डिफ़ॉल्ट: बंद।',
         nameEscapeTitle: 'संपादक में नाम एस्केप',
         nameEscapeDesc: 'नीति संपादक को बैकटिक से किसी शब्द को नाम के रूप में लिखने देता है (`शब्द`): मॉडल फ़ॉर्म कीवर्ड से टकराने वाले नामों को एस्केप करते हैं, संपादक “नाम के रूप में उपयोग करें” सुधार देता है, और लेआउट एस्केप चिह्न छिपा सकते हैं। जब तक aster-api हस्ताक्षर से पहले छिपे एस्केप की जाँच नहीं करता, इसे बंद रखें। बंद करने से केवल नए एस्केप रुकते हैं; सहेजे गए काम करते रहते हैं। डिफ़ॉल्ट: बंद।',
+        guardOrphanNotifyTitle: 'Guard अनाथ सूचनाएँ (इन-ऐप)',
+        guardOrphanNotifyDesc: 'Guard मिलान में नई गंभीर अनाथ क्रियाएँ मिलने पर टीम owner और admin को इन-ऐप सूचना भेजें। प्रति कार्यक्षेत्र प्रति घंटा अधिकतम एक सारांश।',
+        guardOrphanEmailTitle: 'Guard अनाथ सूचनाएँ (ईमेल)',
+        guardOrphanEmailDesc: 'वही सारांश ईमेल से भी भेजें (केवल SaaS; प्रति प्राप्तकर्ता प्रति कार्यक्षेत्र 24 घंटे में अधिकतम एक)। केवल तब प्रभावी जब इन-ऐप स्विच चालू हो।',
       },
       aiWorkspaceAccess: {
         title: 'AI कार्यक्षेत्र पहुँच',
