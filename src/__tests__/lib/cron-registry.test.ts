@@ -140,3 +140,20 @@ describe('policy-trash-cleanup（#623）', () => {
     );
   });
 });
+
+describe('guard-orphan-notify（ADR 0065）', () => {
+  it('已登记为错开 2 分钟的每 5 分钟 cron，路由指向孤儿通知', () => {
+    const job = getCronByJobName('guard-orphan-notify');
+    expect(job?.cron).toBe('2-59/5 * * * *');
+    expect(job?.routePath).toBe('/api/cron/guard-orphan-notify');
+    expect(job?.healthcheckEnv).toBe('HEALTHCHECKS_GUARD_ORPHAN_NOTIFY_URL');
+    expect(getCronByExpression('2-59/5 * * * *')?.jobName).toBe('guard-orphan-notify');
+  });
+
+  it('窗口取以 :02 为起点的 5 分钟桶', () => {
+    const w = (iso: string) => currentWindowStart('guard-orphan-notify', new Date(iso)).toISOString();
+    expect(w('2026-11-28T10:07:30.000Z')).toBe('2026-11-28T10:07:00.000Z');
+    expect(w('2026-11-28T10:01:59.000Z')).toBe('2026-11-28T09:57:00.000Z');
+    expect(w('2026-11-28T10:02:00.000Z')).toBe('2026-11-28T10:02:00.000Z');
+  });
+});

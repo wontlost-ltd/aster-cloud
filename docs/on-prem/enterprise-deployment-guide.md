@@ -172,6 +172,7 @@ on-prem 需要为下表中「on-prem 需调度」为「是」的每个任务各�
 | `45 4 * * *` | `/api/cron/policy-trash-cleanup` | 是 | 回收站 30 天过期清理与孤儿访问记录回收 |
 | `25 * * * *` | `/api/cron/cleanup-nonces` | 是 | 回收内部调用签名用过的过期 nonce |
 | `*/5 * * * *` | `/api/cron/guard-deploy-sync` | 是 | 收敛 Guard 策略部署（aster-api ADR 0054 §11 D1）：默认版本变更 / 删除的崩溃窗口重发 |
+| `2-59/5 * * * *` | `/api/cron/guard-orphan-notify` | 是 | Guard 对账 critical 孤儿的租户站内通知（aster-api ADR 0065）；开关缺省关 |
 | `* * * * *` | `/api/cron/domain-vocabulary-bulk-worker` | 是 | 领域词汇异步批量导入的队列消费者（不调度则任务一直停在 queued） |
 
 ### 阶段 7：烟测
