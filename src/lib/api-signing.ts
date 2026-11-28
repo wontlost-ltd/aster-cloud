@@ -464,3 +464,26 @@ export async function signInternalV2Headers(
     'X-Internal-Signature': await hmacSha256(secret, canonical),
   };
 }
+
+/**
+ * 按 aster-api `InternalV2SignatureVerifier.canonicalV2` 为 cloud → aster-api 的 `/api/internal/*` 请求签名：
+ * `method\npath\nts(秒)\nnonce\nsha256hex(body)`，签名为小写 hex 的 HMAC-SHA256。
+ * `path` 不含 query；`opts` 仅供测试注入固定时间戳与 nonce。
+ */
+export async function signAsterApiV2Headers(
+  method: string,
+  path: string,
+  body: string,
+  secret: string,
+  opts?: { nowSec?: number; nonce?: string },
+): Promise<SignedHeaders> {
+  const timestamp = String(opts?.nowSec ?? Math.floor(Date.now() / 1000));
+  const nonce = opts?.nonce ?? crypto.randomUUID();
+  const bodyHash = await sha256Hex(new TextEncoder().encode(body).buffer as ArrayBuffer);
+  const canonical = `${method}\n${path}\n${timestamp}\n${nonce}\n${bodyHash}`;
+  return {
+    'X-Aster-Timestamp': timestamp,
+    'X-Aster-Nonce': nonce,
+    'X-Aster-Signature': await hmacSha256(secret, canonical),
+  };
+}

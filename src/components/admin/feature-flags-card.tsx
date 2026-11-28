@@ -10,7 +10,8 @@ import { Badge, Card, CardBody, Stack, buttonVariants, cn } from '@/components/u
  * Lives on the /admin overview page (above the Tools section).
  * Renders one row per known platform-settings key (policy_sharing.enabled,
  * the two structured-authoring capability switches, the policy package
- * export switch, its display-layout switch and the editor name-escape switch) — add new flags by extending
+ * export switch, its display-layout switch, the editor name-escape switch and the two
+ * Guard orphan notification switches (in-app / email, ADR 0065)) — add new flags by extending
  * FLAGS below + adding a key constant + i18n + a row.
  *
  * Optimistic toggle: flips the local state on click, hits POST
@@ -50,6 +51,16 @@ const FLAGS = [
     key: 'authoring.name_escape.enabled',
     titleKey: 'nameEscapeTitle',
     descKey: 'nameEscapeDesc',
+  },
+  {
+    key: 'guard.orphan_notifications.enabled',
+    titleKey: 'guardOrphanNotifyTitle',
+    descKey: 'guardOrphanNotifyDesc',
+  },
+  {
+    key: 'guard.orphan_notifications.email.enabled',
+    titleKey: 'guardOrphanEmailTitle',
+    descKey: 'guardOrphanEmailDesc',
   },
 ] as const;
 
@@ -115,6 +126,7 @@ export function FeatureFlagsCard() {
               return (
                 <li
                   key={flag.key}
+                  data-flag-key={flag.key}
                   className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-bg-subtle p-3"
                 >
                   <Stack gap={1} className="min-w-0 flex-1">

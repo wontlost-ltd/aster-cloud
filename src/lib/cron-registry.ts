@@ -219,6 +219,15 @@ export const CRON_REGISTRY: ReadonlyArray<CronJob> = [
       new Date(Math.floor(now.getTime() / 300_000) * 300_000),
   },
   {
+    jobName: 'guard-orphan-notify',
+    cron: '2-59/5 * * * *',
+    routePath: '/api/cron/guard-orphan-notify',
+    // 每 5 分钟、错开 2 分钟（aster-api ADR 0065 §3.4.3）：aster-api 对账在整 5 分钟处开跑；'*/5' 已被 guard-deploy-sync 占用。
+    windowStartFor: (now) =>
+      new Date(Math.floor((now.getTime() - 120_000) / 300_000) * 300_000 + 120_000),
+    healthcheckEnv: 'HEALTHCHECKS_GUARD_ORPHAN_NOTIFY_URL',
+  },
+  {
     jobName: 'domain-vocabulary-bulk-worker',
     cron: '* * * * *',
     routePath: '/api/cron/domain-vocabulary-bulk-worker',

@@ -7,10 +7,10 @@
 //
 // fail-open：失败仅日志，aster-api 端 1h TTL + warm-up cron 兜底。
 
-import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { db, users } from '@/lib/prisma';
 import { eq } from 'drizzle-orm';
 import { getEffectiveLimits, type PlanType } from '@/lib/plans';
+import { signAsterApiV2Headers } from '@/lib/api-signing';
 import { safeEnv } from '@/lib/runtime/safe-env';
 import { resolveApiKeyIdentity, toApiKeySnapshotBody } from '@/lib/api-key-identity';
 import { invalidatePlanCacheForOwner } from '@/lib/plan-gate-client';
@@ -111,28 +111,11 @@ async function callAsterApi(
   body: string,
   label: string
 ): Promise<void> {
-  const timestamp = Math.floor(Date.now() / 1000);
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (PLAN_GATE_HMAC_KEY) {
-    // ★v2 canonical（2026-08-17 安全审计）：
-    //     method \n path \n ts \n nonce \n sha256hex(body)
-    //
-    //   v1 只签 `method\npath\nts` —— 签名与请求体无关，也没有一次性凭证。
-    //   后果：截获任意一条合法签名后，攻击者可在 5 分钟时间窗内**替换请求体**
-    //   （例如把 role 改成 ADMIN、把 apiCallsLimit 改成无限）或**原样重放**，
-    //   而签名依然通过。这些端点写入的正是 aster-api 鉴权决策所依赖的数据。
-    //
-    //   服务端在迁移窗口内同时接受 v1/v2
-    //   （aster.security.snapshot.accept-legacy-signature，默认 true）；
-    //   本改动发版后应把该开关置为 false 完成硬切。
-    const nonce = randomUUID();
-    const bodySha = createHash('sha256').update(body).digest('hex');
-    const message = `${method}\n${path}\n${timestamp}\n${nonce}\n${bodySha}`;
-    headers['X-Aster-Timestamp'] = String(timestamp);
-    headers['X-Aster-Nonce'] = nonce;
-    headers['X-Aster-Signature'] = createHmac('sha256', PLAN_GATE_HMAC_KEY)
-      .update(message)
-      .digest('hex');
+    // v2 canonical：method \n path \n ts \n nonce \n sha256hex(body)，绑定请求体与一次性 nonce
+    //（v1 只签 method/path/ts，可换 body 或重放）。服务端迁移窗口内仍兼容 v1，发版后应硬切。
+    Object.assign(headers, await signAsterApiV2Headers(method, path, body, PLAN_GATE_HMAC_KEY));
   }
   // OTEL-1: traceparent 透传
   const { newTraceContext } = await import('@/lib/trace-context');

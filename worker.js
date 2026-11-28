@@ -54,6 +54,7 @@ const CRON_DISPATCH = {
   "45 4 * * *": "/api/cron/policy-trash-cleanup",
   "25 * * * *": "/api/cron/cleanup-nonces",
   "*/5 * * * *": "/api/cron/guard-deploy-sync",
+  "2-59/5 * * * *": "/api/cron/guard-orphan-notify",
   "* * * * *": "/api/cron/domain-vocabulary-bulk-worker",
 };
 

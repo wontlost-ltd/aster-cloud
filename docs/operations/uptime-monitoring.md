@@ -44,6 +44,7 @@ For each cron in `src/app/api/cron/`, create a Healthchecks.io check. The cron P
 | `/api/cron/telemetry-uploader` | 6 h | 1 h | `HEALTHCHECKS_TELEMETRY_URL` |
 | `/api/cron/telemetry-retention-gc` | 24 h | 2 h | `HEALTHCHECKS_TELEMETRY_GC_URL` |
 | `/api/cron/user-purge` | 24 h | 2 h | `HEALTHCHECKS_USER_PURGE_URL` |
+| `/api/cron/guard-orphan-notify` | 5 min | 5 min | `HEALTHCHECKS_GUARD_ORPHAN_NOTIFY_URL` |
 
 Pattern in each cron route: wrap the handler in a try/finally that posts to the heartbeat URL. Example wiring at `src/lib/healthcheck-heartbeat.ts` (will land in a follow-up commit).
 

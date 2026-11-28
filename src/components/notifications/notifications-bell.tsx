@@ -10,6 +10,7 @@ import { Bell } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { cn } from '@/components/ui';
+import { orphanNoticeHref } from '@/lib/guard-orphan-notify/payload';
 
 /*
  * Topbar bell — unread-count badge + drop-down list.
@@ -61,6 +62,8 @@ function useLabels() {
     versionApproved: t.raw('versionApproved') as string,
     versionRejected: t.raw('versionRejected') as string,
     versionRejectedNoComment: t.raw('versionRejectedNoComment') as string,
+    guardOrphansDetected: t.raw('guardOrphansDetected') as string,
+    guardOrphansDetectedPersonal: t.raw('guardOrphansDetectedPersonal') as string,
     permissionView: t('permissionView'),
     permissionExecute: t('permissionExecute'),
     timeAgoNow: t('timeAgoNow'),
@@ -166,6 +169,15 @@ export function renderText(
         text: fillTemplate(template, vars),
         href: d.policyId ? `/policies/${d.policyId}/versions` : '/policies',
       };
+    }
+    case 'guard.orphans_detected': {
+      const d = row.data as { tenantId?: string; tenantName?: string; newTotal?: number };
+      const count = String(d.newTotal ?? 0);
+      // 个人租户的 tenantName 为空串，使用不含团队名的模板
+      const text = d.tenantName
+        ? fillTemplate(labels.guardOrphansDetected, { tenantName: d.tenantName, count })
+        : fillTemplate(labels.guardOrphansDetectedPersonal, { count });
+      return { text, href: orphanNoticeHref(d.tenantId ?? '') };
     }
     default:
       return { text: row.kind };

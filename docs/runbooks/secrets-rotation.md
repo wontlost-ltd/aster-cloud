@@ -8,7 +8,7 @@ Quarterly cadence (or immediately on suspected compromise). One operator can do 
 |---|---|---|---|
 | `AUTH_SECRET` / `NEXTAUTH_SECRET` | Cloudflare Worker secret | All sessions invalidated → users sign in again | Attacker can forge sessions for any user |
 | `CRON_SECRET` | Cloudflare Worker secret + each cron caller | Cron jobs fail until both sides rotated | Attacker can drive cron endpoints (telemetry, license refresh, dunning) |
-| `ASTER_PLAN_GATE_HMAC_KEY` | Worker secret + aster-api k8s ExternalSecret | PlanGate snapshot push fails until both sides match | Attacker can forge plan-tier upgrades |
+| `ASTER_PLAN_GATE_HMAC_KEY` | Worker secret + aster-api k8s ExternalSecret | PlanGate snapshot push fails until both sides match; the Guard orphan notification cron (`guard-orphan-notify`) fails with 401 (heartbeat fail) until both sides match — nothing is lost if fixed within the 7-day lookback | Attacker can forge plan-tier upgrades; also read the cross-tenant Guard orphan feed (`/api/internal/guard/orphan-feed/*`) and enumerate every tenant's critical orphan counts (ADR 0065 §3.4.2) |
 | `ASTER_FACT_SIGNING_KEY` | Cloudflare Worker secret | 只换 secret 而不在各租户启用新 kid → cloud 停止附签名事实（登记照常；1.3.0 后高风险模块 DENY） | 可为任何已启用 cloud 签发方的租户伪造 `principal.*` 事实 |
 | `AI_KEY_ENCRYPTION_SECRET` | Worker secret | **All BYOK keys must be re-encrypted** | Attacker can decrypt every customer's stored OpenAI/Anthropic/Vertex key |
 | `LICENSE_KEY` (on-prem only) | Per-customer K8s Secret | On-prem deployment immediate re-verify | Attacker on prem can sign their own licenses |
@@ -72,6 +72,12 @@ curl -X POST https://aster-lang.cloud/api/cron/license-revocation-refresh \
 ```
 
 **Impact**: any cron in-flight at rotation time fails (the next scheduled run picks up the new secret). No customer-visible effect.
+
+---
+
+### `ASTER_PLAN_GATE_HMAC_KEY`
+
+Rotate cloud (Worker secret) and aster-api (k8s ExternalSecret) together: until both sides match, PlanGate snapshot push and the `guard-orphan-notify` cron fail with 401.
 
 ---
 

@@ -6,6 +6,9 @@ const h = vi.hoisted(() => ({
   teamFind: vi.fn(), membersFind: vi.fn(), createNotification: vi.fn(), execFind: vi.fn(), policyFind: vi.fn(),
 }));
 
+// guard-notifications 现在经孤儿通知编排引入 server-only 模块；单测环境无该包，按仓库惯例置空。
+vi.mock('server-only', () => ({}));
+
 vi.mock('@/lib/prisma', () => ({
   db: {
     query: {

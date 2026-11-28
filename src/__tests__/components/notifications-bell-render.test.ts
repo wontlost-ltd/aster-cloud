@@ -20,6 +20,8 @@ const labels = {
   versionApproved: '{policyName} v{version} was approved',
   versionRejected: '{policyName} v{version} was rejected: {comment}',
   versionRejectedNoComment: '{policyName} v{version} was rejected',
+  guardOrphansDetected: 'New critical Guard findings in {tenantName}: {count}',
+  guardOrphansDetectedPersonal: 'New critical Guard findings in your personal workspace: {count}',
 } as unknown as Labels;
 
 function row(kind: string, data: Record<string, unknown>): Row {
@@ -60,5 +62,34 @@ describe('notifications-bell 文案渲染', () => {
     expect(
       renderText(row('policy.version_decided', { policyId: 'p1', policyName: 'Loan', version: 3, outcome: 'APPROVED' }), labels).text,
     ).toBe('Loan v3 was approved');
+  });
+
+  describe('guard.orphans_detected', () => {
+    const base = { tenantId: 't-1', tenantName: 'Acme', newTotal: 3, byKind: { other: 3 }, maxOrphanId: 9, runIds: [1] };
+
+    it('团队租户：文本含团队名与计数，链接带租户与 critical 过滤', () => {
+      expect(renderText(row('guard.orphans_detected', base), labels)).toEqual({
+        text: 'New critical Guard findings in Acme: 3',
+        href: '/governance/reconciliation?tenant=t-1&severity=critical',
+      });
+    });
+
+    it('个人租户（tenantName 为空串）：使用个人工作区模板', () => {
+      expect(renderText(row('guard.orphans_detected', { ...base, tenantName: '' }), labels).text)
+        .toBe('New critical Guard findings in your personal workspace: 3');
+    });
+
+    it('tenantId 含 / 与空格时正确编码；缺失时退回总览', () => {
+      expect(renderText(row('guard.orphans_detected', { ...base, tenantId: 'a/b c' }), labels).href)
+        .toBe('/governance/reconciliation?tenant=a%2Fb%20c&severity=critical');
+      expect(renderText(row('guard.orphans_detected', { ...base, tenantId: undefined }), labels).href)
+        .toBe('/governance/reconciliation');
+    });
+
+    it('newTotal 缺失按 0；载荷里的 detail 不进入文本', () => {
+      expect(renderText(row('guard.orphans_detected', { ...base, newTotal: undefined }), labels).text).toContain(': 0');
+      const r = renderText(row('guard.orphans_detected', { ...base, detail: '<img onerror>' }), labels);
+      expect(r.text).not.toContain('img');
+    });
   });
 });

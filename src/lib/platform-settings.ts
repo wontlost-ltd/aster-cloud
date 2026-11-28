@@ -53,6 +53,10 @@ export const PLATFORM_SETTING_KEYS = {
   //   默认 OFF；按 ADR 0056 修订 A7 D5，在 aster-api 接通 L10b（E6）上线前保持关闭，之后按环境打开。
   //   关闭只停止编辑器**生成**转义，已存的转义照常编译、显示与校验（ADR 0064 §13）。
   NAME_ESCAPE_ENABLED: 'authoring.name_escape.enabled',
+  // Guard 孤儿通知（ADR 0065）：站内通知开关与邮件开关，均默认 OFF（fail-OFF）。
+  //   邮件开关仅在站内开关也打开时生效。
+  GUARD_ORPHAN_NOTIFICATIONS_ENABLED: 'guard.orphan_notifications.enabled',
+  GUARD_ORPHAN_NOTIFICATIONS_EMAIL_ENABLED: 'guard.orphan_notifications.email.enabled',
 } as const;
 
 /** 管理员附加指令长度上限，与 aster-api AssistantRequest 的 @Size 对齐。 */
@@ -81,6 +85,9 @@ const DEFAULTS: Record<string, unknown> = {
   [PLATFORM_SETTING_KEYS.POLICY_PACKAGE_EXPORT_ENABLED]: false,
   [PLATFORM_SETTING_KEYS.POLICY_PACKAGE_LAYOUT_EXPORT_ENABLED]: false,
   [PLATFORM_SETTING_KEYS.NAME_ESCAPE_ENABLED]: false,
+  // Guard 孤儿通知（ADR 0065）：两个开关缺行或读库失败时都按 OFF，不会误发通知。
+  [PLATFORM_SETTING_KEYS.GUARD_ORPHAN_NOTIFICATIONS_ENABLED]: false,
+  [PLATFORM_SETTING_KEYS.GUARD_ORPHAN_NOTIFICATIONS_EMAIL_ENABLED]: false,
 };
 
 const CACHE_TTL_MS = 60_000;
