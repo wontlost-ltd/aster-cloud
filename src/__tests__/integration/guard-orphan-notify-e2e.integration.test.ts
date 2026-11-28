@@ -54,7 +54,12 @@ interface OrphanView {
 describe.skipIf(!API)('孤儿通知端到端（真实 aster-api + Postgres）', () => {
   const previousDb = globalForDb.__asterLocalDevDb;
   const previousApiUrl = process.env.ASTER_API_INTERNAL_URL;
-  const db: Db = createDb(undefined, { max: 4 });
+  // 在 beforeAll 里建池：describe 体在收集阶段执行，跳过时也会运行，不能在这里连库。
+  let db: Db | undefined;
+  const conn = (): Db => {
+    if (!db) throw new Error('数据库连接尚未建立');
+    return db;
+  };
   let effectSeq = 0;
 
   async function api(path: string, key: string, init: RequestInit = {}): Promise<Response> {
@@ -106,14 +111,14 @@ describe.skipIf(!API)('孤儿通知端到端（真实 aster-api + Postgres）', 
   }
 
   const noticeRows = async () =>
-    (await db.select().from(notifications).where(like(notifications.id, `guard-orphans:${TEAM}:%`))).sort((a, b) =>
+    (await conn().select().from(notifications).where(like(notifications.id, `guard-orphans:${TEAM}:%`))).sort((a, b) =>
       a.id.localeCompare(b.id),
     );
   const stateRow = async () =>
-    (await db.select().from(guardOrphanNotifyState).where(eq(guardOrphanNotifyState.tenantId, TEAM)))[0];
+    (await conn().select().from(guardOrphanNotifyState).where(eq(guardOrphanNotifyState.tenantId, TEAM)))[0];
   /** 把 lastNoticeAt 挪到安静期之外，模拟 61 分钟后的 tick。 */
   const expireQuietPeriod = () =>
-    db
+    conn()
       .update(guardOrphanNotifyState)
       .set({ lastNoticeAt: new Date(Date.now() - QUIET_EXPIRED_MS) })
       .where(eq(guardOrphanNotifyState.tenantId, TEAM));
@@ -129,45 +134,59 @@ describe.skipIf(!API)('孤儿通知端到端（真实 aster-api + Postgres）', 
   }
 
   async function cleanupCloud() {
-    await db.delete(notifications).where(like(notifications.id, `guard-orphans:${PREFIX}%`));
-    await db.delete(guardOrphanNotifyState).where(like(guardOrphanNotifyState.tenantId, `${PREFIX}%`));
-    await db.delete(apiKeys).where(like(apiKeys.id, `${PREFIX}%`));
-    await db.delete(teamMembers).where(like(teamMembers.teamId, `${PREFIX}%`));
-    await db.delete(teams).where(like(teams.id, `${PREFIX}%`));
-    await db.delete(users).where(like(users.id, `${PREFIX}%`));
+    await conn().delete(notifications).where(like(notifications.id, `guard-orphans:${PREFIX}%`));
+    await conn().delete(guardOrphanNotifyState).where(like(guardOrphanNotifyState.tenantId, `${PREFIX}%`));
+    await conn().delete(apiKeys).where(like(apiKeys.id, `${PREFIX}%`));
+    await conn().delete(teamMembers).where(like(teamMembers.teamId, `${PREFIX}%`));
+    await conn().delete(teams).where(like(teams.id, `${PREFIX}%`));
+    await conn().delete(users).where(like(users.id, `${PREFIX}%`));
   }
 
   beforeAll(async () => {
+    db = createDb(undefined, { max: 4 });
     globalForDb.__asterLocalDevDb = db;
     process.env.ASTER_API_INTERNAL_URL = API;
     expect(process.env.ASTER_PLAN_GATE_HMAC_KEY, '需与 aster-api 共用 ASTER_PLAN_GATE_HMAC_KEY').toBeTruthy();
 
-    await db.insert(users).values(
+    await conn().insert(users).values(
       Object.values(U).map((id) => ({ id, email: `${id}@example.test`, updatedAt: new Date() }) as typeof users.$inferInsert),
     );
-    await db.insert(teams).values({ id: TEAM, name: 'E2E Orphan Team', slug: `${PREFIX}slug`, ownerId: U.owner });
-    await db.insert(teamMembers).values([
+    await conn().insert(teams).values({ id: TEAM, name: 'E2E Orphan Team', slug: `${PREFIX}slug`, ownerId: U.owner });
+    await conn().insert(teamMembers).values([
       { id: `${PREFIX}m-owner`, teamId: TEAM, userId: U.owner, role: 'owner' as const },
       { id: `${PREFIX}m-admin`, teamId: TEAM, userId: U.admin, role: 'admin' as const },
       { id: `${PREFIX}m-member`, teamId: TEAM, userId: U.member, role: 'member' as const },
     ]);
-    await db.insert(apiKeys).values([
+    await conn().insert(apiKeys).values([
       { id: `${PREFIX}key-member`, userId: U.member, teamId: TEAM, name: 'e2e member', key: hashApiKey(KEY.member), prefix: KEY.member.slice(3, 11) },
       { id: `${PREFIX}key-admin`, userId: U.admin, teamId: TEAM, name: 'e2e admin', key: hashApiKey(KEY.admin), prefix: KEY.admin.slice(3, 11) },
     ]);
     await setSetting(FLAG, true, ACTOR);
   }, 30_000);
 
+  /** 收尾的每一步互不依赖：某一步失败只记日志，其余照常执行。 */
+  async function teardownStep(name: string, step: () => Promise<unknown>): Promise<void> {
+    try {
+      await step();
+    } catch (err) {
+      console.warn(`[guard-orphan-notify-e2e] 收尾步骤失败：${name}`, err);
+    }
+  }
+
   afterAll(async () => {
     try {
-      await setSetting(FLAG, false, ACTOR);
-      // 确认本租户剩下的 OPEN 孤儿，下次运行的 tick 不会再看到它们
-      for (const o of await openOrphans().catch(() => [])) await acknowledge(o.id).catch(() => undefined);
-      await cleanupCloud();
+      if (db) {
+        await teardownStep('关闭站内开关', () => setSetting(FLAG, false, ACTOR));
+        // 确认本租户剩下的 OPEN 孤儿，下次运行的 tick 不会再看到它们
+        await teardownStep('确认剩余孤儿', async () => {
+          for (const o of await openOrphans()) await teardownStep(`确认孤儿 ${o.id}`, () => acknowledge(o.id));
+        });
+        await teardownStep('删除种子数据', cleanupCloud);
+      }
     } finally {
       process.env.ASTER_API_INTERNAL_URL = previousApiUrl;
       globalForDb.__asterLocalDevDb = previousDb;
-      await db.$client.end();
+      await db?.$client.end();
     }
   }, 60_000);
 
