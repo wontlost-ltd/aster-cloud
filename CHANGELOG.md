@@ -6,6 +6,48 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- Guard 孤儿通知站内通知（ADR 0065 C2–C9，开关缺省关） (#866) *(guard)*
+- Guard 孤儿通知状态表（ADR 0065 C1） (#865) *(db)*
+- E901 / E902 按码本地化，W802 沿用引擎 overlay（ui-messages 1.0.32） (#860) *(i18n)*
+- 名字转义编辑器支持（ADR 0064 E5）+ 别名 containsBacktick（#857） (#859) *(editor)*
+- 策略包携带显示排版——读取、ts L1–L9 复核、转发与面板说明（ADR 0059 修订 4 T7） (#848) *(policy-export)*
+- 类型别名引导词取 lexicon 的 TYPE_ALIAS，aster-lang-ts 3.6.0（ADR 0058 修订 2） (#847) *(structured-authoring)*
+- Reconciliation governance UI — summary card, orphan list, ack dialog, e2e (ADR 0061 C2, #769) (#846) *(guard)*
+- Reconciliation BFF, role-scoped client and decision context (ADR 0061 C1, #769) (#845) *(guard)*
+- Reading views show the display layout first; editor opens side-by-side by default (ADR 0058 amendment 1) (#839) *(layout)*
+- Faithful 静夜思 showcase — the original poem is the policy (ADR 0060 T13) (#837) *(templates)*
+- 别名规则 v2——zh 汉字单词别名、FUNC_PRODUCE 结构词，aster-lang-ts 3.5.0（ADR 0060 T12） (#835) *(policy-alias)*
+- Embedded vocabulary editing and approval-view map (ADR 0060 T11) (#834) *(editor)*
+- 内嵌词汇写入方——保存路由三态、合并后编译与封印（ADR 0060 T9） (#833) *(vocabulary)*
+- 策略内嵌词汇库与读路径、封印复核（ADR 0060 T8 + T10） (#832) *(vocabulary)*
+- PolicyVersion.embeddedVocabulary 列迁移（ADR 0060 T1） (#831) *(db)*
+- Jingyesi structured-authoring showcase template (#791) (#829) *(policy-editor)*
+- Editor Layout tab, side-by-side display pane and save tri-state (ADR 0058 P2 C10) (#827) *(policy-layout)*
+- Read-only views show canonical first, display layout as a second tab (ADR 0058 P2 C9) (#825) *(policy-layout)*
+- 版本 LayoutMap 存储、createVersion 三态、保存门禁与读接口（ADR 0058 P2 C8） (#823) *(policy-layout)*
+- PolicyVersionLayout 只插入表迁移（ADR 0058 C7） (#821) *(db)*
+- 词汇规范预览窗格、结构化编写命令面板项与端到端（ADR 0058 C5） (#820) *(editor)*
+- 升级 aster-lang-ts 3.3.0，Node 包导出前在 Worker 内重编译与探针比对（ADR 0059 P2 C3） (#819) *(export)*
+- 详情页「导出」菜单与策略包导出、四语文案与浏览器验收（ADR 0059 P2 C2） (#813) *(policy)*
+- 策略包导出的计划门、开关、客户端、可导出性检查与下载代理（ADR 0059 P2 C1） (#812) *(export)*
+- 结构化编写——编辑器能力接线、模型标签页与词汇标签页（ADR 0058 C4） (#804) *(editor)*
+- 团队 owner 委派结构化编写座位与成员 / 团队生命周期级联（ADR 0058 C3） (#803) *(capabilities)*
+- 结构化编写能力授权——注册表、生效解析、平台授权接口与管理页（ADR 0058 C2） (#802) *(capabilities)*
+- 所有用户的上手清单并入偏好向导；可操作空状态与团队 / 审批 / Guard 操作指南（#796） (#801) *(onboarding)*
+- CapabilityGrant / CapabilityTeamAllotment 授权表迁移（ADR 0058 C1） (#800) *(db)*
+- 审批输入面板把 $undeclared 显示为「未声明字段」，不显示字面键名（aster-api#541） (#789) *(approvals)*
+- 新建策略按界面语言预填入门模板，并并入模板目录 (#778) *(editor)*
+- 重设计 /equivalence 双引擎一致性页面 (#766) *(equivalence)*
+- Agent 经 aster-guard-mcp 的绕过演示与 #464 验收测试（aster-api#464 D/Task 13） (#765) *(demo)*
+- 策略默认版本变更时部署到 aster-api Guard，先部署后提交、cron 收敛与回填（aster-api#464 A2） (#760) *(guard)*
+- GuardPolicyDeployment 表（迁移 0066，aster-api#464 A2 的迁移部分） (#761) *(db)*
+- 证据包 v6——审批快照键、逐字段来源与执行收据（aster-api#460 C3） (#758) *(evidence)*
+- 审批收件箱展示脱敏决策输入、解除原值与快照哈希（aster-api#460 C1/C2） (#756) *(approvals)*
+- Cloud 签发事实 — JCS、fact-signer、from-evidence 附事实、信贷试点签发方（X4 C6–C9） (#750) *(guard)*
+- 签发方管理（PolicyApiClient、代理路由与权限、设置页与收件箱吊销原因）— X4 C3–C5 (#749) *(guard)*
+- 注册表副本 1.2.0 与编辑器 Decision 页签展示 inputRefs（X4 C1+C2） (#748) *(governance)*
+- 启用关闭缓存的 HYPERDRIVE_FRESH 绑定，一致性敏感读不再逐条并入 NOW() 守卫（#624） (#742) *(db)*
+- 按 @control 查询受影响策略与治理视图（#739） (#740) *(governance)*
 - Evaluate-source 400 诊断透传模块 reason（已登记枚举） (#734) *(playground)*
 - 团队共享领域词汇（#672，ADR 0017） (#730) *(vocab)*
 - 一致性敏感读改走 freshDb，支持关闭缓存的 HYPERDRIVE_FRESH 绑定（#624 PR A） (#729) *(db)*
@@ -347,6 +389,8 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
+- 演示改用 aster-lang-ts 3.3.0 的 ./layout 导出，删除 layout-map 副本（ADR 0058 P2 C6） (#822) *(demos)*
+- 入口与写法匹配改用 aster-lang-ts 导出（#650） (#738) *(execution-input)*
 - PROFILE_KEYWORDS 仅模块内使用，取消导出 *(policy)*
 - 存储 manifest 定型为 EvidenceManifestV1 | EvidenceManifest，读取侧按 schemaVersion 收窄（ADR 0041 §5） *(evidence)*
 - 策略租户 id 统一经 policyTenantId 推导（teamId || userId） *(evidence)*
@@ -378,6 +422,11 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Documentation
 
+- Structured authoring guides — domain modelling, vocabulary, LayoutMap and admin (#795) (#828) *(guides)*
+- 策略包导出操作指南（ADR 0059 P2 D1） (#818) *(guides)*
+- 执行日志一节注明 W709（自 1.0.49 / ts 3.2.0 起提供） (#799) *(guides)*
+- 守卫、审批与执行日志 / 编辑器与仪表盘两篇指南；429 限流按三种错误码重写 (#798) *(guides)*
+- Refresh unreleased (#733) *(changelog)*
 - Refresh unreleased (#687) *(changelog)*
 - Refresh unreleased (#551) *(changelog)*
 - Refresh unreleased (#549) *(changelog)*
@@ -698,6 +747,34 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- 孤儿通知源按标准顺序解析 aster-api 地址，不再回落到集群内主机 (#867) *(guard)*
+- 镜像入口不再经 version-manager 加载 next/server（#853） (#861) *(resolver-migration)*
+- Lowercase type-name hint (E055) and control-character literal copy (#854) *(ui)*
+- Worker 改用 node-postgres 连 Hyperdrive，查询卡死有界失败（#842） (#852) *(db)*
+- Fail closed when a test-mode aster-api client has no base URL (#824) (#841) *(test)*
+- Verify Worker deploy by identity, retry deployments API (#836) (#838) *(ci)*
+- 通知铃铛有未读数时可访问名包含徽章数字（#814） (#816) *(a11y)*
+- 筛选栏下拉移到搜索框右侧并显示可见字段名（#811） (#815) *(domain-vocabularies)*
+- 平台控制卡片与复核页工具链标识在移动端不再撑出视口；UI 审计补齐容器越界规则与长内容种子（#774） (#806) *(admin)*
+- 结构化编写编辑器审查后续——名字校验、焦点样式、空结构体提示、侧栏快照（ADR 0058 C4） (#805) *(editor)*
+- 导出为 Cedar 并入页头操作组、仅可导出时显示；行菜单弹出层不再被表格容器裁掉（#786） (#790) *(policies)*
+- 执行输出的字符串叶子按 PIIRedactor 打码（#772） (#788) *(logs)*
+- 缺少 HYPERDRIVE_FRESH 绑定时在 workerd 告警一次（#743） (#787) *(db)*
+- 移动端点击目标 ≥ 44×44 CSS px，桌面不变（#774） (#785) *(a11y)*
+- 待接受的团队邀请与待审批版本在仪表盘可见可操作，移动端不再被容器裁掉（#774） (#784) *(dashboard)*
+- 去掉重复页面标题；代码块可聚焦、复制反馈、焦点指示等小修（#774） (#783) *(a11y)*
+- 修复 /dashboard 水合错误 #418 的根因（#774） (#782) *(dashboard)*
+- 代码高亮换用 GitHub 高对比度主题，编辑器配色同步达 AA（#774） (#781) *(docs)*
+- 升级 tokens 0.2.2 / ui 0.3.2，主色填充文字与各处对比度达 WCAG AA（#774） (#780) *(a11y)*
+- 文档移动端溢出、代码块键盘可达、锚点与链接区分（#774 审计） (#777) *(docs)*
+- 仪表盘无障碍与移动端布局缺陷（#774 审计） (#776) *(a11y)*
+- 修正 de-DE 内置模板条件语法并新增全 locale 模板编译测试 (#773) *(editor)*
+- 执行日志按 @pii 打码输入，日志面不提供原值（#754） (#770) *(logs)*
+- 事实过期横幅改为 info 并重写文案；修正 runbook 生产 BASE_API (#768) *(approvals)*
+- 本人已解除后面板重新挂载时取回解除视图，「显示原值」前置并说明决定所据视图（aster-api#460） (#767) *(approvals)*
+- 高风险档案下 ALLOW 同样登记 guard 决策并过来源门（aster-api#510 裁定 (a)） (#757) *(guard)*
+- 签发方列表登记人显示成员姓名 / 邮箱而非用户 id (#751) *(settings)*
+- MODULE_NOT_VISIBLE 只透传 reason=NOT_VISIBLE（ADR 0015） (#735) *(playground)*
 - 解析诊断改读新码 E05x，为 ts 1.0.42 删除 legacyCode 做准备 (#732) *(policy)*
 - /policies 列表显示本人可查看团队的团队策略 (#727) *(policies)*
 - 去掉 team-policy-authz 集成测试合并 #721 / #723 后重复的 node:fs / node:path 导入 (#724) *(test)*
