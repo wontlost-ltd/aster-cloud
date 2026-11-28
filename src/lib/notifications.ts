@@ -25,7 +25,8 @@ export type NotificationKind =
   | 'guard.approval_requested'
   | 'guard.approval_decided'
   | 'policy.version_submitted'
-  | 'policy.version_decided';
+  | 'policy.version_decided'
+  | 'guard.orphans_detected';
 
 /** guard 审批通知的共同载荷（ADR 0042 §5.3）：requiredRole 为 null 表示 ESCALATE（任意成员可审）。 */
 export interface GuardApprovalNotification {
@@ -37,6 +38,21 @@ export interface GuardApprovalNotification {
   requiredRole: string | null;
   /** 仅 approval_decided 携带：审批结论。 */
   outcome?: 'APPROVED' | 'REJECTED';
+}
+
+/** Guard 对账新增 critical 孤儿的租户汇总（ADR 0065 §3.3）。只含计数、kind、时间与 id，不含任何上报方文本。 */
+export interface GuardOrphansDetectedNotification {
+  tenantId: string;
+  /** 团队名；个人租户为空串（铃铛显示本地化「个人工作区」）。 */
+  tenantName: string;
+  newTotal: number;
+  /** 已知 critical kind → 计数；未知 kind 合并为 other。 */
+  byKind: Record<string, number>;
+  firstDetectedAt: string;
+  lastDetectedAt: string;
+  maxOrphanId: number;
+  /** 至多 8 个 first_run_id，只用于与 GUARD_RECONCILIATION 链事件对照，不展示。 */
+  runIds: number[];
 }
 
 export interface NotificationPayloads {
@@ -77,6 +93,7 @@ export interface NotificationPayloads {
     outcome: 'APPROVED' | 'REJECTED';
     comment?: string;
   };
+  'guard.orphans_detected': GuardOrphansDetectedNotification;
 }
 
 /**
