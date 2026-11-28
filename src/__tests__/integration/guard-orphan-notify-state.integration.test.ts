@@ -120,27 +120,39 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('孤儿通知水位（真实 Po
   // 持锁事务 L 先占住冲突点，B 必然在 L 未提交时开始并被阻塞；L 提交后 B 重新评估 WHERE。
   async function raceAgainstHeldTransaction(t: string, hold: (tx: Parameters<Parameters<Db['transaction']>[0]>[0]) => Promise<void>) {
     let release!: () => void;
-    let locked!: () => void;
     const gate = new Promise<void>((r) => (release = r));
+    let locked!: () => void;
     const held = new Promise<void>((r) => (locked = r));
     const holder = db.transaction(async (tx) => {
-      await hold(tx);
-      locked();
+      try {
+        await hold(tx);
+      } finally {
+        // hold 抛错时也要放行 held，避免主流程永久等待
+        locked();
+      }
       await gate;
     });
+    // holder 提前失败（hold 抛错）时 held 已被放行；其错误在下面 await holder 时抛出
+    holder.catch(() => undefined);
     await held;
-    let settled = false;
-    const b = commitTenantNotice({
-      tenantId: t,
-      expectedThroughId: 0,
-      newThroughId: 12,
-      notices: [notice(t, 'ub', 12)],
-      now,
-    }).finally(() => (settled = true));
-    await new Promise((r) => setTimeout(r, 300));
-    expect(settled).toBe(false); // B 确实被未提交的 A 阻塞
-    release();
-    await holder;
+    let b: Promise<'committed' | 'cas_lost'> | undefined;
+    try {
+      let settled = false;
+      b = commitTenantNotice({
+        tenantId: t,
+        expectedThroughId: 0,
+        newThroughId: 12,
+        notices: [notice(t, 'ub', 12)],
+        now,
+      }).finally(() => (settled = true));
+      b.catch(() => undefined);
+      await new Promise((r) => setTimeout(r, 300));
+      expect(settled).toBe(false); // B 确实被未提交的 A 阻塞
+    } finally {
+      // 无论断言是否失败都必须释放 A 的锁，否则后续清理会被挂起
+      release();
+      await holder;
+    }
     return b;
   }
 
