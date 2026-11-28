@@ -96,6 +96,22 @@ export async function clearPending(tenantId: string): Promise<void> {
 }
 
 /**
+ * 清除不再是候选的租户的 pendingSince：keepTenantIds 之外所有带推迟标记的行一次清掉
+ * （租户已无水位之上的 OPEN critical 孤儿，不应再计入待通知时长或插队）。空名单清除全部。
+ * 水位与 lastNoticeAt 不动；原生 UPDATE 不触发 $onUpdate，updatedAt 显式写入。
+ */
+export async function clearStalePending(keepTenantIds: string[], now: Date): Promise<void> {
+  const keepArray =
+    keepTenantIds.length > 0
+      ? sql`ARRAY[${sql.join(keepTenantIds.map((t) => sql`${t}`), sql`, `)}]::text[]`
+      : sql`ARRAY[]::text[]`;
+  await db.execute(sql`
+    UPDATE "GuardOrphanNotifyState" SET "pendingSince" = NULL, "updatedAt" = ${ts(now)}::timestamp
+    WHERE "pendingSince" IS NOT NULL AND NOT ("tenantId" = ANY(${keepArray}))
+  `);
+}
+
+/**
  * 水位推进与通知行插入同处一个事务，水位以期望旧值做比较后写（R3）：
  * 比较失败（另一个 tick 已推进）则整事务回滚并返回 'cas_lost'，通知行不会重复。
  * 通知行 id 幂等（ON CONFLICT DO NOTHING）；收件人为空时只推进水位，不写 lastNoticeAt（R7）。

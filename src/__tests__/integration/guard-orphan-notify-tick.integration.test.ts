@@ -11,7 +11,7 @@ import { createDb } from '@/db';
 import { guardOrphanNotifyState, notifications, teamMembers, teams, users } from '@/db/schema';
 import type { OrphanFeed, OrphanFeedSummary } from '@/lib/guard-orphan-notify/feed-client';
 import { resolveOrphanRecipients } from '@/lib/guard-orphan-notify/recipients';
-import { clearPending, commitTenantNotice, loadNotifyStates, markPending } from '@/lib/guard-orphan-notify/state';
+import { clearPending, clearStalePending, commitTenantNotice, loadNotifyStates, markPending } from '@/lib/guard-orphan-notify/state';
 import { runOrphanNotifyTick, type OrphanNotifyDeps } from '@/lib/guard-orphan-notify/tick';
 
 const PREFIX = 'it-orphan-tick-';
@@ -63,6 +63,7 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('孤儿通知 tick（真实 Pos
     loadStates: loadNotifyStates,
     markPending,
     clearPending,
+    clearStalePending,
     commit: commitTenantNotice,
     recipients: resolveOrphanRecipients,
   });

@@ -5,7 +5,7 @@ import { createLimiter } from '@/services/evidence/receipts-client';
 import type { OrphanFeed, OrphanFeedTenantsPage } from './feed-client';
 import { buildOrphanNotice, orphanNoticeId } from './payload';
 import type { resolveOrphanRecipients } from './recipients';
-import type { clearPending, commitTenantNotice, loadNotifyStates, markPending, NotifyState } from './state';
+import type { clearPending, clearStalePending, commitTenantNotice, loadNotifyStates, markPending, NotifyState } from './state';
 
 /**
  * 孤儿通知每 tick 编排（ADR 0065 §3.4.3）。
@@ -18,6 +18,8 @@ export const DETECTED_SINCE_SKEW_MS = 5 * 60_000;
 export const QUIET_PERIOD_MS = 3600_000;
 export const MAX_TENANTS_PER_TICK = 50;
 export const SUMMARY_CONCURRENCY = 4;
+/** 索引翻页上限：50 租户级别的数据远用不到，到顶说明游标失控（服务端 bug），宁可整个 tick 失败也不无限循环。 */
+export const MAX_INDEX_PAGES = 1000;
 
 export interface OrphanNotifyDeps {
   inAppEnabled(): Promise<boolean>;
@@ -25,6 +27,7 @@ export interface OrphanNotifyDeps {
   loadStates: typeof loadNotifyStates;
   markPending: typeof markPending;
   clearPending: typeof clearPending;
+  clearStalePending: typeof clearStalePending;
   commit: typeof commitTenantNotice;
   recipients: typeof resolveOrphanRecipients;
   /** 第二阶段邮件挂点；抛错只记日志，不影响已提交的站内通知。 */
@@ -86,11 +89,15 @@ async function indexTenants(feed: OrphanFeed, detectedSince: string, report: Orp
   const items: IndexItem[] = [];
   let next: string | undefined;
   do {
+    if (report.pages >= MAX_INDEX_PAGES) throw new Error(`orphan feed index exceeded ${MAX_INDEX_PAGES} pages`);
     const page: OrphanFeedTenantsPage = await feed.tenants(
       next === undefined ? { detectedSince } : { detectedSince, afterTenant: next },
     );
     report.pages++;
     items.push(...page.items);
+    if (next !== undefined && page.next !== undefined && page.next <= next) {
+      throw new Error(`orphan feed index cursor not increasing: ${next} -> ${page.next}`);
+    }
     next = page.next;
   } while (next !== undefined);
   report.tenantsIndexed = items.length;
@@ -123,6 +130,7 @@ async function processTenant(
   const { tenantId } = item;
   try {
     const s = await deps.feed.summary({ tenantId, afterId, detectedSince });
+    if (s.tenantId !== tenantId) throw new Error(`summary tenant mismatch: requested ${tenantId}, got ${s.tenantId}`);
     if (s.total === 0) {
       await deps.clearPending(tenantId);
       return;
@@ -163,6 +171,15 @@ async function runAfterCommit(
   }
 }
 
+/** 清除不再是候选的租户的推迟标记；出错只记日志，不影响本 tick。 */
+async function clearStale(deps: OrphanNotifyDeps, candidates: IndexItem[], now: Date): Promise<void> {
+  try {
+    await deps.clearStalePending(candidates.map((c) => c.tenantId), now);
+  } catch (err) {
+    console.error('[guard-orphan-notify] clearStalePending failed', { err });
+  }
+}
+
 /** 被推迟的租户记 pendingSince 并回填 deferred 计数。 */
 async function deferTenants(deps: OrphanNotifyDeps, { quiet, backlog }: Partitioned, now: Date, report: OrphanNotifyReport) {
   report.deferredQuiet = quiet.length;
@@ -199,6 +216,7 @@ export async function runOrphanNotifyTick(deps: OrphanNotifyDeps, now: Date): Pr
   const states = await deps.loadStates(items.map((i) => i.tenantId));
   const candidates = items.filter((i) => i.maxId > (states.get(i.tenantId)?.notifiedThroughId ?? 0));
   report.tenantsWithNew = candidates.length;
+  await clearStale(deps, candidates, now);
 
   const parts = partition(candidates, states, now);
   await deferTenants(deps, parts, now, report);

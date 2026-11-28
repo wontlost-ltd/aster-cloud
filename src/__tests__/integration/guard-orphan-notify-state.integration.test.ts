@@ -12,6 +12,7 @@ import { guardOrphanNotifyState, notifications } from '@/db/schema';
 import type { GuardOrphansDetectedNotification } from '@/lib/notifications';
 import {
   clearPending,
+  clearStalePending,
   commitTenantNotice,
   loadNotifyStates,
   markPending,
@@ -243,6 +244,34 @@ describe.skipIf(process.env.LICENSE_E2E !== '1')('孤儿通知水位（真实 Po
       commitTenantNotice({ tenantId: t, expectedThroughId: 5, newThroughId: 5, notices: [], now }),
     ).rejects.toThrow();
     expect(await stateOf(t)).toBeUndefined();
+  });
+
+  it('clearStalePending clears only rows outside the keep list and leaves watermark fields', async () => {
+    const keep = newTenant();
+    const stale = newTenant();
+    const t1 = new Date('2026-11-28T09:00:00.000Z');
+    const t2 = new Date('2026-11-28T09:30:00.000Z');
+    for (const t of [keep, stale]) {
+      await commitTenantNotice({ tenantId: t, expectedThroughId: 0, newThroughId: 7, notices: [], now: t1 });
+      await db.execute(sql`UPDATE "GuardOrphanNotifyState" SET "pendingSince" = ${t1.toISOString()}::timestamp, "lastNoticeAt" = ${t1.toISOString()}::timestamp WHERE "tenantId" = ${t}`);
+    }
+    await clearStalePending([keep], t2);
+    const k = await stateOf(keep);
+    const s = await stateOf(stale);
+    expect(k.pendingSince).toEqual(t1);
+    expect(s.pendingSince).toBeNull();
+    expect(s.notifiedThroughId).toBe(7);
+    expect(s.lastNoticeAt).toEqual(t1);
+    expect(s.updatedAt).toEqual(t2);
+  });
+
+  it('clearStalePending with an empty keep list clears every pending row', async () => {
+    const a = newTenant();
+    const b = newTenant();
+    await markPending([a, b], now);
+    await clearStalePending([], now);
+    expect((await stateOf(a)).pendingSince).toBeNull();
+    expect((await stateOf(b)).pendingSince).toBeNull();
   });
 
   it('markPending keeps the earliest', async () => {

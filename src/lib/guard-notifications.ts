@@ -10,7 +10,7 @@ import { isPersonalTenant, policyTenantId } from '@/lib/policy-tenant';
 import { db, executions, policies, teamMembers } from '@/lib/prisma';
 import { createOrphanFeedClient } from '@/lib/guard-orphan-notify/feed-client';
 import { resolveOrphanRecipients } from '@/lib/guard-orphan-notify/recipients';
-import { clearPending, commitTenantNotice, loadNotifyStates, markPending } from '@/lib/guard-orphan-notify/state';
+import { clearPending, clearStalePending, commitTenantNotice, loadNotifyStates, markPending } from '@/lib/guard-orphan-notify/state';
 import { runOrphanNotifyTick, type OrphanNotifyReport } from '@/lib/guard-orphan-notify/tick';
 import { getSetting, PLATFORM_SETTING_KEYS } from '@/lib/platform-settings';
 
@@ -96,6 +96,7 @@ export function notifyOrphansDetected(now: Date = new Date()): Promise<OrphanNot
       loadStates: loadNotifyStates,
       markPending,
       clearPending,
+      clearStalePending,
       commit: commitTenantNotice,
       recipients: resolveOrphanRecipients,
       afterCommit: undefined,

@@ -6,6 +6,7 @@ vi.mock('server-only', () => ({}));
 import type { OrphanFeed, OrphanFeedSummary } from '@/lib/guard-orphan-notify/feed-client';
 import type { NotifyState } from '@/lib/guard-orphan-notify/state';
 import {
+  MAX_INDEX_PAGES,
   runOrphanNotifyTick,
   type OrphanNotifyDeps,
 } from '@/lib/guard-orphan-notify/tick';
@@ -39,6 +40,7 @@ interface Harness {
   loadStates: ReturnType<typeof vi.fn>;
   markPending: ReturnType<typeof vi.fn>;
   clearPending: ReturnType<typeof vi.fn>;
+  clearStalePending: ReturnType<typeof vi.fn>;
   commit: ReturnType<typeof vi.fn>;
   recipients: ReturnType<typeof vi.fn>;
   states: Map<string, NotifyState>;
@@ -57,6 +59,7 @@ function harness(): Harness {
   h.loadStates = vi.fn(async () => h.states);
   h.markPending = vi.fn(async () => undefined);
   h.clearPending = vi.fn(async () => undefined);
+  h.clearStalePending = vi.fn(async () => undefined);
   h.commit = vi.fn(async () => 'committed');
   h.recipients = vi.fn(async () => ({ kind: 'team', tenantName: 'Team', userIds: ['u1', 'u2'] }));
   h.deps = {
@@ -65,6 +68,7 @@ function harness(): Harness {
     loadStates: h.loadStates as OrphanNotifyDeps['loadStates'],
     markPending: h.markPending as OrphanNotifyDeps['markPending'],
     clearPending: h.clearPending as OrphanNotifyDeps['clearPending'],
+    clearStalePending: h.clearStalePending as OrphanNotifyDeps['clearStalePending'],
     commit: h.commit as OrphanNotifyDeps['commit'],
     recipients: h.recipients as OrphanNotifyDeps['recipients'],
   };
@@ -91,6 +95,7 @@ describe('runOrphanNotifyTick', () => {
     expect(r.oldestPendingSeconds).toBeNull();
     expect(h.tenants).not.toHaveBeenCalled();
     expect(h.loadStates).not.toHaveBeenCalled();
+    expect(h.clearStalePending).not.toHaveBeenCalled();
   });
 
   it('first enable sends one summary per tenant, then nothing once the watermark advanced', async () => {
@@ -335,5 +340,63 @@ describe('runOrphanNotifyTick', () => {
     expect(r.oldestPendingSeconds).toBe(90);
     // firstDetectedAt = 10:00:00，now = 12:00:00
     expect(r.maxLagSeconds).toBe(7200);
+  });
+
+  it('stale pendingSince cleared when tenant no longer above watermark', async () => {
+    // t000 缺席索引、t001 在索引但 maxId <= 水位：都不在保留名单；t002 是真实候选。
+    h.index.push({ tenantId: tid(1), maxId: 5 }, { tenantId: tid(2), maxId: 10 });
+    h.states.set(tid(0), state(tid(0), { pendingSince: new Date(NOW.getTime() - 3600_000) }));
+    h.states.set(tid(1), state(tid(1), { notifiedThroughId: 5, pendingSince: new Date(NOW.getTime() - 3600_000) }));
+    await runOrphanNotifyTick(h.deps, NOW);
+    expect(h.clearStalePending).toHaveBeenCalledTimes(1);
+    expect(h.clearStalePending).toHaveBeenCalledWith([tid(2)], NOW);
+  });
+
+  it('clearStalePending keeps tenants whose summary later fails', async () => {
+    seed(h, 2);
+    h.summary.mockRejectedValueOnce(new Error('down'));
+    await runOrphanNotifyTick(h.deps, NOW);
+    expect(h.clearStalePending.mock.calls[0][0]).toEqual([tid(0), tid(1)]);
+  });
+
+  it('clearStalePending rejection does not fail the tick', async () => {
+    seed(h, 1);
+    h.clearStalePending.mockRejectedValueOnce(new Error('db down'));
+    const r = await runOrphanNotifyTick(h.deps, NOW);
+    expect(r.noticesCreated).toBe(1);
+    expect(h.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('summary for a different tenant is that tenant failure', async () => {
+    seed(h, 2);
+    h.summary.mockImplementation(async (q: { tenantId: string }) =>
+      summaryOf(q.tenantId === tid(0) ? 'someone-else' : q.tenantId, 10),
+    );
+    const r = await runOrphanNotifyTick(h.deps, NOW);
+    expect(r.summaryFailed).toBe(1);
+    expect(h.commit).toHaveBeenCalledTimes(1);
+    expect(h.markPending).toHaveBeenCalledWith([tid(0)], NOW);
+  });
+
+  it('repeated or non-increasing page cursor fails the whole tick', async () => {
+    seed(h, 1);
+    h.tenants.mockResolvedValueOnce({ items: h.index, next: 'c5' });
+    h.tenants.mockResolvedValueOnce({ items: [], next: 'c5' });
+    await expect(runOrphanNotifyTick(h.deps, NOW)).rejects.toThrow(/cursor/);
+    expect(h.commit).not.toHaveBeenCalled();
+    expect(h.markPending).not.toHaveBeenCalled();
+  });
+
+  it('decreasing page cursor fails the whole tick', async () => {
+    h.tenants.mockResolvedValueOnce({ items: [], next: 'c5' });
+    h.tenants.mockResolvedValueOnce({ items: [], next: 'c4' });
+    await expect(runOrphanNotifyTick(h.deps, NOW)).rejects.toThrow(/cursor/);
+  });
+
+  it('page count above the cap fails the whole tick', async () => {
+    let n = 0;
+    h.tenants.mockImplementation(async () => ({ items: [], next: `c${String(++n).padStart(8, '0')}` }));
+    await expect(runOrphanNotifyTick(h.deps, NOW)).rejects.toThrow(/pages/);
+    expect(h.tenants).toHaveBeenCalledTimes(MAX_INDEX_PAGES);
   });
 });

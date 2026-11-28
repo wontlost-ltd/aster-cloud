@@ -116,11 +116,11 @@ curl -s -X POST "$CLOUD_BASE/api/cron/guard-orphan-notify" -H "Authorization: Be
 | `noRecipients` | 没有 owner / admin 的租户数（只推进水位，`console.warn`） |
 | `emailed` | 第二阶段的邮件数；当前恒为 0 |
 | `maxLagSeconds` | 本 tick 已发通知里「最早检出」到现在的最大秒数 |
-| `oldestPendingSeconds` | 被推迟或处理失败的租户里最老的待通知时长（秒） |
+| `oldestPendingSeconds` | 被推迟或处理失败的租户里最老的待通知时长（秒）；`pendingSince` 在租户水位推进、或租户不再有水位之上的 OPEN critical 孤儿（例如已全部确认）时清除，不会因此残留误报 |
 
 需要人工排查的信号：
 
-- **`oldestPendingSeconds > 86400`**：有租户的新增超过一天没有发出。它同时覆盖「安静期 / 积压一直推迟」和「该租户的增量汇总持续失败」两种情况。超过 7 天的积压会落出回看窗口而**不再通知**，必须在此之前处理。不调接口也能直接查：
+- **`oldestPendingSeconds > 86400`**：有租户的新增超过一天没有发出。它同时覆盖「安静期 / 积压一直推迟」和「该租户的增量汇总持续失败」两种情况。超过 7 天的积压会落出回看窗口而**不再通知**，必须在此之前处理。`pendingSince` 只在该租户的水位推进、或它不再有水位之上的 OPEN critical 孤儿时才清除（每 tick 对不再是候选的租户统一清理）。不调接口也能直接查：
 
   ```sql
   SELECT "tenantId", now() - "pendingSince" AS pending_for
