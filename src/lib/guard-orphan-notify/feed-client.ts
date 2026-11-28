@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { signAsterApiV2Headers } from '@/lib/api-signing';
+import { resolvePolicyApiBaseUrl } from '@/lib/policy-api-url';
 import { safeEnv } from '@/lib/runtime/safe-env';
 import { newTraceContext } from '@/lib/trace-context';
 
@@ -108,7 +109,15 @@ export interface OrphanFeedClientOptions {
 }
 
 export function createOrphanFeedClient(opts: OrphanFeedClientOptions = {}): OrphanFeed {
-  const baseUrl = opts.baseUrl ?? safeEnv('ASTER_API_INTERNAL_URL') ?? 'http://aster-api:8080';
+  // 与其它 aster-api 调用方同一套解析：显式配置优先，未配置时回落到生产 aster-api 公网地址。
+  // 不能回落到集群内地址：cloud 跑在 Cloudflare Worker 上，http://aster-api:8080 不可达（Cloudflare 直接返回 403）。
+  const baseUrl =
+    opts.baseUrl ??
+    resolvePolicyApiBaseUrl(
+      safeEnv('ASTER_API_INTERNAL_URL'),
+      safeEnv('ASTER_POLICY_API_INTERNAL_URL'),
+      safeEnv('NEXT_PUBLIC_ASTER_POLICY_API_URL'),
+    );
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   async function post<T>(endpoint: string, query: object, parse: (raw: unknown) => T): Promise<T> {
